@@ -33,17 +33,19 @@ type savingQuitAgent struct {
 func (a *savingQuitAgent) Close() error { return a.save() }
 
 // Contract E2 follows the actual quit, launcher teardown and bare receiving launch.
-func TestHostedSurfaceQuitPublishesReleasesAndBareLaunchMovesTheChat(t *testing.T) {
+// L4-H4b preserves publication and release when the final upload succeeds.
+func TestL4HostedSurfaceQuitPublishesReleasesAndBareLaunchMovesTheChat(t *testing.T) {
 	runHostedQuitContract(t, false)
 }
 
-// Contract E2 bounds an offline quit and names the locally retained transcript.
-func TestHostedSurfaceQuitWithRelayDownKeepsTheLocalTurns(t *testing.T) {
+// L4-H4b reports a successful local save when the final upload cannot finish.
+func TestL4HostedSurfaceQuitWithRelayDownKeepsTheLocalTurns(t *testing.T) {
 	runHostedQuitContract(t, true)
 }
 
 func runHostedQuitContract(t *testing.T, relayDown bool) {
 	t.Helper()
+	t.Cleanup(stopFinalSaveProgress)
 	cfg, c := doorChat(t)
 	short, err := os.MkdirTemp("", "ce-")
 	if err != nil {
@@ -235,17 +237,20 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 		defer func() { flushFinalSaves, os.Stdout = oldFlush, oldOut }()
 		flushFinalSaves = func(context.Context) error { return nil }
 		os.Stdout = out
-		if finishFinalSaving(t.Context()) {
-			t.Fatal("offline quit claimed a complete save")
+		if !finishFinalSaving(t.Context()) {
+			t.Fatal("a confirmed local save was reported as a failure")
 		}
 		if _, err := out.Seek(0, io.SeekStart); err != nil {
 			t.Fatal(err)
 		}
 		line, err := io.ReadAll(out)
-		if err != nil || !strings.Contains(string(line), "unsaved turns are kept in "+transcript) {
+		if err != nil || !strings.Contains(string(line), "saved here; it reaches your other devices when the sync service at ") || strings.Contains(string(line), transcript) || strings.Contains(string(line), "could not save") {
 			t.Fatalf("offline quit report=%q err=%v", line, err)
 		}
 		return
+	}
+	if !finishFinalSaving(t.Context()) {
+		t.Fatal("the completed upload was reported as a failure")
 	}
 	if releases.Load() != 1 {
 		t.Fatalf("relay releases=%d", releases.Load())

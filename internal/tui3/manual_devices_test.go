@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"regexp"
 	"strings"
 	"testing"
@@ -22,9 +23,9 @@ func TestEverySentenceOfTheDeviceScreensIsOnItsPage(t *testing.T) {
 			addMachineHeading, addMachinePitch, addMachineStepRun, addMachineStepPut, addMachineShow,
 			approveAsk, fmt.Sprintf(approveCheckWord, "4821"), approveKeys, approveGone,
 			fmt.Sprintf(approveDenied, "laptop"), fmt.Sprintf(joinedFleetWord, "laptop"),
-			strings.Join([]string{devicesMoveKey, devicesNameKey, devicesGoneKey, devicesCloseKey}, " · "), devicesNone, fmt.Sprintf(devicesRevoked, "desk"), "seen 3h ago", "offline", approveWorking, approveDeclining, approveSlow,
+			strings.Join([]string{devicesMoveKey, devicesNameKey, devicesGoneKey, devicesCloseKey}, " · "), fmt.Sprintf(devicesRemoveAsk, "desk"), fmt.Sprintf(devicesRevoked, "desk"), "seen 3h ago", "offline", approveWorking, approveDeclining, approveSlow,
 			deviceBring, deviceNothing, devicePickAsk, devicePickLeav,
-			chatlist.Device{Name: "desk"}.Mark(false), chatlist.Removed,
+			chatlist.Device{Name: "desk"}.Mark(false, tokens.Plain.Glyph(tokens.GQueued)), chatlist.RemovedChat,
 		},
 		"naming-a-device": {devicesNameKeys, devicesNameAsk + "atlas▏", devicesNameOwn},
 		"continuing-a-chat-on-another-computer": {

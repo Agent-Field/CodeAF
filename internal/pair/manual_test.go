@@ -21,6 +21,7 @@ import (
 //
 // The bar is the same one the other gates set: the page must SAY the sentence,
 // word for word, not describe it well.
+// L4-H6 and L4-M7 keep connection words identical to the compiled manual.
 func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 	code := &Code{digits: "715302"}
 	said := []string{
@@ -68,6 +69,7 @@ func TestEverySentenceThisPackageShowsIsInTheManual(t *testing.T) {
 // shows for it is quoted there whole. The page is named rather than searched
 // for, so a sentence that moved to some other page still fails: a person who
 // asks how to use codeaf on a second computer is sent to this one.
+// L4-H1, L4-H2 and L4-M12 keep pairing sentences on their shipped manual page.
 func TestEverySentenceOfPairingChatsIsOnItsOwnPage(t *testing.T) {
 	const name = "use-this-on-another-computer"
 	page, ok := manual.Chat().Page(name)
@@ -102,7 +104,7 @@ func TestEverySentenceOfPairingChatsIsOnItsOwnPage(t *testing.T) {
 		ErrRelayTooOld.Error(),
 		ErrDifferentChats.Error(),
 		ErrAlreadyPaired.Error(),
-		CannotReachHost("relay.example.com").Error(),
+		CannotReachHost("https://relay.example.com").Error(),
 		TooManyFor(7 * time.Minute).Error(),
 	}
 	for _, sentence := range said {

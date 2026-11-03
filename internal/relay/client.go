@@ -39,6 +39,8 @@ var dialWithin = HandshakeWithin
 var (
 	// ErrUnreachable is the relay itself not answering.
 	ErrUnreachable = errors.New("relay: cannot be reached")
+	// ErrStruggling means the service answered but could not finish the request.
+	ErrStruggling = errors.New("relay: service unavailable")
 	// ErrNoMachine is the relay answering that nothing is registered under
 	// that name right now.
 	ErrNoMachine = errors.New("relay: no machine connected under that name")
@@ -156,7 +158,7 @@ func Dial(ctx context.Context, service, name string) (io.ReadWriteCloser, error)
 func upgrade(ctx context.Context, service, path string, header http.Header) (net.Conn, error) {
 	address, err := url.Parse(strings.TrimSpace(service))
 	if err != nil || address.Host == "" || (address.Scheme != "http" && address.Scheme != "https") {
-		return nil, fmt.Errorf("%q is not a relay address — it looks like https://relay.example.com", service)
+		return nil, fmt.Errorf("%q is not a sync service URL — it looks like https://relay.example.com", service)
 	}
 	// The relay address may carry a path of its own (https://host/fabric), and
 	// the door is beneath it, as every other client's route is. Refusals name
@@ -186,6 +188,10 @@ func upgradeRaw(ctx context.Context, address *url.URL, base, path string, header
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
 	}
+	// A caller can stop a probe while an older relay is silent during HTTP upgrade.
+	raw := conn
+	stopClosing := context.AfterFunc(ctx, func() { _ = raw.Close() })
+	defer stopClosing()
 	if address.Scheme == "https" {
 		secure := tls.Client(conn, &tls.Config{ServerName: address.Hostname()})
 		if err := secure.HandshakeContext(ctx); err != nil {
@@ -205,7 +211,11 @@ func upgradeRaw(ctx context.Context, address *url.URL, base, path string, header
 	request.Header.Set("Upgrade", Protocol)
 	request.Header.Set("Connection", "Upgrade")
 
-	_ = conn.SetDeadline(time.Now().Add(HandshakeWithin))
+	deadline := time.Now().Add(HandshakeWithin)
+	if until, ok := ctx.Deadline(); ok && until.Before(deadline) {
+		deadline = until
+	}
+	_ = conn.SetDeadline(deadline)
 	if err := request.Write(conn); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("%w: %s", ErrUnreachable, base)
@@ -250,11 +260,11 @@ func refusal(base, path string, status int, said string) error {
 		// stream ceiling; that machine is busy, not unreachable.
 		return ErrTooMany
 	case status >= 500:
-		return fmt.Errorf("%w: %s answered %d", ErrUnreachable, base, status)
+		return upstreamFailure{base: base, status: status}
 	case relaySentence(said):
 		return errors.New(said)
 	default:
-		return fmt.Errorf("the relay at %s refused this connection (%d) — check the address it was given", base, status)
+		return fmt.Errorf("the sync service at %s refused this connection (%d) — check the address it was given", base, status)
 	}
 }
 
@@ -298,3 +308,16 @@ func readBounded(body io.ReadCloser) string {
 	said, _ := io.ReadAll(io.LimitReader(body, 512))
 	return string(said)
 }
+
+// upstreamFailure preserves the base unreachable class and records that an HTTP
+// response arrived, so presentation can choose service-recovery guidance.
+type upstreamFailure struct {
+	base   string
+	status int
+}
+
+func (e upstreamFailure) Error() string {
+	return fmt.Sprintf("%s: %s answered %d", ErrUnreachable, e.base, e.status)
+}
+func (e upstreamFailure) Unwrap() error   { return ErrUnreachable }
+func (e upstreamFailure) HTTPStatus() int { return e.status }

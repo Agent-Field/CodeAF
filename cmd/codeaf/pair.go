@@ -110,9 +110,9 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 		fmt.Fprintln(usageOut, reason)
 	}
 	flags := commandFlags("pair")
-	via := flags.String("via", "", "the sync address to pair through; empty is the one this device already uses")
+	via := flags.String("via", "", "the sync service to pair through; empty is the one this device already uses")
 	renamedFlag(flags, "relay", "via")
-	code := flags.Bool("code", false, "show a six-digit code that shares this device's chats, instead of asking to join")
+	code := flags.Bool("code", false, "show a code such as "+pair.ExampleChatCode+" that shares this device's chats, instead of asking to join")
 	replace := flags.Bool("replace", false, "when typing a code, replace this device's own chats with the shared ones")
 	name := flags.String("name", "", "what your devices call this one; empty keeps its current name, which starts as the host name")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
@@ -121,6 +121,12 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	if err := d.naming(ctx, *name, flags.Args(), *code); err != nil {
 		return err
 	}
+	progressAddress := *via
+	if progressAddress == "" {
+		progressAddress = syncsetup.Resolve(home.Dir()).URL
+	}
+	d.term.waitingStop = terminalSyncProgress(progressAddress)
+	defer d.term.stopProgress()
 	return explainSyncUnreachable(d.dispatch(ctx, flags.Args(), *via, *replace, *code), *via)
 }
 
@@ -198,12 +204,17 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 	if err != nil {
 		return err
 	}
+	if d.ownRecord != nil {
+		if err := d.ownRecord(ctx, route); err != nil {
+			return err
+		}
+	}
 	label, err := pair.Offer(ctx, route, grant, offerScreen{d.term})
 	if err != nil {
 		return d.endedByPerson(ctx, err)
 	}
-	d.term.say(pair.PairedChatsLine(label))
 	d.recordOwnDeviceOrSay(ctx, route)
+	d.term.say(pair.PairedChatsLine(label))
 	return nil
 }
 
@@ -213,16 +224,28 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	if _, err := pair.ReadJoinCode(typed); err != nil {
 		return err
 	}
+	if !d.confirmReplacement(ctx, replace) {
+		return nil
+	}
 	route, err := d.mailbox(relay)
 	if err != nil {
 		return err
 	}
+	if err := d.pairingStatus(ctx, route, replace); err != nil {
+		return err
+	}
 	joined, err := pair.Join(ctx, route, d.joining(replace), typed, joinScreen{d.term})
 	if err != nil {
+		if line := pair.TeamsAsideLine(joined.TeamsAside); line != "" {
+			d.term.say(line)
+		}
 		return d.endedByPerson(ctx, err)
 	}
-	d.term.say(joinedSentence(joined))
+	if f, err := pullFleet(d.joining(replace).Home, route)(ctx); err == nil {
+		joined.With = f.With
+	}
 	d.recordOwnDeviceOrSay(ctx, route)
+	d.term.say(joinedSentence(joined))
 	return nil
 }
 
@@ -250,5 +273,28 @@ func asksForHelp(args []string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// confirmReplacement asks before either terminal joining flow changes local state.
+func (d pairDoor) confirmReplacement(ctx context.Context, replace bool) bool {
+	// A non-terminal --replace already authorizes replacement, as it did
+	// before the interactive question included teams.
+	if !replace || !d.asksName {
+		return true
+	}
+	j := d.joining(true)
+	profile := j.ProfileDir
+	if profile == "" {
+		profile = j.Home
+	}
+	_, err := identity.Load(j.Home)
+	if err != nil && !pair.HasTeams(profile) {
+		return true
+	}
+	if d.term.confirm(ctx, pair.ReplaceAskLine) {
+		return true
+	}
+	d.term.say("nothing was replaced: this computer's chats stay.")
 	return false
 }

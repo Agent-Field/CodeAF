@@ -291,6 +291,8 @@ type Config struct {
 	// rather than loaded here, because a config that fetched would make building
 	// a client a network operation.
 	Models *catalog.Catalog
+	// DropRefusedEffort is a runtime-only task-child option, never a saved setting.
+	DropRefusedEffort bool `json:"-"`
 }
 
 // ErrNoAPIKey is what [Load] returns when nothing — the two variables, the
@@ -1034,6 +1036,7 @@ func WithoutSeatPin(configured provider.Config) provider.Config {
 func (c Config) ClientConfig(model string) provider.Config {
 	configured := ClientConfigFor(c.Sources.OrDefault(c.APIKey, c.BaseURL), model)
 	configured.Timeout = c.Timeout
+	configured.DropRefusedEffort = c.DropRefusedEffort
 	// The published answer to "does this model take this field", from rows
 	// already in memory. A nil catalog and a catalog still warming both say
 	// "unknown", which the adapter treats as "send nothing on your own

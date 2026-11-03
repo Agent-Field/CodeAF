@@ -121,3 +121,7 @@ goes away when you choose a free model, or when a read finds more than $0.50. It
 never shows for a model served by Codex, a local model or another connected
 service, and it never shows a dollar figure. On a window too narrow for the whole
 sentence it is left out rather than cut.
+
+When Home also has a message to show, the complete warning stays at the right
+of that message row. It appears once; the separate footer keeps the key hints
+and project.

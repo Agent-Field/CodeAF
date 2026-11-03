@@ -546,6 +546,8 @@ by its team with nothing from you stops being woken and asks you instead, as a w
 the traffic. It is woken again after you next say something to it.
 The ten wakes count ten replies when each member turn replies and then finishes.
 
+## How do I turn team message wakes off?
+
 A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
 the default every team inherits (on), and a team can override it for itself and the teams
 under it: its entry in `teams.json` in the profile carries `"wake": false` (or `true`). With it
@@ -560,8 +562,27 @@ membership from before it joined; reusing a removed member's handle does not bri
 member's brief. A conversation reopened later is handed what was said to it
 while it was closed.
 
+## Team sharing and Traffic on another computer
+
 The traffic itself is kept in the profile of the machine the conversations run on, in
-`teams/<id>/traffic.jsonl`, one line per message, only ever added to.
+`teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
+messages written on this computer. Team sharing is on by default for paired
+computers through **Settings → General → share teams**. Turning it off on either
+computer stops teams moving between them: that computer stops sending and receiving.
+What was already exchanged stays, including encrypted copies in the vault. History
+from the other computer is hidden while sharing is off. Unpaired computers are unaffected.
+
+Once both computers share teams, Traffic also shows recent history from the other
+computer, kept beside it in `teams/<id>/elsewhere.jsonl`. That history
+cannot deliver a message, start, stop, answer or wake a chat here. A message to a
+member or manager known to be on another computer is refused before writing;
+continue that chat here from Home first, then send again. A room post or send to
+several members reaches local recipients and names those not reached. If all
+recipients are elsewhere, nothing is written. An unavailable relay does not
+block local delivery. Decisions and escalations also check their recipients
+before changing anything. Over `--host` or `--at`, a remote member shows an
+"on the other computer" notice; open it there. A history link whose message
+cannot be found says it is on the other computer's history.
 
 ## Which approval rules do new members inherit?
 
@@ -594,5 +615,30 @@ in the current team; ambiguous or missing history is not guessed.
 One conversation may manage a team and descendants of that team, while remaining an
 ordinary member of other teams. It cannot manage unrelated teams. The global manager is
 separate from every ordinary team's manager. Choose AI manager or a team move refuses a
-change that introduces conflicting responsibilities, naming the teams. Existing conflicts
-are retained until the person explicitly chooses replacements in Teams.
+change that introduces conflicting responsibilities, naming the teams. A sharing merge
+clears conflicting appointments automatically. A cleared appointment goes into
+former-manager history only when that slot is empty or already holds it. An existing
+former appointment stays; the copy made before the first exchange keeps the original teams.
+Review manager choices in Teams.
+
+## Shared team spending caps and continued members
+
+Teams and their settings share automatically between paired computers by default;
+an unpaired computer is unaffected. A shared team's spending cap counts spending
+on each computer separately. A member continued on the other computer is metered
+there. The cap does not combine ongoing spending across computers, so inspect
+each computer's spending when work is split between them.
+
+## First sharing merge and two global managers
+
+Before the first exchange, this computer keeps a copy of its teams as
+`teams.before-sharing.json` beside the original, once, never replacing an earlier copy.
+If both computers had a team with the same name, both appear unchanged. Rename
+one in its Settings to tell them apart.
+
+If both computers had a global manager, the older global team stays global; the
+other becomes an ordinary team under it and keeps its active manager. Demotion
+does not add that active manager to former-manager history. Cleared conflicting
+appointments enter that history only if the slot is empty or already holds the
+same appointment. An existing former appointment stays; the copy made before the
+first exchange keeps the original teams. Review manager choices in Teams.

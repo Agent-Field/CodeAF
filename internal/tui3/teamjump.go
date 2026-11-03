@@ -53,9 +53,10 @@ type trafficJumpTo struct {
 }
 
 type trafficLanding struct {
-	entry int
-	older bool
-	until time.Time
+	entry     int
+	older     bool
+	elsewhere bool
+	until     time.Time
 }
 
 // trafficLandedMsg is the lift expiring: one repaint.
@@ -74,6 +75,12 @@ func (a *app) trafficJump(key, id string) tea.Cmd {
 // An overview link carries its originating team through an asynchronous open.
 // Numbers are scoped to that team even when the member belongs to several.
 func (a *app) trafficJumpFromTeam(teamID, key, id string) tea.Cmd {
+	if key == "" {
+		key = a.frontTabKey()
+	}
+	if cmd, remote := a.teamsRemoteFront(key); remote {
+		return cmd
+	}
 	var cmd tea.Cmd
 	if key != "" && key != a.frontTabKey() {
 		cmd = a.trafficGo(key)
@@ -119,6 +126,7 @@ func (a *app) trafficLand() tea.Cmd {
 	if at < 0 {
 		a.offset, a.stick = 0, true
 		land.older = true
+		land.elsewhere = strings.Contains(j.id, "/")
 		land.until = a.now().Add(3 * trafficLandFor)
 	} else {
 		a.revealTrafficEntry(at)
@@ -363,6 +371,9 @@ func (a *app) trafficLandRows(rows []row, width int) []row {
 func (a *app) trafficJumpWords() string {
 	l := a.traffic.landing
 	if l.older && a.now().Before(l.until) {
+		if l.elsewhere {
+			return "that message is on the other computer's history"
+		}
 		return trafficOlderWords
 	}
 	return ""

@@ -241,12 +241,15 @@ func (e SyncEngine) importWith(ctx context.Context, c cell.Cell, op importOp) (i
 	return out.Imported, e.ask(ctx, c, op, &out)
 }
 
-// Holds implements the sync seam: the ledger file the engine keeps beside the
-// store is written by every export and import against this relay, so it has
-// content exactly when the device has exchanged objects with the relay.
+// Holds reports history this computer held for this chat. The publication
+// ledger belongs to the shared store, so another chat's exchange proves nothing
+// about this one. Local adoption and turn records already supply this evidence.
 func (e SyncEngine) Holds(c cell.Cell) bool {
-	info, err := os.Stat(filepath.Join(e.Target(c).DataDir, "published."+e.Ledger))
-	return err == nil && info.Size() > 0
+	if _, ok := readAdoption(c); ok {
+		return true
+	}
+	turn, err := lastTurn(rel(c, TurnsPath))
+	return err == nil && turn != nil
 }
 
 // Materialize implements the sync seam.
@@ -260,13 +263,38 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 		Held []heldName `json:"held"`
 	}
 	// The restore brings the sender's policy file and record over this machine's,
-	// which would forget the names an earlier take set apart: they are read first
-	// and written back with this take's.
+	// which would forget the names an earlier take set apart and any local
+	// legacy-copy markers snapshots never carry: they are read first and
+	// written back after the head is materialized.
 	earlier := heldBefore(c, e.holdDir(c))
+	_, readyErr := os.Stat(rel(c, cell.CopyReadyPath))
+	_, lockErr := os.Stat(c.Root + ".lock")
+	keepCopyReady := readyErr == nil || (filepath.Base(filepath.Dir(c.Root)) == ".moving" && lockErr == nil)
+	_, offeredErr := os.Stat(rel(c, cell.CopyOfferedPath))
+	keepCopyOffered := offeredErr == nil
 	if err := e.ask(ctx, c, materializeOp{Head: head}, &out); err != nil {
 		return err
 	}
+	if keepCopyReady {
+		if err := cell.StampCopyReady(c.Root); err != nil {
+			return err
+		}
+	}
+	if keepCopyOffered {
+		offeredFile := rel(c, cell.CopyOfferedPath)
+		if _, err := os.Stat(offeredFile); os.IsNotExist(err) {
+			if err := writeFile(offeredFile, nil); err != nil {
+				return err
+			}
+		}
+	}
 	if err := noteAdopted(c, head); err != nil {
+		return err
+	}
+	// A snapshot sealed after the first publish carries the sender's earlier
+	// upload note, whose snapshot this store may never have fetched; record
+	// the received head so local-work checks compare against a snapshot held here.
+	if err := NotePublished(c, head); err != nil {
 		return err
 	}
 	return noteHeld(c, e.holdDir(c), mergeHeld(earlier, out.Held))

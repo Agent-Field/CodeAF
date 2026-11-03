@@ -151,6 +151,7 @@ func TestOwnershipStartTaskReopensPendingWorkspaceSet(t *testing.T) {
 }
 
 func TestOwnershipStartTaskPreservesExplicitInPlaceAndHomeScratch(t *testing.T) {
+	// macOS temp paths may use aliases for the canonical placement recorded by the worker.
 	for _, choice := range []string{"in place", "home"} {
 		t.Run(choice, func(t *testing.T) {
 			t.Setenv("CODEAF_HOME", t.TempDir())
@@ -186,7 +187,7 @@ func TestOwnershipStartTaskPreservesExplicitInPlaceAndHomeScratch(t *testing.T) 
 			if spec.WorkspaceSet != nil {
 				t.Fatal("explicit in-place or home reference was converted into a snapshot")
 			}
-			if choice == "in place" && spec.Workspace != project {
+			if choice == "in place" && canonicalPath(spec.Workspace) != canonicalPath(project) {
 				t.Fatalf("explicit placement moved to %s", spec.Workspace)
 			}
 			if choice == "home" {

@@ -15,6 +15,9 @@ import (
 // stray Enter never lets a device in.
 const AskChoice = "y / n"
 
+// ExampleChatCode keeps the help on both terminal doors aligned with the code shape.
+const ExampleChatCode = "04-063-213"
+
 // AskChatsLine is the question the device that shares its chats puts to a person.
 func AskChatsLine(label, words string) string {
 	return `"` + label + `" wants your chats. Same three words on that screen: ` + words + `?`
@@ -33,15 +36,27 @@ const BurnLine = "someone typed a wrong code. New code:"
 // WaitingChatsLine is what the joining device shows while a person decides on
 // the other one: the words that screen should be showing.
 func WaitingChatsLine(words string) string {
-	return "waiting for approval on your other device; it should show: " + words
+	return "Waiting for approval on your other device; it should show: " + words
+}
+
+// ReplaceAskLine describes the state replacement before either surface acts.
+const ReplaceAskLine = "Pair with your other devices? This computer's existing chats stay here but stop syncing; shared memories and settings are cleared; with share teams on, teams are set aside while the other devices supply theirs. Provider keys saved on this computer stay here."
+
+// TeamsAsideLine keeps a preserved team's recovery path in the pairing receipt.
+func TeamsAsideLine(path string) string {
+	if path == "" {
+		return ""
+	}
+	return "This computer's teams were set aside to " + path + "."
 }
 
 // JoinedLine is what the joining device says when it worked.
-const JoinedLine = "Paired. This device now has your chats."
+const openChatsLine = ". Run codeaf to open your chats."
+const JoinedLine = "Paired with your other device" + openChatsLine
 
 // FollowedLine is what the joining device says when it was on an identity that
 // was rotated and has moved to the one that replaced it.
-const FollowedLine = "Paired. This device now follows your new identity and keeps its chats and its saved keys."
+const FollowedLine = JoinedLine
 
 // Sentence is how a finished join reads: a computer that held these chats
 // already is told nothing changed, one that followed a rotation says so, and any
@@ -51,13 +66,17 @@ func (j Joined) Sentence() string {
 	case j.Already:
 		return ErrAlreadyPaired.Error()
 	case j.Successor:
-		return FollowedLine
+		return PairedWithLine(j.With)
 	}
-	return JoinedLine
+	line := PairedWithLine(j.With)
+	if j.TeamsAside != "" {
+		line += " " + TeamsAsideLine(j.TeamsAside)
+	}
+	return line
 }
 
 // PairedChatsLine is what the sharing device says when it worked.
-func PairedChatsLine(label string) string { return "paired: " + label }
+func PairedChatsLine(label string) string { return ApprovedLine(label) }
 
 // ── joining by link ──────────────────────────────────────────────────────────
 
@@ -103,13 +122,7 @@ func ApproveCommand(ref LinkRef, via string) string {
 // JoinedFleetLine is what the new device says when it is in. No workspaces
 // yet says nothing about them, as a zero is never printed.
 func JoinedFleetLine(workspaces int) string {
-	switch workspaces {
-	case 0:
-		return "Paired."
-	case 1:
-		return "Paired. 1 workspace available."
-	}
-	return fmt.Sprintf("Paired. %d workspaces available.", workspaces)
+	return PairedWithLine("")
 }
 
 // platformWords are the names a person knows their system by, keyed by the
@@ -142,8 +155,7 @@ func ApprovedLine(name string) string { return name + " is now paired. Your chat
 // next chat start writes the record anyway, so this is one dim line and not a
 // failure.
 func RecordUnsaidLine(err error) string {
-	return "paired, but this device could not write its own record: " + err.Error() +
-		" — it is written at the next chat start."
+	return "paired; this computer will appear on your other devices after the next chat starts"
 }
 
 // DeclinedLine is what the approving device says after a no.
@@ -181,3 +193,14 @@ func NamePrompt(name string) string {
 
 // NameTried is the sentence for a name that was refused, then the question again.
 func NameTried(err error) string { return err.Error() + " \u2014 try another." }
+
+// PlatformWord omits unknown platform values instead of inventing a reading.
+func PlatformWord(platform string) string { return platformWords[platform] }
+
+// PairedWithLine gives both joining roads the same next step.
+func PairedWithLine(name string) string {
+	if name == "" {
+		return JoinedLine
+	}
+	return "Paired with " + name + openChatsLine
+}

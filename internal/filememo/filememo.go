@@ -85,6 +85,7 @@ type reading[T any] struct {
 	modTime time.Time
 	missing bool
 	stamp   uint64
+	mode    os.FileMode
 }
 
 // New binds a memo to its derivation.
@@ -110,11 +111,28 @@ func Stamped[T any](stamp func() uint64, derive Derive[T]) *Memo[T] {
 // every call would be a read per call for a file that is broken until somebody
 // fixes it, which is the exact cost this type exists to remove.
 func (m *Memo[T]) Read(path string) (T, error) {
+	return m.read(path, false)
+}
+
+// ReadStrict preserves filesystem errors instead of deriving the missing-file
+// default. Privacy preferences must also invalidate a warm value when file
+// permissions change, even though chmod leaves size and modification time alone.
+func (m *Memo[T]) ReadStrict(path string) (T, error) {
+	return m.read(path, true)
+}
+
+func (m *Memo[T]) read(path string, strict bool) (T, error) {
 	now, missing := os.Stat(path)
+	if strict && missing != nil && !os.IsNotExist(missing) {
+		var zero T
+		return zero, missing
+	}
 	var size int64
 	var modTime time.Time
+	var mode os.FileMode
 	if missing == nil {
 		size, modTime = now.Size(), now.ModTime()
+		mode = now.Mode()
 	}
 	absent := missing != nil
 	stamp := uint64(0)
@@ -124,7 +142,7 @@ func (m *Memo[T]) Read(path string) (T, error) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if held, known := m.held[path]; known && held.fresh(size, modTime, absent, stamp) {
+	if held, known := m.held[path]; known && held.fresh(size, modTime, absent, stamp) && (!strict || held.mode == mode) {
 		return held.value, held.err
 	}
 
@@ -132,6 +150,10 @@ func (m *Memo[T]) Read(path string) (T, error) {
 	if !absent {
 		bytes, err := os.ReadFile(path)
 		if err != nil {
+			if strict {
+				var zero T
+				return zero, err
+			}
 			// The file went away between the stat and the read, or became
 			// unreadable. NOTHING IS HELD FOR IT: the reading this memo would
 			// key on is the one that just turned out to be a lie, so the next
@@ -146,7 +168,7 @@ func (m *Memo[T]) Read(path string) (T, error) {
 	}
 	m.held[path] = reading[T]{
 		value: value, err: err,
-		size: size, modTime: modTime, missing: absent, stamp: stamp,
+		size: size, modTime: modTime, missing: absent, stamp: stamp, mode: mode,
 	}
 	return value, err
 }

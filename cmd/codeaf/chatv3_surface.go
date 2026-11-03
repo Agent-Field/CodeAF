@@ -11,6 +11,7 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
@@ -48,7 +49,31 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	if options.Host == "" {
+		if options.Notices == nil {
+			options.Notices = surfaceNotices
+		}
+		defer teams.WatchSharingErrors(options.ProfileDir, options.Notices.SayOnce)()
+	}
+	if options.SyncService == "" && options.Host == "" {
+		options.SyncService = chatSyncService()
+	}
 	forced := armFinalSaving()
+	setFinalSyncService(options.SyncService)
+	previousCompatibility := options.SavingCompatibility
+	options.SavingCompatibility = func(check func() bool) {
+		retainSavingCompatibility(check)
+		if previousCompatibility != nil {
+			previousCompatibility(check)
+		}
+	}
+	previousDurability := options.SavingDurability
+	options.SavingDurability = func(check func() bool) {
+		retainLocalDurability(check)
+		if previousDurability != nil {
+			previousDurability(check)
+		}
+	}
 	previousSaveFailure := options.SaveFailure
 	options.SaveFailure = func(err error) {
 		recordFinalSaveFailure(err)
@@ -82,6 +107,10 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		options.Restart = restart
 	}
 	options.CellsUnavailable = cell.UnavailableReason()
+	options.TeamsPaired = teamPaired
+	if options.TaskComputers == nil && options.Host == "" {
+		options.TaskComputers = v3TaskComputers(options.ProfileDir)
+	}
 	if options.CellsUnavailable == "" && options.Host == "" {
 		wireSync(&options)
 		options.WaitForRelease = func() bool {
@@ -185,10 +214,14 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	options.Output = wire
 	return withSurfaceLogger(options.ProfileDir, func() error {
 		err := runSurfaceProgram(ctx, options)
+		startFinalSaveProgress()
 		select {
 		case <-forced:
-			// The screen is restored before the forced exit skips stuck cleanup.
+			// A second quit interrupt keeps the baseline escape after screen restoration.
+			stopFinalSaveProgress()
 			surfaceForceExit(130)
+			return err
+
 		default:
 		}
 		awaitFinalCloses(ctx)

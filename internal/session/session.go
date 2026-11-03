@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1571,6 +1572,9 @@ type Config struct {
 	// the same choices whichever way this is set.
 	TaskSettle string
 
+	// TaskComputers is nil when this home cannot send tasks to paired computers.
+	TaskComputers TaskComputers
+
 	// Automations is the door to the automations store (automation_tool.go).
 	// Nil is off: no `automation` tool and no card — which is what a run of an
 	// automation is given, because nothing an automation does may arm another.
@@ -1599,6 +1603,13 @@ type Config struct {
 	// decision, and a package that resolved ~/.codeaf itself would write there
 	// from a test.
 	ProfileDir string
+
+	// TeamComputers is used only with local team sharing on. It checks current
+	// holders once for the complete recipient batch before any team Traffic is
+	// written; an unpaired home stays quiet.
+	TeamComputers func(context.Context, []teams.Member) (map[string]string, error)
+	// TeamsPaired checks the live pairing gate without importing relay setup.
+	TeamsPaired func() bool
 
 	// failures is the tally the piece of work this agent belongs to keeps of its
 	// own failures (internal/taxonomy). A worker built for a task node carries
@@ -2404,10 +2415,12 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
-	knowledgeMu      sync.RWMutex
-	knowledgeRetired []*knowledgeJournal
-	knowledgeVault   *knowledge.Vault
-	knowledgeJournal *knowledgeJournal
+	taskComputerPrompt bool
+	remoteAckJobs      sync.WaitGroup
+	knowledgeMu        sync.RWMutex
+	knowledgeRetired   []*knowledgeJournal
+	knowledgeVault     *knowledge.Vault
+	knowledgeJournal   *knowledgeJournal
 
 	chatStarts map[string]bool
 	// jailNotice keeps a host limit from becoming noise on every tool call.
@@ -3025,7 +3038,10 @@ type Agent struct {
 	// team this conversation manages, "" for one that manages none. It sits
 	// under mu and rides its own note at the tail, like elsewhereText, so an
 	// unchanged team lands no second note.
-	teamDigestText string
+	teamDigestText       string
+	teamDigestSharing    bool
+	teamDigestKnown      bool
+	teamDigestGeneration uint64
 	// teamRoleText is what this conversation is in its teams (team.go's
 	// [teamRoleBlock]), set at every step boundary before the request and
 	// landed in a note of its own ahead of the others.
@@ -3202,7 +3218,8 @@ type Agent struct {
 	// (issue #381). It is made under the same lock that sets `closed`, so a
 	// caller that loses the race is guaranteed to find a channel to wait on
 	// rather than a nil one.
-	closeDone chan struct{}
+	closeDone    chan struct{}
+	localDurable bool
 	// takenOver says another window has asked for this conversation and this
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.

@@ -58,13 +58,13 @@ func TestHomeLiveSource(t *testing.T) {
 	live := &liveDirectory{dir: here, self: "dev_here", key: key}
 
 	a := machinesHome(t, live, 200)
-	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(text, "running on host-a") {
+	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(text, "held on host-a") {
 		t.Fatalf("a chat running elsewhere is not listed as such:\n%s", text)
 	}
 
 	clock.Advance(directory.LeaseTTL + 1)
 	drain(t, a, a.askMachines())
-	if text := homeText(a); !strings.Contains(text, "host-a offline") || strings.Contains(text, "running on host-a") {
+	if text := homeText(a); !strings.Contains(text, "host-a offline") || strings.Contains(text, "held on host-a") {
 		t.Fatalf("the chat went quiet and home did not follow:\n%s", text)
 	}
 

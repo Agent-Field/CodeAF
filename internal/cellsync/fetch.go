@@ -137,8 +137,7 @@ func (f *Fetcher) prime(ctx context.Context, c cell.Cell, head, inbox string) er
 	}
 	inbox = owned
 	defer os.RemoveAll(inbox)
-	// A device that already exchanged objects with this relay holds most of the
-	// chat: the plan names its whole upload history, so priming it would
+	// A device that already held this chat has most of its history: the plan names its whole upload history, so priming it would
 	// download what it has to learn about a one-file change. The want loop
 	// fetches a warm take's delta by rid.
 	if f.Engine.Holds(c) {

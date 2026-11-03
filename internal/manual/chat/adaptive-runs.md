@@ -139,15 +139,9 @@ None of this happens without a folder to weigh in. A run with no `-w`, or a goal
 no file that exists, is not treated as small — it is treated as unmeasured, and every one of
 these passes behaves exactly as it did before any of it was read.
 
-## Running one task without the screen — codeaf do, headless, from a script: what flags it takes, what it prints, what its last line and its exit code mean
+## What flags does codeaf do take — run one task from a script
 
-```
-codeaf do "<task>"
-```
-
-One job, nobody watching, then it exits. What you type **is** the goal — it is not reworded
-on the way in, and where this conversation would stop and ask, a run with nobody at the
-keyboard decides for itself and says on the record that it decided.
+Run `codeaf do "<task>"` for one job without the screen. These options control that invocation.
 
 | flag | what it does |
 | --- | --- |
@@ -167,6 +161,10 @@ keyboard decides for itself and says on the record that it decided.
 
 Flags may come after the task text, and the task itself may be piped in.
 
+## What does the last line of codeaf do mean
+
+With plain output, `codeaf do` ends with a footer describing the completed work. `--json` prints one machine-readable object instead.
+
 **Standard output is the answer and nothing else**: the deliverable, then `files:` with one
 absolute path under it per file, then `learned:` — what one worker told the others
 mid-flight — and last one footer line:
@@ -184,6 +182,16 @@ directly under the sentence saying it did not run.
 piece of work as it starts and as it lands, and, when half a minute passes with nothing to
 report, a line like `still waiting: 1 task pending, 1 running · last call <model> 40s ago —
 4m30s`.
+
+## How do I run codeaf without the screen — headless exit codes and questions
+
+```
+codeaf do "<task>"
+```
+
+One job, nobody watching, then it exits. What you type **is** the goal — it is not reworded
+on the way in, and where this conversation would stop and ask, a run with nobody at the
+keyboard decides for itself and says on the record that it decided.
 
 **The exit code is what a script reads.** `0` — the whole of it stands. `1` — nothing
 usable: it failed, the price was refused, or it stopped on a question. `2` — partial: the

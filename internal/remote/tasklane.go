@@ -395,6 +395,7 @@ func (a *Agent) TaskUpdates() <-chan session.Event {
 func (a *Agent) ResolveTask(id uint64, answer session.TaskAnswer) {
 	args := TaskResolveArgs{
 		ID: id, Approved: answer.Approved, Redirect: answer.Redirect, Model: answer.Model,
+		Computer: answer.Computer,
 	}
 	c := a.c
 	go func() {

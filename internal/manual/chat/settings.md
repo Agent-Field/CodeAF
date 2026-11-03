@@ -82,6 +82,15 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
+**Settings → General → share teams** is on by default for paired computers. It
+shares teams, their members and settings, and recent Traffic as read-only history.
+The choice stays on each computer. Turning it off on either computer stops sharing
+between them: that computer stops sending and receiving teams and Traffic. What
+was already exchanged stays, including encrypted copies in the vault. Received
+history is hidden while sharing is off and is kept for when it is turned back
+on. Unpaired computers are unaffected. A missing or empty choice reads on; a
+damaged configuration or invalid value reads off, as shown in Settings.
+
 ## AI teams settings versus an individual AI team
 
 **AI teams** contains defaults for groups of AI chats, including questions to an
@@ -129,6 +138,17 @@ The current engine reads the count cap at startup: restart the CLI to apply a
 changed cap to already-open chats. Changing this preference does not stop a
 running task. An unset task model follows the configured worker, falling back to
 the current chat model when no worker model is set.
+
+**Run tasks on**, immediately after **Task model** in Tasks, chooses where a
+task goes when you do not name a computer. It defaults to `this computer` and
+reads eligible paired computers by shown name only when opened. The row
+is absent on unpaired, quiet or Windows homes. An explicit `/task --on`, proposal-card choice or `computer`
+argument wins. Quick tasks and work without an independent copy still run here.
+Both ends need Linux or macOS, and the other computer must run `codeaf serve --take-tasks`. Plain `codeaf serve`
+does not take tasks. The model's `computer` argument and a proposal's computer
+line and cycle key appear only after the setting names a computer, or (for the
+card) the proposal already names one.
+See *Tasks on another computer* for limits and `run it here`.
 
 ## Connect a service, change models or manage privacy
 

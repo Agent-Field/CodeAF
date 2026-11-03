@@ -24,12 +24,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // Host is the machine side.
 type Host struct {
 	// Service is the relay's address.
 	Service string
+	// DisplayName is the sync device name, when this computer is paired for chats.
+	DisplayName string
 	// Device is this machine's key.
 	Device Device
 	// Devices is the book of devices this machine lets in.
@@ -50,6 +53,8 @@ type Host struct {
 	// TUNNEL IS AN io.ReadWriteCloser AND NOTHING MORE, which is what lets the
 	// caller hand it straight to internal/remote.
 	Open func(io.ReadWriteCloser)
+	// OpenNamed returns a connection outcome for one plain terminal sentence.
+	OpenNamed func(string, io.ReadWriteCloser) error
 	// Now is the clock, swapped by tests.
 	Now func() time.Time
 
@@ -70,7 +75,7 @@ const steadyAfter = time.Minute
 
 // TooManyRegistrationsLine is what `codeaf serve` prints when the relay turns
 // registrations away at its per-minute ceiling.
-const TooManyRegistrationsLine = "the service is turning registrations away right now — waiting before trying again"
+const TooManyRegistrationsLine = "the sync service is turning registrations away right now — waiting before trying again"
 
 // LostSyncLine is what `codeaf serve` prints, once per outage, when its
 // connection to the relay is lost and it starts trying again.
@@ -114,10 +119,21 @@ func (h *Host) say(line string) {
 }
 
 func (h *Host) banner(name string, code *Code, codeErr error) string {
+	var line string
 	if codeErr == nil {
-		return strings.TrimRight(Lines(name, code), "\n")
+		line = strings.TrimRight(Lines(name, code), "\n")
+	} else {
+		line = "  this machine is reachable as  " + name
 	}
-	return "  this machine is reachable as  " + name
+	if h.DisplayName != "" {
+		// A device name is only a hint; instructions must keep the machine name.
+		first, rest, more := strings.Cut(line, "\n")
+		line = first + " (" + h.DisplayName + ")"
+		if more {
+			line += "\n" + rest
+		}
+	}
+	return line
 }
 
 func (h *Host) sayBanner(line string, force bool) {
@@ -140,7 +156,7 @@ func (h *Host) sayBanner(line string, force bool) {
 // again cannot fix.
 func (h *Host) Run(ctx context.Context) error {
 	if strings.TrimSpace(h.Service) == "" {
-		return errors.New("no sync address is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your sync address")
+		return errors.New("no sync service is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your sync service")
 	}
 	if h.Desk != nil && h.Desk.Now == nil && h.Now != nil {
 		h.Desk.Now = h.Now
@@ -178,9 +194,16 @@ func (h *Host) Run(ctx context.Context) error {
 			// means a second `codeaf serve` on this same machine. Trying again
 			// forever would be two processes fighting over one name.
 			return fmt.Errorf("this machine is already connected to sync as %s — there is only one of it, so close the other `codeaf serve`", h.Device.Name())
+		case errors.Is(err, relay.ErrUnreachable) && announced:
+			tellLost()
+		case syncwords.IsStruggling(err):
+			if !told {
+				h.say(syncwords.Explain(err, h.Service).Error())
+			}
+			told = true
 		case errors.Is(err, relay.ErrUnreachable):
 			if !announced {
-				return Unreachable(h.Service)
+				return syncwords.Explain(err, h.Service)
 			}
 			tellLost()
 		case errors.Is(err, relay.ErrNoDoor) && announced:
@@ -189,12 +212,12 @@ func (h *Host) Run(ctx context.Context) error {
 			tellLost()
 		case errors.Is(err, relay.ErrNoDoor):
 			// Trying again cannot add a door the service does not have.
-			return NoDoor(h.Service)
+			return NoDoorForServe(h.Service)
 		default:
 			if !announced {
-				return err
+				return syncwords.Explain(err, h.Service)
 			}
-			h.say("sync refused this machine: " + err.Error())
+			h.say(syncwords.Explain(err, h.Service).Error())
 		}
 
 		if err == nil {
@@ -380,12 +403,17 @@ func (h *Host) connect(stream io.ReadWriteCloser) {
 	withDeadline(stream, time.Time{})
 	h.Devices.Touch(key, h.now())
 	h.say(who.Label + " connected")
+	if h.OpenNamed != nil {
+		err := h.OpenNamed(who.Label, tunnel)
+		h.say(ConnectionEndedLine(who.Label, err))
+		return
+	}
 	if h.Open == nil {
 		_ = tunnel.Close()
 		return
 	}
 	h.Open(tunnel)
-	h.say(who.Label + " left")
+	h.say(ConnectionEndedLine(who.Label, nil))
 }
 
 // ThisMachineLabel is what this device calls itself when it pairs: the name a
@@ -393,3 +421,12 @@ func (h *Host) connect(stream io.ReadWriteCloser) {
 // they already use for their laptop. It is only ever a label — a connection is
 // checked against a key.
 func ThisMachineLabel() string { return readableLabel(devname.Name(home.Dir())) }
+
+// ConnectionEndedLine keeps process and pipe internals in the serving log.
+func ConnectionEndedLine(name string, err error) string {
+	line := "the connection to " + name + " ended"
+	if errors.Is(err, context.DeadlineExceeded) {
+		line += " — it stopped answering"
+	}
+	return line
+}

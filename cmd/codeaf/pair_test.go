@@ -192,8 +192,12 @@ func (r *pairRig) joinWith(t *testing.T, code string, replace bool) (*pairScreen
 // The whole of both doors through the real command: one shows a code, the other
 // types it, both screens show the same three words, a person types y, and the
 // second computer holds the first one's chats and the relay it came through.
+// L4-M12b: code approval uses the same completion sentence as link approval.
 func TestPairBothDoorsOnATerminal(t *testing.T) {
 	rig := newPairRig(t)
+	if _, err := devname.Set(rig.homeA, "laptop-a"); err != nil {
+		t.Fatal(err)
+	}
 	shown := rig.show(t)
 	code := shown.code(t)
 
@@ -217,8 +221,8 @@ func TestPairBothDoorsOnATerminal(t *testing.T) {
 	}
 
 	wanted := pair.WaitingChatsLine(asked[1])
-	if got := joiner.String(); got != wanted+"\n"+pair.JoinedLine+"\n" {
-		t.Fatalf("the joining terminal printed:\n%s\nwant:\n%s\n%s", got, wanted, pair.JoinedLine)
+	if got := joiner.String(); got != wanted+"\n"+"Paired with laptop-a. Run codeaf to open your chats."+"\n" {
+		t.Fatalf("the joining terminal printed:\n%s\nwant:\n%s\n%s", got, wanted, "Paired with laptop-a. Run codeaf to open your chats.")
 	}
 	if !strings.HasSuffix(shown.out.String(), pair.PairedChatsLine("laptop")+"\n") {
 		t.Fatalf("the sharing terminal did not end on the paired line:\n%s", shown.out.String())

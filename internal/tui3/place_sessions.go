@@ -600,6 +600,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			label = node.title
 		}
 		rows = append(rows, session.TaskIndexEntry{
+			Computer: node.computer, Unreachable: node.unreachable, RanElsewhere: node.ranElsewhere,
 			ID:        strconv.FormatUint(node.id, 10),
 			Parent:    node.parent,
 			Label:     label,

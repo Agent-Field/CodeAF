@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 type sendLease struct {
@@ -47,7 +48,7 @@ func (d *Drive) recordSendLease() error {
 	fence := d.batcher.Fence()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.line != "" || fence == 0 || fence == d.recordedFence {
+	if d.lost || d.line != "" || fence == 0 || fence == d.recordedFence {
 		return nil
 	}
 	if err := d.sync.recordSendLease(d.cell.ID, sendLease{Cell: d.directoryID, Fence: fence}); err != nil {
@@ -85,7 +86,7 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 		return err
 	}
 	path := s.sendLeasePath(id)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".hold-*")
@@ -138,7 +139,7 @@ func (s *Sync) forgetSendLease(id string, expected sendLease) error {
 
 func (s *Sync) lockSendLease(id string) (*os.File, error) {
 	path := s.sendLeasePath(id)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
 	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)

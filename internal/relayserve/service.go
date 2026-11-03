@@ -32,7 +32,7 @@ type Config struct {
 	Logf   func(string, ...any)
 	Note   func(name, what string) // the pipe's arrival and departure line; nil says nothing
 
-	// TrustProxy makes the pairing mailbox's per-network limits count the
+	// TrustProxy makes registration, dial and pairing limits count the
 	// address in X-Forwarded-For. Only a relay behind a proxy that sets it may
 	// say so; anywhere else a caller could name any network it liked.
 	TrustProxy bool
@@ -108,7 +108,7 @@ func New(cfg Config) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	mux := pipeMux(&relay.Server{Note: cfg.Note}, cfg.Status)
+	mux := pipeMux(&relay.Server{Note: cfg.Note, Peer: peerOf(cfg)}, cfg.Status)
 	mountPairing(mux, cfg, now)
 	mountCluster(mux, cfg.Cluster)
 	mux.HandleFunc("/p/", servePairPage)
@@ -140,9 +140,9 @@ func New(cfg Config) *Service {
 	return svc
 }
 
-// peerOf names the network of a link-pairing request: the proxy's word when
-// the relay sits behind one, the socket otherwise.
-func peerOf(cfg Config) directory.PeerFunc {
+// peerOf keeps registrations, dials and both pairing paths on one explicit
+// proxy policy. An untrusted forwarding header can never select an allowance.
+func peerOf(cfg Config) func(*http.Request) string {
 	if cfg.TrustProxy {
 		return pairbox.ForwardedPeer
 	}
@@ -165,10 +165,7 @@ func mountPairing(mux *http.ServeMux, cfg Config, now func() time.Time) {
 	if limits == (pairbox.Limits{}) {
 		limits = pairbox.DefaultLimits
 	}
-	peer := pairbox.SocketPeer
-	if cfg.TrustProxy {
-		peer = pairbox.ForwardedPeer
-	}
+	peer := peerOf(cfg)
 	h := logged(cfg.Logf, pairbox.Handler(pairbox.NewMemory(limits, now), peer))
 	mux.Handle(pairbox.Path, h)
 	mux.Handle(pairbox.Path+"/", h)

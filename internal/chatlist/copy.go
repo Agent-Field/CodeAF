@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // The frozen sentences. Every surface takes its words
@@ -16,23 +18,23 @@ const (
 	ContinueVerb = "Continue here"
 	LostRace     = "another device continued this chat first"
 	NoIdentity   = "this machine has no identity yet: codeaf identity import"
-	SyncOff      = "sync is off: set CODEAF_SYNC_URL to your sync address"
-	Unreachable  = "other machines unreachable"
-	ReadTimedOut = "other machines did not answer in time"
-	SyncPaused   = "this chat is not syncing because other machines are unreachable; it keeps working here"
+	SyncOff      = "sync is off: set CODEAF_SYNC_URL to your sync service's address"
+	Unreachable  = "the sync service is not answering"
+	ReadTimedOut = "the sync service did not answer in time"
+	SyncPaused   = syncwords.UnknownOutage
 	SyncRestored = "this chat is syncing again"
 	ClockOff     = "this computer's clock is off by more than 5 minutes"
 	// What the relay's refusals say (one sentence each, in the order the
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
 	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
-	Removed        = "this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back"
+	Removed        = removedChatStart + "run codeaf pair to bring it back"
 	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
 	tooManyNewIn   = "too many new identities from this network today — try again in about %s"
 	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
 	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
-	runningOn      = "running on %s"
+	heldOn         = "held on %s"
 	deviceOff      = "%s offline"
 	branchLine     = "%s from %s: merge / discard"
 	branchKeep     = "%s from %s: discard"
@@ -145,7 +147,7 @@ func nameList(names []string) string {
 func StatusLine(r Row) string {
 	switch r.Status {
 	case Running:
-		return fmt.Sprintf(runningOn, r.Device)
+		return fmt.Sprintf(heldOn, r.Device)
 	case Off:
 		return fmt.Sprintf(deviceOff, r.Device)
 	case Branch:
@@ -271,13 +273,13 @@ func agoWord(d time.Duration) string {
 	return fmt.Sprintf("%dd", int64(d/(24*time.Hour)))
 }
 
-// holderLead names the device a live chat runs on, and is empty for a chat
-// nobody is running.
+// holderLead names the computer holding a live chat; a hold alone says nothing
+// about whether work is running there.
 func holderLead(r Row) string {
 	if r.Status != Running {
 		return ""
 	}
-	return fmt.Sprintf(runningOn+"; ", r.Device)
+	return fmt.Sprintf(heldOn+"; ", r.Device)
 }
 
 // KeptEdits is said after a takeover kept local edits as a branch.
@@ -374,3 +376,33 @@ func Moved(from string, elapsed time.Duration, hadRunning bool) string {
 	}
 	return line
 }
+
+// IsRemovedNotice accepts the wire spelling from earlier engines as well as
+// each current reading place, so removal keeps its recovery behavior.
+func IsRemovedNotice(text string) bool {
+	return text == Removed || text == RemovedChat || text == LegacyRemoved
+}
+
+// LegacySyncNotice preserves the vocabulary an older surface recognizes.
+func LegacySyncNotice(text string) string {
+	if text == syncwords.Recovered {
+		return SyncRestored
+	}
+	if IsRemovedNotice(text) {
+		return LegacyRemoved
+	}
+	if syncwords.IsOutage(text) {
+		return syncwords.LegacyOutage
+	}
+	return text
+}
+
+// A removed computer's chat sentence is read in two places. The terminal keeps
+// its command; a chat names the slash command that works where it is read.
+const (
+	removedChatStart = "this device was removed by another of your devices, so this chat stays here only — "
+	// RemovedChat is the in-chat reading of Removed.
+	RemovedChat = removedChatStart + "/pair brings it back"
+	// LegacyRemoved is retained for old surfaces that recognize terminal guidance by text.
+	LegacyRemoved = removedChatStart + "run `codeaf pair` to bring it back"
+)

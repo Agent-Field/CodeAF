@@ -37,10 +37,10 @@ Pairing has limits on both kinds of relay: 10 new codes in an hour for one netwo
 A refused upload leaves the saved turn on this computer. These are the other sentences:
 
 - **Too many new identities from this network** (`429`, code `too_many_identities`). The chat says `too many new identities from this network today — try again in about 3 hours` at once. The time is the relay's `Retry-After`, rounded up to minutes or hours; when the relay names none, the chat says `this network has started too many new identities today; sync begins when it allows more`. It waits as long as the `Retry-After` says, up to an hour at a time.
-- **Another of your computers stopped this one** (`401`, code `revoked`). The chat says `this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back`, and does not try again: only a new pairing brings the computer back.
+- **Another of your computers stopped this one** (`401`, code `revoked`). The chat says `this device was removed by another of your devices, so this chat stays here only — /pair brings it back`, and does not try again: only a new pairing brings the computer back.
 - **The clock is off** (`401`, code `skew`). The chat says `this computer's clock is off by more than 5 minutes`, once, and tries again at each normal turn of sync.
 
-Each sentence is said once for as long as the trouble lasts, and again if the relay answers in between and then refuses again. An unreachable relay is retried with the doubling wait. If this computer holds the chat and renewals fail for longer than one renewal period, it says `this chat is not syncing because other machines are unreachable; it keeps working here` once. A successful renewal or publish then says `this chat is syncing again` once. A displaced or removed computer does not claim that it is syncing again.
+Each sentence is said once for as long as the trouble lasts, and again if the relay answers in between and then refuses again. An unreachable relay is retried with the doubling wait. If this computer holds the chat and renewals fail for longer than one renewal period, it says `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back` once. A successful renewal or publish then says `this chat is syncing again` once. A displaced or removed computer does not claim that it is syncing again.
 
 On your own relay the full case is its disk: free space on the machine that runs it, then reopen the chat.
 

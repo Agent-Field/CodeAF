@@ -196,9 +196,8 @@ func TestChatsTableListsThisComputerFirst(t *testing.T) {
 	}
 }
 
-// A list holding only this computer says nothing a person did not know, so it
-// is not drawn and the one sentence takes its place.
-func TestChatsTableOfOnlyThisComputerIsAbsent(t *testing.T) {
+// M10a lists this computer even before pairing; its next step adds a peer.
+func TestChatsTableOfOnlyThisComputerOffersPairing(t *testing.T) {
 	cellKey := bytes.Repeat([]byte{7}, 32)
 	dir := directory.NewMemory(time.Now)
 	sealed, err := directory.SealName(directory.MetadataKey(cellKey), "desk")
@@ -209,7 +208,7 @@ func TestChatsTableOfOnlyThisComputerIsAbsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	kind := chatsKindOf(dir.For(thisComputer), cellKey, thisComputer, "https://relay.example")
-	if table, err := kind.table(time.Now()); table != "" || err != nil {
-		t.Fatalf("a lone computer drew %q (%v), want nothing", table, err)
+	if table, err := kind.table(time.Now()); err != nil || !strings.Contains(table, "desk") || !strings.Contains(table, "this device") || !strings.Contains(table, pair.NextPairing) || strings.Contains(table, "remove one with") {
+		t.Fatalf("a lone computer drew %q (%v), want this device and the pairing next step", table, err)
 	}
 }

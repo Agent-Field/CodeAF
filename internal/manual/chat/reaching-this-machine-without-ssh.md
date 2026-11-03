@@ -1,5 +1,7 @@
 # Reaching a machine with a pairing code
 
+For an always-on computer on your own Railway account, see [A dev box](a-dev-box-on-your-own-railway.md) and `codeaf devbox up <name>`.
+
 ## Two codes, two grants — remote access and your chats
 
 You learn one thing: **a code shown on a screen you own, typed on the other computer.** A code can grant two different things. They stay two things, because they are two different powers.
@@ -44,11 +46,23 @@ way, use that; the two doors are compared at the bottom of this page.
 
 ## codeaf serve, and the name a machine gets
 
+`codeaf serve` keeps the identity's saved keys and settings in step the way an open terminal does only when it is started with `CODEAF_SERVE_SYNC=1`, which a dev box sets. Without it, serve syncs nothing while it serves, as it always has.
+
+Plain `codeaf serve` opens only the machine connection; it does not take tasks.
+On a paired Linux or macOS computer, `codeaf serve --take-tasks` also prints
+`takes tasks from your paired computers`. Those computers can send a task with
+`/task --on <shown device name> <brief>` while keeping the chat and transcript
+where they are. This task door uses the shared identity and needs no separate
+machine-access grant. Only work with its own independent copy can go; Windows
+cannot send or take these tasks yet. See *Tasks on another computer*. The
+connection name below is for reaching the whole machine, not choosing a task's
+computer.
+
 Run it on the machine that owns the work — the one with the files, the API key and the
 things you have set up:
 
 ```
-codeaf serve [--workspace path] [--via https://…]
+codeaf serve [--workspace path] [--via https://…] [--take-tasks]
 ```
 
 It prints, exactly:
@@ -58,9 +72,10 @@ It prints, exactly:
   let a device use this machine with code   715 302   (valid 10 minutes)
 ```
 
-**The name is not chosen, it is derived from that machine's own key.** Two words and two
-digits, the same every time, on any relay. You cannot pick a nicer one, and nobody else
-can register under yours while your machine is connected.
+**The relay name is derived from that machine's own key.** Two words and two
+digits, the same every time, on any relay. Nobody else can register under yours
+while your machine is connected. A dev box also has the chosen alias saved on
+the laptop that created it; `codeaf devices` shows that alias for `--at`.
 
 `--workspace` is the directory a connection works in when it does not name one; empty
 means the directory you ran the command in. For `codeaf serve`, the relay is, in order:
@@ -97,14 +112,14 @@ If the relay turns registrations away — it allows 10 registrations a minute fr
 address — `codeaf serve` backs off the same way and says once:
 
 ```
-the service is turning registrations away right now — waiting before trying again
+the sync service is turning registrations away right now — waiting before trying again
 ```
 
 A relay that answers but cannot connect machines, such as an older sync service, stops
 it with:
 
 ```
-the service at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it, or reach that machine with --host over ssh
+the sync service at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it
 ```
 
 A relay that cannot be reached when it starts stops it with the sentence in *When --at
@@ -112,7 +127,7 @@ will not open*. With sync turned off (`CODEAF_SYNC_URL=off`) and no `CODEAF_RELA
 is no relay at all:
 
 ```
-no sync address is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to your sync address, or let people in over ssh with `codeaf chat --host` from their side
+no sync service is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to your sync service
 ```
 
 Ctrl+c ends it, and the machine gives its name back on the way out:
@@ -133,7 +148,6 @@ It prints, in this order:
 
 ```
 pairing with otter-lamp-42
-a paired device is a key to that machine: it opens conversations there, runs whatever that machine allows to run, and spends that machine's model key. it is the same weight as an ssh key.
 enter the code shown on otter-lamp-42:
 ```
 
@@ -143,7 +157,9 @@ Type `715 302` or `715302` — spaces and dashes are thrown away. Then this devi
 waiting for approval on otter-lamp-42; it should show: amber fox dune
 ```
 
-The words are the check. The machine shows the same three words and asks the person at its terminal, which is you:
+## Approving remote work — the three words and y / n
+
+The three words are the check. On the serving computer, codeaf first says `a paired device is a key to that machine: it opens conversations there, runs whatever that machine allows to run, and spends that machine's model key. it is the same weight as an ssh key.` Then it shows the same three words and asks the person at its terminal, which is you:
 
 ```
 "laptop" wants to use this machine. Same three words on that screen: amber fox dune?  y / n
@@ -338,8 +354,9 @@ A name nothing matches says:
 no device called "phone" is paired with this machine — `codeaf devices` lists the ones that are
 ```
 
-Two devices with the same name are refused rather than guessed at, and `--all` removes every
-device answering to that name:
+## Two devices with the same name — choose a suffix or remove all
+
+A bare duplicate name is refused with the choices, such as `laptop #8381` and `laptop #9cf9`. Use `codeaf devices revoke laptop#8381` to choose one, or quote its printed name as `codeaf devices revoke "laptop #8381"`. `--all` removes every device answering to that name:
 
 ```
 codeaf devices revoke laptop --all
@@ -396,25 +413,25 @@ There are five different reasons, and each says which one it is, in one sentence
 **No relay is set up on this machine** (sync is off and `CODEAF_RELAY` is empty):
 
 ```
-no service address is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a service address, or reach that machine with --host over ssh
+no sync service is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a sync service, or reach that machine with --host over ssh
 ```
 
 **The relay is set up and not answering:**
 
 ```
-the service at https://service.example.com cannot be reached from here — check this machine's network, or reach that machine with --host over ssh
+nothing is answering at https://service.example.com — if that is your own sync service, start it there with codeaf relay
 ```
 
 **The relay answers but cannot connect machines:**
 
 ```
-the service at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it, or reach that machine with --host over ssh
+the sync service at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it, or reach that machine with --host over ssh
 ```
 
 **The relay is fine and that machine is not connected to it:**
 
 ```
-otter-lamp-42 is not connected to the service right now — run `codeaf serve` on that machine
+otter-lamp-42 is not connected to the sync service right now — run `codeaf serve` on that machine
 ```
 
 **This device has never been let in:**
@@ -426,10 +443,12 @@ this device is not paired with otter-lamp-42 — run `codeaf serve` on that mach
 Two more you may meet. A machine that does not answer the handshake at all:
 `otter-lamp-42 did not answer this device's handshake, so nothing was sent — if that machine was rebuilt it has a new key and this device has to pair with it again`.
 And a relay that is turning connections away:
-`the service is turning connections away right now — try again in a minute` — it allows
+`the sync service is turning connections away right now — try again in a minute` — it allows
 30 connections a minute from one address. If a proxy or wrong path at the relay address
 refuses the upgrade, it names the full address it tried:
-`the relay at https://service.example.com/wrong-prefix refused this connection (404) — check the address it was given`.
+`the sync service at https://service.example.com/wrong-prefix refused this connection (404) — check the address it was given`.
+
+## The pairing code was right but approval failed — paired then device stopped, writing access on the serving computer
 
 **A pairing that says the code was wrong when you are sure it was right** has one other
 cause, and it is the machine's own disk. The machine writes a device into its list
@@ -445,6 +464,10 @@ could not write down that pairing: <what the write said>
 ```
 
 So if a code you read carefully keeps being refused, go and look at that machine.
+A current serving computer saves the pairing before confirming it. If it said
+paired and later says `this device has been stopped on that machine — pair it
+again from there`, that machine no longer recognizes this device's permission.
+Pair again from the serving computer.
 
 A name of the wrong shape is caught before anything is dialled:
 
@@ -539,3 +562,25 @@ Every request must be signed by one of that person's devices, each person's data
 apart from everyone else's, and a restart keeps who holds each chat. Its log lists the
 first characters of an identity id, the kind of request, the status and the byte counts,
 never what was sent. Stop it with SIGTERM and requests already under way finish first.
+
+## The serving computer’s device name and the remote window bar
+
+When this computer is paired for sync, `codeaf serve` and `codeaf serve --take-tasks` lead with the machine name and show the device name as a hint after it, for example `this machine is reachable as  seagull-lichen-63 (desk-b)`. Type the first name: `codeaf chat --at seagull-lichen-63`. The `--at` window’s bar shows `desk-b`. This build cannot look up a machine by its device name.
+
+## Approve remote work from a device already paired for chats
+
+Pairing for chats and allowing remote work are separate permissions. On the serving computer, before `y / n`, codeaf says `a paired device is a key to that machine: it opens conversations there, runs whatever that machine allows to run, and spends that machine's model key. it is the same weight as an ssh key.` The asking computer starts by asking for the displayed code.
+
+The approver always asks `"laptop-a" wants to use this machine. Same three words on that screen: red green blue?`, followed by `y / n`. This question also appears when the asking computer is already paired for chats: this exchange cannot verify its chat pairing. Check the three words on both screens and explicitly approve before it gets access to work here.
+
+## A served connection ended
+
+The serving terminal says `the connection to laptop-a ended`. A known timeout adds `— it stopped answering`. Process and pipe details go to the local serving log, keeping the terminal free of raw process errors.
+
+
+## Which computer name appears in an --at window and its connection errors
+
+An `--at` window uses the serving computer's chosen device name in its bar,
+connection errors, reconnecting notices and timeout messages. Its typed
+rendezvous name still selects the machine to connect to. If an older engine
+has not supplied a chosen name, the window uses the requested name.

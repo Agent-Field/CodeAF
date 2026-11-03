@@ -185,7 +185,7 @@ func classify(method string) callClass {
 		MethodAutomationsDelete, MethodAutomationsRunNow, MethodAutomationsStopRun,
 		MethodAutomationsClaim:
 		return classAct
-	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodCompact, MethodOpenPlanTaskWork:
+	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodCompact, MethodOpenPlanTaskWork, MethodTaskRunHere:
 		return classWork
 	default:
 		return classOrdered

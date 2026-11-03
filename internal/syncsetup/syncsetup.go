@@ -40,6 +40,12 @@ const (
 	URLVar = "CODEAF_SYNC_URL"
 	// IntervalVar is how often unsaved turns are flushed, in milliseconds.
 	IntervalVar = "CODEAF_SYNC_INTERVAL_MS"
+	// ServeStateVar opts `codeaf serve` into keeping this computer's saved keys,
+	// settings, shared memories and directory presence in step while it serves,
+	// the way an open terminal does. A dev box's boot script sets it to 1.
+	// UNSET, SERVE BEHAVES EXACTLY AS IT ALWAYS HAS: it syncs nothing and
+	// publishes no presence, so nobody who never asked sees a change.
+	ServeStateVar = "CODEAF_SERVE_SYNC"
 	// DefaultInterval is the flush interval when IntervalVar is unset.
 	DefaultInterval = 5 * time.Second
 	// requestTimeout bounds one directory request so a silent relay cannot hang
@@ -47,12 +53,18 @@ const (
 	requestTimeout = 30 * time.Second
 )
 
+// ServeKeepsState reports whether ServeStateVar asks `codeaf serve` to keep
+// home state and presence in step; only the value 1 does.
+func ServeKeepsState() bool { return strings.TrimSpace(env.Get(ServeStateVar)) == "1" }
+
 // ErrNoIdentity is what a machine says when a relay is set but it has no
 // identity to sign with. Its words are the list's own, so every surface agrees.
 var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
+	teamsCache        *teamIdentityCache // Guarded by stateMu across vault rounds.
+	teamsShared       bool               // Enabling sharing must restore an already-known vault.
 	removed           atomic.Bool
 	memberRetries     uint64
 	clock             func() time.Time

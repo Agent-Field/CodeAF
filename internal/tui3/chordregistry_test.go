@@ -69,6 +69,7 @@ var chordRegistry = []chordClaim{
 	{"closeTabChord", []string{ctxTabs}},
 	{"completionToastKey", []string{ctxConversation}},
 	{"deviceKey", []string{ctxHome}},
+	{"taskComputerCycleKey", []string{ctxQuestion}},
 	{"effortKey", []string{ctxBox}},
 	{"filesCopyKey", []string{ctxFiles}},
 	{"filesRevealKey", []string{ctxFiles}},

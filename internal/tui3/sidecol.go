@@ -452,7 +452,7 @@ func (a *app) sideTrafficCount(t team, kind int, handle string) (int, int) {
 			continue
 		}
 		n++
-		if e.ID > seen {
+		if e.Origin == "" && e.ID > seen {
 			fresh++
 		}
 	}

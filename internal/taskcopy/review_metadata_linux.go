@@ -50,3 +50,8 @@ func SetPortableSymlinkModeAt(parentFD int, name string, mode fs.FileMode) error
 	}
 	return nil
 }
+
+// OSManagedAttribute reports whether an extended attribute is one the
+// operating system stamps on its own and that portable apply may leave
+// behind. Linux stamps none, so every attribute is refused as before.
+func OSManagedAttribute(string) bool { return false }

@@ -58,6 +58,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"io"
 	"path/filepath"
 	"sort"
@@ -130,6 +132,8 @@ type WrappedAgent interface {
 // and the locked-file fallback; this package owns nothing about how an agent is
 // made and everything about how one is spoken to.
 type Engine struct {
+	// SyncService is the engine's address for chat outage notices.
+	SyncService string
 	// Headless records the approval context the agent was built for. Reusing an
 	// interactive agent must not silently give a headless caller its default gate.
 	Headless bool
@@ -165,6 +169,8 @@ type Engine struct {
 	// carried in Welcome so a linked-local surface writes every local row back
 	// to the profile the running conversation actually reads. A remote surface
 	// does not use the path for local writes.
+	// TeamsPaired supplies the engine computer's current pairing gate.
+	TeamsPaired       func() bool
 	ProfileDir        string
 	UnreadProfileKeys []string
 	// Workspace is the directory the engine resolved and works in — the answer
@@ -292,7 +298,9 @@ type Engine struct {
 // handshake, because the workspace and the session file are things the surface
 // says.
 type Options struct {
-	Boot func(Hello) (*Engine, error)
+	// SyncService carries the engine's service choice to remote outage notices.
+	SyncService string
+	Boot        func(Hello) (*Engine, error)
 }
 
 // AttachOptions is [ServeAttach]'s one function: which conversation this hello
@@ -365,6 +373,9 @@ func Serve(in io.Reader, out io.Writer, opts Options) error {
 				return nil, errors.New("this engine opens one conversation for one connection, so there is none already open here to join")
 			}
 			engine, err := opts.Boot(hello)
+			if engine != nil && engine.SyncService == "" {
+				engine.SyncService = opts.SyncService
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -405,9 +416,11 @@ type Session struct {
 	persistent bool
 	// releaseOnIdle remembers a paired window's clean departure while its last
 	// stream finishes. A new attached window cancels that departure (C31.1).
-	releaseOnIdle bool
-	instance      string
-	closeDone     chan struct{}
+	releaseOnIdle  bool
+	instance       string
+	closeDone      chan struct{}
+	localSaved     chan struct{}
+	localSavedOnce sync.Once
 	// closeErr retains the completed saving result for concurrent and repeated departures.
 	closeErr error
 	// renewalStop ends idle health forwarding when this conversation changes or closes.
@@ -538,6 +551,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		persistent: persistent,
 		instance:   rand.Text(),
 		closeDone:  make(chan struct{}),
+		localSaved: make(chan struct{}),
 		rings:      map[uint64]*ring{},
 		follows:    map[uint64]followQueued{},
 		held:       newHeldSet(),
@@ -852,6 +866,9 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 		agent.InterruptFor(door)
 	}
 	err := agent.Close()
+	if err == nil && sess.localSaved != nil {
+		sess.localSavedOnce.Do(func() { close(sess.localSaved) })
+	}
 	return errors.Join(err, sess.noteClosed(agent))
 }
 
@@ -1107,6 +1124,9 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// Attached counts the OTHERS, so it is read before this one is added
 	// (wire.go's Welcome.Attached states why the number is carried at all).
 	welcome := sess.welcomeLocked(s)
+	// The initial capability reads the arrival directly, preserving the machine's
+	// existing point at which a watcher becomes registered.
+	welcome.TaskComputers = !hello.Watch && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent)
 	welcome.Encoding = s.encoding
 	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
@@ -1251,6 +1271,9 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		note += newer
 	}
 	return Welcome{
+		LocalSavingReceipts:        s.localSavingReceipts,
+		Machine:                    MachineName(),
+		SyncService:                sess.engine.SyncService,
 		Version:                    Version,
 		Workspace:                  sess.engine.Workspace,
 		SessionFile:                sess.engine.SessionFile,
@@ -1296,6 +1319,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		SteerOwner:    true,
 		TaskSetup:     taskSetupKnown(sess.agent),
 		TaskRetry:     taskRetryKnown(sess.agent),
+		TaskComputers: !s.watching && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent),
 		TaskWorkspace: taskWorkspaceKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
@@ -1692,7 +1716,9 @@ type server struct {
 	dead bool
 	// encoding is selected from the hello before the welcome is sent. Empty is
 	// the old wire, which keeps a new engine compatible with an older surface.
-	encoding string
+	encoding            string
+	localSavingReceipts bool
+	syncNoticeWords     bool
 
 	open    func(Hello) (*Session, error)
 	session *Session
@@ -1952,6 +1978,8 @@ func (s *server) handshake(line []byte) error {
 	if supportsEncoding(hello.Encodings, frameEncodingGzip) {
 		s.encoding = frameEncodingGzip
 	}
+	s.localSavingReceipts = hello.LocalSavingReceipts
+	s.syncNoticeWords = hello.SyncNoticeWords
 	sess, err := s.open(hello)
 	if err != nil {
 		return s.refuse("engine: " + err.Error())
@@ -2063,10 +2091,38 @@ func (s *server) dispatch(call Frame) {
 	// here — the one funnel every keystroke takes — is what keeps that
 	// gap from reading as an empty room.
 	s.noteAct()
+	// A progress receipt precedes the upload wait and carries no transcript or key.
+	progressDone := make(chan struct{})
+	if s.localSavingReceipts && (call.Method == MethodClose || call.Method == MethodDetach) && s.session != nil {
+		saved := s.session.localSaved
+		go func() {
+			select {
+			case <-saved:
+				_ = s.send(Frame{Kind: "localSaved", ID: call.ID})
+			case <-progressDone:
+			}
+		}()
+	}
 	payload, err := s.invoke(call)
+	close(progressDone)
 	result := Frame{Kind: "result", ID: call.ID, Payload: payload}
+	if (call.Method == MethodClose || call.Method == MethodDetach) && s.session != nil {
+		select {
+		case <-s.session.localSaved:
+			if s.localSavingReceipts {
+				result.LocalSaved = true
+			} else if syncwords.UploadPending(err) {
+				// A legacy surface cannot distinguish an upload from a local
+				// failure. A completed local close keeps its successful reply.
+				err = nil
+			}
+		default:
+		}
+	}
+
 	if err != nil {
 		result.Payload, result.Error = nil, err.Error()
+		result.SyncPending = result.LocalSaved && syncwords.UploadPending(err)
 		var unsaved *session.UnsavedChatError
 		if errors.As(err, &unsaved) {
 			result.UnsavedTranscript = unsaved.Transcript
@@ -2133,13 +2189,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
 	case MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply:
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskStartOn, MethodTaskRunHere:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
 	switch call.Method {
+	case MethodTaskStartOn, MethodTaskRunHere:
+		return s.taskComputerInvoke(call)
 	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskWorkspaceCancel:
 		args, err := arg[taskWorkspaceArgs](call)
 		if err != nil {
@@ -2437,7 +2495,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this session has no task proposals to answer")
 		}
 		door.ResolveTask(args.ID, session.TaskAnswer{
-			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
+			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model, Computer: args.Computer,
 		})
 		return nil, nil
 	case MethodTaskSettle:
@@ -3434,6 +3492,24 @@ func (s *server) send(frame Frame) error {
 // what an arrival uses ([Session.attach]) so that the welcome and the replay
 // behind it cannot be overtaken by a live event.
 func (s *server) sendLocked(frame Frame) error {
+	if !s.syncNoticeWords && frame.Kind == "event" {
+		var event EventWire
+		if err := json.Unmarshal(frame.Payload, &event); err != nil {
+			return err
+		}
+		if event.Kind == session.EventNotice {
+			text := chatlist.LegacySyncNotice(event.Text)
+			if text != event.Text {
+				event.Text = text
+				payload, err := json.Marshal(event)
+				if err != nil {
+					return err
+				}
+				frame.Payload = payload
+			}
+		}
+	}
+
 	if frame.Kind != "welcome" {
 		if err := compressFrame(&frame, s.encoding); err != nil {
 			return err

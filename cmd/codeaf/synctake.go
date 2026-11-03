@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/url"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -75,12 +77,24 @@ type surfaceMachines struct{ *syncsetup.Sync }
 // local main chat, off the surface loop, so Home can tell when discarding a
 // collapsed copy loses nothing.
 func (s surfaceMachines) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	if !syncsetup.Resolve(s.Home).On() {
+		return nil, 0, nil
+	}
 	rows, version, err := s.Sync.RowsAt(ctx)
 	if err != nil || len(rows) == 0 {
 		return rows, version, err
 	}
 	markLocalRedundantBranches(rows)
 	return rows, version, nil
+}
+
+// SendLease withholds saved sync hold receipts while sync is off or quiet so a
+// local chat never mistakes an earlier sync lease for another device holding it.
+func (s surfaceMachines) SendLease(id string) (string, uint64, error) {
+	if !syncsetup.Resolve(s.Home).On() || (!s.Removed() && syncsetup.Quiet(s.Home)) {
+		return "", 0, os.ErrNotExist
+	}
+	return s.Sync.SendLease(id)
 }
 
 func (s surfaceMachines) Rows(ctx context.Context) ([]chatlist.Row, error) {
@@ -138,6 +152,9 @@ func markLocalRedundantBranches(rows []chatlist.Row) {
 // RowsForChatSend uses a live writer's receipt or a never-shared chat before asking the relay.
 // A known outage keeps unknown copies unsent without repeating the network wait.
 func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offline, holding bool) ([]chatlist.Row, uint64, bool, error) {
+	if !syncsetup.Resolve(s.Home).On() {
+		return nil, 0, true, nil
+	}
 	root := session.DirOf(file)
 	id := filepath.Base(root)
 	if s.Removed() {
@@ -169,6 +186,9 @@ func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offli
 }
 
 func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	if !syncsetup.Resolve(s.Home).On() {
+		return nil, 0, nil
+	}
 	if s.Relay != "" {
 		current, ok, err := syncsetup.Open(s.Home)
 		if err != nil {
@@ -352,4 +372,19 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 		log.Printf("continue %s needs a choice: local files, conversation or tool work changed", id)
 	}
 	return !dirty, err
+}
+
+// ReleaseUnused leaves the installed files and kept work intact, just as closing
+// a chat does, while returning an abandoned automatic acquisition to the directory.
+func (t takeover) ReleaseUnused(ctx context.Context, id string, fence uint64) error {
+	return t.c.ReleaseUnused(ctx, id, fence)
+}
+
+// RelayHost names the endpoint without exposing a path or credentials in chat copy.
+func (s surfaceMachines) RelayHost() string {
+	parsed, err := url.Parse(s.Relay)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
 }

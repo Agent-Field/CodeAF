@@ -116,7 +116,7 @@ export class IdentityDO extends DurableObject {
       const reply=await this.host.operation(async()=>{
         await this.host.ensure(fromBase64Url(request.headers.get('codeaf-identity')));
         await this.host.wakeMaintenance();
-        return enrolling?this.host.enroll(this.host.proof(request,body)):this.host.control(request.method,who.device,request.headers.get('codeaf-cert'),this.host.proof(request,body));
+        return enrolling?this.host.enroll(this.host.proof(request,body)):this.host.control(request.method,who.device,request.headers.get('codeaf-cert'),this.host.proof(request,body),request.headers.get('Codeaf-Cluster-Names')==='1');
       });this.watchers=this.host.watchers;reply.headers.set('cache-control','no-store');return reply;
     }
     if(url.pathname==='/v2/cluster/api'){

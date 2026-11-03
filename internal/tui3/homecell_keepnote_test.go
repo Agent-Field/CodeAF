@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// A chat on another machine keeps `running on <device>` at every width and
+// A chat on another machine keeps `held on <device>` at every width and
 // title length: the title is cut with an ellipsis before the note goes.
 func TestMachineRowKeepsNoteBesideLongTitle(t *testing.T) {
 	pal := newTestPalette()
@@ -17,15 +17,15 @@ func TestMachineRowKeepsNoteBesideLongTitle(t *testing.T) {
 			title := strings.Repeat("a", n)
 			t.Run(fmt.Sprintf("w%d_t%d", width, n), func(t *testing.T) {
 				cell := &homeCell{kind: cellRow, panel: panelSessions, title: title,
-					note: "running on host-a", keepNote: true, right: "now"}
+					note: "held on host-a", keepNote: true, right: "now"}
 				row := plain(homeCellBody(cell, width, pal, false))
-				if !strings.Contains(row, "running on host-a") || !strings.HasSuffix(row, "now") {
+				if !strings.Contains(row, "held on host-a") || !strings.HasSuffix(row, "now") {
 					t.Fatalf("note or age lost: %q", row)
 				}
 				if got := ansi.StringWidth(row); got > width {
 					t.Fatalf("row is %d cells in %d: %q", got, width, row)
 				}
-				if whole := n <= width-len("running on host-a now")-4; whole != strings.HasPrefix(row, title) {
+				if whole := n <= width-len("held on host-a now")-4; whole != strings.HasPrefix(row, title) {
 					t.Fatalf("title whole=%v, row %q", whole, row)
 				}
 			})

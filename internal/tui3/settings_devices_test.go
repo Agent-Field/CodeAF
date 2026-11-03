@@ -211,7 +211,7 @@ func TestSettingsDevicesAddRowLeavesSettingsAndStartsBarePair(t *testing.T) {
 // `removed`, and puts `devicesRevoked` with the name on the foot line; on this
 // device's own row `r` shows `devicesOwnRow` and calls nothing; on the add row
 // or an already-removed row `r` does nothing.
-func TestSettingsDevicesRKeyRemovesAnotherRowRefusesOwnRowAndIgnoresAddAndRemovedRows(t *testing.T) {
+func TestSettingsDevicesRKeyConfirmsRemovalRefusesOwnRowAndIgnoresAddAndRemovedRows(t *testing.T) {
 	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 	door := &fakeApprovals{devices: []DeviceRow{
 		{ID: "dev_A", Name: "this mac", Platform: "darwin", Self: true},
@@ -240,8 +240,8 @@ func TestSettingsDevicesRKeyRemovesAnotherRowRefusesOwnRowAndIgnoresAddAndRemove
 		t.Fatalf("r on add row acted: door=%q line=%q", door.did(), a.sheet.dev.line)
 	}
 
-	// Removable row: revokes, marks removed, and puts devicesRevoked on the foot line.
-	r.press("up", "r")
+	// A removable row asks once; y removes it and puts devicesRevoked on the foot line.
+	r.press("up", "r", "y")
 	wantRevoked := fmt.Sprintf(devicesRevoked, "tower")
 	r.until("revoked outcome", func() bool {
 		return strings.Contains(plain(frame(a)), wantRevoked)

@@ -62,7 +62,7 @@ func TestListedHereAndHeldElsewhereDrawsTheDoor(t *testing.T) {
 	if local, remote := rowsOf(a, heldCell); local != 0 || remote != 1 {
 		t.Fatalf("local=%d remote=%d rows, want one single row with the door:\n%s", local, remote, homeText(a))
 	}
-	if !strings.Contains(homeText(a), "running on host-a") {
+	if !strings.Contains(homeText(a), "held on host-a") {
 		t.Fatalf("the held chat does not say where it runs:\n%s", homeText(a))
 	}
 }

@@ -55,15 +55,14 @@ const (
 	pairJoiningWord = "joining…"
 	// pairSharingKeys, pairAskKeys and pairDoneKeys are the hint under the box.
 	pairSharingKeys = "esc stop"
+	pairLinkKeys    = "enter approve link"
 	pairCodeKeys    = "c copy code · esc stop"
 	pairAskKeys     = pair.AskChoice + " · esc is n"
 	pairDoneKeys    = "esc close"
 	// replaceAskLine is the question a joining side with chats of its own reads
 	// before anything is replaced — the same facts the manual states
 	// (use-this-on-another-computer.md), and no default: esc is a no.
-	replaceAskLine = "replacing this computer's own chats with the other computer's " +
-		"cannot be undone: its chats are gone for good, and chats sealed under the " +
-		"old identity cannot be read afterwards. Replace them?"
+	replaceAskLine = pair.ReplaceAskLine
 	// replaceDeclinedLine is the word when the answer was no.
 	replaceDeclinedLine = "nothing was replaced: this computer's chats stay."
 )
@@ -184,8 +183,14 @@ func (u pairUI) Ask(ctx context.Context, label, words string) bool {
 type pairPanel struct {
 	open bool
 	run  *pairRun
+	// linkBox belongs to this offer, independently of the conversation draft.
+	linkBox   editor
+	linkFocus bool
+	offering  bool
+	rejoining bool
 
 	// What the person sees, in the order it is drawn.
+	notice  string
 	burned  bool
 	code    *pair.Code
 	lines   string
@@ -244,12 +249,25 @@ func (p *pairPanel) rows(width int, now time.Time, pal palette) []string {
 			out = append(out, dress(line))
 		}
 	}
+	if p.notice != "" {
+		say(p.notice, pal.dim)
+	}
 	if p.burned {
 		say(pair.BurnLine, pal.accent)
 	}
 	if p.lines != "" {
 		say(strings.TrimRight(p.lines, "\n"), pal.ink)
 		say("  "+pairCountdown(p.code, now), pal.dim)
+	}
+	if (p.offering || p.rejoining) && p.ask == nil && !p.done {
+		text := p.linkBox.String()
+		if text == "" {
+			text = addMachinePlaceholder
+			if p.rejoining {
+				text = "Code from another device"
+			}
+		}
+		say(addMachineField+text, pal.dim)
 	}
 	if p.waiting != "" {
 		say(p.waiting, pal.dim)
@@ -310,7 +328,14 @@ func (p *pairPanel) hint() string {
 	case p.done:
 		return pairDoneKeys
 	case p.code != nil:
-		return pairCodeKeys
+		if p.linkFocus {
+			return pairLinkKeys + " · " + pairSharingKeys
+		}
+		return pairCodeKeys + " · " + pairLinkKeys
+	case p.rejoining:
+		return "enter pair again · esc close"
+	case p.offering:
+		return pairLinkKeys + " · " + pairSharingKeys
 	}
 	return pairSharingKeys
 }
@@ -347,11 +372,19 @@ func (a *app) runPair(typed string) tea.Cmd {
 	}
 	a.closeLists()
 	a.dismissWelcome()
+	if typed == "" && a.machineRead.computerRemoved {
+		a.pair.close()
+		a.pair = pairPanel{open: true, rejoining: true, notice: removedPairNotice, waiting: "on a device still in your devices, open /pair; enter its code here to pair again"}
+		a.touch()
+		return nil
+	}
 	if typed == "" {
-		return a.startPair("", func(run *pairRun) {
+		cmd := a.startPair("", func(run *pairRun) {
 			label, err := door.Offer(run.ctx, pairUI{run})
 			run.send(pairEnded{line: sharedLine(label, err), ok: err == nil})
 		})
+		a.pair.offering = true
+		return cmd
 	}
 	return a.startPair(pairJoiningWord, joinWork(door, typed, replace))
 }
@@ -366,7 +399,7 @@ func joinWork(door Pairing, typed string, replace bool) func(*pairRun) {
 		// anything to lose: a home with no identity of its own is joined as if
 		// it were plain. A no — typed or by closing the panel — leaves
 		// everything exactly as it was.
-		if replace && door.HasOwnChats() && !ui.Confirm(run.ctx, replaceAskLine) {
+		if replace && (door.HasOwnChats() || pairingHasTeams(door)) && !ui.Confirm(run.ctx, replaceAskLine) {
 			run.send(pairEnded{line: replaceDeclinedLine, ok: true})
 			return
 		}
@@ -387,6 +420,9 @@ func joinWork(door Pairing, typed string, replace bool) func(*pairRun) {
 func (a *app) startPair(first string, work func(*pairRun)) tea.Cmd {
 	run := newPairRun(a.ctx)
 	a.pair.start(run)
+	if a.machineRead.computerRemoved {
+		a.pair.notice = removedPairNotice
+	}
 	a.pair.waiting = first
 	a.touch()
 	return tea.Batch(func() tea.Msg { work(run); return nil }, run.wait())
@@ -405,6 +441,9 @@ func sharedLine(label string, err error) string {
 // already gets that fact's own sentence and not a success it did not earn.
 func joinedLine(joined pair.Joined, err error) string {
 	if err != nil {
+		if line := pair.TeamsAsideLine(joined.TeamsAside); line != "" {
+			return err.Error() + " " + line
+		}
 		return err.Error()
 	}
 	return joined.Sentence()
@@ -419,9 +458,12 @@ func (a *app) tookPair(msg pairMsg) tea.Cmd {
 	msg.event.apply(&a.pair)
 	a.touch()
 	if a.pair.done {
-		return nil
+		if a.pair.ok && a.pair.result != replaceDeclinedLine {
+			a.machineRead.computerRemoved = false
+		}
+		return a.refreshTeamsSharing()
 	}
-	return msg.run.wait()
+	return tea.Batch(msg.run.wait(), a.refreshTeamsSharing())
 }
 
 // pairKey is the panel's whole claim on the keyboard. While a person is asked,
@@ -431,6 +473,9 @@ func (a *app) pairKey(msg tea.KeyPressMsg) tea.Cmd {
 	p := &a.pair
 	if p.card != nil {
 		return a.cardKey(msg)
+	}
+	if (p.offering || p.rejoining) && p.ask == nil && !p.done && (p.linkFocus || msg.String() != "c" || p.rejoining) {
+		return a.pairLinkKey(msg)
 	}
 	switch key := msg.String(); {
 	case p.ask != nil && key == "y":
@@ -445,4 +490,51 @@ func (a *app) pairKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	a.touch()
 	return nil
+}
+
+// pairLinkKey edits the pairing field without touching the chat's draft.
+func (a *app) pairLinkKey(msg tea.KeyPressMsg) tea.Cmd {
+	p := &a.pair
+	p.linkFocus = true
+	b := &p.linkBox
+	defer a.touch()
+	if editorMotion(b, msg.String()) || editorWordKill(b, msg.String()) || editorUndo(b, msg.String()) || editorPick(b, msg.String()) {
+		return nil
+	}
+	switch msg.String() {
+	case "esc":
+		p.close()
+	case "enter":
+		link := strings.TrimSpace(b.String())
+		if p.rejoining {
+			if link == "" {
+				p.result = "Enter a pairing code"
+				return nil
+			}
+			p.close()
+			return a.runPair(link + " --replace")
+		}
+		if !isPairLink(link) {
+			p.result = addMachineLinkError
+			return nil
+		}
+		p.close()
+		return a.openApprove(link)
+	case "backspace":
+		b.deleteBackward()
+	case "delete", "ctrl+d":
+		b.deleteForward()
+	case "tab":
+	default:
+		if msg.Text != "" {
+			b.insert(strings.ReplaceAll(msg.Text, "\n", " "))
+		}
+	}
+	return nil
+}
+
+// Older pairing doors may expose chats alone; the local door also detects teams.
+func pairingHasTeams(door Pairing) bool {
+	state, ok := door.(interface{ HasTeams() bool })
+	return ok && state.HasTeams()
 }

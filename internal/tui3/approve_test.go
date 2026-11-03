@@ -99,7 +99,7 @@ func TestApproveCardShowsWhoIsAsking(t *testing.T) {
 	r.slash("/pair " + testLink)
 	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
 	got := plain(frame(a))
-	for _, want := range []string{"tower", "Linux", "$", "Check number 4821", "asked 2m ago", "min left"} {
+	for _, want := range []string{"tower", "Linux", "△", "Check number 4821", "asked 2m ago", "min left"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}
@@ -189,7 +189,7 @@ func devicesFake() *fakeApprovals {
 	}}
 }
 
-func TestDeviceListShowsPresenceAndRevokesWithOneKey(t *testing.T) {
+func TestDeviceListShowsPresenceAndConfirmsRemoval(t *testing.T) {
 	door := devicesFake()
 	a, r := approveApp(t, door)
 	r.slash("/devices")
@@ -207,7 +207,7 @@ func TestDeviceListShowsPresenceAndRevokesWithOneKey(t *testing.T) {
 	if !strings.Contains(plain(frame(a)), devicesOwnRow) {
 		t.Fatalf("r on this device said nothing:\n%s", plain(frame(a)))
 	}
-	r.press("down", "down", "r")
+	r.press("down", "down", "r", "y")
 	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "tower was removed") })
 	if door.did() != "revoke:dev_B" {
 		t.Fatalf("door: %s", door.did())
@@ -334,7 +334,7 @@ func TestARevokedRowNeverShowsAnOnlineDot(t *testing.T) {
 	a.dirFeed = stillFeed{online: []string{"dev_B"}}
 	r.slash("/devices")
 	r.until("the list", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
-	r.press("down", "r")
+	r.press("down", "r", "y")
 	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "was removed") })
 	got := plain(frame(a))
 	if !strings.Contains(got, "○ tower") || strings.Contains(got, "● tower") || !strings.Contains(got, "removed") {

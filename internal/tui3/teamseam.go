@@ -40,6 +40,9 @@ import (
 // runs on, as functions (the reason [LinkSeam] gives). The zero value is
 // this machine's own profile, which is every local launch.
 type TeamsSeam struct {
+	// Sharing reads the engine's effective sharing off-loop when team data
+	// comes over remote. Local seams use the window's pairing gate instead.
+	Sharing func() (bool, error)
 	// Load is the teams as held, coloured around reserved, and the file's stamp
 	// (internal/teams' stamp.go). It is asked on the loop, at an opening, and
 	// must NOT block. known false says nothing is held yet: the window asks
@@ -60,6 +63,9 @@ type TeamsSeam struct {
 	// ask from the same cursor is answered with nothing from a stat. It may
 	// block.
 	Traffic func(team, after string, limit int) ([]teamstore.Entry, error)
+	// DisplayTraffic is optional for older remote engines. Its cursor is local
+	// even when a mirror change replaces the entire time-ordered display tail.
+	DisplayTraffic func(team, after, version string, limit int) ([]teamstore.Entry, string, string, bool, error)
 
 	// ── DELEGATION (DESIGN.md section 8) ──
 	//
@@ -141,7 +147,7 @@ func (s TeamsSeam) delegation() bool {
 
 // localTeams is the seam onto internal/teams in dir, the profile of this
 // machine. watch is the window's stat-before-read memory of the logs.
-func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
+func localTeams(dir string, watch *teamstore.Watch, paired func() bool) TeamsSeam {
 	return TeamsSeam{
 		Load: func(reserved []float64) ([]teamstore.Team, string, bool) {
 			stamp := teamstore.Stamp(dir)
@@ -162,10 +168,17 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			if since != "" && since == stamp {
 				return nil, stamp, true, nil
 			}
-			f, err := teamstore.LoadHued(dir, reserved)
+			var f *teamstore.File
+			var err error
+			if config.TeamsSharingAt(dir, paired) {
+				f, err = teamstore.Snapshot(dir)
+			} else {
+				f, err = teamstore.LoadHued(dir, reserved)
+			}
 			if err != nil {
 				return nil, stamp, false, err
 			}
+			f.Colour(reserved)
 			return f.Teams, stamp, false, nil
 		},
 		Update: func(change func(*teamstore.File) error) ([]teamstore.Team, string, error) {
@@ -178,6 +191,9 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 		Traffic: func(team, after string, limit int) ([]teamstore.Entry, error) {
 			entries, _, err := watch.Traffic(dir, team, after, limit)
 			return entries, err
+		},
+		DisplayTraffic: func(team, after, version string, limit int) ([]teamstore.Entry, string, string, bool, error) {
+			return watch.History(dir, team, after, version, limit, config.TeamsSharingAt(dir, paired))
 		},
 		Defaults: func() (teamstore.Defaults, error) { return teamstore.DefaultsAt(dir), nil },
 		ApplyDefault: func(key, raw string) (teamstore.Defaults, error) {
@@ -238,6 +254,8 @@ func teamsAcceptClosingLocal(dir, id string) (bool, error) {
 // teamsDisk is the window's side of the seam: the door, the queue of edits
 // not yet written, and the read asked for when nothing was held.
 type teamsDisk struct {
+	// The file refresh also runs when no team has a held manager.
+	refreshing bool
 	// door is [Options.Teams]; its zero value is the local seam.
 	door TeamsSeam
 	// watch is the local seam's stat-before-read memory of the logs.
@@ -266,7 +284,7 @@ func (a *app) teamsSeam() TeamsSeam {
 	if a.teamsDisk.door.present() {
 		return a.teamsDisk.door
 	}
-	return localTeams(a.profileDir, &a.teamsDisk.watch)
+	return localTeams(a.profileDir, &a.teamsDisk.watch, a.teamsPaired)
 }
 
 // THE FRAME ASKS WHICH DOORS THERE ARE, NEVER FOR THE SEAM. Binding the local

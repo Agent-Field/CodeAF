@@ -143,7 +143,7 @@ func (a *app) ensureSheetDevices() tea.Cmd {
 	if a.sheet.devicesUnavailable() != "" || a.sheet.dev != nil {
 		return nil
 	}
-	card := &deviceCard{presence: a.presence}
+	card := a.newDeviceCard()
 	a.sheet.dev = card
 	if !a.sheet.searching() {
 		a.sheet.build()
@@ -359,6 +359,9 @@ func (s *sheet) devicesDetails(frameWidth, bodyWidth int) []string {
 // under the cursor: `r remove` only on a removable computer, `↑↓ choose` only
 // when more than one row can be walked, and `enter add` on the add row.
 func (s *sheet) devicesKeysLine() string {
+	if s.dev != nil && s.dev.removing != nil {
+		return s.dev.hint()
+	}
 	if s.devTyping() {
 		return s.dev.hint()
 	}

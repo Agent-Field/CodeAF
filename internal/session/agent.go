@@ -143,8 +143,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
-		config: config,
-		system: system,
+		taskComputerPrompt: config.mayNameTaskComputer(),
+		config:             config,
+		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this
 		// file deciding what another door's worker is told.
@@ -2673,10 +2674,16 @@ func (a *Agent) Close() (saveErr error) {
 		}
 		return err
 	}
-	if file == nil {
-		return nil
+	var localErr error
+	if file != nil {
+		localErr = file.Close()
 	}
-	return file.Close()
+	if localErr == nil {
+		a.mu.Lock()
+		a.localDurable = true
+		a.mu.Unlock()
+	}
+	return localErr
 }
 
 // ── transcript ──────────────────────────────────────────────────────────────
@@ -3271,7 +3278,9 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	if news := a.teamBoundary(); news != "" {
 		a.enqueueNote(userText(news))
 	}
+	sharing := a.config.teamProfile() != "" && a.teamsSharing()
 	a.mu.Lock()
+	a.adoptTeamDigestSharingLocked(sharing)
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
 	// drain itself is here: this seam runs immediately before the next request

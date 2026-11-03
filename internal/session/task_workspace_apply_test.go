@@ -13,20 +13,49 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
+// macOS temp roots can contain symlink ancestors that explicit workspace admission refuses.
+func workspaceApplyFixtureDir(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepareWorkspaceApplyFixture(t, root)
+	return root
+}
+
+// macOS success fixtures need supported ownership and no inherited extended attributes.
+func prepareWorkspaceApplyFixture(t *testing.T, roots ...string) {
+	t.Helper()
+	for _, root := range roots {
+		if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			normalizeWorkspaceApplyFixtureMetadata(t, path)
+			return nil
+		}); err != nil {
+			t.Fatalf("prepare Apply fixture %s: %v", root, err)
+		}
+	}
+}
+
 func TestTaskWorkspaceExplicitReviewAndApply(t *testing.T) {
+	// macOS needs canonical, metadata-free fixtures before the successful Review and Apply.
 	for _, repository := range []bool{false, true} {
 		t.Run(map[bool]string{false: "folder", true: "repository"}[repository], func(t *testing.T) {
-			t.Setenv("CODEAF_HOME", t.TempDir())
+			t.Setenv("CODEAF_HOME", workspaceApplyFixtureDir(t))
 			t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 			t.Setenv("CODEAF_TASK_BELT", "bash")
 			t.Setenv("CODEAF_PROTOTYPE_TASK_STORAGE", "1")
-			source := t.TempDir()
+			source := workspaceApplyFixtureDir(t)
 			if repository {
-				source = newTestRepo(t)
+				source = canonicalPath(newTestRepo(t))
 			} else {
 				writeFile(t, filepath.Join(source, "shared.txt"), "the original line\n")
 			}
-			place := Place{Dir: t.TempDir(), Workspace: source}
+			prepareWorkspaceApplyFixture(t, source)
+			place := Place{Dir: workspaceApplyFixtureDir(t), Workspace: source}
 			engine := newBeltRunDouble("done")
 			engine.real = true
 			registerBeltRunEngine(t, engine)
@@ -68,6 +97,7 @@ func TestTaskWorkspaceExplicitReviewAndApply(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "")
+			prepareWorkspaceApplyFixture(t, copyDir)
 			review, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work")
 			if err != nil {
 				t.Fatal(err)
@@ -111,12 +141,14 @@ func TestTaskWorkspaceExplicitReviewAndApply(t *testing.T) {
 }
 
 func TestTaskWorkspaceApplyPreservesConflictingOriginalAndPrivateCopy(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	// macOS needs a supported successful Review before this test introduces its content conflict.
+	t.Setenv("CODEAF_HOME", workspaceApplyFixtureDir(t))
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	source := t.TempDir()
+	source := workspaceApplyFixtureDir(t)
 	writeFile(t, filepath.Join(source, "shared.txt"), "baseline\n")
-	place := Place{Dir: t.TempDir(), Workspace: source}
+	prepareWorkspaceApplyFixture(t, source)
+	place := Place{Dir: workspaceApplyFixtureDir(t), Workspace: source}
 	engine := newBeltRunDouble("done")
 	engine.real = true
 	registerBeltRunEngine(t, engine)
@@ -131,6 +163,7 @@ func TestTaskWorkspaceApplyPreservesConflictingOriginalAndPrivateCopy(t *testing
 	engine.mu.Unlock()
 	writeFile(t, filepath.Join(copyDir, "shared.txt"), "private version\n")
 	endBeltRun(t, agent, engine)
+	prepareWorkspaceApplyFixture(t, copyDir)
 	if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 		t.Fatal(err)
 	}
@@ -155,21 +188,31 @@ func completedWorkspaceApplyFixture(t *testing.T, repository bool) (*Agent, uint
 }
 
 func completedWorkspaceApplyFixtureWithInput(t *testing.T, repository bool, setup func(string)) (*Agent, uint64, Place, string, string) {
+	// macOS success fixtures need primary ownership while setup may deliberately retain a different root group.
 	t.Helper()
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", workspaceApplyFixtureDir(t))
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_FURROW", filepath.Join(t.TempDir(), "unavailable-native-engine"))
-	source := t.TempDir()
+	source := workspaceApplyFixtureDir(t)
 	if repository {
-		source = newTestRepo(t)
+		source = canonicalPath(newTestRepo(t))
 	} else {
 		writeFile(t, filepath.Join(source, "shared.txt"), "the original line\n")
 	}
+	prepareWorkspaceApplyFixture(t, source)
 	if setup != nil {
 		setup(source)
+		// Keep the root group chosen by setup so the inheritance test still exercises it.
+		entries, err := os.ReadDir(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			prepareWorkspaceApplyFixture(t, filepath.Join(source, entry.Name()))
+		}
 	}
-	place := Place{Dir: t.TempDir(), Workspace: source}
+	place := Place{Dir: workspaceApplyFixtureDir(t), Workspace: source}
 	if err := SaveMeta(place.Dir, Meta{ID: place.ID(), Workspace: source, WorkspacePolicy: DefaultWorkspacePolicy()}); err != nil {
 		t.Fatal(err)
 	}
@@ -187,6 +230,7 @@ func completedWorkspaceApplyFixtureWithInput(t *testing.T, repository bool, setu
 	engine.mu.Unlock()
 	writeFile(t, filepath.Join(copyDir, "shared.txt"), "private result\n")
 	endBeltRun(t, agent, engine)
+	prepareWorkspaceApplyFixture(t, copyDir)
 	if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +238,7 @@ func completedWorkspaceApplyFixtureWithInput(t *testing.T, repository bool, setu
 }
 
 func TestTaskWorkspaceApplyRejectsAlteredStageReceipt(t *testing.T) {
+	// macOS needs an unadorned foreign fixture so the refusal still exercises the altered receipt.
 	for _, kind := range []string{"cleanup-path", "stage-destination", "comparison-baseline"} {
 		t.Run(kind, func(t *testing.T) {
 			agent, id, _, source, copyDir := completedWorkspaceApplyFixture(t, kind != "comparison-baseline")
@@ -215,9 +260,10 @@ func TestTaskWorkspaceApplyRejectsAlteredStageReceipt(t *testing.T) {
 			case "cleanup-path":
 				ticket.Stage.Dir = copyDir
 			case "stage-destination":
-				foreign := newTestRepo(t)
+				foreign := canonicalPath(newTestRepo(t))
+				prepareWorkspaceApplyFixture(t, foreign)
 				// A second authentic review can be transplanted without inventing any URI.
-				otherPlace := Place{Dir: t.TempDir(), Workspace: foreign}
+				otherPlace := Place{Dir: workspaceApplyFixtureDir(t), Workspace: foreign}
 				if err := SaveMeta(otherPlace.Dir, Meta{ID: otherPlace.ID(), Workspace: foreign, WorkspacePolicy: DefaultWorkspacePolicy()}); err != nil {
 					t.Fatal(err)
 				}
@@ -235,6 +281,7 @@ func TestTaskWorkspaceApplyRejectsAlteredStageReceipt(t *testing.T) {
 				engine.mu.Unlock()
 				writeFile(t, filepath.Join(foreignCopy, "foreign.txt"), "unselected root\n")
 				endBeltRun(t, other, engine)
+				prepareWorkspaceApplyFixture(t, foreignCopy)
 				if _, err := other.ReviewTaskWorkspaceRoot(context.Background(), otherID, "work"); err != nil {
 					t.Fatal(err)
 				}
@@ -300,8 +347,10 @@ func TestTaskWorkspaceReviewReplacesItsOwnedStagingCopy(t *testing.T) {
 }
 
 func TestTaskWorkspaceLargeReviewNamesItsImmutableDiff(t *testing.T) {
+	// macOS can inherit unsupported metadata on files and directories added after the initial Review.
 	agent, id, _, _, copyDir := completedWorkspaceApplyFixture(t, true)
 	writeFile(t, filepath.Join(copyDir, "large.txt"), strings.Repeat("large immutable line\n", 20000))
+	prepareWorkspaceApplyFixture(t, copyDir)
 	review, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work")
 	if err != nil {
 		t.Fatal(err)
@@ -324,6 +373,7 @@ func TestTaskWorkspaceLargeReviewNamesItsImmutableDiff(t *testing.T) {
 }
 
 func TestTaskWorkspaceApplyPreservesReviewedPortableMetadata(t *testing.T) {
+	// macOS can inherit unsupported metadata on files and directories added after the initial Review.
 	for _, kind := range []string{"mode-and-crlf", "empty-directory", "directory-mode"} {
 		t.Run(kind, func(t *testing.T) {
 			agent, id, _, source, copyDir := completedWorkspaceApplyFixture(t, false)
@@ -345,6 +395,7 @@ func TestTaskWorkspaceApplyPreservesReviewedPortableMetadata(t *testing.T) {
 				}
 				writeFile(t, filepath.Join(copyDir, "nested", "result.txt"), "nested result\n")
 			}
+			prepareWorkspaceApplyFixture(t, copyDir)
 			if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 				t.Fatal(err)
 			}
@@ -381,14 +432,15 @@ func TestTaskWorkspaceApplyPreservesReviewedPortableMetadata(t *testing.T) {
 }
 
 func TestTaskWorkspaceStartsWithPortableSourceRepresentation(t *testing.T) {
+	// macOS temp aliases must resolve before these explicit source roots are admitted.
 	for _, repository := range []bool{false, true} {
 		t.Run(map[bool]string{false: "folder", true: "repository"}[repository], func(t *testing.T) {
-			t.Setenv("CODEAF_HOME", t.TempDir())
+			t.Setenv("CODEAF_HOME", workspaceApplyFixtureDir(t))
 			t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
 			t.Setenv("CODEAF_TASK_BELT", "bash")
-			source := t.TempDir()
+			source := workspaceApplyFixtureDir(t)
 			if repository {
-				source = newTestRepo(t)
+				source = canonicalPath(newTestRepo(t))
 			}
 			writeFile(t, filepath.Join(source, ".gitattributes"), "shared.txt text eol=lf\n")
 			writeFile(t, filepath.Join(source, "shared.txt"), "input\r\n")
@@ -398,7 +450,8 @@ func TestTaskWorkspaceStartsWithPortableSourceRepresentation(t *testing.T) {
 			if err := os.Mkdir(filepath.Join(source, "empty"), 0750); err != nil {
 				t.Fatal(err)
 			}
-			place := Place{Dir: t.TempDir(), Workspace: source}
+			prepareWorkspaceApplyFixture(t, source)
+			place := Place{Dir: workspaceApplyFixtureDir(t), Workspace: source}
 			engine := newBeltRunDouble("done")
 			engine.real = true
 			registerBeltRunEngine(t, engine)
@@ -430,6 +483,7 @@ func TestTaskWorkspaceStartsWithPortableSourceRepresentation(t *testing.T) {
 }
 
 func TestTaskWorkspaceApplyUsesExplicitDirectoryDeletionCoverage(t *testing.T) {
+	// macOS can inherit unsupported metadata on files and directories added after the initial Review.
 	for _, remove := range []bool{false, true} {
 		t.Run(map[bool]string{false: "newly-ignored-retained", true: "explicit-empty-directory-deletion"}[remove], func(t *testing.T) {
 			agent, id, _, source, copyDir := completedWorkspaceApplyFixtureWithInput(t, false, func(source string) {
@@ -444,6 +498,7 @@ func TestTaskWorkspaceApplyUsesExplicitDirectoryDeletionCoverage(t *testing.T) {
 			} else {
 				writeFile(t, filepath.Join(copyDir, ".gitignore"), "keep/\n")
 			}
+			prepareWorkspaceApplyFixture(t, copyDir)
 			if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), id, "work"); err != nil {
 				t.Fatal(err)
 			}

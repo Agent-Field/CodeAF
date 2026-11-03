@@ -1,6 +1,7 @@
 package cellstore
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -19,8 +21,9 @@ import (
 var ErrStoreBusy = errors.New("engine store is busy")
 
 const (
-	storeWriterLockName = "writer.lock"
-	maxLockPayloadBytes = 4 << 10
+	storeWriterLockName    = "writer.lock"
+	maxLockPayloadBytes    = 4 << 10
+	storeBusyInspectWithin = time.Second
 )
 
 // StoreHolder identifies the process holding a store writer lock.
@@ -122,15 +125,25 @@ func HoldStoreWriter(dataDir, command string) (func() error, error) {
 	}, nil
 }
 
+var inspectStoreLock = probeStoreLockBusy
+
 // InspectStoreBusy checks whether another live process holds an advisory writer
 // lock on dataDir. A daemon serving ownSocket is treated as this client's own
 // transport rather than a competing holder.
 func InspectStoreBusy(dataDir, ownSocket string) (StoreHolder, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), storeBusyInspectWithin)
+	defer cancel()
 	if strings.TrimSpace(dataDir) == "" {
 		return StoreHolder{}, false
 	}
 	for _, lockPath := range storeLockCandidates(dataDir, ownSocket) {
-		holder, busy := probeStoreLockBusy(lockPath, ownSocket)
+		if ctx.Err() != nil {
+			break
+		}
+		holder, busy := inspectStoreLock(ctx, lockPath, ownSocket)
+		if ctx.Err() != nil {
+			return StoreHolder{}, busy
+		}
 		if busy {
 			return holder, true
 		}
@@ -201,7 +214,7 @@ func storeLockCandidates(dataDir, ownSocket string) []string {
 	return paths
 }
 
-func probeStoreLockBusy(lockPath, ownSocket string) (StoreHolder, bool) {
+func probeStoreLockBusy(ctx context.Context, lockPath, ownSocket string) (StoreHolder, bool) {
 	if strings.HasSuffix(lockPath, ".sock.lock") {
 		// An active engine daemon socket lock is the normal daemon lease, not a
 		// stuck store writer, unless its socket file is missing.
@@ -229,11 +242,11 @@ func probeStoreLockBusy(lockPath, ownSocket string) (StoreHolder, bool) {
 		return StoreHolder{}, false
 	}
 
-	holder := lockHolderFromOS(lockPath)
+	holder := lockHolderFromOS(ctx, lockPath)
 	if holder.PID == os.Getpid() {
 		return StoreHolder{}, false
 	}
-	if holder.PID > 0 && pidServesSocket(holder.PID, ownSocket) {
+	if holder.PID > 0 && pidServesSocket(ctx, holder.PID, ownSocket) {
 		return StoreHolder{}, false
 	}
 	if holder.PID == 0 || holder.Command == "" {
@@ -241,7 +254,7 @@ func probeStoreLockBusy(lockPath, ownSocket string) (StoreHolder, bool) {
 		if recorded.PID == os.Getpid() {
 			return StoreHolder{}, false
 		}
-		if recorded.PID > 0 && pidServesSocket(recorded.PID, ownSocket) {
+		if recorded.PID > 0 && pidServesSocket(ctx, recorded.PID, ownSocket) {
 			return StoreHolder{}, false
 		}
 		if holder.PID == 0 {
@@ -252,7 +265,7 @@ func probeStoreLockBusy(lockPath, ownSocket string) (StoreHolder, bool) {
 		}
 	}
 	if holder.Command == "" && holder.PID > 0 {
-		holder.Command = describeProcess(holder.PID)
+		holder.Command = describeProcess(ctx, holder.PID)
 	}
 	holder.Lock = lockPath
 	return holder, true

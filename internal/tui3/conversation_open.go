@@ -118,12 +118,22 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 	}
 	a.conversationRequest++
 	request, page, ctx := a.conversationRequest, a.page, a.ctx
+	var automatic *homeTakenMsg
+	if a.homeTakeOpening && a.homeTakeResult != nil && a.homeTakeResult.automatic {
+		result := *a.homeTakeResult
+		automatic = &result
+	}
+	taker := a.taker
 	a.conversationOpening = true
 	say(conversationOpeningWord)
 	a.touch()
 	return a.offLoop(func() func(bool) tea.Cmd {
 		conv, err := ask()
 		if ctx.Err() != nil {
+			if automatic != nil {
+				releaseUnusedTake(taker, *automatic, conv.Agent)
+				return nil
+			}
 			if conv.Agent != nil {
 				leaveAgent(conv.Agent)
 			}
@@ -132,6 +142,16 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 		return func(here bool) tea.Cmd {
 			preview := a.conversationPreview
 			current := a.conversationOpening && request == a.conversationRequest
+			if automatic != nil && (automatic.seq != a.homeTakeSeq || a.homeTakeAbandoned || !current || !here || !a.at(page)) {
+				if automatic.seq == a.homeTakeSeq {
+					a.homeTakeAbandoned = true
+				}
+				if current {
+					a.conversationOpening = false
+					a.conversationPreview = nil
+				}
+				return a.settleAutomaticTake(*automatic, conv.Agent)
+			}
 			if current {
 				a.conversationOpening = false
 				a.conversationPreview = nil
@@ -176,6 +196,7 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 }
 
 func (a *app) cancelConversationOpening() {
+	a.abandonAutomaticTake()
 	a.finishHomeTake(true)
 	hadDraft := a.conversationPreview != nil && (!a.conversationPreview.view.input.empty() || len(a.conversationPreview.view.pasted) > 0)
 	if a.conversationPreview == nil {
@@ -216,6 +237,7 @@ func (a *app) startDoor(workspace string) (func() (Conversation, error), bool) {
 }
 
 func (a *app) renewLater(say func(string), after func() tea.Cmd) tea.Cmd {
+	a.abandonAutomaticTake()
 	if a.shared {
 		cmd, ok := a.renewRefusing(say)
 		if ok && after != nil {

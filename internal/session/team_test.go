@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -124,6 +125,10 @@ func teamAgent(t *testing.T, fixture teamFixture, transcript string, completer C
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.ProfileDir = fixture.profile
+		config.TeamsPaired = func() bool {
+			_, err := identity.Load(home.Dir())
+			return err == nil && !identity.Solo(home.Dir())
+		}
 		config.SessionFile = transcript
 		config.Place = Place{Dir: filepath.Dir(transcript)}
 		if mutate != nil {

@@ -493,7 +493,11 @@ func TestKilledComputerTakesBackFromHomeAndLocalCard(t *testing.T) {
 				if _, err := io.WriteString(typed, "  "); err != nil {
 					t.Fatal(err)
 				}
-				h.wait("Home continuation offer", func() bool { return strings.Contains(screen.String(), "alt+c") })
+				// The question and its continue chord must be visible in the same offer.
+				h.wait("Home continuation offer", func() bool {
+					text := screen.String()
+					return strings.Contains(text, "Continue other computer's latest chat here?") && (strings.Contains(text, "alt+c") || strings.Contains(text, "opt+c"))
+				})
 				if _, err := io.WriteString(typed, "\x1bc"); err != nil {
 					t.Fatal(err)
 				}

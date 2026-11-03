@@ -728,8 +728,12 @@ type harnessOfferRecord struct {
 // exists, and no answer could reach one. Left out, the row comes back settled
 // like every other row that was moving, which is the truth about it.
 type runRecord struct {
-	RecoveredCompletion bool            `json:"recoveredCompletion,omitempty"`
-	CrewState           *TaskCrewRecord `json:"crewState,omitempty"`
+	Remote              *TaskRemoteRecord `json:"remote,omitempty"`
+	Computer            string            `json:"computer,omitempty"`
+	Unreachable         bool              `json:"unreachable,omitempty"`
+	RanElsewhere        bool              `json:"ran_elsewhere,omitempty"`
+	RecoveredCompletion bool              `json:"recoveredCompletion,omitempty"`
+	CrewState           *TaskCrewRecord   `json:"crewState,omitempty"`
 
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
@@ -1130,6 +1134,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		state = TaskRunning
 	}
 	return runRecord{
+		Remote: cloneTaskRemote(notice.Remote), Computer: notice.Computer, Unreachable: notice.Unreachable, RanElsewhere: notice.RanElsewhere,
 		CrewState:           notice.CrewState,
 		ID:                  notice.ID,
 		Run:                 notice.Run,
@@ -1178,6 +1183,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 // That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
+		Remote: cloneTaskRemote(record.Remote), Computer: record.Computer, Unreachable: record.Unreachable, RanElsewhere: record.RanElsewhere,
 		CrewState: record.CrewState,
 		ID:        record.ID,
 		Run:       record.Run,

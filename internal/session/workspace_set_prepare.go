@@ -537,6 +537,7 @@ func recoverWorkspaceSetPreparations(place Place, document taskDocument) (taskDo
 			for i := range document.Runs {
 				if document.Runs[i].ID == id {
 					record.CrewState = document.Runs[i].CrewState
+					record = keepPendingRemotePreparation(receipt, record, document.Runs[i])
 					document.Runs[i] = record
 					replaced = true
 					break
@@ -558,4 +559,13 @@ func recoverWorkspaceSetPreparations(place Place, document taskDocument) (taskDo
 		document = filterDeletedDocument(document, taskDeletions(place.Transcript()))
 	}
 	return document, changed
+}
+
+// A completed preparation receipt belongs to its saved remote intent, not a new local run.
+func keepPendingRemotePreparation(receipt workspaceSetPreparation, recovered, saved runRecord) runRecord {
+	if receipt.Complete && saved.Remote != nil && !saved.Remote.Abandoned && saved.PendingRun != nil {
+		saved.Copy, saved.WorkspaceSet = recovered.Copy, recovered.WorkspaceSet
+		return saved
+	}
+	return recovered
 }

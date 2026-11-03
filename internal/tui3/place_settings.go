@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -125,6 +126,11 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 		rows = append(rows, placeRow{text: sheetTabBar(width, displayTab, pal), hit: sheetHit{kind: sheetHitTabs}})
 	}
 	rows = append(rows, placeRow{})
+	if s.onDevices() && s.dev != nil && s.dev.service != "" {
+		for _, line := range wrap(syncwords.ServiceLine(s.dev.service), max(width-2, 4)) {
+			rows = append(rows, placeRow{text: "  " + pal.dim(line)})
+		}
+	}
 	if s.choice != nil {
 		rows = append(rows, s.choiceRows(width, room-len(rows), pal, a.hoveredSheetRow())...)
 		for len(rows) < room {

@@ -480,6 +480,11 @@ func (c *Client) effortAsked(requested effortRequest) effortRequest {
 
 // resolveEffort decides whether the knob may travel, and in what shape.
 func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
+	if c.config.DropRefusedEffort {
+		if _, refused := c.refusedEffort.Load(normalizeModel(model)); refused {
+			return EffortNone
+		}
+	}
 	requested = c.effortAsked(requested)
 	effort := c.requestedEffort(model, requested)
 	// A model that reasons unconditionally answers the disable with a 400, and

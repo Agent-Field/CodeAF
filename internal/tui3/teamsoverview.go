@@ -42,6 +42,10 @@ type teamsPreview struct {
 }
 
 func teamsReadPreview(file string, previous teamsPreview) teamsPreview {
+	// An absent local path is a remote member, not a missing local transcript.
+	if file == "" {
+		return teamsPreview{}
+	}
 	f, err := os.Open(file)
 	if err != nil {
 		return teamsPreview{missing: errors.Is(err, os.ErrNotExist), unavailable: true}
@@ -100,13 +104,25 @@ func (a *app) teamsTakeInteractions(id string, entries []teamstore.Entry) bool {
 		byID[e.ID] = e
 	}
 	for _, e := range entries {
+		if e.Origin != "" && !a.teamsShare {
+			continue
+		}
 		byID[e.ID] = e
 	}
 	list := make([]teamstore.Entry, 0, len(byID))
 	for _, e := range byID {
 		list = append(list, e)
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+	mirrored := false
+	for _, entry := range list {
+		mirrored = mirrored || entry.Origin != ""
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if mirrored && !list[i].At.Equal(list[j].At) {
+			return list[i].At.Before(list[j].At)
+		}
+		return list[i].ID < list[j].ID
+	})
 	if len(list) > trafficKeep {
 		list = list[len(list)-trafficKeep:]
 	}
@@ -494,6 +510,9 @@ func (a *app) teamsInteractionTable(d *teamsDraw, t team, width, y int) []string
 		}
 		messageWidth := max(inner-labelWidth-metaWidth-4, 1)
 		preview := strings.Join(strings.Fields(e.Text), " ")
+		if origin := a.trafficComputer(e); origin != "" {
+			preview = a.pal.dim(origin+": ") + preview
+		}
 		line := teamsPad(mark, 2) + teamsPad(participants, labelWidth) + " " + teamsPad(preview, messageWidth)
 		if metaWidth > 0 {
 			line += " " + a.pal.dim(teamsPad(strings.TrimSpace(meta), metaWidth))

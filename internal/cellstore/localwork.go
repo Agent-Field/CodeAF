@@ -191,7 +191,7 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 			continue
 		}
 		switch name {
-		case TurnsPath, publishedPath, adoptedPath, cell.CopyOfferedPath, cell.StateDir + "/copy-ready":
+		case TurnsPath, publishedPath, adoptedPath, cell.CopyOfferedPath, cell.CopyReadyPath:
 			continue
 		case cell.TranscriptPath:
 			// The shared prefix is checked before a changed journal is discarded.

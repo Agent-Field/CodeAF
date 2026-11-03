@@ -164,9 +164,13 @@ func scanLocalChatInventory() localChatInventory {
 		if strings.HasSuffix(base, ".replaced") {
 			continue
 		}
+		if filepath.Base(filepath.Dir(entry)) == ".moving" && fileExists(entry+".lock") && !fileExists(filepath.Join(entry, filepath.FromSlash(cell.CopyReadyPath))) {
+			continue
+		}
 		hasTranscript := fileExists(session.Place{Dir: entry}.Transcript())
 		hasCell := fileExists(filepath.Join(entry, filepath.FromSlash(cell.MetaPath)))
-		if hasTranscript || hasCell {
+		hasMeta := fileExists(filepath.Join(entry, "meta.json"))
+		if hasTranscript || hasCell || hasMeta {
 			id := base
 			if meta, err := session.LoadMeta(entry); err == nil && strings.TrimSpace(meta.ID) != "" {
 				id = strings.TrimSpace(meta.ID)

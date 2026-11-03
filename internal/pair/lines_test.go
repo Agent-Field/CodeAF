@@ -6,7 +6,7 @@ import "testing"
 // zero is never printed.
 func TestJoinedFleetLineNeverPrintsZero(t *testing.T) {
 	for workspaces, want := range map[int]string{
-		0: "Paired.", 1: "Paired. 1 workspace available.", 3: "Paired. 3 workspaces available.",
+		0: "Paired with your other device. Run codeaf to open your chats.", 1: "Paired with your other device. Run codeaf to open your chats.", 3: "Paired with your other device. Run codeaf to open your chats.",
 	} {
 		if got := JoinedFleetLine(workspaces); got != want {
 			t.Errorf("JoinedFleetLine(%d) = %q, want %q", workspaces, got, want)

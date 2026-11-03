@@ -115,6 +115,9 @@ const (
 // and the cost, because those are the three questions asked about work that is
 // already over.
 type TaskIndexEntry struct {
+	Computer     string `json:"computer,omitempty"`
+	Unreachable  bool   `json:"unreachable,omitempty"`
+	RanElsewhere bool   `json:"ran_elsewhere,omitempty"`
 	// ID is the node's id inside the session that ran it, decimal. It is NOT
 	// unique across the file — ids restart with every conversation — which is
 	// why SessionID sits beside it and why the pair is what identifies a row.

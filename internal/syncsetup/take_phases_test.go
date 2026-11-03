@@ -106,7 +106,8 @@ func TestStagedWorkspaceNeverTargetsTheBorrowedFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := &admissionTarget{}
-	sync := &Sync{}
+	// Take helpers derive local sync paths, so this fixture must own its home.
+	sync := &Sync{Home: t.TempDir()}
 	continuer := sync.Continuer(cellstore.Engine{DataRoot: t.TempDir(), Transport: target}, TakeOptions{RootFor: func(string) string { return root }})
 	take := continuer.taker(t.Context(), &Scope{Store: blobstore.NewMemory()})
 	if err := take.Fetch.Fetch(t.Context(), cell.Cell{ID: "chat", Root: stage}, strings.Repeat("a", 64)); err != nil {

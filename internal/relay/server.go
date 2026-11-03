@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/pairbox"
 	"github.com/coder/websocket"
 )
 
@@ -51,6 +52,9 @@ type Ledger struct {
 // limit it enforces comes from the constants in relay.go, so an operator who
 // changes one changes it in the one place the sentences quote.
 type Server struct {
+	// Peer selects the network counted by registration and dial limits. Nil
+	// trusts only the socket; forwarding headers require an explicit proxy policy.
+	Peer func(*http.Request) string
 	// Now is the clock, swapped by tests. Nil is [time.Now].
 	Now func() time.Time
 	// Note is where a relay operator's log line goes, if they want one. It is
@@ -138,7 +142,7 @@ func (s *Server) serveEngine(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this door speaks "+Protocol, http.StatusUpgradeRequired)
 		return
 	}
-	from := callerAddress(r)
+	from := s.callerAddress(r)
 	if !s.allow(&s.regs, from, RegistrationsPerMinute) {
 		http.Error(w, "too many registrations from here — wait a minute", http.StatusTooManyRequests)
 		return
@@ -245,7 +249,7 @@ func (s *Server) serveDial(w http.ResponseWriter, r *http.Request, name string) 
 		http.Error(w, "this door speaks "+Protocol, http.StatusUpgradeRequired)
 		return
 	}
-	if !s.allow(&s.dials, callerAddress(r), DialsPerMinute) {
+	if !s.allow(&s.dials, s.callerAddress(r), DialsPerMinute) {
 		http.Error(w, "too many connections from here — wait a minute", http.StatusTooManyRequests)
 		return
 	}
@@ -389,22 +393,13 @@ func writeUpgraded(conn net.Conn) error {
 	return err
 }
 
-// callerAddress is who a rate limit is counted against. It reads
-// X-Forwarded-For only when it is there, because a relay in production sits
-// behind something that terminates TLS, and counting every request against the
-// load balancer would rate-limit the world as one caller.
-func callerAddress(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		if comma := strings.IndexByte(forwarded, ','); comma >= 0 {
-			forwarded = forwarded[:comma]
-		}
-		return strings.TrimSpace(forwarded)
+// callerAddress uses the same peer policy as pairing, so a caller cannot
+// mint a fresh allowance by supplying its own forwarding header.
+func (s *Server) callerAddress(r *http.Request) string {
+	if s.Peer != nil {
+		return s.Peer(r)
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return pairbox.SocketPeer(r)
 }
 
 // bucket is one caller's allowance, refilled by the minute. It is a plain

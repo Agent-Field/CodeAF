@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -370,5 +372,117 @@ func TestDoctorFindsAndRepairsSyncAndEngineStoreSafely(t *testing.T) {
 	}
 	if _, err := os.Stat(session.Place{Dir: uniqueStagingDir}.Transcript()); err != nil {
 		t.Fatalf("doctor --fix deleted .taking folder containing unique turns: %v", err)
+	}
+}
+
+// TestDoctorDoesNotCreateRecordsOnSyncService verifies that read-only
+// `codeaf doctor` makes only a read-only listing call under the person's own
+// identity and creates no namespaces, devices, cells, or Raft stores on the
+// sync service (and makes zero requests when sync is off or unpaired).
+func TestDoctorDoesNotCreateRecordsOnSyncService(t *testing.T) {
+	celltest.Available(t)
+	storeDir := t.TempDir()
+	svc := relayserve.New(relayserve.Config{Store: storeDir})
+	t.Cleanup(func() { _ = svc.Close() })
+
+	var mu sync.Mutex
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		svc.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	homeA := t.TempDir()
+	t.Setenv(home.EnvVar, homeA)
+	t.Setenv(syncsetup.URLVar, srv.URL)
+
+	if _, err := identity.Ensure(homeA); err != nil {
+		t.Fatal(err)
+	}
+	syncA, ok, err := syncsetup.Open(homeA)
+	if err != nil || !ok {
+		t.Fatalf("syncsetup.Open(homeA) = (%v, %v)", ok, err)
+	}
+	if err := syncsetup.PutOwnDevice(context.Background(), syncA.Dir, syncA.Identity, syncA.Device, "desk"); err != nil {
+		t.Fatal(err)
+	}
+
+	readNames := func(dir string) []string {
+		entries, err := os.ReadDir(dir)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		slices.Sort(names)
+		return names
+	}
+
+	dirNamesBefore := readNames(filepath.Join(storeDir, "directory"))
+	raftNamesBefore := readNames(filepath.Join(storeDir, "raft"))
+
+	mu.Lock()
+	requests = nil
+	mu.Unlock()
+
+	dbPath := filepath.Join(t.TempDir(), "graph.db")
+	var out bytes.Buffer
+	if err := runDoctorWith([]string{"--db", dbPath}, &out, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	gotRequests := slices.Clone(requests)
+	requests = nil
+	mu.Unlock()
+
+	if !slices.Equal(gotRequests, []string{"GET /v1/dir/list"}) {
+		t.Fatalf("doctor HTTP requests = %v, want only [GET /v1/dir/list]", gotRequests)
+	}
+	if got := readNames(filepath.Join(storeDir, "directory")); !slices.Equal(got, dirNamesBefore) {
+		t.Fatalf("relay directory files changed after doctor: got %v, want %v", got, dirNamesBefore)
+	}
+	if got := readNames(filepath.Join(storeDir, "raft")); !slices.Equal(got, raftNamesBefore) {
+		t.Fatalf("relay raft files changed after doctor: got %v, want %v", got, raftNamesBefore)
+	}
+
+	// Sync off: zero HTTP requests.
+	t.Setenv(syncsetup.URLVar, "off")
+	var offOut bytes.Buffer
+	if err := runDoctorWith([]string{"--db", dbPath}, &offOut, 0); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	offRequests := slices.Clone(requests)
+	requests = nil
+	mu.Unlock()
+	if len(offRequests) != 0 {
+		t.Fatalf("doctor sent %v with CODEAF_SYNC_URL=off, want none", offRequests)
+	}
+
+	// Unpaired solo home: zero HTTP requests.
+	soloHome := t.TempDir()
+	if _, err := identity.EnsureSolo(soloHome); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(home.EnvVar, soloHome)
+	t.Setenv(syncsetup.URLVar, srv.URL)
+	var soloOut bytes.Buffer
+	if err := runDoctorWith([]string{"--db", dbPath}, &soloOut, 0); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	soloRequests := slices.Clone(requests)
+	mu.Unlock()
+	if len(soloRequests) != 0 {
+		t.Fatalf("doctor sent %v on unpaired solo home, want none", soloRequests)
 	}
 }

@@ -2112,6 +2112,9 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return a.slash(line), true
 		}
 	}
+	if msg.String() == taskRunHereKey && a.input.empty() && !a.guarding() && !a.stopping() && !a.recalling() && !a.roomIsGuest() && a.taskCanRunHere(a.roomRetryEntry()) {
+		return a.runTaskHere(a.roomRetryEntry()), true
+	}
 	if a.room.orch != nil && !a.recalling() {
 		if cmd, taken := a.orchKey(msg); taken {
 			return cmd, true
@@ -2248,6 +2251,9 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // next keystroke.
 func (a *app) roomHint() string {
 	if a.room != nil && !a.roomIsGuest() && a.room.program == nil && !a.guarding() && !a.asking() && !a.stopping() {
+		if a.input.empty() && !a.recalling() && a.taskCanRunHere(a.roomRetryEntry()) {
+			return taskRunHereVerb
+		}
 		entry := a.roomRetryEntry()
 		if hint := a.taskRetryHint(entry); hint != "" {
 			return hint
@@ -3435,6 +3441,18 @@ func guestOwnerName(owner string) string {
 // roomStateWord is what the node is doing, in the engine's own vocabulary where
 // it has one (task.go's merge words).
 func (a *app) roomStateWord(node *taskNode) string {
+	word := a.roomLocalStateWord(node)
+	if words := a.taskComputerWords(node); words != "" {
+		if word == "" || strings.HasPrefix(words, word+" ") {
+			return words
+		}
+		return word + railSep + words
+	}
+	return word
+}
+
+// The state reading stays the same when a separate placement fact is drawn.
+func (a *app) roomLocalStateWord(node *taskNode) string {
 	// A QUESTION SOMEBODY ELSE IS ANSWERING IS STILL THAT QUESTION. This line
 	// used to read `awaiting review` for a card the settle policy had handed to
 	// the model, which was a fourth word for one reading and said nothing about
@@ -3469,8 +3487,8 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// IS at this moment (session's TaskNotice.Doing) — a header that said
 		// "working" over a card waiting on the person would be the one line on the
 		// page spent on the least specific thing on it.
-		if node.doing != "" {
-			return node.doing
+		if doing := taskDoingWords(node); doing != "" {
+			return doing
 		}
 		// AND SO DOES A NODE THAT IS NOT ITS OWN WORKER RIGHT NOW. A check
 		// reading what the work left, and a round closing what the check found,

@@ -485,3 +485,51 @@ func TestWrapUpRoundTripThroughChange(t *testing.T) {
 		t.Fatalf("a cleared wrap was still written:\n%s", raw)
 	}
 }
+
+// R5/F2 preserves a synced first-sharing copy on filesystems that reject hard links.
+func TestBackupBeforeSharingFallsBackWithoutOverwriting(t *testing.T) {
+	dir := t.TempDir()
+	raw := []byte(`{"version":2,"teams":[{"id":"local","name":"harbor"}]}`)
+	if err := os.WriteFile(Path(dir), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := func(string, string) error { return errors.New("hard links unavailable") }
+	if err := backupBeforeSharing(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(dir, "teams.before-sharing.json")
+	got, err := os.ReadFile(backup)
+	if err != nil || string(got) != string(raw) {
+		t.Fatalf("fallback backup = %s, %v", got, err)
+	}
+	info, err := os.Stat(backup)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("backup permissions", info, err)
+	}
+	if err := os.WriteFile(Path(dir), []byte("later teams"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := backupBeforeSharing(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(backup)
+	if err != nil || string(got) != string(raw) {
+		t.Fatal("fallback overwrote original backup", string(got), err)
+	}
+	if err := os.Remove(backup); err != nil {
+		t.Fatal(err)
+	}
+	link = func(_, target string) error {
+		if err := os.WriteFile(target, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		return errors.New("another publisher won")
+	}
+	if err := backupBeforeSharing(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(backup)
+	if err != nil || string(got) != string(raw) {
+		t.Fatal("exclusive fallback replaced an existing backup", string(got), err)
+	}
+}

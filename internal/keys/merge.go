@@ -69,5 +69,22 @@ func supersedes(a record, ad *vaultDoc, b record, bd *vaultDoc) bool {
 		return false
 	}
 	sa, sb := a.stampOf(ad), b.stampOf(bd)
-	return sa > sb || (sa == sb && a.Deleted && b.live())
+	if (a.Scope != "home:keys:teams" && a.Scope != "home:windows:team-traffic") || a.Scope != b.Scope {
+		return sa > sb || (sa == sb && a.Deleted && b.live())
+	}
+	if sa != sb {
+		return sa > sb
+	}
+	if a.Deleted != b.Deleted {
+		return a.Deleted
+	}
+	// Independent devices can save within one clock tick. Stable content order
+	// resolves that tie so exchanging the same slots cannot leave two answers.
+	if a.Scope != b.Scope {
+		return a.Scope > b.Scope
+	}
+	if a.Name != b.Name {
+		return a.Name > b.Name
+	}
+	return a.Value > b.Value
 }

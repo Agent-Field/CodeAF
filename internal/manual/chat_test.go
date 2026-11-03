@@ -33,7 +33,46 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// Task placement must answer DESIGN contract 16 in the person's words.
+		{"taskdoor empty frame when starting a task", "tasks-on-another-computer"},
+		{"taskdoor a frame needs a type", "tasks-on-another-computer"},
+		{"could not check your devices right now", "tasks-on-another-computer"},
+		{"could not confirm this is my task computer", "tasks-on-another-computer"},
+		{"the task copy could not be sent", "tasks-on-another-computer"},
+		{"the task copy cell or head is not readable", "tasks-on-another-computer"},
+		{"the task destination already contains files", "tasks-on-another-computer"},
+		{"could not put the result in place earlier copy kept", "tasks-on-another-computer"},
+		{"the sent task copy fingerprint is missing", "tasks-on-another-computer"},
+		{"that task attempt id is not readable", "tasks-on-another-computer"},
+		{"that task is already finished", "tasks-on-another-computer"},
+		{"that task request is not readable", "tasks-on-another-computer"},
+		{"the other computer no longer has this task answer", "tasks-on-another-computer"},
+		{"the other computer sent an unreadable task event", "tasks-on-another-computer"},
+		{"the task remote record cannot be saved here", "tasks-on-another-computer"},
+		{"the task was interrupted before it left an answer", "tasks-on-another-computer"},
+		{"could not record the task child", "tasks-on-another-computer"},
+		{"the task saved event is too large", "tasks-on-another-computer"},
+		{"this computer is already taking tasks", "tasks-on-another-computer"},
+		{"can a task run on my other computer", "tasks-on-another-computer"},
+		{"why a task appears before its copy is ready", "tasks-on-another-computer"},
+		{"paired task computers are unavailable here", "tasks-on-another-computer"},
+		{"run a task on my mac mini", "tasks-on-another-computer"},
+		{"what does running on mean", "tasks-on-another-computer"},
+		{"my other computer stopped answering", "tasks-on-another-computer"},
+		{"run it here", "tasks-on-another-computer"},
+		{"run tasks on", "tasks-on-another-computer"},
+		{"codeaf serve --take-tasks takes tasks", "tasks-on-another-computer"},
+		{"does plain codeaf serve take tasks", "tasks-on-another-computer"},
+		{"when does the model get the computer argument", "tasks-on-another-computer"},
+		{"why did my task run here instead", "tasks-on-another-computer"},
+		{"send a task to my dev box", "a-dev-box-on-your-own-railway"},
+		{"can this conversation start other tasks while one runs on another computer", "tasks-on-another-computer"},
 		{"why didn't my task's changes show up in my folder", "how-tasks-run"},
+		{"can I run codeaf on my own server", "a-dev-box-on-your-own-railway"},
+		{"set up a dev box", "a-dev-box-on-your-own-railway"},
+		{"always-on computer in the cloud", "a-dev-box-on-your-own-railway"},
+		{"how do I remove my dev box", "a-dev-box-on-your-own-railway"},
+		{"how much does a dev box cost", "a-dev-box-on-your-own-railway"},
 		// R6/R7/R8/R15/R30 keep leadership, fallback and worker limits reachable.
 		{"can my phone lead", "coordination-and-workers"},
 		{"can my phone be the leader", "coordination-and-workers"},
@@ -97,6 +136,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		{"do my teams show on my other computer?", "conversations-and-teams"},
+		{"how do I turn on team sharing", "conversations-and-teams"},
+		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams"},
+		{"does Traffic sync between computers?", "conversations-and-teams"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost"},
 		{"create an empty team and add several saved conversations", "teams-page"},
 		{"how do I choose another manager before deleting its conversation", "teams-page"},
 		{"where is the model name and working spinner on team cards", "teams-page"},
@@ -888,6 +932,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my cursor jumped to another task while I was reading", "tasks"},
 		{"why is the finished piece at the bottom of the family", "tasks"},
 		{"can codeaf parallelize my task", "tasks"},
+		{"where is the tasks at once setting", "tasks"},
+		{"what section is task.parallel under", "tasks"},
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
@@ -3528,6 +3574,29 @@ func TestTheGitMetadataQuestionsReachTheSectionsThatRefuseIt(t *testing.T) {
 	}
 }
 
+// #1454: task.parallel is on the Tasks tab as `tasks at once`, not under
+// Spending. This checks the retrieved section's answer rather than only its
+// page, so restoring the former category cannot leave the retrieval gate green.
+func TestTaskParallelQuestionReachesItsCorrectedSettingsLocation(t *testing.T) {
+	const (
+		question = "where is task.parallel"
+		title    = "How many tasks run at once"
+	)
+	for _, section := range Chat().Search(question, DefaultResults) {
+		if section.Page != "tasks" || !strings.Contains(section.Title, title) {
+			continue
+		}
+		if !strings.Contains(section.Body, "under Tasks as `tasks at once`") {
+			t.Errorf("task.parallel answer omits its visible settings location: %s", section.Body)
+		}
+		if strings.Contains(section.Body, `category "spending"`) {
+			t.Errorf("task.parallel answer still names the former category: %s", section.Body)
+		}
+		return
+	}
+	t.Fatalf("%q did not reach tasks · %q", question, title)
+}
+
 // #1469: home listed waiting standing orders without their due time, and a person
 // asking when one goes off there had to be sent to the standing place for it.
 // Standing orders are automations now (automations.md), and home's `automations`
@@ -4450,6 +4519,7 @@ func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {
 	}
 }
 
+// F8 keeps the shipped sharing explanation searchable and accurate.
 func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	const add, cont, naming = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"
 	for _, probe := range []struct{ asked, page, says string }{
@@ -4491,9 +4561,40 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	}
 }
 
+// C6 and C9 keep the sharing answer consistent with the default and local off switch.
+// F8 keeps the shipped sharing explanation searchable and accurate.
+func TestTheTeamSharingQuestionExplainsTheLocalDefaultOn(t *testing.T) {
+	for _, section := range Chat().Search("do my teams show on my other computer?", DefaultResults) {
+		if section.Page != "conversations-and-teams" {
+			continue
+		}
+		complete := true
+		for _, fact := range []string{
+			"Settings → General → share teams", "on by default",
+			"Turning it off on either computer stops sharing", "teams, members",
+			"team settings", "recent Traffic as read-only history",
+		} {
+			complete = complete && strings.Contains(section.Body, fact)
+		}
+		if complete {
+			return
+		}
+	}
+	t.Fatal("the team sharing question must reach one section explaining the local default-on choice and what it shares")
+}
+
 // C30.5 replaces the old chat-only memory promise with independent encrypted sync.
+// C6 and C9 keep cross-computer answers consistent with default-on team sharing.
+// F8 keeps the shipped sharing explanation searchable and accurate.
 func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
+		{"do my teams show on my other computer?", "conversations-and-teams", "within a few seconds"},
+		{"how do I turn on team sharing", "conversations-and-teams", "on by default"},
+		{"how do I turn on team sharing", "conversations-and-teams", "Settings → General → share teams"},
+		{"stop sharing teams with my other computer", "conversations-and-teams", "Turning it off on either computer stops sharing"},
+		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams", "a deleted team stays deleted"},
+		{"does Traffic sync between computers?", "conversations-and-teams", "32 lines per team"},
+		{"do my crew settings follow me to my other computer?", "models-and-cost", "provider route and providers you turned off stay on each computer"},
 		{"is my code sent anywhere before I pair", "use-this-on-another-computer", "no device record reaches the relay"},
 		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer", "That is not a fault."},
 		{"how do I pair a server with no browser", "add-or-remove-a-computer", "the bare token `<code>.<key>`"},
@@ -4512,6 +4613,7 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
 		{"which relay does a dev build or staging build use", "relay-hosted-or-your-own", "https://caf-fabric-dev.instrument-santosh.workers.dev"},
 		{"do dev and stable builds sync with each other", "relay-hosted-or-your-own", "Channels do not sync with each other"},
+		{"sync off and my chats are gone", "home", "Home still lists every chat on this computer"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {
@@ -4568,5 +4670,70 @@ func TestWindowsManualQuotesTheShellRefusal(t *testing.T) {
 		if !strings.Contains(page, "\""+refusal+"\"") {
 			t.Errorf("Windows manual must quote the shared refusal exactly: %q", refusal)
 		}
+	}
+}
+
+// TestSyncOffManualQuotesExactSentences pins the retrieval probe and exact
+// person-facing sentences for #2072 (sync off keeps every chat).
+func TestSyncOffManualQuotesExactSentences(t *testing.T) {
+	for _, probe := range []struct {
+		asked   string
+		page    string
+		heading string
+		quotes  []string
+	}{
+		{
+			asked:   "sync off and my chats are gone",
+			page:    "home",
+			heading: "Sync off and my chats are gone",
+			quotes: []string{
+				"CODEAF_SYNC_URL=off",
+				"chats from older versions alike",
+				"each once, and each opens and can be written",
+			},
+		},
+	} {
+		t.Run(probe.asked, func(t *testing.T) {
+			results := Chat().Search(probe.asked, DefaultResults)
+			for _, section := range results {
+				if section.Page != probe.page || !strings.HasPrefix(section.Title, probe.heading) {
+					continue
+				}
+				for _, quote := range probe.quotes {
+					if !strings.Contains(section.Body, quote) {
+						t.Errorf("section %q on %s missing exact quote %q", section.Title, section.Page, quote)
+					}
+				}
+				return
+			}
+			t.Fatalf("%q did not retrieve %q on %s within %d results", probe.asked, probe.heading, probe.page, DefaultResults)
+		})
+	}
+}
+
+// R1/R9 and F8 keep first-merge safety, local cap scope and replacement recovery reachable by ordinary questions.
+func TestChatTeamSharingSafetyAnswers(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		facts []string
+	}{
+		{"first team sharing backup duplicate names global managers", []string{"teams.before-sharing.json", "both appear", "Rename one in its Settings", "older global team stays global", "former-manager history", "Teams"}},
+		{"shared team spending cap both computers", []string{"spending on each computer separately", "other computer is metered there"}},
+		{"pairing with replace what happens to teams", []string{"teams are set aside", "Provider keys saved on this computer stay here", "This computer's teams were set aside to <path>."}},
+		{"stop sharing teams with my other computer", []string{"stops sending and receiving", "encrypted copies in the vault", "history from the other computer is hidden"}},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			for _, section := range Chat().Search(tc.query, DefaultResults) {
+				text := strings.ToLower(strings.Join(strings.Fields(section.Body), " "))
+				complete := true
+				for _, fact := range tc.facts {
+					complete = complete && strings.Contains(text, strings.ToLower(fact))
+				}
+				if complete {
+					return
+				}
+			}
+			t.Fatalf("no self-contained answer to %q includes %v", tc.query, tc.facts)
+		})
 	}
 }

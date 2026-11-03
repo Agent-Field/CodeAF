@@ -16,8 +16,8 @@ import (
 // vault before a push or pull, and restored from it after a merge.
 type Carrier interface {
 	capture(v VaultFile) error
-	// captureEdits is capture that never records a removal, for the moment
-	// before a pull, when a gap here may only mean the state was never sent.
+	// captureEdits preserves local edits before a pull. Each carrier keeps
+	// its own rules for removals.
 	captureEdits(v VaultFile) error
 	restore(v VaultFile) error
 }
@@ -29,9 +29,9 @@ type Keyset interface {
 	// Values answers every key held here by name. ErrDamaged means what is held
 	// cannot be read, and is neither captured nor written over.
 	Values() (map[string]string, error)
-	// Holds reports whether this machine has a place for the named key. A key
-	// with no place here (a service this machine does not list) is not an
-	// opinion of this machine: it is never captured, removed or tombstoned.
+	// Holds reports whether this machine has a place for the named key, so a
+	// restore cannot introduce keys it cannot use. GuardedKeys also checks it
+	// before a removal; ordinary Keys retains its ledger-based removal rule.
 	Holds(name string) bool
 	// Apply sets each named key to its value, and removes it when the value is
 	// empty. It changes nothing else the machine holds.
@@ -48,9 +48,12 @@ type Keyset interface {
 // captured or restored per key, which is also how a removal is told from a key
 // that was never here: only a key the ledger knows can be tombstoned.
 type Keyed struct {
-	scope  string
-	set    Keyset
-	ledger string
+	scope         string
+	set           Keyset
+	ledger        string
+	ownedRemovals bool
+	// Captured values guard an apply across the network round, not only the write.
+	baseline *map[string]string
 }
 
 // Keys carries set under the reserved scope named by kind, remembering digests
@@ -58,6 +61,17 @@ type Keyed struct {
 // never receives these entries.
 func Keys(kind string, set Keyset, ledgerPath string) Keyed {
 	return Keyed{scope: "home:keys:" + kind, set: set, ledger: ledgerPath}
+}
+
+// GuardedKeys opts a carrier into cross-round edit protection and ownership
+// checks for removals. Ordinary Keys retain their existing capture and restore rules.
+// Each explicit capture starts a guarded snapshot; pulls preserve it until the
+// next capture so edits made afterward remain detectable.
+func GuardedKeys(kind string, set Keyset, ledgerPath string) Keyed {
+	k := Keys(kind, set, ledgerPath)
+	k.baseline = new(map[string]string)
+	k.ownedRemovals = true
+	return k
 }
 
 func (k Keyed) id(name string) string { return k.scope + "/" + name }
@@ -88,12 +102,21 @@ func (k Keyed) capture(v VaultFile) error {
 	if err != nil {
 		return err
 	}
+	if k.baseline != nil {
+		*k.baseline = run.held
+	}
 	return run.finish(run.captureAll())
 }
 
-// captureEdits is capture: a key is tombstoned only when the ledger says this
-// machine held it, so a key it was never given is already not a removal.
-func (k Keyed) captureEdits(v VaultFile) error { return k.capture(v) }
+// captureEdits preserves an existing guarded snapshot. Capturing again here
+// would let idle sync mark an unpublished edit as received, hiding it from the
+// next capture. Ordinary keys keep their existing capture and removal rules.
+func (k Keyed) captureEdits(v VaultFile) error {
+	if k.baseline != nil && *k.baseline != nil {
+		return nil
+	}
+	return k.capture(v)
+}
 
 func (k Keyed) restore(v VaultFile) error {
 	run, err := k.begin(v)
@@ -124,7 +147,7 @@ func (r *keyedRun) captureAll() error {
 		}
 	}
 	for name := range r.digests {
-		if _, still := r.held[name]; !still {
+		if _, still := r.held[name]; !still && (!r.ownedRemovals || r.set.Holds(name)) {
 			remove := func() error { return r.v.Delete(r.id(name)) }
 			if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
 				if vault, ok := r.v.(interface{ DeleteAt(string, time.Time) error }); ok {
@@ -176,7 +199,30 @@ func (r *keyedRun) restoreAll() error {
 		if guarded, ok := r.set.(interface {
 			ApplyIf(map[string]string, map[string]string) error
 		}); ok {
-			apply = func() error { return guarded.ApplyIf(changes, r.held) }
+			expected := r.held
+			if r.baseline != nil && *r.baseline != nil {
+				expected = *r.baseline
+			}
+			apply = func() error {
+				if err := guarded.ApplyIf(changes, expected); err != nil {
+					return err
+				}
+				// A CAS retry may restore twice in one network round. Advance
+				// only keys this restore could apply, so its own writes are
+				// not mistaken for local edits on the second merge.
+				if r.baseline != nil && *r.baseline != nil {
+					for name, value := range changes {
+						if r.held[name] == expected[name] {
+							if value == "" {
+								delete(expected, name)
+							} else {
+								expected[name] = value
+							}
+						}
+					}
+				}
+				return nil
+			}
 		}
 		if err := apply(); err != nil {
 			return err

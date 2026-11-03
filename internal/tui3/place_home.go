@@ -579,6 +579,10 @@ func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 // while the cursor is on that exchange's row, so walking away can never leave
 // the arrows moving a pane nobody is looking at ([app.settleExchangeFocus]).
 func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.pair.open {
+		return a.pairKey(msg), true
+	}
+
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
 		return cmd, true
 	}

@@ -32,6 +32,7 @@ package tui3
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -276,6 +277,21 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	// the same set of rows the page does — a run's row left in the name set
 	// would hide its own plan row.
 	var replaced map[tasksKey]bool
+	// The plan replaces the roster row, not its recorded executor. Keep only
+	// named placements; ordinary local readings need no extra map.
+	var placements map[tasksKey]session.TaskIndexEntry
+	for i := range mine.rows {
+		row := &mine.rows[i]
+		if row.entry.Computer != "" {
+			if placements == nil {
+				placements = make(map[tasksKey]session.TaskIndexEntry)
+			}
+			placements[tasksKeyOf(row.entry)] = row.entry
+			if row.planTask != "" {
+				placements[tasksKey{session: row.entry.SessionID, id: row.planTask}] = row.entry
+			}
+		}
+	}
 	mine.rows, replaced = planStoreDraws(mine.rows, mine.plan)
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
@@ -343,6 +359,14 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 				continue
 			}
 			item := planItem(task, mine.row.ID, kin)
+			if placements != nil {
+				key := tasksKeyOf(item.entry)
+				if task.HistoricalRun != 0 {
+					key = tasksKey{session: task.HistoricalSession, id: strconv.FormatUint(task.HistoricalRun, 10)}
+				}
+				saved := placements[key]
+				item.entry.Computer, item.entry.Unreachable, item.entry.RanElsewhere = saved.Computer, saved.Unreachable, saved.RanElsewhere
+			}
 			item.row = tasksRowFor(world, mine, item.entry)
 			put(tasksKeyOf(item.entry), item)
 		}
@@ -364,7 +388,11 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 		// there is one: presence carries neither, and a row that dropped the
 		// program would open a page with no badge over a program's work
 		// ([taskGuestNode]).
-		entry.Parent, entry.Program = get(key).entry.Parent, get(key).entry.Program
+		saved := get(key).entry
+		entry.Parent, entry.Program = saved.Parent, saved.Program
+		// Presence knows which window owns the work, but the saved record is
+		// still the authority for its executor.
+		entry.Computer, entry.Unreachable, entry.RanElsewhere = saved.Computer, saved.Unreachable, saved.RanElsewhere
 		put(key, tasksItem{
 			entry: entry, row: tasksRowFor(world, mine, entry), runs: true, away: true, window: task.Session,
 			here: mine.here[strings.TrimSpace(task.SessionID)],
@@ -2028,6 +2056,9 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 		state, second = planStateField(item), planSpendField(item)
 	}
 	label := tasksLabel(item.entry)
+	if words := taskComputerWords(item.entry.Computer, item.entry.Unreachable, item.entry.RanElsewhere, session.TaskState(item.entry.Status)); words != "" {
+		label += rowSep + words
+	}
 	if item.plan != nil && item.plan.Total > 0 {
 		label += "  " + planProgress(*item.plan, width, pal)
 	}
@@ -2157,10 +2188,17 @@ func tasksEntryAt(entry session.TaskIndexEntry, now time.Time) time.Time {
 // GRADES it was the state word again in different clothes.
 func tasksMiddle(item tasksItem) string {
 	entry := item.entry
+	placement := taskComputerWords(entry.Computer, entry.Unreachable, entry.RanElsewhere, session.TaskState(entry.Status))
 	if activity := strings.TrimSpace(entry.Activity); activity != "" {
+		if placement != "" {
+			return placement + rowSep + activity
+		}
 		return activity
 	}
 	var parts []string
+	if placement != "" {
+		parts = append(parts, placement)
+	}
 	// A PLAN ROW CARRIES WHAT THE STORE KNOWS: its steps and its money
 	// (taskplan.go), the two figures a phone card otherwise has no room for.
 	if item.plan != nil {
