@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -26,6 +27,9 @@ type liveDrive struct {
 	// transcript identifies the retained turns if this writer's final publish fails.
 	transcript string
 
+	// published is visible before idle release is enabled. Settings must not
+	// wait for installation or catch-up disk work under mu.
+	published atomic.Pointer[syncsetup.Drive]
 	mu        sync.Mutex
 	drive     *syncsetup.Drive
 	parked    bool // Startup awaits a journal owner.
@@ -132,6 +136,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	defer close(ready)
 	l.ready = nil
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
+	l.published.Store(d)
 	if d != nil {
 		d.SetIdleCheck(l.idleReady)
 		d.CatchUp()
@@ -257,7 +262,7 @@ func (l *liveDrive) Gate() error {
 }
 
 func (l *liveDrive) SavedMetadata() {
-	if d := l.started(); d != nil {
+	if d := l.published.Load(); d != nil {
 		d.SavedMetadata()
 	}
 }
