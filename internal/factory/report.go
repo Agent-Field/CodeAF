@@ -16,6 +16,7 @@ type RunReport struct {
 	Pipeline     *PipelineChange
 	Stages       []StageReport
 	Log          []LogLine
+	// Cost excludes growth in round tables carried by this report.
 	Cost         float64
 	Claims       []Claim
 	Question     *Asked

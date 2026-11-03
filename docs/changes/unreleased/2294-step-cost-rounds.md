@@ -4,16 +4,20 @@ title: codeaf step costs include every round once
 pr: 2294
 surface: [engine]
 invalidates:
-  - "Step cost previously showed only the last round, and resumed live meters reported only new spending while fallback chats reported their cumulative chat cost. Step reports now mean cumulative spending for one logical round; a step sums its rounds, replacing repeated reports rather than charging them again."
+  - "A worker's latest round total cannot represent a step's earlier rounds. The factory no longer reconstructs round baselines or sends cost-only pipeline snapshots."
 ---
 
-Live stage receipts retain their round attribution before a final report, including
-resumed work and delegated calls. Retries retain step spending, while a new run starts from zero. Coalesced worker
-snapshots carry accumulated step cost in the existing `pipeline[].cost` field;
-the latest result still carries its own round cost. Cost-only snapshots preserve
-pipeline edits made by the person. Old pending jobs attribute
-their saved result to its completed round so new spending reaches the job budget.
-Worker transport keeps its existing wire fields.
-The job total also includes its manager and other owned work outside steps, so it
-can exceed the sum of step costs. Historical saved jobs remain readable without a
-migration; spending from earlier rounds that was never saved cannot be recovered.
+Workers retain a table of cumulative spending by logical round and send the whole
+table in each changed step report. The factory replaces its copy and sums it for
+step.cost. Reports that omit or reduce saved rows are stale and cannot replace it.
+Resuming a round updates its row; retrying adds a round; a fresh run starts empty.
+Coalesced reports retain every round without restoring pipeline edits a person removed.
+
+Job spending includes accepted table growth plus the worker's spending outside
+steps, including manager calls. Settlement receipts record that full increase,
+so recovering a worker cannot charge acknowledged step spending again.
+
+The app still receives one step cost. Worker reports and worker admission carry
+the optional round_costs table. Old saved jobs and old workers without a table
+keep the last Spent fallback; there is no migration or reconstruction of missing
+historical rounds. Spending includes resumed work and descendants.

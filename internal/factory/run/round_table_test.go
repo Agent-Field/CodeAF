@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"math/rand"
+ "fmt"
 	"testing"
 	"time"
 
@@ -76,11 +77,15 @@ func TestJobSpendOldPendingWorkerTable(t *testing.T) {
 
 func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 	for seed := int64(0); seed < 32; seed++ {
-		t.Run(string(rune('A'+seed)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("seed_%d",seed), func(t *testing.T) {
 			rng := rand.New(rand.NewSource(seed))
 			it := reviewItem()
-			rows := map[int]float64{}
-			round := 1
+			worker := reviewItem()
+            worker.Stream.Phases[0].Round = 1
+            worker.Stream.Phases[0].State = factory.PhaseRunning
+            clone := func(it factory.Item) factory.Item { raw,_:=json.Marshal(it); var out factory.Item; if err:=json.Unmarshal(raw,&out);err!=nil{t.Fatal(err)}; return out }
+            baseline := clone(worker)
+            report := func() factory.RunReport { r,_:=run.Diff(baseline,worker); raw,_:=json.Marshal(api.FromRunReport(r)); var wire api.WorkerReport; if err:=json.Unmarshal(raw,&wire);err!=nil{t.Fatal(err)}; return api.ToWorkerReport(wire) }
 			real := 0.0
 			var pending []factory.RunReport
 			flush := func(r factory.RunReport) {
@@ -93,12 +98,17 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 				switch rng.Intn(8) {
 				case 0, 1, 2: // Spend, including resumed work in the same logical round.
 					usd := float64(1+rng.Intn(20)) / 10000
-					rows[round] += usd
-					real += usd
+					ph := &worker.Stream.Phases[0]
+                    ph.RecordRoundSpend(ph.Round, ph.RoundCosts[ph.Round]+usd)
+                    worker.Stream.Spent += usd
+                    real += usd
 				case 3: // Retry starts another row; old rounds stay in the worker table.
-					round++
+					if err:=run.StepControl(&worker,"proof",true,"",time.Now());err!=nil{t.Fatal(err)}
+                    worker.State=factory.StateRunning
+                    worker.Stream.Phases[0].State=factory.PhaseRunning
 				case 4: // Reports can be coalesced or dropped before a later full table.
-					pending = append(pending, tableReport(t, round, rows))
+					pending = append(pending, report())
+                    baseline=clone(worker)
 				case 5: // Reorder and repeat a report.
 					if len(pending) > 0 {
 						r := pending[rng.Intn(len(pending))]
@@ -110,13 +120,15 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 					if err := json.Unmarshal(raw, &it); err != nil {
 						t.Fatal(err)
 					}
-					it = api.ToItem(api.WorkerJob(it))
+					worker = api.ToItem(api.WorkerJob(worker))
 				case 7: // A fresh snapshot recovers all dropped and coalesced rounds.
-					flush(tableReport(t, round, rows))
+		            baseline=reviewItem()
+			flush(report())
 					checkTableCost(t, it, real)
 				}
 			}
-			flush(tableReport(t, round, rows))
+            baseline=reviewItem()
+			flush(report())
 			checkTableCost(t, it, real)
 			if got := factory.JobSpent(it); math.Abs(got-real) > 1e-9 {
 				t.Fatalf("job spend doubled: %.4f, real %.4f", got, real)

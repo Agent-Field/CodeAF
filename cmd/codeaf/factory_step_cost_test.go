@@ -27,7 +27,10 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Two rounds; round two is interrupted and reopened with a new live meter.
+	serverItem := api.ToItem(api.WorkerJob(it))
+ baseline := api.ToItem(api.WorkerJob(it))
+ flush := func() { t.Helper(); paid,err:=st.Get(it.ID); if err!=nil{t.Fatal(err)}; delta,_:=factoryrun.Diff(baseline,paid); wire:=api.ToWorkerReport(api.FromRunReport(delta)); for n:=0;n<1;n++ { if err:=factoryrun.ApplyReport(&serverItem,wire,time.Now());err!=nil{t.Fatal(err)} }; baseline=api.ToItem(api.WorkerJob(paid)) }
+ // Two rounds; round two is interrupted and reopened with a new live meter.
 	for admission, round := range []int{1, 2, 2, 0} {
 		if err := st.Annotate(it.ID, func(cur *factory.Item) error {
 			if round > 0 {
@@ -55,6 +58,7 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 		}
 		if round == 0 {
 			_ = agent.Close()
+            flush()
 			continue
 		}
 		c := &stageConversation{agent: agent, budget: b}
@@ -74,6 +78,7 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		flush()
 		// Reload the saved job for the next admission.
 		it, err = st.Get(it.ID)
 		if err != nil {
@@ -93,7 +98,7 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 			ledger += line.USD
 		}
 	}
-	got, _ := st.Get(it.ID)
+	got := serverItem
 	cost := 0.0
 	for _, step := range api.FromItem(got).Steps {
 		cost += step.Cost
@@ -101,7 +106,8 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 	if math.Abs(ledger-.04) > 1e-9 {
 		t.Fatalf("tagged ledger = %.4f, want .0400", ledger)
 	}
-	// The manager made one $.01 call; title and memory calls are absent.
+	if math.Abs(factory.JobSpent(got)-ledger)>1e-9 { t.Fatalf("job spend %.4f, tagged ledger %.4f",factory.JobSpent(got),ledger) }
+ // The manager made one $.01 call; title and memory calls are absent.
 	if math.Abs(cost-(ledger-.01)) > 1e-9 {
 		t.Fatalf("step cost = %.4f, tagged job ledger = %.4f; manager spend = .0100; other non-step spend = 0", cost, ledger)
 	}

@@ -70,8 +70,9 @@ type WorkerAttached struct {
 	Slots int `json:"slots,omitempty"`
 }
 
-// WorkerReport carries incremental results. Cost is newly incurred dollars,
-// so a result's own cost is descriptive and is not added a second time.
+// WorkerReport carries incremental results. For table-bearing steps, Cost is
+// newly incurred spending outside their tables. Legacy reports carry all newly
+// incurred dollars in Cost; their result costs remain descriptive.
 type WorkerReport struct {
 	FollowUp   *factory.PRFollowUp `json:"follow_up,omitempty"`
 	Change     *factory.Change     `json:"change,omitempty"`

@@ -344,8 +344,10 @@ keeps its earlier spending; a repeated result does not add another charge.
 Retrying a step keeps its earlier cost. A new run or Run as new starts from zero.
 The job total also includes the manager's calls and other work outside steps,
 so it can exceed the sum of step costs. Unpriced calls add no dollar amount.
-Older saved jobs still open, but costs of earlier rounds that were never saved
-cannot be recovered from the last result.
+Worker reports retain every round even when several rounds finish between reports.
+A delayed older report cannot remove saved round spending. Older saved jobs and
+workers without round receipts show the last reported round cost. There is no
+migration; earlier round costs absent from saved receipts cannot be recovered.
 
 ## the job's chat is its manager — where it works, and its spend counts toward the job's budget
 
