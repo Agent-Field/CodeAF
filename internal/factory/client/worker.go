@@ -104,9 +104,16 @@ func (w *WorkerClient) Pull(ctx context.Context) (api.WorkerPull, bool, error) {
 }
 
 // Heartbeat renews the lease and collects the verbs waiting for it.
-func (w *WorkerClient) Heartbeat(ctx context.Context, lease string) (api.WorkerHeartbeat, error) {
+func (w *WorkerClient) Heartbeat(ctx context.Context, lease string, acknowledged ...[]string) (api.WorkerHeartbeat, error) {
 	var out api.WorkerHeartbeat
-	_, err := w.send(ctx, http.MethodPost, leasePath(lease, "heartbeat"), w.credential, struct{}{}, &out)
+	var extra http.Header
+ if len(acknowledged)>0{
+  ids:=acknowledged[0]
+  if ids==nil{ids=[]string{}}
+  raw,err:=json.Marshal(ids);if err!=nil{return out,err}
+  extra=http.Header{api.SignalAcksHeader:{string(raw)}}
+ }
+ _, err := w.sendWith(ctx, http.MethodPost, leasePath(lease, "heartbeat"), w.credential, extra, struct{}{}, &out)
 	return out, err
 }
 

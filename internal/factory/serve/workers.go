@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+ "encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -501,7 +502,7 @@ func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Leas
 func wireSignals(in []lease.Signal) []api.WorkerSignal {
 	out := make([]api.WorkerSignal, len(in))
 	for i, s := range in {
-		out[i] = api.WorkerSignal{Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
+		out[i] = api.WorkerSignal{Delivery:s.Delivery,Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
 	}
 	return out
 }
@@ -516,7 +517,13 @@ func (h *Handler) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	// THE HEARTBEAT IS THE SIGNAL CHANNEL: what a person asked of the job
 	// since the last beat rides back on the answer (lease/signals.go).
-	signals, err := h.workers.desk.DrainLive(held.ID, held.Worker)
+	var acknowledged [][]string
+ if raw:=r.Header.Get(api.SignalAcksHeader);raw!=""{
+  var ids []string
+  if err:=json.Unmarshal([]byte(raw),&ids);err!=nil{h.fail(w,http.StatusBadRequest,"invalid signal acknowledgements");return}
+  acknowledged=[][]string{ids}
+ }
+ signals, err := h.workers.desk.DrainLive(held.ID, held.Worker, acknowledged...)
 	if h.workerError(w, err) {
 		return
 	}
