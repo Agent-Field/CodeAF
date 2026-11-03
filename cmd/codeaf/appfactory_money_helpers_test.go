@@ -97,7 +97,17 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 	s.must("agents.create", map[string]any{"workspace": t.TempDir()}, &created)
 	for _, path := range []struct{ purpose, role string }{{"pipeline_ai", "insight_pipeline"}, {"view_topic", "insight_views"}} {
 		var answer appwire.Errand
-		s.must("agents.errand", map[string]any{"agent": created.Agent.ID, "purpose": path.purpose, "role": path.role, "system": "Answer briefly.", "messages": []appwire.ErrandMessage{{Role: "user", Text: "Summarize."}}, "max_tokens": 100}, &answer)
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			s.must("agents.errand", map[string]any{"agent": created.Agent.ID, "purpose": path.purpose, "role": path.role, "system": "Answer briefly.", "messages": []appwire.ErrandMessage{{Role: "user", Text: "Summarize."}}, "max_tokens": 100}, &answer)
+			if answer.Reason != appwire.ErrandNotOpen {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("page AI agent never opened")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		if answer.Reason != "" || math.Abs(answer.Usage.CostUSD-.01) > 1e-9 {
 			t.Fatalf("%s: %+v", path.purpose, answer)
 		}

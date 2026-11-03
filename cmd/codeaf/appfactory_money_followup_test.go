@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"sync/atomic"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -33,10 +35,38 @@ func TestAppFactoryFollowPRAndPostPublishMoney(t *testing.T) {
 		agent := moneyAgent(t, s, ask, server.URL)
 		return &appConn{Conv: agent, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
 	}
+	// This local runner uses the captured PR snapshot. Keep the automatic
+	// worker off so it cannot also lease the same fixture job.
+	var connected atomic.Bool
+	var runner *factoryrun.Runner
+	hook := s.backend.local.seamHook
+	s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
+		seam = hook(seam)
+		seam.ConnectGitHub = func(context.Context, string) error { return nil }
+		seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
+			if !connected.Load() {
+				return factory.GitHubLink{}, nil
+			}
+			return factory.GitHubLink{Login: "owner"}, nil
+		}
+		seam.Launch = func(id int) error { return runner.Launch(id) }
+		return seam
+	}
 	st := s.start()
+	if st.Runner {
+		t.Fatal("fixture started an automatic worker")
+	}
+	connected.Store(true)
+	if err := s.backend.local.host.seam.ConnectGitHub(context.Background(), "fixture"); err != nil {
+		t.Fatal(err)
+	}
 	s.backend.briefs.stop()
 	s.backend.briefs = newBriefDebounce(time.Hour, s.backend.writeBriefLater)
 	floor := s.backend.local.host.floor
+	parent := s.backend.local.parent()
+	maker := factoryStageMaker(floor, g.workspace, "", parent)
+	runner = factoryrun.New(factoryrun.Options{Store: floor, Workdir: func(factory.Item) (string, error) { return g.workspace, nil }, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryChatStage(floor, "", factoryrun.NewChatExecutor(maker))}})
+	stopAll(t, floor, runner)
 	if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
 		t.Fatal(err)
 	}
