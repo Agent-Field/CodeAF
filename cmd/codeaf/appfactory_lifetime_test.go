@@ -13,7 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-func TestFactoryLifetimeCostUsesTaggedLedgerWithoutLoweringKnownSpend(t *testing.T) {
+func TestFactoryLifetimeCostKeepsSavedSpendWithoutLedgerRecovery(t *testing.T) {
 	s := newLocalSetup(t)
 	st := s.start()
 	floor := s.backend.local.host.floor
@@ -48,8 +48,12 @@ func TestFactoryLifetimeCostUsesTaggedLedgerWithoutLoweringKnownSpend(t *testing
 	write := func(costs ...float64) {
 		t.Helper()
 		var data []byte
-		for _, cost := range costs {
-			row, err := json.Marshal(session.UsageLine{At: time.Now(), FactoryJob: factory.LedgerName(it), USD: cost})
+		for i, cost := range costs {
+			workspace := filepath.Join(floor.Root(), "work", "acme-api-7")
+			if i == 1 {
+				workspace = filepath.Join(floor.Root(), "repos", "acme", "api")
+			}
+			row, err := json.Marshal(session.UsageLine{At: time.Now(), FactoryJob: factory.LedgerName(it), Workspace: workspace, USD: cost})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,9 +63,9 @@ func TestFactoryLifetimeCostUsesTaggedLedgerWithoutLoweringKnownSpend(t *testing
 			t.Fatal(err)
 		}
 	}
-	write(.138363, .030189)
-	read(.168552)
-	read(.168552) // Unchanged metadata reuses the ledger reading.
+	write(.138363, .030189) // One tag, two workspaces; neither proves factory ownership.
+	read(.030189)
+	read(.030189) // Repeated reads cannot adopt unplaced ledger money.
 	if err := floor.Annotate(it.ID, func(it *factory.Item) error { it.SpentBefore = .2; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +75,7 @@ func TestFactoryLifetimeCostUsesTaggedLedgerWithoutLoweringKnownSpend(t *testing
 }
 
 func TestFactoryLifetimeLedgerRequiresUnambiguousJob(t *testing.T) {
-	for _, mode := range []string{"unique", "duplicate", "dismissed duplicate", "copy without source", "same source issue"} {
+	for _, mode := range []string{"unique", "duplicate", "dismissed duplicate", "copy without source", "same source issue", "shared workspace", "empty workspace"} {
 		t.Run(mode, func(t *testing.T) {
 			s := newLocalSetup(t)
 			st := s.start()
@@ -100,7 +104,11 @@ func TestFactoryLifetimeLedgerRequiresUnambiguousJob(t *testing.T) {
 			old := appLedgerPath
 			appLedgerPath = func() string { return ledger }
 			t.Cleanup(func() { appLedgerPath = old })
-			data, err := json.Marshal(session.UsageLine{At: time.Now(), FactoryJob: factory.LedgerName(it), USD: .5})
+			workspace := filepath.Join(floor.Root(), "work", "acme-api-7")
+			if mode == "empty workspace" {
+				workspace = ""
+			}
+			data, err := json.Marshal(session.UsageLine{At: time.Now(), FactoryJob: factory.LedgerName(it), Workspace: workspace, USD: .5})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -108,9 +116,6 @@ func TestFactoryLifetimeLedgerRequiresUnambiguousJob(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := .13
-			if mode == "unique" {
-				want = .5
-			}
 			var job api.Job
 			s.must("factory.job", map[string]any{"factory": st.Factory, "job": it.ID}, &job)
 			var queue api.Queue

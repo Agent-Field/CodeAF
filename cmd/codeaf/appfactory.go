@@ -1046,14 +1046,9 @@ func (b *appBackend) FactoryQueue(ctx context.Context, id string) (api.Queue, er
 	var q api.Queue
 	err := b.factoryHub().read(ctx, id, "/v1/queue", appFactoryBody, &q)
 	if err == nil {
-		sums := b.factoryLifetimeCosts(id)
 		for i := range q.Jobs {
 			j := &q.Jobs[i]
-			name := factory.LedgerName(factory.Item{Repo: j.Repo, Kind: factory.Kind(j.Kind), Num: j.Num, ID: j.ID})
 			j.LifetimeCost = max(j.Cost, j.LifetimeCost)
-			if j.LedgerUnambiguous && j.FromJob == 0 {
-				j.LifetimeCost = max(j.LifetimeCost, sums[name])
-			}
 		}
 	}
 	return q, err
@@ -1063,11 +1058,7 @@ func (b *appBackend) FactoryJob(ctx context.Context, id string, job int) (api.Jo
 	var out api.Job
 	err := b.factoryHub().read(ctx, id, "/v1/jobs/"+strconv.Itoa(job), appFactoryBody, &out)
 	if err == nil {
-		name := factory.LedgerName(factory.Item{Repo: out.Repo, Kind: factory.Kind(out.Kind), Num: out.Num, ID: out.ID})
 		out.LifetimeCost = max(out.Cost, out.LifetimeCost)
-		if out.LedgerUnambiguous && out.FromJob == 0 {
-			out.LifetimeCost = max(out.LifetimeCost, b.factoryLifetimeCosts(id)[name])
-		}
 	}
 	return out, err
 }

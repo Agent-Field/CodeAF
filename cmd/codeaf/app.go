@@ -551,14 +551,6 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
-	factorySpend struct {
-		sync.Mutex
-		path     string
-		size     int64
-		modified time.Time
-		totals   map[string]float64
-	}
-
 	chats       appChats
 	pair        appPair
 	drives      *driveBook
