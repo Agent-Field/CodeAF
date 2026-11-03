@@ -1,0 +1,65 @@
+{
+  "method": "record.supersede",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "conflict",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamRecordSupersedeParams",
+  "result_type": "WorkstreamRecordSupersedeResult",
+  "examples": {
+    "params": [
+      {
+        "id": "rec_7a1e",
+        "text": "Retries do not count toward usage.",
+        "kind": "decision",
+        "source": {
+          "kind": "message",
+          "id": "msg_19a2",
+          "chat_id": "conv_5b9e",
+          "label": "Billing scope"
+        }
+      }
+    ],
+    "result": [
+      {
+        "record": {
+          "id": "rec_91bf",
+          "workstream_id": "ws_8f2c1a",
+          "kind": "decision",
+          "text": "Retries do not count toward usage.",
+          "state": "kept",
+          "by": "agent",
+          "source": {
+            "kind": "message",
+            "id": "msg_19a2",
+            "chat_id": "conv_5b9e",
+            "label": "Billing scope"
+          },
+          "created_at": "2026-11-02T15:00:00Z",
+          "decided_at": "2026-11-02T15:00:00Z",
+          "supersedes": "rec_7a1e"
+        },
+        "superseded": {
+          "id": "rec_7a1e",
+          "workstream_id": "ws_8f2c1a",
+          "kind": "question",
+          "text": "Should retries count toward usage?",
+          "state": "superseded",
+          "by": "agent",
+          "source": {
+            "kind": "message",
+            "id": "msg_19a2",
+            "chat_id": "conv_5b9e",
+            "label": "Billing scope"
+          },
+          "created_at": "2026-11-02T14:05:00Z",
+          "decided_at": "2026-11-02T15:00:00Z",
+          "superseded_by": "rec_91bf"
+        }
+      }
+    ]
+  }
+}

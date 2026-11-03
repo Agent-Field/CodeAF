@@ -1,0 +1,37 @@
+{
+  "method": "page.update",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamPageUpdateParams",
+  "result_type": "WorkstreamPageUpdateResult",
+  "examples": {
+    "params": [
+      {
+        "id": "pg_32e1",
+        "title": "Metering decisions",
+        "owner": "agent",
+        "read_by_jobs": true
+      }
+    ],
+    "result": [
+      {
+        "page": {
+          "id": "pg_32e1",
+          "workstream_id": "ws_8f2c1a",
+          "title": "Metering decisions",
+          "owner": "agent",
+          "read_by_jobs": true,
+          "position": 0,
+          "version": 1,
+          "updated_at": "2026-11-02T15:00:00Z",
+          "updated_by": "you",
+          "parent_id": "pg_31d0"
+        }
+      }
+    ]
+  }
+}

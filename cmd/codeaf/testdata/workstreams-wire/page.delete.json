@@ -1,0 +1,25 @@
+{
+  "method": "page.delete",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamPageDeleteParams",
+  "result_type": "WorkstreamPageDeleteResult",
+  "examples": {
+    "params": [
+      {
+        "id": "pg_32e1"
+      }
+    ],
+    "result": [
+      {
+        "deleted": [
+          "pg_32e1"
+        ]
+      }
+    ]
+  }
+}

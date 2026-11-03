@@ -1,0 +1,22 @@
+{
+  "event": "workstream.changed",
+  "data_type": "WorkstreamChanged",
+  "examples": {
+    "data": [
+      {
+        "id": "ws_8f2c1a",
+        "parts": [
+          "workstream",
+          "plan",
+          "pages",
+          "records",
+          "goaheads",
+          "jobs"
+        ]
+      },
+      {
+        "id": "ws_8f2c1a"
+      }
+    ]
+  }
+}

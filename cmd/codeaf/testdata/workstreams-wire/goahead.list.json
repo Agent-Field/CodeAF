@@ -1,0 +1,36 @@
+{
+  "method": "goahead.list",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamGoAheadListParams",
+  "result_type": "WorkstreamGoAheadListResult",
+  "examples": {
+    "params": [
+      {
+        "workstream_id": "ws_8f2c1a",
+        "ended": true
+      }
+    ],
+    "result": [
+      {
+        "goaheads": [
+          {
+            "id": "ga_0c44",
+            "workstream_id": "ws_8f2c1a",
+            "scope": "job",
+            "factory": "f_local",
+            "job": 1107,
+            "cap_usd": 40.0,
+            "ends_at": "2026-11-03T14:05:00Z",
+            "state": "active",
+            "granted_at": "2026-11-02T14:05:00Z"
+          }
+        ]
+      }
+    ]
+  }
+}
