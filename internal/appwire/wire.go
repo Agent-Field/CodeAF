@@ -664,16 +664,24 @@ const (
 // WorkFolder is where an agent created with no workspace works;
 // ProposedTaskClockS is how long a proposed task waits before it starts on its
 // own; IdleCloseDays is how long an agent nobody touches stays open.
+// MemorySettings is the live automatic-learning choice and its cost disclosure.
+type MemorySettings struct {
+	Enabled  bool   `json:"enabled"`
+	Source   string `json:"source" enum:"default,saved"`
+	CostNote string `json:"cost_note"`
+}
+
 type Settings struct {
-	DefaultModel       string   `json:"default_model"`
-	BudgetUSD          *float64 `json:"budget_usd"`
-	AsksBefore         string   `json:"asks_before"`
-	DayCapUSD          *float64 `json:"day_cap_usd"`
-	WorkFolder         string   `json:"work_folder"`
-	TaskCapUSD         *float64 `json:"task_cap_usd"`
-	ProposedTaskClockS int      `json:"proposed_task_clock_s"`
-	IdleCloseDays      int      `json:"idle_close_days"`
-	Effort             string   `json:"effort,omitempty" enum:"low,medium,high"`
+	Memory             MemorySettings `json:"memory"`
+	DefaultModel       string         `json:"default_model"`
+	BudgetUSD          *float64       `json:"budget_usd"`
+	AsksBefore         string         `json:"asks_before"`
+	DayCapUSD          *float64       `json:"day_cap_usd"`
+	WorkFolder         string         `json:"work_folder"`
+	TaskCapUSD         *float64       `json:"task_cap_usd"`
+	ProposedTaskClockS int            `json:"proposed_task_clock_s"`
+	IdleCloseDays      int            `json:"idle_close_days"`
+	Effort             string         `json:"effort,omitempty" enum:"low,medium,high"`
 	// The General rows the window draws by (Wave 8): kept here so every window
 	// reads the same answer.
 	Appearance  string `json:"appearance" enum:"system,light,dark"`
@@ -697,6 +705,7 @@ type Settings struct {
 // money figure sent as null is cleared, which the settings that always have a
 // figure refuse.
 type SettingsPatch struct {
+	MemoryEnabled      *bool
 	DefaultModel       *string
 	BudgetUSD          *Figure
 	AsksBefore         *string

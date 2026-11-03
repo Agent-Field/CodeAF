@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
@@ -58,6 +58,9 @@ func TestKnowledgeTickersShareOneConsentRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := config.WriteMemoryEnabled(profile, true); err != nil {
+		t.Fatal(err)
+	}
 	since := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err = db.Exec("INSERT INTO state(key,payload) VALUES('config',?)", fmt.Sprintf(`{"enabled":true,"schema":1,"created_at":%q}`, since))
 	closeErr := db.Close()
@@ -103,6 +106,9 @@ func consentChat(t *testing.T, profile string) *Agent {
 // writeConsent is another process writing this profile's consent row.
 func writeConsent(t *testing.T, path string, at time.Time) {
 	t.Helper()
+	if err := config.WriteMemoryEnabled(filepath.Dir(filepath.Dir(path)), true); err != nil {
+		t.Fatal(err)
+	}
 	uri := sqliteuri.File(path)
 	db, err := sql.Open("sqlite", uri.String())
 	if err != nil {
@@ -139,10 +145,10 @@ func TestKnowledgeAdmitsSourcesOnTheVaultsCurrentOptIn(t *testing.T) {
 	}
 }
 
-// A vault deleted elsewhere withdraws consent at once for what is admitted:
+// A switch changed elsewhere withdraws consent at once for what is admitted:
 // the chat's sources wait in its journal, and are captured when consent that
 // covers them comes back.
-func TestKnowledgeKeepsSourcesWhileTheVaultIsGone(t *testing.T) {
+func TestKnowledgeKeepsSourcesWhileMemoryIsOff(t *testing.T) {
 	profile := t.TempDir()
 	agent := consentChat(t, profile)
 	vault := agent.Knowledge()
@@ -154,11 +160,10 @@ func TestKnowledgeKeepsSourcesWhileTheVaultIsGone(t *testing.T) {
 		t.Fatal("own opt-in not seen")
 	}
 	path := filepath.Join(vault.Directory(), "knowledge.sqlite")
-	for _, name := range []string{path, path + "-wal", path + "-shm"} {
-		if err := os.Remove(name); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
 	}
+
 	collect(t, mustSubmit(t, agent, "Explain how the queue keeps work durable"))
 	time.Sleep(2500 * time.Millisecond)
 	snapshot, err := vault.Snapshot()

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -53,12 +54,9 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx := m.ctx
-	if m.calls != nil {
-		ctx, err = m.calls(ctx)
-		if err != nil {
-			return nil, err
-		}
+	ctx, err := m.callContext(m.ctx)
+	if err != nil {
+		return nil, err
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
@@ -68,10 +66,8 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	settings.Timeout = 240 * time.Second
 	settings.HTTPClient = http.DefaultClient
 	settings.RouteGate = func(ctx context.Context, model, tag string) error {
-		if m.calls != nil {
-			if _, err := m.calls(ctx); err != nil {
-				return err
-			}
+		if _, err := m.callContext(ctx); err != nil {
+			return err
 		}
 		if model != m.model {
 			return fmt.Errorf("knowledge requested model %q; refusing fallback %q", m.model, model)
@@ -183,4 +179,15 @@ func (m compilerModel) cached(role string, payload document) (document, bool, er
 		return nil, false, cacheErr
 	}
 	return nil, false, nil
+}
+
+// callContext gates every memory model step, including recall and provider retries.
+func (m compilerModel) callContext(ctx context.Context) (context.Context, error) {
+	if !config.MemoryEnabledAt(filepath.Dir(m.root)) {
+		return nil, ErrDisabled
+	}
+	if m.calls != nil {
+		return m.calls(ctx)
+	}
+	return ctx, nil
 }

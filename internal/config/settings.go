@@ -332,13 +332,8 @@ const (
 	// as the default, silently, the way any word this build does not know reads
 	// ([TaskStartAt]).
 	KeyTaskStart = "task.start"
-	// KeyMemoryEnabled is whether codeaf NOTICES things worth keeping on its
-	// own (internal/session's memory.go): after a turn the person typed, one
-	// small call may keep one line they said, and says so. It governs nothing
-	// else — the lines a person kept ride every conversation whether it is on
-	// or off, and /remember works either way — and it is read live, so a change
-	// applies from the next turn without a restart. The key keeps its old
-	// spelling because profiles on disk carry it.
+	// KeyMemoryEnabled controls automatic learning from chats and jobs.
+	// Saved knowledge and explicit keeps remain available while it is off.
 	KeyMemoryEnabled = "memory.enabled"
 
 	KeyModelRoles = "models.roles"
@@ -691,14 +686,13 @@ const (
 	MemoryOn  = "on"
 )
 
-// MemoryModes lists them, on first — which is the default. A colleague who
-// forgot every preference you stated the moment you closed the window would be
-// one you had to brief again every morning, and the calls that carry this are
-// the cheapest the surface makes.
-var MemoryModes = []string{MemoryOn, MemoryOff}
+// MemoryModes lists off first, the default until a person opts in.
+var MemoryModes = []string{MemoryOff, MemoryOn}
 
-// DefaultMemory is on.
-const DefaultMemory = MemoryOn
+const DefaultMemory = MemoryOff
+
+// MemoryCostNote is the cost disclosure shared by settings surfaces.
+const MemoryCostNote = "Off by default. When on, it learns from your chats and jobs so later work can use it, and makes extra model calls on your key. On one small test job, memory was 39% of the cost ($0.0124 of $0.0315); it varies by job."
 
 // The prompt profile's three answers, and they are three rather than two
 // because the honest default is not a size at all: it is "work it out". A row
@@ -2369,15 +2363,8 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
-			Label: "notice things to remember", Choices: MemoryModes,
-			// THE ONE SPELLING OF WHAT THIS ROW DOES: the settings panel reads it
-			// as the row's detail and the settings tool reads it as its hint, so
-			// the two cannot disagree. Off comes first because it is what a
-			// person scanning the row needs to know before anything else.
-			Hint: "Off stops only the noticing: what you keep with /remember still rides every " +
-				"conversation, and nothing saved is deleted. On, after a turn you typed, codeaf may " +
-				"keep one line you said that should hold everywhere — a preference, a rule, a " +
-				"correction — and tells you; the Memories tab shows, forgets and puts back any of it.",
+			Label: "learn from chats and jobs", Choices: MemoryModes,
+			Hint:  MemoryCostNote + " Off stops automatic learning; nothing saved is deleted, and saved knowledge and /remember stay available. A call already in flight finishes and is billed.",
 			read:  func() string { return MemoryAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMemoryEnabled, raw, MemoryModes) },
 		},
@@ -3918,14 +3905,38 @@ func TaskStartAt(profileDir string) string {
 	return DefaultTaskStart
 }
 
-// MemoryAt resolves the memory row to its word, default on.
+// MemoryAt resolves the one automatic-memory switch, absent means off.
 func MemoryAt(profileDir string) string {
+	enabled, _ := MemorySettingAt(profileDir)
+	if enabled {
+		return MemoryOn
+	}
+	return MemoryOff
+}
+
+// MemorySettingAt reads saved words and booleans, and whether one was saved.
+func MemorySettingAt(profileDir string) (enabled, saved bool) {
 	if value, ok := persistedString(profileDir, KeyMemoryEnabled); ok {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
+		switch strings.TrimSpace(value) {
+		case MemoryOn:
+			return true, true
+		case MemoryOff:
+			return false, true
 		}
 	}
-	return DefaultMemory
+	if value, ok := persistedBool(profileDir, KeyMemoryEnabled); ok {
+		return value, true
+	}
+	return false, false
+}
+
+// WriteMemoryEnabled saves an explicit choice through the shared profile writer.
+func WriteMemoryEnabled(profileDir string, enabled bool) error {
+	word := MemoryOff
+	if enabled {
+		word = MemoryOn
+	}
+	return writeProfileValue(profileDir, KeyMemoryEnabled, word)
 }
 
 // PromptProfileAt resolves the prompt-profile row to its word: the environment
@@ -3955,10 +3966,7 @@ func PromptProfileAt(profileDir string) string {
 	return DefaultPromptProfile
 }
 
-// MemoryEnabledAt is [MemoryAt] as the bool the v3 door reads before it opens a
-// brain at all: memory off is a session handed no store, which is what makes
-// "no block and no calls" a property of the wiring rather than a branch every
-// caller has to remember (internal/session's memory.go states the law).
+// MemoryEnabledAt reads automatic learning live; saved lines remain readable.
 func MemoryEnabledAt(profileDir string) bool {
 	return MemoryAt(profileDir) == MemoryOn
 }
