@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+ "net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -54,7 +55,9 @@ var errIssueRedirect = errors.New("GitHub issue redirected")
 
 // Issue reads one issue (or the issue side of a pull request) by its number.
 func (c *client) Issue(ctx context.Context, owner, repo string, number int) (Issue, error) {
-	body, _, err := c.readTagged(context.WithValue(ctx, noIssueRedirect{}, true), c.repoURL(owner, repo, "/issues/"+strconv.Itoa(number)), "")
+	headers,err:=c.headersForRepo(ctx,owner,repo)
+ if err!=nil {return Issue{},err}
+ body, _, err := c.requestTagged(context.WithValue(ctx, noIssueRedirect{}, true), http.MethodGet, c.repoURL(owner, repo, "/issues/"+strconv.Itoa(number)), headers,nil,30*time.Second, "")
 	if errors.Is(err, errIssueRedirect) {
 		return Issue{Redirected: true}, nil
 	}

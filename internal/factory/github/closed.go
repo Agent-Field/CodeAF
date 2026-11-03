@@ -32,9 +32,6 @@ type closeChecks struct {
 var checksMu sync.Mutex
 var checks = map[string]*closeChecks{}
 
-func closeCandidate(it factory.Item) bool {
-	return factory.UntouchedIssue(it) || (it.SourceClosed && !it.PersonTouched && factory.JobUnworked(it))
-}
 
 func (s *Source) reconcileClosed(ctx context.Context, st *store.Store, repos []string, before, fresh []factory.Item) error {
 	checksMu.Lock()
@@ -58,7 +55,7 @@ func (s *Source) reconcileClosed(ctx context.Context, st *store.Store, repos []s
 	}
 	sort.Slice(before, func(i, j int) bool { return before[i].ID < before[j].ID })
 	for _, it := range before {
-		if !closeCandidate(it) {
+		if !factory.UntouchedIssue(it) {
 			delete(q.pending, it.ID)
 			continue
 		}
@@ -134,12 +131,12 @@ func (s *Source) finishIfClosed(ctx context.Context, st *store.Store, row factor
 		}
 		it.GitHubIssueID = answer.ID
 		switch {
-		case answer.State == "closed" && factory.UntouchedIssue(*it):
+		case answer.State == "closed" && !it.SourceClosed && factory.UntouchedIssue(*it):
 			it.State, it.DoneHow, it.DoneAt = factory.StateShipped, StandingClosed, s.now().UTC()
 			it.SourceClosed = true
 			it.Marked, it.Question, it.QKind, it.StopUndo = false, "", "", nil
 			kind, verb, detail = record.SourceClosed, StandingClosed, "on GitHub"
-		case answer.State == "open" && it.SourceClosed && closeCandidate(*it):
+		case answer.State == "open" && it.SourceClosed && factory.UntouchedIssue(*it):
 			it.State, it.DoneHow, it.DoneAt = factory.StateNew, "", time.Time{}
 			it.SourceClosed = false
 			kind, verb, detail = record.Restored, "brought back", "reopened on GitHub"

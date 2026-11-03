@@ -333,11 +333,15 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		return false
 	}
 	now := h.clock().UTC()
+ state:=factory.JobState(it)
+ finished:=false
 	err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 		if !factory.UntouchedIssue(*cur) {
 			return nil
 		}
 		factory.TouchIssue(cur)
+ finished=true
+ state=api.StateDone
 		cur.State = factory.StateShipped
 		cur.DoneHow = how
 		cur.DoneAt = now
@@ -350,12 +354,12 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 	if h.failed(w, err) {
 		return true
 	}
-	if h.config.Record != nil {
+	if finished && h.config.Record != nil {
 		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.SourceClosed, Verb: how, Job: it.ID, Detail: "on GitHub", Cost: jobCost(it)}); h.failed(w, err) {
 			return true
 		}
 	}
-	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it wasn't started.", it.Num, how), "conflict", "", nil, api.StateDone)
+	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it wasn't started.", it.Num, how), "conflict", "", nil, state)
 	return true
 }
 
