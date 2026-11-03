@@ -59,7 +59,8 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		if err := unchangedFollowRefusal(*it, s.Phases[index]); err != nil {
 			return err
 		}
-		it.Recovery = nil
+		it.PublishAnyway = nil
+  it.Recovery = nil
 		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
 			p := s.Phases[i]

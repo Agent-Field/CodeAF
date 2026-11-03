@@ -463,7 +463,8 @@ type Job struct {
 	DismissedBy  []string          `json:"dismissed_by,omitempty"`
 	WaitingFor   string            `json:"waiting_for,omitempty"`
 	Overlap      []string          `json:"overlap,omitempty"`
-	Approval     *factory.Approval `json:"approval,omitempty"`
+	PublishAnyway *factory.Approval `json:"publish_anyway,omitempty"`
+ Approval     *factory.Approval `json:"approval,omitempty"`
 	// Estimate is what jobs like this one cost and took, measured from the
 	// factory's finished jobs; absent on a finished job, on one nobody
 	// scored, and while too few similar jobs finished ("no cost history yet").
@@ -663,6 +664,7 @@ type RoundLine struct {
 // and retry publishing; anyone who can see the repo for a plain question
 // and for reply. false is the app hiding the button.
 type Can struct {
+ PublishAnyway bool `json:"publish_anyway"`
 	Run            bool `json:"run"`
 	StartNow       bool `json:"start_now"`
 	Stop           bool `json:"stop"`

@@ -77,7 +77,7 @@ func PolicyAllows(policy []string, it factory.Item, action factory.Action, prior
 	for _, line := range policy {
 		switch shapeOf(line) {
 		case shapeTestsFirst:
-			if !checksGreen(it, prior) {
+			if !checksGreen(it, prior) && !(factory.PublishedAnyway(it) && !testClaimFailed(prior)) {
 				return false, line
 			}
 		case shapeNoStranger:
@@ -188,8 +188,7 @@ func skippedCheck(it factory.Item, index int) bool {
 	return false
 }
 
-// skippedPolicyWait explains the missing evidence without offering an approval
-// bypass: the every-check policy still requires each check to run and pass.
+// skippedPolicyWait names the choices available for missing check evidence.
 func skippedPolicyWait(it factory.Item) string {
 	if it.Stream == nil {
 		return ""
@@ -214,7 +213,10 @@ func skippedPolicyWait(it factory.Item) string {
 	if back != "" {
 		action = "Rerun from " + back + " after revising the change files to match, or stop the job."
 	}
-	return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
+	if factory.SkippedChecksIdentity(it) != "" {
+ action = "Publish anyway, " + strings.ToLower(action[:1]) + action[1:]
+ }
+ return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
 }
 
 func skippedPolicyQuestion(it factory.Item, res factory.StageResult) string {
