@@ -46,6 +46,11 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 			running := seed(11, func(it *factory.Item) { it.State = factory.StateRunning })
 			worked := seed(12, func(it *factory.Item) { it.Stream = &factory.Stream{} })
 			started := seed(13, func(it *factory.Item) { it.Starter = "owner" })
+			decided := seed(15, func(it *factory.Item) {
+				it.State = factory.StateNeedsYou
+				it.PipelineDecided = true
+				it.QKind = factory.QKindAskFirst
+			})
 			held := seed(14, func(it *factory.Item) {
 				it.State = factory.StateNeedsYou
 				it.Question = "Start?"
@@ -77,9 +82,9 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 					var rows []map[string]any
 					// The repository has 5,000 closed issues and 200 open ones. Closed
 					// history must never be walked to find the few rows already local.
-					for n := 1; n <= 5200; n++ {
+					for n := 1; n <= 5201; n++ {
 						state := "closed"
-						if n > 5000 {
+						if n > 5000 && n <= 5200 {
 							state = "open"
 						}
 						if n == 5001 && closed {
@@ -128,7 +133,7 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 			if triage.Wants(got) {
 				t.Error("closed job still eligible for paid triage")
 			}
-			for _, it := range []factory.Item{running, worked, started} {
+			for _, it := range []factory.Item{running, worked, started, decided} {
 				got, _ := st.Get(it.ID)
 				if got.State != it.State || got.DoneHow != "" {
 					t.Errorf("poll finished protected job #%d", it.Num)
@@ -153,8 +158,8 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 				t.Errorf("Activity has %d source closes, want 2", finishes)
 			}
 			items, _ := st.List()
-			if len(items) != 205 {
-				t.Errorf("imported closed history: %d rows, want 205", len(items))
+			if len(items) != 206 {
+				t.Errorf("imported closed history: %d rows, want 206", len(items))
 			}
 			t.Logf("first poll: calls=%d pages=%d direct_checks=%d", calls, pages, details)
 			beforeCalls, beforeConditional := calls, conditional
@@ -165,11 +170,15 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 			if calls-beforeCalls != 1 || conditional-beforeConditional != 1 {
 				t.Errorf("quiet poll: calls=%d conditional=%d; want 1 each", calls-beforeCalls, conditional-beforeConditional)
 			}
+			t.Logf("quiet poll: calls=%d conditional=%d", calls-beforeCalls, conditional-beforeConditional)
 			closed = true
 			if _, err = source.PollOnce(ctx, src, st, cursor, time.Now); err != nil {
 				t.Fatal(err)
 			}
 			items, _ = st.List()
+			if len(items) != 206 {
+				t.Fatalf("unseen closed issue became a job: %d rows", len(items))
+			}
 			var recent factory.Item
 			for _, it := range items {
 				if it.Num == 5001 {

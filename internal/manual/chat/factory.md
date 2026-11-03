@@ -696,14 +696,17 @@ from the automatic arrival read and start rules.
 The poll preserves running and queued jobs, jobs already started, and jobs
 with a run, conversation, work folder, pull request, spending or failure.
 A needs-you row with no such work or decided pipeline can finish; its pending
-question clears. The poll never stops a running job. A person's Start still
+question clears. A row whose start rules already decided its pipeline stays
+untouched, including a pending ask-first decision. The poll never stops a running job. A person's Start still
 checks GitHub directly, including between polls.
 
 The initial import lists open issues. Later polls include closures updated
-since the cursor, using a conditional request when nothing changed. An older
+since the cursor, using a conditional request when nothing changed. After changes, the poll
+primes the next cursor query so its ETag names that exact request. An older
 factory's existing rows get a one-time reconciliation: at most 40 direct
 issue checks per repository per poll, only for existing untouched rows absent
-from that poll's results. Progress survives restarts. Larger backlogs continue
+from that poll's results. Progress survives restarts. A missing issue stays
+unchanged and does not block later rows; other read failures retry next poll. Larger backlogs continue
 over subsequent polls; the factory never walks the repository's closed history.
 
 Reopening an issue on GitHub refreshes its text but keeps a poll-finished job

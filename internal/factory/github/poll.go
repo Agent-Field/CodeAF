@@ -192,10 +192,10 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	meta.Tried = at
 	meta.Polling = false
 	meta.Reading, meta.Read, meta.Of, meta.Items = "", 0, 0, 0
-	if readErr == nil {
+	if pollErr := errors.Join(readErr, mergeErr); pollErr == nil {
 		meta.Polled, meta.Trouble = at, ""
 	} else {
-		meta.Trouble = TroubleWords(readErr)
+		meta.Trouble = TroubleWords(pollErr)
 	}
 	_ = st.SetSourceMeta(src.Name(), meta)
 	// FOLLOW-UP IS ITS OWN READ. A merged or closed pull request is gone from
