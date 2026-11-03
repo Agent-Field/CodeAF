@@ -165,6 +165,9 @@ waiting:
 			t.Fatalf("no read event for %q from the real producer: %+v; state=%s notes=%+v page_error=%v model_saw_words=%v", key, read, view.State, view.Notes, pageErr, model.sentWords("same words"))
 		}
 	}
+	if !model.sentWords("same words") {
+		t.Fatal("the notes were marked read without reaching the model")
+	}
 	// With no key nothing may join the note: not its words, not its place.
 	time.Sleep(2*appNoteBeat + 200*time.Millisecond)
 	for _, changed := range noteEvents(rec) {
