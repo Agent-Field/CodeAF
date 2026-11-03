@@ -304,13 +304,13 @@ func holdAtJobBudget(it *factory.Item, now time.Time) bool {
 		return false
 	}
 	ask := factory.Asked{With: factory.AskedYou, At: now}
-    if it.QKind == "cap" && it.Asking != nil {
-        ask = *it.Asking
-    }
-    it.State = factory.StateNeedsYou
-    it.Question, it.QKind = (*run.Money)(nil).CapQuestion(*it)
-    ask.Question = it.Question
-    it.Asking = &ask
+	if it.QKind == "cap" && it.Asking != nil {
+		ask = *it.Asking
+	}
+	it.State = factory.StateNeedsYou
+	it.Question, it.QKind = (*run.Money)(nil).CapQuestion(*it)
+	ask.Question = it.Question
+	it.Asking = &ask
 	it.OverLimit = false
 	return true
 }

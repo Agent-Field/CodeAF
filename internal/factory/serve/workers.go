@@ -560,14 +560,14 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_, digest, _ := retainedWorkerReport(api.WorkerRecovery{OriginalLease: r.PathValue("lease"), Body: raw.Bytes(), Headers: headers})
-    capWait := report.Question != nil && report.QuestionKind == "cap"
-    for _, step := range report.Stages {
-        if step.State == factory.PhaseRunning {
-            capWait = false
-        }
-    }
-    h.applyWorker(w, r, false, capWait, func(it *factory.Item) error {
-        before := failureKey(it.Failure)
+	capWait := report.Question != nil && report.QuestionKind == "cap"
+	for _, step := range report.Stages {
+		if step.State == factory.PhaseRunning {
+			capWait = false
+		}
+	}
+	h.applyWorker(w, r, false, capWait, func(it *factory.Item) error {
+		before := failureKey(it.Failure)
 		spentBefore := factory.JobSpent(*it)
 		if err := run.ApplyReport(it, report, h.workers.now()); err != nil {
 			return err
