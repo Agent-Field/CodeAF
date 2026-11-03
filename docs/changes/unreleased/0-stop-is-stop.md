@@ -30,8 +30,10 @@ The publication guards and already-sent PR receipt handling from #2299 remain.
 Stopped-job refusals retain conflict status and their original words. Resume
 continues paused work only; Carry on uses the stopped step's rerun door. Stop
 also cancels a runner whose stored job was already stopped by another door.
-Stopped briefs settle unpaid with failed status and the Stop reason, preserving
-the last paid content. A queued stopped job reads needs_you and Stopped by you,
+Stopped briefs settle unpaid with failed status, `failure_kind: "stopped"` and
+the Stop reason, preserving the last paid content. Other brief failures omit
+`failure_kind`. Repeated holds and drained hold signals refuse a recorded Stop
+while pause persistence still precedes cancellation. A queued stopped job reads needs_you and Stopped by you,
 rather than returning to backlog.
 
 An opt-in live check exercises a real Test-stage question, a person's Stop,

@@ -756,7 +756,9 @@ refreshes when the job ships, its PR merges or closes without merge, or the run
 fails. A publication failure refreshes it too. Updates within 10 seconds
 are taken as one. An approval or end update waits if an earlier Brief is still
 being written. Stop settles the Brief without a model call, including for queued
-jobs and jobs stopped at the start gate. Its status is `failed`, with the reason
+jobs and jobs stopped at the start gate. Its status stays `failed` for older
+desks, and `failure_kind: "stopped"` identifies a person's Stop separately from a
+failed refresh. Only a person's Stop sets this field. The reason is
 `the person stopped this job; this job is stopped; a person presses Start to run it`.
 The last paid Brief stays visible; no paid refresh runs until a person starts the job. Auto skips the intermediate proof update when approval can
 proceed automatically; an exception that waits on you still gets an update.
