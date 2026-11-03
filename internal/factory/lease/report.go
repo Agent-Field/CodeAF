@@ -3,7 +3,6 @@ package lease
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"

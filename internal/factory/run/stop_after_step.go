@@ -23,14 +23,37 @@ func (r *Runner) SetStopAfterStepReader(id int, read func(context.Context) (bool
 
 func (lp *floorLoop) stopSpending(c *loopCtl, it factory.Item) bool {
 	if read, ok := lp.r.stopReaders.Load(c.id); ok {
-		on, err := read.(func(context.Context) (bool, error))(c.ctx)
-		// Withdrawal and Stop both end this lease. Temporary read failures
-		// still use the stored choice, as they did before this boundary check.
+		readCtx, cancel := context.WithTimeout(c.ctx, 2*time.Second)
+		defer cancel()
+		var on bool
+		var err error
+		for attempt := 0; attempt < 3; attempt++ {
+			on, err = read.(func(context.Context) (bool, error))(readCtx)
+			if err == nil || errors.Is(err, client.ErrLeaseGone) || readCtx.Err() != nil {
+				break
+			}
+			if attempt < 2 {
+				select {
+				case <-readCtx.Done():
+				case <-time.After(100 * time.Millisecond):
+				}
+			}
+		}
 		if errors.Is(err, client.ErrLeaseGone) {
 			c.cancel()
 			return false
 		}
-		if err == nil && on != it.StopAfterStep {
+		if err != nil {
+			if c.ctx.Err() == nil {
+				_ = lp.write(c, func(cur *factory.Item) error {
+					loopSay(cur, lp.r.now(), "said", "could not confirm Stop before the next step; work held: "+loopFirstLine(err.Error()))
+					return nil
+				})
+				_ = lp.r.Hold(c.id, true)
+			}
+			return false
+		}
+		if on != it.StopAfterStep {
 			if err := lp.write(c, func(cur *factory.Item) error { cur.StopAfterStep = on; return nil }); err != nil {
 				return false
 			}
