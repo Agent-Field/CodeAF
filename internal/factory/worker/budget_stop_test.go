@@ -86,14 +86,14 @@ func TestBudgetRaisePreservesStopSpendingOnTheLeasedRunner(t *testing.T) {
 func TestBudgetAdmissionCountsUnreportedRoundSpend(t *testing.T) {
  var calls atomic.Int32
  var g rig
- g = newRigWith(t, nil, func(o *run.Options) {
+ g = newRigWithReportEvery(t, nil, func(o *run.Options) {
   o.Exec = map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(ctx context.Context, j run.Job) (factory.StageResult, error) {
    if calls.Add(1) == 1 {
     if err := g.st.Update(j.Item.ID, func(it *factory.Item) error { it.SpentBefore = .6; return nil }); err != nil { return factory.StageResult{}, err }
    }
    return factory.StageResult{Done: true, Spent: .5}, nil
   })}
- })
+ }, time.Hour)
  id := g.add(t, check("first"), factory.Stage{Name: "second", Kind: factory.StageCheck, On: true})
  if err := g.st.Update(id, func(it *factory.Item) error { it.Cap = 1; it.Autonomy = factory.AutonomyAuto; return nil }); err != nil { t.Fatal(err) }
  if err := g.floor.Launch(id); err != nil { t.Fatal(err) }

@@ -44,6 +44,10 @@ func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
 
 // newRigWith is newRig whose worker's runner options tune may change.
 func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options), identity ...string) rig {
+ return newRigWithReportEvery(t, keepLocal, tune, 20*time.Millisecond, identity...)
+}
+
+func newRigWithReportEvery(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options), reportEvery time.Duration, identity ...string) rig {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -101,7 +105,7 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 			Mirror:      mirror,
 			LocalLease:  keepLocal,
 			Slots:       2,
-			ReportEvery: 20 * time.Millisecond,
+			ReportEvery: reportEvery,
 			BeatEvery:   20 * time.Millisecond,
 		})
 	}()
