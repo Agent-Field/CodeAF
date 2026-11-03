@@ -1172,3 +1172,13 @@ the model list, and Enter applies the selected model.
 ## Where the Settings search cursor appears
 
 Settings draws its search field above the rows. The cursor follows your query there; model pickers use their own visible filter, and a connection key entry keeps its cursor inside the key field. The bottom row remains the navigation hints.
+
+## Cancelled model calls, missing charges and provider receipts
+
+Stopping a model call does not undo work the provider has already charged for.
+codeaf asks for a final receipt when the provider supplies a generation ID and
+supports receipt lookup. If lookup fails, measured usage received before the stop
+is retained. A receipt and that fallback cannot charge the same attempt twice.
+Helper calls retain their generation IDs too. Without measured usage or a
+retrievable receipt, the charge stays unknown. Text token estimates are approximate
+telemetry; they are not booked as money.

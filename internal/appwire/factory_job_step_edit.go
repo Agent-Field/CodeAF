@@ -3,6 +3,7 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -89,6 +90,7 @@ type FactoryNewStep struct {
 	Kind   string `json:"kind,omitempty" enum:"chat,gate,check"`
 	Ask    string `json:"ask,omitempty"`
 	Until  string `json:"until,omitempty"`
+	When   string `json:"when,omitempty"`
 	Effort string `json:"effort,omitempty" enum:"cheap,strong"`
 	// Max is a check's rounds, 1 to 9; any other step takes none.
 	Max int `json:"max,omitempty"`
@@ -458,6 +460,10 @@ func checkNewStep(a *FactoryStepAddition) error {
 	case "", string(factory.StageChat), string(factory.StageGate), string(factory.StageCheck):
 	default:
 		return Errorf(CodeBadParams, "a step added to a job is a conversation (chat), an approval (gate) or a check")
+	}
+	st.When = strings.ToLower(strings.TrimSpace(st.When))
+	if st.When != "" && !slices.Contains(factory.WhenWords, st.When) {
+		return Errorf(CodeBadParams, "when is one of %s", strings.Join(factory.WhenWords, ", "))
 	}
 	if st.Kind != string(factory.StageCheck) && st.Max != 0 {
 		return Errorf(CodeBadParams, "only a check says its rounds")
