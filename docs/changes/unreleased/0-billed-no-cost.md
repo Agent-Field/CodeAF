@@ -12,3 +12,7 @@ Cancellation, stream errors and timeouts can occur after billable work. A recove
 provider receipt supplies the final charge; otherwise measured interim usage is
 retained once. Without usage or a retrievable receipt the price remains unknown;
 observed text estimates are telemetry only and are never invented spend.
+
+A missing price in the call log does not prove missing ledger spend: a late
+reconciled row may already contain the charge. Compare the authoritative usage
+ledger before adding provider-audit adjustments, or those additions double count.

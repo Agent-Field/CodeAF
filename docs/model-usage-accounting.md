@@ -76,3 +76,8 @@ a token estimate or a final billing claim. Direct services retain measured usage
 without attempting a routed generation lookup. Calls without either source stay
 unpriced. Call logs and session usage rows retain supplied generation IDs for
 later audits, including auxiliary calls. All session bookings use Agent.bank.
+
+The call log records the price available when an attempt ended. A later receipt
+can already be banked in the usage ledger without rewriting that log row. A cost
+audit must join those reconciled ledger rows before treating missing call-log
+prices as additional spend.
