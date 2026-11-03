@@ -3,6 +3,9 @@ package lease_test
 import (
     "context"
     "errors"
+ "net/http"
+ "net/http/httptest"
+ "github.com/Agent-Field/codeaf/internal/factory/client"
     "sync/atomic"
     "testing"
     "time"
@@ -40,11 +43,19 @@ func TestReviewStopRevokedLeaseCannotAdmitNextStep(t *testing.T) {
         }),
     }})
     t.Cleanup(func(){ _ = r.Stop(it.ID) })
-    // This is workerStopAfterStep's real lease check, without periodic polls.
-    r.SetStopAfterStepReader(it.ID, func(context.Context) (bool, error) {
+    // Use the worker's HTTP adapter: the server's ErrNoLease becomes the
+    // client's typed ErrLeaseGone before the runner sees the boundary read.
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
         _, err := f.desk.Renew(held.ID, held.Worker)
-        if errors.Is(err, lease.ErrNoLease) { lost.Add(1) }
-        return false, err
+        if errors.Is(err, lease.ErrNoLease) { lost.Add(1); http.Error(w, err.Error(), http.StatusConflict); return }
+        if err != nil { http.Error(w, err.Error(), http.StatusServiceUnavailable); return }
+        w.Header().Set("Content-Type", "application/json")
+        _, _ = w.Write([]byte(`{"on":false}`))
+    }))
+    defer server.Close()
+    workerClient := client.Open(server.URL, "").Worker("credential")
+    r.SetStopAfterStepReader(it.ID, func(ctx context.Context) (bool, error) {
+        return workerClient.StopAfterStep(ctx, held.ID)
     })
     if err := r.Launch(it.ID); err != nil { t.Fatal(err) }
     select { case <-entered: case <-time.After(2*time.Second): t.Fatal("first step never started") }
