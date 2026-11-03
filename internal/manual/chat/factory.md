@@ -260,7 +260,7 @@ An edit changes one job's steps, not the repository's pipeline. A step that has 
 
 An added conversation, check or approval step may use `when: touches auth` or `when: has ui`. These conditions are decided when the step comes up, using the change's files once known, otherwise the pull request's known files, otherwise an explicitly set triage area. Without files or area the answer is not known yet: the step stays pending and runs if still unknown at its turn. A conditional step before write therefore runs when no files or area are known.
 
-`touches auth` matches auth, billing or crypto; `has ui` matches tui, pages, render or ui. Matching is case-insensitive, on a whole path segment or its name without extension: `internal/auth/x.go`, `auth.go` and `src/pages/a.tsx` match; `authors.go` and `internal/uint/x.go` do not. Known files override triage area. With known files and no match, the job log and step note say, for example, `skipping inspect: when touches auth does not match the change files`.
+`touches auth` matches auth, billing or crypto; `has ui` matches tui, pages, render or ui. Matching is case-insensitive, on a whole path segment or its name without extension: `internal/auth/x.go`, `auth.go` and `src/pages/a.tsx` match; `authors.go` and `internal/uint/x.go` do not. Known files override triage area. With known files and no match, the job log says, for example, `skipping inspect: when touches auth does not match the change files`.
 
 The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
 

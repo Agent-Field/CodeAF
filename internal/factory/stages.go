@@ -1,8 +1,8 @@
 package factory
 
 import (
- "path"
- "strings"
+	"path"
+	"strings"
 )
 
 // Fits says whether a stage's [Stage.When] fits an item, which is how a
@@ -52,34 +52,38 @@ func areaIn(area string, names ...string) bool {
 // FileCondition says whether a stage waits for the files known at its turn.
 // These phases stay in the pending tail even if today's snapshot does not fit.
 func FileCondition(st Stage) bool {
- switch strings.ToLower(strings.TrimSpace(st.When)) {
- case "touches auth", "has ui":
-  return true
- }
- return false
+	switch strings.ToLower(strings.TrimSpace(st.When)) {
+	case "touches auth", "has ui":
+		return true
+	}
+	return false
 }
 
 func filesIn(it Item, names ...string) bool {
- if it.Change != nil && len(it.Change.Files) > 0 {
-  for _, f := range it.Change.Files {
-   if pathIn(f.Path, names...) { return true }
-  }
-  return false
- }
- if len(it.Files) > 0 {
-  for _, f := range it.Files {
-   if pathIn(f.Path, names...) { return true }
-  }
-  return false
- }
- return strings.TrimSpace(it.Triage.Area) == "" || areaIn(it.Triage.Area, names...)
+	if it.Change != nil && len(it.Change.Files) > 0 {
+		for _, f := range it.Change.Files {
+			if pathIn(f.Path, names...) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(it.Files) > 0 {
+		for _, f := range it.Files {
+			if pathIn(f.Path, names...) {
+				return true
+			}
+		}
+		return false
+	}
+	return strings.TrimSpace(it.Triage.Area) == "" || areaIn(it.Triage.Area, names...)
 }
 
 func pathIn(file string, names ...string) bool {
- for _, segment := range strings.Split(strings.ToLower(file), "/") {
-  if areaIn(segment, names...) || areaIn(strings.TrimSuffix(segment, path.Ext(segment)), names...) {
-   return true
-  }
- }
- return false
+	for _, segment := range strings.Split(strings.ToLower(file), "/") {
+		if areaIn(segment, names...) || areaIn(strings.TrimSuffix(segment, path.Ext(segment)), names...) {
+			return true
+		}
+	}
+	return false
 }
