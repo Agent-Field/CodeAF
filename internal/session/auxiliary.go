@@ -95,28 +95,11 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	if err := a.admitJobCall(ctx); err != nil {
 		return nil, sessionDefault, err
 	}
-	a.mu.Lock()
-	source := a.config.RolesSource
-	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG. A crew-only caller passes an empty
-	// floor deliberately — it is a quality judgement about a profile that HAS a
-	// crew, and it refuses to let the running model mark its own work — but the
-	// person who passed `--one-model` has already said the conversation's model
-	// is the crew. Left alone, those callers had no pin, no tier and no floor
-	// under the flag, so [roles.Ladder] answered ErrNoModel and a measured run
-	// had no mark reader and no brief writer at all (#443). It is decided HERE,
-	// at the one seam every errand passes through, so the next crew-only caller
-	// is correct without knowing the flag exists.
-	//
-	// THE FLOOR IS a.model AND NOT THE TURN'S LATCHED MODEL, because it is the
-	// same live conversation model every other errand already passes as its own
-	// floor (title.go, taskname.go, route_judge.go all read it live). A /model
-	// typed mid-turn reaches the turn's own next request now ([Agent.SetModel]),
-	// so reading it live here moves the crew-only rungs WITH the work rather than
-	// leaving the errands beside a turn talking to a model they do not know about.
-	if a.config.OneModel {
-		sessionDefault = a.model
-	}
-	a.mu.Unlock()
+	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG, and that is decided by the
+	// session's one role reader (rolemodel.go), not here: a crew-only caller's
+	// empty floor and every rung above it answer the conversation's live model
+	// under the flag (#443), whatever source the door handed over.
+	reader := a.roleModels()
 	// ONE ESC SPENDS ONE PLANNER AND ONE TITLE. A second claim in the same
 	// generation is silence — the leftover race and the redirect must not
 	// each fire their own (interrupt_fan.go, F13/F17).
@@ -124,7 +107,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		return nil, "", err
 	}
 	// A caller's own errand may route itself (errand.go's [routedErrandLadder]).
-	rungs, err := roles.Ladder(roles.Source(source), role, sessionDefault)
+	rungs, err := reader.Ladder(role, sessionDefault)
 	rungs, err = routedErrandLadder(ctx, rungs, err)
 	if err != nil {
 		return nil, "", err
