@@ -54,7 +54,10 @@ func TestBilledCancellation(t *testing.T) {
     wantCost := 0.07
     if !wantFound { wantCost = 0 }
     if r.Found != wantFound || r.Cost != wantCost { t.Errorf("settlement=%+v", r) }
-    if tc.usage && (tc.noReceipt || tc.noID || tc.direct) && !r.Interim { t.Errorf("interim usage not identified: %+v", r) }
+    data, _ := json.Marshal(r)
+    var settlement map[string]any
+    json.Unmarshal(data, &settlement)
+    if tc.usage && (tc.noReceipt || tc.noID || tc.direct) && settlement["Interim"] != true { t.Errorf("interim usage not identified: %+v", r) }
    case <-time.After(time.Second): t.Error("paid cancellation has no settlement")
    }
    for _, row := range ended(read()) {
