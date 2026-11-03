@@ -77,12 +77,13 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    }
    if len(first.Signals)!=1 || len(second.Signals)!=1 || second.Signals[0].Verb!=verb {t.Fatalf("signal lost after heartbeat reply: first=%+v next=%+v",first.Signals,second.Signals)}
    if !reflect.DeepEqual(first.Signals,second.Signals) {t.Fatalf("retry changed signal: first=%+v next=%+v",first.Signals,second.Signals)}
-   if verb=="reply" {select{case <-replied: case <-time.After(3*time.Second):t.Fatal("reply did not run")}; for j.replyingNow() {time.Sleep(time.Millisecond)} }
+   if verb=="reply" {select{case <-replied: case <-time.After(3*time.Second):t.Fatal("reply did not run")}; for deadline:=time.Now().Add(3*time.Second);j.replyingNow();time.Sleep(time.Millisecond){if time.Now().After(deadline){t.Fatal("reply stayed in flight")}} }
    before,_:=mirror.Get(it.ID)
    // A replay must not overwrite a later choice or repeat a manager turn/note.
    if err:=mirror.Update(it.ID,func(it *factory.Item)error{it.Cap=19;it.Model="later";it.Autonomy="later";return nil});err!=nil{t.Fatal(err)}
    j.beat(t.Context()); third:= <-replies
    if !reflect.DeepEqual(second.Signals,third.Signals) {t.Fatalf("lost ack did not replay the signal: %+v",third.Signals)}
+   for deadline:=time.Now().Add(3*time.Second);j.replyingNow();time.Sleep(time.Millisecond){if time.Now().After(deadline){t.Fatal("replayed reply stayed in flight")}}
    after,_:=mirror.Get(it.ID)
    if after.Cap!=19 || after.Model!="later" || after.Autonomy!="later" || !reflect.DeepEqual(before.Notes,after.Notes) || turns.Load()>1 {t.Fatalf("worker acted twice: before=%+v after=%+v turns=%d",before,after,turns.Load())}
    j.beat(t.Context()); fourth:= <-replies
@@ -132,6 +133,7 @@ func TestReplyDeliveryRetriesFailureButNeverRepeatsAnAcceptedTurn(t *testing.T) 
   for deadline:=time.Now().Add(3*time.Second);j.replyingNow();time.Sleep(time.Millisecond){if time.Now().After(deadline){t.Fatal("reply stayed in flight")}}
  }
  j.signals(t.Context(),signals)
+ for deadline:=time.Now().Add(3*time.Second);j.replyingNow();time.Sleep(time.Millisecond){if time.Now().After(deadline){t.Fatal("replayed reply stayed in flight")}}
  if attempts.Load()!=2{t.Fatalf("accepted reply ran again: %d",attempts.Load())}
 }
 
