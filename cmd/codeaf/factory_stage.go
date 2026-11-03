@@ -129,7 +129,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	cfg.Workspace = where
 	cfg.AutomaticModels = spec.AutomaticModels
-	cfg.Model = stageOpenModel(cfg, spec)
+	cfg.Model = factoryOpenModel(m.profileDir, cfg, spec)
 	fallback := appDefaultFallback(m.profileDir)
 	if cfg.OneModel || fallback == cfg.Model {
 		fallback = ""

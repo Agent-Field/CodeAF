@@ -340,6 +340,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
 		RejectPlan:  answer && planSendsBack(it),
+		PRReady:     owner && factory.NormalizeHandle(caller) != "" && it.Kind != factory.KindPR && it.Publish == "pr" && it.DoneHow != "dropped" && it.PullRequest != nil && it.PullRequest.Number > 0 && it.PullRequest.State == factory.PROpen && it.PullRequest.Draft,
 		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
 		Restore:     owner && factory.JobDoneHow(it) == "dropped",
 	}

@@ -964,7 +964,14 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if job.Progress != nil {
 			job.Progress(followProgressStart(job))
 		}
-		res, again, err := lp.round(c, exec, job)
+		var res factory.StageResult
+		var again bool
+		var err error
+		if cached := cachedCheckoutRefusal(job); cached != nil {
+			res = *cached
+		} else {
+			res, again, err = lp.round(c, exec, job)
+		}
 		if c.ctx.Err() != nil {
 			return false
 		}
@@ -989,9 +996,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			repair.Decision = "fixed"
 			candidate.Repair = &repair
 			if checked := lp.completedPublishedRepair(job.Item, candidate); checked.Repair.Decision != "no_change" {
+				receipts := followRefusalNotes(job, res)
 				res.Done, res.Exit = false, 1
 				res.Output = "The no-change review needs a complete assessment of current feedback on the clean published head. " + res.Output
-				res.Notes = append(res.Notes, verification.FailurePrefix+" current-head feedback review is incomplete or the checkout changed")
+				res.Notes = append(res.Notes, verification.FailurePrefix+" "+noChangeReviewRefusal)
+				res.Notes = append(res.Notes, receipts...)
 			}
 		}
 		if readiness && (res.Repair == nil || (res.Repair.Decision != "needs_repair" && res.Repair.Decision != "needs_you")) && verificationReason(res) == "" {
@@ -2242,6 +2251,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 	if err != nil {
 		return err
 	}
+	if err := followAnswerRefusal(it, yes, words); err != nil {
+		return err
+	}
 	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindAskFirst {
 		if yes {
 			return r.Launch(id)
@@ -2274,6 +2286,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 	c.pending = ""
 	lp.mu.Unlock()
 	if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		if err := followAnswerRefusal(*it, yes, words); err != nil {
+			return err
+		}
 		grantAdditionalRound(it, yes, words)
 		return nil
 	}); err != nil {

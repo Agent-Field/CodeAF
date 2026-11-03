@@ -219,6 +219,9 @@ func (lp *floorLoop) keepAnswer(c *loopCtl, id int, a loopAnswer) error {
 // keepStored puts the person's answer, said as word, on the item for the
 // step's next round, and takes the question down.
 func keepStored(it *factory.Item, word string, now time.Time) error {
+	if err := followAnswerRefusal(*it, false, word); err != nil {
+		return err
+	}
 	q := it.Asking
 	if q == nil {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
