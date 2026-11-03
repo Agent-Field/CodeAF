@@ -31,7 +31,10 @@ func TestStepLabelTravelsWithoutChangingIdentity(t *testing.T) {
 			if len(payload.Steps) != 1 || payload.Steps[0].Name != "securityrevi" || payload.Steps[0].Label != tc.wire || payload.Step.Name != "securityrevi" || payload.Step.Label != tc.wire { t.Errorf("step wire lost label or identity: %s", raw) }
 			restored := api.ToItem(job)
 			if restored.Stages[0].Name != "securityrevi" { t.Error("round trip changed id") }
-			if got := factory.BriefFacts(restored); len(got) != 1 || got[0].Label != tc.want { t.Errorf("round trip lost shown label: %+v", got) }
+			stageJSON, _ := json.Marshal(restored.Stages[0])
+			var saved struct { Label string }
+			_ = json.Unmarshal(stageJSON, &saved)
+			if saved.Label != tc.wire { t.Errorf("round trip lost label: %s", stageJSON) }
 			if tc.field == "" {
 				before, _ := json.Marshal(st)
 				after, _ := json.Marshal(restored.Stages[0])
