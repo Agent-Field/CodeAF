@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 	"os"
 	"strings"
 	"testing"
@@ -88,4 +89,17 @@ func TestReceiptQuotedRefusedProbeWithoutPass(t *testing.T) {
 	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err == nil || !strings.Contains(err.Error(), command+" · refused") {
 		t.Fatalf("refused required check must remain owed: %v", err)
 	}
+}
+
+func TestReceiptMaskedFailurePublication(t *testing.T) {
+ root, file, run := repairCheckFixture(t)
+ run(`CHECK_EXIT=7 cargo test --test cli regression; true`)
+ run(`cargo test --test cli regression`)
+ receiptProducerOK(t,file)
+ notes,_ := (&stageConversation{file:file,dir:root}).ExecutionNotes()
+ held := false
+ for _, n := range notes { held = held || strings.HasPrefix(n,verification.FailurePrefix) }
+ if held { t.Fatal("passing rerun did not clear failure") }
+ body := factory.PublishBody(factory.Item{Title:"review",Stream:&factory.Stream{Phases:[]factory.Phase{{Name:"proof",Result:&factory.StageResult{Notes:notes}}}}},"")
+ if strings.Contains(body,"CHECK_EXIT=7 cargo test --test cli regression; true") { t.Errorf("exit=7 check published as pass: %s", strings.ReplaceAll(body,"\n"," ")) }
 }
