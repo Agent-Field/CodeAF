@@ -173,3 +173,37 @@ func TestLedgerRowWithoutATurnMovesSpendToday(t *testing.T) {
 type appEmitFunc func(event string, payload any)
 
 func (f appEmitFunc) Emit(event string, payload any) { f(event, payload) }
+
+// Factory's own AI has its own figure on spend.today, so it isn't called a chat.
+// A job's rows stay the job's, whatever their role.
+func TestSpendTodayNamesFactoryAI(t *testing.T) {
+	t.Setenv(config.ProfileDirEnv, t.TempDir())
+	path := session.UsageLedgerPath()
+	t.Cleanup(func() { session.StopUsageWriter(path) })
+	b := &appBackend{now: time.Now}
+	b.dayAuth.profile, b.dayAuth.settled = config.ProfileDir(), true
+	now := time.Now()
+	for _, row := range []session.UsageLine{
+		{Role: factoryTriageName, USD: .1103, Input: 9},
+		{Role: factoryScoutName, USD: .0015, Input: 9},
+		{Role: "repo_ask", USD: .0061, Input: 9},
+		{Role: "pipeline_ai", USD: .0041, Input: 9},
+		{Role: "view_topic", USD: .0014, Input: 9},
+		{Role: "markreader", USD: .0109, Input: 9},
+		{USD: .02, Input: 9},
+		{Role: "factory triage", USD: .03, Input: 9, FactoryJob: "acme/api#1"},
+	} {
+		row.At, row.Model = now, "m/one"
+		session.RecordUsage(path, row)
+	}
+	if !session.FlushUsage() {
+		t.Fatal("flush")
+	}
+	spend, err := b.SpendToday()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spend.FactoryAIUSD == nil || math.Abs(*spend.FactoryAIUSD-.1234) > 1e-9 || math.Abs(spend.TodayUSD-.1843) > 1e-9 {
+		t.Fatalf("spend.today = %+v", spend)
+	}
+}

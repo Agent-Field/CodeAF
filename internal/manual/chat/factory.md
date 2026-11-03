@@ -685,3 +685,10 @@ uses this same rule.
 
 The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
 Other amounts are refused. Stop keeps the recorded spend and work.
+
+## Why does Spending show Factory AI — the third part of today's money
+
+Today's figure on Spending counts every model call on this computer's ledger, and it moves as each one lands, not only when a chat turn ends.
+
+The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (asking about a repo, Build with AI, AI views). A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
+

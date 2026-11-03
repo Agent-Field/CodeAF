@@ -4248,7 +4248,15 @@ func (b *appBackend) SpendToday() (appwire.Spend, error) {
 	if err != nil {
 		return appwire.Spend{}, appEngineError(err)
 	}
-	return appwire.Spend{TodayUSD: spent, DayCapUSD: appFigure(limit)}, nil
+	spend := appwire.Spend{TodayUSD: spent, DayCapUSD: appFigure(limit)}
+	if b.today == nil {
+		reading, err := session.ReadDailySpend(session.UsageLedgerPath(), now)
+		if err != nil {
+			return appwire.Spend{}, appEngineError(err)
+		}
+		spend.FactoryAIUSD = appFigure(reading.FactoryAIUSD)
+	}
+	return spend, nil
 }
 
 // appSpendSettle is how long after a turn ends its spending is read again: the
