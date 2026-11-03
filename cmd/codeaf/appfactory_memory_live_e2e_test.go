@@ -362,7 +362,7 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD, r
 		calls = append(calls, row)
 		total++
 		providerUSD += row.Cost
-		if row.Tag == "memory" {
+		if row.Tag == "memory" || row.Tag == "reflex" {
 			memory++
 		}
 	}

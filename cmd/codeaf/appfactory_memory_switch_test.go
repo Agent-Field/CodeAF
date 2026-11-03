@@ -256,7 +256,11 @@ func freshMemoryOffApp(t *testing.T) {
 	s.must("settings.set", map[string]any{"memory_enabled": false}, nil)
 	// Let the already-started request finish before measuring the next turn.
 	time.Sleep(50 * time.Millisecond)
-	before := strings.Count(string(raw), `"tag":"reflex"`)
+	raw, err = os.ReadFile(callPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := strings.Count(string(raw), `"phase":"start","tag":"reflex"`)
 	events, err = agent.Submit(context.Background(), "Explain Cedar again.")
 	if err != nil {
 		t.Fatal(err)
@@ -267,7 +271,7 @@ func freshMemoryOffApp(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ = os.ReadFile(callPath)
-	if after := strings.Count(string(raw), `"tag":"reflex"`); after > before+1 {
+	if after := strings.Count(string(raw), `"phase":"start","tag":"reflex"`); after != before {
 		t.Fatalf("wire off admitted another memory request: before=%d after=%d", before, after)
 	}
 

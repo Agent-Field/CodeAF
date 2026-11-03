@@ -330,7 +330,7 @@ func decodeSettingsPatch(raw json.RawMessage) (SettingsPatch, error) {
 		case "open_at_login":
 			err = flag(name, &patch.OpenAtLogin)
 		case "memory_enabled":
-			if string(fields[name]) == "null" {
+			if strings.TrimSpace(string(fields[name])) == "null" {
 				err = Errorf(CodeBadParams, "memory_enabled must be true or false")
 			} else {
 				err = flag(name, &patch.MemoryEnabled)
