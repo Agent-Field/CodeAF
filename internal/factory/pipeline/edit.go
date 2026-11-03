@@ -61,10 +61,10 @@ const (
 // refused here rather than written. Only a field an edit names is bounded; a
 // larger value already in the file is carried through untouched.
 const (
-	EditTextMax   = 256 << 10 // the pull request route's own cap on the file
-	EditPromptMax = 8 << 10   // bytes
-	EditLabelMax  = factory.StepLabelMax       // characters
-	EditUntilMax  = 200       // characters
+	EditTextMax   = 256 << 10            // the pull request route's own cap on the file
+	EditPromptMax = 8 << 10              // bytes
+	EditLabelMax  = factory.StepLabelMax // characters
+	EditUntilMax  = 200                  // characters
 	EditRoundsMax = 99
 	EditBudgetMax = factory.BudgetMostUSD
 	EditOpsMax    = 64

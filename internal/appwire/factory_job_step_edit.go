@@ -115,8 +115,8 @@ type FactoryStepMove struct {
 // step of the job as the person read it.
 type FactoryStepEdit struct {
 	// Label maps a step name to its display label; empty clears it.
-	Label map[string]string `json:"label,omitempty"`
-	Add []FactoryStepAddition `json:"add,omitempty"`
+	Label map[string]string     `json:"label,omitempty"`
+	Add   []FactoryStepAddition `json:"add,omitempty"`
 	// Ask maps a step name to its new ask.
 	Ask map[string]string `json:"ask,omitempty"`
 	// Thinking maps a step name to cheap or strong; "" returns it to the usual.
@@ -343,10 +343,16 @@ func checkStepEdit(ed *FactoryStepEdit) error {
 	}
 	labels := make(map[string]string, len(ed.Label))
 	for name, label := range ed.Label {
-		if name, err = stepRef("label", name); err != nil { return err }
-		if _, exists := labels[name]; exists { return Errorf(CodeBadParams, "label names a step twice") }
+		if name, err = stepRef("label", name); err != nil {
+			return err
+		}
+		if _, exists := labels[name]; exists {
+			return Errorf(CodeBadParams, "label names a step twice")
+		}
 		label, bad := factory.CleanStepLabel(label)
-		if bad != nil { return Errorf(CodeBadParams, "%s", bad.Error()) }
+		if bad != nil {
+			return Errorf(CodeBadParams, "%s", bad.Error())
+		}
 		labels[name] = label
 	}
 	ed.Label = nilIfEmpty(labels)

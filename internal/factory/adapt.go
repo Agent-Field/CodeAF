@@ -346,7 +346,9 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 
 	for _, name := range sortedKeys(e.Label) {
 		i := find(name, "set")
-		if i < 0 { continue }
+		if i < 0 {
+			continue
+		}
 		label, err := CleanStepLabel(e.Label[name])
 		switch {
 		case err != nil:

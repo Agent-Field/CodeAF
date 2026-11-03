@@ -302,7 +302,7 @@ type FactoryPipelineEdit struct {
 	After    *string  `json:"after,omitempty"`
 	Kind     *string  `json:"kind,omitempty" enum:"chat,check,gate"`
 	Prompt   *string  `json:"prompt,omitempty"`
-	Label    *string `json:"label,omitempty"`
+	Label    *string  `json:"label,omitempty"`
 	Until    *string  `json:"until,omitempty"`
 	Max      *int     `json:"max,omitempty"`
 	When     *string  `json:"when,omitempty"`
@@ -785,7 +785,9 @@ func pipelinePreviewMethod(name string) method {
 		}
 		if _, labels := e.(FactoryPipelineLabelEditor); !labels {
 			for _, edit := range p.Edits {
-				if edit.Label != nil { return nil, Errorf(CodeBadParams, "this engine does not edit pipeline labels") }
+				if edit.Label != nil {
+					return nil, Errorf(CodeBadParams, "this engine does not edit pipeline labels")
+				}
 			}
 		}
 		if p, err = CheckPipelinePreview(p); err != nil {
