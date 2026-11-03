@@ -23,20 +23,29 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 	}))
 	defer server.Close()
 	st, _ := chatSpendFloor(t)
-	it, err := st.Create(factory.Item{Repo: "acme/api", Num: 7, State: factory.StateRunning, Talk: filepath.Join(t.TempDir(),"manager.jsonl"), Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, Round: 1}}}})
+	it, err := st.Create(factory.Item{Repo: "acme/api", Num: 7, State: factory.StateRunning, Talk: filepath.Join(t.TempDir(), "manager.jsonl"), Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, Round: 1}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Two rounds; round two is interrupted and reopened with a new live meter.
 	for admission, round := range []int{1, 2, 2, 0} {
-		if err := st.Annotate(it.ID, func(cur *factory.Item) error { if round > 0 { cur.Stream.Phases[0].Round = round }; return nil }); err != nil {
+		if err := st.Annotate(it.ID, func(cur *factory.Item) error {
+			if round > 0 {
+				cur.Stream.Phases[0].Round = round
+			}
+			return nil
+		}); err != nil {
 			t.Fatal(err)
 		}
 		current, _ := st.Get(it.ID)
 		b := &stageBudget{floor: st, item: current, stage: "proof", round: round}
 		cfg := session.Config{Workspace: t.TempDir(), SessionFile: filepath.Join(t.TempDir(), "stage.jsonl"), ProfileDir: t.TempDir(), Model: "deepseek/deepseek-v4.1-flash", APIKey: "fixture", BaseURL: server.URL, JobBudget: b, Unattended: true, DeterministicNames: true}
- if round == 0 { cfg.JobBudget = nil; cfg.JobChat = jobChatDoorOf(st); cfg.SessionFile = it.Talk }
- agent, err := session.New(cfg)
+		if round == 0 {
+			cfg.JobBudget = nil
+			cfg.JobChat = jobChatDoorOf(st)
+			cfg.SessionFile = it.Talk
+		}
+		agent, err := session.New(cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,11 +53,18 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-        if round == 0 { _ = agent.Close(); continue }
-        c := &stageConversation{agent: agent, budget: b}
-        wantRound := .01
-        if admission == 2 { wantRound = .02 }
-        if math.Abs(c.Spent()-wantRound)>1e-9 { t.Fatalf("round %d cumulative report = %.4f, want %.4f",round,c.Spent(),wantRound) }
+		if round == 0 {
+			_ = agent.Close()
+			continue
+		}
+		c := &stageConversation{agent: agent, budget: b}
+		wantRound := .01
+		if admission == 2 {
+			wantRound = .02
+		}
+		if math.Abs(c.Spent()-wantRound) > 1e-9 {
+			t.Fatalf("round %d cumulative report = %.4f, want %.4f", round, c.Spent(), wantRound)
+		}
 		res := factory.StageResult{Done: true, Spent: c.Spent(), SpendRecorded: true, Chat: fmt.Sprintf("round-%d", round)}
 		_ = agent.Close()
 		// A transport retry writes exactly the same report twice, through its codec.
@@ -59,8 +75,10 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 			}
 		}
 		// Reload the saved job for the next admission.
-        it, err = st.Get(it.ID)
-        if err != nil { t.Fatal(err) }
+		it, err = st.Get(it.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	if !session.FlushUsage() {
 		t.Fatal("ledger did not flush")
@@ -77,7 +95,9 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 	}
 	got, _ := st.Get(it.ID)
 	cost := 0.0
- for _, step := range api.FromItem(got).Steps { cost += step.Cost }
+	for _, step := range api.FromItem(got).Steps {
+		cost += step.Cost
+	}
 	if math.Abs(ledger-.04) > 1e-9 {
 		t.Fatalf("tagged ledger = %.4f, want .0400", ledger)
 	}
