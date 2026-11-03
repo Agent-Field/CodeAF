@@ -152,6 +152,9 @@ it can be renamed but cannot move or be deleted. Other pages can form a tree;
 deleting a page deletes its descendants. Saving a stale page or plan refuses
 without changing it. Restoring a page creates a new version. Page titles take
 1–200 bytes and editor documents at most 1 MiB; record text takes 1–2000 bytes.
+Client IDs, titles and source labels refuse control characters. Why, how it went,
+record text and draft text allow newline and tab, and refuse other control
+characters. Malformed app requests return `bad_params`.
 
 Records can be proposed, kept, dropped and replaced. Keep can undo a drop;
 a replaced record cannot change again. Plans store milestones, ordered waves
@@ -162,5 +165,7 @@ at most $10,000 and an end in the future at most 90 days away. Expired grants
 read as ended. Marking done ends every still-active grant; granting on a done
 workstream is refused. These are stored permissions; Factory enforcement is a
 separate capability. Workstream numbers use recorded job facts and agent spend.
+Updating, marking done and reopening return those numbers using the same reads
+as getting the workstream.
 Unavailable readings stay absent; a measured zero is present. Budgets and autonomy
 settings do not themselves start work.

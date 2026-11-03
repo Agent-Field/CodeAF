@@ -102,6 +102,9 @@ func (s *Store) SetPlan(ctx context.Context, id string, base int, milestones []M
 				return invalid("waves must be positive, unique and ascending")
 			}
 			last = wave.N
+			if !lineWithin(wave.Title, 200) {
+				return invalid("wave title must be at most 200 bytes without control characters")
+			}
 			if wave.MilestoneID != "" && !ids[wave.MilestoneID] {
 				return invalid("wave milestone does not exist")
 			}
@@ -114,6 +117,12 @@ func (s *Store) SetPlan(ctx context.Context, id string, base int, milestones []M
 				case "draft":
 					if item.DraftID == "" || item.Title == "" {
 						return invalid("draft needs draft_id and title")
+					}
+					if err := validTitle(item.Title); err != nil {
+						return err
+					}
+					if !textWithin(item.Text, len(item.Text)) {
+						return invalid("draft text allows only newline and tab control characters")
 					}
 				default:
 					return invalid("unknown plan item kind")

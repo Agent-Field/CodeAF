@@ -250,7 +250,11 @@ func withFeature(hello Hello, feature string) Hello {
 // plainText is non-empty text of at most limit bytes with no control
 // characters and no surrounding space.
 func plainText(s string, limit int) bool {
-	return s != "" && len(s) <= limit && strings.TrimSpace(s) == s && strings.IndexFunc(s, unicode.IsControl) < 0
+	return s != "" && len(s) <= limit && strings.TrimSpace(s) == s && singleLineText(s)
+}
+
+func singleLineText(s string) bool {
+	return strings.IndexFunc(s, unicode.IsControl) < 0
 }
 
 // CheckRef refuses a malformed reference as bad_params. adding refuses the

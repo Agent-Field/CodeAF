@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -89,7 +90,12 @@ func TestAppWorkstreamCreateIsIdempotent(t *testing.T) {
 	errs := make(chan error, 8)
 	for range 8 {
 		wg.Add(1)
-		go func() { defer wg.Done(); v, err := b.WorkstreamCreate(ask); results <- v; errs <- err }()
+		guard.Go("app/workstream-create-test", func() {
+			defer wg.Done()
+			v, err := b.WorkstreamCreate(ask)
+			results <- v
+			errs <- err
+		})
 	}
 	wg.Wait()
 	close(results)
@@ -211,9 +217,11 @@ func TestAppWorkstreamStageAndMeasuredNumbers(t *testing.T) {
 	}
 	before := len(workstreamEvents(rec))
 	state = "queued"
-	b.workstreams.cacheMu.Lock()
-	b.workstreams.cache = nil
-	b.workstreams.cacheMu.Unlock()
+	func() {
+		b.workstreams.cacheMu.Lock()
+		defer b.workstreams.cacheMu.Unlock()
+		b.workstreams.cache = nil
+	}()
 	got, err = b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
 	if err != nil || got.Workstream.Stage != "building" || got.Workstream.StartedAt.IsZero() {
 		t.Fatalf("queued %+v, %v", got, err)
@@ -240,6 +248,75 @@ func TestAppWorkstreamStageAndMeasuredNumbers(t *testing.T) {
 	reopened, err := b.WorkstreamReopen(appwire.WorkstreamReopenParams{ID: w.ID})
 	if err != nil || reopened.Workstream.Stage != "building" {
 		t.Fatalf("reopen %+v, %v", reopened, err)
+	}
+}
+
+// (j): mutation results retain the same measured job and agent numbers as get.
+func TestAppWorkstreamMutationNumbersMatchGet(t *testing.T) {
+	for _, method := range []string{"update", "mark_done", "reopen", "mark_done_again"} {
+		t.Run(method, func(t *testing.T) {
+			b, rec, _, _ := workstreamBackend(t)
+			reads := 0
+			mergedAt := time.Now()
+			b.workstreams.queue = func(context.Context, string) (api.Queue, error) {
+				reads++
+				return api.Queue{Jobs: []api.Job{{ID: 7, Num: 1107, State: "needs_you", Cost: 1.25, PR: &api.PR{MergedAt: &mergedAt}}}}, nil
+			}
+			b.workstreams.spend = func(string) *float64 { return workstreamPtr(2.5) }
+			w := workstreamCreateForTest(t, b, "Mutation numbers", workstreamJobRef("7"))
+			if _, err := b.WorkstreamRecordPropose(appwire.WorkstreamRecordProposeParams{WorkstreamID: w.ID, Kind: "question", Text: "Ready?"}); err != nil {
+				t.Fatal(err)
+			}
+			before, err := b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if method == "reopen" || method == "mark_done_again" {
+				done, err := b.WorkstreamMarkDone(appwire.WorkstreamMarkDoneParams{ID: w.ID, HowItWent: workstreamPtr("First report")})
+				if err != nil {
+					t.Fatal(err)
+				}
+				before.Workstream = done.Workstream
+			}
+			events := len(workstreamEvents(rec))
+			var result appwire.Workstream
+			switch method {
+			case "update":
+				v, err := b.WorkstreamUpdate(appwire.WorkstreamUpdateParams{ID: w.ID, Patch: appwire.WorkstreamPatch{Why: workstreamPtr("Updated")}})
+				result = v.Workstream
+				if err != nil {
+					t.Fatal(err)
+				}
+			case "mark_done", "mark_done_again":
+				v, err := b.WorkstreamMarkDone(appwire.WorkstreamMarkDoneParams{ID: w.ID, HowItWent: workstreamPtr("New report")})
+				result = v.Workstream
+				if err != nil {
+					t.Fatal(err)
+				}
+			case "reopen":
+				v, err := b.WorkstreamReopen(appwire.WorkstreamReopenParams{ID: w.ID})
+				result = v.Workstream
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
+			if err != nil || !reflect.DeepEqual(result, got.Workstream) {
+				t.Fatalf("mutation %+v differs from get %+v: %v", result, got.Workstream, err)
+			}
+			if result.Merged == nil || *result.Merged != 1 || result.NeedsYou == nil || *result.NeedsYou != 2 || result.SpendUSD == nil || *result.SpendUSD != 3.75 {
+				t.Fatalf("measured numbers: %+v", result)
+			}
+			if reads != 1 {
+				t.Fatalf("queue reads = %d, want one cached read", reads)
+			}
+			if method == "reopen" && result.Stage != "building" {
+				t.Fatalf("reopen stage = %q", result.Stage)
+			}
+			if method == "mark_done_again" && (!reflect.DeepEqual(result, before.Workstream) || len(workstreamEvents(rec)) != events) {
+				t.Fatal("marking an already done workstream changed it or emitted an event")
+			}
+		})
 	}
 }
 
@@ -833,10 +910,13 @@ func TestAppWorkstreamFactoryBatchCacheAndCollectionTargets(t *testing.T) {
 	release := make(chan struct{})
 	var mu sync.Mutex
 	calls := map[string]int{}
-	b.workstreams.queue = func(ctx context.Context, factory string) (api.Queue, error) {
+	workstreamRecordCall := func(factory string) {
 		mu.Lock()
+		defer mu.Unlock()
 		calls[factory]++
-		mu.Unlock()
+	}
+	b.workstreams.queue = func(ctx context.Context, factory string) (api.Queue, error) {
+		workstreamRecordCall(factory)
 		entered <- factory
 		select {
 		case <-release:
@@ -850,7 +930,7 @@ func TestAppWorkstreamFactoryBatchCacheAndCollectionTargets(t *testing.T) {
 		return api.Queue{Jobs: []api.Job{{ID: id, Num: 1107, Title: "Recorded title", State: "backlog", Repo: "acme/api", Cost: 0}}}, nil
 	}
 	done := make(chan error, 1)
-	go func() { _, err := b.WorkstreamList(appwire.WorkstreamListParams{}); done <- err }()
+	guard.Go("app/workstream-list-test", func() { _, err := b.WorkstreamList(appwire.WorkstreamListParams{}); done <- err })
 	for range 2 {
 		select {
 		case <-entered:

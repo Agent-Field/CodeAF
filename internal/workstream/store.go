@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/workspace"
@@ -64,7 +65,11 @@ func nullInt(n int) any {
 }
 func invalid(message string) error { return fmt.Errorf("%w: %s", ErrInvalid, message) }
 func textWithin(s string, limit int) bool {
-	return len(s) <= limit && utf8.ValidString(s) && !strings.ContainsRune(s, 0)
+	return len(s) <= limit && utf8.ValidString(s) &&
+		strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) < 0
+}
+func lineWithin(s string, limit int) bool {
+	return len(s) <= limit && utf8.ValidString(s) && strings.IndexFunc(s, unicode.IsControl) < 0
 }
 func actor(by string) (string, error) {
 	if by == "" {
@@ -76,7 +81,7 @@ func actor(by string) (string, error) {
 	return by, nil
 }
 func validTitle(title string) error {
-	if strings.TrimSpace(title) == "" || !textWithin(title, 200) {
+	if strings.TrimSpace(title) == "" || !lineWithin(title, 200) {
 		return invalid("title must be 1–200 bytes")
 	}
 	return nil
@@ -85,7 +90,7 @@ func sourceJSON(source *Source) (any, error) {
 	if source == nil {
 		return nil, nil
 	}
-	if source.ID == "" || !textWithin(source.ID, 4096) || !textWithin(source.Label, 200) {
+	if source.ID == "" || !textWithin(source.ID, 4096) || !lineWithin(source.Label, 200) {
 		return nil, invalid("source needs an id and a label of at most 200 bytes")
 	}
 	switch source.Kind {
@@ -246,7 +251,7 @@ func (s *Store) Create(ctx context.Context, p Create) (Workstream, Change, error
 	if err := workspace.ValidateName(p.Name); err != nil {
 		return Workstream{}, Change{}, err
 	}
-	if !textWithin(p.Why, 4000) || !textWithin(p.ClientID, 128) || len(p.Refs) > 200 {
+	if !textWithin(p.Why, 4000) || !lineWithin(p.ClientID, 128) || len(p.Refs) > 200 {
 		return Workstream{}, Change{}, invalid("create exceeds workstream bounds")
 	}
 	refs := append([]workspace.Ref(nil), p.Refs...)

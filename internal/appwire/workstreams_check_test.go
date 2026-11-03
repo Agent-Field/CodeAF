@@ -2,6 +2,7 @@ package appwire
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -64,5 +65,73 @@ func TestWorkstreamBoundsPreserveExplicitZeroAndFalse(t *testing.T) {
 		if err != ErrWorkstreamsNotYet {
 			t.Fatalf("%s did not reach the fake: %v", method, err)
 		}
+	}
+}
+
+func TestWorkstreamControlCharactersBeforeDelegation(t *testing.T) {
+	cases := []struct {
+		name, method, params string
+		prose                bool
+	}{
+		{"name", "workstream.create", `{"name":$text}`, false},
+		{"rename", "workstream.update", `{"id":"x","patch":{"name":$text}}`, false},
+		{"client_id", "workstream.create", `{"name":"x","client_id":$text}`, false},
+		{"page title", "page.create", `{"workstream_id":"x","title":$text}`, false},
+		{"updated page title", "page.update", `{"id":"x","title":$text}`, false},
+		{"milestone title", "workstream.plan_set", `{"id":"x","base_version":0,"milestones":[{"id":"","title":$text}],"waves":[]}`, false},
+		{"wave title", "workstream.plan_set", `{"id":"x","base_version":0,"milestones":[],"waves":[{"n":1,"title":$text,"auto_start":false,"items":[]}]}`, false},
+		{"draft title", "workstream.plan_set", `{"id":"x","base_version":0,"milestones":[],"waves":[{"n":1,"auto_start":false,"items":[{"kind":"draft","draft_id":"d","title":$text}]}]}`, false},
+		{"source label", "record.propose", `{"workstream_id":"x","kind":"decision","text":"x","source":{"kind":"chat","id":"c","label":$text}}`, false},
+		{"replacement source label", "record.supersede", `{"id":"x","text":"x","source":{"kind":"chat","id":"c","label":$text}}`, false},
+		{"why", "workstream.create", `{"name":"x","why":$text}`, true},
+		{"updated why", "workstream.update", `{"id":"x","patch":{"why":$text}}`, true},
+		{"how_it_went", "workstream.mark_done", `{"id":"x","how_it_went":$text}`, true},
+		{"record text", "record.propose", `{"workstream_id":"x","kind":"question","text":$text}`, true},
+		{"replacement text", "record.supersede", `{"id":"x","text":$text}`, true},
+		{"draft text", "workstream.plan_set", `{"id":"x","base_version":0,"milestones":[],"waves":[{"n":1,"auto_start":false,"items":[{"kind":"draft","draft_id":"d","title":"Draft","text":$text}]}]}`, true},
+	}
+	fake := &fakeWorkstreamer{fakeEngine: &fakeEngine{}, serves: true}
+	for _, tc := range cases {
+		for control := rune(0); control <= 0x9f; control++ {
+			if control > 0x1f && control < 0x7f {
+				continue
+			}
+			t.Run(fmt.Sprintf("%s/U+%04X", tc.name, control), func(t *testing.T) {
+				value, err := json.Marshal("before" + string(control) + "after")
+				if err != nil {
+					t.Fatal(err)
+				}
+				params := strings.ReplaceAll(tc.params, "$text", string(value))
+				_, err = methods[tc.method].call(fake, json.RawMessage(params))
+				if tc.prose && (control == '\n' || control == '\t') {
+					if err != ErrWorkstreamsNotYet {
+						t.Fatalf("allowed prose did not reach the fake: %v", err)
+					}
+					return
+				}
+				wire, ok := err.(*Error)
+				if !ok || wire.Code != CodeBadParams {
+					t.Fatalf("got %v, want %s before delegation", err, CodeBadParams)
+				}
+			})
+		}
+	}
+}
+
+func TestWorkstreamTextFieldsPreserveAllowedContent(t *testing.T) {
+	fake := &fakeWorkstreamer{fakeEngine: &fakeEngine{}, serves: true}
+	for _, tc := range []struct{ method, params string }{
+		{"workstream.create", `{"name":"Launch","client_id":"","why":""}`},
+		{"workstream.create", `{"name":"Launch","client_id":" retry ","why":"first\n\tsecond"}`},
+		{"page.create", `{"workstream_id":"x","title":" Résumé 界 "}`},
+		{"record.propose", `{"workstream_id":"x","kind":"question","text":"first\n\tsecond","source":{"kind":"chat","id":"c","label":" Label "}}`},
+		{"workstream.plan_set", `{"id":"x","base_version":0,"milestones":[],"waves":[{"n":1,"title":"","auto_start":false,"items":[{"kind":"draft","draft_id":"d","title":" Draft ","text":""}]}]}`},
+	} {
+		t.Run(tc.method+tc.params, func(t *testing.T) {
+			_, err := methods[tc.method].call(fake, json.RawMessage(tc.params))
+			if err != ErrWorkstreamsNotYet {
+				t.Fatalf("allowed content did not reach the fake: %v", err)
+			}
+		})
 	}
 }

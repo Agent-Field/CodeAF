@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/workspace"
@@ -362,10 +363,14 @@ func (b *appBackend) WorkstreamUpdate(p appwire.WorkstreamUpdateParams) (appwire
 			patch.Wake = &workstream.Wake{Morning: p.Patch.Wake.Morning, RelatedIssues: p.Patch.Wake.RelatedIssues}
 		}
 		w, c, err := s.Update(context.Background(), p.ID, patch)
-		if err == nil && c.ID != "" && p.Patch.Name != nil {
+		if err != nil {
+			return appwire.WorkstreamUpdateResult{}, c, err
+		}
+		if c.ID != "" && p.Patch.Name != nil {
 			b.collectionChanged(w.ID, false)
 		}
-		return appwire.WorkstreamUpdateResult{Workstream: appWorkstream(w, nil, b.workstreamSpend(w.AgentID))}, c, err
+		facts := b.workstreamFacts(w.Jobs())
+		return appwire.WorkstreamUpdateResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, nil
 	})
 }
 
@@ -394,14 +399,22 @@ func (b *appBackend) WorkstreamMarkDone(p appwire.WorkstreamMarkDoneParams) (app
 				err = archive(ids)
 			}
 		}
-		return appwire.WorkstreamMarkDoneResult{Workstream: appWorkstream(w, nil, b.workstreamSpend(w.AgentID))}, workstream.Change{}, err
+		if err != nil {
+			return appwire.WorkstreamMarkDoneResult{}, workstream.Change{}, err
+		}
+		facts := b.workstreamFacts(w.Jobs())
+		return appwire.WorkstreamMarkDoneResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, workstream.Change{}, nil
 	})
 }
 
 func (b *appBackend) WorkstreamReopen(p appwire.WorkstreamReopenParams) (appwire.WorkstreamReopenResult, error) {
 	return workstreamDo(b, p, func(s *workstream.Store) (appwire.WorkstreamReopenResult, workstream.Change, error) {
 		w, c, err := s.Reopen(context.Background(), p.ID)
-		return appwire.WorkstreamReopenResult{Workstream: appWorkstream(w, nil, b.workstreamSpend(w.AgentID))}, c, err
+		if err != nil {
+			return appwire.WorkstreamReopenResult{}, c, err
+		}
+		facts := b.workstreamFacts(w.Jobs())
+		return appwire.WorkstreamReopenResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, nil
 	})
 }
 
@@ -597,13 +610,11 @@ func (b *appBackend) WorkstreamGoAheadRevoke(p appwire.WorkstreamGoAheadRevokePa
 // in-flight read, so concurrent list/get calls cannot multiply Factory work.
 func (b *appBackend) workstreamQueue(ctx context.Context, factory string) workstreamQueueRead {
 	state := &b.workstreams
-	state.cacheMu.Lock()
-	if entry, ok := state.cache[factory]; ok && time.Since(entry.at) < workstreamFactoryFresh {
-		state.cacheMu.Unlock()
+	entry, flight, readQueue := state.workstreamQueueStart(factory)
+	if flight == nil {
 		return entry
 	}
-	if flight := state.flights[factory]; flight != nil {
-		state.cacheMu.Unlock()
+	if !readQueue {
 		select {
 		case <-flight:
 			return b.workstreamQueue(ctx, factory)
@@ -611,22 +622,39 @@ func (b *appBackend) workstreamQueue(ctx context.Context, factory string) workst
 			return workstreamQueueRead{err: ctx.Err()}
 		}
 	}
-	if state.flights == nil {
-		state.flights = map[string]chan struct{}{}
-	}
-	flight := make(chan struct{})
-	state.flights[factory] = flight
-	state.cacheMu.Unlock()
 	read := state.queue
 	if read == nil {
 		read = b.FactoryQueue
 	}
 	queue, err := read(ctx, factory)
-	entry := workstreamQueueRead{at: time.Now(), err: err, jobs: map[int]api.Job{}}
+	entry = workstreamQueueRead{at: time.Now(), err: err, jobs: map[int]api.Job{}}
 	for _, j := range queue.Jobs {
 		entry.jobs[j.ID] = j
 	}
+	state.workstreamQueueFinish(factory, flight, entry)
+	return entry
+}
+
+func (state *appWorkstreams) workstreamQueueStart(factory string) (workstreamQueueRead, chan struct{}, bool) {
 	state.cacheMu.Lock()
+	defer state.cacheMu.Unlock()
+	if entry, ok := state.cache[factory]; ok && time.Since(entry.at) < workstreamFactoryFresh {
+		return entry, nil, false
+	}
+	if flight := state.flights[factory]; flight != nil {
+		return workstreamQueueRead{}, flight, false
+	}
+	if state.flights == nil {
+		state.flights = map[string]chan struct{}{}
+	}
+	flight := make(chan struct{})
+	state.flights[factory] = flight
+	return workstreamQueueRead{}, flight, true
+}
+
+func (state *appWorkstreams) workstreamQueueFinish(factory string, flight chan struct{}, entry workstreamQueueRead) {
+	state.cacheMu.Lock()
+	defer state.cacheMu.Unlock()
 	if state.cache == nil {
 		state.cache = map[string]workstreamQueueRead{}
 	}
@@ -643,8 +671,6 @@ func (b *appBackend) workstreamQueue(ctx context.Context, factory string) workst
 	state.cache[factory] = entry
 	delete(state.flights, factory)
 	close(flight)
-	state.cacheMu.Unlock()
-	return entry
 }
 
 type workstreamJobRead struct {
@@ -672,10 +698,24 @@ func (b *appBackend) workstreamJobReads(jobs []workstream.Job) map[workstream.Jo
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	missing := 0
+	workstreamMissingAllowed := func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if missing >= workstreamMissingJobsMax {
+			return false
+		}
+		missing++
+		return true
+	}
+	workstreamRememberRead := func(j workstream.Job, read workstreamJobRead) {
+		mu.Lock()
+		defer mu.Unlock()
+		out[j] = read
+	}
 	slots := make(chan struct{}, workstreamFactoryParallel)
 	for factory, members := range grouped {
 		wg.Add(1)
-		go func() {
+		guard.Go("app/workstream-factory", func() {
 			defer wg.Done()
 			select {
 			case slots <- struct{}{}:
@@ -688,12 +728,7 @@ func (b *appBackend) workstreamJobReads(jobs []workstream.Job) map[workstream.Jo
 				job, ok := queue.jobs[j.Number]
 				err := queue.err
 				if err == nil && !ok {
-					mu.Lock()
-					allowed := missing < workstreamMissingJobsMax
-					if allowed {
-						missing++
-					}
-					mu.Unlock()
+					allowed := workstreamMissingAllowed()
 					switch {
 					case !allowed:
 						err = errors.New("the missing-job read allowance was reached")
@@ -712,11 +747,9 @@ func (b *appBackend) workstreamJobReads(jobs []workstream.Job) map[workstream.Jo
 				}
 				var wire *appwire.Error
 				notFound := queue.err == nil && errors.As(err, &wire) && wire.Code == appwire.CodeNotFound
-				mu.Lock()
-				out[j] = workstreamJobRead{job: job, err: err, notFound: notFound}
-				mu.Unlock()
+				workstreamRememberRead(j, workstreamJobRead{job: job, err: err, notFound: notFound})
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	return out

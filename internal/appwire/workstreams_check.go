@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/workspace"
@@ -76,10 +77,27 @@ func workstreamOptionalID(id *string) error {
 }
 
 func workstreamText(text string, min, max int, field string) error {
-	if !utf8.ValidString(text) || strings.ContainsRune(text, 0) || len(text) < min || len(text) > max || (min > 0 && strings.TrimSpace(text) == "") {
+	if !utf8.ValidString(text) || len(text) < min || len(text) > max || (min > 0 && strings.TrimSpace(text) == "") {
 		return Errorf(CodeBadParams, "%s is %d to %d bytes", field, min, max)
 	}
+	if strings.IndexFunc(text, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) >= 0 {
+		return Errorf(CodeBadParams, "%s allows only newline and tab control characters", field)
+	}
 	return nil
+}
+
+func workstreamLine(text string, min, max int, field string) error {
+	if !singleLineText(text) {
+		return Errorf(CodeBadParams, "%s must not contain control characters", field)
+	}
+	return workstreamText(text, min, max, field)
+}
+
+func workstreamOptionalLine(text *string, min, max int, field string) error {
+	if text == nil {
+		return nil
+	}
+	return workstreamLine(*text, min, max, field)
 }
 
 func workstreamOptionalText(text *string, min, max int, field string) error {
@@ -150,7 +168,7 @@ func workstreamString(p *string) string {
 }
 
 func (p WorkstreamSource) Check() error {
-	if err := workstreamChecks(workstreamID(p.ID), workstreamOptionalText(p.Label, 0, 200, "source label")); err != nil {
+	if err := workstreamChecks(workstreamID(p.ID), workstreamOptionalLine(p.Label, 0, 200, "source label")); err != nil {
 		return err
 	}
 	switch p.Kind {
@@ -198,7 +216,7 @@ func (p WorkstreamCreateParams) Check() error {
 	if _, err := collectionName(p.Name); err != nil {
 		return err
 	}
-	if err := workstreamChecks(workstreamOptionalText(p.Why, 0, 4000, "why"), workstreamOptionalText(p.ClientID, 0, 128, "client_id"), workstreamOptionalID(p.OriginChatID), workstreamOptionalID(p.Model)); err != nil {
+	if err := workstreamChecks(workstreamOptionalText(p.Why, 0, 4000, "why"), workstreamOptionalLine(p.ClientID, 0, 128, "client_id"), workstreamOptionalID(p.OriginChatID), workstreamOptionalID(p.Model)); err != nil {
 		return err
 	}
 	if len(p.Refs) > CollectionRefsMax {
@@ -243,7 +261,7 @@ func (p WorkstreamPlanSetParams) Check() error {
 				return err
 			}
 		}
-		if err := workstreamText(m.Title, 1, 200, "milestone title"); err != nil {
+		if err := workstreamLine(m.Title, 1, 200, "milestone title"); err != nil {
 			return err
 		}
 	}
@@ -253,7 +271,7 @@ func (p WorkstreamPlanSetParams) Check() error {
 			return Errorf(CodeBadParams, "waves must be positive, unique, ascending and have items arrays")
 		}
 		last = w.N
-		if err := workstreamChecks(workstreamOptionalID(w.MilestoneID), workstreamOptionalText(w.Title, 0, 200, "wave title")); err != nil {
+		if err := workstreamChecks(workstreamOptionalID(w.MilestoneID), workstreamOptionalLine(w.Title, 0, 200, "wave title")); err != nil {
 			return err
 		}
 		for _, item := range w.Items {
@@ -275,8 +293,13 @@ func (p WorkstreamPlanSetParams) Check() error {
 				if item.DraftID == nil || item.Title == nil {
 					return Errorf(CodeBadParams, "draft requires draft_id and title")
 				}
-				if err := workstreamChecks(workstreamID(*item.DraftID), workstreamText(*item.Title, 1, 200, "draft title")); err != nil {
+				if err := workstreamChecks(workstreamID(*item.DraftID), workstreamLine(*item.Title, 1, 200, "draft title")); err != nil {
 					return err
+				}
+				if item.Text != nil {
+					if err := workstreamText(*item.Text, 0, len(*item.Text), "draft text"); err != nil {
+						return err
+					}
 				}
 			default:
 				return Errorf(CodeBadParams, "unknown plan item kind %q", item.Kind)
@@ -293,10 +316,10 @@ func (p WorkstreamPageSaveParams) Check() error {
 	return workstreamChecks(workstreamID(p.ID), workstreamDoc(p.Doc, true))
 }
 func (p WorkstreamPageCreateParams) Check() error {
-	return workstreamChecks(workstreamID(p.WorkstreamID), workstreamOptionalID(p.ParentID), workstreamOptionalID(p.AfterID), workstreamText(p.Title, 1, 200, "page title"), workstreamOptionalEnum(p.Owner, "you", "agent"), workstreamDoc(p.Doc, false))
+	return workstreamChecks(workstreamID(p.WorkstreamID), workstreamOptionalID(p.ParentID), workstreamOptionalID(p.AfterID), workstreamLine(p.Title, 1, 200, "page title"), workstreamOptionalEnum(p.Owner, "you", "agent"), workstreamDoc(p.Doc, false))
 }
 func (p WorkstreamPageUpdateParams) Check() error {
-	return workstreamChecks(workstreamID(p.ID), workstreamOptionalText(p.Title, 1, 200, "page title"), workstreamOptionalEnum(p.Owner, "you", "agent"))
+	return workstreamChecks(workstreamID(p.ID), workstreamOptionalLine(p.Title, 1, 200, "page title"), workstreamOptionalEnum(p.Owner, "you", "agent"))
 }
 func (p WorkstreamPageMoveParams) Check() error {
 	return workstreamChecks(workstreamID(p.ID), workstreamOptionalID(p.ParentID), workstreamOptionalID(p.AfterID))

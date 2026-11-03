@@ -1522,6 +1522,11 @@ is present. Queue reads have a three-second call deadline and a ten-second cache
 of at most 32 factories. Distinct factories are read concurrently, up to eight
 at a time; at most 20 missing jobs get individual reads per call. Further jobs
 remain unknown. A Factory connection that cannot be read stays unknown.
+Update, mark_done and reopen results use the same bounded, cached facts and agent
+spend as get. An already done workstream remains unchanged on mark_done.
+Client IDs, page/milestone/wave/draft titles and source labels reject control
+characters. Why, how_it_went, record text and draft text allow newline and tab
+only; other control characters return `bad_params`. Names use collection rules.
 Go-aheads are stored with scope, cap and end bounds; expiry is derived on read.
 Factory enforcement and automatic wave starts remain separate capabilities.
 A workstream is a collection, sharing its id, naming rules and membership methods.

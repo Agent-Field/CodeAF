@@ -16,3 +16,7 @@ spend. Unknown readings are omitted; measured zero remains present. Mark done
 ends active go-aheads and can archive member chats while keeping the agent record.
 Go-aheads and wave auto-start settings are stored; Factory enforcement and
 automatic starts are separate work.
+
+Update, mark done and reopen results include the same available live numbers as
+get. Single-line fields reject control characters; prose permits newline and
+tab only. Marking an already done workstream remains unchanged.
