@@ -186,7 +186,7 @@ func TestLaunchRefusesWhatIsAlreadyRunningAndAStrangersWrite(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.r.Launch(id); err == nil || err.Error() != "#1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
+	if err := g.r.Launch(id); err == nil || err.Error() != "job 1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("second launch = %v", err)
 	}
 	close(release)
@@ -262,7 +262,7 @@ func TestAnApproveStepHoldsYesGoesOnNoSendsBack(t *testing.T) {
 	if !strings.Contains(got, "plan/2:use the other file") || !strings.Contains(got, "write/1:use the other file;only the parser") {
 		t.Fatalf("briefs = %s", got)
 	}
-	if err := g.r.Answer(yes, true, ""); err == nil || err.Error() != "#1 is not waiting on you" {
+	if err := g.r.Answer(yes, true, ""); err == nil || err.Error() != "job 1 is not waiting on you" {
 		t.Fatalf("an answer to nothing = %v", err)
 	}
 
@@ -550,7 +550,7 @@ func TestStopMidRound(t *testing.T) {
 		t.Fatalf("stopped stream = %+v", it.Stream)
 	}
 	assertStoppedByYou(t, it, "write")
-	if err := g.r.Stop(id); err == nil || err.Error() != "#1 is not running" {
+	if err := g.r.Stop(id); err == nil || err.Error() != "job 1 is not running" {
 		t.Fatalf("a second stop = %v", err)
 	}
 	// The stream is kept for the log, and the item launches again from new.
@@ -600,7 +600,7 @@ func TestStopWithNoRunMarksTheJobAndTheStepItCut(t *testing.T) {
 	if it.Failure.Attempts != 2 {
 		t.Fatalf("the stop forgot the step's rounds: %+v", it.Failure)
 	}
-	if err := g.r.Stop(id); err == nil || err.Error() != "#1 is not running" {
+	if err := g.r.Stop(id); err == nil || err.Error() != "job 1 is not running" {
 		t.Fatalf("a second stop = %v", err)
 	}
 }
@@ -770,7 +770,7 @@ func TestSignOffShipsACleanSheetAndRefusesAFailedClaim(t *testing.T) {
 	if len(it.Proof) != 1 || len(it.Policy) != 1 {
 		t.Fatalf("proof %+v policy %+v", it.Proof, it.Policy)
 	}
-	if _, err := g.r.SignOff(bad, false); err == nil || err.Error() != "#1 has a claim not shown" {
+	if _, err := g.r.SignOff(bad, false); err == nil || err.Error() != "job 1 has a claim not shown" {
 		t.Fatalf("a failed claim signed off: %v", err)
 	}
 	if due, err := g.r.SignOff(bad, true); err != nil || due {
@@ -798,7 +798,7 @@ func TestSignOffShipsACleanSheetAndRefusesAFailedClaim(t *testing.T) {
 	if dues[0] || dues[1] || !dues[2] {
 		t.Fatalf("habit due = %v", dues)
 	}
-	if _, err := g.r.SignOff(bad, false); err == nil || err.Error() != "#1 has not landed" {
+	if _, err := g.r.SignOff(bad, false); err == nil || err.Error() != "job 1 has not landed" {
 		t.Fatalf("a shipped item signed off again: %v", err)
 	}
 }
@@ -1244,7 +1244,7 @@ func TestRunOnAnItemNobodyPausedIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitStarted(t, p)
-	if err := g.r.Launch(id); err == nil || err.Error() != "#1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
+	if err := g.r.Launch(id); err == nil || err.Error() != "job 1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("launch on a running item = %v", err)
 	}
 	close(p.release)
