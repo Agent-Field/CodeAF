@@ -168,7 +168,10 @@ func TestFactoryAssigneesRunnerPublishesTeamAndSolo(t *testing.T) {
 				}
 				opts.Workdir = func(factory.Item) (string, error) { return g.workspace, nil }
 				opts.Source = func(string) factory.Source { t.Error("publish used the server's watched source"); return nil }
-				opts.Push = func(string, string) error { t.Error("publish used the server's push credential"); return nil }
+				opts.Push = func(string, string, ...func() error) error {
+					t.Error("publish used the server's push credential")
+					return nil
+				}
 				runner := factoryrun.New(opts)
 				ctx, cancel := context.WithCancel(context.Background())
 				done := make(chan struct{})
