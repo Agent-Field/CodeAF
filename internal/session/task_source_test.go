@@ -15,15 +15,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // sourcedAgent is a conversation with a checkpoint behind it, an auto-approving
 // proposal road and a runner that lands every node as asked.
-func sourcedAgent(t *testing.T, steps []step, land TaskState) (*Agent, string, string) {
+func sourcedAgent(t *testing.T, completer Completer, land TaskState) (*Agent, string, string) {
 	t.Helper()
 	journal, checkpoint := journalIn(t)
-	completer := &routedCompleter{parent: steps}
+	if completer == nil {
+		completer = &scriptedCompleter{}
+	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = false
 		config.TaskAutoApproveSeconds = 0
@@ -63,12 +66,36 @@ func sourceOfNode(t *testing.T, agent *Agent, id uint64) *TaskSource {
 // A TASK PROPOSED WHILE ANSWERING A MESSAGE CARRIES THAT MESSAGE, TWO MESSAGES
 // ARE TWO BLOCKS, AND THE CHECKPOINT AND A REOPEN KEEP BOTH.
 func TestAProposedTaskCarriesTheMessageItWasMadeFromAndKeepsItAcrossAReopen(t *testing.T) {
-	agent, _, checkpoint := sourcedAgent(t, []step{
-		proposeCall("Sweep the calls", "replace every call to Frobnicate"), finalText("handed off"),
-		proposeCall("Audit the pricing", "read the pricing module"), finalText("handed off"),
-		proposeCall("Audit the tax", "read the tax module"), finalText("handed off"),
-	}, TaskFailed)
 	first, second := "sweep the Frobnicate calls", "now audit the pricing code"
+	proposals := []step{
+		proposeCall("Sweep the calls", "replace every call to Frobnicate"),
+		proposeCall("Audit the pricing", "read the pricing module"),
+		proposeCall("Audit the tax", "read the tax module"),
+	}
+	// A completion wake can arrive before the next Submit. Answer it from
+	// the request, so it cannot consume a proposal meant for a later message.
+	completer := &scriptedCompleter{aside: func(messages []ai.Message) (*ai.Response, bool) {
+		if isNameCall(messages) || isCaptionCall(messages) || isTitleCall(messages) {
+			return textResponse(""), true
+		}
+		heard, proposed := 0, 0
+		for _, message := range messages {
+			if message.Role == "user" && (messageText(message) == first || messageText(message) == second) {
+				heard++
+			}
+			for _, call := range message.ToolCalls {
+				if call.Function.Name == "propose_task" {
+					proposed++
+				}
+			}
+		}
+		if heard > proposed && proposed < len(proposals) {
+			response, _ := proposals[proposed](context.Background(), messages)
+			return response, true
+		}
+		return textResponse("handed off"), true
+	}}
+	agent, _, checkpoint := sourcedAgent(t, completer, TaskFailed)
 	sendAndWait(t, agent, first)
 	sendAndWait(t, agent, second)
 	sendAndWait(t, agent, second) // the same sentence typed again is another message
