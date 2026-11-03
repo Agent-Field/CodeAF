@@ -498,7 +498,9 @@ Workers confirm Stop immediately before pushes, PR requests, merges, proof
 comments, repair descriptions and post-step writes. A revoked worker lease
 refuses the next paid step. A temporary Stop-after-step read failure keeps the
 stored choice. Stop also cancels the job manager’s background commands; a
-manager’s answer to your chat can still finish. A transient confirmation error gets up to three attempts within two
+manager’s answer to your chat can still finish. A stopped manager shows the
+current Stop reason before its answer, so the status does not depend on the
+model’s wording. A transient confirmation error gets up to three attempts within two
 seconds. If confirmation still fails, publication fails with "could not confirm
 Stop"; press **Approve** again to retry. An older factory that answers 404 has no
 publish-check endpoint: publication uses its earlier behavior, without a fresh

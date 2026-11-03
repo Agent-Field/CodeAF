@@ -45,3 +45,7 @@ repair descriptions and every poststage write and push. A gone or withdrawn
 worker lease refuses the next paid step; temporary choice-read failures retain
 the stored Stop-after-step behavior. The manager's watcher cancels owned
 background work on the person's Stop while preserving person chat.
+
+A person's stopped-manager chat shows the current execution refusal before the
+model's explanation. The status receipt stays exact when the model paraphrases
+its answer, and person chat remains available.

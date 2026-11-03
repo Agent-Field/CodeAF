@@ -339,7 +339,12 @@ func (a *Agent) turnCue(user userMessage) string {
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (finished bool) {
 	if user.factoryWork || user.wake && !user.answersPerson && !user.answer {
 		ctx = context.WithValue(ctx, factoryAutomaticTurnKey{}, a.automaticFactoryRefusal)
-	}
+	} else if why := a.automaticFactoryRefusal(); why != "" {
+        // The current execution refusal is a receipt, independent of the
+        // model's explanation. A person's conversation still gets its answer.
+        a.record(ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: why}}})
+        hub.send(Event{Kind: EventTextDelta, Text: why + "\n\n"})
+    }
 	defer func() {
 		if finished {
 			a.finishJobKnowledge(ctx)
