@@ -21,7 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
- "github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
@@ -32,11 +32,11 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			pastCap := action == "old saved total" || action == "bring back" || action == "start over past cap"
 			s := newLocalSetup(t)
-   if action=="bring back" {
-    s.backend.local.rules = func(context.Context,string,string) (pipeline.File,error) {
-     return pipeline.Parse("default_budget: 6\npipeline:\n  issue: [write]\nsteps:\n  write:\n    prompt: write\n    until: done\n    max: 1\n")
-    }
-   }
+			if action == "bring back" {
+				s.backend.local.rules = func(context.Context, string, string) (pipeline.File, error) {
+					return pipeline.Parse("default_budget: 6\npipeline:\n  issue: [write]\nsteps:\n  write:\n    prompt: write\n    until: done\n    max: 1\n")
+				}
+			}
 			t.Setenv("OPENROUTER_API_KEY", "test-key")
 			t.Setenv("CODEAF_BASE_URL", newStageModel(t).server.URL)
 			s.backend.open = func(ask appOpenAsk) (*appConn, error) {
@@ -200,7 +200,9 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
 			if len(held.Questions) == 0 || !strings.Contains(held.Questions[0].Text, "$6.25") || !strings.Contains(held.Questions[0].Text, "$6") {
 				t.Fatalf("missing totals: %+v", held.Questions)
 			}
-			if !pastCap { wait("paid report replay acknowledged",func(api.Job) bool { return replays.Load()>0 }) }
+			if !pastCap {
+				wait("paid report replay acknowledged", func(api.Job) bool { return replays.Load() > 0 })
+			}
 			before := calls.Load()
 			if pastCap {
 				if before != 0 {
@@ -261,14 +263,20 @@ func replayBudgetReports(t *testing.T, base string) (string, *atomic.Int32) {
 		}
 		var report api.WorkerReport
 		paid := false
-  if json.Unmarshal(body,&report)==nil {
-   paid=report.Cost>0
-   for _,step:=range report.Steps {
-    if step.Result!=nil && step.Result.Cost>0 { paid=true }
-    for _,cost:=range step.RoundCosts { if cost>0 { paid=true } }
-   }
-  }
-  if response.StatusCode == http.StatusOK && paid {
+		if json.Unmarshal(body, &report) == nil {
+			paid = report.Cost > 0
+			for _, step := range report.Steps {
+				if step.Result != nil && step.Result.Cost > 0 {
+					paid = true
+				}
+				for _, cost := range step.RoundCosts {
+					if cost > 0 {
+						paid = true
+					}
+				}
+			}
+		}
+		if response.StatusCode == http.StatusOK && paid {
 			replay := r.Clone(r.Context())
 			replay.Body = io.NopCloser(bytes.NewReader(body))
 			duplicate, err := http.DefaultTransport.RoundTrip(replay)

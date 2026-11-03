@@ -13,7 +13,8 @@ job asks for a raise before paid work starts. Run as new remains a separate
 job with zero spending. Older jobs use only their saved known total; money
 lost from old saved records is not reconstructed from ledger tags.
 
-The cap question says job total. spending_limit.spent and next_limit use
+The cap question and owned-chat refusal say job total. spending_limit.spent,
+spending_limit.next_limit, questions[].spent and questions[].next_limit use
 lifetime spending; cost remains this run and lifetime_cost keeps its existing
 meaning. A person's continue chooses the next standard ceiling above lifetime
 spending, doubling higher ceilings as needed. Auto never grants itself a raise.
