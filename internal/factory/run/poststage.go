@@ -101,10 +101,12 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		// request carries its trailer as the body's last line.
 		if o.Record != nil {
 			trailer := ""
- var err error
- if factory.PublishedAnyway(it) && ValidTrailer(it.PublishAnyway.Words) && TrailerCommit(it.PublishAnyway.Words) == it.HeadCommit && TrailerHandle(it.PublishAnyway.Words) == it.PublishAnyway.DecidedBy {
- trailer = it.PublishAnyway.Words
- } else {trailer, err = o.Record.Trailer(ctx, it.ID)}
+			var err error
+			if factory.PublishedAnyway(it) && ValidTrailer(it.PublishAnyway.Words) && TrailerCommit(it.PublishAnyway.Words) == it.HeadCommit && TrailerHandle(it.PublishAnyway.Words) == it.PublishAnyway.DecidedBy {
+				trailer = it.PublishAnyway.Words
+			} else {
+				trailer, err = o.Record.Trailer(ctx, it.ID)
+			}
 			if err != nil {
 				return factory.StageResult{}, err
 			}

@@ -342,8 +342,10 @@ func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool
 		return false, err
 	}
 	var consent *factory.Approval
- if yes && factory.PublishedAnyway(*it) {consent = it.PublishAnyway}
- signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words, PublishAnyway:consent})
+	if yes && factory.PublishedAnyway(*it) {
+		consent = it.PublishAnyway
+	}
+	signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words, PublishAnyway: consent})
 	return true, nil
 }
 

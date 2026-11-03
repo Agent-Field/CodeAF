@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"strings"
 	"time"
- "unicode"
+	"unicode"
 )
+
+// EveryCheckPolicy requires every check before an outward post.
+const EveryCheckPolicy = "tests pass before anything posts"
 
 // SkippedChecksIdentity binds consent to the reported head, change and skipped
 // checks. Empty means at least one unmet check cannot be waived by a person.
-const EveryCheckPolicy = "tests pass before anything posts"
-
 func SkippedChecksIdentity(it Item) string {
- if (it.Change == nil || len(it.Change.Files) == 0) && len(it.Files) == 0 { return "" }
+	if (it.Change == nil || len(it.Change.Files) == 0) && len(it.Files) == 0 {
+		return ""
+	}
 	if it.Stream == nil || (it.HeadCommit == "" && (it.Change == nil || it.Change.Patch == "" || it.Change.PatchTruncated)) {
 		return ""
 	}
@@ -120,4 +123,3 @@ func PolicyWords(s string) string {
 	}
 	return strings.Join(strings.Fields(b.String()), " ")
 }
-

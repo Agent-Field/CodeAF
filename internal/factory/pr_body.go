@@ -141,12 +141,16 @@ func PublishBody(it Item, trailer string) string {
 
 // SkippedValidation is shared by post stages and the publication preview.
 func SkippedValidation(it Item) string {
- var b strings.Builder
- if it.Stream != nil {
-  for _, ph := range it.Stream.Phases {
-   if ph.State == PhaseSkipped { fmt.Fprintf(&b,"- %s: skipped · %s\n",ph.Name,publicationSentence(ph.SkipReason)) }
-  }
- }
- if PublishedAnyway(it) { fmt.Fprintf(&b,"- Published anyway by @%s at %s; skipped checks remain unmeasured.\n",it.PublishAnyway.DecidedBy,it.PublishAnyway.At.UTC().Format("2006-01-02T15:04:05Z")) }
- return b.String()
+	var b strings.Builder
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.State == PhaseSkipped {
+				fmt.Fprintf(&b, "- %s: skipped · %s\n", ph.Name, publicationSentence(ph.SkipReason))
+			}
+		}
+	}
+	if PublishedAnyway(it) {
+		fmt.Fprintf(&b, "- Published anyway by @%s at %s; skipped checks remain unmeasured.\n", it.PublishAnyway.DecidedBy, it.PublishAnyway.At.UTC().Format("2006-01-02T15:04:05Z"))
+	}
+	return b.String()
 }
