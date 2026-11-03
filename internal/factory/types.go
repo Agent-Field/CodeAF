@@ -101,6 +101,8 @@ const (
 // a recipe adapts without anyone touching it: a stage with a condition is
 // skipped, dim, with its reason, on an item the condition does not fit.
 type Stage struct {
+	// Label is an optional display name; Name remains the step identity.
+	Label  string    `json:",omitempty"`
 	Name   string    // plan · write · test · review · neaten · security · proof
 	Kind   StageKind // chat unless said otherwise
 	Ask    string    // the sentence as typed; the brief is compiled from it
@@ -704,6 +706,8 @@ type Item struct {
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+	// SpentBefore holds spending from runs whose work was cleared.
+	SpentBefore float64 `json:",omitempty"`
 	// ChatSpent is what Talk spent while the job had no run: the job's chat
 	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
 	// BUDGET, and with no run there is no

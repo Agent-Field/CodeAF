@@ -137,10 +137,10 @@ func convertStage(stage factory.Stage) (name string, step Step, keep bool, probs
 		if stage.When != "" {
 			probs = append(probs, Problem{Where: name, Why: "approve is a person, with no condition"})
 		}
-		return name, Step{Until: "you"}, true, probs, nil
+		return name, Step{Label: strings.TrimSpace(stage.Label), Until: "you"}, true, probs, nil
 	}
 	prompt := strings.TrimSpace(stage.Ask)
-	var fields Step
+	fields := Step{Label: strings.TrimSpace(stage.Label)}
 	if kind, ok := kindWord(string(stage.Kind)); ok {
 		fields.Kind = kind
 	} else {
@@ -178,7 +178,7 @@ func convertStage(stage factory.Stage) (name string, step Step, keep bool, probs
 		costs = append(costs, Problem{Where: name, Why: "effort " + stage.Effort + " is not in factory.yaml"})
 	}
 	step = Step{
-		Prompt: prompt, Kind: fields.Kind, When: fields.When, Effort: fields.Effort,
+		Label: fields.Label, Prompt: prompt, Kind: fields.Kind, When: fields.When, Effort: fields.Effort,
 		Fanout: fields.Fanout, Until: strings.TrimSpace(stage.Until), hold: fields.hold,
 	}
 	if prompt != "" {

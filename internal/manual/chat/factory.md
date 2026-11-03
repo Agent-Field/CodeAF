@@ -252,6 +252,26 @@ Issues are the factory's only work items, including briefs handed over from chat
 
 An issue keeps the PR it opens, its checks, reviews and merge status. One final Follow PR step handles bounded CI, requested-review and conflict repairs until merge or closure. Initial publication approval permits checked maintenance pushes to the same PR within budget; merge remains your decision. Take over pauses automation for an ordinary working conversation; Resume pipeline checks that work and continues. On upgrade, the factory permanently removes old standalone PR jobs, their factory-owned conversations, local worktrees, generated local branches and activity records, including worker copies. No archive of those jobs is kept. Issue jobs and their linked PR information remain. Nothing on GitHub is deleted or changed by this cleanup.
 
+## step label — readable names without changing step ids
+
+A step definition in `.codeaf/factory.yaml` may set `label: Security review`
+beside its `prompt`. A step added to one job may also carry `label`.
+The label is its readable display name, including in the
+job's brief facts. The step id stays unchanged: pipelines and actions still use
+the step's key. Empty or whitespace labels use the existing name. Jobs without
+labels keep their existing display and saved form.
+
+Apps send labels on added job steps as `edit.add[].step.label` and change an
+existing job step with `edit.label: {write: Security review}` only when hello
+announces `factory.job_step_edit_label`. Job edits keep the same fixed-step,
+already-run and proof restrictions as other field edits.
+
+Pipeline previews accept `edits[].label` on `set_step` and `add_step` when hello
+announces `factory.pipeline_edit_label`. Labels are trimmed, limited to one line
+of 200 characters, and shown in the preview's changed fields. An empty label
+clears it; saved YAML omits `label:` when empty. Locked steps remain locked;
+added approval gates may carry a label.
+
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
 A typed step ask keeps its punctuation, including its final period. Placement words and an explicit `name:` are removed; surrounding whitespace is trimmed. A new terminal job removes chips and their leftover comma, semicolon and colon separators from its ask, preserving periods, question marks and exclamation marks. With no chips, only surrounding whitespace is trimmed. Its short title still removes stray punctuation.
@@ -396,7 +416,7 @@ no running slot.
 
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
-**Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the job's spend starts again from nothing; its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
+**Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the new run's cost starts again from nothing; the job's lifetime spending stays, and its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
 
 A job owned by this factory has one manager, however many asks race to open it. A remote job running here may still get separate managers from its Talk door and its runner; those opens are not deduplicated. Every conversation owned by a job, including an extra manager left by an earlier build, spends from that job’s budget. Its model calls appear on the job and count toward its cap, wherever its working folder is. Reopening a conversation does not charge its saved calls again.
 
@@ -433,7 +453,7 @@ A dropped job cannot be changed: opening its chat, and `factory_item` or `factor
 
 ## bring back a dropped job — Bring back, undo a drop, restart a dropped job, fresh start, old conversation still there
 
-**Bring back** is the one way out of a drop. Only a dropped job offers it, and only to the person who may act on the job. The job returns to Backlog as a fresh job, as if it had never been worked on: no steps run, nothing spent, no failure, no pull request, and no conversation, because the drop deleted them. Nothing starts; your start runs it from the first step on a new branch, and opening its chat starts a new conversation. A pull request it had opened stays on GitHub, no longer linked to the job. Starting a dropped job is refused with `#12 was dropped · Bring back returns it to Backlog`, and a job that was not dropped with `only a dropped job can be brought back`.
+**Bring back** is the one way out of a drop. Only a dropped job offers it, and only to the person who may act on the job. The job returns to Backlog as a fresh job, as if it had never been worked on: no steps run, no failure, no pull request, and no conversation; its lifetime spending stays, because the drop deleted them. Nothing starts; your start runs it from the first step on a new branch, and opening its chat starts a new conversation. A pull request it had opened stays on GitHub, no longer linked to the job. Starting a dropped job is refused with `#12 was dropped · Bring back returns it to Backlog`, and a job that was not dropped with `only a dropped job can be brought back`.
 
 **Fresh means nothing said earlier comes back.** Your notes for its steps are cleared, and its steps are the repository's recipe again, with any change you or its agent made to them undone. What stays is what the job is: its issue, assignee, priority, budget, the model you chose for it, and its activity.
 
@@ -717,6 +737,35 @@ Other amounts are refused. Stop keeps the recorded spend and work.
 Today's figure on Spending counts every model call on this computer's ledger, and it moves as each one lands, not only when a chat turn ends.
 
 The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (AI notes and themes on a repo, asking about a repo, Build with AI, AI views). Afi's small errands count under your chats. A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
+
+
+
+## Job lifetime spending after Start, Run again and Bring back
+
+A job keeps the money spent on its earlier runs when Start or Run again begins
+fresh work, and when Bring back clears its earlier work. Run as new creates a
+separate job with zero spending. Undo Stop keeps money reported after Stop too.
+Late cumulative usage adds only its growth to the earlier run's lifetime, even
+after Drop and Bring back or a restart on another machine. It does not charge
+the new run. Archived receipts must retain the original lease, machine and
+person; older receipts without those identities cannot accept late usage.
+
+The job wire keeps `cost` as the current run's cost and adds optional
+`lifetime_cost` for all known spending on the job. Queue jobs carry the same
+field. Step costs stay unchanged. Budgets still use only the current run;
+this remains deliberate pending the owner's ruling on lifetime budgets.
+
+Spending by repository and model places the whole known lifetime on one day:
+the latest run's start day, or the job's creation day when no start remains.
+A range covering only the second run therefore includes money from the first
+run too. These are job totals placed in a range, not exact call totals for that
+range. Earlier spending without a kept model split appears as unknown. The
+daily spending rail keeps its existing reading.
+
+App job and queue reads show only saved spending. Ledger tags and workspace
+paths can be shared by jobs from different factories, so ledger recovery is
+disabled. Older jobs show what their saved fields know. Earlier money recorded
+only in the ledger cannot be placed safely and is not added to a job.
 
 
 ## Opening a job without touching it and sending its first message
