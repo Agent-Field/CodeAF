@@ -94,6 +94,7 @@ type reading[T any] struct {
 	modTime time.Time
 	missing bool
 	stamp   uint64
+	mode    os.FileMode
 }
 
 // New binds a memo to its derivation.
@@ -119,6 +120,15 @@ func Stamped[T any](stamp func() uint64, derive Derive[T]) *Memo[T] {
 // every call would be a read per call for a file that is broken until somebody
 // fixes it, which is the exact cost this type exists to remove.
 func (m *Memo[T]) Read(path string) (T, error) {
+	return m.read(path, false)
+}
+
+// ReadStrict also invalidates a cached value when permissions change.
+func (m *Memo[T]) ReadStrict(path string) (T, error) {
+	return m.read(path, true)
+}
+
+func (m *Memo[T]) read(path string, strict bool) (T, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now, statErr := os.Stat(path)
@@ -128,8 +138,10 @@ func (m *Memo[T]) Read(path string) (T, error) {
 	}
 	var size int64
 	var modTime time.Time
+	var mode os.FileMode
 	if now != nil {
 		size, modTime = now.Size(), now.ModTime()
+		mode = now.Mode()
 	}
 	absent := now == nil
 	stamp := uint64(0)
@@ -138,7 +150,7 @@ func (m *Memo[T]) Read(path string) (T, error) {
 	}
 	held, known := m.held[path]
 	m.tick++
-	if known && held.fresh(size, modTime, absent, stamp) && (absent || os.SameFile(held.info, now)) {
+	if known && held.fresh(size, modTime, absent, stamp) && (absent || os.SameFile(held.info, now)) && (!strict || held.mode == mode) {
 		held.used = m.tick
 		m.held[path] = held
 		return held.value, held.err
@@ -149,7 +161,7 @@ func (m *Memo[T]) Read(path string) (T, error) {
 		}
 		value, err := m.source(path, now)
 		if err == nil {
-			m.keep(path, reading[T]{value: value, info: now, size: size, modTime: modTime, missing: absent, stamp: stamp})
+			m.keep(path, reading[T]{value: value, info: now, size: size, modTime: modTime, missing: absent, stamp: stamp, mode: mode})
 		}
 		return value, err
 	}
@@ -159,7 +171,7 @@ func (m *Memo[T]) Read(path string) (T, error) {
 		bytes, err := os.ReadFile(path)
 		if err != nil {
 			// A failed read is never content, even when its stat succeeded.
-			if errors.Is(err, os.ErrNotExist) {
+			if !strict && errors.Is(err, os.ErrNotExist) {
 				return m.derive(path, nil, true)
 			}
 			var zero T
@@ -173,7 +185,7 @@ func (m *Memo[T]) Read(path string) (T, error) {
 	}
 	m.keep(path, reading[T]{
 		value: value, err: err,
-		info: now, size: size, modTime: modTime, missing: absent, stamp: stamp,
+		info: now, size: size, modTime: modTime, missing: absent, stamp: stamp, mode: mode,
 	})
 	return value, err
 }

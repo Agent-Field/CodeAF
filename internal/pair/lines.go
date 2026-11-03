@@ -39,6 +39,17 @@ func WaitingChatsLine(words string) string {
 	return "Waiting for approval on your other device; it should show: " + words
 }
 
+// ReplaceAskLine describes the state replacement before either surface acts.
+const ReplaceAskLine = "Pair with your other devices? This computer's existing chats stay here but stop syncing; shared memories and settings are cleared; with share teams on, teams are set aside while the other devices supply theirs. Provider keys saved on this computer stay here."
+
+// TeamsAsideLine keeps a preserved team's recovery path in the pairing receipt.
+func TeamsAsideLine(path string) string {
+	if path == "" {
+		return ""
+	}
+	return "This computer's teams were set aside to " + path + "."
+}
+
 // JoinedLine is what the joining device says when it worked.
 // keptChatsLine is the shared tail of every successful join: a solo computer's
 // own chats stay, and the other computers' chats arrive as sharing finishes.
@@ -63,7 +74,11 @@ func (j Joined) Sentence() string {
 	case j.Successor:
 		return PairedWithLine(j.With)
 	}
-	return PairedWithLine(j.With)
+	line := PairedWithLine(j.With)
+	if j.TeamsAside != "" {
+		line += " " + TeamsAsideLine(j.TeamsAside)
+	}
+	return line
 }
 
 // PairedChatsLine is what the sharing device says when it worked.

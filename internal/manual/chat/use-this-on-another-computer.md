@@ -257,6 +257,10 @@ progress cannot be read, it says:
 
 `Pairing could not finish reading its saved progress; your chats are still on this computer.`
 
+## Pairing with --replace: existing chats, teams and recovery
+
+Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first: `Pair with your other devices? This computer's existing chats stay here but stop syncing; shared memories and settings are cleared; with share teams on, teams are set aside while the other devices supply theirs. Provider keys saved on this computer stay here.` The chat and an interactive terminal ask, including when this computer has teams but no chats. Without a terminal, `--replace` proceeds without this question. With share teams on, replacement sets the team file aside and clears its sharing ledgers; the receipt names the preserved file: `This computer's teams were set aside to <path>.` Local Traffic stays here. With share teams off, its team file and sharing ledgers are preserved. At a terminal, `y` or `yes` proceeds. In the chat, choose yes. A no, or closing the panel with esc, leaves everything as it was.
+
 ## Already paired — pairing the same computers again
 
 If the other computer already has the same chats, it says:

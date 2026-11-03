@@ -36,6 +36,8 @@ type Joining struct {
 	Replace bool
 	// ProfileDir names the preferences being joined, when outside Home.
 	ProfileDir string
+	// TeamsPaired supplies the live quiet gate after adopting the new identity.
+	TeamsPaired func() bool
 	// SaveSyncURL is told the relay the other device syncs through, when it is
 	// not the default. Nil ignores it.
 	SaveSyncURL func(url string) error
@@ -46,6 +48,8 @@ type Joining struct {
 
 // Joined is how a pairing ended on the joining device.
 type Joined struct {
+	// TeamsAside names the preserved team file after explicit replacement.
+	TeamsAside string
 	// With is an existing computer in the newly joined set of devices.
 	With string
 	// Already is true when this computer held these chats before, so nothing
@@ -154,7 +158,7 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 		return Joined{}, err
 	}
 	defer unlock()
-	if err := j.resume(); err != nil {
+	if _, err := j.resume(); err != nil {
 		return Joined{}, err
 	}
 	held, err = identity.Load(j.Home)
@@ -172,8 +176,9 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	if err != nil && !errors.Is(err, identity.ErrNone) {
 		return Joined{}, err
 	}
+	joined := Joined{}
 	if j.Replace {
-		return Joined{}, j.merge(grant, dev, nil)
+		return j.merge(grant, dev, nil)
 	}
 	merge := false
 	if err == nil && !j.Replace {
@@ -187,7 +192,7 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 		}
 	}
 	if merge && err == nil {
-		return Joined{}, j.merge(grant, dev, held.CellKey())
+		return j.merge(grant, dev, held.CellKey())
 	}
 	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace || merge); err != nil {
 		return Joined{}, adoptFailure(err)
@@ -196,9 +201,9 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 		return Joined{}, err
 	}
 	if grant.SyncURL != "" && j.SaveSyncURL != nil {
-		return Joined{}, j.SaveSyncURL(grant.SyncURL)
+		return joined, j.SaveSyncURL(grant.SyncURL)
 	}
-	return Joined{}, nil
+	return joined, nil
 }
 
 // follow moves this computer from an identity that was rotated to the one that
