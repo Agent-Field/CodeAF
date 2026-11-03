@@ -135,6 +135,13 @@ type WrappedAgent interface {
 type Engine struct {
 	// SyncService is the engine's address for chat outage notices.
 	SyncService string
+	// DeltaWindow lets each of this conversation's streams fold streamed text
+	// for up to this long before it is framed (deltawindow.go): the first chunk
+	// still goes at once and nothing but text ever waits. Every delta otherwise
+	// costs a frame's encoding and a handful of goroutine handoffs on the way to
+	// the surface. Zero keeps one frame per event, which is what every surface
+	// that has not opted in, and its replay tests, are written against.
+	DeltaWindow time.Duration
 	// Headless records the approval context the agent was built for. Reusing an
 	// interactive agent must not silently give a headless caller its default gate.
 	Headless bool
@@ -1626,8 +1633,18 @@ func (sess *Session) mintLocked() (id, generation uint64) {
 func (sess *Session) pump(id, generation uint64, events <-chan session.Event) {
 	defer sess.pumps.Done()
 	defer guard.Recover("remote/engine stream")
-	for event := range events {
-		sess.emit(id, generation, event)
+	sess.mu.Lock()
+	var window time.Duration
+	if sess.engine != nil {
+		window = sess.engine.DeltaWindow
+	}
+	sess.mu.Unlock()
+	if window > 0 {
+		pumpDeltaWindow(window, events, func(event session.Event) { sess.emit(id, generation, event) })
+	} else {
+		for event := range events {
+			sess.emit(id, generation, event)
+		}
 	}
 	sess.finish(id, generation)
 }

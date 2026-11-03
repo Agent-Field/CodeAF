@@ -111,7 +111,7 @@ type Errand struct {
 	Usage    ErrandUsage `json:"usage"`
 	MS       int64       `json:"ms"`
 	Cached   bool        `json:"cached,omitempty"`
-	Reason   string      `json:"reason,omitempty" enum:"closed,stopped,over_budget,busy,deadline,cancelled,model_failed,invalid_json,not_open,unavailable"`
+	Reason   string      `json:"reason,omitempty" enum:"closed,stopped,over_budget,busy,deadline,cancelled,model_failed,invalid_json,no_answer,not_open,unavailable"`
 }
 
 // ErrandModelsParams names the agent whose routes to read; empty reads the

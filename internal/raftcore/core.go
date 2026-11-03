@@ -264,6 +264,7 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 		defer func() {
 			if err == nil && !sleeping {
 				c.schedule.active = active
+				c.schedule.restart = false
 			}
 		}()
 	}

@@ -16,11 +16,9 @@ package processgroup
 //     cores the subtree held, which is the reading this product bounds. One
 //     reading on its own is not a rate and must not be read as one.
 //
-// THE READING IS /proc, WHICH IS LINUX'S. A platform without it answers "cannot
-// say" rather than a guess, and a bound that cannot say never cuts — the same
-// silence rule the admission governor keeps (session's task_pressure.go): a
-// person on a machine this cannot measure gets exactly the scheduler they had
-// before the bound existed.
+// Linux reads /proc and macOS reads the kernel's process-info interface. Other
+// platforms answer "cannot say" rather than guess, and a bound that cannot say
+// never cuts, preserving the scheduler the person had before the bound existed.
 
 // Usage is what one job subtree is using at one instant.
 type Usage struct {
@@ -30,4 +28,11 @@ type Usage struct {
 	// every process in it. Subtract two readings and divide by the wall between
 	// them to get the cores the subtree held.
 	CPUSeconds float64
+	// CPUPartial says CPUSeconds left out part of the tree: the walk stopped at
+	// its limit, a listing was truncated, or a process could not be read. Such
+	// a sum is not comparable with another reading, because a process missing
+	// from one and present in the next would read as a burst of its whole
+	// lifetime's CPU, so no rate may be taken from it. Processes is still a
+	// lower bound.
+	CPUPartial bool
 }

@@ -18,7 +18,7 @@ const CellsUnavailable = "moving chats needs a newer furrow engine than this bui
 const BinaryEnvVar = "CODEAF_FURROW"
 
 var cellsAvailable = sync.OnceValue(func() bool {
-	binary, err := cellsBinary()
+	binary, err := OwnedBinary()
 	return err == nil && probeCells(binary)
 })
 
@@ -48,9 +48,12 @@ func probeCells(binary string) bool {
 	return err == nil && strings.Contains(string(help), "--changed ") && strings.Contains(string(help), "--changed-stdin") && strings.Contains(string(help), "--cell-dir") && strings.Contains(string(help), "--plan")
 }
 
-// cellsBinary follows the same owned-engine choice as internal/furrow, without
-// importing its toolbelt dependencies into the on-disk cell layout.
-func cellsBinary() (string, error) {
+// OwnedBinary is the engine codeaf vouches for: the configured binary or the
+// embedded copy, never PATH. It follows the same owned-engine choice as
+// internal/furrow without importing that package's toolbelt dependencies, so
+// the on-disk cell layout and the test helpers in internal/cell/celltest can
+// ask it from below the packages internal/furrow imports.
+func OwnedBinary() (string, error) {
 	if binary, configured, err := ConfiguredBinary(); configured {
 		return binary, err
 	}

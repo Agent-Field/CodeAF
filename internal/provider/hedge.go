@@ -407,9 +407,9 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 // arm that cannot report at all, which is exactly the shape issue #264 was
 // found in.
 //
-// NOBODY WAITS OUT THIS GRACE ANY MORE. It is paid on the goroutine
-// [hedgeRace.accountForTheAbandoned] runs on and never by the caller — see
-// [hedgeRace.abandon] for the measurement that moved it.
+// Abandoned callers never wait for this grace: [hedgeRace.abandon] accounts
+// on its own goroutine. Settlement waits for cancelled arms within this bound
+// so completed losing responses reach the caller's accounting before return.
 const abandonGrace = time.Second
 
 // abandon leaves the race because its caller did.
@@ -1963,6 +1963,15 @@ func (r *hedgeRace) spend(arm int) (arms int, waste float64, note, refused strin
 func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Response, bool, error) {
 	r.withdraw()
 	arms, model := r.armsAndModel()
+	// Settlement can also follow an account refusal, before a winner cancels
+	// the other arms. Stop every request before waiting for its accounting.
+	for _, arm := range arms {
+		arm.cancel()
+	}
+	// A loser may already have completed when the winner cancels it. Collect
+	// its response before returning so discarded usage reaches the same call's
+	// ledger and budget, rather than disappearing with the race.
+	r.drainArms(seen)
 	// The model as the ANSWER spelled it, because a router may pin a variant
 	// the config never named and a belief keyed on the wrong id is a belief
 	// about nothing.
@@ -1993,6 +2002,7 @@ func (r *hedgeRace) settle(result armResult, seen map[int]armResult) (*ai.Respon
 		tokens := 0
 		if done, ok := seen[arm.index]; ok && done.response != nil && done.response.Usage != nil {
 			tokens = done.response.Usage.CompletionTokens
+			noteDiscardedUsage(r.base, done.response)
 		}
 		// A HEDGE IS A MEASUREMENT, whichever way it landed: the loser's
 		// first-token wait is the only cheap evidence there is about the lane
