@@ -75,3 +75,31 @@ func TestCIFollowUpBriefOwnsConflictsButNotPublication(t *testing.T) {
 		t.Error("Follow PR delegates its conflict resolution to the person")
 	}
 }
+
+func TestStageBriefReusesEvidenceAndDistinguishesUnrunChecks(t *testing.T) {
+	st, _ := factory.ShippedStage("test")
+	job := Job{Item: factory.Item{Title: "Change behaviour"}, Stage: st, Dir: "/repo", Round: 1}
+	for _, want := range []string{
+		"Reuse passing evidence for unchanged code.",
+		"Run missing coverage for the change and behaviour it could break once; repeat after edits or an unresolved failure.",
+		"report a check as run only when its tool output shows execution; label refusals and skipped commands as unrun.",
+	} {
+		if !strings.Contains(stageBrief(job), want) {
+			t.Errorf("Test brief lacks %q", want)
+		}
+	}
+	job.Stage, _ = factory.ShippedStage("plan")
+	if !strings.Contains(stageBrief(job), "label refusals and skipped commands as unrun") {
+		t.Error("Plan brief must distinguish unrun checks")
+	}
+	job.Stage = st
+	job.Round = 2
+	job.Last = &factory.StageResult{Output: "Verification command was refused"}
+	brief := stageBrief(job)
+	if !strings.Contains(brief, "Use current passing evidence. Correct the unresolved check or changed code, then test only the affected behaviour and report what remains open.") {
+		t.Error("retry brief must focus verification on the unresolved scope")
+	}
+	if strings.Contains(brief, "run the tests, then test again") {
+		t.Error("retry brief repeats all tests")
+	}
+}
