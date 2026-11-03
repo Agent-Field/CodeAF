@@ -81,6 +81,10 @@ func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *in
 	history, _ := record.Open(st, record.Options{})
 	look := factoryScoutLook(st, config.Load)
 	return intake.New(st, intake.Options{
+		Standing: factorygithub.Rechecker(func(ctx context.Context) string {
+			token, _ := factorygithub.TokenAt(ctx, factoryProfile(""))
+			return token
+		}),
 		Owner:  owner,
 		Record: history,
 		// An automatic start is looked at closer first, while Read new issues
