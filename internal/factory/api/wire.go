@@ -326,6 +326,7 @@ type SizeBlock struct {
 
 // StepDef is one step as the pipeline defines it (code: [factory.Stage]).
 type StepDef struct {
+	Label string `json:"label,omitempty"`
 	Name  string `json:"name"`
 	Kind  string `json:"kind,omitempty"`
 	Ask   string `json:"ask,omitempty"`
@@ -800,6 +801,7 @@ type Run struct {
 
 // StepAt is where a running job stands: step index of count, by name.
 type StepAt struct {
+	Label string `json:"label,omitempty"`
 	Index int    `json:"index"`
 	Count int    `json:"count"`
 	Name  string `json:"name"`
