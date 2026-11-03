@@ -382,7 +382,7 @@ func (d *heldBriefDoor) RunErrand(ctx context.Context, ask session.ErrandAsk) (s
 func assertStoppedBrief(t *testing.T, s *localSetup, door *briefDoor, params map[string]any, paid factory.BriefVersion) {
 	t.Helper()
 	read := briefAfterProofRead(t, s, params, func(g map[string]any) bool { return g["status"] == factory.BriefStatusFailed })
-	if briefRev(read) != paid.Rev || briefBody(read)["verdict"] != paid.Verdict || read["failure"] != factory.PersonStopReason {
+	if briefRev(read) != float64(paid.Rev) || briefBody(read)["verdict"] != paid.Verdict || read["failure"] != factory.PersonStopReason {
 		t.Fatalf("stopped brief lost paid content or stop reason: %+v", read)
 	}
 	door.mu.Lock()

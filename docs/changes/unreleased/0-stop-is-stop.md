@@ -26,3 +26,10 @@ phase are honoured. A legacy job with
 no surviving stop evidence cannot be distinguished from a never-started job;
 free-form activity or generic stream ending text is not execution authority.
 The publication guards and already-sent PR receipt handling from #2299 remain.
+
+Stopped-job refusals retain conflict status and their original words. Resume
+continues paused work only; Carry on uses the stopped step's rerun door. Stop
+also cancels a runner whose stored job was already stopped by another door.
+Stopped briefs settle unpaid with failed status and the Stop reason, preserving
+the last paid content. A queued stopped job reads needs_you and Stopped by you,
+rather than returning to backlog.

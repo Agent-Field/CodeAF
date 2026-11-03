@@ -472,7 +472,7 @@ no running slot.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
-**Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Reading the chat does not start work; you can still ask the manager questions without starting the job. Stop also withdraws proof awaiting sign-off and draft-PR maintenance. An already stopped or closed job refuses with `#12 is not running`.
+**Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Resume only continues a paused job; after Stop it refuses with `is not paused`. Carry on reruns the stopped step. Reading the chat does not start work; you can still ask the manager questions without starting the job. Stop also withdraws proof awaiting sign-off and draft-PR maintenance. An already stopped or closed job refuses with `#12 is not running`.
 
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
@@ -746,10 +746,12 @@ A new request makes an earlier Brief out of date.
 The job's Brief refreshes when proof waits for your publication approval and
 after publication opens or updates a pull request or posts a comment. It also
 refreshes when the job ships, its PR merges or closes without merge, or the run
-stops or fails. A publication failure refreshes it too. Updates within 10 seconds
+fails. A publication failure refreshes it too. Updates within 10 seconds
 are taken as one. An approval or end update waits if an earlier Brief is still
-being written. Stopping a queued job or declining to continue at the start gate refreshes it
-too, even before a step has run. Auto skips the intermediate proof update when approval can
+being written. Stop settles the Brief without a model call, including for queued
+jobs and jobs stopped at the start gate. Its status is `failed`, with the reason
+`the person stopped this job; this job is stopped; a person presses Start to run it`.
+The last paid Brief stays visible; no paid refresh runs until a person starts the job. Auto skips the intermediate proof update when approval can
 proceed automatically; an exception that waits on you still gets an update.
 
 These approval and end updates bypass the ordinary brief cost guard, and their
