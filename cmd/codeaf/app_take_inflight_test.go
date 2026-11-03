@@ -1,7 +1,6 @@
 package main
 
 import (
-	"runtime"
 	"testing"
 	"time"
 
@@ -82,10 +81,46 @@ func TestAppTakeInFlightRowClearsWhenTheTakeFails(t *testing.T) {
 	}
 }
 
-// A finished take stops counting only once it holds the inventory lock, and a
-// cached row that still shows the chat elsewhere is never republished as a
-// take that ended: a client that stopped waiting would read it as not moved.
-func TestAppTakeInFlightNeverEndsBeforeTheChatIsHere(t *testing.T) {
+// A take that acquired the chat keeps saying it runs on every row from before
+// it, whatever ends the call: a client that stopped waiting reads taking:false
+// on a chat still elsewhere as a take that did not move it.
+func TestAppTakeInFlightRowsFromBeforeALandedTakeStillSayItRuns(t *testing.T) {
+	const id = "chat"
+	var c appChats
+	mark := func(row appwire.ChatRow) bool {
+		rows := []appwire.ChatRow{row}
+		c.markTaking(rows)
+		return rows[0].Taking
+	}
+	before := appwire.ChatRow{Cell: id, Seen: appwire.Seen{Device: "other", Fence: 4}}
+	if mark(before) {
+		t.Fatal("no take has started")
+	}
+	c.countTake(id, 1)
+	c.landTake(id, 5)
+	c.countTake(id, -1)
+	if !mark(before) {
+		t.Fatal("a row from before the landed take says it ended")
+	}
+	if !mark(appwire.ChatRow{Cell: id, Seen: appwire.Seen{Device: "this", Fence: 5}}) {
+		t.Fatal("the taken fence not yet installed here says the take ended")
+	}
+	if mark(appwire.ChatRow{Cell: id, Here: true, Seen: appwire.Seen{Device: "this", Fence: 5}}) {
+		t.Fatal("the row that says the chat is here still says a take runs")
+	}
+	if mark(before) {
+		t.Fatal("a take already seen here kept counting")
+	}
+	// A later take elsewhere ends it too, so the flag never sticks.
+	c.landTake(id, 5)
+	if mark(appwire.ChatRow{Cell: id, Seen: appwire.Seen{Device: "other", Fence: 6}}) || mark(before) {
+		t.Fatal("a chat another computer took again still says this take runs")
+	}
+}
+
+// The cached row republished after a landed take whose reading failed still
+// shows the chat elsewhere, so it still says the take runs.
+func TestAppTakeInFlightCacheAfterALandedTakeStillSaysItRuns(t *testing.T) {
 	celltest.Available(t)
 	appDevicesRelay(t)
 	aHome, bHome := t.TempDir(), t.TempDir()
@@ -110,62 +145,32 @@ func TestAppTakeInFlightNeverEndsBeforeTheChatIsHere(t *testing.T) {
 		t.Fatal(err)
 	}
 	backend, rec, wire := appDeviceBackend(t, bHome)
+	var row appwire.ChatRow
 	appSyncWait(t, "the other computer's chat is listed", func() bool {
 		for _, r := range machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats {
 			if r.Cell == c.ID && r.CanTake {
+				row = r
 				return true
 			}
 		}
 		return false
 	})
-	taking := func() bool {
-		backend.chats.mu.Lock()
-		defer backend.chats.mu.Unlock()
-		return backend.chats.taking[c.ID] > 0
-	}
-	changedSince := func(from int) []appwire.ChatRow {
-		rec.mu.Lock()
-		defer rec.mu.Unlock()
-		var out []appwire.ChatRow
-		for i := from; i < len(rec.data); i++ {
-			if changed, ok := rec.data[i].(appwire.ChatChanged); ok && changed.Chat.Cell == c.ID {
-				out = append(out, changed.Chat)
-			}
-		}
-		return out
-	}
-	events := func() int {
-		rec.mu.Lock()
-		defer rec.mu.Unlock()
-		return len(rec.events)
-	}
-
 	backend.chats.countTake(c.ID, 1)
+	backend.publishTaking()
+	backend.chats.landTake(c.ID, row.Seen.Fence+1)
 	backend.chats.countTake(c.ID, -1)
-	from := events()
-	backend.publishTakingHere(c.ID)
-	if rows := changedSince(from); len(rows) != 0 {
-		t.Fatalf("a chat still elsewhere was republished after its take: %+v", rows)
+	rec.mu.Lock()
+	from := len(rec.data)
+	rec.mu.Unlock()
+	backend.publishTaking()
+	if !machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats[0].Taking {
+		t.Fatal("the list read after a landed take says it ended with the chat elsewhere")
 	}
-
-	backend.chats.countTake(c.ID, 1)
-	backend.chats.op.Lock()
-	settled := make(chan error, 1)
-	go func() { settled <- backend.settleTake(t.Context(), b, c.ID) }()
-	for range 100 {
-		runtime.Gosched()
-	}
-	// The follower holding the lock emits rows from before the take; they
-	// must still say it runs.
-	if !taking() {
-		backend.chats.op.Unlock()
-		t.Fatal("a finished take stopped counting before it held the inventory lock")
-	}
-	backend.chats.op.Unlock()
-	if err := <-settled; err != nil {
-		t.Fatal(err)
-	}
-	if taking() {
-		t.Fatal("a settled take still counts as running")
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for _, data := range rec.data[from:] {
+		if changed, ok := data.(appwire.ChatChanged); ok && changed.Chat.Cell == c.ID && !changed.Chat.Here && !changed.Chat.Taking {
+			t.Fatalf("a landed take was announced as one that did not move the chat: %+v", changed.Chat)
+		}
 	}
 }

@@ -1415,11 +1415,12 @@ and rows omit the unknown time. Existing records are not backfilled by startup.
 `cell`. Remote-only chats have no local agent. Cell locations include the
 observed computer, fence and optional saved `head` in opaque `seen`, plus `can_take` and the engine's
 `takeover_line` when known. `taking` is true from when `agents.take` asks for
-that chat until the take ends, including while it waits behind another take; a
-followed inventory emits the row again when it starts and when a take ends
-without moving the chat. A finished take never emits `taking:false` on a row
-that still shows the chat elsewhere: its row says the chat is here first or in
-the same emission. A client that stopped waiting for a take reads `taking:false`
+that chat, including while it waits behind another take, until the take ends
+without moving the chat or a row says the chat is here (or a later take holds
+it); a followed inventory emits the row again when the take starts and when it
+ends without moving the chat. A take that moved the chat never emits
+`taking:false` on a row that still shows it elsewhere, even when opening the
+moved chat fails. A client that stopped waiting for a take reads `taking:false`
 on a chat still elsewhere as a take that did not move it.
 Older chats working in the home folder stay local.
 Copy `cell` and `seen` verbatim to `agents.take`; never open an agent using the

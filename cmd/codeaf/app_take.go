@@ -142,6 +142,8 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}
+	// The chat is this computer's from here on, even if opening it fails.
+	b.chats.landTake(p.Cell, got.Taken.Driving.Fence)
 	// The continuer's already-here shortcut may observe a local acquisition
 	// that happened after our preflight read. It must not accept older consent.
 	if got.AlreadyHere && (p.Seen.Device != s.Device.ID() || !seen.Matches(directory.Cell{Head: got.Taken.Driving.Head, Lease: directory.Lease{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence}})) {
@@ -195,14 +197,11 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	// Reconcile the local id even when no later directory version will arrive.
 	err = b.settleTake(ctx, s, p.Cell)
 	if err != nil {
-		// The take has completed. Inventory recovery belongs to its follower;
-		// until its next reading a cached row that already says here stops
-		// saying the take runs.
+		// The take has completed. Inventory recovery belongs to its follower,
+		// whose reading that shows the chat here clears the row's taking.
 		b.startChatInventory()
-		b.publishTakingHere(p.Cell)
-	} else {
-		// A newer cached version skips the reading's own taking.
-		b.publishTaking()
 	}
+	// A newer cached version skips the reading's own taking.
+	b.publishTaking()
 	return agent, nil
 }

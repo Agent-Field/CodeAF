@@ -25,6 +25,7 @@ type appChats struct {
 	start           sync.Once
 	byAgent         map[string]appwire.ChatRow
 	taking          map[string]int
+	landed          map[string]uint64
 	take            sync.Mutex
 	op              sync.Mutex
 	mu              sync.Mutex
@@ -375,13 +376,29 @@ func (c *appChats) newerChats(version uint64) (appwire.ChatsResult, bool) {
 
 // A take is in flight from when agents.take asks for the chat until it ends,
 // so a client that stopped waiting can tell a move still copying from one that
-// never happened.
+// never happened. A take that acquired the chat keeps saying so on every row
+// from before it until a row says the chat is here or a later fence holds it.
 func (c *appChats) markTaking(rows []appwire.ChatRow) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := range rows {
-		rows[i].Taking = c.taking[rows[i].Cell] > 0
+		r := &rows[i]
+		fence, landed := c.landed[r.Cell]
+		if landed && (r.Here || r.Seen.Fence > fence) {
+			delete(c.landed, r.Cell)
+			landed = false
+		}
+		r.Taking = c.taking[r.Cell] > 0 || landed
 	}
+}
+
+func (c *appChats) landTake(id string, fence uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.landed == nil {
+		c.landed = make(map[string]uint64)
+	}
+	c.landed[id] = fence
 }
 
 func (c *appChats) countTake(id string, delta int) {
@@ -398,13 +415,7 @@ func (c *appChats) countTake(id string, delta int) {
 
 // The take's own start and end change no directory version, so its row is
 // emitted again from the cache.
-func (b *appBackend) publishTaking() { b.publishCachedTaking("") }
-
-// publishTakingHere emits the cache only when it already says the chat is
-// here: a finished take never reads as one that did not move it.
-func (b *appBackend) publishTakingHere(id string) { b.publishCachedTaking(id) }
-
-func (b *appBackend) publishCachedTaking(here string) {
+func (b *appBackend) publishTaking() {
 	c := &b.chats
 	c.op.Lock()
 	defer c.op.Unlock()
@@ -417,16 +428,12 @@ func (b *appBackend) publishCachedTaking(here string) {
 	if !following {
 		return
 	}
-	if here != "" && !slices.ContainsFunc(rows, func(r appwire.ChatRow) bool { return r.Cell == here && r.Here }) {
-		return
-	}
 	c.markTaking(rows)
 	b.publishChats(rows, version, true)
 }
 
-// A finished take stops counting only under the inventory lock, so an
-// emission that still shows the chat elsewhere also still says the take runs,
-// and this reading clears it with the row that says the chat is here.
+// A finished take stops counting under the inventory lock, and this reading
+// clears its taking with the row that says the chat is here.
 func (b *appBackend) settleTake(ctx context.Context, s *syncsetup.Sync, id string) error {
 	c := &b.chats
 	c.op.Lock()
