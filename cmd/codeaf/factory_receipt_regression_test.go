@@ -9,6 +9,7 @@ import (
  "testing"
 
  "github.com/Agent-Field/codeaf/internal/factory"
+ "github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
 func TestReviewLegacySuccessfulOutput(t *testing.T) {
