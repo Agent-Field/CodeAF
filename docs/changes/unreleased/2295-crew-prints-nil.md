@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Crew watches share complete map initialization
-pr: 0
+pr: 2295
 surface: [app, engine]
 invalidates:
   - Cold-sweep test watches previously omitted writable crew maps and could panic when a changed input triggered reconciliation; all watches now use the production constructor.
