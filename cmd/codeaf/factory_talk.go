@@ -341,8 +341,13 @@ func factoryIsParent(f *teams.File, id string) bool {
 // teams.Update, so finding and making are one read-modify-write.
 func itemTeamIn(f *teams.File, name string, now time.Time) string {
 	parent := factoryParentTeam(f, now)
+	// A job with no issue was once named #N. Its saved team keeps that name.
+	saved := name
+	if rest, ok := strings.CutPrefix(name, "job "); ok {
+		saved = "#" + rest
+	}
 	for i, t := range f.Teams {
-		if t.Parent == parent && t.Name == name && !t.Closed() {
+		if t.Parent == parent && (t.Name == name || t.Name == saved) && !t.Closed() {
 			f.Teams[i].FactoryManaged = true
 			return t.ID
 		}
@@ -622,7 +627,7 @@ func (d fileRecipeDoor) Stages(ctx context.Context, repo string, kind factory.Ki
 // carries its floor id after it (`[factory item #1540 · 7]`) so the surface
 // finds the right row whichever repository the number belongs to.
 func talkMarker(it factory.Item) string {
-	ref := it.Ref()
+	ref := it.KeyRef()
 	if ref == "#"+strconv.Itoa(it.ID) || it.ID <= 0 {
 		return "[factory item " + ref + "]"
 	}

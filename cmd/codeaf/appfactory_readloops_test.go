@@ -340,7 +340,7 @@ func TestStartOnItsOwnLaunchesWhatTheStartRulesAllow(t *testing.T) {
 		t.Fatalf("start: %+v", st)
 	}
 	floor := s.backend.local.host.floor
-	if _, err := floor.ChangeHouseRules(func(h *factory.HouseRules) error { h.StartOnItsOwn = true; return nil }); err != nil {
+	if _, err := floor.ChangeHouseRules(factory.RulesChange{}, func(h *factory.HouseRules) error { h.StartOnItsOwn = true; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := floor.Create(factory.Item{Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {

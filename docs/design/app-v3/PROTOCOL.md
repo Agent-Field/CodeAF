@@ -262,7 +262,7 @@ decides which combinations are accepted.
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
-| `factory.job_start` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_start` | `in.FactoryJobStartParams` | `FactoryJobActed` |
 | `factory.job_step_edit` | `in.FactoryJobStepEditParams` | `FactoryJobStepEdited` |
 | `factory.job_step_edits_read` | `in.FactoryJobStepEditsParams` | `FactoryJobStepEdits` |
 | `factory.job_step_rerun` | `in.FactoryJobStepParams` | `FactoryJobActed` |
@@ -475,7 +475,9 @@ outcome to the person without internal identifiers.
 required `expect.version`) and `FactoryJobActed` reply. Budgets remain $5, $10, $20 or
 $30. Raising the cap above recorded spend resolves a `cap` question and resumes
 the interrupted step in the same conversation and round, with spend retained,
-in Auto or Manual on local and leased runners. Chat records one
+in Auto or Manual on local and leased runners. Manual still asks before its next
+step. Take over and publishing jobs do not resume through a budget change.
+Chat records one
 `budget raised to $10 · carrying on` line for a $10 cap. An increase at or below
 spend updates the question and keeps work waiting. A decrease below spend is
 still refused (`bad_params`). Other questions and publication approvals are
@@ -509,6 +511,17 @@ Saved events keep their original attribution. Automatic approval trailers
 use `Factory-Approval: evt_<id> factory <commit>`; personal trailers keep
 `@handle`. Workers must accept the factory actor to publish automatic approvals.
 No method, parameter, reply field, error code or hello feature is added.
+
+An engine whose hello carries the feature `factory.rules_changed_by` answers
+`factory.rules` and `factory.rules_set` with `changed_by`, the GitHub login of
+the person who made the last write of the factory's rules, and `changed_at`,
+the RFC3339 time of that write in UTC to the second, beside `rules`:
+`{"factory": "...", "rules": {...}, "changed_by": "octocat",
+"changed_at": "2026-10-11T12:00:00Z"}`. The rules belong to the factory, not to
+one repository, so there is one pair per factory. Both fields are absent when
+the rules were never written, and when the factory last wrote them with a build
+that did not record the change. A write sent with the factory's script
+credential records the factory's operator.
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
@@ -682,6 +695,16 @@ visible to the caller, or past the first 20 read); jobs whose model call
 failed, left unread to try again. A factory with no model key fails every job.
 `queue.desk.last_read_cost` is what the last read cost, for "about $X".
 
+An engine whose hello carries the feature `factory.repo_checkout` answers
+`factory.queue` with `checkout_state` on each of `repos[]`: how a run of that
+repository gets its folder on the factory's machine, in the words a job's own
+`checkout` says and from the same check a start makes. It is `here` (a
+checkout is known), `will_clone` (the runner clones it on the first job's
+first step; the normal state of a repository no job has run on yet) or
+`missing` (a start is refused 409 `needs_checkout`), and it never names a path.
+It is absent on a factory that does not know its machine's checkouts and on an
+attached factory older than the field, which says nothing rather than a guess.
+
 An engine whose hello carries the feature `factory.repo_read` (and
 `FactoryCapabilities.repo_read`) serves `factory.repo_read {factory, repo, op,
 path?, pattern?, from?, to?, job?}`: one read-only look at the factory's own
@@ -756,6 +779,27 @@ end and a retry are written regardless, and unchanged inputs are never written
 twice. `factory.job_brief_write {factory, job}` is the page's Retry: it answers
 `{skip?, kept, drops: [{part, reason}], model?, cost_usd?, current:
 FactoryJobBrief}`, with `skip` `writing` while another write is under way.
+
+### Job references and jobs without a GitHub issue
+
+`factory.job` and `factory.queue` return a job's `ref` as display text:
+`api#87` for GitHub issue 87, or `job 21` when `num` is zero. A local
+job id is never a GitHub issue number. Step briefs for such a job explicitly
+say it has no GitHub issue, including Plan, Review and Proof.
+
+The numeric `job_id` is the factory document id used as the `job` parameter
+in app methods. The string `id` is an opaque compatibility key: it retains
+its previous spelling (including `api#21` for a job with no issue). Use `ref`
+for labels; never parse either identity into a GitHub link. Existing HTTP
+reference lookups, worktree names and saved chat markers remain valid;
+saved jobs need no migration. GitHub links come from the job's `url` and
+actual issue `num`, never the local document id.
+
+`factory.issue_comment {factory, job, body}` refuses a job with `num: 0`
+with wire code `conflict`, typed outcome `refused`, and the message
+"this job has no GitHub issue to comment on". It makes no GitHub call.
+The existing `factory.remote` and `factory.issue_comment` hello features
+continue to apply; no method, parameter or reply field is added.
 
 ## files methods
 
@@ -1568,3 +1612,9 @@ work or start refusals (`repo_off` or `needs_checkout` in refusal.reason),
 A start refusal removes a provisional copy; its allocated document ID is not
 reused. Storage or receipt failures after a successful start remain uncertain;
 the engine never repeats the write automatically.
+
+`factory.job`'s `desk.run.log[]` carries optional `kind: "tool"` for tool
+captions; `text` remains readable, with one tool name and home paths replaced
+by `~` before a 240-character limit. Other lines omit `kind`. Worker reports
+retain their existing body shape, carrying tool identity in `tone: "tool"`;
+no hello feature or new error code is needed.

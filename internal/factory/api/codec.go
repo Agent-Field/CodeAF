@@ -146,7 +146,7 @@ func FromItem(it factory.Item) Job {
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
-		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
+		Runner: it.WorktreeMachine, JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
 		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApproval(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
@@ -897,7 +897,12 @@ func toRubric(r *Rubric) *factory.Rubric {
 }
 
 func fromLog(l factory.LogLine) LogLine {
-	return LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
+	out := LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
+	if l.Tone == "tool" || factory.LegacyToolLog(l) {
+		out.Kind = "tool"
+		out.Text = factory.ToolLogText(l.Text, "")
+	}
+	return out
 }
 
 func toLog(l LogLine) factory.LogLine {

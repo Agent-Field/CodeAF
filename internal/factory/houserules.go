@@ -3,6 +3,7 @@ package factory
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -49,6 +50,20 @@ type HouseRules struct {
 	// StartOnItsOwn is on, and they are the one thing here that lets more
 	// work start rather than less: turning the switch on is that consent.
 	StartLabels []string `json:"start_labels,omitempty"`
+}
+
+// RulesChange is the last write of the factory's rules: the GitHub login of
+// the person who made it and when. Rules that were never written carry
+// neither field.
+type RulesChange struct {
+	ChangedBy string     `json:"changed_by,omitempty"`
+	ChangedAt *time.Time `json:"changed_at,omitempty"`
+}
+
+// KeptRules are the factory's rules as it keeps them, with their last change.
+type KeptRules struct {
+	HouseRules
+	RulesChange
 }
 
 // HouseRulesMost is how many lines one list may hold, and HouseRuleLongest how
