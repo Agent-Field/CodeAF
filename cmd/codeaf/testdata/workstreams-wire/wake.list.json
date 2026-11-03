@@ -56,7 +56,7 @@
                 "state": "proposed",
                 "text": "Add draft: Check rollout.",
                 "wave": 3,
-                "budget_usd": 3
+                "budget_usd": 3.0
               }
             ]
           }
