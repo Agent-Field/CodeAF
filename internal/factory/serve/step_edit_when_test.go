@@ -35,13 +35,16 @@ func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
 				t.Fatalf("unclear condition refusal: %s", bad.Body)
 			}
 			st := factory.Stage{When: read.Steps[1].When}
-			if factory.Fits(st, it) {
-				t.Fatal("conditional step runs on an item without auth")
+			if !factory.Fits(st, it) {
+				t.Fatal("conditional step skips while files and area are unknown")
 			}
 			it.Triage.Area = "auth"
 			if !factory.Fits(st, it) {
 				t.Fatal("conditional step skips an auth item")
 			}
+
+   // A known nonmatching area is still a reason to skip at the step.
+   if err := f.st.Update(it.ID, func(it *factory.Item) error { it.Triage.Area = "docs"; return nil }); err != nil { t.Fatal(err) }
 
 			runner := run.New(run.Options{Store: f.st, Exec: map[factory.StageKind]run.Executor{
 				factory.StageChat: run.ExecutorFunc(func(_ context.Context, job run.Job) (factory.StageResult, error) {
@@ -59,7 +62,7 @@ func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
 			for {
 				job := f.read(t, it)
 				if job.Ready {
-					if len(job.Steps) != 2 || job.Steps[0].State != api.StepDone || job.Steps[1].InRun || job.Steps[1].Round != 0 {
+					if len(job.Steps) != 2 || job.Steps[0].State != api.StepDone || !job.Steps[1].InRun || job.Steps[1].State != api.StepDone || !strings.Contains(job.Steps[1].Note, "does not match the triage area") || job.Steps[1].Round != 0 {
 						t.Fatalf("run did not skip conditional step: %+v", job.Steps)
 					}
 					break
