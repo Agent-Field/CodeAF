@@ -1567,7 +1567,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 // loop's own plain reckoning onto Stream.Spent.
 func (lp *floorLoop) spender(c *loopCtl, step string, round int) func(usd float64) {
 	if p := lp.r.opts.Pool; p != nil {
-		return p.spend(c.id, step, round)
+		return p.SpendRound(c.id, step, round)
 	}
 	return func(usd float64) {
 		if usd <= 0 {

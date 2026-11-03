@@ -2,9 +2,9 @@ package run_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"math/rand"
- "fmt"
 	"testing"
 	"time"
 
@@ -77,15 +77,30 @@ func TestJobSpendOldPendingWorkerTable(t *testing.T) {
 
 func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 	for seed := int64(0); seed < 32; seed++ {
-		t.Run(fmt.Sprintf("seed_%d",seed), func(t *testing.T) {
+		t.Run(fmt.Sprintf("seed_%d", seed), func(t *testing.T) {
 			rng := rand.New(rand.NewSource(seed))
 			it := reviewItem()
 			worker := reviewItem()
-            worker.Stream.Phases[0].Round = 1
-            worker.Stream.Phases[0].State = factory.PhaseRunning
-            clone := func(it factory.Item) factory.Item { raw,_:=json.Marshal(it); var out factory.Item; if err:=json.Unmarshal(raw,&out);err!=nil{t.Fatal(err)}; return out }
-            baseline := clone(worker)
-            report := func() factory.RunReport { r,_:=run.Diff(baseline,worker); raw,_:=json.Marshal(api.FromRunReport(r)); var wire api.WorkerReport; if err:=json.Unmarshal(raw,&wire);err!=nil{t.Fatal(err)}; return api.ToWorkerReport(wire) }
+			worker.Stream.Phases[0].Round = 1
+			worker.Stream.Phases[0].State = factory.PhaseRunning
+			clone := func(it factory.Item) factory.Item {
+				raw, _ := json.Marshal(it)
+				var out factory.Item
+				if err := json.Unmarshal(raw, &out); err != nil {
+					t.Fatal(err)
+				}
+				return out
+			}
+			baseline := clone(worker)
+			report := func() factory.RunReport {
+				r, _ := run.Diff(baseline, worker)
+				raw, _ := json.Marshal(api.FromRunReport(r))
+				var wire api.WorkerReport
+				if err := json.Unmarshal(raw, &wire); err != nil {
+					t.Fatal(err)
+				}
+				return api.ToWorkerReport(wire)
+			}
 			real := 0.0
 			var pending []factory.RunReport
 			flush := func(r factory.RunReport) {
@@ -99,16 +114,18 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 				case 0, 1, 2: // Spend, including resumed work in the same logical round.
 					usd := float64(1+rng.Intn(20)) / 10000
 					ph := &worker.Stream.Phases[0]
-                    ph.RecordRoundSpend(ph.Round, ph.RoundCosts[ph.Round]+usd)
-                    worker.Stream.Spent += usd
-                    real += usd
+					ph.RecordRoundSpend(ph.Round, ph.RoundCosts[ph.Round]+usd)
+					worker.Stream.Spent += usd
+					real += usd
 				case 3: // Retry starts another row; old rounds stay in the worker table.
-					if err:=run.StepControl(&worker,"proof",true,"",time.Now());err!=nil{t.Fatal(err)}
-                    worker.State=factory.StateRunning
-                    worker.Stream.Phases[0].State=factory.PhaseRunning
+					if err := run.StepControl(&worker, "proof", true, "", time.Now()); err != nil {
+						t.Fatal(err)
+					}
+					worker.State = factory.StateRunning
+					worker.Stream.Phases[0].State = factory.PhaseRunning
 				case 4: // Reports can be coalesced or dropped before a later full table.
 					pending = append(pending, report())
-                    baseline=clone(worker)
+					baseline = clone(worker)
 				case 5: // Reorder and repeat a report.
 					if len(pending) > 0 {
 						r := pending[rng.Intn(len(pending))]
@@ -120,17 +137,21 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 					if err := json.Unmarshal(raw, &it); err != nil {
 						t.Fatal(err)
 					}
-					if err:=run.PauseItem(&worker,time.Now());err!=nil{t.Fatal(err)}
-                    worker = api.ToItem(api.WorkerJob(worker))
-                    if err:=run.ResumeItem(&worker,time.Now());err!=nil{t.Fatal(err)}
-                    worker.State=factory.StateRunning
+					if err := run.PauseItem(&worker, time.Now()); err != nil {
+						t.Fatal(err)
+					}
+					worker = api.ToItem(api.WorkerJob(worker))
+					if err := run.ResumeItem(&worker, time.Now()); err != nil {
+						t.Fatal(err)
+					}
+					worker.State = factory.StateRunning
 				case 7: // A fresh snapshot recovers all dropped and coalesced rounds.
-		            baseline=reviewItem()
-			flush(report())
+					baseline = reviewItem()
+					flush(report())
 					checkTableCost(t, it, real)
 				}
 			}
-            baseline=reviewItem()
+			baseline = reviewItem()
 			flush(report())
 			checkTableCost(t, it, real)
 			if got := factory.JobSpent(it); math.Abs(got-real) > 1e-9 {
@@ -141,37 +162,63 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 }
 
 func TestStepCostWorkerTableRetryPullAndFreshRun(t *testing.T) {
- it:=reviewItem()
- if err:=run.ApplyReport(&it,tableReport(t,1,map[int]float64{1:.2}),time.Now());err!=nil{t.Fatal(err)}
- if err:=run.StepControl(&it,"proof",true,"",time.Now());err!=nil{t.Fatal(err)}
- it=api.ToItem(api.WorkerJob(it))
- if err:=run.ApplyReport(&it,tableReport(t,2,map[int]float64{1:.2,2:.01}),time.Now());err!=nil{t.Fatal(err)}
- it=api.ToItem(api.WorkerJob(it))
- checkTableCost(t,it,.21)
- // Worker admission must carry the receipt, not reconstruct a baseline
- // from the single app-facing cost number.
- raw,_:=json.Marshal(api.WorkerJob(it))
- var wire map[string]any
- if err:=json.Unmarshal(raw,&wire);err!=nil{t.Fatal(err)}
- steps:=wire["steps"].([]any)
- if _,ok:=steps[0].(map[string]any)["round_costs"];!ok {t.Fatal("worker pull lost round table")}
- it.State=factory.StateNew
- if err:=run.QueueItem(&it,time.Now());err!=nil{t.Fatal(err)}
- checkTableCost(t,it,0)
- if got:=factory.JobSpent(it);got!=0 {t.Fatalf("fresh run job spend = %g, want 0",got)}
+	it := reviewItem()
+	if err := run.ApplyReport(&it, tableReport(t, 1, map[int]float64{1: .2}), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := run.StepControl(&it, "proof", true, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	it = api.ToItem(api.WorkerJob(it))
+	if err := run.ApplyReport(&it, tableReport(t, 2, map[int]float64{1: .2, 2: .01}), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	it = api.ToItem(api.WorkerJob(it))
+	checkTableCost(t, it, .21)
+	// Worker admission must carry the receipt, not reconstruct a baseline
+	// from the single app-facing cost number.
+	raw, _ := json.Marshal(api.WorkerJob(it))
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	steps := wire["steps"].([]any)
+	if _, ok := steps[0].(map[string]any)["round_costs"]; !ok {
+		t.Fatal("worker pull lost round table")
+	}
+	it.State = factory.StateNew
+	if err := run.QueueItem(&it, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	checkTableCost(t, it, 0)
+	if got := factory.JobSpent(it); got != 0 {
+		t.Fatalf("fresh run job spend = %g, want 0", got)
+	}
 }
 
 func TestStepCostLegacyWorkerLastSpentFallback(t *testing.T) {
- var it factory.Item
- raw:=[]byte(`{"State":"running","Stages":[{"Name":"proof","Kind":"chat","On":true}],"Stream":{"Spent":0.2,"Phases":[{"Name":"proof","Kind":"chat","Round":1,"Result":{"Spent":0.2}}]}}`)
- if err:=json.Unmarshal(raw,&it);err!=nil{t.Fatal(err)}
- before,_:=json.Marshal(it)
- if got:=api.FromItem(it).Steps[0].Cost;got!=.2{t.Fatalf("old step cost %g, want .2",got)}
- after,_:=json.Marshal(it)
- if string(before)!=string(after){t.Fatal("reading old job rewrote saved rows")}
- it=api.ToItem(api.WorkerJob(it))
- old:=api.WorkerReport{Cost:.01,Steps:[]api.StepReport{{Name:"proof",Round:2,Result:&api.StepResult{Cost:.01}}}}
- if err:=run.ApplyReport(&it,api.ToWorkerReport(old),time.Now());err!=nil{t.Fatal(err)}
- if got:=api.FromItem(it).Steps[0].Cost;got!=.01{t.Fatalf("old worker cost %g, want last Spent .01",got)}
- if got:=factory.JobSpent(it);math.Abs(got-.21)>1e-9{t.Fatalf("old worker job spend %g, want .21",got)}
+	var it factory.Item
+	raw := []byte(`{"State":"running","Stages":[{"Name":"proof","Kind":"chat","On":true}],"Stream":{"Spent":0.2,"Phases":[{"Name":"proof","Kind":"chat","Round":1,"Result":{"Spent":0.2}}]}}`)
+	if err := json.Unmarshal(raw, &it); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := json.Marshal(it)
+	if got := api.FromItem(it).Steps[0].Cost; got != .2 {
+		t.Fatalf("old step cost %g, want .2", got)
+	}
+	after, _ := json.Marshal(it)
+	if string(before) != string(after) {
+		t.Fatal("reading old job rewrote saved rows")
+	}
+	it = api.ToItem(api.WorkerJob(it))
+	old := api.WorkerReport{Cost: .01, Steps: []api.StepReport{{Name: "proof", Round: 2, Result: &api.StepResult{Cost: .01}}}}
+	if err := run.ApplyReport(&it, api.ToWorkerReport(old), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := api.FromItem(it).Steps[0].Cost; got != .01 {
+		t.Fatalf("old worker cost %g, want last Spent .01", got)
+	}
+	if got := factory.JobSpent(it); math.Abs(got-.21) > 1e-9 {
+		t.Fatalf("old worker job spend %g, want .21", got)
+	}
 }

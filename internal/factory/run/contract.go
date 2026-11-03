@@ -260,8 +260,8 @@ type InboxReply struct {
 // it. THE LOOP ASKS AFTER EVERY ROUND whether the cap is reached, and when it
 // is, it parks the item on CapQuestion's sentence; the money decides nothing.
 type Pool interface {
-	// Spend is the Job.Spend hook for one item.
-	Spend(id int) func(usd float64)
+	// SpendRound is the Job.Spend hook for one item and logical round.
+	SpendRound(id int, step string, round int) func(usd float64)
 	// CapReached says whether the item has spent what its cap allows.
 	CapReached(it factory.Item) bool
 	// CapQuestion is the sentence the item waits on, and its QKind.

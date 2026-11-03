@@ -376,6 +376,10 @@ func (p Phase) StepCost() float64 {
 
 // RecordRoundSpend records a worker's cumulative receipt for one logical round.
 func (p *Phase) RecordRoundSpend(round int, spent float64) {
+ // A historical result has no complete receipt table. Keep its legacy
+ // last-result display until a fresh run; inventing rows would misattribute
+ // pending or interrupted work.
+ if p.RoundCosts == nil && p.Result != nil { return }
 	if p.RoundCosts == nil {
 		p.RoundCosts = make(map[int]float64)
 	}
