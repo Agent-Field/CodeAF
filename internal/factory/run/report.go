@@ -404,7 +404,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("an approve step requires a person's answer")
 	}
 	switch step.State {
-	case "", factory.PhasePending, factory.PhaseRunning, factory.PhaseDone, factory.PhaseFailed, factory.PhaseWaiting:
+	case "", factory.PhasePending, factory.PhaseRunning, factory.PhaseDone, factory.PhaseSkipped, factory.PhaseFailed, factory.PhaseWaiting:
 	default:
 		return fmt.Errorf("unknown step state")
 	}
@@ -439,6 +439,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 	}
 	if step.State != "" {
 		setPhaseState(ph, step.State, now)
+		ph.SkipReason = step.SkipReason
 	}
 	// WHEN THE ROUND BEGAN IS THE WORKER'S CLOCK, not this report's arrival:
 	// the report comes after the round has run a while. It lands before the
@@ -465,7 +466,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 	}
 	// This snapshot describes the current report, not the result folded above.
 	ph.Verification = step.Verification
-	if ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed || ph.State == factory.PhasePending {
+	if ph.State == factory.PhaseSkipped || ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed || ph.State == factory.PhasePending {
 		ph.Verification = nil
 	}
 	if len(step.Rounds) > 0 {
@@ -578,11 +579,14 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 // not a new round.
 func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 	ph.State = state
-	if state == factory.PhaseDone || state == factory.PhaseFailed || state == factory.PhasePending {
+	if state != factory.PhaseSkipped {
+		ph.SkipReason = ""
+	}
+	if state == factory.PhaseSkipped || state == factory.PhaseDone || state == factory.PhaseFailed || state == factory.PhasePending {
 		ph.Verification = nil
 	}
 	switch state {
-	case factory.PhaseDone, factory.PhaseFailed:
+	case factory.PhaseDone, factory.PhaseSkipped, factory.PhaseFailed:
 		ph.At = now
 	case factory.PhaseRunning:
 		ph.At = time.Time{}

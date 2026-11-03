@@ -262,3 +262,16 @@ func TestTestCheckpointDoesNotForgetUnreadablePriorEvidence(t *testing.T) {
 		t.Fatal("corrupt evidence became an empty successful round")
 	}
 }
+
+func TestSkippedStepCannotSupplyMeasuredCheckpoint(t *testing.T) {
+ root, file, run := repairCheckFixture(t)
+ run("cargo test --test cli passed")
+ next := filepath.Join(t.TempDir(), "next.jsonl")
+ if err := os.WriteFile(next, nil, 0600); err != nil {t.Fatal(err)}
+ it := factory.Item{Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", State: factory.PhaseSkipped, Chat: file, At: time.Now()}}}}
+ if words := inheritFactoryChecks(factoryrun.ConversationSpec{VerificationStage: "test", Item: it}, next, root); words != "" {t.Fatalf("skip supplied measured evidence: %s", words)}
+ notes, _ := (&stageConversation{file: next, dir: root}).executionNotesMode(true, true)
+ blocked := false
+ for _, note := range notes {if strings.HasPrefix(note, verification.FailurePrefix) {blocked = true}}
+ if !blocked {t.Fatal("only skipped check satisfied requireAnyCheck")}
+}

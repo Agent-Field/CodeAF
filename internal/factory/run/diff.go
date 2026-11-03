@@ -217,13 +217,13 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	var out []factory.StageReport
 	for _, ph := range cur {
 		old, seen := was[ph.Name]
-		if seen && reflect.DeepEqual(old.RoundCosts, ph.RoundCosts) && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.RoundLimit == ph.RoundLimit && reflect.DeepEqual(old.Verification, ph.Verification) && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
+		if seen && reflect.DeepEqual(old.RoundCosts, ph.RoundCosts) && old.SkipReason == ph.SkipReason && old.Chat == ph.Chat && old.State == ph.State && old.Round == ph.Round && old.RoundLimit == ph.RoundLimit && reflect.DeepEqual(old.Verification, ph.Verification) && old.Started.Equal(ph.Started) && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
 			continue
 		}
 		if ph.Kind == factory.StageGate {
 			continue
 		}
-		step := factory.StageReport{RoundCosts: maps.Clone(ph.RoundCosts), Name: ph.Name, Chat: ph.Chat, State: ph.State, Round: ph.Round, RoundLimit: ph.RoundLimit, Verification: ph.Verification, Started: ph.Started}
+		step := factory.StageReport{RoundCosts: maps.Clone(ph.RoundCosts), Name: ph.Name, Chat: ph.Chat, SkipReason: ph.SkipReason, State: ph.State, Round: ph.Round, RoundLimit: ph.RoundLimit, Verification: ph.Verification, Started: ph.Started}
 		if ph.Result != nil && (!seen || !reflect.DeepEqual(old.Result, ph.Result)) {
 			res := *ph.Result
 			res.Edit = nil

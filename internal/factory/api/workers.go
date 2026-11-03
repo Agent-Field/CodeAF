@@ -113,6 +113,7 @@ type WorkerMerge struct {
 // StepReport carries the last round's full result without exposing Go names.
 // rounds is every finished try. failure is set when this step errored.
 type StepReport struct {
+	SkipReason string `json:"skip_reason,omitempty"`
 	RoundCosts   map[int]float64           `json:"round_costs,omitempty"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
@@ -218,7 +219,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
 	}
 	for _, s := range r.Steps {
-		stage := factory.StageReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, State: factory.PhaseState(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
+		stage := factory.StageReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, SkipReason: s.SkipReason, State: factory.PhaseState(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
 		if s.StartedAt != nil {
 			stage.Started = *s.StartedAt
 		}
@@ -265,7 +266,7 @@ func FromRunReport(r factory.RunReport, tables ...bool) WorkerReport {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
 	}
 	for _, s := range r.Stages {
-		step := StepReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, State: string(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
+		step := StepReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, SkipReason: s.SkipReason, State: string(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
 		if res := s.Result; res != nil {
 			step.Result = stepResultWire(*res)
 			step.Model = res.Model

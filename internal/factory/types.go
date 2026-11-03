@@ -276,6 +276,7 @@ const (
 	PhasePending PhaseState = "pending"
 	PhaseRunning PhaseState = "running"
 	PhaseDone    PhaseState = "done"
+	PhaseSkipped PhaseState = "skipped"
 	PhaseFailed  PhaseState = "failed"
 	PhaseWaiting PhaseState = "waiting"
 )
@@ -288,6 +289,7 @@ type Phase struct {
 	Name       string
 	Kind       StageKind
 	State      PhaseState
+	SkipReason string `json:",omitempty"`
 	Note       string
 	Round      int
 	// RoundLimit is the effective limit, including explicit user extensions.

@@ -525,7 +525,7 @@ func (lp *floorLoop) drive(c *loopCtl) {
 // is one a person said to skip, and is finished too.
 func nextPhase(ph []factory.Phase) int {
 	for i, p := range ph {
-		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseSkipped && p.State != factory.PhaseFailed {
 			return i
 		}
 	}
@@ -663,7 +663,7 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	prev := factory.PreviousWork(ph, i)
 	last := true
 	for _, p := range ph[i+1:] {
-		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseSkipped && p.State != factory.PhaseFailed {
 			last = false
 			break
 		}
@@ -871,8 +871,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		now := lp.r.now()
 		return lp.write(c, func(it *factory.Item) error {
 			ph := &it.Stream.Phases[i]
-			setPhaseState(ph, factory.PhaseDone, now)
-			ph.Note = reason
+			setPhaseState(ph, factory.PhaseSkipped, now)
+			ph.SkipReason = reason
+			ph.Note, ph.Result, ph.Failure = "", nil, nil
 			it.Stream.Cur = i
 			loopSay(it, now, "said", reason)
 			return nil
@@ -2627,7 +2628,7 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	}
 	at := 0
 	for k, p := range s.Phases {
-		if p.State == factory.PhaseDone {
+		if p.State == factory.PhaseDone || p.State == factory.PhaseSkipped {
 			at = k + 1
 		}
 	}
