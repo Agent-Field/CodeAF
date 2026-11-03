@@ -459,6 +459,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		}
 		it := current.Item
 		before := current.Item
+ before.Stages = factory.CopyStages(it.Stages)
 		// In-place PR and failure edits must not rewrite the prior event facts.
 		if before.PullRequest != nil {
 			prior := *before.PullRequest
@@ -493,7 +494,8 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		// document before the change with after it, so the triage worker, the
 		// Talk door and the adapt door each get their event (`read`, `talked`,
 		// `stages changed by plan`) without one of them having to remember.
-		factory.NoteChanges(before, &it, now)
+		factory.RecordIssueTouch(before, &it)
+ factory.NoteChanges(before, &it, now)
 		st.retainOutput(&it)
 		rev := current.Revision
 		if mode.bump {

@@ -100,7 +100,7 @@ func TestIssueIdentityAndTransfers(t *testing.T) {
   case "redirect":f.redirect[1]=true
   case "old row":if err:=f.st.Update(1,func(it *factory.Item)error{it.GitHubIssueID=0;return nil});err!=nil{t.Fatal(err)}
   }
-  f.poll()
+  f.list(1,"closed");f.poll()
   want:=factory.StateNew;if mode=="old row"{want=factory.StateShipped}
   if got:=f.row(1);got.State!=want {t.Fatalf("%s moved incorrectly: %s",mode,got.State)}
  })}

@@ -44,12 +44,13 @@ func (s *Source) reconcileClosed(ctx context.Context, st *store.Store, repos []s
  listed:=map[string]bool{}
  closed:=map[string]bool{}
  for _,it:=range fresh {listed[itemKey(it)]=true;closed[itemKey(it)]=it.DoneHow==StandingClosed}
+ initial:=q.sweep.IsZero()
  sweep:=!q.sweep.IsZero() && !now.Before(q.sweep.Add(closeSweepEvery))
  if q.sweep.IsZero() || sweep {q.sweep=now}
  sort.Slice(before,func(i,j int)bool{return before[i].ID<before[j].ID})
  for _,it:=range before {
   if !closeCandidate(it) {delete(q.pending,it.ID);continue}
-  if it.SourceClosed || closed[itemKey(it)] || !listed[itemKey(it)] || sweep {
+  if it.SourceClosed || closed[itemKey(it)] || (initial && !listed[itemKey(it)]) || sweep {
    if _,ok:=q.pending[it.ID];!ok {q.sequence++;q.pending[it.ID]=closeCheck{order:q.sequence}}
   }
  }
