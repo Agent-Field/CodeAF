@@ -30,9 +30,10 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    seam := factory.LocalSeam(st, time.Now(), factory.WithRunner(lease.NewDoors(desk)))
    handler := serve.New(seam, serve.Config{Store: st, Address: "http://test"})
    defer handler.Close()
-   var beats atomic.Int32
+   var beats, recoveries atomic.Int32
    replies := make(chan api.WorkerHeartbeat, 8)
    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    if strings.HasPrefix(r.URL.Path,"/v1/workers/recover/"){recoveries.Add(1);w.WriteHeader(422);return}
     if !strings.HasSuffix(r.URL.Path, "/heartbeat") { handler.ServeHTTP(w,r); return }
     n := beats.Add(1)
     // Lose an acknowledgement too, forcing the worker to see the same ID again.
@@ -58,11 +59,19 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    runner := run.New(run.Options{Store:mirror, RepoDir:func(string) string{return t.TempDir()}, Exec:map[factory.StageKind]run.Executor{factory.StageCheck:run.ExecutorFunc(func(ctx context.Context, _ run.Job)(factory.StageResult,error){close(entered); defer close(finished); <-ctx.Done(); return factory.StageResult{},ctx.Err()})}})
    if err := runner.Launch(it.ID); err != nil { t.Fatal(err) }
    select { case <-entered: case <-time.After(3*time.Second): t.Fatal("runner did not start") }
-   defer func(){ _ = runner.Stop(it.ID); select {case <-finished: case <-time.After(3*time.Second): t.Error("runner did not stop") } }()
+   defer func(){ _ = runner.Stop(it.ID); select {case <-finished: case <-time.After(3*time.Second): t.Error("runner did not stop") }; waitSignalRunner(t,runner,it.ID) }()
    var turns atomic.Int32
    replied := make(chan struct{}, 4)
    j := &job{o:Options{Runner:runner, Mirror:mirror, Reply:func(context.Context,factory.Item,string)error{ turns.Add(1); replied<-struct{}{}; return nil }},w:wc,lease:held.ID,id:it.ID,accepted:map[string]bool{},acknowledged:map[string]bool{}}
    signal := lease.Signal{Verb:verb,Words:"chosen",Budget:8,Yes:true}
+   if verb=="reconcile_results" {
+    _=runner.Stop(it.ID)
+    waitSignalRunner(t,runner,it.ID)
+    cur,_:=mirror.Get(it.ID)
+    p,err:=j.prepareDelivery(cur,factory.RunReport{Cost:.25});if err!=nil{t.Fatal(err)}
+    p.Reason="HTTP 422";j.pending=p;j.blocked="results not saved"
+   }
+
    if verb == "answer" { if err := mirror.Update(it.ID,func(it *factory.Item)error{it.Asking=&factory.Asked{With:factory.AskedYou,Stage:"check",Question:"which?"};return nil}); err != nil {t.Fatal(err)} }
    if verb == "hold" { if err := lease.NewDoors(desk).Hold(it.ID,true); err != nil {t.Fatal(err)} } else if verb == "reply" {
     if err := st.Update(it.ID,func(it *factory.Item)error{it.Thread=append(it.Thread,factory.Message{ID:"message",State:"pending",Text:"chosen"});return nil}); err != nil {t.Fatal(err)}
@@ -88,7 +97,7 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
    if after.Cap!=19 || after.Model!="later" || after.Autonomy!="later" || !reflect.DeepEqual(before.Notes,after.Notes) || turns.Load()>1 {t.Fatalf("worker acted twice: before=%+v after=%+v turns=%d",before,after,turns.Load())}
    j.beat(t.Context()); fourth:= <-replies
    if len(fourth.Signals)!=0 {t.Fatalf("acknowledged signal repeated: %+v",fourth.Signals)}
-   switch verb {case "budget": if before.Cap!=8 {t.Fatal("budget was not applied")}; case "model":if before.Model!="chosen"{t.Fatal("model was not applied")};case "autonomy":if before.Autonomy!="chosen"{t.Fatal("autonomy was not applied")};case "steer","answer":if len(before.Notes)!=1{t.Fatalf("expected one note, got %v",before.Notes)};case "hold":if before.Stream==nil || !before.Stream.Paused {t.Fatal("hold was not applied")};case "stop":if before.State!=factory.StateNew{t.Fatal("stop was not applied")};case "reply":if turns.Load()!=1{t.Fatal("reply was not applied")}}
+   switch verb {case "budget": if before.Cap!=8 {t.Fatal("budget was not applied")}; case "model":if before.Model!="chosen"{t.Fatal("model was not applied")};case "autonomy":if before.Autonomy!="chosen"{t.Fatal("autonomy was not applied")};case "steer","answer":if len(before.Notes)!=1{t.Fatalf("expected one note, got %v",before.Notes)};case "hold":if before.Stream==nil || !before.Stream.Paused {t.Fatal("hold was not applied")};case "stop":if before.State!=factory.StateNew{t.Fatal("stop was not applied")};case "reply":if turns.Load()!=1{t.Fatal("reply was not applied")};case "reconcile_results":if recoveries.Load()!=1{t.Fatalf("reconciliation attempts=%d",recoveries.Load())}}
   })
  }
 }
@@ -155,4 +164,9 @@ func TestRepeatedReconcileDeliveryDoesNotRestartManualRecovery(t *testing.T) {
  first:=attempts.Load()
  j.signals(t.Context(),signals)
  if first!=1 || attempts.Load()!=first{t.Fatalf("one reconcile delivery started %d recovery attempts",attempts.Load())}
+}
+
+func waitSignalRunner(t *testing.T,r *run.Runner,id int){
+ t.Helper()
+ for deadline:=time.Now().Add(3*time.Second);r.Running(id);time.Sleep(time.Millisecond){if time.Now().After(deadline){t.Fatal("runner stayed in flight")}}
 }
