@@ -531,32 +531,36 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 }
 
 func stopLiveRoom(profile string, it factory.Item) (string, error) {
- if room := jobRoomRecorded(it); room != "" { return room, nil }
- return factoryItemTeam(profile, it)
+	if room := jobRoomRecorded(it); room != "" {
+		return room, nil
+	}
+	return factoryItemTeam(profile, it)
 }
 
 func TestStopLiveTrafficUsesRecordedRoom(t *testing.T) {
- _, _, profile := talkLab(t)
- routingTeams(t, profile, []teams.Team{
-  {ID: "parent", Name: factoryTeamName, FactoryManaged: true},
-  {ID: "recorded", Name: "saved job room", Parent: "parent", FactoryManaged: true},
- })
- it := factory.Item{ID: 1, Repo: "acme/api", Title: "current title", Stream: &factory.Stream{Room: "recorded"}}
- got, err := stopLiveRoom(profile, it)
- if err != nil || got != "recorded" { t.Fatalf("delayed Stop traffic went to %q, want recorded job room; error=%v", got, err) }
+	_, _, profile := talkLab(t)
+	routingTeams(t, profile, []teams.Team{
+		{ID: "parent", Name: factoryTeamName, FactoryManaged: true},
+		{ID: "recorded", Name: "saved job room", Parent: "parent", FactoryManaged: true},
+	})
+	it := factory.Item{ID: 1, Repo: "acme/api", Title: "current title", Stream: &factory.Stream{Room: "recorded"}}
+	got, err := stopLiveRoom(profile, it)
+	if err != nil || got != "recorded" {
+		t.Fatalf("delayed Stop traffic went to %q, want recorded job room; error=%v", got, err)
+	}
 }
 
 func newStopLiveWire(t *testing.T, hub *appFactoryHub, profile string) *factoryWire {
- w := newFactoryWire(t, hub)
- w.backend.profileDir = profile
- return w
+	w := newFactoryWire(t, hub)
+	w.backend.profileDir = profile
+	return w
 }
 
 func TestStopLiveFactoryAndManagerUseSameProfile(t *testing.T) {
- profile := t.TempDir()
- t.Setenv(config.ProfileDirEnv, profile)
- w := newStopLiveWire(t, testFactoryHub(t), profile)
- if got := w.backend.localProfile(); got != profile {
-  t.Fatalf("factory traffic profile=%q differs from manager profile=%q", got, profile)
- }
+	profile := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, profile)
+	w := newStopLiveWire(t, testFactoryHub(t), profile)
+	if got := w.backend.localProfile(); got != profile {
+		t.Fatalf("factory traffic profile=%q differs from manager profile=%q", got, profile)
+	}
 }

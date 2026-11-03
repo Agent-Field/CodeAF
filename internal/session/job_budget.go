@@ -68,18 +68,26 @@ func (a *Agent) admitJobCall(ctx context.Context) error {
 // A job Stop cancels this manager's owned producers without closing the
 // conversation or discarding the person's queued answers.
 func (a *Agent) stopFactoryOwnedWork() {
- a.mu.Lock()
- jobs, graph := a.jobs, a.tasks
- cancel, automatic := a.cancel, a.running && a.factoryAutomaticTurn
- a.mu.Unlock()
- if automatic && cancel != nil { cancel(stopFor(StopByWorkStopped)) }
- if graph != nil {
-  graph.mu.Lock()
-  ids := append([]uint64(nil), graph.order...)
-  graph.mu.Unlock()
-  for _, id := range ids { _, _ = graph.stopFor(id, "") }
- }
- if jobs != nil {
-  for _, job := range jobs.all() { if job.running() { _, _ = jobs.killFor(context.Background(), job.id) } }
- }
+	a.mu.Lock()
+	jobs, graph := a.jobs, a.tasks
+	cancel, automatic := a.cancel, a.running && a.factoryAutomaticTurn
+	a.mu.Unlock()
+	if automatic && cancel != nil {
+		cancel(stopFor(StopByWorkStopped))
+	}
+	if graph != nil {
+		graph.mu.Lock()
+		ids := append([]uint64(nil), graph.order...)
+		graph.mu.Unlock()
+		for _, id := range ids {
+			_, _ = graph.stopFor(id, "")
+		}
+	}
+	if jobs != nil {
+		for _, job := range jobs.all() {
+			if job.running() {
+				_, _ = jobs.killFor(context.Background(), job.id)
+			}
+		}
+	}
 }
