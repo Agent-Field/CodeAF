@@ -2007,7 +2007,7 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 // ordinary launch — so the exceptions, the shell rules and the floor cannot
 // differ between them.
 func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) {
-	rows, err := v3ApprovalRowsAt(workspace, profileDir, mode)
+	rows, err := v3ApprovalRowsAt(workspace, profileDir, mode, false)
 	if err != nil {
 		return nil, err
 	}
@@ -2019,15 +2019,32 @@ func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) 
 // configuration reader's file freshness rules.
 type v3ApprovalRows struct {
 	mode, tools, bash string
+	profileReadError  string
 }
 
-func v3ApprovalRowsAt(workspace, profileDir, mode string) (v3ApprovalRows, error) {
+func v3ApprovalRowsAt(workspace, profileDir, mode string, headless bool) (rows v3ApprovalRows, err error) {
 	project, err := config.LoadProjectConfig(workspace)
 	if err != nil {
 		return v3ApprovalRows{}, err
 	}
+	// Every profile read participates, including a read that fails after an
+	// earlier row succeeded. Returning an ordinary error would retain an old,
+	// potentially permissive live policy instead of asking the person.
+	defer func() {
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) && pathErr.Path == config.BudgetConfigPath(profileDir) {
+			rows, err = v3ApprovalRows{profileReadError: err.Error()}, nil
+		}
+	}()
+	if _, err := config.ReadProfileApprovalConfig(profileDir); err != nil {
+		return v3ApprovalRows{}, err
+	}
 	if mode == "" {
-		mode, err = project.ResolveString(profileDir, config.KeyToolApprovalMode)
+		if headless {
+			mode, err = config.HeadlessToolApprovalModeAt(workspace, profileDir)
+		} else {
+			mode, err = project.ResolveString(profileDir, config.KeyToolApprovalMode)
+		}
 		if err != nil {
 			return v3ApprovalRows{}, err
 		}
@@ -2044,6 +2061,9 @@ func v3ApprovalRowsAt(workspace, profileDir, mode string) (v3ApprovalRows, error
 }
 
 func (rows v3ApprovalRows) build() (*approval.Policy, error) {
+	if rows.profileReadError != "" {
+		return &approval.Policy{ProfileReadError: rows.profileReadError}, nil
+	}
 	raw := map[string]any{"default": rows.mode}
 	// The repository's exceptions REPLACE the person's, whole (internal/config
 	// states the merge law): a rule set assembled from two files is a rule set

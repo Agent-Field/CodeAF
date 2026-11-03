@@ -40,9 +40,11 @@ an unfinished reset from an installed replacement, preserving later writes.
 Ordinary file-memo readers retain their missing-file fallback. Profile writes,
 daily spending authority and preference/key sharing use strict reads: unreadable
 existing configuration cannot be overwritten or treated as an absent budget or
-shared value. Ordinary startup and headless approval resolution fall back to
-prompting with profile exceptions withheld when profile access fails; parse errors
-still propagate. Preference edit-clock reads retain their ordinary fallback.
+shared value. Ordinary startup still opens when profile access fails. Policy
+construction carries the read failure explicitly: every call requires a fresh
+human answer, even under an allow posture or `--yolo`, because saved denials
+cannot be known. Prompts explain the failed read and name the file; headless calls
+refuse with an error naming it. Parse errors still propagate. Preference edit-clock reads retain their ordinary fallback.
 Missing profiles still use their normal defaults.
 
 A failed chat installation leaves the source read-only until a fresh Continue

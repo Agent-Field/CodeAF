@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/filememo"
 	"os"
@@ -336,19 +335,14 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 	return "", fmt.Errorf("%q is not a text row", key)
 }
 
-// readProfileApprovalConfig lets ordinary startup proceed conservatively when
-// the profile is unreadable. Parse errors still name the broken configuration.
-func readProfileApprovalConfig(profileDir string) (map[string]json.RawMessage, error) {
-	values, err := readProfileConfigStrict(profileDir)
-	var pathErr *os.PathError
-	if errors.As(err, &pathErr) {
-		return map[string]json.RawMessage{KeyToolApprovalMode: json.RawMessage(`"prompt"`)}, nil
-	}
-	return values, err
+// ReadProfileApprovalConfig preserves a failed profile read so policy builders
+// can require a person even when a caller or project supplies an allow mode.
+func ReadProfileApprovalConfig(profileDir string) (map[string]json.RawMessage, error) {
+	return readProfileConfigStrict(profileDir)
 }
 
 func profileApprovalString(profileDir, key string) (string, error) {
-	values, err := readProfileApprovalConfig(profileDir)
+	values, err := ReadProfileApprovalConfig(profileDir)
 	if err != nil {
 		return "", err
 	}

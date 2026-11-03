@@ -174,6 +174,9 @@ type Rule struct {
 // The zero Policy prompts for everything. That is the intended reading of "no
 // policy configured" — a session with no settings should ask, not run.
 type Policy struct {
+	// ProfileReadError requires a fresh human answer for every call because
+	// saved denials could not be read. It overrides every automatic allowance.
+	ProfileReadError string
 	// Default applies to any tool with no rule of its own.
 	Default Action
 	// Tools is keyed by tool name (read, edit, write, bash, …). A tool rule
@@ -190,6 +193,8 @@ type Policy struct {
 // because every surface that renders a consent prompt needs the same sentence
 // and none of them should be re-deriving it from the Policy.
 type Decision struct {
+	// ProfileReadError prevents other consent sources from answering for a person.
+	ProfileReadError string
 	// Scope is the explicit rule matched, absent for default and inferred allows.
 	Scope  string
 	Action Action
@@ -202,6 +207,10 @@ func (d Decision) String() string { return d.Rule + " → " + string(d.Action) }
 // Check answers for one tool call. args is the raw JSON the model emitted; it
 // is read only for bash, and only for its "command" field.
 func (p Policy) Check(tool string, args json.RawMessage) Decision {
+	if p.ProfileReadError != "" {
+		return Decision{Action: ActionPrompt, ProfileReadError: p.ProfileReadError,
+			Rule: "saved approval rules could not be read; every call needs your approval: " + p.ProfileReadError}
+	}
 	tool = strings.TrimSpace(tool)
 	base := p.base(tool, args)
 	if tool != ToolBash {
@@ -225,6 +234,9 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 // string — a slash command, a queued shell action, a settings preview that
 // wants to show what a pattern would do.
 func (p Policy) CheckBash(command string) Decision {
+	if p.ProfileReadError != "" {
+		return p.Check(ToolBash, nil)
+	}
 	return p.checkBash(command, p.base(ToolBash, nil))
 }
 

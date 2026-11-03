@@ -2,10 +2,11 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
-func TestUnreadableProfilePolicyPromptsWithoutSavedExceptions(t *testing.T) {
+func TestUnreadableProfilePolicyReadReportsFile(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can read mode 000 files")
 	}
@@ -34,19 +35,15 @@ func TestUnreadableProfilePolicyPromptsWithoutSavedExceptions(t *testing.T) {
 			}
 			defer os.Chmod(path, 0600)
 			for _, key := range []string{KeyToolApprovalMode, KeyToolApprovals, KeyBashApprovals} {
-				want := ""
-				if key == KeyToolApprovalMode {
-					want = "prompt"
-				}
-				if got, err := project.ResolveString(profile, key); err != nil || got != want {
-					t.Errorf("%s = %q, %v; want %q, nil", key, got, err, want)
+				if _, err := project.ResolveString(profile, key); err == nil || !strings.Contains(err.Error(), path) {
+					t.Errorf("%s: %v; want read failure naming %s", key, err, path)
 				}
 			}
 			if got := ToolApprovalModeAt(profile); got != "prompt" {
 				t.Errorf("ordinary mode = %q; want prompt", got)
 			}
-			if got, err := HeadlessToolApprovalModeAt(t.TempDir(), profile); err != nil || got != "prompt" {
-				t.Errorf("headless mode = %q, %v; want prompt, nil", got, err)
+			if got, err := HeadlessToolApprovalModeAt(t.TempDir(), profile); err == nil || !strings.Contains(err.Error(), path) {
+				t.Errorf("headless mode = %q, %v; want read failure naming %s", got, err, path)
 			}
 		})
 	}

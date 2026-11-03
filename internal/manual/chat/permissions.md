@@ -601,9 +601,17 @@ stopping work, answering an existing consent question, or closing the session.
 
 A question already waiting for your answer keeps waiting. Project rules,
 conversation postures, `--yolo` and dangerous-command floors keep their
-precedence. An unreadable rule set leaves the last working gate in force until
-the settings can be read again. Over `--host`, change the engine machine's
-settings; a local profile cannot replace a remote machine's rules.
+precedence when the profile can be read. Over `--host`, change the engine
+machine's settings; a local profile cannot replace a remote machine's rules.
+
+## Unreadable profile config.json — why every call asks for approval
+
+If the profile's `config.json` cannot be read, the conversation still opens, but every call asks you, including reads,
+whatever posture or `--yolo` you selected. The prompt names the file and explains
+that saved approval rules could not be read. Remembered approvals and the guardian
+cannot answer these questions for you. A headless call with nobody to ask returns
+an error naming the file. Once the file is readable, its rules apply again.
+Malformed JSON still fails policy construction.
 
 ## Default YOLO in interactive conversations and headless runs
 
@@ -679,6 +687,10 @@ and no permission card asks you to approve an absent command. A corrected call
 goes through the ordinary shell-command rules, including prompts and denials.
 
 ## `--yolo` — how do I let it run things without asking
+
+If the profile's `config.json` cannot be read, `--yolo` still asks for every call
+because saved denials cannot be known. Prompts explain the failed read and name
+the file; headless calls refuse with an error naming it.
 
 `codeaf chat --yolo` and `codeaf resume --yolo` stop the asking about ordinary
 work. The flag's own help reads: "run every tool without asking: the approval
