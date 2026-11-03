@@ -119,7 +119,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 				if end == "pause resume slow" && n == 2 {
 					// Let the finished stage return while its memory snapshot is
 					// still compiling, so final job evidence lands during the pass.
-					time.Sleep(2500 * time.Millisecond)
+					time.Sleep(250 * time.Millisecond)
 				}
 				providerUnits.Add(1)
 				var p map[string]any
