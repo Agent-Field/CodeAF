@@ -91,7 +91,11 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 						if r.URL.Query().Get("since") != "" && n <= 5000 {
 							continue
 						}
-						rows = append(rows, row(n, state))
+						item := row(n, state)
+						if n <= 5000 {
+							item["updated_at"] = at.Add(-60 * 24 * time.Hour)
+						}
+						rows = append(rows, item)
 					}
 					page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 					if page < 1 {

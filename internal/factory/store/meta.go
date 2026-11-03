@@ -26,6 +26,7 @@ type IssueSweep struct {
 
 type SourceMeta struct {
 	IssueSweeps map[string]IssueSweep `json:"issue_sweeps,omitempty"`
+	IssueTags   map[string]string     `json:"issue_tags,omitempty"`
 	Polled      time.Time             `json:"polled,omitzero"`
 	Tried       time.Time             `json:"tried,omitzero"`
 	Trouble     string                `json:"trouble,omitempty"`
