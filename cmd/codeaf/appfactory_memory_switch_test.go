@@ -72,7 +72,7 @@ func TestMemorySwitchDefaultsOffAndChangesLive(t *testing.T) {
 		}
 		s.must(method, params, &reply)
 		m := reply.Settings.Memory
-		if m == nil || m.Enabled != enabled || m.Source != source || !strings.Contains(m.CostNote, "39% of the job's cost: $0.0124 of $0.0315.") {
+		if m == nil || m.Enabled != enabled || m.Source != source || m.CostNote != config.MemoryCostNote {
 			t.Fatalf("%s memory = %+v, want enabled=%v source=%s and cost disclosure", method, m, enabled, source)
 		}
 	}
@@ -187,7 +187,7 @@ func freshMemoryOffApp(t *testing.T) {
 	if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
 		t.Fatal(err)
 	}
-	id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Cedar job", Cap: 1, Tier: factory.TierOwner, Model: knowledge.Model, Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, On: true, Until: "done", Ask: "Call stage_result with done true and output Cedar queues jobs."}, {Name: factory.ApproveName, Kind: factory.StageGate, On: true}}})
+	id, err := floor.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "Cedar job", Cap: 1, Tier: factory.TierOwner, Model: knowledge.Model, Stages: []factory.Stage{{Name: "work", Kind: factory.StageChat, On: true, Until: "done", Ask: "Call stage_result with done true and output Cedar queues jobs."}, {Name: factory.ApproveName, Kind: factory.StageGate, On: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}
