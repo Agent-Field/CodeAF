@@ -39,7 +39,8 @@ A compound with unquoted `;` or `||` publishes nothing, even when every observed
 check passed. Single `&`, newlines, command substitutions and backticks likewise
 lower an otherwise passing call to `completed`. Quoted literal separators, `&&`
 chains and `|` pipes remain eligible. Measured failures still read `failed`.
-The completion guard is unchanged: current-checkout measured covering passes clear
-earlier failures even when the surrounding command reads `completed`.
+The completion guard is unchanged. Rerunning the identical compound on the current
+checkout with every measured exit zero clears its earlier failure, even when the
+surrounding command reads `completed`.
 `bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
 app/v3. This existing observation limit is not a fault fixed by this change.
