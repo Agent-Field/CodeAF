@@ -650,6 +650,10 @@ type appBackend struct {
 	agents       map[string]*appAgent
 	closing      bool
 
+	// lineSays is when each working agent's live line was last said, under mu
+	// (appliveline.go).
+	lineSays map[*appAgent]*appLineSay
+
 	sweepStop chan struct{}
 	sweepDone chan struct{}
 	// left closes when Close begins, whatever started the leaving: the app's
@@ -2221,7 +2225,10 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			var task appwire.Task
 			known := false
 			b.locked(func() { task, known = live.tasks[appTaskID(id, q.ID)] })
-			if known && !task.Proposed && task.State != appwire.TaskFailed {
+			// THE WITHDRAWAL'S OWN WORD WINS: the task lane is read apart from
+			// the question lane, so the task's update may not be here yet.
+			started := q.Withdrawn != nil && q.Withdrawn.Started
+			if started || known && !task.Proposed && task.State != appwire.TaskFailed {
 				// THE RECEIPT SAYS HOW LONG THE CLOCK WAS, so a person reading it
 				// later knows what they had to answer in.
 				clock := appProposedClockS
@@ -2836,7 +2843,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			sayReply(appwire.EntryUpdate)
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
-			b.locked(func() { a.step = title })
+			b.stepMoved(a, live, title)
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
 			live.box.Event(appwire.EventTurnTool, row)
@@ -2972,6 +2979,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		live.running = false
 		live.lastUse = b.now()
 		a.step = ""
+		b.lineSettledLocked(a)
 		// Let go or closed while the turn ran: that road has said the state.
 		if held = a.live == live; held {
 			a.view.State = live.restingState()

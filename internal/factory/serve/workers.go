@@ -94,6 +94,7 @@ func (h *Handler) workerRoutes() {
 	h.route("/v1/workers/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/workers/pull", h.pullWorker)
 	h.route("/v1/workers/leases/{lease}/stop-after-step", map[string]http.HandlerFunc{http.MethodGet: h.workerStopAfterStep})
+	h.route("/v1/workers/leases/{lease}/publish-check", map[string]http.HandlerFunc{http.MethodGet: h.workerPublishCheck})
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
@@ -561,6 +562,7 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 	_, digest, _ := retainedWorkerReport(api.WorkerRecovery{OriginalLease: r.PathValue("lease"), Body: raw.Bytes(), Headers: headers})
 	h.applyWorker(w, r, false, func(it *factory.Item) error {
 		before := failureKey(it.Failure)
+		spentBefore := factory.JobSpent(*it)
 		if err := run.ApplyReport(it, report, h.workers.now()); err != nil {
 			return err
 		}
@@ -569,13 +571,13 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 			// can then name cumulative spend despite an ambiguous later response.
 			for i := range it.ReportReceipts {
 				if it.ReportReceipts[i].Lease == r.PathValue("lease") {
-					it.ReportReceipts[i].AdditionalCost += report.Cost
+					it.ReportReceipts[i].AdditionalCost += factory.JobSpent(*it) - spentBefore
 				}
 			}
 			// Only the initial empty report creates a settlement anchor. Later
 			// reports advance it without displacing it from bounded history.
 			if reflect.DeepEqual(report, factory.RunReport{}) {
-				it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: r.PathValue("lease"), At: h.workers.now()})
+				it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: r.PathValue("lease"), Machine: requestWorker(r).Machine, Handle: factory.NormalizeHandle(requestWorker(r).Handle), At: h.workers.now()})
 				if len(it.ReportReceipts) > factory.WorkerReportReceiptsMost {
 					it.ReportReceipts = append([]factory.WorkerReportReceipt(nil), it.ReportReceipts[len(it.ReportReceipts)-factory.WorkerReportReceiptsMost:]...)
 				}
@@ -735,4 +737,14 @@ func (h *Handler) workerError(w http.ResponseWriter, err error) bool {
 	default:
 		return h.failed(w, err)
 	}
+}
+
+func (h *Handler) workerPublishCheck(w http.ResponseWriter, r *http.Request) {
+	if !h.workerReady(w) {
+		return
+	}
+	if h.workerError(w, h.workers.desk.CheckPublish(r.PathValue("lease"), requestWorker(r).ID)) {
+		return
+	}
+	h.write(w, http.StatusOK, struct{}{})
 }

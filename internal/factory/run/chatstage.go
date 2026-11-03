@@ -139,7 +139,8 @@ type ConversationMaker interface {
 	Open(ctx context.Context, spec ConversationSpec) (Conversation, error)
 }
 
-// spender is what a conversation may also answer: what its round cost.
+// spender reports spending since this conversation was opened. A conversation
+// with SpendRecorded instead supplies the live meter's whole round receipt.
 type spender interface {
 	Spent() float64
 }
@@ -547,6 +548,17 @@ loop:
 		res.Spent = s.Spent()
 		if live, ok := conv.(interface{ SpendRecorded() bool }); ok {
 			res.SpendRecorded = live.SpendRecorded()
+		}
+		if !res.SpendRecorded && job.Item.Stream != nil {
+			// Open starts a new spending segment, even when it reopens the same
+			// transcript. Add its saved round base once here; report replay only
+			// sees the resulting cumulative receipt, including after a restart.
+			for _, ph := range job.Item.Stream.Phases {
+				if ph.Name == job.Stage.Name {
+					res.Spent += ph.RoundCosts[max(1, job.Round)]
+					break
+				}
+			}
 		}
 	}
 	if m, ok := conv.(modeler); ok {

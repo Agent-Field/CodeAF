@@ -101,6 +101,8 @@ const (
 // a recipe adapts without anyone touching it: a stage with a condition is
 // skipped, dim, with its reason, on an item the condition does not fit.
 type Stage struct {
+	// Label is an optional display name; Name remains the step identity.
+	Label  string    `json:",omitempty"`
 	Name   string    // plan · write · test · review · neaten · security · proof
 	Kind   StageKind // chat unless said otherwise
 	Ask    string    // the sentence as typed; the brief is compiled from it
@@ -281,11 +283,13 @@ const (
 // Phase is one stage as it runs: its state, what round it is on, how many
 // tasks it fanned out into.
 type Phase struct {
-	Name  string
-	Kind  StageKind
-	State PhaseState
-	Note  string
-	Round int
+	// RoundCosts holds cumulative dollars for every logical round in this run.
+	RoundCosts map[int]float64 `json:",omitempty"`
+	Name       string
+	Kind       StageKind
+	State      PhaseState
+	Note       string
+	Round      int
 	// RoundLimit is the effective limit, including explicit user extensions.
 	// Persist it before a round starts so reopening cannot revoke that grant.
 	RoundLimit   int               `json:",omitempty"`
@@ -499,6 +503,13 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
+	GitHubIssueID int64 `json:",omitempty"`
+	// SourceClosed distinguishes an automatic close from a person's Done.
+	SourceClosed bool `json:",omitempty"`
+	// PersonTouched survives edits being undone and prevents automatic reconciliation.
+	PersonTouched bool `json:",omitempty"`
+
 	// FromJob is the ended job whose request this person started afresh.
 	FromJob int `json:",omitempty"`
 	// SourceIssue is a reference only; it never gives this job a forge identity.
@@ -695,6 +706,8 @@ type Item struct {
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+	// SpentBefore holds spending from runs whose work was cleared.
+	SpentBefore float64 `json:",omitempty"`
 	// ChatSpent is what Talk spent while the job had no run: the job's chat
 	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
 	// BUDGET, and with no run there is no

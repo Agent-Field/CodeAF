@@ -1237,7 +1237,7 @@ func parseDivideArguments(args json.RawMessage) (divideArguments, string) {
 // (internal/roles' ladder floors on the session default). A failure to resolve
 // is the same answer for the same reason: nothing here may invent a model id.
 func (a *Agent) carefulModel(fallback string) string {
-	model, err := roles.Resolve(roles.Source(a.config.RolesSource), roles.RoleCareful, fallback)
+	model, err := readerFor(a.config, a.model).Resolve(roles.RoleCareful, fallback)
 	if err != nil || strings.TrimSpace(model) == "" {
 		return fallback
 	}

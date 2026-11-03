@@ -14,6 +14,8 @@ type stageBudget struct {
 	floor       *store.Store
 	memoryOwner *store.Store
 	item        factory.Item
+	stage       string
+	round       int
 	mu          sync.Mutex
 	spent       float64
 	failed      bool
@@ -68,6 +70,15 @@ func (b *stageBudget) book(usd float64, memory bool, model string, calls, input,
 			factory.AddChatSpend(it, usd)
 		}
 		factory.AddModelUse(it, model, usd, calls, int64(input), int64(output))
+		if it.Stream != nil {
+			for i := range it.Stream.Phases {
+				ph := &it.Stream.Phases[i]
+				if ph.Name == b.stage && b.stage != "" {
+					ph.RecordRoundSpend(b.round, ph.RoundCosts[b.round]+usd)
+					break
+				}
+			}
+		}
 		return nil
 	}); err != nil {
 		b.failed = true
@@ -137,4 +148,18 @@ func (b *stageBudget) memoryCap() bool {
 		return false
 	}
 	return factory.JobSpent(it) >= it.Cap && factory.JobSpent(it)-max(0, it.MemorySpent-b.item.MemorySpent) < it.Cap
+}
+
+// roundTotal includes receipts booked before this chat was resumed.
+func (b *stageBudget) roundTotal() float64 {
+	if b.floor != nil && b.stage != "" {
+		if it, err := b.floor.Get(b.item.ID); err == nil && it.Stream != nil {
+			for _, ph := range it.Stream.Phases {
+				if ph.Name == b.stage && ph.RoundCosts != nil {
+					return ph.RoundCosts[b.round]
+				}
+			}
+		}
+	}
+	return b.total()
 }

@@ -467,6 +467,7 @@ func (c *Client) record(facts recordFacts) {
 	// process could USE the answer is a different question from what it cost,
 	// and only one of the two is a fact about the money.
 	if facts.response != nil {
+		record.GenerationID = canonicalGenerationID(facts.response.ID)
 		record.Finish = FinishReason(facts.response)
 		if usage := facts.response.Usage; usage != nil {
 			record.PromptTokens = usage.PromptTokens
