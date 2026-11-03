@@ -500,3 +500,15 @@ presence; it does not guess which computers are online.
 ## Sync notices between older and current builds
 
 A current window understands the earlier outage and removed-computer notices too. It uses one outage line while local work continues, and points to `/pair` for recovery in a chat. A current engine keeps the earlier notice spelling for an older window, so that window's existing outage and removal handling still works.
+
+## Changing thinking or model settings after idle release
+
+In a paired set, changing this chat's thinking, model, automatic model choice,
+approval posture or attached folders in its released window first takes the
+hold back in place. The setting is saved with the chat before it is handed
+back again. `/remember` after the last turn also travels with the saved chat.
+
+If another computer took the chat, the setting is refused through the usual
+held-elsewhere message. The terminal keeps the requested `/effort` or `/model`
+choice in the input box. Open the newest free chat before applying it there.
+Your already-held chat can still work offline, including starting a task.

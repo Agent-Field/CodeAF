@@ -27,3 +27,9 @@ Ordinary messages in the original released window reacquire in place, preserving
 local ignored install folders without a restore or setup card. Opening a free
 chat refreshes an already-open stale viewer too. Repeated moves keep an existing
 local root and use bounded, stable copy-folder names on first arrival.
+
+Terminal certification obtains a complete workspace scope while the warm engine
+keeps sealing turns. Saved conversation choices retake the idle hold before
+acknowledging a change, or retain the requested choice on a held-elsewhere
+refusal. Ordinary held tasks keep their existing offline admission, and
+home-state exchanges serialize behind competing flushes under their own context.
