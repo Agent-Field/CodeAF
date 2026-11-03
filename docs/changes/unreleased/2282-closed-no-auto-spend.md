@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf skips automatic spending on issues closed on GitHub
-pr: 0
+pr: 2282
 surface: [engine]
 invalidates:
   - "Was true: an issue closed on GitHub after arrival could still receive a paid read, automatic look or start-rule action. Is true now: a successful GitHub check reporting closed or merged skips that work and leaves the row unchanged."
