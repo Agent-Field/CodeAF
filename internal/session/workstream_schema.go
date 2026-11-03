@@ -1,8 +1,10 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 )
@@ -27,25 +29,93 @@ type workstreamArgumentSchema struct {
 	Items      *workstreamArgumentSchema           `json:"items"`
 }
 
-func workstreamDecode(args json.RawMessage, schema workstreamArgumentSchema, target any) error {
-	if err := workstreamCheckArguments(args, schema, "arguments"); err != nil {
-		return err
+func workstreamDecode(args json.RawMessage, schema workstreamArgumentSchema, target any) (map[string]any, error) {
+	if err := decodeToolArguments(args, target); err != nil {
+		return nil, err
 	}
-	return decodeToolArguments(args, target)
+	if err := workstreamUniqueKeys(args); err != nil {
+		return nil, err
+	}
+	var value any
+	if err := decodeToolArguments(args, &value); err != nil {
+		return nil, err
+	}
+	if err := workstreamCheckArguments(value, schema, "arguments"); err != nil {
+		return nil, err
+	}
+	return value.(map[string]any), nil
 }
 
-func workstreamCheckArguments(args json.RawMessage, schema workstreamArgumentSchema, path string) error {
-	if strings.TrimSpace(string(args)) == "null" {
+// Walk the original token stream so repeated fields survive typed decoding.
+func workstreamUniqueKeys(args json.RawMessage) error {
+	decoder := json.NewDecoder(bytes.NewReader(args))
+	decoder.UseNumber()
+	if err := workstreamUniqueValue(decoder); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return fmt.Errorf("arguments must contain one JSON value")
+	}
+	return nil
+}
+
+func workstreamUniqueValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		return workstreamUniqueObject(decoder)
+	case '[':
+		for decoder.More() {
+			if err := workstreamUniqueValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err := decoder.Token()
+		return err
+	}
+	return fmt.Errorf("unexpected JSON delimiter %q", delimiter)
+}
+
+func workstreamUniqueObject(decoder *json.Decoder) error {
+	seen := make(map[string]bool)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		name, ok := token.(string)
+		if !ok {
+			return fmt.Errorf("object keys must be strings")
+		}
+		if seen[name] {
+			return fmt.Errorf("Duplicate field %q is not allowed.", name)
+		}
+		seen[name] = true
+		if err := workstreamUniqueValue(decoder); err != nil {
+			return err
+		}
+	}
+	_, err := decoder.Token()
+	return err
+}
+
+func workstreamCheckArguments(value any, schema workstreamArgumentSchema, path string) error {
+	if value == nil {
 		return fmt.Errorf("%s must not be null", path)
 	}
 	switch schema.Type {
 	case "object":
-		return workstreamCheckObject(args, schema, path)
-	case "integer", "number":
-		return workstreamCheckNumber(args, schema.Type, path)
+		return workstreamCheckObject(value, schema, path)
 	case "array":
-		var items []json.RawMessage
-		if err := json.Unmarshal(args, &items); err != nil {
+		items, ok := value.([]any)
+		if !ok {
 			return fmt.Errorf("%s must be an array", path)
 		}
 		for i, item := range items {
@@ -54,35 +124,20 @@ func workstreamCheckArguments(args json.RawMessage, schema workstreamArgumentSch
 			}
 		}
 	case "string":
-		var value string
-		if err := json.Unmarshal(args, &value); err != nil {
+		text, ok := value.(string)
+		if !ok {
 			return fmt.Errorf("%s must be a string", path)
 		}
-		if len(schema.Enum) > 0 && !workstreamHasWord(schema.Enum, value) {
+		if len(schema.Enum) > 0 && !workstreamHasWord(schema.Enum, text) {
 			return fmt.Errorf("%s must be one of %s", path, strings.Join(schema.Enum, ", "))
 		}
 	}
 	return nil
 }
 
-func workstreamCheckNumber(args json.RawMessage, kind, path string) error {
-	if kind == "integer" {
-		var value int
-		if err := json.Unmarshal(args, &value); err != nil {
-			return fmt.Errorf("%s must be an integer", path)
-		}
-		return nil
-	}
-	var value float64
-	if err := json.Unmarshal(args, &value); err != nil {
-		return fmt.Errorf("%s must be a number", path)
-	}
-	return nil
-}
-
-func workstreamCheckObject(args json.RawMessage, schema workstreamArgumentSchema, path string) error {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(args, &fields); err != nil || fields == nil {
+func workstreamCheckObject(value any, schema workstreamArgumentSchema, path string) error {
+	fields, ok := value.(map[string]any)
+	if !ok {
 		return fmt.Errorf("%s must be a JSON object", path)
 	}
 	names := make([]string, 0, len(fields))

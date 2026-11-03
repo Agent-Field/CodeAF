@@ -10,7 +10,8 @@ import (
 
 // WorkstreamDoor is the workstream agent's one way into its own workstream.
 type WorkstreamDoor interface {
-	Brief(context.Context) (WorkstreamBrief, error)
+	// Brief returns a non-blocking snapshot, or false when none is ready.
+	Brief() (WorkstreamBrief, bool)
 	Read(context.Context, WorkstreamReadAsk) (json.RawMessage, error)
 	Propose(context.Context, WorkstreamProposal) (WorkstreamProposed, error)
 	Plan(context.Context) (WorkstreamPlanState, error)

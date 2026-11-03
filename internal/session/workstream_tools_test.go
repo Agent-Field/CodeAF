@@ -3,40 +3,34 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/workstream"
 )
 
 type workstreamFakeDoor struct {
-	brief       WorkstreamBrief
-	briefError  error
-	read        json.RawMessage
-	readAsk     WorkstreamReadAsk
-	proposals   []WorkstreamProposal
-	plan        WorkstreamPlanState
-	reads       int
-	saves       []WorkstreamPlanState
-	bases       []int
-	conflicts   int
-	pageWrites  []WorkstreamPageWrite
-	pageError   error
-	otherCalls  int
-	briefBound  bool
-	briefExpiry time.Duration
+	brief      WorkstreamBrief
+	briefReady bool
+	read       json.RawMessage
+	readAsk    WorkstreamReadAsk
+	proposals  []WorkstreamProposal
+	plan       WorkstreamPlanState
+	reads      int
+	saves      []WorkstreamPlanState
+	bases      []int
+	conflicts  int
+	pageWrites []WorkstreamPageWrite
+	pageError  error
+	otherCalls int
 }
 
-func (d *workstreamFakeDoor) Brief(ctx context.Context) (WorkstreamBrief, error) {
-	if deadline, ok := ctx.Deadline(); ok {
-		d.briefBound = true
-		d.briefExpiry = time.Until(deadline)
-	}
-	return d.brief, d.briefError
+func (d *workstreamFakeDoor) Brief() (WorkstreamBrief, bool) {
+	return d.brief, d.briefReady
 }
 
 func (d *workstreamFakeDoor) Read(_ context.Context, ask WorkstreamReadAsk) (json.RawMessage, error) {
@@ -104,7 +98,7 @@ func TestWorkstreamAgentToolsAndPromptAreScoped(t *testing.T) {
 	plain := &Agent{config: cfg}
 	belt := plain.belt()
 	page := renderSystemAt(cfg, now)
-	d := &workstreamFakeDoor{brief: WorkstreamBrief{Name: "Usage", Why: "Explain recorded usage"}}
+	d := &workstreamFakeDoor{brief: WorkstreamBrief{Name: "Usage", Why: "Explain recorded usage"}, briefReady: true}
 	cfg.Workstream = d
 	with := &Agent{config: cfg}
 	if len(with.belt()) != len(belt)+6 || len(with.workstreamTools()) != 6 {
@@ -118,9 +112,15 @@ func TestWorkstreamAgentToolsAndPromptAreScoped(t *testing.T) {
 	if !strings.Contains(rendered, `workstream "Usage"`) || !strings.Contains(rendered, "Explain recorded usage") || strings.Replace(rendered, section, "", 1) != page {
 		t.Fatal("the gated section changed the ordinary page")
 	}
-	if !d.briefBound || d.briefExpiry > 2*time.Second {
-		t.Fatalf("brief timeout: %v", d.briefExpiry)
+	if workstreamWithoutPage(rendered) != page {
+		t.Fatal("a child prompt retained the workstream section")
 	}
+	workstreamCheckPromotedPrompt(t, rendered, page)
+}
+
+func TestWorkstreamAgentToolsAndPromptStayOffChildren(t *testing.T) {
+	cfg := Config{Workspace: t.TempDir(), ProfileDir: t.TempDir(), Workstream: &workstreamFakeDoor{}}
+	now := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
 	for _, mutate := range []func(*Config){
 		func(c *Config) { c.InTask = true },
 		func(c *Config) { c.Errand = true },
@@ -134,9 +134,10 @@ func TestWorkstreamAgentToolsAndPromptAreScoped(t *testing.T) {
 			t.Fatal("a child or plain agent inherited the workstream")
 		}
 	}
-	if workstreamWithoutPage(rendered) != page {
-		t.Fatal("a child prompt retained the workstream section")
-	}
+}
+
+func workstreamCheckPromotedPrompt(t *testing.T, rendered, page string) {
+	t.Helper()
 	quick := &quickTaskSpec{system: rendered}
 	quick.seed = append(quick.seed, textMessage("system", rendered))
 	child := &Agent{}
@@ -144,15 +145,45 @@ func TestWorkstreamAgentToolsAndPromptAreScoped(t *testing.T) {
 	if child.system != promotedSystem(page) || messageContentText(quick.seed[0]) != rendered {
 		t.Fatal("a promoted worker retained the workstream section or changed its parent's seed")
 	}
-	d.briefError = errors.New("not linked yet")
+}
+
+func TestWorkstreamPromptUsesSnapshotOrFallback(t *testing.T) {
+	d := &workstreamFakeDoor{}
+	cfg := Config{Workstream: d}
 	if !strings.Contains(workstreamPage(cfg), "Read it with workstream_read before you answer.") {
 		t.Fatal("the early prompt must remain usable")
 	}
-	d.briefError = nil
+	d.briefReady = true
 	d.brief = WorkstreamBrief{Name: strings.Repeat(`"`, 256), Why: strings.Repeat("why ", 1000)}
 	if len(workstreamPage(cfg)) > 900 {
 		t.Fatal("the workstream prompt section exceeded its budget")
 	}
+}
+
+func TestWorkstreamPromptFallbackRendersImmediatelyUnderTheSessionLock(t *testing.T) {
+	a := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir(), Workstream: &workstreamFakeDoor{}}}
+	finished := make(chan string, 1)
+	guard.Go("session/workstream-prompt-test", func() {
+		finished <- workstreamPromptUnderLock(a)
+	})
+	select {
+	case page := <-finished:
+		if !strings.Contains(page, "Read it with workstream_read before you answer.") {
+			t.Fatal("a missing snapshot must render the fallback")
+		}
+		if !a.mu.TryLock() {
+			t.Fatal("prompt rendering retained the session lock")
+		}
+		defer a.mu.Unlock()
+	case <-time.After(3 * time.Second):
+		t.Fatal("the prompt did not render promptly without a store")
+	}
+}
+
+func workstreamPromptUnderLock(a *Agent) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return renderSystemAt(a.config, time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC))
 }
 
 func workstreamOrdinaryBelt(tools []bare.Tool) []string {
@@ -284,16 +315,45 @@ func TestWorkstreamJobsRetryOnlyOneVersionConflict(t *testing.T) {
 		if !reflect.DeepEqual(d.saves[0].Waves[0], before.Waves[0]) || !reflect.DeepEqual(d.saves[0].Milestones, before.Milestones) {
 			t.Fatal("existing plan changed")
 		}
-		last := d.saves[len(d.saves)-1]
-		wave := last.Waves[len(last.Waves)-1]
-		if wave.AutoStart || len(wave.Items) != 1 || wave.Items[0].Kind != "draft" || !strings.HasPrefix(wave.Items[0].DraftID, "draft_") {
-			t.Fatalf("not drafts: %+v", wave)
-		}
-		if conflicts == 2 && got != "The plan changed while you were proposing; nothing was added. Read the plan and propose again." {
-			t.Fatalf("second conflict: %q", got)
-		}
-		if conflicts == 1 && (wave.N != 10 || d.bases[1] != 5 || last.Waves[1].Title != "Person's wave") {
-			t.Fatalf("did not reapply to the new plan: %+v", last)
+		workstreamCheckRetriedDrafts(t, d, conflicts, got)
+	}
+}
+
+func workstreamCheckRetriedDrafts(t *testing.T, d *workstreamFakeDoor, conflicts int, got string) {
+	t.Helper()
+	last := d.saves[len(d.saves)-1]
+	wave := last.Waves[len(last.Waves)-1]
+	if wave.AutoStart || len(wave.Items) != 1 || wave.Items[0].Kind != "draft" || !strings.HasPrefix(wave.Items[0].DraftID, "draft_") {
+		t.Fatalf("not drafts: %+v", wave)
+	}
+	if conflicts == 2 && got != "The plan changed while you were proposing; nothing was added. Read the plan and propose again." {
+		t.Fatalf("second conflict: %q", got)
+	}
+	if conflicts == 1 && (wave.N != 10 || d.bases[1] != 5 || last.Waves[1].Title != "Person's wave") {
+		t.Fatalf("did not reapply to the new plan: %+v", last)
+	}
+	if conflicts > 0 && d.saves[0].Waves[1].Items[0].DraftID != wave.Items[0].DraftID {
+		t.Fatal("retry changed the draft identity")
+	}
+}
+
+func TestWorkstreamArgumentsRefuseDuplicateKeysBeforeTheDoor(t *testing.T) {
+	cases := []struct {
+		name string
+		args string
+		key  string
+	}{
+		{"propose_decision", `{"text":"Words","source":{"kind":"url","id":"https://example.com","kept":true},"source":{"kind":"url","id":"https://example.com"}}`, "source"},
+		{"propose_decision", `{"text":"Words","source":{"kind":"url","id":"https://example.com","id":"https://example.com"}}`, "id"},
+		{"write_agent_page", `{"title":"Notes","markdown":"First","markdown":"Second","updated_from":"Discussion"}`, "markdown"},
+		{"propose_jobs", `{"jobs":[{"title":"First","title":"Second"}]}`, "title"},
+		{"propose_decision", `{"text":"Words","source":{"kind":"url","id":"https://example.com"},"sour\u0063e":{"kind":"url","id":"https://example.com"}}`, "source"},
+	}
+	for _, tc := range cases {
+		d := &workstreamFakeDoor{}
+		got := workstreamCallForTest(t, d, tc.name, tc.args, true)
+		if !strings.Contains(got, tc.key) || d.otherCalls+d.reads+len(d.saves) != 0 {
+			t.Fatalf("%s: %q %+v", tc.name, got, d)
 		}
 	}
 }

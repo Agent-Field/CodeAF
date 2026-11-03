@@ -29,12 +29,17 @@ func (c Config) mayWorkstream() bool {
 	return c.Workstream != nil && !c.readingTask() && !c.InTask && !c.Errand
 }
 
+func workstreamSection(config Config) string {
+	if !config.mayWorkstream() {
+		return ""
+	}
+	return "\n\n" + workstreamPage(config)
+}
+
 func workstreamPage(config Config) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	brief, err := config.Workstream.Brief(ctx)
+	brief, ok := config.Workstream.Brief()
 	intro := "You are the agent of a workstream. Read it with workstream_read before you answer."
-	if err == nil && strings.TrimSpace(brief.Name) != "" {
+	if ok && strings.TrimSpace(brief.Name) != "" {
 		intro = fmt.Sprintf("You are the agent of the workstream %q.", workstreamCut(strings.Join(strings.Fields(brief.Name), " "), 48))
 		if why := strings.Join(strings.Fields(brief.Why), " "); why != "" {
 			intro += " Why it exists: " + workstreamCut(why, 64)
@@ -91,14 +96,19 @@ func workstreamTool[T any](name, description, schemaJSON string, run func(contex
 		Schema:      json.RawMessage(schemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var ask T
-			if err := workstreamDecode(args, schema, &ask); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+			fields, err := workstreamDecode(args, schema, &ask)
+			if err != nil {
+				return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 			}
-			if err := workstreamFieldRules(name, args); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+			if err := workstreamFieldRules(fields, ask); err != nil {
+				return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 			}
 			text, err := run(ctx, ask)
 			if err != nil {
+				var argument *toolArgumentError
+				if errors.As(err, &argument) {
+					return rejectToolArguments(ctx, err.Error()), true, nil
+				}
 				return err.Error(), true, nil
 			}
 			return text, false, nil
@@ -106,30 +116,26 @@ func workstreamTool[T any](name, description, schemaJSON string, run func(contex
 	}
 }
 
-func workstreamFieldRules(name string, args json.RawMessage) error {
-	var fields map[string]json.RawMessage
-	_ = json.Unmarshal(args, &fields)
-	if err := workstreamReferenceFields(fields); err != nil {
+func workstreamFieldRules(fields map[string]any, ask any) error {
+	if err := workstreamReferenceFields(fields, ask); err != nil {
 		return err
 	}
 	_, page := fields["page_id"]
-	switch name {
-	case "workstream_read":
-		var what string
-		_ = json.Unmarshal(fields["what"], &what)
-		if page != (what == "page") {
+	switch ask := ask.(type) {
+	case WorkstreamReadAsk:
+		if page != (ask.What == "page") {
 			return errors.New("page_id is required for and only for page")
 		}
-		if what != "records" {
+		if ask.What != "records" {
 			return workstreamRefuseFields(fields, "kind", "state")
 		}
-	case "propose_jobs":
-		if _, wave := fields["wave"]; wave {
+	case workstreamJobsAsk:
+		if ask.Wave != nil {
 			return workstreamRefuseFields(fields, "wave_title", "milestone_id")
 		}
-	case "propose_goahead":
-		return workstreamGoAheadFields(fields)
-	case "write_agent_page":
+	case WorkstreamGoAheadAsk:
+		return workstreamGoAheadFields(fields, ask)
+	case WorkstreamPageWrite:
 		if page {
 			return workstreamRefuseFields(fields, "title", "parent_id")
 		}
@@ -137,29 +143,36 @@ func workstreamFieldRules(name string, args json.RawMessage) error {
 	return nil
 }
 
-func workstreamReferenceFields(fields map[string]json.RawMessage) error {
+func workstreamReferenceFields(fields map[string]any, ask any) error {
+	ids := make(map[string]string)
+	var source *workstream.Source
+	switch ask := ask.(type) {
+	case WorkstreamReadAsk:
+		ids["page_id"] = ask.PageID
+	case workstreamJobsAsk:
+		ids["milestone_id"] = ask.MilestoneID
+	case WorkstreamGoAheadAsk:
+		ids["milestone_id"] = ask.MilestoneID
+	case WorkstreamPageWrite:
+		ids["page_id"] = ask.PageID
+		ids["parent_id"] = ask.ParentID
+		source = ask.Source
+	case workstreamRecordAsk:
+		source = ask.Source
+	}
 	for _, name := range []string{"page_id", "parent_id", "milestone_id"} {
-		if raw, exists := fields[name]; exists {
-			var id string
-			_ = json.Unmarshal(raw, &id)
-			if strings.TrimSpace(id) == "" {
-				return fmt.Errorf("%s must name an existing record", name)
-			}
+		if _, exists := fields[name]; exists && strings.TrimSpace(ids[name]) == "" {
+			return fmt.Errorf("%s must name an existing record", name)
 		}
 	}
-	if raw, exists := fields["source"]; exists {
-		var source map[string]json.RawMessage
-		_ = json.Unmarshal(raw, &source)
-		var kind string
-		_ = json.Unmarshal(source["kind"], &kind)
-		if kind != "factory_job" {
-			return workstreamRefuseFields(source, "factory")
-		}
+	if source != nil && source.Kind != "factory_job" {
+		fields, _ := fields["source"].(map[string]any)
+		return workstreamRefuseFields(fields, "factory")
 	}
 	return nil
 }
 
-func workstreamRefuseFields(fields map[string]json.RawMessage, names ...string) error {
+func workstreamRefuseFields(fields map[string]any, names ...string) error {
 	for _, name := range names {
 		if _, exists := fields[name]; exists {
 			return fmt.Errorf("%s is not allowed for this request", name)
@@ -168,10 +181,8 @@ func workstreamRefuseFields(fields map[string]json.RawMessage, names ...string) 
 	return nil
 }
 
-func workstreamGoAheadFields(fields map[string]json.RawMessage) error {
-	var scope string
-	_ = json.Unmarshal(fields["scope"], &scope)
-	switch scope {
+func workstreamGoAheadFields(fields map[string]any, ask WorkstreamGoAheadAsk) error {
+	switch ask.Scope {
 	case "job":
 		return workstreamRefuseFields(fields, "wave", "milestone_id")
 	case "wave":
@@ -219,10 +230,10 @@ type workstreamRecordAsk struct {
 func workstreamRecordTool(door WorkstreamDoor, kind string) bare.Tool {
 	return workstreamTool("propose_"+kind, "Propose a "+kind+". Only the person can keep it; it is always proposed by the agent.", workstreamRecordSchema, func(ctx context.Context, ask workstreamRecordAsk) (string, error) {
 		if err := workstreamText(ask.Text, "text", workstreamRecordMax, true, false); err != nil {
-			return "", err
+			return "", &toolArgumentError{repair: err.Error()}
 		}
 		if err := workstreamSourceText(ask.Source); err != nil {
-			return "", err
+			return "", &toolArgumentError{repair: err.Error()}
 		}
 		p, err := door.Propose(ctx, WorkstreamProposal{Kind: kind, Text: ask.Text, Source: ask.Source})
 		if err != nil {
@@ -307,31 +318,40 @@ func workstreamValidateDraft(job workstreamDraftAsk) error {
 
 func workstreamProposeJobs(ctx context.Context, door WorkstreamDoor, ask workstreamJobsAsk) (string, error) {
 	if err := workstreamValidateJobs(ask); err != nil {
-		return "", err
+		return "", &toolArgumentError{repair: err.Error()}
 	}
 	drafts, err := workstreamDrafts(ask.Jobs)
 	if err != nil {
 		return "", err
 	}
-	for attempt := 0; attempt < 2; attempt++ {
-		plan, err := door.Plan(ctx)
-		if err != nil {
-			return "", err
-		}
-		next, wave, err := workstreamAppendDrafts(plan, ask, drafts)
-		if err != nil {
-			return "", err
-		}
-		_, err = door.SetPlan(ctx, plan.Version, next)
-		if errors.Is(err, ErrWorkstreamVersion) {
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("Added %d draft jobs to wave %d of the plan. They are drafts: nothing runs until the person launches them.", len(drafts), wave), nil
+	plan, err := door.Plan(ctx)
+	if err != nil {
+		return "", err
 	}
-	return "", errors.New(workstreamPlanChanged)
+	wave, err := workstreamSaveDrafts(ctx, door, plan, ask, drafts)
+	if errors.Is(err, ErrWorkstreamVersion) {
+		plan, err = door.Plan(ctx)
+		if err != nil {
+			return "", err
+		}
+		wave, err = workstreamSaveDrafts(ctx, door, plan, ask, drafts)
+	}
+	if errors.Is(err, ErrWorkstreamVersion) {
+		return "", errors.New(workstreamPlanChanged)
+	}
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Added %d draft jobs to wave %d of the plan. They are drafts: nothing runs until the person launches them.", len(drafts), wave), nil
+}
+
+func workstreamSaveDrafts(ctx context.Context, door WorkstreamDoor, plan WorkstreamPlanState, ask workstreamJobsAsk, drafts []workstream.PlanItem) (int, error) {
+	next, wave, err := workstreamAppendDrafts(plan, ask, drafts)
+	if err != nil {
+		return 0, err
+	}
+	_, err = door.SetPlan(ctx, plan.Version, next)
+	return wave, err
 }
 
 func workstreamDrafts(jobs []workstreamDraftAsk) ([]workstream.PlanItem, error) {
@@ -379,7 +399,7 @@ func workstreamHasMilestone(plan WorkstreamPlanState, id string) bool {
 
 func workstreamProposeGoAhead(ctx context.Context, door WorkstreamDoor, ask WorkstreamGoAheadAsk, now time.Time) (string, error) {
 	if err := WorkstreamValidateGoAhead(ask, now); err != nil {
-		return "", err
+		return "", &toolArgumentError{repair: err.Error()}
 	}
 	scope, err := workstreamGoAheadScope(ctx, door, ask)
 	if err != nil {
@@ -471,14 +491,14 @@ func workstreamGoAheadScope(ctx context.Context, door WorkstreamDoor, ask Workst
 func workstreamWritePage(ctx context.Context, door WorkstreamDoor, ask WorkstreamPageWrite) (string, error) {
 	if ask.PageID == "" {
 		if err := workstreamText(ask.Title, "title", workstreamLineMax, true, true); err != nil {
-			return "", err
+			return "", &toolArgumentError{repair: err.Error()}
 		}
 	}
 	if err := workstreamText(ask.UpdatedFrom, "updated_from", workstreamLineMax, true, true); err != nil {
-		return "", err
+		return "", &toolArgumentError{repair: err.Error()}
 	}
 	if err := workstreamSourceText(ask.Source); err != nil {
-		return "", err
+		return "", &toolArgumentError{repair: err.Error()}
 	}
 	p, err := door.WritePage(ctx, ask)
 	if errors.Is(err, ErrWorkstreamVersion) {
