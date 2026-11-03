@@ -19,7 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
-	"github.com/Agent-Field/codeaf/internal/reviewlegacy/run"
+	"github.com/Agent-Field/codeaf/internal/factory/legacy/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factorythread "github.com/Agent-Field/codeaf/internal/factory/thread"
 	"github.com/Agent-Field/codeaf/internal/provider"

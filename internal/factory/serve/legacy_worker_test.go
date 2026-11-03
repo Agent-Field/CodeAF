@@ -8,8 +8,8 @@ import (
  "github.com/Agent-Field/codeaf/internal/factory"
  "github.com/Agent-Field/codeaf/internal/factory/client"
  "github.com/Agent-Field/codeaf/internal/factory/store"
- legacyrun "github.com/Agent-Field/codeaf/internal/reviewlegacy/run"
- legacyworker "github.com/Agent-Field/codeaf/internal/reviewlegacy/worker"
+ legacyrun "github.com/Agent-Field/codeaf/internal/factory/legacy/run"
+ legacyworker "github.com/Agent-Field/codeaf/internal/factory/legacy/worker"
 )
 
 // Run the merge-base worker implementation against the current host. The worker
