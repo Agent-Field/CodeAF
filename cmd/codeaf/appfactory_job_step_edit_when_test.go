@@ -31,6 +31,9 @@ func TestAppFactoryJobStepEditAddedCondition(t *testing.T) {
 	}
 	t.Run("hello", func(t *testing.T) {
 		wire, _ := attachStep(t, startStepFactory(t))
+		if !strings.Contains(wire.hello, `"factory.step_skipped"`) {
+			t.Fatalf("hello lacks factory.step_skipped: %s", wire.hello)
+		}
 		if !strings.Contains(wire.hello, `"factory.job_step_edit_when"`) {
 			t.Fatalf("hello lacks factory.job_step_edit_when: %s", wire.hello)
 		}

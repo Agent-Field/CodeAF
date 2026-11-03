@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -444,10 +445,10 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		ph.Chat = step.Chat
 	}
 	if step.State != "" {
-		setPhaseState(ph, step.State, now)
-		ph.SkipReason = step.SkipReason
 		if step.State == factory.PhaseSkipped {
-			ph.Note, ph.Result, ph.Failure = "", nil, nil
+			skipPhase(it, ph, step.SkipReason, now)
+		} else {
+			setPhaseState(ph, step.State, now)
 		}
 	}
 	// WHEN THE ROUND BEGAN IS THE WORKER'S CLOCK, not this report's arrival:
@@ -576,6 +577,26 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	if res.Done && strings.EqualFold(strings.TrimSpace(st.Name), "plan") {
 		it.PlannedFiles = res.PlanFiles()
 	}
+}
+
+// skipPhase discards this step's earlier evidence when its condition no longer fits.
+func skipPhase(it *factory.Item, ph *factory.Phase, reason string, now time.Time) {
+	if ph.Result != nil {
+		claims := ph.Result.Claims
+		stale := func(c factory.Claim) bool {
+			return slices.ContainsFunc(claims, func(old factory.Claim) bool { return old.Text == c.Text })
+		}
+		it.Proof = slices.DeleteFunc(slices.Clone(it.Proof), stale)
+		it.Policy = slices.DeleteFunc(slices.Clone(it.Policy), stale)
+	}
+	if it.Change != nil {
+		change := *it.Change
+		change.Tests = slices.DeleteFunc(slices.Clone(change.Tests), func(c factory.StepTests) bool { return c.Step == ph.Name })
+		it.Change = &change
+	}
+	setPhaseState(ph, factory.PhaseSkipped, now)
+	ph.SkipReason = reason
+	ph.Note, ph.Result, ph.Failure = "", nil, nil
 }
 
 // setPhaseState moves a phase and stamps its finish. Done and failed are the

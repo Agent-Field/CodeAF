@@ -871,9 +871,10 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		now := lp.r.now()
 		return lp.write(c, func(it *factory.Item) error {
 			ph := &it.Stream.Phases[i]
-			setPhaseState(ph, factory.PhaseSkipped, now)
-			ph.SkipReason = reason
-			ph.Note, ph.Result, ph.Failure = "", nil, nil
+			skipPhase(it, ph, reason, now)
+			lp.mu.Lock()
+			delete(lp.results[c.id], i)
+			lp.mu.Unlock()
 			it.Stream.Cur = i
 			loopSay(it, now, "said", reason)
 			return nil

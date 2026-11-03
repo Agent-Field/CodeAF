@@ -134,6 +134,11 @@ func testClaimFailed(prior []factory.StageResult) bool {
 
 // checksGreen: every check result exited 0 and no test claim failed.
 func checksGreen(it factory.Item, prior []factory.StageResult) bool {
+	for i, st := range it.Stages {
+		if st.Kind == factory.StageCheck && skippedCheck(it, i) {
+			return false
+		}
+	}
 	if testClaimFailed(prior) {
 		return false
 	}
