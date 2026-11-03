@@ -39,3 +39,9 @@ delayed question traffic and a 95-second watch. It checks the usage ledger,
 manager chat, engine restart and a person's explicit step rerun. All requests
 use one pinned model under a $0.10 cap. GitHub is refused and counted; no real
 PR is created.
+
+Fresh authority checks also cover merge after Follow, proof-only comments, PR
+repair descriptions and every poststage write and push. A gone or withdrawn
+worker lease refuses the next paid step; temporary choice-read failures retain
+the stored Stop-after-step behavior. The manager's watcher cancels owned
+background work on the person's Stop while preserving person chat.
