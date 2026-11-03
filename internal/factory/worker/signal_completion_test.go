@@ -92,3 +92,42 @@ func TestFinishedRunnerRetriesFailedSignalBeforeReleasingLease(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestManagerRetriesFailedSignalBeforeReleasingLease(t *testing.T) {
+ var beats int
+ var j *job
+ released := make(chan string, 1)
+ j, _ = deliveryJob(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+  lockPath := filepath.Join(j.o.Mirror.Root(), fmt.Sprintf("%d.lock", j.id))
+  if strings.HasSuffix(r.URL.Path, "/heartbeat") {
+   beats++
+   if beats == 1 {
+    if err := os.Rename(lockPath, lockPath+".saved"); err != nil { t.Error(err) }
+    if err := os.Mkdir(lockPath, 0700); err != nil { t.Error(err) }
+   } else if beats == 2 {
+    if err := os.Remove(lockPath); err != nil { t.Error(err) }
+    if err := os.Rename(lockPath+".saved", lockPath); err != nil { t.Error(err) }
+   }
+   _ = json.NewEncoder(w).Encode(api.WorkerHeartbeat{Signals: []api.WorkerSignal{{Verb:"model", Words:"chosen", Delivery:"lease/model"}}})
+   return
+  }
+  if strings.HasSuffix(r.URL.Path, "/done") {
+   it, err := j.o.Mirror.Get(j.id)
+   if err != nil { t.Error(err) }
+   released <- it.Model
+  }
+  w.WriteHeader(http.StatusOK)
+ }))
+ // A completed manager turn makes the thread-only worker eligible to finish.
+ j.accepted["message"] = true
+ j.o.BeatEvery = 10*time.Millisecond
+ ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+ defer cancel()
+ j.converse(ctx)
+ select {
+ case model := <-released:
+  if model != "chosen" { t.Fatalf("manager released lease before failed model retried: model=%q", model) }
+ default:
+  t.Fatal("manager did not release after retry")
+ }
+}
