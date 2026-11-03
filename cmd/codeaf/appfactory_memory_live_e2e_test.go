@@ -295,6 +295,7 @@ func liveMemoryStageMeasure(t *testing.T, pause, memoryOn bool) {
 	// Let the real app's final debounced brief enter the measured call log.
 	t.Logf("allowing %s for the final automatic brief", factory.BriefDebounce+time.Second)
 	time.Sleep(factory.BriefDebounce + time.Second)
+	memoryAwaitQuiet(t, callPath)
 	memoryAwaitReceipts(t, callPath)
 	it, err = floor.Get(id)
 	if err != nil {
@@ -500,6 +501,28 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD, r
 
 // Receipt recovery is measured after the job, outside every stage-tail interval.
 // The live fixture does not turn the two-second user wait into a receipt wait.
+// memoryAwaitQuiet waits until the call log has stopped growing, so a brief
+// that started just before the debounce ended has finished before the header
+// is read.
+func memoryAwaitQuiet(t *testing.T, path string) {
+	t.Helper()
+	const quiet = 8 * time.Second
+	size, since := int64(-1), time.Now()
+	for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); time.Sleep(250 * time.Millisecond) {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Size() != size {
+			size, since = info.Size(), time.Now()
+		}
+		if time.Since(since) >= quiet {
+			return
+		}
+	}
+	t.Error("the call log kept growing after the job ended")
+}
+
 func memoryAwaitReceipts(t *testing.T, path string) {
 	t.Helper()
 	deadline := time.Now().Add(provider.ReceiptWait)
