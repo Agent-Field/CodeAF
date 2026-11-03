@@ -246,7 +246,7 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 	// internal/knowledge/compiler_provider.go tags each compile call with the
 	// lane role memory runs under; that is the whole of what it can be.
 	"string(lanes.RoleMemory)": func(yield func(tag, where string)) {
-		yield(string(lanes.RoleMemory), "internal/knowledge/compiler_provider.go, a memory compile call")
+		yield("memory", "internal/knowledge/compiler_provider.go, a memory compile call")
 	},
 	// internal/session/toolask.go: a tool's own call carries the tool's name
 	// after the role word, and no walk can enumerate the belt.

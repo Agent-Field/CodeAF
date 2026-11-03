@@ -56,7 +56,7 @@ func TestMemoryChargeCannotUndoSuccessfulStage(t *testing.T) {
 		meter.SpendMemory(.02)
 		c.Fail(factoryrun.SpendStop{Job: true, Memory: true, Said: meter.Refusal()})
 	}}
-	stage := factory.Stage{Name: "write", Kind: factory.StageChat, On: true, Until: "done"}
+	stage := factory.Stage{Name: "work", Kind: factory.StageChat, On: true, Until: "done"}
 	result, err := factoryrun.NewChatExecutor(maker).Run(context.Background(), factoryrun.Job{Item: item, Stage: stage, Round: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestMemoryCapKeepsFinishedPhase(t *testing.T) {
 		t.Run(map[bool]string{false: "next admission", true: "last step"}[last], func(t *testing.T) {
 			floor, _ := chatSpendFloor(t)
 			item, err := floor.Create(factory.Item{Repo: "acme/api", Cap: 1, ChatSpent: .99, State: factory.StateNew,
-				Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, On: true, Until: "done"}, {Name: "review", Kind: factory.StageChat, On: true, Until: "done"}}})
+				Stages: []factory.Stage{{Name: "work", Kind: factory.StageChat, On: true, Until: "done"}, {Name: "review", Kind: factory.StageChat, On: true, Until: "done"}}})
 			if err != nil {
 				t.Fatal(err)
 			}
