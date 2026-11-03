@@ -4,6 +4,8 @@ title: Execution notes and completion guard share trustworthy command outcomes
 pr: 2298
 surface: [engine, factory, chat]
 invalidates:
+  - "A failed shell script could recreate an obligation for measured scratch checks already classified as diagnostic."
+  - "Unrun literal Go test attempts could remain owed after later measured covering passes."
   - "Execution notes previously called approval and policy refusals completed. They now say refused and retain the real refusal reason."
   - "Partial PASS output could previously label an interrupted command passed. Cancellation and timeout receipts now keep their interrupted outcome."
   - "Printed cancellation or timeout text in legacy journals does not establish an interruption. Background launch success means started, never passed."
