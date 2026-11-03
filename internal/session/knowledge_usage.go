@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"log"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -101,6 +102,7 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 	key := config.ProfilePath(a.config.ProfileDir, "") + ":" + owner
 	jobKnowledgeCompilers.Lock()
 	if jobKnowledgeCompilers.active[key] {
+		log.Printf("[DEBUG-c52] skip active session=%s", a.id)
 		jobKnowledgeCompilers.Unlock()
 		return
 	}
@@ -130,7 +132,9 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 			delete(jobKnowledgeCompilers.active, key)
 			jobKnowledgeCompilers.Unlock()
 		}()
+		log.Printf("[DEBUG-c52] compile-start session=%s", a.id)
 		a.compileJobKnowledge(compileCtx, j)
+		log.Printf("[DEBUG-c52] compile-end session=%s ctx=%v", a.id, compileCtx.Err())
 	}()
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
@@ -179,9 +183,12 @@ func (a *Agent) compileJobKnowledge(ctx context.Context, j *knowledgeJournal) {
 	if err != nil {
 		return
 	}
+	log.Printf("[DEBUG-c52] captured session=%s owners=%v err=%v", a.id, sessions, err)
 	key := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL).Default().Key
 	ctx = knowledge.WithOwnerSessions(provider.WithSession(ctx, a.id), sessions)
-	if err := j.vault.Flush(ctx, key, true); err != nil && ctx.Err() == nil {
+	err = j.vault.Flush(ctx, key, true)
+	log.Printf("[DEBUG-c52] flushed session=%s err=%v", a.id, err)
+	if err != nil && ctx.Err() == nil {
 		j.mu.Lock()
 		j.lastError = err.Error()
 		j.mu.Unlock()
