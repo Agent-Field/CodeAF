@@ -238,3 +238,38 @@ Expiry, revocation and marking done leave a kept record kept while ending its gr
 `record.list` returns decisions and questions by default. Use
 `include_goaheads: true` for every kind, or `kind: goahead` for only go-ahead
 records. The agent's record reads include go-ahead proposals and their grant IDs.
+
+## Watching workstreams: morning wakes, costs, Apply, Undo and Not now
+
+With morning wakes on, a workstream can wake once for the latest 08:00 slot in
+this machine's zone, while the app is open. The slot must be at or after creation.
+The app first checks after 30 seconds, then every minute; opening late wakes
+once, without replaying a backlog of missed days. Related-issue wakes are
+stored as a preference but are not available yet. Job-event handling is ready
+for finished, merged, failed and needs-you events; automatic delivery awaits
+the Factory event source. Nothing else wakes the agent. Done or autonomy Off
+stops new wakes.
+
+Each wake makes one model call, bounded to three minutes, and returns one card
+with a short summary and up to ten ranked applied changes and proposals. Propose only applies
+nothing. Small changes can move plan items to manual waves without a wave
+go-ahead, add follow-up drafts with a budget below $5 to a manual wave, and
+write the agent's pages. A draft stays a draft. Decisions and questions remain
+proposals. The person's pages are never written by a wake.
+
+## Applying and undoing wake proposals: Apply, Undo applied and Not now
+
+Apply chooses one or all proposals, regardless of autonomy; a decision or
+question becomes kept. Undo applied restores changes only while their targets
+are unchanged. Updated pages restore a previous version as a new agent version;
+new pages are restorably deleted. A changed target refuses a single Undo;
+Undo applied leaves that item with “Changed since; not undone.” Not now
+dismisses the remaining proposals. Repeating an action changes nothing.
+Done workstreams refuse Apply and Undo.
+
+Every recorded wake cost counts toward workstream spend. Unknown costs stay
+absent. At most 24 wakes per workstream and 200 per home can run per local day,
+with one turn at a time. A running wake left over 15 minutes becomes failed on
+the next check or list: “Stopped before it finished.” Its cost is unknown.
+An unreadable answer says “The agent's answer could not be read.” Any recorded
+cost still counts toward spend.

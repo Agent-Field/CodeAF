@@ -1,0 +1,51 @@
+{
+  "method": "wake.undo",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "conflict",
+    "busy",
+    "too_large",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamWakeUndoParams",
+  "result_type": "WorkstreamWakeUndoResult",
+  "examples": {
+    "params": [
+      {
+        "id": "wake_11",
+        "item_id": "wi_decision"
+      }
+    ],
+    "result": [
+      {
+        "wake": {
+          "id": "wake_11",
+          "workstream_id": "ws_8f2c1a",
+          "event": {
+            "kind": "merged",
+            "factory": "f_local",
+            "job": 1102,
+            "label": "api#1102 merged"
+          },
+          "state": "settled",
+          "started_at": "2026-11-03T14:00:00Z",
+          "settled_at": "2026-11-03T14:00:02Z",
+          "cost_usd": 0.04,
+          "summary": "Review the rollout.",
+          "items": [
+            {
+              "id": "wi_decision",
+              "kind": "decision",
+              "state": "undone",
+              "text": "Keep decision: Roll out after review.",
+              "record_id": "rec_wake",
+              "applied_at": "2026-11-03T14:05:00Z",
+              "undone_at": "2026-11-03T14:06:00Z"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
