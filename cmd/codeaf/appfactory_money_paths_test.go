@@ -106,7 +106,7 @@ func TestAppFactoryCompletedHedgeLoserMoney(t *testing.T) {
 	var chats appwire.FactoryJobChats
 	s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
 	var answer appwire.Errand
-	s.must("agents.errand", appwire.ErrandParams{Agent: chats.Agent, Purpose: "hedge_money", Role: "brief", System: "Answer briefly.", Messages: []appwire.ErrandMessage{{Role: "user", Text: "Check accounting."}}, MaxTokens: 100, DeadlineMS: 10000}, &answer)
+	s.must("agents.errand", map[string]any{"agent": chats.Agent, "purpose": "hedge_money", "role": "brief", "system": "Answer briefly.", "messages": []appwire.ErrandMessage{{Role: "user", Text: "Check accounting."}}, "max_tokens": 100, "deadline_ms": 10000}, &answer)
 	if answer.Reason != "" {
 		t.Fatalf("errand: %+v", answer)
 	}
