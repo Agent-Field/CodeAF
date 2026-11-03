@@ -122,13 +122,16 @@ type Milestone struct {
 	Title string `json:"title"`
 }
 type PlanItem struct {
-	Kind    string `json:"kind"`
-	Factory string `json:"factory,omitempty"`
-	Job     int    `json:"job,omitempty"`
-	DraftID string `json:"draft_id,omitempty"`
-	Title   string `json:"title,omitempty"`
-	Repo    string `json:"repo,omitempty"`
-	Text    string `json:"text,omitempty"`
+	Kind      string  `json:"kind"`
+	Factory   string  `json:"factory,omitempty"`
+	Job       int     `json:"job,omitempty"`
+	DraftID   string  `json:"draft_id,omitempty"`
+	Title     string  `json:"title,omitempty"`
+	Repo      string  `json:"repo,omitempty"`
+	Text      string  `json:"text,omitempty"`
+	Size      string  `json:"size,omitempty"`
+	BudgetUSD float64 `json:"budget_usd,omitempty"`
+	Source    *Source `json:"source,omitempty"`
 }
 type Wave struct {
 	N           int        `json:"n"`
@@ -198,12 +201,15 @@ type Record struct {
 	Source                   *Source
 	CreatedAt, DecidedAt     time.Time
 	Supersedes, SupersededBy string
+	GoAhead                  *GoAheadProposal
+	GoAheadID                string
 }
 type RecordPropose struct {
 	WorkstreamID, Kind, Text string
 	Source                   *Source
 	Kept                     bool
 	By                       string
+	GoAhead                  *GoAheadProposal
 }
 type RecordReplacement struct {
 	Kind, Text string
@@ -231,4 +237,18 @@ type GoAheadGrant struct {
 	Job, Wave    int
 	CapUSD       float64
 	EndsAt       time.Time
+}
+
+type GoAheadProposal struct {
+	Scope       string    `json:"scope"`
+	Factory     string    `json:"factory,omitempty"`
+	Job         int       `json:"job,omitempty"`
+	Wave        int       `json:"wave,omitempty"`
+	MilestoneID string    `json:"milestone_id,omitempty"`
+	CapUSD      float64   `json:"cap_usd"`
+	EndsAt      time.Time `json:"ends_at"`
+}
+
+func (p GoAheadProposal) grant(id string) GoAheadGrant {
+	return GoAheadGrant{WorkstreamID: id, Scope: p.Scope, Factory: p.Factory, Job: p.Job, Wave: p.Wave, MilestoneID: p.MilestoneID, CapUSD: p.CapUSD, EndsAt: p.EndsAt}
 }
