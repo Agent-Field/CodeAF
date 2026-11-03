@@ -66,3 +66,42 @@ func TestReviewRerunRetainsStepCost(t *testing.T) {
 		t.Fatalf("rerun step cost = %.4f, want .2100", got)
 	}
 }
+
+func TestReviewOldPendingWorkerWithoutChatHistory(t *testing.T) {
+	it := reviewItem()
+	it.Stream.Spent = .2025
+	it.Stream.Phases[0] = factory.Phase{Name: "proof", Kind: factory.StageChat, State: factory.PhasePending,
+		Round: 2, Result: &factory.StageResult{Spent: .2025}}
+	pulled := api.ToItem(api.WorkerJob(it))
+	reviewApply(t, &pulled, 2, .0153)
+	if got := api.FromItem(pulled).Steps[0].Cost; math.Abs(got-.2178) > 1e-9 {
+		t.Fatalf("old pending worker step cost = %.4f, want .2178", got)
+	}
+}
+
+func TestReviewCoalescedCostPreservesPersonTailEdit(t *testing.T) {
+	prev, cur := reviewItemWithDocs(), reviewItemWithDocs()
+	reviewApply(t, &cur, 1, .2025)
+	reviewApply(t, &cur, 2, .0153)
+	if _, err := run.EditStepsItem(&prev, factory.RunEdit{By: factory.ByYou, Remove: []string{"docs"}}, factory.DefaultRecipe()); err != nil {
+		t.Fatal(err)
+	}
+	report, _ := run.Diff(reviewItemWithDocs(), cur)
+	report = api.ToWorkerReport(api.FromRunReport(report))
+	if err := run.ApplyReport(&prev, report, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if factory.StageIndex(prev.Stages, "docs") >= 0 {
+		t.Fatal("cost snapshot restored the tail step removed by the person")
+	}
+	if got := api.FromItem(prev).Steps[0].Cost; math.Abs(got-.2178) > 1e-9 {
+		t.Fatalf("coalesced worker step cost after edit = %.4f, want .2178", got)
+	}
+}
+
+func reviewItemWithDocs() factory.Item {
+	it := reviewItem()
+	it.Stages = append(it.Stages, factory.Stage{Name: "docs", Kind: factory.StageChat, Ask: "write docs", On: true})
+	it.Stream.Phases = append(it.Stream.Phases, factory.Phase{Name: "docs", Kind: factory.StageChat, State: factory.PhasePending})
+	return it
+}
