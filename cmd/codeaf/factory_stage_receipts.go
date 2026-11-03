@@ -201,7 +201,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			receipt["reason"] = reason
 		}
 		interrupted := outcome == "refused" || outcome == "cancelled" || outcome == "timed out"
-		if !interrupted && observedCall[row.ToolCallID] && verification.PresentationOnly(cmd) {
+		if !interrupted && observed[cmd] && (outcome != "started" || observedCall[row.ToolCallID]) && verification.PresentationOnly(cmd) {
 			// The pipeline may have failed while its check passed. Keep the
 			// shell receipt honest; only the observed check decides the guard.
 			receipt["scope"] = "shell presentation; check exits recorded separately"

@@ -57,3 +57,65 @@ func TestReviewBackgroundValidation(t *testing.T) {
  if strings.Contains(body,"Passed locally:"){t.Errorf("background exit=1 published as passed: %s",body)}
 }
 
+
+func TestBackgroundReceiptWaitsForMeasuredExit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		measured bool
+		failed bool
+		promoted bool
+	}{
+		{name: "launch without exit"},
+		{name: "promoted without exit", promoted: true},
+		{name: "measured pass", measured: true},
+		{name: "measured failure", measured: true, failed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, file, run := repairCheckFixture(t)
+			command := "cargo test --test cli regression"
+			if tc.failed { command = "CHECK_EXIT=7 " + command }
+			run(command)
+			if !tc.measured {
+				if err := os.RemoveAll(file + ".checks"); err != nil { t.Fatal(err) }
+			}
+			raw, err := os.ReadFile(file)
+			if err != nil { t.Fatal(err) }
+			var journal strings.Builder
+			enc := json.NewEncoder(&journal)
+			for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+				var row map[string]any
+				if err := json.Unmarshal([]byte(line), &row); err != nil { t.Fatal(err) }
+				if row["role"] == "assistant" && !tc.promoted {
+					call := row["toolCalls"].([]any)[0].(map[string]any)["function"].(map[string]any)
+					var args map[string]any
+					if err := json.Unmarshal([]byte(call["arguments"].(string)), &args); err != nil { t.Fatal(err) }
+					args["background"] = true
+					argJSON, err := json.Marshal(args)
+					if err != nil { t.Fatal(err) }
+					call["arguments"] = string(argJSON)
+				}
+				if row["role"] == "tool" {
+					row["content"] = "PASS\n"
+					row["presentation"] = map[string]any{"invoked": true, "outcome": "ok", "tool_process": map[string]any{"job": 1}}
+				}
+				if err := enc.Encode(row); err != nil { t.Fatal(err) }
+			}
+			if err := os.WriteFile(file, []byte(journal.String()), 0600); err != nil { t.Fatal(err) }
+			notes, _ := (&stageConversation{file: file, dir: root}).ExecutionNotes()
+			found := false
+			for _, note := range notes {
+				if strings.HasPrefix(note, "Command receipt: ") {
+					found = true
+					if !strings.Contains(note, `"outcome":"started"`) { t.Errorf("launch must stay started: %s", note) }
+				}
+			}
+			if !found { t.Fatal("missing launch receipt") }
+			door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
+			t.Cleanup(door.closeVerification)
+			err = door.Report(t.Context(), factory.StageResult{Done: true})
+			if wantHeld := !tc.measured || tc.failed; (err != nil) != wantHeld { t.Errorf("held=%v want %v: %v", err != nil, wantHeld, err) }
+			body := factory.PublishBody(factory.Item{Title: "background validation", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
+			if published := strings.Contains(body, "Passed locally:"); published != (tc.measured && !tc.failed) { t.Errorf("published pass=%v: %s", published, body) }
+		})
+	}
+}
