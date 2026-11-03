@@ -326,21 +326,29 @@ A nonmatching step ends as `skipped`, with a structured reason (`skip_reason` on
 
 The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
 
-## skipped required checks — publishing waits, rerun, policy approval
+## skipped required checks — Publish anyway, rerun, policy approval
 
-Under `tests pass before anything posts`, a skipped check still blocks the
-post. The job waits for you. Its open question and Needs you reason name the
-check, why it was skipped, and the recovery action; the policy result retains
-the rule that refused publishing. For example:
-`Publishing waits: check inspect was skipped (when touches auth does not match the change files). Rerun from write after revising the change files to match, or stop the job.`
+Under `tests pass before anything posts`, a skipped check leaves the job
+waiting. If every unmet check is a conditional check correctly skipped with a
+reason, and its condition still does not match the known change files, the
+engine offers **Publish anyway**. For example:
+`Publishing waits: check inspect was skipped (when touches auth does not match the change files). Publish anyway, rerun from write after revising the change files to match, or stop the job.`
 
-Approval cannot bypass this policy wait. Trying the post again with the same
-files still refuses. Rerun from the earlier work step after revising the files
-to match the condition; the check must actually run and pass. A rerun of only
-the conditional check with unchanged files skips again. Step edit cannot change
-an already-run step or remove its condition. If the condition is inappropriate,
-stop the job and correct the pipeline before starting a new job. With no earlier
-work step, the question names that stop-and-correct action instead.
+Only a signed-in person allowed to publish this job can press Publish anyway.
+Failed, pending or unmeasured checks prevent the offer and refuse the press.
+An ordinary approval, automatic answer, Auto mode or automatic budget increase
+cannot make this decision. Skipped checks remain unmeasured and supply no proof.
+The PR lists their reasons and says who published anyway and when.
+
+The saved person decision uses the job's approval record shape and decision
+ledger. It is bound to the current head, reported change and skipped-check set;
+a rerun clears it, and changed files or skips require a new press. Rerun from
+an earlier work step to make the condition match and run the check, or stop the
+job and correct the pipeline. Step edit cannot remove an already-run condition.
+
+Apps show the action only when `can.publish_anyway` is true. Hello announces
+`factory.publish_anyway`; `factory.job_publish_anyway` takes `factory`, `job`
+and `expect.version`. A stale version refuses without recording a decision.
 
 A skip without a check policy does not block posting. Under
 `no pull request without a green check`, a measured passing check beside a skip
