@@ -235,10 +235,13 @@ func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool
 // the returned snapshot is still the whole floor.
 func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapshot, string, bool) {
 	// Watched repositories belong in the picker before their first job exists.
-	// Preserve existing recipe facts and add only missing watched names.
+	// Preserve existing recipe facts and add only missing watched names, each
+	// with what its own pipeline says, so a first job can state its budget.
 	if h.config.Store != nil {
 		if watched, err := h.config.Store.Repos(); err == nil {
-			s = withWatchedRepos(s, watched)
+			known := len(s.Repos)
+			s = withWatchedRepos(s, watched, h.config.Store.CheckoutDir)
+			h.readRecipes(s.Repos[known:])
 		}
 	}
 	allow, filter := h.repoAccess(r, repoKeys(s))
@@ -254,7 +257,11 @@ func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapsh
 	return narrowView(s, allow), "", false
 }
 
-func withWatchedRepos(s factory.Snapshot, watched []string) factory.Snapshot {
+// withWatchedRepos adds each watched repository the floor has no job in yet,
+// with the folder the store records for it: setup records a clone or a
+// person's own folder before the first job exists, and that row must read
+// checked out like one with jobs.
+func withWatchedRepos(s factory.Snapshot, watched []string, checkout func(repo string) string) factory.Snapshot {
 	seen := map[string]bool{}
 	for _, repo := range s.Repos {
 		seen[strings.ToLower(repo.Name)] = true
@@ -265,9 +272,38 @@ func withWatchedRepos(s factory.Snapshot, watched []string) factory.Snapshot {
 		if name != "" && !seen[name] {
 			s.Repos = append(s.Repos, factory.Repo{Name: name})
 			seen[name] = true
+			s.Checkouts = withCheckout(s.Checkouts, name, checkout(name))
 		}
 	}
 	return s
+}
+
+// withCheckout is checkouts with repo's folder added, a copy so the
+// snapshot's own map is never written; an empty folder adds nothing.
+func withCheckout(checkouts map[string]string, repo, dir string) map[string]string {
+	if dir == "" {
+		return checkouts
+	}
+	out := make(map[string]string, len(checkouts)+1)
+	for k, v := range checkouts {
+		out[k] = v
+	}
+	out[repo] = dir
+	return out
+}
+
+// readRecipes fills in each repository's recipe, the same read a repository
+// with jobs gets on the floor. A read that fails leaves the repository listed
+// with no recipe: a figure nobody chose is never shown.
+func (h *Handler) readRecipes(repos []factory.Repo) {
+	if h.seam.RecipeAt == nil {
+		return
+	}
+	for i := range repos {
+		if recipe, _, _, err := h.seam.RecipeAt(repos[i].Name); err == nil {
+			repos[i].Recipe, repos[i].Habits = recipe, recipe.Habits
+		}
+	}
 }
 
 func anyAllowed(allow map[string]bool) bool {

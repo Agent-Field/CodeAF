@@ -505,19 +505,28 @@ var factoryFloorHere = func(st *store.Store, workspace, profileDir string) {
 // passes its own, and a seam with no `new` door is handed back untouched.
 func factoryHere(seam factory.Seam, workspace string) factory.Seam {
 	here := strings.TrimSpace(workspace)
-	if seam.New == nil || here == "" {
+	if (seam.New == nil && seam.NewJob == nil) || here == "" {
 		return seam
 	}
 	here = filepath.Base(filepath.Clean(here))
 	if here == "." || here == string(filepath.Separator) {
 		return seam
 	}
-	made := seam.New
-	seam.New = func(repo, words string) (int, error) {
-		if strings.TrimSpace(repo) == "" {
-			repo = here
+	if made := seam.New; made != nil {
+		seam.New = func(repo, words string) (int, error) {
+			if strings.TrimSpace(repo) == "" {
+				repo = here
+			}
+			return made(repo, words)
 		}
-		return made(repo, words)
+	}
+	if made := seam.NewJob; made != nil {
+		seam.NewJob = func(repo, title, text string) (int, error) {
+			if strings.TrimSpace(repo) == "" {
+				repo = here
+			}
+			return made(repo, title, text)
+		}
 	}
 	return seam
 }

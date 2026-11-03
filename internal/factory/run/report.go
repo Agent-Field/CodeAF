@@ -1,6 +1,7 @@
 package run
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -20,7 +21,42 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if math.IsNaN(report.Cost) || math.IsInf(report.Cost, 0) || report.Cost < 0 {
 		return fmt.Errorf("cost must be a finite nonnegative dollar amount")
 	}
-	if it.State != factory.StateRunning && it.State != factory.StateNeedsYou {
+	// Resume may queue a paused job before its old lease has flushed the
+	// cancelled round. That holder still owes the job its work and spending.
+	if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+		// Validate the whole report before preserving a sent request's receipt.
+		raw, err := json.Marshal(it)
+		if err != nil {
+			return err
+		}
+		var candidate factory.Item
+		if err := json.Unmarshal(raw, &candidate); err != nil {
+			return err
+		}
+		candidate.State = factory.StateRunning
+		if err := ApplyReport(&candidate, report, now); err != nil {
+			return err
+		}
+		if report.PR == nil {
+			// A publisher's already queued progress cannot revive a stopped job.
+			if it.Stream != nil && candidate.Stream != nil {
+				it.Stream.Spent = candidate.Stream.Spent
+			}
+			return nil
+		}
+		if report.Publishing == nil || report.Publishing.State != "opened" {
+			return fmt.Errorf("a stopped publisher reports an opened PR receipt")
+		}
+		candidate.Failure = nil
+		if err := ShipPublished(&candidate, now); err != nil {
+			return err
+		}
+		loopSay(&candidate, now, "said", stoppedPRWords(report.PR.URL))
+		*it = candidate
+		return nil
+	}
+
+	if it.State != factory.StateRunning && it.State != factory.StateNeedsYou && it.State != factory.StateQueued {
 		return fmt.Errorf("job is no longer running")
 	}
 	if report.PR != nil && report.CommentURL != "" {
@@ -73,6 +109,10 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 			return fmt.Errorf("failed publishing requires a code")
 		}
 		it.PublishStatus = p
+		it.PublishError = ""
+		if p.State == "failed" {
+			it.PublishError = publish.Reason(p.Code, p.Detail)
+		}
 	}
 	if report.FollowUp != nil {
 		if it.FollowUp == nil || report.FollowUp.HeadSHA != it.FollowUp.HeadSHA || (report.FollowUp.Attempt != it.FollowUp.Attempt && !completed) {
@@ -176,6 +216,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		}
 	}
 	addCost(it, report.Cost)
+	applyModelUses(it, report.Models)
 	for _, line := range report.Log {
 		loopSay(it, now, line.Tone, line.Text)
 	}
@@ -286,18 +327,6 @@ func mergeClaims(it *factory.Item, claims []factory.Claim) {
 	}
 }
 
-// dropSettledPlanApproval frees the item's decision slot when a new approve
-// question arrives after a plan approval already settled: THE OLD CONSENT NEVER
-// CARRIES TO A NEW QUESTION, so the new ask needs a new approval with its own
-// five-second window. Only a settled plan approval goes; one still inside its
-// window ("approving") belongs to undo and settle, and any other kind is not
-// this question's. The factory record keeps the earlier consent.
-func dropSettledPlanApproval(it *factory.Item) {
-	if a := it.Approval; a != nil && a.Kind == "plan" && a.State == "approved" {
-		it.Approval = nil
-	}
-}
-
 func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now time.Time) error {
 	if question == nil {
 		return nil
@@ -310,7 +339,7 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 		q.At = now
 	}
 	q.With = factory.AskedYou
-	if q.Stage != "" {
+	if q.Stage != "" && kind != factory.QKindSpendStopped {
 		i := phaseIndex(it, q.Stage)
 		if i < 0 {
 			return fmt.Errorf("question names an unknown step")
@@ -319,9 +348,6 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 		setPhaseState(&it.Stream.Phases[i], factory.PhaseWaiting, now)
 	}
 	it.Asking = &q
-	if kind == factory.QKindApprove {
-		dropSettledPlanApproval(it)
-	}
 	it.State = factory.StateNeedsYou
 	it.Question, it.QKind = q.Question, kind
 	if it.QKind == "" {
@@ -441,6 +467,17 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 
 func addCost(it *factory.Item, usd float64) { it.Stream.Spent += usd }
 
+// applyModelUses adds a report's model rows where the job's spend is. The
+// dollars themselves arrived as Cost; these rows only say which model.
+func applyModelUses(it *factory.Item, rows []factory.ModelUse) {
+	if it == nil {
+		return
+	}
+	for _, row := range rows {
+		factory.AddModelUse(it, row.Model, row.USD, row.Calls, row.Input, row.Output)
+	}
+}
+
 // foldResult is the persisted half of fold; the local loop also keeps its
 // in-memory prior results, while a worker carries those in its own runner.
 func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResult, now time.Time) {
@@ -507,7 +544,7 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	// ([factory.PlanFilesOf]); the cache remains for older builds reading the
 	// same persisted item.
 	if res.Done && strings.EqualFold(strings.TrimSpace(st.Name), "plan") {
-		it.PlannedFiles = factory.ParsePlanFiles(res.Output)
+		it.PlannedFiles = res.PlanFiles()
 	}
 }
 
@@ -537,6 +574,14 @@ func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 // FinishReport uses the local runner's landing gate before releasing a hold.
 // A worker may report interruption or a question, but cannot approve proof.
 func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
+	if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+		return nil
+	}
+	// A paused drive releases its lease without ending the saved run. A
+	// resume already queued by the person must survive that release too.
+	if state == factory.StateNew && (storedPaused(*it) || it.State == factory.StateQueued) {
+		return nil
+	}
 	ensureStream(it, now)
 	switch state {
 	case "", factory.StateLanded:

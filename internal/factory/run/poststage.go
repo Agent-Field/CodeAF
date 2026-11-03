@@ -27,7 +27,7 @@ type PostOptions struct {
 	// Push publishes the item's branch from its folder before a `pr` is
 	// opened from it; the wire hands [GitPush]. Nil pushes nothing, and the
 	// pull request is opened from whatever the remote already has.
-	Push func(dir, branch string) error
+	Push func(dir, branch string, before ...func() error) error
 }
 
 // NewPostExecutor runs a post stage: one write through the item's source.
@@ -118,7 +118,11 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			if it.Stream != nil {
 				cost = it.Stream.Spent
 			}
-			if _, err := o.Record.Append(ctx, record.Event{Kind: record.Posted, Job: it.ID, Handle: it.Person(), Cost: cost, Detail: verb + " · " + rcpt.URL}); err != nil {
+			handle := it.Person()
+			if it.Approval != nil && it.Approval.Automatic {
+				handle = ""
+			}
+			if _, err := o.Record.Append(ctx, record.Event{Kind: record.Posted, Job: it.ID, Handle: handle, Cost: cost, Detail: verb + " · " + rcpt.URL}); err != nil {
 				return factory.StageResult{}, fmt.Errorf("posted %s · %s; could not record post: %w", verb, rcpt.URL, err)
 			}
 		}
@@ -191,7 +195,7 @@ func proofList(it factory.Item, prior []factory.StageResult) string {
 }
 
 // push runs the push and says what went wrong in a sentence.
-func push(run func(dir, branch string) error, dir string, it factory.Item, branch string) error {
+func push(run func(dir, branch string, before ...func() error) error, dir string, it factory.Item, branch string) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("codeaf does not know where %s is checked out", strings.TrimSpace(it.Repo))
 	}

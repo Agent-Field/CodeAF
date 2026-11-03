@@ -23,8 +23,9 @@ import (
 // doors, because they only write files under the desk's lock: no process owns
 // the floor.
 type Doors struct {
-	desk *Desk
-	read StartRead
+	desk    *Desk
+	read    StartRead
+	resumed func(int)
 }
 
 // StartRead is one job's pipeline read with the factory's own rules in it, as
@@ -44,6 +45,12 @@ func NewDoors(desk *Desk) *Doors { return &Doors{desk: desk} }
 // the steps and carries the rules a person's Start would give it.
 func (d *Doors) WithStartRead(read StartRead) *Doors {
 	d.read = read
+	return d
+}
+
+// WithTalk gives explicit Resume the same manager conversation writer as the runner.
+func (d *Doors) WithTalk(talk run.Talk) *Doors {
+	d.resumed = run.ResumeReporter(d.desk.store, talk)
 	return d
 }
 
@@ -95,12 +102,20 @@ func (d *Doors) Launch(id int) error {
 	if err != nil {
 		return err
 	}
+	// THE FACTORY'S DEFAULT MODEL GOES WITH THE JOB on the same terms, and a
+	// spending file that cannot be read refuses the start the same way.
+	spending, err := d.desk.store.Spending()
+	if err != nil {
+		return err
+	}
 	// THE REPOSITORY IS READ AS A PERSON'S START READS IT: with the factory's
 	// rules unread nothing starts; with only the repository's file unread the
 	// job keeps the steps it has and is marked so its plan waits for a person.
 	var file *pipeline.File
 	var copied *factory.PipelineCopy
 	unread, decide := false, false
+	var unreadWhy, unreadFile string
+	var unreadLine int
 	if d.read != nil {
 		f, err := d.read(context.Background(), it)
 		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
@@ -110,6 +125,7 @@ func (d *Doors) Launch(id int) error {
 			file = &f
 		}
 		unread = err != nil
+		unreadWhy, unreadFile, unreadLine = pipeline.UnreadDiagnostic(err)
 		copied, decide = f.Copy, true
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
@@ -150,18 +166,32 @@ func (d *Doors) Launch(id int) error {
 			case file != nil:
 				it.StartRules = pipeline.StartRulesOf(*file)
 			case unread:
-				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...), Unread: true}
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...), Unread: true, UnreadWhy: unreadWhy, UnreadFile: unreadFile, UnreadLine: unreadLine}
 				it.Note(now, "Started with the repository's rules unread; its plan will wait for you")
 			default:
 				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...)}
 			}
 			it.RuleHold = ""
 		}
+		if unread && it.Cap <= 0 {
+			it.Cap = factory.DefaultJobBudget
+		}
 		if err := run.QueueItem(it, now); err != nil {
 			return false, err
 		}
+		for i := range doc.Receipts {
+			if doc.Receipts[i].Lease.Job == id {
+				doc.Receipts[i].Restarted = true
+			}
+		}
 		it.House = &house
+		it.FactoryModel = spending.DefaultModel
 		_, stale := doc.Signals[id]
+		for _, receipt := range doc.Receipts {
+			if receipt.Lease.Job == id {
+				stale = true
+			}
+		}
 		delete(doc.Signals, id)
 		return stale, nil
 	})
@@ -204,6 +234,16 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		if held == nil {
 			return false, nil
 		}
+		if held.Publish != "" {
+			// Retain receipt ownership without retaining execution authority or capacity.
+			var live []publisherReceipt
+			for _, receipt := range doc.Receipts {
+				if receipt.Lease.live(now) {
+					live = append(live, receipt)
+				}
+			}
+			doc.Receipts = append(live, publisherReceipt{Lease: *held, Item: *it})
+		}
 		release(doc, id)
 		return true, nil
 	})
@@ -223,7 +263,14 @@ func (d *Doors) Pause(id int) error {
 // queued job nobody holds yet is held where it is: no worker takes it until a
 // person lets it go on.
 func (d *Doors) Hold(id int, on bool) error {
-	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	resumed := false
+	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if !on && !factory.UnderWay(*it) {
+			return false, fmt.Errorf("%s is not paused", it.Ref())
+		}
+		if on && it.State != factory.StateQueued && (it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing) {
+			return false, fmt.Errorf("%s is not running", it.Ref())
+		}
 		paused := run.StoredPaused(*it)
 		switch {
 		case paused == on:
@@ -231,14 +278,27 @@ func (d *Doors) Hold(id int, on bool) error {
 		case held == nil && on && it.State == factory.StateQueued:
 			return false, run.HoldQueued(it, now)
 		case held == nil && on:
-			return false, fmt.Errorf("%s is not running", it.Ref())
-		case held == nil:
-			return false, run.ResumeItem(it, now)
+			return false, run.PauseItem(it, now)
+		case !on:
+			// Resume queues even while the old worker drains its cancelled
+			// round. It must take capacity through Pull again.
+			if err := run.ResumeItem(it, now); err != nil {
+				return false, err
+			}
+			resumed = true
+			return false, nil
 		}
 		it.Stream.Paused = on
 		signal(doc, id, Signal{Verb: SignalHold, Yes: on})
 		return true, nil
 	})
+	if err != nil {
+		return err
+	}
+	if resumed && d.resumed != nil {
+		d.resumed(id)
+	}
+	return nil
 }
 
 // Answer answers the question the job waits on. A job that asked before it
@@ -496,6 +556,9 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 				if factory.PendingQuestionID(*it) != questionID {
 					return errors.New("the pending step question changed; read factory_status before answering again")
 				}
+				if it.QKind != "step" || it.Asking == nil {
+					return errors.New("Nothing changed: use the supported gate action from factory_status or the job decision controls")
+				}
 				if it.Manual || it.Publishing {
 					return errors.New("manual control or publication owns this job")
 				}
@@ -539,4 +602,30 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 		return dirty, nil
 	})
 	return saved, err
+}
+
+// SpendAnswer answers only the spending question on the locked revision.
+// Refusals leave both the item and its worker signal unchanged.
+func (d *Doors) SpendAnswer(id, revision int, yes bool, may func(factory.Item) error) (factory.Item, error) {
+	var before factory.Item
+	err := d.updateAt(id, &revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.SpendingAnswer(*it); err != nil {
+			return false, err
+		}
+		if may != nil {
+			if err := may(*it); err != nil {
+				return false, err
+			}
+		}
+		var err error
+		before, err = copyItem(*it)
+		if err != nil {
+			return false, err
+		}
+		return answerLocked(doc, held, id, it, yes, "", now)
+	})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	return before, nil
 }

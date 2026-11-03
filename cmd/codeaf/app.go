@@ -123,6 +123,9 @@ func runApp(args []string) error {
 			return err
 		}
 	}
+	if err := holdAppHome(); err != nil {
+		return err
+	}
 	// STDOUT IS THE PROTOCOL'S AND NOBODY ELSE'S. The wire keeps the real
 	// descriptor, and anything else in this process that prints to stdout
 	// lands on stderr, where the app collects logs.
@@ -140,6 +143,7 @@ func runApp(args []string) error {
 	// The app's process ending is the app leaving too, even while something
 	// else still holds its pipe open, and leaving is bounded (appleave.go).
 	ctx, leaving := context.WithCancel(context.Background())
+	cellstore.SetAppDaemonLifetime(ctx)
 	defer leaving()
 	defer leave.On(leaving, nil)()
 	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
@@ -174,12 +178,16 @@ func runApp(args []string) error {
 	if *turnLong > 0 {
 		backend.turnLong = *turnLong
 	}
+	defer backend.watchSpendRows()()
 	// The crews are watched from the start: a manager's start or a member
 	// woken by its manager must not wait for the window to ask for crews.
 	backend.memoryStore = func() (*store.Store, error) {
 		proc, err := openAppEngineProcess()
-		if err != nil || proc.Memory == nil {
-			return nil, errors.New("memory is off")
+		if err != nil {
+			return nil, err
+		}
+		if proc.Memory == nil {
+			return nil, errors.New("this engine has no saved memory store")
 		}
 		return proc.Memory, nil
 	}
@@ -367,6 +375,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 			}
 			eng, err := assembleEngine(h, workspace, transcript, workspace, ask.IntentSiblingNames)
 			if err == nil {
+				// In-process chats are the desktop's hot path. Remote surfaces keep
+				// one frame per event until someone measures them.
+				eng.DeltaWindow = remote.DefaultDeltaWindow
 				err = enableAppConversationModels(eng.Agent, ask.Models)
 			}
 			if err == nil && ask.AutomaticModels != nil {
@@ -638,6 +649,10 @@ type appBackend struct {
 	agents       map[string]*appAgent
 	closing      bool
 
+	// lineSays is when each working agent's live line was last said, under mu
+	// (appliveline.go).
+	lineSays map[*appAgent]*appLineSay
+
 	sweepStop chan struct{}
 	sweepDone chan struct{}
 	// left closes when Close begins, whatever started the leaving: the app's
@@ -675,8 +690,10 @@ type appBackend struct {
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}
 	// keys are the keys the app handed over (appaccount.go); keyClient and
-	// keyAddress replace the network and OpenRouter's address in a test, and
-	// vendored and codexBegin the other providers' descriptions and the
+	// keyAddress replace the network and OpenRouter's API base in a test so
+	// the key proof and model listing use the same server. Its listing answers
+	// for any bearer, so only the key endpoint proves acceptance. The vendored
+	// and codexBegin seams replace the other providers' descriptions and the
 	// ChatGPT sign-in's browser flow.
 	keys       *config.AppCredentials
 	keyClient  *http.Client
@@ -704,6 +721,9 @@ type appBackend struct {
 	dayAuth appDayAuthority
 	// today replaces the usage ledger's figure for today in a test.
 	today func(time.Time) float64
+	// spendRowsPending holds one read of today's figure for rows written
+	// together (watchSpendRows).
+	spendRowsPending atomic.Bool
 	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
 	turnLong time.Duration
 	// inbox is every open ask as one list (appinbox.go); emit is its tap.
@@ -2821,7 +2841,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			sayReply(appwire.EntryUpdate)
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
-			b.locked(func() { a.step = title })
+			b.stepMoved(a, live, title)
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
 			live.box.Event(appwire.EventTurnTool, row)
@@ -2957,6 +2977,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		live.running = false
 		live.lastUse = b.now()
 		a.step = ""
+		b.lineSettledLocked(a)
 		// Let go or closed while the turn ran: that road has said the state.
 		if held = a.live == live; held {
 			a.view.State = live.restingState()
@@ -4241,7 +4262,15 @@ func (b *appBackend) SpendToday() (appwire.Spend, error) {
 	if err != nil {
 		return appwire.Spend{}, appEngineError(err)
 	}
-	return appwire.Spend{TodayUSD: spent, DayCapUSD: appFigure(limit)}, nil
+	spend := appwire.Spend{TodayUSD: spent, DayCapUSD: appFigure(limit)}
+	if b.today == nil {
+		reading, err := session.ReadDailySpend(session.UsageLedgerPath(), now)
+		if err != nil {
+			return appwire.Spend{}, appEngineError(err)
+		}
+		spend.FactoryAIUSD = appFigure(reading.FactoryAIUSD)
+	}
+	return spend, nil
 }
 
 // appSpendSettle is how long after a turn ends its spending is read again: the
@@ -4270,6 +4299,19 @@ func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 		}
 		if after != nil {
 			after(spend)
+		}
+	})
+}
+
+// watchSpendRows says spend.changed for ledger rows no turn ended with. Rows
+// that arrive together cost one read. The answer stops the watching.
+func (b *appBackend) watchSpendRows() (stop func()) {
+	return session.OnUsageWritten(func() {
+		if b.spendRowsPending.CompareAndSwap(false, true) {
+			time.AfterFunc(appSpendSettle, func() {
+				b.spendRowsPending.Store(false)
+				b.spendMoved(nil)
+			})
 		}
 	})
 }
