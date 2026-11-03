@@ -217,13 +217,14 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
  var once sync.Once
  unblock := func(){once.Do(func(){close(release)})}
  var calls atomic.Int32
+ var personArmed atomic.Bool
  model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if r.Method != http.MethodPost || r.URL.Path == "" { http.Error(w,"no catalog",http.StatusServiceUnavailable); return }
   var req recordedRequest
   if err := json.NewDecoder(r.Body).Decode(&req); err != nil { t.Error(err); return }
   n:=calls.Add(1)
   firstPerson:=int32(2);if mode=="queued_person"{firstPerson=3}
-  if n==firstPerson { close(personEntered); <-personRelease }
+  if n==firstPerson && personArmed.Load() { close(personEntered); <-personRelease }
   delta,finish := map[string]any{"content":"this job is stopped; a person presses Start"},"stop"
   if n==1 {
    close(entered)
@@ -263,6 +264,7 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
  if err != nil { t.Fatal(err) }
  if !factory.StoppedByPerson(saved) || saved.State!=factory.StateNew { t.Fatalf("late tool restarted job: %s",saved.State) }
  beforeCalls:=calls.Load()
+ personArmed.Store(true)
  reply,err:=agent.Submit(context.Background(),"Explain what you need from me, without doing any work.")
  if err != nil { t.Fatal(err) }
  select {case <-personEntered: case <-time.After(10*time.Second): t.Fatal("person chat did not enter fake model") }
