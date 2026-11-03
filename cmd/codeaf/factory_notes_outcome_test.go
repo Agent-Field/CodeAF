@@ -15,7 +15,7 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 		name, output, outcome string
 		refused, invoked      bool
 	}{
-		{"passed", "PASS\nok  example 1s\n", "passed", false, true},
+		{"passed", "PASS\nok  example 1s\n", "completed", false, true},
 		{"ok without pass evidence", "test result: ok\n", "completed", false, true},
 		{"ok with exit line", "PASS\nCommand exited with code 7", "completed", false, true},
 		{"ok with failure output", "PASS\nFAIL\n", "completed", false, true},
@@ -27,9 +27,9 @@ func TestExecutionNotesReceiptOutcomes(t *testing.T) {
 		{"cancelled", "PASS\n\nCommand aborted", "cancelled", false, true},
 		{"timed out", "PASS\n\nCommand timed out after 1 seconds", "timed out", false, true},
 		{"deadline", "cut after 1s; output so far:\nPASS\n", "timed out", false, true},
-		{"printed cancellation is output", "PASS\n\nCommand aborted", "passed", false, true},
-		{"printed timeout is output", "cut after 1s; output so far:\nPASS\n", "passed", false, true},
-		{"printed refusal is output", "needs approval but no resolver is attached: example\nPASS\n", "passed", false, true},
+		{"printed cancellation is output", "PASS\n\nCommand aborted", "completed", false, true},
+		{"printed timeout is output", "cut after 1s; output so far:\nPASS\n", "completed", false, true},
+		{"printed refusal is output", "needs approval but no resolver is attached: example\nPASS\n", "completed", false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

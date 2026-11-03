@@ -8,7 +8,7 @@ invalidates:
   - "Unrun literal Go test attempts, including quoted test filters, could remain owed after later measured covering passes."
   - "Execution notes previously called approval and policy refusals completed. They now say refused and retain the real refusal reason."
   - "Partial PASS output could previously label an interrupted command passed. Cancellation and timeout receipts now keep their interrupted outcome."
-  - "Printed cancellation or timeout text in legacy journals does not establish an interruption. Background launch success means started, never passed; producer status and call metadata take precedence over printed launch or timeout text."
+  - "Printed cancellation or timeout text in legacy journals does not establish an interruption. Background launch success without a measured exit means started, never passed; producer status and call metadata take precedence over printed launch or timeout text."
 ---
 
 Shell producers explicitly record cancellation, timeout and deadline outcomes rather
@@ -17,13 +17,12 @@ journal's producer outcome and refusal mark, with a
 conservative fallback for older approval receipts. Refusals, cancellations and
 timeouts remain unresolved until later measured covering evidence qualifies. Later
 stage briefs retain the reason instead of implying that the refused command ran. PR validation
-continues to publish only passed command receipts. For a successful foreground
-producer, measured check exits for that call decide: any non-zero exit reads
-`failed`, and zero reads `passed`. A masked failure stays unpublished even after a
-passing rerun clears the guard. Without measured exits, success still needs the
-legacy PASS or `ok  ` output evidence, with no FAIL or exit-code line; otherwise
-the receipt reads `completed` and is never published as passing. Shell success
-alone is not check success.
+continues to publish only passed command receipts. Only measured exits of 0 for every check in a call read
+`passed`; any non-zero exit reads `failed`. Producer refusals, cancellations and
+timeouts retain their outcomes. Without measured exits, legacy PASS or `ok  `
+output reads `completed`, never `passed`. Named test counts attach only to
+measured passed or failed receipts. Publication uses each command's last outcome:
+a later failed or unmeasured rerun withdraws its earlier passing claim.
 
 The completion guard honors outside-checkout diagnostic ownership for shell
 history, including deleted scratch fixtures. Later measured Go test passes on the

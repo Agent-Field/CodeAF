@@ -223,7 +223,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			lastOutcome[cmd] = receipt["outcome"].(string)
 
 		}
-		if strings.Contains(cmd, "go test") {
+		if strings.Contains(cmd, "go test") && callExit[row.ToolCallID] != nil && (outcome == "passed" || outcome == "failed") {
 			counts := &factory.TestCounts{}
 			for _, line := range strings.Split(row.Content, "\n") {
 				line = strings.TrimSpace(line)
@@ -337,12 +337,15 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	return notes, tests
 }
 
-// commandReceiptOutcome reads producer facts before legacy output. A launch
-// acknowledges ownership of work; only a later measured check proves its result.
+// commandReceiptOutcome reads measured exits first. Producer facts and legacy
+// text may only lower the outcome; text can never establish a pass.
 func commandReceiptOutcome(content, status string, invoked, refused, started bool, measuredExit *int) (string, string) {
 	text := strings.TrimSpace(content)
 	if refused || status == "refused" {
 		return "refused", text
+	}
+	if measuredExit != nil && *measuredExit != 0 && status != "cancelled" && status != "timed out" {
+		return "failed", ""
 	}
 	if status == "" && !invoked {
 		for _, prefix := range []string{"needs approval but no resolver is attached:", "denied by approval rule:", "denied by the person:", "refused in a task:", "not approved:"} {
@@ -364,17 +367,12 @@ func commandReceiptOutcome(content, status string, invoked, refused, started boo
 		return "timed out", text
 	case status == "failed":
 		return "failed", ""
-	case started:
-		return "started", ""
-	case status == "ok" && measuredExit != nil:
-		if *measuredExit != 0 {
-			return "failed", ""
-		}
-		return "passed", ""
 	case status != "ok" && strings.Contains(content, "Command exited with code"):
 		return "failed", ""
-	case (strings.Contains(content, "\nPASS\n") || strings.HasPrefix(content, "PASS\n") || strings.Contains(content, "ok  ")) && !strings.Contains(content, "\nFAIL") && !strings.HasPrefix(content, "FAIL") && !strings.Contains(content, "Command exited with code"):
+	case measuredExit != nil:
 		return "passed", ""
+	case started:
+		return "started", ""
 	default:
 		return "completed", ""
 	}

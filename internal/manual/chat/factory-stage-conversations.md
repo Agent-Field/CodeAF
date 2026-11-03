@@ -457,7 +457,7 @@ A running step publishes its chat identity immediately, so the desktop can show 
 open that conversation while it works. Provider turn errors are recovery events; only the
 runner announces the final stage outcome. Progress uses paths relative to the checkout.
 Completed stage results carry command receipts in their notes: the command, starting folder,
-outcome and explicit test outcomes when the output has them. A final PASS summary is not a test.
+outcome and named test counts only when a measured exit establishes passed or failed. A final PASS summary is not a test.
 Later steps receive these receipts instead of rediscovering the working directory and flags.
 ## Execution notes, command outcomes and background checks
 
@@ -467,19 +467,20 @@ identity comes from the tool call or its recorded process.
 A command refused for approval or policy reads `refused` with the actual reason;
 it did not run. Interrupted commands read `cancelled` or `timed out`, even if partial
 output includes PASS. These outcomes remain unresolved until a later measured
-covering pass qualifies for the completion guard. A background launch reads
-`started`, never `passed`; its measured check exit decides verification later.
+covering pass qualifies for the completion guard. A background launch without a measured exit reads
+`started`; its measured check exit decides verification later.
 Literal quoted Go test filters, such as `-run '^TestProbe$'`, can be covered by a
 later measured wider pass; a refused check without covering evidence still holds.
 For older journals without producer status, printed cancellation or timeout words
 are command output and do not establish an interruption.
-For a successful foreground producer, measured check exits for that call decide:
+Measured check exits for the call decide before producer status or output:
 any non-zero exit reads `failed`; otherwise any unmeasured check reads `completed`,
-even with PASS output. Only all-zero check exits read `passed`. Shell success alone cannot
-hide a failed check. A later passing rerun clears the guard but does not publish
-the earlier failure as passing. Without measured exits, a pass needs PASS or
-`ok  ` output evidence and no FAIL (including the first line) or exit-code line. Otherwise the receipt stays
-`completed`, even with a successful producer, and is never published as passing.
+even with PASS output. Only a measured exit of 0 for every check reads `passed`.
+Producer failures, refusals, cancellations and timeouts can lower that outcome.
+Shell success alone cannot hide a failed check. Without measured exits, PASS or
+`ok  ` output reads `completed`, never `passed`. A later passing rerun can clear
+the guard. Publication uses each command's last outcome: a later failed or
+unmeasured rerun removes that command from passing validation.
 
 In Manual, Approve at the final gate pushes the approved commit and creates a draft PR.
 Auto records and carries out that routine approval automatically. Its description

@@ -42,14 +42,14 @@ func TestReviewLegacySuccessfulOutput(t *testing.T) {
 			f.Close()
 			notes, _ := (&stageConversation{file: file, dir: root}).ExecutionNotes()
 			for _, note := range notes {
-				if strings.HasPrefix(note, "Command receipt: ") && !strings.Contains(note, `"outcome":"passed"`) {
-					t.Errorf("exit=0 old journal: want passed, got %s", note)
+				if strings.HasPrefix(note, "Command receipt: ") && !strings.Contains(note, `"outcome":"completed"`) {
+					t.Errorf("unmeasured old journal: want completed, got %s", note)
 				}
 			}
 			door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true}
 			defer door.closeVerification()
-			if err := door.Report(t.Context(), factory.StageResult{Done: true}); err != nil {
-				t.Errorf("successful old journal held: %v", err)
+			if err := door.Report(t.Context(), factory.StageResult{Done: true}); err == nil {
+				t.Error("unmeasured old journal must remain held")
 			}
 		})
 	}
@@ -170,8 +170,13 @@ func TestBackgroundReceiptWaitsForMeasuredExit(t *testing.T) {
 			for _, note := range notes {
 				if strings.HasPrefix(note, "Command receipt: ") {
 					found = true
-					if !strings.Contains(note, `"outcome":"started"`) {
-						t.Errorf("launch must stay started: %s", note)
+					want := "started"
+					if tc.measured {
+						want = "passed"
+						if tc.failed { want = "failed" }
+					}
+					if !strings.Contains(note, `"outcome":"`+want+`"`) {
+						t.Errorf("outcome must be %s: %s", want, note)
 					}
 				}
 			}
