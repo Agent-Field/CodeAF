@@ -281,7 +281,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		}
 		var first appwire.FactoryJobBriefWritten
 		s.must("factory.job_brief_write", params, &first)
-        stopped.stop = func() error { return r.Stop(id) }
+		stopped.stop = func() error { return r.Stop(id) }
 		var got map[string]any
 		s.must("factory.job_brief_write", params, &got)
 		current := got["current"].(map[string]any)
