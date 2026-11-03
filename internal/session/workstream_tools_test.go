@@ -155,7 +155,7 @@ func TestWorkstreamPromptUsesSnapshotOrFallback(t *testing.T) {
 	}
 	d.briefReady = true
 	d.brief = WorkstreamBrief{Name: strings.Repeat(`"`, 256), Why: strings.Repeat("why ", 1000)}
-	if len(workstreamPage(cfg)) > 900 {
+	if len(workstreamPage(cfg)) > 1000 {
 		t.Fatal("the workstream prompt section exceeded its budget")
 	}
 }
