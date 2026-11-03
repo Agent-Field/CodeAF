@@ -42,6 +42,14 @@ func newRig(t *testing.T, limit int64) *rig {
 		func(c cell.Cell) string { return r.work[c.ID] },
 		func(c cell.Cell) bool { return r.busy[c.ID] })
 	t.Cleanup(func() {
+        // Seals acknowledge reads before the engine's group commit. Drain the
+        // pending syncs before stopping our daemon and removing its storage.
+        flushCtx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+        defer cancel()
+        if err := cellstore.Flush(flushCtx); err != nil {
+            t.Errorf("flush fixture storage: %v", err)
+        }
+        cellstore.StopSpawned()
         if err := os.RemoveAll(r.dirs); err != nil {
             t.Errorf("[DEBUG-c52] cleanup: %v", err)
             _ = filepath.WalkDir(r.dirs, func(path string, d fs.DirEntry, err error) error {
