@@ -36,13 +36,21 @@ func sourcedAgent(t *testing.T, completer Completer, land TaskState) (*Agent, st
 	return agent, journal, checkpoint
 }
 
-func sendAndWait(t *testing.T, agent *Agent, words string) {
+func sendAndWait(t *testing.T, agent *Agent, words string, settled <-chan struct{}) {
 	t.Helper()
 	events, err := agent.Submit(context.Background(), words)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
 	collect(t, events)
+	select {
+	case <-settled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the submitted message did not produce a settled task")
+	}
+	// Submit can subscribe to a completion wake already in flight. Its stream
+	// ending does not mean the turn answering the queued message has ended.
+	waitForQuiet(t, agent)
 }
 
 // heardAs puts a message where the session records the person's words and marks
@@ -96,9 +104,14 @@ func TestAProposedTaskCarriesTheMessageItWasMadeFromAndKeepsItAcrossAReopen(t *t
 		return textResponse("handed off"), true
 	}}
 	agent, _, checkpoint := sourcedAgent(t, completer, TaskFailed)
-	sendAndWait(t, agent, first)
-	sendAndWait(t, agent, second)
-	sendAndWait(t, agent, second) // the same sentence typed again is another message
+	settled := make(chan struct{}, len(proposals))
+	stubbedGraph(agent, func(node *TaskNode) {
+		node.graph.complete(node, TaskFailed)
+		settled <- struct{}{}
+	})
+	sendAndWait(t, agent, first, settled)
+	sendAndWait(t, agent, second, settled)
+	sendAndWait(t, agent, second, settled) // the same sentence typed again is another message
 
 	a, b, c := sourceOfNode(t, agent, 1), sourceOfNode(t, agent, 2), sourceOfNode(t, agent, 3)
 	if a == nil || b == nil || c == nil {
