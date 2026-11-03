@@ -75,14 +75,12 @@ func TestMergePressWaitsForUndoThenRidesTheLeaseToTheRunner(t *testing.T) {
 		t.Fatalf("pressed = %+v", pressed)
 	}
 	// Inside the window nothing is sent.
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, nil)
 	if saved, _ := f.st.Get(it.ID); saved.Merging == nil || saved.Merging.State != factory.MergeAsked || saved.State != factory.StateShipped {
 		t.Fatalf("inside the Undo window: %+v", saved.Merging)
 	}
 	f.now = f.now.Add(factory.MergeUndo)
 	var job api.Job
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, &job)
 	if job.Merge == nil || job.Merge.Run == nil || job.Merge.Run.State != factory.MergeQueued || job.Merge.Run.Commit != mergeTestHead || job.State != api.StateQueued {
 		t.Fatalf("settled job = state %s merge %+v", job.State, job.Merge)
@@ -104,7 +102,6 @@ func TestMergePressWaitsForUndoThenRidesTheLeaseToTheRunner(t *testing.T) {
 	f.request(t, "POST", "/v1/runners/leases/"+pull.Lease.ID+"/done", worker.Credential, api.RunnerDone{State: "done"}, 200, nil)
 
 	job = api.Job{} // a fresh read: decoding into the old one keeps fields it omits
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, &job)
 	if job.State != api.StateDone || job.DoneHow != "merged" || job.PR == nil || job.PR.State != factory.PRMerged || (job.Merge != nil && job.Merge.Run != nil) {
 		t.Fatalf("merged job = state %s done %s pr %+v merge %+v", job.State, job.DoneHow, job.PR, job.Merge)
@@ -145,14 +142,12 @@ func TestUndoWithdrawsAPressedMerge(t *testing.T) {
 	path := fmt.Sprintf("/v1/jobs/%d", it.ID)
 	f.request(t, "POST", path+"/merge", "operator-secret", nil, 200, nil)
 	var pressed api.Job
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, &pressed)
 	if !pressed.Can.Undo {
 		t.Fatal("can.undo is false inside a pressed merge's window")
 	}
 	f.request(t, "POST", path+"/undo", "operator-secret", nil, 200, nil)
 	f.now = f.now.Add(time.Minute)
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, nil)
 	if saved, _ := f.st.Get(it.ID); saved.Merging != nil || saved.State != factory.StateShipped {
 		t.Fatalf("undone merge = %+v state %s", saved.Merging, saved.State)
@@ -171,7 +166,6 @@ func TestAutoMergeSweepSendsOnlyWhatThePipelineTurnedOn(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f, it := mergeFixture(t, policy)
 			path := fmt.Sprintf("/v1/jobs/%d", it.ID)
-			f.restart(t)
 			f.request(t, "GET", path, "operator-secret", nil, 200, nil)
 			saved, err := f.st.Get(it.ID)
 			if err != nil {
@@ -199,7 +193,6 @@ func TestAutoMergeWaitsForChecksQuietly(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := fmt.Sprintf("/v1/jobs/%d", it.ID)
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, nil)
 	if saved, _ := f.st.Get(it.ID); saved.Merging != nil || len(f.kinds(t, it.ID)) != 0 {
 		t.Fatalf("waiting auto-merge = %+v", saved.Merging)
@@ -207,7 +200,6 @@ func TestAutoMergeWaitsForChecksQuietly(t *testing.T) {
 	if err := f.st.Update(it.ID, func(it *factory.Item) error { it.PullRequest.Checks.Pending = 0; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, nil)
 	if saved, _ := f.st.Get(it.ID); saved.Merging == nil || saved.Merging.State != factory.MergeQueued {
 		t.Fatalf("ready auto-merge = %+v", saved.Merging)
@@ -219,7 +211,6 @@ func TestAutoMergeWaitsForChecksQuietly(t *testing.T) {
 func TestAFailedMergeNeedsYouAndIsNotRetried(t *testing.T) {
 	f, it := mergeFixture(t, &factory.MergePolicy{Auto: true})
 	path := fmt.Sprintf("/v1/jobs/%d", it.ID)
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, nil)
 	var worker api.RunnerAttached
 	f.request(t, "POST", "/v1/runners/attach", "operator-secret", api.RunnerAttach{Runner: "mbp", Name: "mbp", Owner: "owner"}, 201, &worker)
@@ -228,13 +219,11 @@ func TestAFailedMergeNeedsYouAndIsNotRetried(t *testing.T) {
 	f.request(t, "POST", "/v1/runners/leases/"+pull.Lease.ID+"/report", worker.Credential, api.RunnerReport{Merge: &api.WorkerMerge{State: factory.MergeFailed, Why: "the forge would not merge it: Base branch was modified"}}, 200, nil)
 	f.request(t, "POST", "/v1/runners/leases/"+pull.Lease.ID+"/done", worker.Credential, api.RunnerDone{State: "done"}, 200, nil)
 	var job api.Job
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, &job)
 	if job.State != api.StateNeedsYou || job.Reason != "merge_failed" || job.Merge == nil || job.Merge.Run == nil || !strings.Contains(job.Merge.Run.Why, "Base branch was modified") {
 		t.Fatalf("failed merge = state %s reason %s merge %+v", job.State, job.Reason, job.Merge)
 	}
 	f.now = f.now.Add(time.Hour)
-	f.restart(t)
 	f.request(t, "GET", path, "operator-secret", nil, 200, nil)
 	if saved, _ := f.st.Get(it.ID); saved.Merging == nil || saved.Merging.State != factory.MergeFailed {
 		t.Fatalf("the sweep retried a failed merge: %+v", saved.Merging)

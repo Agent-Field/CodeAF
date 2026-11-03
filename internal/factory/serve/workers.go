@@ -372,7 +372,6 @@ func (h *Handler) machineFor(handle string) string {
 }
 
 func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
-	h.settleJobs()
 	if !h.workerReady(w) {
 		return
 	}
@@ -434,7 +433,6 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		h.workers.mu.RUnlock()
 		if err == nil {
 			h.pulled(w, r, held)
-			h.scheduleJobTimer()
 			return
 		}
 		if errors.Is(err, lease.ErrWorkerBusy) {

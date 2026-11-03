@@ -25,7 +25,6 @@ func TestSoloSettledPlanApprovalNeverCoversTheNextAsk(t *testing.T) {
 
 	f.post(t, it, "approve", "{}", 200)
 	f.clock.Add(int64(factory.ApprovalUndo))
-	f.restart(t)
 	if j := f.read(t, it); j.Approval == nil || j.Approval.State != "approved" {
 		t.Fatalf("first approval did not settle: %+v", j.Approval)
 	}
@@ -57,7 +56,6 @@ func TestSoloSettledPlanApprovalNeverCoversTheNextAsk(t *testing.T) {
 	}
 	f.post(t, it, "approve", "{}", 200)
 	f.clock.Add(int64(factory.ApprovalUndo))
-	f.restart(t)
 	if j = f.read(t, it); j.Approval == nil || j.Approval.State != "approved" {
 		t.Fatalf("second approval did not settle: %+v", j.Approval)
 	}

@@ -46,7 +46,6 @@ func publishingSetup(t *testing.T) (*workerFixture, *record.Record, factory.Item
 	}
 	cfg := config
 	cfg.Store, cfg.Record, cfg.PullWait, cfg.LeaseOptions = st, rec, time.Millisecond, lease.Options{Now: clock}
-	f.cfg, f.seam = cfg, s
 	f.handler = serve.New(s, cfg)
 	f.server = httptest.NewServer(f.handler)
 	t.Cleanup(f.server.Close)
@@ -224,6 +223,5 @@ func TestConcurrentDoubleApprovalAcrossServersCreatesOneReceipt(t *testing.T) {
 func settleApproval(t *testing.T, f *workerFixture) {
 	t.Helper()
 	f.clock.Add(int64(factory.ApprovalUndo))
-	f.restart(t)
 	f.request(t, "GET", "/v1/queue", "", nil, 200, nil)
 }

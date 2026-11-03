@@ -722,7 +722,8 @@ The line under it splits today into factory jobs, `Factory AI` and your chats. `
 ## Opening a job without touching it and sending its first message
 
 Opening an app job page shows the conversations already on the job. Viewing the
-page does not mark the job as personally touched or change its version. An
+page does not mark the job as personally touched. Ordinary jobs keep their
+version; storage migration and lifecycle maintenance still run as before. An
 untouched imported issue therefore remains eligible for automatic closed-issue
 handling after someone views it.
 
@@ -730,6 +731,10 @@ Before a manager conversation exists, `factory.job_chats` returns an empty
 `agent` string and the existing step conversations, or `steps: []` when none
 exist. `factory.job_send` accepts `factory`, `job`, `text` and optional `client_id`;
 it creates the manager on the first send and returns `agent` and `turn`.
+Engines announce the hello feature `factory.job_send`. Apps must support this
+feature and render a composer when `agent` is empty. Older desktops discard an
+empty agent and omit the manager chat and composer; update the desktop before
+using this engine with jobs that have no manager.
 Later messages can use the same method or `agents.send`. Sending a message counts
 as personal work. A dropped job still refuses its conversations.
 

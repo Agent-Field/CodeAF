@@ -1005,7 +1005,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}{h.factory, a, a.UndoUntil})
 }
 
-// settleJobs is run at deadlines and on lifecycle writes. Consent is
+// settleJobs is run at deadlines, before reads and after a restart. Consent is
 // locked across processes so two servers cannot open the same decision twice.
 func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if h.config.Store == nil {
@@ -1119,19 +1119,6 @@ func (h *Handler) scheduleJobTimer() {
 		return
 	}
 	var next time.Time
-	if h.workers != nil && h.workers.desk != nil {
-		if holds, err := h.workers.desk.Snapshot(); err == nil {
-			for _, held := range holds {
-				at := held.ExpiresAt
-				if held.Asleep {
-					at = held.HeartbeatAt.Add(lease.AsleepCeiling)
-				}
-				if next.IsZero() || at.Before(next) {
-					next = at
-				}
-			}
-		}
-	}
 	for _, it := range items {
 		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
 			at := rec.Deadline
@@ -1204,9 +1191,6 @@ func (h *Handler) runJobTimer() {
 	h.jobsBusy.Add(1)
 	h.jobsMu.Unlock()
 	defer h.jobsBusy.Done()
-	if h.workers != nil && h.workers.desk != nil {
-		_, _ = h.workers.desk.Live()
-	}
 	h.settleJobs()
 	h.scheduleJobTimer()
 }

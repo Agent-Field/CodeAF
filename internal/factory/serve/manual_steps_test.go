@@ -34,7 +34,6 @@ func TestManualAskBeforeAStepOffersApproveAndSendBack(t *testing.T) {
 func TestSwitchToAutoPassesTheStandingAsk(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, manualAsk(factory.AutonomyAuto))
-	f.restart(t)
 	f.read(t, it)
 	saved, err := f.st.Get(it.ID)
 	if err != nil {

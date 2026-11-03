@@ -5,7 +5,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 )
 
-// Lifecycle writes and the durable job timer advance recovery; no open desktop is
+// Reads and the durable job timer both advance recovery; no open desktop is
 // required. The desk rechecks each candidate under its own item and lease locks.
 func (h *Handler) prepareStepRecoveries(items []factory.Item) []factory.Item {
 	if h.workers == nil || h.workers.desk == nil {

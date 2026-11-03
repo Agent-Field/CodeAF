@@ -913,7 +913,6 @@ func TestSoloUnassignedPlanApprovalKeepsUndoAndNoAssignment(t *testing.T) {
 	}
 	f.post(t, it, "approve", "{}", 200)
 	f.clock.Add(int64(factory.ApprovalUndo))
-	f.restart(t)
 	if j = f.read(t, it); j.Approval == nil || j.Approval.State != "approved" {
 		t.Fatalf("approval did not settle: %+v", j.Approval)
 	}
@@ -934,7 +933,6 @@ func TestSoloApprovedHeldStartBelongsToTheApprover(t *testing.T) {
 	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Question: "Approval needed: start · ask first · touch auth/", QKind: factory.QKindAskFirst, AskedFirstReason: "ask first · touch auth/", Autonomy: factory.AutonomyAuto, Cap: 3})
 	f.post(t, it, "approve", "{}", 200)
 	f.clock.Add(int64(factory.ApprovalUndo))
-	f.restart(t)
 	if j := f.read(t, it); j.Approval == nil || j.Approval.State != "approved" {
 		t.Fatalf("approval did not settle: %+v", j.Approval)
 	}
@@ -1308,10 +1306,4 @@ func TestReviewOpenStartKeepsFirstIdentity(t *testing.T) {
 	if after.GitHubIssueID != 1001 || after.Title != got.Title {
 		t.Errorf("replacement listing overwrote started row: id=%d title=%q", after.GitHubIssueID, after.Title)
 	}
-}
-
-func (f *v2Jobs) restart(t *testing.T) {
-	t.Helper()
-	f.h.Close()
-	f.h = serve.New(f.seam, f.cfg)
 }

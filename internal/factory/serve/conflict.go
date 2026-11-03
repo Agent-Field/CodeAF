@@ -243,7 +243,7 @@ func (h *Handler) holdOf(id int) (lease.Lease, bool) {
 	if h.workers == nil || h.workers.desk == nil {
 		return lease.Lease{}, false
 	}
-	rows, err := h.workers.desk.Snapshot()
+	rows, err := h.workers.desk.Live()
 	if err != nil {
 		return lease.Lease{}, false
 	}

@@ -161,3 +161,29 @@ func (st *Store) normalizeRepository(it *factory.Item) error {
 	}
 	return err
 }
+
+// migrateRepository re-reads under the item lock so loading a legacy job
+// cannot overwrite a worker's newer state. Identity repair preserves its age.
+func (st *Store) migrateRepository(d doc, ids repositoryIDs) (doc, error) {
+	probe := d.Item
+	if !ids.canonicalItem(&probe) {
+		return d, nil
+	}
+	err := st.underItemLock(d.Item.ID, func() error {
+		current, err := st.read(st.ItemPath(d.Item.ID))
+		if err != nil {
+			return err
+		}
+		d = current
+		if !ids.canonicalItem(&d.Item) {
+			return nil
+		}
+		d.Revision++
+		data, err := marshalDoc(d)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(st.ItemPath(d.Item.ID), data)
+	})
+	return d, err
+}
