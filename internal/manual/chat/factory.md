@@ -252,6 +252,14 @@ Issues are the factory's only work items, including briefs handed over from chat
 
 An issue keeps the PR it opens, its checks, reviews and merge status. One final Follow PR step handles bounded CI, requested-review and conflict repairs until merge or closure. Initial publication approval permits checked maintenance pushes to the same PR within budget; merge remains your decision. Take over pauses automation for an ordinary working conversation; Resume pipeline checks that work and continues. On upgrade, the factory permanently removes old standalone PR jobs, their factory-owned conversations, local worktrees, generated local branches and activity records, including worker copies. No archive of those jobs is kept. Issue jobs and their linked PR information remain. Nothing on GitHub is deleted or changed by this cleanup.
 
+## step label — readable names without changing step ids
+
+A step definition in `.codeaf/factory.yaml` may set `label: Security review`
+beside its `prompt`. The label is its readable display name, including in the
+job's brief facts. The step id stays unchanged: pipelines and actions still use
+the step's key. Empty or whitespace labels use the existing name. Jobs without
+labels keep their existing display and saved form.
+
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
 
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.
