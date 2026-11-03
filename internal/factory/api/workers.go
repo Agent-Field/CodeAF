@@ -217,7 +217,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
 	}
 	for _, s := range r.Steps {
-		stage := factory.StageReport{RoundCosts: nil, Name: s.Name, Chat: s.Chat, State: factory.PhaseState(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
+		stage := factory.StageReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, State: factory.PhaseState(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
 		if s.StartedAt != nil {
 			stage.Started = *s.StartedAt
 		}
