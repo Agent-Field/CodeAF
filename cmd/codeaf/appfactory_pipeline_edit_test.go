@@ -528,6 +528,12 @@ func TestPipelinePreviewRefusalsAreTypedAndPlainlyWorded(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			stub := newEditStub(t, api.Me{Mode: api.FactoryTeam})
 			r := newEditWire(t, stub, false, api.FactoryTeam, prToken)
+			// A factory id may contain digits forbidden in the displayed words.
+			r.id = "factory_0000000000000820"
+			r.hub.mu.Lock()
+			r.hub.rows[0].ID = r.id
+			r.hub.mu.Unlock()
+			r.hub.hold(r.id, prToken, 0)
 			_, err := r.preview(c.base, c.edit)
 			we := prWantCode(t, err, appwire.CodeBadParams)
 			d, ok := we.Detail.(appwire.FactoryPipelineEditRefusal)
