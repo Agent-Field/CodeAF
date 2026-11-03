@@ -175,6 +175,8 @@ func (p WorkstreamSource) Check() error {
 		return Errorf(CodeBadParams, "chat_id is only for message and factory is only for factory_job")
 	}
 	switch p.Kind {
+	case "suggestion":
+		return Errorf(CodeBadParams, "suggestion sources are written only by suggestion.keep")
 	case "chat", "page", "url":
 	case "message":
 		if p.ChatID == nil {
@@ -198,6 +200,14 @@ func workstreamSource(p *WorkstreamSource) error {
 		return nil
 	}
 	return p.Check()
+}
+
+func (p WorkstreamSuggestionListParams) Check() error { return workstreamID(p.PageID) }
+func (p WorkstreamSuggestionKeepParams) Check() error {
+	return workstreamChecks(workstreamID(p.ID), workstreamOptionalID(p.EditID))
+}
+func (p WorkstreamSuggestionDropParams) Check() error {
+	return workstreamChecks(workstreamID(p.ID), workstreamOptionalID(p.EditID))
 }
 
 func (p WorkstreamListParams) Check() error     { return nil }

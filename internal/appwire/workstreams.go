@@ -50,6 +50,9 @@ var WorkstreamMethods = []string{
 	"wake.apply",
 	"wake.undo",
 	"wake.not_now",
+	"suggestion.list",
+	"suggestion.keep",
+	"suggestion.drop",
 	"source.list",
 	"source.add",
 	"source.update",
@@ -72,7 +75,7 @@ type WorkstreamRef struct {
 }
 
 type WorkstreamSource struct {
-	Kind    string  `json:"kind" enum:"chat,message,factory_job,page,url"`
+	Kind    string  `json:"kind" enum:"chat,message,factory_job,page,url,suggestion"`
 	ID      string  `json:"id"`
 	ChatID  *string `json:"chat_id,omitempty"`
 	Factory *string `json:"factory,omitempty"`
@@ -235,6 +238,53 @@ type WorkstreamGoAhead struct {
 type WorkstreamChanged struct {
 	ID    string   `json:"id"`
 	Parts []string `json:"parts,omitempty" enum:"workstream,plan,pages,records,goaheads,jobs,wakes,sources"`
+}
+
+type WorkstreamSuggestion struct {
+	ID           string                     `json:"id"`
+	WorkstreamID string                     `json:"workstream_id"`
+	PageID       string                     `json:"page_id"`
+	BaseVersion  int                        `json:"base_version"`
+	Why          string                     `json:"why"`
+	By           string                     `json:"by" enum:"you,agent"`
+	Source       *WorkstreamSource          `json:"source,omitempty"`
+	CreatedAt    time.Time                  `json:"created_at"`
+	Edits        []WorkstreamSuggestionEdit `json:"edits"`
+}
+
+type WorkstreamSuggestionEdit struct {
+	ID        string    `json:"id"`
+	Block     []int     `json:"block"`
+	Offset    int       `json:"offset"`
+	Delete    string    `json:"delete"`
+	Insert    string    `json:"insert"`
+	BlockText string    `json:"block_text"`
+	Why       string    `json:"why"`
+	State     string    `json:"state" enum:"proposed,kept,dropped"`
+	Applies   *bool     `json:"applies,omitempty"`
+	DecidedAt time.Time `json:"decided_at,omitzero"`
+}
+
+type WorkstreamSuggestionListParams struct {
+	PageID string `json:"page_id"`
+}
+type WorkstreamSuggestionListResult struct {
+	Suggestions []WorkstreamSuggestion `json:"suggestions"`
+}
+type WorkstreamSuggestionKeepParams struct {
+	ID     string  `json:"id"`
+	EditID *string `json:"edit_id,omitempty"`
+}
+type WorkstreamSuggestionKeepResult struct {
+	Page       WorkstreamPage       `json:"page"`
+	Suggestion WorkstreamSuggestion `json:"suggestion"`
+}
+type WorkstreamSuggestionDropParams struct {
+	ID     string  `json:"id"`
+	EditID *string `json:"edit_id,omitempty"`
+}
+type WorkstreamSuggestionDropResult struct {
+	Suggestion WorkstreamSuggestion `json:"suggestion"`
 }
 
 type WorkstreamTaken struct {
@@ -611,6 +661,9 @@ type Workstreamer interface {
 	WorkstreamWakeApply(WorkstreamWakeApplyParams) (WorkstreamWakeApplyResult, error)
 	WorkstreamWakeUndo(WorkstreamWakeUndoParams) (WorkstreamWakeUndoResult, error)
 	WorkstreamWakeNotNow(WorkstreamWakeNotNowParams) (WorkstreamWakeNotNowResult, error)
+	WorkstreamSuggestionList(WorkstreamSuggestionListParams) (WorkstreamSuggestionListResult, error)
+	WorkstreamSuggestionKeep(WorkstreamSuggestionKeepParams) (WorkstreamSuggestionKeepResult, error)
+	WorkstreamSuggestionDrop(WorkstreamSuggestionDropParams) (WorkstreamSuggestionDropResult, error)
 	WorkstreamSourceList(WorkstreamSourceListParams) (WorkstreamSourceListResult, error)
 	WorkstreamSourceAdd(WorkstreamSourceAddParams) (WorkstreamSourceAddResult, error)
 	WorkstreamSourceUpdate(WorkstreamSourceUpdateParams) (WorkstreamSourceUpdateResult, error)
@@ -676,6 +729,9 @@ func init() {
 	methods["wake.apply"] = workstreamCall(Workstreamer.WorkstreamWakeApply)
 	methods["wake.undo"] = workstreamCall(Workstreamer.WorkstreamWakeUndo)
 	methods["wake.not_now"] = workstreamCall(Workstreamer.WorkstreamWakeNotNow)
+	methods["suggestion.list"] = workstreamCall(Workstreamer.WorkstreamSuggestionList)
+	methods["suggestion.keep"] = workstreamCall(Workstreamer.WorkstreamSuggestionKeep)
+	methods["suggestion.drop"] = workstreamCall(Workstreamer.WorkstreamSuggestionDrop)
 	methods["source.list"] = workstreamCall(Workstreamer.WorkstreamSourceList)
 	methods["source.add"] = workstreamCall(Workstreamer.WorkstreamSourceAdd)
 	methods["source.update"] = workstreamCall(Workstreamer.WorkstreamSourceUpdate)

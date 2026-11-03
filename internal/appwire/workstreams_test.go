@@ -130,6 +130,15 @@ func (f *fakeWorkstreamer) WorkstreamSourceUpdate(WorkstreamSourceUpdateParams) 
 func (f *fakeWorkstreamer) WorkstreamSourceRemove(WorkstreamSourceRemoveParams) (WorkstreamSourceRemoveResult, error) {
 	return WorkstreamSourceRemoveResult{}, ErrWorkstreamsNotYet
 }
+func (f *fakeWorkstreamer) WorkstreamSuggestionList(WorkstreamSuggestionListParams) (WorkstreamSuggestionListResult, error) {
+	return WorkstreamSuggestionListResult{}, ErrWorkstreamsNotYet
+}
+func (f *fakeWorkstreamer) WorkstreamSuggestionKeep(WorkstreamSuggestionKeepParams) (WorkstreamSuggestionKeepResult, error) {
+	return WorkstreamSuggestionKeepResult{}, ErrWorkstreamsNotYet
+}
+func (f *fakeWorkstreamer) WorkstreamSuggestionDrop(WorkstreamSuggestionDropParams) (WorkstreamSuggestionDropResult, error) {
+	return WorkstreamSuggestionDropResult{}, ErrWorkstreamsNotYet
+}
 
 func workstreamHelloHasFeature(hello map[string]any) bool {
 	for _, feature := range features(hello) {
@@ -140,10 +149,10 @@ func workstreamHelloHasFeature(hello map[string]any) bool {
 	return false
 }
 
-// V1, WP-12: the v0.4 contract index and dispatch table name the same 33 methods.
+// V1, WP-12, WP-6d: the contract index and dispatch table name the same 36 methods.
 func TestEveryWorkstreamMethodIsRegistered(t *testing.T) {
-	if len(WorkstreamMethods) != 33 {
-		t.Fatalf("contract has %d methods, want 33", len(WorkstreamMethods))
+	if len(WorkstreamMethods) != 36 {
+		t.Fatalf("contract has %d methods, want 36", len(WorkstreamMethods))
 	}
 	known := make(map[string]bool, len(WorkstreamMethods))
 	served := Methods()
@@ -157,7 +166,7 @@ func TestEveryWorkstreamMethodIsRegistered(t *testing.T) {
 		}
 	}
 	for _, name := range served {
-		for _, prefix := range []string{"workstream.", "page.", "record.", "goahead.", "wake.", "source."} {
+		for _, prefix := range []string{"workstream.", "page.", "record.", "goahead.", "wake.", "source.", "suggestion."} {
 			if strings.HasPrefix(name, prefix) && !known[name] {
 				t.Errorf("registered method not in contract: %s", name)
 			}

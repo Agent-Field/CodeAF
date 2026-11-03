@@ -615,6 +615,13 @@ func workstreamWireSeed(t *testing.T, name string, situation int) *workstreamWir
 		} else {
 			fixture.saveByAgent(t)
 		}
+	case "suggestion.list", "suggestion.keep", "suggestion.drop":
+		fixture.suggestion(t)
+		if name == "suggestion.keep" && situation == 1 {
+			if _, err := backend.WorkstreamSuggestionKeep(appwire.WorkstreamSuggestionKeepParams{ID: fixture.IDs["sg_7c41"], EditID: workstreamPtr("e1")}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	if name == "record.list" || name == "record.keep" || name == "record.drop" || name == "record.supersede" || name == "workstream.changed" {
 		// WP-F2 (d), (f): only the illustrated kind is present in each example.
@@ -656,6 +663,35 @@ func (fixture *workstreamWireFixture) page(t *testing.T, alias, parent string) {
 		t.Fatal(err)
 	}
 	fixture.IDs[alias] = page.Page.ID
+}
+
+// WP-6d conformance: both anchors and every optional key match the wire contract.
+func (fixture *workstreamWireFixture) suggestion(t *testing.T) {
+	t.Helper()
+	s, err := fixture.Backend.workstreamStore(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := fixture.IDs["pg_31d0"]
+	doc := json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Meter usage nightly."}]},{"type":"paragraph","content":[{"type":"text","text":"Bill at month end."}]}]}`)
+	page, err := s.Page(context.Background(), id, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for page.Version < 3 {
+		page, _, err = s.SavePage(context.Background(), id, page.Version, doc, workstream.Attribution{})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	suggestion, _, err := s.CreateSuggestion(context.Background(), workstream.SuggestionCreate{WorkstreamID: fixture.Stream.ID, PageID: id, BaseVersion: page.Version, Why: "api#1107 moved metering to hourly", Attribution: workstream.Attribution{By: "agent", From: &workstream.Source{Kind: "chat", ID: fixture.Stream.AgentID}}, Edits: []workstream.SuggestionFind{
+		{Find: "nightly", Replace: "every hour", Why: "The meter runs hourly since api#1107"},
+		{Find: "Bill at month end.", Replace: "Invoices stay monthly. Bill at month end.", Why: "Says what did not change"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.IDs["sg_7c41"] = suggestion.ID
 }
 
 func (fixture *workstreamWireFixture) deletedPage(t *testing.T) {
@@ -845,6 +881,7 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 		"page.delete", "page.history", "page.restore", "record.list", "record.propose",
 		"record.keep", "record.drop", "record.supersede", "goahead.list", "goahead.grant",
 		"goahead.revoke", "wake.list", "wake.apply", "wake.undo", "wake.not_now",
+		"suggestion.list", "suggestion.keep", "suggestion.drop",
 		"source.list", "source.add", "source.update", "source.remove", "collections.add", "workstream.changed",
 	}
 	errorCases := []workstreamWireErrorCase{
@@ -861,6 +898,7 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 		{Name: "create_owner", Method: "workstream.create", Code: "in_other_workstream", Example: "collections.add"},
 		{Name: "page_version", Method: "page.save", Code: "version_conflict", Example: "page.save"},
 		{Name: "plan_version", Method: "workstream.plan_set", Code: "version_conflict", Example: "page.save"},
+		{Name: "suggestion_version", Method: "suggestion.keep", Code: "version_conflict", Example: "suggestion.keep"},
 		{Name: "cycle", Method: "page.move", Code: "cycle"},
 		{Name: "too_large", Method: "page.save", Code: "too_large"},
 		{Name: "plan_too_large", Method: "workstream.plan_set", Code: "too_large"},
@@ -1286,6 +1324,9 @@ func workstreamWireEvent(t *testing.T, contract *workstreamWireContract, example
 func workstreamWireError(t *testing.T, contract *workstreamWireContract, files map[string]workstreamWireExamples, errorCase workstreamWireErrorCase) {
 	t.Helper()
 	fixture := workstreamWireSeed(t, "workstream.get", 0)
+	if errorCase.Name == "suggestion_version" {
+		fixture.suggestion(t)
+	}
 	if errorCase.Method == "source.update" || errorCase.Method == "source.remove" {
 		fixture.sources(t)
 	}
@@ -1325,6 +1366,10 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 		fixture.saveByAgent(t)
 	case "plan_version":
 		fixture.plan(t)
+	case "suggestion_version":
+		if _, err := backend.WorkstreamPageSave(appwire.WorkstreamPageSaveParams{ID: fixture.IDs["pg_31d0"], BaseVersion: 3, Doc: json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Meter usage daily."}]},{"type":"paragraph","content":[{"type":"text","text":"Bill at month end."}]}]}`)}); err != nil {
+			t.Fatal(err)
+		}
 	case "cycle":
 		fixture.page(t, "pg_32e1", fixture.IDs["pg_31d0"])
 		fixture.page(t, "conformance-descendant", fixture.IDs["pg_32e1"])
@@ -1389,6 +1434,9 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 		id, version, by := fixture.IDs["pg_31d0"], "2", "agent"
 		if errorCase.Name == "plan_version" {
 			id, version, by = fixture.Stream.ID, "1", "you"
+		}
+		if errorCase.Name == "suggestion_version" {
+			version, by = "4", "you"
 		}
 		if !ok || detail["id"] != id || detail["version"] != json.Number(version) || detail["updated_by"] != by {
 			t.Errorf("stale detail does not describe the current seeded version: %v", object["detail"])
