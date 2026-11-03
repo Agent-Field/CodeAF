@@ -965,6 +965,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 	frozenToolHistory := len(a.snapshot())
 
 	for {
+ if user.wake || user.factoryWork {
+  if why := a.automaticFactoryRefusal(); why != "" {
+   a.record(ai.Message{Role:"assistant",Content:[]ai.ContentPart{{Type:"text",Text:why}}})
+   hub.send(Event{Kind:EventTextDelta,Text:why})
+   hub.send(Event{Kind:EventTurnDone,Usage:a.sealTurn(turn,started,model)})
+   return false
+  }
+ }
 		// The cancel check comes BEFORE the drain: steering typed in the
 		// instant before an interrupt must not be spliced into a transcript
 		// this turn is abandoning unanswered. Nothing is lost — the turn's end

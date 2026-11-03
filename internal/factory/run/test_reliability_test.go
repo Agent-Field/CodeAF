@@ -35,6 +35,7 @@ func TestStopHoldsTheJobUntilExecutorCleanupFinishes(t *testing.T) {
 	if err := g.r.Stop(id); err != nil {
 		t.Fatal(err)
 	}
+	if err := g.st.Update(id,func(it *factory.Item) error { factory.ClearPersonStop(it); return nil }); err != nil { t.Fatal(err) }
 	if err := g.r.Launch(id); err == nil {
 		t.Fatal("replacement admitted before old executor cleanup")
 	}

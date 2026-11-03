@@ -442,7 +442,7 @@ func (h *Handler) recipeOf(r *http.Request, it factory.Item) (factory.Recipe, er
 }
 
 func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.Item) {
-	if factory.JobDoneHow(it) != "closed" && it.Failure == nil {
+	if !factory.StoppedByPerson(it) && factory.JobDoneHow(it) != "closed" && it.Failure == nil {
 		h.refuse(w, 409, "Run again requires failed work or a PR closed without merge", "conflict", "", nil, factory.JobState(it))
 		return
 	}

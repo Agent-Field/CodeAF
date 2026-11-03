@@ -564,7 +564,7 @@ func (st *Store) read(path string) (doc, error) {
 	if err := json.Unmarshal(data, &d); err != nil {
 		return doc{}, fmt.Errorf("factory store: cannot read %s: %w", filepath.Base(path), err)
 	}
-	d.Item.PersonStopped = factory.StoppedByPerson(d.Item)
+	if d.Item.PersonStopped == nil && factory.StoppedByPerson(d.Item) { factory.MarkPersonStopped(&d.Item) }
 	if d.Schema > Schema {
 		return doc{}, fmt.Errorf("%w: %s", ErrNewer, filepath.Base(path))
 	}

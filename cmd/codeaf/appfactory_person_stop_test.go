@@ -137,7 +137,7 @@ func TestFactoryPersonStopProofAndDraftPR(t *testing.T) {
    s.must("factory.job_stop",map[string]any{"factory":status.Factory,"job":saved.ID,"expect":map[string]any{"version":before.Version}},&appwire.FactoryJobActed{})
    after,err := floor.Get(saved.ID)
    if err != nil { t.Fatal(err) }
-   if !after.PersonStopped || after.StopUndo == nil { t.Fatal("proof-only Stop has no durable record") }
+   if !factory.StoppedByPerson(after) || after.StopUndo == nil { t.Fatal("proof-only Stop has no durable record") }
    if err := factoryrun.ApprovalRefused(&after,false); !errors.Is(err,factory.ErrPersonStopped) { t.Fatalf("proof approval after Stop: %v",err) }
    if err := factory.ReadinessGate(after); !errors.Is(err,factory.ErrPersonStopped) { t.Fatalf("readiness after Stop: %v",err) }
    if factory.QueueCIFollowUp(&after,time.Now()) || factory.Automatic(after) { t.Fatal("draft PR resumed automatically") }
@@ -184,9 +184,10 @@ func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
  unblock := func(){once.Do(func(){close(release)})}
  var calls atomic.Int32
  model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-  n:=calls.Add(1)
+  if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path,"/chat/completions") { http.Error(w,"no catalog",http.StatusServiceUnavailable); return }
   var req recordedRequest
   if err := json.NewDecoder(r.Body).Decode(&req); err != nil { t.Error(err); return }
+  n:=calls.Add(1)
   delta,finish := map[string]any{"content":"this job is stopped; a person presses Start"},"stop"
   if n==1 {
    close(entered)

@@ -95,6 +95,7 @@ func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, curren
 	}
 	turns.open = func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
 		parent := current()
+ parent.FactoryWorkRefusal = func() string { if err := turns.checkWork(it.ID); err != nil { return err.Error() }; return "" }
 		if err := refusalOf(parent, turns.refusal); err != nil {
 			return nil, err
 		}

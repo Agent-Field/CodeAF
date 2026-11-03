@@ -81,9 +81,8 @@ func TestASignalReachesOnlyAHeldJob(t *testing.T) {
 	}
 }
 
-// A STOP TAKES THE LEASE: the job is backlog at once, and the holder's next
-// call learns the lease is gone, which is how it stops. No step of this job
-// had reported running, so nothing was cut and it carries no stop mark.
+// Stop takes the lease and preserves the person decision even when no step
+// had reported running. The holder learns that its execution authority is gone.
 func TestAStopReleasesTheLease(t *testing.T) {
 	f := setup(t)
 	it, held := f.running(t)
@@ -91,7 +90,7 @@ func TestAStopReleasesTheLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.state(t, it.ID, factory.StateNew)
-	if got, _ := f.store.Get(it.ID); got.Failure != nil || factory.JobState(got) != "backlog" {
+	if got, _ := f.store.Get(it.ID); got.Failure != nil || factory.JobState(got) != "needs_you" || !factory.StoppedByPerson(got) {
 		t.Fatalf("a stop that cut no step left %s %+v", factory.JobState(got), got.Failure)
 	}
 	if _, err := f.desk.Drain(held.ID, "w1"); !errors.Is(err, lease.ErrNoLease) {
@@ -148,9 +147,9 @@ func TestAStoppedJobIsNotStoppedAgain(t *testing.T) {
 	if events, err := history.Since(context.Background(), f.now.Add(-1)); err != nil || len(events) != 1 || events[0].Kind != record.Stopped {
 		t.Fatalf("stop history = %+v; error = %v", events, err)
 	}
-	if err := doors.Launch(it.ID); err != nil {
-		t.Fatal(err)
-	}
+	if err := doors.Launch(it.ID); !errors.Is(err, factory.ErrPersonStopped) { t.Fatalf("unrequested restart: %v",err) }
+ if err := f.store.Update(it.ID,func(it *factory.Item) error { factory.ClearPersonStop(it); return nil }); err != nil { t.Fatal(err) }
+ if err := doors.Launch(it.ID); err != nil { t.Fatal(err) }
 	started, _ := f.store.Get(it.ID)
 	if started.State != factory.StateQueued || started.Failure != nil || started.Stream.Spent != 0 || len(started.Stream.Phases) != 2 || started.Stream.Phases[0].State != factory.PhasePending || started.Stream.Phases[1].State != factory.PhasePending {
 		t.Fatalf("start = %s %+v %+v", started.State, started.Failure, started.Stream)

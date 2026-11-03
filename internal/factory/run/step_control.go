@@ -110,7 +110,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		}
 		s.Ended = time.Time{}
 	} else {
-		it.PersonStopped = true
+		factory.MarkPersonStopped(it)
 		it.State = factory.StateNew
 		failure := stoppedByYou(name, s.Phases[index].Round, now)
 		it.Failure = failure

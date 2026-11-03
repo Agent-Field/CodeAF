@@ -217,6 +217,7 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		return err
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		wasStopped := factory.StoppedByPerson(*it)
 		// A RESET OF A RUN THAT ALREADY ENDED CHANGES NOTHING: a failed or
 		// stopped job is reassigned or dropped as it stands, and why it ended
 		// stays. Only a person's Stop of it is refused, as not running.
@@ -228,17 +229,19 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
 		// before intake can see the job back in the backlog.
 		if receipt {
- it.PersonStopped = true
+ factory.MarkPersonStopped(it)
  it.Asking = nil
  it.ManagerAnswer = nil
 			if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
 				return false, err
 			}
 		}
+		if !receipt && !wasStopped { stopped := false; it.PersonStopped = &stopped }
 		it.Publishing = false
+ _, pendingSignals := doc.Signals[id]
  delete(doc.Signals, id)
 		if held == nil {
-			return false, nil
+			return pendingSignals, nil
 		}
 		if held.Publish != "" {
 			// Retain receipt ownership without retaining execution authority or capacity.

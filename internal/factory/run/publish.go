@@ -291,7 +291,11 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if !ok {
 			return published{}, errors.New("this factory source does not support ready for review")
 		}
-		pr, e := ready.Ready(ctx, it)
+		var pr factory.PullRequest
+ var e error
+ if checked, ok := src.(interface { ReadyChecked(context.Context, factory.Item, func(context.Context) error) (factory.PullRequest,error) }); ok {
+  pr,e = checked.ReadyChecked(ctx,it,func(ctx context.Context) error { return r.publishBoundary(ctx,it.ID) })
+ } else if e = r.publishBoundary(ctx,it.ID); e == nil { pr,e = ready.Ready(ctx,it) }
 		if e != nil {
 			return published{}, e
 		}

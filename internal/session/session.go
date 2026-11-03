@@ -2486,6 +2486,8 @@ type Config struct {
 	// It is set where FactoryItem is, and on the one turn the runner gives an
 	// item's manager to shape its run.
 	FactoryRun RunDoor
+ // FactoryWorkRefusal rechecks automatic manager work on a worker mirror.
+ FactoryWorkRefusal func() string
 
 	// JobChat is the door a factory job's own conversation spends from the
 	// job's budget through (factory_contract.go). NIL IS NO DOOR, and every

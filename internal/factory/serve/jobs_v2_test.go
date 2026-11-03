@@ -184,10 +184,9 @@ func TestV2RunStopUndoAndStartNow(t *testing.T) {
 	if j := f.read(t, it); j.State != "queued" || j.Budget != 4 {
 		t.Fatalf("run %+v", j)
 	}
-	// A QUEUED JOB HAD NO STEP TO CUT: its stop takes it out of the queue and
-	// back to Backlog, with no stop mark, where Start picks it up.
+	// A queued job has no failed step, but Stop still withdraws its authority.
 	f.post(t, it, "stop", "", 200)
-	if j := f.read(t, it); j.State != "backlog" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Backlog" || !j.Can.Run || !j.Can.Undo || j.Can.Stop {
+	if j := f.read(t, it); j.State != "needs_you" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Stopped by you" || !j.Can.StartNow || j.Desk == nil || !j.Desk.PersonStopped || !j.Can.Undo || j.Can.Stop {
 		t.Fatalf("stop %+v", j)
 	}
 	f.post(t, it, "undo", "", 200)
@@ -583,7 +582,7 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	})
 	f.post(t, it, "restore", "", 200)
 	j := f.read(t, it)
-	if j.State != "backlog" || j.Cost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
+	if j.State != "needs_you" || j.Desk == nil || !j.Desk.PersonStopped || !j.Can.StartNow || j.Cost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
 		t.Fatalf("not fresh: state %s cost %v failure %+v change %+v head %q runner %q pr %+v claims %+v", j.State, j.Cost, j.Failure, j.Change, j.HeadCommit, j.Runner, j.PR, j.Claims)
 	}
 	recipe := pipeline.Defaults().Recipe().For(factory.KindIssue)

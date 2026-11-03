@@ -558,7 +558,9 @@ func TestStopMidRound(t *testing.T) {
 	if again, _ := g.st.Get(id); again.State != factory.StateNew || again.Failure == nil {
 		t.Fatalf("a stopped round wrote after the stop: %s %+v", again.State, again.Failure)
 	}
-	// A START TAKES THE STOP DOWN: the run begins again at its first step.
+	// A person grants Start before the launch seam can admit a replacement.
+ if err := g.r.Launch(id); !errors.Is(err,factory.ErrPersonStopped) { t.Fatalf("unrequested restart: %v",err) }
+ if err := g.st.Update(id,func(it *factory.Item) error { factory.ClearPersonStop(it); return nil }); err != nil { t.Fatal(err) }
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
@@ -605,9 +607,9 @@ func TestStopWithNoRunMarksTheJobAndTheStepItCut(t *testing.T) {
 	}
 }
 
-// A STOP THAT CUT NO STEP LEAVES NO MARK: a queued job whose steps had not
-// begun is simply back in the backlog, with nothing failed.
-func TestStopBeforeAnyStepBeganIsBacklog(t *testing.T) {
+// A Stop before any step began still requires the person to start it again;
+// the unstarted steps retain their pending state and carry no failed attempt.
+func TestStopBeforeAnyStepBeganKeepsPersonStop(t *testing.T) {
 	g := newRig(t, map[factory.StageKind]Executor{}, nil)
 	id := g.add("one", chat("plan"), chat("write"))
 	now := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
@@ -622,7 +624,7 @@ func TestStopBeforeAnyStepBeganIsBacklog(t *testing.T) {
 		t.Fatal(err)
 	}
 	it, _ := g.st.Get(id)
-	if it.State != factory.StateNew || it.Failure != nil || factory.JobState(it) != "backlog" || factory.RunEnded(it) || !logHas(it, "stopped · branch kept") {
+	if it.State != factory.StateNew || it.Failure != nil || factory.JobState(it) != "needs_you" || !factory.RunEnded(it) || !factory.StoppedByPerson(it) || !logHas(it, "stopped · branch kept") {
 		t.Fatalf("stopped before any step = %s %+v", factory.JobState(it), it.Failure)
 	}
 	for _, ph := range it.Stream.Phases {

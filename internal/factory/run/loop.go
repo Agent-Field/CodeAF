@@ -2002,7 +2002,7 @@ func (r *Runner) Withdraw(id int) {
 func (r *Runner) Stop(id int) error {
  if err := r.opts.Store.Update(id, func(it *factory.Item) error {
  if !factory.UnderWay(*it) { return fmt.Errorf("%s is not running", it.Ref()) }
- it.PersonStopped = true
+ factory.MarkPersonStopped(it)
  it.Asking = nil
  return nil
  }); err != nil { return err }

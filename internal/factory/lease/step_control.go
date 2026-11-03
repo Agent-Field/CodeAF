@@ -19,6 +19,7 @@ func (d *Doors) StepControl(id int, name string, rerun bool, words string) error
 // followed by a later write must not rewind a step that has already moved on.
 func (d *Doors) StepControlExpected(id int, name string, rerun bool, words string, revision *int) error {
 	return d.rewind(id, revision, rerun, func(it *factory.Item, now time.Time) error {
+		if rerun { factory.ClearPersonStop(it) }
 		return run.StepControl(it, name, rerun, words, now)
 	})
 }
@@ -28,6 +29,7 @@ func (d *Doors) StepControlExpected(id int, name string, rerun bool, words strin
 // another model.
 func (d *Doors) StepRerunExpected(id int, name, words, model string, revision *int) error {
 	return d.rewind(id, revision, true, func(it *factory.Item, now time.Time) error {
+		factory.ClearPersonStop(it)
 		return run.StepRerun(it, name, words, model, now)
 	})
 }
@@ -36,7 +38,6 @@ func (d *Doors) StepRerunExpected(id int, name, words, model string, revision *i
 // lease with it.
 func (d *Doors) rewind(id int, revision *int, rerun bool, control func(it *factory.Item, now time.Time) error) error {
 	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if rerun && revision != nil { factory.ClearPersonStop(it) }
 		if err := control(it, now); err != nil {
 			return false, err
 		}
