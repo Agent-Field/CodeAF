@@ -61,7 +61,7 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 		"models.roles": "", "models.tiers.low": liveFactoryModel, "models.tiers.high": liveFactoryModel,
 		"models.tiers.reflex": liveFactoryModel, "models.tiers.mastermind": liveFactoryModel,
 		"models.tiers.worker": liveFactoryModel, "task.model": liveFactoryModel, "models.fallbacks": "",
-		config.KeyKnowledgeModel: liveFactoryModel,
+		config.KeyKnowledgeModel: liveFactoryModel, config.KeyMemoryEnabled: config.MemoryOn,
 	})
 	t.Setenv(config.ProfileDirEnv, profile)
 	t.Setenv("CODEAF_PROFILE_DIR", profile)

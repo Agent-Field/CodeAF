@@ -63,6 +63,12 @@ func tierShown(value string) string {
 
 // settingsExtra fills the wave 8 rows of settings.
 func settingsExtra(settings *appwire.Settings, file appStateFile, profile string) {
+	enabled, saved := config.MemorySettingAt(profile)
+	source := "default"
+	if saved {
+		source = "saved"
+	}
+	settings.Memory = appwire.MemorySettings{Enabled: enabled, Source: source, CostNote: config.MemoryCostNote}
 	settings.Appearance, settings.TextSize = appwire.AppearanceSystem, appwire.TextMedium
 	if file.Appearance != "" {
 		settings.Appearance = file.Appearance
@@ -84,6 +90,11 @@ func settingsExtra(settings *appwire.Settings, file appStateFile, profile string
 // applyExtra writes the wave 8 rows a patch names: the profile's rows first,
 // because they can refuse, then the app's own.
 func (b *appBackend) applyExtra(patch appwire.SettingsPatch, profile string) error {
+	if patch.MemoryEnabled != nil {
+		if err := config.WriteMemoryEnabled(profile, *patch.MemoryEnabled); err != nil {
+			return appEngineError(err)
+		}
+	}
 	for _, row := range []struct {
 		key   string
 		value *string
@@ -296,3 +307,6 @@ func (b *appBackend) ExportSpend(from, to time.Time) (string, error) {
 	}
 	return path, nil
 }
+
+// MemorySettings advertises the live memory switch on the app wire.
+func (b *appBackend) MemorySettings() {}

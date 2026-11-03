@@ -27,10 +27,9 @@ package session
 //     does it by hand, and the model's `forget` is the one place it is asked
 //     for in words.
 //
-//   - THE SWITCH GOVERNS NOTICING, NOT MEMORY. The person's `memory.enabled`
-//     row turns the noticing pass off; saved lines remain available and
-//     /remember goes on working. It is read live, at the end of every
-//     turn, so a long-lived engine follows a change without a restart.
+//   - THE SWITCH GOVERNS AUTOMATIC LEARNING. The person's memory.enabled
+//     row stops noticing and knowledge compilation. Saved lines remain
+//     available and /remember goes on working. Each memory step reads it live.
 //
 // A READ-ONLY POSTURE (an automation's run, [Config.bindingOnlyMemory]) reads
 // the block and does nothing else: no noticing, no verbs, no lines said.

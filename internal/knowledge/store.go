@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
 
@@ -79,6 +80,15 @@ func (v *Vault) ConfirmConsent() (enabled bool, since time.Time) {
 }
 
 func (v *Vault) consent(fresh bool) (enabled bool, since time.Time) {
+	// The setting is read for every memory step, independently of cached metadata.
+	defer func() {
+		enabled = v.Enabled()
+		if !enabled {
+			since = time.Time{}
+		} else if since.IsZero() {
+			since = time.Unix(0, 0).UTC()
+		}
+	}()
 	view := v.captureConsentView()
 	view.mu.Lock()
 	defer view.mu.Unlock()
@@ -190,8 +200,7 @@ func (v *Vault) state(key string) (document, error) {
 	return stateDocument(db, key)
 }
 func (v *Vault) Enabled() bool {
-	value, err := v.state("config")
-	return err == nil && flag(value["enabled"])
+	return config.MemoryEnabledAt(v.profile)
 }
 func (v *Vault) EnabledSince() time.Time {
 	value, err := v.state("config")

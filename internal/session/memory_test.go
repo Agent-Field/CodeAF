@@ -127,6 +127,7 @@ func brainAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Agent
 		// A profile the test owns, so the noticing row is never read from the
 		// machine's own configuration.
 		config.ProfileDir = t.TempDir()
+		writeProfileRow(t, config.ProfileDir, "memory.enabled", "on")
 		if mutate != nil {
 			mutate(config)
 		}
