@@ -620,6 +620,21 @@ Terminal factory sentences still read those words as chips. Existing jobs are
 not rewritten; this applies when a new job is created. Factories without the
 separate-title creation capability retain their existing creation behavior.
 
+## Job Brief inputs — later requests, answers and saved notes
+
+The Brief reads the issue plus your later requests from gate answers and saved
+notes, alongside the plan and step results. A later request wins where it
+disagrees with the issue or plan. Work that follows your request is treated as
+asked, never as a fault, surprise or scope creep. A real miss against your
+request is still reported, and the Brief names the request as asked.
+
+Plain continue, yes and no answers are omitted. The writer keeps the newest
+12 distinct requests, up to 2 KiB per text and 16 KiB of request JSON, oldest
+first. Dated answers carry their step, gate and answer time. Saved notes have
+no recorded step or time; their saved order comes before dated answers.
+Duplicate words appear once. Requests survive cuts to fit the writer's input.
+A new request makes an earlier Brief out of date.
+
 ## Job Brief after proof, publishing and an out of date line
 
 The job's Brief refreshes when proof waits for your publication approval and
@@ -653,3 +668,20 @@ Automatic brief writes keep their existing limit: the last kept version must
 cost at most $0.03, and the kept versions plus one more at that cost must fit
 within 5% of the job's actual spend. Correcting a duplicate charge can therefore
 hold back an automatic write sooner. A requested retry still bypasses this guard.
+
+## budget reached — yes, raise the cap, next budget and stop
+
+When a job reaches its budget, the question names its current budget, what it
+spent, and the next absolute budget: `budget of $0.01 reached · $0.01 spent ·
+raise it to $5, or stop?`. Yes or continue raises the cap to that $5 total;
+the desktop's raise button at $5 does the same. It does not add $5 to the cap.
+
+The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
+spending. If a round spent $5.25, the next budget is $10 even when the old cap
+was $0.01. Once spending reaches $30, double the current cap, repeatedly if
+needed, until it is above spend. A $30 cap with $31 spent offers $60.
+Saved questions on older jobs can keep their old words, but yes now
+uses this same rule.
+
+The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
+Other amounts are refused. Stop keeps the recorded spend and work.

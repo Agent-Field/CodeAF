@@ -40,7 +40,7 @@ func TestFactoryStepRetryWaitsForPreviousLeaseCleanup(t *testing.T) {
 	id, err := floor.Add(context.Background(), factory.Item{
 		Repo: "acme/api", Num: 7, Kind: factory.KindIssue, Tier: factory.TierOwner, Cap: 10, Title: "Retry the failing check",
 		Stages: []factory.Stage{
-			{Name: "write", Kind: factory.StageCheck, On: true, Ask: "true", Until: factory.UntilGreen, Max: 1},
+			{Name: "write", Kind: factory.StageCheck, On: true, Ask: "printf 'the requested change\\n' > CHANGE.txt", Until: factory.UntilGreen, Max: 1},
 			{Name: "test", Kind: factory.StageCheck, On: true, Ask: "false", Until: factory.UntilGreen, Max: 1},
 		},
 	})
@@ -211,7 +211,10 @@ func TestFactoryStepRerunFromApproveGate(t *testing.T) {
 			s := newLocalSetup(t)
 			s.backend.emit = s.server
 			t.Setenv(factoryBenchesEnv, slots)
-			model := newStageModel(t)
+			model := newScriptedStageModel(t,
+				stageCall{"write", `{"path":"CHANGE.txt","content":"the requested change\n"}`},
+				stageCall{"stage_result", stageModelReport},
+			)
 			t.Setenv("OPENROUTER_API_KEY", "test-key")
 			t.Setenv("CODEAF_BASE_URL", model.server.URL)
 			g := newRunRig(t)

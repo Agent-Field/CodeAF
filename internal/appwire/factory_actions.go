@@ -45,7 +45,8 @@ import (
 
 // FeatureFactoryJobActions is announced in hello when the engine serves
 // factory.job_*. Job creation keeps separate title and details literal;
-// neither field sets budget or edits the pipeline.
+// neither field sets budget or edits the pipeline. Spending questions and
+// budget edits share the allowed budgets from factory.JobBudgetSteps.
 const FeatureFactoryJobActions = "factory.job_actions"
 
 // FeatureFactoryStartPipeline is announced beside FeatureFactoryJobActions when
@@ -64,9 +65,9 @@ type FactoryPipelineStarter interface {
 // old expect on an active job or its current running step.
 const FeatureFactoryStopAnyVersion = "factory.stop_any_version"
 
-// FactoryBudgetSteps are the limits factory.job_set_budget accepts, in US
-// dollars. The job owner can choose either direction, never below recorded spending.
-var FactoryBudgetSteps = []float64{5, 10, 20, 30}
+// FactoryBudgetSteps are the standard limits factory.job_set_budget accepts,
+// in US dollars. Larger amounts must equal the job's next cap. The job owner can choose either direction, never below recorded spending.
+var FactoryBudgetSteps = factory.JobBudgetSteps()
 
 // The priorities factory.job_set_priority takes, as the factory spells them.
 const (
@@ -160,7 +161,8 @@ type FactoryJobPriorityParams struct {
 	Expect   *api.Expect `json:"expect"`
 }
 
-// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps].
+// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps]
+// or its next cap above those steps, as validated by the factory.
 // An increase above spend resumes a cap wait; a smaller increase keeps the
 // question. A decrease below recorded spending is refused.
 type FactoryJobBudgetParams struct {
@@ -556,13 +558,17 @@ func prepBudget(p *FactoryJobBudgetParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
 	}
+	// The factory validates larger amounts against the job's current next cap.
+	if p.Budget > FactoryBudgetSteps[len(FactoryBudgetSteps)-1] {
+		return nil
+	}
 	for _, step := range FactoryBudgetSteps {
 		if math.Abs(p.Budget-step) < 1e-9 {
 			p.Budget = step
 			return nil
 		}
 	}
-	return Errorf(CodeBadParams, "budget must be one of 5, 10, 20 or 30 US dollars")
+	return Errorf(CodeBadParams, "budget must be 5, 10, 20, 30 US dollars or the job's next cap")
 }
 
 func prepApprove(p *FactoryJobApproveParams) error {

@@ -275,10 +275,11 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 		if h.workers != nil {
 			now = h.workers.now()
 		}
-		if err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
+		err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
 			run.NoteContinue(item, now)
 			return nil
-		}); h.failed(w, err) {
+		})
+		if h.failed(w, err) {
 			return
 		}
 	}
