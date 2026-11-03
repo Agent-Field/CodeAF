@@ -548,7 +548,8 @@ type usageWriter struct {
 	queue       chan usageWrite
 	stopped     chan struct{}
 	beforeWrite func()
-	overflow    sync.WaitGroup
+	overflowMu  sync.Mutex
+	overflow    map[chan struct{}]struct{}
 }
 
 // usageDropped counts serialization and filesystem failures across all ledgers.
@@ -607,12 +608,25 @@ func usageWriterForLocked(path string) *usageWriter {
 		return writer
 	}
 	writer := &usageWriter{
-		queue:   make(chan usageWrite, usageQueueDepth),
-		stopped: make(chan struct{}),
+		queue:    make(chan usageWrite, usageQueueDepth),
+		stopped:  make(chan struct{}),
+		overflow: make(map[chan struct{}]struct{}),
 	}
 	usageWriters[path] = writer
 	go writer.run(path)
 	return writer
+}
+
+// pendingOverflow captures the writes already admitted without waiting under a
+// lock. Later writes belong to a later flush; shutdown admits no later writes.
+func (w *usageWriter) pendingOverflow() []chan struct{} {
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	pending := make([]chan struct{}, 0, len(w.overflow))
+	for done := range w.overflow {
+		pending = append(pending, done)
+	}
+	return pending
 }
 
 // run drains the queue forever, holding ONE descriptor open across rows.
@@ -625,7 +639,11 @@ func usageWriterForLocked(path string) *usageWriter {
 func (w *usageWriter) run(path string) {
 	var file *os.File
 	defer close(w.stopped)
-	defer w.overflow.Wait()
+	defer func() {
+		for _, done := range w.pendingOverflow() {
+			<-done
+		}
+	}()
 	defer func() {
 		if file != nil {
 			_ = file.Close()
@@ -633,7 +651,6 @@ func (w *usageWriter) run(path string) {
 	}()
 	for work := range w.queue {
 		if work.done != nil {
-			w.overflow.Wait()
 			close(work.done)
 			continue
 		}
@@ -764,18 +781,21 @@ func detachUsageWriter(path string) *usageWriter {
 // would panic the process). The send is non-blocking for [RecordUsage]'s
 // reason: a full queue is a writer stalled on a disk that is not answering, and
 // a flush will not wait on a marker that cannot land, no more than on a row that
-// cannot. Only the markers that were accepted are waited on.
+// cannot. An unaccepted marker makes the bounded flush report false.
 func enqueueUsageFlush() []chan struct{} {
 	usageWritersMu.Lock()
 	defer usageWritersMu.Unlock()
 	dones := make([]chan struct{}, 0, len(usageWriters))
 	for _, writer := range usageWriters {
+		dones = append(dones, writer.pendingOverflow()...)
 		done := make(chan struct{})
 		select {
 		case writer.queue <- usageWrite{done: done}:
-			dones = append(dones, done)
 		default:
+			// A rejected marker cannot certify a flush. Its unresolved barrier
+			// reports false under the existing deadline.
 		}
+		dones = append(dones, done)
 	}
 	return dones
 }
@@ -861,13 +881,19 @@ func RecordUsage(path string, line UsageLine) {
 		usageWritersMu.Unlock()
 		return
 	default:
-		writer.overflow.Add(1)
 	}
-	usageWritersMu.Unlock()
 	done := make(chan struct{})
+	writer.overflowMu.Lock()
+	writer.overflow[done] = struct{}{}
+	writer.overflowMu.Unlock()
+	usageWritersMu.Unlock()
 	go func() {
-		defer writer.overflow.Done()
-		defer close(done)
+		defer func() {
+			writer.overflowMu.Lock()
+			close(done)
+			delete(writer.overflow, done)
+			writer.overflowMu.Unlock()
+		}()
 		file := openUsageLedger(path)
 		if file == nil {
 			dropUsageRow()
