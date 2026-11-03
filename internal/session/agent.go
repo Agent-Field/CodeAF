@@ -2186,7 +2186,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// lifted off the queue first and becomes a message waiting for a turn
 			// of its own (steer.go's [Agent.liftSteersLocked]) — which the
 			// follow-up drain below then starts, on the follow-up queue's own
-			// terms. Everything else on the queue drains exactly as it always has.
+			// terms.
 			a.liftSteersLocked(hub)
 			// A worker's directions stay queued until a request carries them.
 			// Its runner checks that queue before closing the worker and takes

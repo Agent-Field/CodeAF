@@ -5,7 +5,7 @@ package main
 // The registered app server answers `tasks.note`; the backend sends it through
 // the remote socket (remote.Loopback) to a real session engine built the public
 // way (session.New) and running a task admitted the public way (StartTask)
-// against a local model that holds its first request; the task's worker reads
+// against a local model that holds its first worker answer; the task's worker reads
 // the notes at its next request, which is the producer stamping the step; the
 // watcher says `note.changed read` for the key and only for the key; and an
 // engine opened again on the same session file holds the same keys on the same
@@ -215,7 +215,7 @@ waiting:
 // task room's text event proves the worker has received them before notes land.
 func newFinishingNoteModel(t *testing.T) *heldModel {
 	t.Helper()
-	model := &heldModel{release: make(chan struct{}), arrived: make(chan struct{})}
+	model := &heldModel{release: make(chan struct{})}
 	model.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request recordedRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
