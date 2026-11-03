@@ -44,8 +44,8 @@ func TestHoldSpendAnswerLockOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Pause the hold immediately before its store write. SpendAnswer then
-	// owns lp.mu while its caller check holds the item flock, as in the probe.
+	// Stop Hold just before its store write, then queue SpendAnswer first
+	// on lp.mu. Hold must be able to finish that write without the loop lock.
 	atWrite, advance := make(chan struct{}), make(chan struct{})
 	r.opts.Now = func() time.Time {
 		close(atWrite)
@@ -59,43 +59,43 @@ func TestHoldSpendAnswerLockOrder(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Hold never reached its write")
 	}
-	atAnswer, releaseAnswer := make(chan struct{}), make(chan struct{})
+	lp.mu.Lock()
 	answerDone := make(chan error, 1)
 	go func() {
-		_, err := r.SpendAnswer(id, rev, true, func(factory.Item) error {
-			close(atAnswer)
-			<-releaseAnswer
-			return nil
-		})
+		_, err := r.SpendAnswer(id, rev, true, nil)
 		answerDone <- err
 	}()
-	select {
-	case <-atAnswer:
-	case <-time.After(time.Second):
-		t.Fatal("SpendAnswer never reached its item write")
+	waitBlocked := func(door string) {
+		t.Helper()
+		deadline := time.Now().Add(time.Second)
+		for {
+			stack := make([]byte, 1<<20)
+			stack = stack[:runtime.Stack(stack, true)]
+			for _, goroutine := range strings.Split(string(stack), "\n\n") {
+				if strings.Contains(goroutine, door) && strings.Contains(goroutine, "sync.(*Mutex).Lock") {
+					return
+				}
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s never waited for lp.mu\n%s", door, stack)
+			}
+			time.Sleep(time.Millisecond)
+		}
 	}
+	waitBlocked("(*Runner).SpendAnswer")
+	// Put the mutex into starvation mode so its first waiter goes first.
+	time.Sleep(20 * time.Millisecond)
 	close(advance)
-	// Ensure Hold is inside the store before releasing the spending answer.
-	// This is the inverse scheduling of the supplied probe: both doors still
-	// have to obey the same loop-before-item lock order.
-	deadline := time.Now().Add(time.Second)
-	for {
-		stack := make([]byte, 1<<16)
-		stack = stack[:runtime.Stack(stack, true)]
-		if strings.Contains(string(stack), "(*Store).underLock") {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("Hold never waited for the item lock")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	close(releaseAnswer)
+	waitBlocked("(*Runner).Hold")
+	lp.mu.Unlock()
 	for _, done := range []chan error{holdDone, answerDone} {
 		select {
 		case err := <-done:
+			// A saved hold can legitimately make the answer's revision stale.
 			if err != nil {
-				t.Fatal(err)
+				if _, stale := err.(*store.StaleError); !stale {
+					t.Fatal(err)
+				}
 			}
 		case <-time.After(time.Second):
 			t.Fatal("Hold and SpendAnswer deadlocked")
