@@ -202,6 +202,8 @@ func TestFactoryChatRefreshKeepsThePersonsModelPair(t *testing.T) {
 
 // makeJobManager explicitly creates the existing manager a read fixture needs.
 func makeJobManager(t *testing.T, s *localSetup, job int) {
- t.Helper()
- if _, err := s.backend.local.host.seam.Talk(context.Background(), job); err != nil { t.Fatal(err) }
+	t.Helper()
+	if _, err := s.backend.local.host.seam.Talk(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
 }

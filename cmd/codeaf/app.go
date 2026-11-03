@@ -2371,10 +2371,15 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	if opened {
 		b.emit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	if turn, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
-		return turn, err
+	turn, handled, err := b.tryFactoryStatus(a, text, clientID, shown)
+	if !handled {
+		turn, err = b.startLocked(a, text, clientID, shown)
 	}
-	return b.startLocked(a, text, clientID, shown)
+	if err != nil { return turn, err }
+	if err := b.touchJobConversation(a.transcript); err != nil {
+		return turn, &appUnsureSend{err: appEngineError(err)}
+	}
+	return turn, nil
 }
 
 // knownWorkRefusalGated asks knownWorkRefusal holding the agent's gate, so the

@@ -154,15 +154,19 @@ func (d *Desk) Live() ([]Lease, error) {
 
 // Snapshot observes live holds without recovering expired jobs or writing leases.
 func (d *Desk) Snapshot() ([]Lease, error) {
- var live []Lease
- err := d.locked(func(doc *document, now time.Time) error {
-  for _, held := range doc.Leases {
-   if !held.HeartbeatAt.IsZero() { held.ExpiresAt = held.HeartbeatAt.Add(d.TTL()) }
-   if held.live(now) { live = append(live, held) }
-  }
-  return nil
- })
- return live, err
+	var live []Lease
+	err := d.locked(func(doc *document, now time.Time) error {
+		for _, held := range doc.Leases {
+			if !held.HeartbeatAt.IsZero() {
+				held.ExpiresAt = held.HeartbeatAt.Add(d.TTL())
+			}
+			if held.live(now) {
+				live = append(live, held)
+			}
+		}
+		return nil
+	})
+	return live, err
 }
 
 // Assign implements Take: it gives an unassigned item a person, not a worker.

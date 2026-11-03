@@ -413,7 +413,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Browsing observes stored jobs. Worker pulls and explicit writes own recovery.
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if h.workers != nil && h.workers.desk != nil {
-			if _, err := h.workers.desk.Live(); h.failed(w, err) { return }
+			if _, err := h.workers.desk.Live(); h.failed(w, err) {
+				return
+			}
 		}
 		h.settleJobs(r.Method == http.MethodPost)
 	}

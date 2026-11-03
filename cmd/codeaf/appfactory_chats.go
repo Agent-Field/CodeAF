@@ -41,24 +41,8 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 	if talk := strings.TrimSpace(it.Talk); talk != "" {
 		out.Agent = appAgentID(talk)
 	}
-	// Whenever the job's agent is opened, by this read or later by a send or
-	// Reopen, it takes the job's effort as the job then has it.
 	if out.Agent != "" {
-	if a, err := b.find(out.Agent); err == nil && a != nil {
-		floor, job := host.floor, p.Job
-		b.locked(func() {
-			a.jobEffort = func() string {
-				it, err := floor.Get(job)
-				if err != nil {
-					return ""
-				}
-				return it.Effort
-			}
-		})
-	}
-	if _, err := b.holdJobChat(out.Agent); err != nil {
-		return appwire.FactoryJobChats{}, err
-	}
+		if err := b.holdJobManager(host, p.Job, out.Agent); err != nil { return appwire.FactoryJobChats{}, err }
 	}
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
@@ -76,6 +60,22 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 		}
 	}
 	return out, nil
+}
+
+// holdJobManager binds future opens to the job's current effort without saving it.
+func (b *appBackend) holdJobManager(host *appFactoryHost, job int, id string) error {
+ a, err := b.find(id)
+ if err != nil { return err }
+ floor := host.floor
+ b.locked(func() {
+  a.jobEffort = func() string {
+   it, err := floor.Get(job)
+   if err != nil { return "" }
+   return it.Effort
+  }
+ })
+ _, err = b.holdJobChat(id)
+ return err
 }
 
 // roundChats is each finished round's chat that can be opened, held open as

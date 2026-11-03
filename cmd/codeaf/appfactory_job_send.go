@@ -19,8 +19,8 @@ func (b *appBackend) FactoryJobSend(ctx context.Context, p appwire.FactoryJobSen
  if host.seam.Talk == nil { return appwire.FactoryJobSent{}, appwire.Errorf(appwire.CodeEngine, "this factory cannot make a job's conversation here") }
  talk, err := host.seam.Talk(ctx, p.Job)
  if err != nil { return appwire.FactoryJobSent{}, appEngineError(err) }
- chats, err := b.FactoryJobChats(ctx, appwire.FactoryJobChatsParams{Factory: p.Factory, Job: p.Job})
- if err != nil { return appwire.FactoryJobSent{}, err }
- turn, err := b.Send(appAgentID(talk), p.Text, p.ClientID)
- return appwire.FactoryJobSent{Agent: chats.Agent, Turn: turn}, err
+ id := appAgentID(talk)
+ if err := b.holdJobManager(host, p.Job, id); err != nil { return appwire.FactoryJobSent{}, err }
+ turn, err := b.Send(id, p.Text, p.ClientID)
+ return appwire.FactoryJobSent{Agent: id, Turn: turn}, err
 }
