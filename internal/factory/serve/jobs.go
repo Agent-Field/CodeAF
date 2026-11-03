@@ -333,15 +333,15 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		return false
 	}
 	now := h.clock().UTC()
- state:=factory.JobState(it)
- finished:=false
+	state := factory.JobState(it)
+	finished := false
 	err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 		if !factory.UntouchedIssue(*cur) {
 			return nil
 		}
 		factory.TouchIssue(cur)
- finished=true
- state=api.StateDone
+		finished = true
+		state = api.StateDone
 		cur.State = factory.StateShipped
 		cur.DoneHow = how
 		cur.DoneAt = now

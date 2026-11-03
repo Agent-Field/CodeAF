@@ -4,13 +4,15 @@ import "reflect"
 
 // UntouchedIssue is the reconciliation gate, checked on the row under its lock.
 func UntouchedIssue(it Item) bool {
- for _,stage:=range it.Stages {
-  if stage.By!="" && stage.By!=ByRecipe {return false}
- }
- return IsIssueJob(it) && it.Origin==OriginForge && it.Num>0 && !it.PersonTouched &&
-  it.Cap==0 && it.Model=="" && it.Effort=="" && it.Priority==nil && !it.Manual && it.AutomaticModels==nil &&
-  ((it.DoneHow=="" && (it.State==StateNew || it.State==StateNeedsYou)) ||
-   (it.SourceClosed && it.State==StateShipped && it.DoneHow=="closed")) && !it.PipelineDecided && JobUnworked(it)
+	for _, stage := range it.Stages {
+		if stage.By != "" && stage.By != ByRecipe {
+			return false
+		}
+	}
+	return IsIssueJob(it) && it.Origin == OriginForge && it.Num > 0 && !it.PersonTouched &&
+		it.Cap == 0 && it.Model == "" && it.Effort == "" && it.Priority == nil && !it.Manual && it.AutomaticModels == nil &&
+		((it.DoneHow == "" && (it.State == StateNew || it.State == StateNeedsYou)) ||
+			(it.SourceClosed && it.State == StateShipped && it.DoneHow == "closed")) && !it.PipelineDecided && JobUnworked(it)
 }
 
 // TouchIssue records personal ownership even when the person later undoes it.

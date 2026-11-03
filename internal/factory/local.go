@@ -373,7 +373,9 @@ const (
 func localRefresh(seam *Seam, st ItemStore, refetch func(context.Context, Item) error) {
 	busy, _ := st.(BusyKeeper)
 	refresh := func(ctx context.Context, it Item) error {
-  if err:=st.Update(it.ID,func(cur *Item)error {TouchIssue(cur);return nil});err!=nil{return err}
+		if err := st.Update(it.ID, func(cur *Item) error { TouchIssue(cur); return nil }); err != nil {
+			return err
+		}
 
 		if busy != nil {
 			_ = busy.SetBusy(it.ID, BusyRefreshing)

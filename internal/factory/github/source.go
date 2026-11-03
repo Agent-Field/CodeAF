@@ -638,7 +638,9 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 		if err != nil {
 			return factory.Item{}, err
 		}
-  if is.Redirected || is.Number!=it.Num || (it.GitHubIssueID!=0 && is.ID!=it.GitHubIssueID) {return factory.Item{},errors.New("GitHub issue identity changed or redirected")}
+		if is.Redirected || is.Number != it.Num || (it.GitHubIssueID != 0 && is.ID != it.GitHubIssueID) {
+			return factory.Item{}, errors.New("GitHub issue identity changed or redirected")
+		}
 
 		out := s.issueItem(ctx, owner, name, is)
 		// A transferred issue answers with its new number, which here would be

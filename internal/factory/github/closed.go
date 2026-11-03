@@ -32,7 +32,6 @@ type closeChecks struct {
 var checksMu sync.Mutex
 var checks = map[string]*closeChecks{}
 
-
 func (s *Source) reconcileClosed(ctx context.Context, st *store.Store, repos []string, before, fresh []factory.Item) error {
 	checksMu.Lock()
 	q := checks[st.Root()]
