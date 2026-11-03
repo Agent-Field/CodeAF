@@ -128,6 +128,10 @@ func TestOwnershipCheckThatFindsAnotherHolderKeepsUnsentTurns(t *testing.T) {
 	if _, err := h.continuerB().Take(ctx, h.cell.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Keeping the turn uploads it as a branch, so the store must answer; A's
+	// heartbeats stay refused so only the check can learn of the move.
+	h.quiet.Store(true)
+	h.block.set(false)
 	// The check alone, not a later flush, keeps the turn: it is kept by the
 	// time the check returns.
 	mustNil(t, a.drive.CheckLease(ctx))
@@ -137,5 +141,4 @@ func TestOwnershipCheckThatFindsAnotherHolderKeepsUnsentTurns(t *testing.T) {
 	if a.drive.Gate() == nil {
 		t.Fatal("a displaced window still admits work")
 	}
-	h.block.set(false)
 }
