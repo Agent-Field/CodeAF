@@ -531,6 +531,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 }
 
 func stopLiveRoom(profile string, it factory.Item) (string, error) {
+ if room := jobRoomRecorded(it); room != "" { return room, nil }
  return factoryItemTeam(profile, it)
 }
 
