@@ -63,7 +63,7 @@ func TestFinishedRunnerRetriesFailedSignalBeforeReleasingLease(t *testing.T) {
  done := make(chan struct{})
  go func() {
   defer close(done)
-  Options{Runner:runner,Mirror:mirror,BeatEvery:10*time.Millisecond,ReportEvery:time.Hour,DeliveryRoot:t.TempDir()}.work(ctx,client.Open(server.URL,"").Worker("worker"),api.WorkerPull{Lease:api.WorkerLease{ID:"lease_test",Job:item.ID},Job:api.FromItem(item)})
+  Options{cap:&capacity{jobs:map[int]chan struct{}{}},Runner:runner,Mirror:mirror,BeatEvery:10*time.Millisecond,ReportEvery:time.Hour,DeliveryRoot:t.TempDir()}.work(ctx,client.Open(server.URL,"").Worker("worker"),api.WorkerPull{Lease:api.WorkerLease{ID:"lease_test",Job:item.ID},Job:api.FromItem(item)})
  }()
  select {
  case model := <-released:
