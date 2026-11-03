@@ -102,6 +102,7 @@ func TestAppFactoryFollowPRAndPostPublishMoney(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	makeJobManager(t, s, it.ID)
 	var chats appwire.FactoryJobChats
 	s.must("factory.job_chats", params, &chats)
 	before := calls.Load()

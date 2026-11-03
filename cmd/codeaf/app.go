@@ -2659,6 +2659,9 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 		b.pump(a, id, live, turn, n, text, shown, events)
 		b.sendQueued(a, live)
 	})
+	if err := b.touchJobConversation(a.transcript); err != nil {
+		return turn, &appUnsureSend{err: appEngineError(err)}
+	}
 	return turn, nil
 }
 

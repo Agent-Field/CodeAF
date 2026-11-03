@@ -90,6 +90,7 @@ func TestAJobsChatsNameTheCellTalksFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	makeJobManager(t, s, it.ID)
 	var chats appwire.FactoryJobChats
 	s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
 	kept, err := s.backend.local.host.floor.Get(it.ID)
