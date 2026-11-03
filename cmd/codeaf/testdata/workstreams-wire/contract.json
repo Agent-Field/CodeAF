@@ -443,6 +443,10 @@
       "updated_from": {
         "type": "WorkstreamSource",
         "required": false
+      },
+      "deleted_at": {
+        "type": "string (RFC 3339)",
+        "required": false
       }
     },
     "WorkstreamPage": {
@@ -488,6 +492,10 @@
       },
       "updated_from": {
         "type": "WorkstreamSource",
+        "required": false
+      },
+      "deleted_at": {
+        "type": "string (RFC 3339)",
         "required": false
       },
       "doc": {
@@ -836,12 +844,20 @@
       "workstream_id": {
         "type": "string",
         "required": true
+      },
+      "include_deleted": {
+        "type": "boolean",
+        "required": false
       }
     },
     "WorkstreamPageListResult": {
       "pages": {
         "type": "WorkstreamPageNode[]",
         "required": true
+      },
+      "deleted": {
+        "type": "WorkstreamPageNode[]",
+        "required": false
       }
     },
     "WorkstreamPageGetParams": {
@@ -851,6 +867,10 @@
       },
       "markdown": {
         "type": "boolean",
+        "required": false
+      },
+      "version": {
+        "type": "integer",
         "required": false
       }
     },
@@ -995,11 +1015,11 @@
       },
       "version": {
         "type": "integer",
-        "required": true
+        "required": false
       },
       "base_version": {
         "type": "integer",
-        "required": true
+        "required": false
       }
     },
     "WorkstreamPageRestoreResult": {

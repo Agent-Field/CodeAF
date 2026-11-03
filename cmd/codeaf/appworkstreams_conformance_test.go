@@ -578,8 +578,24 @@ func workstreamWireSeed(t *testing.T, name string, situation int) *workstreamWir
 		if name == "page.delete" {
 			fixture.page(t, "conformance-descendant", fixture.IDs["pg_32e1"])
 		}
-	case "page.history", "page.restore":
+	case "page.history":
 		fixture.saveByAgent(t)
+	// WP-F1 (g): prepare all three additive example_1 pairs with the exact
+	// optional keys illustrated by the wire contract.
+	case "page.list":
+		if situation == 1 {
+			fixture.deletedPage(t)
+		}
+	case "page.get":
+		if situation == 1 {
+			fixture.saveByAgent(t)
+		}
+	case "page.restore":
+		if situation == 1 {
+			fixture.deletedPage(t)
+		} else {
+			fixture.saveByAgent(t)
+		}
 	}
 	if name == "record.list" || name == "record.keep" || name == "record.drop" || name == "record.supersede" || name == "workstream.changed" {
 		fixture.record(t)
@@ -609,6 +625,18 @@ func (fixture *workstreamWireFixture) page(t *testing.T, alias, parent string) {
 		t.Fatal(err)
 	}
 	fixture.IDs[alias] = page.Page.ID
+}
+
+func (fixture *workstreamWireFixture) deletedPage(t *testing.T) {
+	t.Helper()
+	fixture.page(t, "pg_33f2", fixture.IDs["pg_31d0"])
+	id := fixture.IDs["pg_33f2"]
+	if _, err := fixture.Backend.WorkstreamPageSave(appwire.WorkstreamPageSaveParams{ID: id, BaseVersion: 1, Doc: json.RawMessage(`{"type":"doc","content":[]}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.Backend.WorkstreamPageDelete(appwire.WorkstreamPageDeleteParams{ID: id}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (fixture *workstreamWireFixture) source() *appwire.WorkstreamSource {
@@ -746,10 +774,11 @@ func (contract *workstreamWireContract) checkError(t *testing.T, path string, va
 }
 
 type workstreamWireErrorCase struct {
-	Name    string
-	Method  string
-	Code    string
-	Example string
+	Name          string
+	Method        string
+	Code          string
+	Example       string
+	ParamsExample int
 }
 
 // TestAppWorkstreamWireConformance keeps the table independent of the fixtures:
@@ -767,6 +796,12 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 	errorCases := []workstreamWireErrorCase{
 		{Name: "bad_params", Method: "workstream.get", Code: "bad_params"},
 		{Name: "not_found", Method: "workstream.get", Code: "not_found", Example: "workstream.get"},
+		// WP-F1 (a), (b), (g): new version and restore error doors use real dispatch.
+		{Name: "get_unknown_version", Method: "page.get", Code: "not_found", ParamsExample: 1},
+		{Name: "restore_version_only", Method: "page.restore", Code: "bad_params"},
+		{Name: "restore_base_only", Method: "page.restore", Code: "bad_params"},
+		{Name: "restore_live_id_only", Method: "page.restore", Code: "bad_params", ParamsExample: 1},
+		{Name: "restore_deleted_version", Method: "page.restore", Code: "bad_params"},
 		{Name: "conflict", Method: "workstream.create", Code: "conflict"},
 		{Name: "collection_owner", Method: "collections.add", Code: "in_other_workstream", Example: "collections.add"},
 		{Name: "create_owner", Method: "workstream.create", Code: "in_other_workstream", Example: "collections.add"},
@@ -1155,14 +1190,29 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 	fixture := workstreamWireSeed(t, "workstream.get", 0)
 	backend := fixture.Backend
 	examples := files[errorCase.Method]
-	params := fixture.prepare(t, examples.Examples.Params[0])
+	params := fixture.prepare(t, examples.Examples.Params[errorCase.ParamsExample])
 	var engine appwire.Engine = &workstreamWireBackend{appBackend: backend}
 	release := func() {}
+	changedShape := false
 	switch errorCase.Name {
 	case "bad_params":
 		delete(params, "id")
+		changedShape = true
 	case "not_found":
 		params["id"] = "missing-workstream"
+	case "get_unknown_version":
+		params["version"] = json.Number("99")
+	case "restore_version_only":
+		delete(params, "base_version")
+		changedShape = true
+	case "restore_base_only":
+		delete(params, "version")
+		changedShape = true
+	case "restore_live_id_only":
+		params["id"] = fixture.IDs["pg_31d0"]
+	case "restore_deleted_version":
+		fixture.deletedPage(t)
+		params["id"] = fixture.IDs["pg_33f2"]
 	case "conflict":
 		params["name"] = fixture.Stream.Name
 	case "collection_owner":
@@ -1180,6 +1230,7 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 		params["id"] = fixture.IDs["pg_32e1"]
 		params["parent_id"] = fixture.IDs["conformance-descendant"]
 	case "too_large":
+		changedShape = true
 		params["doc"] = map[string]any{"type": "doc", "content": []any{
 			map[string]any{"type": "paragraph", "content": []any{
 				map[string]any{"type": "text", "text": strings.Repeat("x", (1<<20)+1)},
@@ -1192,9 +1243,9 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 	default:
 		t.Fatalf("unimplemented error case %s", errorCase.Name)
 	}
-	if errorCase.Name != "bad_params" && errorCase.Name != "too_large" {
+	if !changedShape {
 		comparison := &workstreamWireComparison{}
-		workstreamWireCheck(t, comparison.shape(errorCase.Method+" error params ", params, workstreamWireDecode(t, examples.Examples.Params[0]), workstreamWirePreparedShape))
+		workstreamWireCheck(t, comparison.shape(errorCase.Method+" error params ", params, workstreamWireDecode(t, examples.Examples.Params[errorCase.ParamsExample]), workstreamWirePreparedShape))
 	}
 	connection := workstreamWireConnect(t, engine)
 	frame := connection.call(t, errorCase.Method, params)
