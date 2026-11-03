@@ -392,8 +392,10 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
-	FromJob     int    `json:"from_job,omitempty"`
-	SourceIssue string `json:"source_issue,omitempty"`
+	// RoundCostTables advertises table support only on worker admission.
+	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
+	FromJob         int    `json:"from_job,omitempty"`
+	SourceIssue     string `json:"source_issue,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
@@ -809,6 +811,8 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
+	// RoundCosts is carried only on worker admission; readers retain one Cost.
+	RoundCosts map[int]float64 `json:"round_costs,omitempty"`
 	// Files is the plan answer. An explicit empty list stays (it means unknown,
 	// and prose can't fill it in). With no list the field is left out, as an
 	// older factory refuses unknown fields.

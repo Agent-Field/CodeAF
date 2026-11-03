@@ -153,7 +153,15 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if jobs == nil {
 		jobs = m.floor
 	}
-	budget := &stageBudget{floor: jobs, memoryOwner: m.memoryOwner, item: spec.Item}
+	budget := &stageBudget{floor: jobs, memoryOwner: m.memoryOwner, item: spec.Item, stage: spec.VerificationStage}
+	if spec.Item.Stream != nil {
+		for _, ph := range spec.Item.Stream.Phases {
+			if ph.Name == budget.stage {
+				budget.round = max(1, ph.Round)
+				break
+			}
+		}
+	}
 	cfg.JobBudget = budget
 	cfg.JobContext = spec.JobContext
 	cfg.JobPendingSpend = spec.PendingSpend
@@ -652,10 +660,10 @@ func (c *stageConversation) VerificationStopped() <-chan string {
 // ID is the conversation's session file, which is how a surface opens it.
 func (c *stageConversation) ID() string { return c.file }
 
-// Spent is what the conversation has cost, its tasks folded in.
+// Spent is the logical round total, including resumed work and descendants.
 func (c *stageConversation) Spent() float64 {
 	if c.budget != nil {
-		return c.budget.total()
+		return c.budget.roundTotal()
 	}
 	return c.agent.Usage().CostUSD
 }
