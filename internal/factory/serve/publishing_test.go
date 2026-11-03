@@ -223,5 +223,6 @@ func TestConcurrentDoubleApprovalAcrossServersCreatesOneReceipt(t *testing.T) {
 func settleApproval(t *testing.T, f *workerFixture) {
 	t.Helper()
 	f.clock.Add(int64(factory.ApprovalUndo))
+	f.restart(t)
 	f.request(t, "GET", "/v1/queue", "", nil, 200, nil)
 }

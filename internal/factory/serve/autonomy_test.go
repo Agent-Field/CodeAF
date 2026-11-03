@@ -20,6 +20,7 @@ func TestAutoProofUsesRecordedHeadApprovalWithoutUIApprove(t *testing.T) {
 	in := autoProof()
 	in.MergePolicy = &factory.MergePolicy{Auto: true}
 	it := f.create(t, in)
+	f.restart(t)
 	j := f.read(t, it)
 	saved, err := f.st.Get(it.ID)
 	if err != nil {
@@ -64,6 +65,7 @@ func TestAutoFinalReadinessUsesRecordedApprovalWithoutHumanReview(t *testing.T) 
 	in.PullRequest = &factory.PullRequest{Number: 7, State: factory.PROpen, Draft: true, HeadSHA: in.HeadCommit, ChecksRead: true, ReviewsRead: true, Mergeable: factory.MergeableYes, CI: "ci ✓", Checks: factory.PRChecks{Passed: 1}, Required: 2, ReviewDecision: "review_required", ReadinessKey: "snapshot"}
 	in.FollowUp = &factory.PRFollowUp{Kind: "readiness", State: "ready_approval", Readiness: &factory.PRReadiness{Key: "snapshot", Head: in.HeadCommit, State: "reviewed"}}
 	it := f.create(t, in)
+	f.restart(t)
 	f.read(t, it)
 	got, err := f.st.Get(it.ID)
 	if err != nil {
@@ -116,6 +118,8 @@ func TestAutoLeavesCriticalProblemsAndManualJobsWaiting(t *testing.T) {
 			in := autoProof()
 			change(&in)
 			it := f.create(t, in)
+	f.restart(t)
+			f.restart(t)
 			j := f.read(t, it)
 			if factory.Automatic(in) && j.AutonomyWhy == "" {
 				t.Fatal("Auto exception has no explanation")
@@ -157,6 +161,7 @@ func TestAutoRoutinePlanGateRecordsDecisionButFixedGateWaits(t *testing.T) {
 		t.Run(fmt.Sprint(fixed), func(t *testing.T) {
 			f := newV2Jobs(t)
 			it := f.create(t, factory.Item{Autonomy: "auto", State: factory.StateNeedsYou, Assignee: "sam", Cap: 10, QKind: factory.QKindApprove, Question: "plan is ready", Stages: []factory.Stage{{Name: "plan", On: true}, {Name: "approve", Kind: factory.StageGate, On: true, Fixed: fixed}, {Name: "write", On: true}}, Stream: &factory.Stream{Cur: 1, Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}, {Name: "approve", Kind: factory.StageGate, State: factory.PhaseWaiting}, {Name: "write", State: factory.PhasePending}}}})
+			f.restart(t)
 			j := f.read(t, it)
 			if fixed {
 				if j.State != api.StateNeedsYou {
@@ -175,6 +180,7 @@ func TestManualWithoutInternalGatesStillRequiresPublicationApproval(t *testing.T
 	in.Autonomy = factory.AutonomyManual
 	in.Stages = []factory.Stage{{Name: "proof", On: true}}
 	it := f.create(t, in)
+	f.restart(t)
 	j := f.read(t, it)
 	if j.Approval == nil || j.Approval.Kind != "proof" || j.Approval.State != "waiting" || !j.Can.Approve {
 		t.Fatal("Manual without internal gates lost publication approval")
@@ -193,6 +199,7 @@ func TestAutoApprovalBlockedAtItsTimeGoesBackToThePerson(t *testing.T) {
 	now := time.Unix(0, f.clock.Load()).UTC()
 	in.Approval = &factory.Approval{Automatic: true, State: "approving", Kind: "proof", DecidedBy: "sam", Commit: in.HeadCommit, At: now.Add(-time.Minute), UndoUntil: now.Add(-time.Second)}
 	it := f.create(t, in)
+	f.restart(t)
 	f.read(t, it)
 	saved, err := f.st.Get(it.ID)
 	if err != nil {

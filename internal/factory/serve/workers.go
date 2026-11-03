@@ -372,6 +372,7 @@ func (h *Handler) machineFor(handle string) string {
 }
 
 func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
+	defer h.scheduleJobTimer()
 	h.settleJobs()
 	if !h.workerReady(w) {
 		return

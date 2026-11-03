@@ -1119,6 +1119,15 @@ func (h *Handler) scheduleJobTimer() {
 		return
 	}
 	var next time.Time
+	if h.workers != nil && h.workers.desk != nil {
+		if holds, err := h.workers.desk.Snapshot(); err == nil {
+			for _, held := range holds {
+				at := held.ExpiresAt
+				if held.Asleep { at = held.HeartbeatAt.Add(lease.AsleepCeiling) }
+				if next.IsZero() || at.Before(next) { next = at }
+			}
+		}
+	}
 	for _, it := range items {
 		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
 			at := rec.Deadline
@@ -1191,6 +1200,7 @@ func (h *Handler) runJobTimer() {
 	h.jobsBusy.Add(1)
 	h.jobsMu.Unlock()
 	defer h.jobsBusy.Done()
+	if h.workers != nil && h.workers.desk != nil { _, _ = h.workers.desk.Live() }
 	h.settleJobs()
 	h.scheduleJobTimer()
 }

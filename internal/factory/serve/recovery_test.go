@@ -11,6 +11,7 @@ import (
 func TestRecoveryHTTPExposesTryAgainAfterCompletedPublication(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, factory.Item{Autonomy: factory.AutonomyManual, State: factory.StateNeedsYou, Assignee: "sam", Cap: 10, PullRequest: &factory.PullRequest{Number: 69}, PublishStatus: &factory.Publishing{State: "opened", Attempt: 1}, Failure: &factory.Failure{Step: factory.FollowPRStep, Code: factory.CodeMachineLost, Detail: "Runner went offline mid-step", Next: factory.FailureStopped}, Stages: []factory.Stage{{Name: "plan", On: true}, {Name: factory.FollowPRStep, On: true}}, Stream: &factory.Stream{Cur: 1, Spent: 1.25, Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}, {Name: factory.FollowPRStep, State: factory.PhaseRunning}}}})
+	f.restart(t)
 	j := f.read(t, it)
 	if !j.Controls.RerunStep {
 		t.Fatal("old opened publication hid Try again")
@@ -27,11 +28,13 @@ func TestRecoveryHTTPExposesTryAgainAfterCompletedPublication(t *testing.T) {
 func TestRecoveryHTTPPlansAndAdvancesWithoutApproval(t *testing.T) {
 	f := newV2Jobs(t)
 	it := f.create(t, factory.Item{Autonomy: factory.AutonomyAuto, State: factory.StateNeedsYou, Assignee: "sam", Cap: 10, Failure: &factory.Failure{Step: "write", Code: factory.CodeTransportError, Detail: "connection reset by peer", Next: factory.FailureStopped, At: time.Unix(0, f.clock.Load())}, Stages: []factory.Stage{{Name: "write", On: true}}, Stream: &factory.Stream{Spent: 1, Phases: []factory.Phase{{Name: "write", State: factory.PhaseFailed}}}})
+	f.restart(t)
 	j := f.read(t, it)
 	if j.Recovery == nil || j.Recovery.State != "waiting" {
 		t.Fatalf("no countdown: %+v", j.Recovery)
 	}
 	f.clock.Store(j.Recovery.NextAt.UnixNano())
+	f.restart(t)
 	j = f.read(t, it)
 	if j.State != "queued" || j.Recovery.Attempts != 1 || j.Recovery.State != "queued" {
 		t.Fatalf("not automatically queued: %+v", j.Recovery)

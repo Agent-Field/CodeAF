@@ -272,7 +272,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
 	h.jobScreens()
-	h.scheduleJobTimer()
+	h.runJobTimer()
 	if config.Store != nil {
 		h.setupMu.Lock()
 		if saved, err := h.loadSetup("local"); err == nil {
@@ -410,16 +410,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" || r.URL.Path == "/v1/runners/attach" {
 		defer h.machineEvents()
 	}
-	// Browsing observes stored jobs. Worker pulls and explicit writes own recovery.
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		if h.workers != nil && h.workers.desk != nil {
-			if _, err := h.workers.desk.Live(); h.failed(w, err) {
-				return
-			}
-		}
-		h.settleJobs(r.Method == http.MethodPost)
-	}
 	h.idempotent(w, r)
+	// Writes admit lifecycle work after checking the version the person read.
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		h.settleJobs(r.Method == http.MethodPost)
+		h.scheduleJobTimer()
+	}
 }
 
 func (h *Handler) read(pattern string, handler http.HandlerFunc) {

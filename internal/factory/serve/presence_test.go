@@ -95,9 +95,13 @@ func TestOfflineAfterSixtySeconds(t *testing.T) {
 	}
 	var one struct{ api.Job }
 	f.request(t, "GET", "/v1/jobs/"+strconv.Itoa(job.ID), "", nil, 200, &one)
-	if one.HeldBy != nil || one.State != api.StateNeedsYou {
-		t.Fatalf("offline job did not ask: %+v", one.Job)
-	}
+	if one.HeldBy != nil || one.State != api.StateRunning {
+  t.Fatalf("reading presence changed the stored job: %+v", one.Job)
+ }
+ // Lifecycle startup, rather than browsing, recovers the expired hold.
+ f.restart(t)
+ f.request(t, "GET", "/v1/jobs/"+strconv.Itoa(job.ID), "", nil, 200, &one)
+ if one.State != api.StateNeedsYou { t.Fatalf("lifecycle did not recover expired job: %+v", one.Job) }
 }
 
 func TestTeamRunnersNeverTakeUnassignedEvenWithSavedConsent(t *testing.T) {

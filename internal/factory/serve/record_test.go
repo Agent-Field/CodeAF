@@ -53,6 +53,9 @@ func TestAnsweredQuestionKeepsItsPersonWordsClockAndEvent(t *testing.T) {
 			w := verbRequest(h, "POST", fmt.Sprintf("/v1/jobs/%d/%s", job.ID, verb), body)
 			checkJSON(t, w, 200)
 			clock = clock.Add(factory.ApprovalUndo)
+			h.Close()
+			h = serve.New(seam, cfg)
+			defer h.Close()
 			w = verbRequest(h, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "")
 			var got api.Job
 			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {

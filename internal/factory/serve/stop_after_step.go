@@ -50,7 +50,7 @@ func (h *Handler) workerStopAfterStep(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
-	held, err := h.workers.desk.Renew(r.PathValue("lease"), requestWorker(r).ID)
+	held, err := h.workers.desk.ReadLease(r.PathValue("lease"), requestWorker(r).ID)
 	if h.workerError(w, err) {
 		return
 	}
