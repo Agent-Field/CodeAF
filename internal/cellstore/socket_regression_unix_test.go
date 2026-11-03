@@ -23,6 +23,13 @@ import (
 // The lane-local temp base models a shared /tmp without involving another user.
 func TestR9UnixShortSocketRejectsPreclaimedDirectory(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", "")
+	// A short private temp base keeps this fixture in its own fallback lane on macOS.
+	base, err := os.MkdirTemp("/tmp", "r9-temp-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(base) })
+	t.Setenv("TMPDIR", base)
 	for _, kind := range []string{"writable-directory", "symlink"} {
 		t.Run(kind, func(t *testing.T) {
 			bin := "/engine/furrow-review-" + kind
@@ -33,7 +40,7 @@ func TestR9UnixShortSocketRejectsPreclaimedDirectory(t *testing.T) {
 			if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
 				t.Fatal(err)
 			}
-			if !strings.HasPrefix(dir, os.TempDir()+string(filepath.Separator)) || len(socket) >= maxSocketBytes {
+			if !strings.HasPrefix(dir, filepath.Clean(os.TempDir())+string(filepath.Separator)) || len(socket) >= maxSocketBytes {
 				t.Fatalf("C7: fixture did not select its lane-local short fallback: %q", socket)
 			}
 			if _, err := os.Lstat(dir); !os.IsNotExist(err) {
@@ -158,6 +165,11 @@ func TestR9UnixShortSocketOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(login) })
+	// The home address uses the physical path, including macOS's /private/tmp.
+	login, err = filepath.EvalSymlinks(login)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("CODEAF_HOME", login)
 	t.Setenv("XDG_RUNTIME_DIR", runtime)
 	bin := "/engine/furrow-review-runtime"
