@@ -503,9 +503,10 @@ name the connected machine, and say to change the crew there:
 
 The connection's welcome says whether the connected engine has its memory store open,
 and the memory commands use that engine's store. `/remember` and the Memories tab write there;
-`/memories` and `/memory <query>` read there. Memory has no off switch — the far
-machine's `notice things to remember` row decides only whether that engine keeps lines
-on its own — so the one refusal is a store that would not open:
+`/memories` and `/memory <query>` read there. The far machine's
+`learn from chats and jobs` row controls automatic learning and defaults off.
+Saved lines remain readable and `/remember` still works while off. A store that
+would not open says:
 `memory is unavailable on this machine · the store could not be opened`.
 
 ## Does subharness know whether the remote machine has saved programs?

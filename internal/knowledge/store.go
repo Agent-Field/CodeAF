@@ -273,12 +273,26 @@ func (v *Vault) captureTx(tx *sql.Tx, s Source) error {
 			}
 		}
 		source := document{"id": part.ID, "session": part.Session, "role": part.Role, "ts": part.TS, "text": part.Text, "provenance": document{"kind": part.Kind, "content_hash": identity(part.Text), "recorded_at": part.TS, "valid_at": part.TS, "locator": document{"session": part.Session, "message": part.ID, "project": part.Project}, "revision": nil, "independently_verified": false}}
+		if part.Job {
+			source["job"] = true
+		}
 		var raw string
 		err := tx.QueryRow("SELECT payload FROM events WHERE partition='profile' AND id=?", part.ID).Scan(&raw)
 		if err == nil {
 			var prior document
-			if json.Unmarshal([]byte(raw), &prior) != nil || identity(prior) != identity(source) {
+			if json.Unmarshal([]byte(raw), &prior) != nil {
 				return errors.New("knowledge immutable source changed")
+			}
+			priorEvidence, evidence := clone(prior), clone(source)
+			delete(priorEvidence, "job")
+			delete(evidence, "job")
+			if identity(priorEvidence) != identity(evidence) {
+				return errors.New("knowledge immutable source changed")
+			}
+			if part.Job && !flag(prior["job"]) {
+				if _, err = tx.Exec("UPDATE events SET payload=? WHERE partition='profile' AND id=?", mustJSON(source), part.ID); err != nil {
+					return err
+				}
 			}
 			continue
 		}
@@ -544,7 +558,7 @@ func storePages(tx *sql.Tx, pages []Page) error {
 	}
 	return nil
 }
-func (v *Vault) commitPublication(vault, learning, registry document, digest string) error {
+func (v *Vault) commitPublication(vault, learning, registry document, digest, request string) error {
 	if err := validatePublication(vault); err != nil {
 		return err
 	}
@@ -593,10 +607,7 @@ func (v *Vault) commitPublication(vault, learning, registry document, digest str
 	if err = saveState(tx, "topics", registry); err != nil {
 		return err
 	}
-	if err = saveState(tx, "projection", document{"input_hash": digest, "version": knowledgeProjectionVersion}); err != nil {
-		return err
-	}
-	if _, err = tx.Exec("DELETE FROM state WHERE key='organization_boundary'"); err != nil {
+	if err = saveState(tx, "projection", document{"input_hash": digest, "version": knowledgeProjectionVersion, "build_request": request}); err != nil {
 		return err
 	}
 	return tx.Commit()

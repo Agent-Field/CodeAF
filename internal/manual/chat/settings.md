@@ -30,7 +30,7 @@ not undo the write already in progress.
 ## Change settings by asking in chat
 
 You can ask codeaf to change supported preferences: “hide hints,” “expand completed
-tool details,” “turn timestamps off,” or “stop noticing things to remember.” It reads the
+tool details,” “turn timestamps off,” or “turn memory on.” It reads the
 `settings` tool first, then uses `change_setting` to save the requested value
 through the same registry as the panel. If these tools are not loaded, codeaf
 loads the `settings` capability group. It does not need to edit config files.
@@ -98,20 +98,29 @@ An individual team's own Settings controls its supported overrides. Global
 defaults do not erase explicit team overrides. New-subteam budget share applies
 when a subteam is created; it does not redistribute existing budgets.
 
-## Memory settings — notice things to remember, inspect and forget
+## Memory settings — turn memory on, why isn't it learning, what does memory cost
 
-**Memory → notice things to remember** decides one thing: whether, after a turn
-you typed, codeaf may keep a line you said that should hold in every conversation
-— and tell you in the conversation. Off stops only that noticing. Lines kept
-with `/remember`, by asking, or on the Memories tab still
-ride every conversation, and nothing saved is deleted. It applies from the next
-turn, in every open chat, with no restart.
+Memory is **off by default**. Turn it on in Settings → Memory: set **learn from
+chats and jobs** to **on** (`memory.enabled`). In the desktop app you can also do
+it from a Factory job's spend area, under Spent: "Memory is off · Turn on…". This
+one switch per home covers noticing useful lines, learning from saved chats, and
+job memory, whose calls count in the job's cost. A saved on or off choice is kept.
+Terminal **Build knowledge base** also saves on and imports saved chats.
 
-There is no switch that turns memory off altogether: what you kept is yours to
-forget, line by line. Use `/memory`, `/memories` or the Memories tab (`alt+8`) to
-see every line, and fix, move, forget or put back any of them there. The row's
-`Open the Memories tab` door goes straight to it. Input history and unfinished
-drafts are separate Privacy choices.
+When on, memory learns from your chats and jobs so later work can use it, and
+makes extra model calls on your key. On one small test job, memory was **39% of
+the cost ($0.0124 of $0.0315)**, measured live on DeepSeek V4.1 Flash; earlier runs
+of that same job measured **27%** and **38%**. It varies by job, so read these as
+examples and not a forecast for your work. Memory requests appear in Spending.
+
+Off stops automatic memory model calls from the next memory step, with no restart.
+A call already in flight finishes and is billed. Saved knowledge stays readable;
+reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`
+or `/memories` to inspect, fix or forget saved lines.
+
+An older home with no saved choice now reads off, even if automatic capture was
+previously armed. Nothing saved is deleted. Older terminal Builds with no saved
+choice also read off: they cannot be distinguished from automatic opt-ins.
 
 ## Permissions, task timers and automatic work
 
@@ -189,4 +198,4 @@ A saved change applies to the next compilation without restarting your chats.
 A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
-setting. Knowledge capture must still be enabled from Memory for each project.
+setting. Turn automatic learning on with the shared Memory setting.

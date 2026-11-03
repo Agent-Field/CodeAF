@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // loopLogMost is how many lines a stream keeps, the newest last: the same
@@ -97,6 +98,7 @@ type loopCtl struct {
 	id              int
 	ctx             context.Context
 	cancel          context.CancelFunc
+	spending        sync.WaitGroup
 	steer           chan string
 	modelSelections chan ModelSelection
 	modelMu         sync.Mutex
@@ -468,6 +470,7 @@ func (lp *floorLoop) say(c *loopCtl, tone, text string) {
 // order, and lands the item.
 func (lp *floorLoop) drive(c *loopCtl) {
 	defer lp.release(c)
+	defer c.settleSpend()
 	if c.reverify {
 		lp.reverifyRun(c)
 		return
@@ -880,7 +883,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !lp.held(c) {
 			return false
 		}
-		if !lp.capCheck(c, i, name) {
+		if !lp.capCheck(c, i, name, -1) {
 			return false
 		}
 		if factory.IsCIRepairStage(st) && !lp.refreshPRRound(c, i) {
@@ -1013,7 +1016,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		res = unchangedWrite(st, job, res)
 		lp.fold(c, it, st, i, res)
-		if !lp.capCheck(c, i, name) {
+		// Completed work is recorded before the next step asks for admission.
+		// Optional memory charges cannot turn this phase back into waiting.
+		memoryBefore := -1.0
+		if factory.Met(st, res) {
+			memoryBefore = job.Item.MemorySpent
+		}
+		if !lp.capCheck(c, i, name, memoryBefore) {
 			return false
 		}
 		if res.JobBudgetStopped {
@@ -1065,7 +1074,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		if readiness {
 			if res.Repair != nil && res.Repair.Decision == "needs_repair" && strings.TrimSpace(res.Repair.Reason) != "" {
-				if !lp.capCheck(c, i, name) {
+				if !lp.capCheck(c, i, name, -1) {
 					return false
 				}
 				if e := lp.write(c, func(cur *factory.Item) error {
@@ -1515,6 +1524,8 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	return Job{
+		Lifetime:        c.ctx,
+		PendingSpend:    c.pendingSpend,
 		Item:            it,
 		Stage:           st,
 		Index:           index,
@@ -1567,10 +1578,15 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 // capCheck parks the item when its budget is reached after a round: yes raises
 // the budget to the next allowed amount above spend, no stops it.
 // It answers false when it stopped.
-func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
+func (lp *floorLoop) capCheck(c *loopCtl, i int, name string, memoryBefore float64) bool {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil {
 		return false
+	}
+	if memoryBefore >= 0 && it.Stream != nil {
+		stream := *it.Stream
+		stream.Spent -= max(0, it.MemorySpent-memoryBefore)
+		it.Stream = &stream
 	}
 	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
 	q, kind := (*Money)(nil).CapQuestion(it)
@@ -2751,4 +2767,25 @@ func (lp *floorLoop) retailTail(c *loopCtl) {
 		}
 		return nil
 	})
+}
+
+func (c *loopCtl) pendingSpend() func() {
+	c.spending.Add(1)
+	return c.spending.Done
+}
+
+// Work is already visibly finished. Cancel compilation first, then leave its
+// existing periodic worker reports alive until the resulting receipts land.
+func (c *loopCtl) settleSpend() {
+	c.cancel()
+	settled := make(chan struct{})
+	go func() { c.spending.Wait(); close(settled) }()
+	// ReceiptWait starts when a cancelled call queues its receipt. One second
+	// lets that call unwind before the provider's own bounded schedule starts.
+	timer := time.NewTimer(provider.ReceiptWait + time.Second)
+	defer timer.Stop()
+	select {
+	case <-settled:
+	case <-timer.C:
+	}
 }

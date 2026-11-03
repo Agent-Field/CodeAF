@@ -58,12 +58,13 @@ type stageMaker struct {
 	floor *store.Store
 	// jobs is where the job a step runs for is kept: the worker's mirror of
 	// the job the factory leased it. Nil is floor.
-	jobs       *store.Store
-	parent     session.Config
-	current    func() session.Config
-	refusal    func() error
-	workspace  string
-	profileDir string
+	jobs        *store.Store
+	memoryOwner *store.Store
+	parent      session.Config
+	current     func() session.Config
+	refusal     func() error
+	workspace   string
+	profileDir  string
 }
 
 // factoryStageMaker is this process's maker.
@@ -152,8 +153,10 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if jobs == nil {
 		jobs = m.floor
 	}
-	budget := &stageBudget{floor: jobs, item: spec.Item}
+	budget := &stageBudget{floor: jobs, memoryOwner: m.memoryOwner, item: spec.Item}
 	cfg.JobBudget = budget
+	cfg.JobContext = spec.JobContext
+	cfg.JobPendingSpend = spec.PendingSpend
 	gate := stageApprovalGate{rows: &v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture
@@ -621,7 +624,11 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 		defer c.mu.Unlock()
 		if c.budget != nil {
 			if why := c.budget.Refusal(); why != "" {
-				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Said: why}
+				// A daily refusal already recorded was not caused by memory, so
+				// the stop keeps its ordinary meaning: an early report is rejected.
+				var refused factoryrun.SpendStop
+				daily := errors.As(c.failure, &refused) && refused.Daily
+				return factoryrun.SpendStop{Job: c.budget.reachedCap(), Memory: !daily && c.budget.memoryCap(), Said: why}
 			}
 		}
 		return c.failure

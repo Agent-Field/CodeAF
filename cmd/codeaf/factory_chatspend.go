@@ -373,3 +373,20 @@ func ownsStageChat(it factory.Item, talk talkKey) bool {
 	}
 	return false
 }
+
+func (c *jobChat) MemoryRefusal() string {
+	// Admission follows the owning factory before a worker's delayed mirror.
+	for _, st := range append([]*store.Store{c.floor}, liveMirrors(c.floor, strconv.Itoa(c.id)+".json")...) {
+		if it, err := st.Get(c.id); err == nil && (c.talk.is(it.Talk) || ownsStageChat(it, c.talk)) {
+			return jobMemoryRefusal(it)
+		}
+	}
+	return "job could not be read; memory stopped"
+}
+
+func (c ownedStageBudget) MemoryRefusal() string {
+	if owner, ok := c.JobChat.(interface{ MemoryRefusal() string }); ok {
+		return owner.MemoryRefusal()
+	}
+	return "job could not be read; memory stopped"
+}
