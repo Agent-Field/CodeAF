@@ -229,7 +229,7 @@ A model choice is applied here only when its provider is set up on this computer
 otherwise this computer keeps its own model. Setting up that provider later does
 not apply an older skipped choice; only a newer choice on the other computer travels.
 
-## What happens if saved-key sync cannot read the local vault
+## Saved-key sync when the local vault is unreadable
 
 A removal check returns a local vault read error rather than stopping the
 background sync worker. Background sync can retry on a later round. This does
