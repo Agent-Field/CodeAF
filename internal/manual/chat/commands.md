@@ -1955,8 +1955,8 @@ Settings now groups controls by what you want to change:
 `General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Devices · Privacy`
 
 General holds appearance, input and updates. Models holds model selection and
-advanced routing/context controls. Memory holds `notice things to remember` —
-whether codeaf may keep a line on its own after a turn you typed — and a link to
+advanced routing/context controls. Memory holds `learn from chats and jobs` —
+automatic memory learning, off by default, with its extra model-call cost — and a link to
 the Memories tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.

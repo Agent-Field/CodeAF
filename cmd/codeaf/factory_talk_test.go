@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -68,7 +69,7 @@ func TestFactoryTalkMakesOneConversationInTheItemsTeamUnderFactory(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#" + strconv.Itoa(first) + " · fix the ledger double count", "repo web", "factory_item", "factory_run", "stages:",
+	for _, want := range []string{"job " + strconv.Itoa(first) + " · fix the ledger double count", "repo web", "factory_item", "factory_run", "stages:",
 		"[factory item #" + strconv.Itoa(first) + "]", talkBlockKnow, talkBlockDo, talkBlockShape, talkBlockSay} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("the opening brief lacks %q:\n%s", want, data)
@@ -102,7 +103,7 @@ func TestFactoryTalkMakesOneConversationInTheItemsTeamUnderFactory(t *testing.T)
 	key, _ := filepath.EvalSymlinks(chat)
 	found := false
 	for _, team := range f.Teams {
-		if team.Name == "#"+strconv.Itoa(first)+" · fix the ledger double count" && team.Holds(filepath.Clean(key)) {
+		if team.Name == "job "+strconv.Itoa(first)+" · fix the ledger double count" && team.Holds(filepath.Clean(key)) {
 			found = true
 		}
 	}
@@ -250,7 +251,7 @@ func TestFactoryTalkMarker(t *testing.T) {
 			t.Errorf("an item with no budget and no thinking says %q", line)
 		}
 	}
-	if !strings.HasPrefix(brief, "[factory item #3]\nYou are the manager of #3 in web.\n") || !strings.Contains(brief, "\n\n#3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
+	if !strings.HasPrefix(brief, "[factory item #3]\nYou are the manager of job 3 in web.\n") || !strings.Contains(brief, "\n\njob 3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
 		t.Errorf("brief = %q", brief)
 	}
 }
@@ -318,5 +319,51 @@ func TestFactoryItemDoorLaysARemovedOrMovedStepOutOfTheRun(t *testing.T) {
 				t.Fatalf("a budget change = %s %v (%v)", phases(got), got.Cap, err)
 			}
 		})
+	}
+}
+
+// One manager per job: asks that race, as the runner and the app's job chats do
+// when a job starts, all get the same conversation, and no other is made to join
+// the job's team and wake on its replies.
+func TestRacingAsksMakeOneManager(t *testing.T) {
+	st, web, profile := talkLab(t)
+	id, err := st.Create(factory.Item{Repo: "web", Kind: factory.KindIssue, Title: "fix the ledger", State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	maker := talkMaker(st, web, profile)
+	var wg sync.WaitGroup
+	chats := make([]string, 3)
+	begin := make(chan struct{})
+	for i := range chats {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-begin
+			chat, err := maker(context.Background(), id)
+			if err != nil {
+				t.Error(err)
+			}
+			chats[i] = chat
+		}()
+	}
+	close(begin)
+	wg.Wait()
+	if chats[0] == "" || chats[0] != chats[1] || chats[1] != chats[2] {
+		t.Fatalf("three asks made %q", chats)
+	}
+	got, err := st.Get(id.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Talk != chats[0] {
+		t.Fatalf("the job holds %q, the asks got %q", got.Talk, chats[0])
+	}
+	made, err := os.ReadDir(filepath.Dir(filepath.Dir(chats[0])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(made) != 1 {
+		t.Fatalf("%d conversations on disk, want 1", len(made))
 	}
 }

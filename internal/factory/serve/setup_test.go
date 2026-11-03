@@ -27,6 +27,11 @@ import (
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
+// setupHang is how long a test waits on the setup worker before calling it
+// hung. Reading a page of issues is real store writes, which a loaded machine
+// can stretch well past a few seconds, so this bounds a hang, not a speed.
+const setupHang = time.Minute
+
 func waitSetup(t *testing.T, h *Handler) {
 	t.Helper()
 	h.setupMu.Lock()
@@ -38,7 +43,7 @@ func waitSetup(t *testing.T, h *Handler) {
 	}
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(setupHang):
 		t.Fatal("setup worker did not finish")
 	}
 }
@@ -432,7 +437,7 @@ func TestFactorySetupPagedReadResumesFromSavedPage(t *testing.T) {
 	defer resumed.Close()
 	select {
 	case <-resumedCall:
-	case <-time.After(5 * time.Second):
+	case <-time.After(setupHang):
 		t.Fatal("restart did not resume the saved page")
 	}
 	waitSetup(t, resumed)
@@ -779,6 +784,42 @@ func TestFactorySetupDoneGoesBackToGitHubOnlyWhenTheTokenIsRefused(t *testing.T)
 	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, &out)
 	if out.State != "github" || out.GitHub.Connected {
 		t.Fatalf("a refused token left setup done: %+v", out)
+	}
+}
+
+// CLOSING WAITS FOR SETUP. A setup worker still reading when the factory
+// closes is cancelled and waited for, so nothing writes into the factory's
+// folder after Close returns.
+func TestFactoryCloseWaitsForTheSetupWorker(t *testing.T) {
+	f := peopleV2Setup(t, api.FactoryTeam)
+	if err := factorygithub.SaveReadGrant(factorygithub.GrantPath(f.cfg.TokensPath), factorygithub.ReadGrant{Token: "read-only", Login: "owner", GrantedAt: f.now}); err != nil {
+		t.Fatal(err)
+	}
+	reading := make(chan struct{})
+	var once sync.Once
+	f.h.config.GitHubHTTPClient = &http.Client{Transport: githubTransport(func(r *http.Request) (*http.Response, error) {
+		once.Do(func() { close(reading) })
+		<-r.Context().Done()
+		// The worker is still unwinding when the request has been cancelled.
+		time.Sleep(300 * time.Millisecond)
+		return nil, r.Context().Err()
+	})}
+	out := setupState{View: api.FactorySetup{ID: "local", Mode: "team", State: "reading", Repos: []api.SetupRepo{{ID: "acme/api", Selected: true, Read: "next", Clone: "missing"}}}}
+	if err := f.h.saveSetup(out); err != nil {
+		t.Fatal(err)
+	}
+	f.request(t, "GET", "/v1/factory-setup/local", "operator-secret", nil, 200, nil)
+	select {
+	case <-reading:
+	case <-time.After(setupHang):
+		t.Fatal("the setup worker never read")
+	}
+	f.h.Close()
+	f.h.setupMu.Lock()
+	busy := f.h.setupBusy
+	f.h.setupMu.Unlock()
+	if busy {
+		t.Fatal("Close returned while the setup worker was still running")
 	}
 }
 

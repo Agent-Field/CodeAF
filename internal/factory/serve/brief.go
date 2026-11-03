@@ -35,7 +35,7 @@ func (h *Handler) readJobBrief(w http.ResponseWriter, r *http.Request) {
 func jobBrief(f api.Factory, it factory.Item, since int) api.JobBrief {
 	out := api.JobBrief{
 		Factory: f, Job: it.ID, Status: factory.BriefStatusOf(it), Since: since,
-		Brief: factory.LatestBrief(it), ChangedSinceSeen: factory.BriefChangedSince(it.Briefs, since),
+		Brief: factory.LatestBrief(it), VerdictBehind: factory.BriefVerdictBehind(it), ChangedSinceSeen: factory.BriefChangedSince(it.Briefs, since),
 	}
 	if w := it.BriefWriting; out.Status == factory.BriefStatusFailed && w != nil {
 		out.Failure, out.FailedAfter = w.Failure, w.AfterStep
@@ -72,7 +72,7 @@ func (h *Handler) beginBrief(w http.ResponseWriter, r *http.Request, it factory.
 }
 
 // keepBrief ends a write: the factory checks the writer's draft against the
-// job as it is now, keeps what passes, books the call's cost to the job, and
+// job as it is now, keeps what passes with its already-booked cost, and
 // answers the brief as it then reads.
 func (h *Handler) keepBrief(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body api.BriefKeepRequest

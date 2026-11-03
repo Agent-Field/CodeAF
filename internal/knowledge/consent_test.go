@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
 
@@ -82,6 +83,9 @@ func TestCaptureConsentRechecksExternalWritesAndKeepsFreshReaders(t *testing.T) 
 	if got := opens.Load(); got != 1 {
 		t.Fatalf("initial consent opened database %d times; want 1", got)
 	}
+	if err := config.WriteMemoryEnabled(v.profile, true); err != nil {
+		t.Fatal(err)
+	}
 	written := now.Add(time.Second)
 	uri := sqliteuri.File(path)
 	db, err := sql.Open("sqlite", uri.String())
@@ -102,8 +106,8 @@ func TestCaptureConsentRechecksExternalWritesAndKeepsFreshReaders(t *testing.T) 
 	before := opens.Load()
 	for _, advance := range []time.Duration{0, consentRecheck - time.Nanosecond} {
 		now = now.Add(advance)
-		if enabled, since := v.CaptureConsent(); enabled || !since.IsZero() {
-			t.Fatalf("external opt-in visible before recheck: (%v, %v)", enabled, since)
+		if enabled, since := v.CaptureConsent(); !enabled || !since.Equal(time.Unix(0, 0)) {
+			t.Fatalf("live setting must enable capture before timestamp refresh: (%v, %v)", enabled, since)
 		}
 	}
 	if got := opens.Load(); got != before {
@@ -160,7 +164,7 @@ func (consentEmptyHistory) Read(context.Context, Journal, JournalCursor) (Journa
 	return JournalBatch{}, nil
 }
 
-func TestCaptureConsentRefreshesWhenEmptyHistoryArmsCapture(t *testing.T) {
+func TestCaptureConsentStaysOffWithEmptyHistory(t *testing.T) {
 	v := Open(t.TempDir())
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	previous := consentNow
@@ -174,8 +178,8 @@ func TestCaptureConsentRefreshesWhenEmptyHistoryArmsCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	enabled, since := v.CaptureConsent()
-	if !enabled || since.IsZero() || !since.Equal(v.EnabledSince()) {
-		t.Fatalf("empty inventory did not immediately refresh frozen-clock consent: (%v, %v)", enabled, since)
+	if enabled || !since.IsZero() {
+		t.Fatalf("empty inventory armed capture: (%v, %v)", enabled, since)
 	}
 }
 
@@ -194,6 +198,9 @@ func TestConfirmConsentReadsNowAndSharesTheAnswer(t *testing.T) {
 	}))
 	if enabled, _ := v.CaptureConsent(); enabled {
 		t.Fatal("fresh profile already enabled")
+	}
+	if err := config.WriteMemoryEnabled(v.profile, true); err != nil {
+		t.Fatal(err)
 	}
 	written := now.Add(time.Second)
 	uri := sqliteuri.File(path)

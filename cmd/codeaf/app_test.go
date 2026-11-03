@@ -164,7 +164,9 @@ type fakeConversation struct {
 	interrupted  int
 	needs        bool
 	tasks        chan session.Event
+	heldTasks    []session.Event
 	questions    chan session.Event
+	heldAsks     []session.Event
 	endLane      func()
 	answers      []session.Answer
 	model        string
@@ -216,7 +218,7 @@ func (f *fakeConversation) WatchTaskRoom(uint64) (<-chan session.Event, func(), 
 func (f *fakeConversation) WatchQuestions() (<-chan session.Event, func()) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	lane := make(chan session.Event, 8)
+	lane := laneWith(8, &f.heldAsks)
 	var once sync.Once
 	end := func() { once.Do(func() { close(lane) }) }
 	f.questions, f.endLane = lane, end
@@ -236,10 +238,33 @@ func (f *fakeConversation) ResolveQuestion(answer session.Answer) error {
 
 // raise puts one event on the conversation's question lane.
 func (f *fakeConversation) raise(event session.Event) {
+	f.put(&f.questions, &f.heldAsks, event)
+}
+
+// put sends event on the lane, or holds it while nobody watches yet. The backend
+// starts watching only after a test can already see the agent as live, and a
+// send on the lane the fake has not made would block for ever.
+func (f *fakeConversation) put(lane *chan session.Event, held *[]session.Event, event session.Event) {
 	f.mu.Lock()
-	lane := f.questions
+	open := *lane
+	if open == nil {
+		*held = append(*held, event)
+	}
 	f.mu.Unlock()
-	lane <- event
+	if open != nil {
+		open <- event
+	}
+}
+
+// laneWith makes a lane that starts with what was held for it, in order, and
+// room for size more.
+func laneWith(size int, held *[]session.Event) chan session.Event {
+	lane := make(chan session.Event, size+len(*held))
+	for _, event := range *held {
+		lane <- event
+	}
+	*held = nil
+	return lane
 }
 
 func (f *fakeConversation) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -455,7 +480,7 @@ func (f *fakeConversation) NeedsPerson() bool { f.mu.Lock(); defer f.mu.Unlock()
 func (f *fakeConversation) WatchTaskUpdates() (<-chan session.Event, func()) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.tasks = make(chan session.Event, 4)
+	f.tasks = laneWith(4, &f.heldTasks)
 	lane := f.tasks
 	var once sync.Once
 	return lane, func() { once.Do(func() { close(lane) }) }
@@ -522,11 +547,23 @@ const appFakeTranscript = "/state/v3/places/proj/5e55a0f1/transcript.jsonl"
 //
 // Every fake backend keeps its own app file, because every fake agent has the
 // same id and a budget one test gave it must not reach the next.
+//
+// A rig given no opener refuses every open, as a host that cannot be reached
+// would. Background work (the brief's writer holding a job's chat) can open a
+// conversation in any rig, and a nil opener would panic the test binary.
 func newFakeBackend(rec appwire.Emitter, open appOpener) *appBackend {
+	if open == nil {
+		open = refuseAppOpen
+	}
 	backend := newAppBackend(rec, open)
 	backend.mint = func(string) (string, error) { return appFakeTranscript, nil }
 	backend.state = &appState{path: filepath.Join(os.TempDir(), "codeaf-app-test-"+strconv.Itoa(os.Getpid()), strconv.FormatUint(appFakeStates.Add(1), 10), appStateName)}
 	return backend
+}
+
+// refuseAppOpen is the opener of a rig that was given none.
+func refuseAppOpen(appOpenAsk) (*appConn, error) {
+	return nil, appwire.Errorf(appwire.CodeUnreachable, "this test backend opens no conversations")
 }
 
 // appFakeStates numbers the fake backends' app files.

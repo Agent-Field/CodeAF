@@ -3442,7 +3442,8 @@ func (s *sessionFile) writeLine(entry any) bool {
 	// the model exactly as they wrote it. The broader shape scrub belongs to the
 	// records people share — the call log and the debug record — not here.
 	payload = trace.ScrubRegistered(payload)
-	if !s.appendLine(payload) {
+	entryLine, _ := entry.(sessionEntry)
+	if !s.appendLine(payload, entryLine.Type == "usage") {
 		return false
 	}
 	if s.onWrite != nil {
@@ -3451,11 +3452,22 @@ func (s *sessionFile) writeLine(entry any) bool {
 	return true
 }
 
-func (s *sessionFile) appendLine(payload []byte) bool {
+func (s *sessionFile) appendLine(payload []byte, usage bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return false
+		if !usage {
+			return false
+		}
+		// Paid work can outlive its stage. Keep its usage in the same journal
+		// under this file's mutex so reopening restores the full paid total.
+		file, err := os.OpenFile(s.file.Name(), os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return false
+		}
+		defer file.Close()
+		_, err = file.Write(append(payload, '\n'))
+		return err == nil
 	}
 	_, err := s.file.Write(append(payload, '\n'))
 	return err == nil
@@ -3469,7 +3481,7 @@ func (s *sessionFile) appendLine(payload []byte) bool {
 // flock on its own — but it states the release at the place a reader looks for
 // it, and it puts the release before the close rather than as a side effect of
 // it. Nothing can slip into the gap: closed is already set, so no write reaches
-// the file after this point.
+// the file after this point, except paid usage appended by path.
 func (s *sessionFile) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

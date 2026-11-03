@@ -206,6 +206,27 @@ func (r *memberRig) home(id *identity.Identity) *Sync {
 	r.homes = append(r.homes, s)
 	return s
 }
+
+// runClock advances the rig's clock at the real rate until the returned stop.
+func runClock(clock *directorytest.FakeClock) (stop func()) {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				clock.Advance(time.Second)
+			}
+		}
+	}()
+	return func() { close(done); <-finished }
+}
+
 func waitMember(t *testing.T, s *Sync, predicate func(*personalMember) bool) {
 	t.Helper()
 	timer := time.NewTimer(requestTimeout)
@@ -567,6 +588,11 @@ func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 	mustNil(t, brain.Close())
 	mustNil(t, b.SyncState(t.Context()))
 	want, _ := b.Dir.List(t.Context())
+	// The clock runs at its real rate from here. A message carrying the new commit
+	// can be lost to a full transport lane, and then the next heartbeat delivers it;
+	// with the clock frozen, as it is for the idle count above, none would come.
+	stopClock := runClock(r.clock)
+	defer stopClock()
 	waitMember(t, a, func(m *personalMember) bool { return appliedVault(m) == want.Identity.Vault && m.idle })
 	rid, local, e := a.memberVault(t.Context())
 	mustNil(t, e)
