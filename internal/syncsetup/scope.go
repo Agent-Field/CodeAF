@@ -13,8 +13,17 @@ import (
 // the stats files of a machine add up to what the relay counted, with no
 // request outside all of them.
 type Scope struct {
-	Store blobstore.Store
-	rec   *cellstats.Recorder
+	Store  blobstore.Store
+	rec    *cellstats.Recorder
+	counts *blobstore.Counters
+}
+
+// Sent is how many frame bytes this scope has put to the relay so far.
+func (sc *Scope) Sent() int64 {
+	if sc.counts == nil {
+		return 0
+	}
+	return sc.counts.BytesUp.Load()
 }
 
 // scope is the one place the wire is wrapped: wire, then Counting, then
@@ -29,8 +38,9 @@ type Scope struct {
 func (s *Sync) scope(name string) *Scope {
 	c := &blobstore.Counters{}
 	return &Scope{
-		Store: blobstore.NewResuming(blobstore.Counting{Inner: s.Store, C: c}),
-		rec:   cellstats.NewRecorder(s.Home, name, meter(c)),
+		Store:  blobstore.NewResuming(blobstore.Counting{Inner: s.Store, C: c}),
+		rec:    cellstats.NewRecorder(s.Home, name, meter(c)),
+		counts: c,
 	}
 }
 
