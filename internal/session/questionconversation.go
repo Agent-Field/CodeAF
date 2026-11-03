@@ -97,6 +97,7 @@ func (a *Agent) clarifyQuestion(answer Answer) error {
 	a.mu.Lock()
 	cfg := a.config
 	cfg.Workstream = nil
+	cfg.ClientTools = nil
 	cfg.Model = a.model
 	cfg.SessionFile, cfg.Place = "", Place{}
 	cfg.rootSession = a.id
@@ -109,6 +110,7 @@ func (a *Agent) clarifyQuestion(answer Answer) error {
 		cfg.ApprovalPolicy = a.config.ApprovalPolicy
 	}
 	cfg.System = workstreamWithoutPage(a.system)
+	cfg.System = clientToolsWithoutSections(cfg.System)
 	if a.guardianOverride != nil {
 		cfg.Guardian = *a.guardianOverride
 	}

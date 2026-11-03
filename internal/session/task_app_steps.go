@@ -248,7 +248,7 @@ func (l *taskLive) openStep(event Event, at time.Time) {
 		ID:          appLiveStepID(event, len(l.calls)),
 		Call:        event.CallID,
 		Tool:        strings.TrimSpace(event.Tool),
-		Category:    ActionCategoryForTool(event.Tool),
+		Category:    toolEventCategory(event),
 		Target:      appStepText(event.Hint),
 		Args:        event.Args,
 		Running:     true,

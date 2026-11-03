@@ -351,6 +351,7 @@ func (a *Agent) TaskReport() string { return taskReport(a) }
 // The shared event hub stays asynchronous; only this producer waits, outside
 // every agent and hub lock. Cancellation also releases a failed event reader.
 func (a *Agent) sendBeltStep(ctx context.Context, hub *eventHub, event Event) {
+	event = a.clientToolEvent(event)
 	if !a.config.WaitForBeltSteps {
 		hub.send(event)
 		return

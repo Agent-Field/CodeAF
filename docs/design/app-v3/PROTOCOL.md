@@ -79,6 +79,81 @@ decides which combinations are accepted.
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
 
+## Client tools
+
+The optional feature `agents.client_tools` appears in `hello.features` exactly
+when the engine implements the client-tools interface. Sets belong to this
+stdio connection and one conversation. They are memory-only: register again
+after reconnecting. Attachment does not open the conversation or start a turn.
+Children, workers and clarification conversations inherit neither tools nor
+instructions. Remote forwarding is unavailable.
+
+| method | params | result |
+|---|---|---|
+| `agents.tools_set` | `{agent, set, instructions?, deadline_ms?, tools?: [{name, description, input_schema, category}]}` | `{agent, set, tools: [name, ...]}` |
+| `agents.tool_result` | `{call, result: <any JSON>}` or `{call, error: <text>}` | `{accepted: true}` or `{accepted: false}` |
+
+`agents.tools_set` replaces that `agent` + `set` whole; other sets remain.
+Omitted `tools` or `tools: []` removes only that set and returns `tools: []`.
+An agent holds at most 4 sets, 32 tools per set and 64 tools total. All validation
+is atomic: a refusal leaves every set unchanged.
+
+- `set` matches `^[a-z][a-z0-9_.-]{0,63}$`.
+- `name` matches `^[a-z][a-z0-9_]{0,63}$`, unique within and across the agent's sets.
+- `description` is 1–2048 bytes. `input_schema` is a JSON object whose `type`
+  is `"object"`, at most 16 KiB. Schema validation of call arguments is the app's job.
+- `category` is `read`, `edit` or `create` and supplies this conversation's tool
+  category. Reading-only contexts refuse edits and creations. Ordinary tool
+  approval rules apply; attachment is not approval.
+- `instructions` is at most 4096 bytes per set and may be empty. It appears in a
+  section headed `Tools from the app: <set>`. A caller-supplied system page is
+  preserved and receives no section. Ordinary conversations gain no text.
+- `deadline_ms` is 0 (the default 30000) or 1000–120000.
+
+Invalid fields, aggregate limits, duplicates and built-in tool names answer
+`bad_params`; a collision message names the tool. Collision checks include the
+live belt and all classified engine tools. A built-in arriving later wins and
+the colliding client tool leaves the belt. No model request has duplicate names.
+Unknown agents answer `not_found`. A remote-held conversation answers
+`bad_scope`: `client tools need a conversation this engine runs`.
+Tools and instructions update at the next step boundary, with client tools at
+the tail after all built-ins.
+
+| event | data |
+|---|---|
+| `agents.tool_call` | `{agent, turn, call, turn_call, set, name, args: <JSON object>, deadline_ms}` |
+
+One model call emits exactly one `agents.tool_call`. `turn` is the engine's
+current conversation turn; `turn_call` matches `turn.tool.call`. `call` is unique
+among pending calls and deterministic for the agent + provider call id. Without
+a provider id the engine mints a fresh id. A concurrent redispatch joins the
+pending wait and emits no second event. A settled redispatch returns the saved
+answer without an event for 10 minutes, subject to a maximum of 1024 saved
+answers per connection. Non-object model arguments become an invalid-arguments
+error result without an event.
+
+`agents.tool_result` requires exactly one of `result` and `error`. `result`
+accepts any JSON, including `null`, and reaches the model as compact JSON text,
+cut at 64 KiB with a plain dropped-byte marker. `error` must be a nonempty string
+of at most 4096 bytes and becomes an error tool result:
+`<set> could not do <name>: <text>`. Invalid answers are `bad_params`.
+A pending answer returns `accepted: true`; unknown, late or duplicate ids return
+`accepted: false` without an error or any other effect.
+
+Connection end (EOF, shutdown or context cancellation) disconnects the registry
+before conversations close: all sets are dropped and all pending calls settle
+immediately. These failures reach the model as error tool results, with no
+engine retry:
+
+- A stale call after removal or disconnection:
+  `client_unavailable: the app that provides <name> is not connected; nothing was done.`
+- Disconnection during a call:
+  `client_unavailable: the app that provides <name> disconnected before answering; the outcome is unknown, so check before trying again.`
+- Deadline:
+  `client_timeout: the app that provides <name> did not answer within <n>s; the outcome is unknown, so check before trying again.`
+- Turn cancellation: the turn ended before the app answered. The pending entry
+  is dropped immediately and later answers return `accepted: false`.
+
 ## asks methods
 
 | method | params | result |
