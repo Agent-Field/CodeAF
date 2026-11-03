@@ -1327,3 +1327,22 @@ func TestModelSelectionReachesCurrentAndFutureStepsAsOneLatestChoice(t *testing.
 		t.Fatalf("latest selection: %+v", got)
 	}
 }
+
+func TestPersonStopWithoutControllerEndsProofAndPRMaintenance(t *testing.T) {
+ for _,state:=range []factory.State{factory.StateLanded,factory.StateShipped}{
+  t.Run(string(state),func(t *testing.T){
+   g:=newRig(t,nil,nil)
+   id:=g.add("stop proof",chat("proof"))
+   if err:=g.st.Update(id,func(it *factory.Item)error{
+    it.State=state
+    it.PullRequest=&factory.PullRequest{Number:7,State:factory.PROpen,Draft:true}
+    it.Stream=&factory.Stream{Phases:[]factory.Phase{{Name:"proof",State:factory.PhaseDone}}}
+    return nil
+   });err!=nil{t.Fatal(err)}
+   if err:=g.r.Stop(id);err!=nil{t.Fatal(err)}
+   saved,err:=g.st.Get(id)
+   if err!=nil||!factory.StoppedByPerson(saved)||saved.State!=factory.StateNew||saved.Stream.Ended.IsZero(){t.Fatalf("Stop did not finish %s: %+v %v",state,saved,err)}
+   if err:=g.r.Launch(id);!errors.Is(err,factory.ErrPersonStopped){t.Fatalf("Stop allowed another launch: %v",err)}
+  })
+ }
+}

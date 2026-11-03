@@ -2000,39 +2000,29 @@ func (r *Runner) Withdraw(id int) {
 
 // Stop ends a stream and keeps its branch; the item returns to new.
 func (r *Runner) Stop(id int) error {
- if err := r.opts.Store.Update(id, func(it *factory.Item) error {
- if !factory.UnderWay(*it) { return fmt.Errorf("%s is not running", it.Ref()) }
- factory.MarkPersonStopped(it)
- it.Asking = nil
+ lp := r.loop()
+ if c := lp.ctl(id); c != nil {
+  if err := r.opts.Store.Update(id,func(it *factory.Item)error{
+   if !factory.UnderWay(*it) {return fmt.Errorf("%s is not running",it.Ref())}
+   factory.MarkPersonStopped(it)
+   it.Asking=nil
+   return nil
+  });err!=nil{return err}
+  lp.stop(c)
+  return nil
+ }
+ now:=r.now()
+ var cut *factory.StepProgress
+ if err:=r.opts.Store.Update(id,func(it *factory.Item)error{
+  if !factory.UnderWay(*it) {return fmt.Errorf("%s is not running",it.Ref())}
+  cut=endRun(it,now,nil)
+  factory.MarkPersonStopped(it)
+  it.Asking=nil
+  return nil
+ });err!=nil{return err}
+ lp.emit(id,"",EventStopped,"stopped")
+ lp.tellStep(id,sayStopped,cut)
  return nil
- }); err != nil { return err }
-	lp := r.loop()
-	if c := lp.ctl(id); c != nil {
-		lp.stop(c)
-		return nil
-	}
-	it, err := r.opts.Store.Get(id)
-	if err != nil {
-		return err
-	}
-	switch it.State {
-	case factory.StateQueued, factory.StateRunning, factory.StateNeedsYou:
-		// AN ITEM NOBODY IS RUNNING IS NOT RUNNING, whatever its document
-		// says: a process that died mid-round left it so, and stop puts it
-		// back where a person can launch it again.
-		now := r.now()
-		var cut *factory.StepProgress
-		if err := r.opts.Store.Update(id, func(it *factory.Item) error {
-			cut = endRun(it, now, nil)
-			return nil
-		}); err != nil {
-			return err
-		}
-		lp.emit(id, "", EventStopped, "stopped")
-		lp.tellStep(id, sayStopped, cut)
-		return nil
-	}
-	return fmt.Errorf("%s is not running", it.Ref())
 }
 
 // stopStored is a person's stop with no run to cancel. A failure the job

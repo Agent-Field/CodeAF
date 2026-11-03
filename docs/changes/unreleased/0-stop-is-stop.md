@@ -17,7 +17,8 @@ manager may finish speaking, but its tools cannot restart or publish the job.
 
 Start, Carry on, Run again and Run again from here are explicit person controls
 that can grant work again. Undo also restores the prior run during its existing
-five-second window. Run as new starts a separate job and leaves the original
+five-second window. Resume pipeline is also an explicit person grant after
+manual control. Run as new starts a separate job and leaves the original
 stopped. Person chat remains available without granting execution authority.
 
 Legacy StopUndo and explicit stopped failures are honoured. A legacy job with
