@@ -210,6 +210,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	}
 	if response != nil {
 		result.Ref = canonicalGenerationID(response.ID)
+ result.GenerationID = result.Ref
 	}
 	// Retain measured interim usage if the final receipt cannot be recovered.
  // The fallback and final receipt use the same sink, so only one can be banked.
@@ -224,6 +225,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
     if usage.Cost != nil { answer.Cost = *usage.Cost }
     answer.Found = !answer.Billed.Empty()
     answer.Interim = answer.Found
+    answer.PriceMissing = usage.Cost == nil
    }
    original(answer)
   }
@@ -379,6 +381,7 @@ func (c *Client) reconcile(work receiptWork) {
 				return
 			}
 			work.attempt.financial(last)
+			billed.GenerationID = result.Ref
 			billed.Node = result.Node
 			billed.Model = result.Model
 			// The road is the attempt's, captured when the receipt was owed;

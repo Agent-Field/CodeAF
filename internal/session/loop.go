@@ -4546,6 +4546,7 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 	}
 	used := Usage{
 		Input:   receipt.PromptTokens,
+ CacheRead: receipt.CachedTokens,
 		Output:  receipt.CompletionTokens,
 		CostUSD: receipt.Cost,
 		Calls:   1,
@@ -4560,6 +4561,7 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 	}
 	price := usagePriceReceipt
 	if receipt.Interim { price = usagePriceProvider }
+ if receipt.PriceMissing { price = "" }
 	a.bank(bankedCall{
 		used: used, model: receipt.Model, lane: lane, ledger: true,
 		late: true, reconciled: !receipt.Interim, role: receipt.Tag, generationID: receipt.Ref,
