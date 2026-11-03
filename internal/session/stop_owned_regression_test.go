@@ -48,7 +48,7 @@ func TestPersonStopPreservesManagerPersonChat(t *testing.T) {
  })
  id := startJob(t, a, "sleep 30")
  events := mustSubmit(t, a, "Why is this job waiting?")
- <-entered
+ select { case <-entered: case <-time.After(2*time.Second): t.Fatal("person chat did not enter the provider") }
  stopped.Store(true)
  time.Sleep(350*time.Millisecond)
  if a.jobs.find(id).running() { t.Error("person chat kept the manager background command alive after Stop") }
@@ -57,4 +57,14 @@ func TestPersonStopPreservesManagerPersonChat(t *testing.T) {
  var words strings.Builder
  for _, e := range got { if e.Kind == EventTextDelta { words.WriteString(e.Text) } }
  if !strings.Contains(words.String(), "this job is stopped") { t.Fatalf("person chat was cut off: %q", words.String()) }
+}
+
+func TestManagerBackgroundCommandContinuesWithoutPersonStop(t *testing.T) {
+ a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+  c.JobBudget = &liveBudgetStub{cap: 10}
+  c.FactoryWorkRefusal = func() string { return "" }
+ })
+ id := startJob(t, a, "sleep 30")
+ time.Sleep(350*time.Millisecond)
+ if !a.jobs.find(id).running() { t.Fatal("healthy manager background command was cut off") }
 }

@@ -69,4 +69,9 @@ func TestReviewStopRevokedLeaseCannotAdmitNextStep(t *testing.T) {
     case <-time.After(2*time.Second):
         if lost.Load() == 0 { t.Fatal("runner did not check the revoked lease") }
     }
+    for deadline := time.Now().Add(2*time.Second); r.Running(it.ID); time.Sleep(time.Millisecond) {
+        if time.Now().After(deadline) { t.Fatal("revoked runner did not settle") }
+    }
+    select { case <-second: t.Fatal("second paid step ran during revoked runner settlement"); default: }
+
 }
