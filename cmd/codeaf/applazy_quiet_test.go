@@ -39,7 +39,7 @@ func quietLazyRun(t *testing.T, count int) (*appBackend, *appCrewRun, appCrewRea
 	if err := os.MkdirAll(filepath.Dir(teamstore.TrafficPath(b.crewProfile(), file.Teams[0].ID)), 0700); err != nil {
 		t.Fatal(err)
 	}
-	run := &appCrewRun{held: map[string][]string{}}
+	run := newAppCrewRun()
 	b.subscribeCrewTraffic(run)
 	if run.watcher != nil {
 		watcher := run.watcher
@@ -352,9 +352,6 @@ func TestAppLazyFirstRefreshUsesOnlyOneColdBatch(t *testing.T) {
 	b, run, read, now, counts, _ := quietLazyRun(t, 100)
 	b.neededMembers(run, read, true)
 	clear(counts)
-	run.prints, run.members, run.cursors = map[string]string{}, map[string]string{}, map[string]string{}
-	run.acted, run.packets, run.asks = map[string]bool{}, map[string]teamstore.Packet{}, map[string]appwire.Ask{}
-	run.opening = map[string]bool{}
 	*now = now.Add(2 * time.Second)
 	b.crewRefresh(run)
 	// The real crew contains one member, leaving 99 cold candidates.
@@ -475,9 +472,6 @@ func TestAppLazyWorkInputsInvalidateHotAndColdAdmission(t *testing.T) {
 // watcher with no subscriptions isolates this signal from ordinary events.
 func TestAppLazyWatcherErrorsStillReconcileCrews(t *testing.T) {
 	b, run, _, _, _, rec := quietLazyRun(t, 13)
-	run.prints, run.members, run.cursors = map[string]string{}, map[string]string{}, map[string]string{}
-	run.acted, run.packets, run.asks = map[string]bool{}, map[string]teamstore.Packet{}, map[string]appwire.Ask{}
-	run.opening = map[string]bool{}
 	b.crewTick(run, true)
 	if run.watcher != nil {
 		_ = run.watcher.Close()
@@ -490,7 +484,6 @@ func TestAppLazyWatcherErrorsStillReconcileCrews(t *testing.T) {
 	for id := range run.prints {
 		run.prints[id] = "stale view"
 	}
-	run.stop, run.done = make(chan struct{}), make(chan struct{})
 	go b.crewLoop(run)
 	defer run.close()
 	select {

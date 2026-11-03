@@ -135,6 +135,18 @@ type appCrewRun struct {
 	unheld map[string]*appUnheld
 }
 
+// newAppCrewRun gives every watch writable state, including watches driven
+// without subscriptions or a background loop in tests and benchmarks.
+func newAppCrewRun() *appCrewRun {
+	return &appCrewRun{
+		ready: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}),
+		prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
+		acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
+		held: map[string][]string{}, opening: map[string]bool{},
+		wakeStamps: map[string]string{}, recovering: map[string]bool{},
+	}
+}
+
 func (c *appCrewRun) locked(fn func()) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -155,13 +167,7 @@ func (b *appBackend) crews() *appCrewRun {
 	start := false
 	b.locked(func() {
 		if b.crewRun == nil && !b.closing {
-			b.crewRun = &appCrewRun{
-				ready: make(chan struct{}),
-				stop:  make(chan struct{}), done: make(chan struct{}),
-				prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
-				acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
-				held: map[string][]string{}, opening: map[string]bool{},
-			}
+			b.crewRun = newAppCrewRun()
 			start = true
 		}
 		run = b.crewRun
