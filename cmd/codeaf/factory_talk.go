@@ -116,6 +116,11 @@ func talkMakerReading(st, copies *store.Store, workspace, profileDir string) fun
 	dirs := factoryRepoDirs(st, workspace)
 	return func(_ context.Context, it factory.Item) (string, error) {
 		factoryReconcileOnce(profileDir, st)
+  if _, held, err := talkHeld(st, it); held != "" || err != nil {
+   return held, err
+  }
+  // Recipe reads can reach GitHub. Finish the brief before the floor lock.
+  brief := talkBrief(it, factoryItemRecipe(copies, dirs, it))
 		return withTalkMintLock(st, func() (string, error) {
 			ours, held, err := talkHeld(st, it)
 			if held != "" || err != nil {
@@ -138,7 +143,7 @@ func talkMakerReading(st, copies *store.Store, workspace, profileDir string) fun
 				return "", err
 			}
 			name := talkTeamName(it)
-			if err := session.SeedConversation(transcript, where, name, talkBrief(it, factoryItemRecipe(copies, dirs, it))); err != nil {
+			if err := session.SeedConversation(transcript, where, name, brief); err != nil {
 				return "", err
 			}
 			if err := talkJoinTeam(profileDir, it, transcript, where, name); err != nil {
