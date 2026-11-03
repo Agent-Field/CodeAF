@@ -150,7 +150,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
 			} else {
 				act("factory.job_start", nil)
 				wait("first run spends 5.25 under 6", func(j api.Job) bool {
-					return j.Cost == 5.25 && len(j.Steps) == 1 && j.Steps[0].State == "done" && j.State != api.StateRunning
+					return j.Cost == 5.25 && len(j.Steps) == 1 && j.Steps[0].State == "done" && j.State != api.StateRunning && replays.Load() > 0
 				})
 				// The next app action starts from saved work, as after a stopped run.
 				if err := st.Update(it.ID, func(it *factory.Item) error {
@@ -232,7 +232,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
 				}
 				act("factory.job_start", nil)
 			}
-			wait("raise permits spending that still counts", func(j api.Job) bool { return calls.Load() > before && j.LifetimeCost == 7.25 && j.SpendingLimit == nil })
+			wait("raise permits spending that still counts", func(j api.Job) bool { return calls.Load() > before && j.LifetimeCost == 7.25 && j.SpendingLimit == nil && replays.Load() > 0 })
 		})
 	}
 }
@@ -276,7 +276,7 @@ func replayBudgetReports(t *testing.T, base string) (string, *atomic.Int32) {
 				}
 			}
 		}
-		if response.StatusCode == http.StatusOK && paid {
+		if response.StatusCode == http.StatusOK && paid && replays.CompareAndSwap(0, -1) {
 			replay := r.Clone(r.Context())
 			replay.Body = io.NopCloser(bytes.NewReader(body))
 			duplicate, err := http.DefaultTransport.RoundTrip(replay)
@@ -288,7 +288,7 @@ func replayBudgetReports(t *testing.T, base string) (string, *atomic.Int32) {
 				if duplicate.StatusCode != http.StatusOK {
 					t.Errorf("replay paid report status=%d", duplicate.StatusCode)
 				} else {
-					replays.Add(1)
+					replays.Store(1)
 				}
 			}
 		}
