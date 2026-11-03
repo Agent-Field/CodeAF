@@ -256,7 +256,7 @@ func LatestBrief(it Item) BriefVersion {
 func BriefStub(it Item) BriefVersion {
 	done, total := briefProgress(it)
 	return BriefVersion{
-		Stub: true, Issue: it.Title, Verdict: it.Title, StepsDone: done, StepsTotal: total,
+		Stub: true, Issue: it.Title, Verdict: briefStubVerdict(it), StepsDone: done, StepsTotal: total,
 		Facts: BriefFacts(it), Blocks: []BriefBlock{}, ChangedKeys: []string{},
 	}
 }

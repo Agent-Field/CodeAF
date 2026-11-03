@@ -61,7 +61,7 @@ func (h *Handler) beginBrief(w http.ResponseWriter, r *http.Request, it factory.
 		in := factory.BriefInputOf(*cur)
 		out.Hash = factory.BriefInputHash(in)
 		if out.Skip = cur.BeginBrief(body.Trigger, out.Hash, h.clock()); out.Skip == "" {
-			out.System, out.Input = factory.BriefSystem(), factory.BriefInputText(in)
+			out.System, out.Input = factory.BriefPrompt(*cur, in)
 		}
 		return nil
 	})

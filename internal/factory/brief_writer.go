@@ -348,6 +348,9 @@ func BriefBeginSkip(it Item, trigger, hash string, now time.Time) string {
 	if w := it.BriefWriting; w != nil && w.State == BriefGenerating && now.Sub(w.At) < briefWritingStale {
 		return BriefSkipWriting
 	}
+	if briefBeforeWork(it) && briefIssueThin(it) {
+		return BriefSkipThin
+	}
 	if trigger == BriefTriggerRetry {
 		return ""
 	}
@@ -377,14 +380,16 @@ func briefLastHash(it Item) string {
 // BriefCostAllowed is the cost guard for a write no one asked for: the last
 // version cost at most [BriefVersionCostMost], and one more like it keeps
 // the brief's spend within [BriefSpendShare] of the job's. The first version
-// is always allowed, since nothing is known of its cost.
+// after work is always allowed, since nothing is known of its cost: a read
+// before work is a person's asking, and is no share of work not yet paid for.
 func BriefCostAllowed(it Item) bool {
-	n := len(it.Briefs)
-	if n == 0 {
-		return true
+	spent, last, n := 0.0, 0.0, 0
+	for _, v := range it.Briefs {
+		if v.AfterStep != "" {
+			spent, last, n = spent+v.CostUSD, v.CostUSD, n+1
+		}
 	}
-	last := it.Briefs[n-1].CostUSD
-	return last <= BriefVersionCostMost && BriefSpent(it)+last <= BriefSpendShare*JobSpent(it)
+	return n == 0 || (last <= BriefVersionCostMost && spent+last <= BriefSpendShare*JobSpent(it))
 }
 
 // BriefDraft is the writer's answer: the words, the blocks it picked and the
@@ -464,6 +469,9 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 		}
 	}
 	numberSpots(v.Blocks)
+	if fault := briefRepeatsFault(v, it); fault != "" {
+		return BriefVersion{}, drops, fault
+	}
 	return v, drops, ""
 }
 
@@ -508,11 +516,13 @@ var briefEvidenceKinds = map[string]func(e briefEvidence, ref BriefEvidence) ([]
 	"file":          fileNumbers,
 	"change":        changeNumbers,
 	"hunk":          hunkNumbers,
+	// The read before work's only kind, which its own prompt names.
+	briefIssueEvidence: issueNumbers,
 }
 
 const briefEvidencePR = "pr"
 
-// BriefEvidenceKinds is every kind of evidence a claim may name.
+// BriefEvidenceKinds is every kind of evidence a claim after work may name.
 var BriefEvidenceKinds = []string{"tests", "exit", "findings", "claims", "output", "summary", "rule_checks", "file", "change", "hunk", briefEvidencePR}
 
 func prNumbers(e briefEvidence, _ BriefEvidence) ([]int, bool) {

@@ -104,6 +104,50 @@ func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 }
 
 // A BURST OF NEWS IS ONE WRITE, of the burst's strongest trigger.
+func TestAppFactoryJobBriefWriteBeforeWork(t *testing.T) {
+	s := newLocalSetup(t)
+	draft := `{"verdict":"Make a resend after a crash harmless","verdict_evidence":[{"kind":"issue","ref":"the first send landed"}],"blocks":[{"kind":"bullets","heading":"Risky part","bullets":[{"text":"Delivery state must survive a crash","evidence":[{"kind":"issue","ref":"worker restarts"}]}]}]}`
+	door := &briefDoor{fakeConversation: &fakeConversation{}, answer: session.ErrandAnswer{Text: draft, Model: "deepseek/deepseek-v4.1-flash", Usage: session.ErrandUsage{CostUSD: 0.002}}}
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: door, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	}
+	st := s.start()
+	if !strings.Contains(s.hello, appwire.FeatureFactoryJobBriefFirstRead) {
+		t.Fatalf("hello does not announce %s", appwire.FeatureFactoryJobBriefFirstRead)
+	}
+	floor := s.backend.local.host.floor
+	asks := func() int {
+		door.mu.Lock()
+		defer door.mu.Unlock()
+		return len(door.asks)
+	}
+	thin, err := floor.Create(factory.Item{Repo: "acme/api", Num: 6, Title: "it doesn't work", Body: "It broke again.", Kind: factory.KindIssue, State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got appwire.FactoryJobBriefWritten
+	s.must("factory.job_brief_write", map[string]any{"factory": st.Factory, "job": thin.ID}, &got)
+	if got.Skip != factory.BriefSkipThin || got.Kept || asks() != 0 || got.Current.Brief.Verdict != factory.BriefThinVerdict {
+		t.Fatalf("a thin issue was written or called: %+v, %d asks", got, asks())
+	}
+
+	body := "When a worker restarts mid-send, the retry loop sends the message again although the first send landed."
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Retries double-send", Body: body, Kind: factory.KindIssue, State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.must("factory.job_brief_write", map[string]any{"factory": st.Factory, "job": it.ID}, &got)
+	if !got.Kept || got.Current.Brief.Rev != 1 || got.Current.Brief.AfterStep != "" || len(got.Current.Brief.Blocks) != 1 {
+		t.Fatalf("the read was not kept: %+v", got)
+	}
+	door.mu.Lock()
+	ask := door.asks[len(door.asks)-1]
+	door.mu.Unlock()
+	if ask.Purpose != briefPurpose || ask.System != factory.BriefFirstReadSystem() || strings.Contains(ask.Messages[0].Text, `"steps"`) {
+		t.Fatalf("asked %+v", ask)
+	}
+}
+
 func TestBriefDebounceTakesABurstAsOne(t *testing.T) {
 	fired := make(chan string, 4)
 	d := newBriefDebounce(5*time.Millisecond, func(job int, trigger string) { fired <- trigger })
