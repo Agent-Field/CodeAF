@@ -198,6 +198,9 @@ func FromItem(it factory.Item) Job {
 		j.Step = &StepAt{Index: st.Cur, Count: len(st.Phases)}
 		if st.Cur >= 0 && st.Cur < len(st.Phases) {
 			j.Step.Name = st.Phases[st.Cur].Name
+			if i := factory.StageIndex(it.Stages, j.Step.Name); i >= 0 {
+				j.Step.Label = strings.TrimSpace(it.Stages[i].Label)
+			}
 		}
 	}
 	j.NeedsYou = needsYou(it)
@@ -738,12 +741,12 @@ func toRecipe(p Pipeline) factory.Recipe {
 }
 
 func fromStage(s factory.Stage) StepDef {
-	return StepDef{Name: s.Name, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
+	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
 		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
 }
 
 func toStage(d StepDef) factory.Stage {
-	return factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
+	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
 		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
 }
 
@@ -1230,7 +1233,7 @@ func strip(jobs []Job) []Cell {
 		if !ok {
 			i = len(out)
 			at[j.Step.Name] = i
-			out = append(out, Cell{Step: j.Step.Name})
+			out = append(out, Cell{Step: j.Step.Name, Label: j.Step.Label})
 		}
 		out[i].Jobs++
 		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateProof
