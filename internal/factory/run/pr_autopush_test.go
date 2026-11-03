@@ -17,7 +17,7 @@ func TestFollowPRVerifiesThenWaitsForServiceRecordedUpdate(t *testing.T) {
 	pr := factory.PullRequest{Number: 7, URL: "https://github.com/acme/api/pull/7", State: factory.PROpen, Draft: true, HeadSHA: head, ChecksRead: true, Checks: factory.PRChecks{Failed: 1}}
 	g.r.opts.Source = func(string) factory.Source { return ciPublishSource{g.src, pr} }
 	pushed := 0
-	g.r.opts.Push = func(string, string) error { pushed++; return nil }
+	g.r.opts.Push = func(string, string, ...func() error) error { pushed++; return nil }
 	g.r.opts.Exec = map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(_ context.Context, j Job) (factory.StageResult, error) {
 		// A dependency manifest was not in the original issue's changed files.
 		if err := os.WriteFile(filepath.Join(g.dir, "go.mod"), []byte("module example\n// updated dependency\n"), 0600); err != nil {
