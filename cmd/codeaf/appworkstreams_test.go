@@ -1309,3 +1309,30 @@ func TestAppWorkstreamDoneArchiveFailureStillAnnouncesCommit(t *testing.T) {
 		t.Fatal("archive retry duplicated workstream event")
 	}
 }
+
+// A job that ran again keeps its earlier runs' money in the workstream's
+// spend, through the queue read and the missing-job read alike; an older
+// factory that sends no lifetime cost still counts the cost it does send.
+func TestAppWorkstreamSpendKeepsAJobsEarlierRuns(t *testing.T) {
+	b, _, _, _ := workstreamBackend(t)
+	b.workstreams.queue = func(context.Context, string) (api.Queue, error) {
+		return api.Queue{Jobs: []api.Job{
+			{ID: 7, Num: 1107, State: "running", Cost: 0, LifetimeCost: 12},
+			{ID: 8, Num: 1108, State: "backlog", Cost: 1.25},
+		}}, nil
+	}
+	b.workstreams.job = func(_ context.Context, _ string, job int) (api.Job, error) {
+		return api.Job{ID: job, Num: 1109, State: "running", Cost: 0.5, LifetimeCost: 3}, nil
+	}
+	b.workstreams.spend = func(string) *float64 { return workstreamPtr(2) }
+	w := workstreamCreateForTest(t, b, "Reruns", workstreamJobRef("7"), workstreamJobRef("8"), workstreamJobRef("9"))
+	const want = 12 + 1.25 + 3 + 2
+	got, err := b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
+	if err != nil || got.Workstream.SpendUSD == nil || *got.Workstream.SpendUSD != want {
+		t.Fatalf("get spend %+v, %v; want %v", got.Workstream.SpendUSD, err, want)
+	}
+	rows, err := b.WorkstreamList(appwire.WorkstreamListParams{})
+	if err != nil || len(rows.Workstreams) != 1 || rows.Workstreams[0].SpendUSD == nil || *rows.Workstreams[0].SpendUSD != want {
+		t.Fatalf("list spend %+v, %v; want %v", rows, err, want)
+	}
+}

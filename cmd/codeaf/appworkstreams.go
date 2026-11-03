@@ -851,7 +851,11 @@ func (b *appBackend) workstreamFacts(jobs []workstream.Job) map[workstream.Job]w
 		}
 		job := read.job
 		merged := job.PR != nil && job.PR.MergedAt != nil && !job.PR.MergedAt.IsZero()
-		out[j] = workstream.JobFacts{State: job.State, Merged: &merged, CostUSD: &job.Cost}
+		// A job's money is all of its runs: Cost is only the current run once
+		// it has run again, LifetimeCost keeps the earlier ones, and an older
+		// factory that does not send LifetimeCost leaves Cost as the whole.
+		cost := max(job.Cost, job.LifetimeCost)
+		out[j] = workstream.JobFacts{State: job.State, Merged: &merged, CostUSD: &cost}
 	}
 	return out
 }
