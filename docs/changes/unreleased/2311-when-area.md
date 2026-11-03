@@ -55,3 +55,19 @@ The policy requiring every check to pass still holds for a skipped required
 check. The policy requiring at least one green check ignores optional skips:
 a measured pass beside a skip qualifies, while only skips or a failed check do
 not. Compact prior results retain their stage alignment across skipped steps.
+
+
+A skipped check under `tests pass before anything posts` still leaves the job
+waiting for a person, without publishing. Previously its question quoted only
+the policy, hiding which skipped check blocked it. The existing open
+`api.Job.Questions[].Text` and `NeedsYou.Question.Text` now name each skipped
+check and its reason without the ordinary short-result truncation. The worker
+report preserves this question, and the log and policy claim retain the refusal.
+The question names rerun from the earlier work step with matching files, or Stop;
+without an earlier step it names Stop and correction of the pipeline for a new job.
+Approval cannot bypass the policy, and Step edit cannot change the condition of
+an already-run step. The real runner regression demonstrates docs-only waiting,
+no publication or approval bypass, and publication after a person reruns from
+write with matching files and the check passes. Optional skips without this
+policy and skips beside a measured pass under the one-green-check policy do not
+produce a false publishing hold.

@@ -41,6 +41,21 @@ func TestSkippedRequiredCheckExplainsPolicyWaitToClient(t *testing.T) {
 	if len(job.Questions) != 1 || job.Questions[0].State != "open" || !strings.Contains(job.Questions[0].Text, want) {
 		t.Fatalf("client waiting reason missing %q: %+v", want, job.Questions)
 	}
+	server := factory.Item{ID: id, State: factory.StateRunning, Stages: it.Stages, Stream: &factory.Stream{}}
+	report, ok := Diff(server, it)
+	if !ok {
+		t.Fatal("waiting job produced no report")
+	}
+	if err := ApplyReport(&server, report, g.r.now()); err != nil {
+		t.Fatal(err)
+	}
+	served := api.FromItem(server)
+	if len(served.Questions) != 1 || served.Questions[0].Text != want {
+		t.Fatalf("worker report lost waiting reason: %+v", served.Questions)
+	}
+	if len(job.Desk.Policy) != 1 || job.Desk.Policy[0].OK || job.Desk.Policy[0].Evidence != policy[0] {
+		t.Fatalf("client lost policy result: %+v", job.Desk.Policy)
+	}
 	if job.NeedsYou == nil || job.NeedsYou.Question == nil || !strings.Contains(job.NeedsYou.Question.Text, want) {
 		t.Fatalf("Needs you lost waiting reason: %+v", job.NeedsYou)
 	}
@@ -76,5 +91,58 @@ func TestSkippedRequiredCheckExplainsPolicyWaitToClient(t *testing.T) {
 	defer src.mu.Unlock()
 	if len(src.got) != 1 || it.Stream.Phases[1].State != factory.PhaseDone || len(api.FromItem(it).Questions) != 0 {
 		t.Fatalf("rerun did not clear wait and publish: posts=%d job=%+v", len(src.got), api.FromItem(it))
+	}
+}
+
+func TestSkippedOptionalCheckDoesNotClaimAPolicyWait(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		policy []string
+		measured bool
+	}{
+		{name: "no check policy"},
+		{name: "one green check", policy: []string{"no pull request without a green check"}, measured: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := &fakeSource{}
+			g := newRig(t, map[factory.StageKind]Executor{
+				factory.StageCheck: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) {
+					return factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "unit passed", OK: true, Medium: "test"}}}, nil
+				}),
+				factory.StagePost: NewPostExecutor(func(string) factory.Source { return src }, func(string) []string { return tc.policy }),
+			}, nil)
+			stages := []factory.Stage{{Name: "inspect", Kind: factory.StageCheck, When: "touches auth"}}
+			if tc.measured {
+				stages = append(stages, factory.Stage{Name: "unit", Kind: factory.StageCheck})
+			}
+			stages = append(stages, factory.Stage{Name: "post", Kind: factory.StagePost, Ask: "pr"})
+			id := g.add("optional auth check", stages...)
+			if err := g.st.Update(id, func(it *factory.Item) error {
+				it.Change = &factory.Change{Files: []factory.ChangedFile{{Path: "docs/readme.md"}}}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.r.Launch(id); err != nil {
+				t.Fatal(err)
+			}
+			it := g.wait(id, "finished posting", func(it factory.Item) bool {
+				return it.State == factory.StateLanded || it.State == factory.StateShipped
+			})
+			job := api.FromItem(it)
+			if len(job.Questions) != 0 || job.Steps[0].State != "skipped" {
+				t.Fatalf("optional skip falsely waits: %+v", job)
+			}
+			for _, line := range job.Desk.Run.Log {
+				if strings.Contains(line.Text, "Publishing waits:") {
+					t.Fatalf("optional skip falsely states policy wait: %q", line.Text)
+				}
+			}
+			src.mu.Lock()
+			defer src.mu.Unlock()
+			if len(src.got) != 1 {
+				t.Fatalf("optional skip blocked publishing: %d writes", len(src.got))
+			}
+		})
 	}
 }
