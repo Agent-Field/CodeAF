@@ -18,6 +18,7 @@ type WorkstreamDoor interface {
 	Plan(context.Context) (WorkstreamPlanState, error)
 	SetPlan(context.Context, int, WorkstreamPlanState) (WorkstreamPlanState, error)
 	WritePage(context.Context, WorkstreamPageWrite) (WorkstreamPageWritten, error)
+	ProposeSource(context.Context, WorkstreamSourceProposal) (WorkstreamSourceProposed, error)
 }
 
 var ErrWorkstreamMissing = errors.New("No workstream holds this conversation.")
@@ -40,10 +41,11 @@ type WorkstreamBrief struct {
 }
 
 type WorkstreamReadAsk struct {
-	What   string `json:"what"`
-	PageID string `json:"page_id,omitempty"`
-	Kind   string `json:"kind,omitempty"`
-	State  string `json:"state,omitempty"`
+	What     string `json:"what"`
+	PageID   string `json:"page_id,omitempty"`
+	SourceID string `json:"source_id,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	State    string `json:"state,omitempty"`
 }
 
 type WorkstreamProposal struct {

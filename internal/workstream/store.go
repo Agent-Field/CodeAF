@@ -262,6 +262,20 @@ func (s *Store) Create(ctx context.Context, p Create) (Workstream, Change, error
 	if !textWithin(p.Why, 4000) || !lineWithin(p.ClientID, 128) || len(p.Refs) > 200 {
 		return Workstream{}, Change{}, invalid("create exceeds workstream bounds")
 	}
+	// A retry does not insert sources, so their paths need no revalidation.
+	if p.ClientID != "" {
+		w, err := s.ByClientID(ctx, p.ClientID)
+		if err == nil {
+			return w, Change{}, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return Workstream{}, Change{}, err
+		}
+	}
+	sources, err := prepareCreateSources(p.Sources)
+	if err != nil {
+		return Workstream{}, Change{}, err
+	}
 	refs := append([]workspace.Ref(nil), p.Refs...)
 	refs = append(refs, workspace.Ref{Kind: workspace.ConversationKind, ID: p.AgentID})
 	if p.OriginChatID != "" {
@@ -276,7 +290,7 @@ func (s *Store) Create(ctx context.Context, p Create) (Workstream, Change, error
 	}
 	var out Workstream
 	var c Change
-	err := s.workspace.Write(ctx, func(tx *sql.Tx) error {
+	err = s.workspace.Write(ctx, func(tx *sql.Tx) error {
 		if p.ClientID != "" {
 			var id string
 			err := tx.QueryRowContext(ctx, "SELECT id FROM workstreams WHERE client_id=?", p.ClientID).Scan(&id)
@@ -312,8 +326,16 @@ func (s *Store) Create(ctx context.Context, p Create) (Workstream, Change, error
 		if err := saveVersion(ctx, tx, pageID); err != nil {
 			return err
 		}
+		for _, source := range sources {
+			if _, _, _, err := s.addSourceIn(ctx, tx, id, source, false, ""); err != nil {
+				return err
+			}
+		}
 		out, err = getIn(ctx, tx, id)
 		c = Change{ID: id, Parts: []ChangedPart{PartWorkstream, PartPages, PartJobs}}
+		if len(sources) > 0 {
+			c.Parts = append(c.Parts, PartSources)
+		}
 		return err
 	})
 	if err != nil {

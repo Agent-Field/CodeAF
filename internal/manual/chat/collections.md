@@ -176,9 +176,9 @@ settings do not themselves start work.
 
 ## What a workstream's agent can do: proposals and its own pages
 
-A workstream's own agent in the app has six tools. Other conversations, tasks
+A workstream's own agent in the app has seven tools. Other conversations, tasks
 and errands do not receive them. `workstream_read` reads the workstream, pages,
-decisions, questions, go-ahead proposals, plan and grants. Counts, costs, states and dates come
+decisions, questions, go-ahead proposals, plan, grants and sources. Counts, costs, states and dates come
 from records. An absent number is unknown; the agent must say so and never
 estimate it. Page live blocks such as `[live: jobs]` show current facts.
 
@@ -275,3 +275,57 @@ with one turn at a time. A running wake left over 15 minutes becomes failed on
 the next check or list: “Stopped before it finished.” Its cost is unknown.
 An unreadable answer says “The agent's answer could not be read.” Any recorded
 cost still counts toward spend.
+
+## Workstream sources: files, repos, issues, links and kept work
+
+The app's workstream Sources are pointers kept with `source.add` and returned
+oldest first by `source.list`. Five kinds are available: a file or folder on
+this computer; a repo named `owner/name` or a local folder; an issue with its
+repo and number; an HTTP(S) link; or a kept record, page, message or member
+Factory job. They are separate from collection members and canvases. Removing
+a source with `source.remove` removes only its pointer and leaves its target
+intact. The engine does not copy or index source contents.
+
+File paths must exist, be absolute and already clean, with no control
+characters, dot segments, doubled separators or trailing separator. Local
+repos must be folders. Source strings must be valid UTF-8. Paths take at most
+4,096 bytes; links at most 2,048 both as sent and after URL normalization,
+with a host and no whitespace or credentials. Titles take 1–200 bytes of
+trimmed text on one line; absent titles are derived from the target. Issue
+numbers run from 1 to 2,147,483,647. Kept reference IDs take 1–128 bytes.
+Kept records and live pages must belong to the workstream; a kept job must
+be a member. A missing file or local repo gets `gone: true` when listed.
+
+`workstream.create` accepts up to 200 initial sources, excluding kept work.
+All are checked before creation, and a refusal creates no agent or collection.
+Repeating a client ID returns its first workstream without rechecking source
+paths, even if a file has since disappeared. Duplicate targets keep one source.
+Sources never add text to the workstream's
+why. A workstream holds at most 2,000 sources, proposals included; the next
+addition returns `too_large`. Done workstreams permit listing but refuse
+adding, updating and removing until reopened.
+
+## Agent source proposals, Read by jobs and reading content
+
+`propose_source` asks the person to keep or drop a source, with a reason of
+1–500 bytes. A proposal is marked `added_by: agent`, `proposed: true` and
+`read_by_jobs: false`. `source.update` with `keep: true` keeps it; removing it
+drops it. Keeping preserves the reason and author. Adding the same proposed
+target as the person also keeps it. Repeating an existing target adds nothing.
+
+`source.update` changes the title or Read by jobs, or keeps a proposal. At
+least one field is required. `keep: false` is refused, and enabling Read by
+jobs on a proposal requires keeping it in the same request. A change that
+alters nothing sends no event. Jobs must exclude proposals; consuming the
+Read by jobs selection is the Factory plan step's responsibility.
+
+The workstream agent reads the list with `workstream_read` (`what: sources`)
+as complete JSON, up to the 2,000-source limit. It reads one source with
+`what: source` and `source_id`. A regular UTF-8 text file is read within the
+existing 60,000-byte answer cap, with “The file was cut.”
+when cut. Binary or unreadable files get a one-line explanation. A link in the
+final path component answers “The source is a link and was not read.” Links in
+intermediate folders remain usable. Folders list up to 200 entry names without
+following entries. Kept pages render as Markdown and records as
+text; named repos, issues, links, messages and jobs remain pointers. Reading
+never writes the target. These tools remain scoped to the workstream's agent.

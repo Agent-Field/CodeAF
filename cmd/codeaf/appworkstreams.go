@@ -331,6 +331,14 @@ func (b *appBackend) WorkstreamCreate(p appwire.WorkstreamCreateParams) (appwire
 }
 
 func (b *appBackend) workstreamCreatePreflight(p appwire.WorkstreamCreateParams) error {
+	// Source paths can disappear after creation, so check them only for a new client.
+	sources := make([]workstream.SourceAdd, 0, len(p.Sources))
+	for _, source := range p.Sources {
+		sources = append(sources, source.SourceAdd())
+	}
+	if err := workstream.ValidateCreateSources(sources); err != nil {
+		return appWorkstreamError(err)
+	}
 	if p.OriginChatID != nil {
 		if _, err := b.find(*p.OriginChatID); err != nil {
 			return err
@@ -361,7 +369,11 @@ func (b *appBackend) workstreamCreateWithAgent(p appwire.WorkstreamCreateParams,
 	store, err := b.collectionStore(true)
 	if err == nil {
 		s := workstream.New(store, workstream.Options{Now: b.now})
-		w, change, err = s.Create(context.Background(), workstream.Create{Name: strings.TrimSpace(p.Name), Why: workstreamValue(p.Why), OriginChatID: workstreamValue(p.OriginChatID), Refs: refs, AgentID: agent.ID, ClientID: workstreamValue(p.ClientID)})
+		sources := make([]workstream.SourceAdd, 0, len(p.Sources))
+		for _, source := range p.Sources {
+			sources = append(sources, source.SourceAdd())
+		}
+		w, change, err = s.Create(context.Background(), workstream.Create{Name: strings.TrimSpace(p.Name), Why: workstreamValue(p.Why), OriginChatID: workstreamValue(p.OriginChatID), Refs: refs, AgentID: agent.ID, ClientID: workstreamValue(p.ClientID), Sources: sources})
 	}
 	if err != nil || w.AgentID != agent.ID {
 		if cleanup := b.workstreamCloseUnusedAgent(agent.ID, err); cleanup != nil {

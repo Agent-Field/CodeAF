@@ -24,7 +24,8 @@ const workstreamPromptRules = "\n- You propose; the person keeps. Decisions, que
 	"- You write only your own pages, with write_agent_page. The person's pages are theirs; you do not change them.\n" +
 	"- Keep your page titled \"" + WorkstreamWhereItStandsTitle + "\" current with write_agent_page, saying what it was updated from.\n" +
 	"- You never invent numbers. Counts, costs, states and dates come from workstream_read; on a page, use a live block such as [live: jobs] instead of writing a number.\n" +
-	"- Keeping a go-ahead proposal grants it. You start nothing; the person launches jobs."
+	"- Keeping a go-ahead proposal grants it. You start nothing; the person launches jobs.\n" +
+	"- Sources: workstream_read (sources, source) reads; propose_source proposes. The person keeps them."
 
 func (c Config) mayWorkstream() bool {
 	return c.Workstream != nil && !c.readingTask() && !c.InTask && !c.Errand
@@ -76,6 +77,7 @@ func (a *Agent) workstreamToolsAt(now func() time.Time) []bare.Tool {
 		}),
 		workstreamRecordTool(door, "decision"),
 		workstreamRecordTool(door, "question"),
+		workstreamSourceTool(door),
 		workstreamTool("propose_jobs", "Append draft jobs to the plan. Nothing is created in the Factory or started; the person launches drafts.", workstreamJobsSchema, func(ctx context.Context, ask workstreamJobsAsk) (string, error) {
 			return workstreamProposeJobs(ctx, door, ask)
 		}),
@@ -126,6 +128,10 @@ func workstreamFieldRules(fields map[string]any, ask any) error {
 	case WorkstreamReadAsk:
 		if page != (ask.What == "page") {
 			return errors.New("page_id is required for and only for page")
+		}
+		_, source := fields["source_id"]
+		if source != (ask.What == "source") || source && strings.TrimSpace(ask.SourceID) == "" {
+			return errors.New("source_id is required for and only for source")
 		}
 		if ask.What != "records" {
 			return workstreamRefuseFields(fields, "kind", "state")
@@ -207,7 +213,8 @@ func workstreamRead(ctx context.Context, door WorkstreamDoor, ask WorkstreamRead
 	if ask.What == "workstream" {
 		text = "Numbers absent below are unknown; say so and never estimate them.\n" + text
 	}
-	if len(text) > workstreamReadMax {
+	// Source inventories have a row bound and must remain complete JSON.
+	if len(text) > workstreamReadMax && ask.What != "sources" {
 		const tail = "\nThe workstream read was cut."
 		text = workstreamCut(text, workstreamReadMax-len(tail)) + tail
 	}

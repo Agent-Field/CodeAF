@@ -40,6 +40,7 @@ const (
 	PartRecords    ChangedPart = "records"
 	PartGoAheads   ChangedPart = "goaheads"
 	PartJobs       ChangedPart = "jobs"
+	PartSources    ChangedPart = "sources"
 )
 
 // Change is empty for an unchanged write. Adapters emit it only after success.
@@ -85,6 +86,7 @@ type Create struct {
 	AgentID      string
 	ClientID     string
 	Refs         []workspace.Ref
+	Sources      []SourceAdd
 }
 type Patch struct {
 	Name, Why, Autonomy *string

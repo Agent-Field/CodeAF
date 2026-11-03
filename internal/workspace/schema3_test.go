@@ -74,8 +74,8 @@ func TestPartASchemaTwoReadsWithoutWritingAndMigratesAllRows(t *testing.T) {
 	if err := s.Rename(ctx, "aaaa", "Products"); err != nil {
 		t.Fatal(err)
 	}
-	if userVersion(t, s) != 4 {
-		t.Fatal("first write did not migrate to 4")
+	if userVersion(t, s) != schemaVersion {
+		t.Fatal("first write did not migrate to the current schema")
 	}
 	gotC, gotM := legacyRows(t, s.db)
 	wantC[0] = strings.Replace(wantC[0], "Product|", "Products|", 1)
@@ -124,7 +124,7 @@ func TestPartASchemaTwoReadsWithoutWritingAndMigratesAllRows(t *testing.T) {
 	if !reflect.DeepEqual(memberTimes, [][2]int64{{2, 4567}, {6, 5678}, {11, 6789}}) {
 		t.Fatalf("membership times changed: %+v", memberTimes)
 	}
-	for _, name := range []string{"workstreams", "workstream_jobs", "workstream_pages", "workstream_page_versions", "workstream_records", "workstream_goaheads", "workstream_plans"} {
+	for _, name := range []string{"workstreams", "workstream_jobs", "workstream_pages", "workstream_page_versions", "workstream_records", "workstream_goaheads", "workstream_plans", "workstream_wakes", "workstream_wake_items", "workstream_sources"} {
 		var n int
 		if err := s.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", name).Scan(&n); err != nil || n != 1 {
 			t.Fatalf("missing %s: %v", name, err)
@@ -309,7 +309,7 @@ func TestStabEB1AnOlderWriterCannotDeleteAWorkstream(t *testing.T) {
 	older := workstreamSchemaTwoWriter(t, path)
 	s := openTestStore(t, path)
 	seedWorkstream(t, s, "protected", "Protected")
-	if userVersion(t, s) != 4 {
+	if userVersion(t, s) != schemaVersion {
 		t.Fatal("workstream creation did not migrate schema 2")
 	}
 	// The domain store imports workspace, so this fixture uses its shared SQL

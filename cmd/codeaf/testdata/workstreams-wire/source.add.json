@@ -1,0 +1,59 @@
+{
+  "method": "source.add",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "conflict",
+    "too_large",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamSourceAddParams",
+  "result_type": "WorkstreamSourceAddResult",
+  "examples": {
+    "params": [
+      {
+        "workstream_id": "ws_8f2c1a",
+        "kind": "file",
+        "path": "/Users/ada/billing/usage-pricing.md",
+        "read_by_jobs": true
+      },
+      {
+        "workstream_id": "ws_8f2c1a",
+        "kind": "link",
+        "url": "HTTPS://Docs.Stripe.com/billing/subscriptions/usage-based",
+        "title": "Usage-based billing guide"
+      }
+    ],
+    "result": [
+      {
+        "source": {
+          "id": "src_2b71",
+          "workstream_id": "ws_8f2c1a",
+          "kind": "file",
+          "title": "usage-pricing.md",
+          "path": "/Users/ada/billing/usage-pricing.md",
+          "read_by_jobs": true,
+          "proposed": false,
+          "added_by": "you",
+          "added_at": "2026-11-02T14:05:00Z"
+        },
+        "already": false
+      },
+      {
+        "source": {
+          "id": "src_2b75",
+          "workstream_id": "ws_8f2c1a",
+          "kind": "link",
+          "title": "Usage-based billing guide",
+          "url": "https://docs.stripe.com/billing/subscriptions/usage-based",
+          "read_by_jobs": false,
+          "proposed": false,
+          "added_by": "you",
+          "added_at": "2026-11-02T14:40:00Z"
+        },
+        "already": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "method": "source.list",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamSourceListParams",
+  "result_type": "WorkstreamSourceListResult",
+  "examples": {
+    "params": [
+      {
+        "workstream_id": "ws_8f2c1a"
+      }
+    ],
+    "result": [
+      {
+        "sources": [
+          {
+            "id": "src_2b71",
+            "workstream_id": "ws_8f2c1a",
+            "kind": "file",
+            "title": "usage-pricing.md",
+            "path": "/Users/ada/billing/usage-pricing.md",
+            "read_by_jobs": true,
+            "proposed": false,
+            "added_by": "you",
+            "added_at": "2026-11-02T14:05:00Z"
+          },
+          {
+            "id": "src_2b72",
+            "workstream_id": "ws_8f2c1a",
+            "kind": "issue",
+            "title": "acme/billing#412",
+            "repo": "acme/billing",
+            "number": 412,
+            "read_by_jobs": true,
+            "proposed": false,
+            "added_by": "you",
+            "added_at": "2026-11-02T14:06:00Z"
+          },
+          {
+            "id": "src_2b73",
+            "workstream_id": "ws_8f2c1a",
+            "kind": "kept",
+            "title": "Show the recorded usage.",
+            "ref": {
+              "kind": "record",
+              "id": "rec_7a1e"
+            },
+            "read_by_jobs": false,
+            "proposed": false,
+            "added_by": "you",
+            "added_at": "2026-11-02T14:20:00Z"
+          },
+          {
+            "id": "src_2b74",
+            "workstream_id": "ws_8f2c1a",
+            "kind": "link",
+            "title": "docs.stripe.com/billing/subscriptions/usage-based",
+            "url": "https://docs.stripe.com/billing/subscriptions/usage-based",
+            "read_by_jobs": false,
+            "proposed": true,
+            "why": "The metering rules the plan follows.",
+            "added_by": "agent",
+            "added_at": "2026-11-02T14:30:00Z"
+          }
+        ]
+      }
+    ]
+  }
+}

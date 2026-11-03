@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	FeatureWorkstreams     = "workstreams"
-	EventWorkstreamChanged = "workstream.changed"
-	CodeInOtherWorkstream  = "in_other_workstream"
-	CodeVersionConflict    = "version_conflict"
+	FeatureWorkstreams       = "workstreams"
+	FeatureWorkstreamSources = "workstream_sources"
+	EventWorkstreamChanged   = "workstream.changed"
+	CodeInOtherWorkstream    = "in_other_workstream"
+	CodeVersionConflict      = "version_conflict"
 )
 
 // ErrWorkstreamsNotYet is the capability refusal for a shapes-only engine.
@@ -49,6 +50,10 @@ var WorkstreamMethods = []string{
 	"wake.apply",
 	"wake.undo",
 	"wake.not_now",
+	"source.list",
+	"source.add",
+	"source.update",
+	"source.remove",
 }
 
 // Optional numbers and booleans use pointers so known zero and false survive.
@@ -229,7 +234,7 @@ type WorkstreamGoAhead struct {
 
 type WorkstreamChanged struct {
 	ID    string   `json:"id"`
-	Parts []string `json:"parts,omitempty" enum:"workstream,plan,pages,records,goaheads,jobs,wakes"`
+	Parts []string `json:"parts,omitempty" enum:"workstream,plan,pages,records,goaheads,jobs,wakes,sources"`
 }
 
 type WorkstreamTaken struct {
@@ -269,12 +274,13 @@ type WorkstreamGetResult struct {
 }
 
 type WorkstreamCreateParams struct {
-	Name         string          `json:"name"`
-	Why          *string         `json:"why,omitempty"`
-	OriginChatID *string         `json:"origin_chat_id,omitempty"`
-	Refs         []WorkstreamRef `json:"refs,omitempty"`
-	Model        *string         `json:"model,omitempty"`
-	ClientID     *string         `json:"client_id,omitempty"`
+	Name         string                `json:"name"`
+	Why          *string               `json:"why,omitempty"`
+	OriginChatID *string               `json:"origin_chat_id,omitempty"`
+	Refs         []WorkstreamRef       `json:"refs,omitempty"`
+	Model        *string               `json:"model,omitempty"`
+	ClientID     *string               `json:"client_id,omitempty"`
+	Sources      []WorkstreamSourceAdd `json:"sources,omitempty"`
 }
 
 type WorkstreamCreateResult struct {
@@ -605,6 +611,10 @@ type Workstreamer interface {
 	WorkstreamWakeApply(WorkstreamWakeApplyParams) (WorkstreamWakeApplyResult, error)
 	WorkstreamWakeUndo(WorkstreamWakeUndoParams) (WorkstreamWakeUndoResult, error)
 	WorkstreamWakeNotNow(WorkstreamWakeNotNowParams) (WorkstreamWakeNotNowResult, error)
+	WorkstreamSourceList(WorkstreamSourceListParams) (WorkstreamSourceListResult, error)
+	WorkstreamSourceAdd(WorkstreamSourceAddParams) (WorkstreamSourceAddResult, error)
+	WorkstreamSourceUpdate(WorkstreamSourceUpdateParams) (WorkstreamSourceUpdateResult, error)
+	WorkstreamSourceRemove(WorkstreamSourceRemoveParams) (WorkstreamSourceRemoveResult, error)
 }
 
 // workstreamCall preserves the params/result types used by the schema generator.
@@ -666,12 +676,16 @@ func init() {
 	methods["wake.apply"] = workstreamCall(Workstreamer.WorkstreamWakeApply)
 	methods["wake.undo"] = workstreamCall(Workstreamer.WorkstreamWakeUndo)
 	methods["wake.not_now"] = workstreamCall(Workstreamer.WorkstreamWakeNotNow)
+	methods["source.list"] = workstreamCall(Workstreamer.WorkstreamSourceList)
+	methods["source.add"] = workstreamCall(Workstreamer.WorkstreamSourceAdd)
+	methods["source.update"] = workstreamCall(Workstreamer.WorkstreamSourceUpdate)
+	methods["source.remove"] = workstreamCall(Workstreamer.WorkstreamSourceRemove)
 	eventShapes[EventWorkstreamChanged] = reflect.TypeFor[WorkstreamChanged]()
 }
 
 func withWorkstreamsFeature(hello Hello, e Engine) Hello {
 	if w, ok := e.(Workstreamer); ok && w.ServesWorkstreams() {
-		return withFeature(hello, FeatureWorkstreams)
+		return withFeature(withFeature(hello, FeatureWorkstreams), FeatureWorkstreamSources)
 	}
 	return hello
 }

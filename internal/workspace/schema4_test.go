@@ -12,9 +12,10 @@ import (
 
 func workstreamSchemaThreeFixture(t *testing.T, s *Store) {
 	t.Helper()
-	if _, err := s.db.Exec("DROP TABLE workstream_wake_items; DROP TABLE workstream_wakes; PRAGMA user_version=3"); err != nil {
+	if _, err := s.db.Exec("DROP TABLE workstream_sources; DROP TABLE workstream_wake_items; DROP TABLE workstream_wakes; PRAGMA user_version=3"); err != nil {
 		t.Fatal(err)
 	}
+	s.version = 3
 }
 
 func TestWakeI_SchemaThreeMigratesAdditively(t *testing.T) {
@@ -61,7 +62,7 @@ func TestWakeI_SchemaThreeMigratesAdditively(t *testing.T) {
 	if err := s.Write(context.Background(), func(*sql.Tx) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if userVersion(t, s) != 4 || !reflect.DeepEqual(snapshot(), before) {
+	if userVersion(t, s) != 5 || !reflect.DeepEqual(snapshot(), before) {
 		t.Fatal("migration lost existing rows")
 	}
 	var count int
@@ -74,7 +75,7 @@ func TestWakeI_NewerSchemaIsRefusedWithoutWriting(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "future.db")
 	s := openTestStore(t, path)
 	createTestCollection(t, s, "Future")
-	if _, err := s.db.Exec("PRAGMA user_version=5"); err != nil {
+	if _, err := s.db.Exec("PRAGMA user_version=6"); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -86,7 +87,7 @@ func TestWakeI_NewerSchemaIsRefusedWithoutWriting(t *testing.T) {
 	if opened != nil {
 		opened.Close()
 	}
-	if err == nil || !strings.Contains(err.Error(), "version 5") {
+	if err == nil || !strings.Contains(err.Error(), "version 6") {
 		t.Fatalf("newer schema: %v", err)
 	}
 	after, err := os.ReadFile(path)

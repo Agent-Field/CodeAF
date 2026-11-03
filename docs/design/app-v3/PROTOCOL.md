@@ -1225,6 +1225,20 @@ role pins and checked as the other pins are.
 |---|---|---|
 | `slash.catalog` | `{}` | `SlashCatalogResult` |
 
+## source methods
+
+| method | params | result |
+|---|---|---|
+| `source.add` | `in.WorkstreamSourceAddParams` | `WorkstreamSourceAddResult` |
+| `source.list` | `in.WorkstreamSourceListParams` | `WorkstreamSourceListResult` |
+| `source.remove` | `in.WorkstreamSourceRemoveParams` | `WorkstreamSourceRemoveResult` |
+| `source.update` | `in.WorkstreamSourceUpdateParams` | `WorkstreamSourceUpdateResult` |
+
+A workstream's sources: files, repos, issues, links and things kept from its work. Each is a
+pointer in its own table, never a collection member; removing one never touches what it names.
+The engine's workstream agent only proposes sources; the person keeps or drops them. Served with
+the hello feature `workstream_sources`.
+
 
 ## One engine on a home
 
