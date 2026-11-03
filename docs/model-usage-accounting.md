@@ -70,7 +70,9 @@ GROUP BY day ORDER BY day
 
 A failed stream with measured interim usage must not suppress reconciliation
 unless a billing sink actually consumed it. The existing receipt sink receives
-one final receipt, or falls back to measured interim usage if recovery fails.
+one final receipt, or falls back to measured interim usage if recovery fails or
+the receipt has no price. An explicitly supplied receipt price, including zero,
+still wins over measured interim spend.
 The fallback is marked interim and retains provider price provenance; it is not
 a token estimate or a final billing claim. Direct services retain measured usage
 without attempting a routed generation lookup. Calls without either source stay

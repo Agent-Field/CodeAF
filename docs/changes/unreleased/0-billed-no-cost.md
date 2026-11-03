@@ -9,7 +9,8 @@ invalidates:
 ---
 
 Cancellation, stream errors and timeouts can occur after billable work. A recovered
-provider receipt supplies the final charge; otherwise measured interim usage is
+provider receipt with a price supplies the final charge, including an explicit
+zero. A token-only receipt cannot erase measured money; otherwise measured interim usage is
 retained once. Without usage or a retrievable receipt the price remains unknown;
 observed text estimates are telemetry only and are never invented spend.
 

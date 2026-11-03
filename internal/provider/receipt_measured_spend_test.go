@@ -15,10 +15,14 @@ import (
 // The public completion and reconciliation doors must retain paid partial work.
 func TestTokenOnlyReceiptKeepsMeasuredSpend(t *testing.T) {
 	for _, tc := range []struct {
-		name                                                  string
+		name                                               string
 		usage, noID, noReceipt, direct, final, tokenOnly, raw bool
+		price                                              string
+		wantCost                                           float64
 	}{
 		{name: "token-only-receipt", usage: true},
+		{name: "priced-receipt", usage: true, price: `,"total_cost":0.12`, wantCost: 0.12},
+		{name: "explicit-zero-receipt", usage: true, price: `,"total_cost":0`, wantCost: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			read := loggingTo(t)
@@ -30,7 +34,7 @@ func TestTokenOnlyReceiptKeepsMeasuredSpend(t *testing.T) {
 						w.WriteHeader(404)
 						return
 					}
-					fmt.Fprint(w, `{"data":{"tokens_prompt":11,"tokens_completion":3}}`)
+					fmt.Fprintf(w, `{"data":{"tokens_prompt":11,"tokens_completion":3%s}}`, tc.price)
 					return
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
@@ -87,6 +91,9 @@ func TestTokenOnlyReceiptKeepsMeasuredSpend(t *testing.T) {
 			case r := <-results:
 				wantFound := tc.usage || !tc.noReceipt
 				wantCost := 0.07
+				if tc.price != "" {
+					wantCost = tc.wantCost
+				}
 				if !wantFound || tc.tokenOnly {
 					wantCost = 0
 				}

@@ -218,7 +218,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		original := sink
 		usage := *response.Usage
 		sink = func(answer Reconciled) {
-			if !answer.Found {
+			if !answer.Found || (answer.PriceMissing && usage.Cost != nil) {
 				answer.PromptTokens = usage.PromptTokens
 				answer.CompletionTokens = usage.CompletionTokens
 				answer.CachedTokens = usage.CacheReadTokens()
@@ -391,6 +391,7 @@ func (c *Client) reconcile(work receiptWork) {
 			billed.Billing = result.Billing
 			result.Billed = billed
 			result.Found = true
+			result.PriceMissing = read.financial.State != FinancialKnown
 			work.sink(result)
 			return
 		}
