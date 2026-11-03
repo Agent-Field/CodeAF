@@ -107,6 +107,9 @@ type loopCtl struct {
 	// step; askMu keeps one question at a time.
 	wmu   sync.Mutex
 	askMu sync.Mutex
+	// pauseMu keeps pause writes and paid round admission in order without
+	// taking floorLoop.mu inside a store callback.
+	pauseMu sync.Mutex
 	// reverify says the control runs the checks again, holding no bench.
 	reverify bool
 	// hearMu keeps one reading of the manager conversation at a time
@@ -1382,6 +1385,8 @@ func shortfall(res factory.StageResult) string {
 // held ends a paused drive so its bench and worker lease can serve another
 // job. The saved stream keeps the interrupted step for the ordinary resume path.
 func (lp *floorLoop) held(c *loopCtl) bool {
+	c.pauseMu.Lock()
+	defer c.pauseMu.Unlock()
 	lp.mu.Lock()
 	paused := c.paused
 	lp.mu.Unlock()
@@ -1394,15 +1399,18 @@ func (lp *floorLoop) held(c *loopCtl) bool {
 func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.StageResult, again bool, err error) {
 	rctx, cancel := context.WithCancel(c.ctx)
 	defer cancel()
+	c.pauseMu.Lock()
 	lp.mu.Lock()
 	if c.paused {
 		// Paused before it began: the chat it was to carry on waits for run.
 		c.carry = job.Resume
 		lp.mu.Unlock()
+		c.pauseMu.Unlock()
 		return res, true, nil
 	}
 	c.roundCancel = cancel
 	lp.mu.Unlock()
+	c.pauseMu.Unlock()
 	// The manager can spend while a shell/check stage is running too. Every
 	// check executor owns this context. Chat agents use their live family meter
 	// so cancellation still returns the round's precise cost and chat identity.
@@ -2176,28 +2184,17 @@ func (r *Runner) Hold(id int, on bool) error {
 	return r.setPaused(c, func(bool) bool { return on })
 }
 
-// setPaused moves the control to the paused state want answers for the one
-// it is in, under the loop's lock, and says the word on the stream and into
-// the manager's conversation only when that changed anything.
+// setPaused saves a pause before exposing it to the drive. Round admission
+// waits for the write, so a failed save leaves execution unchanged.
 func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 	lp := r.loop()
-	id := c.id
-	paused, changed := func() (bool, bool) {
-		lp.mu.Lock()
-		defer lp.mu.Unlock()
-		next := want(c.paused)
-		if next == c.paused {
-			return next, false
-		}
-		c.paused = next
-		if next {
-			if c.roundCancel != nil {
-				c.roundCancel()
-			}
-		}
-		return next, true
-	}()
-	if !changed {
+	c.pauseMu.Lock()
+	lp.mu.Lock()
+	paused := want(c.paused)
+	unchanged := paused == c.paused
+	lp.mu.Unlock()
+	if unchanged {
+		c.pauseMu.Unlock()
 		return nil
 	}
 	kind, word := EventResumed, sayResumed
@@ -2205,14 +2202,23 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 		kind, word = EventPaused, sayPaused
 	}
 	now := r.now()
-	if err := lp.move(c, "", kind, word, func(it *factory.Item) error {
+	if err := lp.write(c, func(it *factory.Item) error {
 		it.Stream.Paused = paused
 		loopSay(it, now, "said", word)
 		return nil
 	}); err != nil {
+		c.pauseMu.Unlock()
 		return err
 	}
-	lp.tell(id, word)
+	lp.mu.Lock()
+	c.paused = paused
+	if paused && c.roundCancel != nil {
+		c.roundCancel()
+	}
+	lp.mu.Unlock()
+	c.pauseMu.Unlock()
+	lp.emit(c.id, "", kind, word)
+	lp.tell(c.id, word)
 	return nil
 }
 

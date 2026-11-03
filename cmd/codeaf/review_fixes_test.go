@@ -257,6 +257,7 @@ func TestR1_6CompletedChatsAreNotRetried(t *testing.T) {
 		})
 	})
 	t.Setenv(syncsetup.URLVar, relay.URL)
+	logged := faultLog(t)
 	b := &appBackend{left: make(chan struct{}), emit: newAppRecorder()}
 	round := r1PublicationRounds(t, b)
 	appSyncWait(t, "initial publication", func() bool { return goodReads.Load() > 0 && badReads.Load() > 0 })
@@ -269,6 +270,9 @@ func TestR1_6CompletedChatsAreNotRetried(t *testing.T) {
 	}
 	if got := badReads.Load(); got < 2 || got > 3 {
 		t.Errorf("failed chat attempts over three intervals = %d, want 2..3 with backoff", got)
+	}
+	if got := strings.Count(logged(), "sharing chat "+bad.ID+": "); got != 1 || !strings.Contains(logged(), "503") {
+		t.Errorf("T7: the failing chat's reason was logged %d times, want once with its cause:\n%s", got, logged())
 	}
 }
 

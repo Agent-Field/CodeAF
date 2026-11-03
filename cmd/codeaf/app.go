@@ -52,6 +52,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -4702,6 +4703,10 @@ func appEngineError(err error) error {
 	}
 	if appMissingKey(err) {
 		return &appwire.Error{Code: appwire.CodeEngine, Message: appNoProvider}
+	}
+	// A removed computer reads the removal and its remedy, never the wire's sentinel.
+	if errors.Is(err, directory.ErrRevoked) {
+		return &appwire.Error{Code: appwire.CodeEngine, Message: appRemoved}
 	}
 	return &appwire.Error{Code: appwire.CodeEngine, Message: redact.Secrets(plainWords(err.Error()))}
 }
