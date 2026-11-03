@@ -36,11 +36,11 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 			t.Fatal(err)
 		}
 		delta, _ := factoryrun.Diff(baseline, paid)
-		wire := api.ToWorkerReport(api.FromRunReport(delta))
+		wire := api.ToWorkerReport(api.FromRunReport(delta, true))
 		if err := factoryrun.ApplyReport(&serverItem, wire, time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		// Transport idempotency handles Cost deltas. Table replacement itself
+		// Transport idempotency handles Cost deltas. The table merge itself
 		// must also tolerate repeats without charging those rows again.
 		if wire.Cost == 0 {
 			if err := factoryrun.ApplyReport(&serverItem, wire, time.Now()); err != nil {
@@ -91,7 +91,11 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 		res := factory.StageResult{Done: true, Spent: c.Spent(), SpendRecorded: true, Chat: fmt.Sprintf("round-%d", round)}
 		_ = agent.Close()
 		// A transport retry writes exactly the same report twice, through its codec.
-		report := api.ToWorkerReport(api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: round, State: factory.PhaseRunning, Result: &res}}}))
+		paid, err := st.Get(it.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report := api.ToWorkerReport(api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: round, State: factory.PhaseRunning, RoundCosts: paid.Stream.Phases[0].RoundCosts, Result: &res}}}, true))
 		for n := 0; n < 2; n++ {
 			if err := st.Annotate(it.ID, func(cur *factory.Item) error { return factoryrun.ApplyReport(cur, report, time.Now()) }); err != nil {
 				t.Fatal(err)
