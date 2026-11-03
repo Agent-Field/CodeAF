@@ -116,6 +116,12 @@ func TestAppTakeInFlightRowsFromBeforeALandedTakeStillSayItRuns(t *testing.T) {
 	if mark(appwire.ChatRow{Cell: id, Seen: appwire.Seen{Device: "other", Fence: 6}}) || mark(before) {
 		t.Fatal("a chat another computer took again still says this take runs")
 	}
+	// A chat that leaves the list takes its landed take with it.
+	c.landTake(id, 5)
+	c.markTaking([]appwire.ChatRow{{Cell: "another"}})
+	if mark(before) {
+		t.Fatal("a chat that left the list came back saying an old take runs")
+	}
 }
 
 // The cached row republished after a landed take whose reading failed still
@@ -158,13 +164,39 @@ func TestAppTakeInFlightCacheAfterALandedTakeStillSaysItRuns(t *testing.T) {
 	backend.chats.countTake(c.ID, 1)
 	backend.publishTaking()
 	backend.chats.landTake(c.ID, row.Seen.Fence+1)
+	// The take placed its agent here; the cache still holds the row from
+	// before it, naming that agent.
+	placed := backend.agent("taken-here")
+	here := &appwire.Location{Here: true, Cell: c.ID}
+	backend.located(placed, here)
+	backend.chats.mu.Lock()
+	for i := range backend.chats.rows {
+		if backend.chats.rows[i].Cell == c.ID {
+			backend.chats.rows[i].LocalAgent = placed.view.ID
+		}
+	}
+	backend.chats.mu.Unlock()
 	backend.chats.countTake(c.ID, -1)
 	rec.mu.Lock()
 	from := len(rec.data)
 	rec.mu.Unlock()
 	backend.publishTaking()
-	if !machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats[0].Taking {
-		t.Fatal("the list read after a landed take says it ended with the chat elsewhere")
+	backend.locked(func() {
+		if placed.view.Location != here {
+			t.Errorf("republishing taking moved the taken agent back: %+v", placed.view.Location)
+		}
+	})
+	listed := false
+	for _, r := range machineCall[appwire.ChatsResult](t, wire, "chats.list", struct{}{}).Chats {
+		if r.Cell == c.ID {
+			listed = true
+			if !r.Taking {
+				t.Fatal("the list read after a landed take says it ended with the chat elsewhere")
+			}
+		}
+	}
+	if !listed {
+		t.Fatal("the chat left the list")
 	}
 	rec.mu.Lock()
 	defer rec.mu.Unlock()

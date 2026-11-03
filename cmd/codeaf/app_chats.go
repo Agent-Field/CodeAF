@@ -381,14 +381,22 @@ func (c *appChats) newerChats(version uint64) (appwire.ChatsResult, bool) {
 func (c *appChats) markTaking(rows []appwire.ChatRow) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	listed := make(map[string]bool, len(rows))
 	for i := range rows {
 		r := &rows[i]
+		listed[r.Cell] = true
 		fence, landed := c.landed[r.Cell]
 		if landed && (r.Here || r.Seen.Fence > fence) {
 			delete(c.landed, r.Cell)
 			landed = false
 		}
 		r.Taking = c.taking[r.Cell] > 0 || landed
+	}
+	// A chat that left the list is no longer anyone's take.
+	for id := range c.landed {
+		if !listed[id] {
+			delete(c.landed, id)
+		}
 	}
 }
 
@@ -429,7 +437,9 @@ func (b *appBackend) publishTaking() {
 		return
 	}
 	c.markTaking(rows)
-	b.publishChats(rows, version, true)
+	// Only taking changed, so the cache's older locations stay off the agents
+	// a take may already have placed here.
+	b.publishChatRows(rows, version, true, false)
 }
 
 // A finished take stops counting under the inventory lock, and this reading
@@ -457,6 +467,10 @@ func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.Sta
 // Inventory operations hold op through caching and emission. A list refreshes
 // the cache silently; only the follower compares against rows actually emitted.
 func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit bool) {
+	b.publishChatRows(rows, version, emit, true)
+}
+
+func (b *appBackend) publishChatRows(rows []appwire.ChatRow, version uint64, emit, locate bool) {
 	old, current := b.chats.cacheRows(rows, version, emit)
 	if !current || !emit {
 		return
@@ -471,7 +485,7 @@ func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit b
 		if !exists || !reflect.DeepEqual(prev, r) {
 			b.emit.Emit(appwire.EventChatChanged, appwire.ChatChanged{Chat: r, Version: version})
 		}
-		if r.LocalAgent != "" {
+		if locate && r.LocalAgent != "" {
 			var a *appAgent
 			b.locked(func() { a = b.agents[r.LocalAgent] })
 			if a != nil {

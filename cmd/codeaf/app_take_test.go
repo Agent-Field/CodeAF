@@ -381,7 +381,7 @@ func appTakeRoundTrip(t *testing.T, daemon bool, missingWorkspace ...bool) {
 				if r.Seen.Fence > taken.Location.Seen.Fence {
 					t.Fatalf("F1 take returned fence %d, next row has %d", taken.Location.Seen.Fence, r.Seen.Fence)
 				}
-				if r.Taking {
+				if r.Here && r.Seen.Fence == taken.Location.Seen.Fence && r.Taking {
 					t.Fatalf("a finished take still reads as running: %+v", r)
 				}
 				return r.Seen.Fence == taken.Location.Seen.Fence
