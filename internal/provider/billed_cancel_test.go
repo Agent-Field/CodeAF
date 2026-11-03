@@ -14,12 +14,12 @@ import (
 
 // The public completion and reconciliation doors must retain paid partial work.
 func TestBilledCancellation(t *testing.T) {
- for _, tc := range []struct {name string; usage, noID, noReceipt, direct, final, tokenOnly bool}{
+ for _, tc := range []struct {name string; usage, noID, noReceipt, direct, final, tokenOnly, raw bool}{
  {name:"usage", usage:true}, {name:"factory-final", usage:true, final:true}, {name:"factory-fallback", usage:true, final:true, noReceipt:true}, {name:"before-usage"},
  {name:"interim-fallback", usage:true, noReceipt:true},
  {name:"unpriced", noReceipt:true}, {name:"token-only", usage:true, noReceipt:true, tokenOnly:true},
  {name:"no-id", usage:true, noID:true},
- {name:"direct", usage:true, direct:true},
+ {name:"direct", usage:true, direct:true}, {name:"raw-failed-finish", usage:true, raw:true},
  } {
   t.Run(tc.name, func(t *testing.T) {
    read := loggingTo(t)
@@ -37,7 +37,9 @@ func TestBilledCancellation(t *testing.T) {
     if tc.tokenOnly { u = `,"usage":{"prompt_tokens":11,"completion_tokens":3}` }
     id := "cancel-generation"
     if tc.noID { id = "" }
-    fmt.Fprintf(w, "data: {\"id\":%q,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]%s}\n\n", id, u)
+    finish := ""
+    if tc.raw { finish = `,"finish_reason":"error"` }
+    fmt.Fprintf(w, "data: {\"id\":%q,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}%s}]%s}\n\n", id, finish, u)
     w.(http.Flusher).Flush()
     <-r.Context().Done()
    }))
@@ -48,7 +50,14 @@ func TestBilledCancellation(t *testing.T) {
    if tc.final { ctx = WithFinalReceipts(ctx) }
    ctx = WithCallTag(WithReconcile(ctx, func(r Reconciled) { results <- r }), "caption")
    ctx = WithStreamObserver(ctx, func(e StreamEvent) { if e.Kind == StreamDelta { cancel() } })
-   _, err := client.CompleteWithMessages(ctx, []ai.Message{{Role:"user", Content:[]ai.ContentPart{{Type:"text", Text:"hello"}}}})
+   var err error
+   if tc.raw {
+    chunks, errs := client.StreamComplete(ctx, "hello")
+    for range chunks { cancel() }
+    for failure := range errs { if failure != nil { err = failure } }
+   } else {
+    _, err = client.CompleteWithMessages(ctx, []ai.Message{{Role:"user", Content:[]ai.ContentPart{{Type:"text", Text:"hello"}}}})
+   }
    if err == nil { t.Fatal("cancelled completion succeeded") }
    select {
    case r := <-results:
