@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+ "sync/atomic"
 	"testing"
 	"time"
 
@@ -80,4 +81,22 @@ func TestBudgetRaisePreservesStopSpendingOnTheLeasedRunner(t *testing.T) {
 	if landed.StopAfterStep || landed.Cap != 30 || landed.Stream.Spent != 7 {
 		t.Fatalf("continue lost cap or reran work: armed=%t cap=%g spent=%g", landed.StopAfterStep, landed.Cap, landed.Stream.Spent)
 	}
+}
+
+func TestBudgetAdmissionCountsUnreportedRoundSpend(t *testing.T) {
+ var calls atomic.Int32
+ var g rig
+ g = newRigWith(t, nil, func(o *run.Options) {
+  o.Exec = map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(ctx context.Context, j run.Job) (factory.StageResult, error) {
+   if calls.Add(1) == 1 {
+    if err := g.st.Update(j.Item.ID, func(it *factory.Item) error { it.SpentBefore = .6; return nil }); err != nil { return factory.StageResult{}, err }
+   }
+   return factory.StageResult{Done: true, Spent: .5}, nil
+  })}
+ })
+ id := g.add(t, check("first"), factory.Stage{Name: "second", Kind: factory.StageCheck, On: true})
+ if err := g.st.Update(id, func(it *factory.Item) error { it.Cap = 1; it.Autonomy = factory.AutonomyAuto; return nil }); err != nil { t.Fatal(err) }
+ if err := g.floor.Launch(id); err != nil { t.Fatal(err) }
+ g.waitFor(t, id, factory.StateNeedsYou)
+ if got := calls.Load(); got != 1 { t.Fatalf("paid rounds=%d, want 1: admission ignored unreported $0.50 beside server $0.60", got) }
 }
