@@ -1,1 +1,1 @@
-{"Repo":"acme/api","Kind":"issue","State":"new"}
+{"Repo":"acme/api","Kind":"issue","State":"new","Activity":[{"What":"Stopped by you"}],"Stream":{"Ended":"2020-01-01T00:00:00Z","Phases":[{"Name":"test","State":"done"}],"Log":[{"Tone":"fail","Text":"stopped · branch kept"}]}}

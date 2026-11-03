@@ -21,7 +21,8 @@ five-second window. Resume pipeline is also an explicit person grant after
 manual control. Run as new starts a separate job and leaves the original
 stopped. Person chat remains available without granting execution authority.
 
-Legacy StopUndo and explicit stopped failures are honoured. A legacy job with
+Legacy StopUndo and explicit stopped failures on the job or its current ended
+phase are honoured. A legacy job with
 no surviving stop evidence cannot be distinguished from a never-started job;
 free-form activity or generic stream ending text is not execution authority.
 The publication guards and already-sent PR receipt handling from #2299 remain.

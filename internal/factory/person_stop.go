@@ -11,7 +11,11 @@ var ErrPersonStopped = errors.New(PersonStopReason)
 // Old records with no surviving evidence retain their previous behaviour.
 func StoppedByPerson(it Item) bool {
 	if it.PersonStopped != nil { return *it.PersonStopped }
- return it.StopUndo != nil || it.Failure != nil && it.Failure.Code == CodeStopped
+ if it.StopUndo != nil || it.Failure != nil && it.Failure.Code == CodeStopped { return true }
+ s:=it.Stream
+ if it.State != StateNew || s==nil || s.Ended.IsZero() || s.Cur<0 || s.Cur>=len(s.Phases) { return false }
+ ph:=s.Phases[s.Cur]
+ return ph.State==PhaseFailed && ph.Failure!=nil && ph.Failure.Code==CodeStopped
 }
 
 // CheckPersonStop is the shared execution gate. Call it on the locked job

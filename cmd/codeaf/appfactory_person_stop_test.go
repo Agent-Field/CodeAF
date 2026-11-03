@@ -153,7 +153,7 @@ func TestFactoryPersonStopProofAndDraftPR(t *testing.T) {
 }
 
 func TestFactoryPersonStopLegacyFixtures(t *testing.T) {
- for _, name := range []string{"stop-undo","no-stop-evidence","stopped-failure"} {
+ for _, name := range []string{"stop-undo","no-stop-evidence","stopped-failure","stopped-phase"} {
   t.Run(name,func(t *testing.T) {
    s,status := newPauseSetup(t)
    data,err := os.ReadFile(filepath.Join("testdata","person-stop",name+".json"))
