@@ -189,6 +189,10 @@ func TestSpendTodayNamesFactoryAI(t *testing.T) {
 		{Role: "repo_ask", USD: .0061, Input: 9},
 		{Role: "pipeline_ai", USD: .0041, Input: 9},
 		{Role: "view_topic", USD: .0014, Input: 9},
+		{Role: "repo_notes", USD: .0024, Input: 9},
+		{Role: "repo_themes", USD: .0037, Input: 9},
+		{Role: "repo_eval", USD: .0005, Input: 9},
+		{Role: "factory_brief", USD: .0002, Input: 9},
 		{Role: "markreader", USD: .0109, Input: 9},
 		{USD: .02, Input: 9},
 		{Role: "factory triage", USD: .03, Input: 9, FactoryJob: "acme/api#1"},
@@ -203,7 +207,7 @@ func TestSpendTodayNamesFactoryAI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if spend.FactoryAIUSD == nil || math.Abs(*spend.FactoryAIUSD-.1234) > 1e-9 || math.Abs(spend.TodayUSD-.1843) > 1e-9 {
+	if spend.FactoryAIUSD == nil || math.Abs(*spend.FactoryAIUSD-.1302) > 1e-9 || math.Abs(spend.TodayUSD-.1911) > 1e-9 {
 		t.Fatalf("spend.today = %+v", spend)
 	}
 }
