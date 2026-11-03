@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf retains billed usage after cancelled model calls
-pr: 0
+pr: 2302
 surface: [engine]
 invalidates:
   - "Interim usage could suppress reconciliation even when no billing sink consumed it. Cancelled calls now retain measured usage as a fallback if a final receipt cannot be recovered, through the existing ledger funnel."
