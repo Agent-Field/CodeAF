@@ -21,6 +21,14 @@ func CheckWork(seat Seat) error {
 	return nil
 }
 
+// CheckPreparedWork confirms ownership again after slow task preparation.
+func CheckPreparedWork(seat Seat) error {
+	if gate, ok := seat.(interface{ CheckPreparedWork() error }); ok {
+		return gate.CheckPreparedWork()
+	}
+	return CheckWork(seat)
+}
+
 // Gated is seat with a gate in front of every tool call: while gate answers an
 // error the call is refused with that error and nothing runs, and while it
 // answers nil the seat is untouched. It is how a chat that another machine
@@ -35,13 +43,25 @@ func Gated(seat Seat, gate func() error, admission ...func() error) Seat {
 	if len(admission) > 0 {
 		work = admission[0]
 	}
-	return gated{Seat: seat, gate: gate, work: work}
+	prepared := work
+	if len(admission) > 1 {
+		prepared = admission[1]
+	}
+	return gated{Seat: seat, gate: gate, work: work, prepared: prepared}
 }
 
 type gated struct {
 	Seat
-	gate func() error
-	work func() error
+	gate     func() error
+	work     func() error
+	prepared func() error
+}
+
+func (g gated) CheckPreparedWork() error {
+	if g.prepared != nil {
+		return g.prepared()
+	}
+	return nil
 }
 
 // CheckWork reads the ownership fact before a turn or task can start.
@@ -53,7 +73,7 @@ func (g gated) CheckWork() error {
 }
 
 // ForSetup implements SetupSeat: a setup turn's calls are gated too.
-func (g gated) ForSetup() Seat { return Gated(ForSetup(g.Seat), g.gate, g.work) }
+func (g gated) ForSetup() Seat { return Gated(ForSetup(g.Seat), g.gate, g.work, g.prepared) }
 
 // NoteModelCall implements ModelNoter: the seat beneath keeps the record.
 func (g gated) NoteModelCall(m ModelCall) { NoteModelCall(g.Seat, m) }

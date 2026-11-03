@@ -51,6 +51,8 @@ type SealWatch struct {
 	idle        bool
 	started     bool
 	tail        *time.Timer
+	tailRunning bool
+	idleCheck   func() bool
 	cause       string
 	said        []string
 	changes     chan struct{}
@@ -198,10 +200,37 @@ func (w *SealWatch) sealTail() {
 	w.mu.Lock()
 	owed := w.idle && w.tail != nil
 	w.tail = nil
+	w.tailRunning = owed
 	w.mu.Unlock()
 	if owed {
+		defer func() {
+			w.mu.Lock()
+			w.tailRunning = false
+			w.mu.Unlock()
+		}()
 		w.OnTail()
 	}
+}
+
+// SetIdleCheck binds this watch to its session after construction.
+func (w *SealWatch) SetIdleCheck(check func() bool) {
+	w.mu.Lock()
+	w.idleCheck = check
+	w.mu.Unlock()
+}
+
+// IdleReady includes trailing seals and session work that outlives a reply.
+// A watch without a session cannot certify that releasing ownership is safe.
+func (w *SealWatch) IdleReady() bool {
+	w.mu.Lock()
+	ready, check := w.idle && w.tail == nil && !w.tailRunning && !w.failing, w.idleCheck
+	w.mu.Unlock()
+	if !ready || check == nil || !check() {
+		return false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.idle && w.tail == nil && !w.tailRunning && !w.failing
 }
 
 // TurnEnded is the session's word that the agent finished a turn. It only

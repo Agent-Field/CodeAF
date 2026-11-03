@@ -541,6 +541,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.mu.Lock()
 	agent.opened = true
 	agent.mu.Unlock()
+	if idle, ok := config.Seals.(interface{ SetIdleCheck(func() bool) }); ok && !config.InTask && !config.Errand {
+		idle.SetIdleCheck(agent.idleForHandoff)
+	}
 	// THE WALL IS READ AFTER THE SESSION IS OPEN. Recovery may put work back on
 	// the frontier, but no ending or notice may run before the caller can hold
 	// the agent and a surface can subscribe to its standing lane.

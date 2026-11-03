@@ -42,6 +42,8 @@ func (w watched) Interrupted() Interrupted { return InterruptedOn(w.Seat) }
 // CheckWork keeps the ownership gate beneath answering user admission.
 func (w watched) CheckWork() error { return CheckWork(w.Seat) }
 
+func (w watched) CheckPreparedWork() error { return CheckPreparedWork(w.Seat) }
+
 // Around implements Seat: the call runs on the seat beneath, and the commands
 // its command line named, and whatever it left running, are observed as soon as
 // it has run, each with the whole of its words and the call's own outcome. That

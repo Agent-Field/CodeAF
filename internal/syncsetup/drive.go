@@ -3,7 +3,10 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -44,15 +47,30 @@ type DriveOptions struct {
 }
 
 // Drive is the drive side of one chat: it publishes each sealed turn, holds
-// the lease with heartbeats, and gives it back when the chat closes. When
-// another device takes the chat over it becomes a viewer (L7).
+// the lease with heartbeats, and gives it back when the chat closes or a paired
+// chat finishes uploading its idle state. Another holder makes it a viewer (L7).
 type Drive struct {
-	sync    *Sync
-	files   vaultsync.Files // the chat's withheld files, carried beside the secrets
-	cell    cell.Cell
-	opt     DriveOptions
-	batcher *cellsync.Batcher
-	scope   *Scope // what this chat's publishes are counted under
+	workMu      sync.Mutex // Admission and voluntary release cannot cross each other.
+	activity    atomic.Uint64
+	released    atomic.Bool
+	committing  atomic.Bool
+	releaseDone bool
+	idleCheck   func() bool
+	idleMu      sync.Mutex
+	idleStop    context.CancelFunc
+	idleClosed  bool
+	idleWorkers sync.WaitGroup
+	engine      cellstore.Engine // The latest ordinary seal's composers and capture policy.
+	vaultMu     sync.Mutex
+	receiptMu   sync.Mutex
+	run         context.Context
+	devices     *DeviceObserver
+	sync        *Sync
+	files       vaultsync.Files // the chat's withheld files, carried beside the secrets
+	cell        cell.Cell
+	opt         DriveOptions
+	batcher     *cellsync.Batcher
+	scope       *Scope // what this chat's publishes are counted under
 	// Ownership stays on the record this window opened. Preserving displaced
 	// work in a branch does not transfer this window's permission to run tools.
 	directoryID   string
@@ -65,7 +83,7 @@ type Drive struct {
 	publicationDone func()
 	ownership       chan struct{}
 
-	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
+	sent string // Fingerprint of the last sent vault, guarded by vaultMu.
 
 	spoken  bool
 	sealMu  sync.Mutex
@@ -97,7 +115,14 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if err != nil {
 		return nil, err
 	}
-	d := &Drive{sync: s, files: files, cell: c, opt: opt, done: make(chan struct{}), ownership: make(chan struct{}, 1)}
+	d := &Drive{sync: s, files: files, cell: c, engine: eng, opt: opt, done: make(chan struct{}), ownership: make(chan struct{}, 1)}
+	d.devices = ObserveDevices(s.Home)
+	started := false
+	defer func() {
+		if !started {
+			d.devices.Close()
+		}
+	}()
 	if err := s.putDevice(ctx, opt.DeviceName); err != nil {
 		return nil, err
 	}
@@ -109,6 +134,7 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if held != "" {
 		d.becomeViewer(cellsync.Superseded{By: held})
 		close(d.done)
+		started = true
 		return d, nil
 	}
 	d.directoryID = drv.ID()
@@ -127,7 +153,8 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 		opt.OnDriving()
 	}
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	d.cancel = cancel
+	d.run, d.cancel = run, cancel
+	started = true
 	go func() {
 		defer close(d.done)
 		var work sync.WaitGroup
@@ -191,26 +218,44 @@ func (d *Drive) note(sealed cellstore.Sealed) {
 // connection may be saved), so it is sent whenever its content differs from what
 // was last sent, not once at the start. The withheld files and credentials.json are captured into the
 // vault first, since a save to it is a change of the vault the fingerprint must
-// see. It is best effort and says nothing when it fails: the fingerprint is then
-// not recorded, so the next flush tries again, and a seal never waits on it.
-func (d *Drive) syncVault(ctx context.Context) {
-	err := d.sync.withVault(func(v vaultsync.Syncer) error {
+// see. Ordinary flushes ignore failures and retry without recording the
+// fingerprint. Idle release requires success before giving up the hold.
+func (d *Drive) syncVault(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !d.vaultMu.TryLock() {
+		return errStateBusy
+	}
+	defer d.vaultMu.Unlock()
+	err := d.sync.withVaultWithin(ctx, 0, func(v vaultsync.Syncer) error {
 		if err := v.Capture(); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 		return d.pushChanged(ctx, v)
 	}, d.files)
 	if err != nil {
-		return
+		return err
 	}
 	// The push merges what the directory holds, which may rewrite the file.
 	d.sent, _ = keys.Fingerprint(d.sync.Home)
+	return nil
 }
 
 // pushChanged sends the vault only when its content differs from what was last
 // sent, so an unchanged vault costs no request.
 func (d *Drive) pushChanged(ctx context.Context, v vaultsync.Syncer) error {
-	if fp, ok := keys.Fingerprint(d.sync.Home); !ok || fp == d.sent {
+	fp, ok := keys.Fingerprint(d.sync.Home)
+	if !ok {
+		if _, err := os.Stat(filepath.Join(d.sync.Home, "vault.enc")); os.IsNotExist(err) {
+			return nil // Capture found nothing that needs a vault yet.
+		}
+		return errors.New("sync: could not read the saved-key fingerprint")
+	}
+	if fp == d.sent {
 		return nil
 	}
 	return v.Push(ctx)
@@ -226,7 +271,7 @@ func (d *Drive) flushed() func(cellsync.Flush) {
 			d.notice("could not record which turns reached your other devices: " + err.Error())
 		}
 		d.scope.Flushed(f)
-		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		ctx, cancel := context.WithTimeout(d.run, requestTimeout)
 		defer cancel()
 		d.syncVault(ctx)
 	}
@@ -582,7 +627,7 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 	}
 	lease := v.Cell.Lease
 	// The first publish may establish the fence while the read is in flight.
-	held := lease.Expires > v.Now && lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
+	held := !d.released.Load() && lease.Expires > v.Now && lease.Device == d.sync.Device.ID() && lease.Fence == d.batcher.Fence()
 	if held {
 		d.resumeViewer()
 	}
@@ -634,9 +679,11 @@ func (d *Drive) retireForAnotherHolder(ctx context.Context, held sendLease) {
 	d.mu.Lock()
 	d.lost = true
 	d.mu.Unlock()
-	d.sealMu.Lock()
+	if err := lockDrive(ctx, &d.sealMu); err != nil {
+		return
+	}
 	d.sealMu.Unlock()
-	if err := d.sync.forgetSendLease(d.cell.ID, held); err != nil {
+	if err := d.sync.forgetSendLeaseWithin(ctx, d.cell.ID, held); err != nil {
 		d.notice(err.Error())
 	}
 	d.batcher.Displaced(ctx)
@@ -658,7 +705,9 @@ func (d *Drive) renewIdleLease(ctx context.Context, v directory.CellView, fence 
 	if lease.Expires != 0 && lease.Expires <= v.Now && lease.Device == d.sync.Device.ID() && lease.Fence == fence {
 		// Close stops writers under the same lock before its release. A late
 		// ownership read must never resurrect that released fence.
-		d.sealMu.Lock()
+		if err := lockDrive(ctx, &d.sealMu); err != nil {
+			return v, err
+		}
 		d.mu.Lock()
 		stopped := d.stopped
 		d.mu.Unlock()
@@ -666,10 +715,23 @@ func (d *Drive) renewIdleLease(ctx context.Context, v directory.CellView, fence 
 			d.sealMu.Unlock()
 			return v, cellstore.ErrReadOnly
 		}
+		if d.released.Load() {
+			d.sealMu.Unlock()
+			return v, nil
+		}
 		renewed, err := d.sync.Dir.Heartbeat(ctx, d.directoryID, directory.Beat{Fence: fence, Pending: d.batcher.Pending()})
 		d.sealMu.Unlock()
 		if errors.Is(err, directory.ErrFenceStale) {
-			d.becomeViewer(cellsync.Superseded{})
+			// Admission must not inherit becomeViewer's background capture,
+			// receipt and naming waits after a refused renewal.
+			d.loseHold()
+			if fresh, readErr := d.sync.Dir.Cell(ctx, d.directoryID); readErr == nil {
+				if fresh.Cell.Lease.Expires > fresh.Now {
+					d.confirmHolder(ctx, fresh.Cell.Lease)
+				} else {
+					d.availableAfterWithin(ctx, d.sendLeaseSnapshot(), fresh.Cell.Lease)
+				}
+			}
 		} else if err != nil && !cellsync.Unreachable(err) {
 			d.available()
 		}
@@ -710,14 +772,32 @@ func (d *Drive) Gate() error {
 // uploaded goes up now. A chat that only views has nothing to upload.
 func (d *Drive) Idle() {
 	if d.batcher != nil {
+		d.idleMu.Lock()
+		if d.idleClosed {
+			d.idleMu.Unlock()
+			return
+		}
+		if d.idleStop != nil {
+			d.idleStop()
+		}
+		run, stop := context.WithCancel(context.Background())
+		d.idleStop = stop
+		activity := d.activity.Load()
+		d.idleWorkers.Add(1)
+		d.idleMu.Unlock()
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+			defer d.idleWorkers.Done()
+			defer stop()
+			ctx, cancel := context.WithTimeout(run, cellstore.SealWithin)
 			defer cancel()
 			if err := cellstore.Await(ctx, d.cell); err != nil {
-				d.notice(err.Error())
+				if run.Err() == nil {
+					d.notice(err.Error())
+				}
 				return
 			}
 			d.batcher.Idle()
+			d.releaseWhenIdle(run, activity)
 		}()
 	}
 }
@@ -740,8 +820,11 @@ var _ cellstore.Store = stamping{}
 // Seal implements cellstore.Store.
 func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo) (cellstore.Sealed, error) {
 	d := s.drive
-	d.sealMu.Lock()
+	if err := lockDrive(ctx, &d.sealMu); err != nil {
+		return cellstore.Sealed{}, err
+	}
 	defer d.sealMu.Unlock()
+	d.engine = s.engine
 	if d.Gate() != nil {
 		return cellstore.Sealed{}, cellstore.ErrReadOnly
 	}
@@ -763,7 +846,9 @@ func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo
 // Prepare screens only the current writer's files before its first call.
 func (s stamping) Prepare(ctx context.Context, c cell.Cell) error {
 	d := s.drive
-	d.sealMu.Lock()
+	if err := lockDrive(ctx, &d.sealMu); err != nil {
+		return err
+	}
 	defer d.sealMu.Unlock()
 	if d.Gate() != nil || d.batcher == nil && !d.sync.isRemoved() {
 		return nil
@@ -779,13 +864,27 @@ func (d *Drive) Close(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, cellstore.SealWithin)
 	defer cancel()
 	d.once.Do(func() {
-		pending := cellstore.Await(ctx, d.cell)
-		// A completed capture may race the first wait. Stop new seals under
-		// the writer's lock, then keep every seal that crossed before it closed.
-		d.sealMu.Lock()
+		if d.devices != nil {
+			defer d.devices.Close()
+		}
+		if d.cancel != nil {
+			stop := context.AfterFunc(ctx, d.cancel)
+			defer stop()
+		}
 		d.mu.Lock()
 		d.stopped = true
 		d.mu.Unlock()
+		if err := d.stopIdle(ctx); err != nil {
+			d.closeErr = err
+			return
+		}
+		pending := cellstore.Await(ctx, d.cell)
+		// A completed capture may race the first wait. Stop new seals under
+		// the writer's lock, then keep every seal that crossed before it closed.
+		if err := lockDrive(ctx, &d.sealMu); err != nil {
+			d.closeErr = err
+			return
+		}
 		d.sealMu.Unlock()
 		if pending == nil {
 			pending = cellstore.Await(ctx, d.cell)
@@ -794,7 +893,6 @@ func (d *Drive) Close(ctx context.Context) error {
 			d.closeErr = pending
 			return
 		}
-		stop := context.AfterFunc(ctx, d.cancel)
 		if pending == nil && !d.sync.isRemoved() {
 			// Join the publish before stopping its request. Canceling a committed
 			// request can lose its reply and leave the next publish using an old head.
@@ -803,8 +901,14 @@ func (d *Drive) Close(ctx context.Context) error {
 			d.closeErr = pending
 		}
 		d.cancel()
-		<-d.done
-		stop()
+		select {
+		case <-d.done:
+		case <-ctx.Done():
+			if d.closeErr == nil {
+				d.closeErr = ctx.Err()
+			}
+			return
+		}
 		removed := d.sync.isRemoved()
 		if removed {
 			// Removal keeps this chat local. Only its local durability can fail.
@@ -818,7 +922,7 @@ func (d *Drive) Close(ctx context.Context) error {
 			d.mu.Lock()
 			expected := sendLease{Cell: d.directoryID, Fence: d.recordedFence}
 			d.mu.Unlock()
-			d.closeErr = d.sync.forgetSendLease(d.cell.ID, expected)
+			d.closeErr = d.sync.forgetSendLeaseWithin(ctx, d.cell.ID, expected)
 		}
 		if d.closeErr == nil && d.publicationDone != nil {
 			d.publicationDone()

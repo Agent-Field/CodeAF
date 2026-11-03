@@ -2,6 +2,7 @@ package cellsync
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -19,8 +20,14 @@ func (b *Batcher) Lease() (id string, fence uint64) {
 // conditional acquisition cannot displace a winner that arrived after the read.
 // Serializing with publishes keeps an old flush from replacing the new fence.
 func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool, error) {
-	b.flushMu.Lock()
+	if err := lockOwnership(ctx, &b.flushMu); err != nil {
+		return false, err
+	}
 	defer b.flushMu.Unlock()
+	if err := lockOwnership(ctx, &b.renewMu); err != nil {
+		return false, err
+	}
+	defer b.renewMu.Unlock()
 	d, pending, _ := b.view()
 	if b.isClosing() || pending != 0 || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires > seen.Now {
 		return false, nil
@@ -38,9 +45,79 @@ func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool,
 	d.Fence, d.Frames = v.Cell.Lease.Fence, v.Cell.Frames
 	b.mu.Lock()
 	*b.Driving = d
-	b.stale, b.renewalEnded = false, false
+	b.stale, b.released, b.renewalEnded = false, false, false
 	b.renewalSince = time.Time{}
 	b.mu.Unlock()
 	b.renewalChanged()
+	b.leaseChanged.fire()
 	return true, nil
+}
+
+// ReleaseIdle releases only a fully published head. The caller excludes new
+// work and seals; all uploads have already finished. Contended publisher or
+// heartbeat locks retain the hold for a later attempt instead of admission.
+func (b *Batcher) ReleaseIdle(ctx context.Context, head string, beforeRelease func() error) (bool, error) {
+	if !b.flushMu.TryLock() {
+		return false, nil
+	}
+	defer b.flushMu.Unlock()
+	d, pending, stale := b.view()
+	if b.isClosing() || stale || pending != 0 || d.Fence == 0 || d.Head != head {
+		return false, nil
+	}
+	if !b.renewMu.TryLock() {
+		return false, nil
+	}
+	defer b.renewMu.Unlock()
+	if err := beforeRelease(); err != nil {
+		return false, err
+	}
+	b.mu.Lock()
+	b.released = true
+	b.mu.Unlock()
+	b.leaseChanged.fire()
+	if err := b.release(ctx); err != nil {
+		return false, err
+	}
+	b.endRenewals()
+	return true, nil
+}
+
+// ResumeHeld confirms that a failed release left this fence live. It cannot
+// resume a changed head or a later writer, and sends no acquisition request.
+func (b *Batcher) ResumeHeld(ctx context.Context, seen directory.CellView) bool {
+	if lockOwnership(ctx, &b.flushMu) != nil {
+		return false
+	}
+	defer b.flushMu.Unlock()
+	b.mu.Lock()
+	d := b.Driving
+	if b.closing || b.stale || len(b.noted) != 0 || d.Fence != seen.Cell.Lease.Fence || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires <= seen.Now {
+		b.mu.Unlock()
+		return false
+	}
+	b.released, b.renewalEnded = false, false
+	b.renewalSince = time.Time{}
+	b.mu.Unlock()
+	b.leaseChanged.fire()
+	b.renewalChanged()
+	return true
+}
+
+func lockOwnership(ctx context.Context, mu *sync.Mutex) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if mu.TryLock() {
+			return nil
+		}
+		timer := time.NewTimer(time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

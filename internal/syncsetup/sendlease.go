@@ -1,6 +1,7 @@
 package syncsetup
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -53,16 +55,34 @@ func (s *Sync) SendLease(id string) (string, uint64, error) {
 }
 
 func (d *Drive) recordSendLease() error {
-	fence := d.batcher.Fence()
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.lost || d.viewer.Line != "" || fence == 0 || fence == d.recordedFence {
-		return nil
-	}
-	if err := d.sync.recordSendLease(d.cell.ID, sendLease{Cell: d.directoryID, Fence: fence}); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+	return d.recordSendLeaseWithin(ctx)
+}
+
+func (d *Drive) recordSendLeaseWithin(ctx context.Context) error {
+	if err := lockDrive(ctx, &d.receiptMu); err != nil {
 		return err
 	}
+	defer d.receiptMu.Unlock()
+	fence := d.batcher.Fence()
+	d.mu.Lock()
+	if d.lost || d.viewer.Line != "" || fence == 0 || fence == d.recordedFence {
+		d.mu.Unlock()
+		return nil
+	}
+	d.mu.Unlock()
+	held := sendLease{Cell: d.directoryID, Fence: fence}
+	if err := d.sync.recordSendLeaseWithin(ctx, d.cell.ID, held); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	if d.stopped || d.lost || d.viewer.Line != "" || d.batcher.Fence() != fence {
+		d.mu.Unlock()
+		return d.sync.forgetSendLeaseWithin(ctx, d.cell.ID, held)
+	}
 	d.recordedFence = fence
+	d.mu.Unlock()
 	return nil
 }
 
@@ -84,7 +104,13 @@ func (s *Sync) reconcileSendLease(id, remoteID string, view directory.CellView) 
 }
 
 func (s *Sync) recordSendLease(id string, held sendLease) error {
-	lock, err := s.lockChat(id, "")
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+	return s.recordSendLeaseWithin(ctx, id, held)
+}
+
+func (s *Sync) recordSendLeaseWithin(ctx context.Context, id string, held sendLease) error {
+	lock, err := s.lockChatWithin(ctx, id, "")
 	if err != nil {
 		return err
 	}
@@ -96,6 +122,12 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 	path, err := s.sendLeasePath(id)
 	if err != nil {
 		return err
+	}
+	if before, err := os.ReadFile(path); err == nil {
+		var current sendLease
+		if json.Unmarshal(before, &current) == nil && current.Cell == held.Cell && current.Fence > held.Fence {
+			return directory.ErrFenceStale
+		}
 	}
 	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
 		return err
@@ -121,7 +153,13 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 
 // forgetSendLease retires only this writer's fence, preserving a newer local owner.
 func (s *Sync) forgetSendLease(id string, expected sendLease) error {
-	lock, err := s.lockChat(id, "")
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+	return s.forgetSendLeaseWithin(ctx, id, expected)
+}
+
+func (s *Sync) forgetSendLeaseWithin(ctx context.Context, id string, expected sendLease) error {
+	lock, err := s.lockChatWithin(ctx, id, "")
 	if err != nil {
 		return err
 	}
@@ -152,6 +190,12 @@ func (s *Sync) forgetSendLease(id string, expected sendLease) error {
 }
 
 func (s *Sync) lockChat(id, suffix string) (*os.File, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+	return s.lockChatWithin(ctx, id, suffix)
+}
+
+func (s *Sync) lockChatWithin(ctx context.Context, id, suffix string) (*os.File, error) {
 	path, err := s.sendLeasePath(id)
 	if err != nil {
 		return nil, err
@@ -163,9 +207,26 @@ func (s *Sync) lockChat(id, suffix string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := filelock.Lock(lock, true, false); err != nil {
-		lock.Close()
-		return nil, err
+	for {
+		if err := ctx.Err(); err != nil {
+			lock.Close()
+			return nil, err
+		}
+		err := filelock.Lock(lock, true, true)
+		if err == nil {
+			return lock, nil
+		}
+		if !filelock.IsBusy(err) {
+			lock.Close()
+			return nil, err
+		}
+		timer := time.NewTimer(time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			lock.Close()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
-	return lock, nil
 }
