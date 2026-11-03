@@ -51,10 +51,10 @@ func TestToolOutcomeJournalPreservesInterruptions(t *testing.T) {
 	for _, outcome := range []string{"cancelled", "timed out", "deadline"} {
 		t.Run(outcome, func(t *testing.T) {
 			path := t.TempDir() + "/journal.jsonl"
-            args := `{"command":"sleep 5", "timeout":5}`
-            if outcome == "timed out" {
-                args = `{"command":"sleep 5", "timeout":0.05}`
-            }
+			args := `{"command":"sleep 5", "timeout":5}`
+			if outcome == "timed out" {
+				args = `{"command":"sleep 5", "timeout":0.05}`
+			}
 			agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{
 				func(context.Context, []ai.Message) (*ai.Response, error) {
 					return toolResponse("cut", "bash", args), nil
