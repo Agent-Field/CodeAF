@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
- "github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 func TestStopPublishAfterForgePreparation(t *testing.T) {
@@ -86,29 +86,50 @@ func TestStopMergeAfterForgePreparation(t *testing.T) {
 }
 
 func TestStopWhileSourceWaitsPreventsSimpleWrites(t *testing.T) {
- for _, verb := range []string{"comment", "label", "close"} {
-  t.Run(verb, func(t *testing.T) {
-   f := newFixture()
-   srv := httptest.NewServer(http.HandlerFunc(f.handle)); defer srv.Close()
-   src := New(forge.NewClient("test-token").WithBaseURL(srv.URL), []string{"acme/api"}, nil)
-   authority, err := store.Open(t.TempDir()); if err != nil { t.Fatal(err) }
-   it, err := authority.Create(factory.Item{Repo: "acme/api", Num: 12, Title: "held write"}); if err != nil { t.Fatal(err) }
-   src.mu.Lock()
-   entered, result := make(chan struct{}), make(chan error, 1)
-   go func() {
-    close(entered)
-    _, err := src.Write(context.Background(), factory.Action{Verb: verb, Item: it, Body: "proof", Labels: []string{"verified"}, BeforeWrite: func(context.Context) error {
-     cur, err := authority.Get(it.ID); if err != nil { return err }; return factory.CheckPersonStop(cur)
-    }})
-    result <- err
-   }()
-   <-entered
-   // Write must pass repository selection after the person's durable Stop.
-   if err := authority.Update(it.ID, func(cur *factory.Item) error { factory.MarkPersonStopped(cur); return nil }); err != nil { src.mu.Unlock(); t.Fatal(err) }
-   src.mu.Unlock()
-   if err := <-result; !errors.Is(err, factory.ErrPersonStopped) { t.Errorf("write ignored Stop: %v", err) }
-   f.mu.Lock(); defer f.mu.Unlock()
-   for path, hits := range f.hits { if !strings.HasPrefix(path, "GET ") && hits != 0 { t.Errorf("stopped job wrote %s %d times", path, hits) } }
-  })
- }
+	for _, verb := range []string{"comment", "label", "close"} {
+		t.Run(verb, func(t *testing.T) {
+			f := newFixture()
+			srv := httptest.NewServer(http.HandlerFunc(f.handle))
+			defer srv.Close()
+			src := New(forge.NewClient("test-token").WithBaseURL(srv.URL), []string{"acme/api"}, nil)
+			authority, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			it, err := authority.Create(factory.Item{Repo: "acme/api", Num: 12, Title: "held write"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			src.mu.Lock()
+			entered, result := make(chan struct{}), make(chan error, 1)
+			go func() {
+				close(entered)
+				_, err := src.Write(context.Background(), factory.Action{Verb: verb, Item: it, Body: "proof", Labels: []string{"verified"}, BeforeWrite: func(context.Context) error {
+					cur, err := authority.Get(it.ID)
+					if err != nil {
+						return err
+					}
+					return factory.CheckPersonStop(cur)
+				}})
+				result <- err
+			}()
+			<-entered
+			// Write must pass repository selection after the person's durable Stop.
+			if err := authority.Update(it.ID, func(cur *factory.Item) error { factory.MarkPersonStopped(cur); return nil }); err != nil {
+				src.mu.Unlock()
+				t.Fatal(err)
+			}
+			src.mu.Unlock()
+			if err := <-result; !errors.Is(err, factory.ErrPersonStopped) {
+				t.Errorf("write ignored Stop: %v", err)
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			for path, hits := range f.hits {
+				if !strings.HasPrefix(path, "GET ") && hits != 0 {
+					t.Errorf("stopped job wrote %s %d times", path, hits)
+				}
+			}
+		})
+	}
 }

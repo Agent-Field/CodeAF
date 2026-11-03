@@ -6,12 +6,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
- "errors"
- "net/http/httptest"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -523,12 +523,12 @@ func TestStopLiveUnpricedCancellationIsNotPaidLedgerCall(t *testing.T) {
 
 // stopLiveAccounting serializes calls and retains unpriced request evidence.
 type stopLiveAccounting struct {
- requestMu sync.Mutex
- request context.Context
- cancel context.CancelCauseFunc
- cancelledRequests int
- highestCost float64
- paid sync.Mutex
+	requestMu         sync.Mutex
+	request           context.Context
+	cancel            context.CancelCauseFunc
+	cancelledRequests int
+	highestCost       float64
+	paid              sync.Mutex
 }
 
 func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccounting) http.Handler {
@@ -590,46 +590,50 @@ func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccou
 var errStopLiveRequest = errors.New("live rig cancelled request open at Stop")
 
 func (a *stopLiveAccounting) stop() {
- a.requestMu.Lock()
- defer a.requestMu.Unlock()
- if a.request != nil && a.request.Err() == nil {
-  a.cancel(errStopLiveRequest)
- }
+	a.requestMu.Lock()
+	defer a.requestMu.Unlock()
+	if a.request != nil && a.request.Err() == nil {
+		a.cancel(errStopLiveRequest)
+	}
 }
 
 func TestStopLiveAccountingRejectsTimeoutAfterStop(t *testing.T) {
- recorder := &liveRecorder{}
- recorder.server = httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
- defer recorder.server.Close()
- accounting := &stopLiveAccounting{}
- handler := stopLiveAccountingHandler(recorder, accounting)
- accounting.stop()
- ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond); defer cancel()
- req := httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"test"}`)).WithContext(ctx)
- handler.ServeHTTP(httptest.NewRecorder(), req)
- if accounting.cancelledRequests != 0 || len(recorder.problems) != 1 {
-  t.Fatalf("request started after Stop and timed out, but was excused: cancellations=%d problems=%v", accounting.cancelledRequests, recorder.problems)
- }
+	recorder := &liveRecorder{}
+	recorder.server = httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	defer recorder.server.Close()
+	accounting := &stopLiveAccounting{}
+	handler := stopLiveAccountingHandler(recorder, accounting)
+	accounting.stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"test"}`)).WithContext(ctx)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	if accounting.cancelledRequests != 0 || len(recorder.problems) != 1 {
+		t.Fatalf("request started after Stop and timed out, but was excused: cancellations=%d problems=%v", accounting.cancelledRequests, recorder.problems)
+	}
 }
 
 func TestStopLiveRigCancelsOnlyRequestOpenAtStop(t *testing.T) {
- recorder := &liveRecorder{}
- entered := make(chan struct{})
- var rigCancelled bool
- recorder.server = httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-  close(entered); <-r.Context().Done(); rigCancelled = errors.Is(context.Cause(r.Context()), errStopLiveRequest)
- }))
- defer recorder.server.Close()
- accounting := &stopLiveAccounting{}
- handler := stopLiveAccountingHandler(recorder, accounting)
- ctx, cancel := context.WithTimeout(context.Background(), time.Second); defer cancel()
- req := httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"test"}`)).WithContext(ctx)
- done := make(chan struct{})
- go func() { handler.ServeHTTP(httptest.NewRecorder(), req); close(done) }()
- <-entered
- accounting.stop()
- <-done
- if !rigCancelled || accounting.cancelledRequests != 1 || len(recorder.problems) != 0 {
-  t.Fatalf("open request cancellation not proved: rig=%v cancelled=%d problems=%v", rigCancelled, accounting.cancelledRequests, recorder.problems)
- }
+	recorder := &liveRecorder{}
+	entered := make(chan struct{})
+	var rigCancelled bool
+	recorder.server = httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-r.Context().Done()
+		rigCancelled = errors.Is(context.Cause(r.Context()), errStopLiveRequest)
+	}))
+	defer recorder.server.Close()
+	accounting := &stopLiveAccounting{}
+	handler := stopLiveAccountingHandler(recorder, accounting)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/chat/completions", strings.NewReader(`{"model":"test"}`)).WithContext(ctx)
+	done := make(chan struct{})
+	go func() { handler.ServeHTTP(httptest.NewRecorder(), req); close(done) }()
+	<-entered
+	accounting.stop()
+	<-done
+	if !rigCancelled || accounting.cancelledRequests != 1 || len(recorder.problems) != 0 {
+		t.Fatalf("open request cancellation not proved: rig=%v cancelled=%d problems=%v", rigCancelled, accounting.cancelledRequests, recorder.problems)
+	}
 }

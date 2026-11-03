@@ -3,7 +3,7 @@ package run
 import (
 	"context"
 	"errors"
- 
+
 	"sync/atomic"
 	"testing"
 
@@ -65,23 +65,37 @@ func TestStopAfterStepReaderErrorUsesStoredChoice(t *testing.T) {
 }
 
 func TestAuthorityOutageDoesNotAdmitNextPaidStep(t *testing.T) {
- for _, transient := range []bool{true, false} {
-  name := "held"
-  if transient { name = "recovered_stop" }
-  t.Run(name, func(t *testing.T) {
-   var steps, reads atomic.Int32
-   g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) { steps.Add(1); return done("paid"), nil })}, nil)
-   id := g.add("authority outage", chat("plan"), chat("write"))
-   g.r.SetStopAfterStepReader(id, func(context.Context) (bool, error) {
-    n := reads.Add(1)
-    if n == 1 { return false, nil }
-    if transient && n > 2 { return true, nil }
-    return false, errors.New("503 authority unavailable")
-   })
-   if err := g.r.Launch(id); err != nil { t.Fatal(err) }
-   it := g.wait(id, "authority hold", func(it factory.Item) bool { return it.State == factory.StateLanded || it.State == factory.StateNeedsYou || it.Stream != nil && it.Stream.Paused })
-   if steps.Load() != 1 || it.Failure != nil { t.Fatalf("authority outage admitted paid steps=%d failure=%+v", steps.Load(), it.Failure) }
-   if !transient && !logHas(it, "could not confirm Stop before the next step; work held: 503 authority unavailable") { t.Fatal("hold did not explain authority outage") }
-  })
- }
+	for _, transient := range []bool{true, false} {
+		name := "held"
+		if transient {
+			name = "recovered_stop"
+		}
+		t.Run(name, func(t *testing.T) {
+			var steps, reads atomic.Int32
+			g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) { steps.Add(1); return done("paid"), nil })}, nil)
+			id := g.add("authority outage", chat("plan"), chat("write"))
+			g.r.SetStopAfterStepReader(id, func(context.Context) (bool, error) {
+				n := reads.Add(1)
+				if n == 1 {
+					return false, nil
+				}
+				if transient && n > 2 {
+					return true, nil
+				}
+				return false, errors.New("503 authority unavailable")
+			})
+			if err := g.r.Launch(id); err != nil {
+				t.Fatal(err)
+			}
+			it := g.wait(id, "authority hold", func(it factory.Item) bool {
+				return it.State == factory.StateLanded || it.State == factory.StateNeedsYou || it.Stream != nil && it.Stream.Paused
+			})
+			if steps.Load() != 1 || it.Failure != nil {
+				t.Fatalf("authority outage admitted paid steps=%d failure=%+v", steps.Load(), it.Failure)
+			}
+			if !transient && !logHas(it, "could not confirm Stop before the next step; work held: 503 authority unavailable") {
+				t.Fatal("hold did not explain authority outage")
+			}
+		})
+	}
 }

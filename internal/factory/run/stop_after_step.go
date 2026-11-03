@@ -120,16 +120,21 @@ func (r *Runner) answerStoppedSpending(id int, yes bool, words string) error {
 
 // Read failures do not admit paid work; keep the retry window inside the lease.
 func readStopChoice(ctx context.Context, read func(context.Context) (bool, error)) (bool, error) {
- ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
- defer cancel()
- var on bool
- var err error
- for attempt := 0; attempt < 3; attempt++ {
-  on, err = read(ctx)
-  if err == nil || errors.Is(err, client.ErrLeaseGone) || ctx.Err() != nil { break }
-  if attempt < 2 {
-   select { case <-ctx.Done(): case <-time.After(100*time.Millisecond): }
-  }
- }
- return on, err
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	var on bool
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		on, err = read(ctx)
+		if err == nil || errors.Is(err, client.ErrLeaseGone) || ctx.Err() != nil {
+			break
+		}
+		if attempt < 2 {
+			select {
+			case <-ctx.Done():
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}
+	return on, err
 }

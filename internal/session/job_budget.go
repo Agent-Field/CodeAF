@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
- "github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // jobBudgetOf is shared by the whole owned family. Children charge their own

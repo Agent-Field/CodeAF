@@ -32,11 +32,14 @@ func TestPublishCheckBoundedFailure(t *testing.T) {
 }
 
 func TestStopChoiceReadSupportsOlderFactoryRoutes(t *testing.T) {
- for _, status := range []int{http.StatusNotFound, http.StatusMethodNotAllowed} {
-  t.Run(http.StatusText(status), func(t *testing.T) {
-   srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "old route", status) })); defer srv.Close()
-   on, err := client.Open(srv.URL, "").Worker("credential").StopAfterStep(context.Background(), "lease")
-   if on || err != nil { t.Fatalf("old factory stopped healthy work: on=%v err=%v", on, err) }
-  })
- }
+	for _, status := range []int{http.StatusNotFound, http.StatusMethodNotAllowed} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "old route", status) }))
+			defer srv.Close()
+			on, err := client.Open(srv.URL, "").Worker("credential").StopAfterStep(context.Background(), "lease")
+			if on || err != nil {
+				t.Fatalf("old factory stopped healthy work: on=%v err=%v", on, err)
+			}
+		})
+	}
 }
