@@ -787,7 +787,8 @@ when a worker reports a step beginning. At or above the cap, it holds the job
 with this budget question. Current workers wait for that step report to be
 accepted before starting paid work. A running worker whose next report reaches
 the cap loses its lease and stops, including older workers. Already incurred
-charges remain recorded.
+charges remain recorded. Workers already reporting a budget question keep
+their parked lease so a raise can continue them.
 
 The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
 spending. If the job has spent $5.25, the next budget is $10 even when the old cap

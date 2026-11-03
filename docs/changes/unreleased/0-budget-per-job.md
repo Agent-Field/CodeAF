@@ -42,3 +42,7 @@ its budget question and refuses execution. Current workers await step begin
 acknowledgment; older workers obey the existing lease-withdrawn response on their
 next report. No worker version gate is added. A late archived receipt cannot let
 an admitted worker start from a stale accounting mirror.
+Workers explicitly reporting that they are already waiting on a budget question
+keep their parked lease and existing budget-before-continue signal order. The
+server still replaces that question with its own total; a running-step report
+cannot claim this exception.
