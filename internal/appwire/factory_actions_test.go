@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func (a *actorEngine) did(name string, p any) (FactoryJobActed, error) {
 	return FactoryJobActed{Action: name, Job: 1}, nil
 }
 
-func (a *actorEngine) FactoryJobStart(_ context.Context, p FactoryJobActionParams) (FactoryJobActed, error) {
+func (a *actorEngine) FactoryJobStart(_ context.Context, p FactoryJobStartParams) (FactoryJobActed, error) {
 	return a.did("start", p)
 }
 func (a *actorEngine) FactoryJobStop(_ context.Context, p FactoryJobActionParams) (FactoryJobActed, error) {
@@ -138,7 +139,7 @@ func TestFactoryActionsAbsentWithoutActor(t *testing.T) {
 		t.Fatalf("a reader announced %v", got.Features)
 	}
 	got := withFactoryActorFeature(Hello{}, &actorEngine{})
-	if len(got.Features) != 1 || got.Features[0] != FeatureFactoryJobActions {
+	if !slices.Equal(got.Features, []string{FeatureFactoryJobActions, FeatureFactoryStopAnyVersion}) {
 		t.Fatalf("an actor announced %v", got.Features)
 	}
 	// factory.remote is still announced by the reader half alone.
@@ -150,8 +151,8 @@ func TestFactoryActionsAbsentWithoutActor(t *testing.T) {
 func TestFactoryActionsRefuseBadRequestsBeforeTheEngine(t *testing.T) {
 	eng := &actorEngine{}
 	bad := []struct{ name, params string }{
-		// No version read: the write would run on a job the person never saw.
-		{"factory.job_stop", `{"factory":"f","job":1}`},
+		// Writes other than Stop require the version the person read.
+		{"factory.job_start", `{"factory":"f","job":1}`},
 		{"factory.job_stop", `{"factory":"f","job":1,"expect":{}}`},
 		{"factory.job_stop", `{"factory":"f","job":1,"expect":{"state":"running"}}`},
 		{"factory.job_stop", `{"factory":"f","job":1,"expect":{"version":0}}`},

@@ -243,6 +243,11 @@ func TestEveryTagTheBuildWritesResolvesToARoleSomebodyDeclared(t *testing.T) {
 // that passes forever the moment somebody builds a tag out of a variable, which
 // is exactly how the log came to carry 2,309 untagged rows in the first place.
 var derivedTags = map[string]func(yield func(tag, where string)){
+	// internal/knowledge/compiler_provider.go tags each compile call with the
+	// lane role memory runs under; that is the whole of what it can be.
+	"string(lanes.RoleMemory)": func(yield func(tag, where string)) {
+		yield("memory", "internal/knowledge/compiler_provider.go, a memory compile call")
+	},
 	// internal/session/toolask.go: a tool's own call carries the tool's name
 	// after the role word, and no walk can enumerate the belt.
 	"toolCallTag(question.tool)": func(yield func(tag, where string)) {

@@ -44,16 +44,10 @@ package session
 //     (orchestrate.go's [orchestrateExec.spend]) journals its own calls here and
 //     folds home silently. It folded through the auxiliary door until issue
 //     #168, and the day this file's rail reads was double on every one of them.
-//   - IT NEVER BLOCKS A TURN, AND THE TURN'S OWN GOROUTINE NEVER TOUCHES THE
-//     DISK. [RecordUsage] serializes the row and hands it to a bounded queue
-//     that one background writer per ledger drains ([usageWriter]); a full
-//     queue drops the row rather than waiting on it, and so does a write that
-//     fails. A home directory on a stalled mount therefore costs a spending
-//     record and never a person's turn — which the older shape, an
-//     open-write-close under a process-wide mutex, could not promise. AND THE
-//     DROP IS COUNTED WHERE IT HAPPENS ([UsageDrops]), because a gap nobody can
-//     see is a bill that reads as smaller than it was: the spend surfaces say
-//     how many records went missing rather than quietly under-reporting.
+//   - A FULL QUEUE DOES NOT DISCARD A CHARGE. The turn's goroutine never
+//     touches disk and never waits. Overflow is kept for the ledger's one
+//     writer. Flush and shutdown include those writes under their existing
+//     ceiling. Filesystem failures remain counted by [UsageDrops].
 //   - A LINE THAT SPENT NOTHING IS NOT WRITTEN. The emptiness law applied to a
 //     file: a call whose usage block or later receipt carries no cost and no
 //     tokens leaves no priced row — an explicit unbilled marker records a
@@ -268,6 +262,12 @@ type UsageLine struct {
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
 	Workspace string `json:"workspace,omitempty"`
+	// FactoryJob is the factory job this call was spent for, as
+	// `owner/name#number` ([JobLedgerName]), on every row of a job's family:
+	// its steps, its own chat and their children. It is what lets the factory
+	// say which models its jobs used without opening a transcript, and it is
+	// empty on every other row and on every row written before it existed.
+	FactoryJob string `json:"factory_job,omitempty"`
 
 	// ── what the lane that served it did (docs/ARCHITECTURE.md, Decision 10)
 	//
@@ -520,11 +520,8 @@ func (w *laneWitness) answered(seen hedgeSeen, output int) laneFacts {
 // disk, and a ledger row is written at most once per model call, so this writer
 // wakes on the row itself and there is nothing to batch.
 
-// usageQueueDepth is how many serialized rows one ledger's queue holds before a
-// row is DROPPED rather than waited on. Two hundred and fifty-six is far more
-// than the handful of calls that can be in flight at once in this process, so
-// the queue only fills when the disk behind it has stopped answering — which is
-// exactly the case the drop exists for.
+// usageQueueDepth bounds the ordinary background queue. Overflow writes through
+// independently rather than dropping a charge.
 const usageQueueDepth = 256
 
 // usageFlushLimit is the longest [FlushUsage] may wait for the rows in front of
@@ -547,25 +544,16 @@ type usageWrite struct {
 
 // usageWriter is one ledger file's background writer.
 type usageWriter struct {
-	queue       chan usageWrite
-	stopped     chan struct{}
-	beforeWrite func()
+	queue        chan usageWrite
+	stopped      chan struct{}
+	beforeWrite  func()
+	overflowMu   sync.Mutex
+	overflow     map[chan struct{}]struct{}
+	overflowRows []usageOverflowRow
 }
 
-// usageDropped is how many rows this process could not get onto a ledger — a
-// queue full because the disk stopped answering, a directory that would not be
-// made, a write that failed. It is process-wide rather than per-path because
-// every reader of it asks one question — "is what I am looking at short, and by
-// how much" — and a person reading a spending page does not hold a mental map
-// of which ledger a row was bound for.
-//
-// IT EXISTS BECAUSE THE DROP ITSELF IS RIGHT AND THE SILENCE WAS NOT. The
-// bargain above stands: a spending record is worth less than the turn that
-// earned it, so the row gives way. But a ledger that quietly loses rows reads
-// as a machine that spent less, which is the flattering direction and the one
-// direction a bill must never be wrong in. So the drop is counted and the spend
-// surfaces say so ([UsageDrops]). [UnbilledCalls] makes the same sentence about
-// calls whose provider receipt could not be had.
+// usageDropped counts serialization and filesystem failures across all ledgers.
+// A full queue no longer contributes: overflow writes through instead.
 var usageDropped atomic.Int64
 
 // unbilledCalls is process-wide for the same reason [usageDropped] is: every
@@ -620,12 +608,32 @@ func usageWriterForLocked(path string) *usageWriter {
 		return writer
 	}
 	writer := &usageWriter{
-		queue:   make(chan usageWrite, usageQueueDepth),
-		stopped: make(chan struct{}),
+		queue:    make(chan usageWrite, usageQueueDepth),
+		stopped:  make(chan struct{}),
+		overflow: make(map[chan struct{}]struct{}),
 	}
 	usageWriters[path] = writer
 	go writer.run(path)
 	return writer
+}
+
+// usageOverflowRow is a row waiting for the overflow writer; done closes once
+// it was written or counted as dropped.
+type usageOverflowRow struct {
+	line []byte
+	done chan struct{}
+}
+
+// pendingOverflow captures the writes already admitted without waiting under a
+// lock. Later writes belong to a later flush; shutdown admits no later writes.
+func (w *usageWriter) pendingOverflow() []chan struct{} {
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	pending := make([]chan struct{}, 0, len(w.overflow))
+	for done := range w.overflow {
+		pending = append(pending, done)
+	}
+	return pending
 }
 
 // run drains the queue forever, holding ONE descriptor open across rows.
@@ -643,11 +651,7 @@ func (w *usageWriter) run(path string) {
 			_ = file.Close()
 		}
 	}()
-	for work := range w.queue {
-		if work.done != nil {
-			close(work.done)
-			continue
-		}
+	write := func(line []byte) {
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
@@ -655,18 +659,69 @@ func (w *usageWriter) run(path string) {
 			file = openUsageLedger(path)
 			if file == nil {
 				dropUsageRow()
-				continue
+				return
 			}
 		}
 		// ONE write per complete line, so O_APPEND's atomic offset covers the
 		// whole row — which is also what lets [UsageCache] trust that the bytes
 		// before the last newline are whole lines, and what keeps two processes
 		// appending to one ledger from interleaving halves of two rows.
-		if _, err := file.Write(work.line); err != nil {
+		if _, err := file.Write(line); err != nil {
 			dropUsageRow()
 			_ = file.Close()
 			file = nil
+			return
 		}
+		announceUsageWritten()
+	}
+	for work := range w.queue {
+		if work.done != nil {
+			w.writeOverflow(write)
+			close(work.done)
+			continue
+		}
+		if work.line != nil {
+			write(work.line)
+		}
+		if len(w.queue) == 0 {
+			w.writeOverflow(write)
+		}
+	}
+	w.writeOverflow(write)
+}
+
+// usageWatchers are told after a row reaches the file. Spending happens outside
+// chat turns (Factory triage, scouts, page AI), so a reader of today's figure
+// can't wait for a turn's ending to know the ledger moved.
+var usageWatchers struct {
+	sync.Mutex
+	next int
+	of   map[int]func()
+}
+
+// OnUsageWritten calls watch after each row reaches the ledger, on the writer's
+// goroutine, so watch must not block. The answer stops the watching.
+func OnUsageWritten(watch func()) (stop func()) {
+	usageWatchers.Lock()
+	defer usageWatchers.Unlock()
+	if usageWatchers.of == nil {
+		usageWatchers.of = map[int]func(){}
+	}
+	id := usageWatchers.next
+	usageWatchers.next++
+	usageWatchers.of[id] = watch
+	return func() {
+		usageWatchers.Lock()
+		defer usageWatchers.Unlock()
+		delete(usageWatchers.of, id)
+	}
+}
+
+func announceUsageWritten() {
+	usageWatchers.Lock()
+	defer usageWatchers.Unlock()
+	for _, watch := range usageWatchers.of {
+		watch()
 	}
 }
 
@@ -693,7 +748,7 @@ func openUsageLedger(path string) *os.File {
 // a test uses instead of sleeping — internal/history's Close is the same door
 // for the same reason.
 //
-// IT IS THE ONE PLACE IN THIS FILE THAT WAITS, deliberately: a caller asking for
+// IT WAITS FOR THE WRITES, deliberately: a caller asking for
 // a flush is asking to be told when the writing is done, and a flush that gave
 // up early would be an answer about nothing. Nothing on a turn path may call it.
 //
@@ -775,18 +830,22 @@ func detachUsageWriter(path string) *usageWriter {
 // would panic the process). The send is non-blocking for [RecordUsage]'s
 // reason: a full queue is a writer stalled on a disk that is not answering, and
 // a flush will not wait on a marker that cannot land, no more than on a row that
-// cannot. Only the markers that were accepted are waited on.
+// cannot. An unaccepted marker makes the bounded flush report false.
 func enqueueUsageFlush() []chan struct{} {
 	usageWritersMu.Lock()
 	defer usageWritersMu.Unlock()
 	dones := make([]chan struct{}, 0, len(usageWriters))
 	for _, writer := range usageWriters {
+		dones = append(dones, writer.pendingOverflow()...)
 		done := make(chan struct{})
 		select {
 		case writer.queue <- usageWrite{done: done}:
-			dones = append(dones, done)
 		default:
+			// The queue is full, so its writer will reach the kept rows, and
+			// it takes them only once everything queued has been written.
+			writer.addBarrier(done)
 		}
+		dones = append(dones, done)
 	}
 	return dones
 }
@@ -861,17 +920,66 @@ func RecordUsage(path string, line UsageLine) {
 		dropUsageRow()
 		return
 	}
-	// THE ENQUEUE IS NON-BLOCKING AND THE ROW IS THE THING THAT GIVES WAY. A
-	// full queue means the writer is stuck on a disk that is not answering, and
-	// a turn made to wait behind it would be this file's fourth rule broken to
-	// save a record of what the turn cost.
+	// Overflow is kept for the writer, so a saturated queue never discards a
+	// charge and the caller still never waits on the disk.
 	usageWritersMu.Lock()
-	defer usageWritersMu.Unlock()
 	writer := usageWriterForLocked(path)
+	work := usageWrite{line: append(payload, '\n')}
 	select {
-	case writer.queue <- usageWrite{line: append(payload, '\n')}:
+	case writer.queue <- work:
+		usageWritersMu.Unlock()
+		return
 	default:
-		dropUsageRow()
+	}
+	writer.addOverflow(work.line)
+	usageWritersMu.Unlock()
+}
+
+// addOverflow keeps a row the full queue couldn't take. The queue's own writer
+// takes it once the queue is empty, so rows stay in order and a stalled mount
+// holds one thread. A full queue means that writer has work, so it will reach
+// this row.
+func (w *usageWriter) addOverflow(line []byte) {
+	done := make(chan struct{})
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	w.overflow[done] = struct{}{}
+	w.overflowRows = append(w.overflowRows, usageOverflowRow{line: line, done: done})
+	w.wakeForOverflow()
+}
+
+// wakeForOverflow covers a writer that emptied the queue between the caller
+// seeing it full and keeping the row: an empty item sends it back to the kept
+// rows. If the queue is full again, the writer has work and will reach them.
+func (w *usageWriter) wakeForOverflow() {
+	select {
+	case w.queue <- usageWrite{}:
+	default:
+	}
+}
+
+// addBarrier closes done once the rows kept before it have been written.
+func (w *usageWriter) addBarrier(done chan struct{}) {
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	w.overflowRows = append(w.overflowRows, usageOverflowRow{done: done})
+	w.wakeForOverflow()
+}
+
+// writeOverflow writes the rows kept so far.
+func (w *usageWriter) writeOverflow(write func([]byte)) {
+	w.overflowMu.Lock()
+	rows := w.overflowRows
+	w.overflowRows = nil
+	w.overflowMu.Unlock()
+	for _, row := range rows {
+		if row.line != nil {
+			write(row.line)
+		}
+		w.overflowMu.Lock()
+		delete(w.overflow, row.done)
+		w.overflowMu.Unlock()
+		close(row.done)
 	}
 }
 
@@ -1016,6 +1124,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 		Root:       strings.TrimSpace(a.config.rootSession),
 		Automation: strings.TrimSpace(a.config.automationID),
 		Workspace:  strings.TrimSpace(a.config.Workspace),
+		FactoryJob: a.factoryJobName(),
 	}
 
 	// THE ROW'S TWO NAMES GO ON THROUGH ONE DOOR ([TagUsage]), and the seat
@@ -1266,6 +1375,7 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 	RecordUnbilledCall(path, UsageLine{
 		Session: owner, Model: model, Task: usageTaskID(a.config.taskID),
 		Root: a.config.rootSession, Automation: a.config.automationID, Workspace: a.config.Workspace,
+		FactoryJob: a.factoryJobName(),
 	})
 }
 

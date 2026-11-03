@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -44,6 +45,18 @@ func TestAppBackgroundE13B2QueuedTaskAcquiresAndSettlesAtStartup(t *testing.T) {
 	a, rec, _, workspace := appSyncBackend(t)
 	homeA, _ := outageHomes(t, relay.URL)
 	t.Cleanup(func() { _ = a.Close() })
+	// A busy machine holds a queued task until it quiets, which says nothing about
+	// recovery. This test proves recovery, so it turns the host's pressure off.
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: homeA})
+	for _, key := range []string{config.KeyTaskMaxLoad, config.KeyTaskMinFreeMB} {
+		row, found := settings.Row(key)
+		if !found {
+			t.Fatalf("no settings row %q", key)
+		}
+		if err := row.Apply("0"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	agent, err := mustCreate(t, a, appwire.CreateAsk{Workspace: workspace})
 	if err != nil {
 		t.Fatal(err)

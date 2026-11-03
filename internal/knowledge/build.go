@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
@@ -36,6 +37,9 @@ type Journal struct {
 	Error                string
 	Size                 int64
 	Modified             time.Time
+	// JobOwner groups stage and task journals without changing source identities.
+	JobOwner string
+	Job      bool
 }
 type JournalCursor struct {
 	Offset            int64
@@ -55,6 +59,9 @@ type History interface {
 }
 
 func (v *Vault) StartBuild() error {
+	if err := config.WriteMemoryEnabled(v.profile, true); err != nil {
+		return err
+	}
 	db, err := v.database()
 	if err != nil {
 		return err
@@ -72,10 +79,8 @@ func (v *Vault) StartBuild() error {
 	if err != nil {
 		return err
 	}
-	if textValue(job["phase"]) == string(BuildRunning) {
-		return nil
-	}
 	job["backfill"] = true
+	job["request"] = time.Now().UTC().Format(time.RFC3339Nano)
 	job["phase"] = string(BuildRunning)
 	job["error"] = ""
 	if err = saveState(tx, "job", job); err != nil {
@@ -134,7 +139,7 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 				return loadErr
 			}
 			job["phase"] = string(BuildFailed)
-			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; retrying automatically."
+			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; use Build to retry or add new sources."
 			saveErr := saveState(db, "job", job)
 			db.Close()
 			if saveErr != nil {
@@ -169,17 +174,19 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		return err
 	}
 	defer db.Close()
-	settings, err := stateDocument(db, "config")
-	if err != nil {
-		return err
+	for _, journal := range journals {
+		if journal.Job {
+			if _, err = db.Exec("UPDATE events SET payload=json_set(payload,'$.job',json('true')) WHERE partition='profile' AND json_extract(payload,'$.session')=? AND coalesce(json_extract(payload,'$.job'),0)=0", journal.Session); err != nil {
+				return err
+			}
+		}
 	}
 	job, err := stateDocument(db, "job")
 	if err != nil {
 		return err
 	}
-	if !flag(settings["enabled"]) {
-		// A successful empty inventory may arm future capture. Existing history
-		// always waits for an explicit Build action before sources enter the vault.
+	if !v.Enabled() {
+		// Discovery is local. No inventory, including an empty one, opts in.
 		fingerprint := identity(journals)
 		if textValue(job["inventory_hash"]) == fingerprint {
 			return nil
@@ -218,14 +225,9 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		if err = saveState(db, "job", job); err != nil {
 			return err
 		}
-		if available > 0 || problems > 0 {
-			return nil
-		}
-		if _, err = db.Exec("INSERT OR IGNORE INTO state(key,payload) VALUES('config',?)", mustJSON(document{"enabled": true, "schema": 1, "created_at": time.Now().UTC().Format(time.RFC3339Nano)})); err != nil {
-			return err
-		}
-		v.forgetConsent()
+		return nil
 	}
+
 	imported := int(number(job["imported"]))
 	problems := int(number(job["problems"]))
 	fingerprint := identity(journals)
@@ -265,6 +267,7 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 					return err
 				}
 				for _, source := range batch.Sources {
+					source.Job = journal.Job
 					if err = validateCapture(source); err == nil {
 						err = v.captureTx(tx, source)
 					}
@@ -311,6 +314,16 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile'").Scan(&total); err != nil {
 		return err
 	}
+	var latest int64
+	var admitted int
+	var arrived float64
+	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
+		return err
+	}
+	attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
+	if job["failed_input"] == attemptInput {
+		return nil
+	}
 	job["problems"] = problems
 	job["sources"] = total
 	job["chats"] = len(journals)
@@ -320,14 +333,13 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		if err = ctx.Err(); err != nil {
 			return err
 		}
-		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit')").Scan(&pending); err != nil {
+		if !v.Enabled() {
+			return nil
+		}
+		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&pending); err != nil {
 			return err
 		}
-		status, err := stateDocument(db, "status")
-		if err != nil {
-			return err
-		}
-		if pending == 0 && !flag(status["needs_update"]) {
+		if pending == 0 && !flag(job["backfill"]) {
 			projection, err := stateDocument(db, "projection")
 			if err != nil {
 				return err
@@ -341,13 +353,23 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		if err = v.Flush(ctx, key(), flag(job["backfill"])); err != nil {
+			if errors.Is(err, ErrDisabled) {
+				return nil
+			}
+			job["failed_input"] = attemptInput
+			if saveErr := saveState(db, "job", job); saveErr != nil {
+				return saveErr
+			}
 			return err
 		}
 		var remaining int
-		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit')").Scan(&remaining); err != nil {
+		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&remaining); err != nil {
 			return err
 		}
-		if remaining > 0 && remaining >= pending {
+		if remaining == 0 {
+			break
+		}
+		if remaining >= pending {
 			return nil
 		}
 	}

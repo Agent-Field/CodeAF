@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -46,10 +47,19 @@ func appPresenceReconnect(t *testing.T, scenario string) {
 	missedOffline := scenario == "missed offline"
 	celltest.Available(t)
 	connections := make(chan net.Conn, 8)
-	var stale, blocked atomic.Bool
+	var stale, blocked, holdWatch atomic.Bool
+	releaseWatch := make(chan struct{})
+	release := sync.OnceFunc(func() { close(releaseWatch) })
 	appDevicesRelay(t, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/v1/dir/watch" {
+				if holdWatch.Load() {
+					select {
+					case <-releaseWatch:
+					case <-r.Context().Done():
+						return
+					}
+				}
 				if blocked.Load() {
 					http.Error(w, "reconnect paused", http.StatusServiceUnavailable)
 					return
@@ -79,6 +89,7 @@ func appPresenceReconnect(t *testing.T, scenario string) {
 			next.ServeHTTP(w, r)
 		})
 	})
+	t.Cleanup(release)
 	a, b := t.TempDir(), t.TempDir()
 	id, err := identity.Ensure(a)
 	if err != nil {
@@ -122,9 +133,12 @@ func appPresenceReconnect(t *testing.T, scenario string) {
 	rec.mu.Lock()
 	before := len(rec.events)
 	rec.mu.Unlock()
-	if scenario != "fresh" {
-		blocked.Store(true)
-	}
+	// While B lapses, A's next dial waits at the relay. Refusing it instead would
+	// climb the jittered retry ladder, whose next wait can run up to RetryCap
+	// after the relay returns, and the wait for the reconnect below would measure
+	// that draw. The ladder has its own tests in dirwatch.
+	holdWatch.Store(missedOffline)
+	blocked.Store(scenario == "outage")
 	if err = own.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +168,7 @@ func appPresenceReconnect(t *testing.T, scenario string) {
 			p, err := sb.Dir.Presence(t.Context())
 			return err == nil && !p.Devices[sb.Device.ID()].Online
 		})
-		blocked.Store(false)
+		release()
 	} else {
 		peer.Probe()
 	}

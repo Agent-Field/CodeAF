@@ -81,6 +81,10 @@ func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *in
 	history, _ := record.Open(st, record.Options{})
 	look := factoryScoutLook(st, config.Load)
 	return intake.New(st, intake.Options{
+		Standing: factorygithub.Rechecker(func(ctx context.Context) string {
+			token, _ := factorygithub.TokenAt(ctx, factoryProfile(""))
+			return token
+		}),
 		Owner:  owner,
 		Record: history,
 		// An automatic start is looked at closer first, while Read new issues
@@ -221,7 +225,9 @@ func factoryJobFile(ctx context.Context, st *store.Store, it factory.Item, repo,
 // decides or shows what a job runs under: intake's start decision and the
 // factory's pipeline answers. A store that cannot read its rules makes the
 // read fail rather than quietly decide without them, so nothing starts on
-// its own that a house rule would have held.
+// its own that a house rule would have held. The factory's spending defaults
+// ([factory.Spending]) fill what the repository leaves unsaid on the same
+// terms: a spending file that cannot be read fails the read too.
 func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipeline.File, error) {
 	if st == nil {
 		return f, err
@@ -230,7 +236,11 @@ func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipelin
 	if herr != nil {
 		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, herr)
 	}
-	return pipeline.WithHouseRules(f, house), err
+	spending, serr := st.Spending()
+	if serr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, serr)
+	}
+	return pipeline.WithSpending(pipeline.WithHouseRules(f, house), spending), err
 }
 
 // factoryProfileOwner is the forge login of this machine's GitHub connection:

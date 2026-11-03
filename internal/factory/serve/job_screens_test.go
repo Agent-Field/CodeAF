@@ -98,13 +98,13 @@ func TestJobScreensStopRerunKeepsEarlierWorkAndRevokesLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.post(t, it, "steps/write/stop", `{"expect":{"step":"plan"}}`, 409)
 	f.person = "mei"
 	f.post(t, it, "steps/write/stop", "{}", 403)
 	f.person = "sam"
 	f.post(t, it, "steps/missing/stop", "{}", 404)
 	f.post(t, it, "steps/plan/stop", "{}", 409)
-	f.post(t, it, "steps/write/stop", "{}", 200)
+	// Stop is the same wish after any progress: a stale read doesn't refuse it.
+	f.post(t, it, "steps/write/stop", `{"expect":{"step":"plan"}}`, 200)
 	if _, err := desk.Heartbeat(held.Job, worker.ID); err == nil {
 		t.Fatal("old lease still accepts a heartbeat")
 	}

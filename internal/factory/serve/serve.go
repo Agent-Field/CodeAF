@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 )
 
 // JobFolders is a drop's reach into this machine: the job's local branch and
@@ -164,11 +165,15 @@ type Handler struct {
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
-	setupCancel context.CancelFunc
-	setupDone   chan struct{}
-	setupTimer  *time.Timer
-	accessMu    sync.Mutex
-	accessFlows map[string]accessLinkFlow
+	// setupContinuing is held by a Continue from the moment it decides to stop
+	// the reader until it saves its own step, so nothing starts reading again
+	// in between.
+	setupContinuing bool
+	setupCancel     context.CancelFunc
+	setupDone       chan struct{}
+	setupTimer      *time.Timer
+	accessMu        sync.Mutex
+	accessFlows     map[string]accessLinkFlow
 	// commentFlights holds the jobs with a comment on their issue being
 	// posted by this handler (issue_comment.go).
 	commentFlights sync.Map
@@ -264,6 +269,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/factory-access", map[string]http.HandlerFunc{http.MethodGet: h.factoryAccess, http.MethodPost: h.factoryAccess})
 	h.read("/v1/factory-days/today", h.factoryDay)
 	h.read("/v1/spend/repos", h.spendRepos)
+	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
 	h.jobScreens()
 	h.scheduleJobTimer()
@@ -304,7 +310,16 @@ func (h *Handler) Close() {
 		if h.setupCancel != nil {
 			h.setupCancel()
 		}
+		var setupDone chan struct{}
+		if h.setupBusy {
+			setupDone = h.setupDone
+		}
 		h.setupMu.Unlock()
+		// A cancelled setup worker still finishes its last write; nothing may
+		// write into the factory's folder once Close has returned.
+		if setupDone != nil {
+			<-setupDone
+		}
 	}
 	if h != nil {
 		h.jobsMu.Lock()
@@ -419,6 +434,9 @@ func (h *Handler) route(pattern string, methods map[string]http.HandlerFunc) {
 	sort.Strings(allowed)
 	h.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if handler := methods[r.Method]; handler != nil {
+			if ctx := githubcalls.WithCaller(r.Context(), r.Method+" "+pattern); ctx != r.Context() {
+				r = r.WithContext(ctx)
+			}
 			handler(w, r)
 			return
 		}
@@ -484,6 +502,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			h.soloJob(&q.Jobs[i], s.Items[i], handle)
 		}
 	}
+	h.judgeProtected(r.Context(), s.Items, q.Jobs)
 	q.Reason = reason
 	if reason != "" {
 		if q.Jobs == nil {
@@ -512,6 +531,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	for i := range q.Jobs {
 		h.presentJob(r, &q.Jobs[i])
 	}
+	h.repoCheckouts(r.Context(), q.Repos)
 	summarize := h.summaries(r)
 	for _, job := range q.Jobs {
 		if job.HeldBy != nil {
@@ -571,6 +591,20 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	}{h.factory, jobs[0]})
 }
 
+// repoCheckouts says on each queue repository how a run of it gets its
+// checkout, from the door every start asks ([factory.Seam.CheckoutOf]), so a
+// repository with no jobs yet can be checked before its first Start. A seam
+// that does not know its machine's checkouts leaves the word absent.
+func (h *Handler) repoCheckouts(ctx context.Context, repos []api.Repo) {
+	if h.seam.CheckoutOf == nil {
+		return
+	}
+	for i := range repos {
+		state, _ := h.seam.CheckoutOf(ctx, repos[i].Name)
+		repos[i].CheckoutState = string(state)
+	}
+}
+
 // findJob gives every job door the same id and existence checks, without
 // guessing whether an untyped runner error meant a missing job.
 func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item, bool) {
@@ -587,7 +621,7 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 		return factory.Item{}, false
 	}
 	for _, it := range s.Items {
-		if factory.IsIssueJob(it) && (it.ID == id || factory.JobRef(it) == r.PathValue("id")) {
+		if factory.IsIssueJob(it) && (it.ID == id || factory.JobKey(it) == r.PathValue("id")) {
 			// A hidden job is the same answer as a missing one, so the
 			// caller cannot tell which repositories exist.
 			visible := h.repoVisible(r, itemRepo(it))
