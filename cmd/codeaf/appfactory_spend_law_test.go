@@ -51,6 +51,8 @@ func TestFactoryModelSendsHaveLedgerOwners(t *testing.T) {
 	dir := t.TempDir()
 	source := `package fixture
  func unowned(c Client) { c.CompleteWithMessages(ctx, nil) }
+ var unownedClosure = func(c Client) { c.CompleteWithMessages(ctx, nil) }
+ var unownedInitializer = c.CompleteWithMessages(ctx, nil)
  `
 	if err := os.WriteFile(filepath.Join(dir, "unowned.go"), []byte(source), 0600); err != nil {
 		t.Fatal(err)
@@ -72,6 +74,9 @@ func TestFactoryModelSendsHaveLedgerOwners(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("ledger law accepted an unowned production helper")
+	}
+	if len(mutant) != len(calls)+2 {
+		t.Fatal("ledger law accepted package-scope model sends")
 	}
 	// Removing an exception without retiring its entry must also fail.
 	for key := range entries {
