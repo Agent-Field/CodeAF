@@ -80,12 +80,12 @@ func TestReceiptFailureTimeoutText(t *testing.T) {
 }
 
 func TestReceiptQuotedRefusedProbeWithoutPass(t *testing.T) {
- root, file, _ := staleGuardFixture(t)
- command := `go test -run '^TestProbe$' ./pkg`
- guardUnrunJournal(t, file, command, "refused")
- door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
- t.Cleanup(door.closeVerification)
- if err := door.Report(t.Context(), factory.StageResult{Done: true}); err == nil || !strings.Contains(err.Error(), command+" · refused") {
-  t.Fatalf("refused required check must remain owed: %v", err)
- }
+	root, file, _ := staleGuardFixture(t)
+	command := `go test -run '^TestProbe$' ./pkg`
+	guardUnrunJournal(t, file, command, "refused")
+	door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
+	t.Cleanup(door.closeVerification)
+	if err := door.Report(t.Context(), factory.StageResult{Done: true}); err == nil || !strings.Contains(err.Error(), command+" · refused") {
+		t.Fatalf("refused required check must remain owed: %v", err)
+	}
 }
