@@ -214,7 +214,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	stageSettle = 300 * time.Millisecond
 	t.Cleanup(func() { stageSettle = unattendedRunSettleTick })
 
-	w := newFactoryWire(t, testFactoryHub(t))
+	w := newStopLiveWire(t, testFactoryHub(t), ambient)
 	// Brief generation is outside this Stop lane; manager conversations stay real.
 	w.backend.briefs = nil
 	freshEngineProcess(t)
@@ -469,7 +469,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	freshEngineFactoryStore(t)
 	again := newAppFactoryHub()
 	again.dir = func() string { return dir }
-	w = newFactoryWire(t, again)
+	w = newStopLiveWire(t, again, ambient)
 	w.backend.open = appOpenInProcess
 	w.backend.emit = w.server
 	w.backend.briefs = nil
@@ -543,4 +543,17 @@ func TestStopLiveTrafficUsesRecordedRoom(t *testing.T) {
  it := factory.Item{ID: 1, Repo: "acme/api", Title: "current title", Stream: &factory.Stream{Room: "recorded"}}
  got, err := stopLiveRoom(profile, it)
  if err != nil || got != "recorded" { t.Fatalf("delayed Stop traffic went to %q, want recorded job room; error=%v", got, err) }
+}
+
+func newStopLiveWire(t *testing.T, hub *appFactoryHub, profile string) *factoryWire {
+ return newFactoryWire(t, hub)
+}
+
+func TestStopLiveFactoryAndManagerUseSameProfile(t *testing.T) {
+ profile := t.TempDir()
+ t.Setenv(config.ProfileDirEnv, profile)
+ w := newStopLiveWire(t, testFactoryHub(t), profile)
+ if got := w.backend.localProfile(); got != profile {
+  t.Fatalf("factory traffic profile=%q differs from manager profile=%q", got, profile)
+ }
 }
