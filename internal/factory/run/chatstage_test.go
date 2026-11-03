@@ -733,12 +733,12 @@ func TestModelPolicyRefusalDoesNotStopStageOrDiscardModelSelection(t *testing.T)
 }
 
 func TestFollowPRRoundWithoutActiveFollowUpKeepsRepairRules(t *testing.T) {
-	for _, resume := range []string{"", "chat-7"} {
-		for _, state := range []string{"absent", "healthy", "needs_you", "queued", "running"} {
+	for _, state := range []string{"absent", "healthy", "needs_you", "queued", "running"} {
+		for _, resume := range []string{"", "chat-7"} {
 			t.Run(resume+"/"+state, func(t *testing.T) {
 				job := reviewJob()
 				i := factory.EnsureFollowPR(&job.Item)
-				job.Stage, job.Index = job.Item.Stages[i], i
+				job.Stage, job.Index = job.Item.Stages[len(job.Item.Stages)-1], i
 				job.Resume = resume
 				// No PR is needed to convey the stage's rules.
 				if state != "absent" {
