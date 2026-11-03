@@ -453,8 +453,8 @@ func TestWorkstreamDeletedDescendantRestoresAtRoot(t *testing.T) {
 	}
 }
 
-// WP-F1 (b): collection deletion still purges deleted pages and their saved
-// versions through the existing cascade, while page.delete retains both.
+// WP-F1 (b): explicitly purging a workstream and its collection removes deleted
+// pages and their saved versions through the cascade, while page.delete retains both.
 func TestWorkstreamDeletedPagesCollectionCascade(t *testing.T) {
 	s, storage, _ := testStore(t)
 	ctx := context.Background()
@@ -470,6 +470,9 @@ func TestWorkstreamDeletedPagesCollectionCascade(t *testing.T) {
 		}
 	}
 	if err := storage.Write(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM workstreams WHERE id=?", w.ID); err != nil {
+			return err
+		}
 		_, err := tx.ExecContext(ctx, "DELETE FROM collections WHERE id=?", w.ID)
 		return err
 	}); err != nil {

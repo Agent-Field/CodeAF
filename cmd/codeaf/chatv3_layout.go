@@ -718,10 +718,9 @@ func v3EmptySession(dir string) bool {
 	return v3EmptyUnassignedSession(dir)
 }
 
+var v3WorkstreamKeeps = workstreamKeepsConversation
+
 func v3EmptyUnassignedSession(dir string) bool {
-	if workstreamKeepsConversation(dir) {
-		return false
-	}
 	place := session.Place{Dir: dir, Owned: true}
 	spoken, sure := session.SpokeIn(place.Transcript())
 	if spoken || !sure || session.HasSavedTasks(dir) {
@@ -734,7 +733,7 @@ func v3EmptyUnassignedSession(dir string) bool {
 			return false
 		}
 	}
-	return true
+	return !v3WorkstreamKeeps(dir)
 }
 
 // v3ReapEmpty removes the empty session folders a launch left behind, except

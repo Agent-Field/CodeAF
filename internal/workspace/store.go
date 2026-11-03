@@ -311,6 +311,7 @@ func (s *Store) beginWrite(ctx context.Context, create bool) (*sql.Tx, error) {
 	if err == nil {
 		switch state {
 		case schemaReady:
+			_, err = tx.ExecContext(ctx, workstreamCollectionKeep)
 		case schemaLegacy, schemaTwo:
 			err = migrateLegacy(ctx, tx, state.version())
 		case schemaBlank:

@@ -220,7 +220,15 @@ CREATE TABLE workstream_plans (
  updated_by TEXT NOT NULL CHECK(updated_by IN ('you','agent')),
  milestones TEXT NOT NULL, waves TEXT NOT NULL
 );
-`, WorkstreamGoAheadCapMax, WorkstreamGoAheadDurationMax.Milliseconds())
+`, WorkstreamGoAheadCapMax, WorkstreamGoAheadDurationMax.Milliseconds()) + workstreamCollectionKeep
+
+// Older writers may already hold a connection opened before workstreams existed.
+// The database must enforce the same deletion refusal as Store.Delete.
+const workstreamCollectionKeep = `
+CREATE TRIGGER IF NOT EXISTS workstream_collection_keep BEFORE DELETE ON collections
+ WHEN EXISTS(SELECT 1 FROM workstreams WHERE id=OLD.id)
+ BEGIN SELECT RAISE(ABORT,'mark a workstream done instead'); END;
+`
 
 // Opening a schema-3 file verifies the tables needed by both domain reads and
 // collection ownership checks. A partial schema is refused rather than repaired.
