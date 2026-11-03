@@ -8,24 +8,22 @@ invalidates:
   - A never-spoken conversation was removed at launch unless a team referenced it; a conversation any collection references is now kept as well.
 ---
 
-Collections hold Factory jobs as `factory_job` references with a required
-`factory` field. The CLI accepts `--factory` for adding, finding and removing
-jobs. App collection targets resolve their title, status and repository through
-bounded, shared Factory reads; deleted or unavailable targets retain their
-references. Several collections can hold the same job.
+**Factory jobs in collections.** A membership can name a Factory job: kind
+`factory_job` with its `factory`. `codeaf collections add|remove|find` take
+`--factory`. In the app, `collections.open` shows each job's title, status and
+repository from one bounded, briefly shared read per Factory; a job that is gone
+or unreadable keeps its row and says so. One job may sit in several collections.
 
-`codeaf app` clients can attach named sets of tools to a conversation with
-`agents.tools_set`. The model sees them after every built-in tool, for as long
-as that client stays connected. Each call reaches the client as one
-`agents.tool_call` event, and the client answers it with `agents.tool_result`.
-A disconnect, the deadline (30 seconds by default, at most 120) or the end of the
-turn answers the model with an error that says the outcome is unknown. Late or
-repeated answers are ignored. A conversation holds at most 4 sets and 64 tools;
-built-in tool names are refused, and child tasks never receive client tools. The
-hello carries `agents.client_tools`. Conversations held by a remote engine are
-refused for now.
+**Client tools.** An app attaches sets of tools to one conversation
+(`agents.tools_set`, hello feature `agents.client_tools`). They follow the
+built-in tools while that connection lasts. The engine sends every call as an
+`agents.tool_call` event and waits for `agents.tool_result`; a lost connection,
+the turn ending, or the deadline (default 30 s, ceiling 120 s) gives the model
+an error saying the outcome is unknown, and a late or second answer is dropped.
+Limits: 4 sets, 64 tools, no built-in names, never inherited by child tasks.
+Remote-held conversations are refused for now.
 
-Launch cleanup, the blank-chat sweep and the background sweep now keep a
-never-spoken conversation that any collection references. An unreadable
-collections database keeps it too. Opening such a conversation by id after a
-restart restores its saved details.
+**Kept conversations.** Every cleanup path (launch, blank-chat sweep, background
+sweep) now spares a never-spoken conversation that some collection holds, and an
+unreadable collections file counts as holding it. After a restart, opening it
+by id brings back its saved details.
