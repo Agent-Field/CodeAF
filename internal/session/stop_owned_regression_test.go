@@ -337,3 +337,24 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
 		t.Fatalf("resumed manager did not finish: %q", words.String())
 	}
 }
+
+func TestBudgetReadErrorHoldsAdmissionWithoutCancellingWork(t *testing.T) {
+	var unread atomic.Bool
+	budget := &sampledJobBudget{read: func() string {
+		if unread.Load() {
+			return "job budget could not be read; new work held"
+		}
+		return ""
+	}}
+	a, model := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.JobBudget = budget })
+	id := startJob(t, a, "sleep 30")
+	unread.Store(true)
+	time.Sleep(350 * time.Millisecond)
+	if !a.jobs.find(id).running() {
+		t.Error("unknown budget cancelled existing work")
+	}
+	collect(t, mustSubmit(t, a, "start a paid turn"))
+	if model.requests() != 0 {
+		t.Fatal("unknown budget admitted a paid call")
+	}
+}
