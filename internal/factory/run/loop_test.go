@@ -955,7 +955,7 @@ func TestTheCapAsksAndYesRaisesIt(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	it := g.asked(id, "budget of $1 reached · $1 more, or stop?")
+	it := g.asked(id, "budget of $1 reached · $1.50 spent · raise it to $5, or stop?")
 	if it.QKind != "cap" || it.Stream.Spent != 1.5 {
 		t.Fatalf("kind %q spent %v", it.QKind, it.Stream.Spent)
 	}
@@ -963,7 +963,7 @@ func TestTheCapAsksAndYesRaisesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	it = g.waitState(id, factory.StateLanded)
-	if it.Cap != 2 || !logHas(it, "budget raised to $2 · carrying on") {
+	if it.Cap != 5 || !logHas(it, "budget raised to $5 · carrying on") {
 		t.Fatalf("cap %v log %+v", it.Cap, it.Stream.Log)
 	}
 }
