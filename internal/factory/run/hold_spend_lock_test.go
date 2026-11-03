@@ -102,3 +102,95 @@ func TestHoldSpendAnswerLockOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestHoldPersistsBeforeStepBoundary(t *testing.T) {
+	for _, failWrite := range []bool{false, true} {
+		name := "saved"
+		if failWrite {
+			name = "failed write"
+		}
+		t.Run(name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, err := st.Add(context.Background(), factory.Item{Title: "pause boundary", Repo: "acme/api", State: factory.StateRunning, Stream: &factory.Stream{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := New(Options{Store: st})
+			lp := r.loop()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			roundCtx, roundCancel := context.WithCancel(ctx)
+			defer roundCancel()
+			c := &loopCtl{id: id, ctx: ctx, cancel: cancel, roundCancel: roundCancel}
+			lp.ctls[id] = c
+			atSave, save := make(chan struct{}), make(chan struct{})
+			st.SetOutputPolicy(func() (int, int) {
+				close(atSave)
+				<-save
+				if failWrite {
+					// Refuse the final rename after the callback has run.
+					if err := os.Rename(st.ItemPath(id), st.ItemPath(id)+".before"); err != nil {
+						return 0, 0
+					}
+					_ = os.Mkdir(st.ItemPath(id), 0700)
+				}
+				return 0, 0
+			})
+			holdDone := make(chan error, 1)
+			go func() { holdDone <- r.Hold(id, true) }()
+			select {
+			case <-atSave:
+			case <-time.After(time.Second):
+				t.Fatal("Hold never reached save")
+			}
+			boundary := make(chan bool, 1)
+			go func() { boundary <- lp.held(c) }()
+			select {
+			case <-boundary:
+				t.Error("drive passed its boundary before the hold was saved")
+			case <-time.After(30 * time.Millisecond):
+			}
+			if roundCtx.Err() != nil || ctx.Err() != nil {
+				t.Error("hold cancelled execution before its log was saved")
+			}
+			close(save)
+			select {
+			case err := <-holdDone:
+				if (err != nil) != failWrite {
+					t.Fatalf("Hold error = %v, failWrite = %v", err, failWrite)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("Hold did not finish")
+			}
+			if failWrite {
+				if err := os.Remove(st.ItemPath(id)); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(st.ItemPath(id)+".before", st.ItemPath(id)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			select {
+			case allowed := <-boundary:
+				if allowed != failWrite {
+					t.Errorf("step allowed = %v, failWrite = %v", allowed, failWrite)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("step boundary did not settle")
+			}
+			it, err := st.Get(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.paused == failWrite || it.Stream.Paused == failWrite || logHas(it, sayPaused) == failWrite {
+				t.Errorf("hold did not commit control, stream and log together: paused=%v stream=%+v", c.paused, it.Stream)
+			}
+			if (roundCtx.Err() != nil) == failWrite {
+				t.Errorf("round cancellation does not match saved hold: %v", roundCtx.Err())
+			}
+		})
+	}
+}
