@@ -1,6 +1,13 @@
 package main
 
 import (
+"context"
+"net/http"
+"net/http/httptest"
+"sync"
+"sync/atomic"
+"github.com/Agent-Field/codeaf/internal/session"
+"github.com/Agent-Field/codeaf/internal/factory/store"
 "encoding/json"
 "errors"
 "fmt"
@@ -161,4 +168,68 @@ func TestFactoryPersonStopLegacyFixtures(t *testing.T) {
    if job.State != api.StateNeedsYou || job.Desk == nil || !job.Desk.PersonStopped { t.Fatalf("legacy wire lost Stop: %+v",job) }
   })
  }
+}
+
+func TestFactoryPersonStopInFlightWakeAndPersonChat(t *testing.T) {
+ s,status,it := stoppedAppJob(t,factory.StateNeedsYou)
+ var stopped api.Job
+ s.must("factory.job",map[string]any{"factory":status.Factory,"job":it.ID},&stopped)
+ s.must("factory.job_resume",map[string]any{"factory":status.Factory,"job":it.ID,"expect":map[string]any{"version":stopped.Version}},&appwire.FactoryJobActed{})
+ floor := s.backend.local.host.floor
+ if _,err := s.backend.local.host.seam.Talk(context.Background(),it.ID); err != nil { t.Fatal(err) }
+ it,err := floor.Get(it.ID)
+ if err != nil { t.Fatal(err) }
+ entered,release := make(chan struct{}),make(chan struct{})
+ var once sync.Once
+ unblock := func(){once.Do(func(){close(release)})}
+ var calls atomic.Int32
+ model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  n:=calls.Add(1)
+  var req recordedRequest
+  if err := json.NewDecoder(r.Body).Decode(&req); err != nil { t.Error(err); return }
+  delta,finish := map[string]any{"content":"this job is stopped; a person presses Start"},"stop"
+  if n==1 {
+   close(entered)
+   <-release
+   delta=map[string]any{"tool_calls":[]any{map[string]any{"index":0,"id":"late-start","type":"function","function":map[string]string{"name":"factory_start","arguments":"{}"}}}}
+   finish="tool_calls"
+  }
+  chunk,_:=json.Marshal(map[string]any{"choices":[]any{map[string]any{"index":0,"delta":delta}}})
+  w.Header().Set("Content-Type","text/event-stream")
+  fmt.Fprintf(w,"data: %s\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":%q}]}\n\ndata: [DONE]\n\n",chunk,finish)
+ }))
+ t.Cleanup(model.Close)
+ t.Cleanup(unblock)
+ agent,err:=session.New(session.Config{Workspace:mustCheckout(t,floor),SessionFile:it.Talk,ProfileDir:s.backend.localProfile(),Model:"test/model",APIKey:"test-key",BaseURL:model.URL,OneModel:true,DeterministicNames:true,FactoryRun:runDoor(floor,mustCheckout(t,floor),s.backend.localProfile())})
+ if err != nil { t.Fatal(err) }
+ t.Cleanup(func(){_ = agent.Close()})
+ events,err:=agent.SubmitRunnerNoteThrough(context.Background(),"The team question arrived; continue the job.",runDoor(floor,mustCheckout(t,floor),s.backend.localProfile()))
+ if err != nil { t.Fatal(err) }
+ select { case <-entered: case <-time.After(10*time.Second): t.Fatal("fake model did not enter the manager wake") }
+ var before api.Job
+ s.must("factory.job",map[string]any{"factory":status.Factory,"job":it.ID},&before)
+ s.must("factory.job_stop",map[string]any{"factory":status.Factory,"job":it.ID,"expect":map[string]any{"version":before.Version}},&appwire.FactoryJobActed{})
+ unblock()
+ var words strings.Builder
+ for event:=range events { words.WriteString(event.Text) }
+ if calls.Load()!=1 { t.Errorf("in-flight wake bought %d calls; only the already-running call may finish",calls.Load()) }
+ if !strings.Contains(words.String(),"this job is stopped") || !strings.Contains(words.String(),"a person presses Start") { t.Errorf("manager did not explain Stop: %q",words.String()) }
+ saved,err:=floor.Get(it.ID)
+ if err != nil { t.Fatal(err) }
+ if !factory.StoppedByPerson(saved) || saved.State!=factory.StateNew { t.Fatalf("late tool restarted job: %s",saved.State) }
+ beforeCalls:=calls.Load()
+ reply,err:=agent.Submit(context.Background(),"Explain what you need from me, without doing any work.")
+ if err != nil { t.Fatal(err) }
+ words.Reset()
+ for event:=range reply { words.WriteString(event.Text) }
+ if calls.Load()!=beforeCalls+1 || !strings.Contains(words.String(),"this job is stopped") { t.Fatalf("person chat did not reach manager: calls=%d text=%q",calls.Load()-beforeCalls,words.String()) }
+ saved,err=floor.Get(it.ID)
+ if err!=nil || !factory.StoppedByPerson(saved) || saved.State!=factory.StateNew { t.Fatalf("person chat changed execution: %s %v",saved.State,err) }
+}
+
+func mustCheckout(t *testing.T, floor *store.Store) string {
+ t.Helper()
+ dirs,err:=floor.Checkouts()
+ if err!=nil {t.Fatal(err)}
+ return dirs["acme/api"]
 }
