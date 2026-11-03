@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Raising a busy job's budget isn't refused because its spend moved
-pr: 0
+pr: 2321
 surface: [engine, factory]
 invalidates:
   - "Was true: factory.job_set_budget refused with stale when any report moved the job's version between the read and the raise. Now only a competing budget edit conflicts."
