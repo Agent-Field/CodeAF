@@ -58,6 +58,12 @@ func TestFactoryMeasuredOnlyPublication(t *testing.T) {
 		{"quoted_semicolon", "go test -run 'A;B' ./...", pass, true, []int{0}, true},
 		{"cd_and", "cd . && go test ./...", pass, true, []int{0}, true},
 		{"tests_and", "go test ./a && go test ./b", pass, true, []int{0, 0}, true},
+		{"pipe_tail_failure", "go test ./... | tail -5", pass, true, []int{7}, false},
+		{"pipe_tee_failure", "go test ./... | tee log", pass, true, []int{7}, false},
+		{"pipe_or_tail_failure", "go test ./... || true | tail -5", pass, true, []int{7}, false},
+		{"pipe_group_tee_failure", "(go test ./... || true) | tee log", pass, true, []int{7}, false},
+		{"pipe_cargo_failure", "cargo test --test cli regression | tail -5", pass, true, []int{7}, false},
+		{"pipe_absolute_failure", "CHECK_EXIT=7 ABS_GO test ./... | tail -5", pass, true, nil, false},
 		{"tail_pipe", "go test ./... | tail -5", pass, true, []int{0}, true},
 		{"semicolon_mask", "CHECK_EXIT=7 go test ./... ; true", pass, true, []int{7}, false},
 		{"or_mask", "CHECK_EXIT=7 go test ./... || true", pass, true, []int{7}, false},
@@ -107,6 +113,9 @@ func TestFactoryMeasuredOnlyPublication(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(bin, "go"), []byte(stub), 0700); err != nil {
 				t.Fatal(err)
 			}
+			if err := os.WriteFile(filepath.Join(bin, "cargo"), []byte(stub), 0700); err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(filepath.Join(root, "script.sh"), []byte("go test ./...\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -131,7 +140,7 @@ func TestFactoryMeasuredOnlyPublication(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				run := exec.Command("bash", "-c", wrapped)
+				run := exec.Command("bash", "-c", "set +o pipefail\n"+wrapped)
 				run.Dir = root
 				exitEnv := "0"
 				if len(c.exits) == 1 {
@@ -182,6 +191,19 @@ func TestFactoryMeasuredOnlyPublication(t *testing.T) {
 				}
 			}
 			notes, _ := (&stageConversation{file: file, dir: root}).ExecutionNotes()
+			if strings.HasPrefix(tc.name, "pipe_") && tc.name != "pipe_absolute_failure" {
+				for _, cmd := range commands {
+					found := false
+					for _, note := range notes {
+						if strings.HasPrefix(note, "Command receipt:") && strings.Contains(note, `"outcome":"failed"`) && strings.Contains(note, cmd) {
+							found = true
+						}
+					}
+					if !found {
+						t.Errorf("missing failed receipt for %q: %v", cmd, notes)
+					}
+				}
+			}
 			body := factory.PublishBody(factory.Item{Title: "matrix", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
 			wants := map[string]bool{}
 			for i, c := range tc.calls {
