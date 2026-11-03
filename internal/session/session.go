@@ -2606,9 +2606,9 @@ type Config struct {
 	// exists.
 	Divide bool
 
-	// usageLedger points this agent's spending records at a file OTHER than the
-	// machine's own (usage_ledger.go's [UsageLedgerPath]). Empty — which is every
-	// door in the product — means the machine's.
+	// usageLedger is this agent's accounting destination. newAgent resolves an
+	// empty value to UsageLedgerPath once, before any accounting producer starts.
+	// Late receipts keep that home even after the chat closes.
 	//
 	// It is private for [Config.fixesDir]'s reason inverted: no surface sets it
 	// and no surface should, because the whole value of the ledger is that there
@@ -2817,7 +2817,11 @@ type Agent struct {
 	// moveAsked is the person's ask to move the running reply to a task, taken
 	// at the next step boundary ([Agent.MoveTurnToTask]).
 	moveAsked atomic.Bool
-	client    Completer
+	// receiptsPending and receiptsDone are guarded by mu. They track receipts
+	// already admitted by the provider, including accounting owed after quit.
+	receiptsPending int
+	receiptsDone    chan struct{}
+	client          Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.

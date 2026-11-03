@@ -49,6 +49,12 @@ func appendRemoteUsage(path string, line UsageLine) error {
 		return err
 	}
 	defer f.Close()
+	// Ordinary ledger writers use the same file lock while checking identity
+	// and appending. Remote event deduplication keeps its own cursor and lock.
+	if err := filelock.Lock(f, true, false); err != nil {
+		return err
+	}
+	defer filelock.Unlock(f)
 	info, err := f.Stat()
 	if err != nil {
 		return err

@@ -114,10 +114,17 @@ const UsageLedgerName = "usage.jsonl"
 // from a timestamp in some other zone.
 const usageDayLayout = "2006-01-02"
 
-// UsageLedgerPath is this machine's ledger, resolved through internal/home so
-// CODEAF_HOME moves it with everything else (Decision 26 — one home, one seam).
-// It is the fallback the engine writes to; a caller with a path of its own —
-// a test, a second brain on one laptop — hands one to [RecordUsage] instead.
+// bindUsageLedger fixes an accounting owner's destination before it can spend.
+// Tool-only and naming owners bypass newAgent but owe the same lifetime rule.
+func (c *Config) bindUsageLedger() {
+	c.usageLedger = strings.TrimSpace(c.usageLedger)
+	if c.usageLedger == "" {
+		c.usageLedger = UsageLedgerPath()
+	}
+}
+
+// UsageLedgerPath resolves the current home's ledger. Accounting owners capture
+// it at creation and pass that path to RecordUsage, including after quit.
 func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 
 // UsageLine is one model call as the ledger remembers it.
@@ -131,9 +138,9 @@ type UsageLine struct {
 	GenerationID string `json:"generation_id,omitempty"`
 	// ID names this one row, once, so two readers that meet the same row — a
 	// process's own notice of what it just banked and the same row read back
-	// off the disk — can count it once. It is stamped by [RecordUsage] when the
-	// row is first handed over and is NEVER rewritten: a row already carrying
-	// one keeps it. Rows written before this field existed have none, and
+	// off the disk — can count it once. Agent accounting names the row before
+	// sharing it with the saved call; RecordUsage names other rows. It is never
+	// rewritten: a row already carrying one keeps it. Rows written before this field existed have none, and
 	// every reader counts them by position, exactly as it always did.
 	ID string `json:"id,omitempty"`
 	// Billing is what kind of money this call was — "metered", "included" in a
@@ -647,6 +654,7 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 // record is worth less than the turn that earned it.
 func (w *usageWriter) run(path string) {
 	var file *os.File
+	var identities usageIdentityCursor
 	defer close(w.stopped)
 	defer func() {
 		if file != nil {
@@ -668,13 +676,17 @@ func (w *usageWriter) run(path string) {
 		// whole row — which is also what lets [UsageCache] trust that the bytes
 		// before the last newline are whole lines, and what keeps two processes
 		// appending to one ledger from interleaving halves of two rows.
-		if _, err := file.Write(line); err != nil {
+		written, err := identities.append(file, line)
+		if err != nil {
 			dropUsageRow()
 			_ = file.Close()
 			file = nil
+			identities = usageIdentityCursor{}
 			return
 		}
-		announceUsageWritten()
+		if written {
+			announceUsageWritten()
+		}
 	}
 	for work := range w.queue {
 		if work.done != nil {
@@ -912,8 +924,8 @@ func RecordUsage(path string, line UsageLine) {
 	if strings.TrimSpace(line.Day) == "" {
 		line.Day = line.At.Local().Format(usageDayLayout)
 	}
-	// THE ROW IS NAMED HERE, the one door every ledger row passes, so no
-	// writer can forget to and none can name it twice ([UsageLine.ID]).
+	// Agent accounting shares an identity with its saved call before enqueueing.
+	// Other callers get a fresh row identity here ([UsageLine.ID]).
 	if strings.TrimSpace(line.ID) == "" {
 		line.ID = newUsageRowID()
 	}
@@ -1093,15 +1105,13 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return nil
 	}
-	path := strings.TrimSpace(a.config.usageLedger)
-	if path == "" {
-		path = UsageLedgerPath()
-	}
+	path := a.config.usageLedger
 	a.mu.Lock()
 	session := a.sessionID()
 	a.mu.Unlock()
 	now := time.Now()
 	line := UsageLine{
+		ID:           newUsageRowID(),
 		GenerationID: strings.TrimSpace(call.generationID),
 		Unbilled:     call.unpriced,
 		At:           now,
@@ -1372,10 +1382,7 @@ func RecordUnbilledCall(path string, line UsageLine) {
 
 // recordUnbilledReceipt uses the same ownership fields as an ordinary usage row.
 func (a *Agent) recordUnbilledReceipt(model string) {
-	path := strings.TrimSpace(a.config.usageLedger)
-	if path == "" {
-		path = UsageLedgerPath()
-	}
+	path := a.config.usageLedger
 	a.mu.Lock()
 	owner := a.sessionID()
 	a.mu.Unlock()
@@ -1390,7 +1397,7 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 // from the seat that seals the turn it was made in.
 func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
 	return procexec.ModelCall{
-		Model: line.Model, Role: line.Role,
+		ID: line.ID, Model: line.Model, Role: line.Role,
 		TokensIn: line.Input, TokensOut: line.Output, TokensCached: used.CacheRead,
 		CostMicroUSD: int64(math.Round(line.USD * microPerUSD)),
 	}

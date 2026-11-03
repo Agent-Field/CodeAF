@@ -803,6 +803,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 			ctx = provider.WithReceiptPending(ctx, pending)
 		}
 	}
+	ctx = a.withReceiptTracking(ctx)
 	ctx = provider.WithDiscardedUsage(ctx, func(served string, tag string, response *ai.Response) {
 		// Full billing owners (program model APIs) already bank every transport
 		// attempt. Ordinary session callers bank only the returned answer.

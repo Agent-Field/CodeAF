@@ -125,6 +125,9 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 // newAgent is the seam New and the tests share: everything except which
 // Completer the turns run against.
 func newAgent(config Config, client Completer) (*Agent, error) {
+	// Accounting can outlive quit. Bind its destination before any producer
+	// starts, so a late receipt cannot follow a later change of home.
+	config.bindUsageLedger()
 	if strings.TrimSpace(config.Workspace) == "" {
 		return nil, errors.New("session: workspace is required")
 	}

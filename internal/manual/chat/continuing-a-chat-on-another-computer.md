@@ -263,6 +263,12 @@ Press enter on the kept turns' row. The card offers `1 open separately`, `2 disc
 
 Turns already shared do not become kept edits. Usage, reconciled task cost, naming failures and memory bookkeeping alone create no extra branch, kept-turns row or “kept as” notice. Their recorded usage stays in this computer's usage ledger. Opening an unchanged chat adds no empty turn, including when another computer holds it.
 
+## Spending after continuing a chat — delayed cost receipts and older saved calls
+
+Continuing a chat adds saved calls missing from this computer's usage ledger once. A delayed cost receipt does not hide another saved call or repeat a call already recorded. Separate calls with the same model, token counts and cost remain separate calls. A receipt arriving after quit stays in the home where the chat opened.
+
+Older saved calls without shared call identities keep the previous assumption that usage rows already on disk cover the earliest saved calls in order. Queued or out-of-order old rows cannot be matched exactly. Old saved chats and usage ledgers still load.
+
 ## The chat is arriving on this computer — why it waits to open
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
