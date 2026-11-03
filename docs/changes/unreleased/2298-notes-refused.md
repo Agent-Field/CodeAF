@@ -11,8 +11,8 @@ invalidates:
 
 Factory execution notes read the journal's producer outcome and refusal mark, with a
 conservative fallback for older approval receipts. Refusals, cancellations and
-timeouts remain unresolved until later measured covering evidence qualifies. Later stage briefs retain
-the reason instead of implying that the refused command ran. PR validation
+timeouts remain unresolved until later measured covering evidence qualifies. Later
+stage briefs retain the reason instead of implying that the refused command ran. PR validation
 continues to publish only passed command receipts.
 
 The completion guard honors outside-checkout diagnostic ownership for shell
