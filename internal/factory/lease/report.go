@@ -83,7 +83,7 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 			if err := change(it); err != nil {
 				return err
 			}
-			if !complete && !held.ThreadOnly && holdAtJobBudget(it) {
+			if !complete && holdAtJobBudget(it) {
 				blocked = true
 			}
 			if complete && !held.ThreadOnly {

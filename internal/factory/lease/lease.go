@@ -268,7 +268,7 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
 		}
-		if !taken.ThreadOnly && holdAtJobBudget(it) {
+		if holdAtJobBudget(it) {
 			blocked = true
 			return nil
 		}
