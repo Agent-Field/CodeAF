@@ -98,7 +98,7 @@ func (s *Store) ProposeRecord(ctx context.Context, p RecordPropose) (Record, Cha
 	var out Record
 	var c Change
 	err = s.workspace.Write(ctx, func(tx *sql.Tx) error {
-		if _, err := getIn(ctx, tx, p.WorkstreamID); err != nil {
+		if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, by); err != nil {
 			return err
 		}
 		id, err := s.newID()

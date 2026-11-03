@@ -124,23 +124,9 @@ func workstreamMarkdownListNode(lines []string, at, depth int) (map[string]any, 
 		if match == nil || len(match[1]) != indent || (match[3] != "") != ordered {
 			break
 		}
-		width := len(match[1]) + len(match[2])
-		body := []string{match[4]}
-		i++
-		for i < len(lines) {
-			line := lines[i]
-			if strings.TrimSpace(line) == "" {
-				if i+1 >= len(lines) || len(lines[i+1])-len(strings.TrimLeft(lines[i+1], " ")) <= indent {
-					break
-				}
-			} else if len(line)-len(strings.TrimLeft(line, " ")) <= indent {
-				break
-			}
-			cut := min(width, len(line)-len(strings.TrimLeft(line, " ")))
-			body = append(body, line[cut:])
-			i++
-		}
-		items = append(items, workstreamMarkdownNode("listItem", workstreamMarkdownBlocks(body, depth+1)))
+		body, next := workstreamMarkdownListBody(lines, i, indent, match)
+		items = append(items, workstreamMarkdownListItem(body, depth+1))
+		i = next
 	}
 	kind := "bulletList"
 	if ordered {
@@ -155,6 +141,34 @@ func workstreamMarkdownListNode(lines []string, at, depth int) (map[string]any, 
 		node["attrs"] = map[string]any{"start": start}
 	}
 	return node, i
+}
+
+func workstreamMarkdownListBody(lines []string, at, indent int, match []string) ([]string, int) {
+	width := len(match[1]) + len(match[2])
+	body := []string{match[4]}
+	i := at + 1
+	for i < len(lines) {
+		line := lines[i]
+		if strings.TrimSpace(line) == "" {
+			if i+1 >= len(lines) || len(lines[i+1])-len(strings.TrimLeft(lines[i+1], " ")) <= indent {
+				break
+			}
+		} else if len(line)-len(strings.TrimLeft(line, " ")) <= indent {
+			break
+		}
+		cut := min(width, len(line)-len(strings.TrimLeft(line, " ")))
+		body = append(body, line[cut:])
+		i++
+	}
+	return body, i
+}
+
+func workstreamMarkdownListItem(lines []string, depth int) map[string]any {
+	content := workstreamMarkdownBlocks(lines, depth)
+	if len(content) == 0 || content[0]["type"] != "paragraph" {
+		content = append([]map[string]any{workstreamMarkdownNode("paragraph", []map[string]any{})}, content...)
+	}
+	return workstreamMarkdownNode("listItem", content)
 }
 
 func workstreamMarkdownLiveNode(line string) map[string]any {
@@ -183,6 +197,11 @@ func workstreamMarkdownLiveNode(line string) map[string]any {
 }
 
 func workstreamMarkdownInline(text string) []map[string]any {
+	index := workstreamMarkdownInlineIndex{
+		code:      workstreamMarkdownCodeRuns(text),
+		parens:    workstreamMarkdownParens(text),
+		linkClose: strings.Index(text, "]("),
+	}
 	out := make([]map[string]any, 0)
 	var plain strings.Builder
 	flush := func() {
@@ -201,10 +220,14 @@ func workstreamMarkdownInline(text string) []map[string]any {
 			i += 2
 			continue
 		}
-		nodes, used := workstreamMarkdownInlineSpecial(text[i:])
+		nodes, used := index.special(text, i)
 		if used > 0 {
-			flush()
-			out = append(out, nodes...)
+			if nodes == nil {
+				plain.WriteString(text[i : i+used])
+			} else {
+				flush()
+				out = append(out, nodes...)
+			}
 			i += used
 			continue
 		}
@@ -215,62 +238,113 @@ func workstreamMarkdownInline(text string) []map[string]any {
 	return out
 }
 
-func workstreamMarkdownInlineSpecial(text string) ([]map[string]any, int) {
-	if text[0] == '`' {
-		n := 1
-		for n < len(text) && text[n] == '`' {
-			n++
-		}
-		if end := strings.Index(text[n:], text[:n]); end >= 0 {
-			body := text[n : n+end]
-			if strings.HasPrefix(body, " ") && strings.HasSuffix(body, " ") && strings.TrimSpace(body) != "" {
-				body = body[1 : len(body)-1]
-			}
-			return []map[string]any{{"type": "text", "text": body, "marks": []map[string]any{{"type": "code"}}}}, n + end + n
-		}
-	}
-	if text[0] == '[' {
-		return workstreamMarkdownLink(text)
-	}
-	return nil, 0
+type workstreamMarkdownRun struct {
+	end   int
+	close int
 }
 
-func workstreamMarkdownLink(text string) ([]map[string]any, int) {
-	close := strings.Index(text, "](")
-	if close < 0 {
-		return nil, 0
-	}
-	end := workstreamMarkdownLinkEnd(text, close+2)
-	if end < 0 {
-		return nil, 0
-	}
-	href := workstreamMarkdownUnescape(text[close+2 : end])
-	nodes := workstreamMarkdownInline(text[1:close])
-	for _, node := range nodes {
-		marks, _ := node["marks"].([]map[string]any)
-		node["marks"] = append(marks, map[string]any{"type": "link", "attrs": map[string]any{"href": href}})
-	}
-	return nodes, end + 1
+type workstreamMarkdownInlineIndex struct {
+	code      map[int]workstreamMarkdownRun
+	parens    map[int]int
+	linkClose int
 }
 
-func workstreamMarkdownLinkEnd(text string, start int) int {
-	depth := 0
-	for i := start; i < len(text); i++ {
+// Indexing runs once lets an unmatched opener consume its entire run as text.
+func workstreamMarkdownCodeRuns(text string) map[int]workstreamMarkdownRun {
+	out := make(map[int]workstreamMarkdownRun)
+	next := make(map[int]int)
+	for i := len(text) - 1; i >= 0; {
+		if text[i] != '`' {
+			i--
+			continue
+		}
+		end := i + 1
+		for i >= 0 && text[i] == '`' {
+			i--
+		}
+		start := i + 1
+		out[start] = workstreamMarkdownRun{end: end, close: workstreamMarkdownNextRun(next, end-start)}
+		if end-start > 1 {
+			// An escaped first backtick leaves the suffix available as an opener.
+			out[start+1] = workstreamMarkdownRun{end: end, close: workstreamMarkdownNextRun(next, end-start-1)}
+		}
+		next[end-start] = start
+	}
+	return out
+}
+
+func workstreamMarkdownNextRun(next map[int]int, width int) int {
+	if at, ok := next[width]; ok {
+		return at
+	}
+	return -1
+}
+
+// Balanced destinations are indexed once, including failures, for every link.
+func workstreamMarkdownParens(text string) map[int]int {
+	out := make(map[int]int)
+	var stack []int
+	for i := 0; i < len(text); i++ {
 		if text[i] == '\\' && i+1 < len(text) {
 			i++
 			continue
 		}
 		switch text[i] {
 		case '(':
-			depth++
+			stack = append(stack, i)
 		case ')':
-			if depth == 0 {
-				return i
+			if len(stack) > 0 {
+				last := len(stack) - 1
+				out[stack[last]] = i
+				stack = stack[:last]
 			}
-			depth--
 		}
 	}
-	return -1
+	return out
+}
+
+func (index *workstreamMarkdownInlineIndex) special(text string, at int) ([]map[string]any, int) {
+	if text[at] == '`' {
+		run := index.code[at]
+		if run.close < 0 {
+			return nil, run.end - at
+		}
+		body := text[run.end:run.close]
+		if strings.HasPrefix(body, " ") && strings.HasSuffix(body, " ") && strings.TrimSpace(body) != "" {
+			body = body[1 : len(body)-1]
+		}
+		width := run.end - at
+		return []map[string]any{{"type": "text", "text": body, "marks": []map[string]any{{"type": "code"}}}}, run.close + width - at
+	}
+	if text[at] == '[' {
+		return index.link(text, at)
+	}
+	return nil, 0
+}
+
+func (index *workstreamMarkdownInlineIndex) link(text string, at int) ([]map[string]any, int) {
+	if index.linkClose >= 0 && index.linkClose < at {
+		index.linkClose = strings.Index(text[at:], "](")
+		if index.linkClose >= 0 {
+			index.linkClose += at
+		}
+	}
+	close := index.linkClose
+	if close < 0 {
+		return nil, 0
+	}
+	end, ok := index.parens[close+1]
+	if !ok {
+		return nil, 0
+	}
+	href := workstreamMarkdownUnescape(text[close+2 : end])
+	// The first ]( bounds this label, so parsing it cannot recurse into links.
+	nodes := workstreamMarkdownInline(text[at+1 : close])
+	for _, node := range nodes {
+		marks, _ := node["marks"].([]map[string]any)
+		node["marks"] = append(marks, map[string]any{"type": "link", "attrs": map[string]any{"href": href}})
+	}
+	return nodes, end - at + 1
 }
 
 func workstreamMarkdownUnescape(text string) string {

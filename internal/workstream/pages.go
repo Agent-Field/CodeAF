@@ -240,8 +240,8 @@ func (s *Store) savePage(ctx context.Context, id string, base int, doc json.RawM
 			}
 			return ErrNotFound
 		}
-		if by == "agent" && p.Owner != "agent" {
-			return ErrNotAgentPage
+		if err := workstreamPageWriteAllowed(ctx, tx, p, by); err != nil {
+			return err
 		}
 		if p.Version != base {
 			return &VersionConflict{ID: id, Version: p.Version, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy}
@@ -368,35 +368,44 @@ func placePage(ctx context.Context, tx *sql.Tx, p Page, parent, after string, la
 	}
 	return true, nil
 }
-func (s *Store) CreatePage(ctx context.Context, p PageCreate) (Page, Change, error) {
+func workstreamPreparePageCreate(p PageCreate) (PageCreate, any, error) {
 	if err := validTitle(p.Title); err != nil {
-		return Page{}, Change{}, err
+		return p, nil, err
 	}
 	owner, err := actor(p.Owner)
 	if err != nil {
-		return Page{}, Change{}, err
+		return p, nil, err
 	}
 	by, err := actor(p.By)
 	if err != nil {
-		return Page{}, Change{}, err
+		return p, nil, err
 	}
 	if by == "agent" && owner != "agent" {
-		return Page{}, Change{}, invalid("the agent creates only its own pages")
+		return p, nil, invalid("the agent creates only its own pages")
 	}
 	source, err := sourceJSON(p.From)
 	if err != nil {
-		return Page{}, Change{}, err
+		return p, nil, err
 	}
 	if p.Doc == nil {
 		p.Doc = json.RawMessage(emptyDoc)
 	}
 	if err := checkDoc(p.Doc); err != nil {
+		return p, nil, err
+	}
+	p.Owner, p.By = owner, by
+	return p, source, nil
+}
+
+func (s *Store) CreatePage(ctx context.Context, p PageCreate) (Page, Change, error) {
+	p, source, err := workstreamPreparePageCreate(p)
+	if err != nil {
 		return Page{}, Change{}, err
 	}
 	var out Page
 	var c Change
 	err = s.workspace.Write(ctx, func(tx *sql.Tx) error {
-		if _, err := getIn(ctx, tx, p.WorkstreamID); err != nil {
+		if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, p.By); err != nil {
 			return err
 		}
 		id, err := s.newID()
@@ -406,14 +415,14 @@ func (s *Store) CreatePage(ctx context.Context, p PageCreate) (Page, Change, err
 		at := s.now().UnixMilli()
 		// A temporary root position distinct from every packed position makes the
 		// common placement helper handle creation and movement identically.
-		if _, err := tx.ExecContext(ctx, `INSERT INTO workstream_pages(id,workstream_id,title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc) VALUES (?,?,?,?,?,2147483647,1,?,?,?,?)`, id, p.WorkstreamID, p.Title, owner, p.ReadByJobs, at, by, source, string(p.Doc)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO workstream_pages(id,workstream_id,title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc) VALUES (?,?,?,?,?,2147483647,1,?,?,?,?)`, id, p.WorkstreamID, p.Title, p.Owner, p.ReadByJobs, at, p.By, source, string(p.Doc)); err != nil {
 			return err
 		}
 		page, _, err := livePageIn(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		if _, err := placePage(ctx, tx, page, p.ParentID, p.AfterID, p.AfterID == "", at, by, source); err != nil {
+		if _, err := placePage(ctx, tx, page, p.ParentID, p.AfterID, p.AfterID == "", at, p.By, source); err != nil {
 			return err
 		}
 		if err := saveVersion(ctx, tx, id); err != nil {
