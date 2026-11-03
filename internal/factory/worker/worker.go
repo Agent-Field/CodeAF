@@ -537,9 +537,14 @@ func (j *job) beat(ctx context.Context) bool {
 	beatCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
 	defer cancel()
 	j.mu.Lock()
-	acknowledged := make([]string, 0, len(j.signalIDs))
+	// Bound each header even after a long outage accumulates pending receipts.
+	const ackBatch = 256
+	acknowledged := make([]string, 0, ackBatch)
 	for id := range j.signalIDs {
 		acknowledged = append(acknowledged, id)
+		if len(acknowledged) == ackBatch {
+			break
+		}
 	}
 	j.mu.Unlock()
 	hb, err := j.w.Heartbeat(beatCtx, j.lease, acknowledged)
@@ -547,6 +552,19 @@ func (j *job) beat(ctx context.Context) bool {
 		return false
 	}
 	if err == nil {
+		// A returned ID can still be redelivered; keep it deduplicated until
+		// the factory confirms its removal by omitting it from a successful beat.
+		redelivered := make(map[string]bool, len(hb.Signals))
+		for _, signal := range hb.Signals {
+			redelivered[signal.Delivery] = true
+		}
+		j.mu.Lock()
+		for _, id := range acknowledged {
+			if !redelivered[id] {
+				delete(j.signalIDs, id)
+			}
+		}
+		j.mu.Unlock()
 		j.keepLocal(hb.Lease)
 	}
 	return j.signals(ctx, hb.Signals)
@@ -574,6 +592,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		if j.blocked != "" && s.Verb != lease.SignalStop {
 			continue
 		}
+		var effectErr error
 		switch s.Verb {
 		case lease.SignalReply:
 			j.reply(ctx, s)
@@ -583,7 +602,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			if s.Budget <= 0 {
 				continue
 			}
-			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error {
+			effectErr = j.o.Mirror.Update(j.id, func(it *factory.Item) error {
 				it.Cap = s.Budget
 				if it.QKind == "cap" && s.Budget <= factory.JobSpent(*it) {
 					it.Question, _ = (*run.Money)(nil).CapQuestion(*it)
@@ -592,30 +611,32 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 					}
 				}
 				return nil
-			}); err != nil {
-				return false
-			}
+			})
 		case lease.SignalHold:
-			_ = r.Hold(j.id, s.Yes)
+			effectErr = r.Hold(j.id, s.Yes)
 		case lease.SignalAnswer:
 			if s.ID != "" {
 				it, err := j.o.Mirror.Get(j.id)
-				if err != nil || factory.PendingQuestionID(it) != s.ID {
+				if err != nil {
+					return true
+				}
+				if factory.PendingQuestionID(it) != s.ID {
+					j.ackSignal(s.Delivery)
 					continue
 				}
 			}
-			_ = r.Answer(j.id, s.Yes, s.Words)
+			effectErr = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
-			_ = r.Steer(j.id, s.Words)
+			effectErr = r.Steer(j.id, s.Words)
 		case lease.SignalModel:
-			_ = r.SetModelSelection(j.id, s.Words, s.Automatic)
+			effectErr = r.SetModelSelection(j.id, s.Words, s.Automatic)
 		case lease.SignalAutonomy:
-			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Autonomy = s.Words; return nil }); err != nil {
-				return false
-			}
+			effectErr = j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Autonomy = s.Words; return nil })
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
-			_ = r.Stop(j.id)
+			if err := r.Stop(j.id); err != nil && !j.signalMoot(s) {
+				return true
+			}
 			j.ackSignal(s.Delivery)
 			if r.Running(j.id) {
 				return true
@@ -625,12 +646,40 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			cur, err := j.o.Mirror.Get(j.id)
 			return err == nil && cur.PullRequest != nil && cur.PublishStatus != nil && cur.PublishStatus.State == "opened"
 		}
+		if effectErr != nil && !j.signalMoot(s) {
+			// Keep the lease and retry in order when the next beat redelivers.
+			return true
+		}
 		j.ackSignal(s.Delivery)
 	}
 	return true
 }
 
-// ackSignal remembers handled delivery only for this job's lease.
+// signalMoot requires saved job state, never just an execution error.
+func (j *job) signalMoot(s api.WorkerSignal) bool {
+	switch s.Verb {
+	case lease.SignalHold, lease.SignalSteer, lease.SignalStop, lease.SignalAnswer:
+	default:
+		return false
+	}
+	if j.o.Runner.Running(j.id) {
+		return false
+	}
+	it, err := j.o.Mirror.Get(j.id)
+	if err != nil {
+		return false
+	}
+	if s.Verb == lease.SignalAnswer && (it.Asking != nil || it.Question != "") {
+		return false
+	}
+	switch it.State {
+	case factory.StateNew, factory.StateLanded, factory.StateShipped, factory.StateDismissed:
+		return true
+	}
+	return false
+}
+
+// ackSignal retains handled delivery until the factory confirms removal.
 func (j *job) ackSignal(id string) {
 	if id == "" {
 		return

@@ -452,6 +452,10 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 A current factory keeps a choice sent to a current runner until that runner
 has received and handled it. Losing a heartbeat reply delays the choice until
 the next heartbeat; receiving it twice does not apply it twice during that run.
+A failed effect stays pending for the next heartbeat. A choice that no longer
+makes sense for an ended job, or an answer to a replaced question, is acknowledged
+as moot. Missing local data alone never counts as success. Confirmed delivery
+IDs leave the runner’s acknowledgement list; receipts are sent in bounded batches.
 This includes answers, steering words, manager replies, budget and model choices,
 autonomy changes, and pauses. Their order stays the same. Rechecks, publish
 and merge continue to wait for the runner that pulls that work; a live heartbeat does
