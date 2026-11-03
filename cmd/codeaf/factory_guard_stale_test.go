@@ -24,3 +24,14 @@ func TestGuardStaleWiderPass(t *testing.T) {
  t.Cleanup(door.closeVerification)
  if err := door.Report(t.Context(), factory.StageResult{Done:true}); err != nil { t.Fatal(err) }
 }
+
+func TestGuardDeletedScratch(t *testing.T) {
+ root, file, run := staleGuardFixture(t)
+ scratch := t.TempDir()
+ run("cp code.txt "+repairShellQuote(filepath.Join(scratch,"copy"))+"; cd "+repairShellQuote(scratch)+"; CHECK_EXIT=7 go test ./...")
+ if err := os.RemoveAll(scratch); err != nil { t.Fatal(err) }
+ run("go test ./...")
+ door := &receiptStageDoor{StageDoor:&repairReportDoor{}, file:file, dir:root, requireFresh:true, requireAnyCheck:true}
+ t.Cleanup(door.closeVerification)
+ if err := door.Report(t.Context(), factory.StageResult{Done:true}); err != nil { t.Fatal(err) }
+}
