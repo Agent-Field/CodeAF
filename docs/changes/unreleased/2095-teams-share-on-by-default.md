@@ -1,16 +1,21 @@
 ---
 kind: changed
-title: Safer opt-in team sharing between paired computers
+title: team sharing on by default for paired computers
 pr: 2095
 surface: [chat]
 invalidates:
+  - >-
+    Share teams was off by default and both computers had to turn it on. It is
+    now on by default for paired computers, and turning it off on either
+    computer stops sharing. Unpaired computers are unchanged.
+
   - >-
     The raw sharing preference selected refresh, cursor and history behavior.
     Now only preference on plus pairing enables those paths; unpaired computers
     retain their original clocks, completion, repairing reads and cursor bytes.
   - >-
-    A damaged configuration could enable team sharing. Missing or empty
-    choices remain off, and unreadable files and invalid values read off.
+    A damaged configuration could enable team sharing. Now missing or empty
+    choices read on, while unreadable files and invalid values read off.
   - >-
     A first merge could leave duplicate team names and discard appointments
     without a copy. Now teams.before-sharing.json preserves the original once,
@@ -38,11 +43,7 @@ invalidates:
 
 ---
 
-Teams, their members and settings, and recent Traffic as read-only history can
-share between paired computers when enabled on both. Settings → General → share teams
+Teams, their members and settings, and recent Traffic as read-only history now
+share by default between paired computers. Settings → General → share teams
 stays local to each computer. An explicit off stays off, stops sharing
 on that computer and keeps teams already received, including encrypted vault copies. Unpaired computers are unchanged.
-
-When integrated into app/v3, team sharing remains an explicit local opt-in.
-The pairing gates, first-sharing backup, safe replacement and history visibility
-changes are retained with the SQLite teams store.

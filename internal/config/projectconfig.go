@@ -147,10 +147,10 @@ func LoadProjectConfig(cwd string) (ProjectConfig, error) {
 	if path == "" {
 		return ProjectConfig{}, nil
 	}
-	project, err := projectConfigMemo.Read(path)
+	project, err := projectConfigMemo.ReadStrict(path)
 	if os.IsNotExist(err) {
 		legacy := filepath.Join(strings.TrimSpace(cwd), legacyProjectConfigDir, ProjectConfigFile)
-		project, err = projectConfigMemo.Read(legacy)
+		project, err = projectConfigMemo.ReadStrict(legacy)
 		if os.IsNotExist(err) {
 			return ProjectConfig{path: path}, nil
 		}

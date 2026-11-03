@@ -4680,14 +4680,14 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 
 // C6 and C9 keep the sharing answer consistent with the default and local off switch.
 // F8 keeps the shipped sharing explanation searchable and accurate.
-func TestTheTeamSharingQuestionExplainsTheLocalDefaultOff(t *testing.T) {
+func TestTheTeamSharingQuestionExplainsTheLocalDefaultOn(t *testing.T) {
 	for _, section := range Chat().Search("do my teams show on my other computer?", DefaultResults) {
 		if section.Page != "conversations-and-teams" {
 			continue
 		}
 		complete := true
 		for _, fact := range []string{
-			"Settings → General → share teams", "off by default",
+			"Settings → General → share teams", "on by default",
 			"Turning it off on either computer stops sharing", "teams, members",
 			"team settings", "recent Traffic as read-only history",
 		} {
@@ -4706,7 +4706,7 @@ func TestTheTeamSharingQuestionExplainsTheLocalDefaultOff(t *testing.T) {
 func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 	for _, probe := range []struct{ asked, page, says string }{
 		{"do my teams show on my other computer?", "conversations-and-teams", "within a few seconds"},
-		{"how do I turn on team sharing", "conversations-and-teams", "off by default"},
+		{"how do I turn on team sharing", "conversations-and-teams", "on by default"},
 		{"how do I turn on team sharing", "conversations-and-teams", "Settings → General → share teams"},
 		{"stop sharing teams with my other computer", "conversations-and-teams", "Turning it off on either computer stops sharing"},
 		{"will deleting a team on my laptop delete it on my desktop?", "conversations-and-teams", "a deleted team stays deleted"},

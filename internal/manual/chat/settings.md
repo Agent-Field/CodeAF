@@ -82,14 +82,14 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
-**Settings → General → share teams** is off by default for paired computers. It
+**Settings → General → share teams** is on by default for paired computers. It
 shares teams, their members and settings, and recent Traffic as read-only history.
 The choice stays on each computer. Turning it off on either computer stops sharing
 between them: that computer stops sending and receiving teams and Traffic. What
 was already exchanged stays, including encrypted copies in the vault. Received
 history is hidden while sharing is off and is kept for when it is turned back
-on. Unpaired computers are unaffected. A missing or empty choice reads off, and
-so does a damaged configuration or invalid value, as shown in Settings.
+on. Unpaired computers are unaffected. A missing or empty choice reads on; a
+damaged configuration or invalid value reads off, as shown in Settings.
 
 ## AI teams settings versus an individual AI team
 

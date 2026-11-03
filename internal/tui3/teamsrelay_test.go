@@ -465,15 +465,15 @@ func TestSettingsGeneralHasLocalTeamSharingChoiceAndSearch(t *testing.T) {
 	if !ok || item.row.Key != config.KeyTeamsShare || item.meta.tab != tabGeneral || item.meta.label != "share teams" || item.meta.widget != widgetCycle {
 		t.Fatal("sharing row not on General", item)
 	}
-	if item.row.Value() != "off" {
-		t.Fatal("sharing must start off", item.row.Value())
+	if item.row.Value() != "on" {
+		t.Fatal("sharing must start on", item.row.Value())
 	}
-	for _, want := range []string{"teams", "members and settings", "recent Traffic as read-only history", "pairing required", "Off until turned on", "both computers must turn it on"} {
+	for _, want := range []string{"teams", "members and settings", "recent Traffic as read-only history", "pairing required", "On by default", "turning it off on either computer stops sharing"} {
 		if !strings.Contains(item.meta.about, want) {
 			t.Fatal("sharing explanation omitted", want, item.meta.about)
 		}
 	}
-	if shown := strings.Join(settingsDetails(a, 90), " "); !strings.Contains(shown, "both computers") {
+	if shown := strings.Join(settingsDetails(a, 90), " "); !strings.Contains(shown, "either computer") {
 		t.Fatal("sharing explanation hidden on General", shown)
 	}
 	a.wall.loaded = true

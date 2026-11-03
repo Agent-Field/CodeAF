@@ -6,15 +6,15 @@ import (
 	"testing"
 )
 
-// F6 keeps absent choices off and fails safe when a saved preference is damaged.
+// F6 keeps absent choices on and fails safe when a saved preference is damaged.
 func TestTeamSharingPreferenceFailsSafe(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		value any
 		want  bool
 	}{
-		{name: "missing", want: false},
-		{name: "empty", value: "", want: false},
+		{name: "missing", want: true},
+		{name: "empty", value: "", want: true},
 		{name: "on", value: "on", want: true},
 		{name: "off", value: "off", want: false},
 		{name: "invalid", value: "maybe", want: false},
@@ -47,15 +47,15 @@ func TestTeamSharingPreferenceFailsSafe(t *testing.T) {
 
 // C1, C2, C3 and C9 keep the default and immediate local choice consistent with Settings.
 // F6 keeps the local preference and its Settings value consistent.
-func TestTeamSharingIsLocalOffByDefaultAndChangesImmediately(t *testing.T) {
+func TestTeamSharingIsLocalOnByDefaultAndChangesImmediately(t *testing.T) {
 	dir := t.TempDir()
 	rows := registry(t, dir)
 	row, ok := rows.Row("teams.share")
 	if !ok {
 		t.Fatal("missing team sharing setting")
 	}
-	if TeamsShareAt(dir) || row.Value() != "off" {
-		t.Fatal("team sharing must start off")
+	if !TeamsShareAt(dir) || row.Value() != "on" {
+		t.Fatal("team sharing must start on")
 	}
 	presentation := row.ChatPresentation()
 	if row.Category != CategoryInterface || presentation.Category != "General" || presentation.Scope != "This computer" || presentation.Activation != "Applies immediately" {

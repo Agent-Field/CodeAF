@@ -123,7 +123,8 @@ func (m *Memo[T]) Read(path string) (T, error) {
 	return m.read(path, false)
 }
 
-// ReadStrict also invalidates a cached value when permissions change.
+// ReadStrict preserves filesystem errors and invalidates cached values when
+// permissions change. Ordinary readers retain the missing-file fallback.
 func (m *Memo[T]) ReadStrict(path string) (T, error) {
 	return m.read(path, true)
 }
@@ -132,7 +133,7 @@ func (m *Memo[T]) read(path string, strict bool) (T, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now, statErr := os.Stat(path)
-	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+	if (strict || m.source != nil) && statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 		var zero T
 		return zero, statErr
 	}
@@ -170,8 +171,9 @@ func (m *Memo[T]) read(path string, strict bool) (T, error) {
 		m.reads++
 		bytes, err := os.ReadFile(path)
 		if err != nil {
-			// A failed read is never content, even when its stat succeeded.
-			if !strict && errors.Is(err, os.ErrNotExist) {
+			// Failed reads are not cached. Ordinary callers retain their
+			// missing-file default; privacy preferences use ReadStrict.
+			if !strict {
 				return m.derive(path, nil, true)
 			}
 			var zero T
