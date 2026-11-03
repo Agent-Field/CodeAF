@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -10,11 +11,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// A JOB'S CONVERSATIONS ARE ITS OWN PAGE'S. Reading them makes the job's agent
-// once (the same one on every read after), keeps it on the job, holds it open
+// A job's page returns its existing manager on every read and holds it open
 // for the app, lists no step that has not run, and starts nothing; another
 // factory's chats are not this engine's to answer.
-func TestAJobsChatsAreItsAgentMadeOnceAndItsStepsThatRan(t *testing.T) {
+func TestAJobsChatsAreItsExistingAgentAndItsStepsThatRan(t *testing.T) {
 	s := newLocalSetup(t)
 	// The app opens a conversation through its opener; this one holds a fake.
 	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
@@ -26,6 +26,7 @@ func TestAJobsChatsAreItsAgentMadeOnceAndItsStepsThatRan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	makeJobManager(t, s, it.ID)
 	var first appwire.FactoryJobChats
 	s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &first)
 	if first.Agent == "" || len(first.Steps) != 0 {
@@ -176,6 +177,7 @@ func TestFactoryChatRefreshKeepsThePersonsModelPair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	makeJobManager(t, s, it.ID)
 	var chats appwire.FactoryJobChats
 	read := func() { s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats) }
 	read()
@@ -196,4 +198,10 @@ func TestFactoryChatRefreshKeepsThePersonsModelPair(t *testing.T) {
 			t.Fatalf("chat refresh overwrote an explicit model pair: %+v", a.view.ModelIdentity)
 		}
 	}
+}
+
+// makeJobManager explicitly creates the existing manager a read fixture needs.
+func makeJobManager(t *testing.T, s *localSetup, job int) {
+ t.Helper()
+ if _, err := s.backend.local.host.seam.Talk(context.Background(), job); err != nil { t.Fatal(err) }
 }

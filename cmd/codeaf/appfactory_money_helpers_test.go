@@ -33,6 +33,7 @@ func TestAppFactoryDebouncedEndMoney(t *testing.T) {
 				t.Fatal(err)
 			}
 			params := map[string]any{"factory": st.Factory, "job": it.ID}
+			makeJobManager(t, s, it.ID)
 			var chats appwire.FactoryJobChats
 			s.must("factory.job_chats", params, &chats)
 			// Keep the production lifecycle callback and debounce, shortening only
