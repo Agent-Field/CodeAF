@@ -251,7 +251,7 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			// a Refresh of an issue still closed, does not reopen it.
 			switch {
 			case in.DoneHow == StandingClosed:
-				if !old.Changed.After(in.Changed) {
+				if !old.ReopenedAt.After(in.Changed) {
 					errs = append(errs, finishClosed(st, old.ID))
 				}
 				if in.Title == "" {

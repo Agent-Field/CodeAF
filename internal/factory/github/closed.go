@@ -56,7 +56,7 @@ func reopenClosed(st *store.Store, id int, changed time.Time) error {
 			return nil
 		}
 		it.State, it.DoneHow, it.DoneAt = factory.StateNew, "", time.Time{}
-		it.Changed = changed
+		it.ReopenedAt = changed
 		back = true
 		return nil
 	})

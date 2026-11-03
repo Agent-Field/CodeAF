@@ -519,6 +519,9 @@ type Item struct {
 	Priority    *JobPriority `json:",omitempty"`
 	DismissedBy []string     `json:",omitempty"`
 	DoneHow     string       `json:",omitempty"`
+	// ReopenedAt is GitHub's change time on the reopen that last brought this
+	// issue back from closed, so a close read before it does not finish it.
+	ReopenedAt time.Time `json:",omitzero"`
 	// Scout is the last Look closer on this job ([Scout]); nil is never.
 	Scout    *Scout    `json:",omitempty"`
 	DoneAt   time.Time `json:",omitempty"`
