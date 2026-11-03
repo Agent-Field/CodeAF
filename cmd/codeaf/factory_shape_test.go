@@ -31,7 +31,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 	lines := strings.Split(brief, "\n")
 	want := []string{
 		"[factory item #12]",
-		"You are the manager of #12 in acme/web.",
+		"You are the manager of job 12 in acme/web.",
 		"You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.",
 		talkBlockDo,
 		talkBlockBrief,
@@ -40,7 +40,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		talkBlockSay,
 		talkRecipeLaw,
 		"",
-		"#12 · fix the ledger double count",
+		"job 12 · fix the ledger double count",
 	}
 	if len(lines) < len(want) {
 		t.Fatalf("brief = %q", brief)
