@@ -221,8 +221,11 @@ func newFinishingNoteModel(t *testing.T) *heldModel {
 		}
 		model.mu.Lock()
 		model.requests = append(model.requests, request)
-		model.turns++
-		first := model.turns == 1
+		first := false
+		if len(request.Tools) > 0 {
+			model.turns++
+			first = model.turns == 1
+		}
 		model.mu.Unlock()
 		if !request.Stream {
 			_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`)
