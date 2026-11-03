@@ -48,6 +48,9 @@ type Action struct {
 	// refused: the forge must be able to refuse a head that moved.
 	Commit string
 	Method string
+    // BeforeWrite rechecks publication after preparatory reads, immediately
+    // before the source sends a PR create or update request. Nil permits it.
+    BeforeWrite func(context.Context) error `json:"-"`
 }
 
 // Receipt is what came back: the thing's address on the source, so provenance

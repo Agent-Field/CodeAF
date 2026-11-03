@@ -413,7 +413,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	}
 	if err := r.publishBoundary(ctx, it.ID); err != nil { return published{}, err }
     // Once sent, preserve the forge answer even when Stop cancels the run.
-	rcpt, err := src.Write(context.WithoutCancel(ctx), factory.Action{Verb: "pr", Item: it, Branch: pushed, Body: body, Draft: true})
+	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: pushed, Body: body, Draft: true, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 	if err != nil {
 		return published{}, publish.Wrap(err, "pr")
 	}
