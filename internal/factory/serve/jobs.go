@@ -676,9 +676,8 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 		h.fail(w, 422, "choose a budget: 5, 10, 20 or 30 USD")
 		return
 	}
-	_, held := h.holdOf(it.ID)
 	var budgetRefused error
-	resumeCap := false
+	var atCap *factory.Item // the job as its cap question stood, when the raise resumes it
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			if body.Budget <= cur.Cap && body.Budget < factory.JobSpent(*cur) {
@@ -686,21 +685,15 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" && !cur.Publishing {
-				if body.Budget <= factory.JobSpent(*cur) {
-					cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
-					if cur.Asking != nil {
-						cur.Asking.Question = cur.Question
-					}
-				} else if !cur.Manual {
-					// Take over keeps the job in the person's hands; a raise doesn't
-					// hand it back.
-					resumeCap = true
-					run.NoteBudgetRaised(cur, time.Now())
-					if held {
-						return run.AnswerHeld(cur, true, time.Now())
-					}
+			if cur.QKind == "cap" && !cur.Publishing && body.Budget <= factory.JobSpent(*cur) {
+				cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
+				if cur.Asking != nil {
+					cur.Asking.Question = cur.Question
 				}
+			}
+			if capResumes(*cur) {
+				asked := *cur
+				atCap = &asked
 			}
 			return nil
 		})
@@ -715,18 +708,38 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	// A budget edit does not queue a published PR from stale observations.
 	// Wake the read-only poll; its fresh snapshot releases spending-owned work.
 	_ = h.config.Store.NudgePoll()
+	// The runner hears the new cap before the continue, so it carries on
+	// under the cap the person chose and never doubles the old one.
 	if h.workers != nil && h.workers.desk != nil {
-		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: resumeCap})
+		if _, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget}); h.failed(w, err) {
+			return
+		}
 	}
-	if err == nil && resumeCap && !held {
-		if h.seam.Answer != nil {
-			err = h.seam.Answer(it.ID, true, factory.ChoiceContinue)
-		}
-		if h.seam.Answer == nil || (err != nil && strings.Contains(err.Error(), "is not waiting on you")) {
-			err = h.releaseCapWait(it.ID)
-		}
+	if atCap != nil {
+		err = h.resumeAtCap(r, *atCap)
 	}
 	h.finish(w, err)
+}
+
+// resumeAtCap answers the cap question the raise cleared with continue, as a
+// person's answer does, and only then says on the timeline that the job
+// carries on under its new budget.
+func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
+	if err := h.continueCap(r, it, factory.ChoiceContinue); err != nil {
+		return err
+	}
+	return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		run.NoteBudgetRaised(cur, h.now())
+		return nil
+	})
+}
+
+// capResumes is a raise that answers the open cap question on Auto or Manual
+// when the new cap clears spend. Take over, publishing and other questions
+// keep their own decisions; a cap at or under spend keeps the cap question.
+func capResumes(it factory.Item) bool {
+	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
+	return asksCap && it.Cap > factory.JobSpent(it) && !it.Manual && !it.Publishing
 }
 
 // jobModelMost is the longest model id a job keeps.
