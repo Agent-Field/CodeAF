@@ -42,6 +42,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	defer f.Close()
 	dec := json.NewDecoder(f)
 	commands := map[string]string{}
+	background := map[string]bool{}
 	var notes []string
 	var tests *factory.TestCounts
 	lastOutcome := map[string]string{}
@@ -133,7 +134,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			ToolCallID   string `json:"toolCallId"`
 			Presentation *struct {
 				Refused bool   `json:"refused"`
+				Invoked bool   `json:"invoked"`
 				Outcome string `json:"outcome"`
+				Process *session.ToolProcess `json:"tool_process"`
 			} `json:"presentation"`
 			Calls []struct {
 				ID       string `json:"id"`
@@ -156,9 +159,11 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			}
 			var args struct {
 				Command string `json:"command"`
+				Background bool `json:"background"`
 			}
 			if json.Unmarshal([]byte(call.Function.Arguments), &args) == nil && len(args.Command) <= 4000 {
 				commands[call.ID] = args.Command
+				background[call.ID] = args.Background
 			}
 		}
 		cmd := commands[row.ToolCallID]
@@ -185,34 +190,18 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		if !verification.CheckCommand(cmd) {
 			continue
 		}
-		passed := (strings.Contains(row.Content, "\nPASS\n") || strings.HasPrefix(row.Content, "PASS\n") || strings.Contains(row.Content, "ok  ")) && !strings.Contains(row.Content, "\nFAIL") && !strings.Contains(row.Content, "Command exited with code")
-		receipt := map[string]any{"command": cmd, "cwd": c.dir, "outcome": "completed"}
-		status := ""
+		status, invoked, refused, started := "", false, false, background[row.ToolCallID]
 		if row.Presentation != nil {
-			status = row.Presentation.Outcome
-			if row.Presentation.Refused {
-				status = "refused"
-			}
+			status, invoked, refused = row.Presentation.Outcome, row.Presentation.Invoked, row.Presentation.Refused
+			started = started || row.Presentation.Process != nil
 		}
-		text := strings.TrimSpace(row.Content)
-		lastLine := text[strings.LastIndex(text, "\n")+1:]
-		switch {
-		case status == "refused" || (status == "" && strings.HasPrefix(text, "needs approval but no resolver is attached:")):
-			receipt["outcome"] = "refused"
-		case status == "ok":
-			receipt["outcome"] = "passed"
-		case status == "cancelled" || lastLine == "Command aborted" || lastLine == "Command cancelled":
-			receipt["outcome"] = "cancelled"
-		case status == "timed out" || strings.HasPrefix(lastLine, "Command timed out after ") || strings.HasPrefix(text, "cut after "):
-			receipt["outcome"] = "timed out"
-		case strings.Contains(row.Content, "Command exited with code") || status == "failed":
-			receipt["outcome"] = "failed"
-		case passed:
-			receipt["outcome"] = "passed"
+		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started)
+		receipt := map[string]any{"command": cmd, "cwd": c.dir, "outcome": outcome}
+		if reason != "" {
+			receipt["reason"] = reason
 		}
-		outcome := receipt["outcome"].(string)
 		interrupted := outcome == "refused" || outcome == "cancelled" || outcome == "timed out"
-		if !interrupted && observed[cmd] && verification.PresentationOnly(cmd) {
+		if !interrupted && observedCall[row.ToolCallID] && verification.PresentationOnly(cmd) {
 			// The pipeline may have failed while its check passed. Keep the
 			// shell receipt honest; only the observed check decides the guard.
 			receipt["scope"] = "shell presentation; check exits recorded separately"
@@ -265,7 +254,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		if diagnosticOnly[command] && !ownedCommand[command] {
 			continue
 		}
-		if outcome == "refused" || outcome == "cancelled" || outcome == "timed out" || (outcome == "completed" && !observed[command]) {
+		if outcome == "refused" || outcome == "cancelled" || outcome == "timed out" || outcome == "started" || (outcome == "completed" && !observed[command]) {
 			covered := false
 			for _, check := range checks {
 				order := callOrder[check.CallID]
@@ -335,6 +324,53 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		notes = append(notes, verification.FailurePrefix+" "+command)
 	}
 	return notes, tests
+}
+
+// commandReceiptOutcome reads producer facts before legacy output. A launch
+// acknowledges ownership of work; only a later measured check proves its result.
+func commandReceiptOutcome(content, status string, invoked, refused, started bool) (string, string) {
+	text := strings.TrimSpace(content)
+	lastLine := text[strings.LastIndex(text, "\n")+1:]
+	if refused || status == "refused" {
+		return "refused", text
+	}
+	if status == "" && !invoked {
+		for _, prefix := range []string{"needs approval but no resolver is attached:", "denied by approval rule:", "denied by the person:", "refused in a task:", "not approved:"} {
+			if strings.HasPrefix(text, prefix) {
+				return "refused", text
+			}
+		}
+	}
+	// Older launch receipts have no process identity. Recognize the producer's
+	// launch acknowledgement conservatively, without upgrading it to a pass.
+	var job int
+	if n, _ := fmt.Sscanf(text, "job %d started; log at", &job); n == 1 && strings.Contains(text, " started; log at ") {
+		started = true
+	}
+	switch {
+	case status == "cancelled":
+		return "cancelled", text
+	case status == "timed out":
+		return "timed out", text
+	case status == "failed":
+		switch {
+		case lastLine == "Command aborted" || lastLine == "Command cancelled":
+			return "cancelled", lastLine
+		case strings.HasPrefix(lastLine, "Command timed out after ") || strings.HasPrefix(text, "cut after "):
+			return "timed out", text
+		}
+		return "failed", ""
+	case started:
+		return "started", ""
+	case status == "ok":
+		return "passed", ""
+	case strings.Contains(content, "Command exited with code"):
+		return "failed", ""
+	case (strings.Contains(content, "\nPASS\n") || strings.HasPrefix(content, "PASS\n") || strings.Contains(content, "ok  ")) && !strings.Contains(content, "\nFAIL"):
+		return "passed", ""
+	default:
+		return "completed", ""
+	}
 }
 
 // Old transcripts have only a pipeline's exit. Match a newly observed rerun
