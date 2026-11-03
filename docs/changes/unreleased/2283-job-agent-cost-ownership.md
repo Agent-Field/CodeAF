@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a job has one manager, and all its spend counts against its budget
-pr: 0
+pr: 2283
 surface: [engine]
 invalidates:
   - "Asks that raced when a job started could each make a manager, and each joined the job's team. Now one is made and every ask gets it."
