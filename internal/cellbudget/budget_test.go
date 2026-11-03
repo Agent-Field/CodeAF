@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+ "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -40,7 +41,19 @@ func newRig(t *testing.T, limit int64) *rig {
 	r.m = New(cellstore.Engine{Binary: bin, DataRoot: filepath.Join(r.dirs, "stores")},
 		func(c cell.Cell) string { return r.work[c.ID] },
 		func(c cell.Cell) bool { return r.busy[c.ID] })
-	r.m.Limit = limit
+	t.Cleanup(func() {
+        if err := os.RemoveAll(r.dirs); err != nil {
+            t.Errorf("[DEBUG-c52] cleanup: %v", err)
+            _ = filepath.WalkDir(r.dirs, func(path string, d fs.DirEntry, err error) error {
+                t.Logf("[DEBUG-c52] leftover: %s (%v)", path, err)
+                return nil
+            })
+            stacks := make([]byte, 1<<20)
+            n := runtime.Stack(stacks, true)
+            t.Logf("[DEBUG-c52] stacks:\n%s", stacks[:n])
+        }
+    })
+    r.m.Limit = limit
 	r.m.Now = func() time.Time { return r.now }
 	return r
 }
