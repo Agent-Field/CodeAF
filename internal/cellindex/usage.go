@@ -97,31 +97,35 @@ func ledgerRows(path string, sessions ...string) int {
 	}
 	defer f.Close()
 	aliases := make(map[string]bool, len(sessions))
- for _, id := range sessions {
-  if id != "" { aliases[id] = true }
- }
- type call struct {
-  Model, Role string
-  Calls, Input, Output int
-  USD float64
- }
- counts := map[call]map[string]int{}
- most := map[call]int{}
+	for _, id := range sessions {
+		if id != "" {
+			aliases[id] = true
+		}
+	}
+	type call struct {
+		Model, Role          string
+		Calls, Input, Output int
+		USD                  float64
+	}
+	counts := map[call]map[string]int{}
+	most := map[call]int{}
 
 	n := 0
 	r := bufio.NewReaderSize(f, 1<<20)
 	for {
 		line, err := r.ReadBytes('\n')
-  var row session.UsageLine
-  if json.Unmarshal(line, &row) == nil && aliases[row.Session] {
-   key := call{row.Model, row.Role, row.Calls, row.Input, row.Output, row.USD}
-   if counts[key] == nil { counts[key] = map[string]int{} }
-   counts[key][row.Session]++
-   if counts[key][row.Session] > most[key] {
-    most[key] = counts[key][row.Session]
-    n++
-   }
-  }
+		var row session.UsageLine
+		if json.Unmarshal(line, &row) == nil && aliases[row.Session] {
+			key := call{row.Model, row.Role, row.Calls, row.Input, row.Output, row.USD}
+			if counts[key] == nil {
+				counts[key] = map[string]int{}
+			}
+			counts[key][row.Session]++
+			if counts[key][row.Session] > most[key] {
+				most[key] = counts[key][row.Session]
+				n++
+			}
+		}
 		if err != nil {
 			return n
 		}

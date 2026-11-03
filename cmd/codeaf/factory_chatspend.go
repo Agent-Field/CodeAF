@@ -380,8 +380,8 @@ func ownsBudgetChat(floor *store.Store, it factory.Item, talk talkKey) bool {
 	}
 	owner, ok := readFactoryOwner(talk.clean)
 	if !ok || owner.Job != it.ID || owner.Repo != it.Repo ||
- (owner.Num != 0 && owner.Num != it.Num) ||
- (!owner.Created.IsZero() && !owner.Created.Equal(it.Created)) {
+		(owner.Num != 0 && owner.Num != it.Num) ||
+		(!owner.Created.IsZero() && !owner.Created.Equal(it.Created)) {
 		return false
 	}
 	root := chatKey(floor.Root())

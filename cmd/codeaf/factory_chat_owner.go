@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
- "time"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -18,12 +18,12 @@ import (
 const factoryOwnerFile = "factory-owner.json"
 
 type factoryChatOwner struct {
-	Step string `json:"step,omitempty"`
- Num int `json:"num,omitempty"`
- Created time.Time `json:"created,omitempty"`
-	Root string `json:"root"`
-	Job  int    `json:"job"`
-	Repo string `json:"repo"`
+	Step    string    `json:"step,omitempty"`
+	Num     int       `json:"num,omitempty"`
+	Created time.Time `json:"created,omitempty"`
+	Root    string    `json:"root"`
+	Job     int       `json:"job"`
+	Repo    string    `json:"repo"`
 }
 
 // Ownership lives beside the journal, not in a crew that can be replaced by a
