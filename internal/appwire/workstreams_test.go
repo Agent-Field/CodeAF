@@ -127,10 +127,10 @@ func workstreamHelloHasFeature(hello map[string]any) bool {
 	return false
 }
 
-// V1: the contract index and dispatch table name exactly the same 25 methods.
+// V1: the contract index and dispatch table name exactly the same 29 methods.
 func TestEveryWorkstreamMethodIsRegistered(t *testing.T) {
-	if len(WorkstreamMethods) != 25 {
-		t.Fatalf("contract has %d methods, want 25", len(WorkstreamMethods))
+	if len(WorkstreamMethods) != 29 {
+		t.Fatalf("contract has %d methods, want 29", len(WorkstreamMethods))
 	}
 	known := make(map[string]bool, len(WorkstreamMethods))
 	served := Methods()
@@ -144,7 +144,7 @@ func TestEveryWorkstreamMethodIsRegistered(t *testing.T) {
 		}
 	}
 	for _, name := range served {
-		for _, prefix := range []string{"workstream.", "page.", "record.", "goahead."} {
+		for _, prefix := range []string{"workstream.", "page.", "record.", "goahead.", "wake."} {
 			if strings.HasPrefix(name, prefix) && !known[name] {
 				t.Errorf("registered method not in contract: %s", name)
 			}
@@ -244,3 +244,31 @@ func TestWorkstreamSchemaNamesEveryMethod(t *testing.T) {
 		}
 	}
 }
+
+func (f *fakeWorkstreamer) WorkstreamWakeList(WorkstreamWakeListParams) (WorkstreamWakeListResult, error) {
+	return WorkstreamWakeListResult{}, ErrWorkstreamsNotYet
+}
+func (f *fakeWorkstreamer) WorkstreamWakeApply(WorkstreamWakeApplyParams) (WorkstreamWakeApplyResult, error) {
+	return WorkstreamWakeApplyResult{}, ErrWorkstreamsNotYet
+}
+func (f *fakeWorkstreamer) WorkstreamWakeUndo(WorkstreamWakeUndoParams) (WorkstreamWakeUndoResult, error) {
+	return WorkstreamWakeUndoResult{}, ErrWorkstreamsNotYet
+}
+func (f *fakeWorkstreamer) WorkstreamWakeNotNow(WorkstreamWakeNotNowParams) (WorkstreamWakeNotNowResult, error) {
+	return WorkstreamWakeNotNowResult{}, ErrWorkstreamsNotYet
+}
+
+func TestWakeJ_ParameterBounds(t *testing.T) {
+	for _, p := range []interface{ Check() error }{WorkstreamWakeListParams{}, WorkstreamWakeApplyParams{}, WorkstreamWakeUndoParams{}, WorkstreamWakeNotNowParams{}, WorkstreamWakeListParams{WorkstreamID: "w", Limit: workstreamWireInt(101)}, WorkstreamWakeApplyParams{ID: "w", ItemID: workstreamWireString("")}} {
+		if p.Check() == nil {
+			t.Errorf("accepted %+v", p)
+		}
+	}
+	for _, p := range []interface{ Check() error }{WorkstreamWakeListParams{WorkstreamID: "w"}, WorkstreamWakeApplyParams{ID: "w"}, WorkstreamWakeUndoParams{ID: "w"}, WorkstreamWakeNotNowParams{ID: "w"}} {
+		if err := p.Check(); err != nil {
+			t.Error(err)
+		}
+	}
+}
+func workstreamWireInt(n int) *int          { return &n }
+func workstreamWireString(s string) *string { return &s }
