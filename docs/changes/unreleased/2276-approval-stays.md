@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf keeps plan approval visible at later gates
-pr: 0
+pr: 2276
 surface: [engine]
 invalidates:
   - "A later approval gate erased the earlier settled plan decision and who approved it. The job now keeps the latest settled decision visible until another approval begins, while each later gate still requires its own consent."
