@@ -2364,7 +2364,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
 			Label: "learn from chats and jobs", Choices: MemoryModes,
-			Hint:  MemoryCostNote + " Off stops automatic learning; saved knowledge and /remember stay available. A call already in flight finishes and is billed.",
+			Hint:  MemoryCostNote + " Off stops automatic learning; nothing saved is deleted, and saved knowledge and /remember stay available. A call already in flight finishes and is billed.",
 			read:  func() string { return MemoryAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMemoryEnabled, raw, MemoryModes) },
 		},
