@@ -884,8 +884,9 @@ const (
 // open ask and an answered one cannot drift.
 type Question = factory.Question
 
-// Expect is the job a caller last read. Every job verb accepts one. A field
-// that no longer matches is a stale read: the verb does not run.
+// Expect is the job a caller last read. Every job verb accepts one.
+// Content decisions refuse mismatches. Progress-tolerant verbs keep their own
+// guards; budget edits compare budget history instead of run progress.
 type Expect struct {
 	State   string `json:"state,omitempty"`
 	Step    string `json:"step,omitempty"`

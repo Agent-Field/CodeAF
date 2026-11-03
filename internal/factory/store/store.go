@@ -405,7 +405,8 @@ func (st *Store) UpdatePersonal(id int, change func(*factory.Item) bool) error {
 var errUnchanged = errors.New("factory store: nothing changed")
 
 // writeMode is what a write says about the job besides its change: whether the
-// work moved (Changed stamped) and whether the document is a new revision.
+// work moved (Changed stamped), whether the document is a new revision, and
+// whether expect compares budget history instead of the whole document.
 type writeMode struct{ stamp, bump, budget bool }
 
 var (

@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // jobVerbs keeps canvas actions additive to the existing /v1 doors.
@@ -807,6 +808,12 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	})
 	if budgetRefused != nil {
 		h.fail(w, 422, budgetRefused.Error())
+		return
+	}
+	// A competing budget edit needs a new decision, not the desktop's stale retry.
+	var stale *store.StaleError
+	if errors.As(err, &stale) {
+		h.refuse(w, 409, "budget changed while you looked; read the job again", "conflict", "", nil, factory.JobState(it))
 		return
 	}
 	if h.failed(w, err) {

@@ -31,6 +31,7 @@ Budget edits accept the version a person read when only spend or run progress
 moved. The store retains the revision of the latest budget change and checks
 it under the same lock as the edit, including changes made outside the app.
 Another budget edit still refuses, even if the budget was changed back.
+That refusal is a conflict, so the desktop does not automatically retry it.
 Finished and dropped jobs refuse. Existing clients need no wire change.
 Older documents conservatively retain their first observed revision as the
 budget baseline; an older untracked read must be refreshed once.
