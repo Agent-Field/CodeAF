@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -137,7 +136,7 @@ func reportRetryable(err error) bool {
 	if !errors.As(err, &refused) {
 		return true
 	}
-	return refused.Status >= 500 || refused.Status == http.StatusRequestTimeout || refused.Status == http.StatusTooManyRequests
+	return api.WorkerResendable(refused.Status)
 }
 
 func (j *job) sendRequest(ctx context.Context, request client.PreparedWorkerReport) error {

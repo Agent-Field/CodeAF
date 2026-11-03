@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -139,5 +140,48 @@ func TestFactoryRulesRouteReadsAdaptAndNoneAsTheSameRead(t *testing.T) {
 	f.request(t, "PUT", "/v1/rules", "operator-secret", map[string]any{"rules": []string{"x"}, "ask_first": []string{}, "never": []string{}, "expect": read}, 200, &got)
 	if len(got.Rules) != 1 {
 		t.Fatalf("saved %#v", got)
+	}
+}
+
+// THE RULES SAY WHO LAST CHANGED THEM AND WHEN: rules that were never written
+// carry neither field; after a save, the read and the save's own answer name
+// the person who saved them and the time of that save.
+func TestFactoryRulesRouteSaysWhoChangedThemLastAndWhen(t *testing.T) {
+	f := peopleV2Setup(t, "team")
+	var fresh map[string]any
+	f.request(t, "GET", "/v1/rules", "operator-secret", nil, 200, &fresh)
+	for _, k := range []string{"changed_by", "changed_at"} {
+		if _, ok := fresh[k]; ok {
+			t.Fatalf("rules never written carry %s: %v", k, fresh)
+		}
+	}
+	body := map[string]any{"rules": []string{"keep the diff small"}, "ask_first": []string{}, "never": []string{}}
+	var saved, read map[string]any
+	f.request(t, "PUT", "/v1/rules", "operator-secret", body, 200, &saved)
+	f.request(t, "GET", "/v1/rules", "operator-secret", nil, 200, &read)
+	for name, got := range map[string]map[string]any{"save": saved, "read": read} {
+		if got["changed_by"] != "owner" || got["changed_at"] != "2026-10-11T12:00:00Z" {
+			t.Fatalf("the %s says changed_by %v changed_at %v", name, got["changed_by"], got["changed_at"])
+		}
+	}
+}
+
+// A SCRIPT'S SAVE IS THE OPERATOR'S, whoever the host happens to be signed in
+// to GitHub as: a host login never becomes the author of a change to the rules.
+func TestFactoryRulesNameTheOperatorWhenAScriptSavesOnAHostSignedInAsSomeoneElse(t *testing.T) {
+	f := peopleV2Setup(t, "team")
+	f.seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
+		return factory.GitHubLink{Login: "buildbot"}, nil
+	}
+	f.h = New(f.seam, f.cfg)
+	t.Cleanup(f.h.Close)
+	body := map[string]any{"rules": []string{"keep the diff small"}, "ask_first": []string{}, "never": []string{}}
+	var saved, read map[string]any
+	f.request(t, "PUT", "/v1/rules", "operator-secret", body, 200, &saved)
+	f.request(t, "GET", "/v1/rules", "operator-secret", nil, 200, &read)
+	for name, got := range map[string]map[string]any{"save": saved, "read": read} {
+		if got["changed_by"] != "owner" {
+			t.Fatalf("the %s says changed_by %v, want the operator", name, got["changed_by"])
+		}
 	}
 }

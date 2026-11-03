@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
@@ -62,6 +63,7 @@ func Poll(ctx context.Context, src factory.Source, st *store.Store, every time.D
 	if src == nil || st == nil || every <= 0 {
 		return
 	}
+	ctx = githubcalls.WithCaller(ctx, "poll")
 	cursor := ""
 	wait := time.Duration(0)
 	failed := 0
