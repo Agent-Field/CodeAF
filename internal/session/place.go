@@ -513,6 +513,10 @@ func saveMetaLocked(dir string, meta Meta) error {
 		meta.ChatURI = current.ChatURI
 	}
 	meta.AgentIdentity = keptAgentIdentity(current, meta)
+	meta.AgentIdentity, err = protectAgentIdentity(meta.AgentIdentity)
+	if err != nil {
+		return fmt.Errorf("save agent identity: %w", err)
+	}
 	// K3: schema paths use slashes even when their source machine is Windows.
 	for _, field := range []*string{&meta.Workspace, &meta.Origin, &meta.FromWorkspace} {
 		if windowsSource(*field) {
@@ -539,6 +543,16 @@ func writeJSONAtomic(path string, v any) error {
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
+	}
+	switch value := v.(type) {
+	case Meta:
+		if value.AgentIdentity != nil {
+			raw = value.AgentIdentity.PreserveJSON(raw)
+		}
+	case SessionTruth:
+		if value.AgentIdentity != nil {
+			raw = value.AgentIdentity.PreserveJSON(raw)
+		}
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".meta-*.json")
 	if err != nil {

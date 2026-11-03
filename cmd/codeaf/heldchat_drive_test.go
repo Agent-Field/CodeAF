@@ -209,7 +209,7 @@ func TestAChatAnotherProcessHoldsIsNeitherRenewedNorReleasedFromHere(t *testing.
 }
 
 func TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable(t *testing.T) {
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	s, writes := heldChatRelay(t, c.ID)
 	firstBook := syncDrives
 	defer firstBook.closeAll()
@@ -276,7 +276,7 @@ func TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable(t *testing.T) {
 }
 
 func TestTheFreshChatBesideAHeldOneWorksOnItsOwnSeat(t *testing.T) {
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	s, writes := heldChatRelay(t, c.ID)
 	firstBook := syncDrives
 	defer firstBook.closeAll()
