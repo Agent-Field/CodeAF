@@ -1,9 +1,9 @@
 package main
 
 import (
-	"testing"
-	"strings"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"strings"
+	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )

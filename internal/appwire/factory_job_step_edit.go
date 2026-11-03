@@ -82,7 +82,7 @@ type FactoryJobStepEditsParams struct {
 // field of a step.
 type FactoryNewStep struct {
 	Label string `json:"label,omitempty"`
-	Name string `json:"name,omitempty"`
+	Name  string `json:"name,omitempty"`
 	// Kind is empty or chat (a conversation), gate (a step the person
 	// approves) or check (Ask is a shell command run in the job's checkout;
 	// its exit code is the evidence). Any other kind is refused by the factory,
