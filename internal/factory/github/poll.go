@@ -158,20 +158,6 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	if err != nil {
 		return cursor, err
 	}
-	if real, ok := src.(*Source); ok {
-		meta, err := st.SourceMeta(name)
-		if err != nil {
-			return cursor, err
-		}
-		real.mu.Lock()
-		for repo, tag := range meta.IssueTags {
-			if real.issueTags[repo] == "" {
-				real.issueTags[repo] = tag
-				real.issueMarks[repo] = meta.IssueMarks[repo]
-			}
-		}
-		real.mu.Unlock()
-	}
 	items, next, readErr := src.Read(ctx, cursor)
 	mergeErr := Merge(st, src.Name(), items)
 	if real, ok := src.(*Source); ok && readErr == nil && mergeErr == nil {
@@ -179,16 +165,6 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	}
 	at := now()
 	meta, _ := st.SourceMeta(src.Name())
-	if real, ok := src.(*Source); ok {
-		real.mu.Lock()
-		meta.IssueTags = make(map[string]string, len(real.issueTags))
-		meta.IssueMarks = make(map[string]time.Time, len(real.issueTags))
-		for repo, tag := range real.issueTags {
-			meta.IssueTags[repo] = tag
-			meta.IssueMarks[repo] = real.issueMarks[repo]
-		}
-		real.mu.Unlock()
-	}
 	meta.Tried = at
 	meta.Polling = false
 	meta.Reading, meta.Read, meta.Of, meta.Items = "", 0, 0, 0

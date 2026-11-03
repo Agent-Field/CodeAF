@@ -26,8 +26,6 @@ type IssueSweep struct {
 // whichever read last, every window draws from this one file.
 type SourceMeta struct {
 	IssueSweeps map[string]IssueSweep `json:"issue_sweeps,omitempty"`
-	IssueTags   map[string]string     `json:"issue_tags,omitempty"`
-	IssueMarks  map[string]time.Time  `json:"issue_marks,omitempty"`
 	Polled      time.Time             `json:"polled,omitzero"`
 	Tried       time.Time             `json:"tried,omitzero"`
 	Trouble     string                `json:"trouble,omitempty"`

@@ -96,8 +96,7 @@ type Source struct {
 	me     string
 	meDone bool
 	// issueTags holds each repository's last issue-list ETag.
-	issueTags  map[string]string
-	issueMarks map[string]time.Time
+	issueTags map[string]string
 	// tiers is each repository and login's standing, for the process.
 	tiers map[string]factory.Tier
 	// comments is each item's last comments and the count they were read at.
@@ -137,8 +136,8 @@ func New(api API, repos []string, now func() time.Time) *Source {
 	}
 	return &Source{
 		api: api, now: now, repos: append([]string(nil), repos...),
-		issueTags: map[string]string{}, issueMarks: map[string]time.Time{},
-		tiers: map[string]factory.Tier{}, comments: map[string]seenComments{},
+		issueTags: map[string]string{},
+		tiers:     map[string]factory.Tier{}, comments: map[string]seenComments{},
 		budget: commentBudget,
 		owed:   map[string]map[int]forge.Issue{},
 	}
@@ -340,9 +339,6 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 
 	s.mu.Lock()
 	issueTag := s.issueTags[full]
-	if !s.issueMarks[full].Equal(mark) {
-		issueTag = ""
-	}
 	s.mu.Unlock()
 
 	list := s.api.ListIssues
@@ -363,29 +359,6 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 		if is.Updated.After(newest) {
 			newest = is.Updated
 		}
-	}
-	// An ETag names one exact query. Prime the next cursor's all-state query
-	// now, so the following quiet tick needs just one conditional request.
-	// Rows racing this read are folded too; the cursor stays at the query's
-	// lower bound, so neither those rows nor later changes can be skipped.
-	if hasChanges && newest.After(mark) {
-		more, tag, err := changes.ListIssueChanges(ctx, owner, name, newest, "")
-		if err != nil && !errors.Is(err, forge.ErrNotModified) {
-			return nil, mark, err
-		}
-		positions := make(map[int]int, len(issues))
-		for i, is := range issues {
-			positions[is.Number] = i
-		}
-		for _, is := range more {
-			if i, ok := positions[is.Number]; ok {
-				issues[i] = is
-			} else {
-				positions[is.Number] = len(issues)
-				issues = append(issues, is)
-			}
-		}
-		newIssueTag = tag
 	}
 	var listed []factory.Item
 	var listedIssues []forge.Issue
@@ -462,7 +435,6 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 	s.mu.Lock()
 	if newIssueTag != "" {
 		s.issueTags[full] = newIssueTag
-		s.issueMarks[full] = newest
 	}
 	s.mu.Unlock()
 	return items, newest, nil
