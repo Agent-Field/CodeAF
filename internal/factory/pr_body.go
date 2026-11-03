@@ -29,6 +29,7 @@ func PublishBody(it Item, trailer string) string {
 	b.WriteString("## Changes\n\n")
 	var summaries []string
 	var commands []string
+	lastOutcome := map[string]string{}
 	var finalSummary []string
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
@@ -59,10 +60,11 @@ func PublishBody(it Item, trailer string) string {
 						Command string `json:"command"`
 						Outcome string `json:"outcome"`
 					}
-					if json.Unmarshal([]byte(raw), &receipt) == nil && receipt.Outcome == "passed" {
+					if json.Unmarshal([]byte(raw), &receipt) == nil {
 						command := strings.Join(strings.Fields(receipt.Command), " ")
 						if len(command) <= 500 {
 							commands = append(commands, command)
+							lastOutcome[command] = receipt.Outcome
 						}
 					}
 				}
@@ -102,7 +104,7 @@ func PublishBody(it Item, trailer string) string {
 	}
 	seen := map[string]bool{}
 	for _, cmd := range commands {
-		if seen[cmd] {
+		if seen[cmd] || lastOutcome[cmd] != "passed" {
 			continue
 		}
 		seen[cmd] = true
