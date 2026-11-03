@@ -1206,7 +1206,12 @@ func toPhase(s Step) factory.Phase {
 	}
 	if s.Cost != 0 {
  p.Cost, p.CostRound = s.Cost, max(1, s.Round)
- if p.Result != nil { p.RoundSpent = p.Result.Spent }
+ if p.Result != nil {
+  p.RoundSpent = p.Result.Spent
+  if s.Report != nil && p.Result.Chat != "" {
+   for _, line := range s.Rounds { if line.Chat == p.Result.Chat { p.CostRound = max(1,line.Round) } }
+  }
+ }
  }
 	p.Failure = failureItem(s.Failure)
 	p.Rounds = roundsItem(s.Rounds)

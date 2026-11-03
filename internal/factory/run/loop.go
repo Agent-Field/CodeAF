@@ -922,6 +922,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			dropStaleAsk(it)
 			ph := &it.Stream.Phases[i]
 			setPhaseState(ph, factory.PhaseRunning, now)
+			if ph.CostRound == 0 && ph.Result != nil { ph.RecordRoundSpend(ph.Round, ph.Result.Spent) }
 			ph.Round = round
 			ph.RoundLimit = limit
 			ph.Verification = nil
@@ -983,7 +984,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			return false
 		}
 		if res.Spent > 0 && !res.SpendRecorded {
-			job.Spend(res.Spent)
+			spent := 0.0
+            if job.Item.Stream != nil {
+             for _, ph := range job.Item.Stream.Phases { if ph.Name == st.Name && ph.CostRound == round { spent = ph.RoundSpent; break } }
+            }
+            job.Spend(max(0, res.Spent-spent))
 		}
 		readiness := factory.IsCIRepairStage(st) && job.Item.FollowUp != nil && job.Item.FollowUp.Kind == "readiness"
 		if factory.IsCIRepairStage(st) && !readiness {
