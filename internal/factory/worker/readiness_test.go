@@ -54,7 +54,7 @@ func TestReadinessRealServiceWorkerUsesRecordedAutoOrManualApproval(t *testing.T
 			g := newRigWith(t, nil, func(o *run.Options) {
 				o.Workdir = func(factory.Item) (string, error) { return dir, nil }
 				o.Source = func(string) factory.Source { return src }
-				o.Push = func(string, string) error { t.Error("mark ready pushed code"); return nil }
+				o.Push = func(string, string, ...func() error) error { t.Error("mark ready pushed code"); return nil }
 				o.Exec[factory.StageChat] = run.ExecutorFunc(func(_ context.Context, j run.Job) (factory.StageResult, error) {
 					if j.Item.FollowUp.Kind != "readiness" {
 						return factory.StageResult{}, fmt.Errorf("unexpected repair")
