@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A person's Stop stays stopped until their next start
-pr: 0
+pr: 2335
 surface: [engine, factory]
 invalidates:
   - "A queued team question could wake a stopped job's manager and launch, approve or publish the job again."
