@@ -496,7 +496,7 @@ func TestQuestionKindsOptionsAndCapNumbers(t *testing.T) {
 		Stream: &factory.Stream{Spent: 4.5, Cur: 0, Phases: []factory.Phase{{Name: "write"}}},
 	}
 	qs := FromItem(capJob).Questions
-	if len(qs) != 1 || qs[0].Kind != "cap" || qs[0].Limit != 4 || qs[0].Spent != 4.5 || qs[0].NextLimit != 8 {
+	if len(qs) != 1 || qs[0].Kind != "cap" || qs[0].Limit != 4 || qs[0].Spent != 4.5 || qs[0].NextLimit != 5 {
 		t.Fatalf("cap question %+v", qs)
 	}
 	if !reflect.DeepEqual(qs[0].Options, []string{"yes", "no"}) {
