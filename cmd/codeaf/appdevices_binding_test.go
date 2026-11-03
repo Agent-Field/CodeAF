@@ -233,3 +233,13 @@ func TestAppDevicesV1RelayChangeDropsOldRoster(t *testing.T) {
 		return len(v.Devices) == 2 && v.Devices[0].Name == "new relay desk" && v.Devices[1].ID == partner.Device.ID() && !v.Devices[1].Removed
 	})
 }
+
+// B11: a read refused because this computer was removed says so in words, with
+// the remedy that works, never the wire's "wireauth: device revoked".
+func TestB11RevokedReadSaysTheComputerWasRemoved(t *testing.T) {
+	err := appEngineError(errors.Join(errors.New("chats"), directory.ErrRevoked))
+	var wire *appwire.Error
+	if !errors.As(err, &wire) || wire.Message != chatlist.Removed || strings.Contains(wire.Message, "wireauth") || !strings.Contains(wire.Message, "codeaf pair --replace") {
+		t.Fatalf("revoked read = %v, want %q", err, chatlist.Removed)
+	}
+}
