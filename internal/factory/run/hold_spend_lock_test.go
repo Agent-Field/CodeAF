@@ -132,6 +132,8 @@ func TestHoldPersistsBeforeStepBoundary(t *testing.T) {
 			st.SetOutputPolicy(func() (int, int) {
 				// A later write in the same hold passes through; only the first is held.
 				firstSave.Do(func() {
+					stack := make([]byte, 64<<10)
+					t.Logf("[DEBUG-c52-first-hook]\n%s", stack[:runtime.Stack(stack, false)])
 					close(atSave)
 					<-save
 					if failWrite {
