@@ -177,10 +177,10 @@ A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does 
 
 A step that falls short goes round again until its rounds run out, and only then asks you what to do. New jobs default to Auto, which passes routine optional approvals and publishes passing proof as a draft PR within the job budget. Manual asks before enabled approval gates and publication; the job header switch saves that choice. Activity credits automatic approvals and their publications to the factory, without naming the job owner or starter. A stale action says "approved automatically at" and the approval time in UTC. Personal approvals still name the person; saved activity is unchanged. Fixed gates and critical unresolved decisions still ask. Merge remains your decision. proof is fixed: an edit cannot reword or skip it. A repository can explicitly fix an approval too. security is shipped but in no list: a job typed with the word `security` (`fix the login, security`) gains it after review, and a pipeline file names it to run it. A pipeline file's `max:` replaces a shipped step's rounds; a step of the file's own, under a name codeaf does not ship, runs once unless it says `max:`.
 
-## approval decisions — plan approved, later gates and restarting
+## approval decisions — you approved the plan, and later gates still ask
 
 The job keeps your latest settled approval and who approved it while later
-steps or gates wait, including after closing and reopening the app. Approving
+steps or gates wait, including when you open the app again. Approving
 a plan does not approve a later gate: that gate still waits for its own answer.
 When another approval begins, the job shows that decision with its own undo
 window. Activity keeps the earlier approval receipts.
