@@ -236,7 +236,9 @@ func TestContractCoversEverySeamVerb(t *testing.T) {
 			// same way (internal/factory/serve/merge_test.go). Close and reopen
 			// keep a job's work locally and are the floor's own
 			// (internal/factory/serve/close_test.go).
-			if !strings.Contains(" take release retry_publish merge model start_now run_again run-as-new pr-ready stop-after-step spend_answer restore dismiss assign_to_me change_assignee unassign nudge priority raise_budget undo close reopen ", " "+verb.Name+" ") {
+ // Publish anyway is covered by the authenticated app action and runner post
+ // contracts (cmd/codeaf/appfactory_publish_anyway_test.go).
+			if !strings.Contains(" take release retry_publish publish_anyway merge model start_now run_again run-as-new pr-ready stop-after-step spend_answer restore dismiss assign_to_me change_assignee unassign nudge priority raise_budget undo close reopen ", " "+verb.Name+" ") {
 				t.Errorf("new server-owned verb %q needs a contract", verb.Name)
 			}
 			continue
