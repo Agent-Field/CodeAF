@@ -582,6 +582,9 @@ type appBackend struct {
 	// stopProgress the factory runner's progress news (appfactory_progress.go).
 	stopPhases   func()
 	stopProgress func()
+	// stopStages and stepStreams: the factory steps' events (appfactory_stepstream.go).
+	stopStages  func()
+	stepStreams map[string]*appStepStream
 	// briefs takes the progress news of this machine's factory's jobs as
 	// writes of their briefs (appfactory_brief_writer.go).
 	briefs *briefDebounce
@@ -1045,6 +1048,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	b.stopPhases = b.listenPhases()
 	b.briefs = newBriefDebounce(appBriefDebounce, b.writeBriefLater)
 	b.stopProgress = b.listenProgress()
+	b.stopStages = b.listenStages()
 	guard.Go("app/sweep", b.sweep)
 	b.startLocalChatPublication()
 	return b
@@ -3009,6 +3013,20 @@ func appUserEntryID(n int) string { return "u" + strconv.Itoa(n) }
 
 func appAnswerEntryID(n, m int) string { return "a" + strconv.Itoa(n) + "." + strconv.Itoa(m) }
 
+// appEntryMessage is the person's message an entry id of those two is under.
+func appEntryMessage(id string) (n int, ok bool) {
+	at, found := strings.CutPrefix(id, "u")
+	if !found {
+		answer, isAnswer := strings.CutPrefix(id, "a")
+		at, _, found = strings.Cut(answer, ".")
+		if !isAnswer {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(at)
+	return n, found && err == nil
+}
+
 func appToolEntryID(call string) string { return "t" + call }
 
 func appNoteEntryID(n, k int) string { return "n" + strconv.Itoa(n) + "." + strconv.Itoa(k) }
@@ -4537,6 +4555,9 @@ func (b *appBackend) Close() error {
 	<-b.sweepDone
 	if b.stopPhases != nil {
 		b.stopPhases()
+	}
+	if b.stopStages != nil {
+		b.stopStages()
 	}
 	if b.stopProgress != nil {
 		b.stopProgress()
