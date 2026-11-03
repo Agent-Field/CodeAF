@@ -2,12 +2,13 @@ package run_test
 
 import (
 	"encoding/json"
-	"github.com/Agent-Field/codeaf/internal/factory"
-	"github.com/Agent-Field/codeaf/internal/factory/api"
-	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 func TestPR2294StaleWorkerNewSpend(t *testing.T) {
