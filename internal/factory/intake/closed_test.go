@@ -141,7 +141,7 @@ func TestClosedIssueCacheSharedByAutomaticPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Origin: factory.OriginForge, Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"ready", "size:S"}})
+	_, err = st.Create(factory.Item{Repo: "owner/repo", Num: 1, Origin: factory.OriginForge, Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"ready", "size:S"}})
 	if err != nil {
 		t.Fatal(err)
 	}
