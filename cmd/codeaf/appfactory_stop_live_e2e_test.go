@@ -488,7 +488,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	restartUSD, restartCalls := ledger()
 	chatCalls := 0
 	recorder.mu.Lock()
-	chatCalls = recorder.calls
+	chatCalls = stopLivePaidCalls(recorder.calls, cancelledRequests)
 	recorder.mu.Unlock()
 	if restartUSD != chatUSD || restartCalls != chatCalls {
 		t.Fatalf("restart spend: before=%.8f after=%.8f ledger_calls=%d proxy_calls=%d", chatUSD, restartUSD, restartCalls, chatCalls)
@@ -506,7 +506,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	calls, spend := recorder.calls, recorder.cost
 	requests, replies := recorder.requests, recorder.replies
 	recorder.mu.Unlock()
-	if finalUSD <= restartUSD || finalCalls <= restartCalls || math.Abs(finalUSD-spend) > 0.000001 || finalCalls != calls {
+	if finalUSD <= restartUSD || finalCalls <= restartCalls || math.Abs(finalUSD-spend) > 0.000001 || finalCalls != stopLivePaidCalls(calls, cancelledRequests) {
 		t.Fatalf("rerun accounting: ledger=%.8f/%d proxy=%.8f/%d before=%.8f/%d", finalUSD, finalCalls, spend, calls, restartUSD, restartCalls)
 	}
 	if len(requests) != 1 || requests[liveFactoryModel] != calls || len(replies) != 1 || replies[liveFactoryModel] == 0 {
@@ -563,4 +563,12 @@ func TestStopLiveFactoryAndManagerUseSameProfile(t *testing.T) {
 	if got := w.backend.localProfile(); got != profile {
 		t.Fatalf("factory traffic profile=%q differs from manager profile=%q", got, profile)
 	}
+}
+
+func stopLivePaidCalls(requests, unpricedCancelled int) int { return requests }
+
+func TestStopLiveUnpricedCancellationIsNotPaidLedgerCall(t *testing.T) {
+ for _, tc := range []struct{ requests, cancelled, paid int }{{12, 1, 11}, {12, 0, 12}, {1, 1, 0}} {
+  if got := stopLivePaidCalls(tc.requests, tc.cancelled); got != tc.paid { t.Errorf("requests=%d unpriced_cancelled=%d paid ledger calls=%d, want %d", tc.requests, tc.cancelled, got, tc.paid) }
+ }
 }
