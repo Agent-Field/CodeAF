@@ -232,8 +232,9 @@ func freshMemoryOffApp(t *testing.T) {
 	if posts.Load() < 2 {
 		t.Fatalf("job and chat did not call stub: %d", posts.Load())
 	}
-	if knowledge.Open(profile).Enabled() {
-		t.Error("background worker armed fresh memory")
+	vault := knowledge.Open(profile)
+	if vault.Enabled() || !vault.EnabledSince().IsZero() {
+		t.Error("background worker armed fresh memory or wrote enabled consent")
 	}
 	s.must("settings.set", map[string]any{"memory_enabled": true}, nil)
 	events, err = agent.Submit(context.Background(), "Remember that I prefer Cedar queues.")

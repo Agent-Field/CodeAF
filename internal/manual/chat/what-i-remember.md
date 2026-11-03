@@ -244,7 +244,8 @@ earlier build may not know its conversation, and then the card simply says less.
 
 ## How does something get remembered without me asking? Noticing
 
-After each turn **you typed**, one small call reads what you said and the answer
+With **learn from chats and jobs** on (off by default), after each turn
+**you typed**, one small call reads what you said and the answer
 and may keep **one** line: a preference, a standing rule, a correction, a
 decision, or a lasting fact. It is shown what is already kept, so it does not
 keep the same thing twice. It never keeps something only the assistant said, the
