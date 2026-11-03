@@ -31,3 +31,6 @@ brief. Identity, automatic-close provenance and personal-touch fields stay on
 the service and are documented in the wire codec's Lost list. Workers report
 incremental changes through RunReport and ApplyReport, so their copies cannot
 replace these fields. Starting work clears automatic-close provenance.
+
+Start also pins the permanent issue ID from an open direct answer, so a later
+replacement listing cannot overwrite an older saved job’s identity or title.

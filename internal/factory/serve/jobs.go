@@ -334,7 +334,7 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		return true
 	}
 	how := answer.How
-	if err != nil || (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) {
+	if err != nil {
 		return false
 	}
 	now := h.clock().UTC()
@@ -345,10 +345,10 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		if !answer.Matches(*cur) {
 			return factory.ErrSourceIdentityChanged
 		}
-		if !factory.UntouchedIssue(*cur) {
+		cur.GitHubIssueID = answer.IssueID
+		if (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) || !factory.UntouchedIssue(*cur) {
 			return nil
 		}
-		cur.GitHubIssueID = answer.IssueID
 		factory.TouchIssue(cur)
 		finished = true
 		state = api.StateDone
@@ -367,6 +367,9 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 	}
 	if h.failed(w, err) {
 		return true
+	}
+	if how != factorygithub.StandingClosed && how != factorygithub.StandingMerged {
+		return false
 	}
 	if finished && h.config.Record != nil {
 		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.SourceClosed, Verb: how, Job: it.ID, Detail: "on GitHub", Cost: jobCost(it)}); h.failed(w, err) {
