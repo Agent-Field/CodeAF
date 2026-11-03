@@ -843,6 +843,7 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	failed(watch, err)
 	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
 	if drive != nil {
+		drive.setIdleCheck(watch.IdleReady)
 		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
@@ -852,7 +853,7 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	// the first input; their journal writes need a tail seal even before chat.
 	// Window attachment reuses the engine's seat rather than constructing one.
 	watch.Waiting()
-	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive)), machine, watch, claim
+	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive), drivePreparedGate(drive)), machine, watch, claim
 }
 
 // sealTail seals what the chat wrote after the turn-end seal (titles, summaries,

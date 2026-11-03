@@ -74,6 +74,14 @@ type conditionalTaker interface {
 	TakeSeen(context.Context, string, *directory.LeaseExpectation) (Taken, error)
 }
 
+type availableTaker interface {
+	OpenAvailable(context.Context, string, *directory.LeaseExpectation) (Taken, error)
+}
+
+type availableRootTaker interface {
+	OpenAvailableWithWorkspaceRoots(context.Context, string, *directory.LeaseExpectation, map[string]string) (Taken, error)
+}
+
 type workspaceRootTaker interface {
 	TakeSeenWithWorkspaceRoots(context.Context, string, *directory.LeaseExpectation, map[string]string) (Taken, error)
 }
@@ -155,11 +163,8 @@ func (a *app) machineScreen(width int) []string {
 // remoteOffers answers each offer with what enter does on it. A table rather
 // than a switch, so a new offer is a new entry.
 //
-// A CHAT ANOTHER MACHINE LET GO OF (`Open`, which is what a released chat offers
-// where it is held) IS CONTINUED THE WAY A CHAT THAT WENT OFF IS: it is not on
-// this machine, so opening it is continuing it, and the lease is free. A chat
-// that is running on another machine is continued the same way, and the lease
-// is taken from it at once: the screen names the machine, the person decides.
+// Paired free rows take the non-forcing open door before this table. Other
+// rows keep the existing continuation choice, including live older holders.
 var remoteOffers = map[chatlist.OfferKind]func(*app, chatlist.Row, chatlist.Offer) tea.Cmd{
 	chatlist.Open:         (*app).offerContinue,
 	chatlist.ContinueHere: (*app).offerContinue,
@@ -192,6 +197,11 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 		a.raiseMachineAsk(row, a.continueBusyShown(row))
 		a.home.say(continueAlreadyRunning, "")
 		return nil
+	}
+	if row.AutoOpen {
+		if _, ok := a.taker.(availableTaker); ok {
+			return a.takeRemoteState(homeTakenMsg{row: row})
+		}
 	}
 	return run(a, row, offer)
 }
@@ -552,7 +562,11 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 	}
 	return func() tea.Msg {
 		seen := &directory.LeaseExpectation{Device: msg.row.DeviceID, Fence: msg.row.Fence}
-		if mapped, ok := taker.(workspaceRootTaker); ok && len(msg.roots) > 0 {
+		if open, ok := taker.(availableRootTaker); ok && msg.row.AutoOpen && len(msg.roots) > 0 {
+			msg.taken, msg.err = open.OpenAvailableWithWorkspaceRoots(ctx, msg.row.Cell, seen, msg.roots)
+		} else if open, ok := taker.(availableTaker); ok && msg.row.AutoOpen {
+			msg.taken, msg.err = open.OpenAvailable(ctx, msg.row.Cell, seen)
+		} else if mapped, ok := taker.(workspaceRootTaker); ok && len(msg.roots) > 0 {
 			msg.taken, msg.err = mapped.TakeSeenWithWorkspaceRoots(ctx, msg.row.Cell, seen, msg.roots)
 		} else if conditional, ok := taker.(conditionalTaker); ok {
 			msg.taken, msg.err = conditional.TakeSeen(ctx, msg.row.Cell, seen)
@@ -876,7 +890,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	rows := append([]chatlist.Row(nil), a.machineRead.rows...)
 	for i := range rows {
 		if rows[i].Cell == msg.row.Cell {
-			rows[i].Mine, rows[i].Status, rows[i].Released = true, chatlist.Here, false
+			rows[i].Mine, rows[i].Status, rows[i].Released, rows[i].AutoOpen = true, chatlist.Here, false, false
 			rows[i].Device, rows[i].DeviceID, rows[i].Fence = msg.taken.Device, "", msg.taken.Fence
 			rows[i].Head = msg.taken.Head
 		}

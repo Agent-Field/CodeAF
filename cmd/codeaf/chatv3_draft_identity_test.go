@@ -13,6 +13,8 @@ func TestCopiedChatDoorsKeepDistinctStableDraftKeys(t *testing.T) {
 	profile := t.TempDir()
 	t.Setenv("CODEAF_HOME", profile)
 	t.Setenv("CODEAF_PROFILE_DIR", profile)
+	// hostOptions starts profile writers; join them before TempDir removes it.
+	t.Cleanup(func() { stopPoolErrands(profile) })
 	fleet := onePipeFleet("", hostedClient(t))
 	t.Cleanup(fleet.closeAll)
 	welcome := remote.Welcome{Version: remote.Version, ProfileDir: profile}

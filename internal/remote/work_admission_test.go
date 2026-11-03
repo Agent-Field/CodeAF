@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -93,5 +94,28 @@ func TestC1RemoteViewerAcceptsEveryAnswerDoor(t *testing.T) {
 	defer far.mu.Unlock()
 	if len(far.consents) != 4 || len(far.harnesses) != 2 || len(far.connects) != 4 || far.task != 2 || far.intake != 2 || far.question != 2 {
 		t.Fatalf("answers did not reach the producer: %+v", far)
+	}
+}
+
+type waitingWorkAgent struct {
+	*fakeAgent
+	release chan struct{}
+}
+
+func (a *waitingWorkAgent) CheckWork() error { <-a.release; return nil }
+func TestIdleRelease_C3_D1_RemoteWorkAdmissionHonorsContext(t *testing.T) {
+	far := &waitingWorkAgent{fakeAgent: &fakeAgent{}, release: make(chan struct{})}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) { return &Engine{Agent: far}, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	defer close(far.release)
+	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err = loop.Client.Agent().CheckWorkContext(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 150*time.Millisecond {
+		t.Fatalf("bounded remote admission: %v, %s", err, time.Since(start))
 	}
 }

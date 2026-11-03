@@ -1562,10 +1562,15 @@ type Agent struct{ c *Client }
 
 // CheckWork reads the session's own gate. An older engine has no new call.
 func (a *Agent) CheckWork() error {
+	return a.CheckWorkContext(context.Background())
+}
+
+// CheckWorkContext bounds an ownership check made before a surface sends.
+func (a *Agent) CheckWorkContext(ctx context.Context) error {
 	if !a.c.Welcome().WorkAdmission {
 		return nil
 	}
-	_, err := a.c.call(context.Background(), MethodCheckWork, nil)
+	_, err := a.c.call(ctx, MethodCheckWork, nil)
 	return err
 }
 

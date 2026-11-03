@@ -3126,6 +3126,16 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 			return nil
 		}
 	}
+	// A retained local handle can be a stale viewer. Resolve its shared row
+	// before the current-tab and already-open shortcuts can reuse old history.
+	if !a.homeTakeOpening && a.taker != nil && !a.hosted() && !a.machineRead.computerRemoved {
+		id := homeSessionID(line.row)
+		for _, row := range a.machineRead.rows {
+			if row.Cell == id && (heldElsewhere(row) || row.AutoOpen && (!row.Mine || a.machineRead.sendHolds[id].blocked)) {
+				return a.homeMachineEnter(homeLine{remote: &row})
+			}
+		}
+	}
 	if line.row.Transcript == a.file {
 		a.rememberOpen(a.frontTabKey())
 		a.closeHome()
