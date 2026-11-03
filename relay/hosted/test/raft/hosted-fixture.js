@@ -51,10 +51,10 @@ export async function hostedFixture({fixture=false,base='',go=false,rootLabel,no
     mf=new Miniflare(convertV4MiniflareOptions({log:diagnostics,handleStructuredLogs:entry=>diagnostics.capture(entry.level,entry.message),host:'127.0.0.1',inspectorPort:0,resourcePersistencePath:join(dir,'persist'),telemetry:{enabled:false},cf:false,workers:[worker]}));
     await mf.ready;return mf;
   };
-  const request=async(c,method,path,body)=>{
+  const request=async(c,method,path,body,options={})=>{
     const raw=body===undefined?'':body instanceof Uint8Array?body:JSON.stringify(body),at=String(Date.now());
     const headers={'Codeaf-Identity':rootKey.toString('base64url'),'Codeaf-Cert':Buffer.from(JSON.stringify(c.cert)).toString('base64url'),'Codeaf-Time':at,'Codeaf-Sig':sign(null,Buffer.from('codeaf-req-v1\n'+method+'\n'+prefix+path+'\n'+at+'\n'+sha(raw)),c.key.privateKey).toString('base64url')};
-    return mf.dispatchFetch('http://local'+prefix+path,{method,headers,...(method!=='GET'&&raw?{body:raw}:{})});
+    return mf.dispatchFetch('http://local'+prefix+path,{method,headers:{...headers,...options.headers},...(method!=='GET'&&raw?{body:raw}:{})});
   };
   const call=async(...args)=>{const response=await request(...args),text=await response.text();return {status:response.status,body:text?JSON.parse(text):null};};
   const control=async value=>{assert(fixture);const r=await mf.dispatchFetch('http://local/fixture',{method:'POST',body:JSON.stringify({identity,...value})});assert.equal(r.status,200,await r.clone().text());return r.json();};
@@ -69,5 +69,5 @@ export async function hostedFixture({fixture=false,base='',go=false,rootLabel,no
     certificate={v:1,identity,...certificate,signature:null};
     certificate.signature=sign(null,Buffer.from('codeaf/worker-cert/v1\0'+encodeCanonical(certificate)),root.privateKey).toString('base64');return certificate;
   };
-  return {identity,client,dir,start,request,call,control,api,delegate,diagnostics,get mf(){return mf;},async close(){if(mf)await mf.dispose();await rm(dir,{recursive:true,force:true});}};
+  return {identity,rootPublicKey:rootKey,client,dir,start,request,call,control,api,delegate,diagnostics,get mf(){return mf;},async close(){if(mf)await mf.dispose();await rm(dir,{recursive:true,force:true});}};
 }
