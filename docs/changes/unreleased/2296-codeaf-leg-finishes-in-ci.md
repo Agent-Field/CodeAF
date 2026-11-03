@@ -1,6 +1,6 @@
 ---
 kind: internal
-title: The cmd/codeaf touched leg gets a 25-minute timeout; the conformance busy case waits 200 ms
+title: The cmd/codeaf touched leg gets a 25-minute timeout
 pr: 2296
 surface: [build]
 invalidates: []

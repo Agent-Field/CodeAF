@@ -224,15 +224,14 @@ engine retry:
 
 Collection refs include `factory_job`, with a canonical positive decimal job `id`
 and a required `factory` field. The pair addresses the same job as `factory.job`.
-Other ref kinds have no `factory`. Collection results carry `workstream: true`
-when their id is a workstream. `collections.delete` refuses these collections
-with `bad_params` and the exact message `mark a workstream done instead`;
-duplicating one makes a plain collection. A job can belong to only one workstream:
-adding a job held by another returns `in_other_workstream` with factory, integer
-job, workstream_id and workstream_name detail, and changes nothing in the batch.
-Membership changes and renames send `workstream.changed` as well as
-`collection.changed`. Factory job targets carry the recorded title, state word
-and repository; an unavailable Factory produces an `unknown` target and status.
+Other ref kinds have no `factory`. Several collections can reference the same job.
+Factory job targets carry the recorded title, state word and repository; an
+unavailable Factory produces an `unknown` target and status. A missing job
+produces a `deleted` target. Resolution uses one bounded batch across nested
+collections: each distinct job is asked once, with a three-second deadline,
+up to eight concurrent Factory queue reads and 20 missing-job fallbacks. Queue
+reads, including unavailable results, share a ten-second cache of at most
+32 factories. A failed queue read never triggers per-job fallbacks.
 
 ## competence methods
 
@@ -920,14 +919,6 @@ continue to apply; no method, parameter or reply field is added.
 | `files.read` | `{agent, limit, offset, path}` | `FileReadResult` |
 | `files.stat` | `{agent, paths}` | `FilesResult` |
 
-## goahead methods
-
-| method | params | result |
-|---|---|---|
-| `goahead.grant` | `in.WorkstreamGoAheadGrantParams` | `WorkstreamGoAheadGrantResult` |
-| `goahead.list` | `in.WorkstreamGoAheadListParams` | `WorkstreamGoAheadListResult` |
-| `goahead.revoke` | `in.WorkstreamGoAheadRevokeParams` | `WorkstreamGoAheadRevokeResult` |
-
 ## harness methods
 
 | method | params | result |
@@ -1060,20 +1051,6 @@ $0.10 goes out as `0.1`.
 | `orders.runs` | `{id, limit}` | `RunsResult` |
 | `orders.stop` | `in.orderAt` | `OrderResult` |
 
-## page methods
-
-| method | params | result |
-|---|---|---|
-| `page.create` | `in.WorkstreamPageCreateParams` | `WorkstreamPageCreateResult` |
-| `page.delete` | `in.WorkstreamPageDeleteParams` | `WorkstreamPageDeleteResult` |
-| `page.get` | `in.WorkstreamPageGetParams` | `WorkstreamPageGetResult` |
-| `page.history` | `in.WorkstreamPageHistoryParams` | `WorkstreamPageHistoryResult` |
-| `page.list` | `in.WorkstreamPageListParams` | `WorkstreamPageListResult` |
-| `page.move` | `in.WorkstreamPageMoveParams` | `WorkstreamPageMoveResult` |
-| `page.restore` | `in.WorkstreamPageRestoreParams` | `WorkstreamPageRestoreResult` |
-| `page.save` | `in.WorkstreamPageSaveParams` | `WorkstreamPageSaveResult` |
-| `page.update` | `in.WorkstreamPageUpdateParams` | `WorkstreamPageUpdateResult` |
-
 ## ping methods
 
 | method | params | result |
@@ -1134,16 +1111,6 @@ $0.10 goes out as `0.1`.
 |---|---|---|
 | `quick.promote` | `in.IDParams` | `taskResult` |
 | `quick.undo` | `in.IDParams` | `Empty` |
-
-## record methods
-
-| method | params | result |
-|---|---|---|
-| `record.drop` | `in.WorkstreamRecordDropParams` | `WorkstreamRecordDropResult` |
-| `record.keep` | `in.WorkstreamRecordKeepParams` | `WorkstreamRecordKeepResult` |
-| `record.list` | `in.WorkstreamRecordListParams` | `WorkstreamRecordListResult` |
-| `record.propose` | `in.WorkstreamRecordProposeParams` | `WorkstreamRecordProposeResult` |
-| `record.supersede` | `in.WorkstreamRecordSupersedeParams` | `WorkstreamRecordSupersedeResult` |
 
 ## render methods
 
@@ -1301,20 +1268,6 @@ role pins and checked as the other pins are.
 |---|---|---|
 | `slash.catalog` | `{}` | `SlashCatalogResult` |
 
-## source methods
-
-| method | params | result |
-|---|---|---|
-| `source.add` | `in.WorkstreamSourceAddParams` | `WorkstreamSourceAddResult` |
-| `source.list` | `in.WorkstreamSourceListParams` | `WorkstreamSourceListResult` |
-| `source.remove` | `in.WorkstreamSourceRemoveParams` | `WorkstreamSourceRemoveResult` |
-| `source.update` | `in.WorkstreamSourceUpdateParams` | `WorkstreamSourceUpdateResult` |
-
-A workstream's sources: files, repos, issues, links and things kept from its work. Each is a
-pointer in its own table, never a collection member; removing one never touches what it names.
-The engine's workstream agent only proposes sources; the person keeps or drops them. Served with
-the hello feature `workstream_sources`.
-
 
 ## One engine on a home
 
@@ -1330,14 +1283,6 @@ the hello feature `workstream_sources`.
 | `spend.ledger.export` | `in.SpendLedgerExportParams` | `SpendLedgerExportResult` |
 | `spend.report` | `in.SpendReportParams` | `SpendReportResult` |
 | `spend.today` | `{}` | `SpendResult` |
-
-## suggestion methods
-
-| method | params | result |
-|---|---|---|
-| `suggestion.drop` | `in.WorkstreamSuggestionDropParams` | `WorkstreamSuggestionDropResult` |
-| `suggestion.keep` | `in.WorkstreamSuggestionKeepParams` | `WorkstreamSuggestionKeepResult` |
-| `suggestion.list` | `in.WorkstreamSuggestionListParams` | `WorkstreamSuggestionListResult` |
 
 ## sync methods
 
@@ -1382,33 +1327,11 @@ the hello feature `workstream_sources`.
 | `tools.output` | `in.toolCallParams` | `LinesNextLineTotalResult` |
 | `tools.unfollow` | `in.toolCallParams` | `Empty` |
 
-## wake methods
-
-| method | params | result |
-|---|---|---|
-| `wake.apply` | `in.WorkstreamWakeApplyParams` | `WorkstreamWakeApplyResult` |
-| `wake.list` | `in.WorkstreamWakeListParams` | `WorkstreamWakeListResult` |
-| `wake.not_now` | `in.WorkstreamWakeNotNowParams` | `WorkstreamWakeNotNowResult` |
-| `wake.undo` | `in.WorkstreamWakeUndoParams` | `WorkstreamWakeUndoResult` |
-
 ## work methods
 
 | method | params | result |
 |---|---|---|
 | `work.graph` | `in.GraphRequest` | `GraphResult` |
-
-## workstream methods
-
-| method | params | result |
-|---|---|---|
-| `workstream.create` | `in.WorkstreamCreateParams` | `WorkstreamCreateResult` |
-| `workstream.get` | `in.WorkstreamGetParams` | `WorkstreamGetResult` |
-| `workstream.list` | `in.WorkstreamListParams` | `WorkstreamListResult` |
-| `workstream.mark_done` | `in.WorkstreamMarkDoneParams` | `WorkstreamMarkDoneResult` |
-| `workstream.plan_get` | `in.WorkstreamPlanGetParams` | `WorkstreamPlanGetResult` |
-| `workstream.plan_set` | `in.WorkstreamPlanSetParams` | `WorkstreamPlanSetResult` |
-| `workstream.reopen` | `in.WorkstreamReopenParams` | `WorkstreamReopenResult` |
-| `workstream.update` | `in.WorkstreamUpdateParams` | `WorkstreamUpdateResult` |
 
 ## Events
 
@@ -1466,7 +1389,6 @@ the hello feature `workstream_sources`.
 | `turn.thinking` | `TurnThinking` |
 | `turn.thinking_done` | `TurnThinkingDone` |
 | `turn.tool` | `TurnTool` |
-| `workstream.changed` | `WorkstreamChanged` |
 
 ## Slash catalogue commands and forms
 
@@ -1648,40 +1570,6 @@ mark is read up to the moment the engine first kept unread (`unread_from` in
 the state file), so on upgrade every agent starts read, and a new agent starts
 read because it has said nothing. Engines that serve it announce
 `agents.mark_seen` in `hello.features`.
-
-## Workstreams (v0 proposal)
-
-The Workstreams plan, WP-1, serves 25 methods backed by the collections SQLite
-store and announces `workstreams` in `hello.features`. Older engines without
-this feature must not be called; their methods may answer `unknown_method`.
-Pages, version history, records, plans, settings and go-aheads are engine-owned
-SQLite state. Markdown is a page export. Every committed change sends one
-`workstream.changed` for its id and changed parts; unchanged writes emit nothing.
-List/get may persist and announce the first observed job leaving Backlog.
-Creation checks refs and ownership before opening one bare agent conversation,
-with no first message or model turn. Repeating a nonempty client_id returns the
-first workstream. Origin and agent conversations are collection members.
-Mark done ends active go-aheads, and optional chat archiving excludes the agent's
-record. Reopen keeps the workstream in Building. Recorded Factory facts and agent
-spend feed the numbers; unavailable readings remain absent, while measured zero
-is present. Queue reads have a three-second call deadline and a ten-second cache
-of at most 32 factories. Distinct factories are read concurrently, up to eight
-at a time; at most 20 missing jobs get individual reads per call. Further jobs
-remain unknown. A Factory connection that cannot be read stays unknown.
-Update, mark_done and reopen results use the same bounded, cached facts and agent
-spend as get. They persist the first observed start and return the refreshed row,
-combining the observation with the mutation's single `workstream.changed` event.
-A fault while reading a queue releases waiting readers and caches an unavailable
-result for the normal window before a retry. Repeating mark_done preserves the
-original done_at and how_it_went.
-Client IDs, page/milestone/wave/draft titles and source labels reject control
-characters. Why, how_it_went, record text and draft text allow newline and tab
-only; other control characters return `bad_params`. Names use collection rules.
-Go-aheads are stored with scope, cap and end bounds; expiry is derived on read.
-Factory enforcement and automatic wave starts remain separate capabilities.
-A workstream is a collection, sharing its id, naming rules and membership methods.
-Its jobs use `factory_job` refs with `factory`; a job in another workstream is refused
-as `in_other_workstream`. Versioned page and plan writes refuse stale bases with `version_conflict`.
 
 ## Errands (`agents.errand`)
 

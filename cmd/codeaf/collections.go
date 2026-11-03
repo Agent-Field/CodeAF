@@ -122,11 +122,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 		result, err = store.Create(ctx, rest[1])
 	case "rename":
 		err = store.Rename(ctx, rest[1], rest[2])
-		if err == nil {
-			var summary workspace.Summary
-			summary, err = store.Describe(ctx, rest[1])
-			result = summary.Collection
-		}
+		result = workspace.Collection{ID: rest[1], Name: rest[2]}
 	case "duplicate":
 		result, err = store.Duplicate(ctx, rest[1], rest[2])
 	case "delete":

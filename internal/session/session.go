@@ -2525,9 +2525,6 @@ type Config struct {
 	// foremanFloorDoor), on a launch that has a Factory door.
 	Floor FloorDoor
 
-	// Workstream is set by the app only on a workstream's own agent. Nil is no door.
-	Workstream WorkstreamDoor
-
 	// ClientTools is the door onto tools an app attached to this conversation. Nil is no door.
 	ClientTools ClientToolDoor
 

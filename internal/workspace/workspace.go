@@ -62,9 +62,8 @@ type Ref struct {
 }
 
 type Collection struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Workstream bool   `json:"workstream,omitempty"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // Member is a reference as one collection holds it, with when it was added in

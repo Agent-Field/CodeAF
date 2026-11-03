@@ -132,24 +132,6 @@ func TestTheManualMentionsTheDesignThreadsOwnTool(t *testing.T) {
 	}
 }
 
-// Contract (h) checks the offered belt, including its eight conditional tools.
-func TestTheManualMentionsTheWorkstreamAgentsTools(t *testing.T) {
-	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir(), Workstream: &workstreamFakeDoor{}}}
-	agent.tools = agent.belt()
-	names := map[string]bool{}
-	for _, tool := range agent.offeredTools() {
-		if !manual.Chat().Mentions(tool.Name) {
-			t.Errorf("the chat manual does not mention %s", tool.Name)
-		}
-		names[tool.Name] = true
-	}
-	for _, name := range []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page", "suggest_page_edit"} {
-		if !names[name] {
-			t.Errorf("the workstream agent does not offer %s", name)
-		}
-	}
-}
-
 // The manual tool answers out of the CHAT's pages and must never reach the
 // resident's. Both corpora ship in this binary, and a chat that answered from
 // the wrong one would describe a product the person is not using — fluently,
