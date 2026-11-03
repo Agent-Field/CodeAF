@@ -722,6 +722,10 @@ var crewVendors = map[string][]string{
 	// missing from it is a model this connection no longer serves, not a claim
 	// that it never could.
 	"aiand": {"deepseek", "z-ai", "moonshotai", "qwen", "openai", "google"},
+	// The Go plan serves bare ids from many vendors. The catalog vendor words
+	// come from OpenRouter's spelling, not from the listing's canonical_id
+	// spelling, because the crew weighs catalog rows.
+	"opencode-go": {"anthropic", "deepseek", "google", "meituan", "minimax", "moonshotai", "openai", "qwen", "reflection", "stepfun", "tencent", "x-ai", "xiaomi", "z-ai"},
 }
 
 // crewVendorWire spells the catalog's vendor segment the way a connection's OWN

@@ -176,6 +176,12 @@ type Client struct {
 	// written from the same answers, and the two never disagree: a lane the
 	// velocity ledger refuses drops its pin rather than being asked for again.
 	pins *endpointPins
+	// sessionID is the fallback conversation identity for a service that
+	// requires one on every request (requiresGoPlanSession). The request's
+	// cache lineage is used when it has one, which is the ordinary session
+	// path; this keeps an auxiliary call from failing on a service whose
+	// listing and wire both refuse a request with no session.
+	sessionID string
 	// now is the clock those measurements are taken against, seamed like wait
 	// so a test can state a two-second first token without waiting two seconds.
 	now func() time.Time
@@ -219,6 +225,10 @@ type Client struct {
 // state to a person in its own words rather than matching a sentence.
 var ErrNoAPIKey = errors.New("no API key: this session has not been given one yet")
 
+// requestSessionSeq makes the fallback identity of two clients built in the
+// same nanosecond distinct.
+var requestSessionSeq atomic.Uint64
+
 // NewClient builds the adapter. It performs no network request.
 //
 // A CLIENT MAY BE BUILT WITHOUT A KEY. The chat surface opens on a profile with
@@ -245,14 +255,15 @@ func NewClient(config Config) (*Client, error) {
 	}
 	httpClient, streamClient = providerhttp.Clone(httpClient), providerhttp.Clone(streamClient)
 	client := &Client{
-		config:   config,
-		http:     httpClient,
-		stream:   streamClient,
-		wait:     waitContext,
-		receipts: make(chan receiptWork, receiptQueueDepth),
-		velocity: sharedVelocity,
-		pins:     sharedPins,
-		now:      time.Now,
+		config:    config,
+		http:      httpClient,
+		stream:    streamClient,
+		wait:      waitContext,
+		receipts:  make(chan receiptWork, receiptQueueDepth),
+		velocity:  sharedVelocity,
+		pins:      sharedPins,
+		sessionID: fmt.Sprintf("codeaf-%x-%x", time.Now().UnixNano(), requestSessionSeq.Add(1)),
+		now:       time.Now,
 	}
 	if err := client.SetAPIKey(config.APIKey); err != nil {
 		return nil, err
@@ -2529,7 +2540,25 @@ func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body
 		// The old header remains for gateways that already consume it.
 		httpRequest.Header.Set("X-Session-Id", routingSessionID(key))
 	}
+	// The Go plan refuses a request without a conversation identity, even
+	// before it looks at the bearer. The cache lineage is that identity for a
+	// session or a leaf; an auxiliary call with no lineage still gets this
+	// client's own stable one rather than a 400.
+	if c.requiresGoPlanSession() {
+		session := CacheKeyFrom(ctx)
+		if session == "" {
+			session = c.sessionID
+		}
+		httpRequest.Header.Set("x-opencode-session", routingSessionID(session))
+	}
 	return httpRequest, nil
+}
+
+// requiresGoPlanSession reports whether this client talks to the Go plan
+// subscription. It is read from the configured source rather than guessed from
+// the address, because another service may share a host.
+func (c *Client) requiresGoPlanSession() bool {
+	return strings.EqualFold(strings.TrimSpace(c.config.SourceID), "opencode-go")
 }
 
 // applyRequestIdentity gives every request this client builds the product's

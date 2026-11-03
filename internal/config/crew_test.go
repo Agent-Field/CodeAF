@@ -500,6 +500,31 @@ func TestADirectRouterConnectionServesItsCatalogVendorsUnderItsOwnIds(t *testing
 	}
 }
 
+// OPENCODE GO IS ONE PLAN OVER MANY LABS, and its own API takes bare ids. The
+// crew row names the catalog vendors it serves; the send keeps the connection
+// prefix and drops the catalog's vendor segment, which is what the provider's
+// split then turns into the bare id the plan expects.
+func TestOpenCodeGoReachesCatalogVendorsWithBareSends(t *testing.T) {
+	provider := CrewProvider{
+		ID: "opencode-go", Written: "opencode-go", Kind: crewroute.Plan,
+		vendors: crewVendors["opencode-go"],
+	}
+	for _, testCase := range []struct{ model, send string }{
+		{"z-ai/glm-5.3", "opencode-go/glm-5.3"},
+		{"moonshotai/kimi-k3", "opencode-go/kimi-k3"},
+		{"deepseek/deepseek-v4-pro", "opencode-go/deepseek-v4-pro"},
+		{"x-ai/grok-4.7", "opencode-go/grok-4.7"},
+	} {
+		route, ok := provider.route(testCase.model, crewroute.Model{ID: testCase.model}, true)
+		if !ok || route.Send != testCase.send || route.Kind != crewroute.Plan {
+			t.Errorf("%s routed %+v, found=%t, want %q on the plan", testCase.model, route, ok, testCase.send)
+		}
+	}
+	if route, ok := provider.route("mistralai/mistral-large-4", crewroute.Model{ID: "mistralai/mistral-large-4"}, true); ok {
+		t.Errorf("OpenCode Go offered a vendor it does not serve: %+v", route)
+	}
+}
+
 // ONE KEY, TWO FAMILIES, TWO SEATS. This is the claim the row above cannot make
 // on its own: that a multi-family provider is not merely reachable but USABLE as
 // one route, so a single connection can carry a planner and a checker that sit on

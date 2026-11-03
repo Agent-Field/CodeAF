@@ -436,10 +436,19 @@ func LooksLikeAPIKey(key string) bool {
 	return strings.HasPrefix(key, "sk-") && len(key) >= 20 && !strings.ContainsAny(key, " \t\r\n")
 }
 
+// LooksLikeOpenCodeKey is the Go subscription's key rule. Its keys carry an
+// oc_sk_ prefix, which the OpenAI-shaped rule refuses before any request.
+func LooksLikeOpenCodeKey(key string) bool {
+	key = strings.TrimSpace(key)
+	return strings.HasPrefix(key, "oc_sk_") && len(key) > len("oc_sk_") && !strings.ContainsAny(key, " \t\r\n")
+}
+
 const (
 	zaiPreferredModel      = "glm-5.3"
 	moonshotPreferredModel = "kimi-k2.7-code"
 	minimaxPreferredModel  = "MiniMax-M3"
+	opencodeGoAddress      = "https://opencode.ai/inference/go/v1"
+	opencodeGoPreferred    = "glm-5.3"
 )
 
 // Vendored returns the service descriptions shipped by this phase.
@@ -554,6 +563,16 @@ func Vendored() []Source {
 		{
 			ID: CustomID, Written: CustomID, Name: "Custom OpenAI-compatible API",
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
+		},
+		{
+			// This service is a fixed monthly subscription whose endpoint
+			// serves the models its vendor tests against it. It has one road
+			// and no metered overflow, so the door exists to say the billing
+			// product is a plan and not a pay-as-you-go account.
+			ID: "opencode-go", Written: "opencode-go", Name: "OpenCode Go",
+			Address: opencodeGoAddress, KeyEnv: "OPENCODE_API_KEY", KeyShape: LooksLikeOpenCodeKey,
+			Doors:   []Door{{ID: "go", Name: "Go", Address: opencodeGoAddress}},
+			Listing: ListingModels, Probe: listingProbe(), ProbeModel: opencodeGoPreferred, Preferred: opencodeGoPreferred,
 		},
 	}
 }
