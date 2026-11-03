@@ -19,6 +19,20 @@
           "content": []
         },
         "base_version": 1
+      },
+      {
+        "id": "pg_31d0",
+        "doc": {
+          "type": "doc",
+          "content": []
+        },
+        "base_version": 2,
+        "source": {
+          "kind": "message",
+          "id": "msg_19a2",
+          "chat_id": "conv_5b9e",
+          "label": "Billing scope"
+        }
       }
     ],
     "result": [
@@ -33,6 +47,29 @@
           "version": 2,
           "updated_at": "2026-11-02T15:00:00Z",
           "updated_by": "you",
+          "doc": {
+            "type": "doc",
+            "content": []
+          }
+        }
+      },
+      {
+        "page": {
+          "id": "pg_31d0",
+          "workstream_id": "ws_8f2c1a",
+          "title": "Overview",
+          "owner": "you",
+          "read_by_jobs": false,
+          "position": 0,
+          "version": 3,
+          "updated_at": "2026-11-02T15:10:00Z",
+          "updated_by": "you",
+          "updated_from": {
+            "kind": "message",
+            "id": "msg_19a2",
+            "chat_id": "conv_5b9e",
+            "label": "Billing scope"
+          },
           "doc": {
             "type": "doc",
             "content": []

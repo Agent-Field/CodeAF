@@ -38,7 +38,15 @@
                 "draft_id": "draft_418c",
                 "title": "Expose usage totals",
                 "repo": "acme/billing",
-                "text": "Show the recorded usage."
+                "text": "Show the recorded usage.",
+                "size": "M",
+                "budget_usd": 25.0,
+                "source": {
+                  "kind": "message",
+                  "id": "msg_19a2",
+                  "chat_id": "conv_5b9e",
+                  "label": "Billing scope"
+                }
               }
             ]
           }
@@ -74,7 +82,15 @@
                   "draft_id": "draft_418c",
                   "title": "Expose usage totals",
                   "repo": "acme/billing",
-                  "text": "Show the recorded usage."
+                  "text": "Show the recorded usage.",
+                  "size": "M",
+                  "budget_usd": 25.0,
+                  "source": {
+                    "kind": "message",
+                    "id": "msg_19a2",
+                    "chat_id": "conv_5b9e",
+                    "label": "Billing scope"
+                  }
                 }
               ]
             }

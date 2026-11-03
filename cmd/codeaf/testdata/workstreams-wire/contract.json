@@ -119,9 +119,15 @@
       "job",
       "draft"
     ],
+    "WorkstreamDraftSize": [
+      "S",
+      "M",
+      "L"
+    ],
     "WorkstreamRecordKind": [
       "decision",
-      "question"
+      "question",
+      "goahead"
     ],
     "WorkstreamRecordState": [
       "proposed",
@@ -239,6 +245,14 @@
       "updated_at": {
         "type": "string (RFC 3339)",
         "required": true
+      },
+      "agent_id": {
+        "type": "string",
+        "required": true
+      },
+      "origin_chat_id": {
+        "type": "string",
+        "required": false
       }
     },
     "Workstream": {
@@ -396,6 +410,18 @@
       },
       "text": {
         "type": "string",
+        "required": false
+      },
+      "size": {
+        "type": "WorkstreamDraftSize",
+        "required": false
+      },
+      "budget_usd": {
+        "type": "number (USD)",
+        "required": false
+      },
+      "source": {
+        "type": "WorkstreamSource",
         "required": false
       }
     },
@@ -577,6 +603,14 @@
       "superseded_by": {
         "type": "string",
         "required": false
+      },
+      "goahead": {
+        "type": "WorkstreamGoAheadProposal",
+        "required": false
+      },
+      "goahead_id": {
+        "type": "string",
+        "required": false
       }
     },
     "WorkstreamGoAhead": {
@@ -635,6 +669,36 @@
       "ended_at": {
         "type": "string (RFC 3339)",
         "required": false
+      }
+    },
+    "WorkstreamGoAheadProposal": {
+      "scope": {
+        "type": "WorkstreamGoAheadScope",
+        "required": true
+      },
+      "factory": {
+        "type": "string",
+        "required": false
+      },
+      "job": {
+        "type": "integer",
+        "required": false
+      },
+      "wave": {
+        "type": "integer",
+        "required": false
+      },
+      "milestone_id": {
+        "type": "string",
+        "required": false
+      },
+      "cap_usd": {
+        "type": "number (USD)",
+        "required": true
+      },
+      "ends_at": {
+        "type": "string (RFC 3339)",
+        "required": true
       }
     },
     "WorkstreamChanged": {
@@ -892,6 +956,10 @@
       "base_version": {
         "type": "integer",
         "required": true
+      },
+      "source": {
+        "type": "WorkstreamSource",
+        "required": false
       }
     },
     "WorkstreamPageSaveResult": {
@@ -927,6 +995,10 @@
       },
       "doc": {
         "type": "object",
+        "required": false
+      },
+      "source": {
+        "type": "WorkstreamSource",
         "required": false
       }
     },
@@ -1040,6 +1112,10 @@
       "state": {
         "type": "WorkstreamRecordState",
         "required": false
+      },
+      "include_goaheads": {
+        "type": "boolean",
+        "required": false
       }
     },
     "WorkstreamRecordListResult": {
@@ -1067,6 +1143,10 @@
       },
       "kept": {
         "type": "boolean",
+        "required": false
+      },
+      "goahead": {
+        "type": "WorkstreamGoAheadProposal",
         "required": false
       }
     },

@@ -71,15 +71,17 @@ type WorkstreamSource struct {
 }
 
 type WorkstreamRow struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Stage     string    `json:"stage" enum:"shaping,building,done"`
-	Total     int       `json:"total"`
-	Merged    *int      `json:"merged,omitempty"`
-	NeedsYou  *int      `json:"needs_you,omitempty"`
-	SpendUSD  *float64  `json:"spend_usd,omitempty"`
-	BudgetUSD *float64  `json:"budget_usd,omitempty"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Stage        string    `json:"stage" enum:"shaping,building,done"`
+	Total        int       `json:"total"`
+	Merged       *int      `json:"merged,omitempty"`
+	NeedsYou     *int      `json:"needs_you,omitempty"`
+	SpendUSD     *float64  `json:"spend_usd,omitempty"`
+	BudgetUSD    *float64  `json:"budget_usd,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	AgentID      string    `json:"agent_id"`
+	OriginChatID *string   `json:"origin_chat_id,omitempty"`
 }
 
 type Workstream struct {
@@ -125,13 +127,16 @@ type WorkstreamWave struct {
 }
 
 type WorkstreamPlanItem struct {
-	Kind    string  `json:"kind" enum:"job,draft"`
-	Factory *string `json:"factory,omitempty"`
-	Job     *int    `json:"job,omitempty"`
-	DraftID *string `json:"draft_id,omitempty"`
-	Title   *string `json:"title,omitempty"`
-	Repo    *string `json:"repo,omitempty"`
-	Text    *string `json:"text,omitempty"`
+	Kind      string            `json:"kind" enum:"job,draft"`
+	Factory   *string           `json:"factory,omitempty"`
+	Job       *int              `json:"job,omitempty"`
+	DraftID   *string           `json:"draft_id,omitempty"`
+	Title     *string           `json:"title,omitempty"`
+	Repo      *string           `json:"repo,omitempty"`
+	Text      *string           `json:"text,omitempty"`
+	Size      *string           `json:"size,omitempty" enum:"S,M,L"`
+	BudgetUSD *float64          `json:"budget_usd,omitempty"`
+	Source    *WorkstreamSource `json:"source,omitempty"`
 }
 
 type WorkstreamPageNode struct {
@@ -176,17 +181,29 @@ type WorkstreamPageVersion struct {
 }
 
 type WorkstreamRecord struct {
-	ID           string            `json:"id"`
-	WorkstreamID string            `json:"workstream_id"`
-	Kind         string            `json:"kind" enum:"decision,question"`
-	Text         string            `json:"text"`
-	State        string            `json:"state" enum:"proposed,kept,dropped,superseded"`
-	By           string            `json:"by" enum:"you,agent"`
-	Source       *WorkstreamSource `json:"source,omitempty"`
-	CreatedAt    time.Time         `json:"created_at"`
-	DecidedAt    time.Time         `json:"decided_at,omitzero"`
-	Supersedes   *string           `json:"supersedes,omitempty"`
-	SupersededBy *string           `json:"superseded_by,omitempty"`
+	ID           string                     `json:"id"`
+	WorkstreamID string                     `json:"workstream_id"`
+	Kind         string                     `json:"kind" enum:"decision,question,goahead"`
+	Text         string                     `json:"text"`
+	State        string                     `json:"state" enum:"proposed,kept,dropped,superseded"`
+	By           string                     `json:"by" enum:"you,agent"`
+	Source       *WorkstreamSource          `json:"source,omitempty"`
+	CreatedAt    time.Time                  `json:"created_at"`
+	DecidedAt    time.Time                  `json:"decided_at,omitzero"`
+	Supersedes   *string                    `json:"supersedes,omitempty"`
+	SupersededBy *string                    `json:"superseded_by,omitempty"`
+	GoAhead      *WorkstreamGoAheadProposal `json:"goahead,omitempty"`
+	GoAheadID    *string                    `json:"goahead_id,omitempty"`
+}
+
+type WorkstreamGoAheadProposal struct {
+	Scope       string    `json:"scope" enum:"job,wave,milestone"`
+	Factory     *string   `json:"factory,omitempty"`
+	Job         *int      `json:"job,omitempty"`
+	Wave        *int      `json:"wave,omitempty"`
+	MilestoneID *string   `json:"milestone_id,omitempty"`
+	CapUSD      float64   `json:"cap_usd"`
+	EndsAt      time.Time `json:"ends_at"`
 }
 
 type WorkstreamGoAhead struct {
@@ -327,9 +344,10 @@ type WorkstreamPageGetResult struct {
 }
 
 type WorkstreamPageSaveParams struct {
-	ID          string          `json:"id"`
-	Doc         json.RawMessage `json:"doc"`
-	BaseVersion int             `json:"base_version"`
+	ID          string            `json:"id"`
+	Doc         json.RawMessage   `json:"doc"`
+	BaseVersion int               `json:"base_version"`
+	Source      *WorkstreamSource `json:"source,omitempty"`
 }
 
 type WorkstreamPageSaveResult struct {
@@ -337,13 +355,14 @@ type WorkstreamPageSaveResult struct {
 }
 
 type WorkstreamPageCreateParams struct {
-	WorkstreamID string          `json:"workstream_id"`
-	ParentID     *string         `json:"parent_id,omitempty"`
-	AfterID      *string         `json:"after_id,omitempty"`
-	Title        string          `json:"title"`
-	Owner        *string         `json:"owner,omitempty" enum:"you,agent"`
-	ReadByJobs   *bool           `json:"read_by_jobs,omitempty"`
-	Doc          json.RawMessage `json:"doc,omitempty"`
+	WorkstreamID string            `json:"workstream_id"`
+	ParentID     *string           `json:"parent_id,omitempty"`
+	AfterID      *string           `json:"after_id,omitempty"`
+	Title        string            `json:"title"`
+	Owner        *string           `json:"owner,omitempty" enum:"you,agent"`
+	ReadByJobs   *bool             `json:"read_by_jobs,omitempty"`
+	Doc          json.RawMessage   `json:"doc,omitempty"`
+	Source       *WorkstreamSource `json:"source,omitempty"`
 }
 
 type WorkstreamPageCreateResult struct {
@@ -399,9 +418,10 @@ type WorkstreamPageRestoreResult struct {
 }
 
 type WorkstreamRecordListParams struct {
-	WorkstreamID string  `json:"workstream_id"`
-	Kind         *string `json:"kind,omitempty" enum:"decision,question"`
-	State        *string `json:"state,omitempty" enum:"proposed,kept,dropped,superseded"`
+	WorkstreamID    string  `json:"workstream_id"`
+	Kind            *string `json:"kind,omitempty" enum:"decision,question,goahead"`
+	State           *string `json:"state,omitempty" enum:"proposed,kept,dropped,superseded"`
+	IncludeGoAheads *bool   `json:"include_goaheads,omitempty"`
 }
 
 type WorkstreamRecordListResult struct {
@@ -409,11 +429,12 @@ type WorkstreamRecordListResult struct {
 }
 
 type WorkstreamRecordProposeParams struct {
-	WorkstreamID string            `json:"workstream_id"`
-	Kind         string            `json:"kind" enum:"decision,question"`
-	Text         string            `json:"text"`
-	Source       *WorkstreamSource `json:"source,omitempty"`
-	Kept         *bool             `json:"kept,omitempty"`
+	WorkstreamID string                     `json:"workstream_id"`
+	Kind         string                     `json:"kind" enum:"decision,question,goahead"`
+	Text         string                     `json:"text"`
+	Source       *WorkstreamSource          `json:"source,omitempty"`
+	Kept         *bool                      `json:"kept,omitempty"`
+	GoAhead      *WorkstreamGoAheadProposal `json:"goahead,omitempty"`
 }
 
 type WorkstreamRecordProposeResult struct {

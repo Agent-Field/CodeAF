@@ -22,7 +22,9 @@
             "needs_you": 1,
             "spend_usd": 2.5,
             "budget_usd": 100.0,
-            "updated_at": "2026-11-02T14:05:00Z"
+            "updated_at": "2026-11-02T14:05:00Z",
+            "agent_id": "conv_8d22",
+            "origin_chat_id": "conv_5b9e"
           }
         ]
       },
@@ -33,7 +35,8 @@
             "name": "Usage-based billing",
             "stage": "shaping",
             "total": 1,
-            "updated_at": "2026-11-02T14:05:00Z"
+            "updated_at": "2026-11-02T14:05:00Z",
+            "agent_id": "conv_8d22"
           }
         ]
       }

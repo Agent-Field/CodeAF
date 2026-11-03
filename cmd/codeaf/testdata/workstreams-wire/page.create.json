@@ -20,6 +20,12 @@
         "doc": {
           "type": "doc",
           "content": []
+        },
+        "source": {
+          "kind": "message",
+          "id": "msg_19a2",
+          "chat_id": "conv_5b9e",
+          "label": "Billing scope"
         }
       }
     ],
@@ -35,6 +41,12 @@
           "version": 1,
           "updated_at": "2026-11-02T14:05:00Z",
           "updated_by": "you",
+          "updated_from": {
+            "kind": "message",
+            "id": "msg_19a2",
+            "chat_id": "conv_5b9e",
+            "label": "Billing scope"
+          },
           "parent_id": "pg_31d0",
           "doc": {
             "type": "doc",
