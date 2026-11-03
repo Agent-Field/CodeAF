@@ -12,7 +12,7 @@ const GaveBackNote = "The person worked on this job's branch by hand while it wa
 // order; their stages are found by name.
 func CheckAgainFrom(stages []Stage, phases []Phase, cur int) int {
 	for i := 0; i < cur && i < len(phases); i++ {
-		if phases[i].State != PhaseDone {
+		if phases[i].State != PhaseDone && phases[i].State != PhaseSkipped {
 			continue
 		}
 		if j := StageIndex(stages, phases[i].Name); j >= 0 && checksWork(stages[j]) {

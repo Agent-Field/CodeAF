@@ -2484,7 +2484,7 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 			}
 			c.record(recordFacts{ctx: ctx, request: request, knobs: rawKnobs, stream: true,
 				began: began, status: httpResponse.StatusCode, response: response, err: terminalErr})
-			if finished {
+			if finished && terminalErr == nil && !failedFinish {
 				c.billAnswered(ctx, c.modelFor(request), response, rawKnobs.trace.usageObservation.outputBytes, rawKnobs.trace)
 			} else {
 				c.settle(ctx, c.modelFor(request), response, receiptTornReason, rawKnobs.trace.usageObservation.outputBytes, rawKnobs.trace)

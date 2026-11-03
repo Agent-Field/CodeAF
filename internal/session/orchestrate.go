@@ -144,7 +144,8 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	a.orchestrateSeq++
 	seq := a.orchestrateSeq
 	named := strings.TrimSpace(model)
-	source, session := a.config.RolesSource, a.model
+	session := a.model
+	reader := readerFor(a.config, session)
 	// The published tariff rides with the rest of the config: read under the
 	// same lock every other config field on this path is, installed below
 	// beside the run that meters by it.
@@ -185,12 +186,12 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// planner is made once per completion and decides what everything else
 	// costs; a node is one small question and there are many of them. Two roles,
 	// resolved once here, so neither half has to ask again.
-	plannerCall := orchestrateRoleCall(source, roles.RolePlanner, named, session)
+	plannerCall := orchestrateRoleCall(reader, roles.RolePlanner, named, session)
 	plannerModel := plannerCall.model
 	planner := &orchestratePlanner{agent: a, call: plannerCall, request: request}
 	worker := &orchestrateExec{
 		agent:   a,
-		call:    orchestrateRoleCall(source, roles.RoleWorker, named, session),
+		call:    orchestrateRoleCall(reader, roles.RoleWorker, named, session),
 		id:      id,
 		request: request,
 		goal:    goal,
@@ -315,18 +316,18 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 // refusing: the only ways it can fail are an unregistered role, which is a
 // programming error nobody in a running orchestration can fix, and no model
 // anywhere, which is the case where there is nothing better to answer with.
-func orchestrateRoleModel(source func(key string) (string, bool), role roles.Role, named, session string) string {
-	return orchestrateRoleCall(source, role, named, session).model
+func orchestrateRoleModel(reader roleReader, role roles.Role, named, session string) string {
+	return orchestrateRoleCall(reader, role, named, session).model
 }
 
 // orchestrateRoleCall keeps the effort half of the role resolution until the
 // request is made. A named model and the session floor carry no effort because
 // [roles.ResolveCall] deliberately gives neither one a tier's setting.
-func orchestrateRoleCall(source func(key string) (string, bool), role roles.Role, named, session string) roleRequest {
+func orchestrateRoleCall(reader roleReader, role roles.Role, named, session string) roleRequest {
 	if named != "" {
 		return roleRequest{model: named}
 	}
-	if call, err := roles.ResolveCall(roles.Source(source), role, session); err == nil {
+	if call, err := reader.ResolveCall(role, session); err == nil {
 		return newRoleRequest(call)
 	}
 	return roleRequest{model: session}

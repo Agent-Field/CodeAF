@@ -36,7 +36,7 @@ func TestReadinessRoundLandsAtExistingApprovalWithoutChangingCode(t *testing.T) 
 				return r, nil
 			})}, func(o *Options) {
 				o.Workdir = func(factory.Item) (string, error) { return dir, nil }
-				o.Push = func(string, string) error { t.Error("audit pushed code"); return nil }
+				o.Push = func(string, string, ...func() error) error { t.Error("audit pushed code"); return nil }
 			})
 			id := g.add("review readiness", factory.Stage{Name: "proof", Kind: factory.StageChat, Until: factory.UntilProven})
 			if err := g.st.Update(id, func(it *factory.Item) error {
@@ -100,7 +100,7 @@ func TestReadinessOrdinaryFindingContinuesToBoundedRepair(t *testing.T) {
 		return factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 1}, Claims: []factory.Claim{{Text: "error check verified", OK: true, Medium: "test", Evidence: "focused regression"}}, Repair: &factory.CIRepairResult{Decision: "fixed", Reason: "error propagation repaired and checked"}}, nil
 	})}, func(o *Options) {
 		o.Workdir = func(factory.Item) (string, error) { return dir, nil }
-		o.Push = func(string, string) error { t.Error("pushed without approval"); return nil }
+		o.Push = func(string, string, ...func() error) error { t.Error("pushed without approval"); return nil }
 	})
 	id := g.add("readiness finding", factory.Stage{Name: "proof", Kind: factory.StageChat, Until: factory.UntilProven})
 	if e := g.st.Update(id, func(it *factory.Item) error {
@@ -144,7 +144,7 @@ func TestReadinessPublicationReachesReadyWithoutPushingOrMerging(t *testing.T) {
 	head := mustGit(t, g.dir, "rev-parse", "HEAD")
 	source := &readinessPublishSource{prSource: g.src}
 	g.r.opts.Source = func(string) factory.Source { return source }
-	g.r.opts.Push = func(string, string) error { t.Error("ready transition pushed code"); return nil }
+	g.r.opts.Push = func(string, string, ...func() error) error { t.Error("ready transition pushed code"); return nil }
 	if err := g.st.Update(g.id, func(it *factory.Item) error {
 		it.HeadCommit = head
 		it.Autonomy = factory.AutonomyAuto
@@ -178,7 +178,7 @@ func TestReadinessExternalReadyHeadIsCheckedWithoutPublishing(t *testing.T) {
 		return factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "Reviewed the current external commit, complete diff, description and feedback", Readiness: &factory.ReadinessReview{Head: head, DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: true}}}, nil
 	})}, func(o *Options) {
 		o.Workdir = func(factory.Item) (string, error) { return dir, nil }
-		o.Push = func(string, string) error { t.Error("external checked head was pushed"); return nil }
+		o.Push = func(string, string, ...func() error) error { t.Error("external checked head was pushed"); return nil }
 	})
 	id := g.add("external ready commit", chat("proof"))
 	if err := g.st.Update(id, func(it *factory.Item) error {

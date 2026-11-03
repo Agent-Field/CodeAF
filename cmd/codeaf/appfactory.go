@@ -1045,20 +1045,30 @@ func (b *appBackend) FactoryMe(ctx context.Context, id string) (appwire.FactoryM
 func (b *appBackend) FactoryQueue(ctx context.Context, id string) (api.Queue, error) {
 	var q api.Queue
 	err := b.factoryHub().read(ctx, id, "/v1/queue", appFactoryBody, &q)
+	if err == nil {
+		for i := range q.Jobs {
+			j := &q.Jobs[i]
+			j.LifetimeCost = max(j.Cost, j.LifetimeCost)
+		}
+	}
 	return q, err
 }
 
 func (b *appBackend) FactoryJob(ctx context.Context, id string, job int) (api.Job, error) {
 	var out api.Job
 	err := b.factoryHub().read(ctx, id, "/v1/jobs/"+strconv.Itoa(job), appFactoryBody, &out)
+	if err == nil {
+		out.LifetimeCost = max(out.Cost, out.LifetimeCost)
+	}
 	return out, err
 }
 
 func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.FactoryRepos, error) {
 	var body struct {
-		Factory   api.Factory `json:"factory"`
-		Watched   []string    `json:"watched"`
-		Available []struct {
+		AvailableReadAt time.Time   `json:"available_read_at"`
+		Factory         api.Factory `json:"factory"`
+		Watched         []string    `json:"watched"`
+		Available       []struct {
 			Full    string    `json:"full"`
 			Name    string    `json:"name"`
 			Owner   string    `json:"owner"`
@@ -1072,7 +1082,7 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 	if err := b.factoryHub().read(ctx, id, "/v1/repos", appFactoryBody, &body); err != nil {
 		return appwire.FactoryRepos{}, err
 	}
-	out := appwire.FactoryRepos{Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}
+	out := appwire.FactoryRepos{AvailableReadAt: body.AvailableReadAt, Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}
 	if out.Watched == nil {
 		out.Watched = []string{}
 	}

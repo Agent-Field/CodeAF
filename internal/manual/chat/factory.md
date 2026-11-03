@@ -1,5 +1,37 @@
 # The factory
 
+## factory repository list refresh, saved repositories and available_read_at
+
+The factory saves the last complete GitHub repository list across a restart.
+Repository reads return that saved list and its `available_read_at` timestamp,
+the UTC time the last complete discovery finished. The timestamp is absent
+when no discovery time is known. An older desktop app can ignore the field.
+
+When the list is at least five minutes old, the next read starts one background
+discovery. Other reads reuse the saved list while discovery runs. The first
+read with no saved list waits for discovery. A failed discovery keeps the saved
+list on disk. Network, server, rate-limit and timeout failures serve that list
+with its unchanged `available_read_at`. A lost, expired, revoked or refused
+GitHub sign-in fails the read and never serves the saved list. With no saved
+list, a failed discovery still reports its error. After a failure, a read may
+start another discovery after 30 seconds; a success restores the five-minute
+refresh interval.
+
+A saved list belongs to the GitHub identity and credential that read it. A
+different connection must read its own list. The existing GitHub identity and
+caller-access checks still apply. A transient identity-lookup failure can reuse
+the saved list only with the same credential; a refused sign-in fails the read.
+Turning a repository on or off changes `watched` immediately, including a newly
+watched repository absent from the saved available list. A repository removed
+on GitHub disappears from the available list after the next successful discovery.
+
+Discovery preserves registered checkout folders and uses conditional GitHub reads.
+If every repository page answers 304 and matches the last complete discovery,
+it keeps the previous issue counts without another GraphQL count request. A
+partial failed walk cannot restore removed repositories on a retry. Open pipeline
+pull requests reuse their files for the same head SHA and base SHA in the bounded
+process cache. A change to either SHA reads the files again.
+
 ## save a job note after steps finish — who reads it and PR comments
 
 A `factory_item` note asks `save a note on the job?`. After your yes, it stays
@@ -252,7 +284,29 @@ Issues are the factory's only work items, including briefs handed over from chat
 
 An issue keeps the PR it opens, its checks, reviews and merge status. One final Follow PR step handles bounded CI, requested-review and conflict repairs until merge or closure. Initial publication approval permits checked maintenance pushes to the same PR within budget; merge remains your decision. Take over pauses automation for an ordinary working conversation; Resume pipeline checks that work and continues. On upgrade, the factory permanently removes old standalone PR jobs, their factory-owned conversations, local worktrees, generated local branches and activity records, including worker copies. No archive of those jobs is kept. Issue jobs and their linked PR information remain. Nothing on GitHub is deleted or changed by this cleanup.
 
+## step label — readable names without changing step ids
+
+A step definition in `.codeaf/factory.yaml` may set `label: Security review`
+beside its `prompt`. A step added to one job may also carry `label`.
+The label is its readable display name, including in the
+job's brief facts. The step id stays unchanged: pipelines and actions still use
+the step's key. Empty or whitespace labels use the existing name. Jobs without
+labels keep their existing display and saved form.
+
+Apps send labels on added job steps as `edit.add[].step.label` and change an
+existing job step with `edit.label: {write: Security review}` only when hello
+announces `factory.job_step_edit_label`. Job edits keep the same fixed-step,
+already-run and proof restrictions as other field edits.
+
+Pipeline previews accept `edits[].label` on `set_step` and `add_step` when hello
+announces `factory.pipeline_edit_label`. Labels are trimmed, limited to one line
+of 200 characters, and shown in the preview's changed fields. An empty label
+clears it; saved YAML omits `label:` when empty. Locked steps remain locked;
+added approval gates may carry a label.
+
 ## change one job's steps — landed, proof has started, add after proof, switch on a step
+
+A typed step ask keeps its punctuation, including its final period. Placement words and an explicit `name:` are removed; surrounding whitespace is trimmed. A new terminal job removes chips and their leftover comma, semicolon and colon separators from its ask, preserving periods, question marks and exclamation marks. With no chips, only surrounding whitespace is trimmed. Its short title still removes stray punctuation.
 
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.
 
@@ -261,6 +315,36 @@ Once a job has landed, a nonempty step edit is refused with `the job has landed,
 Proof is the step named proof, a send-back's prove step, or any step that runs until proven, whatever it is called; checks and posts are not proof. Before landing, once any proof has started, a nonempty step edit is refused with `proof has started, so the steps can no longer be edited`. A refused step edit leaves the job, its proof and its recorded changes as they were. An empty edit changes nothing.
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
+
+## when conditions — touches auth, has ui, unknown files, before write
+
+An added conversation, check or approval step may use `when: touches auth` or `when: has ui`. These conditions are decided when the step comes up, using the change's files once known, otherwise the pull request's known files, otherwise an explicitly set triage area. Without files or area the answer is not known yet: the step stays pending and runs if still unknown at its turn. A conditional step before write therefore runs when no files or area are known.
+
+`touches auth` matches auth, billing or crypto; `has ui` matches tui, pages, render or ui. Matching is case-insensitive, on a whole path segment or its name without extension: `internal/auth/x.go`, `auth.go` and `src/pages/a.tsx` match; `authors.go` and `internal/uint/x.go` do not. Known files override triage area. With known files and no match, the job log says, for example, `skipping inspect: when touches auth does not match the change files`.
+
+A nonmatching step ends as `skipped`, with a structured reason (`skip_reason` on the wire), rather than done or passed. It supplies no proof or measured checks. The next step can run and the job can finish, but a job whose only check was skipped has no passing check. Resume keeps the skip; rerun from an earlier step re-reads the files and decides again. Engines announce `factory.step_skipped` for this state and reason.
+
+The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
+
+## skipped required checks — publishing waits, rerun, policy approval
+
+Under `tests pass before anything posts`, a skipped check still blocks the
+post. The job waits for you. Its open question and Needs you reason name the
+check, why it was skipped, and the recovery action; the policy result retains
+the rule that refused publishing. For example:
+`Publishing waits: check inspect was skipped (when touches auth does not match the change files). Rerun from write after revising the change files to match, or stop the job.`
+
+Approval cannot bypass this policy wait. Trying the post again with the same
+files still refuses. Rerun from the earlier work step after revising the files
+to match the condition; the check must actually run and pass. A rerun of only
+the conditional check with unchanged files skips again. Step edit cannot change
+an already-run step or remove its condition. If the condition is inappropriate,
+stop the job and correct the pipeline before starting a new job. With no earlier
+work step, the question names that stop-and-correct action instead.
+
+A skip without a check policy does not block posting. Under
+`no pull request without a green check`, a measured passing check beside a skip
+qualifies; skips alone do not. These jobs never claim that every check passed.
 
 ## give one step more or fewer tries — max tries, 1 to 3, how many times a step runs
 
@@ -369,6 +453,8 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 round. The job reads **Paused**, with no question to answer. Its work, step
 conversation and spending stay. No further model round starts while it is
 paused; costs already incurred by the cancelled call still count.
+Spending after a resume adds to that same round, including when another worker
+continues the job. Repeated spending reports count once and cannot lower a round's cost.
 
 **Resume** continues the step and round where they paused, in the same
 conversation when it can be reopened. It takes a free Jobs at once slot, or
@@ -390,7 +476,9 @@ no running slot.
 
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
-**Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the job's spend starts again from nothing; its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
+**Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the new run's cost starts again from nothing; the job's lifetime spending stays, and its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
+
+A job owned by this factory has one manager, however many asks race to open it. A remote job running here may still get separate managers from its Talk door and its runner; those opens are not deduplicated. Every conversation owned by a job, including an extra manager left by an earlier build, spends from that job’s budget. Its model calls appear on the job and count toward its cap, wherever its working folder is. Reopening a conversation does not charge its saved calls again.
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
 
@@ -399,9 +487,19 @@ To go on from a step that was cut instead, keeping the steps before it and the m
 Stop still works when the job has moved on since you opened its page. Stopping
 the current running step follows the same rule; a step that already ended
 cannot stop the next one, and Step Stop refuses during publishing. Job Stop
-also stops a job that is publishing: its worker loses permission to report and
-is asked to cancel when it next contacts the factory. Publishing can still finish before the worker learns of Stop; Stop does not
-undo a push or pull request.
+also stops a job that is publishing: Stop prevents a push that has not begun
+and wins until the PR request is sent, including automatic publication after proof.
+If that request was already sent, the job reports the opened PR with its link
+and tells you it was not closed; review it on GitHub. Nothing is closed automatically.
+Run again is available immediately after Stop. An old publisher can still report
+an already opened PR, but that receipt does not change the new run's state.
+
+Workers confirm Stop immediately before executing each push and sending the PR
+request. A transient confirmation error gets up to three attempts within two
+seconds. If confirmation still fails, publication fails with "could not confirm
+Stop"; press **Approve** again to retry. An older factory that answers 404 has no
+publish-check endpoint: publication uses its earlier behavior, without a fresh
+server check at these boundaries. Upgrade the factory to gain that check.
 
 ## drop a job — Drop, delete a job's branch, uncommitted work, throw away a job's work and its conversations
 
@@ -415,7 +513,7 @@ A dropped job cannot be changed: opening its chat, and `factory_item` or `factor
 
 ## bring back a dropped job — Bring back, undo a drop, restart a dropped job, fresh start, old conversation still there
 
-**Bring back** is the one way out of a drop. Only a dropped job offers it, and only to the person who may act on the job. The job returns to Backlog as a fresh job, as if it had never been worked on: no steps run, nothing spent, no failure, no pull request, and no conversation, because the drop deleted them. Nothing starts; your start runs it from the first step on a new branch, and opening its chat starts a new conversation. A pull request it had opened stays on GitHub, no longer linked to the job. Starting a dropped job is refused with `#12 was dropped · Bring back returns it to Backlog`, and a job that was not dropped with `only a dropped job can be brought back`.
+**Bring back** is the one way out of a drop. Only a dropped job offers it, and only to the person who may act on the job. The job returns to Backlog as a fresh job, as if it had never been worked on: no steps run, no failure, no pull request, and no conversation; its lifetime spending stays, because the drop deleted them. Nothing starts; your start runs it from the first step on a new branch, and opening its chat starts a new conversation. A pull request it had opened stays on GitHub, no longer linked to the job. Starting a dropped job is refused with `#12 was dropped · Bring back returns it to Backlog`, and a job that was not dropped with `only a dropped job can be brought back`.
 
 **Fresh means nothing said earlier comes back.** Your notes for its steps are cleared, and its steps are the repository's recipe again, with any change you or its agent made to them undone. What stays is what the job is: its issue, assignee, priority, budget, the model you chose for it, and its activity.
 
@@ -435,7 +533,7 @@ The manager never changes the plan from a comment on its own yet, even one that 
 
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 
-The factory reads GitHub on its own about once a minute, but those reads list open issues only, so a job never learns from them that its issue was closed. So when a person starts a job that came from GitHub (start, run or run again), the factory reads that one issue again first, in one request. If it was closed on GitHub, the job is not started: it is marked done (closed) and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If GitHub cannot be reached, the job starts anyway on what the factory already knows.
+The factory checks GitHub about once a minute: lists nominate issues for a direct check, and only that check can finish an untouched Backlog issue. It checks at most 40 issues per repository per poll, with listed reopenings ahead of the oldest nominations, without listing closed history. Once the list shows an automatically finished issue open, that poll checks it directly and returns it to Backlog if confirmed, normally within about a minute; a person’s Done or edits never return by themselves. Failed checks leave rows alone and retry with growing backoff behind waiting rows. A repository name reused for another issue cannot replace a saved issue’s permanent identity or contents. A person starting a job from GitHub (start, run or run again) also checks that issue first, in one request. Every successful Start check keeps the issue’s permanent identity, including an open answer for an older saved job. If it was closed on GitHub, the job is not started; an untouched job is marked done (closed), and the answer is one sentence, such as `#12 was closed on GitHub, so it wasn't started.` If the answer identifies a different issue, Start leaves the saved job unchanged and says `#12 now identifies a different GitHub issue, so it wasn't started. The saved job is unchanged.` If GitHub cannot be reached, the job starts anyway on what the factory already knows. An arrival read or a start rule checks GitHub once too, and a closed issue gets nothing from them; a Read press still reads.
 
 **Check GitHub now** asks the factory to read GitHub at once instead of on its next tick. It answers straight away and does not wait for the read; what the read finds arrives the way every read does. While it reads the factory says so, and afterwards it says when GitHub was last read without a failure, or what went wrong (`token refused`, `not reachable`). A factory whose poll is not running (no token, nothing watched) says nothing about GitHub at all.
 
@@ -698,5 +796,33 @@ Other amounts are refused. Stop keeps the recorded spend and work.
 
 Today's figure on Spending counts every model call on this computer's ledger, and it moves as each one lands, not only when a chat turn ends.
 
-The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (asking about a repo, Build with AI, AI views). A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
+The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (AI notes and themes on a repo, asking about a repo, Build with AI, editing a step with AI, My pipeline AI, AI views). Afi's small errands count under your chats. A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
 
+
+
+## Job lifetime spending after Start, Run again and Bring back
+
+A job keeps the money spent on its earlier runs when Start or Run again begins
+fresh work, and when Bring back clears its earlier work. Run as new creates a
+separate job with zero spending. Undo Stop keeps money reported after Stop too.
+Late cumulative usage adds only its growth to the earlier run's lifetime, even
+after Drop and Bring back or a restart on another machine. It does not charge
+the new run. Archived receipts must retain the original lease, machine and
+person; older receipts without those identities cannot accept late usage.
+
+The job wire keeps `cost` as the current run's cost and adds optional
+`lifetime_cost` for all known spending on the job. Queue jobs carry the same
+field. Step costs stay unchanged. Budgets still use only the current run;
+this remains deliberate pending the owner's ruling on lifetime budgets.
+
+Spending by repository and model places the whole known lifetime on one day:
+the latest run's start day, or the job's creation day when no start remains.
+A range covering only the second run therefore includes money from the first
+run too. These are job totals placed in a range, not exact call totals for that
+range. Earlier spending without a kept model split appears as unknown. The
+daily spending rail keeps its existing reading.
+
+App job and queue reads show only saved spending. Ledger tags and workspace
+paths can be shared by jobs from different factories, so ledger recovery is
+disabled. Older jobs show what their saved fields know. Earlier money recorded
+only in the ledger cannot be placed safely and is not added to a job.

@@ -35,10 +35,6 @@ func factoryServerSeam(st *store.Store, tokensPath string, limit *githubLimit) f
 		if err != nil || token == "" {
 			return factory.GitHubLink{}, err
 		}
-		if via == "grant" {
-			grant, err := factorygithub.LoadReadGrant(grantPath)
-			return factory.GitHubLink{Login: grant.Login, Via: via}, err
-		}
 		login, err := forge.NewClient(token).Me(ctx)
 		limit.saw(err)
 		return factory.GitHubLink{Login: login, Via: via}, err

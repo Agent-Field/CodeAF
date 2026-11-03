@@ -73,11 +73,14 @@ func ReadDailySpend(path string, now time.Time) (DailySpendReading, error) {
 // spendTally is one ledger's day as far as it has been read: the day summed,
 // the file read, how many bytes of whole lines, and the last of those bytes,
 // which prove the file still holds what was read.
-// factoryAIRoles are the ledger roles of Factory's own AI: triage, scouts and the
-// page AI. They aren't chats, so they don't count under "your chats".
+// factoryAIRoles are the ledger roles of Factory's own AI: triage, scouts, the
+// page AI and briefs. They aren't chats, so they don't count under "your chats".
+// Afi's small errands are her own and stay out.
 var factoryAIRoles = map[string]bool{
 	"factory triage": true, "factory scout": true,
-	"repo_ask": true, "pipeline_ai": true, "view_topic": true,
+	"repo_ask": true, "repo_notes": true, "repo_themes": true, "repo_eval": true,
+	"pipeline_ai": true, "step_ai": true, "my_pipeline_ai": true,
+	"view_topic": true, "factory_brief": true,
 }
 
 type spendTally struct {

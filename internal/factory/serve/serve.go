@@ -107,7 +107,7 @@ type Config struct {
 	// ([factorygithub.Standing]): "" while it is open, "closed" or "merged"
 	// when it ended. A person's start asks it first, so an issue closed on
 	// GitHub is finished instead of run. Nil starts on what the floor knows.
-	Recheck     func(context.Context, factory.Item) (string, error)
+	Recheck     func(context.Context, factory.Item) (factory.SourceStanding, error)
 	Address     string
 	Version     string
 	AccessToken string
@@ -181,7 +181,8 @@ type Handler struct {
 	// reposMu serializes every change to the watched list: the single-repo switch
 	// reads, edits and saves it, so any other writer must queue behind it. It is
 	// never held over the event append or any network call.
-	reposMu sync.Mutex
+	reposMu   sync.Mutex
+	reposRead reposReader
 
 	jobsMu     sync.Mutex
 	jobsTimer  *time.Timer
@@ -302,6 +303,16 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.reposRead.mu.Lock()
+		h.reposRead.closed = true
+		if h.reposRead.cancel != nil {
+			h.reposRead.cancel()
+		}
+		done := h.reposRead.done
+		h.reposRead.mu.Unlock()
+		if done != nil {
+			<-done
+		}
 		h.setupMu.Lock()
 		h.setupClosed = true
 		if h.setupTimer != nil {
@@ -656,7 +667,7 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 	if !h.require(w, h.seam.Repos != nil) {
 		return
 	}
-	watched, available, err := h.seam.Repos(r.Context())
+	watched, available, readAt, err := h.readRepos(r.Context())
 	if h.failed(w, err) {
 		return
 	}
@@ -689,7 +700,8 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 		Factory   api.Factory  `json:"factory"`
 		Watched   []string     `json:"watched"`
 		Available []Repository `json:"available"`
-	}{h.factory, watched, repos})
+		ReadAt    time.Time    `json:"available_read_at,omitzero"`
+	}{h.factory, watched, repos, readAt})
 }
 
 // splitRepo is the owner and name in the path. A slash inside either

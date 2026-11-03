@@ -192,15 +192,24 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	// A CHOICE WITH A SUGGESTED ANSWER RUNS ON THE SURFACE'S CLOCK when the
 	// surface asked for one and the project set nothing for choices itself; a
 	// choice with no suggestion has nothing for a clock to take, and stays.
+	//
+	// AND IT RUNS ONLY ONCE A SURFACE HAS DRAWN THE CARD. The surface's clock is
+	// a countdown on a card, so until a surface says it drew it ("asks.shown",
+	// [Agent.StartQuestionClock]) the question waits with no clock, blocking or
+	// not: a suggestion is never taken for somebody no surface showed it to. A
+	// project's own row is the person's choice and runs from the raise.
+	surfaceClock := false
 	if secs := a.config.ChoiceClockSeconds; secs > 0 && q.Ask == AskChoice && q.Pick != nil && q.Policy.Kind == PolicyAsk {
 		if _, set := a.readAutonomy()[AskChoice]; !set {
 			q.Policy = Policy{Kind: PolicyRecommendThenAuto, After: time.Duration(secs) * time.Second}
+			surfaceClock = true
 		}
 	}
 	if q.Stakes == StakesIrreversible {
 		q.Policy = Policy{Kind: PolicyAsk}
+		surfaceClock = false
 	}
-	if q.Policy.Kind == PolicyRecommendThenAuto {
+	if q.Policy.Kind == PolicyRecommendThenAuto && !surfaceClock {
 		q.Deadline = time.Now().Add(q.Policy.After)
 	}
 	if err := q.Check(a.Decisions()); err != nil {
@@ -261,7 +270,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 		return askAnswerText(q, answer, theirs, nil), false, nil
 	}
-	open := &askOpen{q: q, theirs: theirs}
+	open := &askOpen{q: q, theirs: theirs, deferred: surfaceClock}
 	a.mu.Lock()
 	wait := a.asked.parkLocked(open)
 	a.mu.Unlock()

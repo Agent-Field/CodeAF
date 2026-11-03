@@ -391,7 +391,7 @@ func BriefFacts(it Item) []BriefFact {
 	out := []BriefFact{}
 	if it.Stream != nil {
 		for _, p := range it.Stream.Phases {
-			if p.Result == nil {
+			if p.State == PhaseSkipped || p.Result == nil {
 				continue
 			}
 			if f, ok := phaseFact(briefStageOf(it.Stages, p), p); ok {
@@ -415,6 +415,9 @@ func phaseFact(st Stage, p Phase) (BriefFact, bool) {
 	for _, maker := range briefFactMakers {
 		if f, ok := maker(st, p); ok {
 			f.Key, f.Label = p.Name, briefLabel(p.Name)
+			if label := strings.TrimSpace(st.Label); label != "" {
+				f.Label = label
+			}
 			f.Evidence.Step, f.Evidence.Try = p.Name, briefTry(p)
 			return f, true
 		}

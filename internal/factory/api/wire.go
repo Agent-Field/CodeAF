@@ -195,6 +195,7 @@ type Since struct {
 // Cell is one chip of the pipeline strip: a step with jobs in it, and whether
 // an approve waits there.
 type Cell struct {
+	Label   string `json:"label,omitempty"`
 	Step    string `json:"step"`
 	Jobs    int    `json:"jobs"`
 	Waiting bool   `json:"waiting,omitempty"`
@@ -326,6 +327,7 @@ type SizeBlock struct {
 
 // StepDef is one step as the pipeline defines it (code: [factory.Stage]).
 type StepDef struct {
+	Label string `json:"label,omitempty"`
 	Name  string `json:"name"`
 	Kind  string `json:"kind,omitempty"`
 	Ask   string `json:"ask,omitempty"`
@@ -392,8 +394,10 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
-	FromJob     int    `json:"from_job,omitempty"`
-	SourceIssue string `json:"source_issue,omitempty"`
+	// RoundCostTables advertises table support only on worker admission.
+	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
+	FromJob         int    `json:"from_job,omitempty"`
+	SourceIssue     string `json:"source_issue,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
@@ -553,7 +557,9 @@ type Job struct {
 	Ask           *JobAsk               `json:"ask,omitempty"`
 	PublishError  string                `json:"publish_error,omitempty"`
 	Cost          float64               `json:"cost"`
-	CreatedAt     time.Time             `json:"created_at"`
+	// LifetimeCost includes earlier runs; Cost remains the current run.
+	LifetimeCost float64   `json:"lifetime_cost,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 	// HeldBy is the hold on this job now. The machine and heartbeat in it are
 	// set only for the caller's own machine: ALL PEER MACHINE INFORMATION IS
 	// FORBIDDEN, the operator included, so another person's hold keeps who
@@ -800,6 +806,7 @@ type Run struct {
 
 // StepAt is where a running job stands: step index of count, by name.
 type StepAt struct {
+	Label string `json:"label,omitempty"`
 	Index int    `json:"index"`
 	Count int    `json:"count"`
 	Name  string `json:"name"`
@@ -809,6 +816,9 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
+	SkipReason string `json:"skip_reason,omitempty"`
+	// RoundCosts is carried only on worker admission; readers retain one Cost.
+	RoundCosts map[int]float64 `json:"round_costs,omitempty"`
 	// Files is the plan answer. An explicit empty list stays (it means unknown,
 	// and prose can't fill it in). With no list the field is left out, as an
 	// older factory refuses unknown fields.

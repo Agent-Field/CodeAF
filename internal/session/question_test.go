@@ -914,3 +914,58 @@ func TestAChecklistWithItsItemsInBlanksIsToldToMoveThemIntoOptions(t *testing.T)
 		t.Fatalf("the refusal does not say where the items go: %q", err)
 	}
 }
+
+// A PROPOSAL ITS CLOCK STARTED CLOSES SAYING SO. The withdrawal carries the
+// fact ([Withdrawal.Started]) because a surface reads the questions lane apart
+// from the task lane, and the bare withdrawal used to arrive first and read as
+// a proposal nobody needed any more.
+func TestAClockStartedProposalIsWithdrawnAsStarted(t *testing.T) {
+	agent, _ := questionSession(t, "qqqq4444qqqq4444", func(config *Config) {
+		config.TaskAutoApproveSeconds = 1
+	})
+	_ = watched(agent)
+	asks, stopAsking := agent.WatchQuestions()
+	defer stopAsking()
+	answered := make(chan TaskAnswer, 1)
+	go func() {
+		if wait, err := agent.openTask(context.Background(), 7, taskSpec{title: "write the spine card"}, ""); err == nil {
+			answer, _ := wait.answer()
+			answered <- answer
+		}
+	}()
+	waitForAsk(t, asks, EventQuestion)
+	gone := waitForAsk(t, asks, EventQuestionWithdrawn)
+	if gone.Question.Withdrawn == nil || !gone.Question.Withdrawn.Started {
+		t.Fatalf("the clock's withdrawal does not say the work started: %+v", gone.Question.Withdrawn)
+	}
+	select {
+	case answer := <-answered:
+		if !answer.Approved {
+			t.Fatalf("the clock's silence did not approve: %+v", answer)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the clock never answered the proposal")
+	}
+}
+
+// AND A PROPOSAL WHOSE TURN ENDED UNDER IT DID NOT START.
+func TestAProposalWhoseTurnEndedIsNotWithdrawnAsStarted(t *testing.T) {
+	agent, _ := questionSession(t, "qqqq5555qqqq5555", func(config *Config) {
+		config.TaskAutoApproveSeconds = 30
+	})
+	_ = watched(agent)
+	asks, stopAsking := agent.WatchQuestions()
+	defer stopAsking()
+	ctx, stop := context.WithCancel(context.Background())
+	go func() {
+		if wait, err := agent.openTask(ctx, 8, taskSpec{title: "write the scene"}, ""); err == nil {
+			_, _ = wait.answer()
+		}
+	}()
+	waitForAsk(t, asks, EventQuestion)
+	stop()
+	gone := waitForAsk(t, asks, EventQuestionWithdrawn)
+	if gone.Question.Withdrawn == nil || gone.Question.Withdrawn.Started {
+		t.Fatalf("a proposal its turn dropped reads as started: %+v", gone.Question.Withdrawn)
+	}
+}

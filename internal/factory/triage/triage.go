@@ -245,7 +245,7 @@ func Apply(it *factory.Item, t factory.Triage) {
 // Wants says whether an item is still waiting for its read: on the floor,
 // with no read written and never triaged.
 func Wants(it factory.Item) bool {
-	return factory.IsIssueJob(it) && it.State != factory.StateDismissed &&
+	return factory.IsIssueJob(it) && factory.JobState(it) != "done" &&
 		strings.TrimSpace(it.Triage.Read) == "" &&
 		it.Triage.TriagedAt.IsZero()
 }
@@ -426,6 +426,9 @@ const CallTries = 3
 // that another window read meanwhile, or that a person dismissed.
 // Options connects policy reading and intake without giving triage launch authority.
 type Options struct {
+	// Standing reads GitHub before the worker pays for an arrival read. A person's
+	// Read press ([ReadThese]) isn't checked: they asked. Nil leaves reads unchanged.
+	Standing  func(context.Context, factory.Item) (factory.SourceStanding, error)
 	AskFirst  func(factory.Item) []string
 	AfterTick func(context.Context) error
 	// Off is "Read new issues as they arrive" turned off: a tick reads
@@ -521,7 +524,7 @@ func (w *worker) once(ctx context.Context) tick {
 	var it factory.Item
 	found := false
 	for _, x := range items {
-		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) {
+		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) && !w.closed(ctx, x) {
 			it, found = x, true
 			break
 		}
@@ -532,10 +535,34 @@ func (w *worker) once(ctx context.Context) tick {
 	return w.read(ctx, it, CallTries)
 }
 
+// closed shares the process cache with intake when the store has a root.
+func (w *worker) closed(ctx context.Context, it factory.Item) bool {
+	root := ""
+	if st, ok := w.st.(interface{ Root() string }); ok {
+		root = st.Root()
+	}
+	return factory.ClosedForAutomation(ctx, root, it, w.opts.Standing)
+}
+
 // read reads one item, marked in flight. A call that fails is stamped (read,
 // with nothing learned) only at its tries-th failure, so a passing outage is
 // tried again; tries 1 never stamps a failure, for a person who can retry.
 func (w *worker) read(ctx context.Context, it factory.Item, tries int) tick {
+	// Admission and reconciliation use the same row lock. Once a paid read is
+	// admitted the close poll cannot finish that row while the call is running.
+	err := w.st.Annotate(it.ID, func(cur *factory.Item) error {
+		if factory.JobState(*cur) == "done" {
+			return errAlreadyRead
+		}
+		if factory.UntouchedIssue(*cur) {
+			factory.TouchIssue(cur)
+		}
+		return nil
+	})
+	if err != nil {
+		return tickIdle
+	}
+
 	// THE READ IS MARKED IN FLIGHT on the store, when the store keeps such
 	// marks, so a window drawing the floor shows `reading` on this row for
 	// as long as the call takes.
@@ -572,7 +599,7 @@ func (w *worker) read(ctx context.Context, it factory.Item, tries int) tick {
 		}
 	}
 	now := time.Now()
-	err := w.st.Annotate(it.ID, func(cur *factory.Item) error {
+	err = w.st.Annotate(it.ID, func(cur *factory.Item) error {
 		if !Wants(*cur) {
 			return errAlreadyRead
 		}

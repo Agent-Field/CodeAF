@@ -27,7 +27,7 @@ type PostOptions struct {
 	// Push publishes the item's branch from its folder before a `pr` is
 	// opened from it; the wire hands [GitPush]. Nil pushes nothing, and the
 	// pull request is opened from whatever the remote already has.
-	Push func(dir, branch string) error
+	Push func(dir, branch string, before ...func() error) error
 }
 
 // NewPostExecutor runs a post stage: one write through the item's source.
@@ -86,8 +86,12 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		}
 		if policy != nil {
 			if ok, why := PolicyAllows(withHouse(policy(it), it), it, action, job.Prior); !ok {
+				output := "post refused: " + why
+				if shapeOf(why) == shapeTestsFirst {
+					output += skippedPolicyWait(it)
+				}
 				return factory.StageResult{
-					Output: "post refused: " + why,
+					Output: output,
 					Claims: []factory.Claim{{Text: verb + " refused by policy", OK: false, Evidence: why, Medium: "policy"}},
 				}, nil
 			}
@@ -195,7 +199,7 @@ func proofList(it factory.Item, prior []factory.StageResult) string {
 }
 
 // push runs the push and says what went wrong in a sentence.
-func push(run func(dir, branch string) error, dir string, it factory.Item, branch string) error {
+func push(run func(dir, branch string, before ...func() error) error, dir string, it factory.Item, branch string) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("codeaf does not know where %s is checked out", strings.TrimSpace(it.Repo))
 	}

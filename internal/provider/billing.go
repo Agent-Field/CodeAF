@@ -45,6 +45,8 @@ import (
 // have to re-derive it: the same [WithCallNode] the call log is keyed by names
 // the work, and a call made without one is spend nobody can file.
 type Billed struct {
+	// GenerationID identifies the provider receipt for this physical attempt.
+	GenerationID string
 	// Node is what [WithCallNode] named, empty when nothing did.
 	Node string
 	// Model is who actually served the call — the rung a panel picked or an
@@ -76,10 +78,16 @@ func (b Billed) Empty() bool {
 // tools can each be waiting on a call of their own.
 type BillingSink func(Billed)
 
-// Reconciled is what became of one call the wire never priced. Found says the
-// provider's own receipt supplied the embedded figures; when it is false every
-// figure is zero and nothing may be banked.
+// Reconciled delivers a final receipt or retained measured interim usage.
+// Found says usable measured figures exist; Interim distinguishes the fallback.
+// PriceMissing says the measured figures did not include a monetary charge.
 type Reconciled struct {
+	// Tag identifies the purpose of the original call.
+	Tag string
+	// Interim marks measured usage retained when a final receipt was unavailable.
+	Interim bool
+	// PriceMissing distinguishes token-only measurements from an explicit zero price.
+	PriceMissing bool
 	Billed
 	// Ref is the provider's generation id, and is empty when the stream never
 	// named the call well enough for a receipt to be requested.
@@ -89,7 +97,7 @@ type Reconciled struct {
 	Reason string
 	// Hedged says this was a rescue arm, so any money on its receipt is waste.
 	Hedged bool
-	// Found says the provider supplied a receipt. False means the figures above
+	// Found says measured figures are available. False means the figures above
 	// stay empty and the missing price is counted instead.
 	Found bool
 }
@@ -257,6 +265,7 @@ func (c *Client) bankBilledUsage(ctx context.Context, model string, response *ai
 		model = served
 	}
 	billed := Billed{
+		GenerationID:     canonicalGenerationID(response.ID),
 		Node:             callNode(ctx),
 		Model:            model,
 		PromptTokens:     response.Usage.PromptTokens,
