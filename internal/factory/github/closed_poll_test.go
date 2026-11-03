@@ -622,4 +622,3 @@ func TestRefreshOfATransferredIssueDoesNotCloseAnother(t *testing.T) {
 		t.Fatalf("a transferred issue's answer closes number %d in this repository", fresh.Num)
 	}
 }
-
