@@ -82,7 +82,7 @@ func inheritFactoryChecks(spec factoryrun.ConversationSpec, file, dir string) st
 	}
 	var candidates []string
 	for _, ph := range spec.Item.Stream.Phases {
-		if ph.Name != stage {
+		if ph.Name != stage || ph.State == factory.PhaseSkipped {
 			continue
 		}
 		for _, round := range ph.Rounds {

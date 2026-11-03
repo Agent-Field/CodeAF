@@ -816,6 +816,7 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
+	SkipReason string `json:"skip_reason,omitempty"`
 	// RoundCosts is carried only on worker admission; readers retain one Cost.
 	RoundCosts map[int]float64 `json:"round_costs,omitempty"`
 	// Files is the plan answer. An explicit empty list stays (it means unknown,
