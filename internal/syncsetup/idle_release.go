@@ -65,12 +65,19 @@ func lockDrive(ctx context.Context, mu *sync.Mutex) error {
 
 // stopIdle closes admission to new idle attempts before joining canceled work.
 func (d *Drive) stopIdle(ctx context.Context) error {
-	d.idleMu.Lock()
-	d.idleClosed = true
-	if d.idleStop != nil {
+	started := func() bool {
+		d.idleMu.Lock()
+		defer d.idleMu.Unlock()
+		d.idleClosed = true
+		if d.idleStop == nil {
+			return false
+		}
 		d.idleStop()
+		return true
+	}()
+	if !started {
+		return nil
 	}
-	d.idleMu.Unlock()
 	done := make(chan struct{})
 	go func() { d.idleWorkers.Wait(); close(done) }()
 	select {

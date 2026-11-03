@@ -13,7 +13,7 @@ import (
 // ConfirmSettingsWork leaves unpaired and unreleased choices local as before.
 // A released writer must retake its hold before acknowledging a durable choice.
 func (d *Drive) ConfirmSettingsWork(ctx context.Context) error {
-	if !d.paired() && !d.released.Load() && !d.committing.Load() {
+	if !d.released.Load() && !d.committing.Load() {
 		return nil
 	}
 	if !d.BeginWork() {
@@ -288,7 +288,10 @@ func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
 func (d *Drive) availableAfterWithin(ctx context.Context, held sendLease, reading directory.Lease) {
 	viewer := Viewer{Line: chatlist.Available}
 	d.mu.Lock()
-	if held.Fence != 0 && held.Fence != d.recordedFence {
+	// A zero receipt belongs to the released viewer. Reacquisition clears
+	// that viewer before receipt I/O, so a late observation cannot close its
+	// gate in the gap. An empty snapshot intentionally forces a refusal.
+	if held.Cell != "" && (held.Fence != d.recordedFence || held.Fence == 0 && d.viewer.Line == "") {
 		d.mu.Unlock()
 		return
 	}

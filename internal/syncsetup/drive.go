@@ -877,11 +877,11 @@ func (d *Drive) Close(ctx context.Context) error {
 		if d.devices != nil {
 			defer d.devices.Close()
 		}
-		if err := d.stopIdle(ctx); err != nil {
-			d.closeErr = err
-			return
-		}
+		idleErr := d.stopIdle(ctx)
 		pending := cellstore.Await(ctx, d.cell)
+		if idleErr != nil {
+			pending = errors.Join(idleErr, pending)
+		}
 		// A completed capture may race the first wait. Stop new seals under
 		// the writer's lock, then keep every seal that crossed before it closed.
 		func() {
