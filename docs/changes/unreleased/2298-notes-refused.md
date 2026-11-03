@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Execution notes preserve command refusals and interruptions
-pr: 0
+pr: 2298
 surface: [engine, factory, chat]
 invalidates:
   - "Execution notes previously called approval and policy refusals completed. They now say refused and retain the real refusal reason."
