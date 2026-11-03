@@ -10,7 +10,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
-	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/reporead"
 	"github.com/Agent-Field/codeaf/internal/factory/scout"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -99,10 +98,7 @@ func factoryClickRead(st *store.Store, load func() (config.Config, error)) func(
 		if !ok {
 			return api.ReadResult{Read: []int{}, Skipped: []int{}, Failed: append([]int{}, ids...)}
 		}
-		got := triage.ReadThese(ctx, st, call, ids, triage.Options{Standing: factorygithub.Rechecker(func(ctx context.Context) string {
-			token, _ := factorygithub.TokenAt(ctx, factoryProfile(""))
-			return token
-		}), AskFirst: factoryIntake(st).AskFirst})
+		got := triage.ReadThese(ctx, st, call, ids, triage.Options{AskFirst: factoryIntake(st).AskFirst})
 		return api.ReadResult{Read: got.Read, Skipped: got.Skipped, Failed: got.Failed}
 	}
 }

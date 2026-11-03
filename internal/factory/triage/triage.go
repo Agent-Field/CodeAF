@@ -427,7 +427,8 @@ const CallTries = 3
 // that another window read meanwhile, or that a person dismissed.
 // Options connects policy reading and intake without giving triage launch authority.
 type Options struct {
-	// Standing reads GitHub before paying for an issue read. Nil leaves reads unchanged.
+	// Standing reads GitHub before the worker pays for an arrival read. A person's
+	// Read press ([ReadThese]) isn't checked: they asked. Nil leaves reads unchanged.
 	Standing  func(context.Context, factory.Item) (string, error)
 	AskFirst  func(factory.Item) []string
 	AfterTick func(context.Context) error
@@ -627,7 +628,7 @@ func ReadThese(ctx context.Context, st Store, call Call, ids []int, opts Options
 	}
 	for _, id := range ids {
 		it, ok := byID[id]
-		if !ok || !factory.IsIssueJob(it) || !Wants(it) || len(out.Read)+len(out.Failed) >= ClickMost || ctx.Err() != nil || w.closed(ctx, it) {
+		if !ok || !factory.IsIssueJob(it) || !Wants(it) || len(out.Read)+len(out.Failed) >= ClickMost || ctx.Err() != nil {
 			out.Skipped = append(out.Skipped, id)
 			continue
 		}

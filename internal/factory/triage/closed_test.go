@@ -13,7 +13,7 @@ import (
 )
 
 func TestArrivalReadChecksClosedIssues(t *testing.T) {
-	for _, door := range []string{"tick", "chosen"} {
+	for _, door := range []string{"tick"} {
 		for _, standing := range []string{"closed", "merged", "", "error", "nil", "local", "unnumbered"} {
 			t.Run(door+"/"+standing, func(t *testing.T) {
 				st, err := store.Open(t.TempDir())
@@ -56,14 +56,7 @@ func TestArrivalReadChecksClosedIssues(t *testing.T) {
 				}
 				call := func(context.Context, string) (string, error) { calls++; return `{"read":"Fix the issue"}`, nil }
 				for range 2 {
-					if door == "tick" {
-						triage.ReadOne(context.Background(), st, call, opts)
-					} else {
-						got := triage.ReadThese(context.Background(), st, call, []int{before.ID}, opts)
-						if (standing == "closed" || standing == "merged") && (len(got.Skipped) != 1 || len(got.Read) != 0) {
-							t.Fatalf("closed row not skipped: %+v", got)
-						}
-					}
+					triage.ReadOne(context.Background(), st, call, opts)
 				}
 				after, err := st.Get(before.ID)
 				if err != nil {
@@ -81,5 +74,24 @@ func TestArrivalReadChecksClosedIssues(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A person's Read press reads: they asked, and a button that did nothing would lie.
+func TestAPersonsReadPressReadsAClosedIssue(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := st.Create(factory.Item{Repo: "acme/api", Product: "acme", Num: 1, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t", State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	call := func(context.Context, string) (string, error) { calls++; return `{"read":"Fix the issue"}`, nil }
+	opts := triage.Options{Standing: func(context.Context, factory.Item) (string, error) { return "closed", nil }}
+	got := triage.ReadThese(context.Background(), st, call, []int{row.ID}, opts)
+	if calls != 1 || len(got.Read) != 1 {
+		t.Fatalf("press on a closed issue: calls=%d result=%+v", calls, got)
 	}
 }
