@@ -1,5 +1,37 @@
 # The factory
 
+## factory repository list refresh, saved repositories and available_read_at
+
+The factory saves the last complete GitHub repository list across a restart.
+Repository reads return that saved list and its `available_read_at` timestamp,
+the UTC time the last complete discovery finished. The timestamp is absent
+when no discovery time is known. An older desktop app can ignore the field.
+
+When the list is at least five minutes old, the next read starts one background
+discovery. Other reads reuse the saved list while discovery runs. The first
+read with no saved list waits for discovery. A failed discovery keeps the saved
+list on disk. Network, server, rate-limit and timeout failures serve that list
+with its unchanged `available_read_at`. A lost, expired, revoked or refused
+GitHub sign-in fails the read and never serves the saved list. With no saved
+list, a failed discovery still reports its error. After a failure, a read may
+start another discovery after 30 seconds; a success restores the five-minute
+refresh interval.
+
+A saved list belongs to the GitHub identity and credential that read it. A
+different connection must read its own list. The existing GitHub identity and
+caller-access checks still apply. A transient identity-lookup failure can reuse
+the saved list only with the same credential; a refused sign-in fails the read.
+Turning a repository on or off changes `watched` immediately, including a newly
+watched repository absent from the saved available list. A repository removed
+on GitHub disappears from the available list after the next successful discovery.
+
+Discovery preserves registered checkout folders and uses conditional GitHub reads.
+If every repository page answers 304 and matches the last complete discovery,
+it keeps the previous issue counts without another GraphQL count request. A
+partial failed walk cannot restore removed repositories on a retry. Open pipeline
+pull requests reuse their files for the same head SHA and base SHA in the bounded
+process cache. A change to either SHA reads the files again.
+
 ## save a job note after steps finish — who reads it and PR comments
 
 A `factory_item` note asks `save a note on the job?`. After your yes, it stays
@@ -278,13 +310,41 @@ A typed step ask keeps its punctuation, including its final period. Placement wo
 
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.
 
-An added conversation, check or approval step may say `when: touches auth` to run only on jobs in auth, billing or crypto; the other conditions are `always`, `thin`, `large` and `has ui`. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
-
 Once a job has landed, a nonempty step edit is refused with `the job has landed, so the steps can no longer be edited`, whether or not it had a proof step. Landed jobs do not offer step editing.
 
 Proof is the step named proof, a send-back's prove step, or any step that runs until proven, whatever it is called; checks and posts are not proof. Before landing, once any proof has started, a nonempty step edit is refused with `proof has started, so the steps can no longer be edited`. A refused step edit leaves the job, its proof and its recorded changes as they were. An empty edit changes nothing.
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
+
+## when conditions — touches auth, has ui, unknown files, before write
+
+An added conversation, check or approval step may use `when: touches auth` or `when: has ui`. These conditions are decided when the step comes up, using the change's files once known, otherwise the pull request's known files, otherwise an explicitly set triage area. Without files or area the answer is not known yet: the step stays pending and runs if still unknown at its turn. A conditional step before write therefore runs when no files or area are known.
+
+`touches auth` matches auth, billing or crypto; `has ui` matches tui, pages, render or ui. Matching is case-insensitive, on a whole path segment or its name without extension: `internal/auth/x.go`, `auth.go` and `src/pages/a.tsx` match; `authors.go` and `internal/uint/x.go` do not. Known files override triage area. With known files and no match, the job log says, for example, `skipping inspect: when touches auth does not match the change files`.
+
+A nonmatching step ends as `skipped`, with a structured reason (`skip_reason` on the wire), rather than done or passed. It supplies no proof or measured checks. The next step can run and the job can finish, but a job whose only check was skipped has no passing check. Resume keeps the skip; rerun from an earlier step re-reads the files and decides again. Engines announce `factory.step_skipped` for this state and reason.
+
+The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
+
+## skipped required checks — publishing waits, rerun, policy approval
+
+Under `tests pass before anything posts`, a skipped check still blocks the
+post. The job waits for you. Its open question and Needs you reason name the
+check, why it was skipped, and the recovery action; the policy result retains
+the rule that refused publishing. For example:
+`Publishing waits: check inspect was skipped (when touches auth does not match the change files). Rerun from write after revising the change files to match, or stop the job.`
+
+Approval cannot bypass this policy wait. Trying the post again with the same
+files still refuses. Rerun from the earlier work step after revising the files
+to match the condition; the check must actually run and pass. A rerun of only
+the conditional check with unchanged files skips again. Step edit cannot change
+an already-run step or remove its condition. If the condition is inappropriate,
+stop the job and correct the pipeline before starting a new job. With no earlier
+work step, the question names that stop-and-correct action instead.
+
+A skip without a check policy does not block posting. Under
+`no pull request without a green check`, a measured passing check beside a skip
+qualifies; skips alone do not. These jobs never claim that every check passed.
 
 ## give one step more or fewer tries — max tries, 1 to 3, how many times a step runs
 
@@ -732,11 +792,15 @@ uses this same rule.
 The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
 Other amounts are refused. Stop keeps the recorded spend and work.
 
+A budget choice remains valid while a running job reports spending or progress.
+If someone changed the budget after you read it, read the job again before
+choosing. Finished and dropped jobs refuse budget changes.
+
 ## Why does Spending show Factory AI — the third part of today's money
 
 Today's figure on Spending counts every model call on this computer's ledger, and it moves as each one lands, not only when a chat turn ends.
 
-The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (AI notes and themes on a repo, asking about a repo, Build with AI, AI views). Afi's small errands count under your chats. A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
+The line under it splits today into factory jobs, `Factory AI` and your chats. `Factory AI` is what Factory spent outside any job: triage, scouts, and the AI on Factory's pages (AI notes and themes on a repo, asking about a repo, Build with AI, editing a step with AI, My pipeline AI, AI views). Afi's small errands count under your chats. A call made for a job counts under factory jobs, whatever made it. These calls count against the one daily limit too.
 
 
 
@@ -766,3 +830,28 @@ App job and queue reads show only saved spending. Ledger tags and workspace
 paths can be shared by jobs from different factories, so ledger recovery is
 disabled. Older jobs show what their saved fields know. Earlier money recorded
 only in the ledger cannot be placed safely and is not added to a job.
+
+
+## Opening a job without touching it and sending its first message
+
+Opening an app job page shows the conversations already on the job. Viewing the
+page does not mark the job as personally touched. Ordinary jobs keep their
+version; storage migration and lifecycle maintenance still run as before. An
+untouched imported issue therefore remains eligible for automatic closed-issue
+handling after someone views it.
+
+Before a manager conversation exists, `factory.job_chats` returns an empty
+`agent` string and the existing step conversations, or `steps: []` when none
+exist. `factory.job_send` accepts `factory`, `job`, `text` and optional `client_id`;
+it creates the manager on the first send and returns `agent` and `turn`.
+Engines announce the hello feature `factory.job_send`. Apps must support this
+feature and render a composer when `agent` is empty. Older desktops discard an
+empty agent and omit the manager chat and composer; update the desktop before
+using this engine with jobs that have no manager.
+Later messages can use the same method or `agents.send`. Sending a message counts
+as personal work. Automatic brief writing may create a manager; the conversation,
+brief and its model cost do not count as personal work or disable automatic
+closed-issue handling. A dropped job still refuses its conversations.
+
+Jobs already marked by earlier page views keep their marks. codeaf cannot safely
+infer which old marks came only from viewing, so this fix does not migrate them.

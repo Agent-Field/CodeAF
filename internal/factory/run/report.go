@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -378,7 +379,7 @@ func ensureStream(it *factory.Item, now time.Time) {
 		return
 	}
 	for _, st := range it.Stages {
-		if st.On && factory.Fits(st, *it) {
+		if st.On && (factory.FileCondition(st) || factory.Fits(st, *it)) {
 			it.Stream.Phases = append(it.Stream.Phases, factory.Phase{Name: st.Name, Kind: kindOf(st), State: factory.PhasePending, Note: st.Ask})
 		}
 	}
@@ -399,12 +400,18 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("report names an unknown step")
 	}
 	st := it.Stages[index]
+	if step.State == factory.PhaseSkipped {
+		if st.Kind == factory.StageGate && (!factory.FileCondition(st) || factory.Fits(st, *it)) {
+			return fmt.Errorf("an approve step requires a person's answer or an unmatched file condition")
+		}
+		step.Result, step.Verification, step.Failure = nil, nil, nil
+	}
 	// Approval remains a person's door; an executing worker cannot answer it.
 	if st.Kind == factory.StageGate && (step.State == factory.PhaseDone || step.Result != nil) {
 		return fmt.Errorf("an approve step requires a person's answer")
 	}
 	switch step.State {
-	case "", factory.PhasePending, factory.PhaseRunning, factory.PhaseDone, factory.PhaseFailed, factory.PhaseWaiting:
+	case "", factory.PhasePending, factory.PhaseRunning, factory.PhaseDone, factory.PhaseSkipped, factory.PhaseFailed, factory.PhaseWaiting:
 	default:
 		return fmt.Errorf("unknown step state")
 	}
@@ -438,7 +445,11 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		ph.Chat = step.Chat
 	}
 	if step.State != "" {
-		setPhaseState(ph, step.State, now)
+		if step.State == factory.PhaseSkipped {
+			skipPhase(it, ph, step.SkipReason, now)
+		} else {
+			setPhaseState(ph, step.State, now)
+		}
 	}
 	// WHEN THE ROUND BEGAN IS THE WORKER'S CLOCK, not this report's arrival:
 	// the report comes after the round has run a while. It lands before the
@@ -465,7 +476,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 	}
 	// This snapshot describes the current report, not the result folded above.
 	ph.Verification = step.Verification
-	if ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed || ph.State == factory.PhasePending {
+	if ph.State == factory.PhaseSkipped || ph.State == factory.PhaseDone || ph.State == factory.PhaseFailed || ph.State == factory.PhasePending {
 		ph.Verification = nil
 	}
 	if len(step.Rounds) > 0 {
@@ -568,7 +579,27 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	}
 }
 
-// setPhaseState moves a phase and stamps its finish. Done and failed are the
+// skipPhase discards this step's earlier evidence when its condition no longer fits.
+func skipPhase(it *factory.Item, ph *factory.Phase, reason string, now time.Time) {
+	if ph.Result != nil {
+		claims := ph.Result.Claims
+		stale := func(c factory.Claim) bool {
+			return slices.ContainsFunc(claims, func(old factory.Claim) bool { return claimKey(old.Text) == claimKey(c.Text) })
+		}
+		it.Proof = slices.DeleteFunc(slices.Clone(it.Proof), stale)
+		it.Policy = slices.DeleteFunc(slices.Clone(it.Policy), stale)
+	}
+	if it.Change != nil {
+		change := *it.Change
+		change.Tests = slices.DeleteFunc(slices.Clone(change.Tests), func(c factory.StepTests) bool { return c.Step == ph.Name })
+		it.Change = &change
+	}
+	setPhaseState(ph, factory.PhaseSkipped, now)
+	ph.SkipReason = reason
+	ph.Note, ph.Result, ph.Failure = "", nil, nil
+}
+
+// setPhaseState moves a phase and stamps its finish. Done, skipped and failed are the
 // ends the brief's clock reads (step.at). Pending and running clear a stamp,
 // so a step sent back does not keep the time it ended before. Waiting leaves
 // the stamp alone: a question is not an ending. Pending also clears when the
@@ -578,11 +609,14 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 // not a new round.
 func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 	ph.State = state
-	if state == factory.PhaseDone || state == factory.PhaseFailed || state == factory.PhasePending {
+	if state != factory.PhaseSkipped {
+		ph.SkipReason = ""
+	}
+	if state == factory.PhaseSkipped || state == factory.PhaseDone || state == factory.PhaseFailed || state == factory.PhasePending {
 		ph.Verification = nil
 	}
 	switch state {
-	case factory.PhaseDone, factory.PhaseFailed:
+	case factory.PhaseDone, factory.PhaseSkipped, factory.PhaseFailed:
 		ph.At = now
 	case factory.PhaseRunning:
 		ph.At = time.Time{}
