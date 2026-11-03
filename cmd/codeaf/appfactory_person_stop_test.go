@@ -343,3 +343,31 @@ func pollStoppedJob(t *testing.T,floor *store.Store,id int){
  if err!=nil||pullReads.Load()==0||saved.PullRequest==nil||saved.PullRequest.HeadSHA!=newHead{t.Fatalf("GitHub fixture did not sync new commits: reads=%d job=%+v err=%v",pullReads.Load(),saved.PullRequest,err)}
  if !factory.StoppedByPerson(saved)||saved.State!=factory.StateNew||saved.FollowUp.State=="queued"{t.Fatalf("new commits revived Stop: state=%s follow=%+v",saved.State,saved.FollowUp)}
 }
+
+func TestFactoryPersonStopPersonChatDoesNotBuyNaming(t *testing.T) {
+ s,_,it:=stoppedAppJob(t,factory.StateNeedsYou)
+ floor:=s.backend.local.host.floor
+ talk:=filepath.Join(t.TempDir(),"unnamed-manager.jsonl")
+ if err:=floor.Update(it.ID,func(cur *factory.Item)error{cur.Talk=talk;return nil});err!=nil{t.Fatal(err)}
+ var calls atomic.Int32
+ named:=make(chan struct{},1)
+ model:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.Method!=http.MethodPost{http.Error(w,"no catalog",503);return}
+  var req json.RawMessage
+  if err:=json.NewDecoder(r.Body).Decode(&req);err!=nil{t.Error(err);return}
+  calls.Add(1)
+  if strings.Contains(string(req),"You name conversations."){select{case named<-struct{}{}:default:};http.Error(w,"temporary upstream failure",503);return}
+  w.Header().Set("Content-Type","text/event-stream")
+  fmt.Fprint(w,"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"this job is stopped; a person presses Start\"}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+ }))
+ defer model.Close()
+ agent,err:=session.New(session.Config{Workspace:mustCheckout(t,floor),SessionFile:talk,ProfileDir:s.backend.localProfile(),Model:"test/model",APIKey:"test-key",BaseURL:model.URL,OneModel:true,FactoryRun:runDoor(floor,mustCheckout(t,floor),s.backend.localProfile())})
+ if err!=nil{t.Fatal(err)}
+ defer agent.Close()
+ events,err:=agent.Submit(context.Background(),"Explain why this job stopped, without starting it.")
+ if err!=nil{t.Fatal(err)}
+ for range events{}
+ select{case <-named:t.Error("stopped person's chat bought an automatic naming call");case <-time.After(2*time.Second):}
+ if err:=agent.Close();err!=nil{t.Fatal(err)}
+ if calls.Load()!=1{t.Fatalf("person chat bought %d model calls; want only its answer",calls.Load())}
+}
