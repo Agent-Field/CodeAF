@@ -59,17 +59,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		return err
 	}
 	defer db.Close()
-	// Every compiler request, including retries, enters this live consent gate.
-	calls := func(ctx context.Context) (context.Context, error) {
-		if !v.Enabled() {
-			return nil, ErrDisabled
-		}
-		if v.calls != nil {
-			return v.calls(ctx)
-		}
-		return ctx, nil
-	}
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: calls}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: v.calls}
 	defer func() {
 		message := ""
 		if err != nil {

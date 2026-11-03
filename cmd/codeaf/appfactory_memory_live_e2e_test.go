@@ -33,14 +33,18 @@ import (
 )
 
 func TestLiveMemoryStageMeasure(t *testing.T) {
-	liveMemoryStageMeasure(t, false)
+	liveMemoryStageMeasure(t, false, true)
 }
 
 func TestLiveMemoryPauseMeasure(t *testing.T) {
-	liveMemoryStageMeasure(t, true)
+	liveMemoryStageMeasure(t, true, true)
 }
 
-func liveMemoryStageMeasure(t *testing.T, pause bool) {
+func TestLiveMemoryOffMakesNoCalls(t *testing.T) {
+	liveMemoryStageMeasure(t, false, false)
+}
+
+func liveMemoryStageMeasure(t *testing.T, pause, memoryOn bool) {
 	if os.Getenv(liveFactoryOptIn) != "1" {
 		t.Skipf("opt-in live lane: set %s=1 (spends a few cents on OpenRouter)", liveFactoryOptIn)
 	}
@@ -56,13 +60,17 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 	t.Setenv(calllog.BodiesEnvVar, "")
 	t.Setenv("HOME", userHome)
 	t.Setenv(home.EnvVar, appHome)
-	profile := v3Profile(t, map[string]any{
+	values := map[string]any{
 		config.KeyTaskModelsMode: "one", config.KeyTaskModelsOne: liveFactoryModel,
 		"models.roles": "", "models.tiers.low": liveFactoryModel, "models.tiers.high": liveFactoryModel,
 		"models.tiers.reflex": liveFactoryModel, "models.tiers.mastermind": liveFactoryModel,
 		"models.tiers.worker": liveFactoryModel, "task.model": liveFactoryModel, "models.fallbacks": "",
-		config.KeyKnowledgeModel: liveFactoryModel, config.KeyMemoryEnabled: config.MemoryOn,
-	})
+		config.KeyKnowledgeModel: liveFactoryModel,
+	}
+	if memoryOn {
+		values[config.KeyMemoryEnabled] = config.MemoryOn
+	}
+	profile := v3Profile(t, values)
 	t.Setenv(config.ProfileDirEnv, profile)
 	t.Setenv("CODEAF_PROFILE_DIR", profile)
 	// NO KEY IN THE ENVIRONMENT: the only road to one is the app's memory.
@@ -149,8 +157,10 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 		t.Fatal(err)
 	}
 	assertFactoryPin(t, launch.Config, liveFactoryModel)
-	if err := knowledge.Open(profile).StartBuild(); err != nil {
-		t.Fatal(err)
+	if memoryOn {
+		if err := knowledge.Open(profile).StartBuild(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	stageSettle = 300 * time.Millisecond
@@ -298,7 +308,7 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 		lateUSD += cost
 	}
 	receiptMu.Unlock()
-	memoryMeasureTable(t, callPath, it, header.Cost, lateUSD)
+	memoryMeasureTable(t, callPath, it, header.Cost, lateUSD, memoryOn)
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	t.Logf("models requested=%v answered=%v provider_total=%.8f problems=%v", recorder.requests, recorder.replies, recorder.cost, recorder.problems)
@@ -309,7 +319,7 @@ func liveMemoryStageMeasure(t *testing.T, pause bool) {
 
 // Tables come from the shipped call log, ledger and stage records. They are
 // printed only; no measurement artifact becomes part of the repository.
-func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD, receiptUSD float64) {
+func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD, receiptUSD float64, memoryOn bool) {
 	t.Helper()
 	if !session.FlushUsage() {
 		t.Error("usage ledger did not flush")
@@ -480,8 +490,11 @@ func memoryMeasureTable(t *testing.T, path string, it factory.Item, headerUSD, r
 	if providerUSD >= 1 || ledgerUSD >= 1 || headerUSD >= 1 {
 		t.Error("live run reached $1")
 	}
-	if memory == 0 {
+	if memoryOn && memory == 0 {
 		t.Error("no memory call measured")
+	}
+	if !memoryOn && memory != 0 {
+		t.Errorf("memory off made %d calls", memory)
 	}
 }
 

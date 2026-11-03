@@ -339,7 +339,7 @@ func (v *Vault) status(db *sql.DB) (Snapshot, error) {
 		return snapshot, err
 	}
 	snapshot.Revision = textValue(revision["value"])
-	snapshot.Enabled = flag(settings["enabled"])
+	snapshot.Enabled = v.Enabled()
 	snapshot.LastError = textValue(status["last_error"])
 	snapshot.NeedsUpdate = flag(status["needs_update"])
 	snapshot.CostUSD = number(status["cost_usd"])
@@ -380,7 +380,7 @@ func (v *Vault) Snapshot() (Snapshot, error) {
 	}
 	defer db.Exec("ROLLBACK")
 	snapshot, err := v.status(db)
-	if err != nil || !snapshot.Enabled {
+	if err != nil {
 		return snapshot, err
 	}
 	snapshot.Pages, err = readPages(db)

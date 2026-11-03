@@ -260,7 +260,7 @@ If you have moved to another conversation or home by then, the line waits and
 is drawn in its own conversation when you come back to it.
 
 The tab marks it `noticed`, and `→` then `f` (or `delete`) there forgets it. Most
-turns keep nothing. Turn noticing off with the `notice things to remember` row
+turns keep nothing. Turn noticing off with the `learn from chats and jobs` row
 (see "How do I turn memory off").
 
 
@@ -343,25 +343,17 @@ itself runs locally without a model or embedding call; searching a memory does
 not require re-adding it.
 
 
-## How do I turn memory off? The notice things to remember setting
+## How do I turn memory off? Stop learning from chats and jobs
 
-`/settings` → Memory → **notice things to remember** governs one thing: whether
-codeaf keeps lines on its own after your turns. Off, nothing is noticed. It
-applies from the next turn, with no restart.
+`/settings` → Memory → **learn from chats and jobs** controls automatic memory
+model calls. It is off by default. On learns from chats and jobs at extra cost
+on your key; the row explains an example cost. Off applies from the next memory
+step without restarting. A call already in flight finishes and is billed.
 
-It does not stop memory selection or explicit pins from riding, and it does
-not stop `/remember` or the Memories tab. To stop a line, forget it there.
-
-If memory was off before this build, off used to keep your saved lines out of
-every prompt; now they ride again. The first conversation after the upgrade says
-so once on this machine — `N kept memory lines now ride every conversation they
-hold in — memory off now only stops noticing · see or forget them on the
-Memories tab` — and nothing about the lines changes.
-Saved lines are never deleted by the setting.
-
-Conversation search and the bash fix hints are separate and keep working either
-way (see their sections below).
-
+Saved knowledge remains readable at no cost. Kept lines still ride in prompts,
+and `/remember` and the Memories tab still work. Forget a line there to remove it.
+Nothing saved is deleted by the setting. Conversation search and bash fix hints
+are separate and keep working either way.
 
 ## It said memory is off, or memory is unavailable in this conversation
 

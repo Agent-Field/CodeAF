@@ -353,6 +353,9 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		if err = v.Flush(ctx, key(), flag(job["backfill"])); err != nil {
+			if errors.Is(err, ErrDisabled) {
+				return nil
+			}
 			job["failed_input"] = attemptInput
 			if saveErr := saveState(db, "job", job); saveErr != nil {
 				return saveErr

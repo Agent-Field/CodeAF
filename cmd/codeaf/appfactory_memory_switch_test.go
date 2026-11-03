@@ -25,7 +25,35 @@ import (
 
 func TestMemorySwitchDefaultsOffAndChangesLive(t *testing.T) {
 	t.Run("fresh app job and chat", freshMemoryOffApp)
+	t.Run("saved words and booleans", func(t *testing.T) {
+		for _, value := range []any{"on", "off", true, false} {
+			profile := v3Profile(t, map[string]any{config.KeyMemoryEnabled: value})
+			want := value == "on" || value == true
+			got, saved := config.MemorySettingAt(profile)
+			if got != want || !saved || knowledge.Open(profile).Enabled() != want {
+				t.Fatalf("saved %v = (%v,%v), want (%v,true)", value, got, saved, want)
+			}
+		}
+	})
+	t.Run("legacy consent without saved choice", func(t *testing.T) {
+		profile := t.TempDir()
+		vault := knowledge.Open(profile)
+		if err := vault.StartBuild(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(config.BudgetConfigPath(profile), []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		state, err := vault.Snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if vault.Enabled() || state.Enabled {
+			t.Fatal("legacy vault consent enabled memory without a saved choice")
+		}
+	})
 	s := newLocalSetup(t)
+	s.backend.emit = s.server
 	profile := config.ProfileDir()
 	vault := knowledge.Open(profile)
 	if config.MemoryEnabledAt(profile) || vault.Enabled() {
@@ -70,16 +98,12 @@ func TestMemorySwitchDefaultsOffAndChangesLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	read("settings.get", struct{}{}, true, "saved")
-	rec := s.backend.emit.(*appRecorder)
-	rec.mu.Lock()
-	defer rec.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	found := false
-	for i, name := range rec.events {
-		if name == appwire.EventSettingsChanged {
-			raw, _ := json.Marshal(rec.data[i])
-			if strings.Contains(string(raw), `"memory"`) {
-				found = true
-			}
+	for _, line := range s.lines {
+		if strings.Contains(line, "settings.changed") && strings.Contains(line, `"memory"`) {
+			found = true
 		}
 	}
 	if !found {
@@ -118,6 +142,18 @@ func freshMemoryOffApp(t *testing.T) {
 		fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", raw)
 	}))
 	t.Cleanup(server.Close)
+	originalClient := http.DefaultClient
+	http.DefaultClient = &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		clone := r.Clone(r.Context())
+		u := *r.URL
+		clone.URL = &u
+		if strings.Contains(u.Host, "openrouter.ai") {
+			clone.URL.Scheme = "http"
+			clone.URL.Host = server.Listener.Addr().String()
+		}
+		return http.DefaultTransport.RoundTrip(clone)
+	})}
+	t.Cleanup(func() { http.DefaultClient = originalClient })
 	profile := v3Profile(t, map[string]any{config.KeyTaskModelsMode: "one", config.KeyTaskModelsOne: knowledge.Model, "models.tiers.low": knowledge.Model, "models.tiers.reflex": knowledge.Model, "models.roles": ""})
 	t.Setenv(config.ProfileDirEnv, profile)
 	t.Setenv("OPENROUTER_API_KEY", "fixture")
@@ -182,9 +218,7 @@ func freshMemoryOffApp(t *testing.T) {
 	}
 	for range events {
 	}
-	if err := agent.Close(); err != nil {
-		t.Fatal(err)
-	}
+	t.Cleanup(func() { _ = agent.Close() })
 	raw, err := os.ReadFile(callPath)
 	if err != nil {
 		t.Fatal(err)
@@ -201,4 +235,40 @@ func freshMemoryOffApp(t *testing.T) {
 	if knowledge.Open(profile).Enabled() {
 		t.Error("background worker armed fresh memory")
 	}
+	s.must("settings.set", map[string]any{"memory_enabled": true}, nil)
+	events, err = agent.Submit(context.Background(), "Remember that I prefer Cedar queues.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		raw, _ = os.ReadFile(callPath)
+		if strings.Contains(string(raw), `"tag":"reflex"`) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("wire on did not start memory in existing chat")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	s.must("settings.set", map[string]any{"memory_enabled": false}, nil)
+	// Let the already-started request finish before measuring the next turn.
+	time.Sleep(50 * time.Millisecond)
+	before := strings.Count(string(raw), `"tag":"reflex"`)
+	events, err = agent.Submit(context.Background(), "Explain Cedar again.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range events {
+	}
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(callPath)
+	if after := strings.Count(string(raw), `"tag":"reflex"`); after > before+1 {
+		t.Fatalf("wire off admitted another memory request: before=%d after=%d", before, after)
+	}
+
 }

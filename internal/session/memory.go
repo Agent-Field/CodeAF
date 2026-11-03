@@ -571,7 +571,7 @@ func memoryOffUpgradeWords(count int) string {
 	if count == 1 {
 		lines = "1 kept memory line now rides every conversation it holds in"
 	}
-	return lines + " — memory off now only stops noticing · see or forget them on the Memories tab"
+	return lines + " — memory off stops automatic learning · see or forget them on the Memories tab"
 }
 
 // memoryOverflowWords is that one line.
@@ -940,6 +940,9 @@ func (a *Agent) reportNoticeFailure(err error) {
 // set stay together, so a correction never applies to a newer turn's memories.
 // The job remains owned by memoryCtx and memoryJobs, including its backoff.
 func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string, texts []string, askMemory bool) (reflex.NoticeResult, error) {
+	if !a.noticing() {
+		return reflex.NoticeResult{}, nil
+	}
 	found, err := reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
 	kind, _ := provider.RouteFailureOf(err)
 	if err == nil || kind != provider.RouteTransient || a.memoryCtx.Err() != nil {
@@ -954,6 +957,9 @@ func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string
 	}
 	if err := a.memoryCtx.Err(); err != nil {
 		return reflex.NoticeResult{}, err
+	}
+	if !a.noticing() {
+		return reflex.NoticeResult{}, nil
 	}
 	return reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
 }
