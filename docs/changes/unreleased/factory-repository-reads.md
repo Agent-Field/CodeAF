@@ -20,3 +20,5 @@ a removed repository. Setup discovery preserves registered checkout folders
 through the shared checkout attachment seam. Transient identity-lookup failures
 can serve the saved list and its read time only with unchanged credentials;
 refused sign-in still fails, including a refusal from an earlier discovery.
+With no GitHub connection the read answers the watched repositories and no
+available list, as it did before the list was stored.
