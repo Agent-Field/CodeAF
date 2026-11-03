@@ -59,7 +59,7 @@ func AcknowledgeReview(it *Item) {
 	}
 }
 func ReviewPauseRecoverable(it Item) bool {
-	if it.FollowUp == nil || it.Manual || !Automatic(it) || it.Publishing || it.DoneHow != "" || it.Stream == nil || it.Stream.Paused || it.Cap <= JobSpent(it) {
+	if it.FollowUp == nil || it.Manual || !Automatic(it) || it.Publishing || it.DoneHow != "" || it.Stream == nil || it.Stream.Paused || it.Cap <= JobLifetimeSpent(it) {
 		return false
 	}
 	if it.Failure != nil && it.Failure.Code == CodeStopped {

@@ -780,12 +780,12 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	var atCap *factory.Item // the job as its cap question stood, when the raise resumes it
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-			if body.Budget <= cur.Cap && body.Budget < factory.JobSpent(*cur) {
-				budgetRefused = fmt.Errorf("already spent $%.2f; choose a budget at least that high", factory.JobSpent(*cur))
+			if body.Budget <= cur.Cap && body.Budget < factory.JobLifetimeSpent(*cur) {
+				budgetRefused = fmt.Errorf("job total $%.2f has reached budget $%.2f; choose a budget above the job total", factory.JobLifetimeSpent(*cur), cur.Cap)
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" && !cur.Publishing && body.Budget <= factory.JobSpent(*cur) {
+			if cur.QKind == "cap" && !cur.Publishing && body.Budget <= factory.JobLifetimeSpent(*cur) {
 				cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
 				if cur.Asking != nil {
 					cur.Asking.Question = cur.Question
@@ -839,7 +839,7 @@ func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
 // keep their own decisions; a cap at or under spend keeps the cap question.
 func capResumes(it factory.Item) bool {
 	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
-	return asksCap && it.Cap > factory.JobSpent(it) && !it.Manual && !it.Publishing
+	return asksCap && it.Cap > factory.JobLifetimeSpent(it) && !it.Manual && !it.Publishing
 }
 
 // jobModelMost is the longest model id a job keeps.

@@ -37,6 +37,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
    var calls atomic.Int32
    model := &budgetModel{spent: 5.25}
    model.maker.Script = func(ctx context.Context, c *factoryrun.FakeConversation) {
+    if calls.Load() > 1 && c.Spec.Resume == "" { c.Fail(factoryrun.SpendStop{Job:true, Said:"budget"}); return }
     if err := c.Spec.Stage.Report(ctx, factory.StageResult{Done: true}); err != nil { c.Fail(err) }
    }
    chat := factoryrun.NewChatExecutor(model)
@@ -90,7 +91,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
      if err := st.Update(it.ID,func(it *factory.Item) error { it.State=factory.StateNeedsYou; return nil }); err != nil { t.Fatal(err) }
      act(action,map[string]any{"step":"write"})
     } else if action == "carry on" {
-     if err := st.Update(it.ID,func(it *factory.Item) error { it.State=factory.StateRunning; it.Stream.Paused=true; it.Stream.Ended=time.Time{}; it.Stream.Phases[0].State=factory.PhaseRunning; it.Stream.Phases[0].Chat=""; return nil }); err != nil { t.Fatal(err) }
+     if err := st.Update(it.ID,func(it *factory.Item) error { it.State=factory.StateRunning; it.Failure=nil; it.Stream.Paused=true; it.Stream.Ended=time.Time{}; it.Stream.Phases[0].State=factory.PhaseRunning; it.Stream.Phases[0].Chat=""; return nil }); err != nil { t.Fatal(err) }
      act("factory.job_start",nil)
     } else { act(action,nil) }
    }

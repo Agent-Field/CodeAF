@@ -1394,8 +1394,8 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.Stag
 					cancel()
 					return
 				}
-				if it.Cap > 0 && factory.JobSpent(it) >= it.Cap {
-					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobSpent(it)), loopUSD(it.Cap))
+				if it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap {
+					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobLifetimeSpent(it)), loopUSD(it.Cap))
 					cancel()
 					return
 				}
@@ -1615,7 +1615,7 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string, memoryBefore float
 		stream.Spent -= max(0, it.MemorySpent-memoryBefore)
 		it.Stream = &stream
 	}
-	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
+	reached := it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap
 	q, kind := (*Money)(nil).CapQuestion(it)
 	if p := lp.r.opts.Pool; p != nil {
 		reached = p.CapReached(it)

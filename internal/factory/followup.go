@@ -277,7 +277,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	releasedBudget := monitorChanged
 	// Only a spending-owned pause may reopen on a fresh observation. Critical
 	// questions, Manual control and exhausted attempts retain their own doors.
-	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && Automatic(*it) && it.Question == "" && it.Cap > JobSpent(*it) && f.Attempt < f.Limit {
+	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && Automatic(*it) && it.Question == "" && it.Cap > JobLifetimeSpent(*it) && f.Attempt < f.Limit {
 		f.State, f.BlockedBy = "watching", ""
 		f.Reason = "Budget raised. Watching CI, reviews and merge conflicts automatically. Merge remains your decision."
 		if it.Stream != nil {
@@ -357,7 +357,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		needs = true
 	}
 	if !needs && (pr.HeadSHA != it.HeadCommit || pr.Draft) {
-		if it.Cap > 0 && JobSpent(*it) >= it.Cap {
+		if it.Cap > 0 && JobLifetimeSpent(*it) >= it.Cap {
 			return parkFollowBudget(it)
 		}
 		// A green external commit still needs complete captured review material.
@@ -385,7 +385,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		f.State, f.Reason = "needs_you", "Follow PR reached its repair limit. Retry Follow PR or take over."
 		return true
 	}
-	if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+	if it.Cap <= 0 || JobLifetimeSpent(*it) >= it.Cap {
 		return parkFollowBudget(it)
 	}
 	f.BlockedBy = ""

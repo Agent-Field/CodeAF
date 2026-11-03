@@ -147,7 +147,7 @@ func (b *stageBudget) memoryCap() bool {
 	if err != nil || it.Repo != b.item.Repo || it.Cap <= 0 {
 		return false
 	}
-	return factory.JobSpent(it) >= it.Cap && factory.JobSpent(it)-max(0, it.MemorySpent-b.item.MemorySpent) < it.Cap
+	return factory.JobLifetimeSpent(it) >= it.Cap && factory.JobLifetimeSpent(it)-max(0, it.MemorySpent-b.item.MemorySpent) < it.Cap
 }
 
 // roundTotal includes receipts booked before this chat was resumed.

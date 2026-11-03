@@ -571,7 +571,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			}
 			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error {
 				it.Cap = s.Budget
-				if it.QKind == "cap" && s.Budget <= factory.JobSpent(*it) {
+				if it.QKind == "cap" && s.Budget <= factory.JobLifetimeSpent(*it) {
 					it.Question, _ = (*run.Money)(nil).CapQuestion(*it)
 					if it.Asking != nil {
 						it.Asking.Question = it.Question

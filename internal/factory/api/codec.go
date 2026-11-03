@@ -281,10 +281,7 @@ func spendingLimit(it factory.Item) *SpendingLimit {
 	if factory.NeedsKind(it) != factory.NeedsSpendingLimit {
 		return nil
 	}
-	spent := 0.0
-	if it.Stream != nil {
-		spent = it.Stream.Spent
-	}
+	spent := factory.JobLifetimeSpent(it)
 	return &SpendingLimit{Limit: it.Cap, Spent: spent, NextLimit: factory.NextJobCap(it), Currency: factory.CurrencyUSD}
 }
 

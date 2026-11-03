@@ -29,7 +29,7 @@ func TestStepCostFallbackResumeChargesOnlyNewJobSpend(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, "budget of $1 reached · $1 spent · raise it to $5, or stop?")
+	g.asked(id, "budget of $1 reached · $1 job total spent · raise it to $5, or stop?")
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}
