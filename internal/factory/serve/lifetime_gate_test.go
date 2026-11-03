@@ -46,27 +46,37 @@ func TestWorkerLifetimeGateAtBeginAndSpendReport(t *testing.T) {
 }
 
 func TestWorkerLifetimeGateIncludesManagerReplies(t *testing.T) {
- for _, atGrant := range []bool{true, false} {
-  t.Run(fmt.Sprintf("at grant %t", atGrant),func(t *testing.T) {
-   f := workerSetupAs(t,"owner")
-   worker := f.attach(t,"owner")
-   it := f.add(t,"owner")
-   if err := f.st.Update(it.ID,func(it *factory.Item)error{
-    it.State,it.Talk,it.Cap = factory.StateNeedsYou,"manager",1
-    it.Thread = []factory.Message{{ID:"reply_budget",From:"owner",Text:"continue",State:"pending"}}
-    if atGrant {it.SpentBefore=1}
-    return nil
-   });err!=nil {t.Fatal(err)}
-   if atGrant {
-    f.request(t,"GET","/v1/workers/pull",worker.Credential,nil,204,nil)
-   } else {
-    pulled:=f.pull(t,worker)
-    if !pulled.Lease.ThreadOnly {t.Fatal("expected manager-only lease")}
-    if err:=f.st.Update(it.ID,func(it *factory.Item)error{it.SpentBefore=1;return nil});err!=nil{t.Fatal(err)}
-    f.request(t,"POST",fmt.Sprintf("/v1/workers/leases/%s/report",pulled.Lease.ID),worker.Credential,api.WorkerReport{},409,nil)
-   }
-   saved,err:=f.st.Get(it.ID)
-   if err!=nil||saved.QKind!="cap"||!strings.Contains(saved.Question,"job total") {t.Fatalf("manager lease bypassed job budget: %+v %v",saved,err)}
-  })
- }
+	for _, atGrant := range []bool{true, false} {
+		t.Run(fmt.Sprintf("at grant %t", atGrant), func(t *testing.T) {
+			f := workerSetupAs(t, "owner")
+			worker := f.attach(t, "owner")
+			it := f.add(t, "owner")
+			if err := f.st.Update(it.ID, func(it *factory.Item) error {
+				it.State, it.Talk, it.Cap = factory.StateNeedsYou, "manager", 1
+				it.Thread = []factory.Message{{ID: "reply_budget", From: "owner", Text: "continue", State: "pending"}}
+				if atGrant {
+					it.SpentBefore = 1
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if atGrant {
+				f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
+			} else {
+				pulled := f.pull(t, worker)
+				if !pulled.Lease.ThreadOnly {
+					t.Fatal("expected manager-only lease")
+				}
+				if err := f.st.Update(it.ID, func(it *factory.Item) error { it.SpentBefore = 1; return nil }); err != nil {
+					t.Fatal(err)
+				}
+				f.request(t, "POST", fmt.Sprintf("/v1/workers/leases/%s/report", pulled.Lease.ID), worker.Credential, api.WorkerReport{}, 409, nil)
+			}
+			saved, err := f.st.Get(it.ID)
+			if err != nil || saved.QKind != "cap" || !strings.Contains(saved.Question, "job total") {
+				t.Fatalf("manager lease bypassed job budget: %+v %v", saved, err)
+			}
+		})
+	}
 }
