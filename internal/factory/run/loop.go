@@ -1586,11 +1586,14 @@ func (lp *floorLoop) spender(c *loopCtl, step string, round int) func(usd float6
 // spendRound writes the job charge and its round receipt atomically, so a
 // worker report cannot mistake the interval between them for manager spending.
 func spendRound(it *factory.Item, step string, round int, usd float64) {
- addCost(it,usd)
- for i:=range it.Stream.Phases {
-  ph:=&it.Stream.Phases[i]
-  if step!="" && ph.Name==step { ph.RecordRoundSpend(round,ph.RoundCosts[round]+usd); break }
- }
+	addCost(it, usd)
+	for i := range it.Stream.Phases {
+		ph := &it.Stream.Phases[i]
+		if step != "" && ph.Name == step {
+			ph.RecordRoundSpend(round, ph.RoundCosts[round]+usd)
+			break
+		}
+	}
 }
 
 // capCheck parks the item when its budget is reached after a round: yes raises

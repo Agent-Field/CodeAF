@@ -1194,8 +1194,10 @@ func toPhase(s Step) factory.Phase {
 		res := stageResultItem(*r)
 		res.Model = s.Model
 		p.Result = &res
-	} else if s.Files != nil || s.Result != "" || s.Cost != 0 || s.Tests != nil || s.Model != "" {
-		p.Result = &factory.StageResult{Files: s.Files, Output: s.Result, Spent: s.Cost, Tests: s.Tests, Model: s.Model}
+	} else if s.Files != nil || s.Result != "" || (s.Cost != 0 && s.RoundCosts == nil) || s.Tests != nil || s.Model != "" {
+		spent := s.Cost
+        if s.RoundCosts != nil { spent = s.RoundCosts[max(1,s.Round)] }
+        p.Result = &factory.StageResult{Files: s.Files, Output: s.Result, Spent: spent, Tests: s.Tests, Model: s.Model}
 	}
 	if s.At != nil {
 		p.At = *s.At
