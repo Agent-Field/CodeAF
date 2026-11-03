@@ -16,3 +16,8 @@ sharing, the pinned embedded-engine update and relay configuration fixes.
 Team sharing retains app/v3's explicit opt-in default while adding pairing
 gates, complete first-sharing backups, history visibility safeguards and
 replacement recovery receipts adapted to SQLite.
+
+The imported local team refresh test now seeds unrepaired SQLite rows and
+verifies persisted repairs with a snapshot that performs no repair. Settings
+save and turn completion tests explicitly enable sharing before checking
+off-loop pairing adoption; missing or empty `teams.share` remains off.

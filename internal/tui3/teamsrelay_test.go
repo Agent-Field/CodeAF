@@ -690,16 +690,18 @@ func TestUnpairedLocalTeamRefreshRetainsRepairingReads(t *testing.T) {
 	seam := localTeams(dir, watch, nil)
 	_, stamp, _ := seam.Load(nil)
 	raw := []byte(`{"version":2,"teams":[{"id":"alpha","name":"harbor","members":[{"key":"local","word":"worker"}]}]}`)
-	if err := os.WriteFile(teamstore.Path(dir), raw, 0600); err != nil {
-		t.Fatal(err)
+	teamstest.Write(t, dir, raw)
+	before, err := teamstore.Snapshot(dir)
+	if err != nil || len(before.Teams) != 1 || len(before.Teams[0].Members) != 1 || before.Teams[0].Members[0].Handle != "" {
+		t.Fatal("fixture must need handle repair", before, err)
 	}
 	got, _, same, err := seam.ReadSince(stamp, nil)
-	if err != nil || same || len(got) != 1 || got[0].Members[0].Handle == "" {
+	if err != nil || same || len(got) != 1 || len(got[0].Members) != 1 || got[0].Members[0].Handle == "" {
 		t.Fatal("unpaired read skipped repair", got, err)
 	}
-	after, _ := os.ReadFile(teamstore.Path(dir))
-	if string(after) == string(raw) {
-		t.Fatal("unpaired read did not persist repair")
+	after, err := teamstore.Snapshot(dir)
+	if err != nil || !reflect.DeepEqual(after.Teams, got) {
+		t.Fatal("unpaired read did not persist repair", after, err)
 	}
 }
 
@@ -708,6 +710,10 @@ func TestSettingsSaveAndTurnCompletionReadPairingOffLoop(t *testing.T) {
 	for _, turn := range []bool{false, true} {
 		t.Run(fmt.Sprintf("turn=%v", turn), func(t *testing.T) {
 			a, _ := sheetApp(t)
+			row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir}).Row(config.KeyTeamsShare)
+			if err := row.Apply("on"); err != nil {
+				t.Fatal(err)
+			}
 			calls, updating := 0, false
 			a.teamsPaired = func() bool {
 				calls++
@@ -733,6 +739,9 @@ func TestSettingsSaveAndTurnCompletionReadPairingOffLoop(t *testing.T) {
 			drive(t, a, runCmd(cmd)...)
 			if calls == 0 {
 				t.Fatal("update never scheduled pairing adoption")
+			}
+			if !a.teamsShare {
+				t.Fatal("update did not adopt sharing")
 			}
 		})
 	}
