@@ -59,6 +59,7 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 			})
 			closed := false
 			calls, pages, details, conditional := 0, 0, 0, 0
+			reopened := false
 			at := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				js := func(v any) { _ = json.NewEncoder(w).Encode(v) }
@@ -104,6 +105,9 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 						}
 						if n == 5001 && closed {
 							updated = at.Add(time.Hour)
+						}
+						if n == 5001 && reopened {
+							updated = time.Now().Add(2 * time.Second)
 						}
 						if since, err := time.Parse(time.RFC3339, r.URL.Query().Get("since")); err == nil && updated.Before(since) {
 							continue
@@ -210,7 +214,7 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 			if recent.DoneHow != "closed" {
 				t.Fatal("issue closed after cursor remains in Backlog")
 			}
-			closed = false
+			closed, reopened = false, true
 			if _, err = source.PollOnce(ctx, src, st, cursor, time.Now); err != nil {
 				t.Fatal(err)
 			}
@@ -323,7 +327,7 @@ func TestReopenedIssueWithWorkStaysDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	open := factory.Item{Product: "o", Repo: "r", Num: 7, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t again"}
+	open := factory.Item{Product: "o", Repo: "r", Num: 7, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t again", Changed: time.Now()}
 	if err := source.Merge(st, source.Name, []factory.Item{open}); err != nil {
 		t.Fatal(err)
 	}
@@ -333,5 +337,77 @@ func TestReopenedIssueWithWorkStaysDone(t *testing.T) {
 	}
 	if got.DoneHow != "closed" || got.State != factory.StateShipped {
 		t.Fatalf("worked job reopened: state=%s how=%q", got.State, got.DoneHow)
+	}
+}
+
+// A poll that read the open list before a person's start found the issue closed
+// carries an older change time, and does not undo the close.
+func TestAStaleOpenRowDoesNotReopenAClose(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := time.Now()
+	saved, err := st.Create(factory.Item{Product: "o", Repo: "r", Num: 7, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t", State: factory.StateShipped, DoneHow: "closed", DoneAt: done})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := factory.Item{Product: "o", Repo: "r", Num: 7, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t", Changed: done.Add(-time.Minute)}
+	if err := source.Merge(st, source.Name, []factory.Item{stale}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Get(saved.ID); got.DoneHow != "closed" {
+		t.Fatalf("a stale list undid the close: state=%s how=%q", got.State, got.DoneHow)
+	}
+}
+
+// An issue closed while nothing ran is found by the next process's first poll,
+// even when an earlier process finished its sweep.
+func TestAnIssueClosedWhileTheAppWasOffLeavesBacklog(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRepos([]string{"acme/api"}); err != nil {
+		t.Fatal(err)
+	}
+	row, err := st.Create(factory.Item{Product: "acme", Repo: "api", Num: 1, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t", State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := "open"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/user":
+			fmt.Fprint(w, `{"login":"owner"}`)
+		case r.URL.Path == "/repos/acme/api/issues":
+			fmt.Fprint(w, `[]`)
+		case r.URL.Path == "/repos/acme/api/issues/1":
+			fmt.Fprintf(w, `{"state":%q}`, state)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	api := forge.NewClient("closed-while-off").WithBaseURL(srv.URL)
+	poll := func() {
+		t.Helper()
+		if _, err := source.PollOnce(ctx, source.New(api, nil, nil), st, "", time.Now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	poll()
+	state = "closed"
+	poll()
+	if got, _ := st.Get(row.ID); got.DoneHow != "" {
+		t.Fatal("a finished sweep read the row again inside one process")
+	}
+	if err := st.ClearBusy(); err != nil {
+		t.Fatal(err)
+	}
+	poll()
+	if got, _ := st.Get(row.ID); got.DoneHow != "closed" {
+		t.Fatalf("issue closed while the app was off stayed: state=%s", got.State)
 	}
 }

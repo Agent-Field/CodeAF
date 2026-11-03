@@ -250,7 +250,9 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				errs = append(errs, finishClosed(st, old.ID))
 				continue
 			}
-			if closedWithoutWork(old) {
+			// Only a change newer than the finish reopens it: a poll that read
+			// the list before the close must not undo the close.
+			if closedWithoutWork(old) && in.Changed.After(old.DoneAt) {
 				errs = append(errs, reopenClosed(st, old.ID))
 			}
 			if !forgeChanged(old, in) {

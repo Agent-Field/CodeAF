@@ -14,8 +14,9 @@ import (
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
-// closeSweepBudget bounds direct reads of pre-existing rows per repository per
-// tick. It never lists closed history, and its progress survives a restart.
+// closeSweepBudget bounds direct reads of rows the open list lacks, per
+// repository per tick. It never lists closed history. Each process sweeps once
+// ([store.Store.ClearBusy] starts it over), because each polls from no cursor.
 const closeSweepBudget = 40
 
 // untouchedBacklog is a Backlog row that nothing has started or worked on. A

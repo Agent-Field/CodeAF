@@ -701,10 +701,10 @@ untouched, including a pending ask-first decision. The poll never stops a
 running job. A person's Start still checks GitHub directly, including between polls.
 
 The initial import lists open issues. Later polls include closures updated
-since the cursor, using a conditional request when nothing changed. An older
-factory's existing rows get a one-time check: at most 40 direct issue reads per
-repository per poll, only for existing untouched rows absent from that poll's
-results, with progress saved. A missing issue stays unchanged and does not block
+since the cursor, using a conditional request when nothing changed.
+Each time the factory opens, untouched rows the open list lacks get one check, so
+an issue closed while the app was off leaves too: at most 40 direct issue reads
+per repository per poll, with progress saved. A missing issue stays unchanged and does not block
 later rows; other read failures retry next poll. The factory never walks the
 repository's closed history.
 
