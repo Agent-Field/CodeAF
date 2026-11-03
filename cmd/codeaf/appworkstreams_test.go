@@ -1324,7 +1324,7 @@ func TestAppWorkstreamSpendKeepsAJobsEarlierRuns(t *testing.T) {
 	b.workstreams.job = func(_ context.Context, _ string, job int) (api.Job, error) {
 		return api.Job{ID: job, Num: 1109, State: "running", Cost: 0.5, LifetimeCost: 3}, nil
 	}
-	b.workstreams.spend = func(string) *float64 { return workstreamPtr(2) }
+	b.workstreams.spend = func(string) *float64 { return workstreamPtr(2.0) }
 	w := workstreamCreateForTest(t, b, "Reruns", workstreamJobRef("7"), workstreamJobRef("8"), workstreamJobRef("9"))
 	const want = 12 + 1.25 + 3 + 2
 	got, err := b.WorkstreamGet(appwire.WorkstreamGetParams{ID: w.ID})
