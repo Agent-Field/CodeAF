@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Judge a job against the person's later requests
-pr: 0
+pr: 2262
 surface: [engine]
 invalidates:
   - "Was true: the Brief read only the issue and plan as the request. Is true now: it also reads later answers and saved notes, and later requests take precedence."
