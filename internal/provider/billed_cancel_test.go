@@ -14,10 +14,10 @@ import (
 
 // The public completion and reconciliation doors must retain paid partial work.
 func TestBilledCancellation(t *testing.T) {
- for _, tc := range []struct {name string; usage, noID, noReceipt, direct, final bool}{
+ for _, tc := range []struct {name string; usage, noID, noReceipt, direct, final, tokenOnly bool}{
  {name:"usage", usage:true}, {name:"factory-final", usage:true, final:true}, {name:"factory-fallback", usage:true, final:true, noReceipt:true}, {name:"before-usage"},
  {name:"interim-fallback", usage:true, noReceipt:true},
- {name:"unpriced", noReceipt:true},
+ {name:"unpriced", noReceipt:true}, {name:"token-only", usage:true, noReceipt:true, tokenOnly:true},
  {name:"no-id", usage:true, noID:true},
  {name:"direct", usage:true, direct:true},
  } {
@@ -34,6 +34,7 @@ func TestBilledCancellation(t *testing.T) {
     w.Header().Set("Content-Type", "text/event-stream")
     u := ""
     if tc.usage { u = `,"usage":{"prompt_tokens":11,"completion_tokens":3,"cost":0.07}` }
+    if tc.tokenOnly { u = `,"usage":{"prompt_tokens":11,"completion_tokens":3}` }
     id := "cancel-generation"
     if tc.noID { id = "" }
     fmt.Fprintf(w, "data: {\"id\":%q,\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]%s}\n\n", id, u)
@@ -53,11 +54,12 @@ func TestBilledCancellation(t *testing.T) {
    case r := <-results:
     wantFound := tc.usage || !tc.noReceipt
     wantCost := 0.07
-    if !wantFound { wantCost = 0 }
+    if !wantFound || tc.tokenOnly { wantCost = 0 }
     if r.Found != wantFound || r.Cost != wantCost { t.Errorf("settlement=%+v", r) }
     data, _ := json.Marshal(r)
     var settlement map[string]any
     json.Unmarshal(data, &settlement)
+    if tc.tokenOnly && settlement["PriceMissing"] != true { t.Errorf("token-only charge must stay unknown: %+v", r) }
     if tc.usage && (tc.noReceipt || tc.noID || tc.direct) && settlement["Interim"] != true { t.Errorf("interim usage not identified: %+v", r) }
    case <-time.After(time.Second): t.Error("paid cancellation has no settlement")
    }
