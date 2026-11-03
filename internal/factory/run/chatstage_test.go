@@ -59,7 +59,7 @@ func TestTheBriefCarriesTheAskTheItemTheNotesWhatCameBeforeAndTheKnobs(t *testin
 	job.Round = 2
 	brief := stageBrief(job)
 	for _, want := range []string{
-		"review: review the diff as a careful colleague; fix what you find",
+		"review: review the diff against the issue and repository standards; fix substantive findings",
 		"#12 · fix the ledger double count · ledger",
 		"The ledger counts refunds twice.\nSee the March export.",
 		"notes:\n- keep the public API\n- the export is the proof",

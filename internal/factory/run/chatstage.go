@@ -671,6 +671,7 @@ func stageBrief(job Job) string {
 		para(p...)
 	}
 	para(stagePlace(job))
+	para(factory.StageMethod(job.Stage))
 	para(rulesBrief(job))
 	para(planBrief(job))
 	var notes []string
@@ -690,7 +691,10 @@ func stageBrief(job Job) string {
 	para(untilSays(job))
 	para(briefNoTeamPost)
 	para(briefAsk)
-	para("\nEvidence rules: test claims must cite commands that exercise that exact behavior. Code inspection is inspection evidence, not a passing test. Preserve command exit codes; do not hide failures behind a pipe or a printed exit marker. Numeric totals come from command receipts, not guesses. Before a final proof or Follow PR result, supply publish_summary: up to three complete PR-ready change bullets describing the final implementation including review fixes, with accurate names and no personal names.\n")
+	para("Evidence rules: test claims cite commands exercising that behaviour; label inspection as inspection. Preserve real command exits, including through pipes; a printed exit marker is not a receipt. Numeric totals come from command receipts. Your output is the handover later steps and the person read: what changed, each command run with its actual result, what was not run and why, and what remains open.")
+	if factory.IsProofStage(job.Stage) || factory.IsCIRepairStage(job.Stage) {
+		para("Supply publish_summary: up to three complete PR-ready bullets describing the final implementation including review fixes, with accurate names and no personal names.")
+	}
 	para(briefClosing)
 
 	return b.String()

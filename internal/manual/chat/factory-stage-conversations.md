@@ -41,10 +41,34 @@ It is given two tools that no other conversation has:
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
+## shipped step methods — planning, implementation, diagnosis, review and proof
+
+After the stage placement and before repository rules, an unchanged shipped chat
+step receives a short engineering method. It describes the goal, handover,
+completion and when to ask. Plan follows relevant code and tests without edits;
+write implements slices with a failing test first; test diagnoses failures;
+review checks scope and standards and repairs substantive findings. Security
+traces attack paths; proof challenges promises with current observations; read
+inspects without edits; checks runs claim-specific checks; bisect narrows the
+first failure; fix reproduces and repairs the cause.
+
+The method is selected only when both the name and ask match the shipped step.
+A person's own ask carries only their words for the method; the common brief,
+repository rules and reporting contract still apply. Resuming the same chat does
+not repeat the method already in its history. The editable ask stays short.
+
+Every step hands over what changed, each command actually run and its result,
+unrun checks and why, and open work. Only proof and Follow PR are asked for
+publication bullets. Test and bisect preserve the checkout; when revision
+movement is refused, bisect uses history and recorded runs and states which
+revisions it did not run. Follow PR reproduces CI failures before repairs and
+leaves reconciliation and publication to the service.
+
 ## plan file list — structured files, unknown paths and Auto approval
 
 A plan's `stage_result` answer includes `files`, an array of every file it will
-change or add, relative to the repository root. `output` carries the plan's prose.
+change or add, relative to the repository root. `output` carries the plan's prose. New plans are asked for this one structured
+list, without a second prose `Files:` declaration.
 The plan schema requires `files`; code validates the paths before using them.
 The list allows at most 200 entries and each path at most 512 bytes. Absolute
 paths, traversal, folders, globs and any other invalid entry make the whole list
