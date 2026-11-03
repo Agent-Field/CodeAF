@@ -97,9 +97,11 @@ func stageRetry(why string) string {
 // limit's own words. A round that ends on one is a stop, not a step that never
 // reported, and the loop stops the job on it ([spendStopped]).
 type SpendStop struct {
-	Job   bool
-	Daily bool
-	Said  string
+	// Memory marks a job cap crossed only by optional learning during this round.
+	Memory bool
+	Job    bool
+	Daily  bool
+	Said   string
 }
 
 func (s SpendStop) Error() string {

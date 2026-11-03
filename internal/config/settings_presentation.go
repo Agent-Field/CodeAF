@@ -45,7 +45,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Hidden = true // Resident-only controls have no live chat consumer.
 	case KeyMemoryEnabled:
 		// The detail is the row's own Hint (settings.go), not a second copy.
-		p.Category, p.Label = "Memory", "notice things to remember"
+		p.Category, p.Label = "Memory", s.Label
 		p.Activation = "Applies from the next turn"
 	case KeyUpdateAuto:
 		p.Label = "automatic updates"
