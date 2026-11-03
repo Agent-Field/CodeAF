@@ -59,7 +59,7 @@ func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
 			for {
 				job := f.read(t, it)
 				if job.Ready {
-					if len(job.Steps) != 2 || job.Steps[0].State != api.StepDone || job.Steps[1].State != api.StepSkipped {
+					if len(job.Steps) != 2 || job.Steps[0].State != api.StepDone || job.Steps[1].InRun || job.Steps[1].Round != 0 {
 						t.Fatalf("run did not skip conditional step: %+v", job.Steps)
 					}
 					break
