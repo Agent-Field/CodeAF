@@ -2,6 +2,7 @@ package run
 
 import (
     "context"
+ "fmt"
     "sync/atomic"
     "testing"
     "time"
@@ -65,4 +66,60 @@ func TestReviewStopPreventsProofOnlyComment(t *testing.T) {
     stopped := g.settle(t)
     if !factory.StoppedByPerson(stopped) { t.Fatal("Stop did not persist") }
     if len(g.src.got) != 0 { t.Fatalf("Stop persisted before forge mutation, but proof-only publish sent %d comment(s); authority checks=%d", len(g.src.got), checks.Load()) }
+}
+
+func TestStopDuringPostSetupPreventsEveryWrite(t *testing.T) {
+ for _, verb := range []string{"comment", "label", "close", "pr"} {
+  for _, stop := range []bool{false, true} {
+   t.Run(fmt.Sprintf("%s/stop=%v", verb, stop), func(t *testing.T) {
+    src := &fakeSource{}
+    var g *rig
+    ex := NewPostExecutorWith(PostOptions{Source: func(string) factory.Source { return src }, Policy: func(it factory.Item) []string {
+     if stop { if err := g.st.Update(it.ID, func(cur *factory.Item) error { factory.MarkPersonStopped(cur); return nil }); err != nil { t.Error(err) } }
+     return nil
+    }})
+    g = newRig(t, map[factory.StageKind]Executor{factory.StagePost: ex}, nil)
+    id := g.add("post authority", factory.Stage{Name: "post", Kind: factory.StagePost, Ask: verb, On: true})
+    if err := g.r.Launch(id); err != nil { t.Fatal(err) }
+    for deadline := time.Now().Add(3*time.Second); g.r.Running(id); time.Sleep(time.Millisecond) { if time.Now().After(deadline) { t.Fatal("post did not settle") } }
+    want := 1; if stop { want = 0 }
+    if len(src.got) != want { t.Fatalf("post %s stop=%v sent %d writes, want %d", verb, stop, len(src.got), want) }
+   })
+  }
+ }
+}
+
+type stopRepairSource struct {
+ following
+ updates int
+}
+func (s *stopRepairSource) UpdatePRBody(context.Context, factory.Item, string) error { s.updates++; return nil }
+
+func TestStopAfterRepairPushPreventsDescriptionWrite(t *testing.T) {
+ for _, stop := range []bool{false, true} {
+  t.Run(fmt.Sprintf("stop=%v", stop), func(t *testing.T) {
+   g := newPublishRig(t, factory.Item{Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Repair authority"})
+   first, trailer := reviewed(t, g, "work.go")
+   opened := publishAndSettle(t, g, trailer)
+   _, trailer = reviewed(t, g, "repair.go")
+   if err := g.st.Update(g.id, func(it *factory.Item) error {
+    it.PullRequest.HeadSHA = first
+    it.FollowUp = &factory.PRFollowUp{Kind: "pr", State: "waiting_approval", HeadSHA: first}
+    return nil
+   }); err != nil { t.Fatal(err) }
+   fresh := *opened.PullRequest
+   fresh.HeadSHA = first
+   src := &stopRepairSource{following: following{g.src, fresh}}
+   g.r.opts.Source = func(string) factory.Source { return src }
+   push := g.r.opts.Push
+   g.r.opts.Push = func(dir, branch string, before ...func() error) error {
+    if err := push(dir, branch, before...); err != nil { return err }
+    if stop { return g.st.Update(g.id, func(it *factory.Item) error { factory.MarkPersonStopped(it); return nil }) }
+    return nil
+   }
+   publishAndSettle(t, g, trailer)
+   want := 1; if stop { want = 0 }
+   if src.updates != want { t.Fatalf("repair description stop=%v sent %d writes, want %d", stop, src.updates, want) }
+  })
+ }
 }
