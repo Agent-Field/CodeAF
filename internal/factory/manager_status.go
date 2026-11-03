@@ -16,7 +16,9 @@ var ErrNotManager = errors.New("this conversation is not the manager of any item
 // PendingQuestionID identifies the decision, not the frequently changing job
 // document. Polling or spending updates cannot expire it; a new ask or round can.
 func PendingQuestionID(it Item) string {
- if StoppedByPerson(it) { return "" }
+	if StoppedByPerson(it) {
+		return ""
+	}
 	if it.State != StateNeedsYou || strings.TrimSpace(it.Question) == "" || (it.QKind == "step" && it.Asking == nil) {
 		return ""
 	}
@@ -94,8 +96,8 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	}
 	switch {
 	case StoppedByPerson(it):
- out.QuestionID = ""
- out.Text += PersonStopReason
+		out.QuestionID = ""
+		out.Text += PersonStopReason
 	case it.DoneHow == "closed_locally":
 		out.Text += "Job closed locally. Work and spending are kept. Reopen to continue; nothing is running."
 	case it.DoneHow == "dropped":

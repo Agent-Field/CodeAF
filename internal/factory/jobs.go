@@ -171,7 +171,9 @@ func JobState(it Item) string {
 	if it.DoneHow != "" || it.State == StateDismissed {
 		return "done"
 	}
-	if StoppedByPerson(it) { return "needs_you" }
+	if StoppedByPerson(it) {
+		return "needs_you"
+	}
 	if it.FollowUp != nil && it.FollowUp.State == "needs_you" && it.PullRequest != nil && it.PullRequest.State == PROpen {
 		return "needs_you"
 	}
@@ -331,7 +333,9 @@ func JobApprovalSummary(it Item) *Approval {
 }
 
 func JobApproval(it Item) *Approval {
- if StoppedByPerson(it) { return nil }
+	if StoppedByPerson(it) {
+		return nil
+	}
 
 	kind := ""
 	switch JobReason(it) {

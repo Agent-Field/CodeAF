@@ -1,7 +1,7 @@
 package api
 
 import (
-"encoding/json"
+	"encoding/json"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"testing"
 	"time"
@@ -34,15 +34,23 @@ func TestPRNoChecksFactRoundTrips(t *testing.T) {
 }
 
 func TestLegacyPersonStopWirePresence(t *testing.T) {
- for _, raw:=range []string{
-  `{"state":"needs_you","desk":{"engine_state":"new","stop_undo":{"By":"owner","Until":"2020-01-01T00:00:00Z"}}}`,
-  `{"state":"needs_you","failure":{"code":"stopped","detail":"Stopped by you"},"desk":{"engine_state":"new"}}`,
- } {
-  var job Job
-  if err:=json.Unmarshal([]byte(raw),&job);err!=nil{t.Fatal(err)}
-  if !factory.StoppedByPerson(ToItem(job)){t.Fatalf("old wire erased Stop: %s",raw)}
- }
- var granted Job
- if err:=json.Unmarshal([]byte(`{"state":"needs_you","failure":{"code":"stopped"},"desk":{"engine_state":"new","person_stopped":false}}`),&granted);err!=nil{t.Fatal(err)}
- if factory.StoppedByPerson(ToItem(granted)){t.Fatal("explicit person grant was replaced with legacy inference")}
+	for _, raw := range []string{
+		`{"state":"needs_you","desk":{"engine_state":"new","stop_undo":{"By":"owner","Until":"2020-01-01T00:00:00Z"}}}`,
+		`{"state":"needs_you","failure":{"code":"stopped","detail":"Stopped by you"},"desk":{"engine_state":"new"}}`,
+	} {
+		var job Job
+		if err := json.Unmarshal([]byte(raw), &job); err != nil {
+			t.Fatal(err)
+		}
+		if !factory.StoppedByPerson(ToItem(job)) {
+			t.Fatalf("old wire erased Stop: %s", raw)
+		}
+	}
+	var granted Job
+	if err := json.Unmarshal([]byte(`{"state":"needs_you","failure":{"code":"stopped"},"desk":{"engine_state":"new","person_stopped":false}}`), &granted); err != nil {
+		t.Fatal(err)
+	}
+	if factory.StoppedByPerson(ToItem(granted)) {
+		t.Fatal("explicit person grant was replaced with legacy inference")
+	}
 }

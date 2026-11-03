@@ -74,7 +74,9 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 	}
 	err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 		wasManual := cur.Manual
- if body.Mode == "resume_pipeline" { factory.ClearPersonStop(cur) }
+		if body.Mode == "resume_pipeline" {
+			factory.ClearPersonStop(cur)
+		}
 		cur.Manual = body.Mode == "take_over"
 		cur.StopUndo = nil
 		cur.Approval = nil

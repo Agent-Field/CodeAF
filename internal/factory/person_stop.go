@@ -10,12 +10,18 @@ var ErrPersonStopped = errors.New(PersonStopReason)
 // StoppedByPerson honours the explicit record and unrevoked legacy evidence.
 // Old records with no surviving evidence retain their previous behaviour.
 func StoppedByPerson(it Item) bool {
-	if it.PersonStopped != nil { return *it.PersonStopped }
- if it.StopUndo != nil || it.Failure != nil && it.Failure.Code == CodeStopped { return true }
- s:=it.Stream
- if it.State != StateNew || s==nil || s.Ended.IsZero() || s.Cur<0 || s.Cur>=len(s.Phases) { return false }
- ph:=s.Phases[s.Cur]
- return ph.State==PhaseFailed && ph.Failure!=nil && ph.Failure.Code==CodeStopped
+	if it.PersonStopped != nil {
+		return *it.PersonStopped
+	}
+	if it.StopUndo != nil || it.Failure != nil && it.Failure.Code == CodeStopped {
+		return true
+	}
+	s := it.Stream
+	if it.State != StateNew || s == nil || s.Ended.IsZero() || s.Cur < 0 || s.Cur >= len(s.Phases) {
+		return false
+	}
+	ph := s.Phases[s.Cur]
+	return ph.State == PhaseFailed && ph.Failure != nil && ph.Failure.Code == CodeStopped
 }
 
 // CheckPersonStop is the shared execution gate. Call it on the locked job
@@ -30,7 +36,7 @@ func CheckPersonStop(it Item) error {
 // ClearPersonStop belongs only to explicit person controls, before admission.
 func ClearPersonStop(it *Item) {
 	stopped := false
- it.PersonStopped = &stopped
+	it.PersonStopped = &stopped
 	it.StopUndo = nil
 	if it.Failure != nil && it.Failure.Code == CodeStopped {
 		it.Failure = nil

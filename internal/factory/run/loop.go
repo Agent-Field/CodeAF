@@ -175,7 +175,9 @@ func (r *Runner) Launch(id int) error {
 	if err != nil {
 		return err
 	}
-	if err := factory.CheckPersonStop(it); err != nil { return err }
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	// A PAUSED ITEM'S LAUNCH IS ITS RUN: the one top-bar button resumes it.
 	if done, err := r.resumePaused(it); done || err != nil {
 		return err
@@ -273,7 +275,9 @@ func strangerWrites(it factory.Item) error {
 // dismissed, or never put anywhere yet. A dropped job is refused with its way
 // back ([factory.RefuseDropped]).
 func launchable(it factory.Item) error {
- if err := factory.CheckPersonStop(it); err != nil { return err }
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}
@@ -438,7 +442,9 @@ func (lp *floorLoop) move(c *loopCtl, stage string, kind EventKind, text string,
 		return errLoopStopped
 	}
 	if err := lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
-		if err := factory.CheckPersonStop(*it); err != nil { return err }
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return err
+		}
 		if kind != EventQueued && it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
 			return errLoopStopped
 		}
@@ -2000,29 +2006,37 @@ func (r *Runner) Withdraw(id int) {
 
 // Stop ends a stream and keeps its branch; the item returns to new.
 func (r *Runner) Stop(id int) error {
- lp := r.loop()
- if c := lp.ctl(id); c != nil {
-  if err := r.opts.Store.Update(id,func(it *factory.Item)error{
-   if !factory.UnderWay(*it) {return fmt.Errorf("%s is not running",it.Ref())}
-   factory.MarkPersonStopped(it)
-   it.Asking=nil
-   return nil
-  });err!=nil{return err}
-  lp.stop(c)
-  return nil
- }
- now:=r.now()
- var cut *factory.StepProgress
- if err:=r.opts.Store.Update(id,func(it *factory.Item)error{
-  if !factory.UnderWay(*it) {return fmt.Errorf("%s is not running",it.Ref())}
-  cut=endRun(it,now,nil)
-  factory.MarkPersonStopped(it)
-  it.Asking=nil
-  return nil
- });err!=nil{return err}
- lp.emit(id,"",EventStopped,"stopped")
- lp.tellStep(id,sayStopped,cut)
- return nil
+	lp := r.loop()
+	if c := lp.ctl(id); c != nil {
+		if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+			if !factory.UnderWay(*it) {
+				return fmt.Errorf("%s is not running", it.Ref())
+			}
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
+			return nil
+		}); err != nil {
+			return err
+		}
+		lp.stop(c)
+		return nil
+	}
+	now := r.now()
+	var cut *factory.StepProgress
+	if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		if !factory.UnderWay(*it) {
+			return fmt.Errorf("%s is not running", it.Ref())
+		}
+		cut = endRun(it, now, nil)
+		factory.MarkPersonStopped(it)
+		it.Asking = nil
+		return nil
+	}); err != nil {
+		return err
+	}
+	lp.emit(id, "", EventStopped, "stopped")
+	lp.tellStep(id, sayStopped, cut)
+	return nil
 }
 
 // stopStored is a person's stop with no run to cancel. A failure the job
@@ -2237,7 +2251,9 @@ func (r *Runner) resumePaused(it factory.Item) (done bool, err error) {
 // it paused) a control again and puts it back on a bench. It goes on at the
 // phase and round it stopped in, and the phase's chat is carried on.
 func (r *Runner) revive(it factory.Item) error {
- if err := factory.CheckPersonStop(it); err != nil { return err }
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	lp := r.loop()
 	id := it.ID
 	if r.opts.Rail != nil && r.opts.SpentToday != nil {
@@ -2482,7 +2498,9 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 // HTTP door runs it before writing an approval, so a claim that is not shown
 // never leaves a receipt the publish door would then refuse.
 func ApprovalRefused(it *factory.Item, edited bool) error {
- if err := factory.CheckPersonStop(*it); err != nil { return err }
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if it.State != factory.StateLanded {
 		return fmt.Errorf("%s has not landed", it.Ref())
 	}

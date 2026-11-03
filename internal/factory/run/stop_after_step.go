@@ -63,7 +63,7 @@ func (lp *floorLoop) stopSpending(c *loopCtl, it factory.Item) bool {
 
 // A boundary stop has no interrupted phase to supply the person's stop cause.
 func stopSpendingItem(it *factory.Item, now time.Time) {
- factory.MarkPersonStopped(it)
+	factory.MarkPersonStopped(it)
 	it.StopAfterStep = false
 	endRun(it, now, stoppedByYou("", 0, now))
 }

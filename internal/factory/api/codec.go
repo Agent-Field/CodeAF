@@ -146,7 +146,9 @@ var Lost = map[string]string{
 
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
- if it.PersonStopped == nil && factory.StoppedByPerson(it) { factory.MarkPersonStopped(&it) }
+	if it.PersonStopped == nil && factory.StoppedByPerson(it) {
+		factory.MarkPersonStopped(&it)
+	}
 	j := Job{
 		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
@@ -314,10 +316,10 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		now = clocks[0]
 	}
 	a := factory.MayAct(it, caller)
- if factory.StoppedByPerson(it) && factory.JobState(it) != StateDone {
- owner := it.Person() == "" || it.Person() == factory.NormalizeHandle(caller)
- return Can{Resume:owner, StartNow:owner, RunAgain:owner, RunAsNew:owner, Close:owner, Drop:owner, RaiseBudget:owner, Reply:a.Reply, Undo:owner && it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)}
- }
+	if factory.StoppedByPerson(it) && factory.JobState(it) != StateDone {
+		owner := it.Person() == "" || it.Person() == factory.NormalizeHandle(caller)
+		return Can{Resume: owner, StartNow: owner, RunAgain: owner, RunAsNew: owner, Close: owner, Drop: owner, RaiseBudget: owner, Reply: a.Reply, Undo: owner && it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)}
+	}
 	person := it.Person()
 	owner := person == "" || person == factory.NormalizeHandle(caller)
 	approval := factory.JobApproval(it)
