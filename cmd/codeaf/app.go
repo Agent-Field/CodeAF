@@ -202,6 +202,7 @@ func runApp(args []string) error {
 	services := openAppServices()
 	appServiceDoor.Store(services)
 	appWorkstreamAgents.Store(backend)
+	appClientToolsBackend.Store(backend)
 	backend.attachServices(services)
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
@@ -553,6 +554,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	clientTools appClientTools
 	chats       appChats
 	pair        appPair
 	drives      *driveBook
@@ -4478,6 +4480,8 @@ func (b *appBackend) Close() error {
 	if b.leaving != nil {
 		b.leaving()
 	}
+	b.clientTools.disconnect()
+	appClientToolsBackend.CompareAndSwap(b, nil)
 	already := false
 	var crews *appCrewRun
 	var agents []*appAgent
