@@ -6,6 +6,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"net/http"
  "errors"
+ "fmt"
  "github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -33,19 +34,20 @@ func (h *Handler) publishAnyway(w http.ResponseWriter, r *http.Request, it facto
 		return
 	}
 	err = h.config.Store.UpdateExpected(it.ID, *body.Expect.Version, func(cur *factory.Item) error {
-		return factory.DecidePublishAnyway(cur, who, h.clock())
+		if err:=factory.DecidePublishAnyway(cur, who, h.clock());err!=nil {return err}
+ if h.config.Record != nil {
+ event,err:=h.config.Record.Append(r.Context(),record.Event{Kind:record.Approved,Job:cur.ID,Handle:who,Commit:cur.HeadCommit,Detail:"Publish anyway; skipped checks remain unmeasured"})
+ if err!=nil {return err}
+ cur.PublishAnyway.At=event.At
+ cur.PublishAnyway.Words=fmt.Sprintf("Factory-Approval: %s @%s %s",event.ID,who,cur.HeadCommit)
+ }
+ return nil
 	})
 	if err != nil {
  var stale *store.StaleError
  if errors.As(err,&stale) {h.refuse(w,409,err.Error(),"stale","",nil,factory.JobState(it));return}
 		h.refuse(w, 409, err.Error(), "conflict", "", nil, factory.JobState(it))
 		return
-	}
-	if h.config.Record != nil {
-		_, err = h.config.Record.Append(r.Context(), record.Event{Kind: record.Approved, Job: it.ID, Handle: who, Commit: it.HeadCommit, Detail: "Publish anyway; skipped checks remain unmeasured"})
-		if h.failed(w, err) {
-			return
-		}
 	}
 	h.finish(w, h.seam.Answer(it.ID, true, factory.ChoiceTryOnceMore))
 }

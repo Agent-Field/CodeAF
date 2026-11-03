@@ -100,7 +100,11 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		// without the job's recorded approval, and a comment or a pull
 		// request carries its trailer as the body's last line.
 		if o.Record != nil {
-			trailer, err := o.Record.Trailer(ctx, it.ID)
+			trailer := ""
+ var err error
+ if factory.PublishedAnyway(it) && ValidTrailer(it.PublishAnyway.Words) && TrailerCommit(it.PublishAnyway.Words) == it.HeadCommit && TrailerHandle(it.PublishAnyway.Words) == it.PublishAnyway.DecidedBy {
+ trailer = it.PublishAnyway.Words
+ } else {trailer, err = o.Record.Trailer(ctx, it.ID)}
 			if err != nil {
 				return factory.StageResult{}, err
 			}

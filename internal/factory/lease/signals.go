@@ -51,6 +51,7 @@ const (
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
 type Signal struct {
+ PublishAnyway *factory.Approval `json:"publish_anyway,omitempty"`
 	Automatic *bool   `json:"automatic,omitempty"`
 	Budget    float64 `json:"budget,omitempty"`
 	ID        string  `json:"id,omitempty"`
