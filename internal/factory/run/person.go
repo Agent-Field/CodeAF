@@ -183,6 +183,10 @@ func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
 // nothing here starts a run: the job is queued for a worker to pull. Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if it.QKind == "cap" && factory.IsContinue(yes, words) {
+		ReleaseCap(it, now)
+		return nil
+	}
 	if it.QKind == factory.QKindSpendStopped {
 		if err := AnswerHeld(it, yes, now, words); err != nil {
 			return err
@@ -281,6 +285,16 @@ func repairMisfiledGate(s *factory.Stream) {
 	// State only: the step's finish time is kept, and its result and rounds stay.
 	ph.State = factory.PhaseDone
 	s.Cur++
+}
+
+// ReleaseCap takes down the budget question of a job no runner waits on and
+// queues it again: its step carries on from where the cap stopped it.
+func ReleaseCap(it *factory.Item, now time.Time) {
+	it.Question, it.QKind, it.Asking = "", "", nil
+	it.State = factory.StateQueued
+	if s := it.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
+		setPhaseState(&s.Phases[s.Cur], factory.PhaseRunning, now)
+	}
 }
 
 // KeepAnswer is an answer to a job no worker holds any more: it is kept for

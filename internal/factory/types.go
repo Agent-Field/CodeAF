@@ -869,15 +869,16 @@ type Event struct {
 	What string
 }
 
-// Ref is the item's short name: #123, or ci.
-//
-// AN ITEM WITH NO FORGE NUMBER IS NAMED BY THE FLOOR'S OWN ID. Work a chat or a
-// terminal put on the floor never had an issue number, and `#0` on every one of
-// those rows named nothing a person could say back; the store's id is the one
-// the chat's own sentence uses (`#<id> ... is on the factory floor`), so a row,
-// the peek and the item page say the number the conversation already said. A
-// forge item keeps its forge number, which is the one its repository uses.
+// Ref is the item's short display name: #123, job 21, or ci.
 func (it Item) Ref() string {
+	if it.Kind != KindCI && it.Num == 0 {
+		return "job " + itoa(it.ID)
+	}
+	return it.KeyRef()
+}
+
+// KeyRef preserves the short reference used by saved chat markers and selectors.
+func (it Item) KeyRef() string {
 	if it.Kind == KindCI {
 		return "ci"
 	}
