@@ -281,6 +281,10 @@ The `factory_item` card's thinking (`think strong`, `think cheap`, `default` for
 
 After your yes, the answer names the thinking the item was saved with, step by step (`thinking write strong, test strong`; `default` resets the changed steps to usual), and the steps that did not take it: `left as they were: plan cheap`. A budget or note alone says nothing about thinking. If another field changes but no step needs the requested thinking, the answer says `thinking unchanged`. A later turn's opening note lists thinking per running step when they differ (`thinking plan cheap, write strong`), one word when they agree, and nothing when none was set. A level other than cheap, strong or default is refused before any card, as `Invalid arguments: effort is one of cheap, strong, default, or left out.`
 
+## which model a cheap or strong step runs on — small work, checks model, effort models
+
+A factory step marked `cheap` opens on the **small work** model, and a step marked `strong` on the **checks** model: the same two rows the settings sheet already shows, so changing either changes the factory's cheap or strong steps from their next run. A model picked for the step, or for the whole job, wins over its effort. A step with no effort word runs on the job's model or the factory's default. With one model for every task, every step runs on that one model, whatever its effort.
+
 ## answer the factory_item card in the terminal — yes, keep it, say what to change, esc, the card never appeared
 
 In the terminal chat a `factory_item` call puts its card above the message box: a head that asks the question (`#12 · think strong?`), one row for each thing that would change (`thinking  write — → strong`, `budget  $5 → $8`, `note:`, `why:`), and two answers.
@@ -323,6 +327,20 @@ instructions verifies that work first. Publication rechecks the live PR facts;
 changed code, CI or feedback cannot reuse stale readiness approval. Marking ready
 never grants merge authority. The repository's separate auto-merge setting is
 the explicit opt-in for automatic merge.
+
+## mark a draft pull request ready for review
+
+A job's assignee can mark its open draft pull request ready from the job,
+using their own GitHub sign-in. A job with no assignee follows the same person
+rule as Merge. The PR immediately reads ready after GitHub confirms it; there
+is no wait for the next poll. This is an explicit human decision, with no
+model review, automatic retry or Undo window.
+
+A PR that is already ready, closed, or missing cannot be marked ready. If the
+job changed since you read it, read it again first. If the outcome is uncertain,
+check the PR before trying again. Marking ready removes the draft block from
+Merge; checks, approved commits, reviews and every other merge rule still apply.
+It does not merge the PR or enable auto-merge.
 
 ## merge a job's pull request — factory auto-merge when checks pass, or why it will not merge
 

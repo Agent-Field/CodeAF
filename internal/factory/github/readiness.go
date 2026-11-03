@@ -157,3 +157,32 @@ func (s *Source) readyOnce(ctx context.Context, it factory.Item) (factory.PullRe
 	}
 	return after, nil
 }
+
+// MarkReady is a person's explicit decision, using the job's own GitHub road.
+// Unlike automatic readiness it needs no model review and never retries or
+// waits for a follow read: the mutation itself confirms the head and draft.
+func (s *Source) MarkReady(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+	a, ok := s.api.(interface {
+		MarkDraftPullReady(context.Context, string, string, int, string) error
+	})
+	if !ok {
+		return factory.PullRequest{}, factory.ErrReadOnly
+	}
+	owner, name, ok := pullRepo(it)
+	if !ok {
+		return factory.PullRequest{}, factory.ErrNotOnSource
+	}
+	if !s.watching(owner + "/" + name) {
+		return factory.PullRequest{}, factory.ErrReadOnly
+	}
+	pr := it.PullRequest
+	if pr == nil || pr.Number <= 0 || pr.State != factory.PROpen || !pr.Draft {
+		return factory.PullRequest{}, fmt.Errorf("this job has no open draft pull request")
+	}
+	if err := a.MarkDraftPullReady(ctx, owner, name, pr.Number, pr.HeadSHA); err != nil {
+		return factory.PullRequest{}, err
+	}
+	ready := *pr
+	ready.Draft = false
+	return ready, nil
+}
