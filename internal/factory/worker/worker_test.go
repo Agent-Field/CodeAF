@@ -2,6 +2,9 @@ package worker_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -31,6 +34,8 @@ type rig struct {
 	run   *run.Runner
 	// record is the factory's record, where the service writes approvals.
 	record *record.Record
+	mirror *store.Store
+	seen   *reportLog
 }
 
 func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
@@ -62,7 +67,29 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 		t.Fatal(err)
 	}
 	handler := serve.New(seam, serve.Config{Address: "http://test", Store: st, Record: history, PullWait: 50 * time.Millisecond})
-	server := httptest.NewServer(handler)
+	seen := &reportLog{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body := ""
+		if req.Method == http.MethodPost {
+			body = peek(req)
+		}
+		captured := httptest.NewRecorder()
+		handler.ServeHTTP(captured, req)
+		if isReport(req) || strings.HasSuffix(req.URL.Path, "/done") {
+			seen.add(fmt.Sprintf("%s status=%d request=%s", req.URL.Path, captured.Code, body))
+		}
+		if strings.HasSuffix(req.URL.Path, "/heartbeat") && strings.Contains(captured.Body.String(), `"verb"`) {
+			var beat api.WorkerHeartbeat
+			if err := json.Unmarshal(captured.Body.Bytes(), &beat); err == nil {
+				seen.add(fmt.Sprintf("heartbeat signals=%+v", beat.Signals))
+			}
+		}
+		for key, values := range captured.Header() {
+			w.Header()[key] = values
+		}
+		w.WriteHeader(captured.Code)
+		_, _ = w.Write(captured.Body.Bytes())
+	}))
 	t.Cleanup(func() { server.Close(); handler.Close() })
 
 	mirror, err := store.Open(t.TempDir())
@@ -96,17 +123,25 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 				defer mu.Unlock()
 				creds[slot] = w.Credential()
 			},
-			Attach:      api.WorkerAttach{Machine: "laptop", Name: "laptop (pid 123)", Handle: "me", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
-			Runner:      r,
-			Mirror:      mirror,
-			LocalLease:  keepLocal,
+			Attach: api.WorkerAttach{Machine: "laptop", Name: "laptop (pid 123)", Handle: "me", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
+			Runner: r,
+			Mirror: mirror,
+			LocalLease: func(base string, held api.WorkerLease) {
+				if held.ID == "" {
+					local, err := mirror.Get(held.Job)
+					seen.add(fmt.Sprintf("worker release job=%d state=%s stream=%+v error=%v", held.Job, local.State, local.Stream, err))
+				}
+				if keepLocal != nil {
+					keepLocal(base, held)
+				}
+			},
 			Slots:       2,
 			ReportEvery: 20 * time.Millisecond,
 			BeatEvery:   20 * time.Millisecond,
 		})
 	}()
 	t.Cleanup(func() { cancel(); <-done })
-	return rig{base: server.URL, st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r, record: history}
+	return rig{base: server.URL, st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r, record: history, mirror: mirror, seen: seen}
 }
 
 func TestWorkerLocalReceiptFollowsPullHeartbeatAndRelease(t *testing.T) {
@@ -293,7 +328,9 @@ func TestAPauseAndResumeReachTheRunner(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the worker's runner never said paused")
+			it, _ := g.st.Get(id)
+			local, _ := g.mirror.Get(id)
+			t.Fatalf("the worker's runner never said paused: factory=%+v worker=%+v running=%t reports=%q", it.Stream, local.Stream, g.run.Running(id), g.seen.all())
 		}
 	}
 	if err := g.floor.Hold(id, false); err != nil {
