@@ -513,6 +513,13 @@ the protected-path gate then pauses safely. The stored unknown-list hold suffix
 remains `the plan names no files`; visible words describe the missing checkable
 list rather than claiming the plan names no files in prose.
 
+`factory.job.approval` keeps the latest settled decision, including its kind,
+actor and times, while later work or gates wait and after restarting the app.
+A later gate retains its own waiting step, `needs_you` and `can.approve`; the
+earlier decision never passes it. Beginning another approval replaces the single
+summary with that decision and its own undo window. Activity keeps the receipts.
+No method, parameter, reply field, error code or hello feature changes.
+
 `factory.activity` records automatic approvals and their publications with
 `actor: {kind: "factory"}`, an empty `handle`, and no actor name. A person's
 approval keeps `actor: {kind: "person", name: "@handle"}` and their handle.
