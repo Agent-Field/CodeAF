@@ -526,6 +526,7 @@ func (d draft) file(defaults bool) File {
 	for name, step := range d.steps {
 		if defaults {
 			base := f.Steps[name]
+			base.Label = step.Label
 			if step.wrotePrompt {
 				base.Prompt = step.Prompt
 				base.wrotePrompt = true

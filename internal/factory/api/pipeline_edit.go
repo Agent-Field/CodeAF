@@ -149,6 +149,7 @@ type PipelineEditKind struct {
 // no prompt. Locked steps are refused by the preview. InFile is false for a
 // step whose wording is a shipped default the file does not write.
 type PipelineEditStep struct {
+	Label string `json:"label,omitempty"`
 	Name   string `json:"name"`
 	Gate   bool   `json:"gate,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
@@ -213,7 +214,7 @@ func (s *PipelineEditSource) SetParsed(src pipeline.Source) {
 		s.Pipelines = append(s.Pipelines, PipelineEditKind{Kind: k.Kind, Steps: append([]string{}, k.Steps...), InFile: k.InFile})
 	}
 	for _, st := range src.Steps {
-		s.Steps = append(s.Steps, PipelineEditStep{Name: st.Name, Gate: st.Gate, Prompt: st.Prompt, Until: st.Until,
+		s.Steps = append(s.Steps, PipelineEditStep{Name: st.Name, Label: st.Label, Gate: st.Gate, Prompt: st.Prompt, Until: st.Until,
 			Max: st.Max, Kind: st.Kind, When: st.When, Effort: st.Effort, Fanout: st.Fanout, Who: st.Who, Locked: st.Locked, InFile: st.InFile})
 	}
 }

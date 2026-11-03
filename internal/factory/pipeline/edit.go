@@ -137,6 +137,7 @@ type EditOp struct {
 // step whose kind is check, gate or post, and any name the file lists under fixed. InFile is false for a step the file does not
 // define itself, whose wording is a shipped default.
 type StepView struct {
+	Label string
 	Name string
 	Gate bool
 	// Who is who a person step waits on; "" the job's person.
@@ -371,10 +372,10 @@ func lockedStep(f File, name string) bool {
 
 func stepView(f File, name string) StepView {
 	if factory.ApproveWord(name) {
-		return StepView{Name: name, Gate: true, Locked: true, InFile: true, Who: f.Steps[name].Who}
+		return StepView{Name: name, Label: f.Steps[name].Label, Gate: true, Locked: true, InFile: true, Who: f.Steps[name].Who}
 	}
 	s := f.Steps[name]
-	return StepView{Name: name, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who,
+	return StepView{Name: name, Label: s.Label, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who,
 		Until: s.Until, Max: s.Max, Locked: lockedStep(f, name),
 		InFile: s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
 }
