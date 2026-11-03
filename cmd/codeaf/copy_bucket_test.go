@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestCopyBucket_D3_TenAlternatingOriginsStayBoundedAndStable(t *testing.T) {
@@ -35,7 +36,14 @@ func TestCopyBucket_D3_TenAlternatingOriginsStayBoundedAndStable(t *testing.T) {
 				if err := os.MkdirAll(bucket, 0700); err != nil {
 					t.Fatal(err)
 				}
+				previous := origin
 				origin = filepath.Join(bucket, "01J0000000000000000000000A", "work")
+				if err := os.MkdirAll(origin, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := session.SaveMeta(filepath.Dir(origin), session.Meta{ID: "01J0000000000000000000000A", Owned: true, Workspace: origin, Origin: previous}); err != nil {
+					t.Fatal(err)
+				}
 			}
 		})
 	}
