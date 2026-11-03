@@ -121,6 +121,39 @@ func TestAppLazyQuietColdSweepBoundAndCoverage(t *testing.T) {
 	}
 }
 
+// A cold-sweep fixture must also reconcile a changed crew through the wire.
+// Drive one heartbeat directly so this exercises the poll without a timer.
+func TestAppLazyQuietRefreshPublishesChangedCrew(t *testing.T) {
+	b, run, read, _, _, rec := quietLazyRun(t, 1)
+	b.neededMembers(run, read, true)
+	run.read, run.inputs = read, b.crewInputs(run)
+	file, err := teamstore.Load(b.crewProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const name = "changed during cold sweep"
+	if err := teamstore.Update(b.crewProfile(), func(f *teamstore.File) error {
+		f.Teams[teamstore.Index(f.Teams, file.Teams[0].ID)].Name = name
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !b.crewRefresh(run) {
+		t.Fatal("changed crew was not reconciled")
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for i, event := range rec.events {
+		if event == appwire.EventCrewChanged {
+			changed := rec.data[i].(appwire.CrewChanged).Crew
+			if changed.ID == file.Teams[0].ID && changed.Name == name {
+				return
+			}
+		}
+	}
+	t.Fatal("changed crew was not published on the wire")
+}
+
 // B2/B4: existing crew holds are hot even when no engine was established.
 // Cold work is additional and the budget input is still shared once per pass.
 func TestAppLazyHeldMembersStayHotWithBoundedColdWork(t *testing.T) {
