@@ -7,6 +7,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// stepRerunLog is the saved action a resumed runner reports to the manager.
+const stepRerunLog = "Rerun from "
+
 // StepControlRefusal identifies a state conflict without changing its person-facing words.
 type StepControlRefusal string
 
@@ -53,6 +56,9 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		return StepControlRefusal("job budget reached; raise Budget before trying again")
 	}
 	if rerun {
+		if err := unchangedFollowRefusal(*it, s.Phases[index]); err != nil {
+			return err
+		}
 		it.Recovery = nil
 		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
@@ -63,6 +69,9 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		// round marks the stream begun, even when retrying the first step, so
 		// worker admission revives it without erasing spend or earlier results.
 		target := &s.Phases[index]
+		if previous.Result != nil && refusedCheckout(*previous.Result) != nil {
+			target.Result = previous.Result
+		}
 		target.Round = max(previous.Round+1, 1)
 		grantFreshLoop(it, target)
 		target.Rounds = append([]factory.RoundLine(nil), previous.Rounds...)
@@ -75,7 +84,14 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 			target.Carry = append([]string(nil), previous.Carry...)
 		}
 		if previous.Failure != nil && previous.Round > 0 {
-			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Failure.Detail, Rejected: true, At: previous.Failure.At, Started: previous.Started})
+			result := "failed"
+			switch previous.Failure.Code {
+			case factory.CodeStopped:
+				result = "stopped"
+			case factory.CodeMachineLost:
+				result = "interrupted"
+			}
+			factory.NoteRound(target, factory.RoundLinesMost, factory.RoundLine{Round: previous.Round, Chat: previous.Chat, Summary: previous.Failure.Detail, Rejected: result == "failed", Result: result, At: previous.Failure.At, Started: previous.Started})
 		}
 		it.State = factory.StateQueued
 		it.Failure = nil
@@ -98,7 +114,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 	s.Cur, s.Paused = index, false
 	it.Question, it.QKind, it.Asking = "", "", nil
 	it.Approval, it.StopUndo = nil, nil
-	said := map[bool]string{true: "Rerun from " + name, false: "Stopped step " + name}[rerun]
+	said := map[bool]string{true: stepRerunLog + name, false: "Stopped step " + name}[rerun]
 	if model != "" {
 		said += " on " + model
 	}

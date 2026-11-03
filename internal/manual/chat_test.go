@@ -38,6 +38,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
 		{"can codeaf use WSL", "running-commands-on-windows"},
 		{"Git Bash", "running-commands-on-windows"},
+		{"why did Defender block my command on Windows", "running-commands-on-windows"},
+		{"Windows refused to start the shell access denied", "running-commands-on-windows"},
+		{"Windows command line too long 32,767 characters", "running-commands-on-windows"},
 		// R4 and R3 keep command routes and explicit-choice remedies reachable.
 		{"gh api says not found on Windows", "running-commands-on-windows"},
 		{"CODEAF_BASH does not exist", "running-commands-on-windows"},
@@ -4791,5 +4794,21 @@ func TestSyncOffManualQuotesExactSentences(t *testing.T) {
 			}
 			t.Fatalf("%q did not retrieve %q on %s within %d results", probe.asked, probe.heading, probe.page, DefaultResults)
 		})
+	}
+}
+
+func TestFactoryBriefLaterRequestsReachInputs(t *testing.T) {
+	const heading = "Job Brief inputs"
+	for _, asked := range []string{"job brief later requests answers saved notes", "job brief inputs later requests"} {
+		sections := Chat().Search(asked, DefaultResults)
+		found := false
+		for _, section := range sections {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach %q", asked, heading)
+		}
 	}
 }

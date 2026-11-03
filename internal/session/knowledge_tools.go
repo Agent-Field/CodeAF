@@ -137,7 +137,7 @@ func (a *Agent) knowledgeTools() []bare.Tool {
 				return err.Error(), true, nil
 			}
 			vault := a.Knowledge()
-			if vault == nil || !vault.Enabled() {
+			if vault == nil {
 				return "Knowledge is not enabled. The user can create a vault in Memory.", false, nil
 			}
 			hits, err := vault.Search(p.Query, 8)
@@ -180,7 +180,7 @@ func (a *Agent) knowledgeTools() []bare.Tool {
 				return err.Error(), true, nil
 			}
 			vault := a.Knowledge()
-			if vault == nil || !vault.Enabled() {
+			if vault == nil {
 				return "Knowledge is not enabled. The user can create a vault in Memory.", false, nil
 			}
 			page, err := vault.Read(p.ID)

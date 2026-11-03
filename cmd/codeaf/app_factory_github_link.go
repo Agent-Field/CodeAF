@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 )
@@ -45,16 +46,28 @@ type githubLink struct {
 	out         chan struct{}      // the ask that is out, or nil
 	asked, next time.Time          // when it began; when the next may begin
 	pause       time.Duration
+	handed      uint64 // the app's GitHub key this answer came from ([githubKeyHanded])
+}
+
+// githubKeyHanded counts how often the app has handed over or taken back its
+// GitHub key, 0 outside the app.
+func githubKeyHanded() uint64 {
+	if source := config.AppCredentialSource(); source != nil {
+		return source.Handed("github")
+	}
+	return 0
 }
 
 // rememberGitHub hangs a githubLink over seam's GitHub door, and forgets the
 // answer whenever the person connects GitHub again, so a new account is asked
-// for at once.
+// for at once. In the app a connection is a key handed over rather than a call
+// of this door, by setup or by keys.set, so every read also compares the key
+// ([githubLink.noticeKey]).
 func rememberGitHub(ctx context.Context, root string, spawn func(string, func()) bool, seam factory.Seam) factory.Seam {
 	if seam.GitHub == nil {
 		return seam
 	}
-	l := &githubLink{ctx: ctx, path: filepath.Join(root, githubLinkFile), spawn: spawn, ask: seam.GitHub, pause: githubLinkFresh}
+	l := &githubLink{ctx: ctx, path: filepath.Join(root, githubLinkFile), spawn: spawn, ask: seam.GitHub, pause: githubLinkFresh, handed: githubKeyHanded()}
 	if data, err := os.ReadFile(l.path); err == nil {
 		_ = json.Unmarshal(data, &l.link)
 	}
@@ -72,6 +85,7 @@ func rememberGitHub(ctx context.Context, root string, spawn func(string, func())
 }
 
 func (l *githubLink) read(ctx context.Context) (factory.GitHubLink, error) {
+	l.noticeKey()
 	if link := l.known(); link.Login != "" {
 		l.refresh()
 		return link, nil
@@ -99,6 +113,24 @@ func (l *githubLink) forget() {
 	defer l.mu.Unlock()
 	_ = os.Remove(l.path)
 	l.link, l.out, l.next, l.pause = factory.GitHubLink{}, nil, time.Time{}, githubLinkFresh
+}
+
+// noticeKey forgets the answer when the app's GitHub key changed since it was
+// kept: the person connected or disconnected, and no wait for an old answer
+// stands. Another provider's key changes nothing.
+func (l *githubLink) noticeKey() {
+	if l.swapHanded(githubKeyHanded()) {
+		l.forget()
+	}
+}
+
+// swapHanded keeps the key's state and says whether it changed.
+func (l *githubLink) swapHanded(handed uint64) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	changed := handed != l.handed
+	l.handed = handed
+	return changed
 }
 
 // refresh starts an ask unless one is out or the last one says to wait, and

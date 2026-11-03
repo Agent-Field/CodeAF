@@ -103,6 +103,10 @@ func TestDaemonOfANonEngineIsUnavailable(t *testing.T) {
 
 // Two engine builds never share a daemon: the socket is named after the binary.
 func TestSocketIsKeyedToTheEngineBinary(t *testing.T) {
+	// Keep the home address short enough to assert its build-named basename too.
+	if runtime.GOOS != "windows" {
+		t.Setenv("TMPDIR", "/tmp")
+	}
 	base := filepath.Dir(testSocket(t))
 	t.Setenv("CODEAF_HOME", base)
 	t.Setenv("LOCALAPPDATA", base)

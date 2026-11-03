@@ -547,11 +547,23 @@ const appFakeTranscript = "/state/v3/places/proj/5e55a0f1/transcript.jsonl"
 //
 // Every fake backend keeps its own app file, because every fake agent has the
 // same id and a budget one test gave it must not reach the next.
+//
+// A rig given no opener refuses every open, as a host that cannot be reached
+// would. Background work (the brief's writer holding a job's chat) can open a
+// conversation in any rig, and a nil opener would panic the test binary.
 func newFakeBackend(rec appwire.Emitter, open appOpener) *appBackend {
+	if open == nil {
+		open = refuseAppOpen
+	}
 	backend := newAppBackend(rec, open)
 	backend.mint = func(string) (string, error) { return appFakeTranscript, nil }
 	backend.state = &appState{path: filepath.Join(os.TempDir(), "codeaf-app-test-"+strconv.Itoa(os.Getpid()), strconv.FormatUint(appFakeStates.Add(1), 10), appStateName)}
 	return backend
+}
+
+// refuseAppOpen is the opener of a rig that was given none.
+func refuseAppOpen(appOpenAsk) (*appConn, error) {
+	return nil, appwire.Errorf(appwire.CodeUnreachable, "this test backend opens no conversations")
 }
 
 // appFakeStates numbers the fake backends' app files.

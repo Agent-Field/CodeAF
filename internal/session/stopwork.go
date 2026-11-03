@@ -57,6 +57,7 @@ func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 		graph.mu.Unlock()
 	}
 	a.mu.Unlock()
+	a.cancelJobKnowledge()
 	if memoryStop != nil {
 		memoryStop()
 	}

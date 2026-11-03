@@ -9,9 +9,10 @@ import (
 
 // DaySpend is the runner's figure for today. paid is what this process
 // recorded today, by item id. An item in paid counts that figure instead of
-// its whole stream, even when the figure is zero. A nil map means the caller
-// has no ledger of its own, so an item that moved, started or ended today
-// counts its whole stream spend. Triage reads are not added.
+// its whole stream, even when the figure is zero. Any other item that moved,
+// started or ended today counts its whole stream spend, which can be more than
+// today's: the rail would rather stop early than miss money a restart forgot.
+// Triage reads are not added.
 func DaySpend(items []Item, paid map[int]float64, now time.Time) float64 {
 	y, mo, d := now.Date()
 	isToday := func(t time.Time) bool {
@@ -60,11 +61,10 @@ func AddChatSpend(it *Item, usd float64) {
 }
 
 // shiftSince is the handover a real floor can fill from its items. Spent is
-// only streams that started after the window opened. SpentToday is [DaySpend]
-// with no process ledger, so a stream that started earlier still counts today
-// when the item moved today.
+// only streams that started after the window opened. SpentToday is
+// [placedToday].
 func shiftSince(items []Item, started, now time.Time) Shift {
-	sh := Shift{Since: started, SpentToday: DaySpend(items, nil, now)}
+	sh := Shift{Since: started, SpentToday: placedToday(items, now)}
 	for _, it := range items {
 		if it.Created.After(started) {
 			sh.Arrived++
@@ -91,6 +91,23 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 	}
 	sh.MergedToday, sh.MergedWeek = MergedCounts(items, now)
 	return sh
+}
+
+// placedToday is the spend placed ([SpentIn]) on now's calendar day, in now's
+// location. A job keeps one total, so a job that began on an earlier day counts
+// nothing today, even if it spent today: this figure can be low but never claims
+// more than today's spend. Triage reads are not added.
+func placedToday(items []Item, now time.Time) float64 {
+	y, m, d := now.Date()
+	start := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+	end := start.AddDate(0, 0, 1)
+	var sum float64
+	for _, it := range items {
+		if usd, in := SpentIn(it, start, end); in {
+			sum += usd
+		}
+	}
+	return sum
 }
 
 // DailySpent is what items spent on runs whose job last changed today, in
@@ -202,6 +219,19 @@ func handledSince(it Item, started time.Time) (int, time.Time) {
 	return n, at
 }
 
+// LedgerName is how the spend ledger names the job a call was spent for:
+// `owner/name#number`, lower-cased like every repository key, the same on
+// this machine's floor and on a worker's mirror of the job. A CI item's
+// reference is the bare word "ci", so it is named by its floor id as well
+// (`owner/name#ci-<id>`): two CI jobs of one repository are two jobs.
+func LedgerName(it Item) string {
+	ref := it.Ref()
+	if it.Kind == KindCI {
+		ref = "#ci-" + itoa(it.ID)
+	}
+	return strings.ToLower(RepoOf(it)) + ref
+}
+
 // SpendDaysMax is the most calendar days one spend read may span.
 const SpendDaysMax = 366
 
@@ -235,6 +265,81 @@ func SpentIn(it Item, start, end time.Time) (float64, bool) {
 	return usd, usd > 0 && !at.Before(start) && at.Before(end)
 }
 
+// ModelUse is one model's priced calls on a job. It is recorded as each call
+// is priced. A job from before the field has none, and its spend is not
+// assigned to Item.Model or a step's model.
+type ModelUse struct {
+	Model  string  `json:"model"`
+	USD    float64 `json:"usd"`
+	Calls  int     `json:"calls,omitempty"`
+	Input  int64   `json:"input,omitempty"`
+	Output int64   `json:"output,omitempty"`
+}
+
+// AddModelUse books one priced call on the model that answered, beside the
+// dollars [AddChatSpend] or the run already added. An empty model or a cost
+// of nothing is not a split: the dollars stay untied. The row lives on the
+// run while there is one, and on the chat's split before any run.
+func AddModelUse(it *Item, model string, usd float64, calls int, in, out int64) {
+	model = strings.TrimSpace(model)
+	if it == nil || model == "" || usd <= 0 {
+		return
+	}
+	if calls < 0 {
+		calls = 0
+	}
+	if in < 0 {
+		in = 0
+	}
+	if out < 0 {
+		out = 0
+	}
+	row := ModelUse{Model: model, USD: usd, Calls: calls, Input: in, Output: out}
+	if it.Stream != nil {
+		it.Stream.Models = putModelUse(it.Stream.Models, row)
+		return
+	}
+	it.ChatModels = putModelUse(it.ChatModels, row)
+}
+
+// ModelUses is the model split of the job's spend: the run's while it has
+// one, and the chat's before any run.
+func ModelUses(it Item) []ModelUse {
+	if it.Stream != nil {
+		return it.Stream.Models
+	}
+	return it.ChatModels
+}
+
+// JoinModelUses adds b's rows onto a copy of a, one row per model.
+func JoinModelUses(a, b []ModelUse) []ModelUse {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	out := append([]ModelUse(nil), a...)
+	for _, row := range b {
+		out = putModelUse(out, row)
+	}
+	return out
+}
+
+func putModelUse(rows []ModelUse, row ModelUse) []ModelUse {
+	if row.Model == "" || (row.USD <= 0 && row.Calls <= 0 && row.Input <= 0 && row.Output <= 0) {
+		return rows
+	}
+	for i := range rows {
+		if rows[i].Model != row.Model {
+			continue
+		}
+		rows[i].USD += row.USD
+		rows[i].Calls += row.Calls
+		rows[i].Input += row.Input
+		rows[i].Output += row.Output
+		return rows
+	}
+	return append(rows, row)
+}
+
 // SpentAt is the instant a job's whole spend ([JobSpent]) is placed at: its
 // run's start, or its creation when it has no run that started.
 func SpentAt(it Item) time.Time {
@@ -242,4 +347,13 @@ func SpentAt(it Item) time.Time {
 		return it.Stream.Started
 	}
 	return it.Created
+}
+
+// AddMemorySpend books optional learning in the total and identifies its share.
+func AddMemorySpend(it *Item, usd float64) {
+	if it == nil || usd <= 0 {
+		return
+	}
+	AddChatSpend(it, usd)
+	it.MemorySpent += usd
 }
