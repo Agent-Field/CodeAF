@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Factory steps can carry a readable label without changing their identity
-pr: 0
+pr: 2307
 surface: [engine]
 invalidates:
   - "Was true: a step's visible name could only be derived from its id. Is true now: an optional label supplies its readable name while the id remains unchanged."
