@@ -338,7 +338,7 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 // profileApprovalString distinguishes an absent preference from a failed read.
 // Live gates must keep their last policy when the profile cannot be read.
 func profileApprovalString(profileDir, key string) (string, error) {
-	values, err := readProfileConfig(profileDir)
+	values, err := readProfileConfigStrict(profileDir)
 	if err != nil {
 		return "", err
 	}

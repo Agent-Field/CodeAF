@@ -32,3 +32,8 @@ saved-head metadata remain available.
 Explicit replacement clears live chats and shared preferences even when rejoining
 the same account. Durable cleanup progress and the destination device distinguish
 an unfinished reset from an installed replacement, preserving later writes.
+
+Ordinary file-memo readers retain their missing-file fallback. Profile writes,
+daily spending authority, preference/key sharing and live tool-policy reads use
+strict reads: unreadable existing configuration cannot be overwritten or treated
+as an absent budget or policy. Missing profiles still use their normal defaults.

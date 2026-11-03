@@ -32,7 +32,7 @@ func PreferenceKey(key string) bool {
 // ReadPreferences reads stored values alone: operator environment pins and
 // project settings never travel to another computer (C30.3).
 func ReadPreferences(dir string) (map[string]string, error) {
-	held, err := readProfileConfig(dir)
+	held, err := readProfileConfigStrict(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func ObserveSyncedPreferences(dir string, changed func([]string)) func() {
 // PreferenceTime reads the setting's edit clock, including a removal. Older
 // profiles have no clocks; their file time is the only available evidence.
 func PreferenceTime(dir, key string) time.Time {
-	held, err := readProfileConfig(dir)
+	held, err := readProfileConfigStrict(dir)
 	if err != nil {
 		return time.Time{}
 	}

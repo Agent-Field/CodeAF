@@ -3670,7 +3670,10 @@ func knownDocumentEngine(engine string) bool {
 // absent setting uses YOLO; an unrecognised persisted value still asks, so a
 // garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
-	values, _ := readProfileConfig(profileDir)
+	values, err := readProfileConfigStrict(profileDir)
+	if err != nil {
+		return "prompt"
+	}
 	return toolApprovalMode(values, DefaultToolApprovalMode)
 }
 
@@ -3700,7 +3703,7 @@ func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
 	} else if found {
 		return project.ResolveString(profileDir, KeyToolApprovalMode)
 	}
-	values, err := readProfileConfig(profileDir)
+	values, err := readProfileConfigStrict(profileDir)
 	if err != nil {
 		return "", err
 	}

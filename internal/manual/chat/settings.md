@@ -203,3 +203,15 @@ A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
 setting. Turn automatic learning on with the shared Memory setting.
+
+## Unreadable profile settings and saved spending limits
+
+If an existing `config.json` cannot be read, changing a setting refuses with
+`write config: preserve existing file:` followed by the read error. The file is
+left unchanged. Daily spending-limit reads return the read error instead of
+substituting the default limit. Restore read access to resume these operations.
+A missing file still uses new-profile defaults.
+
+Preference and saved-provider-key sharing also refuses unreadable profile data.
+Tool approval gates keep a read error or ask for approval rather than treating
+an unreadable saved policy as permission to run tools automatically.
