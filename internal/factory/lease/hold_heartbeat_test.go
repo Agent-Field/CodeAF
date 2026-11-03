@@ -2,6 +2,8 @@ package lease_test
 
 import (
 	"testing"
+ "errors"
+ "github.com/Agent-Field/codeaf/internal/factory"
 
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 )
@@ -39,4 +41,27 @@ func TestHeartbeatRepeatsWantedHoldAndResumeSupersedesIt(t *testing.T) {
 	if err != nil || len(signals) != 0 {
 		t.Fatalf("resume kept an older hold: %+v, %v", signals, err)
 	}
+}
+
+func TestStoppedJobNeverReceivesRepeatedHold(t *testing.T) {
+ for _, live := range []bool{false, true} {
+  name := "drain"
+  if live { name = "heartbeat" }
+  t.Run(name, func(t *testing.T) {
+   f := setup(t)
+   it, held := f.running(t)
+   doors := lease.NewDoors(f.desk)
+   if err := doors.Hold(it.ID, true); err != nil { t.Fatal(err) }
+   // Preserve the old lease and pause to model a Stop record observed before revocation.
+   if err := f.store.Update(it.ID, func(cur *factory.Item) error { factory.MarkPersonStopped(cur); return nil }); err != nil { t.Fatal(err) }
+   if err := doors.Hold(it.ID, true); !errors.Is(err, factory.ErrPersonStopped) { t.Fatalf("repeated hold accepted Stop: %v", err) }
+   for n := 0; n < 3; n++ {
+    drain := f.desk.Drain
+    if live { drain = f.desk.DrainLive }
+    signals, err := drain(held.ID, held.Worker)
+    if err != nil { t.Fatal(err) }
+    for _, s := range signals { if s.Verb == lease.SignalHold { t.Fatalf("drain %d delivered hold after Stop: %+v", n, signals) } }
+   }
+  })
+ }
 }
