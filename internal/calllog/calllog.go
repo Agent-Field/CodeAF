@@ -92,8 +92,8 @@ const (
 // reached an endpoint says nothing about tokens, and a zero in that place would
 // be a figure somebody could read as a measurement.
 type Record struct {
- // GenerationID names the provider receipt, including for helper calls.
- GenerationID string `json:"generation_id,omitempty"`
+	// GenerationID names the provider receipt, including for helper calls.
+	GenerationID string `json:"generation_id,omitempty"`
 	// Time is when this row was written, RFC3339 with milliseconds: the moment
 	// an attempt went out on a start row, the moment it came back on an end row.
 	Time string `json:"ts"`

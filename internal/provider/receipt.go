@@ -203,43 +203,45 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		model = served
 	}
 	result := Reconciled{
-		Tag: callTag(ctx),
+		Tag:    callTag(ctx),
 		Billed: Billed{Node: callNode(ctx), Model: model, Billing: c.answeredBilling(traces...)},
 		Reason: strings.TrimSpace(reason),
 		Hedged: hedgeLaneFrom(ctx) != "",
 	}
 	if response != nil {
 		result.Ref = canonicalGenerationID(response.ID)
- result.GenerationID = result.Ref
+		result.GenerationID = result.Ref
 	}
 	// Retain measured interim usage if the final receipt cannot be recovered.
- // The fallback and final receipt use the same sink, so only one can be banked.
- if !bankedUsage && response != nil && response.Usage != nil {
-  original := sink
-  usage := *response.Usage
-  sink = func(answer Reconciled) {
-   if !answer.Found {
-    answer.PromptTokens = usage.PromptTokens
-    answer.CompletionTokens = usage.CompletionTokens
-    answer.CachedTokens = usage.CacheReadTokens()
-    if usage.Cost != nil { answer.Cost = *usage.Cost }
-    answer.Found = !answer.Billed.Empty()
-    answer.Interim = answer.Found
-    answer.PriceMissing = usage.Cost == nil
-   }
-   original(answer)
-  }
- }
- // A direct service has no generation route; retain its measured usage only.
- if c.config.Direct {
-  if !bankedUsage && response != nil && response.Usage != nil {
-   sink(result)
-  } else if finalReceiptsFrom(ctx) && answerBytes > 0 {
-   sink(result)
-  }
-  handle.unknown()
-  return
- }
+	// The fallback and final receipt use the same sink, so only one can be banked.
+	if !bankedUsage && response != nil && response.Usage != nil {
+		original := sink
+		usage := *response.Usage
+		sink = func(answer Reconciled) {
+			if !answer.Found {
+				answer.PromptTokens = usage.PromptTokens
+				answer.CompletionTokens = usage.CompletionTokens
+				answer.CachedTokens = usage.CacheReadTokens()
+				if usage.Cost != nil {
+					answer.Cost = *usage.Cost
+				}
+				answer.Found = !answer.Billed.Empty()
+				answer.Interim = answer.Found
+				answer.PriceMissing = usage.Cost == nil
+			}
+			original(answer)
+		}
+	}
+	// A direct service has no generation route; retain its measured usage only.
+	if c.config.Direct {
+		if !bankedUsage && response != nil && response.Usage != nil {
+			sink(result)
+		} else if finalReceiptsFrom(ctx) && answerBytes > 0 {
+			sink(result)
+		}
+		handle.unknown()
+		return
+	}
 	// NO ID MEANS NO REQUEST. Text still proves that the call got somewhere and
 	// may be charged, so its missing price is said; without text there is no
 	// generation and nothing honest to count.
@@ -255,7 +257,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		attemptID = traces[0].attemptID
 	}
 
- work := receiptWork{result: result, sink: sink, base: base, attempt: handle, requirePrice: finalReceiptsFrom(ctx), usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
+	work := receiptWork{result: result, sink: sink, base: base, attempt: handle, requirePrice: finalReceiptsFrom(ctx), usage: telemetry.CaptureUsageRecorderWithPresence(telemetry.UsageDimensions{
 		RoutingProvider: c.usageRoutingProvider(base),
 		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
 		AccountingSource: "provider", ReceiptID: usageReceiptID(base, result.Ref, attemptID),

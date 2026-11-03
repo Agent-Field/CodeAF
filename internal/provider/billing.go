@@ -45,8 +45,8 @@ import (
 // have to re-derive it: the same [WithCallNode] the call log is keyed by names
 // the work, and a call made without one is spend nobody can file.
 type Billed struct {
- // GenerationID identifies the provider receipt for this physical attempt.
- GenerationID string
+	// GenerationID identifies the provider receipt for this physical attempt.
+	GenerationID string
 	// Node is what [WithCallNode] named, empty when nothing did.
 	Node string
 	// Model is who actually served the call — the rung a panel picked or an
@@ -82,12 +82,12 @@ type BillingSink func(Billed)
 // Found says usable measured figures exist; Interim distinguishes the fallback.
 // PriceMissing says those interim figures did not include a monetary charge.
 type Reconciled struct {
- // Tag identifies the purpose of the original call.
- Tag string
- // Interim marks measured usage retained when a final receipt was unavailable.
- Interim bool
- // PriceMissing distinguishes token-only interim usage from an explicit zero price.
- PriceMissing bool
+	// Tag identifies the purpose of the original call.
+	Tag string
+	// Interim marks measured usage retained when a final receipt was unavailable.
+	Interim bool
+	// PriceMissing distinguishes token-only interim usage from an explicit zero price.
+	PriceMissing bool
 	Billed
 	// Ref is the provider's generation id, and is empty when the stream never
 	// named the call well enough for a receipt to be requested.
@@ -265,7 +265,7 @@ func (c *Client) bankBilledUsage(ctx context.Context, model string, response *ai
 		model = served
 	}
 	billed := Billed{
- GenerationID: canonicalGenerationID(response.ID),
+		GenerationID:     canonicalGenerationID(response.ID),
 		Node:             callNode(ctx),
 		Model:            model,
 		PromptTokens:     response.Usage.PromptTokens,

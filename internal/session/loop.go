@@ -4424,8 +4424,8 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // is not a call), whether this was a step of the conversation, and whether its
 // money arrived too late to belong to the turn now running.
 type bankedCall struct {
- generationID string
- unpriced bool
+	generationID string
+	unpriced     bool
 	// run is captured from the call's immutable execution context, never the current turn.
 	run    string
 	remote *remoteUsage
@@ -4546,11 +4546,11 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		return
 	}
 	used := Usage{
-		Input:   receipt.PromptTokens,
- CacheRead: receipt.CachedTokens,
-		Output:  receipt.CompletionTokens,
-		CostUSD: receipt.Cost,
-		Calls:   1,
+		Input:     receipt.PromptTokens,
+		CacheRead: receipt.CachedTokens,
+		Output:    receipt.CompletionTokens,
+		CostUSD:   receipt.Cost,
+		Calls:     1,
 	}
 	lane := laneFacts{Hedged: receipt.Hedged}
 	if receipt.Hedged {
@@ -4561,8 +4561,12 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		lane.Waste = receipt.Cost
 	}
 	price := usagePriceReceipt
-	if receipt.Interim { price = usagePriceProvider }
- if receipt.PriceMissing { price = "" }
+	if receipt.Interim {
+		price = usagePriceProvider
+	}
+	if receipt.PriceMissing {
+		price = ""
+	}
 	a.bank(bankedCall{
 		used: used, model: receipt.Model, lane: lane, ledger: true,
 		late: true, unpriced: receipt.PriceMissing, reconciled: !receipt.Interim, role: receipt.Tag, generationID: receipt.Ref,
