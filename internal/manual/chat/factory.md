@@ -717,20 +717,23 @@ hold back an automatic write sooner. A requested retry still bypasses this guard
 
 ## budget reached — yes, raise the cap, next budget and stop
 
-When a job reaches its budget, the question names its current budget, what it
-spent, and the next absolute budget: `budget of $0.01 reached · $0.01 spent ·
+When a job reaches its budget across all its runs, the question names its
+current budget, job total, and next absolute budget: `budget of $0.01 reached · $0.01 job total spent ·
 raise it to $5, or stop?`. Yes or continue raises the cap to that $5 total;
 the desktop's raise button at $5 does the same. It does not add $5 to the cap.
 
 The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
-spending. If a round spent $5.25, the next budget is $10 even when the old cap
+spending. If the job has spent $5.25, the next budget is $10 even when the old cap
 was $0.01. Once spending reaches $30, double the current cap, repeatedly if
 needed, until it is above spend. A $30 cap with $31 spent offers $60.
 Saved questions on older jobs can keep their old words, but yes now
 uses this same rule.
 
 The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
-Other amounts are refused. Stop keeps the recorded spend and work.
+Other amounts are refused. A raise in Auto or Manual must exceed the job total
+to resume work. A budget at or below that total keeps work held and names the
+total and budget in the question or refusal. No automatic decision raises it;
+your yes or continue chooses the next budget. Stop keeps recorded spend and work.
 
 ## Why does Spending show Factory AI — the third part of today's money
 
@@ -752,8 +755,14 @@ person; older receipts without those identities cannot accept late usage.
 
 The job wire keeps `cost` as the current run's cost and adds optional
 `lifetime_cost` for all known spending on the job. Queue jobs carry the same
-field. Step costs stay unchanged. Budgets still use only the current run;
-this remains deliberate pending the owner's ruling on lifetime budgets.
+field. The job budget compares `lifetime_cost` with the cap, including earlier
+runs. For example, $5.25 on the first run plus $1 on a rerun reaches $6.25 of
+a $6 budget. Start, Carry on, Rerun, Start over and Bring back cannot reset
+this limit: work waits for you to raise the budget above the job total.
+A job already at its cap asks before its first step spends anything.
+Step costs and attempt limits stay unchanged. A pipeline's `default_budget`
+supplies this same job budget; `start.max_cost` still governs intake.
+Model selection, including Pareto routing, does not raise the budget.
 
 Spending by repository and model places the whole known lifetime on one day:
 the latest run's start day, or the job's creation day when no start remains.
