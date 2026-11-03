@@ -193,6 +193,7 @@ func FromItem(it factory.Item) Job {
 	// THE JOB'S COST IS EVERYTHING DONE FOR IT: its run's, or before any run
 	// what its chat spent ([factory.JobSpent]).
 	j.Cost = factory.JobSpent(it)
+	j.LifetimeCost = factory.JobLifetimeSpent(it)
 	j.Scout = fromScout(it)
 	if st := it.Stream; st != nil {
 		j.Step = &StepAt{Index: st.Cur, Count: len(st.Phases)}
@@ -521,6 +522,10 @@ func ToItem(j Job) factory.Item {
 		it.Failure = failureItem(f)
 	}
 	it.Stages, it.Stream = unsteps(j)
+	if it.Stream == nil {
+		it.ChatSpent = j.Cost
+	}
+	it.SpentBefore = max(0, j.LifetimeCost-j.Cost)
 	it.Scout = toScout(j.Scout)
 	unquestions(&it, j.Questions)
 	return it

@@ -237,6 +237,9 @@ func (r *Runner) Launch(id int) error {
 		it.PublishError = ""
 		it.Question, it.QKind = "", ""
 		it.Proof, it.Policy = nil, nil
+		if it.Stream != nil && begun(it.Stream) {
+			factory.ClearJobRun(it)
+		}
 		it.Stream = freshStream(it, now)
 		loopSay(it, now, "said", "queued")
 		loopSay(it, now, "fail", unmade)
