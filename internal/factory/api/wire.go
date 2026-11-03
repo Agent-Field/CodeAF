@@ -1084,6 +1084,7 @@ type ScoutFile struct {
 
 // LogLine is one line of a run's grain (desk).
 type LogLine struct {
+	Kind  string    `json:"kind,omitempty"`
 	At    time.Time `json:"at"`
 	Glyph string    `json:"glyph,omitempty"`
 	Tone  string    `json:"tone,omitempty"`
