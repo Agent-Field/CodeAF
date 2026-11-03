@@ -151,7 +151,7 @@ func TestLocalNewLiftsChips(t *testing.T) {
 	}
 }
 
-func TestLocalNewPreservesAskPunctuation(t *testing.T) {
+func TestLocalNewCleansLiftedSeparators(t *testing.T) {
 	for _, tc := range []struct {
 		words string
 		want  string
