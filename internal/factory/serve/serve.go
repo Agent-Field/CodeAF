@@ -410,13 +410,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" || r.URL.Path == "/v1/runners/attach" {
 		defer h.machineEvents()
 	}
-	// Expiry precedes snapshot reads so the first response already shows Needs you.
-	if h.workers != nil && h.workers.desk != nil {
-		if _, err := h.leases(); h.failed(w, err) {
-			return
+	// Browsing observes stored jobs. Worker pulls and explicit writes own recovery.
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if h.workers != nil && h.workers.desk != nil {
+			if _, err := h.workers.desk.Live(); h.failed(w, err) { return }
 		}
+		h.settleJobs(r.Method == http.MethodPost)
 	}
-	h.settleJobs(r.Method == http.MethodPost)
 	h.idempotent(w, r)
 }
 

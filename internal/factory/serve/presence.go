@@ -20,12 +20,12 @@ type machineRow struct {
 }
 
 // leases is the live holds, or none when this handler has no claims desk.
-// A read reaps expired holds the same way a pull does.
+// Observation leaves expired holds for the worker lifecycle to recover.
 func (h *Handler) leases() ([]lease.Lease, error) {
 	if h.workers == nil || h.workers.desk == nil {
 		return nil, nil
 	}
-	return h.workers.desk.Live()
+	return h.workers.desk.Snapshot()
 }
 
 func (h *Handler) clock() time.Time {

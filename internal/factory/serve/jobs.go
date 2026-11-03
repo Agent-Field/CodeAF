@@ -1005,7 +1005,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}{h.factory, a, a.UndoUntil})
 }
 
-// settleJobs is run at deadlines, before reads and after a restart. Consent is
+// settleJobs is run at deadlines and on lifecycle writes. Consent is
 // locked across processes so two servers cannot open the same decision twice.
 func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if h.config.Store == nil {
