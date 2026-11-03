@@ -641,7 +641,7 @@ func askAfterLifting(words, rest string) string {
 	if rest == strings.TrimSpace(words) {
 		return strings.TrimSpace(rest)
 	}
-	rest = liftedAskSeparators.ReplaceAllString(rest, "")
+	rest = liftedAskSeparators.ReplaceAllString(strings.TrimSpace(rest), "")
 	return strings.TrimRightFunc(rest, func(r rune) bool {
 		return unicode.IsSpace(r) || r == ',' || r == ';' || r == ':'
 	})
