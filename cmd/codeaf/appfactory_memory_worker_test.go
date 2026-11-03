@@ -396,6 +396,11 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 						t.Fatalf("Resume started memory before a finished turn: %d -> %d", before, got)
 					}
 					finishLearning()
+					if end == "pause resume slow" {
+						// Observe after the final progress lines have reached capture,
+						// rather than relying on the transient zero before that scan.
+						time.Sleep(3 * time.Second)
+					}
 					until := time.Now().Add(15 * time.Second)
 					for {
 						snapshot, err = knowledge.Open(profile).Snapshot()
