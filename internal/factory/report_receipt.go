@@ -3,9 +3,16 @@ package factory
 import "time"
 
 // WorkerReportReceipt records only an opaque request digest, never credentials,
-// payloads or machine-local paths. It is not writable through worker reports.
+// payloads or machine-local paths. Machine and Handle bind late usage to its
+// original worker after a new run clears or replaces the worktree owner.
+// It is not writable through worker reports.
 type WorkerReportReceipt struct {
+	// Archived means this receipt belongs to work cleared from the job.
+	Archived       bool `json:",omitempty"`
 	Digest         string
+	Lease          string `json:",omitempty"`
+	Machine        string `json:",omitempty"`
+	Handle         string `json:",omitempty"`
 	At             time.Time
 	AdditionalCost float64 `json:",omitempty"`
 }

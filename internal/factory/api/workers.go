@@ -1,6 +1,7 @@
 package api
 
 import (
+	"maps"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -50,6 +51,11 @@ type WorkerAttach struct {
 	OS              string          `json:"os,omitempty"`
 	CodeafVersion   string          `json:"codeaf_version,omitempty"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned,omitempty"`
+	// Needs is a runner state word naming what this worker lacks before it
+	// can run a step, such as [RunnerNeedsProvider]; empty when it lacks
+	// nothing. The factory leases nothing to a worker that needs something,
+	// and its runner list shows that state instead of idle.
+	Needs string `json:"needs,omitempty"`
 }
 
 // WorkerAttached returns the credential only at registration, so reads of
@@ -64,8 +70,9 @@ type WorkerAttached struct {
 	Slots int `json:"slots,omitempty"`
 }
 
-// WorkerReport carries incremental results. Cost is newly incurred dollars,
-// so a result's own cost is descriptive and is not added a second time.
+// WorkerReport carries incremental results. For table-bearing steps, Cost is
+// newly incurred spending outside their tables. Legacy reports carry all newly
+// incurred dollars in Cost; their result costs remain descriptive.
 type WorkerReport struct {
 	FollowUp   *factory.PRFollowUp `json:"follow_up,omitempty"`
 	Change     *factory.Change     `json:"change,omitempty"`
@@ -106,6 +113,7 @@ type WorkerMerge struct {
 // StepReport carries the last round's full result without exposing Go names.
 // rounds is every finished try. failure is set when this step errored.
 type StepReport struct {
+	RoundCosts   map[int]float64           `json:"round_costs,omitempty"`
 	RoundLimit   int                       `json:"round_limit,omitempty"`
 	Verification *factory.StepVerification `json:"verification,omitempty"`
 	Chat         string                    `json:"chat,omitempty"`
@@ -171,6 +179,7 @@ func stageResultItem(r StepResult) factory.StageResult {
 // only the lease holder may read (serve's withholdChats).
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
+	j.RoundCostTables = true
 	// The runner runs the file the job carries, so it is sent whole here.
 	j.PipelineCopy = it.PipelineCopy.Clone()
 	if it.Stream == nil {
@@ -184,6 +193,7 @@ func WorkerJob(it factory.Item) Job {
 			continue
 		}
 		if k < len(it.Stream.Phases) {
+			j.Steps[i].RoundCosts = maps.Clone(it.Stream.Phases[k].RoundCosts)
 			if r := it.Stream.Phases[k].Result; r != nil {
 				j.Steps[i].Report = stepResultWire(*r)
 			}
@@ -208,7 +218,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
 	}
 	for _, s := range r.Steps {
-		stage := factory.StageReport{Name: s.Name, Chat: s.Chat, State: factory.PhaseState(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
+		stage := factory.StageReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, State: factory.PhaseState(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Failure: failureItem(s.Failure), Rounds: roundsItem(s.Rounds)}
 		if s.StartedAt != nil {
 			stage.Started = *s.StartedAt
 		}
@@ -237,18 +247,35 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 }
 
 // FromRunReport is the worker's half of the same boundary: what its runner
-// wrote, in the wire's words. [ToWorkerReport] reads it back.
-func FromRunReport(r factory.RunReport) WorkerReport {
+// wrote, in the wire's words. Tables require explicit factory admission.
+// Without admission, Cost includes table spending; incremental delivery replaces
+// it with the full job-spend delta from its acknowledged snapshot.
+func FromRunReport(r factory.RunReport, tables ...bool) WorkerReport {
+	acceptsTables := len(tables) > 0 && tables[0]
 	out := WorkerReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
 		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models}
+	// Keep the existing log vocabulary on the worker wire.
+	for i := range out.Log {
+		if out.Log[i].Kind == "tool" {
+			out.Log[i].Tone = "tool"
+		}
+		out.Log[i].Kind = ""
+	}
 	if p := r.Pipeline; p != nil {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
 	}
 	for _, s := range r.Stages {
-		step := StepReport{Name: s.Name, Chat: s.Chat, State: string(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
+		step := StepReport{RoundCosts: maps.Clone(s.RoundCosts), Name: s.Name, Chat: s.Chat, State: string(s.State), Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, StartedAt: timeOrNil(s.Started), Failure: failureWireOrNil(s.Failure), Rounds: roundsWire(s.Rounds)}
 		if res := s.Result; res != nil {
 			step.Result = stepResultWire(*res)
 			step.Model = res.Model
+		}
+		if !acceptsTables {
+			// Keep the established body for strict older factories.
+			for _, spent := range step.RoundCosts {
+				out.Cost += spent
+			}
+			step.RoundCosts = nil
 		}
 		out.Steps = append(out.Steps, step)
 	}

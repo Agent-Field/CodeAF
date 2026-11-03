@@ -317,7 +317,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
-		file.onWrite = agent.tellWrote
+		file.onWrite = func() { agent.tellWrote(); agent.wakeKnowledge() }
 		agent.presentation = file.presentation
 		agent.restoreProgramHold()
 		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
@@ -2186,9 +2186,17 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// lifted off the queue first and becomes a message waiting for a turn
 			// of its own (steer.go's [Agent.liftSteersLocked]) — which the
 			// follow-up drain below then starts, on the follow-up queue's own
-			// terms. Everything else on the queue drains exactly as it always has.
+			// terms.
 			a.liftSteersLocked(hub)
-			drained := a.drainQueueLocked(hub, true)
+			// A worker's directions stay queued until a request carries them.
+			// Its runner checks that queue before closing the worker and takes
+			// another turn when words remain. Draining here would hide them
+			// from that check without ever putting them in front of the model.
+			// A room thread owns its wake instead of being driven by a runner.
+			var drained queueDrain
+			if !a.config.InTask || a.config.roomThread || len(queuedDirections(a.steering)) == 0 {
+				drained = a.drainQueueLocked(hub, true)
+			}
 			unanswered := drained.owed
 			// A PROGRAM'S ENDING THIS TURN COULD NOT ANSWER IS SAID ANYWAY, in
 			// the program's own words (program_outcome.go), and a person's stop
@@ -3058,6 +3066,13 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		}
 		if user.authored {
 			mark = &messagePresentation{Audience: "operational", RoutineCompletion: user.completionOnly, Attention: user.attention, CompletionTasks: append([]TaskReplyTag(nil), user.replyTags...)}
+			// AN OWED LANDING SHOWS ITS OUTCOME, NOT THE QUESTION. The model is
+			// handed the person's question above the report so it can answer it
+			// (owedLandingDocument), but the question is the person's earlier
+			// words, and a receipt drawn whole would show them saying it twice.
+			if outcome := strings.TrimSpace(user.landingOutcome); outcome != "" && strings.TrimSpace(user.landingQuestion) != "" {
+				mark.Text = &outcome
+			}
 		} else if mark == nil {
 			mark = &messagePresentation{Audience: "human"}
 		} else {
@@ -5577,6 +5592,9 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 		}
 		if mark := presentation.of(msg); mark != nil && msg.Role == "user" && mark.RoutineCompletion {
 			role, routineCompletion = "aside", true
+			if mark.Text != nil {
+				displayText = *mark.Text
+			}
 		}
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			run = mark.RunID

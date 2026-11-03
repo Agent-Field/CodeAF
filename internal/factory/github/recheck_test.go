@@ -39,16 +39,16 @@ func TestStandingReadsOneItemInOneRequest(t *testing.T) {
 		it   factory.Item
 		want string
 	}{
-		{"open issue", standingAPI{issue: forge.Issue{State: "open"}}, issue, ""},
-		{"closed issue", standingAPI{issue: forge.Issue{State: "closed"}}, issue, StandingClosed},
+		{"open issue", standingAPI{issue: forge.Issue{ID: 1012, Number: 12, State: "open"}}, issue, ""},
+		{"closed issue", standingAPI{issue: forge.Issue{ID: 1012, Number: 12, State: "closed"}}, issue, StandingClosed},
 		{"open pull request", standingAPI{pull: forge.Pull{State: "open"}}, pr, ""},
 		{"closed pull request", standingAPI{pull: forge.Pull{State: "closed"}}, pr, StandingClosed},
 		{"merged pull request", standingAPI{pull: forge.Pull{State: "closed", Merged: true}}, pr, StandingMerged},
 	}
 	for _, c := range cases {
 		got, err := Standing(context.Background(), &c.api, c.it)
-		if err != nil || got != c.want || c.api.requests != 1 {
-			t.Errorf("%s: %q %v after %d requests", c.name, got, err, c.api.requests)
+		if err != nil || got.How != c.want || c.api.requests != 1 {
+			t.Errorf("%s: %q %v after %d requests", c.name, got.How, err, c.api.requests)
 		}
 	}
 	down := &standingAPI{err: errors.New("dial tcp: no route")}

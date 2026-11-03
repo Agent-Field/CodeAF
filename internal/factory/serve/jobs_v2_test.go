@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
+	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
@@ -671,12 +673,12 @@ func TestV2StartRechecksTheItemOnGitHub(t *testing.T) {
 	f := newV2Jobs(t)
 	f.h.Close()
 	standing, reads := map[int]string{}, map[int]int{}
-	f.cfg.Recheck = func(_ context.Context, it factory.Item) (string, error) {
+	f.cfg.Recheck = func(_ context.Context, it factory.Item) (factory.SourceStanding, error) {
 		reads[it.Num]++
 		if it.Num == 404 {
-			return "", fmt.Errorf("dial tcp: no route")
+			return factory.SourceStanding{}, fmt.Errorf("dial tcp: no route")
 		}
-		return standing[it.Num], nil
+		return factory.SourceStanding{How: standing[it.Num]}, nil
 	}
 	f.h = serve.New(f.seam, f.cfg)
 
@@ -1089,7 +1091,7 @@ func TestJobBudgetCanBeLoweredButNotBelowRecordedSpend(t *testing.T) {
 }
 
 func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T) {
-	for _, mode := range []string{"auto", "manual", "takeover", "critical", "manual-approval", "manual-question"} {
+	for _, mode := range []string{"auto", "auto asked", "manual", "manual asked", "takeover", "critical", "other ask", "manual-approval", "manual-question"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newV2Jobs(t)
 			it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 5, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
@@ -1102,6 +1104,13 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 				case "critical":
 					cur.QKind = "scope"
 					cur.Question = "Choose the public API"
+				case "auto asked", "manual asked":
+					cur.Asking = &factory.Asked{Question: cur.Question, With: factory.AskedYou}
+					if mode == "manual asked" {
+						cur.Autonomy = factory.AutonomyManual
+					}
+				case "other ask":
+					cur.Asking = &factory.Asked{Question: "Choose the public API", With: factory.AskedYou}
 				case "manual-approval":
 					cur.Autonomy = factory.AutonomyManual
 					cur.QKind = factory.QKindApprove
@@ -1120,8 +1129,8 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 			}
 			// A raise above spend answers only the cap's own ask, on Auto or Manual.
 			// Take over and any other question stay with the person.
-			if mode == "auto" || mode == "manual" {
-				if got.State != factory.StateQueued || got.Question != "" {
+			if mode == "auto" || mode == "auto asked" || mode == "manual" || mode == "manual asked" {
+				if got.State != factory.StateQueued || got.Question != "" || got.Asking != nil {
 					t.Fatal("automatic cap recovery stranded")
 				}
 			} else if want := map[string]string{"manual-approval": "Approve the plan?", "manual-question": "Choose the public API", "critical": "Choose the public API"}[mode]; got.State != factory.StateNeedsYou || got.Question == "" || (want != "" && got.Question != want) {
@@ -1176,5 +1185,125 @@ func TestV2StartNowPassesTheLimitOnceAndHoldWaitsForResume(t *testing.T) {
 	want := []string{"started:", "held:", "resumed:", "held:", "started:above Jobs at once"}
 	if strings.Join(kinds, ",") != strings.Join(want, ",") {
 		t.Fatalf("recorded %v, want %v", kinds, want)
+	}
+}
+
+// A PERSON'S CONTINUE AT THE CAP QUEUES AN UNHELD JOB AGAIN. No runner holds
+// the job, but its copy still carries the cap question as an open ask (the
+// worker that raised it has let go). The person's continue takes the ask down
+// and queues the job, rather than leaving it waiting on them.
+func TestAPersonsContinueAtTheCapQueuesAnUnheldJobAgain(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 10, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
+	_ = f.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.Asking = &factory.Asked{Question: cur.Question, With: factory.AskedYou}
+		return nil
+	})
+	f.post(t, it, "answer", `{"yes":true,"words":"continue"}`, 200)
+	got, _ := f.st.Get(it.ID)
+	if got.State != factory.StateQueued || got.Question != "" || got.QKind != "" || got.Asking != nil {
+		t.Fatalf("a person's continue left the job %s with question %q kind %q asking %v", got.State, got.Question, got.QKind, got.Asking != nil)
+	}
+}
+
+func TestClosedStartReportsConcurrentRowState(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.cfg.Recheck = func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		if err := f.st.Update(it.ID, func(cur *factory.Item) error { cur.State = factory.StateQueued; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		return factory.SourceStanding{How: github.StandingClosed}, nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	w := f.post(t, it, "start_now", "", 409)
+	var refusal struct {
+		NowState string `json:"now_state"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &refusal); err != nil {
+		t.Fatal(err)
+	}
+	if refusal.NowState != "queued" {
+		t.Fatalf("refusal reports %q, want current queued state", refusal.NowState)
+	}
+	if got, _ := f.st.Get(it.ID); got.State != factory.StateQueued {
+		t.Fatal("start check moved concurrent work")
+	}
+}
+
+func TestReviewStartRejectsChangedIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam", GitHubIssueID: 1001})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":9001,"number":12,"state":"closed"}`)
+	}))
+	defer srv.Close()
+	client := forge.NewClient("fixture").WithBaseURL(srv.URL)
+	f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
+		return github.Standing(ctx, client, row)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	w := f.post(t, it, "start_now", "", 409)
+	if !strings.Contains(w.Body.String(), "now identifies a different GitHub issue") {
+		t.Fatalf("untrue mismatch refusal: %s", w.Body)
+	}
+	got, _ := f.st.Get(it.ID)
+	if got.State != factory.StateNew {
+		t.Fatalf("different issue identity finished row: pinned=1001 answer=9001 state=%s", got.State)
+	}
+}
+
+func TestReviewStartPinsFirstDirectIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.cfg.Recheck = func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		return factory.SourceStanding{How: github.StandingClosed, IssueID: 1001}, nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	f.post(t, it, "start_now", "", 409)
+	got, _ := f.st.Get(it.ID)
+	if got.GitHubIssueID != 1001 {
+		t.Fatalf("Start lost first direct identity: got=%d want=1001", got.GitHubIssueID)
+	}
+	replacement := got
+	replacement.GitHubIssueID, replacement.Title, replacement.DoneHow = 9001, "replacement issue", ""
+	if err := github.Merge(f.st, github.Name, []factory.Item{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.st.Get(it.ID)
+	if after.GitHubIssueID != 1001 || after.Title != got.Title {
+		t.Fatal("replacement listing overwrote Start's pinned row")
+	}
+}
+
+func TestReviewOpenStartKeepsFirstIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":1001,"number":12,"state":"open"}`)
+	}))
+	defer srv.Close()
+	client := forge.NewClient("fixture").WithBaseURL(srv.URL)
+	f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
+		return github.Standing(ctx, client, row)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	f.post(t, it, "run", "", 200)
+	got, _ := f.st.Get(it.ID)
+	if got.GitHubIssueID != 1001 {
+		t.Errorf("open Start lost first direct identity: got=%d want=1001", got.GitHubIssueID)
+	}
+	replacement := got
+	replacement.GitHubIssueID, replacement.Title, replacement.DoneHow = 9001, "replacement issue", ""
+	if err := github.Merge(f.st, github.Name, []factory.Item{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.st.Get(it.ID)
+	if after.GitHubIssueID != 1001 || after.Title != got.Title {
+		t.Errorf("replacement listing overwrote started row: id=%d title=%q", after.GitHubIssueID, after.Title)
 	}
 }

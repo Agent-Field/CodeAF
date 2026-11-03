@@ -71,6 +71,11 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	}
 	config.InTask = true
 	config.bashBelt = true
+	// AND IT ACTS AS ITS OWN WORKER, never as the conversation: the run named
+	// it ([Config.WorkerDID]), and its commands carry that name.
+	if config.WorkerDID != "" {
+		config.actorDID = config.WorkerDID
+	}
 	// A RUN WORKER THINKS AT THE WORK SEAT, ONE ACTION PER ROUND. The belt's
 	// one call per response would pay the person's depth again on every round
 	// of the run, so the seat is work (effort.RoleWork) — the same seat the

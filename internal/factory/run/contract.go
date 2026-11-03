@@ -48,6 +48,11 @@ type ModelSelection struct {
 }
 
 type Job struct {
+	// Lifetime ends with the job, rather than with one stage round.
+	Lifetime context.Context
+	// PendingSpend retains the existing worker report path while owned work
+	// can still bank a receipt. Calling the returned function settles one unit.
+	PendingSpend func() func()
 	// Item is the item as it stands when the round starts.
 	Item factory.Item
 	// Stage is the stage being run and Index its place in Item.Stages.
@@ -181,7 +186,7 @@ type Options struct {
 	// approval is carried out ([Runner.Publish]); the wire hands [GitPush]
 	// with the person's token. Nil publishes nothing: an approval then fails
 	// with the sentence that this machine cannot push.
-	Push func(dir, branch string) error
+	Push func(dir, branch string, before ...func() error) error
 	// Git commits an approved item's worktree ([Runner.Publish]); nil is
 	// [ExecGit].
 	Git Git
@@ -237,7 +242,7 @@ type Options struct {
 // PublishTarget keeps one attempt's GitHub writes on the same person's account.
 type PublishTarget struct {
 	Source factory.Source
-	Push   func(dir, branch string) error
+	Push   func(dir, branch string, before ...func() error) error
 	// Git reads and moves the remote with Push's own credential when a push is
 	// refused; nil uses the runner's Git.
 	Git Git
@@ -255,8 +260,8 @@ type InboxReply struct {
 // it. THE LOOP ASKS AFTER EVERY ROUND whether the cap is reached, and when it
 // is, it parks the item on CapQuestion's sentence; the money decides nothing.
 type Pool interface {
-	// Spend is the Job.Spend hook for one item.
-	Spend(id int) func(usd float64)
+	// SpendRound is the Job.Spend hook for one item and logical round.
+	SpendRound(id int, step string, round int) func(usd float64)
 	// CapReached says whether the item has spent what its cap allows.
 	CapReached(it factory.Item) bool
 	// CapQuestion is the sentence the item waits on, and its QKind.
@@ -275,9 +280,10 @@ type Runner struct {
 	// loopOnce makes floor, the state machine's own state (loop.go), on the
 	// first door anybody calls, so New stays the one-line constructor the
 	// lanes were handed.
-	loopOnce    sync.Once
-	floor       *floorLoop
-	stopReaders sync.Map
+	loopOnce      sync.Once
+	floor         *floorLoop
+	stopReaders   sync.Map
+	publishChecks sync.Map
 }
 
 // New makes a runner. It starts nothing until Launch.

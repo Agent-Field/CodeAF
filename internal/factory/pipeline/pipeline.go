@@ -80,6 +80,9 @@ type File struct {
 	// anything after plan runs) or fixed (the steps as written). Empty when
 	// the file says nothing, which is adapt.
 	Adapt factory.AdaptMode
+	// AdaptKinds is `adapt:` written as a map, one word per pipeline: a kind
+	// it does not name is adapt. At most one of Adapt and AdaptKinds is set.
+	AdaptKinds map[factory.Kind]factory.AdaptMode
 	// Merge is the `merge:` key. AUTO-MERGE IS OFF unless a file turns it on;
 	// a personal file may only turn it off ([Merge]).
 	Merge factory.MergePolicy
@@ -141,6 +144,7 @@ type Size struct {
 // conversation. No other word is read, and a file never invents one. A file
 // that says `kind: chat` reads as "", so the two spellings are one file.
 type Step struct {
+	Label  string
 	Prompt string
 	Kind   string
 	When   string
@@ -414,7 +418,7 @@ func (f File) stages(names []string) []factory.Stage {
 				continue
 			}
 			used[raw] = true
-			out = append(out, factory.Stage{Name: raw, Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who})
+			out = append(out, factory.Stage{Name: raw, Label: strings.TrimSpace(f.Steps[raw].Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who})
 			continue
 		}
 		step, ok := f.Steps[raw]
@@ -438,7 +442,7 @@ func (f File) stages(names []string) []factory.Stage {
 		if step.holdWhy() != "" {
 			// Nothing of a step that cannot run as written reaches the runner:
 			// no prompt, no condition. A person decides whether the run goes on.
-			out = append(out, factory.Stage{Name: name, Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw)})
+			out = append(out, factory.Stage{Name: name, Label: strings.TrimSpace(step.Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw)})
 			continue
 		}
 		word, free := mechanicalUntil(step.Until)
@@ -457,7 +461,7 @@ func (f File) stages(names []string) []factory.Stage {
 			who = step.Who
 		}
 		out = append(out, factory.Stage{
-			Name: name, Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
+			Name: name, Label: strings.TrimSpace(step.Label), Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
 			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who,
 		})
 	}
@@ -533,10 +537,14 @@ func (f File) RecipeProblems() []factory.Problem {
 	return out
 }
 
-// adaptByKind is the recipe's adapt word per kind: the file's `adapt:` for the
-// issue pipeline and every pipeline the file lists, else the Markdown recipe's
-// words carried over, else none (the default, adapt).
+// adaptByKind is the recipe's adapt word per kind: the file's per-pipeline
+// map, else its one `adapt:` word for the issue pipeline and every pipeline
+// the file lists, else the Markdown recipe's words carried over, else none
+// (the default, adapt).
 func (f File) adaptByKind() map[factory.Kind]factory.AdaptMode {
+	if len(f.AdaptKinds) > 0 {
+		return copyAdapt(f.AdaptKinds)
+	}
 	if f.Adapt == "" {
 		return copyAdapt(f.markdownAdapt)
 	}

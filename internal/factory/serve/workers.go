@@ -1,11 +1,13 @@
 package serve
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -56,11 +58,14 @@ type registeredWorker struct {
 	Attached  time.Time
 	Checkouts []api.Checkout
 	Asleep    bool
-	Name      string
-	OS        string
-	Version   string
-	Last      time.Time
-	Worker    lease.Worker
+	// Needs is what the worker said at attach it lacks before a step can run
+	// ([api.WorkerAttach.Needs]); a new attach replaces it.
+	Needs   string
+	Name    string
+	OS      string
+	Version string
+	Last    time.Time
+	Worker  lease.Worker
 }
 
 type workerKey struct{}
@@ -89,6 +94,7 @@ func (h *Handler) workerRoutes() {
 	h.route("/v1/workers/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/workers/pull", h.pullWorker)
 	h.route("/v1/workers/leases/{lease}/stop-after-step", map[string]http.HandlerFunc{http.MethodGet: h.workerStopAfterStep})
+	h.route("/v1/workers/leases/{lease}/publish-check", map[string]http.HandlerFunc{http.MethodGet: h.workerPublishCheck})
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
@@ -284,7 +290,7 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{
 		Name: body.Name, OS: strings.TrimSpace(body.OS), Version: strings.TrimSpace(body.CodeafVersion),
-		Last: h.workers.now(), Attached: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts,
+		Last: h.workers.now(), Attached: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, LiveCapacity: body.LiveCapacity, Checkouts: body.Checkouts, Needs: strings.TrimSpace(body.Needs),
 	}
 	h.workers.forgetQuietLocked(worker, held, h.runnerOfflineAfter())
 	err = h.workers.saveRegistry()
@@ -416,7 +422,9 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		worker.Slots = current.Worker.Slots
-		if h.workers.machineAsleepLocked(worker) {
+		// A worker that cannot run a step yet is answered as an asleep one is:
+		// nothing to do, so the job stays queued for a runner that can.
+		if h.workers.machineAsleepLocked(worker) || current.Needs != "" {
 			h.workers.mu.RUnlock()
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -519,6 +527,9 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
+	var raw bytes.Buffer
+	defer r.Body.Close()
+	r.Body = io.NopCloser(io.TeeReader(r.Body, &raw))
 	var body api.WorkerReport
 	if !h.decode(w, r, &body, false) {
 		return
@@ -542,10 +553,35 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 		h.applyWorker(w, r, false, func(it *factory.Item) error { return factory.MergeThread(it, report.Thread, report.Delivered) })
 		return
 	}
+	headers := http.Header{}
+	for _, name := range []string{"Idempotency-Key", api.StepModelsHeader, api.StepChatsHeader, api.StepRuntimeHeader} {
+		if value := r.Header.Get(name); value != "" {
+			headers.Set(name, value)
+		}
+	}
+	_, digest, _ := retainedWorkerReport(api.WorkerRecovery{OriginalLease: r.PathValue("lease"), Body: raw.Bytes(), Headers: headers})
 	h.applyWorker(w, r, false, func(it *factory.Item) error {
 		before := failureKey(it.Failure)
+		spentBefore := factory.JobSpent(*it)
 		if err := run.ApplyReport(it, report, h.workers.now()); err != nil {
 			return err
+		}
+		if digest != "" {
+			// Advance earlier acknowledgments with ordinary deltas too. Recovery
+			// can then name cumulative spend despite an ambiguous later response.
+			for i := range it.ReportReceipts {
+				if it.ReportReceipts[i].Lease == r.PathValue("lease") {
+					it.ReportReceipts[i].AdditionalCost += factory.JobSpent(*it) - spentBefore
+				}
+			}
+			// Only the initial empty report creates a settlement anchor. Later
+			// reports advance it without displacing it from bounded history.
+			if reflect.DeepEqual(report, factory.RunReport{}) {
+				it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: r.PathValue("lease"), Machine: requestWorker(r).Machine, Handle: factory.NormalizeHandle(requestWorker(r).Handle), At: h.workers.now()})
+				if len(it.ReportReceipts) > factory.WorkerReportReceiptsMost {
+					it.ReportReceipts = append([]factory.WorkerReportReceipt(nil), it.ReportReceipts[len(it.ReportReceipts)-factory.WorkerReportReceiptsMost:]...)
+				}
+			}
 		}
 		after := it.Failure
 		// A PERSON'S STOP IS NOT A STEP THAT ERRORED: a worker whose run
@@ -701,4 +737,14 @@ func (h *Handler) workerError(w http.ResponseWriter, err error) bool {
 	default:
 		return h.failed(w, err)
 	}
+}
+
+func (h *Handler) workerPublishCheck(w http.ResponseWriter, r *http.Request) {
+	if !h.workerReady(w) {
+		return
+	}
+	if h.workerError(w, h.workers.desk.CheckPublish(r.PathValue("lease"), requestWorker(r).ID)) {
+		return
+	}
+	h.write(w, http.StatusOK, struct{}{})
 }

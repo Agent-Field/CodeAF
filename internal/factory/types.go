@@ -101,6 +101,8 @@ const (
 // a recipe adapts without anyone touching it: a stage with a condition is
 // skipped, dim, with its reason, on an item the condition does not fit.
 type Stage struct {
+	// Label is an optional display name; Name remains the step identity.
+	Label  string    `json:",omitempty"`
 	Name   string    // plan · write · test · review · neaten · security · proof
 	Kind   StageKind // chat unless said otherwise
 	Ask    string    // the sentence as typed; the brief is compiled from it
@@ -180,7 +182,7 @@ type Triage struct {
 	// be trusted: [ShownSize] draws nothing for it.
 	SizeFrom  string `json:",omitempty"`
 	Area      string
-	Readiness int // 0..100; under 55 the item is thin and wants questions
+	Readiness int // 0..100, from older reads only; see [Triage.Thin]
 	// Rubric is how complex the job is ([Rubric]), from the read or from
 	// Look closer, and nil when nobody scored it. A model never writes a
 	// price: an older document's model-written estimate is not read.
@@ -281,11 +283,13 @@ const (
 // Phase is one stage as it runs: its state, what round it is on, how many
 // tasks it fanned out into.
 type Phase struct {
-	Name  string
-	Kind  StageKind
-	State PhaseState
-	Note  string
-	Round int
+	// RoundCosts holds cumulative dollars for every logical round in this run.
+	RoundCosts map[int]float64 `json:",omitempty"`
+	Name       string
+	Kind       StageKind
+	State      PhaseState
+	Note       string
+	Round      int
 	// RoundLimit is the effective limit, including explicit user extensions.
 	// Persist it before a round starts so reopening cannot revoke that grant.
 	RoundLimit   int               `json:",omitempty"`
@@ -442,6 +446,14 @@ type PullRequest struct {
 	Mergeable   string `json:",omitempty"`
 	ChecksRead  bool   `json:",omitempty"`
 	ReviewsRead bool   `json:",omitempty"`
+	// NoWorkflows is what one read found: no workflow files on the head and
+	// no statuses or check runs reported for it. NoChecksSince is the first
+	// read on this head that found it, and NoChecks is the settled fact
+	// ([SettleNoChecks]): the repository has no checks configured, which the
+	// readiness gate counts as a stated condition rather than a failure.
+	NoWorkflows   bool      `json:",omitempty"`
+	NoChecksSince time.Time `json:",omitempty"`
+	NoChecks      bool      `json:",omitempty"`
 	// HeadBranch is the branch the pull request comes from, which a repair pushes
 	// to: an older branch can leave it named apart from the job's own.
 	HeadBranch string `json:",omitempty"`
@@ -491,6 +503,13 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
+	GitHubIssueID int64 `json:",omitempty"`
+	// SourceClosed distinguishes an automatic close from a person's Done.
+	SourceClosed bool `json:",omitempty"`
+	// PersonTouched survives edits being undone and prevents automatic reconciliation.
+	PersonTouched bool `json:",omitempty"`
+
 	// FromJob is the ended job whose request this person started afresh.
 	FromJob int `json:",omitempty"`
 	// SourceIssue is a reference only; it never gives this job a forge identity.
@@ -687,6 +706,8 @@ type Item struct {
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+	// SpentBefore holds spending from runs whose work was cleared.
+	SpentBefore float64 `json:",omitempty"`
 	// ChatSpent is what Talk spent while the job had no run: the job's chat
 	// before its first Start, in dollars. A JOB'S CHAT SPENDS FROM THE JOB'S
 	// BUDGET, and with no run there is no
@@ -694,6 +715,8 @@ type Item struct {
 	// zeroes it (run's freshStream). A job with a stream books its chat's
 	// spend there instead ([AddChatSpend]), so [JobSpent] reads one figure.
 	ChatSpent float64 `json:",omitempty"`
+	// MemorySpent is the memory portion already included in the job total.
+	MemorySpent float64 `json:",omitempty"`
 	// ChatModels is the model split of ChatSpent. The next start carries it
 	// onto the run with the dollars and clears it (run's freshStream).
 	ChatModels []ModelUse `json:",omitempty"`
@@ -861,15 +884,16 @@ type Event struct {
 	What string
 }
 
-// Ref is the item's short name: #123, or ci.
-//
-// AN ITEM WITH NO FORGE NUMBER IS NAMED BY THE FLOOR'S OWN ID. Work a chat or a
-// terminal put on the floor never had an issue number, and `#0` on every one of
-// those rows named nothing a person could say back; the store's id is the one
-// the chat's own sentence uses (`#<id> ... is on the factory floor`), so a row,
-// the peek and the item page say the number the conversation already said. A
-// forge item keeps its forge number, which is the one its repository uses.
+// Ref is the item's short display name: #123, job 21, or ci.
 func (it Item) Ref() string {
+	if it.Kind != KindCI && it.Num == 0 {
+		return "job " + itoa(it.ID)
+	}
+	return it.KeyRef()
+}
+
+// KeyRef preserves the short reference used by saved chat markers and selectors.
+func (it Item) KeyRef() string {
 	if it.Kind == KindCI {
 		return "ci"
 	}

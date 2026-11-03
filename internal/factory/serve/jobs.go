@@ -24,7 +24,7 @@ import (
 // jobVerbs keeps canvas actions additive to the existing /v1 doors.
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
-	h.postJob("start_now", h.seam.Launch != nil, h.guarded("start_now", h.onlyOwner(h.startJob)))
+	h.postJob("start_now", h.seam.Launch != nil, h.guardedStart())
 	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
@@ -65,7 +65,63 @@ func (h *Handler) startJob(w http.ResponseWriter, r *http.Request, it factory.It
 	if h.startRefused(w, r, it) {
 		return
 	}
-	h.launchJob(w, r, it, nil)
+	h.launchJob(w, r, it, "", nil)
+}
+
+// guardedStart is start_now's guard: the version read, as for every guarded
+// verb, and the pipeline the person picked, "" for the steps the job has.
+//
+// A PICKED PIPELINE IS ONE THE REPOSITORY'S FILE LISTS, read from the file the
+// start decides on the job ([Handler.jobPipeline]), and it replaces the steps
+// of a job that never ran in the start's one write. pr and ci are not an
+// issue job's to run, as at creation. A job that ran, or waits in the queue
+// already, keeps its steps. Every refusal comes before any write.
+func (h *Handler) guardedStart() jobAction {
+	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
+		var body struct {
+			Expect   *api.Expect `json:"expect,omitempty"`
+			Pipeline string      `json:"pipeline,omitempty"`
+		}
+		if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "start_now", body.Expect) {
+			return
+		}
+		h.onlyOwner(func(w http.ResponseWriter, r *http.Request, it factory.Item) {
+			if h.pickRefused(w, it, body.Pipeline) || h.startRefused(w, r, it) {
+				return
+			}
+			h.launchJob(w, r, it, body.Pipeline, nil)
+		})(w, r, it)
+	}
+}
+
+// pickRefused answers every refusal of a picked pipeline that the file is not
+// needed for, and true when it refused.
+func (h *Handler) pickRefused(w http.ResponseWriter, it factory.Item, pick string) bool {
+	switch {
+	case pick == "":
+		return false
+	case !pipeline.KindNamed(pick):
+		h.fail(w, 422, "pipeline must be a pipeline name of the repository's file")
+	case pick == string(factory.KindPR) || pick == string(factory.KindCI):
+		h.fail(w, 422, "factory jobs support the issue pipeline only")
+	case it.Stream != nil || len(it.Adapted) > 0:
+		h.refuse(w, 409, "This job has already run, so it keeps its steps.", "conflict", "", nil, factory.JobState(it))
+	case it.State == factory.StateQueued:
+		h.refuse(w, 409, "This job is already in the queue, so its steps are decided.", "conflict", "", nil, factory.JobState(it))
+	default:
+		return !h.requireVerb(w, h.config.Pipeline != nil && h.config.Store != nil)
+	}
+	return true
+}
+
+// pipelineStages is the steps one kind's pipeline runs: the issue pipeline as
+// the runner reads it (its fallback included), any other kind only when the
+// file lists it.
+func pipelineStages(recipe factory.Recipe, kind string) []factory.Stage {
+	if kind == string(factory.KindIssue) {
+		return recipe.For(factory.KindIssue)
+	}
+	return recipe.ByKind[factory.Kind(kind)]
 }
 
 // startRefused answers every refusal a start makes before it writes, and true
@@ -85,8 +141,10 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 }
 
 // launchJob is the start's one write and its launch, for a job startRefused
-// has passed. also is what else the start changes on the job in that same
-// write (run_again's clearing of the run before it), nil for nothing.
+// has passed. pick is the pipeline the start runs instead of the job's own
+// steps, "" for none ([Handler.guardedStart]). also is what else the start
+// changes on the job in that same write (run_again's clearing of the run
+// before it), nil for nothing.
 // The result says whether launch accepted, even if recording its receipt failed;
 // run-as-new must retain an accepted job when the receipt could not be written.
 //
@@ -94,7 +152,7 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 // job take one slot above its computer's Jobs at once ([factory.Item.OverLimit]),
 // lifts a hold in the same write, and launches nothing. A start from Backlog
 // queues the job at the top and waits for a slot like any other.
-func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) bool {
+func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, pick string, also func(*factory.Item)) bool {
 	mark, queued := false, false
 	if st := h.config.Store; st != nil {
 		cur, err := st.Get(it.ID)
@@ -135,6 +193,19 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = pipeline.UnreadDiagnostic(err)
 			file, fileErr = &f, err
 		}
+		var picked []factory.Stage
+		if pick != "" {
+			// A PICK IS READ FROM THE FILE OR NOT AT ALL: a read that failed
+			// refuses it, where a plain start would run on the defaults.
+			if file == nil || fileErr != nil {
+				h.fail(w, 503, "The repository's pipeline file could not be read, so this job cannot start on a picked pipeline yet.")
+				return false
+			}
+			if picked = pipelineStages(file.Recipe(), pick); len(picked) == 0 {
+				h.fail(w, 422, "pipeline not found")
+				return false
+			}
+		}
 		var budget float64
 		if file != nil && cur.Cap <= 0 {
 			// An unread repository takes a bounded default. A clean read
@@ -150,10 +221,16 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		if h.failed(w, err) {
 			return false
 		}
-		if mark || queued || budget > 0 || also != nil || rules != nil || (cur.Starter == "" && who != "") {
+		if mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
 				if also != nil {
 					also(cur)
+				}
+				if picked != nil {
+					if cur.Stream != nil || len(cur.Adapted) > 0 {
+						return fmt.Errorf("%s has already run, so it keeps its steps", cur.Ref())
+					}
+					cur.Stages = factory.CopyStages(picked)
 				}
 				if file != nil {
 					cur.DecidePipeline(file.Copy, h.clock())
@@ -236,8 +313,8 @@ func (h *Handler) needsCheckout(w http.ResponseWriter, r *http.Request, repo, st
 const recheckWait = 5 * time.Second
 
 // endedOnGitHub is the check a person's start makes on the ONE item they chose
-// (start_now, run, run_again): the poll's lists are of open items only, so a
-// job never learns from them that its issue was closed. When GitHub says the
+// (start_now, run, run_again), supplementing the poll's closure reconciliation.
+// When GitHub says the
 // issue or pull request was closed or merged, the job is finished the way a
 // pull request that ended finishes one (done, DoneHow "closed" or "merged"),
 // the factory records it, and the start is refused in one sentence.
@@ -250,13 +327,31 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		return false
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), recheckWait)
-	how, err := h.config.Recheck(ctx, it)
+	answer, err := h.config.Recheck(ctx, it)
 	cancel()
-	if err != nil || (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) {
+	if errors.Is(err, factory.ErrSourceIdentityChanged) || (err == nil && !answer.Matches(it)) {
+		h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d now identifies a different GitHub issue, so it wasn't started. The saved job is unchanged.", it.Num), "conflict", "", nil, factory.JobState(it))
+		return true
+	}
+	how := answer.How
+	if err != nil {
 		return false
 	}
 	now := h.clock().UTC()
+	state := factory.JobState(it)
+	finished := false
 	err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		state = factory.JobState(*cur)
+		if !answer.Matches(*cur) {
+			return factory.ErrSourceIdentityChanged
+		}
+		cur.GitHubIssueID = answer.IssueID
+		if (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) || !factory.UntouchedIssue(*cur) {
+			return nil
+		}
+		factory.TouchIssue(cur)
+		finished = true
+		state = api.StateDone
 		cur.State = factory.StateShipped
 		cur.DoneHow = how
 		cur.DoneAt = now
@@ -266,15 +361,22 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		cur.StopUndo = nil
 		return nil
 	})
+	if errors.Is(err, factory.ErrSourceIdentityChanged) {
+		h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d now identifies a different GitHub issue, so it wasn't started. The saved job is unchanged.", it.Num), "conflict", "", nil, state)
+		return true
+	}
 	if h.failed(w, err) {
 		return true
 	}
-	if h.config.Record != nil {
+	if how != factorygithub.StandingClosed && how != factorygithub.StandingMerged {
+		return false
+	}
+	if finished && h.config.Record != nil {
 		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.SourceClosed, Verb: how, Job: it.ID, Detail: "on GitHub", Cost: jobCost(it)}); h.failed(w, err) {
 			return true
 		}
 	}
-	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it wasn't started.", it.Num, how), "conflict", "", nil, api.StateDone)
+	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it wasn't started.", it.Num, how), "conflict", "", nil, state)
 	return true
 }
 
@@ -349,7 +451,7 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 	if h.startRefused(w, r, it) {
 		return
 	}
-	h.launchJob(w, r, it, func(cur *factory.Item) {
+	h.launchJob(w, r, it, "", func(cur *factory.Item) {
 		cur.State = factory.StateNew
 		cur.DoneHow = ""
 		cur.DoneAt = time.Time{}
@@ -369,7 +471,7 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 // starts; starting it is the person's own start. The drop threw its work on
 // this machine away (its local branch and folder, its conversations and its
 // crew), so its next run begins on a fresh branch, from the first step, with
-// nothing spent, and makes an agent and a crew of its own.
+// its lifetime money kept, and makes an agent and a crew of its own.
 //
 // FRESH MEANS FRESH (the owner's decision of 2026-10-19): no earlier
 // conversation reaches the job again. Its agent's conversation, what the
@@ -428,7 +530,7 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 }
 
 // forgetRun takes every trace of a run off the job: its state and ending, its
-// steps and what they spent, its question, failure, approval and stop, its
+// steps, its question, failure, approval and stop, its
 // proof, its change and the commits and machine it was made on, and what it
 // published; and every trace of what was said about it: its conversations
 // ([forgetChats]), the notes for its steps, and the changes made to its
@@ -438,9 +540,7 @@ func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	forgetChats(it)
 	it.State = factory.StateNew
 	it.DoneHow, it.DoneAt = "", time.Time{}
-	it.Stream = nil
-	// What the job's chat spent before an earlier start goes with that run: a fresh job has spent nothing.
-	it.ChatSpent = 0
+	factory.ClearJobRun(it)
 	it.Failure = nil
 	it.Approval, it.StopUndo = nil, nil
 	it.Question, it.QKind = "", ""
@@ -672,13 +772,12 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "raise_budget", body.Expect) {
 		return
 	}
-	if !slices.Contains([]float64{5, 10, 20, 30}, body.Budget) {
-		h.fail(w, 422, "choose a budget: 5, 10, 20 or 30 USD")
+	if !slices.Contains(factory.JobBudgetSteps(), body.Budget) && body.Budget != factory.NextJobCap(it) {
+		h.fail(w, 422, "choose a budget: 5, 10, 20, 30 USD or the job's next budget")
 		return
 	}
-	_, held := h.holdOf(it.ID)
 	var budgetRefused error
-	resumeCap := false
+	var atCap *factory.Item // the job as its cap question stood, when the raise resumes it
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			if body.Budget <= cur.Cap && body.Budget < factory.JobSpent(*cur) {
@@ -686,21 +785,15 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" && !cur.Publishing {
-				if body.Budget <= factory.JobSpent(*cur) {
-					cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
-					if cur.Asking != nil {
-						cur.Asking.Question = cur.Question
-					}
-				} else if !cur.Manual {
-					// Take over keeps the job in the person's hands; a raise doesn't
-					// hand it back.
-					resumeCap = true
-					run.NoteBudgetRaised(cur, time.Now())
-					if held {
-						return run.AnswerHeld(cur, true, time.Now())
-					}
+			if cur.QKind == "cap" && !cur.Publishing && body.Budget <= factory.JobSpent(*cur) {
+				cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
+				if cur.Asking != nil {
+					cur.Asking.Question = cur.Question
 				}
+			}
+			if capResumes(*cur) {
+				asked := *cur
+				atCap = &asked
 			}
 			return nil
 		})
@@ -715,18 +808,38 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	// A budget edit does not queue a published PR from stale observations.
 	// Wake the read-only poll; its fresh snapshot releases spending-owned work.
 	_ = h.config.Store.NudgePoll()
+	// The runner hears the new cap before the continue, so it carries on
+	// under the cap the person chose and never doubles the old one.
 	if h.workers != nil && h.workers.desk != nil {
-		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: resumeCap})
+		if _, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget}); h.failed(w, err) {
+			return
+		}
 	}
-	if err == nil && resumeCap && !held {
-		if h.seam.Answer != nil {
-			err = h.seam.Answer(it.ID, true, factory.ChoiceContinue)
-		}
-		if h.seam.Answer == nil || (err != nil && strings.Contains(err.Error(), "is not waiting on you")) {
-			err = h.releaseCapWait(it.ID)
-		}
+	if atCap != nil {
+		err = h.resumeAtCap(r, *atCap)
 	}
 	h.finish(w, err)
+}
+
+// resumeAtCap answers the cap question the raise cleared with continue, as a
+// person's answer does, and only then says on the timeline that the job
+// carries on under its new budget.
+func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
+	if err := h.continueCap(r, it, factory.ChoiceContinue); err != nil {
+		return err
+	}
+	return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		run.NoteBudgetRaised(cur, h.now())
+		return nil
+	})
+}
+
+// capResumes is a raise that answers the open cap question on Auto or Manual
+// when the new cap clears spend. Take over, publishing and other questions
+// keep their own decisions; a cap at or under spend keeps the cap question.
+func capResumes(it factory.Item) bool {
+	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
+	return asksCap && it.Cap > factory.JobSpent(it) && !it.Manual && !it.Publishing
 }
 
 // jobModelMost is the longest model id a job keeps.
@@ -800,7 +913,19 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 			return nil
 		}
 		if u := cur.StopUndo; u != nil && now.Before(u.Until) && u.By == who && cur.State == factory.StateNew {
-			cur.Stream = u.Stream
+			// Undo restores the work snapshot, but receipts may have arrived
+			// since Stop. Keep those dollars on the same run.
+			restored := u.Stream
+			if cur.Stream != nil {
+				if restored == nil {
+					cur.ChatSpent += cur.Stream.Spent
+				} else {
+					stream := *restored
+					stream.Spent = max(stream.Spent, cur.Stream.Spent)
+					restored = &stream
+				}
+			}
+			cur.Stream = restored
 			cur.Failure = u.Failure
 			cur.Question = u.Question
 			cur.QKind = u.QKind

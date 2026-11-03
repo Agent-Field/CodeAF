@@ -71,6 +71,7 @@ func EnsureFollowPR(it *Item) int {
 	}
 	var phases []Phase
 	var stages []Stage
+	var label string
 	var follow *Phase
 	for _, ph := range it.Stream.Phases {
 		if ph.Name == FollowPRStep {
@@ -93,6 +94,9 @@ func EnsureFollowPR(it *Item) int {
 		phases = append(phases, ph)
 	}
 	for _, st := range it.Stages {
+		if st.Name == FollowPRStep {
+			label = st.Label
+		}
 		if !IsCIRepairStage(st) {
 			stages = append(stages, st)
 		}
@@ -101,7 +105,7 @@ func EnsureFollowPR(it *Item) int {
 		follow = &Phase{Name: FollowPRStep, Kind: StageChat, State: PhaseWaiting, Note: "Waiting for PR publication."}
 	}
 	phases = append(phases, *follow)
-	stages = append(stages, Stage{Name: FollowPRStep, Kind: StageChat, Ask: followPRAsk, Until: UntilProven, Max: 2, On: true, Fixed: true})
+	stages = append(stages, Stage{Name: FollowPRStep, Label: label, Kind: StageChat, Ask: followPRAsk, Until: UntilProven, Max: 2, On: true, Fixed: true})
 	it.Stream.Phases, it.Stages = phases, stages
 	if it.Stream.Cur >= len(phases) {
 		it.Stream.Cur = len(phases) - 1
@@ -403,6 +407,9 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	}
 	if f.Kind == "readiness" {
 		f.Reason = "Final review: checking the current PR diff, description and outstanding feedback before marking it ready for review."
+		if pr.NoChecks {
+			f.Reason = NoChecksWords + " " + f.Reason
+		}
 		if !pr.Draft {
 			f.Reason = "Checking the changed PR head, diff, description and feedback before resuming monitoring."
 		}

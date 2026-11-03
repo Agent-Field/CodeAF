@@ -39,7 +39,7 @@ const briefDraft = `{"verdict":"Fixed. Retries no longer double-send; 3 tests pa
 // THE WRITER, THROUGH THE APP'S DOOR: factory.job_brief_write asks the job's
 // agent one errand under the brief role with the factory's prompt and input,
 // hands its answer to the factory, which keeps what its check passes, says
-// what it dropped and books the cost to the job; the brief then reads it.
+// what it dropped; the brief then reads it. Billing belongs to the session.
 func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 	s := newLocalSetup(t)
 	door := &briefDoor{fakeConversation: &fakeConversation{}, answer: session.ErrandAnswer{Text: briefDraft, Model: "deepseek/deepseek-v4.1-flash", Usage: session.ErrandUsage{CostUSD: 0.002}}}
@@ -75,7 +75,7 @@ func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 	if read.Brief.Rev != 1 || read.Brief.Verdict != "Fixed. Retries no longer double-send; 3 tests pass." {
 		t.Fatalf("read = %+v", read)
 	}
-	if cur, _ := floor.Get(it.ID); cur.Stream.Spent != 1.002 {
+	if cur, _ := floor.Get(it.ID); cur.Stream.Spent != 1 {
 		t.Fatalf("job spend = %v", cur.Stream.Spent)
 	}
 
@@ -165,5 +165,29 @@ func TestBriefNewsTriggersTheJobsWrite(t *testing.T) {
 	s.backend.briefNews(news(it.Talk, factory.ProgressDone))
 	if got := <-fired; got != (fire{it.ID, factory.BriefTriggerStep}) {
 		t.Fatalf("fired %+v", got)
+	}
+}
+
+// A job that ended with no work on it has nothing to brief: a closed issue a
+// poll or a start finishes must not buy a model call. Work on it still does.
+func TestABriefEndNeedsWorkOnTheJob(t *testing.T) {
+	fired := make(chan string, 2)
+	b := &appBackend{briefs: newBriefDebounce(time.Millisecond, func(_ int, trigger string) { fired <- trigger })}
+	backlog := factory.Item{ID: 1, Kind: factory.KindIssue, State: factory.StateNew}
+	closed := backlog
+	closed.State, closed.DoneHow = factory.StateShipped, "closed"
+	b.briefJobChanged(backlog, closed)
+	select {
+	case trigger := <-fired:
+		t.Fatalf("a no-work closed job asked for a brief: %s", trigger)
+	case <-time.After(50 * time.Millisecond):
+	}
+	worked, ended := backlog, closed
+	worked.Stream, ended.Stream = &factory.Stream{Spent: 0.1}, &factory.Stream{Spent: 0.1}
+	b.briefJobChanged(worked, ended)
+	select {
+	case <-fired:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a job with work wrote no end brief")
 	}
 }

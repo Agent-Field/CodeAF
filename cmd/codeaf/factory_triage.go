@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/triage"
@@ -76,7 +77,10 @@ func runFactoryTriage(ctx context.Context, st *store.Store, newIntake func(*stor
 	// surface owns it in a window and stdout is the protocol in an
 	// engine. An item that could not be read simply has no read.
 	in := newIntake(st)
-	triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{
+	triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{Standing: factorygithub.Rechecker(func(ctx context.Context) string {
+		token, _ := factorygithub.TokenAt(ctx, factoryProfile(""))
+		return token
+	}),
 		AskFirst: in.AskFirst, AfterTick: in.Once,
 		Off: func() bool { return !factoryReadsOnArrival(st) },
 	})
@@ -158,12 +162,11 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 		ctx = provider.WithoutStream(provider.WithCallTag(ctx, factoryTriageName))
 		// The read asks at temperature 0, so the same issue read twice lands
 		// in the same band.
+		ctx, recorded := factoryAIAccounting(ctx, settings, model, factoryTriageName, noted)
 		response, err := client.CompleteWithMessages(ctx, []ai.Message{judgeMessage("user", prompt)}, ai.WithTemperature(0))
+		recorded(response)
 		if err != nil {
 			return "", err
-		}
-		if usd := recordFactoryTriageUsage(settings, model, response); usd > 0 && noted != nil {
-			noted(usd)
 		}
 		if response == nil || strings.TrimSpace(response.Text()) == "" {
 			return "", errors.New("the model answered nothing")
@@ -207,17 +210,6 @@ func factoryRoleModel(settings config.Config, role roles.Role) (string, error) {
 	return strings.TrimSpace(settings.Model), nil
 }
 
-// recordFactoryTriageUsage puts one read's cost on this machine's spend
-// ledger: the role column says `factory triage`, the seat is the low one it
-// ran on. The dollars are the provider's own receipt when one arrived,
-// otherwise the model's published price over the tokens, and a call nobody
-// priced writes no row ([session.RecordUsage] refuses an all-zero line).
-//
-// It answers the dollars it wrote, 0 when none were known.
-func recordFactoryTriageUsage(settings config.Config, model string, response *ai.Response) float64 {
-	return recordFactoryAIUsage(settings, model, factoryTriageName, response)
-}
-
 // recordFactoryAIUsage puts one factory AI call's cost on the spend ledger
 // under name in the role column, on the low seat, and answers its dollars.
 func recordFactoryAIUsage(settings config.Config, model, name string, response *ai.Response) float64 {
@@ -233,4 +225,48 @@ func recordFactoryAIUsage(settings config.Config, model, name string, response *
 	}
 	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.Role(name), session.SeatLow))
 	return line.USD
+}
+
+// factoryAIAccounting collects provider charges even when a failed generation
+// returns no response. Its finisher banks them before the caller judges the
+// error. The returned usage keeps its price-presence fact on successful calls.
+func factoryAIAccounting(ctx context.Context, settings config.Config, model, name string, noted func(float64)) (context.Context, func(*ai.Response) float64) {
+	var mu sync.Mutex
+	var charges []provider.Billed
+	ctx = provider.WithBilling(ctx, func(charge provider.Billed) {
+		mu.Lock()
+		defer mu.Unlock()
+		charges = append(charges, charge)
+	})
+	return ctx, func(response *ai.Response) float64 {
+		mu.Lock()
+		defer mu.Unlock()
+		total := 0.0
+		bank := func(served string, response *ai.Response) {
+			usd := recordFactoryAIUsage(settings, served, name, response)
+			total += usd
+			if usd > 0 && noted != nil {
+				noted(usd)
+			}
+		}
+		for i, charge := range charges {
+			served := charge.Model
+			if served == "" {
+				served = model
+			}
+			if i == len(charges)-1 && response != nil {
+				bank(served, response)
+				continue
+			}
+			used := &ai.Usage{PromptTokens: charge.PromptTokens, CompletionTokens: charge.CompletionTokens}
+			if charge.Cost != 0 {
+				used.Cost = &charge.Cost
+			}
+			bank(served, &ai.Response{Usage: used})
+		}
+		if len(charges) == 0 && response != nil {
+			bank(model, response)
+		}
+		return total
+	}
 }

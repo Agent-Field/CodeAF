@@ -94,7 +94,7 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
-func TestSpendingLimitIsTheDoubledCap(t *testing.T) {
+func TestSpendingLimitIsTheNextAllowedBudget(t *testing.T) {
 	j := FromItem(factory.Item{
 		ID: 4, State: factory.StateNeedsYou, Question: "budget of $5 reached", QKind: "cap", Cap: 5, Starter: "raj",
 		Stream: &factory.Stream{Spent: 5, Cur: 0, Phases: []factory.Phase{{Name: "write"}}},

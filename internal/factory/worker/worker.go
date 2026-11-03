@@ -22,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factorythread "github.com/Agent-Field/codeaf/internal/factory/thread"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // Options is one machine's worker against one factory.
@@ -285,24 +286,27 @@ func backoff(d time.Duration) time.Duration {
 
 // job is one leased job on this machine.
 type job struct {
-	o     Options
-	w     *client.WorkerClient
-	lease string
-	id    int
-	sent  factory.Item // the mirror as last reported
+	o      Options
+	w      *client.WorkerClient
+	tables bool
+	lease  string
+	id     int
+	sent   factory.Item // the mirror as last reported
 
-	mu           sync.Mutex
-	replying     bool
-	replyCancel  context.CancelFunc
-	accepted     map[string]bool
-	acknowledged map[string]bool
-	thread       []factory.Message
-	pending      *pendingDelivery
-	blocked      string
-	withdrawn    bool
-	control      *client.PreparedWorkerReport
-	controlTries int
-	controlSent  bool
+	mu            sync.Mutex
+	replying      bool
+	replyCancel   context.CancelFunc
+	accepted      map[string]bool
+	acknowledged  map[string]bool
+	thread        []factory.Message
+	pending       *pendingDelivery
+	blocked       string
+	withdrawn     bool
+	control       *client.PreparedWorkerReport
+	controlTries  int
+	controlSent   bool
+	spendReport   *client.PreparedWorkerReport
+	spendBaseline float64
 }
 
 // work runs one pulled job to its end, or until the lease is gone.
@@ -314,7 +318,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer o.cap.releaseJob(it.ID)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
+	j := &job{tables: pulled.Job.RoundCostTables, o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
 	defer j.clearMirror()
 	defer j.keepLocal(api.WorkerLease{Job: it.ID})
 	pulledTalk, pulledNotes := it.Talk, it.Notes
@@ -339,6 +343,31 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		})
 		defer o.Runner.SetStopAfterStepReader(it.ID, nil)
 	}
+	o.Runner.SetPublishCheck(it.ID, func(ctx context.Context) error {
+		readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+		defer cancel()
+		return w.CheckPublish(readCtx, pulled.Lease.ID)
+	})
+	defer o.Runner.SetPublishCheck(it.ID, nil)
+	// Establish an accounting acknowledgment before the first paid call.
+	key, err := deliveryKey()
+	if err != nil {
+		j.refuse(ctx, err)
+		return
+	}
+	anchor, err := client.PrepareWorkerReport(api.WorkerReport{}, key)
+	if err == nil {
+		err = j.sendRequest(ctx, anchor)
+	}
+	if err != nil {
+		j.refuse(ctx, err)
+		return
+	}
+	j.spendReport = &anchor
+	if it.Stream != nil {
+		j.spendBaseline = it.Stream.Spent
+	}
+	defer j.settleAccounting(ctx)
 	if err := start(o.Runner, it.ID); err != nil {
 		j.refuse(ctx, err)
 		return
@@ -446,6 +475,10 @@ func (j *job) flush(ctx context.Context) bool {
 	if err != nil {
 		return true
 	}
+	// An already sent PR request still owes its forge receipt after Stop.
+	if cur.State == factory.StateNew && j.o.Runner.Running(j.id) {
+		return true
+	}
 	report, ok := run.Diff(j.sent, cur)
 	var messages []factory.Message
 	for _, m := range factorythread.Read(cur.Talk) {
@@ -532,6 +565,7 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalReply:
 			j.reply(ctx, s)
 		case lease.SignalBudget:
+			// The cap arrives before the answer that lets the runner carry on.
 			if s.Budget <= 0 {
 				continue
 			}
@@ -546,9 +580,6 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 				return nil
 			}); err != nil {
 				return false
-			}
-			if it, err := j.o.Mirror.Get(j.id); s.Yes && err == nil && it.QKind == "cap" && s.Budget > factory.JobSpent(it) && !it.Publishing {
-				_ = r.Answer(j.id, true, factory.ChoiceContinue)
 			}
 		case lease.SignalHold:
 			_ = r.Hold(j.id, s.Yes)
@@ -571,7 +602,13 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
 			_ = r.Stop(j.id)
-			return false
+			if r.Running(j.id) {
+				return true
+			}
+			// The forge may have answered before this heartbeat delivered Stop.
+			// Flush that receipt before releasing the publishing lease.
+			cur, err := j.o.Mirror.Get(j.id)
+			return err == nil && cur.PullRequest != nil && cur.PublishStatus != nil && cur.PublishStatus.State == "opened"
 		}
 	}
 	return true
@@ -691,6 +728,43 @@ func final(it factory.Item) api.WorkerDone {
 
 func gone(err error) bool {
 	return errors.Is(err, client.ErrLeaseGone) || errors.Is(err, client.ErrNotAttached)
+}
+
+// A revoked lease cannot carry execution reports. Its acknowledged request can
+// still reconcile accounting alone through the existing receipt door.
+func (j *job) settleAccounting(ctx context.Context) {
+	if j.spendReport == nil {
+		return
+	}
+	// Quit can arrive before or during settlement. Keep its existing receipt
+	// door alive for five seconds after cancellation, before mirror cleanup.
+	parent := ctx
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancel()
+	stop := context.AfterFunc(parent, func() { time.AfterFunc(StopWait, cancel) })
+	defer stop()
+	deadline := time.Now().Add(provider.ReceiptWait + time.Second)
+	for j.o.Runner.Running(j.id) && time.Now().Before(deadline) {
+		if !pause(ctx, 20*time.Millisecond) {
+			return
+		}
+	}
+	cur, err := j.o.Mirror.Get(j.id)
+	if err != nil || cur.Stream == nil {
+		return
+	}
+	additional := max(0, cur.Stream.Spent-j.spendBaseline)
+	if additional == 0 {
+		return
+	}
+	for attempt := range deliveryRecoveryLimit {
+		requestCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+		_, err := j.w.Recover(requestCtx, j.id, j.lease, *j.spendReport, additional)
+		cancel()
+		if err == nil || !reportRetryable(err) || !pause(ctx, time.Duration(attempt+1)*time.Second) {
+			return
+		}
+	}
 }
 
 func (j *job) lostLease(err error) bool {

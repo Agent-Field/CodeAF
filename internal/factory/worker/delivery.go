@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -116,7 +115,11 @@ func (j *job) prepareDelivery(cur factory.Item, report factory.RunReport) (*pend
 	if err != nil {
 		return nil, err
 	}
-	p.Request, err = client.PrepareWorkerReport(api.FromRunReport(report), key)
+	wire := api.FromRunReport(report, j.tables)
+	if !j.tables {
+		wire.Cost = max(0, factory.JobSpent(cur)-factory.JobSpent(j.sent))
+	}
+	p.Request, err = client.PrepareWorkerReport(wire, key)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +140,7 @@ func reportRetryable(err error) bool {
 	if !errors.As(err, &refused) {
 		return true
 	}
-	return refused.Status >= 500 || refused.Status == http.StatusRequestTimeout || refused.Status == http.StatusTooManyRequests
+	return api.WorkerResendable(refused.Status)
 }
 
 func (j *job) sendRequest(ctx context.Context, request client.PreparedWorkerReport) error {

@@ -1,6 +1,7 @@
 package run
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -22,6 +23,39 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	}
 	// Resume may queue a paused job before its old lease has flushed the
 	// cancelled round. That holder still owes the job its work and spending.
+	if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+		// Validate the whole report before preserving a sent request's receipt.
+		raw, err := json.Marshal(it)
+		if err != nil {
+			return err
+		}
+		var candidate factory.Item
+		if err := json.Unmarshal(raw, &candidate); err != nil {
+			return err
+		}
+		candidate.State = factory.StateRunning
+		if err := ApplyReport(&candidate, report, now); err != nil {
+			return err
+		}
+		if report.PR == nil {
+			// A publisher's already queued progress cannot revive a stopped job.
+			if it.Stream != nil && candidate.Stream != nil {
+				it.Stream.Spent = candidate.Stream.Spent
+			}
+			return nil
+		}
+		if report.Publishing == nil || report.Publishing.State != "opened" {
+			return fmt.Errorf("a stopped publisher reports an opened PR receipt")
+		}
+		candidate.Failure = nil
+		if err := ShipPublished(&candidate, now); err != nil {
+			return err
+		}
+		loopSay(&candidate, now, "said", stoppedPRWords(report.PR.URL))
+		*it = candidate
+		return nil
+	}
+
 	if it.State != factory.StateRunning && it.State != factory.StateNeedsYou && it.State != factory.StateQueued {
 		return fmt.Errorf("job is no longer running")
 	}
@@ -244,7 +278,7 @@ func reportRoom(it *factory.Item, room string) error {
 // an approve step on the job stays on, so no worker can skip a person's gate.
 // A phase the job already has keeps the state the server holds for it.
 func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
-	if change == nil {
+	if change == nil || len(change.Stages) == 0 {
 		return nil
 	}
 	for _, st := range it.Stages {
@@ -293,18 +327,6 @@ func mergeClaims(it *factory.Item, claims []factory.Claim) {
 	}
 }
 
-// dropSettledPlanApproval frees the item's decision slot when a new approve
-// question arrives after a plan approval already settled: THE OLD CONSENT NEVER
-// CARRIES TO A NEW QUESTION, so the new ask needs a new approval with its own
-// five-second window. Only a settled plan approval goes; one still inside its
-// window ("approving") belongs to undo and settle, and any other kind is not
-// this question's. The factory record keeps the earlier consent.
-func dropSettledPlanApproval(it *factory.Item) {
-	if a := it.Approval; a != nil && a.Kind == "plan" && a.State == "approved" {
-		it.Approval = nil
-	}
-}
-
 func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now time.Time) error {
 	if question == nil {
 		return nil
@@ -326,9 +348,6 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 		setPhaseState(&it.Stream.Phases[i], factory.PhaseWaiting, now)
 	}
 	it.Asking = &q
-	if kind == factory.QKindApprove {
-		dropSettledPlanApproval(it)
-	}
 	it.State = factory.StateNeedsYou
 	it.Question, it.QKind = q.Question, kind
 	if it.QKind == "" {
@@ -393,6 +412,26 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		return fmt.Errorf("step round must not be negative")
 	}
 	ph := &it.Stream.Phases[i]
+	if step.RoundCosts != nil {
+		for round, spent := range step.RoundCosts {
+			if round < 1 || math.IsNaN(spent) || math.IsInf(spent, 0) || spent < 0 {
+				return fmt.Errorf("round cost must have a positive round and finite nonnegative dollars")
+			}
+		}
+		before := ph.StepCost()
+		if ph.RoundCosts == nil {
+			ph.RoundCosts = make(map[int]float64)
+		}
+		for round, spent := range step.RoundCosts {
+			ph.RoundCosts[round] = max(ph.RoundCosts[round], spent)
+		}
+		addCost(it, max(0, ph.StepCost()-before))
+	} else if step.Result != nil && ph.RoundCosts != nil {
+		// Cost already books this legacy receipt; retain it so later tables
+		// cannot charge the same round again.
+		round := max(1, step.Round)
+		ph.RoundCosts[round] = max(ph.RoundCosts[round], step.Result.Spent)
+	}
 	newLoop := step.State == factory.PhasePending && step.Round > ph.Round
 	ph.Verification = nil
 	if step.Chat != "" {
@@ -449,7 +488,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 func addCost(it *factory.Item, usd float64) { it.Stream.Spent += usd }
 
 // applyModelUses adds a report's model rows where the job's spend is. The
-// dollars themselves arrived as Cost; these rows only say which model.
+// dollars arrive through round tables and Cost; these rows identify the model.
 func applyModelUses(it *factory.Item, rows []factory.ModelUse) {
 	if it == nil {
 		return
@@ -555,6 +594,9 @@ func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 // FinishReport uses the local runner's landing gate before releasing a hold.
 // A worker may report interruption or a question, but cannot approve proof.
 func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
+	if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+		return nil
+	}
 	// A paused drive releases its lease without ending the saved run. A
 	// resume already queued by the person must survive that release too.
 	if state == factory.StateNew && (storedPaused(*it) || it.State == factory.StateQueued) {

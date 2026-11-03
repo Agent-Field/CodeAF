@@ -90,7 +90,7 @@ func TestALaunchRunsTheRepositorysCurrentPipeline(t *testing.T) {
 // could not be read marks the job so its plan waits for a person.
 func TestALaunchStampsTheStartRulesEveryDoorMustCarry(t *testing.T) {
 	f := setup(t)
-	if _, err := f.store.ChangeHouseRules(func(h *factory.HouseRules) error {
+	if _, err := f.store.ChangeHouseRules(factory.RulesChange{}, func(h *factory.HouseRules) error {
 		h.AskFirst = []string{"touch billing/"}
 		return nil
 	}); err != nil {

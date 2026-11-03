@@ -71,12 +71,7 @@ func TestAClosedCrewsMembersKeepAlsoInAndReportsTo(t *testing.T) {
 // that finds it unchanged costs its revision only.
 func TestTheWatchReadsAClosedCrewOnlyWhenItMoves(t *testing.T) {
 	backend, rec, profile, _ := closedCrewRig(t)
-	run := &appCrewRun{
-		ready: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}),
-		prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
-		acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
-		held: map[string][]string{}, opening: map[string]bool{},
-	}
+	run := newAppCrewRun()
 	backend.factoryRooms.Do(func() {})
 	backend.crewTick(run, true)
 	if err := teamstore.Update(profile, func(f *teamstore.File) error { return f.Close("0d0d0d0d0d0d", time.Now(), "") }); err != nil {
@@ -155,12 +150,7 @@ func TestARoomItsJobClosedLeavesTheWatch(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	run := &appCrewRun{
-		ready: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}),
-		prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
-		acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
-		held: map[string][]string{}, opening: map[string]bool{},
-	}
+	run := newAppCrewRun()
 	backend.factoryRooms.Do(func() {})
 	backend.crewTick(run, true)
 	if err := teamstore.UpdateOpen(profile, func(f *teamstore.File) error {
@@ -191,12 +181,7 @@ func TestTheWatchFollowsCrewsClosedBeforeItStarted(t *testing.T) {
 	for _, door := range []string{"archive", "delete"} {
 		t.Run(door, func(t *testing.T) {
 			backend, rec, profile, _ := closedCrewRig(t)
-			run := &appCrewRun{
-				ready: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}),
-				prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
-				acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
-				held: map[string][]string{}, opening: map[string]bool{},
-			}
+			run := newAppCrewRun()
 			backend.factoryRooms.Do(func() {})
 			backend.crewTick(run, true)
 			before := crewClosedReads.Load()

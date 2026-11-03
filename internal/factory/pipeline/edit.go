@@ -18,7 +18,7 @@ import (
 // An editor never writes YAML. It names an edit, and this file turns the file
 // that was really read plus that edit into the exact bytes the pull request
 // route will commit. The edits are the ones the file format can hold today: a
-// step's prompt, kind, when, effort, fanout, until and max, the default budget,
+// step's label, prompt, kind, when, effort, fanout, until and max, the default budget,
 // a chat step added to, removed from or moved within one pipeline's list
 // (edit_structure.go), and the file's own rules, ask_first and never lines
 // replaced whole (edit_lists.go). Everything else in the file (the rest of
@@ -61,9 +61,10 @@ const (
 // refused here rather than written. Only a field an edit names is bounded; a
 // larger value already in the file is carried through untouched.
 const (
-	EditTextMax   = 256 << 10 // the pull request route's own cap on the file
-	EditPromptMax = 8 << 10   // bytes
-	EditUntilMax  = 200       // characters
+	EditTextMax   = 256 << 10            // the pull request route's own cap on the file
+	EditPromptMax = 8 << 10              // bytes
+	EditLabelMax  = factory.StepLabelMax // characters
+	EditUntilMax  = 200                  // characters
 	EditRoundsMax = 99
 	EditBudgetMax = factory.BudgetMostUSD
 	EditOpsMax    = 64
@@ -95,7 +96,7 @@ func refuseEdit(code string, op int, format string, args ...any) *EditError {
 }
 
 // EditOp is one edit. Pointers tell a field that was not sent from one that was
-// sent empty. set_step names a step and at least one of prompt, kind, when,
+// sent empty. set_step names a step and at least one of label, prompt, kind, when,
 // effort, fanout, until and max; an empty kind, when, effort or fanout is the
 // default, written as the key left out. Kind may only be chat (or empty), and
 // only a chat step is edited at all ([lockedStep]); set_budget names only Value.
@@ -114,6 +115,7 @@ type EditOp struct {
 	When     *string
 	Effort   *string
 	Fanout   *string
+	Label    *string
 	Until    *string
 	Max      *int
 	Value    *float64
@@ -125,8 +127,11 @@ type EditOp struct {
 	Fixed   *bool
 	MaxSize *string
 	MaxCost *float64
-	// Who belongs to set_approver, with Name.
+	// Who belongs to set_approver, with Name, and to an add_step of kind
+	// gate: who the added person waits on.
 	Who *string
+	// To belongs to rename_step, with Name: the step's new name.
+	To string
 }
 
 // StepView is one step as the file reads. Gate is a step that is a person
@@ -134,8 +139,9 @@ type EditOp struct {
 // step whose kind is check, gate or post, and any name the file lists under fixed. InFile is false for a step the file does not
 // define itself, whose wording is a shipped default.
 type StepView struct {
-	Name string
-	Gate bool
+	Label string
+	Name  string
+	Gate  bool
 	// Who is who a person step waits on; "" the job's person.
 	Who    string
 	Prompt string
@@ -178,10 +184,13 @@ type Source struct {
 	Labels  []string
 	MaxSize string
 	MaxCost float64
+	// AdaptKinds is the file's adapt per pipeline when it writes one word per
+	// pipeline (Adapt is then ""), never nil: a kind it does not name is adapt.
+	AdaptKinds map[string]string
 }
 
 // StepChange is one step an edit really changed. Fields names what changed, in
-// the order prompt, kind, when, effort, fanout, until, max.
+// the order label, prompt, kind, when, effort, fanout, until, max.
 type StepChange struct {
 	Name   string
 	Fields []string
@@ -225,9 +234,11 @@ type Edited struct {
 
 	Structural bool
 	Order      []OrderChange
-	Added      []string
-	Counts     []KindCount
-	Gates      []GateChange
+	// Renamed is every rename_step, in edit order; set only with Structural.
+	Renamed []Rename
+	Added   []string
+	Counts  []KindCount
+	Gates   []GateChange
 
 	Listed bool
 	Lists  []ListChange
@@ -363,12 +374,12 @@ func lockedStep(f File, name string) bool {
 
 func stepView(f File, name string) StepView {
 	if factory.ApproveWord(name) {
-		return StepView{Name: name, Gate: true, Locked: true, InFile: true, Who: f.Steps[name].Who}
+		return StepView{Name: name, Label: f.Steps[name].Label, Gate: true, Locked: true, InFile: true, Who: f.Steps[name].Who}
 	}
 	s := f.Steps[name]
-	return StepView{Name: name, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who,
+	return StepView{Name: name, Label: s.Label, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who,
 		Until: s.Until, Max: s.Max, Locked: lockedStep(f, name),
-		InFile: s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
+		InFile: s.Label != "" || s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
 }
 
 func describe(f File) Source {
@@ -394,6 +405,10 @@ func describe(f File) Source {
 	src.AskFirst = append([]string{}, f.Start.AskFirst...)
 	src.Never = append([]string{}, f.Start.Never...)
 	src.Adapt = string(f.Adapt)
+	src.AdaptKinds = map[string]string{}
+	for kind, mode := range f.AdaptKinds {
+		src.AdaptKinds[string(kind)] = string(mode)
+	}
 	src.Labels = append([]string{}, f.Start.Labels...)
 	src.MaxSize, src.MaxCost = normOr(f.Start.MaxSize, DefaultMaxSize), f.Start.MaxCost
 	return src
@@ -458,6 +473,9 @@ func ApplyEdits(base string, ops []EditOp) (Edited, error) {
 		}
 		checked[i] = c
 	}
+	if bad := renameAlone(checked); bad != nil {
+		return Edited{}, bad
+	}
 	st := newEditState(f)
 	for i, op := range checked {
 		if bad := st.apply(i, op); bad != nil {
@@ -490,6 +508,7 @@ type editState struct {
 	setAt      map[string]int
 	firstOp    map[factory.Kind]int
 	newSteps   []string
+	renames    []Rename
 	budgetSeen bool
 	structural bool
 	// listSeen is every list a set_list replaced, and listed says one did.
@@ -533,6 +552,8 @@ func (st *editState) apply(i int, op EditOp) *EditError {
 		return st.setList(i, op)
 	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
 		return st.settings(i, op)
+	case OpRenameStep:
+		return st.rename(i, op)
 	}
 	return st.structure(i, op)
 }
@@ -579,8 +600,11 @@ func (st *editState) setStep(i int, op EditOp) *EditError {
 	return nil
 }
 
-// setStepWords writes the when, effort, fanout, until and max an edit names.
+// setStepWords writes the label, when, effort, fanout, until and max an edit names.
 func setStepWords(s *Step, op EditOp) {
+	if op.Label != nil {
+		s.Label = *op.Label
+	}
 	if op.When != nil {
 		s.When = *op.When
 	}
@@ -635,7 +659,7 @@ func (st *editState) result(base string, canonical []byte) (Edited, error) {
 	// is new, and nothing of the repository's own is lost on the way.
 	res.FormatRewritten = base != "" && base != string(canonical)
 	res.CommentsDropped = hasComments(base)
-	res.Steps = stepChanges(describe(st.base), out)
+	res.Steps = stepChanges(describe(st.base), out, st.renamedTo())
 	if before, after := st.base.DefaultBudget, out.DefaultBudget; before != after {
 		res.Budget = &BudgetChange{Before: before, After: after}
 	}
@@ -643,17 +667,23 @@ func (st *editState) result(base string, canonical []byte) (Edited, error) {
 }
 
 // stepChanges is every step of the base whose words an edit changed, in the
-// base's order, with the fields that differ.
-func stepChanges(before Source, out File) []StepChange {
+// base's order, with the fields that differ. A renamed step is compared under
+// its new name, so a rename alone changes no words.
+func stepChanges(before Source, out File, renamed map[string]string) []StepChange {
 	var changes []StepChange
 	for _, b := range before.Steps {
-		a := stepView(out, b.Name)
+		name := b.Name
+		if to, ok := renamed[name]; ok {
+			name = to
+		}
+		a := stepView(out, name)
+		a.Name = b.Name
 		var fields []string
 		for _, c := range []struct {
 			name string
 			diff bool
 		}{
-			{"prompt", a.Prompt != b.Prompt}, {"kind", a.Kind != b.Kind}, {"when", a.When != b.When},
+			{"label", a.Label != b.Label}, {"prompt", a.Prompt != b.Prompt}, {"kind", a.Kind != b.Kind}, {"when", a.When != b.When},
 			{"effort", a.Effort != b.Effort}, {"fanout", a.Fanout != b.Fanout}, {"until", a.Until != b.Until}, {"max", a.Max != b.Max},
 		} {
 			if c.diff {
@@ -676,14 +706,19 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 	if op.Op != OpSetList && (op.List != "" || op.Lines != nil) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no list and no lines", op.Op)
 	}
+	if op.Op != OpRenameStep && op.To != "" {
+		return op, refuseEdit(EditBadOp, i, "only rename_step takes to")
+	}
 	if !settingsOp(op.Op) && settingFieldsNamed(op) {
-		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size or max_cost", op.Op)
+		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size, max_cost or who", op.Op)
 	}
 	switch op.Op {
 	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
 		return checkSettings(i, op)
 	case OpSetList:
 		return checkSetList(i, op)
+	case OpRenameStep:
+		return checkRename(i, op)
 	case OpAddStep, OpRemoveStep, OpMoveStep:
 		return checkStructure(i, op)
 	case OpSetBudget, OpSetStep:
@@ -691,7 +726,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 			return op, refuseEdit(EditBadOp, i, "%s takes no pipeline and no position", op.Op)
 		}
 	default:
-		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start and set_approver")
+		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start, set_approver and rename_step")
 	}
 	if op.Op == OpSetBudget {
 		return checkSetBudget(i, op)
@@ -704,7 +739,7 @@ func checkSetStep(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadOp, i, "set_step does not take a value")
 	}
 	if op.Kind == nil && !stepFieldsNamed(op) {
-		return op, refuseEdit(EditBadOp, i, "set_step needs a prompt, kind, when, effort, fanout, until or max")
+		return op, refuseEdit(EditBadOp, i, "set_step needs a label, prompt, kind, when, effort, fanout, until or max")
 	}
 	if !stepNamed(op.Name) {
 		return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
@@ -739,15 +774,26 @@ func checkSetBudget(i int, op EditOp) (EditOp, *EditError) {
 	return op, nil
 }
 
+// KindNamed says whether a name is spelled as the file spells a pipeline's
+// kind, the key under pipeline: the same spelling as a step's name.
+func KindNamed(name string) bool { return stepNamed(name) }
+
 // stepNamed says whether a name is spelled as the file spells a step: exactly,
 // lowercase, 2 to 32 letters, digits and inner hyphens.
 func stepNamed(name string) bool {
 	return name != "" && name == stepToken(name) && validStepName(name)
 }
 
-// checkStepFields bounds and trims the prompt, when, effort, fanout, until and
+// checkStepFields bounds and trims the label, prompt, when, effort, fanout, until and
 // max an edit names; it is shared by set_step and add_step.
 func checkStepFields(i int, op EditOp) (EditOp, *EditError) {
+	if op.Label != nil {
+		label, err := factory.CleanStepLabel(*op.Label)
+		if err != nil {
+			return op, refuseEdit(EditBadValue, i, "%s", err.Error())
+		}
+		op.Label = &label
+	}
 	if op.Prompt != nil {
 		p, why := cleanPrompt(*op.Prompt)
 		if why != "" {
@@ -821,7 +867,7 @@ func stepsDiffer(back, want File) string {
 		}
 		got := back.Steps[name]
 		if got.Prompt != s.Prompt || got.Kind != s.Kind || got.When != s.When || got.Effort != s.Effort ||
-			got.Fanout != s.Fanout || got.Until != s.Until || got.Max != s.Max {
+			got.Label != s.Label || got.Fanout != s.Fanout || got.Until != s.Until || got.Max != s.Max {
 			return fmt.Sprintf("the file format cannot hold that change to %s", name)
 		}
 	}

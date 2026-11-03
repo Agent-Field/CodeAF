@@ -77,6 +77,10 @@ func (d *Desk) drain(id, worker string, publishing bool) ([]Signal, error) {
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
+			if _, receiptErr := receiptIdentity(doc, id, worker, now); receiptErr == nil {
+				out = []Signal{{Verb: SignalStop}}
+				return false, nil
+			}
 			return false, err
 		}
 		it, err := d.store.Get(held.Job)
@@ -246,7 +250,7 @@ func carriedOut(verb string) bool { return verb == SignalPublish || verb == Sign
 func (d *Desk) CarriedMerge(id, worker string) (bool, error) {
 	var merge bool
 	err := d.change(func(doc *document, _ time.Time) (bool, error) {
-		held, err := identified(doc, id, worker)
+		held, err := receiptIdentity(doc, id, worker, d.now())
 		if err != nil {
 			return false, err
 		}

@@ -31,6 +31,7 @@ func (h *Handler) verbs() {
 	h.postJob("approve", true, h.approve)
 	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.onlyOwner(h.retryPublish)))
 	h.postJob("merge", h.config.Store != nil, h.onlyOwner(h.mergeJob))
+	h.postJob("pr-ready", h.config.Store != nil, h.onlyOwner(h.prReady))
 	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
 	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
 	// Take and release are the lease desk's own doors, not seam fields. The
@@ -48,7 +49,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
+			if verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "pr-ready" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -274,22 +275,35 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 		if h.workers != nil {
 			now = h.workers.now()
 		}
-		if err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
+		err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
 			run.NoteContinue(item, now)
 			return nil
-		}); h.failed(w, err) {
+		})
+		if h.failed(w, err) {
 			return
 		}
 	}
-	err := h.recordAnswer(r, it, yes, words)
-	if err != nil && factory.IsContinue(yes, words) && it.QKind == "cap" && h.config.Store != nil && strings.Contains(err.Error(), "is not waiting on you") {
-		if qerr := h.releaseCapWait(it.ID); h.failed(w, qerr) {
-			return
-		}
-		h.finish(w, h.recordContinued(r, it, words))
+	if factory.IsContinue(yes, words) && it.QKind == "cap" && h.config.Store != nil {
+		h.finish(w, h.continueCap(r, it, words))
 		return
 	}
-	h.finish(w, err)
+	h.finish(w, h.recordAnswer(r, it, yes, words))
+}
+
+// continueCap answers the cap question it waits on with words, a continue,
+// through the answer door: the runner holding it carries on, and the answer
+// is recorded. A cap no runner waits on any more goes back to the queue.
+func (h *Handler) continueCap(r *http.Request, it factory.Item, words string) error {
+	if h.seam.Answer != nil {
+		err := h.recordAnswer(r, it, true, words)
+		if err == nil || !strings.Contains(err.Error(), "is not waiting on you") {
+			return err
+		}
+	}
+	if err := h.releaseCapWait(it.ID); err != nil {
+		return err
+	}
+	return h.recordContinued(r, it, words)
 }
 
 // applyChoice maps the wire's choice onto yes and words. send_back requires
@@ -408,10 +422,9 @@ func (h *Handler) approves(w http.ResponseWriter, r *http.Request, it factory.It
 // job, so continue still raises the cap when KeepAnswer would refuse it.
 func (h *Handler) releaseCapWait(id int) error {
 	return h.config.Store.Update(id, func(it *factory.Item) error {
-		it.Question, it.QKind = "", ""
-		it.State = factory.StateQueued
-		if s := it.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
-			s.Phases[s.Cur].State = factory.PhaseRunning
+		// A job that moved on meanwhile keeps what it waits on now.
+		if it.QKind == "cap" {
+			run.ReleaseCap(it, h.now())
 		}
 		return nil
 	})
@@ -825,10 +838,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 			recipe = f.Recipe()
 			copied, decided = f.Copy, true
 		}
-		selected = recipe.ByKind[factory.Kind(body.Pipeline)]
-		if body.Pipeline == "issue" {
-			selected = recipe.For(factory.KindIssue)
-		}
+		selected = pipelineStages(recipe, body.Pipeline)
 		if len(selected) == 0 {
 			h.fail(w, 422, "pipeline not found")
 			return

@@ -65,10 +65,12 @@ func (h *Handler) recoverWorkerReport(w http.ResponseWriter, r *http.Request) {
 	}
 	saved, already, err := h.workers.desk.ReconcileReport(id, requestWorker(r), body.OriginalLease, digest, body.AdditionalCost, func(it *factory.Item, receipt *factory.WorkerReportReceipt) error {
 		if receipt != nil {
-			if it.Stream == nil {
-				return fmt.Errorf("the acknowledged report no longer has a spending ledger")
+			delta := body.AdditionalCost - receipt.AdditionalCost
+			if receipt.Archived {
+				it.SpentBefore += delta
+			} else {
+				factory.AddChatSpend(it, delta)
 			}
-			it.Stream.Spent += body.AdditionalCost - receipt.AdditionalCost
 			receipt.AdditionalCost = body.AdditionalCost
 			return nil
 		}
@@ -93,7 +95,7 @@ func (h *Handler) recoverWorkerReport(w http.ResponseWriter, r *http.Request) {
 			it.State = factory.StateQueued
 			it.Stream.Ended = time.Time{}
 		}
-		it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, At: h.workers.now(), AdditionalCost: body.AdditionalCost})
+		it.ReportReceipts = append(it.ReportReceipts, factory.WorkerReportReceipt{Digest: digest, Lease: body.OriginalLease, Machine: requestWorker(r).Machine, Handle: factory.NormalizeHandle(requestWorker(r).Handle), At: h.workers.now(), AdditionalCost: body.AdditionalCost})
 		if len(it.ReportReceipts) > factory.WorkerReportReceiptsMost {
 			it.ReportReceipts = append([]factory.WorkerReportReceipt(nil), it.ReportReceipts[len(it.ReportReceipts)-factory.WorkerReportReceiptsMost:]...)
 		}

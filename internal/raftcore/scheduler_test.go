@@ -53,6 +53,40 @@ func TestR26PartialQuiescenceWakeAndRestart(t *testing.T) {
 	}
 }
 
+// A group asleep for an hour takes a write. Its idle minute starts when the
+// scheduler next looks, not when it last looked before sleeping: going back to
+// sleep at once would discard the write's deliveries to the learners.
+func TestWakeRestartsTheIdleWindowFromTheNextLook(t *testing.T) {
+	g := newGroup(t)
+	g.elect()
+	l := g.leader()
+	c := g.nodes[l-1]
+	s := c.status()
+	marker := cs.Quiescence{Index: s.Applied, Term: s.Term, Barrier: s.Applied - 1, Voters: []uint64{1, 2, 3}}
+	acks := []SleepAck{{1, s.Applied, s.Term}, {2, s.Applied, s.Term}, {3, s.Applied, s.Term}}
+	if _, e := c.Schedule(ScheduleInput{Now: 0}); e != nil {
+		t.Fatal(e)
+	}
+	if p, e := c.Schedule(ScheduleInput{Now: 60_000, Marker: marker, Acks: acks}); e != nil || !p.Sleeping {
+		t.Fatal("did not sleep", p, e)
+	}
+	g.call(l, Propose{command(t, 1)})
+	g.pump()
+	const woke = int64(3_600_000)
+	p, e := c.Schedule(ScheduleInput{Now: woke})
+	if e != nil || p.Sleeping || p.Barrier || p.Prepare {
+		t.Fatalf("a group that just took a write prepared to sleep: %+v %v", p, e)
+	}
+	p, e = c.Schedule(ScheduleInput{Now: woke + cs.IdleAfterMillis - 1})
+	if e != nil || p.Barrier || p.Prepare {
+		t.Fatalf("prepared to sleep inside the idle minute: %+v %v", p, e)
+	}
+	p, e = c.Schedule(ScheduleInput{Now: woke + cs.IdleAfterMillis})
+	if e != nil || !(p.Barrier || p.Prepare) {
+		t.Fatalf("never prepared to sleep again: %+v %v", p, e)
+	}
+}
+
 // R27 counts virtual whole days with no wall sleeps. A delayed scheduler turn
 // runs at most one tick; stable heartbeats create no application/log writes.
 func TestR27VirtualDayCounters(t *testing.T) {

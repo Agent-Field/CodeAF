@@ -74,6 +74,14 @@ the `stage_result` it reported, and only a report that says done can pass:
 - `until green`: done, and a check step's command exited 0. A conversation step has no exit
   code of its own, so for it green is the same as done: it reports done once the tests pass.
 
+A `write` step's done also needs a change in the job's checkout. With none, the round reads
+`the checkout has no change from where the run began` and does not pass, so later steps never
+run on an untouched tree. The comparison uses the job's original base: a rerun, **Try again**,
+or restarting a stopped step counts the change already on its branch, including committed
+work. Each attempt does not need a new edit. A branch with no change still cannot pass Write,
+even on a rerun. If the original base cannot be preserved, the round fails before editing;
+try again after the repository becomes writable. Other steps may finish with no change.
+
 A step that falls short of its until goes round again while it has rounds left (see a second
 round).
 
@@ -135,6 +143,8 @@ round ran for two hours (or an idle Plan could not finish reporting within its t
   codeaf could not make the report;
 - `write ran out of time without reporting · …`
 - `plan did not finish: <what it said> · …` when it reported that it could not;
+- `write did not finish: the checkout has no change from where the run began · …` when write
+  reported done but changed nothing;
 - `test is not proven: 1 of 2 claims shown · …` for a step that runs once;
 - `review is not clean after 3 rounds: 1 finding · …` only for a step that loops.
 
@@ -327,6 +337,23 @@ runner gives it no second turn on the same words. Say `start` and the manager st
 with `factory_start`; it starts the job only when you ask. It never clones the repository
 itself: the runner clones it when the job starts.
 
+## step cost across rounds, resumed work and the job total
+
+A step's cost includes every priced round once. Resuming an interrupted round
+keeps its earlier spending; a repeated result does not add another charge.
+Retrying a step keeps its earlier cost. A new run or Run as new starts from zero.
+The job total also includes the manager's calls and other work outside steps,
+so it can exceed the sum of step costs. Unpriced calls add no dollar amount.
+Worker reports retain every round even when several rounds finish between reports.
+The factory keeps the largest reported total for each round. Delayed or partial
+reports cannot remove a round or lower its cost; increases still count. Once a step
+has round receipts, reports without a table keep those receipts and update their
+round without charging the job twice. Steps that never had round receipts show
+the last reported round cost. There is no migration; earlier round costs absent
+from saved receipts cannot be recovered.
+Workers use round receipts only when the factory advertises support. With an
+older factory, all new spending travels in the established job-spend report.
+
 ## the job's chat is its manager — where it works, and its spend counts toward the job's budget
 
 A job's own chat (`T` on the floor, or the job's chat on its page) is the job's manager. What
@@ -341,7 +368,8 @@ from the job's budget like the job's steps: everything done for the job spends f
 - **During a run** the manager, stages and their delegated workers record priced calls
   immediately against the same job. Child totals folded back into a parent are not charged again.
 - **Counted once.** The spend page still lists every call once. The job's figure reads the
-  same dollars; it is not an additional charge.
+  same dollars; it is not an additional charge. If a slow call races another provider,
+  both completed calls count toward the job, including the answer that was discarded.
 - **At the budget** new model calls and tools are refused. The job's owned agent families
   stop promptly, including delegated tasks, background commands and adaptive runs. This
   applies while the manager is idle too. Calls already sent can still report charges afterward;
@@ -350,7 +378,8 @@ from the job's budget like the job's steps: everything done for the job spends f
   $10, $20 and $30 and share the confirmed value. Decreasing $10 back to $5 is allowed when
   recorded spend is at most $5. The server rechecks spend while writing the new cap.
   Raising the cap above recorded spend answers a budget question and resumes the interrupted
-  step in Auto or Manual, on this computer or a leased worker. The same conversation, round
+  step in Auto or Manual, on this computer or a leased worker. Manual still asks before
+  the next step; Take over keeps the job in your hands. The same conversation, round
   and spend are kept. Chat says `budget raised to $10 · carrying on` for a $10 cap.
   An increase still at or below spend keeps the question with the current budget; no more
   paid work may begin. A decrease below spend is refused. Continue still raises the cap as
@@ -898,6 +927,14 @@ An accepted “no code change needed” assessment (`repair.decision: no_change`
 successful outcome: Follow PR returns to
 watching GitHub for new activity. No code change does not require a new approval.
 
+## Memory charges after a finished step reaches its budget
+
+Model and tool spending that reaches the job cap still asks for more budget,
+including when a step reports completion early. If the step finishes under its
+cap and only optional memory crosses it, the finished step stays done. The next
+step asks before starting, using the full job spend. On the last step, the job
+finishes with its true spend shown and no question for work it will not run.
+
 ## Stop spending after this step in a job's Spend menu
 
 **Stop spending after this step** lets the current step finish before you
@@ -922,3 +959,26 @@ The choice adds no dollar limit and does not interrupt a model call already
 under way. A leased worker checks the saved choice before each step and landing.
 If that read fails, it keeps the last saved choice, including an armed hold,
 and tries again at the next boundary. The read failure does not fail the job.
+
+## Follow PR — comments that need no code change
+
+A comment can be considered without producing a new diff. Follow PR reads the
+current feedback against the published head and records why no edit is needed.
+A successful assessment returns to monitoring; Merge then uses its ordinary
+checks, review and approved-head gates. Outstanding requested changes and failing
+or pending CI still block Merge.
+
+A no-change report must include `repair.readiness` with the full current head and
+the diff, description, feedback and unfinished-work checks. Missing or incomplete
+fields are returned to the model during `stage_result`, so it can correct the
+report in the same conversation. Prose alone does not complete the assessment.
+The runner still checks that the published head and clean checkout agree.
+
+If a no-change report was refused against the same PR head, comments and check
+state, **Try again** returns without starting a paid round. It says to wait for
+a new push or comment, or stop the job. New PR facts permit a fresh attempt.
+Attempt exhaustion alone never opens Merge or acknowledges a requested change.
+
+When the refusal concerns local checkout changes, Try again first rereads the
+checkout without calling a model. An unchanged checkout remains refused without
+spending; restoring the clean published checkout permits a fresh assessment.

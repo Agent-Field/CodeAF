@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
 // ── JOB ACTIONS ON AN ATTACHED FACTORY ──────────────────────────────────────
@@ -44,16 +45,29 @@ import (
 
 // FeatureFactoryJobActions is announced in hello when the engine serves
 // factory.job_*. Job creation keeps separate title and details literal;
-// neither field sets budget or edits the pipeline.
+// neither field sets budget or edits the pipeline. Spending questions and
+// budget edits share the allowed budgets from factory.JobBudgetSteps.
 const FeatureFactoryJobActions = "factory.job_actions"
+
+// FeatureFactoryStartPipeline is announced beside FeatureFactoryJobActions when
+// factory.job_start and factory.job_create take pipeline: the kind whose
+// pipeline the job runs. Without it a pipeline is refused before the engine is
+// asked.
+const FeatureFactoryStartPipeline = "factory.start_pipeline"
+
+// FactoryPipelineStarter is implemented ONLY by an actor that sends a picked
+// pipeline to the factory on start and create.
+type FactoryPipelineStarter interface {
+	FactoryJobPipelineStarts()
+}
 
 // FeatureFactoryStopAnyVersion says Stop accepts no expect and ignores an
 // old expect on an active job or its current running step.
 const FeatureFactoryStopAnyVersion = "factory.stop_any_version"
 
-// FactoryBudgetSteps are the limits factory.job_set_budget accepts, in US
-// dollars. The job owner can choose either direction, never below recorded spending.
-var FactoryBudgetSteps = []float64{5, 10, 20, 30}
+// FactoryBudgetSteps are the standard limits factory.job_set_budget accepts,
+// in US dollars. Larger amounts must equal the job's next cap. The job owner can choose either direction, never below recorded spending.
+var FactoryBudgetSteps = factory.JobBudgetSteps()
 
 // The priorities factory.job_set_priority takes, as the factory spells them.
 const (
@@ -96,13 +110,28 @@ const (
 )
 
 // FactoryJobActionParams names the job and the read it was acted on from. It
-// is the whole request of start, stop, dismiss, restore, run_again, unassign,
+// is the whole request of stop, dismiss, restore, run_again, unassign,
 // assign_to_me, undo and retry_publish.
 type FactoryJobActionParams struct {
 	Factory string      `json:"factory"`
 	Job     int         `json:"job"`
 	Expect  *api.Expect `json:"expect"`
 }
+
+// FactoryJobStartParams is start's request: the job and the read it was acted
+// on from, and, behind feature factory.start_pipeline, the pipeline the job
+// runs instead of its own steps ("" for its own). Pipeline is a kind the
+// repository's file lists (not pr or ci, which are not an issue job's); the
+// factory reads the file the start decides on the job and refuses one it
+// does not list, a job that already ran, and one already in the queue.
+type FactoryJobStartParams struct {
+	Factory  string      `json:"factory"`
+	Job      int         `json:"job"`
+	Expect   *api.Expect `json:"expect"`
+	Pipeline string      `json:"pipeline,omitempty"`
+}
+
+func (p *FactoryJobStartParams) pickedPipeline() string { return p.Pipeline }
 
 // FactoryJobDropParams drops a job, which deletes its local branch and folder
 // and its conversations and crew on the factory's machine.
@@ -132,7 +161,8 @@ type FactoryJobPriorityParams struct {
 	Expect   *api.Expect `json:"expect"`
 }
 
-// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps].
+// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps]
+// or its next cap above those steps, as validated by the factory.
 // An increase above spend resumes a cap wait; a smaller increase keeps the
 // question. A decrease below recorded spending is refused.
 type FactoryJobBudgetParams struct {
@@ -240,7 +270,12 @@ type FactoryJobCreateParams struct {
 	Text     string  `json:"text,omitempty"`
 	Assignee *string `json:"assignee,omitempty"`
 	Start    string  `json:"start,omitempty" enum:"backlog,now"`
+	// Pipeline (feature factory.start_pipeline) is the kind whose pipeline the
+	// new job runs, as [FactoryJobStartParams] says; "" for the issue steps.
+	Pipeline string `json:"pipeline,omitempty"`
 }
+
+func (p *FactoryJobCreateParams) pickedPipeline() string { return p.Pipeline }
 
 // FactoryApprovalReceipt is the decision an approval left on the job. An
 // approval waits UndoUntil before it is acted on: until then the same person's
@@ -311,7 +346,7 @@ type FactoryRefusal struct {
 // params arrive checked ([FactoryJobActionParams] and the others), trimmed, and
 // with a version.
 type FactoryActor interface {
-	FactoryJobStart(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
+	FactoryJobStart(ctx context.Context, p FactoryJobStartParams) (FactoryJobActed, error)
 	FactoryJobStop(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobDismiss(ctx context.Context, p FactoryJobActionParams) (FactoryJobActed, error)
 	FactoryJobDrop(ctx context.Context, p FactoryJobDropParams) (FactoryJobActed, error)
@@ -344,6 +379,9 @@ func withFactoryActorFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(FactoryActor); ok {
 		hello = withFeature(hello, FeatureFactoryJobActions)
 		hello = withFeature(hello, FeatureFactoryStopAnyVersion)
+		if _, ok := e.(FactoryPipelineStarter); ok {
+			hello = withFeature(hello, FeatureFactoryStartPipeline)
+		}
 		if _, ok := e.(FactoryJobNewRunner); ok {
 			hello = withFeature(hello, FeatureFactoryJobRunAsNew)
 		}
@@ -436,6 +474,9 @@ func factoryAction[P any](name string, prep func(*P) error, call func(FactoryAct
 		if err := prep(&p); err != nil {
 			return nil, err
 		}
+		if err := checkPipelinePickServed(e, &p); err != nil {
+			return nil, err
+		}
 		ctx, cancel := factoryCall()
 		defer cancel()
 		out, err := call(a, ctx, p)
@@ -447,6 +488,36 @@ func factoryAction[P any](name string, prep func(*P) error, call func(FactoryAct
 }
 
 func prepAction(p *FactoryJobActionParams) error { return checkJob(&p.Factory, p.Job, p.Expect) }
+
+func prepStart(p *FactoryJobStartParams) error {
+	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
+		return err
+	}
+	return checkPipelinePick(&p.Pipeline)
+}
+
+// checkPipelinePick trims a picked pipeline and refuses one not spelled as a
+// pipeline of the file is. Whether the file lists it is the factory's to say.
+func checkPipelinePick(pick *string) error {
+	*pick = strings.TrimSpace(*pick)
+	if *pick != "" && !pipeline.KindNamed(*pick) {
+		return Errorf(CodeBadParams, "pipeline must be a pipeline name of the repository's file")
+	}
+	return nil
+}
+
+// checkPipelinePickServed refuses a picked pipeline to an engine that has not
+// said it sends one.
+func checkPipelinePickServed(e Engine, p any) error {
+	picker, ok := p.(interface{ pickedPipeline() string })
+	if !ok || picker.pickedPipeline() == "" {
+		return nil
+	}
+	if _, ok := e.(FactoryPipelineStarter); ok {
+		return nil
+	}
+	return Errorf(CodeBadParams, "this engine does not start a job on a picked pipeline")
+}
 
 // checkStop accepts old desks' guards and lets a person stop without a read.
 func checkStop(factory *string, job int, expect *api.Expect) error {
@@ -487,13 +558,17 @@ func prepBudget(p *FactoryJobBudgetParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
 	}
+	// The factory validates larger amounts against the job's current next cap.
+	if p.Budget > FactoryBudgetSteps[len(FactoryBudgetSteps)-1] {
+		return nil
+	}
 	for _, step := range FactoryBudgetSteps {
 		if math.Abs(p.Budget-step) < 1e-9 {
 			p.Budget = step
 			return nil
 		}
 	}
-	return Errorf(CodeBadParams, "budget must be one of 5, 10, 20 or 30 US dollars")
+	return Errorf(CodeBadParams, "budget must be 5, 10, 20, 30 US dollars or the job's next cap")
 }
 
 func prepApprove(p *FactoryJobApproveParams) error {
@@ -587,6 +662,9 @@ func prepCreate(p *FactoryJobCreateParams) error {
 	if p.Repo, err = FactoryRepoName(p.Repo); err != nil {
 		return err
 	}
+	if err := checkPipelinePick(&p.Pipeline); err != nil {
+		return err
+	}
 	if p.Title, err = words("title", p.Title, MaxFactoryJobTitle, true); err != nil {
 		return err
 	}
@@ -616,7 +694,7 @@ func prepCreate(p *FactoryJobCreateParams) error {
 
 func init() {
 	for name, m := range map[string]method{
-		"factory.job_start":           factoryAction("factory.job_start", prepAction, FactoryActor.FactoryJobStart),
+		"factory.job_start":           factoryAction("factory.job_start", prepStart, FactoryActor.FactoryJobStart),
 		"factory.job_stop":            factoryAction("factory.job_stop", prepStop, FactoryActor.FactoryJobStop),
 		"factory.job_dismiss":         factoryAction("factory.job_dismiss", prepAction, FactoryActor.FactoryJobDismiss),
 		"factory.job_drop":            factoryAction("factory.job_drop", prepDrop, FactoryActor.FactoryJobDrop),

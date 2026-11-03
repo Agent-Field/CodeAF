@@ -330,6 +330,9 @@ func TestKnowledgeInitialBuildImportsAllProjectsAndAutopopulates(t *testing.T) {
 func TestKnowledgeWithoutHistoryWaitsAndLearnsFromFirstSavedChat(t *testing.T) {
 	root := t.TempDir()
 	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
 	calls := knowledgeProviderFixture(t, nil, nil)
 	runKnowledgeWorker(t, v, root)
 	state := waitKnowledgeState(t, v, func(s knowledge.Snapshot) bool { return s.Build.Phase == knowledge.BuildWaiting })

@@ -8,7 +8,7 @@ package main
 // decides whether to write, marks the brief generating and hands back the
 // prompt and the job as the writer reads it), ONE errand on the job's agent
 // under the brief role, and the factory's POST brief/keep (which checks the
-// answer against the job, keeps what passes and books the cost).
+// answer against the job and keeps what passes with its already-booked cost).
 //
 // TRIGGERS are the runner's progress news for a job on this machine (a step
 // done, failed or stopped is a step result, and a step waiting on its person
@@ -299,7 +299,11 @@ func (b *appBackend) briefJobChanged(before, after factory.Item) {
 		return
 	}
 	if end := factory.BriefEndOf(after); end != "" && end != factory.BriefEndOf(before) {
-		b.briefs.note(after.ID, factory.BriefTriggerEnd)
+		// A job that ended with nothing done on it has no outcome to write up,
+		// and a brief is a model call.
+		if !factory.JobUnworked(after) {
+			b.briefs.note(after.ID, factory.BriefTriggerEnd)
+		}
 		return
 	}
 	if p := after.PublishStatus; p != nil && !reflect.DeepEqual(p, before.PublishStatus) && (p.State == "opened" || p.State == "failed") {

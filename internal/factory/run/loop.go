@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // loopLogMost is how many lines a stream keeps, the newest last: the same
@@ -97,6 +98,7 @@ type loopCtl struct {
 	id              int
 	ctx             context.Context
 	cancel          context.CancelFunc
+	spending        sync.WaitGroup
 	steer           chan string
 	modelSelections chan ModelSelection
 	modelMu         sync.Mutex
@@ -235,6 +237,9 @@ func (r *Runner) Launch(id int) error {
 		it.PublishError = ""
 		it.Question, it.QKind = "", ""
 		it.Proof, it.Policy = nil, nil
+		if it.Stream != nil && begun(it.Stream) {
+			factory.ClearJobRun(it)
+		}
 		it.Stream = freshStream(it, now)
 		loopSay(it, now, "said", "queued")
 		loopSay(it, now, "fail", unmade)
@@ -430,6 +435,9 @@ func (lp *floorLoop) move(c *loopCtl, stage string, kind EventKind, text string,
 		return errLoopStopped
 	}
 	if err := lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
+		if kind != EventQueued && it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+			return errLoopStopped
+		}
 		if it.Stream == nil {
 			it.Stream = &factory.Stream{}
 		}
@@ -468,6 +476,7 @@ func (lp *floorLoop) say(c *loopCtl, tone, text string) {
 // order, and lands the item.
 func (lp *floorLoop) drive(c *loopCtl) {
 	defer lp.release(c)
+	defer c.settleSpend()
 	if c.reverify {
 		lp.reverifyRun(c)
 		return
@@ -573,7 +582,6 @@ func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkin
 				// the worker sends names the gate and not the step before it.
 				// A worker still cannot pass the gate: only the person's door does.
 				it.Stream.Cur = i
-				dropSettledPlanApproval(it)
 			}
 			if note != "" {
 				ph.Note = note
@@ -880,7 +888,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !lp.held(c) {
 			return false
 		}
-		if !lp.capCheck(c, i, name) {
+		if !lp.capCheck(c, i, name, -1) {
 			return false
 		}
 		if factory.IsCIRepairStage(st) && !lp.refreshPRRound(c, i) {
@@ -961,7 +969,14 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if job.Progress != nil {
 			job.Progress(followProgressStart(job))
 		}
-		res, again, err := lp.round(c, exec, job)
+		var res factory.StageResult
+		var again bool
+		var err error
+		if cached := cachedCheckoutRefusal(job); cached != nil {
+			res = *cached
+		} else {
+			res, again, err = lp.round(c, exec, job)
+		}
 		if c.ctx.Err() != nil {
 			return false
 		}
@@ -974,7 +989,16 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			return false
 		}
 		if res.Spent > 0 && !res.SpendRecorded {
-			job.Spend(res.Spent)
+			spent := 0.0
+			if job.Item.Stream != nil {
+				for _, ph := range job.Item.Stream.Phases {
+					if ph.Name == st.Name {
+						spent = ph.RoundCosts[round]
+						break
+					}
+				}
+			}
+			job.Spend(max(0, res.Spent-spent))
 		}
 		readiness := factory.IsCIRepairStage(st) && job.Item.FollowUp != nil && job.Item.FollowUp.Kind == "readiness"
 		if factory.IsCIRepairStage(st) && !readiness {
@@ -986,9 +1010,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			repair.Decision = "fixed"
 			candidate.Repair = &repair
 			if checked := lp.completedPublishedRepair(job.Item, candidate); checked.Repair.Decision != "no_change" {
+				receipts := followRefusalNotes(job, res)
 				res.Done, res.Exit = false, 1
 				res.Output = "The no-change review needs a complete assessment of current feedback on the clean published head. " + res.Output
-				res.Notes = append(res.Notes, verification.FailurePrefix+" current-head feedback review is incomplete or the checkout changed")
+				res.Notes = append(res.Notes, verification.FailurePrefix+" "+noChangeReviewRefusal)
+				res.Notes = append(res.Notes, receipts...)
 			}
 		}
 		if readiness && (res.Repair == nil || (res.Repair.Decision != "needs_repair" && res.Repair.Decision != "needs_you")) && verificationReason(res) == "" {
@@ -1002,8 +1028,15 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				res.Notes = append(res.Notes, verification.FailurePrefix+" final review report: "+why)
 			}
 		}
+		res = unchangedWrite(st, job, res)
 		lp.fold(c, it, st, i, res)
-		if !lp.capCheck(c, i, name) {
+		// Completed work is recorded before the next step asks for admission.
+		// Optional memory charges cannot turn this phase back into waiting.
+		memoryBefore := -1.0
+		if factory.Met(st, res) {
+			memoryBefore = job.Item.MemorySpent
+		}
+		if !lp.capCheck(c, i, name, memoryBefore) {
 			return false
 		}
 		if res.JobBudgetStopped {
@@ -1055,7 +1088,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		if readiness {
 			if res.Repair != nil && res.Repair.Decision == "needs_repair" && strings.TrimSpace(res.Repair.Reason) != "" {
-				if !lp.capCheck(c, i, name) {
+				if !lp.capCheck(c, i, name, -1) {
 					return false
 				}
 				if e := lp.write(c, func(cur *factory.Item) error {
@@ -1305,6 +1338,9 @@ func shortfall(res factory.StageResult) string {
 	if reason := verificationReason(res); reason != "" {
 		return "verification blocked: " + reason
 	}
+	if !res.Done && strings.HasPrefix(res.Output, sayWriteUnchanged+"\n") {
+		return sayWriteUnchanged
+	}
 	return factory.Shortfall(res)
 }
 
@@ -1493,12 +1529,17 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	if dirErr == nil && dir != "" && it.ChangeBase == "" {
-		if base := changeBase(dir, it); base != "" {
+		base, err := changeBase(dir, it)
+		if err != nil {
+			dirErr = err
+		} else if base != "" {
 			it.ChangeBase = base
 			_ = lp.write(c, func(saved *factory.Item) error { saved.ChangeBase = base; return nil })
 		}
 	}
 	return Job{
+		Lifetime:        c.ctx,
+		PendingSpend:    c.pendingSpend,
 		Item:            it,
 		Stage:           st,
 		Index:           index,
@@ -1512,10 +1553,16 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		dirErr:          dirErr,
 		Steer:           c.steer,
 		ModelSelections: c.modelSelections,
-		Log:             func(line string) { lp.say(c, "thought", line) },
-		Progress:        lp.followProgress(c, st, i, round),
-		Verification:    lp.verificationProgress(c, i, round),
-		Spend:           lp.spender(c),
+		Log: func(line string) {
+			tone := "thought"
+			if strings.HasPrefix(line, factory.ToolCaptionPrefix) {
+				tone, line = "tool", strings.TrimPrefix(line, factory.ToolCaptionPrefix)
+			}
+			lp.say(c, tone, line)
+		},
+		Progress:     lp.followProgress(c, st, i, round),
+		Verification: lp.verificationProgress(c, i, round),
+		Spend:        lp.spender(c, st.Name, round),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
 			return lp.inbox(ctx, c, i, stageLabel(st), q)
 		},
@@ -1524,9 +1571,9 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 
 // spender is the Job.Spend hook: the money's when there is one, else the
 // loop's own plain reckoning onto Stream.Spent.
-func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
+func (lp *floorLoop) spender(c *loopCtl, step string, round int) func(usd float64) {
 	if p := lp.r.opts.Pool; p != nil {
-		return p.Spend(c.id)
+		return p.SpendRound(c.id, step, round)
 	}
 	return func(usd float64) {
 		if usd <= 0 {
@@ -1536,21 +1583,40 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 			if it.Stream == nil {
 				it.Stream = &factory.Stream{}
 			}
-			addCost(it, usd)
+			spendRound(it, step, round, usd)
 			return nil
 		})
 	}
 }
 
+// spendRound writes the job charge and its round receipt atomically, so a
+// worker report cannot mistake the interval between them for manager spending.
+func spendRound(it *factory.Item, step string, round int, usd float64) {
+	addCost(it, usd)
+	for i := range it.Stream.Phases {
+		ph := &it.Stream.Phases[i]
+		if step != "" && ph.Name == step {
+			ph.RecordRoundSpend(round, ph.RoundCosts[round]+usd)
+			break
+		}
+	}
+}
+
 // capCheck parks the item when its budget is reached after a round: yes raises
-// the budget by as much again, no stops it. It answers false when it stopped.
-func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
+// the budget to the next allowed amount above spend, no stops it.
+// It answers false when it stopped.
+func (lp *floorLoop) capCheck(c *loopCtl, i int, name string, memoryBefore float64) bool {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil {
 		return false
 	}
+	if memoryBefore >= 0 && it.Stream != nil {
+		stream := *it.Stream
+		stream.Spent -= max(0, it.MemorySpent-memoryBefore)
+		it.Stream = &stream
+	}
 	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
-	q, kind := "budget of "+loopUSD(it.Cap)+" reached · "+loopUSD(it.Cap)+" more, or stop?", "cap"
+	q, kind := (*Money)(nil).CapQuestion(it)
 	if p := lp.r.opts.Pool; p != nil {
 		reached = p.CapReached(it)
 		if reached {
@@ -1653,6 +1719,9 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 	}
 	now := lp.r.now()
 	_ = lp.write(c, func(it *factory.Item) error {
+		if !res.Checkpoint {
+			it.Stream.Phases[i].RecordRoundSpend(it.Stream.Phases[i].Round, res.Spent)
+		}
 		foldResult(it, st, i, res, now)
 		if res.Edit == nil {
 			return nil
@@ -1953,6 +2022,7 @@ func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
 // when why is the step's own error, stopped when it is a person's; nil when it
 // cut none, and the line is then about the job.
 func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.StepProgress {
+	opened := why == nil && it.State == factory.StateShipped && it.PublishStatus != nil && it.PublishStatus.State == "opened"
 	event := factory.ProgressStopped
 	if why != nil {
 		event = factory.ProgressFailed
@@ -1966,6 +2036,7 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	it.Approval = nil
 	it.PublishError = ""
 	it.Publishing = false
+	it.PublishStatus = nil
 	it.State = factory.StateNew
 	it.Question, it.QKind = "", ""
 	s := it.Stream
@@ -1992,6 +2063,12 @@ func endRun(it *factory.Item, now time.Time, why *factory.Failure) *factory.Step
 	}
 	s.Ended = now
 	s.Paused = false
+	if opened && it.PullRequest != nil {
+		it.State = factory.StateShipped
+		it.MarkPublishing("opened", "", "", now)
+		loopSay(it, now, "said", stoppedPRWords(it.PullRequest.URL))
+		return cut
+	}
 	loopSay(it, now, "fail", "stopped · branch kept")
 	return cut
 }
@@ -2219,6 +2296,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 	if err != nil {
 		return err
 	}
+	if err := followAnswerRefusal(it, yes, words); err != nil {
+		return err
+	}
 	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindAskFirst {
 		if yes {
 			return r.Launch(id)
@@ -2251,6 +2331,9 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 	c.pending = ""
 	lp.mu.Unlock()
 	if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		if err := followAnswerRefusal(*it, yes, words); err != nil {
+			return err
+		}
 		grantAdditionalRound(it, yes, words)
 		return nil
 	}); err != nil {
@@ -2722,4 +2805,25 @@ func (lp *floorLoop) retailTail(c *loopCtl) {
 		}
 		return nil
 	})
+}
+
+func (c *loopCtl) pendingSpend() func() {
+	c.spending.Add(1)
+	return c.spending.Done
+}
+
+// Work is already visibly finished. Cancel compilation first, then leave its
+// existing periodic worker reports alive until the resulting receipts land.
+func (c *loopCtl) settleSpend() {
+	c.cancel()
+	settled := make(chan struct{})
+	go func() { c.spending.Wait(); close(settled) }()
+	// ReceiptWait starts when a cancelled call queues its receipt. One second
+	// lets that call unwind before the provider's own bounded schedule starts.
+	timer := time.NewTimer(provider.ReceiptWait + time.Second)
+	defer timer.Stop()
+	select {
+	case <-settled:
+	case <-timer.C:
+	}
 }

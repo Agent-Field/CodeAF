@@ -57,6 +57,10 @@ func (d Door) Look(ctx context.Context, id int, refresh bool) (factory.Scout, bo
 	if err != nil {
 		return factory.Scout{}, false, err
 	}
+	// A person's Look closer owns the row before any model call can spend.
+	if err := d.Floor.Annotate(id, func(cur *factory.Item) error { factory.TouchIssue(cur); it = *cur; return nil }); err != nil {
+		return factory.Scout{}, false, err
+	}
 	head, err := d.Head(ctx, it.Repo)
 	if err != nil {
 		return factory.Scout{}, false, err

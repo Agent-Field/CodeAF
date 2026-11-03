@@ -58,12 +58,13 @@ const (
 	// PRMerged and PRClosed are the poll noticing a pull request this factory
 	// opened. The handle, when GitHub named one, is who merged it.
 	PRMerged = "pr_merged"
+	// PRReady records a person marking the job's draft ready for review.
+	PRReady  = "pr_ready"
 	PRClosed = "pr_closed"
 	// Restored is a person bringing a dropped job back to Backlog.
 	Restored = "restored"
-	// SourceClosed is the factory finding, as a person chose a job to run,
-	// that its issue or pull request was closed or merged on GitHub, so the
-	// job was finished instead of started. Its verb says which.
+	// SourceClosed is a poll or start finding that the source issue or pull
+	// request ended on GitHub. Its verb says closed or merged.
 	SourceClosed = "source_closed"
 	// MergeAsked is a person pressing Merge, inside its Undo window;
 	// MergeQueued a merge the gate passed and sent to the runner (Detail
@@ -200,7 +201,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case RunAsNew, StopAfterStepChanged, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted:
+	case RunAsNew, StopAfterStepChanged, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted, PRReady:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}
@@ -210,7 +211,7 @@ func validate(e Event) error {
 		return errors.New("factory record: actor must be person, agent or factory")
 	}
 	switch e.Verb {
-	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access":
+	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "marked ready for review":
 	default:
 		return errors.New("factory record: unknown Activity verb")
 	}

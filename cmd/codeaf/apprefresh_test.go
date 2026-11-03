@@ -23,7 +23,7 @@ func TestAppCrewRefreshNoticesChangedInputs(t *testing.T) {
 	if err := teamstore.Save(backend.profileDir, []teamstore.Team{{ID: id, Name: "before"}}); err != nil {
 		t.Fatal(err)
 	}
-	run := &appCrewRun{prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{}, acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{}, held: map[string][]string{}, opening: map[string]bool{}}
+	run := newAppCrewRun()
 	backend.crewTick(run, true)
 	backend.crewRefresh(run)
 	if backend.crewRefresh(run) {
@@ -129,7 +129,7 @@ func TestAppCrewRefreshAdmitsANewLiveStageWithoutViewChanges(t *testing.T) {
 	t.Cleanup(func() { _ = stage.Close() })
 	id := appAgentID(transcript)
 	b.remember(session.SessionRow{ID: id, Dir: filepath.Dir(transcript), Transcript: transcript})
-	run := &appCrewRun{prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{}, acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{}, held: map[string][]string{}, opening: map[string]bool{}, wakeStamps: map[string]string{}}
+	run := newAppCrewRun()
 	b.crewTick(run, true)
 	b.crewRefresh(run)
 	if opens.Load() != 0 || b.crewRefresh(run) {
@@ -170,7 +170,7 @@ func TestAppCrewRefreshAdmitsAKeptServiceWithoutViewChanges(t *testing.T) {
 	b, rec, paths, opens := lazyBackend(t, 1)
 	w := &svcWorld{backend: b, rt: servicetest.New(), clock: servicetest.NewClock(time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)), dir: t.TempDir(), work: t.TempDir()}
 	w.open(t)
-	run := &appCrewRun{prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{}, acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{}, held: map[string][]string{}, opening: map[string]bool{}, wakeStamps: map[string]string{}}
+	run := newAppCrewRun()
 	b.crewTick(run, true)
 	b.crewRefresh(run)
 	if opens.Load() != 0 || b.crewRefresh(run) {

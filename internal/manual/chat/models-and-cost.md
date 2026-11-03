@@ -1845,6 +1845,17 @@ say, for example, `2 calls the provider charged for and could not be priced`. At
 say nothing. Settings→Spending also shows missing receipts learned during this process.
 Receipt workers exit when their queue is empty and start again when another receipt arrives.
 
+Factory jobs and their page helpers also request receipts for successful answers
+without usage. After a failed stream, the final receipt replaces interim usage
+for billing: a $0.10 interim figure followed by a $0.12 receipt charges $0.12 once.
+A receipt without a price keeps measured interim spend; an explicitly priced zero
+replaces it. Each call is booked once.
+Missing receipts keep their job attribution. Job usage and Spending expose the
+missing price as unbilled, never as a measured $0. A saturated ledger queue writes
+through instead of discarding charges; a caller never waits on the disk.
+Filesystem write failures still appear as missing records.
+
+
 ## A reply that never finished — the turn ran for half an hour, codeaf looked frozen, nothing happened for ages, the model kept writing and never stopped
 
 The two clocks above are both about **silence**. A reply that keeps producing a token every

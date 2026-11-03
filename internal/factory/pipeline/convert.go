@@ -3,6 +3,7 @@ package pipeline
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"gopkg.in/yaml.v3"
@@ -12,6 +13,7 @@ import (
 // Runtime source and read problems are omitted because they are not file keys.
 func Encode(f File) ([]byte, error) {
 	type step struct {
+		Label  string  `yaml:"label,omitempty"`
 		Prompt *string `yaml:"prompt,omitempty"`
 		Kind   string  `yaml:"kind,omitempty"`
 		When   string  `yaml:"when,omitempty"`
@@ -29,10 +31,10 @@ func Encode(f File) ([]byte, error) {
 	steps := make(map[string]step)
 	for _, name := range names {
 		s := f.Steps[name]
-		// A PERSON IS WRITTEN ONLY FOR WHO IT WAITS ON: approve has no prompt.
+		// An approval carries its label and who it waits on, but no prompt.
 		if factory.ApproveWord(name) {
-			if s.Who != "" {
-				steps[name] = step{Who: s.Who}
+			if s.Who != "" || strings.TrimSpace(s.Label) != "" {
+				steps[name] = step{Label: strings.TrimSpace(s.Label), Who: s.Who}
 			}
 			continue
 		}
@@ -45,7 +47,7 @@ func Encode(f File) ([]byte, error) {
 		if s.Kind == string(factory.StageGate) && s.Prompt == "" {
 			prompt = nil // a person needs no prompt, and "" would read as a missing one
 		}
-		steps[name] = step{prompt, s.Kind, s.When, s.Effort, s.Fanout, s.Until, s.Max, s.Who}
+		steps[name] = step{strings.TrimSpace(s.Label), prompt, s.Kind, s.When, s.Effort, s.Fanout, s.Until, s.Max, s.Who}
 	}
 	var start any
 	var size any
@@ -85,9 +87,25 @@ func Encode(f File) ([]byte, error) {
 		Steps         any       `yaml:"steps"`
 		Fixed         []string  `yaml:"fixed"`
 		Rules         []string  `yaml:"rules"`
-		Adapt         string    `yaml:"adapt,omitempty"`
+		Adapt         any       `yaml:"adapt,omitempty"`
 		Merge         *mergeKey `yaml:"merge,omitempty"`
-	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, string(f.Adapt), merge})
+	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, adaptKey(f), merge})
+}
+
+// adaptKey is `adapt:` as the file writes it: one word, a map of one word per
+// pipeline, or nothing (adapt everywhere).
+func adaptKey(f File) any {
+	if len(f.AdaptKinds) > 0 {
+		out := make(map[string]string, len(f.AdaptKinds))
+		for kind, mode := range f.AdaptKinds {
+			out[string(kind)] = string(mode)
+		}
+		return out
+	}
+	if f.Adapt != "" {
+		return string(f.Adapt)
+	}
+	return nil
 }
 
 // Convert renders a Markdown recipe as YAML without writing either file.

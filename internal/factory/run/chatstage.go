@@ -59,6 +59,9 @@ type StageDoor interface {
 
 // ConversationSpec is everything the maker needs to open one stage round.
 type ConversationSpec struct {
+	// JobContext owns optional work that may outlive this stage conversation.
+	JobContext   context.Context
+	PendingSpend func() func()
 	// VerifyRepair makes successful PR-repair reports pass the concrete receipt guard.
 	// Read-only readiness reviews retain their separate current-PR snapshot contract.
 	VerifyRepair      bool
@@ -91,6 +94,10 @@ type ConversationSpec struct {
 	// is "" and its launch is not pinned to one model for every task.
 	FactoryModel string
 	Effort       string
+	// StepEffort is the step's own effort word (cheap, strong or ""): with
+	// no model of the step's or the job's, the maker opens the step on the
+	// model that effort runs on, before the factory's default.
+	StepEffort string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -132,7 +139,8 @@ type ConversationMaker interface {
 	Open(ctx context.Context, spec ConversationSpec) (Conversation, error)
 }
 
-// spender is what a conversation may also answer: what its round cost.
+// spender reports spending since this conversation was opened. A conversation
+// with SpendRecorded instead supplies the live meter's whole round receipt.
 type spender interface {
 	Spent() float64
 }
@@ -252,12 +260,16 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	door.ask, door.stage = job.Ask, job.Stage
 	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && f.Readiness != nil {
 		door.readinessHead = f.Readiness.Head
+	} else if p := job.Item.PullRequest; factory.IsCIRepairStage(job.Stage) && p != nil && p.FeedbackTracked {
+		door.feedbackHead = p.HeadSHA
 	}
 	log := job.Log
 	if log == nil {
 		log = func(string) {}
 	}
 	spec := ConversationSpec{
+		JobContext:        job.Lifetime,
+		PendingSpend:      job.PendingSpend,
 		Item:              job.Item,
 		Team:              itemTeam(job.Item),
 		Name:              stageChatName(job),
@@ -268,6 +280,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		AutomaticModels:   stageAutomatic(job),
 		FactoryModel:      strings.TrimSpace(job.Item.FactoryModel),
 		Effort:            job.Item.Effort,
+		StepEffort:        job.Stage.Effort,
 		Stage:             door,
 		VerificationStage: job.Stage.Name,
 		VerifyChecks:      checksVerification(job.Stage),
@@ -497,7 +510,9 @@ loop:
 		made.Edit = res.Edit
 		res = made
 	}
-	if stop, ok := spendStopOf(waitErr); ok {
+	// A final successful result survives optional work charged as the turn
+	// settles. The next stage still reads the complete live job spend.
+	if stop, ok := spendStopOf(waitErr); ok && !(stop.Job && stop.Memory && !stop.Daily && res.Done) {
 		res.JobBudgetStopped = stop.Job
 		res.Reports, res.Inferred = 0, false
 		res.Done, res.Exit, res.Output = false, 1, stop.Error()
@@ -533,6 +548,17 @@ loop:
 		res.Spent = s.Spent()
 		if live, ok := conv.(interface{ SpendRecorded() bool }); ok {
 			res.SpendRecorded = live.SpendRecorded()
+		}
+		if !res.SpendRecorded && job.Item.Stream != nil {
+			// Open starts a new spending segment, even when it reopens the same
+			// transcript. Add its saved round base once here; report replay only
+			// sees the resulting cumulative receipt, including after a restart.
+			for _, ph := range job.Item.Stream.Phases {
+				if ph.Name == job.Stage.Name {
+					res.Spent += ph.RoundCosts[max(1, job.Round)]
+					break
+				}
+			}
 		}
 	}
 	if m, ok := conv.(modeler); ok {
@@ -891,6 +917,7 @@ type stageDoor struct {
 	// until done, which no report contradicts.
 	stage         factory.Stage
 	readinessHead string
+	feedbackHead  string
 	// ask is the round's road to the manager (Job.Ask), nil for none.
 	ask func(ctx context.Context, q factory.Asked) (string, error)
 }
@@ -930,8 +957,12 @@ func newStageDoor() *stageDoor { return &stageDoor{} }
 // claim marked ok: false, is held like any report and judged into another
 // round. A refused call is not counted in Reports: nothing was reported.
 func (d *stageDoor) Report(_ context.Context, result factory.StageResult) error {
-	if !result.Checkpoint && d.readinessHead != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
-		if why := factory.ReadinessReportFault(d.readinessHead, result); why != "" {
+	head := d.readinessHead
+	if head == "" && result.Repair != nil && result.Repair.Decision == "no_change" {
+		head = d.feedbackHead
+	}
+	if !result.Checkpoint && head != "" && result.Done && (result.Repair == nil || (result.Repair.Decision != "needs_repair" && result.Repair.Decision != "needs_you")) {
+		if why := factory.ReadinessReportFault(head, result); why != "" {
 			d.RejectReport()
 			return errors.New(why)
 		}
