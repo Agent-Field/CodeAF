@@ -1,6 +1,6 @@
 ---
 kind: added
-title: an ask says whether anything waits on it, a held ask's clock waits until it is shown, and the app can count what is new since a place
+title: An ask says if anything waits on it, its clock starts when shown, and the app counts what is new
 pr: 0
 surface: [app, engine]
 invalidates:

@@ -6,8 +6,8 @@ import (
 )
 
 func TestContinueRaisesThisJobOnce(t *testing.T) {
-	if NextJobCap(5) != 10 || NextJobCap(0) != 0 || NextJobCap(-1) != 0 {
-		t.Fatalf("next = %v %v", NextJobCap(5), NextJobCap(0))
+	if NextJobCap(Item{Cap: 5, Stream: &Stream{Spent: 5}}) != 10 || NextJobCap(Item{}) != 5 || NextJobCap(Item{Cap: 30, Stream: &Stream{Spent: 30}}) != 60 {
+		t.Fatalf("next = %v %v", NextJobCap(Item{Cap: 5, Stream: &Stream{Spent: 5}}), NextJobCap(Item{}))
 	}
 	it := &Item{Cap: 5, Stream: &Stream{Spent: 5}}
 	if !ContinueJob(it) || it.Cap != 10 {

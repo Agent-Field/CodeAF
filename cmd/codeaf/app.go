@@ -123,6 +123,9 @@ func runApp(args []string) error {
 			return err
 		}
 	}
+	if err := holdAppHome(); err != nil {
+		return err
+	}
 	// STDOUT IS THE PROTOCOL'S AND NOBODY ELSE'S. The wire keeps the real
 	// descriptor, and anything else in this process that prints to stdout
 	// lands on stderr, where the app collects logs.
@@ -140,6 +143,7 @@ func runApp(args []string) error {
 	// The app's process ending is the app leaving too, even while something
 	// else still holds its pipe open, and leaving is bounded (appleave.go).
 	ctx, leaving := context.WithCancel(context.Background())
+	cellstore.SetAppDaemonLifetime(ctx)
 	defer leaving()
 	defer leave.On(leaving, nil)()
 	guard.Go("app/parent", func() { watchAppParent(ctx, os.Getppid, appParentPoll, leaving) })
@@ -174,12 +178,16 @@ func runApp(args []string) error {
 	if *turnLong > 0 {
 		backend.turnLong = *turnLong
 	}
+	defer backend.watchSpendRows()()
 	// The crews are watched from the start: a manager's start or a member
 	// woken by its manager must not wait for the window to ask for crews.
 	backend.memoryStore = func() (*store.Store, error) {
 		proc, err := openAppEngineProcess()
-		if err != nil || proc.Memory == nil {
-			return nil, errors.New("memory is off")
+		if err != nil {
+			return nil, err
+		}
+		if proc.Memory == nil {
+			return nil, errors.New("this engine has no saved memory store")
 		}
 		return proc.Memory, nil
 	}
@@ -367,6 +375,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 			}
 			eng, err := assembleEngine(h, workspace, transcript, workspace, ask.IntentSiblingNames)
 			if err == nil {
+				// In-process chats are the desktop's hot path. Remote surfaces keep
+				// one frame per event until someone measures them.
+				eng.DeltaWindow = remote.DefaultDeltaWindow
 				err = enableAppConversationModels(eng.Agent, ask.Models)
 			}
 			if err == nil && ask.AutomaticModels != nil {
@@ -571,6 +582,9 @@ type appBackend struct {
 	// stopProgress the factory runner's progress news (appfactory_progress.go).
 	stopPhases   func()
 	stopProgress func()
+	// briefs takes the progress news of this machine's factory's jobs as
+	// writes of their briefs (appfactory_brief_writer.go).
+	briefs *briefDebounce
 	// factories is the attached-factory registry (appfactory.go), made by the
 	// first factory.* call.
 	factories   *appFactoryHub
@@ -672,8 +686,10 @@ type appBackend struct {
 	// for: the process half it opens is closed after the backend is.
 	warmed chan struct{}
 	// keys are the keys the app handed over (appaccount.go); keyClient and
-	// keyAddress replace the network and OpenRouter's address in a test, and
-	// vendored and codexBegin the other providers' descriptions and the
+	// keyAddress replace the network and OpenRouter's API base in a test so
+	// the key proof and model listing use the same server. Its listing answers
+	// for any bearer, so only the key endpoint proves acceptance. The vendored
+	// and codexBegin seams replace the other providers' descriptions and the
 	// ChatGPT sign-in's browser flow.
 	keys       *config.AppCredentials
 	keyClient  *http.Client
@@ -701,6 +717,9 @@ type appBackend struct {
 	dayAuth appDayAuthority
 	// today replaces the usage ledger's figure for today in a test.
 	today func(time.Time) float64
+	// spendRowsPending holds one read of today's figure for rows written
+	// together (watchSpendRows).
+	spendRowsPending atomic.Bool
 	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
 	turnLong time.Duration
 	// inbox is every open ask as one list (appinbox.go); emit is its tap.
@@ -1020,6 +1039,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
+	b.briefs = newBriefDebounce(appBriefDebounce, b.writeBriefLater)
 	b.stopProgress = b.listenProgress()
 	guard.Go("app/sweep", b.sweep)
 	b.startLocalChatPublication()
@@ -1100,34 +1120,39 @@ func appRowView(row session.SessionRow) appwire.Agent {
 
 // remember files what the disk said about an agent, without touching one this
 // process is holding: a held conversation's own facts are newer than the disk's.
-func (b *appBackend) remember(row session.SessionRow) (view appwire.Agent) {
+func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 	b.watchCloseClaim(row.Dir)
 	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
 	row.Presence, row.Live = session.ReadSessionPresence(row.Dir, b.now())
-	// Publish cannot miss an agent first remembered from a saved row.
-	// Holding both locks makes its initial location agree with the inventory;
-	// a later publication will see the new agent and send its location change.
-	lockRememberedLocation := func() *appwire.Location {
-		b.chats.mu.Lock()
-		defer b.chats.mu.Unlock()
-		// The backend lock stays held after the inventory lock is released.
-		// The remainder of remember owns its existing deferred release.
-		b.mu.Lock()
-		if cached, ok := b.chats.byAgent[row.ID]; ok {
-			return chatLocation(cached)
-		}
-		return nil
+	a, view := b.rememberHeld(row, createdBy)
+	b.flushSync(a)
+	b.locked(func() { view.Location = a.view.Location })
+	return view
+}
+
+// rememberHeld files the row under both the chat inventory's lock and the
+// backend's. Publish cannot miss an agent first remembered from a saved row:
+// holding both makes its initial location agree with the inventory, and a later
+// publication will see the new agent and send its location change.
+func (b *appBackend) rememberHeld(row session.SessionRow, createdBy string) (*appAgent, appwire.Agent) {
+	b.chats.mu.Lock()
+	defer b.chats.mu.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var location *appwire.Location
+	if cached, ok := b.chats.byAgent[row.ID]; ok {
+		location = chatLocation(cached)
 	}
-	location := lockRememberedLocation()
 	a := b.agentLocked(row.ID)
 	a.noteRowLocked(row.ReplyAt, appRowAskedAt(row))
-	defer func() {
-		b.mu.Unlock()
-		b.flushSync(a)
-		b.locked(func() { view.Location = a.view.Location })
-	}()
+	return a, b.rememberRowLocked(a, row, location, createdBy)
+}
+
+// rememberRowLocked lays the disk's row over the agent's record and answers
+// the view it settles on. Callers hold b.mu.
+func (b *appBackend) rememberRowLocked(a *appAgent, row session.SessionRow, location *appwire.Location, createdBy string) appwire.Agent {
 	if a.transcript == "" {
 		a.transcript = row.Transcript
 		if a.view.Location == nil {
@@ -2345,6 +2370,14 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	return b.startLocked(a, text, clientID, shown)
 }
 
+// knownWorkRefusalGated asks knownWorkRefusal holding the agent's gate, so the
+// answer is not read mid-way through an open or a let-go.
+func (b *appBackend) knownWorkRefusalGated(a *appAgent) error {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	return b.knownWorkRefusal(a)
+}
+
 // Retry sends the words of the agent's last failed turn again.
 func (b *appBackend) Retry(id string) (uint64, error) {
 	b.resetCloseResumes(id)
@@ -2352,10 +2385,7 @@ func (b *appBackend) Retry(id string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	a.gate.Lock()
-	err = b.knownWorkRefusal(a)
-	a.gate.Unlock()
-	if err != nil {
+	if err := b.knownWorkRefusalGated(a); err != nil {
 		return 0, err
 	}
 	var text, clientID string
@@ -4224,7 +4254,15 @@ func (b *appBackend) SpendToday() (appwire.Spend, error) {
 	if err != nil {
 		return appwire.Spend{}, appEngineError(err)
 	}
-	return appwire.Spend{TodayUSD: spent, DayCapUSD: appFigure(limit)}, nil
+	spend := appwire.Spend{TodayUSD: spent, DayCapUSD: appFigure(limit)}
+	if b.today == nil {
+		reading, err := session.ReadDailySpend(session.UsageLedgerPath(), now)
+		if err != nil {
+			return appwire.Spend{}, appEngineError(err)
+		}
+		spend.FactoryAIUSD = appFigure(reading.FactoryAIUSD)
+	}
+	return spend, nil
 }
 
 // appSpendSettle is how long after a turn ends its spending is read again: the
@@ -4253,6 +4291,19 @@ func (b *appBackend) spendMoved(after func(appwire.Spend)) {
 		}
 		if after != nil {
 			after(spend)
+		}
+	})
+}
+
+// watchSpendRows says spend.changed for ledger rows no turn ended with. Rows
+// that arrive together cost one read. The answer stops the watching.
+func (b *appBackend) watchSpendRows() (stop func()) {
+	return session.OnUsageWritten(func() {
+		if b.spendRowsPending.CompareAndSwap(false, true) {
+			time.AfterFunc(appSpendSettle, func() {
+				b.spendRowsPending.Store(false)
+				b.spendMoved(nil)
+			})
 		}
 	})
 }
@@ -4478,6 +4529,9 @@ func (b *appBackend) Close() error {
 	}
 	if b.stopProgress != nil {
 		b.stopProgress()
+	}
+	if b.briefs != nil {
+		b.briefs.stop()
 	}
 	if warmed != nil {
 		<-warmed

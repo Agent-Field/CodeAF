@@ -58,6 +58,9 @@ type StepEditsRequest struct {
 	Add      []StepAddition    `json:"add,omitempty"`
 	Ask      map[string]string `json:"ask,omitempty"`
 	Thinking map[string]string `json:"thinking,omitempty"`
+	// Max maps a conversation step's name to how many tries it gets, 1 to 3.
+	// Only the job's person sends it.
+	Max map[string]int `json:"max,omitempty"`
 	// Model maps a step name to the model it runs on for this job; "" gives
 	// it back to the job's model. Only the job's person sends it.
 	Model  map[string]string `json:"model,omitempty"`
@@ -91,8 +94,9 @@ type StepEdits struct {
 
 // PipelinePRRequest asks the factory to open a pull request that changes only
 // .codeaf/factory.yaml, as the signed-in caller, over GitHub's REST API.
-// Reviewers and updating an existing pull request are NOT supported yet: a
-// request naming them is refused as unknown JSON fields rather than ignored.
+// With PR set it instead commits the file onto that OPEN pull request's head
+// branch. Reviewers are NOT supported yet: a request naming them is refused as
+// an unknown JSON field rather than ignored.
 type PipelinePRRequest struct {
 	Text  string `json:"text"`
 	Title string `json:"title,omitempty"`
@@ -105,13 +109,22 @@ type PipelinePRRequest struct {
 	// ExpectedBaseSHA is the 40-hex COMMIT the draft started from. When it is
 	// not the default branch's tip right now, nothing is written.
 	ExpectedBaseSHA string `json:"expected_base_sha,omitempty"`
+	// PR is the number of an OPEN pull request of this repository, from one of
+	// its own branches into its default branch, to add one commit to instead of
+	// opening a new one. Branch, Body and ExpectedBaseSHA are refused with it.
+	PR int `json:"pr,omitempty"`
+	// ExpectedHeadSHA, with PR, is the 40-hex commit the pull request's head
+	// was when the draft started. When the head has moved, nothing is written.
+	ExpectedHeadSHA string `json:"expected_head_sha,omitempty"`
 }
 
-// PipelinePR outcomes. Only "opened" carries a pull request; "unchanged"
-// means the default branch already holds these bytes and nothing was written.
+// PipelinePR outcomes. "opened" and "updated" carry a pull request; "unchanged"
+// means the default branch (or, with PR, that pull request's head, which it
+// then carries) already holds these bytes and nothing was written.
 const (
 	PipelinePROpened    = "opened"
 	PipelinePRUnchanged = "unchanged"
+	PipelinePRUpdated   = "updated"
 	PipelinePRRefused   = "refused"
 	PipelinePRNotOpened = "not_opened"
 	PipelinePRUnknown   = "unknown"
@@ -128,7 +141,8 @@ type PipelinePRResult struct {
 	HeadSHA string `json:"head_sha,omitempty"`
 }
 
-// PipelinePRResponse is a success: outcome "opened" (PR set) or "unchanged".
+// PipelinePRResponse is a success: outcome "opened" or "updated" (PR set, and
+// HeadSHA the new commit), or "unchanged".
 // Note is display text only.
 type PipelinePRResponse struct {
 	Factory Factory           `json:"factory"`
@@ -232,9 +246,14 @@ var ServiceRoutes = []ServiceRoute{
 	{"POST", "/v1/jobs/{id}/step-edits", StepEditsRequest{}, StepEdits{}},
 	{"GET", "/v1/jobs/{id}/hand-off/{card}", nil, JobHandOff{}},
 	{"GET", "/v1/jobs/{id}/brief", nil, JobBrief{}},
+	{"POST", "/v1/jobs/{id}/brief/begin", BriefBeginRequest{}, BriefBegin{}},
+	{"POST", "/v1/jobs/{id}/brief/keep", BriefKeepRequest{}, BriefKept{}},
+	{"GET", "/v1/jobs/{id}/brief/spots/{spot}", nil, JobBriefSpot{}},
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/follow", FollowRequest{}, ActionResult{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
+	{"GET", "/v1/repos/{owner}/{repo}/read", nil, RepoRead{}},
+	{"GET", "/v1/repos/{owner}/{repo}/pipeline/prs", nil, PipelinePRs{}},
 	{"POST", "/v1/repos/{owner}/{repo}/pipeline/open-pr", PipelinePRRequest{}, PipelinePRResponse{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/factory-copy", nil, PipelineCopyAnswer{}},
 	{"PUT", "/v1/repos/{owner}/{repo}/pipeline/factory-copy", PipelineCopyRequest{}, PipelineCopyAnswer{}},
@@ -260,5 +279,61 @@ type JobBrief struct {
 	FailedAfter      string               `json:"failed_after,omitempty"`
 	Since            int                  `json:"since,omitempty"`
 	Brief            factory.BriefVersion `json:"brief"`
+	VerdictBehind    bool                 `json:"verdict_behind"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
+}
+
+// BriefBeginRequest is POST /v1/jobs/{id}/brief/begin: why the brief may be
+// written now (factory.BriefTriggers).
+type BriefBeginRequest struct {
+	Trigger string `json:"trigger"`
+}
+
+// BriefBegin is the factory's answer to a write: Skip says why none begins
+// (unchanged, cost, writing); otherwise System and Input are the writer's
+// prompt and the job as it reads it, and Hash names those inputs for the
+// keep that ends the write.
+type BriefBegin struct {
+	Factory Factory `json:"factory"`
+	Job     int     `json:"job"`
+	Skip    string  `json:"skip,omitempty"`
+	Hash    string  `json:"hash,omitempty"`
+	System  string  `json:"system,omitempty"`
+	Input   string  `json:"input,omitempty"`
+}
+
+// BriefKeepRequest is POST /v1/jobs/{id}/brief/keep: the writer's answer
+// (Draft, the model's JSON as it came) or why there is none (Failure), with
+// what the call cost. The factory checks the draft against the job itself.
+type BriefKeepRequest struct {
+	Hash    string  `json:"hash"`
+	Model   string  `json:"model,omitempty"`
+	CostUSD float64 `json:"cost_usd,omitempty"`
+	Draft   string  `json:"draft,omitempty"`
+	Failure string  `json:"failure,omitempty"`
+}
+
+// BriefKept is the job's brief after a write ended: Kept says a new version
+// was kept, and Drops are the draft's parts its check dropped.
+type BriefKept struct {
+	JobBrief
+	Kept  bool                `json:"kept"`
+	Drops []factory.BriefDrop `json:"drops"`
+}
+
+// JobBriefSpot is GET /v1/jobs/{id}/brief/spots/{spot}: one spot of the
+// job's newest brief (Rev) with its hunks from the job's change and the
+// writer's notes on them.
+type JobBriefSpot struct {
+	Factory     Factory            `json:"factory"`
+	Job         int                `json:"job"`
+	Rev         int                `json:"rev"`
+	Spot        string             `json:"spot"`
+	File        string             `json:"file"`
+	Symbol      string             `json:"symbol,omitempty"`
+	Why         string             `json:"why"`
+	Lines       int                `json:"lines"`
+	Hunks       []factory.SpotHunk `json:"hunks"`
+	Annotations []factory.SpotNote `json:"annotations"`
+	Truncated   bool               `json:"truncated,omitempty"`
 }

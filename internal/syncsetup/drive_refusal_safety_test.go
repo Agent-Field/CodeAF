@@ -46,7 +46,10 @@ func TestStalePublishRefusalMakesViewerAndNotifiesOnce(t *testing.T) {
 	}
 	h.block.set(false)
 	want := chatlist.Superseded(nameB)
-	waitFor(t, "A to become a viewer after stale publish", func() bool { _, viewer := a.drive.Viewer(); return viewer })
+	// The window refuses work at once, first with an unnamed line while the
+	// holder's name is read, and announces the move once pending saves have
+	// settled (#1971). The announcement is the settled state.
+	waitFor(t, "A to announce the move after stale publish", func() bool { return h.wall.has(want) })
 	if line, viewer := a.drive.Viewer(); !viewer || line != want {
 		t.Fatalf("viewer = %q, %v; want %q, true", line, viewer, want)
 	}
@@ -125,6 +128,10 @@ func TestOwnershipCheckThatFindsAnotherHolderKeepsUnsentTurns(t *testing.T) {
 	if _, err := h.continuerB().Take(ctx, h.cell.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Keeping the turn uploads it as a branch, so the store must answer; A's
+	// heartbeats stay refused so only the check can learn of the move.
+	h.quiet.Store(true)
+	h.block.set(false)
 	// The check alone, not a later flush, keeps the turn: it is kept by the
 	// time the check returns.
 	mustNil(t, a.drive.CheckLease(ctx))
@@ -134,5 +141,4 @@ func TestOwnershipCheckThatFindsAnotherHolderKeepsUnsentTurns(t *testing.T) {
 	if a.drive.Gate() == nil {
 		t.Fatal("a displaced window still admits work")
 	}
-	h.block.set(false)
 }

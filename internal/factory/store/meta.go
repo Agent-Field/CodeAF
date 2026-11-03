@@ -58,6 +58,10 @@ type metaDoc struct {
 	// this one record for the reason Rail does.
 	Marked  []int  `json:"marked,omitempty"`
 	Foreman string `json:"foreman,omitempty"`
+	// Scouts is every Look closer's cost, newest last, cut to the last
+	// [ScoutsKept]: the floor's own ledger for the scout's limits and its
+	// price, the same dollars the scout put on the spend ledger.
+	Scouts []ScoutNote `json:"scouts,omitempty"`
 }
 
 // MetaPath is <root>/sources.json.

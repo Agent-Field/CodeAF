@@ -66,3 +66,22 @@ func TestOperatorLinkLifecycle(t *testing.T) {
 		}
 	}
 }
+
+// A minted operator link is named once: a later invite never renames it.
+func TestInviteOperatorNamesAnUnnamedLinkOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tokens.json")
+	row, err := RotateOperator(path, "", time.Now(), false)
+	if err != nil || row.InvitedLogin != "" {
+		t.Fatalf("mint = %+v, %v", row, err)
+	}
+	if err := InviteOperator(path, row.ID, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := InviteOperator(path, row.ID, "intruder"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := Load(path)
+	if err != nil || len(rows) != 1 || rows[0].InvitedLogin != "owner" {
+		t.Fatalf("rows = %+v, %v", rows, err)
+	}
+}

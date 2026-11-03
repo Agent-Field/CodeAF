@@ -16,7 +16,7 @@ import (
 // without them.
 func TestLaunchStampsTheFactorysRulesOnTheJob(t *testing.T) {
 	f := setup(t)
-	if _, err := f.store.ChangeHouseRules(func(h *factory.HouseRules) error {
+	if _, err := f.store.ChangeHouseRules(factory.RulesChange{}, func(h *factory.HouseRules) error {
 		h.Rules = []string{"don't touch auth without checking with me"}
 		return nil
 	}); err != nil {

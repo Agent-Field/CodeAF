@@ -648,7 +648,7 @@ These view switches underline while hovered. Build and Search controls highlight
 under the pointer; the surrounding description stays passive.
 
 If saved chats already exist, click **Build knowledge base** or press Enter.
-The first build uses saved chats across all projects, including archived chats
+Build turns automatic memory on and saves that choice. The first build uses saved chats across all projects, including archived chats
 and saved task reports.
 **Building knowledge base… You can keep chatting.** shows that work continues
 in the background. You can leave Memory, change chats, and return later; pages
@@ -672,8 +672,8 @@ and completed publications are saved together. Opening another window does not
 start a duplicate compiler for the same profile.
 
 If there is no chat history, the reader says **Knowledge will populate as you
-chat.** Future saved chats populate it automatically, without a separate build
-step. A profile has one knowledge base; changing project does not change vaults.
+chat.** Automatic learning is off by default. Turn **learn from chats and jobs**
+on in Settings or use **Build knowledge base** to populate it from saved chats. A profile has one knowledge base; changing project does not change vaults.
 
 ## Reading knowledge pages, links and sources
 
@@ -722,9 +722,26 @@ updates the same page, while a distinct concept can receive a new page. Issue
 and work-session details remain linked evidence. Organization follows the actual
 subjects in your chats, without fixed project categories.
 
-The application process owns the background worker. Closing Memory or changing
-chats does not stop it. When codeaf stops, captured sources and checkpoints stay
+## Memory spending and factory job pauses
+
+Memory model requests appear in Spending under the `memory` role. Requests
+owned by a factory job also count toward that job's spending and budget.
+
+A memory charge cannot undo a successful step. Completed work stays done;
+the next unfinished step checks the job's full spending before it starts.
+Delegated task reports feed their owning job's memory pass and keep their citations.
+Older job ownership markers still exclude paused and ended jobs from idle learning.
+
+If a call is interrupted before its price arrives, codeaf asks for the provider's
+receipt in the background. Quitting before that recovery finishes can leave the
+charge missing from Spending. This limit also applies to ordinary chat calls;
+pending receipt recovery does not survive application quit.
+
+The application process owns the background worker for ordinary saved chats.
+Closing Memory or changing chats does not stop it. When codeaf stops, captured sources and checkpoints stay
 in the database; the next running codeaf process resumes unfinished work.
+
+## Memory background compiler batching and retries
 
 The initial build processes a fixed collection of admitted history before
 organizing it. Independent page drafts and refreshes can run two at a time;
@@ -736,15 +753,46 @@ its own step and source-reading budget, so total work grows with the evidence.
 A final pass keeps the core overview concise by selecting reviewed paragraphs;
 the complete source detail stays in linked evidence rather than expanding the
 overview after every update.
-Later updates combine saved turns into
+## Factory job memory waits, pauses and skipped steps
+
+Factory jobs wait at most two seconds for memory after a finished turn. An
+unfinished pass continues with that job while the next step works. A job has at
+most one pass running; later turns do not queue more. Pause, Stop and the job's
+end cancel it, including a request in flight. Paid receipts still charge the job.
+While a job stays paused, no new paid memory request is admitted. This also
+applies to memory from the job's own conversation outside a stage. Resume does
+not start a memory burst: pending sources wait for the next finished job turn,
+using the same one-pass rule.
+The worker can remain occupied briefly after work finishes to report those prices.
+Paid memory that finishes after its stage closes stays in that stage’s saved
+spending total. Reopening after that memory finishes restores the full paid total.
+Quit cancels the pass. The worker allows up to five additional seconds to settle
+paid calls through its existing accounting receipt before deleting its local job
+copy. Receipts arriving after shutdown are not guaranteed to reach the job; pending
+receipt recovery does not survive quit. Saved sources stay pending for its next finished turn, and
+idle learning never takes over a job's sources. The next admitted pass also
+includes earlier steps skipped while another pass was running. Unchanged source input
+reuses completed receipts. Extraction, page organization and evidence review can
+require separate model requests in that compilation. Sources and completed
+progress survive cancellation for a later active turn.
+
+Ordinary memory with no owning job belongs to the application process. Closing
+one chat does not stop its background build; quitting the application cancels
+that build. Its saved sources remain available for recovery on a later launch.
+
+## Ordinary saved chat memory batching
+
+Later updates to ordinary saved chats combine turns into
 normal model requests, without OpenRouter's Batch API. A batch becomes eligible
 after 30 seconds without new sources, when its oldest source reaches 120 seconds,
 or when its context limit is reached. These thresholds do not include provider
 time or retries. Each extraction uses at most 64 source spans and 24,000 source
 characters.
 
-Search runs against the database index. Failed requests retain pending work and
-retry with backoff up to 120 seconds. Unreadable chats do not prevent other chats
+Search runs against the database index. Idle background checks do not launch
+refinement without pending sources. Failed ordinary-chat requests retain pending
+work. The same failed input does not spend again automatically; choose Build
+to retry or add new saved sources. Unreadable chats do not prevent other chats
 from being processed; their incomplete status remains visible. The Knowledge
 view over `--host` is not supported.
 
@@ -752,9 +800,8 @@ Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
 model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
 The compiler checks the returned model ID and rejects substitutions.
 
-Failures retain pending work and retry automatically, with backoff up to 120
-seconds. Stable source IDs prevent duplicate records during retry or journal
-recovery. A failed or interrupted provider request can still incur charges;
+Stable source IDs prevent duplicate records during an explicit retry or
+journal recovery. A failed or interrupted provider request can still incur charges;
 retry safety does not mean every network request is billed only once.
 
 ## Updating existing knowledge pages and sections

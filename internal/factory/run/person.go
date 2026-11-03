@@ -77,6 +77,20 @@ func ResumeItem(it *factory.Item, now time.Time) error {
 	return nil
 }
 
+// PauseItem holds a running job that no worker holds. Its work, step and
+// conversation stay in place until ResumeItem queues that same step again.
+func PauseItem(it *factory.Item, now time.Time) error {
+	if it.State != factory.StateRunning || factory.JobState(*it) != "running" || it.Publishing {
+		return fmt.Errorf("%s is not running", it.Ref())
+	}
+	if it.Stream == nil {
+		it.Stream = freshStream(it, now)
+	}
+	it.Stream.Paused = true
+	loopSay(it, now, "said", sayPaused)
+	return nil
+}
+
 // HoldQueued holds a queued job that no worker holds yet where it is: it
 // keeps its place, and no worker takes it until [ResumeItem] lets it go on.
 // A Start now waiting on it is withdrawn, because the hold is the later word.
@@ -98,10 +112,26 @@ func HoldQueued(it *factory.Item, now time.Time) error {
 // passed (yes) or sent back to wait (no) here, because only a person's door
 // moves it. Passing it stamps the step's finish, which the brief's clock reads.
 func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) error {
+	answerWords := ""
+	if len(words) > 0 {
+		answerWords = words[0]
+	}
+	if err := followAnswerRefusal(*it, yes, answerWords); err != nil {
+		return err
+	}
 	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
 	qkind := it.QKind
+	if qkind == factory.QKindSpendStopped {
+		it.StopAfterStep = false
+		it.Question, it.QKind, it.Asking = "", "", nil
+		it.State = factory.StateRunning
+		if !yes {
+			stopSpendingItem(it, now)
+		}
+		return nil
+	}
 	answer := ""
 	if len(words) > 0 {
 		answer = words[0]
@@ -119,7 +149,7 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 	}
 	ph := &s.Phases[s.Cur]
 	switch {
-	case ph.Kind != factory.StageGate:
+	case ph.Kind != factory.StageGate && (yes || qkind != factory.QKindApprove || !factory.WaitingToStart(*ph)):
 		setPhaseState(ph, factory.PhaseRunning, now)
 	case yes:
 		setPhaseState(ph, factory.PhaseDone, now)
@@ -160,6 +190,22 @@ func grantFreshLoop(it *factory.Item, ph *factory.Phase) {
 // nothing here starts a run: the job is queued for a worker to pull. Every
 // other question is kept for the step's next round, as KeepAnswer does.
 func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error {
+	if err := followAnswerRefusal(*it, yes, words); err != nil {
+		return err
+	}
+	if it.QKind == "cap" && factory.IsContinue(yes, words) {
+		ReleaseCap(it, now)
+		return nil
+	}
+	if it.QKind == factory.QKindSpendStopped {
+		if err := AnswerHeld(it, yes, now, words); err != nil {
+			return err
+		}
+		if yes {
+			it.State = factory.StateQueued
+		}
+		return nil
+	}
 	if it.QKind == factory.QKindOutOfAttempts && it.State == factory.StateNeedsYou && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 		i := it.Stream.Cur
 		ph := &it.Stream.Phases[i]
@@ -249,6 +295,16 @@ func repairMisfiledGate(s *factory.Stream) {
 	// State only: the step's finish time is kept, and its result and rounds stay.
 	ph.State = factory.PhaseDone
 	s.Cur++
+}
+
+// ReleaseCap takes down the budget question of a job no runner waits on and
+// queues it again: its step carries on from where the cap stopped it.
+func ReleaseCap(it *factory.Item, now time.Time) {
+	it.Question, it.QKind, it.Asking = "", "", nil
+	it.State = factory.StateQueued
+	if s := it.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
+		setPhaseState(&s.Phases[s.Cur], factory.PhaseRunning, now)
+	}
 }
 
 // KeepAnswer is an answer to a job no worker holds any more: it is kept for

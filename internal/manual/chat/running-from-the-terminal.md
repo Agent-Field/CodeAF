@@ -361,8 +361,9 @@ or from the call's clock.
 Keys pasted into the codeaf desktop app are kept in the Mac's keychain, not by codeaf.
 The app hands them to `codeaf app` at every launch and that process holds them in memory
 only: while it runs, a key never reaches the profile's `config.json`, and a provider the
-app disconnected is not quietly reconnected from a key in the profile or the shell. A
-rejected key is reported in the provider's own words and status code. Which providers the
+app disconnected is not quietly reconnected from a key in the profile or the shell. A key
+the provider rejects is reported in the provider's own words and status code; one codeaf
+turns away itself (an OpenRouter management key) says why in codeaf's words. Which providers the
 app connects, and how, is *Connecting a provider from the app* below. The GitHub token
 pasted while setting up the app's factory is kept the same way and handed back at every
 launch, so the factory stays connected after a restart; choosing gh's own login keeps only
@@ -394,7 +395,9 @@ browser and nothing else. Setup connects as many of them as you like, one after 
 or none at all, and Settings connects one later; with none connected, setup says there
 are no models yet instead of offering a default.
 
-OpenRouter's key is checked with one request and ten seconds to answer. Every other
+OpenRouter's key is checked against OpenRouter's own record of it before its models are
+listed, so a revoked or made-up key, or a management key, is turned away rather than
+reported as working; all of its requests share ten seconds to answer. Every other
 provider is checked the way `/connect` checks it: its model list, a one-token call where
 it has none, and for a provider with a coding plan each way of paying in turn, plan
 first. What the check found besides the key — the region, the plan the key opened, the
@@ -1499,9 +1502,12 @@ the copy built into the binary. Your runs can improve the shared measurements. N
 the machine — what is shared is a measurement of the run, not the work. One
 setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
-does neither. It defaults to `on`. `CODEAF_MODEL_POOL` pins the same word
-from the shell, and on a CI machine with neither set codeaf reads but does
-not send. **The telemetry off switch stops the pool sending too**:
+does neither. It defaults to `off`, including in CI: no pool judge calls,
+pool routing or pool records. Each role still follows your task-model and
+tier settings, and in Auto the router picks from your allowed models.
+`CODEAF_MODEL_POOL=on` or a saved `model_pool = on` enables it; an earlier
+explicit choice stays honoured. A missing or blank saved word means you never
+chose and stays off. `CODEAF_MODEL_POOL` pins the same word from the shell. **The telemetry off switch stops the pool sending too**:
 `CODEAF_TELEMETRY=off`, `DO_NOT_TRACK=1` or the `telemetry` switch in `/settings` caps the
 pool at `read` — it wins over an explicit `on` — and `codeaf pool status`
 then says `mode read · telemetry`.
@@ -1512,7 +1518,7 @@ codeaf pool [show|status|verify] [--json] [--key key]
 
 `show` — also what bare `codeaf pool` prints — is the reading form: the mode
 and the addresses in force with the word saying where each came from
-(`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
+(`default`, `setting`, `env`, or `telemetry` when the telemetry off switch capped
 sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
 seed of <date>`. The binary carries a seed index of scored runs, shown until a fresher
@@ -2051,6 +2057,22 @@ For the current chat's background commands, watches or renders, use `/processes`
 in that chat. Click a process to open its log. The sidebar shows only running
 processes; finished logs remain available on demand without an ended count.
 
+## Desktop app quit and saving helpers
+
+Saving helpers started by the desktop app use a one-minute idle limit. While
+the app's engine is alive, it sends a light health request about every 20 seconds
+to the helpers it started, so a quiet app keeps the same saving helper ready.
+These requests never start or restart a helper, and failures are ignored.
+
+After the engine quits or is killed, the requests stop. Its saving helpers exit
+by themselves after about one minute without activity. Quit sends no shutdown
+request to a saving helper, so another window can continue saving through it;
+that activity delays its idle exit. A real saving operation starts a helper again
+when needed.
+
+A helper already running when the app connects keeps its existing idle limit.
+Terminal and command-line helpers keep their normal ten-minute idle limit.
+
 ## Crew proposals in the desktop app stream beside the chat
 
 **Bring in helpers** asks the conversation's own model about the work without
@@ -2076,3 +2098,14 @@ conversation. If setup fails after the crew is made, accepting the same proposal
 continues seating its missing helpers and reuses their original starts. Repeating
 a completed acceptance returns the same crew. Proposed reporting handles are recorded on members. Team groups do not
 create nested crews yet.
+
+## Log what codeaf asks GitHub (CODEAF_GITHUB_LOG, rate limit)
+
+Set `CODEAF_GITHUB_LOG` to a file to get one JSON line for each GitHub request
+codeaf makes: when, which factory route or loop caused it (`caller`), the method,
+the endpoint with names taken out (`/repos/:owner/:repo/issues/:n`), the status,
+and the rate limit GitHub reported (`res`, `rem`, `used`). A 304 does not count
+against the limit. `"m":"GH"` is a `gh` the engine ran. It is off by default. It
+never holds a token, a query, a body, a repository name or a file path. A `gh` run
+by an agent's own shell command is not in it: a jump in `used` between two lines
+that the lines do not explain was spent somewhere else on the same account.

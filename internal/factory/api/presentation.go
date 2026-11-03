@@ -32,8 +32,13 @@ func PresentJob(j *Job) {
 		}
 	case j.SpendingLimit != nil:
 		p.Kind, p.Title = "spending", "Spending limit reached"
+	case j.State == StateRunning && j.Desk != nil && j.Desk.Run != nil && j.Desk.Run.Paused:
+		p.Kind, p.Title, p.Detail = "paused", "Paused", "Work and step conversation kept. Resume continues this step."
 	case j.State == StateQueued && j.Held:
 		p.Kind, p.Title, p.Detail = "held", "Held", "Held in the queue. It starts only when you resume it."
+	case j.State == StateQueued && j.StatePresentation.Kind == WaitingForComputer:
+		// Nothing starts this job until its computer is back, Start now included.
+		p = j.StatePresentation
 	case j.State == StateQueued && j.OverLimit:
 		p.Kind, p.Title, p.Detail = "waiting_for_runner", "Starting now", "Starting now, above Jobs at once this one time."
 	case j.State == StateQueued || (j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsRunnerOffline):
@@ -41,7 +46,7 @@ func PresentJob(j *Job) {
 		if j.State == StateQueued {
 			p.Detail = "Queued. Waiting for an available runner. " + ConcurrencySettingsHint
 			// Presence decorates only this read, never the saved job or its version.
-			if j.StatePresentation.Kind == "waiting_for_capacity" || j.StatePresentation.Kind == WaitingForComputer {
+			if j.StatePresentation.Kind == "waiting_for_capacity" {
 				p = j.StatePresentation
 			}
 		}
