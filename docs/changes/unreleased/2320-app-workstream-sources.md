@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Keep sources and agent source proposals in app workstreams
-pr: 0
+pr: 2320
 surface: [app]
 invalidates:
   - Collections database files now become schema 4 on their first successful write; an engine built before this change refuses them, leaving collections unavailable there and all data intact.
