@@ -346,7 +346,8 @@ func TestBudgetReadErrorHoldsAdmissionWithoutCancellingWork(t *testing.T) {
 		}
 		return ""
 	}}
-	a, model := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.JobBudget = budget })
+	model := &scriptedCompleter{}
+	a, _ := newTestAgent(t, model, func(c *Config) { c.JobBudget = budget })
 	id := startJob(t, a, "sleep 30")
 	unread.Store(true)
 	time.Sleep(350 * time.Millisecond)
