@@ -551,6 +551,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	pluginAuth  map[string]*appPluginAttempt
 	chats       appChats
 	pair        appPair
 	drives      *driveBook
@@ -2175,6 +2176,9 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			return
 		}
 		live.box.Event(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+		if q.Kind == session.QuestionConnect {
+			live.box.Event(appwire.EventPluginsNeeded, appwire.PluginsNeeded{Agent: id, Plugin: q.Subject.Name, Why: q.Reason, AskID: askID})
+		}
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
@@ -2235,6 +2239,9 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			}
 		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
+		if q.Kind == session.QuestionConnect {
+			live.box.Event(appwire.EventPluginsNeededDone, appwire.PluginsNeededDone{AskID: askID})
+		}
 		receipt := appwire.Entry{ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: words}
 		if scope != "" {
 			receipt.Text = "Always allowed · " + scope + " · you · " + at.Local().Format("15:04")
@@ -2290,6 +2297,7 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 	mine := false
 	var view appwire.Agent
 	var asks []appwire.Ask
+	pluginAsks := map[string]bool{}
 	b.locked(func() {
 		if mine = a.live == live; !mine {
 			return
@@ -2299,6 +2307,11 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 		a.view.State = appwire.StateStopped
 		view = a.view
 		asks = live.asks
+		for id, q := range live.questions {
+			if q.Kind == session.QuestionConnect {
+				pluginAsks[id] = true
+			}
+		}
 		live.asks, live.questions = nil, map[string]session.Question{}
 	})
 	if !mine {
@@ -2306,6 +2319,9 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 	}
 	at := b.now()
 	for _, ask := range asks {
+		if pluginAsks[ask.ID] {
+			live.box.Event(appwire.EventPluginsNeededDone, appwire.PluginsNeededDone{AskID: ask.ID})
+		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: view.ID, ID: ask.ID, By: appwire.ClosedByStopped, At: at})
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 			ID: appReceiptEntryID(ask.ID), Agent: view.ID, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(appwire.ClosedByStopped, "", nil, at),
@@ -3383,6 +3399,7 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 			refused = appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", askID)
 			return
 		}
+		q = b.connectedPluginQuestion(q)
 		key, refused = appValidateQuestionAnswer(askID, q, option, text, scope)
 		if refused != nil {
 			return
@@ -4476,11 +4493,16 @@ func (b *appBackend) Close() error {
 	var warmed chan struct{}
 	var balances *appBalances
 	var stopModelNotices func()
+	var pluginAttempts []*appPluginAttempt
 	b.locked(func() {
 		if already = b.closing; already {
 			return
 		}
 		b.closing = true
+		for id, attempt := range b.pluginAuth {
+			pluginAttempts = append(pluginAttempts, attempt)
+			delete(b.pluginAuth, id)
+		}
 		if b.left != nil {
 			close(b.left)
 		}
@@ -4507,6 +4529,12 @@ func (b *appBackend) Close() error {
 	})
 	if already {
 		return nil
+	}
+	for _, attempt := range pluginAttempts {
+		attempt.cancel()
+		if attempt.flow != nil {
+			attempt.flow.Cancel()
+		}
 	}
 	b.closePair()
 	if b.stopSyncedSettings != nil {

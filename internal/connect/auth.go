@@ -254,7 +254,16 @@ func (f *Flow) Wait(ctx context.Context) (Status, error) {
 // Cancel abandons a connection nobody is going to finish — the person pressed
 // escape, or closed the tab and came back. It releases the loopback address so
 // the next attempt can have it.
-func (f *Flow) Cancel() { f.cancel() }
+func (f *Flow) Cancel() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cancel()
+	if !f.settled {
+		f.settled = true
+		f.status = Status{Service: f.plug.Service()}
+		f.err = context.Canceled
+	}
+}
 
 // settle records the outcome once: it asks whose account this is, writes the
 // connection to the store, and fixes the answer every later [Flow.Wait] gets.
@@ -284,6 +293,10 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 	// nothing.
 	if account, err := f.plug.Account(ctx, staticClient(ctx, result.keys)); err == nil {
 		entry.Account = account
+	}
+	if err := ctx.Err(); err != nil {
+		f.status, f.err = Status{Service: service}, err
+		return f.status, f.err
 	}
 	if err := f.manager.store.put(service.ID, entry); err != nil {
 		f.status = Status{Service: service}

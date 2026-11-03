@@ -238,15 +238,15 @@ func (m *Manager) ConnectKey(ctx context.Context, id string, key string) (Status
 		return Status{}, fmt.Errorf("%s is connected in a browser, not with a key", service.Name)
 	}
 	if strings.TrimSpace(key) == "" {
-		return Status{}, fmt.Errorf("%s needs a key", service.Name)
+		return Status{}, keyFailure("shape", fmt.Errorf("%s needs a key", service.Name), "")
 	}
 	blank, key, err := holder.read(key)
 	if err != nil {
-		return Status{}, err
+		return Status{}, keyFailure("shape", err, "")
 	}
 	address, err := holder.address(blank)
 	if err != nil {
-		return Status{}, err
+		return Status{}, keyFailure("shape", err, "")
 	}
 	// A NAME IS NOT A KEY, AND IT IS NOT STORED AS ONE. What a person pasted is
 	// read once, here, and lands in whichever of the two fields it means
@@ -263,10 +263,11 @@ func (m *Manager) ConnectKey(ctx context.Context, id string, key string) (Status
 		// with an answer in it — go and set it — and it is said before anything
 		// is written down, because a connection to a name that resolves to
 		// nothing is a row that says "connected" over a request that cannot go.
-		return Status{}, err
+		return Status{}, keyFailure("shape", err, key)
 	}
 	if err := holder.check(ctx, client); err != nil {
-		return Status{}, fmt.Errorf("%s did not accept that key: %w", service.Name, err)
+		secret, _ := entry.secret(service.Name)
+		return Status{}, keyFailure("refused", fmt.Errorf("%s did not accept that key: %w", service.Name, err), secret)
 	}
 	if err := m.store.put(service.ID, entry); err != nil {
 		return Status{}, fmt.Errorf("connect %s: %w", service.Name, err)

@@ -581,3 +581,25 @@ affordance that answers as a failure.
 
 And accounts already connected on the far machine keep working: their tools are on the
 belt as usual.
+
+## Desktop plugins and connected accounts
+
+The desktop engine exposes Plugins when its feature list includes `plugins`.
+Plugins reads the same accounts as terminal `/connect`, with the catalog's
+categories and descriptions. AI models use the existing provider connections.
+
+Each account capability has the same Yes, Ask or Off setting in both places.
+Answering Always in a chat writes that setting too. Off leaves the capability's
+tools out of the next session.
+
+Browser connections return a sign-in link for the desktop to open. Cancelling
+abandons the pending connection. A key connection accepts a pasted key or the
+name of an environment variable. A rejected or unanswered check saves nothing,
+and the desktop never receives the key back.
+
+An agent's connect question also appears in the desktop's waiting asks.
+Connecting the account and answering that question continues its turn.
+Not now saves no refusal, so a later need can ask again.
+
+The account store currently holds one account per plugin, including Slack.
+It does not record connection dates or recent plugin calls.

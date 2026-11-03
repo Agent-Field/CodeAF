@@ -1672,3 +1672,75 @@ manager chat or composer (and discards the returned step chats). They require a
 desktop update before pairing with this engine for jobs without a manager.
 The hello feature is capability advertisement, not client negotiation; it does
 not by itself make those older desktops compatible.
+
+## plugins methods
+
+The optional `plugins` hello feature enables these methods. They use
+`internal/connect`, the same account and capability stores as terminal
+`/connect`. Provider connection methods and the `Provider` type stay unchanged.
+
+| method | params | result |
+|---|---|---|
+| `plugins.list` | `{}` | `PluginsResult` |
+| `plugins.describe` | `in.PluginID` | `PluginDescription` |
+| `plugins.connect_browser` | `in.PluginBrowserParams` | `PluginBrowserResult` |
+| `plugins.cancel` | `in.PluginID` | `Empty` |
+| `plugins.connect_key` | `in.PluginKeyParams` | `PluginKeyResult` |
+| `plugins.set_capability` | `in.PluginCapabilityParams` | `Empty` |
+| `plugins.disconnect` | `in.PluginDisconnectParams` | `Empty` |
+
+`plugins.list` returns `{plugins, providers, featured, featured_words}`.
+Each plugin has `id, name, kind, category, blurb, connected`, and optionally
+`account, key_env, expired, ask: {label, answers?}, key_hint: {words, url?}`.
+Kind is `browser`, `key` or `server`. Category uses the catalog's spelling.
+Blurb shortens the existing catalog words. Counts come from the returned
+catalog. `featured` contains ordered ids; `featured_words[id]` contains
+`{what, does}`.
+
+`plugins.describe {id}` returns
+`{capabilities, scopes_words, tools?, notes?, accounts?, key_note?}`.
+Capabilities contain `{id, phrase, covers, acts, state, tools}`. State is
+`yes`, `ask` or `off`; the same `SetCapabilityState` store serves chat's
+Always answer and `plugins.set_capability {id, capability, state}`.
+Off removes that capability's tools when the next session builds its tools.
+Connected servers' `tools` come from the existing MCP listing, as
+`{name, title, read_only}`. Tool names grouped under a capability also form
+its `covers` text.
+
+`plugins.connect_browser {id, answer?}` answers
+`{state: "waiting", link}`. The desk opens `link` in the browser.
+Completion emits `plugins.changed`; `error` carries a safe sign-in failure.
+`plugins.cancel {id}` abandons an unfinished attempt. Closing the engine
+also cancels pending attempts.
+
+`plugins.connect_key {id, key?, key_env?, answer?}` accepts one key or one
+environment variable name. `answer` supplies the workspace when needed.
+It returns `{account?}` on success, or
+`{error: "shape"|"refused"|"no_answer", words}` as a successful wire answer.
+A shape failure reaches no vendor, a refusal retains at most 120 characters,
+and a missing answer saves nothing. Key values never appear in replies.
+`plugins.disconnect {id, account?}` uses the existing disconnect path.
+The optional account must match the stored account.
+
+`settings.set` accepts `when_plan_paused: {[provider]: policy}`, where policy
+is `wait` or `use pay-as-you-go`. It changes the existing persisted source
+rows. `settings.get` and `settings.changed` return the map in
+`settings.when_plan_paused`. An unknown provider is refused.
+
+| event | data |
+|---|---|
+| `plugins.changed` | `PluginsChanged`: `{id, error?}` |
+| `plugins.needed` | `PluginsNeeded`: `{agent, plugin, why, ask_id}` |
+| `plugins.needed_done` | `PluginsNeededDone`: `{ask_id}` |
+
+A connect question reaches the app on the existing `WatchQuestions` lane.
+`plugins.needed` identifies that same question, also listed by `asks.list`.
+After connecting through the plugin methods, the desk calls
+`asks.answer {agent, id: ask_id, option: "1"}` to continue the turn without
+a second sign-in. `option: "2"` means Not now and saves no refusal.
+Answering in either chat or Inbox resolves the same question.
+An answer or withdrawal emits `plugins.needed_done`.
+
+The current account store holds one account per plugin, including Slack.
+It has no connection timestamps or plugin call history; optional dates and a
+Lately section remain absent.
