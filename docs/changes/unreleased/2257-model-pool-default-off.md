@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Model Pool stays off until you choose it
-pr: 0
+pr: 2257
 surface: [engine, chat, app]
 invalidates:
   - "The Model Pool previously enabled itself on fresh profiles and used read mode in CI."
