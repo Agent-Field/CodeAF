@@ -180,10 +180,10 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		d := addition.Step
 		// A CHECK MAY SAY ITS ROUNDS; nothing else added here may.
 		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" || d.UseModel != "" {
-			h.fail(w, 422, "new steps accept name, kind, ask, until and effort, and a check its max")
+			h.fail(w, 422, "new steps accept name, label, kind, ask, until and effort, and a check its max")
 			return
 		}
-		edit.Add = append(edit.Add, factory.Added{Stage: factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Effort: d.Effort, Max: d.Max, On: true}, After: addition.After})
+		edit.Add = append(edit.Add, factory.Added{Stage: factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Effort: d.Effort, Max: d.Max, On: true}, After: addition.After})
 	}
 	var updated factory.Item
 	var lines []string

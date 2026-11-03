@@ -892,6 +892,7 @@ func plannedStage(add Stage) (st Stage, when string, bad error) {
 		if w := strings.ToLower(strings.TrimSpace(add.When)); w != "" && oneOf(w, WhenWords) {
 			a.When = w
 		}
+		a.Label = strings.TrimSpace(add.Label)
 		a.Why, a.By = add.Why, add.By
 		return a, place, nil
 	}
