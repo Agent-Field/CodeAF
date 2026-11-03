@@ -45,6 +45,8 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	var notes []string
 	var tests *factory.TestCounts
 	lastOutcome := map[string]string{}
+	journalOrder := map[string]int{}
+	sequence := 0
 	var pending []string
 	var state verification.Snapshot
 	checks, checkErr := verification.ReadIn(c.file, c.dir)
@@ -123,7 +125,11 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			Role       string `json:"role"`
 			Content    string `json:"content"`
 			ToolCallID string `json:"toolCallId"`
-			Calls      []struct {
+			Presentation *struct {
+			Refused bool `json:"refused"`
+			Outcome string `json:"outcome"`
+		} `json:"presentation"`
+		Calls      []struct {
 				ID       string `json:"id"`
 				Function struct {
 					Name      string `json:"name"`
@@ -159,6 +165,8 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			continue
 		}
 		seenResults[row.ToolCallID] = true
+		sequence++
+		journalOrder[cmd] = sequence
 		// Setup refusal happens before the shell runs and has no exit receipt.
 		// Keep it even for commands outside the legacy check-name vocabulary.
 		if strings.HasPrefix(row.Content, verification.SetupFailurePrefix) {
@@ -171,9 +179,20 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		}
 		passed := (strings.Contains(row.Content, "\nPASS\n") || strings.HasPrefix(row.Content, "PASS\n") || strings.Contains(row.Content, "ok  ")) && !strings.Contains(row.Content, "\nFAIL") && !strings.Contains(row.Content, "Command exited with code")
 		receipt := map[string]any{"command": cmd, "cwd": c.dir, "outcome": "completed"}
-		if strings.Contains(row.Content, "Command exited with code") {
+		status := ""
+		if row.Presentation != nil { status = row.Presentation.Outcome; if row.Presentation.Refused { status = "refused" } }
+		text := strings.TrimSpace(row.Content)
+		lastLine := text[strings.LastIndex(text, "\n")+1:]
+		switch {
+		case status == "refused" || strings.HasPrefix(text, "needs approval but no resolver is attached:"):
+			receipt["outcome"] = "refused"
+		case status == "cancelled" || lastLine == "Command aborted" || lastLine == "Command cancelled":
+			receipt["outcome"] = "cancelled"
+		case status == "timed out" || strings.HasPrefix(lastLine, "Command timed out after ") || strings.HasPrefix(text, "cut after "):
+			receipt["outcome"] = "timed out"
+		case strings.Contains(row.Content, "Command exited with code") || status == "failed":
 			receipt["outcome"] = "failed"
-		} else if passed {
+		case passed || status == "ok":
 			receipt["outcome"] = "passed"
 		}
 		if observed[cmd] && verification.PresentationOnly(cmd) {
@@ -182,9 +201,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			receipt["scope"] = "shell presentation; check exits recorded separately"
 		} else {
 			lastOutcome[cmd] = receipt["outcome"].(string)
-			if !observed[cmd] && receipt["outcome"] == "completed" {
-				pending = append(pending, cmd+" · exit status unavailable; rerun with a measured check")
-			}
+			
 		}
 		if strings.Contains(cmd, "go test") {
 			counts := &factory.TestCounts{}
@@ -225,6 +242,13 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
 	}
 	for command, outcome := range lastOutcome {
+		if outcome == "refused" || outcome == "cancelled" || outcome == "timed out" || (outcome == "completed" && !observed[command]) {
+			covered := false
+			for _, check := range checks {
+				if journalOrder[check.Command] > journalOrder[command] && (!fresh || check.Fresh(state)) && verification.CoversUnrun(command, c.dir, check) { covered = true; break }
+			}
+			if !covered { pending = append(pending, command+" · "+outcome+"; no later measured covering pass") }
+		}
 		if diagnosticOnly[command] && !ownedCommand[command] {
 			continue
 		}
@@ -374,7 +398,7 @@ func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) er
 		notes, _ := (&stageConversation{file: d.file, dir: d.dir}).ExecutionNotes()
 		for _, note := range notes {
 			if strings.HasPrefix(note, verification.FailurePrefix) {
-				return fmt.Errorf("repair is incomplete: %s", strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+				return d.rejectVerification(notes, strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
 			}
 		}
 	}
@@ -488,7 +512,11 @@ func (d *receiptStageDoor) rejectVerification(notes []string, reason string) err
 	case refused:
 		d.stopVerification(fmt.Sprintf("%d completion reports were refused", stageVerificationReportLimit))
 	}
-	return fmt.Errorf("repair is incomplete: %s. The completion guard only reads saved results; it does not run tests. Reuse current passing evidence. Correct only the unresolved check or report done:false with the remaining blocker (PR repairs use repair.decision needs_repair); do not repeat the whole suite without a coverage reason", reason)
+	var owed []string
+	for _, note := range notes {
+		if debt, ok := strings.CutPrefix(note, verification.FailurePrefix); ok { owed = append(owed, strings.Join(strings.Fields(debt), " ")) }
+	}
+	return fmt.Errorf("repair is incomplete; owed: %s; correct this evidence or report done:false; stops after %d unchanged or %d total refusals", strings.Join(owed, " | "), stageVerificationRejectLimit, stageVerificationReportLimit)
 }
 
 // countRefusal records one refused completion report with its evidence key and
