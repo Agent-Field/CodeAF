@@ -415,7 +415,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if updater, ok := src.(interface {
 			UpdatePRBody(context.Context, factory.Item, string) error
 		}); ok {
-			if err := updater.UpdatePRBody(ctx, it, body); err != nil {
+            if err := r.publishBoundary(ctx, it.ID); err != nil {
+                return published{}, err
+            }
+            if err := updater.UpdatePRBody(ctx, it, body); err != nil {
 				return published{}, fmt.Errorf("repair pushed, but could not update the PR description: %w", err)
 			}
 		}

@@ -48,6 +48,8 @@ type ModelSelection struct {
 }
 
 type Job struct {
+    // BeforeWrite rechecks current job and lease authority for external writes.
+    BeforeWrite func(context.Context) error
 	// Lifetime ends with the job, rather than with one stage round.
 	Lifetime context.Context
 	// PendingSpend retains the existing worker report path while owned work
