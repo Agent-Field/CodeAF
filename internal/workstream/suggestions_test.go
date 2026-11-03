@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/workspace"
 	"github.com/Agent-Field/codeaf/internal/workstream/pagedoc"
 )
 
@@ -438,36 +441,84 @@ func TestWorkstreamSuggestionKeepTooLarge(t *testing.T) {
 	}
 }
 
-// WP-6d Schema: suggestion.list on a schema-3 page answers an initialized empty
-// list without creating the new tables or updating user_version.
-func TestWorkstreamSuggestionsReadSchemaThreeWithoutWriting(t *testing.T) {
-	s, workspace, _ := testStore(t)
-	page, _, _ := workstreamSuggestionSeed(t, s)
-	ctx := context.Background()
-	if err := workspace.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.Exec("DROP TABLE workstream_suggestion_edits; DROP TABLE workstream_suggestions; PRAGMA user_version=3")
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	open, err := s.Suggestions(ctx, page.ID)
-	if err != nil || open == nil || len(open) != 0 {
-		t.Fatalf("schema 3 list: %+v %v", open, err)
-	}
-	if err := workspace.Read(ctx, func(tx *sql.Tx, version int) error {
-		if version != 3 {
-			t.Fatalf("read migrated to %d", version)
-		}
-		var count int
-		if err := tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('workstream_suggestions','workstream_suggestion_edits')").Scan(&count); err != nil {
-			return err
-		}
-		if count != 0 {
-			t.Fatal("read built suggestion tables")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
+// WP-6d Schema: older pages list no suggestions; unknown keep/drop targets
+// return not found and roll back migration. Creation performs the first write.
+func TestWorkstreamSuggestionsReadOlderSchemasWithoutWriting(t *testing.T) {
+	for _, version := range []int{3, 4} {
+		t.Run(fmt.Sprint(version), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "collections.db")
+			w, err := workspace.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := New(w, Options{})
+			page, ask, _ := workstreamSuggestionSeed(t, s)
+			ctx := context.Background()
+			if err := w.Write(ctx, func(tx *sql.Tx) error {
+				ddl := "DROP TABLE workstream_suggestion_edits; DROP TABLE workstream_suggestions;"
+				if version == 3 {
+					ddl += "DROP TABLE workstream_wake_items; DROP TABLE workstream_wakes;"
+				}
+				_, err := tx.Exec(ddl + fmt.Sprintf("PRAGMA user_version=%d", version))
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w, err = workspace.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.Close()
+			s = New(w, Options{})
+			open, err := s.Suggestions(ctx, page.ID)
+			if err != nil || open == nil || len(open) != 0 {
+				t.Fatalf("schema %d list: %+v %v", version, open, err)
+			}
+			if _, err := s.Suggestions(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("missing page: %v", err)
+			}
+			if _, _, change, err := s.KeepSuggestion(ctx, "missing", "e1"); !errors.Is(err, ErrNotFound) || len(change.Parts) != 0 {
+				t.Fatalf("keep without suggestion tables: %+v %v", change, err)
+			}
+			if _, change, err := s.DropSuggestion(ctx, "missing", ""); !errors.Is(err, ErrNotFound) || len(change.Parts) != 0 {
+				t.Fatalf("drop without suggestion tables: %+v %v", change, err)
+			}
+			if err := w.Read(ctx, func(tx *sql.Tx, got int) error {
+				if got != version {
+					t.Fatalf("read migrated to %d", got)
+				}
+				var count int
+				if err := tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('workstream_suggestions','workstream_suggestion_edits')").Scan(&count); err != nil {
+					return err
+				}
+				if count != 0 {
+					t.Fatal("read or refused decision built suggestion tables")
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(before) != string(after) {
+				t.Fatal("open, read or refused decision changed the file", err)
+			}
+			workstreamSuggestionCreate(t, s, ask)
+			if err := w.Read(ctx, func(_ *sql.Tx, got int) error {
+				if got != 5 {
+					t.Fatalf("creation did not migrate to schema 5: %d", got)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

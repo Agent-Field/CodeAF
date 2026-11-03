@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -13,6 +14,66 @@ import (
 	"github.com/Agent-Field/codeaf/internal/workstream"
 	"github.com/Agent-Field/codeaf/internal/workstream/pagedoc"
 )
+
+// WP-6d Schema, Tool: both wire lists and workstream_read pages work before
+// suggestion tables exist. Refused decisions do not commit their migration.
+func TestAppWorkstreamSuggestionsOnOlderSchemas(t *testing.T) {
+	for _, version := range []int{3, 4} {
+		t.Run(fmt.Sprint(version), func(t *testing.T) {
+			b, rec, w, door := workstreamAgentFixture(t)
+			ctx := context.Background()
+			pages, err := b.WorkstreamPageList(appwire.WorkstreamPageListParams{WorkstreamID: w.ID})
+			if err != nil || len(pages.Pages) == 0 {
+				t.Fatal("missing fixture page", err)
+			}
+			pageID := pages.Pages[0].ID
+			store, err := b.collectionStore(false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Write(ctx, func(tx *sql.Tx) error {
+				ddl := "DROP TABLE workstream_suggestion_edits; DROP TABLE workstream_suggestions;"
+				if version == 3 {
+					ddl += "DROP TABLE workstream_wake_items; DROP TABLE workstream_wakes;"
+				}
+				_, err := tx.Exec(ddl + fmt.Sprintf("PRAGMA user_version=%d", version))
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			events := len(workstreamEvents(rec))
+			listed, err := b.WorkstreamSuggestionList(appwire.WorkstreamSuggestionListParams{PageID: pageID})
+			if err != nil || listed.Suggestions == nil || len(listed.Suggestions) != 0 {
+				t.Fatalf("old-schema list: %+v %v", listed, err)
+			}
+			raw, err := door.Read(ctx, session.WorkstreamReadAsk{What: "page", PageID: pageID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var read struct {
+				Suggestions []appwire.WorkstreamSuggestion `json:"suggestions"`
+			}
+			if err := json.Unmarshal(raw, &read); err != nil || read.Suggestions == nil || len(read.Suggestions) != 0 {
+				t.Fatalf("old-schema page read: %s %v", raw, err)
+			}
+			_, err = b.WorkstreamSuggestionKeep(appwire.WorkstreamSuggestionKeepParams{ID: "missing"})
+			workstreamCheckError(t, err, appwire.CodeNotFound)
+			_, err = b.WorkstreamSuggestionDrop(appwire.WorkstreamSuggestionDropParams{ID: "missing"})
+			workstreamCheckError(t, err, appwire.CodeNotFound)
+			if len(workstreamEvents(rec)) != events {
+				t.Fatal("old-schema reads or refused decisions emitted an event")
+			}
+			if err := store.Read(ctx, func(_ *sql.Tx, got int) error {
+				if got != version {
+					t.Fatalf("old-schema reads or refused decisions migrated to %d", got)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 // WP-6d (a), Tool: the real door refuses agent-owned pages and direct writes
 // to person pages, then suggests with chat attribution and pages-only events.

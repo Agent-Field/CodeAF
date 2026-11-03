@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/workspace"
 	"github.com/Agent-Field/codeaf/internal/workstream/pagedoc"
 )
 
@@ -302,7 +303,7 @@ func (s *Store) Suggestions(ctx context.Context, pageID string) ([]Suggestion, e
 			return ErrNotFound
 		}
 		page, _, err := livePageIn(ctx, tx, pageID)
-		if err != nil || version < 4 {
+		if err != nil || version < workspace.WorkstreamSuggestionSchemaVersion {
 			return err
 		}
 		rows, err := tx.QueryContext(ctx, `SELECT s.id FROM workstream_suggestions s WHERE s.page_id=? AND EXISTS(SELECT 1 FROM workstream_suggestion_edits e WHERE e.suggestion_id=s.id AND e.state='proposed') ORDER BY s.created_at,s.rowid`, pageID)
