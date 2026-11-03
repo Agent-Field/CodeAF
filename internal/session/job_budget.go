@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+ "github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // jobBudgetOf is shared by the whole owned family. Children charge their own
@@ -42,10 +44,11 @@ func (a *Agent) watchJobBudget() {
 				return
 			}
 			if !stopped {
+				stopOwned := a.factoryOwnedStop()
 				if a.jobBudgetBlock() != nil {
 					_ = a.StopWork()
-				} else if a.automaticFactoryRefusal() != "" {
-					a.stopFactoryOwnedWork()
+				} else if a.automaticFactoryRefusal() == factory.PersonStopReason {
+					stopOwned()
 				}
 			}
 		}
@@ -68,25 +71,32 @@ func (a *Agent) admitJobCall(ctx context.Context) error {
 
 // A job Stop cancels this manager's owned producers without closing the
 // conversation or discarding the person's queued answers.
-func (a *Agent) stopFactoryOwnedWork() {
+// Capture producers before sampling authority, so a late answer cannot cancel
+// work admitted by a subsequent Start.
+func (a *Agent) factoryOwnedStop() func() {
 	a.mu.Lock()
 	jobs, graph := a.jobs, a.tasks
 	cancel, automatic := a.cancel, a.running && a.factoryAutomaticTurn
 	a.mu.Unlock()
-	if automatic && cancel != nil {
-		cancel(stopFor(StopByWorkStopped))
-	}
+	var ids []uint64
 	if graph != nil {
 		graph.mu.Lock()
-		ids := append([]uint64(nil), graph.order...)
+		ids = append(ids, graph.order...)
 		graph.mu.Unlock()
+	}
+	var owned []*job
+	if jobs != nil {
+		owned = jobs.all()
+	}
+	return func() {
+		if automatic && cancel != nil {
+			cancel(stopFor(StopByWorkStopped))
+		}
 		for _, id := range ids {
 			_, _ = graph.stopFor(id, "")
 		}
-	}
-	if jobs != nil {
 		var stopped sync.WaitGroup
-		for _, job := range jobs.all() {
+		for _, job := range owned {
 			if job.running() {
 				stopped.Add(1)
 				go func(id int) {

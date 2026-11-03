@@ -110,69 +110,13 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	}
 	recorder := newLiveRecorder(t, config.DefaultBaseURL)
 	recorder.budget = liveStopSpendMost
-	var stopAt atomic.Int64
-	var cancelledRequests int
-	var highestCost float64
+	accounting := &stopLiveAccounting{}
 	t.Cleanup(func() {
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
-		t.Logf("live attempt: requests=%d request_models=%v response_models=%v spend=%.8f cancelled_requests=%d conservative_spend=%.8f problems=%v", recorder.calls, recorder.requests, recorder.replies, recorder.cost, cancelledRequests, recorder.cost+float64(cancelledRequests)*highestCost, recorder.problems)
+		t.Logf("live attempt: requests=%d request_models=%v response_models=%v spend=%.8f cancelled_requests=%d conservative_spend=%.8f problems=%v", recorder.calls, recorder.requests, recorder.replies, recorder.cost, accounting.cancelledRequests, recorder.cost+float64(accounting.cancelledRequests)*accounting.highestCost, recorder.problems)
 	})
-	inner := recorder.server.Config.Handler
-	var paid sync.Mutex
-	recorder.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost || !strings.HasSuffix(req.URL.Path, "/chat/completions") {
-			inner.ServeHTTP(w, req)
-			return
-		}
-		paid.Lock()
-		defer paid.Unlock()
-		recorder.mu.Lock()
-		spent, bad := recorder.cost, len(recorder.problems) > 0
-		reserved := spent + float64(cancelledRequests)*highestCost
-		recorder.mu.Unlock()
-		// Reserve each unpriced cancellation at the highest observed call cost.
-		if bad || reserved+max(0.02, highestCost) >= liveStopSpendMost {
-			recorder.note("hard spend stop")
-			http.Error(w, "hard spend stop", http.StatusBadRequest)
-			return
-		}
-		raw, err := io.ReadAll(io.LimitReader(req.Body, 100001))
-		var body map[string]json.RawMessage
-		if err != nil || len(raw) > 100000 || json.Unmarshal(raw, &body) != nil {
-			recorder.note("request exceeds spend reservation")
-			http.Error(w, "request exceeds spend reservation", http.StatusBadRequest)
-			return
-		}
-		body["max_tokens"] = json.RawMessage("1024")
-		delete(body, "max_completion_tokens")
-		raw, _ = json.Marshal(body)
-		req.Body = io.NopCloser(bytes.NewReader(raw))
-		req.ContentLength = int64(len(raw))
-		var cancelledAt atomic.Int64
-		cancelled := make(chan struct{})
-		stopWatching := context.AfterFunc(req.Context(), func() {
-			cancelledAt.Store(time.Now().UnixNano())
-			close(cancelled)
-		})
-		defer stopWatching()
-		inner.ServeHTTP(w, req)
-		if req.Context().Err() != nil {
-			<-cancelled
-		}
-		recorder.mu.Lock()
-		if recorder.cost <= spent {
-			at := stopAt.Load()
-			if at != 0 && cancelledAt.Load() >= at {
-				cancelledRequests++
-			} else {
-				recorder.problems = append(recorder.problems, "request has no recorded cost")
-			}
-		} else {
-			highestCost = max(highestCost, recorder.cost-spent)
-		}
-		recorder.mu.Unlock()
-	})
+	recorder.server.Config.Handler = stopLiveAccountingHandler(recorder, accounting)
 
 	originalClient := http.DefaultClient
 	http.DefaultClient = &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
@@ -275,7 +219,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		t.Helper()
 		recorder.mu.Lock()
 		defer recorder.mu.Unlock()
-		if len(recorder.problems) != 0 || recorder.cost+float64(cancelledRequests)*highestCost >= liveStopSpendMost || recorder.cost >= 0.30 {
+		if len(recorder.problems) != 0 || recorder.cost+float64(accounting.cancelledRequests)*accounting.highestCost >= liveStopSpendMost || recorder.cost >= 0.30 {
 			t.Fatalf("recorder policy: spend=%.8f problems=%v", recorder.cost, recorder.problems)
 		}
 	}
@@ -351,7 +295,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
-	stopAt.Store(time.Now().UnixNano())
+	accounting.stopAt.Store(time.Now().UnixNano())
 	act("factory.job_stop", nil)
 	stoppedAt := time.Now()
 	baseline := read()
@@ -488,7 +432,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	restartUSD, restartCalls := ledger()
 	chatCalls := 0
 	recorder.mu.Lock()
-	chatCalls = stopLivePaidCalls(recorder.calls, cancelledRequests)
+	chatCalls = stopLivePaidCalls(recorder.calls, accounting.cancelledRequests)
 	recorder.mu.Unlock()
 	if restartUSD != chatUSD || restartCalls != chatCalls {
 		t.Fatalf("restart spend: before=%.8f after=%.8f ledger_calls=%d proxy_calls=%d", chatUSD, restartUSD, restartCalls, chatCalls)
@@ -504,7 +448,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	finalUSD, finalCalls := ledger()
 	recorder.mu.Lock()
 	calls, spend := recorder.calls, recorder.cost
-	unpricedCancelled := cancelledRequests
+	unpricedCancelled := accounting.cancelledRequests
 	requests, replies := recorder.requests, recorder.replies
 	recorder.mu.Unlock()
 	if finalUSD <= restartUSD || finalCalls <= restartCalls || math.Abs(finalUSD-spend) > 0.000001 || finalCalls != stopLivePaidCalls(calls, unpricedCancelled) {
@@ -574,4 +518,70 @@ func TestStopLiveUnpricedCancellationIsNotPaidLedgerCall(t *testing.T) {
 			t.Errorf("requests=%d unpriced_cancelled=%d paid ledger calls=%d, want %d", tc.requests, tc.cancelled, got, tc.paid)
 		}
 	}
+}
+
+// stopLiveAccounting serializes calls and retains unpriced request evidence.
+type stopLiveAccounting struct {
+ stopAt atomic.Int64
+ cancelledRequests int
+ highestCost float64
+ paid sync.Mutex
+}
+
+func stopLiveAccountingHandler(recorder *liveRecorder, accounting *stopLiveAccounting) http.Handler {
+	inner := recorder.server.Config.Handler
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost || !strings.HasSuffix(req.URL.Path, "/chat/completions") {
+			inner.ServeHTTP(w, req)
+			return
+		}
+		accounting.paid.Lock()
+		defer accounting.paid.Unlock()
+		recorder.mu.Lock()
+		spent, bad := recorder.cost, len(recorder.problems) > 0
+		reserved := spent + float64(accounting.cancelledRequests)*accounting.highestCost
+		recorder.mu.Unlock()
+		// Reserve each unpriced cancellation at the highest observed call cost.
+		if bad || reserved+max(0.02, accounting.highestCost) >= liveStopSpendMost {
+			recorder.note("hard spend stop")
+			http.Error(w, "hard spend stop", http.StatusBadRequest)
+			return
+		}
+		raw, err := io.ReadAll(io.LimitReader(req.Body, 100001))
+		var body map[string]json.RawMessage
+		if err != nil || len(raw) > 100000 || json.Unmarshal(raw, &body) != nil {
+			recorder.note("request exceeds spend reservation")
+			http.Error(w, "request exceeds spend reservation", http.StatusBadRequest)
+			return
+		}
+		body["max_tokens"] = json.RawMessage("1024")
+		delete(body, "max_completion_tokens")
+		raw, _ = json.Marshal(body)
+		req.Body = io.NopCloser(bytes.NewReader(raw))
+		req.ContentLength = int64(len(raw))
+		var cancelledAt atomic.Int64
+		cancelled := make(chan struct{})
+		stopWatching := context.AfterFunc(req.Context(), func() {
+			cancelledAt.Store(time.Now().UnixNano())
+			close(cancelled)
+		})
+		defer stopWatching()
+		inner.ServeHTTP(w, req)
+		if req.Context().Err() != nil {
+			<-cancelled
+		}
+		recorder.mu.Lock()
+		if recorder.cost <= spent {
+			at := accounting.stopAt.Load()
+			if at != 0 && cancelledAt.Load() >= at {
+				accounting.cancelledRequests++
+			} else {
+				recorder.problems = append(recorder.problems, "request has no recorded cost")
+			}
+		} else {
+			accounting.highestCost = max(accounting.highestCost, recorder.cost-spent)
+		}
+		recorder.mu.Unlock()
+	})
+
 }
