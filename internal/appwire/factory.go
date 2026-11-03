@@ -243,9 +243,10 @@ type FactoryRepo struct {
 
 // FactoryRepos is factory.repos' answer.
 type FactoryRepos struct {
-	Factory   api.Factory   `json:"factory"`
-	Watched   []string      `json:"watched"`
-	Available []FactoryRepo `json:"available"`
+	AvailableReadAt time.Time     `json:"available_read_at,omitzero"`
+	Factory         api.Factory   `json:"factory"`
+	Watched         []string      `json:"watched"`
+	Available       []FactoryRepo `json:"available"`
 }
 
 // FactoryPipeline is factory.pipeline's answer: the repository's pipeline as

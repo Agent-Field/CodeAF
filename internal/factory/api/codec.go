@@ -1085,13 +1085,14 @@ func steps(it factory.Item) []Step {
 }
 
 func runStep(s Step, p factory.Phase) Step {
+	s.SkipReason = p.SkipReason
 	s.RoundLimit, s.Verification = p.RoundLimit, p.Verification
 	s.InRun, s.State, s.Round, s.Note, s.Tasks = true, string(p.State), p.Round, p.Note, p.Tasks
 	s.LeftMS, s.Chat, s.Handle = p.Left.Milliseconds(), p.Chat, p.Handle
 	if string(p.Kind) != s.Kind {
 		s.RunKind = string(p.Kind)
 	}
-	if r := p.Result; r != nil {
+	if r := p.Result; r != nil && p.State != factory.PhaseSkipped {
 		s.Files = r.Files
 		s.Result, s.Tests, s.Model = r.Output, r.Tests, r.Model
 	}
@@ -1192,7 +1193,7 @@ func toPhase(s Step) factory.Phase {
 	if s.RunKind != "" {
 		kind = s.RunKind
 	}
-	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), Note: s.Note,
+	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), SkipReason: s.SkipReason, Note: s.Note,
 		Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
 	// THE WHOLE REPORT WINS WHEN IT CAME. A worker's pull carries it; a
 	// reader's job, and a pull from an older factory, carry only the step's

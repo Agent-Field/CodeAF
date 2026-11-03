@@ -139,7 +139,7 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 	if err := os.WriteFile(filepath.Join(bin, "cargo"), []byte("#!/bin/sh\nif [ \"${CHECK_EXIT:-0}\" = 127 ]; then exit 127; fi\necho 'test result: ok'\nexit \"${CHECK_EXIT:-0}\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := os.Create(file)
+	journal, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,9 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 		// Keep reporting logs outside the measured checkout.
 		command = strings.ReplaceAll(command, "check.log", repairShellQuote(filepath.Join(bin, "check.log")))
 		command = "export PATH=" + repairShellQuote(bin) + ":\"$PATH\"; " + command
-		wrapped, err := verification.Prepare(file, command)
+		n++
+		id := fmt.Sprint(n)
+		wrapped, err := verification.PrepareCallIn(file, "", command, id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,8 +167,6 @@ func repairCheckFixture(t *testing.T) (string, string, func(string)) {
 				t.Fatal(runErr)
 			}
 		}
-		n++
-		id := fmt.Sprint(n)
 		args, _ := json.Marshal(map[string]string{"command": command})
 		if err := enc.Encode(map[string]any{"role": "assistant", "toolCalls": []any{map[string]any{"id": id, "function": map[string]string{"name": "bash", "arguments": string(args)}}}}); err != nil {
 			t.Fatal(err)

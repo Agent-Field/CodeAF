@@ -679,6 +679,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			}
 
 			if call.wasTimedOut() {
+				reportBashInterruption(ctx, "timed out")
 				// The bound that was APPLIED, which is the model's own figure
 				// or the ceiling it was given in place of one.
 				timeoutSecs := timeoutMs / 1000
@@ -704,9 +705,11 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// promotion rule and its record reader (why.go) both hold to, so
 			// an interrupted command is never carried on as a background job.
 			if errors.Is(ctx.Err(), context.Canceled) {
+				reportBashInterruption(ctx, "cancelled")
 				return appendStatus(text, "Command aborted"), true, nil
 			}
 			if ctx.Err() != nil {
+				reportBashInterruption(ctx, "timed out")
 				return commandCutWords(began, text), true, nil
 			}
 

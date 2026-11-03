@@ -261,7 +261,7 @@ func strangerWrites(it factory.Item) error {
 		return nil
 	}
 	for _, s := range it.Stages {
-		if s.On && s.Name == "write" && factory.Fits(s, it) {
+		if s.On && s.Name == "write" && runsIn(it, s) {
 			return errors.New("a stranger's work does not run write in this factory")
 		}
 	}
@@ -296,8 +296,8 @@ func launchable(it factory.Item) error {
 }
 
 // loopPhases compiles an item's stages into its phases, in order: a stage
-// that is on and fits the item is a pending phase, and one that does not is
-// left out. The tail is re-read at each round: what has not started yet is
+// that is on and fits the item is a pending phase. File conditions stay
+// pending until their turn; other nonmatching stages are left out. The tail is re-read at each round: what has not started yet is
 // compiled again from the item's stages as they stand then ([tailPhases]), so
 // the manager's edit during a run (its own `factory_run`) reaches the stages
 // after it.
@@ -312,11 +312,12 @@ func loopPhases(it factory.Item) []factory.Phase {
 	return out
 }
 
-// runsIn says whether stage s is a phase of it's run: on and fitting it, or
+// runsIn says whether stage s belongs in the run, retaining file conditions
+// until their turn: on and fitting it, or
 // the plan's approve step turned off while the rules the job started under
 // guard paths ([forcedGate]).
 func runsIn(it factory.Item, s factory.Stage) bool {
-	return (s.On || forcedGate(it, s)) && factory.Fits(s, it)
+	return (s.On || forcedGate(it, s)) && (factory.FileCondition(s) || factory.Fits(s, it))
 }
 
 // forcedGate says whether s is the plan's approve step ([factory.PlanGateStage])
@@ -524,7 +525,7 @@ func (lp *floorLoop) drive(c *loopCtl) {
 // is one a person said to skip, and is finished too.
 func nextPhase(ph []factory.Phase) int {
 	for i, p := range ph {
-		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseSkipped && p.State != factory.PhaseFailed {
 			return i
 		}
 	}
@@ -662,7 +663,7 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	prev := factory.PreviousWork(ph, i)
 	last := true
 	for _, p := range ph[i+1:] {
-		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseSkipped && p.State != factory.PhaseFailed {
 			last = false
 			break
 		}
@@ -859,6 +860,26 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	}
 	st, index := lp.stageAt(it, i)
 	name := st.Name
+
+	// File conditions are decided only at the step, after earlier rounds have
+	// recorded their change. A skipped phase is finished and keeps its reason.
+	if factory.FileCondition(st) && !factory.Fits(st, it) {
+		reason := "skipping " + name + ": when " + st.When + " does not match the change files"
+		if (it.Change == nil || len(it.Change.Files) == 0) && len(it.Files) == 0 {
+			reason = "skipping " + name + ": when " + st.When + " does not match the triage area"
+		}
+		now := lp.r.now()
+		return lp.write(c, func(it *factory.Item) error {
+			ph := &it.Stream.Phases[i]
+			skipPhase(it, ph, reason, now)
+			lp.mu.Lock()
+			delete(lp.results[c.id], i)
+			lp.mu.Unlock()
+			it.Stream.Cur = i
+			loopSay(it, now, "said", reason)
+			return nil
+		}) == nil
+	}
 
 	// AN APPROVE STEP IS A PERSON, so their answer is the step: nothing runs it.
 	if st.Kind == factory.StageGate {
@@ -1184,6 +1205,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				q += ": " + why
 			}
 			q += " · " + stepShortChoices(back)
+			if st.Kind == factory.StagePost {
+				if reason := skippedPolicyQuestion(job.Item, res); reason != "" {
+					q = reason
+				}
+			}
 			// OUT OF ATTEMPTS IS A QUESTION, not a failed step. The phase waits.
 			a, ok := lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
 			if !ok {
@@ -2235,7 +2261,7 @@ func (r *Runner) revive(it factory.Item) error {
 		lp.results[id] = map[int]factory.StageResult{}
 		lp.notes[id] = nil
 		for i, ph := range it.Stream.Phases {
-			if ph.Result == nil {
+			if ph.State == factory.PhaseSkipped || ph.Result == nil {
 				continue
 			}
 			lp.results[id][i] = *ph.Result
@@ -2608,7 +2634,7 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	}
 	at := 0
 	for k, p := range s.Phases {
-		if p.State == factory.PhaseDone {
+		if p.State == factory.PhaseDone || p.State == factory.PhaseSkipped {
 			at = k + 1
 		}
 	}
