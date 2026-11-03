@@ -80,6 +80,9 @@ func (s *Store) ProposeRecord(ctx context.Context, p RecordPropose) (Record, Cha
 	if err := recordText(p.Kind, p.Text); err != nil {
 		return Record{}, Change{}, err
 	}
+	// Only an explicitly attributed agent write is refused on a done workstream;
+	// the wire's unattributed proposal keeps the behaviour it always had.
+	asked := p.By
 	if p.By == "" {
 		if p.Kept {
 			p.By = "you"
@@ -98,7 +101,7 @@ func (s *Store) ProposeRecord(ctx context.Context, p RecordPropose) (Record, Cha
 	var out Record
 	var c Change
 	err = s.workspace.Write(ctx, func(tx *sql.Tx) error {
-		if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, by); err != nil {
+		if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, asked); err != nil {
 			return err
 		}
 		id, err := s.newID()

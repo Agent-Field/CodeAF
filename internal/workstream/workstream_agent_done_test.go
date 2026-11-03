@@ -134,3 +134,22 @@ func TestWorkstreamDoneStillAllowsThePersonsRecords(t *testing.T) {
 		t.Fatalf("person write timestamp: %+v %v", after, err)
 	}
 }
+
+// The wire's unattributed proposal still lands on a done workstream as it always
+// has; only an explicitly attributed agent write is refused there.
+func TestWorkstreamDoneStillAllowsTheUnattributedProposal(t *testing.T) {
+	s, _, now := testStore(t)
+	ctx := context.Background()
+	w := createStream(t, s, "Unattributed records")
+	if _, _, err := s.MarkDone(ctx, w.ID, "Finished"); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(time.Hour)
+	r, c, err := s.ProposeRecord(ctx, RecordPropose{WorkstreamID: w.ID, Kind: "question", Text: "Follow-up"})
+	if err != nil || c.ID != w.ID || r.By != "agent" || r.State != "proposed" {
+		t.Fatalf("unattributed proposal: %+v %+v %v", r, c, err)
+	}
+	if _, _, err := s.ProposeRecord(ctx, RecordPropose{WorkstreamID: w.ID, Kind: "question", Text: "Agent", By: "agent"}); !errors.Is(err, ErrDone) {
+		t.Fatalf("explicit agent proposal on a done workstream: %v", err)
+	}
+}
