@@ -3,11 +3,12 @@ package github_test
 import (
 	"context"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/factory"
-	source "github.com/Agent-Field/codeaf/internal/factory/github"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	source "github.com/Agent-Field/codeaf/internal/factory/github"
 )
 
 func TestReviewRefetchPinsFirstDirectIdentity(t *testing.T) {
