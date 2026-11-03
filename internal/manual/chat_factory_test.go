@@ -169,3 +169,18 @@ func TestTheFactoryThinkingQuestionsReachTheirSection(t *testing.T) {
 		}
 	}
 }
+
+func TestFactoryRepositoryRefreshHelp(t *testing.T) {
+	for _, section := range Chat().Search("when does the factory repository list refresh available_read_at", DefaultResults) {
+		if section.Page != "factory" || !strings.Contains(section.Title, "repository list refresh") {
+			continue
+		}
+		for _, fact := range []string{"five minutes", "restart", "available_read_at", "watched", "head SHA"} {
+			if !strings.Contains(section.Body, fact) {
+				t.Errorf("repository refresh help omits %q", fact)
+			}
+		}
+		return
+	}
+	t.Fatal("repository refresh help was not found")
+}
