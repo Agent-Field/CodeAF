@@ -46,8 +46,6 @@ func TestFixtureReadsOverHTTP(t *testing.T) {
 	// The fixture's failure names the machine "ci"; no job here belongs to
 	// the caller, and a machine that is not the caller's is never named.
 	for i := range expected.Jobs {
-		// Every fixture job has its own ledger name and no copied origin.
-		expected.Jobs[i].LedgerUnambiguous = true
 		if f := expected.Jobs[i].Failure; f != nil {
 			f.Runner, f.Machine = "", ""
 		}
