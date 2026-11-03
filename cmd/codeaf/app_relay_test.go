@@ -293,8 +293,11 @@ func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 				t.Errorf("L3 unexpected app copy: %q", line)
 			}
 
+			// The three check words are drawn at random from a word list that holds
+			// "ledger" and "cello", so only the copy around them is held to this list.
+			copyOnly := strings.ToLower(strings.ReplaceAll(line, p.Words, ""))
 			for _, banned := range []string{"codeaf pair", "--replace", "device", "identity", "cell", "lease", "fence", "ledger", "vault"} {
-				if strings.Contains(strings.ToLower(line), banned) {
+				if strings.Contains(copyOnly, banned) {
 					t.Errorf("L3 terminal copy: %q", line)
 				}
 			}
