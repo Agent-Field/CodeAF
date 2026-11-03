@@ -485,6 +485,12 @@ func (j *job) flush(ctx context.Context) bool {
 	if cur.State == factory.StateNew && j.o.Runner.Running(j.id) {
 		return true
 	}
+	// Let the runner finish parking before reporting its own budget crossing.
+	// An interim spend report would revoke its lease before its cap question
+	// can preserve the completed round and receive the person's continuation.
+	if cur.Cap > 0 && factory.JobLifetimeSpent(cur) >= cur.Cap && cur.QKind != "cap" && j.o.Runner.Running(j.id) {
+		return true
+	}
 	report, ok := run.Diff(j.sent, cur)
 	var messages []factory.Message
 	for _, m := range factorythread.Read(cur.Talk) {
