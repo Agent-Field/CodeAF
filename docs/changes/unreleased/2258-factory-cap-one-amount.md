@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Budget questions and raise buttons agree on the next cap
-pr: 0
+pr: 2258
 surface: [engine]
 invalidates:
   - "Yes doubled a job's old cap while the desktop raised it to an allowed budget."

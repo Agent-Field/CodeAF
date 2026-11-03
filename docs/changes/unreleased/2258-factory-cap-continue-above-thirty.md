@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Long jobs can continue beyond a thirty dollar budget
-pr: 0
+pr: 2258
 surface: [engine]
 invalidates:
   - "Spending thirty dollars left a job with only Stop and refused continuation."
