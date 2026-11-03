@@ -65,7 +65,7 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 				case r.URL.Path == "/repos/acme/api/issues":
 					calls++
 					pages++
-					tag := fmt.Sprintf(`"%t"`, closed)
+					tag := fmt.Sprintf(`"%t-%s"`, closed, r.URL.RawQuery)
 					if r.Header.Get("If-None-Match") != "" {
 						conditional++
 					}
@@ -223,6 +223,10 @@ func testClosedSweepBound(t *testing.T) {
 			fmt.Fprint(w, `[]`)
 		case strings.HasPrefix(r.URL.Path, "/repos/acme/api/issues/"):
 			direct++
+			if strings.HasSuffix(r.URL.Path, "/2") {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
 			// A person's concurrent start wins over the older poll snapshot.
 			if strings.HasSuffix(r.URL.Path, "/1") {
 				if err := st.Update(1, func(it *factory.Item) error { it.State = factory.StateRunning; return nil }); err != nil {
@@ -237,27 +241,36 @@ func testClosedSweepBound(t *testing.T) {
 	}))
 	defer srv.Close()
 	api := forge.NewClient("bounded-close").WithBaseURL(srv.URL)
-	poll := func() {
+	poll := func(wantError bool) {
 		t.Helper()
-		if _, err := source.PollOnce(ctx, source.New(api, nil, nil), st, "", time.Now); err != nil {
-			t.Fatal(err)
+		_, err := source.PollOnce(ctx, source.New(api, nil, nil), st, "", time.Now)
+		if (err != nil) != wantError {
+			t.Fatalf("poll error = %v, want error %t", err, wantError)
 		}
 	}
-	poll()
+	poll(true)
 	if direct != 40 {
 		t.Fatalf("first sweep used %d direct checks, want 40", direct)
 	}
-	poll()
+	poll(false)
 	if direct != 45 {
 		t.Fatalf("resumed sweep used %d total checks, want 45", direct)
 	}
-	poll()
+	poll(false)
 	if direct != 45 {
 		t.Fatal("completed sweep repeated")
 	}
 	got, _ := st.Get(1)
 	if got.State != factory.StateRunning || got.DoneHow != "" {
 		t.Fatal("poll stopped a concurrent start")
+	}
+	missing, _ := st.Get(2)
+	if missing.DoneHow != "" {
+		t.Fatal("missing issue was guessed closed")
+	}
+	later, _ := st.Get(3)
+	if later.DoneHow != "closed" {
+		t.Fatal("missing issue blocked a later closure")
 	}
 	t.Log("45 old rows: 40 direct checks, then 5, then 0; concurrent start preserved")
 }

@@ -2,6 +2,8 @@ package github
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 // closeSweepBudget bounds direct reads of pre-existing rows per repository per
@@ -22,7 +25,8 @@ func untouchedBacklog(it factory.Item) bool {
 		(it.State == factory.StateNew || it.State == factory.StateNeedsYou) &&
 		it.DoneHow == "" && it.Starter == "" && !it.PipelineDecided && it.Stream == nil &&
 		it.Talk == "" && it.WorktreeMachine == "" && it.PullRequest == nil &&
-		!it.Publishing && factory.JobSpent(it) == 0 && it.Failure == nil
+		!it.Publishing && factory.JobSpent(it) == 0 && it.Failure == nil &&
+		it.Change == nil && len(it.Briefs) == 0 && len(it.Notes) == 0 && len(it.Thread) == 0 && it.Approval == nil
 }
 
 func finishClosed(st *store.Store, id int) error {
@@ -60,6 +64,7 @@ func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []strin
 		seen[itemKey(it)] = true
 	}
 	sort.Slice(before, func(i, j int) bool { return before[i].ID < before[j].ID })
+	var errs []error
 	for _, repo := range repos {
 		key := strings.ToLower(repo)
 		sweep, exists := meta.IssueSweeps[key]
@@ -85,11 +90,20 @@ func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []strin
 				left--
 				how, err := Standing(ctx, s.api, it)
 				if err != nil {
-					return err
+					errs = append(errs, err)
+					var apiErr *forge.APIError
+					if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusGone) {
+						// A missing issue is unknown, not closed. Leave its row
+						// alone without blocking the rest of the old backlog.
+						sweep.Through = it.ID
+						continue
+					}
+					break
 				}
 				if how == StandingClosed {
 					if err := finishClosed(st, it.ID); err != nil {
-						return err
+						errs = append(errs, err)
+						break
 					}
 				}
 			}
@@ -98,5 +112,5 @@ func (s *Source) sweepClosed(ctx context.Context, st *store.Store, repos []strin
 		sweep.Done = sweep.Through >= sweep.Last
 		meta.IssueSweeps[key] = sweep
 	}
-	return st.SetSourceMeta(Name, meta)
+	return errors.Join(append(errs, st.SetSourceMeta(Name, meta))...)
 }

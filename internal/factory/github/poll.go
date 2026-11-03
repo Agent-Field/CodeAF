@@ -167,6 +167,7 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 		for repo, tag := range meta.IssueTags {
 			if real.issueTags[repo] == "" {
 				real.issueTags[repo] = tag
+				real.issueMarks[repo] = meta.IssueMarks[repo]
 			}
 		}
 		real.mu.Unlock()
@@ -181,8 +182,10 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	if real, ok := src.(*Source); ok {
 		real.mu.Lock()
 		meta.IssueTags = make(map[string]string, len(real.issueTags))
+		meta.IssueMarks = make(map[string]time.Time, len(real.issueTags))
 		for repo, tag := range real.issueTags {
 			meta.IssueTags[repo] = tag
+			meta.IssueMarks[repo] = real.issueMarks[repo]
 		}
 		real.mu.Unlock()
 	}
