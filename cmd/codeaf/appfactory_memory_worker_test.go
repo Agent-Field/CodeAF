@@ -128,7 +128,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 			if pauseBoundary && n == 1 {
 				select {
 				case <-finishMemory:
-					providerUnits.Add(2)
+					chargeReceipt()
 					var p map[string]any
 					_ = json.Unmarshal([]byte(body.Messages[1].Content), &p)
 					result, _ := json.Marshal(memoryRichReply(p))
