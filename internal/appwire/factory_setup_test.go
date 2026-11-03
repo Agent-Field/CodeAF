@@ -52,6 +52,7 @@ var factoryLocalGood = map[string]string{
 	"factory.setup_discover":   `{"caller":"w1"}`,
 	"factory.setup_back":       `{"caller":"w1"}`,
 	"factory.setup_done":       `{"caller":"w1"}`,
+	"factory.setup_continue":   `{"caller":"w1"}`,
 	"factory.setup_connect":    `{"caller":"w1","source":"gh"}`,
 	"factory.setup_select":     `{"caller":"w1","repos":["acme/api"]}`,
 	"factory.setup_retry_read": `{"caller":"w1","repo":"acme/api"}`,
@@ -158,6 +159,7 @@ func TestLocalFactoryPassesTrimmedClosedActs(t *testing.T) {
 	call("factory.setup_clone", `{"caller":"w1","repo":"acme/api","folder":" ~/code/api "}`)
 	call("factory.setup_use_folder", `{"caller":"w1","repo":"acme/web","folder":"/work/web"}`)
 	call("factory.setup_skip", `{"caller":"w1","repo":"acme/web"}`)
+	call("factory.setup_continue", `{"caller":"w1"}`)
 	want := []FactorySetupAct{
 		{Verb: "discover"},
 		{Verb: "connect", Source: "token", Token: "ghp_secret"},
@@ -165,6 +167,7 @@ func TestLocalFactoryPassesTrimmedClosedActs(t *testing.T) {
 		{Verb: "clone", Repo: "acme/api", Folder: "~/code/api"},
 		{Verb: "checkout", Repo: "acme/web", Folder: "/work/web"},
 		{Verb: "skip", Repo: "acme/web"},
+		{Verb: "continue"},
 	}
 	if !reflect.DeepEqual(eng.acts, want) {
 		t.Fatalf("acts %+v, want %+v", eng.acts, want)
@@ -174,9 +177,21 @@ func TestLocalFactoryPassesTrimmedClosedActs(t *testing.T) {
 	}
 }
 
+// A LOCAL ENGINE NAMES CONTINUE IN HELLO, so a window offers it only to an
+// engine whose factory takes the verb.
+func TestLocalFactoryAnnouncesSetupContinue(t *testing.T) {
+	if got := withFactorySetupContinueFeature(Hello{}, &actorEngine{}); len(got.Features) != 0 {
+		t.Fatalf("a non-local engine announced %v", got.Features)
+	}
+	got := withFactorySetupContinueFeature(Hello{}, &localEngine{})
+	if len(got.Features) != 1 || got.Features[0] != FeatureFactorySetupContinue || FeatureFactorySetupContinue != "factory.setup_continue" {
+		t.Fatalf("a local engine announced %v", got.Features)
+	}
+}
+
 // NO RESULT TYPE CAN CARRY A TOKEN, A BEARER, OR A PRIVATE ROOT.
 func TestLocalFactoryResultsHaveNoSecretField(t *testing.T) {
-	for _, typ := range []reflect.Type{reflect.TypeFor[FactoryLocalStatus](), reflect.TypeFor[FactoryLocalAttachment](), reflect.TypeFor[FactorySetupView](), reflect.TypeFor[FactorySetupGitHub](), reflect.TypeFor[FactorySetupRepo]()} {
+	for _, typ := range []reflect.Type{reflect.TypeFor[FactoryLocalStatus](), reflect.TypeFor[FactoryLocalAttachment](), reflect.TypeFor[FactorySetupView](), reflect.TypeFor[FactorySetupGitHub](), reflect.TypeFor[FactorySetupRepo](), reflect.TypeFor[FactorySetupFolder]()} {
 		for i := 0; i < typ.NumField(); i++ {
 			tag := strings.ToLower(typ.Field(i).Tag.Get("json"))
 			for _, word := range []string{"token", "secret", "bearer", "credential", "path", "checkout", "root", "session"} {

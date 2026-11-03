@@ -369,6 +369,9 @@ func TestWorkerDiffReportsOneQuestionOnTheWire(t *testing.T) {
 			stamp := time.Unix(0, f.clock.Load()).UTC()
 			want := []api.Question{{Text: cur.Question, State: "open", Kind: wantKind, FromStep: stage,
 				With: factory.AskedYou, Options: cur.Asking.Options, Pick: "yes", Why: cur.Asking.Why, At: &stamp}}
+			if kind == "cap" {
+				want[0].NextLimit = 5
+			}
 			if !reflect.DeepEqual(got.Questions, want) {
 				t.Fatalf("GET job questions = %+v; want %+v", got.Questions, want)
 			}

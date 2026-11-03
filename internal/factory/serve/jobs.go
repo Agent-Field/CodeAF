@@ -24,7 +24,8 @@ import (
 // jobVerbs keeps canvas actions additive to the existing /v1 doors.
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
-	h.postJob("start_now", h.seam.Launch != nil, h.guarded("start_now", h.onlyOwner(h.startJob)))
+	h.postJob("start_now", h.seam.Launch != nil, h.guardedStart())
+	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
@@ -37,6 +38,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("nudge", stored, h.nudgeJob)
 	h.postJob("follow", stored, h.followJob)
 	h.postJob("priority", stored, h.setPriority)
+	h.postJob("stop-after-step", stored, h.onlyOwner(h.stopAfterStep))
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
 	h.postJob("control", stored, h.onlyOwner(h.controlJob))
@@ -63,7 +65,63 @@ func (h *Handler) startJob(w http.ResponseWriter, r *http.Request, it factory.It
 	if h.startRefused(w, r, it) {
 		return
 	}
-	h.launchJob(w, r, it, nil)
+	h.launchJob(w, r, it, "", nil)
+}
+
+// guardedStart is start_now's guard: the version read, as for every guarded
+// verb, and the pipeline the person picked, "" for the steps the job has.
+//
+// A PICKED PIPELINE IS ONE THE REPOSITORY'S FILE LISTS, read from the file the
+// start decides on the job ([Handler.jobPipeline]), and it replaces the steps
+// of a job that never ran in the start's one write. pr and ci are not an
+// issue job's to run, as at creation. A job that ran, or waits in the queue
+// already, keeps its steps. Every refusal comes before any write.
+func (h *Handler) guardedStart() jobAction {
+	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
+		var body struct {
+			Expect   *api.Expect `json:"expect,omitempty"`
+			Pipeline string      `json:"pipeline,omitempty"`
+		}
+		if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "start_now", body.Expect) {
+			return
+		}
+		h.onlyOwner(func(w http.ResponseWriter, r *http.Request, it factory.Item) {
+			if h.pickRefused(w, it, body.Pipeline) || h.startRefused(w, r, it) {
+				return
+			}
+			h.launchJob(w, r, it, body.Pipeline, nil)
+		})(w, r, it)
+	}
+}
+
+// pickRefused answers every refusal of a picked pipeline that the file is not
+// needed for, and true when it refused.
+func (h *Handler) pickRefused(w http.ResponseWriter, it factory.Item, pick string) bool {
+	switch {
+	case pick == "":
+		return false
+	case !pipeline.KindNamed(pick):
+		h.fail(w, 422, "pipeline must be a pipeline name of the repository's file")
+	case pick == string(factory.KindPR) || pick == string(factory.KindCI):
+		h.fail(w, 422, "factory jobs support the issue pipeline only")
+	case it.Stream != nil || len(it.Adapted) > 0:
+		h.refuse(w, 409, "This job has already run, so it keeps its steps.", "conflict", "", nil, factory.JobState(it))
+	case it.State == factory.StateQueued:
+		h.refuse(w, 409, "This job is already in the queue, so its steps are decided.", "conflict", "", nil, factory.JobState(it))
+	default:
+		return !h.requireVerb(w, h.config.Pipeline != nil && h.config.Store != nil)
+	}
+	return true
+}
+
+// pipelineStages is the steps one kind's pipeline runs: the issue pipeline as
+// the runner reads it (its fallback included), any other kind only when the
+// file lists it.
+func pipelineStages(recipe factory.Recipe, kind string) []factory.Stage {
+	if kind == string(factory.KindIssue) {
+		return recipe.For(factory.KindIssue)
+	}
+	return recipe.ByKind[factory.Kind(kind)]
 }
 
 // startRefused answers every refusal a start makes before it writes, and true
@@ -83,23 +141,27 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 }
 
 // launchJob is the start's one write and its launch, for a job startRefused
-// has passed. also is what else the start changes on the job in that same
-// write (run_again's clearing of the run before it), nil for nothing.
+// has passed. pick is the pipeline the start runs instead of the job's own
+// steps, "" for none ([Handler.guardedStart]). also is what else the start
+// changes on the job in that same write (run_again's clearing of the run
+// before it), nil for nothing.
+// The result says whether launch accepted, even if recording its receipt failed;
+// run-as-new must retain an accepted job when the receipt could not be written.
 //
 // START NOW ON A JOB ALREADY IN THE QUEUE IS NOT A SECOND LAUNCH: it lets the
 // job take one slot above its computer's Jobs at once ([factory.Item.OverLimit]),
 // lifts a hold in the same write, and launches nothing. A start from Backlog
 // queues the job at the top and waits for a slot like any other.
-func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, also func(*factory.Item)) {
+func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.Item, pick string, also func(*factory.Item)) bool {
 	mark, queued := false, false
 	if st := h.config.Store; st != nil {
 		cur, err := st.Get(it.ID)
 		if h.failed(w, err) {
-			return
+			return false
 		}
 		who, err := h.callerHandle(r)
 		if h.failed(w, err) {
-			return
+			return false
 		}
 		now := strings.HasSuffix(r.URL.Path, "/start_now")
 		mark = now && !cur.Marked
@@ -124,30 +186,51 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 			f, err := h.jobPipeline(r.Context(), cur, "")
 			if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 				h.fail(w, 503, "The factory's own rules could not be read, so this job cannot start yet. Try again in a moment.")
-				return
+				return false
 			}
 			rules = pipeline.StartRulesOf(f)
 			rules.Unread = err != nil
+			rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = pipeline.UnreadDiagnostic(err)
 			file, fileErr = &f, err
+		}
+		var picked []factory.Stage
+		if pick != "" {
+			// A PICK IS READ FROM THE FILE OR NOT AT ALL: a read that failed
+			// refuses it, where a plain start would run on the defaults.
+			if file == nil || fileErr != nil {
+				h.fail(w, 503, "The repository's pipeline file could not be read, so this job cannot start on a picked pipeline yet.")
+				return false
+			}
+			if picked = pipelineStages(file.Recipe(), pick); len(picked) == 0 {
+				h.fail(w, 422, "pipeline not found")
+				return false
+			}
 		}
 		var budget float64
 		if file != nil && cur.Cap <= 0 {
-			// The budget comes from the same read, and a read that failed
-			// refuses the start as the budget's own read would.
-			err = fileErr
-			if err == nil {
+			// An unread repository takes a bounded default. A clean read
+			// must still supply its own positive budget.
+			if fileErr != nil {
+				budget = factory.DefaultJobBudget
+			} else {
 				budget, err = h.budgetOf(file.Recipe())
 			}
 		} else {
 			budget, err = h.startBudget(r, cur)
 		}
 		if h.failed(w, err) {
-			return
+			return false
 		}
-		if mark || queued || budget > 0 || also != nil || rules != nil || (cur.Starter == "" && who != "") {
+		if mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
 				if also != nil {
 					also(cur)
+				}
+				if picked != nil {
+					if cur.Stream != nil || len(cur.Adapted) > 0 {
+						return fmt.Errorf("%s has already run, so it keeps its steps", cur.Ref())
+					}
+					cur.Stages = factory.CopyStages(picked)
 				}
 				if file != nil {
 					cur.DecidePipeline(file.Copy, h.clock())
@@ -182,21 +265,24 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 				return nil
 			})
 			if h.failed(w, err) {
-				return
+				return false
 			}
 		}
 	}
 	if queued {
 		h.finish(w, h.recordAction(r, it, record.Started, startedOverLimit, func() error { return nil }))
-		return
+		return true
 	}
+	started := false
 	h.finish(w, h.recordAction(r, it, record.Started, "", func() error {
 		err := h.seam.Launch(it.ID)
+		started = err == nil
 		if err != nil && mark {
 			_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Marked = false; return nil })
 		}
 		return err
 	}))
+	return started
 }
 
 // startedOverLimit is the detail of a Start now that let a queued job take a
@@ -340,7 +426,7 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 	if h.startRefused(w, r, it) {
 		return
 	}
-	h.launchJob(w, r, it, func(cur *factory.Item) {
+	h.launchJob(w, r, it, "", func(cur *factory.Item) {
 		cur.State = factory.StateNew
 		cur.DoneHow = ""
 		cur.DoneAt = time.Time{}
@@ -663,31 +749,28 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "raise_budget", body.Expect) {
 		return
 	}
-	if !slices.Contains([]float64{5, 10, 20, 30}, body.Budget) {
-		h.fail(w, 422, "choose a budget: 5, 10, 20 or 30 USD")
+	if !slices.Contains(factory.JobBudgetSteps(), body.Budget) && body.Budget != factory.NextJobCap(it) {
+		h.fail(w, 422, "choose a budget: 5, 10, 20, 30 USD or the job's next budget")
 		return
 	}
-	_, held := h.holdOf(it.ID)
 	var budgetRefused error
-	resumeCap := false
+	var atCap *factory.Item // the job as its cap question stood, when the raise resumes it
 	err := h.recordAction(r, it, record.BudgetChanged, fmt.Sprintf("$%.2f", body.Budget), func() error {
 		return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
-			if body.Budget < factory.JobSpent(*cur) {
+			if body.Budget <= cur.Cap && body.Budget < factory.JobSpent(*cur) {
 				budgetRefused = fmt.Errorf("already spent $%.2f; choose a budget at least that high", factory.JobSpent(*cur))
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" && body.Budget > factory.JobSpent(*cur) && factory.Automatic(*cur) && !cur.Publishing && cur.Asking == nil {
-				resumeCap = true
-				cur.State = factory.StateQueued
-				if held {
-					cur.State = factory.StateRunning
+			if cur.QKind == "cap" && !cur.Publishing && body.Budget <= factory.JobSpent(*cur) {
+				cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
+				if cur.Asking != nil {
+					cur.Asking.Question = cur.Question
 				}
-				cur.Question = ""
-				cur.QKind = ""
-				if cur.Stream != nil && cur.Stream.Cur >= 0 && cur.Stream.Cur < len(cur.Stream.Phases) && cur.Stream.Phases[cur.Stream.Cur].State == factory.PhaseWaiting {
-					cur.Stream.Phases[cur.Stream.Cur].State = factory.PhaseRunning
-				}
+			}
+			if capResumes(*cur) {
+				asked := *cur
+				atCap = &asked
 			}
 			return nil
 		})
@@ -702,10 +785,38 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	// A budget edit does not queue a published PR from stale observations.
 	// Wake the read-only poll; its fresh snapshot releases spending-owned work.
 	_ = h.config.Store.NudgePoll()
+	// The runner hears the new cap before the continue, so it carries on
+	// under the cap the person chose and never doubles the old one.
 	if h.workers != nil && h.workers.desk != nil {
-		_, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget, Yes: resumeCap})
+		if _, err = h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalBudget, Budget: body.Budget}); h.failed(w, err) {
+			return
+		}
+	}
+	if atCap != nil {
+		err = h.resumeAtCap(r, *atCap)
 	}
 	h.finish(w, err)
+}
+
+// resumeAtCap answers the cap question the raise cleared with continue, as a
+// person's answer does, and only then says on the timeline that the job
+// carries on under its new budget.
+func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
+	if err := h.continueCap(r, it, factory.ChoiceContinue); err != nil {
+		return err
+	}
+	return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		run.NoteBudgetRaised(cur, h.now())
+		return nil
+	})
+}
+
+// capResumes is a raise that answers the open cap question on Auto or Manual
+// when the new cap clears spend. Take over, publishing and other questions
+// keep their own decisions; a cap at or under spend keeps the cap question.
+func capResumes(it factory.Item) bool {
+	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
+	return asksCap && it.Cap > factory.JobSpent(it) && !it.Manual && !it.Publishing
 }
 
 // jobModelMost is the longest model id a job keeps.
@@ -945,8 +1056,13 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 				it.Starter = starter
 			}
 		}
+		// Ownership authorizes this replay; it is not the automatic decision's actor.
+		handle := a.DecidedBy
+		if a.Automatic {
+			handle = it.Person()
+		}
 		raw, _ := json.Marshal(api.Approve{Commit: a.Commit, Edited: a.Edited, Words: a.Words})
-		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: a.DecidedBy}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))
+		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: handle}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))
 		r.SetPathValue("id", strconv.Itoa(it.ID))
 		w := &replayWriter{header: make(http.Header)}
 		h.commitApproval(w, r, it)

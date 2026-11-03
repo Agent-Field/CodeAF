@@ -426,6 +426,9 @@ const CallTries = 3
 // that another window read meanwhile, or that a person dismissed.
 // Options connects policy reading and intake without giving triage launch authority.
 type Options struct {
+	// Standing reads GitHub before the worker pays for an arrival read. A person's
+	// Read press ([ReadThese]) isn't checked: they asked. Nil leaves reads unchanged.
+	Standing  func(context.Context, factory.Item) (string, error)
 	AskFirst  func(factory.Item) []string
 	AfterTick func(context.Context) error
 	// Off is "Read new issues as they arrive" turned off: a tick reads
@@ -521,7 +524,7 @@ func (w *worker) once(ctx context.Context) tick {
 	var it factory.Item
 	found := false
 	for _, x := range items {
-		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) {
+		if factory.IsIssueJob(x) && Wants(x) && !sw.OffJob(x) && !w.closed(ctx, x) {
 			it, found = x, true
 			break
 		}
@@ -530,6 +533,15 @@ func (w *worker) once(ctx context.Context) tick {
 		return tickIdle
 	}
 	return w.read(ctx, it, CallTries)
+}
+
+// closed shares the process cache with intake when the store has a root.
+func (w *worker) closed(ctx context.Context, it factory.Item) bool {
+	root := ""
+	if st, ok := w.st.(interface{ Root() string }); ok {
+		root = st.Root()
+	}
+	return factory.ClosedForAutomation(ctx, root, it, w.opts.Standing)
 }
 
 // read reads one item, marked in flight. A call that fails is stamped (read,
@@ -658,6 +670,16 @@ func PromptWithStart(it factory.Item, rules []string) string {
 // WhyWords is the most words a rubric factor's why may have.
 const WhyWords = 6
 
+// whyOf is a factor's why at [WhyWords], ending in an ellipsis when the model
+// wrote more, so a cut phrase never reads as a whole one.
+func whyOf(s string) string {
+	why := words(s, WhyWords)
+	if len(strings.Fields(s)) > WhyWords {
+		return why + "…"
+	}
+	return why
+}
+
 // ParseRubric reads a rubric answer, `{"scope": {"score": 1, "why": "…"}, …}`,
 // scored by from. Every factor must be there with a score of 0..2, or there is
 // no rubric: a sum of four factors is not a complexity. A text read has not
@@ -677,7 +699,7 @@ func ParseRubric(raw json.RawMessage, from string) *factory.Rubric {
 		if !ok || score != float64(int(score)) || score < 0 || score > factory.FactorMost {
 			return nil
 		}
-		f.Score, f.Why = int(score), words(oneLine(answer.Why), WhyWords)
+		f.Score, f.Why = int(score), whyOf(answer.Why)
 	}
 	if from == factory.RubricFromRead {
 		r.Scope.Low, r.Coupling.Low = true, true

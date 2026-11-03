@@ -811,3 +811,9 @@ func (c *client) WithSleep(sleep func(context.Context, time.Duration) error) *cl
 	c.sleepFn = sleep
 	return c
 }
+
+// WithHTTPClient uses the supplied transport for this client's GitHub requests.
+func (c *client) WithHTTPClient(client *http.Client) *client {
+	c.httpClient = client
+	return c
+}

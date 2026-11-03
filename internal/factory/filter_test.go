@@ -43,3 +43,29 @@ func TestMineComposesWithOtherFilterWords(t *testing.T) {
 		t.Fatal("unknown identity must not hide items from other filters")
 	}
 }
+
+func TestThinIsTheReadsOwnClarityScore(t *testing.T) {
+	scored := func(clarity int) Item {
+		return Item{Triage: Triage{Rubric: &Rubric{Clarity: Factor{Score: clarity}, From: RubricFromRead}}}
+	}
+	cases := []struct {
+		name string
+		it   Item
+		want bool
+	}{
+		{"clear", scored(0), false},
+		{"partly clear", scored(1), false},
+		{"unclear", scored(FactorMost), true},
+		{"an older read's readiness, high", Item{Triage: Triage{Readiness: 80}}, false},
+		{"an older read's readiness, low", Item{Triage: Triage{Readiness: 20}}, true},
+		{"no score at all", Item{}, true},
+	}
+	for _, c := range cases {
+		if got := Match("thin")(c.it); got != c.want {
+			t.Errorf("%s: Match(thin) = %v, want %v", c.name, got, c.want)
+		}
+		if got := Fits(Stage{When: "thin"}, c.it); got != c.want {
+			t.Errorf("%s: Fits(when thin) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
