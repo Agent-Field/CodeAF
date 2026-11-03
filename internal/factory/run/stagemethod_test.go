@@ -60,7 +60,7 @@ func TestCIFollowUpBriefOwnsConflictsButNotPublication(t *testing.T) {
 		PullRequest: &factory.PullRequest{Number: 7},
 		FollowUp:    &factory.PRFollowUp{State: "running", Attempt: 1, Limit: 3},
 	}
-	brief := ciFollowUpBrief(it)
+	brief := ciFollowUpBrief(Job{Item: it})
 	for _, want := range []string{
 		"The service has merged the PR's remote head into this checkout",
 		"conflicts left there are yours to resolve, keeping the intent of both sides and other people's work",

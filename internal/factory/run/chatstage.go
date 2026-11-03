@@ -274,7 +274,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Name:              stageChatName(job),
 		Handle:            stageHandle(job),
 		Dir:               job.Dir,
-		Brief:             stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
+		Brief:             stageBrief(job) + ciFollowUpBrief(job) + followProgressBrief(job),
 		Model:             stageModel(job),
 		AutomaticModels:   stageAutomatic(job),
 		FactoryModel:      strings.TrimSpace(job.Item.FactoryModel),
@@ -1380,5 +1380,5 @@ func reportExecutionNotes(owner executionReporter, r factory.StageResult) ([]str
 // proof, and a saved decision rides beside the existing draft rather than
 // asking the worker to rediscover it.
 func resumedStageBrief(job Job) string {
-	return stageAsk(job) + "\n\n" + stageRole(job) + "\n\n" + planBrief(job) + "\n\n" + carryOnBrief(job.CarryOn) + ciFollowUpBrief(job.Item) + followProgressBrief(job)
+	return stageAsk(job) + "\n\n" + stageRole(job) + "\n\n" + planBrief(job) + "\n\n" + carryOnBrief(job.CarryOn) + ciFollowUpBrief(job) + followProgressBrief(job)
 }

@@ -538,6 +538,9 @@ Repeated observations do not start duplicate repairs. Healthy checks leave the j
 watching until GitHub reports merge or closure. General PR discussion comments are
 not a repair trigger. Closing the app pauses local polling and workers.
 
+Fresh and resumed Follow PR rounds keep the repair decision, untrusted-evidence
+and no-push/no-merge rules even before a follow-up record is queued.
+
 The original changed-file list is context, not a publish restriction. Necessary
 dependency and test changes are allowed within the issue objective. The repair receives
 check names and log evidence, with truncation called out when complete logs do not fit.

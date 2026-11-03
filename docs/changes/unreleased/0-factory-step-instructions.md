@@ -15,3 +15,7 @@ failures before repairs. The service merges the PR's remote head into the
 checkout; Follow PR resolves conflicts left there, keeping the intent of both
 sides and other people's work. Publication stays with the service; the step
 does not push or force-push.
+
+Fresh and resumed Follow PR rounds retain repair rules without an active
+follow-up record or a PR snapshot. Normal repair and readiness briefs keep
+their existing wording.
