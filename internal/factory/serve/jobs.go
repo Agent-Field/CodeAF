@@ -313,8 +313,8 @@ func (h *Handler) needsCheckout(w http.ResponseWriter, r *http.Request, repo, st
 const recheckWait = 5 * time.Second
 
 // endedOnGitHub is the check a person's start makes on the ONE item they chose
-// (start_now, run, run_again): the poll's lists are of open items only, so a
-// job never learns from them that its issue was closed. When GitHub says the
+// (start_now, run, run_again), supplementing the poll's closure reconciliation.
+// When GitHub says the
 // issue or pull request was closed or merged, the job is finished the way a
 // pull request that ended finishes one (done, DoneHow "closed" or "merged"),
 // the factory records it, and the start is refused in one sentence.
@@ -327,13 +327,31 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		return false
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), recheckWait)
-	how, err := h.config.Recheck(ctx, it)
+	answer, err := h.config.Recheck(ctx, it)
 	cancel()
-	if err != nil || (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) {
+	if errors.Is(err, factory.ErrSourceIdentityChanged) || (err == nil && !answer.Matches(it)) {
+		h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d now identifies a different GitHub issue, so it wasn't started. The saved job is unchanged.", it.Num), "conflict", "", nil, factory.JobState(it))
+		return true
+	}
+	how := answer.How
+	if err != nil {
 		return false
 	}
 	now := h.clock().UTC()
+	state := factory.JobState(it)
+	finished := false
 	err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		state = factory.JobState(*cur)
+		if !answer.Matches(*cur) {
+			return factory.ErrSourceIdentityChanged
+		}
+		cur.GitHubIssueID = answer.IssueID
+		if (how != factorygithub.StandingClosed && how != factorygithub.StandingMerged) || !factory.UntouchedIssue(*cur) {
+			return nil
+		}
+		factory.TouchIssue(cur)
+		finished = true
+		state = api.StateDone
 		cur.State = factory.StateShipped
 		cur.DoneHow = how
 		cur.DoneAt = now
@@ -343,15 +361,22 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		cur.StopUndo = nil
 		return nil
 	})
+	if errors.Is(err, factory.ErrSourceIdentityChanged) {
+		h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d now identifies a different GitHub issue, so it wasn't started. The saved job is unchanged.", it.Num), "conflict", "", nil, state)
+		return true
+	}
 	if h.failed(w, err) {
 		return true
 	}
-	if h.config.Record != nil {
+	if how != factorygithub.StandingClosed && how != factorygithub.StandingMerged {
+		return false
+	}
+	if finished && h.config.Record != nil {
 		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.SourceClosed, Verb: how, Job: it.ID, Detail: "on GitHub", Cost: jobCost(it)}); h.failed(w, err) {
 			return true
 		}
 	}
-	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it wasn't started.", it.Num, how), "conflict", "", nil, api.StateDone)
+	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it wasn't started.", it.Num, how), "conflict", "", nil, state)
 	return true
 }
 

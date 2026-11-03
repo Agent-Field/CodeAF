@@ -66,6 +66,16 @@ func ClearJobRun(it *Item) {
 	it.ChatModels = nil
 }
 
+// JobUnworked says nothing has been done on the job: no start, taker, run,
+// chat, work folder, pull request, spend, failure, change, brief, note, reply,
+// answer, edited steps, Look closer or approval.
+func JobUnworked(it Item) bool {
+	return it.Starter == "" && it.Taker == "" && it.Stream == nil && it.Talk == "" && it.WorktreeMachine == "" &&
+		it.PullRequest == nil && !it.Publishing && JobSpent(it) == 0 && it.Failure == nil &&
+		it.Change == nil && it.BriefWriting == nil && len(it.Briefs) == 0 && len(it.Notes) == 0 &&
+		len(it.Thread) == 0 && len(it.AnsweredQuestions) == 0 && len(it.Adapted) == 0 && it.Scout == nil && it.Approval == nil
+}
+
 // AddChatSpend books usd that the job's own conversation spent where the
 // job's money is: on its stream while it has one, and as ChatSpent while it
 // has none. A cost of nothing, or less, is not booked.

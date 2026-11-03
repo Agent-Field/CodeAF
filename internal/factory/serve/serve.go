@@ -107,7 +107,7 @@ type Config struct {
 	// ([factorygithub.Standing]): "" while it is open, "closed" or "merged"
 	// when it ended. A person's start asks it first, so an issue closed on
 	// GitHub is finished instead of run. Nil starts on what the floor knows.
-	Recheck     func(context.Context, factory.Item) (string, error)
+	Recheck     func(context.Context, factory.Item) (factory.SourceStanding, error)
 	Address     string
 	Version     string
 	AccessToken string

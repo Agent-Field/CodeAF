@@ -47,7 +47,7 @@ func TestAppStagingAdmissionS6(t *testing.T) {
 	if len(rows) != 0 {
 		t.Errorf("S6 staging tree reached agents.list: %+v", rows)
 	}
-	run := &appCrewRun{}
+	run := newAppCrewRun()
 	if got := b.lazyCandidates(run, appCrewRead{file: &teamstore.File{}}, true); len(got) != 0 {
 		t.Errorf("S6 staging tree reached lazy open: %+v", got)
 	}

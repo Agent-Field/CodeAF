@@ -724,6 +724,12 @@ func TestAQueuedReceiptIsOwedUntilItsSinkHasBankedIt(t *testing.T) {
 	// Neither of these queues a receipt, so neither is owed.
 	cost := 0.01
 	client.settle(ctx, "sim/model", &ai.Response{Usage: &ai.Usage{PromptTokens: 1, Cost: &cost}}, "stalled", 0)
+	if result := receiptResult(t, results); !result.Found || !result.Interim || result.Cost != cost {
+		t.Fatalf("measured interim usage = %+v", result)
+	}
+	mu.Lock()
+	order = nil
+	mu.Unlock()
 	client.settle(ctx, "sim/model", &ai.Response{}, "stalled", 0)
 	mu.Lock()
 	if owed != 0 {
