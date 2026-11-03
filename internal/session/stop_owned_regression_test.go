@@ -249,7 +249,7 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
  entered, finish := make(chan struct{}), make(chan struct{})
  model := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
   close(entered)
-  select { case <-finish: return textResponse("resumed"), nil; case <-ctx.Done(): return nil, ctx.Err() }
+  select { case <-finish: provider.Emit(ctx, provider.StreamDelta, "resumed"); return textResponse("resumed"), nil; case <-ctx.Done(): return nil, ctx.Err() }
  }}}
  a, _ := newTestAgent(t, model, func(c *Config) { c.JobBudget = budget })
  armed.Store(true)
@@ -265,6 +265,5 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
  close(finish)
  var words strings.Builder
  for _, e := range collect(t, events) { if e.Kind == EventTextDelta { words.WriteString(e.Text) } }
- // The provider result remains inspectable even if it emits no streaming delta.
- if stopped { t.Logf("resumed words=%q", words.String()) }
+ if !strings.Contains(words.String(), "resumed") { t.Fatalf("resumed manager did not finish: %q", words.String()) }
 }
