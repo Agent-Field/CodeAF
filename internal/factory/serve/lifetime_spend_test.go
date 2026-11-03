@@ -1,6 +1,7 @@
 package serve_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
@@ -54,6 +56,9 @@ func TestRunAsNewStartsWithoutLifetimeMoney(t *testing.T) {
 	saved, err := f.st.Get(out.ID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if saved.FromJob != it.ID || saved.Num != 0 || factory.LedgerName(saved) == factory.LedgerName(it) {
+		t.Fatalf("Run as new must have a distinct ledger identity: source=%q copy=%q from=%d", factory.LedgerName(it), factory.LedgerName(saved), saved.FromJob)
 	}
 	if got := factory.JobLifetimeSpent(saved); got != 0 {
 		t.Fatalf("new job lifetime = %g", got)
@@ -130,5 +135,72 @@ func TestStopUndoKeepsMoneyReportedAfterStop(t *testing.T) {
 	f.post(t, it, "undo", "", 200)
 	if got := f.read(t, it).LifetimeCost; math.Abs(got-.168) > 1e-9 {
 		t.Fatalf("Undo lost late money: %g, want .168", got)
+	}
+}
+
+func TestLateSettlementAfterRoundTableGrowthKeepsOldRunLifetime(t *testing.T) {
+	f := workerSetupAs(t, "sam")
+	it := f.add(t, "sam")
+	worker := f.attach(t, "sam")
+	pulled := f.pull(t, worker)
+	cli := client.Open(f.server.URL, "").Worker(worker.Credential)
+	anchor, err := client.PrepareWorkerReport(api.WorkerReport{}, "old-run-settlement")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cli.ReportPrepared(context.Background(), pulled.Lease.ID, anchor); err != nil {
+		t.Fatal(err)
+	}
+	for i, spent := range []float64{.25, .375} {
+		report := api.WorkerReport{Steps: []api.StepReport{{Name: "proof", Round: 1, State: api.StepRunning, RoundCosts: map[int]float64{1: spent}}}}
+		prepared, err := client.PrepareWorkerReport(report, fmt.Sprintf("table-growth-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cli.ReportPrepared(context.Background(), pulled.Lease.ID, prepared); err != nil {
+			t.Fatal(err)
+		}
+	}
+	saved, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Stream.Spent != .375 || saved.Stream.Phases[0].RoundCosts[1] != .375 {
+		t.Fatalf("round table growth not admitted: %+v", saved.Stream)
+	}
+	if err := f.st.Update(it.ID, func(it *factory.Item) error {
+		it.State = factory.StateNew
+		if err := run.QueueItem(it, now.Add(time.Minute)); err != nil {
+			return err
+		}
+		return run.ApplyReport(it, factory.RunReport{Cost: .0625}, now.Add(time.Minute))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := api.WorkerRecovery{OriginalLease: pulled.Lease.ID, Body: anchor.Body, Headers: anchor.Headers, AdditionalCost: .5}
+	path := fmt.Sprintf("/v1/workers/recover/%d", it.ID)
+	for attempt := range 2 {
+		revision, err := f.st.Revision(it.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out api.WorkerRecovered
+		f.request(t, "POST", path, worker.Credential, body, 200, &out)
+		saved, err := f.st.Get(it.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if saved.SpentBefore != .5 || factory.JobSpent(saved) != .0625 || out.Job.LifetimeCost != .5625 || !out.AlreadyApplied {
+			t.Fatalf("settlement %d: earlier=%g run=%g lifetime=%g replay=%v, want .5/.0625/.5625/true", attempt, saved.SpentBefore, factory.JobSpent(saved), out.Job.LifetimeCost, out.AlreadyApplied)
+		}
+		if attempt == 1 {
+			after, err := f.st.Revision(it.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after != revision {
+				t.Fatalf("repeated settlement rewrote the job: revision %d -> %d", revision, after)
+			}
+		}
 	}
 }
