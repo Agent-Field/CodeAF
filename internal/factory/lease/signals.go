@@ -225,7 +225,7 @@ func (d *Desk) keepPublish(doc *document, job int) error {
 	}
 	if !publishing {
 		// A merge or recheck queued while the worker finishes belongs to the
-        // next pull, without turning the job into a publish.
+		// next pull, without turning the job into a publish.
 		return d.store.Update(job, func(it *factory.Item) error {
 			if merging && (it.Merging == nil || it.Merging.State != factory.MergeQueued) {
 				return nil
