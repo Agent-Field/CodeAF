@@ -5,6 +5,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -114,5 +115,85 @@ func TestReceiptMaskedFailurePublication(t *testing.T) {
 	body := factory.PublishBody(factory.Item{Title: "review", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
 	if strings.Contains(body, "CHECK_EXIT=7 cargo test --test cli regression; true") {
 		t.Errorf("exit=7 check published as pass: %s", strings.ReplaceAll(body, "\n", " "))
+	}
+}
+
+func TestReceiptLeadingFAIL(t *testing.T) {
+	for _, output := range []string{"FAIL\nPASS\n", "FAIL\nok  example/pkg\n"} {
+		got, _ := commandReceiptOutcome(output, "ok", true, false, false, nil)
+		if got != "completed" {
+			t.Errorf("producer ok/no measured exit: leading FAIL returned %s; want completed", got)
+		}
+	}
+}
+
+func TestReceiptCompoundCheckExits(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		command string
+		unmeasured string
+		want string
+	}{
+		{"failed_then_passed", "CHECK_EXIT=7 cargo test --test cli first; cargo test --test cli second", "", "failed"},
+		{"passed_then_failed", "cargo test --test cli first; CHECK_EXIT=7 cargo test --test cli second", "", "failed"},
+		{"zero_then_nil", "cargo test --test cli first; cargo test --test cli second", "second", "completed"},
+		{"nil_then_zero", "cargo test --test cli first; cargo test --test cli second", "first", "completed"},
+		{"nil_then_failed", "cargo test --test cli first; CHECK_EXIT=7 cargo test --test cli second", "first", "failed"},
+		{"failed_then_nil", "CHECK_EXIT=7 cargo test --test cli first; cargo test --test cli second", "second", "failed"},
+		{"all_zero", "cargo test --test cli first; cargo test --test cli second", "", "passed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, file, run := repairCheckFixture(t)
+			run(tc.command)
+			if tc.unmeasured != "" {
+				paths, err := filepath.Glob(file + ".checks/call-*/check-*")
+				if err != nil {
+					t.Fatal(err)
+				}
+				removed := false
+				for _, path := range paths {
+					body, err := os.ReadFile(path)
+					if err == nil && strings.Contains(string(body), tc.unmeasured) {
+						if err := os.Remove(path + ".exit"); err != nil {
+							t.Fatal(err)
+						}
+						removed = true
+					}
+				}
+				if !removed {
+					t.Fatal("missing check fixture")
+				}
+			}
+			receiptProducerOK(t, file)
+			notes, _ := (&stageConversation{file: file, dir: root}).ExecutionNotes()
+			found := false
+			for _, note := range notes {
+				if strings.HasPrefix(note, "Command receipt:") {
+					found = true
+					if !strings.Contains(note, `"outcome":"`+tc.want+`"`) {
+						t.Errorf("compound receipt want %s: %s", tc.want, note)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("missing command receipt")
+			}
+			body := factory.PublishBody(factory.Item{Title: "review", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
+			if tc.want != "passed" && strings.Contains(body, "Passed locally:") {
+				t.Error("compound unresolved check published as passed")
+			}
+			door := &receiptStageDoor{StageDoor: &repairReportDoor{}, file: file, dir: root, requireFresh: true, requireAnyCheck: true}
+			t.Cleanup(door.closeVerification)
+			if err := door.Report(t.Context(), factory.StageResult{Done: true}); (err == nil) != (tc.want == "passed") {
+				t.Errorf("completion guard want %s: %v", tc.want, err)
+			}
+			if tc.name == "failed_then_passed" {
+				run("cargo test --test cli first")
+				receiptProducerOK(t, file)
+				if err := door.Report(t.Context(), factory.StageResult{Done: true}); err != nil {
+					t.Errorf("passing rerun remained held: %v", err)
+				}
+			}
+		})
 	}
 }
