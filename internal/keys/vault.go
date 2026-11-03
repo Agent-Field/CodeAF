@@ -180,7 +180,10 @@ func (v *Vault) Get(id string) (Entry, error) {
 // that was removed from one that was never there.
 func (v *Vault) Deleted(id string) (bool, error) {
 	d, err := v.read()
-	return d.Secrets[id].Deleted, err
+	if err != nil {
+		return false, err
+	}
+	return d.Secrets[id].Deleted, nil
 }
 
 // Delete removes the secret under id and leaves a tombstone, so merging with a
