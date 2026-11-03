@@ -256,6 +256,8 @@ An issue keeps the PR it opens, its checks, reviews and merge status. One final 
 
 An edit changes one job's steps, not the repository's pipeline. A step that has already run cannot be changed. The recipe's fixed steps cannot be reworded or skipped; proof cannot be skipped.
 
+An added conversation, check or approval step may say `when: touches auth` to run only on jobs in auth, billing or crypto; the other conditions are `always`, `thin`, `large` and `has ui`. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
+
 Once a job has landed, a nonempty step edit is refused with `the job has landed, so the steps can no longer be edited`, whether or not it had a proof step. Landed jobs do not offer step editing.
 
 Proof is the step named proof, a send-back's prove step, or any step that runs until proven, whatever it is called; checks and posts are not proof. Before landing, once any proof has started, a nonempty step edit is refused with `proof has started, so the steps can no longer be edited`. A refused step edit leaves the job, its proof and its recorded changes as they were. An empty edit changes nothing.
