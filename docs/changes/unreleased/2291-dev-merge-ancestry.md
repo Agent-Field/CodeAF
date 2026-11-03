@@ -6,18 +6,23 @@ surface: [build]
 invalidates: []
 ---
 
-PR #2099 already integrated these dev features through a single-parent commit.
-This true merge records the 49 dev commits in app/v3 ancestry while retaining
-the published #2099 choices and later app/v3 work. Land this change as a merge
-commit so future dev merges use the recorded ancestry.
+The merge records dev ancestry and retains non-conflicting app/v3 work. Under
+the owner rule, dev wins behavioral conflicts outside Factory. Factory, billing
+and ledger dependencies keep app/v3 behavior, including SQLite team storage,
+lazy Factory briefs and complete first-sharing backups.
 
-A follow-up real merge brings five newer dev commits, including safer team
-sharing, the pinned embedded-engine update and relay configuration fixes.
-Team sharing retains app/v3's explicit opt-in default while adding pairing
-gates, complete first-sharing backups, history visibility safeguards and
-replacement recovery receipts adapted to SQLite.
+Team sharing is on by default for paired computers. Missing or empty
+`teams.share` reads on; explicit off stays off, and damaged configuration or
+invalid values read off. The live pairing gate still prevents unpaired sharing.
+Solo computers with submitted chats refuse ordinary pairing and explain
+`--replace`; replacement retains confirmation and preserved-team receipts.
+Unsupported-effort repair is limited to opted-in task clients and their local
+memo. Ordinary clients return the refusal without a repair.
 
-The imported local team refresh test now seeds unrepaired SQLite rows and
-verifies persisted repairs with a snapshot that performs no repair. Settings
-save and turn completion tests explicitly enable sharing before checking
-off-loop pairing adoption; missing or empty `teams.share` remains off.
+These choices supersede the earlier merge's opt-in sharing default, keep-and-share
+pairing policy and process-wide reasoning repair. Later app/v3 work remains merged.
+
+Chat ownership follows dev too: reopening acquires a new fence, an expired hold
+cannot admit tools or desktop sends, and stale move confirmation refuses a
+changed fence even when holder and saved head match. Typed desktop refusals and
+saved-head metadata remain available.

@@ -155,11 +155,11 @@ type LeaseExpectation struct {
 	Head   string `json:"head,omitempty"`
 }
 
-// Matches allows a newer fence only with evidence of the same holder and
-// saved head. Older callers without a head retain the exact-fence contract.
+// Matches requires the observed holder and fence. A supplied saved head
+// adds a content check without relaxing ownership.
 func (e LeaseExpectation) Matches(c Cell) bool {
 	if c.Lease.Device != e.Device || e.Head != "" && c.Head != e.Head {
 		return false
 	}
-	return c.Lease.Fence == e.Fence || e.Head != "" && c.Lease.Fence > e.Fence
+	return c.Lease.Fence == e.Fence
 }

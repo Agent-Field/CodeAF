@@ -2,8 +2,8 @@ package syncsetup
 
 import (
 	"context"
-
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
@@ -14,7 +14,7 @@ import (
 // false means either a viewer or a drive that cannot confirm ownership yet.
 func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	held := d.sendLeaseSnapshot()
-	if d.batcher == nil {
+	if d.batcher == nil || d.displaced() {
 		return false, nil
 	}
 	id, fence := d.batcher.Lease()
@@ -27,10 +27,6 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	v, err = d.renewIdleLease(ctx, v, fence)
-	if err != nil {
-		return false, err
-	}
 	lease := v.Cell.Lease
 	// A first publish or branch can change the lease during the read. That
 	// answer confirms neither a takeover nor the batcher's new lease.
@@ -39,26 +35,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	}
 	if lease.Expires <= v.Now {
 		d.availableAfter(held, lease)
-		// Never resume an older tree over work saved by another computer.
-		head, err := cellstore.Head(d.cell)
-		if err != nil || head == nil || head.Turn.ID != v.Cell.Head {
-			return false, err
-		}
-		resumed, err := d.batcher.Reacquire(ctx, v)
-		if err != nil || !resumed {
-			return false, err
-		}
-		d.mu.Lock()
-		d.viewer, d.lost = Viewer{}, false
-		d.mu.Unlock()
-		if err := d.recordSendLease(); err != nil {
-			d.available()
-			return false, err
-		}
-		if d.opt.OnDriving != nil {
-			d.opt.OnDriving()
-		}
-		return true, nil
+		return false, nil
 	}
 	if lease.Device == d.sync.Device.ID() && lease.Fence == fence {
 		d.resumeViewer()
@@ -131,15 +108,15 @@ func (d *Drive) available() {
 
 // availableAfter closes the work gate before receipt I/O can block and retires
 // only the receipt held before the reading, so a concurrent reacquisition survives.
-// An unchanged owner and fence keeps its receipt even when released, because a
-// heartbeat can still renew it. Readers hear the change after retirement finishes.
+// Expiry and release retire the receipt too. Readers hear the change after
+// retirement finishes; continuation must acquire a new hold.
 func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
 	viewer := Viewer{Line: chatlist.Available}
 	d.mu.Lock()
 	changed := d.viewer != viewer
 	d.viewer = viewer
 	d.mu.Unlock()
-	if held.Fence != 0 && (reading.Device != d.sync.Device.ID() || reading.Fence != held.Fence) {
+	if held.Fence != 0 {
 		if err := d.sync.forgetSendLease(d.cell.ID, held); err != nil {
 			d.notice(err.Error())
 		}

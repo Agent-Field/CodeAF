@@ -91,14 +91,14 @@ computers share a name.
 Cancel takes back the waiting code or ends the request. A wrong code shows the
 engine's sentence and does not add a computer.
 
-Pairing a computer that has never shared keeps its chats, full history, saved
-keys, memory and preferences without a replacement question. Existing chats
-appear on both computers as sharing finishes in the background. Each computer's
-own chats stay here; use Continue here to move another computer's chat. A failed
+A computer with submitted chats and its own pairing keys refuses ordinary
+pairing and explains replacement. Confirm `--replace` to join the other set:
+local chats stay here but stop syncing, shared memories and settings clear,
+and local provider keys stay here. Use Continue here to move a shared chat. A failed
 upload stays saved locally and is retried while codeaf is open or on the next
 start. Sync status says `Sharing this computer's chats.` during the pass and
 `Some chats could not be shared yet. They are still saved here; codeaf will try
-again.` on failure, including for unopened chats. A used computer already sharing another set refuses and changes nothing.
+again.` on failure, including for unopened chats. A refused pairing changes nothing.
 Finish any live work before joining another computer. After joining, the desktop
 restarts its engine and reads setup, devices, sync and the shared chat list again.
 These actions appear only when the engine advertises pairing support.
@@ -150,8 +150,8 @@ refresh the row and choose again. There is no automatic retry. Unsent drafts
 and attachments remain yours. Changes arrive as engine events without desktop
 polling. An older chat that works in the home folder stays on that computer.
 
-Continue here still works after a reconnect when the same computer holds the
-same saved turn. A different holder or a newer saved turn needs a fresh choice.
+Continue here requires the holder and ownership fence shown when you chose it.
+A changed fence, holder or saved turn needs a fresh choice.
 Completed turns are shared while the chat stays open, including after a move.
 
 ## Does an idle desktop chat keep its hold on the relay
@@ -179,9 +179,9 @@ sync or repeat settled preferences.
 
 While the relay is unreachable, an open chat continues to run and save on this
 computer. Unpublished turns retry automatically with waits capped at 60 seconds, without
-another send, quit or restart. A lapsed hold that still belongs to this computer
-is renewed when the relay returns; its saved work is then shared. The chat stays
-writable and never names this computer as having continued it elsewhere.
+another send, quit or restart. Once an ownership check finds the hold expired,
+the window stops admitting work. Use Continue here to acquire a new hold.
+Reopening a chat also acquires a new ownership fence.
 
 If another computer continued the chat meanwhile, this window becomes read-only
 and names that computer. Work saved here during the outage is kept through the
