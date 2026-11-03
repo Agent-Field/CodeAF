@@ -189,6 +189,6 @@ func TestKnowledgeKeepsSourcesWhileMemoryIsOff(t *testing.T) {
 	}
 }
 
-// consentWait is one consent recheck plus a capture tick and room for a loaded
-// machine.
-const consentWait = 8 * time.Second
+// consentWait allows the documented bound for consent changed elsewhere: the
+// vault's five-second consentRecheck plus knowledgeSafetyTick, with room for load.
+const consentWait = 5*time.Second + knowledgeSafetyTick + 3*time.Second
