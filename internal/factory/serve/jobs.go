@@ -348,6 +348,7 @@ func (h *Handler) endedOnGitHub(w http.ResponseWriter, r *http.Request, it facto
 		if !factory.UntouchedIssue(*cur) {
 			return nil
 		}
+		cur.GitHubIssueID = answer.IssueID
 		factory.TouchIssue(cur)
 		finished = true
 		state = api.StateDone

@@ -1264,4 +1264,9 @@ func TestReviewStartPinsFirstDirectIdentity(t *testing.T) {
  f.post(t, it, "start_now", "", 409)
  got, _ := f.st.Get(it.ID)
  if got.GitHubIssueID != 1001 { t.Fatalf("Start lost first direct identity: got=%d want=1001", got.GitHubIssueID) }
+ replacement := got
+ replacement.GitHubIssueID, replacement.Title, replacement.DoneHow = 9001, "replacement issue", ""
+ if err := github.Merge(f.st, github.Name, []factory.Item{replacement}); err != nil { t.Fatal(err) }
+ after, _ := f.st.Get(it.ID)
+ if after.GitHubIssueID != 1001 || after.Title != got.Title { t.Fatal("replacement listing overwrote Start's pinned row") }
 }
