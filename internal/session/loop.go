@@ -336,7 +336,12 @@ func (a *Agent) turnCue(user userMessage) string {
 // call, and nobody interrupted and nothing failed. Only that outcome may drain
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
-func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (finished bool) {
+	defer func() {
+		if finished {
+			a.finishJobKnowledge(ctx)
+		}
+	}()
 	if user.bash == "" {
 		resolved, ready := a.prepareModel(hub)
 		if !ready {
@@ -4513,13 +4518,16 @@ func (a *Agent) bank(call bankedCall) {
 	// charge at their own call boundary; their later folded totals do not.
 	if call.used.CostUSD > 0 {
 		if budget := a.jobBudgetOf(); budget != nil && call.ledger {
-			if split, ok := budget.(JobModelSpend); ok && strings.TrimSpace(call.model) != "" {
-				calls := call.used.Calls
-				if calls < 1 {
-					calls = 1
-				}
+			calls := max(call.used.Calls, 1)
+			model := strings.TrimSpace(call.model)
+			memory, isMemory := budget.(JobMemorySpend)
+			split, hasSplit := budget.(JobModelSpend)
+			switch {
+			case isMemory && call.role == string(lanes.RoleMemory):
+				memory.SpendMemoryModel(call.used.CostUSD, call.model, calls, call.used.Input, call.used.Output)
+			case hasSplit && model != "":
 				split.SpendModel(call.used.CostUSD, call.model, calls, call.used.Input, call.used.Output)
-			} else {
+			default:
 				budget.Spend(call.used.CostUSD)
 			}
 		}

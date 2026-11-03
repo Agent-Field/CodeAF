@@ -86,10 +86,10 @@ func TestCapReachedAndQuestion(t *testing.T) {
 		t.Fatal("at the cap")
 	}
 	q, kind := m.CapQuestion(it)
-	if q != "budget of $5 reached · $5 more, or stop?" || kind != "cap" {
+	if q != "budget of $5 reached · $5 spent · raise it to $10, or stop?" || kind != "cap" {
 		t.Fatalf("%q %q", q, kind)
 	}
-	if q, _ := m.CapQuestion(factory.Item{Cap: 2.5}); q != "budget of $2.50 reached · $2.50 more, or stop?" {
+	if q, _ := m.CapQuestion(factory.Item{Cap: 2.5}); q != "budget of $2.50 reached · $0 spent · raise it to $5, or stop?" {
 		t.Fatal(q)
 	}
 }
@@ -131,7 +131,7 @@ func TestRailRead(t *testing.T) {
 func TestBudgetQuestionSpeaksTheFloorsWord(t *testing.T) {
 	m := NewMoney(nil, nil, nil)
 	q, kind := m.CapQuestion(factory.Item{Cap: 5})
-	if q != "budget of $5 reached · $5 more, or stop?" {
+	if q != "budget of $5 reached · $0 spent · raise it to $5, or stop?" {
 		t.Fatalf("question = %q", q)
 	}
 	if strings.Contains(q, "cap") {

@@ -153,14 +153,29 @@ type Acts struct {
 	Reply        bool
 }
 
-// NextJobCap is the ceiling a continue answer allows. THE NUMBER COMES FROM
-// codeaf, NEVER FROM THE APP: it is this job's cap doubled. The TUI's cap
-// ladder is a different control and is not this figure.
-func NextJobCap(cap float64) float64 {
-	if cap <= 0 {
-		return 0
+// JobBudgetSteps are the standard absolute job budgets, in ascending US dollars.
+func JobBudgetSteps() []float64 {
+	return []float64{5, 10, 20, 30}
+}
+
+// NextJobCap chooses the smallest standard budget above recorded spending,
+// then doubles the current cap until it covers that spending.
+func NextJobCap(it Item) float64 {
+	spent := JobSpent(it)
+	steps := JobBudgetSteps()
+	for _, budget := range steps {
+		if budget > spent {
+			return budget
+		}
 	}
-	return cap * 2
+	next := it.Cap * 2
+	if next <= 0 {
+		next = steps[len(steps)-1] * 2
+	}
+	for next <= spent {
+		next *= 2
+	}
+	return next
 }
 
 // ContinueJob raises this job's cap to NextJobCap when the spend has already
@@ -170,7 +185,7 @@ func ContinueJob(it *Item) bool {
 	if it == nil || it.Cap <= 0 || it.Stream == nil || it.Stream.Spent < it.Cap {
 		return false
 	}
-	it.Cap = NextJobCap(it.Cap)
+	it.Cap = NextJobCap(*it)
 	return true
 }
 

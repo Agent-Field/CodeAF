@@ -1089,7 +1089,7 @@ func TestJobBudgetCanBeLoweredButNotBelowRecordedSpend(t *testing.T) {
 }
 
 func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T) {
-	for _, mode := range []string{"auto", "manual", "takeover", "critical", "manual-approval", "manual-question"} {
+	for _, mode := range []string{"auto", "auto asked", "manual", "manual asked", "takeover", "critical", "other ask", "manual-approval", "manual-question"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newV2Jobs(t)
 			it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 5, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
@@ -1102,6 +1102,13 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 				case "critical":
 					cur.QKind = "scope"
 					cur.Question = "Choose the public API"
+				case "auto asked", "manual asked":
+					cur.Asking = &factory.Asked{Question: cur.Question, With: factory.AskedYou}
+					if mode == "manual asked" {
+						cur.Autonomy = factory.AutonomyManual
+					}
+				case "other ask":
+					cur.Asking = &factory.Asked{Question: "Choose the public API", With: factory.AskedYou}
 				case "manual-approval":
 					cur.Autonomy = factory.AutonomyManual
 					cur.QKind = factory.QKindApprove
@@ -1120,8 +1127,8 @@ func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T)
 			}
 			// A raise above spend answers only the cap's own ask, on Auto or Manual.
 			// Take over and any other question stay with the person.
-			if mode == "auto" || mode == "manual" {
-				if got.State != factory.StateQueued || got.Question != "" {
+			if mode == "auto" || mode == "auto asked" || mode == "manual" || mode == "manual asked" {
+				if got.State != factory.StateQueued || got.Question != "" || got.Asking != nil {
 					t.Fatal("automatic cap recovery stranded")
 				}
 			} else if want := map[string]string{"manual-approval": "Approve the plan?", "manual-question": "Choose the public API", "critical": "Choose the public API"}[mode]; got.State != factory.StateNeedsYou || got.Question == "" || (want != "" && got.Question != want) {
@@ -1176,5 +1183,23 @@ func TestV2StartNowPassesTheLimitOnceAndHoldWaitsForResume(t *testing.T) {
 	want := []string{"started:", "held:", "resumed:", "held:", "started:above Jobs at once"}
 	if strings.Join(kinds, ",") != strings.Join(want, ",") {
 		t.Fatalf("recorded %v, want %v", kinds, want)
+	}
+}
+
+// A PERSON'S CONTINUE AT THE CAP QUEUES AN UNHELD JOB AGAIN. No runner holds
+// the job, but its copy still carries the cap question as an open ask (the
+// worker that raised it has let go). The person's continue takes the ask down
+// and queues the job, rather than leaving it waiting on them.
+func TestAPersonsContinueAtTheCapQueuesAnUnheldJobAgain(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 10, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})
+	_ = f.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.Asking = &factory.Asked{Question: cur.Question, With: factory.AskedYou}
+		return nil
+	})
+	f.post(t, it, "answer", `{"yes":true,"words":"continue"}`, 200)
+	got, _ := f.st.Get(it.ID)
+	if got.State != factory.StateQueued || got.Question != "" || got.QKind != "" || got.Asking != nil {
+		t.Fatalf("a person's continue left the job %s with question %q kind %q asking %v", got.State, got.Question, got.QKind, got.Asking != nil)
 	}
 }

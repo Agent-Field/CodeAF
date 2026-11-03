@@ -4796,3 +4796,19 @@ func TestSyncOffManualQuotesExactSentences(t *testing.T) {
 		})
 	}
 }
+
+func TestFactoryBriefLaterRequestsReachInputs(t *testing.T) {
+	const heading = "Job Brief inputs"
+	for _, asked := range []string{"job brief later requests answers saved notes", "job brief inputs later requests"} {
+		sections := Chat().Search(asked, DefaultResults)
+		found := false
+		for _, section := range sections {
+			if section.Page == "factory" && strings.HasPrefix(section.Title, heading) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach %q", asked, heading)
+		}
+	}
+}

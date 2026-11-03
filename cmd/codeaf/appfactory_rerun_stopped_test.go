@@ -53,7 +53,7 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 			id, err := floor.Add(context.Background(), factory.Item{
 				Repo: "acme/api", Num: 7, Kind: factory.KindIssue, Tier: factory.TierOwner, Cap: 10, Title: "Retry the failing check",
 				Stages: []factory.Stage{
-					{Name: "write", Kind: factory.StageCheck, On: true, Ask: "true", Until: factory.UntilGreen, Max: 1},
+					{Name: "write", Kind: factory.StageCheck, On: true, Ask: "printf 'the requested change\\n' > CHANGE.txt", Until: factory.UntilGreen, Max: 1},
 					{Name: "test", Kind: factory.StageCheck, On: true, Ask: "false", Until: factory.UntilGreen, Max: 1},
 				},
 			})
@@ -101,7 +101,7 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 				t.Fatal(err)
 			}
 			if before.Stream == nil || before.Stream.Cur != 1 || before.Stream.Phases[1].Result == nil || before.Stream.Phases[1].Result.Exit == 0 {
-				t.Fatalf("did not reproduce a failed command: %+v", before.Stream)
+				t.Fatalf("did not reproduce a failed command: question=%q stream=%+v", before.Question, before.Stream)
 			}
 			initialWaiting := false
 			for _, e := range entries() {

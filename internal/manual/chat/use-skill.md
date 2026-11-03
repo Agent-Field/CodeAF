@@ -39,8 +39,8 @@ opens the one a request fits, even when the request shares no words with it.
 
 ## Can you use skills with memory off
 
-Yes. Skills do not depend on the `notice things to remember` setting (the
-`memory.enabled` row): turning it off stops only codeaf keeping lines on its own,
+Yes. Skills do not depend on the `learn from chats and jobs` setting (the
+`memory.enabled` row): turning it off stops automatic memory model calls,
 and the shelf lives in the same database memory uses either way. Only when that
 database could not be opened at all does codeaf build a shelf of its own at
 launch from the skill folders on disk, and throw it away when the

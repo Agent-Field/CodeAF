@@ -109,6 +109,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
+	"Item.MemorySpent":             "runner-local provenance already included in total cost; completed-round checks compare only charges since local admission, so readers and a newly admitted worker need no historical split",
 	"Snapshot.People":              "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.PlannedFiles":            "the cache never crosses: the wire's planned_files is derived from the plan step's result (factory.PlanFilesOf), which does",
 	"Item.BriefSeen":               "each person's own: the caller's crosses as brief_seen (ForViewer), and nobody else's ever does",
@@ -146,9 +147,9 @@ func FromItem(it factory.Item) Job {
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
-		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
+		Runner: it.WorktreeMachine, JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
-		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApproval(it),
+		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApprovalSummary(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo: it.Person(), Assignee: it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
@@ -274,7 +275,7 @@ func spendingLimit(it factory.Item) *SpendingLimit {
 	if it.Stream != nil {
 		spent = it.Stream.Spent
 	}
-	return &SpendingLimit{Limit: it.Cap, Spent: spent, NextLimit: factory.NextJobCap(it.Cap), Currency: factory.CurrencyUSD}
+	return &SpendingLimit{Limit: it.Cap, Spent: spent, NextLimit: factory.NextJobCap(it), Currency: factory.CurrencyUSD}
 }
 
 func failureOf(it factory.Item) *Failure {
@@ -339,6 +340,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
 		RejectPlan:  answer && planSendsBack(it),
+		PRReady:     owner && factory.NormalizeHandle(caller) != "" && it.Kind != factory.KindPR && it.Publish == "pr" && it.DoneHow != "dropped" && it.PullRequest != nil && it.PullRequest.Number > 0 && it.PullRequest.State == factory.PROpen && it.PullRequest.Draft,
 		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
 		Restore:     owner && factory.JobDoneHow(it) == "dropped",
 	}
@@ -896,7 +898,12 @@ func toRubric(r *Rubric) *factory.Rubric {
 }
 
 func fromLog(l factory.LogLine) LogLine {
-	return LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
+	out := LogLine{At: l.At, Glyph: l.Glyph, Tone: l.Tone, Text: l.Text}
+	if l.Tone == "tool" || factory.LegacyToolLog(l) {
+		out.Kind = "tool"
+		out.Text = factory.ToolLogText(l.Text, "")
+	}
+	return out
 }
 
 func toLog(l LogLine) factory.LogLine {
@@ -995,9 +1002,7 @@ func annotateQuestion(q *Question, it factory.Item) {
 		if it.Stream != nil {
 			q.Spent = it.Stream.Spent
 		}
-		if it.Cap > 0 {
-			q.NextLimit = factory.NextJobCap(it.Cap)
-		}
+		q.NextLimit = factory.NextJobCap(it)
 	}
 	if it.QKind == factory.QKindOutOfAttempts && len(q.Options) == 0 {
 		q.Options = append([]string(nil), factory.OutOfAttemptOptions...)
