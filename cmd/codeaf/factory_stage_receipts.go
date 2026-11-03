@@ -188,15 +188,17 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		text := strings.TrimSpace(row.Content)
 		lastLine := text[strings.LastIndex(text, "\n")+1:]
 		switch {
-		case status == "refused" || strings.HasPrefix(text, "needs approval but no resolver is attached:"):
+		case status == "refused" || (status == "" && strings.HasPrefix(text, "needs approval but no resolver is attached:")):
 			receipt["outcome"] = "refused"
+		case status == "ok":
+			receipt["outcome"] = "passed"
 		case status == "cancelled" || lastLine == "Command aborted" || lastLine == "Command cancelled":
 			receipt["outcome"] = "cancelled"
 		case status == "timed out" || strings.HasPrefix(lastLine, "Command timed out after ") || strings.HasPrefix(text, "cut after "):
 			receipt["outcome"] = "timed out"
 		case strings.Contains(row.Content, "Command exited with code") || status == "failed":
 			receipt["outcome"] = "failed"
-		case passed || status == "ok":
+		case passed:
 			receipt["outcome"] = "passed"
 		}
 		outcome := receipt["outcome"].(string)
