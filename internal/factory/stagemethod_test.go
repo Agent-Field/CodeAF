@@ -10,6 +10,7 @@ import (
 )
 
 func TestStageMethodShippedAndPersonalAsks(t *testing.T) {
+	budgets := map[string]int{"plan": 620, "write": 580, "test": 600, "review": 720, "security": 550, "proof": 570, "read": 450, "checks": 410, "bisect": 650, "fix": 600}
 	for _, st := range factory.ShippedStages() {
 		if utf8.RuneCountInString(st.Ask) > factory.AskMost {
 			t.Errorf("%s ask exceeds %d cells", st.Name, factory.AskMost)
@@ -25,8 +26,8 @@ func TestStageMethodShippedAndPersonalAsks(t *testing.T) {
 			t.Errorf("%s has no method", st.Name)
 		}
 		// The literal budget limits the cost paid on every stage conversation.
-		if utf8.RuneCountInString(method) > 850 {
-			t.Errorf("%s method exceeds 850 characters", st.Name)
+		if utf8.RuneCountInString(method) > budgets[st.Name] {
+			t.Errorf("%s method exceeds %d characters", st.Name, budgets[st.Name])
 		}
 		if regexp.MustCompile(`(?i)\b(go|golang|python|javascript|typescript|rust|npm|pytest|git|bash|plugin|skill)\b`).MatchString(method) {
 			t.Errorf("%s method names a language or tool", st.Name)
@@ -34,6 +35,13 @@ func TestStageMethodShippedAndPersonalAsks(t *testing.T) {
 		st.Ask += " with my instructions"
 		if factory.StageMethod(st) != "" {
 			t.Errorf("%s edited ask inherited a method", st.Name)
+		}
+	}
+	it := factory.Item{}
+	factory.EnsureFollowPR(&it)
+	for _, st := range it.Stages {
+		if utf8.RuneCountInString(st.Ask) > factory.AskMost {
+			t.Errorf("%s ask exceeds %d cells", st.Name, factory.AskMost)
 		}
 	}
 	st, _ := factory.ShippedStage("write")

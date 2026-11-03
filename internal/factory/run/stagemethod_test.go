@@ -13,7 +13,7 @@ func TestStageBriefShippedMethodsAndEvidenceScope(t *testing.T) {
 			continue
 		}
 		t.Run(st.Name, func(t *testing.T) {
-			job := Job{Item: factory.Item{Title: "Change behaviour", Stages: []factory.Stage{st}}, Stage: st, Dir: "/repo", Round: 1}
+			job := Job{Item: factory.Item{Title: "Change behaviour", Stages: []factory.Stage{st}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: st.Name}, {Name: "next"}}}}, Stage: st, Dir: "/repo", Round: 1}
 			brief := stageBrief(job)
 			method := factory.StageMethod(st)
 			if method == "" || !strings.Contains(brief, method) {
@@ -23,7 +23,7 @@ func TestStageBriefShippedMethodsAndEvidenceScope(t *testing.T) {
 				t.Error("resumed conversation repeats method")
 			}
 			place, rules := strings.Index(brief, stagePlace(job)), strings.Index(brief, method)
-			if place >= rules {
+			if place < 0 || place >= rules {
 				t.Error("method must follow placement")
 			}
 			job.Rules = []string{"Protect the public interface"}
