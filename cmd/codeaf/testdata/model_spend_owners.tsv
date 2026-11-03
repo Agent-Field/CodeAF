@@ -76,6 +76,7 @@ internal/session/tools_music.go:Agent.composeMusic:GenerateMusic	exception: musi
 internal/session/tools_sense.go:Agent.audioSense:Transcribe	exception: speech
 internal/session/tools_speak.go:Agent.speakTool:Speak	exception: speech
 internal/session/tools_video.go:Agent.renderVideo:GenerateVideo	exception: video
+internal/session/workstream_wake.go:workstreamWakeCall:CompleteWithMessages	owner: Workstream wake (workstreamWakeCall -> session.RecordUsage; its cost_usd counts in the workstream spend)
 internal/shaped/prose.go:Prose:CompleteWithMessages	exception: untraced shaped helpers
 internal/shaped/shaped.go:Answer:CompleteWithMessages	exception: untraced shaped helpers
 internal/shaped/shaped.go:repair:CompleteWithMessages	exception: untraced shaped helpers

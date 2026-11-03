@@ -96,14 +96,10 @@ func (b *appBackend) workstreamWakeWorker(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			b.workstreams.wakeMu.Lock()
-			if len(b.workstreams.wakeQueue) == 0 {
-				b.workstreams.wakeMu.Unlock()
+			task, ok := b.workstreamNextWake()
+			if !ok {
 				break
 			}
-			task := b.workstreams.wakeQueue[0]
-			b.workstreams.wakeQueue = b.workstreams.wakeQueue[1:]
-			b.workstreams.wakeMu.Unlock()
 			b.workstreamRunWake(ctx, task)
 		}
 	}
@@ -174,6 +170,18 @@ func (b *appBackend) workstreamWakeTick(now time.Time) {
 		}
 		b.workstreamAdmitWake(w.ID, "morning:"+slot.In(time.Local).Format("2006-01-02"), workstream.WakeEvent{Kind: "morning", At: slot})
 	}
+}
+
+// workstreamNextWake takes the oldest queued wake, if any.
+func (b *appBackend) workstreamNextWake() (workstreamWakeTask, bool) {
+	b.workstreams.wakeMu.Lock()
+	defer b.workstreams.wakeMu.Unlock()
+	if len(b.workstreams.wakeQueue) == 0 {
+		return workstreamWakeTask{}, false
+	}
+	task := b.workstreams.wakeQueue[0]
+	b.workstreams.wakeQueue = b.workstreams.wakeQueue[1:]
+	return task, true
 }
 
 func (b *appBackend) workstreamRunWake(parent context.Context, task workstreamWakeTask) {
