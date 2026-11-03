@@ -795,6 +795,14 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// internal/session that spells it, here and for the three roads that carry a
 	// client of their own.
 	ctx = withPurpose(ctx, purpose)
+	// Factory calls bank returned answers at their callers. Failed attempts and
+	// unmetered answers need the final receipt instead, including after Stop.
+	if a.factoryJobName() != "" && provider.BillingSinkFrom(ctx) == nil {
+		ctx = provider.WithFinalReceipts(provider.WithReconcile(ctx, a.reconciled))
+		if pending := a.config.JobPendingSpend; pending != nil {
+			ctx = provider.WithReceiptPending(ctx, pending)
+		}
+	}
 	ctx = provider.WithDiscardedUsage(ctx, func(served string, tag string, response *ai.Response) {
 		// Full billing owners (program model APIs) already bank every transport
 		// attempt. Ordinary session callers bank only the returned answer.

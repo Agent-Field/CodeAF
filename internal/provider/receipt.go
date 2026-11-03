@@ -175,7 +175,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// bank exactly once, but it cannot prove the completed price of an observed
 	// send. Only that send's final generation receipt can settle its token.
 	handle := attemptOf(traces...)
-	bankedUsage := response != nil && response.Usage != nil
+	bankedUsage := response != nil && response.Usage != nil && !finalReceiptsFrom(ctx)
 	if bankedUsage {
 		if handle == nil {
 			c.bill(ctx, model, response, traces...)
@@ -190,6 +190,20 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// calling the router's route on the vendor would send that vendor a
 	// request and bearer for a fact this client already knows cannot be there.
 	if c.config.Direct {
+		if finalReceiptsFrom(ctx) {
+			if sink := reconcileFrom(ctx); sink != nil {
+				result := Reconciled{Billed: Billed{Model: model, Billing: c.answeredBilling(traces...)}, Reason: reason}
+				if response != nil && response.Usage != nil && response.Usage.Cost != nil {
+					result.Found = true
+					result.Cost = *response.Usage.Cost
+					result.PromptTokens = response.Usage.PromptTokens
+					result.CompletionTokens = response.Usage.CompletionTokens
+					sink(result)
+				} else if answerBytes > 0 {
+					sink(result)
+				}
+			}
+		}
 		handle.unknown()
 		return
 	}
