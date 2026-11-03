@@ -224,12 +224,14 @@ func TestLateStopSampleDoesNotCancelRetriedManagerTask(t *testing.T) {
  graph.run = func(*TaskNode) {}
  id := graph.reserve()
  graph.admit(id, taskSpec{title: "proof", brief: "prove the change", acceptance: "tests pass", depth: 1})
+ old := startJob(t, a, "sleep 30")
  armed.Store(true)
  select { case <-sampled: case <-time.After(2*time.Second): t.Fatal("watcher did not sample Stop") }
  if _, err := a.Cancel(fmt.Sprintf("task:%d", id)); err != nil { t.Fatal(err) }
  if err := a.RetryTask(id); err != nil { t.Fatal(err) }
  unblock()
  select { case <-sampledAgain: case <-time.After(2*time.Second): t.Fatal("watcher did not finish old Stop") }
+ select { case <-a.jobs.find(old).done: case <-time.After(2*time.Second): t.Fatal("watcher did not stop the old producer") }
  if got := graph.node(id).notice(); got.State != TaskRunning || got.Stopped { t.Fatalf("late Stop cancelled retried task: %+v", got) }
 }
 
