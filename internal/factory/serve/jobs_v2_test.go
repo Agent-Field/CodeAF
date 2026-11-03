@@ -1278,3 +1278,24 @@ func TestReviewStartPinsFirstDirectIdentity(t *testing.T) {
 		t.Fatal("replacement listing overwrote Start's pinned row")
 	}
 }
+
+func TestReviewOpenStartKeepsFirstIdentity(t *testing.T) {
+ f := newV2Jobs(t)
+ f.h.Close()
+ it := f.create(t, factory.Item{Num:12, Origin:factory.OriginForge, State:factory.StateNew, Assignee:"sam"})
+ srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+  fmt.Fprint(w, `{"id":1001,"number":12,"state":"open"}`)
+ }))
+ defer srv.Close()
+ client := forge.NewClient("fixture").WithBaseURL(srv.URL)
+ f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding,error) { return github.Standing(ctx,client,row) }
+ f.h = serve.New(f.seam,f.cfg)
+ f.post(t,it,"run","",200)
+ got,_ := f.st.Get(it.ID)
+ if got.GitHubIssueID != 1001 { t.Errorf("open Start lost first direct identity: got=%d want=1001",got.GitHubIssueID) }
+ replacement := got
+ replacement.GitHubIssueID,replacement.Title,replacement.DoneHow = 9001,"replacement issue",""
+ if err := github.Merge(f.st,github.Name,[]factory.Item{replacement}); err != nil { t.Fatal(err) }
+ after,_ := f.st.Get(it.ID)
+ if after.GitHubIssueID != 1001 || after.Title != got.Title { t.Errorf("replacement listing overwrote started row: id=%d title=%q",after.GitHubIssueID,after.Title) }
+}
