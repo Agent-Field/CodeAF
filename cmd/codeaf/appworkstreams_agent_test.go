@@ -89,9 +89,9 @@ func TestWorkstreamAgentRecordsStayProposed(t *testing.T) {
 		ask  session.WorkstreamGoAheadAsk
 		text string
 	}{
-		{session.WorkstreamGoAheadAsk{Scope: "job", Factory: "f", Job: 7, CapUSD: 12.5, EndsOn: "2026-11-04", Why: "Review"}, "Proposed go-ahead (not granted): job f#7, up to $12.50, until 2026-11-04. Review"},
-		{session.WorkstreamGoAheadAsk{Scope: "wave", Wave: 2, CapUSD: 20, EndsOn: "2026-11-04", Why: "Read"}, "Proposed go-ahead (not granted): wave 2, up to $20.00, until 2026-11-04. Read"},
-		{session.WorkstreamGoAheadAsk{Scope: "milestone", MilestoneID: "m1", CapUSD: 30, EndsOn: "2026-11-04", Why: "Ship"}, "Proposed go-ahead (not granted): milestone \"Ship\" (m1), up to $30.00, until 2026-11-04. Ship"},
+		{session.WorkstreamGoAheadAsk{Scope: "job", Factory: "f", Job: 7, CapUSD: 12.5, EndsOn: "2026-11-04", Why: "Review"}, "Review"},
+		{session.WorkstreamGoAheadAsk{Scope: "wave", Wave: 2, CapUSD: 20, EndsOn: "2026-11-04", Why: "Read"}, "Read"},
+		{session.WorkstreamGoAheadAsk{Scope: "milestone", MilestoneID: "m1", CapUSD: 30, EndsOn: "2026-11-04", Why: "Ship"}, "Ship"},
 	}
 	s, _ := b.workstreamStore(false)
 	for _, tc := range cases {
@@ -99,12 +99,13 @@ func TestWorkstreamAgentRecordsStayProposed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rows, err := s.Records(ctx, w.ID, "decision", "proposed")
-		if err != nil || rows[0].ID != p.ID || rows[0].Text != tc.text {
-			t.Fatalf("go-ahead text: %+v %v", rows, err)
+		rows, err := s.Records(ctx, w.ID, "goahead", "proposed")
+		want := &workstream.GoAheadProposal{Scope: tc.ask.Scope, Factory: tc.ask.Factory, Job: tc.ask.Job, Wave: tc.ask.Wave, MilestoneID: tc.ask.MilestoneID, CapUSD: tc.ask.CapUSD, EndsAt: time.Date(2026, 11, 4, 23, 59, 59, 0, time.UTC)}
+		if err != nil || len(rows) == 0 || rows[0].ID != p.ID || rows[0].Text != tc.text || !reflect.DeepEqual(rows[0].GoAhead, want) || rows[0].GoAheadID != "" {
+			t.Fatalf("go-ahead proposal: %+v %v", rows, err)
 		}
 	}
-	rows, err := s.Records(ctx, w.ID, "", "")
+	rows, err := s.Records(ctx, w.ID, "", "", true)
 	if err != nil || len(rows) != 5 {
 		t.Fatalf("records: %+v %v", rows, err)
 	}

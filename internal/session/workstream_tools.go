@@ -24,7 +24,7 @@ const workstreamPromptRules = "\n- You propose; the person keeps. Decisions, que
 	"- You write only your own pages, with write_agent_page. The person's pages are theirs; you do not change them.\n" +
 	"- Keep your page titled \"" + WorkstreamWhereItStandsTitle + "\" current with write_agent_page, saying what it was updated from.\n" +
 	"- You never invent numbers. Counts, costs, states and dates come from workstream_read; on a page, use a live block such as [live: jobs] instead of writing a number.\n" +
-	"- You start nothing. Jobs start only when the person launches them or inside a go-ahead they granted."
+	"- Keeping a go-ahead proposal grants it. You start nothing; the person launches jobs."
 
 func (c Config) mayWorkstream() bool {
 	return c.Workstream != nil && !c.readingTask() && !c.InTask && !c.Errand
@@ -79,7 +79,7 @@ func (a *Agent) workstreamToolsAt(now func() time.Time) []bare.Tool {
 		workstreamTool("propose_jobs", "Append draft jobs to the plan. Nothing is created in the Factory or started; the person launches drafts.", workstreamJobsSchema, func(ctx context.Context, ask workstreamJobsAsk) (string, error) {
 			return workstreamProposeJobs(ctx, door, ask)
 		}),
-		workstreamTool("propose_goahead", "Propose a go-ahead as a decision. The cap and end date are proposals; this grants nothing.", workstreamGoAheadSchema, func(ctx context.Context, ask WorkstreamGoAheadAsk) (string, error) {
+		workstreamTool("propose_goahead", "Propose a go-ahead record. It grants nothing until the person keeps it.", workstreamGoAheadSchema, func(ctx context.Context, ask WorkstreamGoAheadAsk) (string, error) {
 			return workstreamProposeGoAhead(ctx, door, ask, now())
 		}),
 		workstreamTool("write_agent_page", "Write only your own pages, marked as agent-written with their source and time. The person's pages are refused. Keep the page titled \""+WorkstreamWhereItStandsTitle+"\" current; the app shows it on the Overview.", workstreamPageSchema, func(ctx context.Context, ask WorkstreamPageWrite) (string, error) {
@@ -152,6 +152,7 @@ func workstreamReferenceFields(fields map[string]any, ask any) error {
 		ids["page_id"] = ask.PageID
 	case workstreamJobsAsk:
 		ids["milestone_id"] = ask.MilestoneID
+		source = ask.Source
 	case WorkstreamGoAheadAsk:
 		ids["milestone_id"] = ask.MilestoneID
 	case WorkstreamPageWrite:
@@ -287,6 +288,7 @@ type workstreamJobsAsk struct {
 	Wave        *int                 `json:"wave,omitempty"`
 	WaveTitle   string               `json:"wave_title,omitempty"`
 	MilestoneID string               `json:"milestone_id,omitempty"`
+	Source      *workstream.Source   `json:"source,omitempty"`
 }
 
 func workstreamValidateJobs(ask workstreamJobsAsk) error {
@@ -304,7 +306,7 @@ func workstreamValidateJobs(ask workstreamJobsAsk) error {
 			return err
 		}
 	}
-	return nil
+	return workstreamSourceText(ask.Source)
 }
 
 func workstreamValidateDraft(job workstreamDraftAsk) error {
@@ -321,7 +323,11 @@ func workstreamProposeJobs(ctx context.Context, door WorkstreamDoor, ask workstr
 	if err := workstreamValidateJobs(ask); err != nil {
 		return "", &toolArgumentError{repair: err.Error()}
 	}
-	drafts, err := workstreamDrafts(ask.Jobs)
+	source, err := door.Source(ctx, ask.Source)
+	if err != nil {
+		return "", err
+	}
+	drafts, err := workstreamDrafts(ask.Jobs, source)
 	if err != nil {
 		return "", err
 	}
@@ -355,14 +361,14 @@ func workstreamSaveDrafts(ctx context.Context, door WorkstreamDoor, plan Workstr
 	return wave, err
 }
 
-func workstreamDrafts(jobs []workstreamDraftAsk) ([]workstream.PlanItem, error) {
+func workstreamDrafts(jobs []workstreamDraftAsk, source *workstream.Source) ([]workstream.PlanItem, error) {
 	out := make([]workstream.PlanItem, 0, len(jobs))
 	for _, job := range jobs {
 		var id [8]byte
 		if _, err := rand.Read(id[:]); err != nil {
 			return nil, err
 		}
-		out = append(out, workstream.PlanItem{Kind: "draft", DraftID: "draft_" + hex.EncodeToString(id[:]), Title: job.Title, Repo: job.Repo, Text: job.Text})
+		out = append(out, workstream.PlanItem{Kind: "draft", DraftID: "draft_" + hex.EncodeToString(id[:]), Title: job.Title, Repo: job.Repo, Text: job.Text, Source: source})
 	}
 	return out, nil
 }
@@ -402,16 +408,15 @@ func workstreamProposeGoAhead(ctx context.Context, door WorkstreamDoor, ask Work
 	if err := WorkstreamValidateGoAhead(ask, now); err != nil {
 		return "", &toolArgumentError{repair: err.Error()}
 	}
-	scope, err := workstreamGoAheadScope(ctx, door, ask)
+	err := workstreamGoAheadScope(ctx, door, ask)
 	if err != nil {
 		return "", err
 	}
-	text := fmt.Sprintf("%s%s, up to $%.2f, until %s. %s", WorkstreamGoAheadProposalPrefix, scope, ask.CapUSD, ask.EndsOn, ask.Why)
-	p, err := door.Propose(ctx, WorkstreamProposal{Kind: "decision", Text: text, GoAhead: &ask})
+	p, err := door.Propose(ctx, WorkstreamProposal{Kind: "goahead", Text: ask.Why, GoAhead: &ask})
 	if err != nil {
 		return "", err
 	}
-	return "Proposed a go-ahead as decision " + p.ID + ". It grants nothing; the person grants it if they agree.", nil
+	return "Proposed go-ahead " + p.ID + ". It grants nothing; the person grants it by keeping it.", nil
 }
 
 // WorkstreamValidateGoAhead is shared with the app so its clock validates proposals too.
@@ -465,28 +470,28 @@ func workstreamGoAheadOtherFields(ask WorkstreamGoAheadAsk) bool {
 	return false
 }
 
-func workstreamGoAheadScope(ctx context.Context, door WorkstreamDoor, ask WorkstreamGoAheadAsk) (string, error) {
+func workstreamGoAheadScope(ctx context.Context, door WorkstreamDoor, ask WorkstreamGoAheadAsk) error {
 	if ask.Scope == "job" {
-		return fmt.Sprintf("job %s#%d", ask.Factory, ask.Job), nil
+		return nil
 	}
 	plan, err := door.Plan(ctx)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if ask.Scope == "wave" {
 		for _, wave := range plan.Waves {
 			if wave.N == ask.Wave {
-				return fmt.Sprintf("wave %d", wave.N), nil
+				return nil
 			}
 		}
-		return "", errors.New("wave must name an existing plan wave")
+		return errors.New("wave must name an existing plan wave")
 	}
 	for _, milestone := range plan.Milestones {
 		if milestone.ID == ask.MilestoneID {
-			return fmt.Sprintf("milestone \"%s\" (%s)", milestone.Title, milestone.ID), nil
+			return nil
 		}
 	}
-	return "", errors.New("milestone_id must name an existing plan milestone")
+	return errors.New("milestone_id must name an existing plan milestone")
 }
 
 func workstreamWritePage(ctx context.Context, door WorkstreamDoor, ask WorkstreamPageWrite) (string, error) {

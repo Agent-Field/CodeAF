@@ -14,19 +14,29 @@ import (
 )
 
 type workstreamFakeDoor struct {
-	brief      WorkstreamBrief
-	briefReady bool
-	read       json.RawMessage
-	readAsk    WorkstreamReadAsk
-	proposals  []WorkstreamProposal
-	plan       WorkstreamPlanState
-	reads      int
-	saves      []WorkstreamPlanState
-	bases      []int
-	conflicts  int
-	pageWrites []WorkstreamPageWrite
-	pageError  error
-	otherCalls int
+	brief       WorkstreamBrief
+	briefReady  bool
+	read        json.RawMessage
+	readAsk     WorkstreamReadAsk
+	proposals   []WorkstreamProposal
+	plan        WorkstreamPlanState
+	reads       int
+	saves       []WorkstreamPlanState
+	bases       []int
+	conflicts   int
+	pageWrites  []WorkstreamPageWrite
+	pageError   error
+	otherCalls  int
+	sourceCalls int
+	sourceError error
+}
+
+func (d *workstreamFakeDoor) Source(_ context.Context, source *workstream.Source) (*workstream.Source, error) {
+	d.sourceCalls++
+	if source == nil {
+		source = &workstream.Source{Kind: "chat", ID: "agent-chat"}
+	}
+	return source, d.sourceError
 }
 
 func (d *workstreamFakeDoor) Brief() (WorkstreamBrief, bool) {
@@ -273,7 +283,7 @@ func TestWorkstreamGoAheadDatesAndCapsAreOnlyProposals(t *testing.T) {
 		func(a *WorkstreamGoAheadAsk) { a.CapUSD = 0 },
 		func(a *WorkstreamGoAheadAsk) { a.CapUSD = 10000.01 },
 		func(a *WorkstreamGoAheadAsk) { a.EndsOn = "2026-11-04" },
-		func(a *WorkstreamGoAheadAsk) { a.EndsOn = "2027-02-03" },
+		func(a *WorkstreamGoAheadAsk) { a.EndsOn = "2027-02-02" },
 		func(a *WorkstreamGoAheadAsk) { a.EndsOn = "2026-11-05T00:00:00Z" },
 		func(a *WorkstreamGoAheadAsk) { a.Why = "" },
 	} {
@@ -297,7 +307,7 @@ func TestWorkstreamProposalsAreOnlyWords(t *testing.T) {
 	}
 	got := workstreamCallForTest(t, d, "propose_goahead", `{"scope":"wave","wave":2,"cap_usd":12.5,"ends_on":"2026-11-04","why":"Review the result"}`, false)
 	p := d.proposals[len(d.proposals)-1]
-	if got != "Proposed a go-ahead as decision record-1. It grants nothing; the person grants it if they agree." || p.Kind != "decision" || p.Text != "Proposed go-ahead (not granted): wave 2, up to $12.50, until 2026-11-04. Review the result" {
+	if got != "Proposed go-ahead record-1. It grants nothing; the person grants it by keeping it." || p.Kind != "goahead" || p.Text != "Review the result" || p.GoAhead == nil || p.GoAhead.Scope != "wave" || p.GoAhead.Wave != 2 || p.GoAhead.CapUSD != 12.5 || p.GoAhead.EndsOn != "2026-11-04" {
 		t.Fatalf("go-ahead: %q %+v", got, p)
 	}
 }
