@@ -398,7 +398,13 @@ func (c *appChats) countTake(id string, delta int) {
 
 // The take's own start and end change no directory version, so its row is
 // emitted again from the cache.
-func (b *appBackend) publishTaking() {
+func (b *appBackend) publishTaking() { b.publishCachedTaking("") }
+
+// publishTakingHere emits the cache only when it already says the chat is
+// here: a finished take never reads as one that did not move it.
+func (b *appBackend) publishTakingHere(id string) { b.publishCachedTaking(id) }
+
+func (b *appBackend) publishCachedTaking(here string) {
 	c := &b.chats
 	c.op.Lock()
 	defer c.op.Unlock()
@@ -411,8 +417,23 @@ func (b *appBackend) publishTaking() {
 	if !following {
 		return
 	}
+	if here != "" && !slices.ContainsFunc(rows, func(r appwire.ChatRow) bool { return r.Cell == here && r.Here }) {
+		return
+	}
 	c.markTaking(rows)
 	b.publishChats(rows, version, true)
+}
+
+// A finished take stops counting only under the inventory lock, so an
+// emission that still shows the chat elsewhere also still says the take runs,
+// and this reading clears it with the row that says the chat is here.
+func (b *appBackend) settleTake(ctx context.Context, s *syncsetup.Sync, id string) error {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	c.countTake(id, -1)
+	_, err := b.readChats(ctx, s, c.feed, true)
+	return err
 }
 
 func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {

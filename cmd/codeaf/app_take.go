@@ -190,23 +190,16 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	}
 	b.located(a, location)
 	agent.Location = location
-	// The finished take's row stops saying so in the same emission that
-	// says the chat is here.
 	taking = false
-	b.chats.countTake(p.Cell, -1)
 	// Acquisition may have been observed before installation and admission.
 	// Reconcile the local id even when no later directory version will arrive.
-	reconcileInventory := func() error {
-		b.chats.op.Lock()
-		defer b.chats.op.Unlock()
-		_, err := b.readChats(ctx, s, b.chats.feed, true)
-		return err
-	}
-	err = reconcileInventory()
+	err = b.settleTake(ctx, s, p.Cell)
 	if err != nil {
-		// The take has completed. Inventory recovery belongs to its follower,
-		// whose next reading also clears the row's taking.
+		// The take has completed. Inventory recovery belongs to its follower;
+		// until its next reading a cached row that already says here stops
+		// saying the take runs.
 		b.startChatInventory()
+		b.publishTakingHere(p.Cell)
 	} else {
 		// A newer cached version skips the reading's own taking.
 		b.publishTaking()
