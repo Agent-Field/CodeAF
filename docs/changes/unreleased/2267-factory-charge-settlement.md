@@ -12,5 +12,5 @@ Factory jobs and their page helpers recover the final provider receipt after a
 failed call or a successful answer without usage. Each recovered charge reaches
 the job total and Spending once. Unknown prices remain unbilled markers, attributed
 to their job, with no invented zero price. A full ledger queue writes through
-instead of dropping charges; the caller waits at most 100 milliseconds.
+instead of dropping charges; the caller never waits.
 Memory billing keeps its existing path. Historical gaps are not reconstructed.
