@@ -108,10 +108,6 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
 			return
 		}
-		var payload map[string]json.RawMessage
-		if len(body.Messages) > 1 {
-			_ = json.Unmarshal([]byte(body.Messages[1].Content), &payload)
-		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		if r.Header.Get("X-Test-Role") == "memory" {
 			n := memoryCalls.Add(1)
@@ -378,8 +374,6 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 				if err != nil || (snapshot.Pending == 0 && (!pauseBoundary || !snapshot.NeedsUpdate)) {
 					t.Fatalf("pause lost pending memory: %+v %v", snapshot, err)
 				}
-				retained := memoryJobSources(t, profile)
-				t.Logf("retained source count=%d", len(retained))
 				t.Logf("paused memory calls=%d; ledger=%.4f header=%.4f pending=%d", before, usd, job.Cost, snapshot.Pending)
 				if pauseResume {
 					s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
@@ -392,6 +386,13 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 					time.Sleep(250 * time.Millisecond)
 					if got := memoryCalls.Load(); got != before {
 						t.Fatalf("Resume started memory before a finished turn: %d -> %d", before, got)
+					}
+					// Freeze the evidence present before this turn can finish. Later
+					// runner timeline lines belong to a future owned pass, so the
+					// profile-wide pending count need not return to zero.
+					expected := memoryJobSources(t, profile)
+					if len(expected) == 0 {
+						t.Fatal("resumed turn has no saved evidence")
 					}
 					finishLearning()
 					until := time.Now().Add(15 * time.Second)
@@ -413,7 +414,10 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 								}
 							}
 							snapshot, err = knowledge.Open(profile).Snapshot()
-							if !trailing && time.Now().Before(until) {
+							if !trailing {
+								if time.Now().After(until) {
+									t.Fatal("runner did not write trailing learn progress")
+								}
 								time.Sleep(10 * time.Millisecond)
 								continue
 							}
@@ -426,11 +430,23 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 								resumedUSD += line.USD
 							}
 						}
-						if err == nil && learned && snapshot.Pending == 0 && memoryCalls.Load() > before && math.Abs(job.Cost-resumedUSD) < .000001 && math.Abs(resumedUSD-float64(providerUnits.Load())/100) < .000001 {
+						published := map[string]bool{}
+						for _, page := range snapshot.Pages {
+							for _, evidence := range page.Evidence {
+								published[evidence.Source] = true
+							}
+						}
+						var missing []string
+						for _, source := range expected {
+							if !published[source.ID] {
+								missing = append(missing, source.ID)
+							}
+						}
+						if err == nil && learned && len(missing) == 0 && memoryCalls.Load() > before && math.Abs(job.Cost-resumedUSD) < .000001 && math.Abs(resumedUSD-float64(providerUnits.Load())/100) < .000001 {
 							break
 						}
 						if time.Now().After(until) {
-							t.Fatalf("resume did not compile pending evidence: calls=%d pending=%d needs_update=%v last_error=%q error=%v", memoryCalls.Load(), snapshot.Pending, snapshot.NeedsUpdate, snapshot.LastError, err)
+							t.Fatalf("resume did not publish retained evidence: missing=%v calls=%d pending=%d last_error=%q error=%v", missing, memoryCalls.Load(), snapshot.Pending, snapshot.LastError, err)
 						}
 						time.Sleep(10 * time.Millisecond)
 					}
@@ -440,7 +456,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 					if got := memoryCalls.Load(); got > 11 {
 						t.Fatalf("resume exceeded one normal memory pass: calls=%d, limit=11", got)
 					}
-					t.Logf("resume compiled retained evidence: memory_calls=%d pending=%d", memoryCalls.Load(), snapshot.Pending)
+					t.Logf("resume published %d retained sources: memory_calls=%d later_pending=%d", len(expected), memoryCalls.Load(), snapshot.Pending)
 				}
 			}
 			return
