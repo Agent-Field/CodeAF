@@ -162,6 +162,7 @@ func (s *Source) readyOnce(ctx context.Context, it factory.Item) (factory.PullRe
 // Unlike automatic readiness it needs no model review and never retries or
 // waits for a follow read: the mutation itself confirms the head and draft.
 func (s *Source) MarkReady(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+ if err := factory.CheckPersonStop(it); err != nil { return factory.PullRequest{}, err }
 	a, ok := s.api.(interface {
 		MarkDraftPullReady(context.Context, string, string, int, string) error
 	})
