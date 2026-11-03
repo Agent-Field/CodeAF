@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf removes closed GitHub issues from untouched Backlog
-pr: 0
+pr: 2280
 surface: [engine]
 invalidates:
   - "The GitHub poll only imported open issues, leaving closed issues in Backlog until a person tried to start them."
