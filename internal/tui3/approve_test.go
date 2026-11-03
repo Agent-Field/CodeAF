@@ -406,6 +406,23 @@ func TestApproveTimeoutSaysTheAnswerMayHaveArrived(t *testing.T) {
 	}
 }
 
+// T2: a decline that timed out is the plain retry. A declined device never
+// shows in /devices, so pointing there would leave nothing to check.
+func TestDeclineTimeoutIsAPlainRetry(t *testing.T) {
+	a, _ := approveApp(t, &fakeApprovals{})
+	card := &approveCard{req: &PendingDevice{Name: "laptop"}, working: true}
+	a.showCard(card)
+	late := fmt.Errorf("deny: %w", context.DeadlineExceeded)
+	decidedMsg{card: card, req: *card.req, approved: false, err: late}.land(a)
+	if card.line != approveSlow {
+		t.Fatalf("decline timeout = %q, want %q", card.line, approveSlow)
+	}
+	decidedMsg{card: card, req: *card.req, approved: true, err: late}.land(a)
+	if card.line != approveUnsure {
+		t.Fatalf("approve timeout = %q, want %q", card.line, approveUnsure)
+	}
+}
+
 // T1: an answer the door found still waiting after a timeout was not decided,
 // so it is the plain retry, not "may still have arrived".
 func TestApproveThatDidNotArriveIsAPlainRetry(t *testing.T) {

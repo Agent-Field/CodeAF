@@ -234,7 +234,7 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 	m.card.working = false
 	switch {
 	case m.err != nil:
-		m.card.line = approveFailure(m.err, true)
+		m.card.line = approveFailure(m.err, m.approved)
 	case m.approved:
 		a.pair.close()
 		a.addMachine.grew()
@@ -249,14 +249,15 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 // approveFailure is the one sentence for a refused or failed answer. The door
 // already says what happened in words a person can act on, so they are shown
 // as they are; only a silent wait, which has no sentence of its own, gets one.
-// A wait on an answer that was sent may still have been decided by sync.
-// One the door found still waiting was not decided, so it is the plain retry.
-func approveFailure(err error, answered bool) string {
+// A wait on an approval that was sent may still have been decided by sync,
+// and /devices shows whether it was. A decline never shows there, so its wait
+// is the plain retry, as is one the door found still waiting.
+func approveFailure(err error, approved bool) string {
 	if errors.Is(err, ErrAnswerNotArrived) {
 		return approveSlow
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		if answered {
+		if approved {
 			return approveUnsure
 		}
 		return approveSlow
