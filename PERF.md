@@ -193,8 +193,8 @@ same commit; derive repeated values from constants.
 
 ## Paired team history
 
-These sharing budgets apply whenever **share teams** is on in Settings → General,
-which is the default for paired computers. Off rounds run no team carriers,
+These sharing budgets apply only when **share teams** is on in Settings → General.
+Sharing is off by default on each computer; off rounds run no team carriers,
 identity discovery, mirror writes or ownership lookups and retain existing polling.
 
 `teams.TrafficSyncLines` limits each writing computer's window to 32 lines per

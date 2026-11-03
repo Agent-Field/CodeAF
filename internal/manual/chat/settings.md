@@ -88,8 +88,8 @@ The choice stays on each computer. Turning it off on either computer stops shari
 between them: that computer stops sending and receiving teams and Traffic. What
 was already exchanged stays, including encrypted copies in the vault. Received
 history is hidden while sharing is off and is kept for when it is turned back
-on. Unpaired computers are unaffected. A missing or empty choice reads on; a
-damaged configuration or invalid value reads off, as shown in Settings.
+on. Unpaired computers are unaffected. A missing or empty choice reads off, and
+so does a damaged configuration or invalid value, as shown in Settings.
 
 ## AI teams settings versus an individual AI team
 
