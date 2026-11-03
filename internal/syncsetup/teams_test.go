@@ -411,13 +411,8 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 	if err := h.b.SyncState(ctx); err != nil {
 		t.Fatal(err)
 	}
-	good, err := os.ReadFile(teams.Path(h.b.Home))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(teams.Path(h.b.Home), []byte("damaged"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	// app/v3 keeps teams in an SQLite store (#2066): damage the store itself.
+	restore := teamstest.Break(t, h.b.Home, []byte("damaged"))
 	h.lapse()
 	took, err := h.continuerB().Take(ctx, h.cell.ID)
 	if err != nil {
@@ -434,9 +429,7 @@ func TestContinuingAChatKeepsItsLeaseDespiteDamagedTeamsAndLaterHeals(t *testing
 	if err != nil || string(received) != string(cursor) {
 		t.Fatal("cursor fixture did not travel", string(received), err)
 	}
-	if err := os.WriteFile(teams.Path(h.b.Home), good, 0600); err != nil {
-		t.Fatal(err)
-	}
+	restore()
 	if err := h.b.SyncState(ctx); err != nil {
 		t.Fatal(err)
 	}
