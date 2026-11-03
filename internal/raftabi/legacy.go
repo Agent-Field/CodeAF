@@ -4,6 +4,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
 	pb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
+	"strconv"
 )
 
 // The hosted source feeds original SQL JSON to this bounded conversion call.
@@ -36,6 +37,10 @@ func legacyCodec(d *decoder) ([]byte, error) {
 func legacyGenesis(d *decoder) ([]byte, error) {
 	var m clusterstate.LegacyManifest
 	raw := d.blob()
+	var birth []byte
+	if len(d.b) > 0 {
+		birth = d.blob()
+	}
 	if e := d.end(); e != nil {
 		return nil, e
 	}
@@ -45,7 +50,14 @@ func legacyGenesis(d *decoder) ([]byte, error) {
 	e := encoder{}
 	e.message(&pb.Entry{Index: proto.Uint64(1), Term: proto.Uint64(1)})
 	e.message(&pb.HardState{Term: proto.Uint64(1), Commit: proto.Uint64(1)})
-	e.message(&pb.ConfState{Voters: m.Config.Anchors})
+	voters := m.Config.Anchors
+	if len(birth) > 0 {
+		if !validSingleton(m, birth) {
+			return nil, clusterstate.ErrMigration
+		}
+		voters = voters[:1]
+	}
+	e.message(&pb.ConfState{Voters: voters})
 	return e.b, nil
 }
 
@@ -72,4 +84,17 @@ func legacyAuthorities(d *decoder) ([]byte, error) {
 		out.blob(b)
 	}
 	return out.b, nil
+}
+
+func validSingleton(m clusterstate.LegacyManifest, raw []byte) bool {
+	var birth struct {
+		Cluster string   `json:"cluster"`
+		Digest  string   `json:"digest"`
+		Voters  []string `json:"voters"`
+	}
+	if clusterstate.Decode(raw, &birth) != nil || m.Validate() != nil || m.Version != 0 || len(m.Config.Anchors) != 3 || birth.Cluster != m.Config.Cluster || birth.Digest != m.Digest || len(birth.Voters) != 1 || birth.Voters[0] != strconv.FormatUint(m.Config.Anchors[0], 10) {
+		return false
+	}
+	rows, err := clusterstate.LegacyAuthorities(m.Config)
+	return err == nil && m.Rows == uint64(len(rows)+1)
 }

@@ -129,6 +129,63 @@ func TestR16R17R21EffectsAuthorizationCampaign(t *testing.T) {
 		})
 	}
 }
+func TestR16DecidedJoinAdmissionSurvivesPendingExpiry(t *testing.T) {
+	public := actorKey("joiner").Public().(ed25519.PublicKey)
+	admission := cs.AdmitJoin{Code: "request", PublicKey: public, Expires: 1002}
+	decision := cs.JoinDecision{Code: "request", Device: cs.DeviceIDOfKey(public), Cert: joinCert(t, "joiner"), Grant: "c2VhbGVk", Record: cs.Device{V: 1, Name: "c2VhbGVk"}}
+	t.Run("decided replay preserves the original decision", func(t *testing.T) {
+		a := newApplication(t)
+		if r := service(a, 1000, cs.Mutation{AdmitJoin: &admission}); r.Code != cs.OK {
+			t.Fatal(r)
+		}
+		if r := a.run("a", 1001, cs.Mutation{DecideJoin: &decision}); r.Code != cs.OK {
+			t.Fatal(r)
+		}
+		if r := service(a, 1003, cs.Mutation{AdmitJoin: &admission}); r.Code != cs.OK {
+			t.Fatal("pending expiry blocked an existing decision", r)
+		}
+		if r := a.run("a", 1004, cs.Mutation{DecideJoin: &decision}); r.Code != cs.OK {
+			t.Fatal("the original decision was not idempotent", r)
+		}
+		if r := a.run("a", 1005, cs.Mutation{DecideJoin: &cs.JoinDecision{Code: "request", Deny: true}}); r.Code != cs.AlreadyDecided {
+			t.Fatal("a contradictory decision changed the outcome", r)
+		}
+		extended := admission
+		extended.Expires = 2000
+		if r := service(a, 1006, cs.Mutation{AdmitJoin: &extended}); r.Code != cs.Conflict {
+			t.Fatal("re-admission changed a decided request's lifetime", r)
+		}
+		mismatched := admission
+		mismatched.PublicKey = actorKey("different").Public().(ed25519.PublicKey)
+		if r := service(a, 1007, cs.Mutation{AdmitJoin: &mismatched}); r.Code != cs.BadRequest {
+			t.Fatal("expired re-admission changed the immutable requester", r)
+		}
+	})
+	t.Run("expired pending admission cannot be revived", func(t *testing.T) {
+		a := newApplication(t)
+		if r := service(a, 1000, cs.Mutation{AdmitJoin: &admission}); r.Code != cs.OK {
+			t.Fatal(r)
+		}
+		if r := service(a, 1003, cs.Mutation{AdmitJoin: &admission}); r.Code != cs.BadRequest {
+			t.Fatal("an expired pending request was admitted again", r)
+		}
+		extended := admission
+		extended.Expires = 2000
+		if r := service(a, 1004, cs.Mutation{AdmitJoin: &extended}); r.Code != cs.Conflict {
+			t.Fatal("re-admission extended the pending lifetime", r)
+		}
+		if r := a.run("a", 1005, cs.Mutation{DecideJoin: &decision}); r.Code != cs.RequestGone {
+			t.Fatal("an expired pending request acquired a decision", r)
+		}
+	})
+	t.Run("unseen expired admission is refused", func(t *testing.T) {
+		a := newApplication(t)
+		if r := service(a, 1003, cs.Mutation{AdmitJoin: &admission}); r.Code != cs.BadRequest {
+			t.Fatal("an unseen expired request was admitted", r)
+		}
+	})
+}
+
 func TestR16PairingCertificateAndStickyRevocation(t *testing.T) {
 	a := newApplication(t)
 	pub := actorKey("joiner").Public().(ed25519.PublicKey)
