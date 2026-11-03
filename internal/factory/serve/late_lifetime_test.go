@@ -126,7 +126,9 @@ func TestLateArchivedUsageStopsActualWorker(t *testing.T) {
 	go func() {
 		defer close(done)
 		factoryworker.Run(ctx, factoryworker.Options{
-			Dial: func(int) *client.WorkerClient { return client.Open(proxy.URL, config.AccessToken).Worker(attached.Credential) },
+			Dial: func(int) *client.WorkerClient {
+				return client.Open(proxy.URL, config.AccessToken).Worker(attached.Credential)
+			},
 			Runner: runner, Mirror: mirror, Slots: 1,
 			ReportEvery: time.Millisecond, BeatEvery: time.Millisecond,
 		})

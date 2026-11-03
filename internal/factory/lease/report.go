@@ -31,7 +31,7 @@ func (d *Desk) Renew(id, worker string) (Lease, error) {
 // A completed job is written before release so a crash cannot offer it twice.
 func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item) error) error {
 	blocked := false
- err := d.change(func(doc *document, now time.Time) (bool, error) {
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
 			for i, receipt := range doc.Receipts {
@@ -84,9 +84,9 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 				return err
 			}
 			if !complete && !held.ThreadOnly && holdAtJobBudget(it) {
-                blocked = true
-            }
-            if complete && !held.ThreadOnly {
+				blocked = true
+			}
+			if complete && !held.ThreadOnly {
 				it.Publishing = false
 				if it.State == factory.StateShipped && it.PullRequest == nil && it.CommentURL != "" {
 					it.DoneHow = "answered"
@@ -98,18 +98,18 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 			return false, err
 		}
 		if blocked {
-            withdraw(doc, *held)
-            return true, nil
-        }
-        if !complete {
-            return false, nil
+			withdraw(doc, *held)
+			return true, nil
+		}
+		if !complete {
+			return false, nil
 		}
 		return true, d.keepPublish(doc, held.Job)
-    })
-    if err == nil && blocked {
-        return ErrWithdrawn
-    }
-    return err
+	})
+	if err == nil && blocked {
+		return ErrWithdrawn
+	}
+	return err
 }
 
 // ThreadOnly checks the same lease identity as Apply before selecting the

@@ -985,6 +985,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			}
 			lp.tellStep(c.id, fmt.Sprintf(sayStarted, name), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressStarted})
 		}
+        if begin, ok := lp.r.stepBegins.Load(c.id); ok {
+            step := factory.StageReport{Name: name, State: factory.PhaseRunning, Round: round, Started: now}
+            if err := begin.(func(context.Context, factory.StageReport) error)(c.ctx, step); err != nil {
+                lp.r.Withdraw(c.id)
+                return false
+            }
+        }
 		job := lp.job(c, st, index, i, round)
 		job.Resume, job.Opened, job.CarryOn = resume, lp.opened(c, i), carried
 		if job.Progress != nil {
