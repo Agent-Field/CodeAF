@@ -852,6 +852,8 @@ type Event struct {
 	// a surface reads as "unknown" and never as "nothing happened".
 	Compaction *CompactionFact `json:"Compaction,omitempty"`
 
+	// Tool lifecycle events can also carry the conversation's declared client-tool
+	// category, so surfaces need no name-only guess for those dynamic tools.
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
 	// other kind.
@@ -2526,6 +2528,9 @@ type Config struct {
 	// Workstream is set by the app only on a workstream's own agent. Nil is no door.
 	Workstream WorkstreamDoor
 
+	// ClientTools is the door onto tools an app attached to this conversation. Nil is no door.
+	ClientTools ClientToolDoor
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration
@@ -2908,21 +2913,20 @@ type Agent struct {
 	systemAt  time.Time
 	systemOwn bool
 	// tools is the belt and definitions is its wire form, built once at
-	// construction — rebuilding them per step would re-marshal every schema on
-	// the hot path — and thereafter grown only at the tail under armMu
-	// (connect.go), with one exception: the team verbs leave when the role that
-	// gave them does (team.go's [Agent.retireTeamTools]).
+	// construction. Built-ins grow under armMu (connect.go), before the replaceable
+	// client-tool tail. Team verbs leave when their role ends (team.go).
 	//
 	// Both are COPY-ON-WRITE: arming allocates a new array and swaps the header,
 	// so a reader that took a snapshot under armMu may walk it without the lock
 	// and can never see a half-written slice. Nothing already in either is ever
-	// moved or rewritten, and nothing but a team verb is removed, because the
-	// definition block rides at the front of every request and a definition that
-	// shifts re-bills the whole prompt behind it (internal/exec's tools.go states
-	// the law).
+	// moved or rewritten in place. Built-ins keep their order while client sets
+	// can be replaced. The definition block rides at the front of every request,
+	// so a definition that shifts re-bills the whole prompt behind it
+	// (internal/exec's tools.go states the law).
 	presentation *presentationIndex
 	tools        []bare.Tool
 	definitions  []ai.ToolDefinition
+	clientTools  clientToolState
 	// served is what the belt cannot say about the tools an ACCOUNT named
 	// rather than this build (served.go): whose account each one is, what the
 	// account calls it, and which capability governs it. Keyed by the name the

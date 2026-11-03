@@ -335,7 +335,7 @@ func (a *Agent) belt() []bare.Tool {
 	// (tools_capabilities.go). It removes no capability and adds none: a machine
 	// with no media models still has no media group, and a shelf with nothing on
 	// it puts no verb on this belt at all.
-	return a.shelveDeferred(tools)
+	return a.appendClientTools(a.shelveDeferred(tools))
 }
 
 // toolDefinitions builds the wire form of the belt, carrying each tool's
