@@ -19,6 +19,7 @@ func TestPublishAnywayPostRequiresCurrentPersonDecision(t *testing.T) {
  policy:=[]string{"tests pass before anything posts"}
  for _, tc:=range []struct{name string; change func(*factory.Item); want bool}{
   {"person",func(*factory.Item){},true},
+  {"unknown files",func(it *factory.Item){it.Change=nil;it.Triage.Area="docs"},false},
   {"automatic approval",func(it *factory.Item){it.PublishAnyway.Automatic=true},false},
   {"files changed",func(it *factory.Item){it.Change.Files[0].Path="other.md"},false},
   {"head changed",func(it *factory.Item){it.HeadCommit=strings.Repeat("b",40)},false},
@@ -63,4 +64,10 @@ func TestPublishAnywayNeverAutomaticOrOneGreen(t *testing.T) {
  if api.CanFor(it,"alice").PublishAnyway {t.Fatal("one-green policy offered override")}
  res,err,_=runPost(t,src,[]string{"no pull request without a green check"},it,"pr",nil)
  if err!=nil || res.Done || len(src.got)!=0 {t.Fatal("one-green published only skips")}
+}
+
+func TestPublishAnywayOfferRecognizesPolicyPunctuation(t *testing.T) {
+ it:=publishAnywayJob()
+ it.Stream.Phases[1].Result.Claims[0].Evidence="Tests  pass before anything posts."
+ if !api.CanFor(it,"alice").PublishAnyway {t.Fatal("valid every-check policy lost offer")}
 }
