@@ -544,12 +544,12 @@ type usageWrite struct {
 
 // usageWriter is one ledger file's background writer.
 type usageWriter struct {
-	queue            chan usageWrite
-	stopped          chan struct{}
-	beforeWrite      func()
-	overflowMu       sync.Mutex
-	overflow         map[chan struct{}]struct{}
-	overflowRows     []usageOverflowRow
+	queue        chan usageWrite
+	stopped      chan struct{}
+	beforeWrite  func()
+	overflowMu   sync.Mutex
+	overflow     map[chan struct{}]struct{}
+	overflowRows []usageOverflowRow
 }
 
 // usageDropped counts serialization and filesystem failures across all ledgers.
