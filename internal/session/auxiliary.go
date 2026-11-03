@@ -92,7 +92,9 @@ func (a *Agent) callRole(
 func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDefault string,
 	messages []ai.Message, accept func(*ai.Response, string) bool, options ...ai.Option,
 ) (*ai.Response, string, error) {
- if role==roles.RoleTitle{ctx=context.WithValue(ctx,factoryAutomaticTurnKey{},a.automaticFactoryRefusal)}
+	if role == roles.RoleTitle {
+		ctx = context.WithValue(ctx, factoryAutomaticTurnKey{}, a.automaticFactoryRefusal)
+	}
 	if err := a.admitJobCall(ctx); err != nil {
 		return nil, sessionDefault, err
 	}
