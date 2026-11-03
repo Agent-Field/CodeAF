@@ -1,0 +1,88 @@
+package main
+
+import (
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/session"
+)
+
+// A paid Follow PR attempt and a later manager turn retain one job identity.
+// The repair reports needs_you, so this fixture neither publishes nor pushes.
+func TestAppFactoryFollowPRAndPostPublishMoney(t *testing.T) {
+	s := newLocalSetup(t)
+	var calls atomic.Int64
+	server := moneyProvider(t, &calls)
+	g := newRunRig(t)
+	freshEngineProcess(t)
+	freshEngineFactoryStore(t)
+	t.Setenv(factoryBenchesEnv, "")
+	stageSettle = 20 * time.Millisecond
+	t.Cleanup(func() { stageSettle = unattendedRunSettleTick })
+	s.backend.emit = s.server
+	s.backend.local.parent = func() session.Config {
+		return session.Config{Workspace: g.workspace, Model: "deepseek/deepseek-v4.1-flash", OneModel: true, APIKey: "fixture", BaseURL: server.URL, DeterministicNames: true}
+	}
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		agent := moneyAgent(t, s, ask, server.URL)
+		return &appConn{Conv: agent, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
+	}
+	st := s.start()
+	s.backend.briefs.stop()
+	s.backend.briefs = newBriefDebounce(time.Hour, s.backend.writeBriefLater)
+	floor := s.backend.local.host.floor
+	if err := floor.SetCheckout("acme/api", g.workspace); err != nil {
+		t.Fatal(err)
+	}
+	item := factory.Item{Repo: "acme/api", Num: 7, Kind: factory.KindIssue, Title: "Repair the PR retry policy", Tier: factory.TierOwner, Model: "deepseek/deepseek-v4.1-flash", Cap: 1, State: factory.StateNew,
+		PullRequest: &factory.PullRequest{Number: 73, State: factory.PROpen}, FollowUp: &factory.PRFollowUp{Kind: "pr", State: "queued", Attempt: 1, Limit: 3}}
+	factory.EnsureFollowPR(&item)
+	it, err := floor.Create(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := map[string]any{"factory": st.Factory, "job": it.ID}
+	var job api.Job
+	s.must("factory.job", params, &job)
+	s.must("factory.job_start", map[string]any{"factory": st.Factory, "job": it.ID, "expect": map[string]any{"version": job.Version}}, &appwire.FactoryJobActed{})
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		s.must("factory.job", params, &job)
+		if calls.Load() > 0 && job.State == api.StateNeedsYou {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("paid repair never settled: calls=%d job=%+v", calls.Load(), job)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	moneyTotals(t, s, st.Factory, it, &calls, float64(calls.Load())*.01)
+	// A captured publication receipt is a fixture fact, with no forge writes.
+	if err := floor.Update(it.ID, func(cur *factory.Item) error {
+		cur.State = factory.StateShipped
+		cur.Stream.Ended = time.Now()
+		cur.PullRequest = &factory.PullRequest{Number: 73, State: factory.PROpen}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var chats appwire.FactoryJobChats
+	s.must("factory.job_chats", params, &chats)
+	before := calls.Load()
+	var turn appwire.TurnResult
+	s.must("agents.send", map[string]any{"id": chats.Agent, "text": "Explain the published repair."}, &turn)
+	deadline = time.Now().Add(5 * time.Second)
+	for calls.Load() == before {
+		if time.Now().After(deadline) {
+			t.Fatal("post-publish turn made no provider call")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Close drains the final paid turn before comparing all three totals.
+	s.must("agents.stop", map[string]any{"id": chats.Agent}, &struct{}{})
+	moneyTotals(t, s, st.Factory, it, &calls, float64(calls.Load())*.01)
+}

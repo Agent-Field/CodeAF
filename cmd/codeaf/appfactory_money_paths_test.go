@@ -126,6 +126,11 @@ func moneyProvider(t *testing.T, calls *atomic.Int64) *httptest.Server {
 		calls.Add(1)
 		var request struct {
 			Stream bool `json:"stream"`
+			Tools  []struct {
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			} `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
@@ -137,6 +142,18 @@ func moneyProvider(t *testing.T, calls *atomic.Int64) *httptest.Server {
 			choice["delta"] = message
 		} else {
 			choice["message"] = message
+		}
+		for _, tool := range request.Tools {
+			if tool.Function.Name == "stage_result" {
+				message = map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "repair-report", "type": "function", "function": map[string]any{"name": "stage_result", "arguments": `{"done":false,"output":"Repair needs a decision.","repair":{"decision":"needs_you","reason":"Choose the retry policy."}}`}}}}
+				choice["finish_reason"] = "tool_calls"
+				if request.Stream {
+					choice["delta"] = message
+				} else {
+					choice["message"] = message
+				}
+				break
+			}
 		}
 		raw, _ := json.Marshal(map[string]any{"model": "deepseek/deepseek-v4.1-flash", "choices": []any{choice}, "usage": map[string]any{"prompt_tokens": 20, "completion_tokens": 5, "cost": .01}})
 		if request.Stream {
