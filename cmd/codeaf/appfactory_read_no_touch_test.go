@@ -49,3 +49,20 @@ func TestFactoryJobSendTouchesJob(t *testing.T) {
   t.Fatalf("send did not touch job: sent=%+v job=%+v", sent, after)
  }
 }
+
+func TestFactoryExistingJobSendTouchesJob(t *testing.T) {
+ s := newLocalSetup(t)
+ s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+  return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+ }
+ s.start()
+ talk, id := jobConversation(t)
+ floor := s.backend.local.host.floor
+ it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 73, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew, Talk: talk})
+ if err != nil { t.Fatal(err) }
+ if err := markFactoryChat(floor, it, talk); err != nil { t.Fatal(err) }
+ s.must("agents.send", map[string]any{"id": id, "text": "Please check the ledger"}, nil)
+ after, err := floor.Get(it.ID)
+ if err != nil { t.Fatal(err) }
+ if factory.JobUnworked(after) || !after.PersonTouched { t.Fatalf("sent message did not count: unworked=%t touched=%t", factory.JobUnworked(after), after.PersonTouched) }
+}
