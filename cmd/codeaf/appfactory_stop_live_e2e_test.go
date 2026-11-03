@@ -504,7 +504,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	finalUSD, finalCalls := ledger()
 	recorder.mu.Lock()
 	calls, spend := recorder.calls, recorder.cost
- unpricedCancelled := cancelledRequests
+	unpricedCancelled := cancelledRequests
 	requests, replies := recorder.requests, recorder.replies
 	recorder.mu.Unlock()
 	if finalUSD <= restartUSD || finalCalls <= restartCalls || math.Abs(finalUSD-spend) > 0.000001 || finalCalls != stopLivePaidCalls(calls, unpricedCancelled) {
@@ -569,7 +569,9 @@ func TestStopLiveFactoryAndManagerUseSameProfile(t *testing.T) {
 func stopLivePaidCalls(requests, unpricedCancelled int) int { return requests - unpricedCancelled }
 
 func TestStopLiveUnpricedCancellationIsNotPaidLedgerCall(t *testing.T) {
- for _, tc := range []struct{ requests, cancelled, paid int }{{12, 1, 11}, {12, 0, 12}, {1, 1, 0}} {
-  if got := stopLivePaidCalls(tc.requests, tc.cancelled); got != tc.paid { t.Errorf("requests=%d unpriced_cancelled=%d paid ledger calls=%d, want %d", tc.requests, tc.cancelled, got, tc.paid) }
- }
+	for _, tc := range []struct{ requests, cancelled, paid int }{{12, 1, 11}, {12, 0, 12}, {1, 1, 0}} {
+		if got := stopLivePaidCalls(tc.requests, tc.cancelled); got != tc.paid {
+			t.Errorf("requests=%d unpriced_cancelled=%d paid ledger calls=%d, want %d", tc.requests, tc.cancelled, got, tc.paid)
+		}
+	}
 }
