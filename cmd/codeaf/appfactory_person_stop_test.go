@@ -76,6 +76,7 @@ func stoppedAppJob(t *testing.T, initial factory.State) (*localSetup, appwire.Fa
  t.Helper()
  s, status := newPauseSetup(t)
  floor := s.backend.local.host.floor
+ if err := os.WriteFile(filepath.Join(s.backend.localProfile(),"config.json"), []byte(`{"models.tasks.one":"test/model"}`),0600); err != nil { t.Fatal(err) }
  workspace := t.TempDir()
  gitCheckout(t, workspace, "acme/api")
  if err := floor.SetCheckout("acme/api",workspace); err != nil { t.Fatal(err) }

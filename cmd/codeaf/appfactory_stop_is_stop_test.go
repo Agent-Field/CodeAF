@@ -116,6 +116,7 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 					http.Error(w, "invalid fake model request", http.StatusBadRequest)
 					return
 				}
+				t.Logf("fake request: tools=%d stream=%v messages=%s", len(req.Tools), req.Stream, func() []byte { b, _ := json.Marshal(req.Messages); return b }())
 				startBelt, answered := false, false
 				for _, tool := range req.Tools {
 					startBelt = startBelt || tool.Function.Name == "factory_start"
