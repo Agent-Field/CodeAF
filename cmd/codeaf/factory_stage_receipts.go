@@ -46,6 +46,8 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	var tests *factory.TestCounts
 	lastOutcome := map[string]string{}
 	journalOrder := map[string]int{}
+	callOrder := map[string]int{}
+	commandOccurrences := map[string]int{}
 	sequence := 0
 	var pending []string
 	var state verification.Snapshot
@@ -167,6 +169,8 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		seenResults[row.ToolCallID] = true
 		sequence++
 		journalOrder[cmd] = sequence
+		callOrder[row.ToolCallID] = sequence
+		commandOccurrences[cmd]++
 		// Setup refusal happens before the shell runs and has no exit receipt.
 		// Keep it even for commands outside the legacy check-name vocabulary.
 		if strings.HasPrefix(row.Content, verification.SetupFailurePrefix) {
@@ -201,6 +205,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			// The pipeline may have failed while its check passed. Keep the
 			// shell receipt honest; only the observed check decides the guard.
 			receipt["scope"] = "shell presentation; check exits recorded separately"
+			delete(lastOutcome, cmd)
 		} else {
 			lastOutcome[cmd] = receipt["outcome"].(string)
 			
@@ -248,7 +253,11 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		if outcome == "refused" || outcome == "cancelled" || outcome == "timed out" || (outcome == "completed" && !observed[command]) {
 			covered := false
 			for _, check := range checks {
-				if journalOrder[check.Command] > journalOrder[command] && (!fresh || check.Fresh(state)) && verification.CoversUnrun(command, c.dir, check) { covered = true; break }
+				order := callOrder[check.CallID]
+				// Legacy receipts without invocation IDs are usable only when the
+				// journal contains one unambiguous occurrence of their command.
+				if check.CallID == "" && commandOccurrences[check.Command] == 1 { order = journalOrder[check.Command] }
+				if order > journalOrder[command] && (!fresh || check.Fresh(state)) && verification.CoversUnrun(command, c.dir, check) { covered = true; break }
 			}
 			if !covered { pending = append(pending, command+" · "+outcome+"; no later measured covering pass") }
 		}
