@@ -3,7 +3,6 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"log"
 	"os"
 	"path/filepath"
@@ -74,9 +73,10 @@ type Continued struct {
 
 // Continuer is the take side of one machine: `continue here`.
 type Continuer struct {
-	sync *Sync
-	eng  cellstore.Engine
-	opt  TakeOptions
+	sync     *Sync
+	eng      cellstore.Engine
+	opt      TakeOptions
+	freeOnly bool
 }
 
 // Continuer builds the take side over eng, the engine every chat this machine
@@ -110,14 +110,15 @@ func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	// local chat does become the branch.)
 	brancher := cellsync.Brancher{Dir: s.Dir, Publisher: pub, NewID: newCellID}
 	return handoff.Taker{
-		OnPhase: c.opt.OnPhase,
-		Dir:     s.Dir,
-		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox},
-		Local:   engineLocal{eng: c.eng, ctx: ctx},
-		Branch:  c.branch(brancher),
-		RootFor: c.opt.RootFor,
-		InPlace: func(c cell.Cell) bool { return borrowsProject(c.Root) },
-		After:   []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVault},
+		FreeOnly: c.freeOnly,
+		OnPhase:  c.opt.OnPhase,
+		Dir:      s.Dir,
+		Fetch:    &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox},
+		Local:    engineLocal{eng: c.eng, ctx: ctx},
+		Branch:   c.branch(brancher),
+		RootFor:  c.opt.RootFor,
+		InPlace:  func(c cell.Cell) bool { return borrowsProject(c.Root) },
+		After:    []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVault},
 	}
 }
 
@@ -131,6 +132,22 @@ func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
 // rather than silently consenting to displace a different device.
 func (c *Continuer) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (Continued, error) {
 	return c.take(ctx, id, seen, false)
+}
+
+// OpenAvailable is an open gesture from a paired set's free-chat row. It
+// restores through the ordinary continuation path, but never forces a hold.
+func (c *Continuer) OpenAvailable(ctx context.Context, id string, seen *directory.LeaseExpectation) (Continued, error) {
+	copy := *c
+	copy.freeOnly = true
+	return copy.take(ctx, id, seen, false)
+}
+
+// OpenAvailableWithWorkspaceRoots keeps a receiver's explicit folder choices
+// while retaining the automatic open's prohibition on displacing a live hold.
+func (c *Continuer) OpenAvailableWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (Continued, error) {
+	copy := *c
+	copy.freeOnly = true
+	return copy.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
 }
 
 // TakeSeenWithWorkspaceRoots applies only this person's selected receiver
@@ -178,6 +195,8 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			phases["local capture"], phases["directory"], phases["retirement"], phases["fetch"], phases["acquire"], phases["restore"], phases["hooks"], phases["filing"], phases["unpublished check"], phases["dirty check"], phases["kept-branch upload"], phases["staging/preflight"], time.Since(started), outcome)
 	}()
 	root := c.opt.RootFor(id)
+	_, localRootErr := cell.OpenAt(root, id)
+	keepRoot := localRootErr == nil
 	defer handoff.Arrive(root)()
 	localCapture := handoff.Trace(c.opt.OnPhase, "local capture")
 	if err := cellstore.Await(ctx, cell.Cell{Root: root}); err != nil {
@@ -198,6 +217,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
 	lease := view.Cell.Lease
+	if c.freeOnly && lease.Expires > view.Now {
+		return Continued{}, directory.ErrLeaseHeld
+	}
 	if seen != nil && !seen.Matches(view.Cell) {
 		return Continued{}, directory.ErrLeaseHeld
 	}
@@ -327,7 +349,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			filed()
 		}
 	}()
-	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell); err != nil {
+	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell, keepRoot); err != nil {
 		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
 	}
 	taken.Driving.Cell = taken.Cell
@@ -594,45 +616,6 @@ func recordOrigin(_ context.Context, c cell.Cell) error {
 	return session.SaveMeta(c.Root, m)
 }
 
-// fileCopy uses the origin from the sealed inventory rather than this
-// computer's home directory. A first arrival stays a copy even if an unrelated
-// folder with the origin's path exists here; an existing borrowed project is
-// kept in place by the takeover's ordinary in-place road.
-func (c *Continuer) fileCopy(ctx context.Context, at cell.Cell) (cell.Cell, func(), error) {
-	m, err := session.LoadMeta(at.Root)
-	if err != nil || c.opt.BucketFor == nil || !m.Owned || m.Origin == "" {
-		return at, nil, err
-	}
-	dest := filepath.Join(c.opt.BucketFor(m.Origin), at.ID)
-	if filepath.Clean(dest) == filepath.Clean(at.Root) {
-		return at, nil, nil
-	}
-	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
-		if err == nil {
-			err = errors.New("a copy of this chat is already filed here")
-		}
-		return at, nil, err
-	}
-	// The destination becomes discoverable at rename. Keep that root fenced
-	// through the caller's remaining arrival work, as the incoming root was.
-	filed := handoff.Arrive(dest)
-	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-		return at, filed, err
-	}
-	if err := fsreplace.Rename(at.Root, dest); err != nil {
-		return at, filed, err
-	}
-	landed := cell.Cell{ID: at.ID, Root: dest}
-	if err := session.RebaseOwnedCopy(dest); err != nil {
-		return landed, filed, err
-	}
-	if err := c.eng.Follow(ctx, at, landed); err != nil {
-		return landed, filed, err
-	}
-	opened, err := cell.OpenAt(dest, at.ID)
-	return opened, filed, err
-}
-
 func titleOf(root string) string {
 	m, _ := session.LoadMeta(root)
 	return m.Title
@@ -713,7 +696,9 @@ const (
 // withVaultWithin is withVault for a caller that waits up to within for another
 // codeaf on this computer to finish its own exchange; zero never waits.
 func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use func(vaultsync.Syncer) error, extra ...vaultsync.Carrier) error {
-	stateMu.Lock()
+	if err := lockStateRound(ctx, within); err != nil {
+		return err
+	}
 	defer stateMu.Unlock()
 	// Refuse before opening the lock file as well as before creating keys, so
 	// a replacement directory receives none of the previous home's state.
@@ -737,6 +722,36 @@ func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use fu
 	defer sc.Settle()
 	return use(vaultsync.Syncer{Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
 		Carry: append(s.carried(), extra...)})
+}
+
+var errStateBusy = errors.New("sync: another home-state exchange is in progress")
+
+// The process gate follows the same bounded rule as the cross-process lock.
+// A stalled home-state upload cannot lend its lifetime to another caller.
+func lockStateRound(ctx context.Context, within time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if stateMu.TryLock() {
+		return nil
+	}
+	if within <= 0 {
+		return errStateBusy
+	}
+	ctx, cancel := context.WithTimeout(ctx, within)
+	defer cancel()
+	tick := time.NewTicker(vaultBusyRetry)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return errors.Join(errStateBusy, ctx.Err())
+		case <-tick.C:
+			if stateMu.TryLock() {
+				return nil
+			}
+		}
+	}
 }
 
 // lockState takes the vault's lock without blocking, and while another process

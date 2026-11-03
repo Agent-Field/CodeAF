@@ -50,6 +50,9 @@ type Row struct {
 	// Mine says this device was the chat's last holder, so a lapsed lease is
 	// this device's own to pick up and not another device's work gone quiet.
 	Mine bool
+	// AutoOpen is certified by this listing's active roster and lease expiry.
+	// Advisory offline presence alone cannot authorize automatic acquisition.
+	AutoOpen bool
 	// Released distinguishes a real release from a revoked or offline holder.
 	Released    bool
 	ReleasedAgo time.Duration
@@ -129,10 +132,18 @@ const (
 // Archived cells are hidden; the newest durable turn comes first and ties
 // break by cell id so the order never flickers.
 func Rows(l directory.Listing, self string, open Opener) []Row {
+	paired := 0
+	for _, dev := range l.Devices {
+		if !dev.Revoked {
+			paired++
+		}
+	}
 	rows := make([]Row, 0, len(l.Cells))
 	for id, c := range l.Cells {
 		if !c.Archived {
-			rows = append(rows, rowOf(id, c, l, self, open))
+			r := rowOf(id, c, l, self, open)
+			r.AutoOpen = paired >= 2 && c.Lease.Expires <= l.Now && c.OrphanTurns == 0
+			rows = append(rows, r)
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return newer(rows[i], rows[j]) })

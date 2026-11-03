@@ -33,6 +33,7 @@ type timelessRow struct {
 	pending, orphanTurns                  uint32
 	fence                                 uint64
 	mine, released                        bool
+	autoOpen                              bool
 	releasedAgo                           time.Duration
 	holderRemoved, branchRedundant        bool
 }
@@ -52,6 +53,7 @@ func timeless(r Row) timelessRow {
 		orphanTurns:     r.OrphanTurns,
 		fence:           r.Fence,
 		mine:            r.Mine,
+		autoOpen:        r.AutoOpen,
 		released:        r.Released,
 		releasedAgo:     r.ReleasedAgo,
 		holderRemoved:   r.HolderRemoved,
