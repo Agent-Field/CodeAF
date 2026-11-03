@@ -91,6 +91,10 @@ type ConversationSpec struct {
 	// is "" and its launch is not pinned to one model for every task.
 	FactoryModel string
 	Effort       string
+	// StepEffort is the step's own effort word (cheap, strong or ""): with
+	// no model of the step's or the job's, the maker opens the step on the
+	// model that effort runs on, before the factory's default.
+	StepEffort string
 	// Resume is the transcript of a conversation to reopen instead of making
 	// one, "" for a new one. The maker then continues it with Brief as a
 	// carry-on note (internal/session's CarryOn), joins no team (it is a
@@ -268,6 +272,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		AutomaticModels:   stageAutomatic(job),
 		FactoryModel:      strings.TrimSpace(job.Item.FactoryModel),
 		Effort:            job.Item.Effort,
+		StepEffort:        job.Stage.Effort,
 		Stage:             door,
 		VerificationStage: job.Stage.Name,
 		VerifyChecks:      checksVerification(job.Stage),
