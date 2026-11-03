@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/workstream"
 )
 
 // Contract (g) validates byte bounds and JSON shapes before any read or write.
