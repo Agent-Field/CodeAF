@@ -180,7 +180,7 @@ type Triage struct {
 	// be trusted: [ShownSize] draws nothing for it.
 	SizeFrom  string `json:",omitempty"`
 	Area      string
-	Readiness int // 0..100; under 55 the item is thin and wants questions
+	Readiness int // 0..100, from older reads only; see [Triage.Thin]
 	// Rubric is how complex the job is ([Rubric]), from the read or from
 	// Look closer, and nil when nobody scored it. A model never writes a
 	// price: an older document's model-written estimate is not read.
@@ -442,6 +442,14 @@ type PullRequest struct {
 	Mergeable   string `json:",omitempty"`
 	ChecksRead  bool   `json:",omitempty"`
 	ReviewsRead bool   `json:",omitempty"`
+	// NoWorkflows is what one read found: no workflow files on the head and
+	// no statuses or check runs reported for it. NoChecksSince is the first
+	// read on this head that found it, and NoChecks is the settled fact
+	// ([SettleNoChecks]): the repository has no checks configured, which the
+	// readiness gate counts as a stated condition rather than a failure.
+	NoWorkflows   bool      `json:",omitempty"`
+	NoChecksSince time.Time `json:",omitempty"`
+	NoChecks      bool      `json:",omitempty"`
 	// HeadBranch is the branch the pull request comes from, which a repair pushes
 	// to: an older branch can leave it named apart from the job's own.
 	HeadBranch string `json:",omitempty"`
@@ -861,15 +869,16 @@ type Event struct {
 	What string
 }
 
-// Ref is the item's short name: #123, or ci.
-//
-// AN ITEM WITH NO FORGE NUMBER IS NAMED BY THE FLOOR'S OWN ID. Work a chat or a
-// terminal put on the floor never had an issue number, and `#0` on every one of
-// those rows named nothing a person could say back; the store's id is the one
-// the chat's own sentence uses (`#<id> ... is on the factory floor`), so a row,
-// the peek and the item page say the number the conversation already said. A
-// forge item keeps its forge number, which is the one its repository uses.
+// Ref is the item's short display name: #123, job 21, or ci.
 func (it Item) Ref() string {
+	if it.Kind != KindCI && it.Num == 0 {
+		return "job " + itoa(it.ID)
+	}
+	return it.KeyRef()
+}
+
+// KeyRef preserves the short reference used by saved chat markers and selectors.
+func (it Item) KeyRef() string {
 	if it.Kind == KindCI {
 		return "ci"
 	}

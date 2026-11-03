@@ -472,7 +472,7 @@ func StoreLog(st *store.Store, clock func() time.Time) func(it factory.Item, lin
 // digits of its ref, or for an item with no number (a CI run) its ref and its
 // id, so two of those never share a worktree.
 func itemDigits(it factory.Item) string {
-	ref := it.Ref()
+	ref := it.KeyRef()
 	if d, ok := strings.CutPrefix(ref, "#"); ok {
 		return d
 	}
