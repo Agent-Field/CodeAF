@@ -95,6 +95,12 @@ func (b *appBackend) clockAsk(agent, id string, start bool) (*appwire.Ask, error
 		}
 		ask = &shaped
 	})
+	// A CLOCK THAT CHANGED IS SAID TO EVERY WINDOW, so the countdown a surface
+	// draws is the one the engine counts; the lane's own restate is then the
+	// same ask and adds nothing.
+	if ask != nil && reply.Changed {
+		live.box.Event(appwire.EventAskOpened, appwire.AskOpened{Ask: *ask})
+	}
 	return ask, nil
 }
 
