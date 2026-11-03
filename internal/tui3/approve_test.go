@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -381,5 +382,26 @@ func TestOpenDeviceListMarksADeviceAnotherComputerRevoked(t *testing.T) {
 	r.until("revoked row", func() bool { return strings.Contains(plain(frame(a)), "tower     Linux  removed") })
 	if strings.Contains(plain(frame(a)), "● tower") {
 		t.Fatalf("a revoked computer shows online:\n%s", plain(frame(a)))
+	}
+}
+
+// T2: a timed-out answer blames neither the devices nor the person, and says the
+// answer may already have landed, so a retry is not offered as the remedy.
+func TestApproveTimeoutSaysTheAnswerMayHaveArrived(t *testing.T) {
+	late := fmt.Errorf("answer: %w", context.DeadlineExceeded)
+	if got := approveFailure(late, true); got != approveUnsure {
+		t.Fatalf("answer timeout = %q, want %q", got, approveUnsure)
+	}
+	if got := approveFailure(late, false); got != approveSlow {
+		t.Fatalf("lookup timeout = %q, want %q", got, approveSlow)
+	}
+	for _, line := range []string{approveSlow, approveUnsure} {
+		if strings.Contains(line, "your devices") {
+			t.Errorf("%q blames devices that take no part", line)
+		}
+	}
+	refused := errors.New("that request was already answered")
+	if got := approveFailure(refused, true); got != refused.Error() {
+		t.Fatalf("door sentence = %q, want it as it is", got)
 	}
 }
