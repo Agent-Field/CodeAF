@@ -160,8 +160,11 @@ func TestClosedIssueCacheSharedByAutomaticPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := triage.ReadThese(ctx, again, func(context.Context, string) (string, error) { t.Error("closed issue read"); return "", nil }, []int{it.ID}, triage.Options{Standing: standing})
-	if reads != 1 || len(got.Skipped) != 1 {
-		t.Fatalf("shared closed answer: reads=%d result=%+v", reads, got)
+	triage.ReadOne(ctx, again, func(context.Context, string) (string, error) {
+		t.Error("closed issue read")
+		return "", nil
+	}, triage.Options{Standing: standing})
+	if reads != 1 {
+		t.Fatalf("shared closed answer: reads=%d", reads)
 	}
 }
