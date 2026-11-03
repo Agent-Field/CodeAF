@@ -43,9 +43,8 @@ func TestWorkstreamAgentDoorIsScopedAndResolvesLazily(t *testing.T) {
 		t.Fatal("a workstream conversation needs a door before the row exists")
 	}
 	ctx := context.Background()
-	_, err := door.Brief(ctx)
-	if !errors.Is(err, session.ErrWorkstreamMissing) {
-		t.Fatalf("early brief: %v", err)
+	if brief, ok := door.Brief(); ok || brief != (session.WorkstreamBrief{}) {
+		t.Fatalf("early brief: %+v %v", brief, ok)
 	}
 	_, readErr := door.Read(ctx, session.WorkstreamReadAsk{What: "workstream"})
 	_, proposeErr := door.Propose(ctx, session.WorkstreamProposal{Kind: "decision", Text: "Words"})
@@ -58,9 +57,9 @@ func TestWorkstreamAgentDoorIsScopedAndResolvesLazily(t *testing.T) {
 		}
 	}
 	w := workstreamCreateForTest(t, b, "Lazy")
-	brief, err := door.Brief(ctx)
-	if err != nil || brief.Name != w.Name {
-		t.Fatalf("late resolution: %+v %v", brief, err)
+	brief, ok := door.Brief()
+	if !ok || brief.Name != w.Name {
+		t.Fatalf("late resolution: %+v %v", brief, ok)
 	}
 	previous := appWorkstreamAgents.Swap(nil)
 	t.Cleanup(func() { appWorkstreamAgents.Store(previous) })

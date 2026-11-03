@@ -50,6 +50,9 @@ func (d *workstreamAgentDoor) workstreamOwner(ctx context.Context, writing bool)
 		return nil, workstream.Workstream{}, session.ErrWorkstreamMissing
 	}
 	w, err := s.ByAgent(ctx, d.agentID)
+	if err == nil {
+		d.backend.workstreamRememberBrief(w)
+	}
 	if errors.Is(err, workstream.ErrNotFound) {
 		err = session.ErrWorkstreamMissing
 	}
@@ -59,9 +62,25 @@ func (d *workstreamAgentDoor) workstreamOwner(ctx context.Context, writing bool)
 	return s, w, err
 }
 
-func (d *workstreamAgentDoor) Brief(ctx context.Context) (session.WorkstreamBrief, error) {
-	_, w, err := d.workstreamOwner(ctx, false)
-	return session.WorkstreamBrief{Name: w.Name, Why: w.Why}, err
+func (b *appBackend) workstreamRememberBrief(w workstream.Workstream) {
+	state := &b.workstreams
+	state.briefMu.Lock()
+	defer state.briefMu.Unlock()
+	if state.briefs == nil {
+		state.briefs = make(map[string]session.WorkstreamBrief)
+	}
+	state.briefs[w.AgentID] = session.WorkstreamBrief{Name: w.Name, Why: w.Why}
+}
+
+func (d *workstreamAgentDoor) Brief() (session.WorkstreamBrief, bool) {
+	state := &d.backend.workstreams
+	// Prompt rendering holds the session lock, so even cache contention falls back.
+	if !state.briefMu.TryLock() {
+		return session.WorkstreamBrief{}, false
+	}
+	defer state.briefMu.Unlock()
+	brief, ok := state.briefs[d.agentID]
+	return brief, ok
 }
 
 func (d *workstreamAgentDoor) Read(ctx context.Context, ask session.WorkstreamReadAsk) (json.RawMessage, error) {
@@ -314,6 +333,8 @@ func workstreamAgentError(err error) error {
 		return session.ErrWorkstreamNotAgentPage
 	case errors.Is(err, workstream.ErrTooLarge):
 		return session.ErrWorkstreamTooLarge
+	case errors.Is(err, workstream.ErrDone):
+		return session.ErrWorkstreamDone
 	case errors.Is(err, workstream.ErrConflict):
 		return session.ErrWorkstreamDone
 	}
@@ -330,6 +351,7 @@ func (b *appBackend) workstreamAgentTurnSettled(id string) {
 	}
 	w, err := s.ByAgent(context.Background(), id)
 	if err == nil {
+		b.workstreamRememberBrief(w)
 		b.workstreamChanged(workstream.Change{ID: w.ID, Parts: []workstream.ChangedPart{workstream.PartWorkstream}})
 	}
 }

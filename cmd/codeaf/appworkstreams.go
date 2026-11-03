@@ -44,6 +44,8 @@ type appWorkstreams struct {
 	cacheMu      sync.Mutex
 	cache        map[string]workstreamQueueRead
 	flights      map[string]chan struct{}
+	briefMu      sync.Mutex
+	briefs       map[string]session.WorkstreamBrief
 }
 
 type workstreamQueueRead struct {
@@ -177,6 +179,7 @@ func (b *appBackend) WorkstreamList(p appwire.WorkstreamListParams) (appwire.Wor
 	}
 	jobs := []workstream.Job{}
 	for _, w := range rows {
+		b.workstreamRememberBrief(w)
 		jobs = append(jobs, w.Jobs()...)
 	}
 	facts := b.workstreamFacts(jobs)
@@ -187,6 +190,7 @@ func (b *appBackend) WorkstreamList(p appwire.WorkstreamListParams) (appwire.Wor
 		if err != nil {
 			return appwire.WorkstreamListResult{}, err
 		}
+		b.workstreamRememberBrief(w)
 		v := appWorkstream(w, facts, b.workstreamSpend(w.AgentID))
 		out.Workstreams = append(out.Workstreams, appwire.WorkstreamRow{ID: v.ID, Name: v.Name, Stage: v.Stage, Total: v.Total, Merged: v.Merged, NeedsYou: v.NeedsYou, SpendUSD: v.SpendUSD, BudgetUSD: v.BudgetUSD, UpdatedAt: v.UpdatedAt})
 	}
@@ -199,6 +203,7 @@ func (b *appBackend) WorkstreamGet(p appwire.WorkstreamGetParams) (appwire.Works
 		if err != nil {
 			return appwire.WorkstreamGetResult{}, workstream.Change{}, err
 		}
+		b.workstreamRememberBrief(w)
 		facts := b.workstreamFacts(w.Jobs())
 		w, c, err := b.workstreamObserved(s, w, facts, workstream.Change{})
 		return appwire.WorkstreamGetResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, err
@@ -289,31 +294,15 @@ func (b *appBackend) WorkstreamCreate(p appwire.WorkstreamCreateParams) (appwire
 	if existing != nil && workstreamValue(p.ClientID) != "" {
 		w, err := existing.ByClientID(context.Background(), *p.ClientID)
 		if err == nil {
+			b.workstreamRememberBrief(w)
 			return appwire.WorkstreamCreateResult{Workstream: appWorkstream(w, nil, b.workstreamSpend(w.AgentID))}, nil
 		}
 		if !errors.Is(err, workstream.ErrNotFound) {
 			return zero, appWorkstreamError(err)
 		}
 	}
-	if p.OriginChatID != nil {
-		if _, err := b.find(*p.OriginChatID); err != nil {
-			return zero, err
-		}
-	}
-	store, err := b.collectionStore(false)
-	if err != nil {
+	if err := b.workstreamCreatePreflight(p); err != nil {
 		return zero, err
-	}
-	if store != nil {
-		if err := workstreamPreflight(store, p); err != nil {
-			return zero, appWorkstreamError(err)
-		}
-	} else {
-		for _, ref := range p.Refs {
-			if ref.Kind == appwire.RefCollection {
-				return zero, appCollectionError(workspace.ErrNotFound)
-			}
-		}
 	}
 	create := b.workstreams.createAgent
 	if create == nil {
@@ -323,43 +312,74 @@ func (b *appBackend) WorkstreamCreate(p appwire.WorkstreamCreateParams) (appwire
 	if err != nil {
 		return zero, err
 	}
+	w, change, err := b.workstreamCreateWithAgent(p, agent)
+	if err != nil {
+		return zero, appWorkstreamError(err)
+	}
+	b.workstreamRememberBrief(w)
+	b.workstreamChanged(change)
+	if change.ID != "" {
+		b.collectionChanged(w.ID, false)
+	}
+	return appwire.WorkstreamCreateResult{Workstream: appWorkstream(w, nil, b.workstreamSpend(w.AgentID))}, nil
+}
+
+func (b *appBackend) workstreamCreatePreflight(p appwire.WorkstreamCreateParams) error {
+	if p.OriginChatID != nil {
+		if _, err := b.find(*p.OriginChatID); err != nil {
+			return err
+		}
+	}
+	store, err := b.collectionStore(false)
+	if err != nil {
+		return err
+	}
+	if store != nil {
+		return appWorkstreamError(workstreamPreflight(store, p))
+	}
+	for _, ref := range p.Refs {
+		if ref.Kind == appwire.RefCollection {
+			return appCollectionError(workspace.ErrNotFound)
+		}
+	}
+	return nil
+}
+
+func (b *appBackend) workstreamCreateWithAgent(p appwire.WorkstreamCreateParams, agent appwire.Agent) (workstream.Workstream, workstream.Change, error) {
 	refs := make([]workspace.Ref, 0, len(p.Refs))
 	for _, r := range p.Refs {
 		refs = append(refs, workspace.Ref{Kind: workspace.Kind(r.Kind), ID: r.ID, SessionID: workstreamValue(r.SessionID), Factory: workstreamValue(r.Factory)})
 	}
 	var w workstream.Workstream
 	var change workstream.Change
-	store, err = b.collectionStore(true)
+	store, err := b.collectionStore(true)
 	if err == nil {
 		s := workstream.New(store, workstream.Options{Now: b.now})
 		w, change, err = s.Create(context.Background(), workstream.Create{Name: strings.TrimSpace(p.Name), Why: workstreamValue(p.Why), OriginChatID: workstreamValue(p.OriginChatID), Refs: refs, AgentID: agent.ID, ClientID: workstreamValue(p.ClientID)})
 	}
 	if err != nil || w.AgentID != agent.ID {
-		closeAgent := b.workstreams.closeAgent
-		if closeAgent == nil {
-			closeAgent = func(id string) error { return b.MoveToClosed([]string{id}) }
-		}
-		if cleanup := closeAgent(agent.ID); cleanup != nil {
-			if err != nil {
-				mapped := appWorkstreamError(err)
-				var wire *appwire.Error
-				if errors.As(mapped, &wire) {
-					copy := *wire
-					copy.Message += "; the unused workstream agent could not be closed"
-					return zero, &copy
-				}
-			}
-			return zero, appwire.Errorf(appwire.CodeEngine, "the unused workstream agent could not be closed: %s", appUnaskedReason("the conversation", cleanup))
+		if cleanup := b.workstreamCloseUnusedAgent(agent.ID, err); cleanup != nil {
+			return workstream.Workstream{}, workstream.Change{}, cleanup
 		}
 	}
-	if err != nil {
-		return zero, appWorkstreamError(err)
+	return w, change, err
+}
+
+func (b *appBackend) workstreamCloseUnusedAgent(id string, cause error) error {
+	closeAgent := b.workstreams.closeAgent
+	if closeAgent == nil {
+		closeAgent = func(id string) error { return b.MoveToClosed([]string{id}) }
 	}
-	b.workstreamChanged(change)
-	if change.ID != "" {
-		b.collectionChanged(w.ID, false)
+	if cleanup := closeAgent(id); cleanup != nil {
+		var wire *appwire.Error
+		if cause != nil && errors.As(appWorkstreamError(cause), &wire) {
+			copy := *wire
+			copy.Message += "; the unused workstream agent could not be closed"
+			return &copy
+		}
+		return appwire.Errorf(appwire.CodeEngine, "the unused workstream agent could not be closed: %s", appUnaskedReason("the conversation", cleanup))
 	}
-	return appwire.WorkstreamCreateResult{Workstream: appWorkstream(w, nil, b.workstreamSpend(w.AgentID))}, nil
+	return nil
 }
 
 func (b *appBackend) WorkstreamUpdate(p appwire.WorkstreamUpdateParams) (appwire.WorkstreamUpdateResult, error) {
@@ -372,6 +392,7 @@ func (b *appBackend) WorkstreamUpdate(p appwire.WorkstreamUpdateParams) (appwire
 		if err != nil {
 			return appwire.WorkstreamUpdateResult{}, c, err
 		}
+		b.workstreamRememberBrief(w)
 		if c.ID != "" && p.Patch.Name != nil {
 			b.collectionChanged(w.ID, false)
 		}
@@ -387,6 +408,7 @@ func (b *appBackend) WorkstreamMarkDone(p appwire.WorkstreamMarkDoneParams) (app
 		if err != nil {
 			return appwire.WorkstreamMarkDoneResult{}, c, err
 		}
+		b.workstreamRememberBrief(w)
 		facts := b.workstreamFacts(w.Jobs())
 		w, c, err = b.workstreamObserved(s, w, facts, c)
 		// The workstream is already durable even if archiving a chat fails. Publish
@@ -424,6 +446,7 @@ func (b *appBackend) WorkstreamReopen(p appwire.WorkstreamReopenParams) (appwire
 		if err != nil {
 			return appwire.WorkstreamReopenResult{}, c, err
 		}
+		b.workstreamRememberBrief(w)
 		facts := b.workstreamFacts(w.Jobs())
 		w, c, err = b.workstreamObserved(s, w, facts, c)
 		return appwire.WorkstreamReopenResult{Workstream: appWorkstream(w, facts, b.workstreamSpend(w.AgentID))}, c, err
