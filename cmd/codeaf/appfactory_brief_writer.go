@@ -96,6 +96,14 @@ func (b *appBackend) writeBrief(ctx context.Context, factoryID string, job int, 
 // briefErrand asks the job's agent for the brief. Every way of not
 // answering is a Reason, which the factory keeps as the write's failure.
 func (b *appBackend) briefErrand(ctx context.Context, factoryID string, job int, begin api.BriefBegin) session.ErrandAnswer {
+	host, err := b.localHostOf(factoryID)
+	if err != nil || host.seam.Talk == nil {
+		return session.ErrandAnswer{Reason: appwire.ErrandNotOpen}
+	}
+	// Writing a brief needs a manager; reading its chats no longer creates one.
+	if _, err := host.seam.Talk(ctx, job); err != nil {
+		return session.ErrandAnswer{Reason: appwire.ErrandNotOpen}
+	}
 	chats, err := b.FactoryJobChats(ctx, appwire.FactoryJobChatsParams{Factory: factoryID, Job: job})
 	if err != nil {
 		return session.ErrandAnswer{Reason: appwire.ErrandNotOpen}
