@@ -205,3 +205,30 @@ func TestAuthorityReadErrorDoesNotCancelManagerWork(t *testing.T) {
  time.Sleep(350*time.Millisecond)
  if !a.jobs.find(id).running() { t.Fatal("read error cancelled an unstopped manager's work") }
 }
+
+func TestLateStopSampleDoesNotCancelRetriedManagerTask(t *testing.T) {
+ var armed atomic.Bool
+ sampled, release, sampledAgain := make(chan struct{}), make(chan struct{}), make(chan struct{})
+ var releaseOnce, againOnce sync.Once
+ unblock := func() { releaseOnce.Do(func() { close(release) }) }; defer unblock()
+ var sampling atomic.Bool
+ a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+  c.JobBudget = &liveBudgetStub{cap: 10}
+  c.FactoryWorkRefusal = func() string {
+   if armed.CompareAndSwap(true, false) { sampling.Store(true); close(sampled); <-release; return factory.PersonStopReason }
+   if sampling.Load() { againOnce.Do(func() { close(sampledAgain) }) }
+   return ""
+  }
+ })
+ graph := a.graph()
+ graph.run = func(*TaskNode) {}
+ id := graph.reserve()
+ graph.admit(id, taskSpec{title: "proof", brief: "prove the change", acceptance: "tests pass", depth: 1})
+ armed.Store(true)
+ select { case <-sampled: case <-time.After(2*time.Second): t.Fatal("watcher did not sample Stop") }
+ if _, err := a.Cancel(fmt.Sprintf("task:%d", id)); err != nil { t.Fatal(err) }
+ if err := a.RetryTask(id); err != nil { t.Fatal(err) }
+ unblock()
+ select { case <-sampledAgain: case <-time.After(2*time.Second): t.Fatal("watcher did not finish old Stop") }
+ if got := graph.node(id).notice(); got.State != TaskRunning || got.Stopped { t.Fatalf("late Stop cancelled retried task: %+v", got) }
+}
