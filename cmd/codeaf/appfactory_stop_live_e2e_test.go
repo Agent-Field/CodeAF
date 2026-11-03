@@ -413,6 +413,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 		}
 	}
 	if !ack {
+ for _, e := range traffic { t.Logf("queued traffic: kind=%s from=%s to=%s state=%s text=%q", e.Kind, e.From, e.To, e.State, e.Text) }
 		t.Fatal("queued question had no stopped-manager acknowledgement")
 	}
 	afterWait := assertStopped("after 95 seconds")
