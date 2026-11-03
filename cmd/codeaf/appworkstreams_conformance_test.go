@@ -850,6 +850,8 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 		{Name: "plan_version", Method: "workstream.plan_set", Code: "version_conflict", Example: "page.save"},
 		{Name: "cycle", Method: "page.move", Code: "cycle"},
 		{Name: "too_large", Method: "page.save", Code: "too_large"},
+		{Name: "plan_too_large", Method: "workstream.plan_set", Code: "too_large"},
+		{Name: "records_too_large", Method: "record.propose", Code: "too_large"},
 		{Name: "unknown_method", Method: "workstream.list", Code: "unknown_method", Example: "workstream.list"},
 		{Name: "busy", Method: "workstream.update", Code: "busy"},
 	}
@@ -1300,6 +1302,14 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 				map[string]any{"type": "text", "text": strings.Repeat("x", (1<<20)+1)},
 			}},
 		}}
+	case "plan_too_large":
+		changedShape = true
+		params["milestones"] = []any{}
+		params["waves"] = []any{map[string]any{"n": 1, "auto_start": false, "items": []any{
+			map[string]any{"kind": "draft", "draft_id": "oversize-draft", "title": "Draft", "text": strings.Repeat("x", workstream.PlanDraftTextMax+1)},
+		}}}
+	case "records_too_large":
+		workstreamSeedRecords(t, backend, fixture.Stream.ID, workstream.RecordsMax)
 	case "unknown_method":
 		engine = &workstreamWireUnavailable{appBackend: backend}
 	case "busy":

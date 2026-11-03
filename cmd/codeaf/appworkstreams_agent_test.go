@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -193,6 +194,258 @@ func TestWorkstreamAgentPagesAreOwnedAndMarked(t *testing.T) {
 	if wireCode(appWorkstreamError(workstream.ErrNotAgentPage)) != appwire.CodeBadParams {
 		t.Fatal("the wire needs a bad_params ownership refusal")
 	}
+}
+
+func TestStabEm1AgentSpecAndDecisionsPagesAreReadByJobs(t *testing.T) {
+	b, _, w, door := workstreamAgentFixture(t)
+	ctx := context.Background()
+	s, err := b.workstreamStore(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		title string
+		want  bool
+	}{{"Spec", true}, {" decisions ", true}, {" sPeC ", true}, {"DECISIONS", true}, {"Notes", false}} {
+		t.Run(tc.title, func(t *testing.T) {
+			made, err := door.WritePage(ctx, session.WorkstreamPageWrite{Title: tc.title, Markdown: "First", UpdatedFrom: "Discussion"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			page, err := s.Page(ctx, made.ID, false)
+			if err != nil || page.ReadByJobs != tc.want {
+				t.Fatalf("agent default: read_by_jobs=%v, want %v: %v", page.ReadByJobs, tc.want, err)
+			}
+			wire, err := b.WorkstreamPageCreate(appwire.WorkstreamPageCreateParams{WorkstreamID: w.ID, Title: tc.title})
+			if err != nil || wire.Page.ReadByJobs != tc.want {
+				t.Fatalf("page.create default: read_by_jobs=%v, want %v: %v", wire.Page.ReadByJobs, tc.want, err)
+			}
+			// Explicit choices survive later agent writes, even for these default titles.
+			for _, read := range []bool{false, true} {
+				if _, err := b.WorkstreamPageUpdate(appwire.WorkstreamPageUpdateParams{ID: page.ID, ReadByJobs: &read}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := door.WritePage(ctx, session.WorkstreamPageWrite{PageID: page.ID, Markdown: "Updated", UpdatedFrom: "Review"}); err != nil {
+					t.Fatal(err)
+				}
+				page, err = s.Page(ctx, page.ID, false)
+				if err != nil || page.ReadByJobs != read {
+					t.Fatalf("agent update: read_by_jobs=%v, want %v: %v", page.ReadByJobs, read, err)
+				}
+			}
+		})
+	}
+}
+
+func TestStabEM4PlanWireBoundsAreAtomic(t *testing.T) {
+	for _, name := range []string{"draft text", "milestones", "waves", "items", "encoded JSON"} {
+		t.Run(name, func(t *testing.T) {
+			b, rec, w, door := workstreamAgentFixture(t)
+			ctx := context.Background()
+			connection := workstreamWireConnect(t, &workstreamWireBackend{appBackend: b})
+			params := appwire.WorkstreamPlanSetParams{ID: w.ID, Milestones: []appwire.WorkstreamMilestone{}, Waves: []appwire.WorkstreamWave{{N: 1, Items: []appwire.WorkstreamPlanItem{{Kind: "draft", DraftID: workstreamPtr("d"), Title: workstreamPtr("Draft")}}}}}
+			switch name {
+			case "draft text":
+				params.Waves[0].Items[0].Text = workstreamPtr(strings.Repeat("x", workstream.PlanDraftTextMax))
+			case "milestones":
+				for range workstream.PlanMilestonesMax {
+					params.Milestones = append(params.Milestones, appwire.WorkstreamMilestone{Title: "Milestone"})
+				}
+			case "waves":
+				params.Waves = []appwire.WorkstreamWave{}
+				for i := range workstream.PlanWavesMax {
+					params.Waves = append(params.Waves, appwire.WorkstreamWave{N: i + 1, Items: []appwire.WorkstreamPlanItem{}})
+				}
+			case "items":
+				item := params.Waves[0].Items[0]
+				params.Waves[0].Items = []appwire.WorkstreamPlanItem{}
+				for range workstream.PlanItemsMax {
+					params.Waves[0].Items = append(params.Waves[0].Items, item)
+				}
+			}
+			var before appwire.WorkstreamPlanSetResult
+			if err := json.Unmarshal(workstreamWireEncode(t, workstreamWireResult(t, connection.call(t, "workstream.plan_set", params))), &before); err != nil {
+				t.Fatal(err)
+			}
+			if before.Plan.Version != 1 {
+				t.Fatalf("at bound: version=%d", before.Plan.Version)
+			}
+			params.BaseVersion = before.Plan.Version
+			switch name {
+			case "draft text":
+				params.Waves[0].Items[0].Text = workstreamPtr(*params.Waves[0].Items[0].Text + "x")
+			case "milestones":
+				params.Milestones = append(params.Milestones, appwire.WorkstreamMilestone{Title: "Extra"})
+			case "waves":
+				params.Waves = append(params.Waves, appwire.WorkstreamWave{N: workstream.PlanWavesMax + 1, Items: []appwire.WorkstreamPlanItem{}})
+			case "items":
+				params.Waves[0].Items = append(params.Waves[0].Items, params.Waves[0].Items[0])
+			case "encoded JSON":
+				item := params.Waves[0].Items[0]
+				// JSON escapes each '<' to six bytes, while every draft stays below its text bound.
+				item.Text = workstreamPtr(strings.Repeat("<", workstream.PlanDraftTextMax))
+				params.Waves[0].Items = []appwire.WorkstreamPlanItem{}
+				for range 9 {
+					params.Waves[0].Items = append(params.Waves[0].Items, item)
+				}
+			}
+			state := workstreamLimitSnapshot(t, b, w.ID)
+			events := len(workstreamEvents(rec))
+			workstreamLimitWireRefusal(t, connection, "workstream.plan_set", params)
+			if name == "items" {
+				// The agent uses the same store authority and must receive the actual limit.
+				plan, err := door.Plan(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				agentPlan := plan
+				agentPlan.Waves[0].Items = append(agentPlan.Waves[0].Items, workstream.PlanItem{Kind: "draft", DraftID: "extra", Title: "Extra"})
+				_, err = door.SetPlan(ctx, plan.Version, agentPlan)
+				if !errors.Is(err, workstream.ErrLimit) || !strings.Contains(err.Error(), "5000 items") || len(workstreamEvents(rec)) != events {
+					t.Fatalf("agent plan limit: %v", err)
+				}
+			}
+			after, err := b.WorkstreamPlanGet(appwire.WorkstreamPlanGetParams{ID: w.ID})
+			if err != nil || !reflect.DeepEqual(before.Plan, after.Plan) || !reflect.DeepEqual(state, workstreamLimitSnapshot(t, b, w.ID)) || len(workstreamEvents(rec)) != events {
+				t.Fatalf("refused plan changed state: version=%d: %v", after.Plan.Version, err)
+			}
+		})
+	}
+}
+
+func TestStabEM4PageCountIncludesDeleted(t *testing.T) {
+	b, rec, w, door := workstreamAgentFixture(t)
+	ctx := context.Background()
+	connection := workstreamWireConnect(t, &workstreamWireBackend{appBackend: b})
+	// Together with Overview, these rows leave exactly one page slot.
+	if err := b.collections.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `WITH RECURSIVE workstream_seed(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM workstream_seed WHERE n<?)
+ INSERT INTO workstream_pages(id,workstream_id,title,owner,position,version,updated_at,updated_by,doc,deleted_at,deleted_root)
+ SELECT ? || '-limit-page-' || n,?,'Seed','you',(n+1)/2,1,?,'you','{"type":"doc","content":[]}',CASE WHEN n%2=0 THEN ? END,CASE WHEN n%2=0 THEN ? || '-limit-page-' || n END FROM workstream_seed`, workstream.PagesMax-2, w.ID, w.ID, b.now().UnixMilli(), b.now().UnixMilli(), w.ID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	last, err := b.WorkstreamPageCreate(appwire.WorkstreamPageCreateParams{WorkstreamID: w.ID, Title: "Last"})
+	if err != nil {
+		t.Fatalf("page at count bound: %v", err)
+	}
+	for _, deleted := range []bool{false, true} {
+		if deleted {
+			if _, err := b.WorkstreamPageDelete(appwire.WorkstreamPageDeleteParams{ID: last.Page.ID}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		before := workstreamLimitSnapshot(t, b, w.ID)
+		events := len(workstreamEvents(rec))
+		workstreamLimitWireRefusal(t, connection, "page.create", appwire.WorkstreamPageCreateParams{WorkstreamID: w.ID, Title: "Over limit"})
+		_, err := door.WritePage(ctx, session.WorkstreamPageWrite{Title: "Agent notes", Markdown: "Words", UpdatedFrom: "Discussion"})
+		if !errors.Is(err, workstream.ErrLimit) || !strings.Contains(err.Error(), "5000 pages") {
+			t.Fatalf("agent page limit: %v", err)
+		}
+		if before.Pages != workstream.PagesMax || !reflect.DeepEqual(before, workstreamLimitSnapshot(t, b, w.ID)) || len(workstreamEvents(rec)) != events {
+			t.Fatal("page refusal changed stored rows or events")
+		}
+	}
+}
+
+func TestStabEM4RecordCountBounds(t *testing.T) {
+	b, rec, w, door := workstreamAgentFixture(t)
+	ctx := context.Background()
+	connection := workstreamWireConnect(t, &workstreamWireBackend{appBackend: b})
+	old, err := b.WorkstreamRecordPropose(appwire.WorkstreamRecordProposeParams{WorkstreamID: w.ID, Kind: "decision", Text: "Original", Kept: workstreamPtr(true)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workstreamSeedRecords(t, b, w.ID, workstream.RecordsMax-1)
+	if _, err := b.WorkstreamRecordPropose(appwire.WorkstreamRecordProposeParams{WorkstreamID: w.ID, Kind: "question", Text: "Last"}); err != nil {
+		t.Fatalf("record at count bound: %v", err)
+	}
+	before := workstreamLimitSnapshot(t, b, w.ID)
+	events := len(workstreamEvents(rec))
+	workstreamLimitWireRefusal(t, connection, "record.propose", appwire.WorkstreamRecordProposeParams{WorkstreamID: w.ID, Kind: "decision", Text: "Over limit"})
+	workstreamLimitWireRefusal(t, connection, "record.supersede", appwire.WorkstreamRecordSupersedeParams{ID: old.Record.ID, Text: "Replacement"})
+	for _, ask := range []session.WorkstreamProposal{
+		{Kind: "decision", Text: "Agent decision"},
+		{Kind: "question", Text: "Agent question"},
+		{GoAhead: &session.WorkstreamGoAheadAsk{Scope: "job", Factory: "f", Job: 7, CapUSD: 1, EndsOn: "2026-11-04", Why: "Review"}},
+	} {
+		_, err = door.Propose(ctx, ask)
+		if !errors.Is(err, workstream.ErrLimit) || !strings.Contains(err.Error(), "5000 records") {
+			t.Fatalf("agent record limit: %v", err)
+		}
+	}
+	if err := b.collections.Read(ctx, func(tx *sql.Tx, _ int) error {
+		var state string
+		var replacement sql.NullString
+		if err := tx.QueryRowContext(ctx, "SELECT state,superseded_by FROM workstream_records WHERE id=?", old.Record.ID).Scan(&state, &replacement); err != nil {
+			return err
+		}
+		if state != "kept" || replacement.Valid {
+			t.Fatalf("refused supersede changed the old record: %s %v", state, replacement)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if before.Records != workstream.RecordsMax || !reflect.DeepEqual(before, workstreamLimitSnapshot(t, b, w.ID)) || len(workstreamEvents(rec)) != events {
+		t.Fatal("record refusal changed stored rows or events")
+	}
+}
+
+func workstreamLimitWireRefusal(t *testing.T, connection *workstreamWireConnection, method string, params any) {
+	t.Helper()
+	frame := connection.call(t, method, params)
+	refusal, ok := frame["error"].(map[string]any)
+	if !ok || refusal["code"] != appwire.CodeTooLarge {
+		t.Fatalf("%s: want too_large, got %v", method, frame)
+	}
+}
+
+func workstreamSeedRecords(t *testing.T, b *appBackend, id string, total int) {
+	t.Helper()
+	if err := b.collections.Write(context.Background(), func(tx *sql.Tx) error {
+		var count int
+		if err := tx.QueryRow("SELECT count(*) FROM workstream_records WHERE workstream_id=?", id).Scan(&count); err != nil {
+			return err
+		}
+		if count >= total {
+			return nil
+		}
+		_, err := tx.Exec(`WITH RECURSIVE workstream_seed(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM workstream_seed WHERE n<?)
+ INSERT INTO workstream_records(id,workstream_id,kind,text,state,actor,created_at)
+ SELECT ? || '-limit-record-' || n,?,CASE n%3 WHEN 0 THEN 'decision' WHEN 1 THEN 'question' ELSE 'goahead' END,'Seed',CASE n%4 WHEN 0 THEN 'proposed' WHEN 1 THEN 'kept' WHEN 2 THEN 'dropped' ELSE 'superseded' END,'agent',? FROM workstream_seed`, total-count, id, id, b.now().UnixMilli())
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type workstreamLimitState struct {
+	Pages, Records, Versions int
+	Row                      workstream.Workstream
+}
+
+func workstreamLimitSnapshot(t *testing.T, b *appBackend, id string) workstreamLimitState {
+	t.Helper()
+	s, err := b.workstreamStore(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state workstreamLimitState
+	state.Row, err = s.Get(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.collections.Read(context.Background(), func(tx *sql.Tx, _ int) error {
+		return tx.QueryRow(`SELECT
+ (SELECT count(*) FROM workstream_pages WHERE workstream_id=?),
+ (SELECT count(*) FROM workstream_records WHERE workstream_id=?),
+ (SELECT count(*) FROM workstream_page_versions WHERE page_id IN (SELECT id FROM workstream_pages WHERE workstream_id=?))`, id, id, id).Scan(&state.Pages, &state.Records, &state.Versions)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return state
 }
 
 // Contract (a) scopes reads to the owner while preserving the app's wire shapes.
