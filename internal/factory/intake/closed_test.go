@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/factory/triage"
 )
 
 func TestAutomaticIntakeChecksClosedIssues(t *testing.T) {
@@ -131,5 +132,36 @@ func TestClosedJobCannotBeAutomaticallyStartedOrAsked(t *testing.T) {
 	got, _ := st.Get(it.ID)
 	if starts != 0 || got.DoneHow != "closed_locally" || got.Question != "" {
 		t.Fatalf("closed job was considered: reads=%d starts=%d state=%s", reads, starts, got.State)
+	}
+}
+
+func TestClosedIssueCacheSharedByAutomaticPaths(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Origin: factory.OriginForge, Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"ready", "size:S"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	standing := func(context.Context, factory.Item) (string, error) { reads++; return "closed", nil }
+	opts := intake.Options{Standing: standing, Record: history, Load: func(string) (pipeline.File, error) { return pipeline.Parse("start:\n  labels: [ready]\n") }, Launch: func(int) error { t.Error("closed issue launched"); return nil }}
+	if err := intake.New(st, opts).Once(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// A new store handle and reader still share the process's closed answer.
+	again, err := store.Open(st.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := triage.ReadThese(ctx, again, func(context.Context, string) (string, error) { t.Error("closed issue read"); return "", nil }, []int{it.ID}, triage.Options{Standing: standing})
+	if reads != 1 || len(got.Skipped) != 1 {
+		t.Fatalf("shared closed answer: reads=%d result=%+v", reads, got)
 	}
 }

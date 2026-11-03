@@ -12,9 +12,7 @@ import (
 const automaticStandingWait = 5 * time.Second
 
 type automaticKey struct {
-	root, repo string
-	kind       factory.Kind
-	number     int
+	root, item string
 }
 
 type automaticStanding struct {
@@ -38,7 +36,7 @@ func ClosedForAutomation(ctx context.Context, root string, it factory.Item, stan
 	var key automaticKey
 	if root != "" {
 		root, _ = filepath.Abs(root)
-		key = automaticKey{root, factory.RepoOf(it), it.Kind, it.Num}
+		key = automaticKey{root, itemKey(it)}
 		value, loaded := automaticStandings.LoadOrStore(key, entry)
 		if loaded {
 			entry = value.(*automaticStanding)
