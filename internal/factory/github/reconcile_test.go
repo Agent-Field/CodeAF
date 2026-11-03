@@ -428,3 +428,18 @@ func TestRefreshClearsAutomaticCloseMark(t *testing.T) {
  f.state[1]="open";f.poll()
  if f.row(1).State!=factory.StateShipped{t.Fatal("personal Refresh was undone by reopen")}
 }
+
+func TestPersonalMetadataClearsAutomaticCloseMark(t *testing.T) {
+ f:=newIssueScript(t,1);f.state[1]="closed";f.poll()
+ if err:=f.st.UpdatePersonal(1,func(it *factory.Item)bool{it.BriefSeen=map[string]int{"sam":1};return true});err!=nil{t.Fatal(err)}
+ // Exercise an in-place edit of existing personal metadata as well.
+ if err:=f.st.Update(1,func(it *factory.Item)error{it.PersonTouched=false;it.SourceClosed=true;return nil});err!=nil{t.Fatal(err)}
+ if err:=f.st.UpdatePersonal(1,func(it *factory.Item)bool{it.BriefSeen["sam"]=2;return true});err!=nil{t.Fatal(err)}
+ if f.row(1).SourceClosed{t.Fatal("personal metadata action retained automatic close mark")}
+}
+
+func TestLegacyPaidArrivalReadProtectsRow(t *testing.T) {
+ f:=newIssueScript(t,1);f.state[1]="closed"
+ if err:=f.st.Annotate(1,func(it *factory.Item)error{it.Triage.TriagedAt=time.Now();return nil});err!=nil{t.Fatal(err)}
+ f.poll();if f.row(1).State!=factory.StateNew{t.Fatal("previously paid arrival read was finished")}
+}
