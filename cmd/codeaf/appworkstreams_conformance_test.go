@@ -1157,11 +1157,11 @@ func workstreamWireKeptGoAhead(t *testing.T, connection *workstreamWireConnectio
 
 func workstreamWireCoverage(t *testing.T, contract *workstreamWireContract, files map[string]workstreamWireExamples, cases []string, errorCases []workstreamWireErrorCase) {
 	t.Helper()
-	if len(contract.Methods) != 33 {
-		t.Errorf("v0.4 has %d methods, want 33", len(contract.Methods))
+	if len(contract.Methods) != 36 {
+		t.Errorf("the Suggestions addition (v0.5) has %d methods, want 36", len(contract.Methods))
 	}
 	if len(contract.Events) != 1 || contract.Events[0].Event != appwire.EventWorkstreamChanged {
-		t.Errorf("v0.4 events: want only workstream.changed, got %v", contract.Events)
+		t.Errorf("the Suggestions addition (v0.5) events: want only workstream.changed, got %v", contract.Events)
 	}
 	if !reflect.DeepEqual(contract.Methods, appwire.WorkstreamMethods) {
 		t.Errorf("contract methods/order %v differ from appwire.WorkstreamMethods %v", contract.Methods, appwire.WorkstreamMethods)

@@ -176,7 +176,7 @@ settings do not themselves start work.
 
 ## What a workstream's agent can do: proposals, pages and suggested edits
 
-A workstream's own agent in the app has seven tools. Other conversations, tasks
+A workstream's own agent in the app has eight tools. Other conversations, tasks
 and errands do not receive them. `workstream_read` reads the workstream, pages,
 decisions, questions, go-ahead proposals, plan, grants and sources. Counts, costs, states and dates come
 from records. An absent number is unknown; the agent must say so and never

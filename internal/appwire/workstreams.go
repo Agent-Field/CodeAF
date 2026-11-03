@@ -1,4 +1,5 @@
 // Workstreams v0 (the Workstreams plan, WP-0) is a proposal until reviewed.
+// The Suggestions addition (v0.5) adds suggested edits on person-owned pages.
 // PROTOCOL.md, "workstream methods", is the wire index.
 package appwire
 
