@@ -263,6 +263,19 @@ func (p WorkstreamPlanSetParams) Check() error {
 	if p.BaseVersion < 0 || p.Milestones == nil || p.Waves == nil {
 		return Errorf(CodeBadParams, "plan requires nonnegative base_version and milestones and waves arrays")
 	}
+	if len(p.Milestones) > workstream.PlanMilestonesMax {
+		return Errorf(CodeTooLarge, "a plan holds at most %d milestones", workstream.PlanMilestonesMax)
+	}
+	if len(p.Waves) > workstream.PlanWavesMax {
+		return Errorf(CodeTooLarge, "a plan holds at most %d waves", workstream.PlanWavesMax)
+	}
+	items := 0
+	for _, w := range p.Waves {
+		items += len(w.Items)
+		if items > workstream.PlanItemsMax {
+			return Errorf(CodeTooLarge, "a plan holds at most %d items", workstream.PlanItemsMax)
+		}
+	}
 	for _, m := range p.Milestones {
 		if m.ID != "" {
 			if err := workstreamID(m.ID); err != nil {
@@ -308,7 +321,10 @@ func (p WorkstreamPlanSetParams) Check() error {
 					return err
 				}
 				if item.Text != nil {
-					if err := workstreamText(*item.Text, 0, len(*item.Text), "draft text"); err != nil {
+					if len(*item.Text) > workstream.PlanDraftTextMax {
+						return Errorf(CodeTooLarge, "draft text must be at most %d bytes", workstream.PlanDraftTextMax)
+					}
+					if err := workstreamText(*item.Text, 0, workstream.PlanDraftTextMax, "draft text"); err != nil {
 						return err
 					}
 				}

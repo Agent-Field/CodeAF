@@ -11,8 +11,15 @@ import (
 )
 
 const (
-	DocMax   = 1 << 20
-	emptyDoc = `{"type":"doc","content":[]}`
+	DocMax            = 1 << 20
+	PlanDraftTextMax  = 80_000
+	PlanMilestonesMax = 500
+	PlanWavesMax      = 500
+	PlanItemsMax      = 5_000
+	PlanEncodedMax    = 4 << 20
+	PagesMax          = 5_000
+	RecordsMax        = 5_000
+	emptyDoc          = `{"type":"doc","content":[]}`
 )
 
 var (
@@ -21,6 +28,7 @@ var (
 	ErrConflict = errors.New("workstream conflict")
 	ErrCycle    = errors.New("page move would form a cycle")
 	ErrTooLarge = errors.New("encoded document exceeds 1 MiB")
+	ErrLimit    = errors.New("workstream limit exceeded")
 )
 
 type ChangedPart string

@@ -98,7 +98,7 @@ func appWorkstreamError(err error) error {
 		return appwire.Errorf(appwire.CodeConflict, "%s", err)
 	case errors.Is(err, workstream.ErrCycle):
 		return appwire.Errorf(appwire.CodeCycle, "%s", err)
-	case errors.Is(err, workstream.ErrTooLarge):
+	case errors.Is(err, workstream.ErrTooLarge), errors.Is(err, workstream.ErrLimit):
 		return appwire.Errorf(appwire.CodeTooLarge, "%s", err)
 	case errors.Is(err, workstream.ErrNotAgentPage):
 		return appwire.Errorf(appwire.CodeBadParams, "%s", err)
