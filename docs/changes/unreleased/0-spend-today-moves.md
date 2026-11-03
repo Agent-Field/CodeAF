@@ -1,11 +1,11 @@
 ---
 kind: fixed
-title: codeaf collects Factory charges after failed and unmetered calls
+title: Today's spending moves with every ledger row and names Factory AI
 pr: 0
 surface: [engine]
 invalidates:
-  - "A Factory stream's interim usage could prevent its final receipt from reaching the ledger and job total."
-  - "Successful Factory calls without usage could disappear from Spending, and queue overflow could discard charge rows."
+  - "Today's figure could stay stale until a chat turn ended, because spend.changed fired only then."
+  - "Factory triage, scouts and page AI read as your chats in today's split."
 ---
 
 Today's figure on the Spending page moves when any ledger row lands. It used to
