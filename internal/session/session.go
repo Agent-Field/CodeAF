@@ -2523,6 +2523,9 @@ type Config struct {
 	// foremanFloorDoor), on a launch that has a Factory door.
 	Floor FloorDoor
 
+	// Workstream is set by the app only on a workstream's own agent. Nil is no door.
+	Workstream WorkstreamDoor
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration
