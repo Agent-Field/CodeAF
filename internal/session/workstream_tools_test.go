@@ -30,6 +30,8 @@ type workstreamFakeDoor struct {
 	sourceCalls     int
 	sourceError     error
 	sourceProposals []WorkstreamSourceProposal
+	suggestionAsks  []WorkstreamSuggestionAsk
+	suggestionError error
 }
 
 func (d *workstreamFakeDoor) Source(_ context.Context, source *workstream.Source) (*workstream.Source, error) {
@@ -86,6 +88,12 @@ func (d *workstreamFakeDoor) WritePage(_ context.Context, p WorkstreamPageWrite)
 	return WorkstreamPageWritten{ID: "page-1", Title: "Notes", Version: 2}, d.pageError
 }
 
+func (d *workstreamFakeDoor) SuggestEdits(_ context.Context, ask WorkstreamSuggestionAsk) (WorkstreamSuggested, error) {
+	d.otherCalls++
+	d.suggestionAsks = append(d.suggestionAsks, ask)
+	return WorkstreamSuggested{ID: "sg_1", Title: "Notes", Count: len(ask.Edits)}, d.suggestionError
+}
+
 func workstreamToolForTest(t *testing.T, d *workstreamFakeDoor, name string) bare.Tool {
 	t.Helper()
 	a := &Agent{config: Config{Workstream: d}}
@@ -118,8 +126,8 @@ func TestWorkstreamAgentToolsAndPromptAreScoped(t *testing.T) {
 	d := &workstreamFakeDoor{brief: WorkstreamBrief{Name: "Usage", Why: "Explain recorded usage"}, briefReady: true}
 	cfg.Workstream = d
 	with := &Agent{config: cfg}
-	if len(with.belt()) != len(belt)+7 || len(with.workstreamTools()) != 7 {
-		t.Fatal("the workstream must add exactly seven tools")
+	if len(with.belt()) != len(belt)+8 || len(with.workstreamTools()) != 8 {
+		t.Fatal("the workstream must add exactly eight tools")
 	}
 	if !reflect.DeepEqual(workstreamOrdinaryBelt(belt), workstreamOrdinaryBelt(with.belt())) {
 		t.Fatal("the workstream changed the ordinary belt's bytes")
@@ -204,7 +212,7 @@ func workstreamPromptUnderLock(a *Agent) string {
 }
 
 func workstreamOrdinaryBelt(tools []bare.Tool) []string {
-	names := []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page"}
+	names := []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page", "suggest_page_edit"}
 	var out []string
 	for _, tool := range tools {
 		if !workstreamHasWord(names, tool.Name) {
@@ -379,14 +387,14 @@ func TestWorkstreamArgumentsRefuseDuplicateKeysBeforeTheDoor(t *testing.T) {
 func TestWorkstreamPageOwnershipRefusal(t *testing.T) {
 	d := &workstreamFakeDoor{pageError: ErrWorkstreamNotAgentPage}
 	got := workstreamCallForTest(t, d, "write_agent_page", `{"page_id":"page-1","markdown":"Words","updated_from":"Discussion"}`, true)
-	if got != "That page is the person's. You write only your own pages; suggesting edits on theirs is not available yet." {
+	if got != "That page is the person's. You write only your own pages; suggest edits on theirs with suggest_page_edit." {
 		t.Fatalf("refusal: %q", got)
 	}
 }
 
 // Contract (g) refuses unknown fields before touching any door.
 func TestWorkstreamToolsRefuseInventedFacts(t *testing.T) {
-	names := []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page"}
+	names := []string{"workstream_read", "propose_decision", "propose_question", "propose_jobs", "propose_goahead", "propose_source", "write_agent_page", "suggest_page_edit"}
 	fields := []string{"kept", "state", "cost_usd", "spend_usd", "count", "merged", "budget_usd", "auto_start", "version"}
 	for _, name := range names {
 		for _, field := range fields {

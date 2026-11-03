@@ -19,6 +19,7 @@ type WorkstreamDoor interface {
 	SetPlan(context.Context, int, WorkstreamPlanState) (WorkstreamPlanState, error)
 	WritePage(context.Context, WorkstreamPageWrite) (WorkstreamPageWritten, error)
 	ProposeSource(context.Context, WorkstreamSourceProposal) (WorkstreamSourceProposed, error)
+	SuggestEdits(context.Context, WorkstreamSuggestionAsk) (WorkstreamSuggested, error)
 }
 
 var ErrWorkstreamMissing = errors.New("No workstream holds this conversation.")
@@ -27,7 +28,7 @@ var ErrWorkstreamDone = errors.New("This workstream is done; nothing was added o
 
 var ErrWorkstreamVersion = errors.New("the workstream version changed")
 
-var ErrWorkstreamNotAgentPage = errors.New("That page is the person's. You write only your own pages; suggesting edits on theirs is not available yet.")
+var ErrWorkstreamNotAgentPage = errors.New("That page is the person's. You write only your own pages; suggest edits on theirs with suggest_page_edit.")
 
 var ErrWorkstreamTooLarge = errors.New("That page is too large; the encoded document must be at most 1 MiB.")
 
@@ -89,4 +90,15 @@ type WorkstreamPageWritten struct {
 	ID      string
 	Title   string
 	Version int
+}
+
+type WorkstreamSuggestionAsk struct {
+	PageID      string                      `json:"page_id"`
+	BaseVersion int                         `json:"base_version"`
+	Why         string                      `json:"why"`
+	Edits       []workstream.SuggestionFind `json:"edits"`
+}
+type WorkstreamSuggested struct {
+	ID, Title string
+	Count     int
 }

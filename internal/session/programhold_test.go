@@ -228,7 +228,8 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 		"build_harness": true, "list_harnesses": true, "list_subharnesses": true,
 		"propose_subharness": true, "revise_design": true,
 		"web_search": true, "web_fetch": true,
-		"gmail_read": true, "gmail_search": true, "gmail_send": true,
+		"suggest_page_edit": true,
+		"gmail_read":        true, "gmail_search": true, "gmail_send": true,
 		"calendar_list": true, "calendar_create": true,
 		"slack_search": true, "slack_read_thread": true, "slack_send": true, "slack_list_channels": true,
 	}
