@@ -49,7 +49,9 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			makeJobManager(t, s, item.ID)
+			if _, err := s.backend.local.host.seam.Talk(context.Background(), item.ID); err != nil {
+				t.Fatal(err)
+			}
 			item, err = floor.Get(item.ID)
 			if err != nil {
 				t.Fatal(err)
