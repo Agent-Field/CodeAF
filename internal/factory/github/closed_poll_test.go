@@ -199,8 +199,8 @@ func TestClosedIssuesLeaveBacklogOnPoll(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, _ = st.Get(recent.ID)
-			if got.DoneHow != "closed" {
-				t.Fatal("reopen silently restarted a finished job")
+			if got.DoneHow != "" || got.State != factory.StateNew || !got.DoneAt.IsZero() || got.Starter != "" || got.Stream != nil {
+				t.Fatalf("reopened issue with no work did not return to Backlog: %+v", got)
 			}
 			// Sweep completion survives a fresh Source and a process-style restart.
 			beforeCalls = calls
@@ -263,7 +263,12 @@ func testClosedSweepBound(t *testing.T) {
 			t.Fatalf("poll error = %v, want error %t", err, wantError)
 		}
 	}
-	poll(true)
+	// Row 2 is missing on GitHub: unknown, so it stays, and it is no trouble
+	// with the poll.
+	poll(false)
+	if meta, _ := st.SourceMeta(source.Name); meta.Trouble != "" {
+		t.Fatalf("a missing issue read as poll trouble: %q", meta.Trouble)
+	}
 	if direct != 40 {
 		t.Fatalf("first sweep used %d direct checks, want 40", direct)
 	}
@@ -288,4 +293,29 @@ func testClosedSweepBound(t *testing.T) {
 		t.Fatal("missing issue blocked a later closure")
 	}
 	t.Log("45 old rows: 40 direct checks, then 5, then 0; concurrent start preserved")
+}
+
+// A closed issue the factory did work on keeps that ending when it reopens:
+// only a row with nothing on it goes back to Backlog.
+func TestReopenedIssueWithWorkStaysDone(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := factory.Item{Product: "o", Repo: "r", Num: 7, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t", State: factory.StateShipped, DoneHow: "closed", Stream: &factory.Stream{Spent: 0.2}}
+	saved, err := st.Create(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := factory.Item{Product: "o", Repo: "r", Num: 7, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "t again"}
+	if err := source.Merge(st, source.Name, []factory.Item{open}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Get(saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DoneHow != "closed" || got.State != factory.StateShipped {
+		t.Fatalf("worked job reopened: state=%s how=%q", got.State, got.DoneHow)
+	}
 }
