@@ -76,10 +76,6 @@ type BriefWritten struct {
 // BeginBrief marks a write on its way after the job's last finished step,
 // unless [BriefBeginSkip] says why not, which it answers.
 func (it *Item) BeginBrief(trigger, hash string, now time.Time) string {
-	if StoppedByPerson(*it) {
-		it.BriefWriting = &BriefWriting{State: BriefFailed, AfterStep: briefAfterStep(*it), Failure: PersonStopReason, At: now, Hash: hash}
-		return PersonStopReason
-	}
 	if skip := BriefBeginSkip(*it, trigger, hash, now); skip != "" {
 		return skip
 	}
