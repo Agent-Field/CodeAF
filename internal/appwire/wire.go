@@ -911,8 +911,11 @@ const (
 // Spend is today's spending on this machine against the daily cap, which is
 // null when there is none.
 type Spend struct {
-	TodayUSD  float64  `json:"today_usd"`
-	DayCapUSD *float64 `json:"day_cap_usd"`
+	TodayUSD float64 `json:"today_usd"`
+	// FactoryAIUSD is the part of today that Factory's triage, scouts and page
+	// AI spent. Absent when there is none. It is inside TodayUSD.
+	FactoryAIUSD *float64 `json:"factory_ai_usd,omitempty"`
+	DayCapUSD    *float64 `json:"day_cap_usd"`
 }
 
 // AskOption is one answer an ask offers.

@@ -149,7 +149,7 @@ func FromItem(it factory.Item) Job {
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
 		Runner: it.WorktreeMachine, JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
-		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApproval(it),
+		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApprovalSummary(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo: it.Person(), Assignee: it.Person(),
 		AskedFirstReason: it.AskedFirstReason,

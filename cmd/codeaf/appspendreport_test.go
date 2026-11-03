@@ -1,10 +1,13 @@
 package main
 
 import (
+	"math"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -107,5 +110,100 @@ func TestAppSpendReportOmitsWhatNoLineCarried(t *testing.T) {
 	c := report.Cells[0]
 	if c.CostUSD != nil || c.Model != "" || c.Kind != "" || c.Subject != "" || c.UnbilledRecords != 1 || report.Totals.CostUSD != nil || len(report.Models) != 0 {
 		t.Fatalf("an unpriced, unnamed, unattributed line must stay absent: %+v / %+v", c, report.Totals)
+	}
+}
+
+// A row made outside any job and any chat turn still reaches the page: the
+// report has it, and spend.today moves without a turn ending.
+func TestLedgerRowWithoutATurnMovesSpendToday(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	previous := appLedgerPath
+	appLedgerPath = func() string { return path }
+	t.Cleanup(func() { appLedgerPath = previous })
+	t.Cleanup(func() { session.StopUsageWriter(path) })
+	now := time.Now()
+	day := now.Format(time.DateOnly)
+	got := make(chan appwire.SpendChanged, 8)
+	b := &appBackend{now: time.Now, today: func(at time.Time) float64 {
+		usd, err := session.DailySpendUSD(path, at)
+		if err != nil {
+			t.Error(err)
+		}
+		return usd
+	}, emit: appEmitFunc(func(event string, payload any) {
+		if changed, ok := payload.(appwire.SpendChanged); ok && event == appwire.EventSpendChanged {
+			got <- changed
+		}
+	})}
+	t.Setenv(config.ProfileDirEnv, t.TempDir())
+	b.dayAuth.profile, b.dayAuth.settled = config.ProfileDir(), true
+	t.Cleanup(b.watchSpendRows())
+	rows := []session.UsageLine{
+		{Role: "repo_ask", USD: .0061, Calls: 1, Session: "page", Input: 9},
+		{Role: "pipeline_ai", USD: .0041, Calls: 1, Session: "page", Input: 9},
+		{Role: "view_topic", USD: .0014, Calls: 1, Session: "page", Input: 9},
+		{Role: "factory triage", USD: .1103, Calls: 1, Input: 9},
+		{Role: "factory scout", USD: .0015, Calls: 1, Input: 9},
+	}
+	want := 0.0
+	for _, row := range rows {
+		row.At, row.Day, row.Model = now, day, "m/one"
+		want += row.USD
+		session.RecordUsage(path, row)
+	}
+	deadline := time.After(5 * time.Second)
+	last := 0.0
+	for math.Abs(last-want) > 1e-9 {
+		select {
+		case changed := <-got:
+			last = changed.Spend.TodayUSD
+		case <-deadline:
+			t.Fatalf("spend.changed last read %.4f, ledger has %.4f", last, want)
+		}
+	}
+	report, err := b.SpendReport(appwire.SpendReportAsk{Filter: appwire.SpendLedgerFilter{From: day, To: day}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Totals.CostUSD == nil || math.Abs(*report.Totals.CostUSD-want) > 1e-9 || report.Totals.Records != len(rows) {
+		t.Fatalf("spend.report totals %+v, ledger has %.4f in %d rows", report.Totals, want, len(rows))
+	}
+}
+
+type appEmitFunc func(event string, payload any)
+
+func (f appEmitFunc) Emit(event string, payload any) { f(event, payload) }
+
+// Factory's own AI has its own figure on spend.today, so it isn't called a chat.
+// A job's rows stay the job's, whatever their role.
+func TestSpendTodayNamesFactoryAI(t *testing.T) {
+	t.Setenv(config.ProfileDirEnv, t.TempDir())
+	path := session.UsageLedgerPath()
+	t.Cleanup(func() { session.StopUsageWriter(path) })
+	b := &appBackend{now: time.Now}
+	b.dayAuth.profile, b.dayAuth.settled = config.ProfileDir(), true
+	now := time.Now()
+	for _, row := range []session.UsageLine{
+		{Role: factoryTriageName, USD: .1103, Input: 9},
+		{Role: factoryScoutName, USD: .0015, Input: 9},
+		{Role: "repo_ask", USD: .0061, Input: 9},
+		{Role: "pipeline_ai", USD: .0041, Input: 9},
+		{Role: "view_topic", USD: .0014, Input: 9},
+		{Role: "markreader", USD: .0109, Input: 9},
+		{USD: .02, Input: 9},
+		{Role: "factory triage", USD: .03, Input: 9, FactoryJob: "acme/api#1"},
+	} {
+		row.At, row.Model = now, "m/one"
+		session.RecordUsage(path, row)
+	}
+	if !session.FlushUsage() {
+		t.Fatal("flush")
+	}
+	spend, err := b.SpendToday()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spend.FactoryAIUSD == nil || math.Abs(*spend.FactoryAIUSD-.1234) > 1e-9 || math.Abs(spend.TodayUSD-.1843) > 1e-9 {
+		t.Fatalf("spend.today = %+v", spend)
 	}
 }

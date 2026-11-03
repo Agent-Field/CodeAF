@@ -576,7 +576,6 @@ func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkin
 				// the worker sends names the gate and not the step before it.
 				// A worker still cannot pass the gate: only the person's door does.
 				it.Stream.Cur = i
-				dropSettledPlanApproval(it)
 			}
 			if note != "" {
 				ph.Note = note
