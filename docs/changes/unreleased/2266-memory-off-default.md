@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: codeaf asks before learning from chats and jobs
-pr: 0
+pr: 2266
 surface: [engine, chat]
 invalidates:
   - "Fresh homes automatically armed capture, while memory.enabled governed only noticing and defaulted on."
