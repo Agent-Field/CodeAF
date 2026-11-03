@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -307,9 +308,7 @@ func Merge(repo, personal File) (File, []Problem) {
 		probs = tightenStep(&out, repo, name, step, probs)
 	}
 	if personal.set.adapt {
-		if next, ok := factory.StricterAdapt(repo.Adapt, personal.Adapt); ok {
-			out.Adapt = next
-		} else {
+		if !tightenAdapt(&out, repo, personal) {
 			probs = append(probs, Problem{Where: "adapt", Why: "ignored; a personal file cannot let the plan reshape more than the repository allows"})
 		}
 	}
@@ -328,6 +327,65 @@ func Merge(repo, personal File) (File, []Problem) {
 	probs = append(append([]Problem{}, personal.Problems...), probs...)
 	out.Problems = append(out.Problems, probs...)
 	return out, probs
+}
+
+// tightenAdapt applies a personal adapt to out, and says whether it did. One
+// personal word tightens every pipeline; a personal map tightens the kinds it
+// names. Either is ignored whole when it would loosen any pipeline.
+func tightenAdapt(out *File, repo, personal File) bool {
+	if len(repo.AdaptKinds) == 0 && len(personal.AdaptKinds) == 0 {
+		next, ok := factory.StricterAdapt(repo.Adapt, personal.Adapt)
+		if ok {
+			out.Adapt = next
+		}
+		return ok
+	}
+	have := repo.adaptByKind()
+	by := map[factory.Kind]factory.AdaptMode{}
+	for _, kind := range adaptKinds(repo, personal) {
+		next := cmp.Or(have[kind], factory.AdaptFree)
+		if w := personalAdapt(personal, kind); w != "" {
+			var ok bool
+			if next, ok = factory.StricterAdapt(next, w); !ok {
+				return false
+			}
+		}
+		if next != factory.AdaptFree {
+			by[kind] = next
+		}
+	}
+	out.Adapt, out.AdaptKinds = "", by
+	return true
+}
+
+// personalAdapt is the word a personal file says for one kind, "" for none.
+func personalAdapt(f File, kind factory.Kind) factory.AdaptMode {
+	if len(f.AdaptKinds) > 0 {
+		return f.AdaptKinds[kind]
+	}
+	return f.Adapt
+}
+
+// adaptKinds is every kind the files' pipelines or adapt maps name, issue
+// first.
+func adaptKinds(files ...File) []factory.Kind {
+	seen := map[factory.Kind]bool{factory.KindIssue: true}
+	out := []factory.Kind{factory.KindIssue}
+	add := func(kind factory.Kind) {
+		if !seen[kind] {
+			seen[kind] = true
+			out = append(out, kind)
+		}
+	}
+	for _, f := range files {
+		for kind := range f.AdaptKinds {
+			add(kind)
+		}
+		for kind := range f.Pipeline {
+			add(kind)
+		}
+	}
+	return out
 }
 
 func tightenLabels(repo, personal []string, probs []Problem) ([]string, []Problem) {
@@ -560,6 +618,7 @@ func hasFold(list []string, want string) bool {
 func cloneFile(f File) File {
 	out := f
 	out.markdownAdapt = copyAdapt(f.markdownAdapt)
+	out.AdaptKinds = copyAdapt(f.AdaptKinds)
 	out.Start.Labels = append([]string(nil), f.Start.Labels...)
 	out.Start.Never = append([]string(nil), f.Start.Never...)
 	out.Start.AskFirst = append([]string(nil), f.Start.AskFirst...)

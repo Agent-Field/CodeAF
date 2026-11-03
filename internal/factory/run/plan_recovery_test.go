@@ -25,7 +25,7 @@ func TestResumedPlanRestoresPurposeDecisionAndCompletionDoor(t *testing.T) {
 		}
 		c.Answer("Existing plan drafted; reporting it now")
 	}, FollowUp: func(ctx context.Context, c *FakeConversation, _ string) {
-		if err := c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "Use both retrieval branches"}); err != nil {
+		if err := c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "Use both retrieval branches", Files: []string{"retrieval.go"}}); err != nil {
 			t.Error(err)
 		}
 	}}

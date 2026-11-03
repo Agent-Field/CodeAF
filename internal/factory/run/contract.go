@@ -48,6 +48,11 @@ type ModelSelection struct {
 }
 
 type Job struct {
+	// Lifetime ends with the job, rather than with one stage round.
+	Lifetime context.Context
+	// PendingSpend retains the existing worker report path while owned work
+	// can still bank a receipt. Calling the returned function settles one unit.
+	PendingSpend func() func()
 	// Item is the item as it stands when the round starts.
 	Item factory.Item
 	// Stage is the stage being run and Index its place in Item.Stages.
@@ -238,6 +243,9 @@ type Options struct {
 type PublishTarget struct {
 	Source factory.Source
 	Push   func(dir, branch string) error
+	// Git reads and moves the remote with Push's own credential when a push is
+	// refused; nil uses the runner's Git.
+	Git Git
 }
 
 // InboxReply is the manager's answer to a step's question: Answer is its
@@ -272,8 +280,9 @@ type Runner struct {
 	// loopOnce makes floor, the state machine's own state (loop.go), on the
 	// first door anybody calls, so New stays the one-line constructor the
 	// lanes were handed.
-	loopOnce sync.Once
-	floor    *floorLoop
+	loopOnce    sync.Once
+	floor       *floorLoop
+	stopReaders sync.Map
 }
 
 // New makes a runner. It starts nothing until Launch.

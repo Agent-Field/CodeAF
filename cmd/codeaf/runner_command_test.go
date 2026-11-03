@@ -49,6 +49,7 @@ type runnerLab struct {
 	secret string
 	row    tokens.Token
 	login  string
+	store  *store.Store // the factory's own jobs
 }
 
 type githubStub func(*http.Request) (*http.Response, error)
@@ -56,6 +57,22 @@ type githubStub func(*http.Request) (*http.Response, error)
 func (f githubStub) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func newRunnerLab(t *testing.T, login string, expires time.Time) *runnerLab {
+	t.Helper()
+	// The GitHub poll is rate-limited by the service's own clock, so this one
+	// runs ahead of the wall clock by five seconds on every read.
+	var mu sync.Mutex
+	clock := time.Now()
+	return newRunnerLabAt(t, login, expires, func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		clock = clock.Add(6 * time.Second)
+		return clock
+	})
+}
+
+// newRunnerLabAt is [newRunnerLab] on the service clock now. A lab that leases
+// a job needs the wall clock: on the racing one every runner reads offline.
+func newRunnerLabAt(t *testing.T, login string, expires time.Time, now func() time.Time) *runnerLab {
 	t.Helper()
 	attachLab(t)
 	factoryJoinEvery = 10 * time.Millisecond
@@ -95,16 +112,6 @@ func newRunnerLab(t *testing.T, login string, expires time.Time) *runnerLab {
 	if err := tokens.Save(tokensPath, []tokens.Token{row}); err != nil {
 		t.Fatal(err)
 	}
-	// The GitHub poll is rate-limited by the service's own clock, so this one
-	// runs ahead of the wall clock by five seconds on every read.
-	var mu sync.Mutex
-	clock := time.Now()
-	now := func() time.Time {
-		mu.Lock()
-		defer mu.Unlock()
-		clock = clock.Add(6 * time.Second)
-		return clock
-	}
 	seam := factory.FixtureSeam(time.Now())
 	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "operator"}, nil }
 	lab.server = httptest.NewUnstartedServer(nil)
@@ -113,7 +120,7 @@ func newRunnerLab(t *testing.T, login string, expires time.Time) *runnerLab {
 	lab.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) })
 	lab.server.Start()
 	t.Cleanup(func() { lab.server.Close(); handler.Close() })
-	lab.row, lab.secret = row, row.Token
+	lab.row, lab.secret, lab.store = row, row.Token, st
 	lab.link = "codeaf://factory/join?url=" + lab.server.URL + "#token=" + row.Token
 	return lab
 }
