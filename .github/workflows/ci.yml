@@ -35,12 +35,14 @@ on:
     branches:
       - dev
       - santos/dev2
+      - workstreams/main
   # Also on the push, because a merge of two individually-green branches can
   # still be red, and the merge is exactly the moment nobody is watching.
   push:
     branches:
       - dev
       - santos/dev2
+      - workstreams/main
   workflow_dispatch:
 
 permissions:
