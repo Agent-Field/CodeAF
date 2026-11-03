@@ -40,6 +40,7 @@ func TestAppFactoryApprovalSurvivesLaterGatesAndRestart(t *testing.T) {
 	if err != nil || !ok || pulled.Job.ID != it.ID {
 		t.Fatalf("pull: ok=%v err=%v job=%+v", ok, err, pulled.Job)
 	}
+	active := s.factoryWire
 	params := map[string]any{"factory": st.Factory, "job": it.ID}
 	read := func(w *factoryWire) api.Job {
 		t.Helper()
@@ -55,17 +56,17 @@ func TestAppFactoryApprovalSurvivesLaterGatesAndRestart(t *testing.T) {
 	}
 	approve := func() factory.Approval {
 		t.Helper()
-		j := read(s.factoryWire)
+		j := read(active)
 		if !j.Can.Approve {
 			t.Fatalf("current gate cannot be approved: %+v", j)
 		}
 		var acted appwire.FactoryJobActed
-		s.must("factory.job_approve", map[string]any{"factory": st.Factory, "job": it.ID, "expect": map[string]any{"version": j.Version}}, &acted)
+		active.must("factory.job_approve", map[string]any{"factory": st.Factory, "job": it.ID, "expect": map[string]any{"version": j.Version}}, &acted)
 		if acted.Approval == nil || acted.Approval.State != "approving" || acted.Approval.DecidedBy != "owner" {
 			t.Fatalf("personal decision = %+v", acted.Approval)
 		}
 		time.Sleep(factory.ApprovalUndo + 20*time.Millisecond)
-		settled := read(s.factoryWire)
+		settled := read(active)
 		if settled.Approval == nil || settled.Approval.State != "approved" || settled.Approval.DecidedBy != "owner" {
 			t.Fatalf("settled decision = %+v", settled.Approval)
 		}
@@ -87,18 +88,36 @@ func TestAppFactoryApprovalSurvivesLaterGatesAndRestart(t *testing.T) {
 	if waiting.NeedsYou == nil || !waiting.Can.Approve || waiting.Steps[3].State != "waiting" {
 		t.Fatalf("Test must retain its own waiting gate: %+v", waiting)
 	}
-	second := approve()
-	if !second.At.After(first.At) {
-		t.Fatal("later gate reused the earlier consent")
-	}
-	report(api.WorkerReport{Steps: []api.StepReport{{Name: "test", State: api.StepDone}}})
-	assertDecision("later decision", read(s.factoryWire), second)
-	if err := worker.Done(ctx, pulled.Lease.ID, api.WorkerDone{State: api.StateNeedsYou, Ready: true}); err != nil {
+	if err := worker.Done(ctx, pulled.Lease.ID, api.WorkerDone{State: api.StateNeedsYou}); err != nil {
 		t.Fatal(err)
 	}
 	s.backend.Close()
 	w, _ := reopened(t, s.backend.factoryHub())
 	var list appwire.FactoryList
 	w.must("factory.list", struct{}{}, &list)
-	assertDecision("restart and reopen", read(w), second)
+	after := read(w)
+	assertDecision("restart and reopen at Test gate", after, first)
+	if after.NeedsYou == nil || !after.Can.Approve || after.Steps[3].State != "waiting" {
+		t.Fatalf("restart passed or lost the Test gate: %+v", after)
+	}
+	active = w
+	second := approve()
+	if !second.At.After(first.At) {
+		t.Fatal("later gate reused the earlier consent")
+	}
+	var status appwire.FactoryLocalStatus
+	w.must("factory.local_status", map[string]any{"caller": "w1"}, &status)
+	worker = client.Open(status.URL, w.backend.factoryHub().tokenFor(st.Factory)).Worker("")
+	if _, err := worker.Attach(ctx, api.WorkerAttach{Machine: "approval-fixture", Name: "fixture", Handle: "owner", Slots: 1}); err != nil {
+		t.Fatal(err)
+	}
+	pulled, ok, err = worker.Pull(ctx)
+	if err != nil || !ok || pulled.Job.ID != it.ID {
+		t.Fatalf("resumed pull: ok=%v err=%v job=%+v", ok, err, pulled.Job)
+	}
+	report(api.WorkerReport{Steps: []api.StepReport{{Name: "test", State: api.StepDone}}})
+	assertDecision("later decision", read(w), second)
+	if err := worker.Done(ctx, pulled.Lease.ID, api.WorkerDone{State: api.StateNeedsYou, Ready: true}); err != nil {
+		t.Fatal(err)
+	}
 }
