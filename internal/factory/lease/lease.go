@@ -300,7 +300,7 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 
 // holdAtJobBudget uses the server's saved total while its item lock is held.
 func holdAtJobBudget(it *factory.Item, now time.Time) bool {
-	if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap {
+	if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap || approvedWriteOnly(*it) {
 		return false
 	}
 	ask := factory.Asked{With: factory.AskedYou, At: now}
@@ -610,4 +610,17 @@ func (d *Desk) HasLiveHold(id int) (bool, error) {
 		return nil
 	})
 	return held, err
+}
+
+// Approved forge writes spend no model budget. A running pipeline phase still
+// needs admission even when publication consent or a merge remains on the job.
+func approvedWriteOnly(it factory.Item) bool {
+ writing := it.Publishing || it.Merging != nil && (it.Merging.State == factory.MergeQueued || it.Merging.State == factory.MergeMerging)
+ if !writing { return false }
+ if it.Stream != nil {
+  for _, ph := range it.Stream.Phases {
+   if ph.State == factory.PhaseRunning { return false }
+  }
+ }
+ return true
 }
