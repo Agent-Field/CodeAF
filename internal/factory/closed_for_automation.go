@@ -1,12 +1,11 @@
-package github
+package factory
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 const automaticStandingWait = 5 * time.Second
@@ -25,8 +24,8 @@ var automaticStandings sync.Map
 // ClosedForAutomation remembers a closed answer for this process, shared by
 // intake and arrival reads. Failures and open answers never stop work. A
 // store without a root can still check, but cannot share remembered answers.
-func ClosedForAutomation(ctx context.Context, root string, it factory.Item, standing func(context.Context, factory.Item) (string, error)) bool {
-	if standing == nil || it.Origin != factory.OriginForge || it.Num <= 0 {
+func ClosedForAutomation(ctx context.Context, root string, it Item, standing func(context.Context, Item) (string, error)) bool {
+	if standing == nil || it.Origin != OriginForge || it.Num <= 0 {
 		return false
 	}
 
@@ -36,7 +35,7 @@ func ClosedForAutomation(ctx context.Context, root string, it factory.Item, stan
 	var key automaticKey
 	if root != "" {
 		root, _ = filepath.Abs(root)
-		key = automaticKey{root, itemKey(it)}
+		key = automaticKey{root, fmt.Sprintf("%s/%s/%s#%d", it.Origin, it.Product, it.Repo, it.Num)}
 		value, loaded := automaticStandings.LoadOrStore(key, entry)
 		if loaded {
 			entry = value.(*automaticStanding)
@@ -50,7 +49,7 @@ func ClosedForAutomation(ctx context.Context, root string, it factory.Item, stan
 	}
 	defer close(entry.done)
 	how, err := standing(ctx, it)
-	entry.closed = err == nil && ctx.Err() == nil && (how == StandingClosed || how == StandingMerged)
+	entry.closed = err == nil && ctx.Err() == nil && (how == "closed" || how == "merged")
 	if !entry.closed && root != "" {
 		automaticStandings.Delete(key)
 	}

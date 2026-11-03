@@ -30,7 +30,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
-	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 )
 
 // BodyMost is how much of an item's text the prompt carries. The poll already
@@ -542,7 +541,7 @@ func (w *worker) closed(ctx context.Context, it factory.Item) bool {
 	if st, ok := w.st.(interface{ Root() string }); ok {
 		root = st.Root()
 	}
-	return factorygithub.ClosedForAutomation(ctx, root, it, w.opts.Standing)
+	return factory.ClosedForAutomation(ctx, root, it, w.opts.Standing)
 }
 
 // read reads one item, marked in flight. A call that fails is stamped (read,
