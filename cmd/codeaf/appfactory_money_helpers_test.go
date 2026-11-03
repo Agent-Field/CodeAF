@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -90,7 +91,10 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.backend.mint = appMint
+	// The fixture opener is a direct session, so give it a session transcript
+	// rather than a cell that requires the separate engine assembler.
+	transcript := filepath.Join(t.TempDir(), "page-ai", "transcript.jsonl")
+	s.backend.mint = func(string) (string, error) { return transcript, nil }
 	var created struct {
 		Agent appwire.Agent `json:"agent"`
 	}
@@ -100,6 +104,7 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 		var answer appwire.Errand
 		deadline := time.Now().Add(5 * time.Second)
 		for {
+			s.must("agents.open", map[string]any{"id": created.Agent.ID}, &struct{}{})
 			s.must("agents.errand", map[string]any{"agent": created.Agent.ID, "purpose": path.purpose, "role": path.role, "system": "Answer briefly.", "messages": []appwire.ErrandMessage{{Role: "user", Text: "Summarize."}}, "max_tokens": 100}, &answer)
 			if answer.Reason != appwire.ErrandNotOpen {
 				break
