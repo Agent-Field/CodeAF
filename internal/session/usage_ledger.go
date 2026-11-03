@@ -127,6 +127,8 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
+ // GenerationID links this call to its provider receipt.
+ GenerationID string `json:"generation_id,omitempty"`
 	// ID names this one row, once, so two readers that meet the same row — a
 	// process's own notice of what it just banked and the same row read back
 	// off the disk — can count it once. It is stamped by [RecordUsage] when the
@@ -1100,6 +1102,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	a.mu.Unlock()
 	now := time.Now()
 	line := UsageLine{
+ GenerationID: strings.TrimSpace(call.generationID),
 		At:         now,
 		Day:        now.Local().Format(usageDayLayout),
 		Model:      strings.TrimSpace(call.model),

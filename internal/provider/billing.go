@@ -80,6 +80,10 @@ type BillingSink func(Billed)
 // provider's own receipt supplied the embedded figures; when it is false every
 // figure is zero and nothing may be banked.
 type Reconciled struct {
+ // Tag identifies the purpose of the original call.
+ Tag string
+ // Interim marks measured usage retained when a final receipt was unavailable.
+ Interim bool
 	Billed
 	// Ref is the provider's generation id, and is empty when the stream never
 	// named the call well enough for a receipt to be requested.
