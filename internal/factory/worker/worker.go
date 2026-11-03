@@ -601,11 +601,13 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
 			_ = r.Stop(j.id)
-			if r.Running(j.id) { return true }
-            // The forge may have answered before this heartbeat delivered Stop.
-            // Flush that receipt before releasing the publishing lease.
-            cur, err := j.o.Mirror.Get(j.id)
-            return err == nil && cur.PullRequest != nil && cur.PublishStatus != nil && cur.PublishStatus.State == "opened"
+			if r.Running(j.id) {
+				return true
+			}
+			// The forge may have answered before this heartbeat delivered Stop.
+			// Flush that receipt before releasing the publishing lease.
+			cur, err := j.o.Mirror.Get(j.id)
+			return err == nil && cur.PullRequest != nil && cur.PublishStatus != nil && cur.PublishStatus.State == "opened"
 		}
 	}
 	return true

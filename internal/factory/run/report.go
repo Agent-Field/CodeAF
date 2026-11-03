@@ -1,8 +1,8 @@
 package run
 
 import (
+	"encoding/json"
 	"fmt"
- "encoding/json"
 	"math"
 	"strings"
 	"time"
@@ -23,26 +23,38 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	}
 	// Resume may queue a paused job before its old lease has flushed the
 	// cancelled round. That holder still owes the job its work and spending.
-    if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
-        // Validate the whole report before preserving a sent request's receipt.
-        raw, err := json.Marshal(it)
-        if err != nil { return err }
-        var candidate factory.Item
-        if err := json.Unmarshal(raw, &candidate); err != nil { return err }
-        candidate.State = factory.StateRunning
-        if err := ApplyReport(&candidate, report, now); err != nil { return err }
-        if report.PR == nil {
-            // A publisher's already queued progress cannot revive a stopped job.
-            if it.Stream != nil && candidate.Stream != nil { it.Stream.Spent = candidate.Stream.Spent }
-            return nil
-        }
-        if report.Publishing == nil || report.Publishing.State != "opened" { return fmt.Errorf("a stopped publisher reports an opened PR receipt") }
-        candidate.Failure = nil
-        if err := ShipPublished(&candidate, now); err != nil { return err }
-        loopSay(&candidate, now, "said", stoppedPRWords(report.PR.URL))
-        *it = candidate
-        return nil
-    }
+	if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+		// Validate the whole report before preserving a sent request's receipt.
+		raw, err := json.Marshal(it)
+		if err != nil {
+			return err
+		}
+		var candidate factory.Item
+		if err := json.Unmarshal(raw, &candidate); err != nil {
+			return err
+		}
+		candidate.State = factory.StateRunning
+		if err := ApplyReport(&candidate, report, now); err != nil {
+			return err
+		}
+		if report.PR == nil {
+			// A publisher's already queued progress cannot revive a stopped job.
+			if it.Stream != nil && candidate.Stream != nil {
+				it.Stream.Spent = candidate.Stream.Spent
+			}
+			return nil
+		}
+		if report.Publishing == nil || report.Publishing.State != "opened" {
+			return fmt.Errorf("a stopped publisher reports an opened PR receipt")
+		}
+		candidate.Failure = nil
+		if err := ShipPublished(&candidate, now); err != nil {
+			return err
+		}
+		loopSay(&candidate, now, "said", stoppedPRWords(report.PR.URL))
+		*it = candidate
+		return nil
+	}
 
 	if it.State != factory.StateRunning && it.State != factory.StateNeedsYou && it.State != factory.StateQueued {
 		return fmt.Errorf("job is no longer running")
@@ -562,7 +574,9 @@ func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 // FinishReport uses the local runner's landing gate before releasing a hold.
 // A worker may report interruption or a question, but cannot approve proof.
 func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
-    if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() { return nil }
+	if it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
+		return nil
+	}
 	// A paused drive releases its lease without ending the saved run. A
 	// resume already queued by the person must survive that release too.
 	if state == factory.StateNew && (storedPaused(*it) || it.State == factory.StateQueued) {
