@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	"github.com/Agent-Field/codeaf/internal/githubcalls"
 )
 
 // JobFolders is a drop's reach into this machine: the job's local branch and
@@ -433,6 +434,9 @@ func (h *Handler) route(pattern string, methods map[string]http.HandlerFunc) {
 	sort.Strings(allowed)
 	h.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		if handler := methods[r.Method]; handler != nil {
+			if ctx := githubcalls.WithCaller(r.Context(), r.Method+" "+pattern); ctx != r.Context() {
+				r = r.WithContext(ctx)
+			}
 			handler(w, r)
 			return
 		}
