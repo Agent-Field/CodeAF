@@ -88,7 +88,7 @@ usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf
 ```
 
 - `codeaf pair` with nothing after it is for the NEW device. It asks to join and shows a link.
-- `codeaf pair approve <link-or-code>` is for a device that is already in. It shows who is asking and asks `a / d`. Only `a` approves; `d`, Esc, Enter and anything else decline. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
+- `codeaf pair approve <link-or-code>` is for a device that is already in. It shows who is asking and the check number, then asks on its own line: `a approve · d decline:`. Only `a` approves; `d`, Esc, Enter and anything else decline. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
 - `--name <name>` is what your devices call this computer. See the page *Naming a device*.
 - `--via <address>` names the address of the sync service to go through when it is not the one this device already uses. Pass it to both `codeaf pair` and `codeaf pair approve`. The new device prints the full approve line with `--via` in it when one is needed.
 
@@ -102,7 +102,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 The new device shows a check number of four digits. The device that approves shows the same four digits. Look at both screens. Approve only when they match. If they do not match, decline: somebody else may have used the link.
 
-On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question reads the same: `a / d`. Only `a` approves; `d`, Esc, Enter and anything else decline. Code pairing keeps its `y / n` question.
+On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question reads the same, with the keys on the line below: `a approve · d decline:`. Only `a` approves; `d`, Esc, Enter and anything else decline. Code pairing keeps its `y / n` question.
 
 ## Approve a new device — the approve screen, a and d, and decline
 
