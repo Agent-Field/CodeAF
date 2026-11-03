@@ -447,6 +447,22 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 
 **Auto-merge** is off unless the repository's `.codeaf/factory.yaml` says `merge: {auto: on}` (`method: merge`, `squash` or `rebase`; omitted lets the repository's settings choose). A personal `~/.codeaf/factory.yaml` may only turn it off. The setting is fixed on a job when its proof is approved. An auto-merge also needs every claim proven and at least one passing check, and until then it waits quietly. A merge that failed is the person's to look at, says why, and is never tried again on its own.
 
+## a runner missed my choice — lost heartbeat replies, repeated signals
+
+A current factory keeps a choice sent to a current runner until that runner
+has received and handled it. Losing a heartbeat reply delays the choice until
+the next heartbeat; receiving it twice does not apply it twice during that run.
+This includes answers, steering words, manager replies, budget and model choices,
+autonomy changes, and pauses. Their order stays the same. Publish and merge
+continue to wait for the runner that pulls that work; a live heartbeat does
+not start them. Stop clears pending choices, and choices from an ended run
+are not applied to a later run.
+
+This delivery protection needs a current factory and runner. Older runners
+keep their existing delivery behavior; current runners can still work with
+older factories. A runner process that disappears needs the existing job
+recovery flow rather than an automatic replay of its old choices.
+
 ## pause a running job — Pause, Hold, Resume, paused step, keep the conversation
 
 **Pause** (the app wire's Hold action) cuts the running step's current model
