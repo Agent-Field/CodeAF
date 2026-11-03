@@ -693,7 +693,7 @@ const (
 	// role, the call site writes `callPurpose(roles.RoleX)` and no constant is
 	// declared here — restating a role's string would be the same word in two
 	// places, and the point of a small closed block is that what IS in it stands
-	// out. The two below are not roles at all.
+	// out. The purposes below are not roles at all.
 	//
 	// purposeAutomationCheck is one automation watch's judgment: does what its
 	// look saw meet the condition? It is the ONE DELIBERATE DIVERGENCE: the call
@@ -704,6 +704,8 @@ const (
 	// tag (issue #1010, whose spine is #928). The standing check this replaced
 	// was tagged `standing-check`, which cmd/codeaf-replay still reads.
 	purposeAutomationCheck callPurpose = "automation-check"
+	// purposeWorkstreamWake names one workstream's event turn on the sentinel ladder.
+	purposeWorkstreamWake callPurpose = "workstream-wake"
 	// purposeDocument is a rung of the document reader — the model's own eyes on
 	// a PDF the `read` tool cannot open as text. It is not a role because the
 	// reader resolves its model from the document settings and never from the

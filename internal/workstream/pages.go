@@ -259,14 +259,7 @@ func (s *Store) savePage(ctx context.Context, id string, base int, doc json.RawM
 		if err := checkDoc(doc); err != nil {
 			return err
 		}
-		at := s.now().UnixMilli()
-		if _, err := tx.ExecContext(ctx, "UPDATE workstream_pages SET title=?,doc=?,version=version+1,updated_at=?,updated_by=?,updated_from=? WHERE id=?", title, string(doc), at, by, source, id); err != nil {
-			return err
-		}
-		if err := saveVersion(ctx, tx, id); err != nil {
-			return err
-		}
-		if err := touch(ctx, tx, p.WorkstreamID, at); err != nil {
+		if err := workstreamSavePageIn(ctx, tx, p, title, doc, by, source, s.now().UnixMilli()); err != nil {
 			return err
 		}
 		out, _, err = pageIn(ctx, tx, id)
@@ -277,6 +270,23 @@ func (s *Store) savePage(ctx context.Context, id string, base int, doc json.RawM
 		return Page{}, Change{}, err
 	}
 	return out, c, nil
+}
+
+// workstreamSavePageIn shares history and attribution with atomic wake writes.
+func workstreamSavePageIn(ctx context.Context, tx *sql.Tx, p Page, title string, doc json.RawMessage, by string, source any, at int64) error {
+	if err := workstreamPageWriteAllowed(ctx, tx, p, by); err != nil {
+		return err
+	}
+	if err := checkDoc(doc); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE workstream_pages SET title=?,doc=?,version=version+1,updated_at=?,updated_by=?,updated_from=? WHERE id=?", title, string(doc), at, by, source, p.ID); err != nil {
+		return err
+	}
+	if err := saveVersion(ctx, tx, p.ID); err != nil {
+		return err
+	}
+	return touch(ctx, tx, p.WorkstreamID, at)
 }
 
 // placePage validates every target before changing sibling positions. It packs
@@ -406,40 +416,7 @@ func (s *Store) CreatePage(ctx context.Context, p PageCreate) (Page, Change, err
 	var out Page
 	var c Change
 	err = s.workspace.Write(ctx, func(tx *sql.Tx) error {
-		if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, p.By); err != nil {
-			return err
-		}
-		var count int
-		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM workstream_pages WHERE workstream_id=?", p.WorkstreamID).Scan(&count); err != nil {
-			return err
-		}
-		if count >= PagesMax {
-			return fmt.Errorf("%w: a workstream holds at most %d pages, including deleted pages", ErrLimit, PagesMax)
-		}
-		id, err := s.newID()
-		if err != nil {
-			return err
-		}
-		at := s.now().UnixMilli()
-		// A temporary root position distinct from every packed position makes the
-		// common placement helper handle creation and movement identically.
-		if _, err := tx.ExecContext(ctx, `INSERT INTO workstream_pages(id,workstream_id,title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc) VALUES (?,?,?,?,?,2147483647,1,?,?,?,?)`, id, p.WorkstreamID, p.Title, p.Owner, p.ReadByJobs, at, p.By, source, string(p.Doc)); err != nil {
-			return err
-		}
-		page, _, err := livePageIn(ctx, tx, id)
-		if err != nil {
-			return err
-		}
-		if _, err := placePage(ctx, tx, page, p.ParentID, p.AfterID, p.AfterID == "", at, p.By, source); err != nil {
-			return err
-		}
-		if err := saveVersion(ctx, tx, id); err != nil {
-			return err
-		}
-		if err := touch(ctx, tx, p.WorkstreamID, at); err != nil {
-			return err
-		}
-		out, _, err = pageIn(ctx, tx, id)
+		out, err = s.workstreamCreatePageIn(ctx, tx, p, source)
 		c = changed(p.WorkstreamID, PartPages)
 		return err
 	})
@@ -447,6 +424,43 @@ func (s *Store) CreatePage(ctx context.Context, p PageCreate) (Page, Change, err
 		return Page{}, Change{}, err
 	}
 	return out, c, nil
+}
+
+func (s *Store) workstreamCreatePageIn(ctx context.Context, tx *sql.Tx, p PageCreate, source any) (Page, error) {
+	if err := workstreamWriteAllowed(ctx, tx, p.WorkstreamID, p.By); err != nil {
+		return Page{}, err
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM workstream_pages WHERE workstream_id=?", p.WorkstreamID).Scan(&count); err != nil {
+		return Page{}, err
+	}
+	if count >= PagesMax {
+		return Page{}, fmt.Errorf("%w: a workstream holds at most %d pages, including deleted pages", ErrLimit, PagesMax)
+	}
+	id, err := s.newID()
+	if err != nil {
+		return Page{}, err
+	}
+	at := s.now().UnixMilli()
+	// A temporary root position lets the common placement path pack every sibling.
+	if _, err := tx.ExecContext(ctx, `INSERT INTO workstream_pages(id,workstream_id,title,owner,read_by_jobs,position,version,updated_at,updated_by,updated_from,doc) VALUES (?,?,?,?,?,2147483647,1,?,?,?,?)`, id, p.WorkstreamID, p.Title, p.Owner, p.ReadByJobs, at, p.By, source, string(p.Doc)); err != nil {
+		return Page{}, err
+	}
+	page, _, err := livePageIn(ctx, tx, id)
+	if err != nil {
+		return Page{}, err
+	}
+	if _, err := placePage(ctx, tx, page, p.ParentID, p.AfterID, p.AfterID == "", at, p.By, source); err != nil {
+		return Page{}, err
+	}
+	if err := saveVersion(ctx, tx, id); err != nil {
+		return Page{}, err
+	}
+	if err := touch(ctx, tx, p.WorkstreamID, at); err != nil {
+		return Page{}, err
+	}
+	out, _, err := pageIn(ctx, tx, id)
+	return out, err
 }
 func (s *Store) UpdatePage(ctx context.Context, id string, p PagePatch) (PageNode, Change, error) {
 	if p.Title != nil {

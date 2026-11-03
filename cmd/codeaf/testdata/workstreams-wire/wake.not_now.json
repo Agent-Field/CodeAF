@@ -1,0 +1,46 @@
+{
+  "method": "wake.not_now",
+  "errors": [
+    "bad_params",
+    "not_found",
+    "busy",
+    "unknown_method"
+  ],
+  "params_type": "WorkstreamWakeNotNowParams",
+  "result_type": "WorkstreamWakeNotNowResult",
+  "examples": {
+    "params": [
+      {
+        "id": "wake_11"
+      }
+    ],
+    "result": [
+      {
+        "wake": {
+          "id": "wake_11",
+          "workstream_id": "ws_8f2c1a",
+          "event": {
+            "kind": "merged",
+            "factory": "f_local",
+            "job": 1102,
+            "label": "api#1102 merged"
+          },
+          "state": "settled",
+          "started_at": "2026-11-03T14:00:00Z",
+          "settled_at": "2026-11-03T14:00:02Z",
+          "cost_usd": 0.04,
+          "summary": "Review the rollout.",
+          "dismissed_at": "2026-11-03T14:07:00Z",
+          "items": [
+            {
+              "id": "wi_decision",
+              "kind": "decision",
+              "state": "dismissed",
+              "text": "Keep decision: Roll out after review."
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
