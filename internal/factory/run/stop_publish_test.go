@@ -13,12 +13,15 @@ import (
 type stopPublishSource struct {
  *prSource
  before func()
+ after func()
 }
 
 func (s stopPublishSource) Write(ctx context.Context, a factory.Action) (factory.Receipt, error) {
  if s.before != nil { s.before() }
  // GitHub may accept an already sent request despite local cancellation.
- return s.prSource.Write(context.Background(), a)
+ rcpt, err := s.prSource.Write(context.Background(), a)
+ if s.after != nil { s.after() }
+ return rcpt, err
 }
 
 type stopPublishGit struct { Git; afterPush func() }
@@ -32,7 +35,7 @@ func TestStopBeatsPublishBoundaries(t *testing.T) {
  for _, point := range []string{"publish_started", "before_push", "after_push", "request_sent", "github_answered"} {
   t.Run(point, func(t *testing.T) {
    g := newPublishRig(t, factory.Item{Num:12, Kind:factory.KindIssue, Repo:"acme/api", Title:"Stop publication"})
-   stop := func() { if err := g.r.Stop(g.id); err != nil { t.Errorf("Stop: %v", err) } }
+   stop := func() { if err := g.st.Update(g.id,func(it *factory.Item) error { return StopItem(it,time.Now()) }); err != nil { t.Errorf("Stop: %v", err) } }
    pushes := 0
    originalPush := g.r.opts.Push
    g.r.opts.Push = func(dir, ref string) error { pushes++; return originalPush(dir, ref) }
@@ -47,7 +50,7 @@ func TestStopBeatsPublishBoundaries(t *testing.T) {
    case "request_sent":
     g.r.opts.Source = func(string) factory.Source { return stopPublishSource{prSource:g.src,before:stop} }
    case "github_answered":
-    g.st.ObserveWrites(func(before, after factory.Item) { if after.PublishStatus != nil && after.PublishStatus.State == "opened" && before.State != factory.StateShipped { stop() } })
+    g.r.opts.Source = func(string) factory.Source { return stopPublishSource{prSource:g.src,after:stop} }
    }
    if err := g.r.Publish(g.id,testTrailer); err != nil { t.Fatal(err) }
    deadline := time.After(10*time.Second)
