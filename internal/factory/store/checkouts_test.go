@@ -45,7 +45,7 @@ func TestCheckoutsRoundTripAndFullNameLookup(t *testing.T) {
 	}
 }
 
-func TestCheckoutIdentityAndStoredJobMigration(t *testing.T) {
+func TestCheckoutIdentityIsNormalizedWithoutWritingOnRead(t *testing.T) {
 	for _, key := range []string{"local-alias", "ledger", "acme/ledger"} {
 		t.Run(key, func(t *testing.T) {
 			st, err := Open(t.TempDir())
@@ -89,15 +89,18 @@ func TestCheckoutIdentityAndStoredJobMigration(t *testing.T) {
 				t.Fatalf("loaded = %+v, %v", items, err)
 			}
 			d, err := st.read(st.ItemPath(it.ID))
-			if err != nil || d.Item.Repo != "acme/ledger" || d.Revision != 2 {
+			if err != nil || d.Item.Repo != alias || d.Revision != 1 {
 				t.Fatalf("stored = %+v, %v", d, err)
 			}
 			if _, err := st.Get(it.ID); err != nil {
 				t.Fatal(err)
 			}
-			if rev, _ := st.Revision(it.ID); rev != 2 {
-				t.Fatalf("migration repeated: revision %d", rev)
+			if rev, _ := st.Revision(it.ID); rev != 1 {
+				t.Fatalf("read changed revision: %d", rev)
 			}
+			if err := st.Update(it.ID, func(cur *factory.Item) error { cur.Title = "updated"; return nil }); err != nil { t.Fatal(err) }
+   persisted, err := st.read(st.ItemPath(it.ID))
+   if err != nil || persisted.Item.Repo != "acme/ledger" || persisted.Revision != 2 { t.Fatalf("write did not normalize identity: %+v %v", persisted, err) }
 			made, err := st.Create(factory.Item{Repo: alias, Title: "new"})
 			if err != nil || made.Repo != "acme/ledger" {
 				t.Fatalf("new = %+v, %v", made, err)
@@ -143,7 +146,7 @@ func TestCheckoutConfigFallbackDoesNotCrossOwners(t *testing.T) {
 	}
 }
 
-func TestGetMigratesShortRepositoryFromWatchedConfig(t *testing.T) {
+func TestGetNormalizesShortRepositoryFromWatchedConfig(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

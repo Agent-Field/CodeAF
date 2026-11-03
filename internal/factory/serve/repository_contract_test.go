@@ -78,8 +78,8 @@ func TestRepositoryIdentityContractAndViewerFiltering(t *testing.T) {
 				t.Fatal(err)
 			}
 			var stored struct{ Item factory.Item }
-			if json.Unmarshal(raw, &stored) != nil || stored.Item.Repo != "acme/api" {
-				t.Fatalf("legacy job was not persisted: %s", raw)
+			if json.Unmarshal(raw, &stored) != nil || stored.Item.Repo != "api" {
+				t.Fatalf("read persisted a normalized repository: %s", raw)
 			}
 		})
 	}

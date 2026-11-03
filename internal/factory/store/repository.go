@@ -161,4 +161,3 @@ func (st *Store) normalizeRepository(it *factory.Item) error {
 	}
 	return err
 }
-

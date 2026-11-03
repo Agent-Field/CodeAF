@@ -106,6 +106,7 @@ func TestV2RunnerCapacitySleepAndSixtySecondOffline(t *testing.T) {
 		t.Fatalf("before deadline: %+v", list)
 	}
 	f.now = f.now.Add(time.Nanosecond)
+	f.restart(t)
 	f.request(t, "GET", "/v1/runners", "operator-secret", nil, 200, &list)
 	if list.Runners[0].State != api.RunnerOffline {
 		t.Fatalf("at deadline: %+v", list)
@@ -272,4 +273,11 @@ func TestV2RepoOnOffIsRecordedAsOperator(t *testing.T) {
 	if err != nil || len(events) != 2 || events[0].Verb != "connected repo" || events[1].Verb != "disconnected repo" || !events[1].Actor.Operator {
 		t.Fatalf("repo Activity: %+v %v", events, err)
 	}
+}
+
+func (f *peopleV2Fixture) restart(t *testing.T) {
+ t.Helper()
+ f.h.Close()
+ f.h = New(f.seam, f.cfg)
+ t.Cleanup(f.h.Close)
 }

@@ -59,5 +59,6 @@ func (b *appBackend) tryFactoryStatus(a *appAgent, text, clientID string, shown 
 	for _, e := range entries {
 		b.emitAppFooter(a, e.ID)
 	}
+	if err := b.touchJobConversation(a.transcript); err != nil { return turn, true, &appUnsureSend{err: appEngineError(err)} }
 	return turn, true, nil
 }

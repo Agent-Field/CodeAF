@@ -52,6 +52,7 @@ func TestPublishRunnerOfflineQuestionResumesTheSameApproval(t *testing.T) {
 				t.Fatalf("publish signal = %+v", first.Signals)
 			}
 			f.now = first.Lease.ExpiresAt
+			f.restart(t)
 			path := fmt.Sprintf("/v1/jobs/%d", it.ID)
 			raw := f.request(t, "GET", path, "operator-secret", nil, 200, nil)
 			if !strings.Contains(raw, `"kind":"runner_offline"`) || !strings.Contains(raw, "Runner went offline mid-step") {
