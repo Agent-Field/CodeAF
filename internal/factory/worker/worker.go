@@ -368,10 +368,25 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		j.spendBaseline = it.Stream.Spent
 	}
 	defer j.settleAccounting(ctx)
+	type admission struct {
+		ctx context.Context
+		step factory.StageReport
+		done chan error
+	}
+	admit := make(chan admission)
 	o.Runner.SetStepBegin(it.ID, func(ctx context.Context, step factory.StageReport) error {
-		readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
-		defer cancel()
-		return w.Report(readCtx, pulled.Lease.ID, api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{step}}))
+		request := admission{ctx: ctx, step: step, done: make(chan error, 1)}
+		select {
+		case admit <- request:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		select {
+		case err := <-request.done:
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	})
 	defer o.Runner.SetStepBegin(it.ID, nil)
 	if err := start(o.Runner, it.ID); err != nil {
@@ -398,6 +413,22 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 			}
 		}
 		select {
+		case request := <-admit:
+			// Admission shares the delivery loop so its spend flush cannot race
+			// periodic reporting or replay an unacknowledged cost delta.
+			if !j.flush(request.ctx) {
+				request.done <- client.ErrLeaseGone
+				j.drop()
+				return
+			}
+			if j.pending != nil || j.blocked != "" {
+				request.done <- errors.New("step admission waits for unreported spending")
+				continue
+			}
+			readCtx, cancel := context.WithTimeout(request.ctx, deliveryRequestTimeout)
+			err := w.Report(readCtx, pulled.Lease.ID, api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{request.step}}))
+			cancel()
+			request.done <- err
 		case <-ctx.Done():
 			j.drop()
 			return
