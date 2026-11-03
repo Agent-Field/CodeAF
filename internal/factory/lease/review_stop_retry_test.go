@@ -37,6 +37,9 @@ func TestReviewStopAllowsImmediateRunAgain(t *testing.T) {
  replacement, err := f.desk.Pull(worker("replacement", "sam"))
  if err != nil { t.Fatal(err) }
  if err := f.desk.CheckPublish(held.ID, held.Worker); err == nil { t.Fatal("stopped publisher authorized after Run again") }
+ if _, err := f.desk.Renew(held.ID, held.Worker); err != nil { t.Fatalf("receipt heartbeat lost: %v", err) }
+ signals, err := f.desk.DrainLive(held.ID, held.Worker)
+ if err != nil || len(signals) != 1 || signals[0].Verb != lease.SignalStop { t.Fatalf("old publisher did not receive Stop: %+v %v", signals, err) }
  before, _ := f.store.Get(it.ID)
  report := factory.RunReport{PR: &factory.PullRequest{Number: 7, URL: "https://github.com/acme/api/pull/7", State: factory.PROpen}, Publishing: &factory.Publishing{State: "opened", Attempt: 1}}
  if err := f.desk.Apply(held.ID, held.Worker, false, func(it *factory.Item) error { return run.ApplyReport(it, report, f.now) }); err != nil { t.Fatalf("late PR receipt lost: %v", err) }

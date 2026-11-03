@@ -77,6 +77,10 @@ func (d *Desk) drain(id, worker string, publishing bool) ([]Signal, error) {
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
+			if _, receiptErr := receiptIdentity(doc, id, worker, now); receiptErr == nil {
+				out = []Signal{{Verb: SignalStop}}
+				return false, nil
+			}
 			return false, err
 		}
 		it, err := d.store.Get(held.Job)

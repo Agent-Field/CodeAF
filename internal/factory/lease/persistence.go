@@ -15,6 +15,7 @@ const schema = 1
 
 type publisherReceipt struct {
  Lease Lease `json:"lease"`
+ Item factory.Item `json:"item"`
  Restarted bool `json:"restarted,omitempty"`
 }
 

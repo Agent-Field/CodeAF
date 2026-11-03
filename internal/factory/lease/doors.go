@@ -234,7 +234,7 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 			for _, receipt := range doc.Receipts {
 				if receipt.Lease.live(now) { live = append(live, receipt) }
 			}
-			doc.Receipts = append(live, publisherReceipt{Lease: *held})
+			doc.Receipts = append(live, publisherReceipt{Lease: *held, Item: *it})
 		}
 		release(doc, id)
 		return true, nil

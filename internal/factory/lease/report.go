@@ -14,7 +14,7 @@ import (
 func (d *Desk) Renew(id, worker string) (Lease, error) {
 	var renewed Lease
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
-		held, err := identified(doc, id, worker)
+		held, err := receiptIdentity(doc, id, worker, now)
 		if err != nil {
 			return false, err
 		}
@@ -40,7 +40,7 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 					if !receipt.Restarted { return change(it) }
 					// Validate the old report against an isolated stopped job. Only its
 					// opened PR receipt may cross into the replacement run.
-					raw, err := json.Marshal(it)
+					raw, err := json.Marshal(receipt.Item)
 					if err != nil { return err }
 					var candidate factory.Item
 					if err := json.Unmarshal(raw, &candidate); err != nil { return err }
