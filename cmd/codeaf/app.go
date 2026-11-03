@@ -3989,7 +3989,13 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 	if live.conn.Lent {
 		return appwire.Agent{}, errLentStage("model")
 	}
-	live.conn.Conv.SetModel(model)
+	if checked, ok := live.conn.Conv.(interface{ SetModelChecked(string) error }); ok {
+		if err := checked.SetModelChecked(model); err != nil {
+			return appwire.Agent{}, appEngineError(err)
+		}
+	} else {
+		live.conn.Conv.SetModel(model)
+	}
 	if now := live.conn.Conv.Model(); now != "" {
 		model = now
 	}
@@ -4034,7 +4040,18 @@ func (b *appBackend) SetEffort(id, word string) (appwire.Agent, error) {
 		SetConversationEffort(string) bool
 		ConversationEffort() string
 	})
-	if !ok || !dial.SetConversationEffort(rung.String()) {
+	took := false
+	if ok {
+		if checked, yes := dial.(interface{ SetConversationEffortChecked(string) (bool, error) }); yes {
+			took, err = checked.SetConversationEffortChecked(rung.String())
+			if err != nil {
+				return appwire.Agent{}, appEngineError(err)
+			}
+		} else {
+			took = dial.SetConversationEffort(rung.String())
+		}
+	}
+	if !ok || !took {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, "this conversation has no thinking dial; update the engine and reconnect")
 	}
 	chosen := dial.ConversationEffort()
