@@ -15,3 +15,7 @@ remain compatible. Holding an already held runner stays idempotent.
 Concurrent holds and spending answers complete without a lock inversion. Pause
 writes finish before cancellation or admission of another paid round; a failed
 write leaves the live control unchanged.
+
+The boundary regression test blocks the pause save after Hold's preliminary
+item read; output retention also runs on reads. The fixture keeps every
+boundary, cancellation, persistence and failed-save assertion.
