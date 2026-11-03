@@ -45,6 +45,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	var notes []string
 	var tests *factory.TestCounts
 	lastOutcome := map[string]string{}
+	lastReason := map[string]string{}
 	var pending []string
 	var state verification.Snapshot
 	checks, checkErr := verification.ReadIn(c.file, c.dir)
@@ -116,6 +117,10 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			Role       string `json:"role"`
 			Content    string `json:"content"`
 			ToolCallID string `json:"toolCallId"`
+			Presentation *struct {
+				Refused bool `json:"refused"`
+				Invoked bool `json:"invoked"`
+			} `json:"presentation"`
 			Calls      []struct {
 				ID       string `json:"id"`
 				Function struct {
@@ -164,17 +169,37 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		}
 		passed := (strings.Contains(row.Content, "\nPASS\n") || strings.HasPrefix(row.Content, "PASS\n") || strings.Contains(row.Content, "ok  ")) && !strings.Contains(row.Content, "\nFAIL") && !strings.Contains(row.Content, "Command exited with code")
 		receipt := map[string]any{"command": cmd, "cwd": c.dir, "outcome": "completed"}
-		if strings.Contains(row.Content, "Command exited with code") {
+		text := strings.TrimSpace(row.Content)
+		lastLine := text[strings.LastIndex(text, "\n")+1:]
+		// The producer's refusal mark is authoritative. Older journals lack it,
+		// so recognize their gate wording only when invocation is not recorded.
+		refused := row.Presentation != nil && row.Presentation.Refused
+		if row.Presentation == nil || !row.Presentation.Invoked {
+			for _, prefix := range []string{"needs approval but no resolver is attached:", "denied by approval rule:", "denied by the person:", "refused in a task:", "not approved:"} {
+				refused = refused || strings.HasPrefix(text, prefix)
+			}
+		}
+		switch {
+		case refused:
+			receipt["outcome"], receipt["reason"] = "refused", text
+		case lastLine == "Command aborted" || lastLine == "Command cancelled":
+			receipt["outcome"], receipt["reason"] = "cancelled", lastLine
+		case strings.HasPrefix(lastLine, "Command timed out after ") || strings.HasPrefix(text, "cut after "):
+			receipt["outcome"], receipt["reason"] = "timed out", text
+		case strings.Contains(row.Content, "Command exited with code"):
 			receipt["outcome"] = "failed"
-		} else if passed {
+		case passed:
 			receipt["outcome"] = "passed"
 		}
-		if observed[cmd] && verification.PresentationOnly(cmd) {
+		outcome := receipt["outcome"].(string)
+		interrupted := outcome == "refused" || outcome == "cancelled" || outcome == "timed out"
+		if !interrupted && observed[cmd] && verification.PresentationOnly(cmd) {
 			// The pipeline may have failed while its check passed. Keep the
 			// shell receipt honest; only the observed check decides the guard.
 			receipt["scope"] = "shell presentation; check exits recorded separately"
 		} else {
-			lastOutcome[cmd] = receipt["outcome"].(string)
+			lastOutcome[cmd] = outcome
+			lastReason[cmd], _ = receipt["reason"].(string)
 			if !observed[cmd] && receipt["outcome"] == "completed" {
 				pending = append(pending, cmd+" · exit status unavailable; rerun with a measured check")
 			}
@@ -218,6 +243,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
 	}
 	for command, outcome := range lastOutcome {
+		if outcome == "refused" || outcome == "cancelled" || outcome == "timed out" {
+			pending = append(pending, command+" · "+outcome+" · "+lastReason[command])
+		}
 		if outcome == "failed" && !(verification.PresentationOnly(command) && (corrected[verificationCommand(command)] || superseded[command])) {
 			pending = append(pending, command)
 		}
