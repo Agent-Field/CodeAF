@@ -98,6 +98,8 @@ func appWorkstreamError(err error) error {
 		return appwire.Errorf(appwire.CodeCycle, "%s", err)
 	case errors.Is(err, workstream.ErrTooLarge):
 		return appwire.Errorf(appwire.CodeTooLarge, "%s", err)
+	case errors.Is(err, workstream.ErrNotAgentPage):
+		return appwire.Errorf(appwire.CodeBadParams, "%s", err)
 	}
 	return appCollectionError(err)
 }
@@ -206,8 +208,8 @@ func (b *appBackend) WorkstreamGet(p appwire.WorkstreamGetParams) (appwire.Works
 // workstreamAgentAsk is the single agent-creation hook for workstreams. Empty
 // text is a bare open in prepareCreate and cannot start a model turn.
 func workstreamAgentAsk(p appwire.WorkstreamCreateParams) appwire.CreateAsk {
-	// WP-10 attaches the workstream system prompt and tools here.
-	return appwire.CreateAsk{Model: workstreamValue(p.Model), CreatedBy: "workstream"}
+	// Engine assembly attaches the prompt and tools through appWorkstreamAgentDoor.
+	return appwire.CreateAsk{Model: workstreamValue(p.Model), CreatedBy: workstreamCreatedBy}
 }
 
 // workstreamPreflight checks store-owned refusals without writing or migrating.
