@@ -40,6 +40,9 @@ import (
 // runs on, as functions (the reason [LinkSeam] gives). The zero value is
 // this machine's own profile, which is every local launch.
 type TeamsSeam struct {
+	// Sharing reads the engine's effective sharing off-loop when team data
+	// comes over remote. Local seams use the window's pairing gate instead.
+	Sharing func() (bool, error)
 	// Load is the teams as held, coloured around reserved, and the file's stamp
 	// (internal/teams' stamp.go). It is asked on the loop, at an opening, and
 	// must NOT block. known false says nothing is held yet: the window asks
@@ -144,7 +147,7 @@ func (s TeamsSeam) delegation() bool {
 
 // localTeams is the seam onto internal/teams in dir, the profile of this
 // machine. watch is the window's stat-before-read memory of the logs.
-func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
+func localTeams(dir string, watch *teamstore.Watch, paired func() bool) TeamsSeam {
 	return TeamsSeam{
 		Load: func(reserved []float64) ([]teamstore.Team, string, bool) {
 			stamp := teamstore.Stamp(dir)
@@ -167,7 +170,7 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			}
 			var f *teamstore.File
 			var err error
-			if config.TeamsShareAt(dir) {
+			if config.TeamsSharingAt(dir, paired) {
 				f, err = teamstore.Snapshot(dir)
 			} else {
 				f, err = teamstore.LoadHued(dir, reserved)
@@ -190,7 +193,7 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			return entries, err
 		},
 		DisplayTraffic: func(team, after, version string, limit int) ([]teamstore.Entry, string, string, bool, error) {
-			return watch.History(dir, team, after, version, limit)
+			return watch.History(dir, team, after, version, limit, config.TeamsSharingAt(dir, paired))
 		},
 		Defaults: func() (teamstore.Defaults, error) { return teamstore.DefaultsAt(dir), nil },
 		ApplyDefault: func(key, raw string) (teamstore.Defaults, error) {
@@ -281,7 +284,7 @@ func (a *app) teamsSeam() TeamsSeam {
 	if a.teamsDisk.door.present() {
 		return a.teamsDisk.door
 	}
-	return localTeams(a.profileDir, &a.teamsDisk.watch)
+	return localTeams(a.profileDir, &a.teamsDisk.watch, a.teamsPaired)
 }
 
 // THE FRAME ASKS WHICH DOORS THERE ARE, NEVER FOR THE SEAM. Binding the local

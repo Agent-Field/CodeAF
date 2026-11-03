@@ -169,6 +169,8 @@ type Engine struct {
 	// carried in Welcome so a linked-local surface writes every local row back
 	// to the profile the running conversation actually reads. A remote surface
 	// does not use the path for local writes.
+	// TeamsPaired supplies the engine computer's current pairing gate.
+	TeamsPaired       func() bool
 	ProfileDir        string
 	UnreadProfileKeys []string
 	// Workspace is the directory the engine resolved and works in — the answer

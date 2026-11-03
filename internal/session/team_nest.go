@@ -42,7 +42,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/config"
 	"strconv"
 	"strings"
 	"time"
@@ -697,7 +696,7 @@ func readableBelow(profile string, team teams.Team, words string) (teams.Member,
 // to, marked with the sub-team it came from, and that manager roused.
 func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (string, bool, error) {
 	profile := a.config.teamProfile()
-	if config.TeamsShareAt(profile) {
+	if a.teamsSharing() {
 		if file, _, _, _ := a.teamSnapshot(profile); file != nil {
 			if boss, ok := file.Team(role.boss); ok {
 				if m, ok := boss.Member(boss.Manager); ok {

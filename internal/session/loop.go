@@ -518,6 +518,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// task node start no reading at all.
 	var team *sidecar[struct{}]
 	if a.config.teamProfile() != "" {
+		sharing := a.teamsSharing()
+		a.mu.Lock()
+		a.adoptTeamDigestSharingLocked(sharing)
+		a.mu.Unlock()
 		team = readBeside(ctx, func(read context.Context) struct{} {
 			a.refreshTeamDigest(read)
 			return struct{}{}

@@ -51,7 +51,7 @@ type farTeams struct {
 }
 
 func (f *farTeams) seam() TeamsSeam {
-	local := localTeams(f.dir, &f.watch)
+	local := localTeams(f.dir, &f.watch, nil)
 	return TeamsSeam{
 		Load: func(reserved []float64) ([]teamstore.Team, string, bool) {
 			f.mu.Lock()
@@ -75,10 +75,11 @@ func (f *farTeams) seam() TeamsSeam {
 // THE LOCAL SEAM IS THE STORE IN THE PROFILE. A load of no file is known and
 // empty; an update answers what it wrote and a stamp; a read at that stamp is
 // "same" and carries nothing; a quiet log after its cursor is nothing.
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestTheLocalTeamsSeamIsTheStoreInTheProfile(t *testing.T) {
 	dir := t.TempDir()
 	var watch teamstore.Watch
-	seam := localTeams(dir, &watch)
+	seam := localTeams(dir, &watch, nil)
 	teams, stamp, known := seam.Load(nil)
 	if !known || len(teams) != 0 || stamp != teamstore.MissingStamp {
 		t.Fatalf("a load of no file: %v, %q, %v", teams, stamp, known)
@@ -274,11 +275,12 @@ func TestAHostedSeamThatHoldsNothingYetIsReadOffTheLoop(t *testing.T) {
 // handed without them says so. A packet raised through the local seam is read
 // back through it, a second read at the stamp is same, and the spend of a team
 // nobody has spent in is zero with a stamp that answers same.
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestTheLocalTeamsSeamCarriesTheDelegationDoors(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	var watch teamstore.Watch
-	seam := localTeams(dir, &watch)
+	seam := localTeams(dir, &watch, nil)
 	if !seam.delegation() {
 		t.Fatal("the local seam has no delegation doors")
 	}
