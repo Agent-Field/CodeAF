@@ -16,8 +16,8 @@ Team sharing is on by default for paired computers. Missing or empty
 invalid values read off. The live pairing gate still prevents unpaired sharing.
 Solo computers with submitted chats refuse ordinary pairing and explain
 `--replace`; replacement retains confirmation and preserved-team receipts.
-Unsupported-effort repair is local to opted-in task and Factory clients. Stage
-conversations, their helpers, manager turns, scouts and triage retain recovery,
+Unsupported-effort repair is local to opted-in task and Factory clients. Job-owned personal manager turns, reopened completed stages and earlier rounds,
+stage conversations, their helpers, manager turns, scouts and triage retain recovery,
 including after model or account switches. Live manager turns, brief writing and
 Factory page errands (including Step AI and My pipeline AI) opt in per call; the same agent retains ordinary refusal
 for its other turns and errands. Ordinary clients return the refusal without a

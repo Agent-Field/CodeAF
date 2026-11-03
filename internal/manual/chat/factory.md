@@ -376,11 +376,14 @@ After your yes, the answer names the thinking the item was saved with, step by s
 ## models that refuse thinking or reasoning effort
 
 If a Factory model explicitly rejects its thinking setting, codeaf retries once
-without that setting. This covers stages and their helpers, manager turns on an
-already-open conversation, brief writing, and the repository, pipeline and topic
-page AI, including Step AI and My pipeline AI. Switching models or connected accounts keeps recovery available.
-Recovery belongs to the Factory call: an ordinary turn or errand on the same
-conversation still returns the model's refusal.
+without that setting. This covers stages and their helpers, personal messages to
+job managers, reopened completed stages and their earlier rounds, runner manager
+turns on an already-open conversation, brief writing, and the repository, pipeline
+and topic page AI, including Step AI and My pipeline AI. Switching models or
+connected accounts keeps recovery available. Recovery follows actual job ownership
+or a Factory call: an ordinary conversation that merely offers Factory tools still
+returns the model's refusal. An ordinary conversation borrowed for a Factory call
+retains its usual refusal on later ordinary turns and errands.
 
 ## which model a cheap or strong step runs on — small work, checks model, effort models
 
