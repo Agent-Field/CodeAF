@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Opening a factory job leaves it untouched
-pr: 0
+pr: 2312
 surface: [factory]
 invalidates: []
 ---
