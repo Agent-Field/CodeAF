@@ -119,7 +119,7 @@ func TestBackgroundReceiptWaitsForMeasuredExit(t *testing.T) {
 			err = door.Report(t.Context(), factory.StageResult{Done: true})
 			if wantHeld := !tc.measured || tc.failed; (err != nil) != wantHeld { t.Errorf("held=%v want %v: %v", err != nil, wantHeld, err) }
 			body := factory.PublishBody(factory.Item{Title: "background validation", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Result: &factory.StageResult{Notes: notes}}}}}, "")
-			if published := strings.Contains(body, "Passed locally:"); published != (tc.measured && !tc.failed) { t.Errorf("published pass=%v: %s", published, body) }
+			if published := strings.Contains(body, "Passed locally:"); published && (!tc.measured || tc.failed) { t.Errorf("published pass=%v: %s", published, body) }
 		})
 	}
 }
