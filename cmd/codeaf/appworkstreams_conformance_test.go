@@ -76,6 +76,14 @@ type workstreamWireComparison struct {
 	Differed  map[string]bool
 }
 
+type workstreamWireShapeMode int
+
+const (
+	workstreamWirePreparedShape workstreamWireShapeMode = iota
+	workstreamWireReplyShape
+	workstreamWireEventShape
+)
+
 func workstreamWireDecode(t *testing.T, raw []byte) any {
 	t.Helper()
 	decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -244,9 +252,11 @@ func (contract *workstreamWireContract) conforms(path string, value any, typeStr
 }
 
 // Prepared params compare arrays by index and length because preparation may
-// change only values. Replies compare every array element to the first example;
-// an empty example array leaves element validation to the declared field type.
-func (comparison *workstreamWireComparison) shape(path string, value, example any, prepared bool) []string {
+// change only values. Replies require every illustrated index and compare each
+// element with the same example index, falling back to the first past its end.
+// Events may list fewer parts. An empty example array leaves element validation
+// to the declared field type.
+func (comparison *workstreamWireComparison) shape(path string, value, example any, mode workstreamWireShapeMode) []string {
 	if value == nil || example == nil {
 		return []string{path + ": null is never allowed"}
 	}
@@ -263,7 +273,7 @@ func (comparison *workstreamWireComparison) shape(path string, value, example an
 				failures = append(failures, path+"."+key+": example field is absent")
 				continue
 			}
-			failures = append(failures, comparison.shape(path+"."+key, item, example[key], prepared)...)
+			failures = append(failures, comparison.shape(path+"."+key, item, example[key], mode)...)
 		}
 		for _, key := range workstreamWireKeys(actual) {
 			if _, present := example[key]; !present {
@@ -272,8 +282,11 @@ func (comparison *workstreamWireComparison) shape(path string, value, example an
 		}
 	case []any:
 		actual := value.([]any)
-		if prepared && len(actual) != len(example) {
+		if mode == workstreamWirePreparedShape && len(actual) != len(example) {
 			failures = append(failures, fmt.Sprintf("%s: preparation changed array length from %d to %d", path, len(example), len(actual)))
+		}
+		if mode == workstreamWireReplyShape && len(actual) < len(example) {
+			failures = append(failures, fmt.Sprintf("%s: want at least %d example elements, got %d", path, len(example), len(actual)))
 		}
 		if len(example) == 0 {
 			return failures
@@ -290,12 +303,12 @@ func (comparison *workstreamWireComparison) shape(path string, value, example an
 				index = i
 			}
 			itemPath := fmt.Sprintf("%s[%d]", path, i)
-			differences := comparison.shape(itemPath, item, example[index], prepared)
-			if _, question := comparison.Questions[itemPath]; !prepared && question && i < len(example) && len(differences) > 0 {
+			differences := comparison.shape(itemPath, item, example[index], mode)
+			if _, question := comparison.Questions[itemPath]; mode != workstreamWirePreparedShape && question && i < len(example) && len(differences) > 0 {
 				comparison.Differed[itemPath] = true
 				// The question permits only the shape explicitly illustrated for
 				// this element, so it cannot hide new keys, nulls or wrong kinds.
-				differences = comparison.shape(itemPath, item, example[i], true)
+				differences = comparison.shape(itemPath, item, example[i], workstreamWirePreparedShape)
 			}
 			failures = append(failures, differences...)
 		}
@@ -355,11 +368,14 @@ type workstreamWireUnavailable struct{ *appBackend }
 func (*workstreamWireUnavailable) Warm()                   {}
 func (*workstreamWireUnavailable) ServesWorkstreams() bool { return false }
 
+const workstreamWireTimeout = 30 * time.Second
+
 type workstreamWireConnection struct {
-	In    *io.PipeWriter
-	Lines <-chan []byte
-	Err   <-chan error
-	Next  int
+	In     *io.PipeWriter
+	Lines  <-chan []byte
+	Err    <-chan error
+	Next   int
+	Writes sync.WaitGroup
 }
 
 func workstreamWireConnect(t *testing.T, backend appwire.Engine) *workstreamWireConnection {
@@ -370,8 +386,10 @@ func workstreamWireConnect(t *testing.T, backend appwire.Engine) *workstreamWire
 	done := make(chan error, 1)
 	server := appwire.NewServer(outW)
 	go func() {
-		done <- server.Serve(ctx, inR, appwire.Hello{Version: "test"}, backend)
+		err := server.Serve(ctx, inR, appwire.Hello{Version: "test"}, backend)
+		_ = inR.Close()
 		_ = outW.Close()
+		done <- err
 	}()
 	lines := make(chan []byte, 32)
 	readErr := make(chan error, 1)
@@ -390,14 +408,16 @@ func workstreamWireConnect(t *testing.T, backend appwire.Engine) *workstreamWire
 		}
 		readErr <- scanner.Err()
 	}()
+	connection := &workstreamWireConnection{In: inW, Lines: lines, Err: readErr}
 	t.Cleanup(func() {
 		_ = inW.Close()
+		connection.Writes.Wait()
 		select {
 		case err := <-done:
 			if err != nil {
 				t.Errorf("wire Serve: %v", err)
 			}
-		case <-time.After(30 * time.Second):
+		case <-time.After(workstreamWireTimeout):
 			t.Error("wire Serve did not close the backend")
 		}
 		cancel()
@@ -409,7 +429,6 @@ func workstreamWireConnect(t *testing.T, backend appwire.Engine) *workstreamWire
 			t.Error("wire reader did not stop")
 		}
 	})
-	connection := &workstreamWireConnection{In: inW, Lines: lines, Err: readErr}
 	hello := connection.read(t)
 	if hello["event"] != appwire.EventHello {
 		t.Fatalf("want hello before replies, got %v", hello)
@@ -429,7 +448,7 @@ func (connection *workstreamWireConnection) read(t *testing.T) map[string]any {
 			t.Fatalf("wire frame is not an object: %s", raw)
 		}
 		return frame
-	case <-time.After(30 * time.Second):
+	case <-time.After(workstreamWireTimeout):
 		t.Fatal("wire reply timed out")
 		return nil
 	}
@@ -439,8 +458,20 @@ func (connection *workstreamWireConnection) call(t *testing.T, method string, pa
 	t.Helper()
 	connection.Next++
 	raw := workstreamWireEncode(t, map[string]any{"id": connection.Next, "method": method, "params": params})
-	if _, err := connection.In.Write(append(raw, '\n')); err != nil {
-		t.Fatal(err)
+	writeErr := make(chan error, 1)
+	connection.Writes.Add(1)
+	go func() {
+		defer connection.Writes.Done()
+		_, err := connection.In.Write(append(raw, '\n'))
+		writeErr <- err
+	}()
+	select {
+	case err := <-writeErr:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(workstreamWireTimeout):
+		t.Fatal("wire request write timed out")
 	}
 	for {
 		frame := connection.read(t)
@@ -635,7 +666,7 @@ func (fixture *workstreamWireFixture) grant(t *testing.T) {
 }
 
 // The decoded example is a fresh tree on every call. Only existing values are
-// replaced; shape(..., true) independently proves that keys and kinds survive.
+// replaced; prepared shape comparison proves that keys and kinds survive.
 func (fixture *workstreamWireFixture) prepare(t *testing.T, raw json.RawMessage) map[string]any {
 	t.Helper()
 	var replace func(any) any
@@ -707,7 +738,7 @@ func (contract *workstreamWireContract) checkError(t *testing.T, path string, va
 	}
 	if example != nil {
 		comparison := &workstreamWireComparison{}
-		workstreamWireCheck(t, comparison.shape(path, object, example, false))
+		workstreamWireCheck(t, comparison.shape(path, object, example, workstreamWireReplyShape))
 		if exactMessage && object["message"] != example.(map[string]any)["message"] {
 			t.Errorf("%s.message: got %q, want %q", path, message, example.(map[string]any)["message"])
 		}
@@ -811,6 +842,45 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 		}
 	})
 
+	// (b), (d): missing reply tails cannot skip illustrated shapes; events may
+	// report fewer changed parts, and prepared arrays must retain exact lengths.
+	t.Run("array_coverage", func(t *testing.T) {
+		example := `[{"job":1},{"draft":"draft"}]`
+		for _, rule := range []struct {
+			Name    string
+			JSON    string
+			Example string
+			Mode    workstreamWireShapeMode
+			Valid   bool
+		}{
+			{"same_index", example, example, workstreamWireReplyShape, true},
+			{"missing_tail", `[{"job":1}]`, example, workstreamWireReplyShape, false},
+			{"empty_reply", `[]`, example, workstreamWireReplyShape, false},
+			{"nested_missing_tail", `{"items":[{"job":1}]}`, `{"items":` + example + `}`, workstreamWireReplyShape, false},
+			{"additional_first_shape", `[{"job":1},{"draft":"draft"},{"job":2}]`, example, workstreamWireReplyShape, true},
+			{"additional_wrong_shape", `[{"job":1},{"draft":"draft"},{"draft":"other"}]`, example, workstreamWireReplyShape, false},
+			{"empty_example", `[{"job":1}]`, `[]`, workstreamWireReplyShape, true},
+			{"prepared_short", `[{"job":1}]`, example, workstreamWirePreparedShape, false},
+			{"prepared_long", `[{"job":1},{"draft":"draft"},{"job":2}]`, example, workstreamWirePreparedShape, false},
+			{"event_fewer_parts", `{"parts":["pages"]}`, `{"parts":["pages","plan"]}`, workstreamWireEventShape, true},
+			{"event_empty_parts", `{"parts":[]}`, `{"parts":["pages","plan"]}`, workstreamWireEventShape, false},
+		} {
+			t.Run(rule.Name, func(t *testing.T) {
+				path := "array coverage " + rule.Name + " "
+				comparison := &workstreamWireComparison{}
+				failures := comparison.shape(path, workstreamWireDecode(t, []byte(rule.JSON)), workstreamWireDecode(t, []byte(rule.Example)), rule.Mode)
+				if (len(failures) == 0) != rule.Valid {
+					t.Errorf("valid = %v, want %v: %v", len(failures) == 0, rule.Valid, failures)
+				}
+				for _, failure := range failures {
+					if !strings.HasPrefix(failure, path) {
+						t.Errorf("failure lost its JSON path: %s", failure)
+					}
+				}
+			})
+		}
+	})
+
 	// (b), (d): malformed examples are contract failures, before any engine call.
 	t.Run("doc_self_check", func(t *testing.T) {
 		for _, name := range cases {
@@ -872,7 +942,7 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 					fixture := workstreamWireSeed(t, name, i)
 					params := fixture.prepare(t, examples.Examples.Params[paramsIndex])
 					paramsPath := fmt.Sprintf("%s params[%d] ", name, paramsIndex)
-					workstreamWireCheck(t, comparison.shape(paramsPath, params, workstreamWireDecode(t, examples.Examples.Params[paramsIndex]), true))
+					workstreamWireCheck(t, comparison.shape(paramsPath, params, workstreamWireDecode(t, examples.Examples.Params[paramsIndex]), workstreamWirePreparedShape))
 					if examples.ParamsType != "" {
 						workstreamWireCheck(t, contract.conforms(paramsPath, params, examples.ParamsType))
 					}
@@ -883,7 +953,14 @@ func TestAppWorkstreamWireConformance(t *testing.T) {
 						workstreamWireCheck(t, contract.conforms(resultPath, result, examples.ResultType))
 					}
 					workstreamWireCheck(t, workstreamWireNoNulls(resultPath, result))
-					workstreamWireCheck(t, comparison.shape(resultPath, result, workstreamWireDecode(t, examples.Examples.Result[resultIndex]), false))
+					workstreamWireCheck(t, comparison.shape(resultPath, result, workstreamWireDecode(t, examples.Examples.Result[resultIndex]), workstreamWireReplyShape))
+					if name == "page.delete" {
+						deleted, ok := result.(map[string]any)["deleted"].([]any)
+						want := []any{fixture.IDs["pg_32e1"], fixture.IDs["conformance-descendant"]}
+						if !ok || len(deleted) != len(want) || !slices.Contains(deleted, want[0]) || !slices.Contains(deleted, want[1]) {
+							t.Errorf("%s.deleted: want exactly seeded parent and descendant %v, got %v", resultPath, want, deleted)
+						}
+					}
 					if name == "collections.add" {
 						workstreamWireCollectionResult(t, result)
 					}
@@ -1066,7 +1143,7 @@ func workstreamWireEvent(t *testing.T, contract *workstreamWireContract, example
 		if exampleIndex >= len(examples.Examples.Data) {
 			t.Fatalf("%s: no example for parts presence", path)
 		}
-		workstreamWireCheck(t, comparison.shape(path, value, workstreamWireDecode(t, examples.Examples.Data[exampleIndex]), false))
+		workstreamWireCheck(t, comparison.shape(path, value, workstreamWireDecode(t, examples.Examples.Data[exampleIndex]), workstreamWireEventShape))
 		if event.ID != fixture.Stream.ID {
 			t.Errorf("%s.id: got %s, want seeded workstream %s", path, event.ID, fixture.Stream.ID)
 		}
@@ -1117,7 +1194,7 @@ func workstreamWireError(t *testing.T, contract *workstreamWireContract, files m
 	}
 	if errorCase.Name != "bad_params" && errorCase.Name != "too_large" {
 		comparison := &workstreamWireComparison{}
-		workstreamWireCheck(t, comparison.shape(errorCase.Method+" error params ", params, workstreamWireDecode(t, examples.Examples.Params[0]), true))
+		workstreamWireCheck(t, comparison.shape(errorCase.Method+" error params ", params, workstreamWireDecode(t, examples.Examples.Params[0]), workstreamWirePreparedShape))
 	}
 	connection := workstreamWireConnect(t, engine)
 	frame := connection.call(t, errorCase.Method, params)
