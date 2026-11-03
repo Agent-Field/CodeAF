@@ -2023,7 +2023,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyModelPool, Category: CategoryModels, Kind: SettingChoice,
 			Label: "model pool", Env: "CODEAF_MODEL_POOL", Choices: ModelPoolChoices,
-			Hint: "Off by default: keep your configured models without pool judging or sharing. " +
+			Hint: "Off by default: no pool judging, recommendations or sharing. Task roles still follow your task-model settings. " +
 				"on: use and contribute computed, text-free numbers under a per-install nonce, " +
 				"never code, prompts or paths. read: use the pool, send nothing. off: neither " +
 				"(CODEAF_MODEL_POOL=off for one run).",

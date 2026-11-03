@@ -1503,7 +1503,8 @@ the machine — what is shared is a measurement of the run, not the work. One
 setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
 does neither. It defaults to `off`, including in CI: no pool judge calls,
-pool routing or pool records. Your configured model and provider answer.
+pool routing or pool records. Each role still follows your task-model and
+tier settings, and in Auto the router picks from your allowed models.
 `CODEAF_MODEL_POOL=on` or a saved `model_pool = on` enables it; an earlier
 explicit choice stays honoured. A missing or blank saved word means you never
 chose and stays off. `CODEAF_MODEL_POOL` pins the same word from the shell. **The telemetry off switch stops the pool sending too**:
