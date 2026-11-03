@@ -133,9 +133,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			Content      string `json:"content"`
 			ToolCallID   string `json:"toolCallId"`
 			Presentation *struct {
-				Refused bool   `json:"refused"`
-				Invoked bool   `json:"invoked"`
-				Outcome string `json:"outcome"`
+				Refused bool                 `json:"refused"`
+				Invoked bool                 `json:"invoked"`
+				Outcome string               `json:"outcome"`
 				Process *session.ToolProcess `json:"tool_process"`
 			} `json:"presentation"`
 			Calls []struct {
@@ -158,8 +158,8 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 				continue
 			}
 			var args struct {
-				Command string `json:"command"`
-				Background bool `json:"background"`
+				Command    string `json:"command"`
+				Background bool   `json:"background"`
 			}
 			if json.Unmarshal([]byte(call.Function.Arguments), &args) == nil && len(args.Command) <= 4000 {
 				commands[call.ID] = args.Command
