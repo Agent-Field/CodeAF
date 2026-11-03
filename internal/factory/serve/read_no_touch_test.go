@@ -2,6 +2,7 @@ package serve_test
 
 import (
  "bytes"
+ "net/http/httptest"
  "os"
 	"reflect"
 	"strconv"
@@ -60,7 +61,12 @@ func TestWorkerChecksDoNotTouchJobOrLease(t *testing.T) {
   if err != nil { t.Fatal(err) }
   holds, err := os.ReadFile(desk.Path())
   if err != nil { t.Fatal(err) }
-  f.request(t, "GET", "/v1/workers/leases/"+pulled.Lease.ID+"/"+check, worker.Credential, nil, 200, nil)
+  req := httptest.NewRequest("GET", "/v1/workers/leases/"+pulled.Lease.ID+"/"+check, nil)
+  req.RemoteAddr = "127.0.0.1:1234"
+  req.Header.Set("Authorization", "Bearer "+worker.Credential)
+  w := httptest.NewRecorder()
+  f.handler.ServeHTTP(w, req)
+  if w.Code != 200 { t.Fatalf("%s: %d %s", check, w.Code, w.Body.String()) }
   after, err := f.st.Get(job.ID)
   if err != nil { t.Fatal(err) }
   revision, err := f.st.Revision(job.ID)
