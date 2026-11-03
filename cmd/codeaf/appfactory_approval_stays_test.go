@@ -30,7 +30,6 @@ func TestAppFactoryApprovalSurvivesLaterGatesAndRestart(t *testing.T) {
 			{Name: "plan", Kind: factory.StageCheck, On: true},
 			{Name: "approve", Kind: factory.StageGate, On: true},
 			{Name: "write", Kind: factory.StageCheck, On: true},
-			{Name: "approve-test", Kind: factory.StageGate, On: true},
 			{Name: "test", Kind: factory.StageCheck, On: true},
 		},
 	})
@@ -82,7 +81,7 @@ func TestAppFactoryApprovalSurvivesLaterGatesAndRestart(t *testing.T) {
 	first := approve()
 	report(api.WorkerReport{Steps: []api.StepReport{{Name: "write", State: api.StepRunning}}})
 	assertDecision("later work", read(s.factoryWire), first)
-	report(api.WorkerReport{Steps: []api.StepReport{{Name: "write", State: api.StepDone}}, Question: &api.Question{Text: factory.NextStepQuestion("test"), FromStep: "approve-test", Kind: factory.QKindApprove}})
+	report(api.WorkerReport{Steps: []api.StepReport{{Name: "write", State: api.StepDone}}, Question: &api.Question{Text: factory.NextStepQuestion("test"), FromStep: "test", Kind: factory.QKindApprove}})
 	waiting := read(s.factoryWire)
 	assertDecision("Test gate", waiting, first)
 	if waiting.NeedsYou == nil || !waiting.Can.Approve || waiting.Steps[3].State != "waiting" {
