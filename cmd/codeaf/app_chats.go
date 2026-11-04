@@ -23,18 +23,21 @@ import (
 )
 
 type appChats struct {
-	start           sync.Once
-	byAgent         map[string]appwire.ChatRow
-	taking          map[string]int
-	landed          map[string]uint64
-	moves           map[string]*appMove
-	ended           map[string]appwire.ChatMoveEnded
-	slot            chan struct{}
-	slotOnce        sync.Once
-	op              sync.Mutex
-	mu              sync.Mutex
-	rows            []appwire.ChatRow
-	facts           map[string]chatlist.Row
+	start    sync.Once
+	byAgent  map[string]appwire.ChatRow
+	taking   map[string]int
+	landed   map[string]uint64
+	moves    map[string]*appMove
+	ended    map[string]appwire.ChatMoveEnded
+	slot     chan struct{}
+	slotOnce sync.Once
+	op       sync.Mutex
+	mu       sync.Mutex
+	rows     []appwire.ChatRow
+	facts    map[string]chatlist.Row
+	// takeable is each row's can_take before its holder's sharing was judged,
+	// so a presence change can lift the block as well as set it.
+	takeable        map[string]bool
 	sent            []appwire.ChatRow
 	version         uint64
 	source          *syncsetup.Sync
@@ -381,6 +384,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	local := b.localChats(s)
 	out := make([]appwire.ChatRow, 0, len(rows))
 	facts := make(map[string]chatlist.Row, len(rows))
+	takeable := make(map[string]bool, len(rows))
 	for _, r := range rows {
 		if r.Parent != "" || r.Status == chatlist.Branch {
 			continue
@@ -396,7 +400,6 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 			row.Holder = &appwire.LocationHolder{ID: r.DeviceID, Name: r.Device}
 		}
 		appChatPresence(&row, r, state, known)
-		appChatSharing(&row, r)
 		if r.SavedAt > 0 {
 			row.SavedAt = time.UnixMilli(r.SavedAt).UTC()
 		}
@@ -407,6 +410,8 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		} else if !here && r.Size > 0 {
 			row.Size = int64(min(r.Size, math.MaxInt64))
 		}
+		takeable[r.Cell] = row.CanTake
+		appChatSharing(&row, r)
 		if row.Here {
 			row.Status = "here"
 		}
@@ -416,7 +421,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	cacheFacts := func() {
 		b.chats.mu.Lock()
 		defer b.chats.mu.Unlock()
-		b.chats.facts = facts
+		b.chats.facts, b.chats.takeable = facts, takeable
 	}
 	cacheFacts()
 	// markTaking has already cleared a landed take on a row saying the chat is
@@ -536,11 +541,22 @@ func appChatSharing(row *appwire.ChatRow, fact chatlist.Row) {
 	}
 	row.Sharing = &appwire.ChatSharing{Pending: fact.Pending}
 	if fact.UploadTotal > 0 {
-		row.Sharing.Sent, row.Sharing.Total = int64(min(fact.UploadSent, fact.UploadTotal)), int64(fact.UploadTotal)
+		total := min(fact.UploadTotal, math.MaxInt64)
+		row.Sharing.Sent, row.Sharing.Total = int64(min(fact.UploadSent, total)), int64(total)
 	}
 	if row.Online != nil && !fact.HolderRemoved {
 		row.CanTake = false
 	}
+}
+
+// appChatSharingAgain judges a cached row's holder sharing again after its
+// presence changed, from can_take as it was before sharing blocked it
+// (takeable): a holder whose presence is now unknown no longer blocks.
+func appChatSharingAgain(row *appwire.ChatRow, fact chatlist.Row, takeable bool) {
+	if row.Sharing != nil && !row.Here {
+		row.CanTake = takeable
+	}
+	appChatSharing(row, fact)
 }
 
 func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {
@@ -660,17 +676,18 @@ func (b *appBackend) refreshChatInventory(ctx context.Context, feed dirwatch.Fol
 		_, _ = b.readChats(ctx, s, feed, true)
 	} else {
 		// Presence alone changes no directory version and needs no directory GET.
-		cloneRows := func() []appwire.ChatRow {
+		cloneRows := func() ([]appwire.ChatRow, map[string]bool) {
 			c.mu.Lock()
 			defer c.mu.Unlock()
-			return slices.Clone(c.rows)
+			// takeable is replaced whole by each read, never written in place.
+			return slices.Clone(c.rows), c.takeable
 		}
-		rows := cloneRows()
+		rows, takeable := cloneRows()
 		known := b.devices.watch.Snapshot(s.Identity, s.Device).Online
 		for i := range rows {
 			r := &rows[i]
 			appChatPresence(r, c.facts[r.Cell], state, known)
-			appChatSharing(r, c.facts[r.Cell])
+			appChatSharingAgain(r, c.facts[r.Cell], takeable[r.Cell])
 		}
 		c.markTaking(rows, false)
 		// Presence still refreshes local agents' lines, but a cached row from

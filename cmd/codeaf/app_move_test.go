@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -218,6 +219,39 @@ func TestAppChatSharingWaitsForTheHolder(t *testing.T) {
 	appChatSharing(&row, chatlist.Row{Pending: 1, Mine: true})
 	if row.Sharing != nil || !row.CanTake {
 		t.Fatalf("this computer's own pending turns read as another's sharing: %+v", row)
+	}
+	// A relay's counts past int64 never reach the app as negative bytes.
+	row = appwire.ChatRow{CanTake: true, Online: &online}
+	appChatSharing(&row, chatlist.Row{Pending: 1, UploadSent: math.MaxUint64, UploadTotal: math.MaxUint64})
+	if row.Sharing.Sent < 0 || row.Sharing.Total < 0 || row.Sharing.Sent > row.Sharing.Total {
+		t.Fatalf("huge counts became %+v", row.Sharing)
+	}
+}
+
+// A presence change re-judges a cached row: a holder whose presence becomes
+// unknown stops blocking it, one seen again blocks it again, and a row that
+// could not be taken anyway stays that way.
+func TestAppChatSharingFollowsPresence(t *testing.T) {
+	online, fact := true, chatlist.Row{Pending: 1}
+	row := appwire.ChatRow{CanTake: true, Online: &online}
+	appChatSharing(&row, fact)
+	if row.CanTake {
+		t.Fatal("a known holder still sharing did not block the row")
+	}
+	row.Online = nil
+	appChatSharingAgain(&row, fact, true)
+	if !row.CanTake {
+		t.Fatal("a holder of unknown presence still blocks the row")
+	}
+	row.Online = &online
+	appChatSharingAgain(&row, fact, true)
+	if row.CanTake {
+		t.Fatal("a holder seen again no longer blocks the row")
+	}
+	row.Online = nil
+	appChatSharingAgain(&row, fact, false)
+	if row.CanTake {
+		t.Fatal("a row that could not be taken became takeable")
 	}
 }
 
