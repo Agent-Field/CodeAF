@@ -426,6 +426,8 @@ func TestLiveJobTotalBudgetAcrossRerun(t *testing.T) {
 	act("factory.job_stop", nil)
 	wait("first run is stopped before Start over", func(j api.Job) bool { return j.Failure != nil })
 	act("factory.job_run_again", nil)
+	// Start over counts rounds from the beginning again.
+	pressedRound = -1
 	parked := wait("second run reaches lifetime cap", func(j api.Job) bool { return j.SpendingLimit != nil })
 	if parked.Cost <= 0 || parked.Cost >= budget || parked.LifetimeCost < budget || len(parked.Questions) == 0 {
 		t.Fatalf("cap must be from job total, not run cost: %+v", parked)
