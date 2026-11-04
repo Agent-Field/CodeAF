@@ -78,7 +78,7 @@ func (p *Publisher) publish(ctx context.Context, d *Driving, head string, in Pub
 	if err != nil {
 		return Export{}, err
 	}
-	ex, frames, err := p.uploadPlan(ctx, d.Cell, head)
+	ex, frames, err := p.uploadPlan(ctx, d.Cell, head, false)
 	if err != nil {
 		return Export{}, err
 	}
@@ -114,7 +114,7 @@ func unionFrames(plan, uploaded []string) []string {
 // it put, and answers the export so the caller knows its size. Objects are content-addressed, so what a
 // refused publish uploaded is reused by whatever comes next.
 func (p *Publisher) Upload(ctx context.Context, c cell.Cell, head string) (Export, error) {
-	ex, _, err := p.uploadPlan(ctx, c, head)
+	ex, _, err := p.uploadPlan(ctx, c, head, true)
 	return ex, err
 }
 
@@ -122,7 +122,12 @@ func (p *Publisher) Upload(ctx context.Context, c cell.Cell, head string) (Expor
 // is what the plan for the head names (contract §22.2). Frames skipHeld
 // dropped are not named: their ids are whatever earlier upload carried them,
 // which this publish does not know, and the take's want loop covers them.
-func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string) (Export, []string, error) {
+//
+// keep records the frames of an upload cut short (keepSent). Only Upload, which
+// names no plan, keeps them: Publish and Branch name the frames they put in
+// the head's plan, and a frame recorded by an attempt that failed would be
+// left out of the next export and so out of the plan.
+func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string, keep bool) (Export, []string, error) {
 	ex, err := p.Engine.Export(ctx, c, head)
 	if err != nil {
 		return Export{}, nil, err
@@ -133,7 +138,9 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string) (E
 	for i, f := range ex.Frames {
 		id, actualBytes, err := p.put(ctx, f)
 		if err != nil {
-			p.keepSent(ctx, c, paths[:i])
+			if keep {
+				p.keepSent(ctx, c, paths[:i])
+			}
 			return ex, nil, err
 		}
 		ex.Frames[i].Bytes = actualBytes

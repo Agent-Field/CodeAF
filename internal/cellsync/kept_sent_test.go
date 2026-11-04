@@ -11,9 +11,11 @@ import (
 )
 
 // failAfter is a store that takes n frames and then refuses every other one.
+// put names every frame it took.
 type failAfter struct {
 	blobstore.Store
-	n int
+	n   int
+	put []string
 }
 
 var errCutShort = errors.New("upload cut short")
@@ -23,7 +25,11 @@ func (s *failAfter) PutFrame(ctx context.Context, frame []byte) (blobstore.Frame
 		return "", errCutShort
 	}
 	s.n--
-	return s.Store.PutFrame(ctx, frame)
+	id, err := s.Store.PutFrame(ctx, frame)
+	if err == nil {
+		s.put = append(s.put, string(id))
+	}
+	return id, err
 }
 
 // TestAnInterruptedUploadKeepsTheFramesItSent: a large chat whose upload runs
@@ -63,5 +69,43 @@ func TestAnInterruptedUploadKeepsTheFramesItSent(t *testing.T) {
 	}
 	if rest, err := eng.Export(ctx, c, head); err != nil || rest.Objects != 0 {
 		t.Fatalf("after the resumed upload %d objects are still unsent (%v)", rest.Objects, err)
+	}
+}
+
+// TestABranchCutShortStillNamesEveryFrameItPut: the branch's own upload is the
+// only writer of its orphan frames, so its plan must name them. Keeping the
+// frames of an attempt cut short left them out of the retry's export and so out
+// of the plan; only Upload, which names no plan, keeps them.
+func TestABranchCutShortStillNamesEveryFrameItPut(t *testing.T) {
+	r := newRig(t)
+	r.publishFirst(map[string]string{"a": "0"})
+	r.engA.MaxObjects = 2
+	files := map[string]string{}
+	for i := range 6 {
+		files[fmt.Sprintf("file-%d.txt", i)] = fmt.Sprintf("branch content %d", i)
+	}
+	kept := r.seal(files)
+	store := &failAfter{Store: r.store, n: 1}
+	r.pub.Store = store
+	b := Brancher{Dir: r.dirA, Publisher: r.pub, NewID: r.newID}
+	if _, err := b.Branch(context.Background(), r.drv, kept, 1, r.info()); !errors.Is(err, errCutShort) {
+		t.Fatalf("branch = %v, want the store's refusal", err)
+	}
+	if len(store.put) != 1 {
+		t.Fatalf("fixture put %d frames before the refusal, want 1", len(store.put))
+	}
+	store.n = 1 << 10
+	id, err := b.Branch(context.Background(), r.drv, kept, 1, r.info())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := map[string]bool{}
+	for _, f := range r.head(id).Frames {
+		plan[f] = true
+	}
+	for _, f := range store.put {
+		if !plan[f] {
+			t.Fatalf("branch plan %v leaves out frame %s it put", r.head(id).Frames, f)
+		}
 	}
 }
