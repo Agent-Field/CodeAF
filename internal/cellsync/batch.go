@@ -569,10 +569,10 @@ func (b *Batcher) beat(ctx context.Context) {
 // work is refused immediately and any pending turns are resolved under flushMu
 // so an in-flight publish and a watch wakeup never announce displacement twice.
 func (b *Batcher) Displaced(ctx context.Context) {
-	seen, _, stale := b.view()
-	if stale {
-		return
-	}
+	// A stale hold may still be saving its kept branch under flushMu.
+	// Joining lost waits for that resolution; the stale flag only retires
+	// ownership and cannot acknowledge that preservation has finished.
+	seen, _, _ := b.view()
 	b.lost(ctx, seen)
 }
 
