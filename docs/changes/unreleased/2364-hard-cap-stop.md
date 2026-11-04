@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Recorded day-cap crossings stop running owned work
-pr: 0
+pr: 2364
 surface: [chat, engine, app, factory, docs]
 invalidates:
   - "A turn crossing the daily cap previously finished while other crews kept running. Recording a crossing now wakes the existing job-budget watcher and stops each affected conversation's owned work."
