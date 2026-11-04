@@ -78,11 +78,12 @@ func (t *appInboxTap) Emit(event string, data any) {
 	}
 	// EVERY agent.changed IS DRESSED ON ITS WAY OUT, whichever road said it:
 	// its crews, its live line, working while a turn runs, and unread. Its
-	// unread is worked out and said in one step, so two roads saying the
-	// agent at once cannot leave the window with the older reading.
+	// unread and saved spend are worked out and said in one step, so two roads
+	// saying the agent at once cannot leave the window with an older reading.
 	if changed, ok := data.(appwire.AgentChanged); ok {
 		t.b.dressState(&changed.Agent)
 		t.b.sayingUnread(func() {
+			t.b.dressSpendLocked(&changed.Agent)
 			t.b.dressUnreadLocked(&changed.Agent)
 			t.next.Emit(event, changed)
 		})

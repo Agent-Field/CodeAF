@@ -32,6 +32,10 @@ const StepChatsHeader = "X-Codeaf-Step-Chats"
 // control, so its worker cancels execution without reporting a person's Stop.
 const LeaseWithdrawnHeader = "X-Codeaf-Lease-Withdrawn"
 
+// SignalAcksHeader opts into retained delivery. Its JSON IDs acknowledge handled
+// signals; an older factory ignores the header and still receives an empty body.
+const SignalAcksHeader = "X-Codeaf-Signal-Acks"
+
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
 type WorkerAttach struct {
@@ -331,6 +335,7 @@ type WorkerHeartbeat struct {
 // (yes, words), steer (words), recheck, budget, model, reply, publish, merge
 // or stop (internal/factory/lease's Signal* names).
 type WorkerSignal struct {
+	Delivery      string            `json:"delivery,omitempty"`
 	PublishAnyway *factory.Approval `json:"publish_anyway,omitempty"`
 	Automatic     *bool             `json:"automatic,omitempty"`
 	Budget        float64           `json:"budget,omitempty"`
