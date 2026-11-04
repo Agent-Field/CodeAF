@@ -47,6 +47,10 @@ type Batcher struct {
 	OnLost  func()
 	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
 	Now     func() time.Time // default time.Now; tests inject a fake clock
+	// BeforeResolve settles finished calls before displacement chooses the head
+	// to keep. The recorder's hook is best effort: unsaved calls stay in its
+	// local WAL while resolution keeps the turns already noted.
+	BeforeResolve func(context.Context) error
 	// OnRenewalChange wakes local readers when renewal health or ownership changes.
 	OnRenewalChange func()
 	// Liveness, when set, is a watch socket that can vouch for the lease, so
@@ -565,10 +569,10 @@ func (b *Batcher) beat(ctx context.Context) {
 // work is refused immediately and any pending turns are resolved under flushMu
 // so an in-flight publish and a watch wakeup never announce displacement twice.
 func (b *Batcher) Displaced(ctx context.Context) {
-	seen, _, stale := b.view()
-	if stale {
-		return
-	}
+	// A stale hold may still be saving its kept branch under flushMu.
+	// Joining lost waits for that resolution; the stale flag only retires
+	// ownership and cannot acknowledge that preservation has finished.
+	seen, _, _ := b.view()
 	b.lost(ctx, seen)
 }
 
@@ -594,6 +598,11 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 // resolve turns the orphaned turns into a branch, or, when there are none,
 // just tells the caller the chat is now a viewer. The caller holds flushMu.
 func (b *Batcher) resolve(ctx context.Context) error {
+	if b.BeforeResolve != nil {
+		if err := b.BeforeResolve(ctx); err != nil {
+			return err
+		}
+	}
 	head, n := b.newest()
 	by := b.holder(ctx)
 	if local, ok := b.Publisher.Engine.(interface {

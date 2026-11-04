@@ -50,6 +50,10 @@ func (e Engine) Dirty(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Completed WAL calls remain local work even when their capture fails.
+	if err := Captured(ctx, c); err != nil && len(recovery.Completed) == 0 {
+		return false, err
+	}
 	// External output can be the only effect of a finished call. Take-back
 	// must branch it even when no workspace file or transcript changed (D4/L9).
 	if len(recovery.Completed) > 0 {

@@ -4593,17 +4593,3 @@ Choose those separately there. A seat model pin still needs an available provide
 and its credentials on the receiving computer; pairing does not install a provider.
 The **share teams** switch does not change which crew choices follow preferences.
 Desktop app crews are separate.
-
-## Are queued spending records saved when I close a conversation?
-
-Closing a conversation waits for spending records already queued to its ledger,
-including the last call. Other conversations can keep writing to that ledger.
-The first write may need to scan older records, so a large spending history can
-make closing slower.
-
-Closing waits at most two seconds for the spending ledger, so a stalled ledger can
-add up to two seconds to each close. Pending rows can still be written if the process stays open and
-the mount recovers. If the process exits first, those rows can be lost. Reaching
-the limit writes one line to the log with the ledger path and the number of rows
-pending, and those rows count as records not written down until they are written.
-No warning appears on screen.
