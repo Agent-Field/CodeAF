@@ -275,11 +275,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			return nil, &UnsupportedAttemptSurfaceError{SurfaceDocument, "this send carries no attempt identity"}
 		}
 	}
-	if gate := c.config.RouteGate; gate != nil {
-		if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
-			return nil, err
-		}
-	}
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
 	// plus the thinking pass's room — and not for the caller's figure alone.
@@ -657,6 +652,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		if err := sharedLimiter.acquire(ctx); err != nil {
 			cancelAttempt()
 			return nil, err
+		}
+		if gate := c.config.RouteGate; gate != nil {
+			if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
+				sharedLimiter.release(false, 0)
+				cancelAttempt()
+				return nil, &AttemptDeniedError{Cause: err}
+			}
 		}
 		// THE ONE PLACE A SEND IS ADMITTED: after the request is built and the
 		// limiter has let it through, and before anything is written to the log

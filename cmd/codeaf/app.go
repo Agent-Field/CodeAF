@@ -180,6 +180,7 @@ func runApp(args []string) error {
 		backend.turnLong = *turnLong
 	}
 	defer backend.watchSpendRows()()
+	defer backend.watchAgentSpend()()
 	// The crews are watched from the start: a manager's start or a member
 	// woken by its manager must not wait for the window to ask for crews.
 	backend.memoryStore = func() (*store.Store, error) {
@@ -588,6 +589,9 @@ type appBackend struct {
 	// stopProgress the factory runner's progress news (appfactory_progress.go).
 	stopPhases   func()
 	stopProgress func()
+	// stopStages and stepStreams: the factory steps' events (appfactory_stepstream.go).
+	stopStages  func()
+	stepStreams map[string]*appStepStream
 	// briefs takes the progress news of this machine's factory's jobs as
 	// writes of their briefs (appfactory_brief_writer.go).
 	briefs *briefDebounce
@@ -629,8 +633,8 @@ type appBackend struct {
 	turns         atomic.Uint64
 	assembled     atomic.Bool
 
-	// unreadSay is held from working an agent's unread out to saying it,
-	// so the last unread the window hears is the last one worked out
+	// unreadSay is held from working an agent's unread and saved spend out
+	// to saying them, so the last readings the window hears are the latest
 	// (appunread.go). It is taken before mu and the app file's lock, never
 	// under them.
 	unreadSay sync.Mutex
@@ -730,6 +734,9 @@ type appBackend struct {
 	// spendRowsPending holds one read of today's figure for rows written
 	// together (watchSpendRows).
 	spendRowsPending atomic.Bool
+	// spendRestates hands saved-spend news off without taking mu or waiting
+	// for the window (appspendsaved.go).
+	spendRestates appSpendRestates
 	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
 	turnLong time.Duration
 	// inbox is every open ask as one list (appinbox.go); emit is its tap.
@@ -776,6 +783,10 @@ type appAgent struct {
 	repliedAt      time.Time
 	askedElsewhere time.Time
 	saidUnread     bool
+	// saidSpend is the saved figure last said in a dressed open/list answer or
+	// agent.changed, never a cache for a later view. mu guards it; unreadSay
+	// orders sayings.
+	saidSpend float64
 
 	// listening is when this light record began watching crew traffic.
 	listening time.Time
@@ -1052,6 +1063,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	b.stopPhases = b.listenPhases()
 	b.briefs = newBriefDebounce(appBriefDebounce, b.writeBriefLater)
 	b.stopProgress = b.listenProgress()
+	b.stopStages = b.listenStages()
 	guard.Go("app/sweep", b.sweep)
 	b.startLocalChatPublication()
 	return b
@@ -1738,6 +1750,7 @@ func (b *appBackend) openAgent(id string, warm bool) (appwire.Agent, error) {
 		}
 	})
 	if busy {
+		view.SpentUSD = b.savedSpendOf(view.ID)
 		return view, nil
 	}
 	a.gate.Lock()
@@ -3036,6 +3049,20 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 func appUserEntryID(n int) string { return "u" + strconv.Itoa(n) }
 
 func appAnswerEntryID(n, m int) string { return "a" + strconv.Itoa(n) + "." + strconv.Itoa(m) }
+
+// appEntryMessage is the person's message an entry id of those two is under.
+func appEntryMessage(id string) (n int, ok bool) {
+	at, found := strings.CutPrefix(id, "u")
+	if !found {
+		answer, isAnswer := strings.CutPrefix(id, "a")
+		at, _, found = strings.Cut(answer, ".")
+		if !isAnswer {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(at)
+	return n, found && err == nil
+}
 
 func appToolEntryID(call string) string { return "t" + call }
 
@@ -4579,6 +4606,9 @@ func (b *appBackend) Close() error {
 	<-b.sweepDone
 	if b.stopPhases != nil {
 		b.stopPhases()
+	}
+	if b.stopStages != nil {
+		b.stopStages()
 	}
 	if b.stopProgress != nil {
 		b.stopProgress()

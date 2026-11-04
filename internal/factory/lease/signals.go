@@ -52,12 +52,13 @@ const (
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
 type Signal struct {
-	Automatic *bool   `json:"automatic,omitempty"`
-	Budget    float64 `json:"budget,omitempty"`
-	ID        string  `json:"id,omitempty"`
-	Verb      string  `json:"verb"`
-	Yes       bool    `json:"yes,omitempty"`
-	Words     string  `json:"words,omitempty"`
+	PublishAnyway *factory.Approval `json:"publish_anyway,omitempty"`
+	Automatic     *bool             `json:"automatic,omitempty"`
+	Budget        float64           `json:"budget,omitempty"`
+	ID            string            `json:"id,omitempty"`
+	Verb          string            `json:"verb"`
+	Yes           bool              `json:"yes,omitempty"`
+	Words         string            `json:"words,omitempty"`
 }
 
 // Drain hands the holder of lease id every signal waiting for its job, oldest
@@ -96,7 +97,11 @@ func (d *Desk) drain(id, worker string, publishing bool) ([]Signal, error) {
 		}
 		var kept []Signal
 		holdSent := false
+		stopped := factory.StoppedByPerson(it)
 		for _, s := range doc.Signals[held.Job] {
+			if stopped && s.Verb == SignalHold {
+				continue
+			}
 			if !publishing && s.Verb == SignalHold {
 				// Resume queues the next lease. A queued older hold must not undo it.
 				if !holdSent && run.StoredPaused(it) {
@@ -113,7 +118,7 @@ func (d *Desk) drain(id, worker string, publishing bool) ([]Signal, error) {
 		}
 		// Hold is desired state, not a one-shot notification. Reuse the existing
 		// signal vocabulary so older workers also retry a lost heartbeat reply.
-		if !publishing && !holdSent && run.StoredPaused(it) {
+		if !stopped && !publishing && !holdSent && run.StoredPaused(it) {
 			out = append(out, Signal{Verb: SignalHold, Yes: true})
 		}
 		if len(out) == 0 && len(doc.Signals[held.Job]) == len(kept) {

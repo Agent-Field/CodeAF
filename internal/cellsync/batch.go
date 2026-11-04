@@ -60,6 +60,8 @@ type Batcher struct {
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	published bool       // a publish renewed the lease since the last heartbeat tick
 	beatSent  uint32     // the pending count the directory last heard, from a beat or a publish
+	upload    uploaded   // how far the upload of pending turns has got
+	beatUp    uploaded   // the upload progress the directory last heard
 	closing   bool       // The closing caller owns subsequent publishes and release.
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
@@ -309,17 +311,45 @@ func (b *Batcher) socketMoved(ctx context.Context, held *holding) {
 	}
 }
 
-// toldPending says whether n is what the directory last heard as pending.
+// toldPending says whether n, and the upload's progress, is what the
+// directory last heard.
 func (b *Batcher) toldPending(n uint32) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.beatSent == n
+	return b.beatSent == n && b.beatUp == b.uploadFor(n)
 }
 
 func (b *Batcher) tell(n uint32) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.beatSent = n
+	b.beatUp = b.uploadFor(n)
+}
+
+// uploaded is how far one upload has got, in frame bytes.
+type uploaded struct{ sent, total int64 }
+
+// Uploading is the Publisher's OnUpload: the next beat tells the directory
+// how far the upload of the pending turns has got, so another computer can
+// say it. Called with b.mu not held.
+func (b *Batcher) Uploading(sent, total int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.upload = uploaded{sent, total}
+}
+
+// uploadFor is the progress a beat with n pending carries. Called with b.mu held.
+func (b *Batcher) uploadFor(n uint32) uploaded {
+	if n == 0 || b.upload.total <= 0 {
+		return uploaded{}
+	}
+	return b.upload
+}
+
+func (b *Batcher) beatUpload(n uint32) uploaded {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.uploadFor(n)
 }
 
 // takePublished says whether a publish renewed the lease since the last call,
@@ -515,11 +545,14 @@ func (b *Batcher) beat(ctx context.Context) {
 	if d.Fence == 0 || stale {
 		return
 	}
-	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending})
+	up := b.beatUpload(pending)
+	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total)})
 	b.renewalResult(d, err)
 	switch {
 	case err == nil:
-		b.tell(pending)
+		b.mu.Lock()
+		b.beatSent, b.beatUp = pending, up
+		b.mu.Unlock()
 		b.recovered()
 	case errors.Is(err, directory.ErrFenceStale):
 		b.lost(ctx, d)

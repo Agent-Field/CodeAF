@@ -161,6 +161,19 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
+	traffic := trafficOf(ctx)
+	if traffic != nil {
+		traffic.Begin()
+		defer traffic.End()
+	}
+	if traffic != nil && len(body) > 0 {
+		// A replayed body (a retried connection) reports its bytes again; the
+		// caller counts what moved, not what was new.
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(trafficReader{r: bytes.NewReader(body), w: traffic}), nil
+		}
+		req.Body, _ = req.GetBody()
+	}
 	c.sign(req, body)
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -168,7 +181,11 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 	}
 	defer resp.Body.Close()
 	limit.answering(resp.ContentLength)
-	answer, err := io.ReadAll(io.LimitReader(resp.Body, MaxFrame+1))
+	var got io.Reader = resp.Body
+	if traffic != nil {
+		got = trafficReader{r: got, w: traffic, down: true}
+	}
+	answer, err := io.ReadAll(io.LimitReader(got, MaxFrame+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}

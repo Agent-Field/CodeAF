@@ -2488,6 +2488,8 @@ type Config struct {
 	// It is set where FactoryItem is, and on the one turn the runner gives an
 	// item's manager to shape its run.
 	FactoryRun RunDoor
+	// FactoryWorkRefusal rechecks automatic manager work on a worker mirror.
+	FactoryWorkRefusal func() string
 
 	// JobChat is the door a factory job's own conversation spends from the
 	// job's budget through (factory_contract.go). NIL IS NO DOOR, and every
@@ -2611,15 +2613,16 @@ type Config struct {
 	// exists.
 	Divide bool
 
-	// usageLedger points this agent's spending records at a file OTHER than the
-	// machine's own (usage_ledger.go's [UsageLedgerPath]). Empty — which is every
-	// door in the product — means the machine's.
+	// usageLedger is this agent's accounting destination. newAgent resolves an
+	// empty value to UsageLedgerPath once, before any accounting producer starts.
+	// Late receipts keep that home even after the chat closes.
 	//
 	// It is private for [Config.fixesDir]'s reason inverted: no surface sets it
 	// and no surface should, because the whole value of the ledger is that there
 	// is exactly one of it. What it is for is a test that wants to read back what
 	// a turn recorded without depending on where this machine keeps its state.
 	usageLedger string
+	receipts    *receiptTracker
 
 	// rootSession is the CONVERSATION every dollar this agent spends belongs to,
 	// and it is empty in a conversation — where the agent's own journal already
@@ -2822,7 +2825,10 @@ type Agent struct {
 	// moveAsked is the person's ask to move the running reply to a task, taken
 	// at the next step boundary ([Agent.MoveTurnToTask]).
 	moveAsked atomic.Bool
-	client    Completer
+	// receipts is shared by the family before a child can make requests.
+	// The pointer is initialized under mu; the tracker owns its own lock.
+	receipts *receiptTracker
+	client   Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.
@@ -3134,6 +3140,10 @@ type Agent struct {
 	// stateStore is, and holds its own once and its own lock for the same
 	// reason: its callers are tool calls running in parallel inside one batch.
 	docs documentRung
+
+	// spendStampMu orders meter capture with its metadata write. The folder
+	// lock alone cannot keep an older captured total from being written last.
+	spendStampMu sync.Mutex
 
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that
@@ -3513,6 +3523,9 @@ type Agent struct {
 	// session that has never opened an episode.
 	writes  *writeMeter
 	running bool
+	// factoryAutomaticTurn distinguishes runtime manager work from person chat.
+	// It is meaningful only while running, under mu.
+	factoryAutomaticTurn bool
 	// mustCall is the one tool the running turn's next answered request must
 	// call, "" for none ([Agent.FollowUpRequiring]): set from the message that
 	// opens the turn and spent by the first request that is answered

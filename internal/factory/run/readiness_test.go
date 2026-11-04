@@ -21,7 +21,7 @@ func TestReadinessRoundLandsAtExistingApprovalWithoutChangingCode(t *testing.T) 
 			var calls atomic.Int32
 			g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: ExecutorFunc(func(_ context.Context, j Job) (factory.StageResult, error) {
 				call := calls.Add(1)
-				if !strings.Contains(ciFollowUpBrief(j.Item), "read only") {
+				if !strings.Contains(ciFollowUpBrief(j), "read only") {
 					t.Error("repair instructions used for audit")
 				}
 				r := factory.StageResult{Done: true, Repair: &factory.CIRepairResult{Decision: "no_change", Reason: "Inspected full diff and description; review feedback is addressed", Readiness: &factory.ReadinessReview{Head: head, DiffReviewed: true, DescriptionMatches: true, FeedbackAddressed: true, NoUnfinishedWork: mode != "unfinished"}}}

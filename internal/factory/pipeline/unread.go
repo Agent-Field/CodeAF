@@ -1,9 +1,39 @@
 package pipeline
 
 import (
+	"errors"
 	"regexp"
 	"strconv"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
+
+// ErrNotHereYet marks a read that could ask nobody: GitHub could not be reached
+// and the repository has no checkout on this computer yet. It says nothing about
+// the file. The runner reads again once the clone is done.
+var ErrNotHereYet = errors.New("the repository is not on this computer yet")
+
+// ReadRefusal is a forge's answer to a read, with the words that are safe to
+// show a person. The wrapped error keeps the detail for problems and logs.
+type ReadRefusal struct {
+	Why string
+	Err error
+}
+
+func (r *ReadRefusal) Error() string { return r.Err.Error() }
+func (r *ReadRefusal) Unwrap() error { return r.Err }
+
+// UnreadNote is what a job's activity says when it starts with its repository's
+// rules unread.
+const UnreadNote = "Started with the repository's rules unread; its plan will wait for you"
+
+// MarkUnread records a failed read of the repository's rules on rules.
+func MarkUnread(rules *factory.StartRules, err error) {
+	rules.NoFile = false
+	rules.Unread = true
+	rules.Pending = errors.Is(err, ErrNotHereYet)
+	rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = UnreadDiagnostic(err)
+}
 
 var yamlReadLine = regexp.MustCompile(`(?:^|: )yaml: line ([0-9]{1,9}): ([^\r\n]*)`)
 
@@ -25,6 +55,13 @@ func UnreadDiagnostic(err error) (string, string, int) {
 	why := "could not read repository rules; check the file's syntax and access"
 	where := RepoFile
 	line := 0
+	var refused *ReadRefusal
+	switch {
+	case errors.Is(err, ErrNotHereYet):
+		return where + ": read once the repository is on this computer", RepoFile, 0
+	case errors.As(err, &refused):
+		return where + ": " + refused.Why, RepoFile, 0
+	}
 	if m := yamlReadLine.FindStringSubmatch(err.Error()); m != nil {
 		line, _ = strconv.Atoi(m[1])
 		where += " line " + m[1]

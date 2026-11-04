@@ -40,7 +40,7 @@ func unseenReviews(pr *PullRequest, handled map[string]string) int {
 // Acknowledgement belongs to a completed repair, not admission to the queue.
 // Feedback arriving during execution remains unseen for the next observation.
 func AcknowledgeReview(it *Item) {
-	if it.FollowUp == nil {
+	if StoppedByPerson(*it) || it.FollowUp == nil {
 		return
 	}
 	f := it.FollowUp

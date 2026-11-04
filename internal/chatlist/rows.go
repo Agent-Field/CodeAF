@@ -45,6 +45,13 @@ type Row struct {
 	DurableAt                             int64         // directory ms of the last durable turn: the fact DurableAgo is read from
 	SavedAt                               int64         // sealed head's time, or zero when unknown
 	Pending, OrphanTurns                  uint32
+	// Folder is the name of the folder the chat works in, "" when unknown.
+	Folder string
+	// Size is the bytes a copy of the chat takes, from its record; 0 unknown.
+	Size uint64
+	// UploadSent of UploadTotal bytes is how far the holder's upload of its
+	// pending turns had got at its last beat; both 0 when it did not say.
+	UploadSent, UploadTotal uint64
 	// Fence binds the continuation card to the holder the person saw.
 	Fence uint64
 	// Mine says this device was the chat's last holder, so a lapsed lease is
@@ -165,6 +172,10 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		SavedAt:     c.SavedAt,
 		Pending:     c.Lease.Pending,
 		OrphanTurns: c.OrphanTurns,
+		Folder:      nameOr(open, c.Folder, ""),
+		Size:        c.Size,
+		UploadSent:  c.Lease.UploadSent,
+		UploadTotal: c.Lease.UploadTotal,
 
 		HolderRemoved: l.Devices[c.Lease.Device].Revoked,
 	}

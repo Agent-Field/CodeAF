@@ -186,7 +186,7 @@ func (c *jobChat) Refusal() string {
 			return r.refusal
 		}
 	}
-	return "job budget could not be read; work stopped"
+	return session.JobBudgetUnreadable
 }
 
 // readOf is st's document for this job, decoded again only when its file has
@@ -323,6 +323,9 @@ func (c *jobChat) MaintainPR(ctx context.Context, words string) (string, error) 
 	err = c.floor.Update(c.id, func(it *factory.Item) error {
 		if !c.talk.is(it.Talk) {
 			return errNotThisChat
+		}
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return err
 		}
 		if it.Manual {
 			return errors.New("Manual control is active. Finish the working chat and use Resume pipeline.")

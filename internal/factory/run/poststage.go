@@ -59,7 +59,19 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		}
 		it := job.Item
 		verb, rest := splitAsk(job.Stage.Ask)
-		action := factory.Action{Verb: verb, Item: it}
+		action := factory.Action{Verb: verb, Item: it, BeforeWrite: job.BeforeWrite}
+		check := func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := factory.CheckPersonStop(it); err != nil {
+				return err
+			}
+			if job.BeforeWrite != nil {
+				return job.BeforeWrite(ctx)
+			}
+			return nil
+		}
 		switch verb {
 		case "comment":
 			action.Body = rest
@@ -71,7 +83,7 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		case "pr":
 			action.Draft = strings.EqualFold(strings.TrimSpace(rest), "draft")
 			action.Branch = branchFor(it)
-			action.Body = factory.PublicText(proofList(it, job.Prior) + "\n\nby codeaf factory")
+			action.Body = factory.PublicText(proofList(it, job.Prior) + "\n" + factory.SkippedValidation(it) + "\nby codeaf factory")
 		case "close":
 		default:
 			return factory.StageResult{}, fmt.Errorf("a post stage says comment, label, pr or close")
@@ -100,7 +112,13 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		// without the job's recorded approval, and a comment or a pull
 		// request carries its trailer as the body's last line.
 		if o.Record != nil {
-			trailer, err := o.Record.Trailer(ctx, it.ID)
+			trailer := ""
+			var err error
+			if factory.PublishedAnyway(it) && ValidTrailer(it.PublishAnyway.Words) && TrailerCommit(it.PublishAnyway.Words) == it.HeadCommit && TrailerHandle(it.PublishAnyway.Words) == it.PublishAnyway.DecidedBy {
+				trailer = it.PublishAnyway.Words
+			} else {
+				trailer, err = o.Record.Trailer(ctx, it.ID)
+			}
 			if err != nil {
 				return factory.StageResult{}, err
 			}
@@ -109,9 +127,15 @@ func NewPostExecutorWith(o PostOptions) Executor {
 			}
 		}
 		if verb == "pr" && o.Push != nil {
-			if err := push(o.Push, job.Dir, it, action.Branch); err != nil {
+			if err := check(); err != nil {
 				return factory.StageResult{}, err
 			}
+			if err := push(o.Push, job.Dir, it, action.Branch, check); err != nil {
+				return factory.StageResult{}, err
+			}
+		}
+		if err := check(); err != nil {
+			return factory.StageResult{}, err
 		}
 		rcpt, err := src.Write(ctx, action)
 		if err != nil {
@@ -199,11 +223,11 @@ func proofList(it factory.Item, prior []factory.StageResult) string {
 }
 
 // push runs the push and says what went wrong in a sentence.
-func push(run func(dir, branch string, before ...func() error) error, dir string, it factory.Item, branch string) error {
+func push(run func(dir, branch string, before ...func() error) error, dir string, it factory.Item, branch string, before ...func() error) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("codeaf does not know where %s is checked out", strings.TrimSpace(it.Repo))
 	}
-	err := run(dir, branch)
+	err := run(dir, branch, before...)
 	switch {
 	case err == nil:
 		return nil

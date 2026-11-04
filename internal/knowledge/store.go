@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,10 @@ const knowledgeSchema = `
  CREATE TABLE IF NOT EXISTS watches(partition TEXT,id TEXT,terms TEXT,PRIMARY KEY(partition,id));
  CREATE TABLE IF NOT EXISTS wakes(partition TEXT,id TEXT,source TEXT,reason TEXT,PRIMARY KEY(partition,id,source));
 `
+
+// busyWaitMillis is how long a write waits for another writer before it fails. The longest holder is the build of
+// profile_session_lookup, once per database: 1.5 s at 1 GB on a fast Mac, so about 5 s on a laptop three times slower.
+const busyWaitMillis = 15_000
 
 var schemaLocks sync.Map
 var schemaReady sync.Map
@@ -143,7 +148,7 @@ func (v *Vault) database() (*sql.DB, error) {
 	}
 	uri := sqliteuri.File(path)
 	q := uri.Query()
-	q.Add("_pragma", "busy_timeout(1000)")
+	q.Add("_pragma", "busy_timeout("+strconv.Itoa(busyWaitMillis)+")")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Set("_txlock", "immediate")
 	uri.RawQuery = q.Encode()

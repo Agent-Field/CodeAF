@@ -19,6 +19,9 @@ func (d *Doors) StepControl(id int, name string, rerun bool, words string) error
 // followed by a later write must not rewind a step that has already moved on.
 func (d *Doors) StepControlExpected(id int, name string, rerun bool, words string, revision *int) error {
 	return d.rewind(id, revision, rerun, func(it *factory.Item, now time.Time) error {
+		if rerun {
+			factory.ClearPersonStop(it)
+		}
 		return run.StepControl(it, name, rerun, words, now)
 	})
 }
@@ -28,6 +31,7 @@ func (d *Doors) StepControlExpected(id int, name string, rerun bool, words strin
 // another model.
 func (d *Doors) StepRerunExpected(id int, name, words, model string, revision *int) error {
 	return d.rewind(id, revision, true, func(it *factory.Item, now time.Time) error {
+		factory.ClearPersonStop(it)
 		return run.StepRerun(it, name, words, model, now)
 	})
 }
@@ -59,6 +63,9 @@ func (d *Doors) EditSteps(id int, edit factory.RunEdit, recipe factory.Recipe) (
 	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if factory.JobState(*it) == "done" || it.Publishing {
 			return false, run.StepControlRefusal("finished or publishing jobs cannot edit steps")
+		}
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return false, err
 		}
 		var err error
 		lines, err = run.EditStepsItem(it, edit, recipe)

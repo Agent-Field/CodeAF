@@ -350,7 +350,7 @@ func appLandedTakeFixture(t *testing.T, open func(*appBackend, string) (appwire.
 	})
 	seen, opened := appTakeSeen, appTakeOpen
 	t.Cleanup(func() { appTakeSeen, appTakeOpen = seen, opened })
-	appTakeSeen = func(_ context.Context, _ *syncsetup.Sync, id string, _ *directory.LeaseExpectation) (syncsetup.Continued, error) {
+	appTakeSeen = func(_ context.Context, _ *syncsetup.Sync, id string, _ *directory.LeaseExpectation, _ func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
 		if id != c.ID {
 			t.Errorf("took %s, want %s", id, c.ID)
 		}
@@ -360,16 +360,71 @@ func appLandedTakeFixture(t *testing.T, open func(*appBackend, string) (appwire.
 	return backend, rec, wire, down, row
 }
 
-// appNoEndedTake fails on any chat.changed row from index from on that shows
-// the chat elsewhere without saying the take runs.
+// appNoEndedTake fails when the take never said it runs, or when a chat.changed
+// row after it said so shows the chat elsewhere without saying the take runs.
+// The chat feed's follower may publish the chat just before the take starts;
+// that row is right when it is sent, so it is not an ended take.
 func appNoEndedTake(t *testing.T, rec *appRecorder, from int, id string) {
 	t.Helper()
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	for _, data := range rec.data[from:] {
-		if changed, ok := data.(appwire.ChatChanged); ok && changed.Chat.Cell == id && !changed.Chat.Here && !changed.Chat.Taking {
-			t.Fatalf("a take that acquired the chat was announced as one that did not move it: %+v", changed.Chat)
+	row, started, ended := appEndedTakeRow(rec.data[from:], id)
+	if !started {
+		t.Fatalf("no chat.changed row said the take of %s runs", id)
+	}
+	if ended {
+		t.Fatalf("a take that acquired the chat was announced as one that did not move it: %+v", row)
+	}
+}
+
+// appEndedTakeRow reads recorded events in order. started is the first row for
+// id that says the take runs; ended is a later row that shows the chat elsewhere
+// without saying so.
+func appEndedTakeRow(events []any, id string) (row appwire.ChatRow, started, ended bool) {
+	for _, data := range events {
+		changed, ok := data.(appwire.ChatChanged)
+		if !ok || changed.Chat.Cell != id {
+			continue
 		}
+		if !started {
+			started = changed.Chat.Taking
+			continue
+		}
+		if !changed.Chat.Here && !changed.Chat.Taking {
+			return changed.Chat, true, true
+		}
+	}
+	return appwire.ChatRow{}, started, false
+}
+
+// The check on a real take: a row from before the take starts is accepted, and
+// the same row after the take landed is the ended take it exists to catch.
+func TestAppNoEndedTakeJudgesOnlyRowsAfterTheTakeStarted(t *testing.T) {
+	backend, rec, wire, _, row := appLandedTakeFixture(t, func(*appBackend, string) (appwire.Agent, error) {
+		return appwire.Agent{}, errors.New("the moved chat would not open")
+	})
+	elsewhere := appwire.ChatChanged{Chat: appwire.ChatRow{Cell: row.Cell, Title: row.Title}}
+	judged := func() (appwire.ChatRow, bool, bool) {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		return appEndedTakeRow(slices.Clone(rec.data), row.Cell)
+	}
+	rec.Emit(appwire.EventChatChanged, elsewhere)
+	if _, started, ended := judged(); started || ended {
+		t.Fatalf("a row from before the take was judged: started=%v ended=%v", started, ended)
+	}
+	if _, refusal := wire.call("agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}); refusal == nil {
+		t.Fatal("a take whose chat would not open succeeded")
+	}
+	if !backend.chats.landedTake(row.Cell) {
+		t.Fatal("a take that acquired the chat recorded no landed take")
+	}
+	if _, started, ended := judged(); !started || ended {
+		t.Fatalf("a real take with an early row: started=%v ended=%v", started, ended)
+	}
+	rec.Emit(appwire.EventChatChanged, elsewhere)
+	if got, started, ended := judged(); !started || !ended || got.Cell != row.Cell {
+		t.Fatalf("a row after landing that shows no take running was not caught: %+v started=%v ended=%v", got, started, ended)
 	}
 }
 
