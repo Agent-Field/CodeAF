@@ -271,7 +271,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	// corrected presentation of THAT check can clear an earlier failure; a
 	// passing subset, other directory or target cannot.
 	for command, failure := range setupFailures {
-		pending = append(pending, command+" · "+failure)
+		pending = append(pending, verification.OwedCommand(command)+" · "+failure)
 	}
 	if journalErr != nil {
 		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
@@ -295,11 +295,11 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 				}
 			}
 			if !covered {
-				pending = append(pending, command+" · "+outcome+"; no later measured covering pass")
+				pending = append(pending, verification.OwedCommand(command)+" · "+outcome+"; no later measured covering pass")
 			}
 		}
 		if outcome == "failed" && !(verification.PresentationOnly(command) && (corrected[verificationCommand(command)] || superseded[command])) {
-			pending = append(pending, command)
+			pending = append(pending, verification.OwedCommand(command))
 		}
 	}
 	keys := make([]string, 0, len(latest))

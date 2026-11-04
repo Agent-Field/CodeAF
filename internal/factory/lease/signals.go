@@ -55,13 +55,14 @@ const (
 // Signal is one verb a person asked of a job, with the door's own arguments.
 type Signal struct {
 	// Delivery identifies transport separately from a question or message ID.
-	Delivery  string  `json:"delivery,omitempty"`
-	Automatic *bool   `json:"automatic,omitempty"`
-	Budget    float64 `json:"budget,omitempty"`
-	ID        string  `json:"id,omitempty"`
-	Verb      string  `json:"verb"`
-	Yes       bool    `json:"yes,omitempty"`
-	Words     string  `json:"words,omitempty"`
+	Delivery      string            `json:"delivery,omitempty"`
+	PublishAnyway *factory.Approval `json:"publish_anyway,omitempty"`
+	Automatic     *bool             `json:"automatic,omitempty"`
+	Budget        float64           `json:"budget,omitempty"`
+	ID            string            `json:"id,omitempty"`
+	Verb          string            `json:"verb"`
+	Yes           bool              `json:"yes,omitempty"`
+	Words         string            `json:"words,omitempty"`
 }
 
 // Drain hands the holder of lease id every signal waiting for its job, oldest

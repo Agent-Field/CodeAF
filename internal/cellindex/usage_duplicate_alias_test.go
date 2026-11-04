@@ -48,7 +48,7 @@ func TestReviewDuplicateIdentityRowsDoNotHideNewReceipt(t *testing.T) {
 	}
 	// Older versions wrote this first call once live, once during rebuild.
 	for _, id := range []string{d.ID, c.ID} {
-		session.RecordUsage(session.UsageLedgerPath(), session.UsageLine{At: time.UnixMilli(calls[0].SealedAtMs), Session: id, Model: "m", Calls: 1, Input: 1, USD: .001})
+		session.RecordImportedUsage(session.UsageLedgerPath(), session.UsageLine{At: time.UnixMilli(calls[0].SealedAtMs), Session: id, Model: "m", Calls: 1, Input: 1, USD: .001})
 	}
 	session.FlushUsage()
 	before, err := os.ReadFile(session.UsageLedgerPath())
@@ -124,7 +124,7 @@ func TestUsageAliasRowIdentity(t *testing.T) {
 			rows[0].Session = d.ID
 			rows[1].Session = c.ID
 			for _, row := range rows {
-				session.RecordUsage(session.UsageLedgerPath(), row)
+				session.RecordImportedUsage(session.UsageLedgerPath(), row)
 			}
 			session.FlushUsage()
 			if _, err := Refresh(c, ""); err != nil {

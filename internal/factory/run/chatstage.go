@@ -275,7 +275,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Name:              stageChatName(job),
 		Handle:            stageHandle(job),
 		Dir:               job.Dir,
-		Brief:             stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
+		Brief:             stageBrief(job) + ciFollowUpBrief(job) + followProgressBrief(job),
 		Model:             stageModel(job),
 		AutomaticModels:   stageAutomatic(job),
 		FactoryModel:      strings.TrimSpace(job.Item.FactoryModel),
@@ -683,6 +683,7 @@ func stageBrief(job Job) string {
 		para(p...)
 	}
 	para(stagePlace(job))
+	para(factory.StageMethod(job.Stage))
 	para(rulesBrief(job))
 	para(planBrief(job))
 	var notes []string
@@ -702,7 +703,10 @@ func stageBrief(job Job) string {
 	para(untilSays(job))
 	para(briefNoTeamPost)
 	para(briefAsk)
-	para("\nEvidence rules: test claims must cite commands that exercise that exact behavior. Code inspection is inspection evidence, not a passing test. Preserve command exit codes; do not hide failures behind a pipe or a printed exit marker. Numeric totals come from command receipts, not guesses. Before a final proof or Follow PR result, supply publish_summary: up to three complete PR-ready change bullets describing the final implementation including review fixes, with accurate names and no personal names.\n")
+	para("Evidence rules: report a check as run only when its tool output shows execution; label refusals and skipped commands as unrun. Label inspection as inspection. Preserve real command exits, including through pipes; a printed exit marker is not a receipt. Numeric totals come from command receipts. Your output is the handover later steps and the person read: what changed, each command run with its actual result, what was not run and why, and what remains open.")
+	if factory.IsProofStage(job.Stage) || factory.IsCIRepairStage(job.Stage) {
+		para("Supply publish_summary: up to three complete PR-ready bullets describing the final implementation including review fixes, with accurate names and no personal names.")
+	}
 	para(briefClosing)
 
 	return b.String()
@@ -715,7 +719,7 @@ func stageBrief(job Job) string {
 //	the refund is counted twice in Export
 //	1 finding still open
 //	not shown: refunds count once
-//	Fix what it left in the checkout first, run the tests, then review again and report only what is still wrong.
+//	Use current passing evidence. Correct the unresolved check or changed code, then review only the affected behaviour and report what remains open.
 //
 // A stage that runs until done is told it did not finish and to carry on from
 // what is in the checkout instead. "" on round 1 and when nothing came back.
@@ -743,7 +747,7 @@ func fixThenCheck(job Job) string {
 	}
 	switch strings.TrimSpace(job.Stage.Until) {
 	case factory.UntilClean, factory.UntilGreen, factory.UntilProven:
-		return head + "\nFix what it left in the checkout first, run the tests, then " + name + " again and report only what is still wrong."
+		return head + "\nUse current passing evidence. Correct the unresolved check or changed code, then " + name + " only the affected behaviour and report what remains open."
 	}
 	return head + "\nIt did not finish. Carry on from what it left in the checkout, and report done once the ask is carried out."
 }
@@ -1388,5 +1392,5 @@ func reportExecutionNotes(owner executionReporter, r factory.StageResult) ([]str
 // proof, and a saved decision rides beside the existing draft rather than
 // asking the worker to rediscover it.
 func resumedStageBrief(job Job) string {
-	return stageAsk(job) + "\n\n" + stageRole(job) + "\n\n" + planBrief(job) + "\n\n" + carryOnBrief(job.CarryOn) + ciFollowUpBrief(job.Item) + followProgressBrief(job)
+	return stageAsk(job) + "\n\n" + stageRole(job) + "\n\n" + planBrief(job) + "\n\n" + carryOnBrief(job.CarryOn) + ciFollowUpBrief(job) + followProgressBrief(job)
 }

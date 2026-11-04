@@ -64,9 +64,14 @@ var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
-	publicationMu     sync.Mutex
-	publication       map[string]*pendingPublication
-	publicationSeen   map[string]struct{}
+	publicationMu   sync.Mutex
+	publication     map[string]*pendingPublication
+	publicationSeen map[string]struct{}
+	// BetweenChats, when set, runs after each chat a PublishLocalChats pass
+	// offers, with the pass's lock released: a pass lasts as long as its
+	// uploads keep moving, and the caller counts (CountUnshared) and does its
+	// other sharing work between chats instead of after the whole backlog.
+	BetweenChats      func()
 	teamsCache        *teamIdentityCache // Guarded by stateMu across vault rounds.
 	teamsShared       bool               // Enabling sharing must restore an already-known vault.
 	removed           atomic.Bool
