@@ -232,7 +232,9 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
 				}
 				act("factory.job_start", nil)
 			}
-			wait("raise permits spending that still counts", func(j api.Job) bool { return calls.Load() > before && j.LifetimeCost == 7.25 && j.SpendingLimit == nil && replays.Load() > 0 })
+			wait("raise permits spending that still counts", func(j api.Job) bool {
+				return calls.Load() > before && j.LifetimeCost == 7.25 && j.SpendingLimit == nil && replays.Load() > 0
+			})
 		})
 	}
 }
