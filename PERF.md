@@ -390,3 +390,14 @@ two-second flush contract must complete the new $0.002 call; replaying that call
 and historical identities adds no rows. An independent public ledger walk checks
 1,000,001 records, exact consumed bytes and $1000.002 total after the measurement.
 Elapsed times are diagnostic. The retained identity set still grows with history.
+
+
+## Usage writer overflow draining
+
+`BenchmarkLedgerWriter20K` times 20,000 distinct charges from `RecordUsage` to
+the last completed writer callback. Outside the timer it checks the flush,
+20,000 public ledger rows, $200 total and no drops. Compare the same harness
+on both revisions, with and without race instrumentation; run with `-run '^$'`.
+The writer batches at most 128 already admitted rows per ledger lock. A quiet
+queue flushes immediately, and flush/close barriers follow completed writes.
+Identity generation checks and duplicate suppression still run under that lock.

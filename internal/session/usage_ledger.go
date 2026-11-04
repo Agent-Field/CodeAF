@@ -539,8 +539,8 @@ func (w *laneWitness) answered(seen hedgeSeen, output int) laneFacts {
 // queue. It is internal/history's shape and it is here for internal/history's
 // reason — "capture must never block the input path" — with one difference that
 // matters: history batches on a ticker because a person can type faster than a
-// disk, and a ledger row is written at most once per model call, so this writer
-// wakes on the row itself and there is nothing to batch.
+// disk. This writer wakes on the row itself, batches only rows already queued,
+// and flushes immediately when the queue is quiet.
 
 // usageQueueDepth bounds the ordinary background queue. Overflow writes through
 // independently rather than dropping a charge.
@@ -560,6 +560,7 @@ var usageFlushLimit = 2 * time.Second
 // The flush travels through the SAME queue as the rows, which is what makes it
 // an answer about them rather than a race with them.
 type usageWrite struct {
+	id   string
 	line []byte
 	done chan struct{}
 }
@@ -571,7 +572,7 @@ type usageWriter struct {
 	beforeWrite  func()
 	overflowMu   sync.Mutex
 	overflow     map[chan struct{}]struct{}
-	overflowRows []usageOverflowRow
+	overflowRows []usageWrite
 }
 
 // usageDropped counts serialization and filesystem failures across all ledgers.
@@ -639,13 +640,6 @@ func usageWriterForLocked(path string) *usageWriter {
 	return writer
 }
 
-// usageOverflowRow is a row waiting for the overflow writer; done closes once
-// it was written or counted as dropped.
-type usageOverflowRow struct {
-	line []byte
-	done chan struct{}
-}
-
 // pendingOverflow captures the writes already admitted without waiting under a
 // lock. Later writes belong to a later flush; shutdown admits no later writes.
 func (w *usageWriter) pendingOverflow() []chan struct{} {
@@ -673,55 +667,77 @@ func (w *usageWriter) run(path string) {
 			_ = file.Close()
 		}
 	}()
-	write := func(line []byte) {
+	write := func(rows []usageWrite) {
+		charges := 0
+		for _, row := range rows {
+			if row.line != nil {
+				charges++
+			}
+		}
+		if charges == 0 {
+			return
+		}
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
 		if file == nil {
 			file = openUsageLedger(path)
 			if file == nil {
-				dropUsageRow()
+				usageDropped.Add(int64(charges))
 				return
 			}
 		}
-		// ONE write per complete line, so O_APPEND's atomic offset covers the
-		// whole row — which is also what lets [UsageCache] trust that the bytes
-		// before the last newline are whole lines, and what keeps two processes
-		// appending to one ledger from interleaving halves of two rows.
-		written, err := identities.append(file, line)
+		// One append holds complete rows under the same ledger lock. Batching
+		// amortizes generation validation without delaying a quiet writer.
+		written, err := identities.append(file, rows)
 		if errors.Is(err, errUsageLedgerReplaced) || errors.Is(err, fs.ErrNotExist) {
 			_ = file.Close()
 			file = openUsageLedger(path)
 			identities = usageIdentityCursor{}
 			if file == nil {
-				dropUsageRow()
+				usageDropped.Add(int64(charges))
 				return
 			}
-			written, err = identities.append(file, line)
+			written, err = identities.append(file, rows)
 		}
 		if err != nil {
-			dropUsageRow()
+			usageDropped.Add(int64(charges))
 			_ = file.Close()
 			file = nil
 			identities = usageIdentityCursor{}
 			return
 		}
-		if written {
+		for range written {
 			announceUsageWritten()
 		}
 	}
+	batch := make([]usageWrite, 0, usageWriteBatchSize)
+	flush := func() {
+		write(batch)
+		clear(batch)
+		batch = batch[:0]
+	}
 	for work := range w.queue {
 		if work.done != nil {
+			if len(batch) > 0 {
+				flush()
+			}
 			w.writeOverflow(write)
 			close(work.done)
 			continue
 		}
 		if work.line != nil {
-			write(work.line)
+			batch = append(batch, work)
+			if len(batch) == usageWriteBatchSize || len(w.queue) == 0 {
+				flush()
+			}
 		}
 		if len(w.queue) == 0 {
 			w.writeOverflow(write)
 		}
+	}
+	if len(batch) > 0 {
+		flush()
 	}
 	w.writeOverflow(write)
 }
@@ -975,14 +991,14 @@ func queueUsage(path string, line UsageLine) {
 	// charge and the caller still never waits on the disk.
 	usageWritersMu.Lock()
 	writer := usageWriterForLocked(path)
-	work := usageWrite{line: append(payload, '\n')}
+	work := usageWrite{id: line.ChargeID(), line: append(payload, '\n')}
 	select {
 	case writer.queue <- work:
 		usageWritersMu.Unlock()
 		return
 	default:
 	}
-	writer.addOverflow(work.line)
+	writer.addOverflow(work)
 	usageWritersMu.Unlock()
 }
 
@@ -990,12 +1006,13 @@ func queueUsage(path string, line UsageLine) {
 // takes it once the queue is empty, so rows stay in order and a stalled mount
 // holds one thread. A full queue means that writer has work, so it will reach
 // this row.
-func (w *usageWriter) addOverflow(line []byte) {
+func (w *usageWriter) addOverflow(work usageWrite) {
 	done := make(chan struct{})
 	w.overflowMu.Lock()
 	defer w.overflowMu.Unlock()
 	w.overflow[done] = struct{}{}
-	w.overflowRows = append(w.overflowRows, usageOverflowRow{line: line, done: done})
+	work.done = done
+	w.overflowRows = append(w.overflowRows, work)
 	w.wakeForOverflow()
 }
 
@@ -1013,24 +1030,32 @@ func (w *usageWriter) wakeForOverflow() {
 func (w *usageWriter) addBarrier(done chan struct{}) {
 	w.overflowMu.Lock()
 	defer w.overflowMu.Unlock()
-	w.overflowRows = append(w.overflowRows, usageOverflowRow{done: done})
+	w.overflowRows = append(w.overflowRows, usageWrite{done: done})
 	w.wakeForOverflow()
 }
 
+// usageWriteBatchSize bounds lock ownership and temporary row storage. Only
+// already admitted rows are batched; a single call never waits for more work.
+const usageWriteBatchSize = 128
+
 // writeOverflow writes the rows kept so far.
-func (w *usageWriter) writeOverflow(write func([]byte)) {
+func (w *usageWriter) writeOverflow(write func([]usageWrite)) {
 	w.overflowMu.Lock()
 	rows := w.overflowRows
 	w.overflowRows = nil
 	w.overflowMu.Unlock()
-	for _, row := range rows {
-		if row.line != nil {
-			write(row.line)
-		}
+	for len(rows) > 0 {
+		n := min(len(rows), usageWriteBatchSize)
+		batch := rows[:n]
+		write(batch)
 		w.overflowMu.Lock()
-		delete(w.overflow, row.done)
+		for _, row := range batch {
+			delete(w.overflow, row.done)
+			close(row.done)
+		}
 		w.overflowMu.Unlock()
-		close(row.done)
+		clear(batch)
+		rows = rows[n:]
 	}
 }
 

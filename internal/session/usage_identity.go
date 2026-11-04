@@ -17,6 +17,7 @@ import (
 // so queued live calls, take imports and other processes book an identity once.
 // Rows without an identity remain distinct, as they were before identities.
 type usageIdentityCursor struct {
+	buffer   []byte
 	offset   int64
 	seen     map[string]int64
 	newline  bool
@@ -26,53 +27,60 @@ type usageIdentityCursor struct {
 
 var errUsageLedgerReplaced = errors.New("usage ledger replaced during append")
 
-func (c *usageIdentityCursor) append(file *os.File, raw []byte) (bool, error) {
+// append holds one ledger generation stable for a bounded batch. Identities
+// supplied by the recorder avoid decoding the rows it just encoded.
+func (c *usageIdentityCursor) append(file *os.File, rows []usageWrite) (int, error) {
 	if err := filelock.Lock(file, true, false); err != nil {
-		return false, err
+		return 0, err
 	}
 	defer filelock.Unlock(file)
 	reader, err := usageIdentityReader(file)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	defer reader.Close()
 	if err := c.readTail(reader); err != nil {
-		return false, err
+		return 0, err
 	}
-	var line struct {
-		ID          string `json:"id"`
-		RemoteEvent string `json:"remote_event"`
-	}
-	if err := json.Unmarshal(raw, &line); err != nil {
-		return false, err
-	}
-	id := (UsageLine{ID: line.ID, RemoteEvent: line.RemoteEvent}).ChargeID()
-	duplicate, err := c.duplicate(reader, id)
-	if err != nil {
-		return false, err
-	}
-	if duplicate {
-		raw = nil
-	}
-	position := c.offset
-	// Preserve an unfinished old line and separate it from the next charge.
-	// A complete EOF object was read above and needs only its missing newline.
+	raw := c.buffer[:0]
 	if c.newline {
-		raw = append([]byte{'\n'}, raw...)
-		position++
+		raw = append(raw, '\n')
+	}
+	pending := make(map[string]int64, len(rows))
+	written := 0
+	for _, row := range rows {
+		if row.line == nil {
+			continue
+		}
+		_, duplicate := pending[row.id]
+		if !duplicate {
+			duplicate, err = c.duplicate(reader, row.id)
+			if err != nil {
+				return 0, err
+			}
+		}
+		if duplicate {
+			continue
+		}
+		if row.id != "" {
+			pending[row.id] = c.offset + int64(len(raw))
+		}
+		raw = append(raw, row.line...)
+		written++
 	}
 	if len(raw) == 0 {
-		return false, nil
+		return 0, nil
 	}
 	if _, err := file.Write(raw); err != nil {
-		return false, err
+		return 0, err
 	}
-	if id != "" && !duplicate {
+	for id, position := range pending {
 		c.seen[id] = position
 	}
 	c.offset += int64(len(raw))
 	c.newline = false
-	return true, c.remember(reader)
+	c.buffer = raw[:0]
+	return written, c.remember(reader)
 }
 
 func (c *usageIdentityCursor) readTail(file *os.File) error {

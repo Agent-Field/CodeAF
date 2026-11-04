@@ -63,3 +63,10 @@ no flush or close deadline was extended.
 
 The nonblocking writer regression holds a regular ledger’s file lock, then
 checks that releasing it durably drains every queued and overflow charge.
+
+Usage writers now validate and append up to 128 already queued rows under one
+ledger lock. Quiet writers still append immediately. This removes per-row
+prefix hashing, descriptor setup and identity decoding from overflow draining;
+the existing 20,000-charge race regression completes within the unchanged flush
+deadline. Batch-local and historical identities remain deduplicated under that
+same lock, including ordinary imports and mirrored remote events.
