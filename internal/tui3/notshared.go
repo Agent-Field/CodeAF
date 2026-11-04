@@ -73,7 +73,9 @@ func notSharedDetail(read func() (NotShared, bool)) string {
 	}
 	line := notSharedHead(n.Total()) + "."
 	if n.Waiting > 0 && n.Waiting < n.Total() {
-		line += fmt.Sprintf(" %d are still uploading.", n.Waiting)
+		line += fmt.Sprintf(" %d %s still uploading.", n.Waiting, either(n.Waiting, "is", "are"))
+	} else if n.Waiting == 1 {
+		line += " It is still uploading."
 	} else if n.Waiting > 0 {
 		line += " They are still uploading."
 	}
@@ -81,7 +83,15 @@ func notSharedDetail(read func() (NotShared, bool)) string {
 		line += fmt.Sprintf(" %d could not be uploaded yet; codeaf keeps trying.", n.Failing)
 	}
 	if n.KeptHere > 0 {
-		line += fmt.Sprintf(" %d older ones are kept on %s.", n.KeptHere, thisComputer())
+		line += fmt.Sprintf(" %d older %s kept on %s.", n.KeptHere, either(n.KeptHere, "one is", "ones are"), thisComputer())
 	}
 	return line
+}
+
+// either is one for a count of one, else many.
+func either(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }

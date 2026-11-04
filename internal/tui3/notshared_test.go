@@ -49,6 +49,15 @@ func TestTheDevicesCardSaysWhyChatsAreNotSharedYet(t *testing.T) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}
 	}
+	for count, want := range map[NotShared]string{
+		{Waiting: 1, KeptHere: 2}: "1 is still uploading. 2 older ones are kept",
+		{Waiting: 1}:              "1 chat on " + thisComputer() + " isn't shared yet. It is still uploading.",
+		{Waiting: 2, KeptHere: 1}: "2 are still uploading. 1 older one is kept",
+	} {
+		if got := notSharedDetail(notSharedOf(count, true)); !strings.Contains(got, want) {
+			t.Fatalf("%+v reads %q, want %q", count, got, want)
+		}
+	}
 	if strings.Contains(notSharedDetail(a.notShared), " · ") || strings.Contains(notSharedDetail(a.notShared), "service") {
 		t.Fatal("sentence breaks the wording rules")
 	}
