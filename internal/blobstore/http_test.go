@@ -294,8 +294,8 @@ func TestHTTPUnreachable(t *testing.T) {
 
 // N21: a relay that was reached and failed a request without naming a
 // refusal answered with an error; it is still unreachable to callers that
-// degrade. A gateway's 5xx and a closed server were never reached, and a named
-// refusal stays what it names.
+// degrade. A gateway's or CDN's 5xx and a closed server were never reached,
+// and a named refusal stays what it names.
 func TestHTTPAnsweredWithAnError(t *testing.T) {
 	cases := []struct {
 		status   int
@@ -309,6 +309,9 @@ func TestHTTPAnsweredWithAnError(t *testing.T) {
 		{502, "", false, blobstore.ErrUnreachable},
 		{503, "", false, blobstore.ErrUnreachable},
 		{504, "", false, blobstore.ErrUnreachable},
+		{505, "", true, blobstore.ErrUnreachable},
+		{522, "", false, blobstore.ErrUnreachable},
+		{530, "", false, blobstore.ErrUnreachable},
 		{500, `{"err":"damaged"}`, false, blobstore.ErrDamaged},
 	}
 	for _, c := range cases {

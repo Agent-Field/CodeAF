@@ -215,19 +215,24 @@ func answerError(status int, h http.Header, answer []byte) error {
 	return fmt.Errorf("blobstore: server refused with %d %q", status, e.Err)
 }
 
-// answered is an unnamed 5xx answer from a server that was reached. Its text is
-// the unreachable one it always had, so logs and copied details read the same.
+// answered is an unnamed 5xx answer from a server that was reached. Its text
+// says the server answered, as the person's line does, and keeps the status.
 type answered struct{ status int }
 
-func (a answered) Error() string {
-	return fmt.Sprintf("%v: server answered %d", ErrUnreachable, a.status)
-}
+func (a answered) Error() string { return fmt.Sprintf("blobstore: server answered %d", a.status) }
 
 func (a answered) Is(target error) bool { return target == ErrUnreachable || target == ErrAnswered }
 
 // gatewayStatus is a 5xx a proxy or the network edge in front of the server
-// answers for it (bad gateway, unavailable, gateway timeout): the server
-// itself was not reached, so it stays plain unreachable.
+// answers for it: bad gateway, unavailable, gateway timeout, and a CDN's own
+// origin-down codes (Cloudflare's 520-527 and 530). The server itself was not
+// reached, so it stays plain unreachable.
 func gatewayStatus(status int) bool {
-	return status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
+	switch {
+	case status == http.StatusBadGateway, status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout:
+		return true
+	case status >= 520 && status <= 527, status == 530:
+		return true
+	}
+	return false
 }
