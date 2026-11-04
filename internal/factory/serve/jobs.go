@@ -191,8 +191,9 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 				return false
 			}
 			rules = pipeline.StartRulesOf(f)
-			rules.Unread = err != nil
-			rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = pipeline.UnreadDiagnostic(err)
+			if err != nil {
+				pipeline.MarkUnread(rules, err)
+			}
 			file, fileErr = &f, err
 		}
 		var picked []factory.Stage
@@ -245,8 +246,8 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					if cur.RuleChecks != nil {
 						cur.RuleChecks.Start = ""
 					}
-					if rules.Unread {
-						cur.Note(h.clock(), "Started with the repository's rules unread; its plan will wait for you")
+					if rules.Unread && !rules.Pending {
+						cur.Note(h.clock(), pipeline.UnreadNote)
 					}
 				}
 				if queued {

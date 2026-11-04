@@ -24,6 +24,42 @@ var errMissing = &forge.APIError{StatusCode: http.StatusNotFound, Body: "missing
 type absences struct {
 	mu sync.Mutex
 	at map[string]time.Time
+	// answered is when each repository last answered: only then does a 404 for
+	// a file in it mean there is no file.
+	answered map[string]time.Time
+}
+
+// repoReader is a forge that can say whether a repository itself answers.
+type repoReader interface {
+	DefaultBranch(ctx context.Context, owner, repo string) (string, error)
+}
+
+// repoAnswers is nil when the repository itself answers. GitHub says 404 for a
+// private repository a connection can't see as it does for a file that is not
+// there, and a read taken for "no file" would run the job on the default rules.
+// An answer stands for [MissingFresh], as the absence it confirms does.
+func (a *absences) repoAnswers(ctx context.Context, api PipelineAPI, now time.Time, owner, name string) error {
+	reader, ok := api.(repoReader)
+	if !ok {
+		return nil
+	}
+	key := owner + "/" + name
+	a.mu.Lock()
+	said, known := a.answered[key]
+	a.mu.Unlock()
+	if known && now.Sub(said) < MissingFresh {
+		return nil
+	}
+	if _, err := reader.DefaultBranch(ctx, owner, name); err != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.answered == nil {
+		a.answered = map[string]time.Time{}
+	}
+	a.answered[key] = now
+	return nil
 }
 
 // contents reads one file through api unless the forge said it is missing

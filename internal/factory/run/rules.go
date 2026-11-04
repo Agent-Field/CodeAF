@@ -1,6 +1,7 @@
 package run
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -110,4 +111,55 @@ func withHouse(policy []string, it factory.Item) []string {
 		return policy
 	}
 	return append(append([]string(nil), policy...), it.House.Rules...)
+}
+
+// settleRules reads a job's repository rules once its folder is here, before
+// the round's first model call, when its start could not ([factory.StartRules.Pending]).
+// A failed read stays a hold on the plan, now with the real reason. A file whose
+// steps differ holds it too, because the job's steps were fixed when it started.
+func (lp *floorLoop) settleRules(c *loopCtl, it factory.Item) factory.Item {
+	read := lp.r.opts.RulesAfterClone
+	if read == nil || it.StartRules == nil || !it.StartRules.Pending {
+		return it
+	}
+	f, err := read(c.ctx, it)
+	if errors.Is(err, pipeline.ErrHouseRulesUnread) || errors.Is(err, pipeline.ErrNotHereYet) {
+		return it
+	}
+	rules := settledRules(it, f, err)
+	cap := settledCap(it, f, err)
+	_ = lp.write(c, func(saved *factory.Item) error {
+		saved.StartRules, saved.Cap = rules, cap
+		if rules.Unread {
+			saved.Note(lp.r.now(), pipeline.UnreadNote)
+		}
+		return nil
+	})
+	it.StartRules, it.Cap = rules, cap
+	return it
+}
+
+func settledRules(it factory.Item, f pipeline.File, err error) *factory.StartRules {
+	if err != nil {
+		rules := &factory.StartRules{AskFirst: append([]string{}, it.StartRules.AskFirst...), Never: append([]string{}, it.StartRules.Never...)}
+		pipeline.MarkUnread(rules, err)
+		return rules
+	}
+	// A runner's own store may hold none of the factory's rules: the job carries
+	// the lines it started under, and they stay.
+	rules := pipeline.StartRulesOf(pipeline.WithHouseRules(f, factory.HouseRules{AskFirst: it.StartRules.AskFirst, Never: it.StartRules.Never}))
+	if pipeline.StepsWouldChange(it, f) {
+		rules.Unread, rules.UnreadFile = true, pipeline.RepoFile
+		rules.UnreadWhy = pipeline.RepoFile + ": it names other steps than this job started with"
+	}
+	return rules
+}
+
+// settledCap lowers the budget a job took while its rules were unread to the
+// file's, when the file's is lower. A person's own budget is never the default.
+func settledCap(it factory.Item, f pipeline.File, err error) float64 {
+	if err == nil && it.Cap == factory.DefaultJobBudget && f.DefaultBudget > 0 && f.DefaultBudget < it.Cap {
+		return f.DefaultBudget
+	}
+	return it.Cap
 }

@@ -242,10 +242,14 @@ A repository's steps are its `.codeaf/factory.yaml`, read from the main branch, 
 
 Only the factory's operator may save or stop a copy, as with the factory's own rules; on a factory you run yourself, that is you. The copy is kept on the factory (on a team, the shared server), never in one Mac's settings. A copy the factory cannot read refuses to start jobs rather than quietly running main's steps. Steps that use kind, when, effort or fanout are saved as a copy only when the factory has confirmed it runs them for the file they were edited from, as for a pull request. A factory older than this feature answers `This factory doesn't support that yet; nothing was changed. Update the factory to use it.`
 
-## repository rules unread — bad factory.yaml, Start, plan waiting for you
+## repository rules unread — bad factory.yaml, no factory.yaml, default rules, Start, plan waiting for you
+
+A repository with no `.codeaf/factory.yaml` is normal: the job says `No .codeaf/factory.yaml in this repository, so this job uses the default rules.`, and nothing waits because of it. A file GitHub cannot be reached for and that isn't on this computer yet is read after the clone, before the first model call. If it then names other steps than the job started with, the plan waits.
 
 If the repository's `.codeaf/factory.yaml` cannot be read, pressing Start or
-starting from chat still starts the job with the factory's own rules. A job
+starting from chat still starts the job with the factory's own rules. GitHub
+refusing the read counts: a repository GitHub can't show this computer is never
+taken for one with no file. A job
 without its own budget gets the built-in default job budget. Activity says
 `Started with the repository's rules unread; its plan will wait for you`.
 The job records a short explanation naming the file and the parser's line
