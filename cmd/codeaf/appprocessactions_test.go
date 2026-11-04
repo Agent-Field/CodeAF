@@ -606,7 +606,13 @@ func TestStopAllTimeoutSkipsLatePublishedOwner(t *testing.T) {
 	}
 	releaseOpen()
 	<-engine.entered
+	if ctx.Err() != nil {
+		t.Fatal("publication window was not reached before the deadline")
+	}
 	res := <-answered
+	if ctx.Err() != context.DeadlineExceeded {
+		t.Fatal("stop-all skipped the wait for owner publication")
+	}
 	releaseWatch()
 	<-opened
 	engine.mu.Lock()
@@ -629,7 +635,7 @@ func (e *stopAllTitleGate) Title() string {
 	return ""
 }
 
-func TestStopAllOwnerLookupNeverQueuesOrOpens(t *testing.T) {
+func TestStopAllOwnerLookupOpensOnlyKeptOwnersWithinDeadline(t *testing.T) {
 	t.Run("post-open publication deadline", func(t *testing.T) {
 		b, _, paths, _ := lazyBackend(t, 1)
 		b.crews()
@@ -665,6 +671,9 @@ func TestStopAllOwnerLookupNeverQueuesOrOpens(t *testing.T) {
 		}()
 		select {
 		case res := <-answered:
+			if ctx.Err() != context.DeadlineExceeded {
+				t.Error("stop-all skipped the wait for owner publication")
+			}
 			if res == nil || !res.RemainingUnknown || !res.Partial || res.Stopped != 0 || res.ServicesStopped != 1 {
 				t.Errorf("initializing owner's receipt: %+v", res)
 			}
@@ -679,9 +688,8 @@ func TestStopAllOwnerLookupNeverQueuesOrOpens(t *testing.T) {
 			t.Errorf("services waited for initialization: running=%t stopping=%t", got.Running, got.Stopping)
 		}
 	})
-	t.Run("cold kept crew owner", func(t *testing.T) {
+	t.Run("non-kept conversation stays cold", func(t *testing.T) {
 		b, _, paths, opens := lazyBackend(t, 1)
-		b.crews()
 		res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: appAgentID(paths[0])})
 		if err != nil {
 			t.Fatal(err)
@@ -693,4 +701,179 @@ func TestStopAllOwnerLookupNeverQueuesOrOpens(t *testing.T) {
 			t.Errorf("cold owner's receipt: %+v", res)
 		}
 	})
+	t.Run("cold kept open respects deadline and retries join it", func(t *testing.T) {
+		b, _, paths, opens := lazyBackend(t, 1)
+		b.crews()
+		agent := appAgentID(paths[0])
+		entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		engine := &actorEngine{fakeConversation: &fakeConversation{}, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}}
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			close(entered)
+			<-release
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		var releaseOnce sync.Once
+		releaseOpen := func() { releaseOnce.Do(func() { close(release) }) }
+		defer func() { releaseOpen(); <-finished }()
+		w := newSvcWorld(t)
+		b.attachServices(w.sup)
+		row := w.keep(t, agent, service.PolicyOnFailure)
+		var done <-chan struct{}
+		for attempt := range 3 {
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			answered := make(chan *appwire.ProcessStopAllResult, 1)
+			go func() {
+				res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+				if err != nil {
+					t.Errorf("stop-all: %v", err)
+				}
+				answered <- res
+			}()
+			if attempt == 0 {
+				select {
+				case <-entered:
+					if ctx.Err() != nil {
+						t.Error("cold opener missed the deadline")
+					}
+				case <-answered:
+					cancel()
+					close(finished)
+					t.Fatal("stop-all skipped the cold opener")
+				case <-time.After(time.Second):
+					cancel()
+					close(finished)
+					t.Fatal("cold opener was never reached")
+				}
+				a := mustFind(t, b, agent)
+				b.locked(func() { done = a.openDone })
+				go func() { <-done; close(finished) }()
+			}
+			select {
+			case res := <-answered:
+				if ctx.Err() != context.DeadlineExceeded {
+					t.Error("stop-all skipped its owner wait")
+				}
+				if res == nil || res.Stopped != 0 || !res.Partial || !res.RemainingUnknown {
+					t.Errorf("stuck cold receipt: %+v", res)
+				}
+				if attempt == 0 && (res == nil || res.ServicesStopped != 1) {
+					t.Errorf("services did not stop independently: %+v", res)
+				}
+			case <-time.After(300 * time.Millisecond):
+				t.Error("stop-all exceeded its 50ms deadline")
+			}
+			cancel()
+			a := mustFind(t, b, agent)
+			b.locked(func() {
+				if a.openDone != done {
+					t.Error("retry did not join the existing open")
+				}
+			})
+		}
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil || got.Running || got.Stopping {
+			t.Errorf("service still running before open release: %+v %v", got, err)
+		}
+		if opens.Load() != 0 {
+			t.Error("blocked opener was released early")
+		}
+		releaseOpen()
+		<-finished
+		if opens.Load() != 1 {
+			t.Errorf("retries opened %d owners, want one", opens.Load())
+		}
+		engine.mu.Lock()
+		called := engine.returned
+		engine.mu.Unlock()
+		if called {
+			t.Error("timed-out stop called the job actor")
+		}
+	})
+}
+
+func TestStopAllColdCrewOwnerStopsRunningJob(t *testing.T) {
+	h := newRealActionHarnessSaying(t, "")
+	a := mustFind(t, h.b, h.agent)
+	if _, _, err := h.b.ensure(a); err != nil {
+		t.Fatal(err)
+	}
+	real, ok := session.LiveAgentFor(a.transcript)
+	if !ok {
+		t.Fatal("no real owner")
+	}
+	rememberStageAgent(real)
+	defer forgetStageAgent(real)
+	job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobDone, Command: "sleep 30", StartedBy: session.JobStartedByChat, Dir: h.cwd, Started: time.UnixMilli(1700000000000), Ended: time.UnixMilli(1700000001000)}
+	seedRecords(t, filepath.Dir(a.transcript), job)
+	running, err := real.RerunProcessAt(context.Background(), job.ID, job.Started.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer real.StopConversationProcesses(context.Background())
+	if running.State != session.JobRunning {
+		t.Fatalf("job not running: %+v", running)
+	}
+	b := newFakeBackend(newAppRecorder(), appOpenInProcess)
+	defer b.Close()
+	run := newAppCrewRun()
+	close(run.ready)
+	close(run.done)
+	run.held[h.agent] = []string{"test-crew"}
+	b.crewRun = run
+	cold := mustFind(t, b, h.agent)
+	if b.liveOf(cold) != nil {
+		t.Fatal("owner is not cold")
+	}
+	res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: h.agent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := real.JobNotices()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range after {
+		if row.ID == running.ID && row.State == session.JobRunning {
+			t.Errorf("sleep 30 still running after stop-all: %+v", res)
+		}
+	}
+	if res.Stopped != 1 || res.RemainingUnknown {
+		t.Fatalf("cold crew owner missed running job: %+v", res)
+	}
+}
+
+func TestStopAllLeavesClosedOrClosingCrewOwnerCold(t *testing.T) {
+	for _, state := range []string{"closed", "closing"} {
+		t.Run(state, func(t *testing.T) {
+			b, _, paths, opens := lazyBackend(t, 1)
+			b.crews()
+			agent := appAgentID(paths[0])
+			if state == "closed" {
+				if err := b.state.write(func(f *appStateFile) error {
+					if f.Closed == nil {
+						f.Closed = map[string]time.Time{}
+					}
+					f.Closed[agent] = time.Now()
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				b.locked(func() { b.closing = true })
+				defer b.locked(func() { b.closing = false })
+			}
+			res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if opens.Load() != 0 || res.Stopped != 0 || !res.RemainingUnknown || !res.Partial {
+				t.Fatalf("%s owner reopened or claims complete: opens=%d receipt=%+v", state, opens.Load(), res)
+			}
+		})
+	}
 }

@@ -12,9 +12,15 @@ invalidates:
     stopped.
 ---
 
-Stop-all never opens a cold kept crew owner or queues behind its initialization.
+Stop-all restores a cold owner kept by a crew on the jobs side, under the same
+5-second open bound and caller deadline as an open already under way. This
+restores stopping jobs still running behind a light crew record. Non-kept
+conversations and members the person closed or archived stay closed; held
+owners and shutdown do not start another open. Lookup before admission does
+not open or queue behind initialization.
 The existing open is complete only after initialization and owner publication;
 a timeout cannot use an owner published late. Services start while initialization
 is blocked. A shared completion signal replaces the mutex waiter, so retries
-against a stuck open leave no waiter goroutines behind. The 5-second open wait,
+against a stuck open join that signal without starting another opener or leaving
+waiter goroutines behind. The 5-second open wait,
 5-second jobs wait and 10-second method ceiling are unchanged.

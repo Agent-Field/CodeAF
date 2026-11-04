@@ -293,11 +293,8 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		return nil, appwire.Errorf(appwire.CodeBusy, "this agent's processes are already being stopped")
 	}
 	defer b.locked(func() { delete(b.stoppingAll, agent) })
-	// A stop never opens an agent to manufacture an empty registry. A missing
-	// held owner cannot prove its saved jobs ended; local kept services still
-	// have their own supervisor and are stopped independently below. An open
-	// already under way is that owner arriving, so the jobs' side waits for it
-	// ([appBackend.liveOnceOpened]) and the services' side does not.
+	// A kept crew's light record can represent jobs still running elsewhere.
+	// Only the jobs' side restores that owner, so services never wait for it.
 	var live *appLive
 	res := &appwire.ProcessStopAllResult{
 		Agent: agent, Scope: appwire.ProcessScopeAgent,
@@ -365,21 +362,46 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 	return res, nil
 }
 
-// liveOnceOpened waits only for initialization already under way. The open's
-// completion signal covers publication and watcher setup, so a late live owner
-// cannot turn a timed-out wait into a job stop. No waiter queues on the gate.
+// liveOnceOpened restores a cold kept owner or joins its existing open. The
+// completion signal covers publication and watchers, so a timed-out attempt
+// cannot stop jobs through an owner that becomes ready later.
 func (b *appBackend) liveOnceOpened(ctx context.Context, a *appAgent) *appLive {
-	var live *appLive
-	var opened <-chan struct{}
-	b.locked(func() { live, opened = a.live, a.openDone })
-	if ctx.Err() != nil {
+	wait, cancel := context.WithTimeout(ctx, appStopAllOpenWait)
+	defer cancel()
+	if wait.Err() != nil {
 		return nil
+	}
+	var id string
+	b.locked(func() { id = a.view.ID })
+	kept := b.crewKeeps(id)
+	var live *appLive
+	var opened chan struct{}
+	start := false
+	b.locked(func() {
+		if kept && !b.closing && a.live == nil && !a.opening {
+			a.opening = true
+			a.openDone = make(chan struct{})
+			start = true
+		}
+		live, opened = a.live, a.openDone
+	})
+	if start {
+		guard.Go("stop-all-open", func() {
+			// keepOpen checks the person's close under the gate before opening.
+			_, _, _ = b.keepOpen(a)
+			b.locked(func() {
+				// A tidy refusal precedes ensureLocked's completion cleanup.
+				if a.openDone == opened {
+					a.opening = false
+					a.openDone = nil
+					close(opened)
+				}
+			})
+		})
 	}
 	if opened == nil {
 		return live
 	}
-	wait, cancel := context.WithTimeout(ctx, appStopAllOpenWait)
-	defer cancel()
 	select {
 	case <-opened:
 		if wait.Err() != nil {
