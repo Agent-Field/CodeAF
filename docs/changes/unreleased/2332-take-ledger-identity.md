@@ -18,6 +18,8 @@ run in separate processes on the same machine. Separate calls with identical
 model, tokens and cost retain separate identities. Pricing and spend calculations
 are unchanged.
 
+The usage ledger gains an optional `shared_id` saved-format field; older builds ignore it and read the same dollars and rows.
+
 The saved call identity is optional. Existing transcripts, ledgers and receipts
 load without migration. Calls without a shared identity retain the previous
 ordered-prefix fallback for settled rows; queued or out-of-order legacy rows
