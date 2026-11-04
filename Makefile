@@ -471,7 +471,8 @@ check: vet fmt-check test test-packed-manual size build-cross
 # all, and the desktop app's log has nothing to keep. Without it a report names
 # hashed functions and files; `make app-sidecar-reverse` turns those back. That
 # needs the build's own seed, so each build makes one and keeps it in APP_SEED_DIR,
-# named for the start of the binary's checksum. The seed is what undoes the hashing:
+# named for the commit, the target and the start of the checksum of the binary as built
+# (signing changes that checksum, so find it by commit). The seed is what undoes the hashing:
 # it goes in neither the repository nor anything that ships.
 #
 #   make app-sidecar APP_GOOS=darwin APP_GOARCH=arm64   # one triple
@@ -527,8 +528,8 @@ app-sidecar: embed $(if $(filter windows,$(APP_GOOS)),,$(GARBLE))
 		sum=$$(printf '%s' "$$sum" | cut -c1-16); \
 		umask 077; mkdir -p "$(APP_SEED_DIR)"; \
 		printf 'seed=%s\nrev=%s\ntarget=%s/%s\n' "$$seed" "$(BUILD_REV)" "$(APP_GOOS)" "$(APP_GOARCH)" \
-			> "$(APP_SEED_DIR)/$$sum.seed"; \
-		printf 'app-sidecar: seed kept as %s.seed\n' "$$sum"; \
+			> "$(APP_SEED_DIR)/$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum.seed"; \
+		printf 'app-sidecar: seed kept as %s.seed\n' "$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum"; \
 	fi; \
 	printf 'app-sidecar: %s\n' "$(APP_DIST)/codeaf-$$triple$$ext"
 
