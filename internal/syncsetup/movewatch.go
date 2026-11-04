@@ -49,6 +49,7 @@ type MoveProgress struct {
 type moveWatch struct {
 	report func(MoveProgress)
 	idle   time.Duration
+	ctx    context.Context
 	cancel context.CancelCauseFunc
 
 	done     atomic.Int64
@@ -71,7 +72,7 @@ func watchMove(ctx context.Context, report func(MoveProgress), idle time.Duratio
 		return ctx, nil, func() {}
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
-	w := &moveWatch{report: report, idle: idle, cancel: cancel, step: MovePreparing, last: time.Now(), stop: make(chan struct{}), finished: make(chan struct{})}
+	w := &moveWatch{report: report, idle: idle, ctx: ctx, cancel: cancel, step: MovePreparing, last: time.Now(), stop: make(chan struct{}), finished: make(chan struct{})}
 	go w.run()
 	return blobstore.WithTraffic(ctx, w), w, func() {
 		w.stopped.Do(func() { close(w.stop) })
@@ -163,7 +164,9 @@ func (w *moveWatch) phase(p handoff.Phase) {
 	if w == nil {
 		return
 	}
-	if p.Name == "acquire" && !p.Ended.IsZero() {
+	if p.Name == "acquire" && !p.Ended.IsZero() && w.ctx.Err() == nil {
+		// A move cancelled during the acquire hands the lease back: it is
+		// not opening anything.
 		w.setStep(MoveOpening, true)
 	}
 	w.touch()
