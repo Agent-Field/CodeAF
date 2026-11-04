@@ -234,6 +234,9 @@ type BriefWriting struct {
 
 // BriefStatusOf is what a reader says about the job's brief.
 func BriefStatusOf(it Item) string {
+	if StoppedByPerson(it) {
+		return BriefStatusFailed
+	}
 	if w := it.BriefWriting; w != nil && (w.State == BriefGenerating || w.State == BriefFailed) {
 		return w.State
 	}

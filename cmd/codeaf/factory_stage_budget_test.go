@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"os"
 	"testing"
 )
 
@@ -40,5 +41,29 @@ func TestStageBudgetStopsOnUnavailableAccounting(t *testing.T) {
 	b.Spend(1)
 	if b.Refusal() == "" || b.total() != 1 {
 		t.Fatal("failed receipt did not stop work")
+	}
+}
+
+func TestStageBudgetReadOutageCanRecoverWithoutReplacingMeter(t *testing.T) {
+	st, _ := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Cap: 5, Stream: &factory.Stream{Spent: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := &stageBudget{floor: st, item: it}
+	path := st.ItemPath(it.ID)
+	saved := path + ".unread"
+	if err := os.Rename(path, saved); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Rename(saved, path) }()
+	if budget.Refusal() == "" {
+		t.Fatal("unknown budget admitted paid work")
+	}
+	if err := os.Rename(saved, path); err != nil {
+		t.Fatal(err)
+	}
+	if why := budget.Refusal(); why != "" {
+		t.Fatalf("temporary read error permanently stopped the meter: %s", why)
 	}
 }

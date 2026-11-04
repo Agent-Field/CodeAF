@@ -80,6 +80,24 @@ func ownDeviceRecord(ctx context.Context, dir string, route pair.Mailbox) error 
 	return syncsetup.PutOwnDevice(ctx, client, id, dev, devname.Name(dir))
 }
 
+// ownDeviceRevoked says the directory refuses this computer's own device: it
+// was removed, and pairing again must give it a new device key.
+func ownDeviceRevoked(ctx context.Context, dir string, route pair.Mailbox) bool {
+	if identity.Solo(dir) {
+		return false
+	}
+	client, _, err := homeDirectory(dir, route)
+	if err != nil {
+		return false
+	}
+	dev, err := identity.Device(dir)
+	if err != nil {
+		return false
+	}
+	listing, err := client.List(ctx)
+	return errors.Is(err, directory.ErrRevoked) || err == nil && listing.Devices[dev.ID()].Revoked
+}
+
 // recordOwnDeviceOrSay is what a finished pairing does about its record: the
 // pairing itself succeeded, so a record that did not land is one line on the
 // screen and a clean exit — the next chat start writes the record anyway.

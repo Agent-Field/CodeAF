@@ -24,6 +24,8 @@ import (
 type appChats struct {
 	start           sync.Once
 	byAgent         map[string]appwire.ChatRow
+	taking          map[string]int
+	landed          map[string]uint64
 	take            sync.Mutex
 	op              sync.Mutex
 	mu              sync.Mutex
@@ -352,13 +354,16 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		out = append(out, row)
 	}
+	b.chats.markTaking(out, true)
 	cacheFacts := func() {
 		b.chats.mu.Lock()
 		defer b.chats.mu.Unlock()
 		b.chats.facts = facts
 	}
 	cacheFacts()
-	b.publishChats(out, version, emit)
+	// markTaking has already cleared a landed take on a row saying the chat is
+	// here, so only a row from before the take keeps its agent where it is.
+	b.publishChatRows(out, version, emit, func(r appwire.ChatRow) bool { return !b.chats.landedTake(r.Cell) })
 	return appwire.ChatsResult{Chats: out, Version: version}, nil
 }
 
@@ -369,6 +374,97 @@ func (c *appChats) newerChats(version uint64) (appwire.ChatsResult, bool) {
 		return appwire.ChatsResult{Chats: slices.Clone(c.rows), Version: c.version}, true
 	}
 	return appwire.ChatsResult{}, false
+}
+
+// A take is in flight from when agents.take asks for the chat until it ends,
+// so a client that stopped waiting can tell a move still copying from one that
+// never happened. A take that acquired the chat keeps saying so on every row
+// from before it until a row says the chat is here or a later fence holds it.
+// Only a directory reading (prune) can say a chat left the list: the cache
+// may be empty or stale, so rows from it never drop a landed take.
+func (c *appChats) markTaking(rows []appwire.ChatRow, prune bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	listed := make(map[string]bool, len(rows))
+	for i := range rows {
+		r := &rows[i]
+		listed[r.Cell] = true
+		fence, landed := c.landed[r.Cell]
+		if landed && (r.Here || r.Seen.Fence > fence) {
+			delete(c.landed, r.Cell)
+			landed = false
+		}
+		r.Taking = c.taking[r.Cell] > 0 || landed
+	}
+	if !prune {
+		return
+	}
+	// A chat that left the list is no longer anyone's take.
+	for id := range c.landed {
+		if !listed[id] {
+			delete(c.landed, id)
+		}
+	}
+}
+
+func (c *appChats) landedTake(id string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.landed[id]
+	return ok
+}
+
+func (c *appChats) landTake(id string, fence uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.landed == nil {
+		c.landed = make(map[string]uint64)
+	}
+	c.landed[id] = fence
+}
+
+func (c *appChats) countTake(id string, delta int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.taking == nil {
+		c.taking = make(map[string]int)
+	}
+	c.taking[id] += delta
+	if c.taking[id] <= 0 {
+		delete(c.taking, id)
+	}
+}
+
+// The take's own start and end change no directory version, so its row is
+// emitted again from the cache.
+func (b *appBackend) publishTaking() {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	cached := func() ([]appwire.ChatRow, uint64, bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return slices.Clone(c.rows), c.version, !c.closed && c.source != nil
+	}
+	rows, version, following := cached()
+	if !following {
+		return
+	}
+	c.markTaking(rows, false)
+	// Only taking changed, so the cache's older locations stay off the agents
+	// a take may already have placed here.
+	b.publishChatRows(rows, version, true, nil)
+}
+
+// A finished take stops counting under the inventory lock, and this reading
+// clears its taking with the row that says the chat is here.
+func (b *appBackend) settleTake(ctx context.Context, s *syncsetup.Sync, id string) error {
+	c := &b.chats
+	c.op.Lock()
+	defer c.op.Unlock()
+	c.countTake(id, -1)
+	_, err := b.readChats(ctx, s, c.feed, true)
+	return err
 }
 
 func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {
@@ -385,6 +481,11 @@ func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.Sta
 // Inventory operations hold op through caching and emission. A list refreshes
 // the cache silently; only the follower compares against rows actually emitted.
 func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit bool) {
+	b.publishChatRows(rows, version, emit, func(appwire.ChatRow) bool { return true })
+}
+
+// locate says which rows re-place their local agents; nil re-places none.
+func (b *appBackend) publishChatRows(rows []appwire.ChatRow, version uint64, emit bool, locate func(appwire.ChatRow) bool) {
 	old, current := b.chats.cacheRows(rows, version, emit)
 	if !current || !emit {
 		return
@@ -399,7 +500,7 @@ func (b *appBackend) publishChats(rows []appwire.ChatRow, version uint64, emit b
 		if !exists || !reflect.DeepEqual(prev, r) {
 			b.emit.Emit(appwire.EventChatChanged, appwire.ChatChanged{Chat: r, Version: version})
 		}
-		if r.LocalAgent != "" {
+		if locate != nil && r.LocalAgent != "" && locate(r) {
 			var a *appAgent
 			b.locked(func() { a = b.agents[r.LocalAgent] })
 			if a != nil {
@@ -494,7 +595,10 @@ func (b *appBackend) refreshChatInventory(ctx context.Context, feed dirwatch.Fol
 			r := &rows[i]
 			appChatPresence(r, c.facts[r.Cell], state, known)
 		}
-		b.publishChats(rows, version, true)
+		c.markTaking(rows, false)
+		// Presence still refreshes local agents' lines, but a cached row from
+		// before a landed take would move its agent back elsewhere.
+		b.publishChatRows(rows, version, true, func(r appwire.ChatRow) bool { return !c.landedTake(r.Cell) })
 	}
 	return true
 }
