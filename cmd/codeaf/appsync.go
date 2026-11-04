@@ -208,6 +208,11 @@ func (b *appBackend) noteUnshared(u *syncsetup.Unshared) {
 	}
 	b.sync.mu.Lock()
 	defer b.sync.mu.Unlock()
+	if reflect.DeepEqual(b.sync.unshared, wire) {
+		// Nothing of its own to say: the status is not checked here, so a
+		// count that stayed absent does not emit an unrelated change first.
+		return
+	}
 	b.sync.unshared = wire
 	b.syncChangedLocked()
 }
