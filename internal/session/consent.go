@@ -201,7 +201,7 @@ func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision appro
 	}
 	switch a.connect.CapabilityState(service, capability) {
 	case connect.StateYes:
-		if decision.Action == approval.ActionPrompt {
+		if decision.Action == approval.ActionPrompt && decision.ProfileReadError == "" {
 			return approval.Decision{
 				Action: approval.ActionAllow,
 				Rule:   "you said yes to " + strconv.Quote(phrase),
@@ -244,7 +244,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	if governed && decision.Action == approval.ActionAllow && decision.Scope != "" && hub != nil {
 		hub.send(Event{Kind: EventConsentAllowed, Tool: call.Function.Name, Args: argsText(call), CallID: call.ID, Hint: a.gloss(call), Rule: decision.Scope})
 	}
-	if !governed || decision.Action == approval.ActionAllow || setupGranted(ctx, call, decision) {
+	if !governed || decision.Action == approval.ActionAllow || (decision.ProfileReadError == "" && setupGranted(ctx, call, decision)) {
 		return toolResult{}, true
 	}
 	if decision.Action == approval.ActionDeny {
@@ -264,7 +264,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	//     ran silently for the rest of the session. The memo is somebody saying
 	//     they are done being asked about ordinary work. It is not somebody
 	//     saying they have read a message that has not been written yet.
-	if !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+	if decision.ProfileReadError == "" && !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
 		if remembered, known := a.rememberedConsent(call.Function.Name); known {
 			if remembered {
 				return toolResult{}, true
@@ -283,7 +283,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// refusal, which is the whole point of having said so in advance; with it off
 	// — the default — this line does nothing and a headless run refuses exactly as
 	// it always did.
-	if a.guardianAllows(ctx, hub, call, decision) {
+	if decision.ProfileReadError == "" && a.guardianAllows(ctx, hub, call, decision) {
 		return toolResult{}, true
 	}
 

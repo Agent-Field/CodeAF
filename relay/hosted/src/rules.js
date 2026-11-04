@@ -31,7 +31,7 @@ export function makeRules({ ttlMs, renewOnPublish }) {
   const acquire = (c, device, now, force = false, expect = undefined) => {
     if (expect != null && (c.lease.device !== expect.device ||
         (expect.head && c.head !== expect.head) ||
-        (c.lease.fence !== expect.fence && !(expect.head && c.lease.fence > expect.fence)))) throw refuse('lease_held');
+        c.lease.fence !== expect.fence)) throw refuse('lease_held');
     if (!force && c.lease.expires > now && c.lease.device !== device) throw refuse('lease_held');
     return { ...c, lease: { device, fence: c.lease.fence + 1, expires: now + ttlMs, pending: 0 } };
   };

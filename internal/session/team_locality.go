@@ -16,7 +16,7 @@ type teamUnreached struct {
 // Only remote identities or a successful ownership reading can refuse local
 // work. Failed discovery leaves the existing local delivery path available.
 func (a *Agent) teamDeliveryTargets(ctx context.Context, targets []teams.Member) ([]teams.Member, []teamUnreached) {
-	if !config.TeamsShareAt(a.config.teamProfile()) {
+	if !a.teamsSharing() {
 		return targets, nil
 	}
 	names := map[string]string{}
@@ -78,4 +78,9 @@ func (a *Agent) teamSendPreflight(ctx context.Context, targets []teams.Member) (
 		return "", " Not reached: " + strings.Join(missed, ", ") + ".", local
 	}
 	return "", "", local
+}
+
+// Pairing is checked at use time so ending it restores every local-only path.
+func (a *Agent) teamsSharing() bool {
+	return config.TeamsSharingAt(a.config.teamProfile(), a.config.TeamsPaired)
 }

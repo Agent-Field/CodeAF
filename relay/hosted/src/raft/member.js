@@ -17,7 +17,7 @@ export { installRaftModule, runtimeMetrics } from './actor.js';
 // public Worker routes identity coordination through its authenticated source.
 // Enrollment and evaluation use the durable Go registry and shared Go policy.
 export class RaftMemberDO extends DurableObject {
-  constructor(ctx, env) { super(ctx, env); replaceMemberActivation(ctx.id.toString()); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; }
+  constructor(ctx, env) { super(ctx, env); replaceMemberActivation(ctx.id.toString()); this.actor = null; this.loading = null; this.ctx = ctx; this.env = env; this.readActivation=crypto.randomUUID(); }
   evaluator(config) {
     const evaluate=directoryEvaluator(sharedRuntime(),config.cluster,config.ceiling??DEFAULT_ROWS_BYTES);
     this.results=new Map();this.resultBytes=0;
@@ -34,23 +34,30 @@ export class RaftMemberDO extends DurableObject {
   }
   // These RPC methods have no public fetch route. The authenticated source
   // coordinator alone provisions stores and drives the same durable actor.
-  async importReceipt(manifest) {
+  async importReceipt(manifest,birth=null) {
     if(await this.ctx.storage.get('raft-erased'))throw new Error('raft member: identity retired');
     const config=await this.ctx.storage.get('raft-config');
     if(!config)return null;
+    if(encodeCanonical(config.birth??null)!==encodeCanonical(birth))throw new Error('raft member: genesis provenance differs');
     const store=new MemberStorage(this.ctx.storage,new HostCodec(sharedRuntime()));
     if(!store.one("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'"))return null;
     await store.open({cluster:config.cluster,id:config.id,protocol:1},config.ceiling);
     const raw=store.read('membership','legacy-import');
     if(!raw)return null;
     if(new TextDecoder().decode(raw)!==encodeCanonical(manifest))throw new Error('raft member: import provenance differs');
-    return {node:config.id,applied:store.application().applied,manifest:decodeCanonical(new TextDecoder().decode(raw))};
+    return {node:config.id,applied:store.application().applied,conf:store.application().conf,birth:config.birth??null,manifest:decodeCanonical(new TextDecoder().decode(raw))};
   }
   async eraseRetired(manifest) {
     const gone=await this.ctx.storage.get('raft-erased');
     if(gone && gone!==manifest.config.cluster)throw new Error('raft member: wrong erased cluster');
     if(!gone){
-      if(!await this.importReceipt(manifest))throw new Error('raft member: import provenance absent');
+      const config=await this.ctx.storage.get('raft-config');
+      if(!config){
+        const store=new MemberStorage(this.ctx.storage,new HostCodec(sharedRuntime()));
+        if(store.one("SELECT name FROM sqlite_master WHERE type='table' AND name='records'"))throw new Error('raft member: missing configuration');
+        await this.ctx.storage.put('raft-erased',manifest.config.cluster);await this.ctx.storage.sync();return;
+      }
+      if(!await this.importReceipt(manifest,config.birth??null))throw new Error('raft member: import provenance absent');
       await this.load();
       await this.actor.serial(async()=>{
         const raw=this.actor.store.read('state','identity'),record=raw&&JSON.parse(projectRecord(sharedRuntime(),'identity',raw));
@@ -77,8 +84,9 @@ export class RaftMemberDO extends DurableObject {
     }
     return this.actor.input(tag,value);
   }
-  async hostView(index,namespace,key,after=null) {
+  async hostView(index,namespace,key,after=null,activation=null) {
     await this.load();return this.actor.serial(()=>{
+      if(activation!==null&&activation!==this.readActivation)throw new Error('raft member: read activation changed');
       if(this.actor.stopped||this.actor.store.stopped||this.actor.status.applied<BigInt(index))throw new Error('raft member: read barrier incomplete');
       const app=this.actor.store.application();
       if(after===null)return {app,raw:this.actor.store.read(namespace,key)};
@@ -88,6 +96,29 @@ export class RaftMemberDO extends DurableObject {
         rows.push({key:row.key,data:raw});size+=raw.length;
       }
       return {app,rows};
+    });
+  }
+  async hostWatchState(index,devices){
+    if(!Array.isArray(devices)||devices.length>64)throw new Error('raft member: watch page capacity');
+    await this.load();return this.actor.serial(()=>{
+      if(this.actor.stopped||this.actor.store.stopped||this.actor.status.applied<BigInt(index))throw new Error('raft member: watch state incomplete');
+      const store=this.actor.store,revoked=[];
+      for(const device of devices){
+        const key=Array.from(new TextEncoder().encode(device),b=>b.toString(16).padStart(2,'0')).join(''),raw=store.read('state','device/'+key);
+        if(raw&&JSON.parse(projectRecord(sharedRuntime(),'device',raw)).revoked)revoked.push(device);
+      }
+      return {version:store.application().version,identity:JSON.parse(projectRecord(sharedRuntime(),'identity',store.read('state','identity'))),revoked};
+    });
+  }
+  // A clean tail excludes append acknowledgments already in flight that could
+  // let a personal leader commit a record absent from this durable view.
+  async readEvidence(){
+    await this.load();return this.actor.serial(async()=>{
+      const actor=this.actor,app=actor.store.application(),status=actor.status;
+      const scheduled=await this.ctx.storage.get('raft-scheduled');
+      const staged=actor.store.one('SELECT count(*) AS n FROM snapshots WHERE complete=0').n;
+      return {activation:this.readActivation,index:app.applied,conf:app.conf,term:String(status.term),leader:String(status.leader),role:status.role,
+        clean:!actor.stopped&&!actor.store.stopped&&actor.pending===1&&!scheduled&&!staged&&!this.recoveredEffects?.send?.length&&actor.store.get('tip')===app.applied&&String(status.commit)===app.applied&&String(status.applied)===app.applied};
     });
   }
   // The coordinator's fresh ReadIndex must have applied before a scoped
@@ -140,15 +171,15 @@ export class RaftMemberDO extends DurableObject {
     this.importPending=true;
     const run=Promise.resolve().then(async()=>{
       const store=new MemberStorage(this.ctx.storage,new HostCodec(sharedRuntime()));
-      const canonical={...config,id:String(config.id),seed:String(config.seed),bootstrap:manifest.config.anchors.map(String),ceiling:Number(manifest.ceiling)};
+      const canonical={...config,id:String(config.id),seed:String(config.seed),bootstrap:(config.birth?.voters??manifest.config.anchors).map(String),ceiling:Number(manifest.ceiling)};
       const previous=await this.ctx.storage.get('raft-config');
       if(previous&&JSON.stringify(previous)!==JSON.stringify(canonical))throw new Error('raft member: provisioned identity cannot change');
       await this.ctx.storage.put('legacy-pending',true);await this.ctx.storage.sync();
       if(!previous){await this.ctx.storage.put('raft-config',canonical);await this.ctx.storage.sync();}
       await store.open({cluster:canonical.cluster,id:canonical.id,protocol:1},canonical.ceiling);
-      await stageLegacyImport(store,manifest,row);
+      await stageLegacyImport(store,manifest,row,canonical.birth??null);
       if(!finish)return;
-      const snapshot=await finishLegacyImport(store,manifest);
+      const snapshot=await finishLegacyImport(store,manifest,canonical.birth??null);
       await this.ctx.storage.delete('legacy-pending');await this.ctx.storage.sync();this.importPending=false;
       return snapshot;
     });
@@ -225,7 +256,7 @@ export class RaftMemberDO extends DurableObject {
     const recovered=this.recoveredEffects;
     const sends=[...(recovered?.send??[]),...effects.send];
     if(!sends.length&&!effects.plan.wake?.length)return [];
-    const view=this.actor.store.read('membership','registry')?committedRegistry(sharedRuntime(),this.actor.store):provisionedRegistry(sharedRuntime(),this.config);
+    const view=this.actor.store.read('membership','registry')?committedRegistry(sharedRuntime(),this.actor.store):provisionedRegistry(sharedRuntime(),this.config,this.actor.store);
     sends.sort((a,b)=>Number(!view[String(a.to)]?.voter)-Number(!view[String(b.to)]?.voter));
     const id=String(BigInt(await this.ctx.storage.get('raft-scheduled-sequence')??'0')+1n);
     const batch={id,send:[],wake:effects.plan.wake},dropped=[];
@@ -271,6 +302,7 @@ export class RaftMemberDO extends DurableObject {
   async leadershipEvidence(revision,barrier) { await this.load(); return this.actor.leadershipEvidence(revision,barrier); }
   async leadership(evidence) { await this.load(); return this.actor.leadership(evidence); }
   async leadershipReceipt() { await this.load(); return this.actor.leadershipReceipt(); }
+  async formation() {await this.load();return this.actor.formation();}
   async membership() { await this.load(); return this.actor.membership(); }
   async joinStatus(advertised) { await this.load(); return this.actor.joinStatus(advertised); }
   async drainRecovery() {
@@ -281,7 +313,7 @@ export class RaftMemberDO extends DurableObject {
   // view within that index, and invalidate it after every committed change.
   committedPeers(){
     const index=this.actor.store.application().applied;
-    if(this.registryIndex!==index){this.registryCache=this.actor.store.read('membership','registry')?committedRegistry(sharedRuntime(),this.actor.store):provisionedRegistry(sharedRuntime(),this.config);this.registryIndex=index;}
+    if(this.registryIndex!==index){this.registryCache=this.actor.store.read('membership','registry')?committedRegistry(sharedRuntime(),this.actor.store):provisionedRegistry(sharedRuntime(),this.config,this.actor.store);this.registryIndex=index;}
     return this.registryCache;
   }
   async peer(raw) {

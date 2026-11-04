@@ -48,7 +48,7 @@ assert_not_contains() {
 	fi
 }
 
-# Production shape: routes, BASE_PATH = "/fabric", workers_dev = false, observability, 1001/1002.
+# Production shape: routes, BASE_PATH = "/fabric", CAF_LIMITS, workers_dev = false, observability, 1001/1002.
 assert_contains "$tmp/prod.toml" 'name = "caf-fabric"'
 assert_contains "$tmp/prod.toml" 'account_id = "acct_0123456789abcdef"'
 assert_contains "$tmp/prod.toml" 'workers_dev = false'
@@ -56,6 +56,7 @@ assert_contains "$tmp/prod.toml" '{ pattern = "codeaf.agentfield.ai/fabric*", zo
 assert_contains "$tmp/prod.toml" '{ pattern = "codeaf.agentfield.ai/p/*", zone_name = "agentfield.ai" }'
 assert_contains "$tmp/prod.toml" 'bucket_name = "caf-fabric-frames"'
 assert_contains "$tmp/prod.toml" 'BASE_PATH = "/fabric"'
+assert_contains "$tmp/prod.toml" 'CAF_LIMITS = '\''{"globalNewIdentitiesPerDay":10000,"globalStoreBytes":1099511627776}'\'''
 assert_contains "$tmp/prod.toml" '[observability]'
 assert_contains "$tmp/prod.toml" 'preview_urls = false'
 assert_not_contains "$tmp/prod.toml" '[observability.logs]'
@@ -65,24 +66,26 @@ assert_contains "$tmp/prod.toml" 'namespace_id = "1001"'
 assert_contains "$tmp/prod.toml" 'namespace_id = "1002"'
 assert_not_contains "$tmp/prod.toml" 'workers_dev = true'
 
-# Staging shape: workers_dev = true, no routes, empty BASE_PATH, +100 rate-limit ids.
+# Staging shape: workers_dev = true, no routes, empty BASE_PATH, no CAF_LIMITS, +100 rate-limit ids.
 assert_contains "$tmp/staging.toml" 'name = "caf-fabric-staging"'
 assert_contains "$tmp/staging.toml" 'account_id = "acct_0123456789abcdef"'
 assert_contains "$tmp/staging.toml" 'workers_dev = true'
 assert_contains "$tmp/staging.toml" 'bucket_name = "caf-fabric-staging-frames"'
 assert_contains "$tmp/staging.toml" 'BASE_PATH = ""'
+assert_not_contains "$tmp/staging.toml" 'CAF_LIMITS'
 assert_contains "$tmp/staging.toml" '[observability]'
 assert_contains "$tmp/staging.toml" 'namespace_id = "1101"'
 assert_contains "$tmp/staging.toml" 'namespace_id = "1102"'
 assert_not_contains "$tmp/staging.toml" 'routes ='
 assert_not_contains "$tmp/staging.toml" 'zone_name'
 
-# Dev shape: workers_dev = true, no routes, empty BASE_PATH, +200 rate-limit ids.
+# Dev shape: workers_dev = true, no routes, empty BASE_PATH, no CAF_LIMITS, +200 rate-limit ids.
 assert_contains "$tmp/dev.toml" 'name = "caf-fabric-dev"'
 assert_contains "$tmp/dev.toml" 'account_id = "acct_0123456789abcdef"'
 assert_contains "$tmp/dev.toml" 'workers_dev = true'
 assert_contains "$tmp/dev.toml" 'bucket_name = "caf-fabric-dev-frames"'
 assert_contains "$tmp/dev.toml" 'BASE_PATH = ""'
+assert_not_contains "$tmp/dev.toml" 'CAF_LIMITS'
 assert_contains "$tmp/dev.toml" '[observability]'
 assert_contains "$tmp/dev.toml" 'namespace_id = "1201"'
 assert_contains "$tmp/dev.toml" 'namespace_id = "1202"'
@@ -131,6 +134,7 @@ assert.equal(prod.name, 'caf-fabric');
 assert.equal(prod.account_id, 'acct_0123456789abcdef');
 assert.equal(prod.workers_dev, false);
 assert.equal(prod.vars.BASE_PATH, '/fabric');
+assert.equal(prod.vars.CAF_LIMITS, '{"globalNewIdentitiesPerDay":10000,"globalStoreBytes":1099511627776}');
 assert.equal(prod.vars.LEASE_POLICY, 'amended');
 assert.equal(prod.r2_buckets[0].bucket_name, 'caf-fabric-frames');
 assert.equal(prod.routes.length, 2);
@@ -147,6 +151,7 @@ assert.equal(staging.name, 'caf-fabric-staging');
 assert.equal(staging.workers_dev, true);
 assert.equal(staging.routes, undefined);
 assert.equal(staging.vars.BASE_PATH, '');
+assert.equal(staging.vars.CAF_LIMITS, undefined);
 assert.equal(staging.r2_buckets[0].bucket_name, 'caf-fabric-staging-frames');
 assert.deepEqual(staging.ratelimits.map((r) => r.namespace_id), ['1101', '1102']);
 
@@ -155,6 +160,7 @@ assert.equal(dev.name, 'caf-fabric-dev');
 assert.equal(dev.workers_dev, true);
 assert.equal(dev.routes, undefined);
 assert.equal(dev.vars.BASE_PATH, '');
+assert.equal(dev.vars.CAF_LIMITS, undefined);
 assert.equal(dev.r2_buckets[0].bucket_name, 'caf-fabric-dev-frames');
 assert.deepEqual(dev.ratelimits.map((r) => r.namespace_id), ['1201', '1202']);
 JS

@@ -88,7 +88,15 @@ func (b *appBackend) ListAgentsIn(workspace, state, query string) ([]appwire.Age
 		out = append(out, a)
 	}
 	for i := range out {
-		b.dressUnread(&out[i])
+		// The list already read saved spend in its disk row.
+		b.sayingUnread(func() {
+			b.dressUnreadLocked(&out[i])
+			b.locked(func() {
+				if a := b.agents[out[i].ID]; a != nil {
+					a.saidSpend = out[i].SpentUSD
+				}
+			})
+		})
 	}
 	return out, nil
 }
@@ -395,17 +403,20 @@ func (b *appBackend) searchTasks(query string, limit int) []appwire.Hit {
 type appSearchWords func(terms string, limit int) ([]store.ConversationHit, error)
 
 // dress lays what this process knows now over an agent about to be said: the
-// crews it is a member of, its live line, and working while a turn it holds
-// is running. A queued agent.changed reaches the window after the moment it
-// was made, so it is dressed with the state as it is when it goes out; it is
-// only ever moved up from idle, never down from what a road said.
+// crews it is a member of, its live line, unread and the spend saved on disk.
+// A queued agent.changed reaches the window after the moment it was made,
+// so it is dressed when it goes out. Only its working state is moved up from
+// idle, never down from what a road said; saved spend can decrease after resume.
 func (b *appBackend) dress(view *appwire.Agent) {
 	b.dressState(view)
-	b.dressUnread(view)
+	b.sayingUnread(func() {
+		b.dressSpendLocked(view)
+		b.dressUnreadLocked(view)
+	})
 }
 
-// dressState is [appBackend.dress] short of unread, which an agent.changed
-// works out in the same step it is said in (appInboxTap.Emit).
+// dressState is [appBackend.dress] short of unread and saved spend, which an
+// agent.changed works out in the same step it is said in (appInboxTap.Emit).
 func (b *appBackend) dressState(view *appwire.Agent) {
 	view.Crews = b.crewsOf(view.ID)
 	// Its own budget as the app's file keeps it (appbudget.go); the open

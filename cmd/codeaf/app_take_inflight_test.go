@@ -350,7 +350,7 @@ func appLandedTakeFixture(t *testing.T, open func(*appBackend, string) (appwire.
 	})
 	seen, opened := appTakeSeen, appTakeOpen
 	t.Cleanup(func() { appTakeSeen, appTakeOpen = seen, opened })
-	appTakeSeen = func(_ context.Context, _ *syncsetup.Sync, id string, _ *directory.LeaseExpectation) (syncsetup.Continued, error) {
+	appTakeSeen = func(_ context.Context, _ *syncsetup.Sync, id string, _ *directory.LeaseExpectation, _ func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
 		if id != c.ID {
 			t.Errorf("took %s, want %s", id, c.ID)
 		}

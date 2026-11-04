@@ -147,10 +147,10 @@ func LoadProjectConfig(cwd string) (ProjectConfig, error) {
 	if path == "" {
 		return ProjectConfig{}, nil
 	}
-	project, err := projectConfigMemo.Read(path)
+	project, err := projectConfigMemo.ReadStrict(path)
 	if os.IsNotExist(err) {
 		legacy := filepath.Join(strings.TrimSpace(cwd), legacyProjectConfigDir, ProjectConfigFile)
-		project, err = projectConfigMemo.Read(legacy)
+		project, err = projectConfigMemo.ReadStrict(legacy)
 		if os.IsNotExist(err) {
 			return ProjectConfig{path: path}, nil
 		}
@@ -335,10 +335,14 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 	return "", fmt.Errorf("%q is not a text row", key)
 }
 
-// profileApprovalString distinguishes an absent preference from a failed read.
-// Live gates must keep their last policy when the profile cannot be read.
+// ReadProfileApprovalConfig preserves a failed profile read so policy builders
+// can require a person even when a caller or project supplies an allow mode.
+func ReadProfileApprovalConfig(profileDir string) (map[string]json.RawMessage, error) {
+	return readProfileConfigStrict(profileDir)
+}
+
 func profileApprovalString(profileDir, key string) (string, error) {
-	values, err := readProfileConfig(profileDir)
+	values, err := ReadProfileApprovalConfig(profileDir)
 	if err != nil {
 		return "", err
 	}

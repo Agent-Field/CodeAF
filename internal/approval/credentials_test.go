@@ -485,3 +485,21 @@ func TestSecretEnvNames(t *testing.T) {
 		}
 	}
 }
+
+// Unreadable saved rules turn every call into a question, and a person could
+// answer yes. A credential read is refused before that question is reached.
+func TestUnreadableSavedRulesDoNotTurnARefusalIntoAQuestion(t *testing.T) {
+	p := Policy{ProfileReadError: "bad file"}
+	args, _ := json.Marshal(map[string]string{"command": "gh auth token"})
+	for name, got := range map[string]Decision{
+		"Check":     p.Check(ToolBash, args),
+		"CheckBash": p.CheckBash("gh auth token"),
+	} {
+		if got.Action != ActionDeny || !got.Credential {
+			t.Errorf("%s = %+v, want the credential refusal", name, got)
+		}
+	}
+	if got := p.CheckBash("ls"); got.Action != ActionPrompt {
+		t.Errorf("an ordinary command = %v, want a question", got.Action)
+	}
+}

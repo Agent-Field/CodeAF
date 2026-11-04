@@ -321,7 +321,8 @@ type Meta struct {
 	// asking about every conversation on the machine (world.go) reads a folder,
 	// a meta.json and a presence file per session and must not grow a transcript
 	// scan per row — so the running total is stamped here at the end of every
-	// turn (placemeta.go's [Agent.stampSpend]) and read from here.
+	// turn and after a late receipt (placemeta.go's [Agent.stampSpend]) and read
+	// from here.
 	//
 	// Zero is "nobody has said", exactly as an absent Title is, and every
 	// surface draws nothing for it rather than $0.00 (the emptiness law).

@@ -174,6 +174,9 @@ type Rule struct {
 // The zero Policy prompts for everything. That is the intended reading of "no
 // policy configured" — a session with no settings should ask, not run.
 type Policy struct {
+	// ProfileReadError requires a fresh human answer for every call because
+	// saved denials could not be read. It overrides every automatic allowance.
+	ProfileReadError string
 	// Default applies to any tool with no rule of its own.
 	Default Action
 	// Tools is keyed by tool name (read, edit, write, bash, …). A tool rule
@@ -190,6 +193,8 @@ type Policy struct {
 // because every surface that renders a consent prompt needs the same sentence
 // and none of them should be re-deriving it from the Policy.
 type Decision struct {
+	// ProfileReadError prevents other consent sources from answering for a person.
+	ProfileReadError string
 	// Scope is the explicit rule matched, absent for default and inferred allows.
 	Scope  string
 	Action Action
@@ -208,6 +213,10 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	tool = strings.TrimSpace(tool)
 	if read, hit := DefaultCredentialScope("").Read(tool, args); hit {
 		return read.Decision()
+	}
+	if p.ProfileReadError != "" {
+		return Decision{Action: ActionPrompt, ProfileReadError: p.ProfileReadError,
+			Rule: "saved approval rules could not be read; every call needs your approval: " + p.ProfileReadError}
 	}
 	base := p.base(tool, args)
 	if tool != ToolBash {
@@ -233,6 +242,9 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 func (p Policy) CheckBash(command string) Decision {
 	if read, hit := DefaultCredentialScope("").Command(command); hit {
 		return read.Decision()
+	}
+	if p.ProfileReadError != "" {
+		return p.Check(ToolBash, nil)
 	}
 	return p.checkBash(command, p.base(ToolBash, nil))
 }

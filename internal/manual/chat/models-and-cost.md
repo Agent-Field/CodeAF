@@ -1689,16 +1689,16 @@ provider translates whichever one it was given for a model that reads the other.
 endpoint that cannot be given a number at all falls back to `high`, which is the honest
 answer: it cannot think harder than its own ceiling.
 
-**None of this can fail a turn.**
+**Budget repairs are automatic; unsupported thinking can still fail an ordinary turn.**
 
 - A model whose endpoint refuses the thinking budget has the budget dropped and the refusal
   remembered, so it costs one rejected request for that model and never a failed reply.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
 - If an unlisted endpoint says its model does not support thinking or reasoning,
-  codeaf retries the request once without the knob and remembers that capability
-  for the model until this process exits. That capability refusal is permanent;
-  it does not schedule the same failed turn again later.
+  only opted-in task clients retry once without the knob and remember the refusal
+  in that client. Ordinary clients return the refusal and keep the requested
+  effort; they do not inherit a task client's memo.
 - On a small context window the budget shrinks to the room the conversation leaves beside
   an answer. When less than 1,024 tokens of thinking would fit, the budget is dropped and
   the rung travels as `high`, so `xhigh` on a 32,000-token window is never refused for the
@@ -2469,6 +2469,24 @@ which is the whole machine's ledger rather than this conversation's — it was a
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
 conversation that has started no tasks prints `spend` alone. When they are there they add
 up to the line above them, always — that is the whole point of printing them.
+
+## Desktop saved agent spend after stopping a reply
+
+An agent's saved spend is the conversation's cumulative total in `meta.json`.
+The desktop engine's `agents.list` reads saved `spent_usd` from its disk row.
+`agents.open` reads the saved figure from disk, including for a conversation
+the engine already holds or is opening. Every `agent.changed` reads it when
+the event is sent, and `agents.take` carries it because it answers through
+`agents.open`. Other method answers omit `spent_usd`, so the desktop keeps
+its last figure. A zero figure is omitted.
+
+The total is saved when a turn ends. If a cancelled call's receipt is recovered
+later, the engine saves the updated total and sends one `agent.changed` if the
+figure differs from the one last said, without waiting for another message.
+Duplicate or delayed save news sends nothing if that figure has already been
+said. The charge is counted once.
+`agents.budget.get` reads the live meter in `engine.spent_usd`, which may include
+calls not yet saved to metadata.
 
 ## Why do the tokens on the status line jump instead of counting up
 
