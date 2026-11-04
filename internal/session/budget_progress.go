@@ -15,11 +15,13 @@ var budgetProgress = struct {
 	sync.Mutex
 	calls    map[*budgetCall]map[string]budgetReading
 	watchers map[chan struct{}]string
-}{calls: make(map[*budgetCall]map[string]budgetReading), watchers: make(map[chan struct{}]string)}
+	now      func() time.Time
+}{calls: make(map[*budgetCall]map[string]budgetReading), watchers: make(map[chan struct{}]string), now: time.Now}
 
 type budgetReading struct {
-	cost float64
-	day  string
+	cost     float64
+	day      string
+	dayStart float64
 }
 
 type budgetCall struct {
@@ -62,8 +64,10 @@ func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()
 			budgetProgress.calls[call] = make(map[string]budgetReading)
 		}
 		reading := budgetProgress.calls[call][id]
-		if reading.day == "" {
-			reading.day = time.Now().Format(usageDayLayout)
+		day := budgetProgress.now().Format(usageDayLayout)
+		if day > reading.day {
+			reading.day = day
+			reading.dayStart = reading.cost
 		}
 		reading.cost = *usage.Cost
 		budgetProgress.calls[call][id] = reading
@@ -100,8 +104,10 @@ func pendingBudgetSpendOnDay(ledger, job, day string) float64 {
 	for call, attempts := range budgetProgress.calls {
 		if call.ledger == ledger && (job == "" || call.job == job) {
 			for _, reading := range attempts {
-				if day == "" || reading.day == day {
+				if day == "" {
 					total += reading.cost
+				} else if reading.day == day {
+					total += reading.cost - reading.dayStart
 				}
 			}
 		}
