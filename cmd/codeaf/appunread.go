@@ -402,7 +402,7 @@ func (b *appBackend) seenTarget(id string) (*appAgent, error) {
 	return b.agents[id], nil
 }
 
-// sayListed says an agent whose unread changed exactly as agents.list says
+// sayListed says an agent whose unread or saved spend changed as agents.list says
 // it, so a closed or archived one is said closed or archived: the view this
 // process keeps of an agent read off the disk carries neither.
 func (b *appBackend) sayListed(a *appAgent, id string) {
