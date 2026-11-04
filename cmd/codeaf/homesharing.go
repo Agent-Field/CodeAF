@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,10 +34,17 @@ import (
 // finished copy is published by the ordinary pass (syncsetup.LocalChatRoots),
 // under the same progress budget and order as every other chat.
 //
-// Counting what is not shared yet needs no lock: it reads only the disk.
+// THE HOLDER COUNTS. What is not shared yet is counted from the disk and from
+// what the holder's passes learned: a chat that failed, or one the directory
+// already lists although no marker on disk says so. Only the holder knows the
+// last two, so it writes its count beside the lock and the other process shows
+// that count; with no count written yet it counts from the disk alone.
 
 // sharingLockName is the home's sharing lock, beside its projects.
 const sharingLockName = "sharing.lock"
+
+// sharingCountName is the holder's last count, beside the lock.
+const sharingCountName = "sharing-count.json"
 
 // homeSharing is one process's part in sharing a home's existing chats.
 type homeSharing struct {
@@ -89,10 +97,43 @@ func (h *homeSharing) release() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.lock != nil {
+		_ = os.Remove(filepath.Join(h.home, "v3", sharingCountName))
 		_ = filelock.Unlock(h.lock)
 		_ = h.lock.Close()
 		h.lock = nil
 	}
+}
+
+// holding says whether this process holds the home's sharing lock.
+func (h *homeSharing) holding() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lock != nil
+}
+
+// tell writes the holder's count for the other process on the home.
+func (h *homeSharing) tell(u syncsetup.Unshared) {
+	raw, err := json.Marshal(u)
+	if err != nil {
+		return
+	}
+	path := filepath.Join(h.home, "v3", sharingCountName)
+	if err := os.WriteFile(path+".tmp", raw, 0600); err == nil {
+		_ = os.Rename(path+".tmp", path)
+	}
+}
+
+// told is the holder's last count, and false when it has written none.
+func (h *homeSharing) told() (syncsetup.Unshared, bool) {
+	raw, err := os.ReadFile(filepath.Join(h.home, "v3", sharingCountName))
+	if err != nil {
+		return syncsetup.Unshared{}, false
+	}
+	var u syncsetup.Unshared
+	if json.Unmarshal(raw, &u) != nil {
+		return syncsetup.Unshared{}, false
+	}
+	return u, true
 }
 
 // copyOne copies the first older chat that is due and answers whether it did.
@@ -139,9 +180,18 @@ func (h *homeSharing) unshared(s *syncsetup.Sync, now time.Time) syncsetup.Unsha
 	return cells
 }
 
-// note counts again what is not shared and keeps it for last.
+// note counts again what is not shared and keeps it for last. The holder
+// counts and tells; the other process takes the holder's count when there is one.
 func (h *homeSharing) note(s *syncsetup.Sync, now time.Time) syncsetup.Unshared {
-	u := h.unshared(s, now)
+	var u syncsetup.Unshared
+	if h.holding() {
+		u = h.unshared(s, now)
+		h.tell(u)
+	} else if told, ok := h.told(); ok {
+		u = told
+	} else {
+		u = h.unshared(s, now)
+	}
 	h.mu.Lock()
 	h.shown = &u
 	h.mu.Unlock()

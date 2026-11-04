@@ -161,7 +161,8 @@ func TestTheAppEngineCopiesAndSharesOlderChats(t *testing.T) {
 
 // TestTheAppEngineLeavesAHomeAnotherProcessShares: with a terminal holding
 // the home's sharing, the app engine copies nothing, so the two never export and
-// upload the same chat twice; it still counts what is not shared.
+// upload the same chat twice. It shows the terminal's count: only the holder
+// knows which chats failed, and the app once counted them as waiting.
 func TestTheAppEngineLeavesAHomeAnotherProcessShares(t *testing.T) {
 	celltest.RequireEngine(t)
 	t.Cleanup(cellstore.StopSpawned)
@@ -178,6 +179,19 @@ func TestTheAppEngineLeavesAHomeAnotherProcessShares(t *testing.T) {
 		t.Fatal("terminal could not take the home's sharing")
 	}
 	defer terminal.release()
+	terminal.older.copy = func(context.Context, string) (cell.Cell, error) {
+		return cell.Cell{}, errors.New("files kept changing while saving this chat; try again")
+	}
+	if terminal.copyOne(t.Context()) {
+		t.Fatal("the terminal's copy did not fail")
+	}
+	s, ok, err := syncsetup.Open(root)
+	if err != nil || !ok {
+		t.Fatalf("open: %v, %v", ok, err)
+	}
+	if u := terminal.note(s, time.Now()); u != (syncsetup.Unshared{Failing: 1}) {
+		t.Fatalf("the terminal counted %+v", u)
+	}
 	b := &appBackend{left: make(chan struct{}), emit: newAppRecorder()}
 	b.chats.publicationWake = make(chan struct{}, 1)
 	round := r1PublicationRounds(t, b)
@@ -189,7 +203,7 @@ func TestTheAppEngineLeavesAHomeAnotherProcessShares(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (appwire.SyncUnshared{Total: 1, Waiting: 1}); status.Unshared == nil || *status.Unshared != want {
+	if want := (appwire.SyncUnshared{Total: 1, Failing: 1}); status.Unshared == nil || *status.Unshared != want {
 		t.Fatalf("sync status unshared = %+v, want %+v", status.Unshared, want)
 	}
 }
