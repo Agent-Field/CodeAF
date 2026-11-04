@@ -623,8 +623,8 @@ func TestForkGroundFailureRemovesOnlyItsStaging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tree.rung == GroundRungUniverse {
-		t.Fatal("killed fork did not fall back")
+	if tree.rung != GroundRungSnapshot || tree.mode != TaskModeWorktree {
+		t.Fatalf("killed fork fell back to rung %q, mode %q; want a snapshot worktree", tree.rung, tree.mode)
 	}
 	if _, err := os.Lstat(filepath.Join(trees, ".1.furrow-fork-123-0")); !os.IsNotExist(err) {
 		t.Fatalf("killed fork staging survived: %v", err)

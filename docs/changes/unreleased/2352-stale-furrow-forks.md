@@ -1,6 +1,7 @@
 ---
 kind: fixed
 title: Abandoned task fork folders no longer accumulate between launches
+pr: 2352
 surface: [chat, engine]
 invalidates:
   - "Interrupted fork staging and orphaned model fork folders previously survived every launch. Closed conversations now remove abandoned folders untouched for more than seven days."

@@ -28,11 +28,16 @@ func TestSweepAbandonedFurrowFolders(t *testing.T) {
 				bucket = filepath.Join(bucket, ".moving")
 			}
 			dir := newSweptSession(t, root, bucket, "session", Meta{ID: "session", Workspace: "/project", LastUserAt: now})
-			if tc.ready {
-				writeFile(t, filepath.Join(dir, ".cell", "copy-ready"), "ready")
+			if tc.moving {
+				if err := os.MkdirAll(filepath.Join(dir, ".cell"), 0700); err != nil {
+					t.Fatal(err)
+				}
 				if err := os.Rename(filepath.Join(dir, placeTranscript), layoutOf(dir).transcript(dir)); err != nil {
 					t.Fatal(err)
 				}
+			}
+			if tc.ready {
+				writeFile(t, filepath.Join(dir, ".cell", "copy-ready"), "ready")
 			}
 			trees := filepath.Join(dir, "trees")
 			old := now.Add(-8 * 24 * time.Hour)
