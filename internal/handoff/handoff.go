@@ -273,10 +273,17 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 		t.OnPhase(Phase{Name: "first acquire", Started: time.Now()})
 	}
 	acquiring := Trace(t.OnPhase, "acquire")
-	got, err := t.Dir.Acquire(ctx, stage.ID, how)
+	// The acquire is not cut short: a request the relay commits after the
+	// take was cancelled would leave a lease nobody here knows about. It runs
+	// to its answer (the directory client bounds it), and a lease it won for
+	// a take that has ended is handed back.
+	got, err := t.Dir.Acquire(context.WithoutCancel(ctx), stage.ID, how)
 	acquiring()
 	if err != nil {
 		return "", 0, directory.Cell{}, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
+	}
+	if ctx.Err() != nil {
+		return "", 0, directory.Cell{}, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: take %s: %w", stage.ID, context.Cause(ctx)))
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
