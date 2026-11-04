@@ -7,7 +7,7 @@ import (
 )
 
 // listIndex owns the decoded documents. Nothing returned by List aliases them.
-// Writes never take this lock: migration may itself write while List holds it.
+// mu guards only the docs pointer and is never held across a read or a write.
 type listIndex struct {
 	mu   sync.Mutex
 	docs map[string]listedDoc

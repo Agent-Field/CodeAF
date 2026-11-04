@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"sync/atomic"
 )
 
 func listStore(t *testing.T) *store.Store {
@@ -180,5 +181,59 @@ func TestListSeesRenameWithSameSizeAndTime(t *testing.T) {
 	}
 	if n := st.DocumentReads() - before; n != 1 {
 		t.Fatalf("replacement read %d documents, want 1", n)
+	}
+}
+
+// An Update callback holding an item's lock may list the floor while another
+// List is migrating that item. List must not wait on the item lock while holding
+// anything the callback's List needs.
+func TestListDoesNotHoldItsIndexAcrossMigration(t *testing.T) {
+	st := listStore(t)
+	if _, err := st.Create(factory.Item{Repo: "ledger", Stream: &factory.Stream{}}); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := st.Create(factory.Item{Repo: "ledger"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRepos([]string{"acme/ledger"}); err != nil {
+		t.Fatal(err)
+	}
+	locked, listing, proceed := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	finished := make(chan error, 2)
+	var once atomic.Bool
+	st.SetOutputPolicy(func() (int, int) {
+		if once.CompareAndSwap(false, true) {
+			close(listing)
+			<-proceed
+		}
+		return 0, 0
+	})
+	go func() {
+		finished <- st.Update(legacy.ID, func(*factory.Item) error {
+			close(locked)
+			<-listing
+			if err := st.SetRepos(nil); err != nil {
+				return err
+			}
+			close(proceed)
+			_, err := st.List()
+			return err
+		})
+	}()
+	<-locked
+	go func() {
+		_, err := st.List()
+		finished <- err
+	}()
+	for range 2 {
+		select {
+		case err := <-finished:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("deadlock: List held its index while waiting for an item lock")
+		}
 	}
 }

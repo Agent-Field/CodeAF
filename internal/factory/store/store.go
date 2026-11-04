@@ -234,8 +234,12 @@ func (st *Store) Get(id int) (factory.Item, error) {
 // newer-schema document is skipped rather than fatal: ONE DOCUMENT FROM THE
 // FUTURE, OR ONE TORN BY A FULL DISK, MUST NOT EMPTY THE WHOLE FLOOR.
 func (st *Store) List() ([]factory.Item, error) {
+	// A published index is never changed, so a scan reads its snapshot unlocked:
+	// migration below takes item locks. An older scan publishing last costs only
+	// reads, because each file's identity is checked on every look.
 	st.list.mu.Lock()
-	defer st.list.mu.Unlock()
+	previous := st.list.docs
+	st.list.mu.Unlock()
 	entries, err := os.ReadDir(st.root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -258,7 +262,7 @@ func (st *Store) List() ([]factory.Item, error) {
 		if _, err := strconv.Atoi(strings.TrimSuffix(entry.Name(), ".json")); err != nil {
 			continue
 		}
-		d, err := st.listed(filepath.Join(st.root, entry.Name()), st.list.docs, next)
+		d, err := st.listed(filepath.Join(st.root, entry.Name()), previous, next)
 		if err != nil {
 			continue
 		}
@@ -276,7 +280,9 @@ func (st *Store) List() ([]factory.Item, error) {
 		st.retainOutput(&d.Item)
 		items = append(items, d.Item)
 	}
+	st.list.mu.Lock()
 	st.list.docs = next
+	st.list.mu.Unlock()
 	sort.SliceStable(items, func(a, b int) bool {
 		if items[a].Created.Equal(items[b].Created) {
 			return items[a].ID > items[b].ID
