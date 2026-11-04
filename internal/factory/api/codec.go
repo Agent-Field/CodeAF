@@ -146,6 +146,9 @@ var Lost = map[string]string{
 
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
+	if it.PersonStopped == nil && factory.StoppedByPerson(it) {
+		factory.MarkPersonStopped(&it)
+	}
 	j := Job{
 		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
@@ -155,7 +158,7 @@ func FromItem(it factory.Item) Job {
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
 		Runner: it.WorktreeMachine, JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
-		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApprovalSummary(it),
+		PublishAnyway: it.PublishAnyway, DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApprovalSummary(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo: it.Person(), Assignee: it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
@@ -313,6 +316,10 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		now = clocks[0]
 	}
 	a := factory.MayAct(it, caller)
+	if factory.StoppedByPerson(it) && factory.JobState(it) != StateDone {
+		owner := it.Person() == "" || it.Person() == factory.NormalizeHandle(caller)
+		return Can{Resume: owner, StartNow: owner, RunAgain: owner, RunAsNew: owner, Close: owner, Drop: owner, RaiseBudget: owner, Reply: a.Reply, Undo: owner && it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)}
+	}
 	person := it.Person()
 	owner := person == "" || person == factory.NormalizeHandle(caller)
 	approval := factory.JobApproval(it)
@@ -345,8 +352,8 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		Hold: owner && (queued || running) && !held, Resume: owner && held,
 		Close: owner && state != StateDone, Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
 		ChangeAssignee: person != "" && factory.NormalizeHandle(caller) == person, Unassign: person != "" && factory.NormalizeHandle(caller) == person, Nudge: person != "", RaiseBudget: owner, StopAfterStep: owner && factory.MayStopAfterStep(it),
-		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
-		Approve: approve, RunAgain: a.RunAgain, RunAsNew: owner && factory.CanRunAsNew(it), CancelJob: a.CancelJob,
+		Undo:          (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)) || (it.Merging != nil && it.Merging.State == factory.MergeAsked && now.Before(it.Merging.UndoUntil) && it.Merging.By == factory.NormalizeHandle(caller)),
+		PublishAnyway: owner && factory.NormalizeHandle(caller) != "" && factory.OffersPublishAnyway(it), Approve: approve, RunAgain: a.RunAgain, RunAsNew: owner && factory.CanRunAsNew(it), CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
 		RejectPlan:  answer && planSendsBack(it),
@@ -484,7 +491,7 @@ func ToItem(j Job) factory.Item {
 		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
-		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo,
+		PublishAnyway: j.PublishAnyway, Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo, PersonStopped: d.PersonStopped,
 		DismissedBy: j.DismissedBy, DoneAt: j.DoneAt,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
@@ -791,7 +798,7 @@ func toClaim(c Claim) factory.Claim {
 
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
-		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo,
+		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped,
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
@@ -1280,7 +1287,7 @@ func cloneStartRules(r *factory.StartRules) *factory.StartRules {
 	if r == nil {
 		return nil
 	}
-	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread, UnreadWhy: r.UnreadWhy, UnreadFile: r.UnreadFile, UnreadLine: r.UnreadLine}
+	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread, UnreadWhy: r.UnreadWhy, UnreadFile: r.UnreadFile, UnreadLine: r.UnreadLine, Pending: r.Pending, NoFile: r.NoFile}
 }
 
 func fromRuleChecks(c *factory.RuleChecks) *RuleChecks {

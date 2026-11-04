@@ -250,10 +250,14 @@ moves into the chat by itself when the chat exists. An open chat shows the step'
 words as it writes them and each thing it does, with no press. A step's chat that
 was closed comes back current when opened again.
 
-## repository rules unread — bad factory.yaml, Start, plan waiting for you
+## repository rules unread — bad factory.yaml, no factory.yaml, default rules, Start, plan waiting for you
+
+A repository with no `.codeaf/factory.yaml` is normal: the job says `No .codeaf/factory.yaml in this repository, so this job uses the default rules.`, and nothing waits because of it. A file GitHub cannot be reached for and that isn't on this computer yet is read after the clone, before the first model call. If it then names other steps than the job started with, the plan waits.
 
 If the repository's `.codeaf/factory.yaml` cannot be read, pressing Start or
-starting from chat still starts the job with the factory's own rules. A job
+starting from chat still starts the job with the factory's own rules. GitHub
+refusing the read counts: a repository GitHub can't show this computer is never
+taken for one with no file. A job
 without its own budget gets the built-in default job budget. Activity says
 `Started with the repository's rules unread; its plan will wait for you`.
 The job records a short explanation naming the file and the parser's line
@@ -334,21 +338,31 @@ A nonmatching step ends as `skipped`, with a structured reason (`skip_reason` on
 
 The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
 
-## skipped required checks — publishing waits, rerun, policy approval
+## skipped required checks — Publish anyway, rerun, policy approval
 
-Under `tests pass before anything posts`, a skipped check still blocks the
-post. The job waits for you. Its open question and Needs you reason name the
-check, why it was skipped, and the recovery action; the policy result retains
-the rule that refused publishing. For example:
-`Publishing waits: check inspect was skipped (when touches auth does not match the change files). Rerun from write after revising the change files to match, or stop the job.`
+Under `tests pass before anything posts`, a skipped check leaves the job
+waiting. If every unmet check is a conditional check correctly skipped with a
+reason, and its condition still does not match the known change files, the
+engine offers **Publish anyway**. For example:
+`Publishing waits: check inspect was skipped (when touches auth does not match the change files). Publish anyway, rerun from write after revising the change files to match, or stop the job.`
 
-Approval cannot bypass this policy wait. Trying the post again with the same
-files still refuses. Rerun from the earlier work step after revising the files
-to match the condition; the check must actually run and pass. A rerun of only
-the conditional check with unchanged files skips again. Step edit cannot change
-an already-run step or remove its condition. If the condition is inappropriate,
-stop the job and correct the pipeline before starting a new job. With no earlier
-work step, the question names that stop-and-correct action instead.
+Only a signed-in person allowed to publish this job can press Publish anyway.
+Failed, pending or unmeasured checks prevent the offer and refuse the press.
+An ordinary approval, automatic answer, Auto mode or automatic budget increase
+cannot make this decision. Skipped checks remain unmeasured and supply no proof.
+The PR lists their reasons and says who published anyway and when. Only a plain
+login is shown as a handle; other values appear as "by a person". The saved
+decision retains the original value.
+
+The saved person decision uses the job's approval record shape and decision
+ledger. It is bound to the current head, reported change and skipped-check set;
+a rerun clears it, and changed files or skips require a new press. Rerun from
+an earlier work step to make the condition match and run the check, or stop the
+job and correct the pipeline. Step edit cannot remove an already-run condition.
+
+Apps show the action only when `can.publish_anyway` is true. Hello announces
+`factory.publish_anyway`; `factory.job_publish_anyway` takes `factory`, `job`
+and `expect.version`. A stale version refuses without recording a decision.
 
 A skip without a check policy does not block posting. Under
 `no pull request without a green check`, a measured passing check beside a skip
@@ -468,7 +482,9 @@ continues the job. Repeated spending reports count once and cannot lower a round
 conversation when it can be reopened. It takes a free Jobs at once slot, or
 waits in the ordinary queue until a slot is available. No model round starts
 while it waits. Completed steps are kept and are not run again. The activity
-says `paused`, then `resumed`; both actions record who made them.
+says `paused`, then `resumed`; both actions record who made them. If a heartbeat
+reply is lost, the factory repeats its current hold on later heartbeats. Resume
+supersedes an older hold still waiting to be collected.
 
 Only the job's person may pause or resume it. A job waiting for you, finished
 or publishing cannot be paused. Pause releases its Jobs at once slot after
@@ -480,11 +496,11 @@ no running slot.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
-**Stop** ends a running, queued or waiting job at once. When it cut a step that was running or waiting, the job says so and waits for you: `Step stopped`, `Stopped by you`. That step reads failed with the same words, so no step reads running, and what the run spent stays on the job. A job stopped before any step began, or after its last step ended, lost nothing: it simply goes back to Backlog with no mark, ready to start. Either way the job's log says `stopped · branch kept`. A no to a step that ran out of rounds, to the budget, or to an approve step with nothing before it is the same stop. A job whose run already ended on a failure or a stop has nothing to stop and refuses with `#12 is not running`.
+**Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Resume only continues a paused job; after Stop it refuses with `is not paused`. Carry on reruns the stopped step. Reading the chat does not start work; you can still ask the manager questions without starting the job. Stop also withdraws proof awaiting sign-off and draft-PR maintenance. An already stopped or closed job refuses with `#12 is not running`.
 
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
-**Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the new run's cost starts again from nothing; the job's lifetime spending stays, and its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
+**Run again** starts a stopped job over, taking the stop mark off. **Start** also starts it again. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the new run's cost starts again from nothing; the job's lifetime spending stays, and its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
 
 A job owned by this factory has one manager, however many asks race to open it. A remote job running here may still get separate managers from its Talk door and its runner; those opens are not deduplicated. Every conversation owned by a job, including an extra manager left by an earlier build, spends from that job’s budget. Its model calls appear on the job and count toward its cap, wherever its working folder is. Reopening a conversation does not charge its saved calls again.
 
@@ -502,8 +518,13 @@ and tells you it was not closed; review it on GitHub. Nothing is closed automati
 Run again is available immediately after Stop. An old publisher can still report
 an already opened PR, but that receipt does not change the new run's state.
 
-Workers confirm Stop immediately before executing each push and sending the PR
-request. A transient confirmation error gets up to three attempts within two
+Workers confirm Stop immediately before pushes, PR requests, merges, proof
+comments, repair descriptions and post-step writes. A revoked worker lease
+refuses the next paid step. A temporary Stop-after-step read failure keeps the
+stored choice. Stop also cancels the job manager’s background commands; a
+manager’s answer to your chat can still finish. A stopped manager shows the
+current Stop reason before its answer, so the status does not depend on the
+model’s wording. A transient confirmation error gets up to three attempts within two
 seconds. If confirmation still fails, publication fails with "could not confirm
 Stop"; press **Approve** again to retry. An older factory that answers 404 has no
 publish-check endpoint: publication uses its earlier behavior, without a fresh
@@ -754,10 +775,14 @@ A new request makes an earlier Brief out of date.
 The job's Brief refreshes when proof waits for your publication approval and
 after publication opens or updates a pull request or posts a comment. It also
 refreshes when the job ships, its PR merges or closes without merge, or the run
-stops or fails. A publication failure refreshes it too. Updates within 10 seconds
+fails. A publication failure refreshes it too. Updates within 10 seconds
 are taken as one. An approval or end update waits if an earlier Brief is still
-being written. Stopping a queued job or declining to continue at the start gate refreshes it
-too, even before a step has run. Auto skips the intermediate proof update when approval can
+being written. Stop settles the Brief without a model call, including for queued
+jobs and jobs stopped at the start gate. Its status stays `failed` for older
+desks, and `failure_kind: "stopped"` identifies a person's Stop separately from a
+failed refresh. Only a person's Stop sets this field. The reason is
+`the person stopped this job; this job is stopped; a person presses Start to run it`.
+The last paid Brief stays visible; no paid refresh runs until a person starts the job. Auto skips the intermediate proof update when approval can
 proceed automatically; an exception that waits on you still gets an update.
 
 These approval and end updates bypass the ordinary brief cost guard, and their

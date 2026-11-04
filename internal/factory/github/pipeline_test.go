@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -294,5 +296,104 @@ func TestCodeOwnersNeverHoldAReadOnASilentForge(t *testing.T) {
 	}
 	if took := time.Since(began); took > time.Second {
 		t.Fatalf("five owner reads with the forge silent took %v", took)
+	}
+}
+
+// missingEverywhere is a forge whose repository answers and which has no pipeline file.
+func missingEverywhere(t *testing.T, repoStatus int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/contents/") {
+			w.WriteHeader(repoStatus)
+			fmt.Fprint(w, `{"default_branch":"main"}`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// A READ WITH NO GITHUB YET IS NOT THE LAST WORD. A job's page read at launch
+// asks before gh has answered; the read that decides a Start must ask again,
+// or a repository with no file starts with its rules "unread".
+func TestAStartAsksAgainAfterAReadThatHadNoGitHub(t *testing.T) {
+	srv := missingEverywhere(t, 200)
+	connected := false
+	loader := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI {
+		if !connected {
+			return nil
+		}
+		return forge.NewClient("stub").WithBaseURL(srv.URL)
+	})
+	if _, err := loader.Load(context.Background(), "owner/repo", "", ""); !errors.Is(err, pipeline.ErrNotHereYet) {
+		t.Fatalf("no GitHub and no checkout: %v", err)
+	}
+	connected = true
+	f, err := loader.Load(context.Background(), "owner/repo", "", "")
+	if err != nil || f.Source != pipeline.SourceDefaults || f.From != factory.FromDefault {
+		t.Fatalf("the failure stood: %+v, %v", f.Source, err)
+	}
+}
+
+// GitHub's names ignore case and a job's may differ from the watched one, so
+// the intake's refresh of one spelling serves the other.
+func TestAReadOfOneSpellingServesTheOther(t *testing.T) {
+	var asks atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/contents/") {
+			asks.Add(1)
+			w.WriteHeader(404)
+			return
+		}
+		fmt.Fprint(w, `{"default_branch":"main"}`)
+	}))
+	defer srv.Close()
+	loader := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI { return forge.NewClient("stub").WithBaseURL(srv.URL) })
+	loader.Refresh(context.Background(), "Owner/Repo", "")
+	before := asks.Load()
+	if _, err := loader.Load(context.Background(), "owner/repo", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if asks.Load() != before {
+		t.Fatalf("asked again under another spelling: %d then %d", before, asks.Load())
+	}
+}
+
+// A WRONG "NOT FOUND" NEVER RELAXES A REPOSITORY'S RULES. GitHub answers 404
+// for a private repository this connection can't see, exactly as it does for a
+// file that isn't there, so a 404 only means "no file" once the repository
+// itself answers.
+func TestAFileNotFoundInARepositoryGitHubCannotShowIsNotNoFile(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		want   string
+	}{
+		{"hidden", 404, "GitHub can't show this repository"},
+		{"gone", 410, "GitHub answered 410"},
+		{"refused", 403, "GitHub answered 403"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := missingEverywhere(t, tc.status)
+			loader := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI { return forge.NewClient("stub").WithBaseURL(srv.URL) })
+			f, err := loader.Load(context.Background(), "owner/repo", "", "")
+			if err == nil || f.From == factory.FromDefault {
+				t.Fatalf("read as no file: %+v, %v", f.From, err)
+			}
+			if why := pipeline.UnreadWhy(err); !strings.Contains(why, tc.want) || !strings.Contains(why, pipeline.RepoFile) {
+				t.Fatalf("why: %q", why)
+			}
+		})
+	}
+}
+
+func TestAReadRefusedByGitHubSaysSoAndNotSyntax(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }))
+	defer srv.Close()
+	loader := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI { return forge.NewClient("stub").WithBaseURL(srv.URL) })
+	_, err := loader.Load(context.Background(), "owner/repo", "", "")
+	if why := pipeline.UnreadWhy(err); !strings.Contains(why, "GitHub answered 401") || strings.Contains(why, "syntax") {
+		t.Fatalf("why: %q", why)
 	}
 }

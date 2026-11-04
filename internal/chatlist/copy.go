@@ -35,7 +35,7 @@ const (
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
 	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
-	Removed        = removedChatStart + "run codeaf pair to bring it back"
+	Removed        = removedChatStart + "run codeaf pair --replace to bring it back"
 	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
 	tooManyNewIn   = "too many new identities from this network today — try again in about %s"
 	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
@@ -387,7 +387,7 @@ func Moved(from string, elapsed time.Duration, hadRunning bool) string {
 // IsRemovedNotice accepts the wire spelling from earlier engines as well as
 // each current reading place, so removal keeps its recovery behavior.
 func IsRemovedNotice(text string) bool {
-	return text == Removed || text == RemovedChat || text == LegacyRemoved
+	return text == Removed || text == RemovedChat || text == LegacyRemoved || text == earlierRemoved
 }
 
 // LegacySyncNotice preserves the vocabulary an older surface recognizes.
@@ -412,4 +412,6 @@ const (
 	RemovedChat = removedChatStart + "/pair brings it back"
 	// LegacyRemoved is retained for old surfaces that recognize terminal guidance by text.
 	LegacyRemoved = removedChatStart + "run `codeaf pair` to bring it back"
+	// earlierRemoved is Removed as engines before --replace wrote it into notices.
+	earlierRemoved = removedChatStart + "run codeaf pair to bring it back"
 )

@@ -1,6 +1,7 @@
 package pipeline_test
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -136,5 +137,93 @@ func TestConvertedMarkdownKeepsItsSectionConstraint(t *testing.T) {
 	}
 	if len(data) == 0 || !strings.Contains(joinProblems(warnings), "YAML fixes individual steps") {
 		t.Fatalf("conversion warning: %+v", warnings)
+	}
+}
+
+// A WRONG "NOT FOUND" NEVER RELAXES A REPOSITORY'S RULES: a checkout git can't
+// read is a failure to read, never a repository with no file.
+func TestACheckoutGitCannotReadIsNotNoFile(t *testing.T) {
+	committed := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		for _, args := range [][]string{{"init", "-q", "-b", "main"}} {
+			runGitForLoad(t, dir, args...)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, ".codeaf"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte("start:\n  never: [auth/]\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		runGitForLoad(t, dir, "add", ".")
+		runGitForLoad(t, dir, "-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-qm", "rules")
+		return dir
+	}
+	t.Run("a healthy checkout reads its file, and one with none is no file", func(t *testing.T) {
+		dir := committed(t)
+		f, err := pipeline.Load(dir)
+		if err != nil || f.Source != pipeline.SourceFile {
+			t.Fatalf("%+v, %v", f.Source, err)
+		}
+		runGitForLoad(t, dir, "rm", "-q", pipeline.RepoFile)
+		runGitForLoad(t, dir, "-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-qm", "no rules")
+		f, err = pipeline.Load(dir)
+		if err != nil || f.Source != pipeline.SourceDefaults || f.From != factory.FromDefault {
+			t.Fatalf("%+v %q, %v", f.Source, f.From, err)
+		}
+	})
+	t.Run("a missing tree object", func(t *testing.T) {
+		dir := committed(t)
+		tree := strings.TrimSpace(runGitForLoad(t, dir, "rev-parse", "main^{tree}"))
+		if err := os.Remove(filepath.Join(dir, ".git", "objects", tree[:2], tree[2:])); err != nil {
+			t.Fatal(err)
+		}
+		if f, err := pipeline.Load(dir); err == nil || f.From == factory.FromDefault {
+			t.Fatalf("read as no file: %q, %v", f.From, err)
+		}
+	})
+	t.Run("a git folder that no longer works", func(t *testing.T) {
+		dir := committed(t)
+		if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("garbage"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(dir, pipeline.RepoFile)); err != nil {
+			t.Fatal(err)
+		}
+		if f, err := pipeline.Load(dir); err == nil || f.From == factory.FromDefault {
+			t.Fatalf("read as no file: %q, %v", f.From, err)
+		}
+	})
+}
+
+func runGitForLoad(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+	return string(out)
+}
+
+func TestStartRulesSayWhetherTheRepositoryHasNoFile(t *testing.T) {
+	none := pipeline.Defaults()
+	none.Source, none.From = pipeline.SourceDefaults, factory.FromDefault
+	if !pipeline.StartRulesOf(none).NoFile {
+		t.Fatal("no file is not said")
+	}
+	file := pipeline.Defaults()
+	file.Source, file.From = pipeline.SourceFile, factory.FromMainBranch
+	if pipeline.StartRulesOf(file).NoFile {
+		t.Fatal("a file read as none")
+	}
+	unread := pipeline.StartRulesOf(none)
+	pipeline.MarkUnread(unread, errors.New("yaml: line 3: did not find expected key"))
+	if unread.NoFile || !unread.Unread || unread.Pending || unread.UnreadLine != 3 {
+		t.Fatalf("a failed read: %+v", unread)
+	}
+	waiting := pipeline.StartRulesOf(none)
+	pipeline.MarkUnread(waiting, pipeline.ErrNotHereYet)
+	if !waiting.Unread || !waiting.Pending || strings.Contains(waiting.UnreadWhy, "syntax") {
+		t.Fatalf("a read that waits for the clone: %+v", waiting)
 	}
 }

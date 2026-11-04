@@ -179,12 +179,21 @@ func (g *TaskGraph) stop(id uint64) (string, error) { return g.stopFor(id, "") }
 // what it said. Every road out of here spells it the same way a person's own
 // accept and refute spell theirs ([stopBecause], task_audit.go's acceptedLine).
 func (g *TaskGraph) stopFor(id uint64, why string) (string, error) {
+	return g.stopAttempt(id, why, nil)
+}
+
+// A sampled Stop belongs to the captured attempt, even if its ID is retried.
+func (g *TaskGraph) stopAttempt(id uint64, why string, done <-chan struct{}) (string, error) {
 	why = strings.TrimSpace(why)
 	g.mu.Lock()
 	node := g.nodes[id]
 	if node == nil {
 		g.mu.Unlock()
 		return "", fmt.Errorf("there is no task %d in this session", id)
+	}
+	if done != nil && node.done != done {
+		g.mu.Unlock()
+		return "", nil
 	}
 	name := taskStopName(id, node.spec.title)
 	var (

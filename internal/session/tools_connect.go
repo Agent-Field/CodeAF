@@ -317,6 +317,10 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 		return "", connectAnswerFailure(service.Name, answer)
 	}
 
+	if fresh, known := a.service(service.ID); known && fresh.Connected {
+		return fresh.Account, ""
+	}
+
 	// An account opened with a key has no page to send anybody to: the person
 	// has already done the only step there is, and the whole of what is left is
 	// one call that either works or says why not.

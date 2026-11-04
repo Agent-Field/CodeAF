@@ -81,12 +81,26 @@ func (d *appDevices) publish(emit appwire.Emitter) {
 	if err != nil || view.Mode == appwire.DevicesOn && !complete {
 		return
 	}
-	encoded, err := json.Marshal(appwire.DevicesResult{Devices: view})
+	encoded, err := json.Marshal(appwire.DevicesResult{Devices: devicesCompared(view)})
 	if err != nil || string(encoded) == d.lastWire {
 		return
 	}
 	d.lastWire = string(encoded)
 	emit.Emit(appwire.EventDevicesChanged, appwire.DevicesResult{Devices: view})
+}
+
+// devicesCompared is the view a change is judged by. A hosted relay stamps the
+// asking computer's last seen on every request, so this computer's own stamp,
+// and that of any computer online now, moves on each roster read; publishing
+// it made the app read again, which stamped again (B8b). Neither is shown.
+func devicesCompared(view appwire.Devices) appwire.Devices {
+	view.Devices = slices.Clone(view.Devices)
+	for i, row := range view.Devices {
+		if row.Self || row.Online != nil && *row.Online {
+			view.Devices[i].LastSeen = time.Time{}
+		}
+	}
+	return view
 }
 
 func (d *appDevices) close() {

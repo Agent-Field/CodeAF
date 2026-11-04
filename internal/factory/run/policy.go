@@ -2,7 +2,6 @@ package run
 
 import (
 	"strings"
-	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -22,8 +21,8 @@ const (
 // shapeOf reads one policy line into a shape, ignoring case, punctuation and
 // the spacing between words.
 func shapeOf(line string) policyShape {
-	switch normPolicy(line) {
-	case "tests pass before anything posts":
+	switch factory.PolicyWords(line) {
+	case factory.EveryCheckPolicy:
 		return shapeTestsFirst
 	case "a strangers pr never runs write":
 		return shapeStrangerWrite
@@ -35,21 +34,6 @@ func shapeOf(line string) policyShape {
 		return shapeNeverClose
 	}
 	return shapeUnknown
-}
-
-func normPolicy(s string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(s) {
-		switch {
-		case r == '\'' || r == '’':
-			// an apostrophe vanishes: stranger's is strangers.
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(r)
-		default:
-			b.WriteByte(' ')
-		}
-	}
-	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 // UnknownPolicy returns the lines no code applies. They are for a model's
@@ -77,7 +61,7 @@ func PolicyAllows(policy []string, it factory.Item, action factory.Action, prior
 	for _, line := range policy {
 		switch shapeOf(line) {
 		case shapeTestsFirst:
-			if !checksGreen(it, prior) {
+			if !checksGreen(it, prior) && !(factory.PublishedAnyway(it) && !testClaimFailed(prior)) {
 				return false, line
 			}
 		case shapeNoStranger:
@@ -188,8 +172,7 @@ func skippedCheck(it factory.Item, index int) bool {
 	return false
 }
 
-// skippedPolicyWait explains the missing evidence without offering an approval
-// bypass: the every-check policy still requires each check to run and pass.
+// skippedPolicyWait names the choices available for missing check evidence.
 func skippedPolicyWait(it factory.Item) string {
 	if it.Stream == nil {
 		return ""
@@ -213,6 +196,9 @@ func skippedPolicyWait(it factory.Item) string {
 	action := "Stop the job and revise the pipeline before starting a new job."
 	if back != "" {
 		action = "Rerun from " + back + " after revising the change files to match, or stop the job."
+	}
+	if factory.SkippedChecksIdentity(it) != "" {
+		action = "Publish anyway, " + strings.ToLower(action[:1]) + action[1:]
 	}
 	return " Publishing waits: " + strings.Join(reasons, "; ") + ". " + action
 }
