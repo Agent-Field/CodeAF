@@ -1820,9 +1820,9 @@ machine at most **four** times, with the same waits between them, and then moves
 fallback or ends. So does a watched conversation that still has a fallback model to go to. A router's pool is **never** treated as one machine, whatever your `routing` row
 says: it keeps the short allowance above, because the next ask can land on another machine.
 
-## Quitting with pending cost receipts — how long shutdown waits
+## Quitting codeaf with pending cost receipts — how long shutdown waits
 
-Process shutdown stops the chats and waits for admitted receipts across chats together, including chats already closed and receipts owed by retired task children. Successful Factory answers awaiting a cost receipt are included without delaying the Factory’s next step. The receipt wait is bounded at 70 seconds before the final bounded ledger drain. If settlement times out, quit proceeds and prints `codeaf: receipt settlement timed out; spending may be incomplete`. A provider or disk that does not answer can still leave spending incomplete.
+Process shutdown closes the chats and waits for admitted receipts across chats together, including chats already closed and receipts owed by retired task children. Successful Factory answers awaiting a cost receipt are included without delaying the Factory’s next step. The receipt wait is bounded at 70 seconds before the final bounded ledger drain. If settlement times out, quit proceeds and prints `codeaf: receipt settlement timed out; spending may be incomplete`. A provider or disk that does not answer can still leave spending incomplete.
 
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 

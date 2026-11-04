@@ -53,7 +53,7 @@ func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 	}
 	path := session.UsageLedgerPath()
 	for _, line := range lines {
-		session.RecordUsage(path, line)
+		session.RecordImportedUsage(path, line)
 	}
 	session.FlushUsage()
 	return nil

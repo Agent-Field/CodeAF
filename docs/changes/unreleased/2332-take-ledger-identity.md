@@ -9,9 +9,11 @@ invalidates:
 ---
 
 A new shared-identity receipt is marked in the ledger so it no longer hides
-another saved call, including an older saved call in a mixed chat. New unbilled
-markers and mirrored remote charges carry the same exclusion from old-call
-coverage. A queued live row
+another saved call, including an older saved call in a mixed chat. Every live
+usage producer now receives that
+exclusion at the shared recorder, including delegate and fallback memory charges
+that supply no call identity. Historical imports use a separate entry point so
+unidentified old calls still cover their settled prefix. A queued live row
 and a take import of that call produce one ledger row, including when writers
 run in separate processes on the same machine. Separate calls with identical
 model, tokens and cost retain separate identities. Pricing and spend calculations
@@ -30,12 +32,21 @@ without delaying the next Factory step. This wait follows the provider's
 70-second bound; timeout warns that
 spending may be incomplete and lets quit proceed.
 
-Ledger writers reuse cached identities only while their ledger generation is
-unchanged. External growth or modification rebuilds the index, including when an
+Ordinary ledger writers reuse cached identities only while their ledger
+generation is unchanged. External growth or modification rebuilds the index, including when an
 interior restore introduces a previously uncached identity. Both present and
 absent identities are checked against that rebuilt generation. This can require
 a full scan when writers alternate across processes. Rotation reopens the active
 path and retries the same charge rather than losing it or writing to the archive.
+
+Mirrored remote charges also invalidate cached event membership after inode,
+size or modification-time changes. Removed events can be booked again and events
+already present in a restored ledger are suppressed. This fixes both missing and
+repeated spending after remote-ledger restoration; alternating external writers
+can require a full scan here too.
+
+The retired-child receipt regression now uses the engine's routed title role,
+so it admits a real receipt before asserting family settlement and exact cost.
 
 First-write identity scanning now streams rows with a reused decode buffer
 instead of retaining a full decoded history. The million-row regression checks

@@ -67,7 +67,7 @@ func TestRetiredTaskChildUsageReceiptWait(t *testing.T) {
 	}()
 	child, _ := workerFor(t, a, taskSpec{title: "fixture child", brief: "b", acceptance: "a", depth: 1})
 	defer child.Close()
-	_, err = child.RunErrand(context.Background(), ErrandAsk{Purpose: "review_fixture", Role: "brief", System: "Answer briefly", Messages: []ErrandMessage{{Role: "user", Text: "Finish."}}, MaxTokens: 100, Deadline: time.Second})
+	_, err = child.RunErrand(context.Background(), ErrandAsk{Purpose: "review_fixture", Role: "title", System: "Answer briefly", Messages: []ErrandMessage{{Role: "user", Text: "Finish."}}, MaxTokens: 100, Deadline: time.Second})
 	t.Logf("RunErrand partial response error=%v", err)
 	select {
 	case <-requested:

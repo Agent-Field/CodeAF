@@ -925,6 +925,19 @@ func detachUsageWriters() []*usageWriter {
 // more than one door over its life, and a zero row in a spending ledger is worse
 // than no row — it is a day that looks measured and was not.
 func RecordUsage(path string, line UsageLine) {
+	// Every live producer is modern, even when it has no saved-call identity.
+	// Only imported historical calls may cover the old ordered prefix.
+	line.SharedID = true
+	queueUsage(path, line)
+}
+
+// RecordImportedUsage restores a saved call, preserving the ordered-prefix
+// coverage of historical calls that have no shared identity.
+func RecordImportedUsage(path string, line UsageLine) {
+	queueUsage(path, line)
+}
+
+func queueUsage(path string, line UsageLine) {
 	if strings.TrimSpace(path) == "" {
 		return
 	}
