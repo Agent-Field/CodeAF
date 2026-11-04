@@ -615,16 +615,13 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		d.availableAfter(held, v.Cell.Lease)
 		return nil
 	}
-	// A released takeover updates the viewer, but never reopens its old hold.
-	if d.displaced() {
-		return nil
-	}
 	if err == nil && (v.Cell.Lease.Expires <= v.Now || v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != d.batcher.Fence()) {
 		if v.Cell.Lease.Device != d.sync.Device.ID() {
 			d.retireHold(ctx, held)
 		}
 		d.becomeViewer(cellsync.Superseded{By: v.Cell.Lease.Device})
-	} else if err == nil {
+	} else if err == nil && !d.displaced() {
+		// A retired hold stays closed even when the reading still names it.
 		d.resumeViewer()
 	}
 	return nil
