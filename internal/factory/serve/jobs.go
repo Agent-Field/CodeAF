@@ -190,8 +190,9 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 				return false
 			}
 			rules = pipeline.StartRulesOf(f)
-			rules.Unread = err != nil
-			rules.UnreadWhy, rules.UnreadFile, rules.UnreadLine = pipeline.UnreadDiagnostic(err)
+			if err != nil {
+				pipeline.MarkUnread(rules, err)
+			}
 			file, fileErr = &f, err
 		}
 		var picked []factory.Stage
@@ -222,8 +223,9 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		if h.failed(w, err) {
 			return false
 		}
-		if mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
+		if factory.StoppedByPerson(cur) || mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
+				factory.ClearPersonStop(cur)
 				if also != nil {
 					also(cur)
 				}
@@ -243,8 +245,8 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					if cur.RuleChecks != nil {
 						cur.RuleChecks.Start = ""
 					}
-					if rules.Unread {
-						cur.Note(h.clock(), "Started with the repository's rules unread; its plan will wait for you")
+					if rules.Unread && !rules.Pending {
+						cur.Note(h.clock(), pipeline.UnreadNote)
 					}
 				}
 				if queued {
@@ -442,7 +444,7 @@ func (h *Handler) recipeOf(r *http.Request, it factory.Item) (factory.Recipe, er
 }
 
 func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.Item) {
-	if factory.JobDoneHow(it) != "closed" && it.Failure == nil {
+	if !factory.StoppedByPerson(it) && factory.JobDoneHow(it) != "closed" && it.Failure == nil {
 		h.refuse(w, 409, "Run again requires failed work or a PR closed without merge", "conflict", "", nil, factory.JobState(it))
 		return
 	}
@@ -939,6 +941,7 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 					restored = &stream
 				}
 			}
+			factory.ClearPersonStop(cur)
 			cur.Stream = restored
 			cur.Failure = u.Failure
 			cur.Question = u.Question

@@ -50,6 +50,7 @@ type FactoryJobBrief struct {
 	Job              int                  `json:"job"`
 	Status           string               `json:"status" enum:"ready,generating,failed,stub"`
 	Failure          string               `json:"failure,omitempty"`
+	FailureKind      string               `json:"failure_kind,omitempty"`
 	FailedAfter      string               `json:"failed_after,omitempty"`
 	Since            int                  `json:"since,omitempty"`
 	Brief            factory.BriefVersion `json:"brief"`

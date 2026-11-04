@@ -113,7 +113,7 @@ func TestBriefFactsKeepFiveWithRulesLast(t *testing.T) {
 func TestBriefStubIsEngineDataOnly(t *testing.T) {
 	it := briefJob()
 	v := BriefStub(it)
-	if !v.Stub || v.Rev != 0 || v.Verdict != it.Title || v.Issue != it.Title || v.StepsDone != 5 || v.StepsTotal != 6 || len(v.Blocks) != 0 || v.Model != "" || v.CostUSD != 0 {
+	if !v.Stub || v.Rev != 0 || v.Verdict != BriefNotWrittenVerdict || v.Issue != it.Title || v.StepsDone != 5 || v.StepsTotal != 6 || len(v.Blocks) != 0 || v.Model != "" || v.CostUSD != 0 {
 		t.Fatalf("stub = %+v", v)
 	}
 	if factLine(v.Facts) != factLine(BriefFacts(it)) {

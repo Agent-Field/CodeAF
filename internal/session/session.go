@@ -2486,6 +2486,8 @@ type Config struct {
 	// It is set where FactoryItem is, and on the one turn the runner gives an
 	// item's manager to shape its run.
 	FactoryRun RunDoor
+	// FactoryWorkRefusal rechecks automatic manager work on a worker mirror.
+	FactoryWorkRefusal func() string
 
 	// JobChat is the door a factory job's own conversation spends from the
 	// job's budget through (factory_contract.go). NIL IS NO DOOR, and every
@@ -3513,6 +3515,9 @@ type Agent struct {
 	// session that has never opened an episode.
 	writes  *writeMeter
 	running bool
+	// factoryAutomaticTurn distinguishes runtime manager work from person chat.
+	// It is meaningful only while running, under mu.
+	factoryAutomaticTurn bool
 	// mustCall is the one tool the running turn's next answered request must
 	// call, "" for none ([Agent.FollowUpRequiring]): set from the message that
 	// opens the turn and spent by the first request that is answered

@@ -65,12 +65,9 @@ func TestAppFactoryDebouncedEndMoney(t *testing.T) {
 			}
 			want := .01
 			if stopped {
-				want = float64(calls.Load()) * .01
-				if calls.Load() == 0 && brief.Status != factory.BriefStatusFailed {
-					t.Errorf("refused brief must state its failure: %+v", brief)
-				}
-				if calls.Load() > 1 {
-					t.Errorf("stopped brief made %d provider calls, want at most one", calls.Load())
+				want = 0
+				if brief.Status != factory.BriefStatusFailed || brief.Failure != factory.PersonStopReason || calls.Load() != 0 {
+					t.Errorf("stopped brief must settle unpaid: calls=%d brief=%+v", calls.Load(), brief)
 				}
 			}
 			moneyTotals(t, s, st.Factory, it, &calls, want)

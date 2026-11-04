@@ -231,8 +231,11 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		// AND A REPOSITORY WITH NO CHECKOUT HERE IS CLONED FIRST, into this
 		// machine's factory folder, over the token the push uses
 		// (factory_clone.go).
-		Workdir:   factoryRunWorkdir(floor, dirs, workdirs, factoryTokenOf(profileDir)),
-		Recipe:    recipe,
+		Workdir: factoryRunWorkdir(floor, dirs, workdirs, factoryTokenOf(profileDir)),
+		Recipe:  recipe,
+		RulesAfterClone: func(ctx context.Context, it factory.Item) (pipeline.File, error) {
+			return factoryJobRead(ctx, floor, it, dirs(it.Repo))
+		},
 		Source:    source,
 		Publisher: factoryPublisher(profileDir),
 		// APPROVING PUBLISHES (internal/factory/run's publish.go): the job's

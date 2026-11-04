@@ -43,6 +43,8 @@ func TransientStepFailure(f *Failure) bool {
 // starting another attempt, and by lease admission before a worker can take it.
 func RecoveryBlockReason(it Item) string {
 	switch {
+	case StoppedByPerson(it):
+		return PersonStopReason
 	case !Automatic(it):
 		return "Automatic retry paused because the job is in Manual. Try again when ready."
 	case it.Publishing:
@@ -58,6 +60,9 @@ func RecoveryBlockReason(it Item) string {
 // PlanStepRecovery records a wait once per failure. It never starts execution;
 // the lease door does that after checking ownership, the lease and current mode.
 func PlanStepRecovery(it *Item, now time.Time) bool {
+	if StoppedByPerson(*it) {
+		return false
+	}
 	f, rec := it.Failure, it.Recovery
 	if !IsIssueJob(*it) || JobState(*it) == "done" || it.State == StateDismissed {
 		if rec != nil {
