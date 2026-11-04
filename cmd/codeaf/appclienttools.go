@@ -293,7 +293,7 @@ func (d *appClientToolDoor) CallClientTool(ctx context.Context, call session.Cli
 			}
 		})
 		r.queueEmission(d.backend.emit, pending, appwire.AgentsToolCall{Agent: d.agent, Turn: turn,
-			Call: id, TurnCall: call.TurnCall, Set: call.Set, Name: call.Name, Args: bytes.Clone(call.Args), DeadlineMS: pending.call.DeadlineMS})
+			Call: id, TurnCall: call.TurnCall, SourceMessageID: call.SourceMessage, Set: call.Set, Name: call.Name, Args: bytes.Clone(call.Args), DeadlineMS: pending.call.DeadlineMS})
 	}
 	return r.wait(ctx, id, pending), nil
 }

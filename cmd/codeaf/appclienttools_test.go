@@ -21,10 +21,157 @@ import (
 )
 
 type clientToolEmitter struct {
+	t      *testing.T
 	mu     sync.Mutex
 	calls  []appwire.AgentsToolCall
 	seen   chan appwire.AgentsToolCall
 	answer func(appwire.AgentsToolCall)
+}
+
+// Source contract (a), (b): real provider calls name the entry returned by the
+// app read projection, across a second send, a reopened journal and takeover resume.
+func TestClientToolsSourceMessageWireAndRestart(t *testing.T) {
+	for _, stopped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stopped=%t", stopped), func(t *testing.T) {
+			b, door, emitter := clientToolBackend(t)
+			clientToolAttach(t, b, door)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			entered := make(chan struct{})
+			var mu sync.Mutex
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var request struct {
+					Messages []struct {
+						Role string `json:"role"`
+					} `json:"messages"`
+					Tools []json.RawMessage `json:"tools"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				tool := len(request.Tools) > 0 && len(request.Messages) > 0 && request.Messages[len(request.Messages)-1].Role == "user"
+				mu.Lock()
+				if tool {
+					calls++
+				}
+				call := calls
+				mu.Unlock()
+				if tool && stopped && call == 1 {
+					close(entered)
+					select {
+					case <-r.Context().Done():
+					case <-ctx.Done():
+					}
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				if tool {
+					fmt.Fprintf(w, "data: "+`{"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"provider-source-%d","type":"function","function":{"name":"app_note","arguments":"{}"}}]},"finish_reason":null}]}`+"\n\n", call)
+					fmt.Fprint(w, "data: "+`{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`+"\n\n")
+				} else {
+					fmt.Fprint(w, "data: "+`{"choices":[{"index":0,"delta":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}`+"\n\n")
+				}
+				fmt.Fprint(w, "data: [DONE]\n\n")
+			}))
+			t.Cleanup(server.Close)
+			answer := func(backend *appBackend, emit *clientToolEmitter) {
+				emit.answer = func(event appwire.AgentsToolCall) {
+					ack, err := backend.ClientToolResult(appwire.ClientToolResultParams{Call: event.Call, Result: json.RawMessage(`true`)})
+					if err != nil || !ack.Accepted {
+						t.Errorf("tool result: %+v %v", ack, err)
+					}
+				}
+			}
+			answer(b, emitter)
+			path := filepath.Join(t.TempDir(), "session.jsonl")
+			cfg := session.Config{Workspace: t.TempDir(), SessionFile: path, Model: "test/model", APIKey: "fixture", BaseURL: server.URL,
+				OneModel: true, DeterministicNames: true, PromptProfile: "full", ClientTools: door}
+			agent, err := session.New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = agent.Close() })
+			b.locked(func() { b.agents[door.agent].live.conn.Conv = agent })
+			drain := func(events <-chan session.Event) {
+				t.Helper()
+				for {
+					select {
+					case _, open := <-events:
+						if !open {
+							return
+						}
+					case <-ctx.Done():
+						t.Fatal("turn did not finish")
+					}
+				}
+			}
+			events, err := agent.Submit(ctx, "first question")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stopped {
+				clientToolAwait(t, entered)
+				agent.InterruptFor(session.StopByTakeover)
+			}
+			drain(events)
+			messageID := func(conv *session.Agent, text string) string {
+				t.Helper()
+				for _, entry := range appEntriesOf(door.agent, conv.Transcript(), time.Time{}, nil) {
+					if entry.Kind == "user" && entry.Text == text && entry.MessageID != "" {
+						return entry.MessageID
+					}
+				}
+				t.Fatalf("read omitted message id for %q", text)
+				return ""
+			}
+			firstID := messageID(agent, "first question")
+			if !stopped {
+				first := clientToolAwait(t, emitter.seen)
+				if first.SourceMessageID != firstID {
+					t.Fatalf("first call=%+v read message=%q", first, firstID)
+				}
+				next, err := agent.SubmitMessage(ctx, session.Submission{Text: "second question", ClientID: "second-window"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				drain(next)
+				second := clientToolAwait(t, emitter.seen)
+				secondID := messageID(agent, "second question")
+				if second.SourceMessageID != secondID || secondID == firstID {
+					t.Fatalf("second call=%+v read ids=%q/%q", second, firstID, secondID)
+				}
+			}
+			if err := agent.Close(); err != nil {
+				t.Fatal(err)
+			}
+			fresh, freshDoor, freshEmitter := clientToolBackend(t)
+			clientToolAttach(t, fresh, freshDoor)
+			answer(fresh, freshEmitter)
+			cfg.ClientTools = freshDoor
+			reopened, err := session.New(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = reopened.Close() })
+			fresh.locked(func() { fresh.agents[freshDoor.agent].live.conn.Conv = reopened })
+			if got := messageID(reopened, "first question"); got != firstID {
+				t.Fatalf("reopened read changed message id: %q want %q", got, firstID)
+			}
+			if stopped {
+				resumed, ok := reopened.ResumeStoppedTurn(ctx)
+				if !ok {
+					t.Fatal("reopened stopped turn did not resume")
+				}
+				drain(resumed)
+				call := clientToolAwait(t, freshEmitter.seen)
+				if call.SourceMessageID != firstID {
+					t.Fatalf("resumed call=%+v read message=%q", call, firstID)
+				}
+			}
+		})
+	}
 }
 
 // Contract (a), (b), (e): a real session provider request crosses the app door,
@@ -192,7 +339,12 @@ func (e *clientToolEmitter) Emit(event string, data any) {
 	e.mu.Lock()
 	e.calls = append(e.calls, call)
 	e.mu.Unlock()
-	e.seen <- call
+	select {
+	case e.seen <- call:
+	case <-time.After(2 * time.Second):
+		e.t.Error("client tool event could not be delivered within two seconds")
+		return
+	}
 	if e.answer != nil {
 		e.answer(call)
 	}
@@ -201,7 +353,7 @@ func (e *clientToolEmitter) Emit(event string, data any) {
 func clientToolBackend(t *testing.T) (*appBackend, *appClientToolDoor, *clientToolEmitter) {
 	t.Helper()
 	t.Setenv(home.EnvVar, t.TempDir())
-	e := &clientToolEmitter{seen: make(chan appwire.AgentsToolCall, 20)}
+	e := &clientToolEmitter{t: t, seen: make(chan appwire.AgentsToolCall, 20)}
 	b := newFakeBackend(e, nil)
 	id := "client-agent"
 	transcript := filepath.Join(t.TempDir(), id, "transcript.jsonl")
@@ -318,14 +470,15 @@ func clientToolAwait[T any](t *testing.T, done <-chan T) T {
 	return zero
 }
 
-// Contract (b), (d): fast answers, duplicate dispatches and replay share one event.
+// Contract (b), (d), source contract (b): redispatch preserves the source and emits once.
 func TestClientToolsEventResultAndReplay(t *testing.T) {
 	b, door, emitter := clientToolBackend(t)
 	call := clientToolAttach(t, b, door)
+	call.SourceMessage = "msg-recorded"
 	first := clientToolStart(context.Background(), door, call)
 	event := clientToolAwait(t, emitter.seen)
 	if event.Agent != door.agent || event.Turn != 7 || event.TurnCall != call.TurnCall || event.Set != call.Set || event.Name != call.Name ||
-		string(event.Args) != string(call.Args) || event.DeadlineMS != session.ClientToolDefaultDeadlineMS || event.Call != clientToolCallID(door.agent, call.TurnCall) {
+		string(event.Args) != string(call.Args) || event.DeadlineMS != session.ClientToolDefaultDeadlineMS || event.Call != clientToolCallID(door.agent, call.TurnCall) || event.SourceMessageID != call.SourceMessage {
 		t.Fatalf("event shape: %+v", event)
 	}
 	second := clientToolStart(context.Background(), door, call)
@@ -349,6 +502,19 @@ func TestClientToolsEventResultAndReplay(t *testing.T) {
 	if len(emitter.calls) != 1 {
 		t.Fatalf("%d events for one call", len(emitter.calls))
 	}
+	// A new registry represents a new process, with a different local counter.
+	fresh, freshDoor, freshEmitter := clientToolBackend(t)
+	clientToolAttach(t, fresh, freshDoor)
+	fresh.locked(func() { fresh.agents[freshDoor.agent].live.turn = 1 })
+	replayed := clientToolStart(context.Background(), freshDoor, call)
+	again := clientToolAwait(t, freshEmitter.seen)
+	if again.Call != event.Call || again.SourceMessageID != event.SourceMessageID || again.Turn != 1 {
+		t.Fatalf("fresh process changed correlation: %+v / %+v", event, again)
+	}
+	if _, err := fresh.ClientToolResult(appwire.ClientToolResultParams{Call: again.Call, Result: json.RawMessage(`true`)}); err != nil {
+		t.Fatal(err)
+	}
+	clientToolAwait(t, replayed)
 }
 
 // Contract (b): the pending entry exists before an emitter can answer synchronously.
@@ -630,13 +796,18 @@ func TestClientToolsAgentLimitsAndScope(t *testing.T) {
 	}
 }
 
-// Contract (d): a concurrent dispatch joins the actual pending object without emitting.
+// Contract (d), source contract (b): pending joins retain the source without emitting.
 func TestClientToolsPendingJoinAndCancelledAnswer(t *testing.T) {
 	b, door, emitter := clientToolBackend(t)
 	call := clientToolAttach(t, b, door)
+	call.SourceMessage = "msg-pending"
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	done := clientToolStart(ctx, door, call)
 	event := clientToolAwait(t, emitter.seen)
+	if event.SourceMessageID != call.SourceMessage {
+		t.Fatalf("pending event lost source: %+v", event)
+	}
 	r := &b.clientTools
 	r.mu.Lock()
 	first := r.pending[event.Call]
