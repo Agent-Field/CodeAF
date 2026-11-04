@@ -2,6 +2,7 @@ package knowledge_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 )
 
 func TestKnowledgeOrdinaryBuildRetriesFailedInputAutomatically(t *testing.T) {
@@ -23,17 +25,19 @@ func TestKnowledgeOrdinaryBuildRetriesFailedInputAutomatically(t *testing.T) {
 		t.Fatal(err)
 	}
 	var attempts atomic.Int32
-	v = v.WithCalls(func(ctx context.Context) (context.Context, error) {
-		if attempts.Add(1) == 1 {
-			return nil, errors.New("temporary compiler failure")
-		}
-		return ctx, nil
-	})
 	withKnowledgeModel(t, func(payload map[string]any) map[string]any {
 		if payload["messages"] == nil {
 			return map[string]any{"subjects": []any{}}
 		}
 		return map[string]any{"claims": []any{map[string]any{"local_id": "c", "text": "Cedar queues jobs.", "topic": "Queues", "scope": "Cedar", "kind": "fact", "evidence": []any{map[string]any{"source": "good", "quote": "Cedar queues jobs."}}}}}
+	})
+	respond := http.DefaultTransport
+	http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
+		if attempts.Add(1) == 1 {
+			raw := fmt.Sprintf(`{"model":%q,"choices":[{"finish_reason":"length","message":{"content":"{"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"cost":0.125}}`, knowledge.Model)
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+		}
+		return respond.RoundTrip(r)
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -64,11 +68,229 @@ func TestKnowledgeOrdinaryBuildRetriesFailedInputAutomatically(t *testing.T) {
 			if err != nil || len(hits) != 1 || state.Pending != 0 {
 				t.Fatalf("retried source was not published: hits=%+v pending=%d err=%v", hits, state.Pending, err)
 			}
+			t.Logf("automatic retry recovered: paid calls=%d", attempts.Load())
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("unchanged failed input did not retry automatically: attempts=%d notice=%q", attempts.Load(), failedMessage)
+}
+
+func TestKnowledgeOrdinaryBuildStopsAfterThreePaidFailures(t *testing.T) {
+	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	failKnowledgeRequests(t, &calls)
+	ctx, cancel := context.WithTimeout(context.Background(), 38*time.Second)
+	defer cancel()
+	if err := v.Run(ctx, runtimeHistory{journals: []knowledge.Journal{{ID: "good", Session: "chat", Size: 1}}}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	state, err := v.Snapshot()
+	t.Logf("paid calls=%d; error=%q", calls.Load(), state.Build.Error)
+	if err != nil || calls.Load() != 3 || state.Build.Phase != knowledge.BuildFailed || !strings.Contains(state.Build.Error, "use Build or add new sources") {
+		t.Fatalf("unchanged failed input must stop after 3 paid calls: state=%+v calls=%d err=%v", state.Build, calls.Load(), err)
+	}
+}
+
+func TestKnowledgeOrdinaryBuildRetryCountSurvivesRestart(t *testing.T) {
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	captureRuntimeSource(t, v, "first")
+	var calls atomic.Int32
+	failKnowledgeRequests(t, &calls)
+	for want := int32(1); want <= 3; want++ {
+		runToKnowledgeFailure(t, knowledge.Open(profile), &calls, want, want == 3)
+	}
+	assertKnowledgeBuildIdle(t, knowledge.Open(profile), &calls, 3)
+}
+
+func TestKnowledgeOrdinaryBuildInterruptedFinalAttemptStopsAfterRestart(t *testing.T) {
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	captureRuntimeSource(t, v, "first")
+	var calls atomic.Int32
+	failKnowledgeRequests(t, &calls)
+	runToKnowledgeFailure(t, knowledge.Open(profile), &calls, 1, false)
+	runToKnowledgeFailure(t, knowledge.Open(profile), &calls, 2, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	failing := http.DefaultTransport
+	http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
+		response, err := failing.RoundTrip(r)
+		cancel()
+		return response, err
+	})
+	if err := v.Run(ctx, runtimeHistory{}, func() string { return "fixture" }); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	assertKnowledgeBuildIdle(t, knowledge.Open(profile), &calls, 3)
+}
+
+func TestKnowledgeOrdinaryBuildRetryCountRestarts(t *testing.T) {
+	for _, action := range []string{"new source", "Build"} {
+		t.Run(action, func(t *testing.T) {
+			profile := t.TempDir()
+			v := knowledge.Open(profile)
+			if err := v.StartBuild(); err != nil {
+				t.Fatal(err)
+			}
+			captureRuntimeSource(t, v, "first")
+			var calls atomic.Int32
+			failKnowledgeRequests(t, &calls)
+			for want := int32(1); want <= 3; want++ {
+				runToKnowledgeFailure(t, knowledge.Open(profile), &calls, want, want == 3)
+			}
+			if action == "Build" {
+				if err := v.StartBuild(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				captureRuntimeSource(t, v, "second")
+			}
+			for want := int32(4); want <= 6; want++ {
+				runToKnowledgeFailure(t, knowledge.Open(profile), &calls, want, want == 6)
+			}
+			assertKnowledgeBuildIdle(t, knowledge.Open(profile), &calls, 6)
+		})
+	}
+}
+
+func TestKnowledgeOrdinaryBuildSuccessClearsRetryCount(t *testing.T) {
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	// A successful 64-source batch must clear the two preceding failures,
+	// allowing three attempts for the last source without changing the input.
+	for i := 0; i < 65; i++ {
+		captureRuntimeSource(t, v, fmt.Sprintf("source-%02d", i))
+	}
+	var calls atomic.Int32
+	original := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = original })
+	http.DefaultTransport = knowledgeTransport(func(*http.Request) (*http.Response, error) {
+		finish, result := "length", "{"
+		if calls.Add(1) == 3 {
+			finish, result = "stop", `{"claims":[]}`
+		}
+		raw := fmt.Sprintf(`{"model":%q,"choices":[{"finish_reason":%q,"message":{"content":%q}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"cost":0.125}}`, knowledge.Model, finish, result)
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+	})
+	runToKnowledgeFailure(t, knowledge.Open(profile), &calls, 1, false)
+	runToKnowledgeFailure(t, knowledge.Open(profile), &calls, 2, false)
+	runToKnowledgeFailure(t, knowledge.Open(profile), &calls, 4, false)
+	runToKnowledgeFailure(t, knowledge.Open(profile), &calls, 5, false)
+	runToKnowledgeFailure(t, knowledge.Open(profile), &calls, 6, true)
+	assertKnowledgeBuildIdle(t, knowledge.Open(profile), &calls, 6)
+	state, err := v.Snapshot()
+	if err != nil || state.Pending != 1 {
+		t.Fatalf("successful batch progress was lost: pending=%d err=%v", state.Pending, err)
+	}
+}
+
+func TestKnowledgeOrdinaryBuildLoadsLegacyFailedInput(t *testing.T) {
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
+	captureRuntimeSource(t, v, "first")
+	// Seed an old database; all assertions use the worker and its public status.
+	uri := sqliteuri.File(filepath.Join(v.Directory(), "knowledge.sqlite"))
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`UPDATE state SET payload=json_set(payload,'$.failed_input','old-input') WHERE key='job'`)
+	closeErr := db.Close()
+	if err != nil || closeErr != nil {
+		t.Fatalf("legacy fixture: %v, %v", err, closeErr)
+	}
+	var calls atomic.Int32
+	failKnowledgeRequests(t, &calls)
+	for want := int32(1); want <= 3; want++ {
+		runToKnowledgeFailure(t, knowledge.Open(profile), &calls, want, want == 3)
+	}
+	assertKnowledgeBuildIdle(t, knowledge.Open(profile), &calls, 3)
+}
+
+func captureRuntimeSource(t *testing.T, v *knowledge.Vault, id string) {
+	t.Helper()
+	if err := v.Capture(knowledge.Source{ID: id, Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Cedar queues jobs."}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runToKnowledgeFailure(t *testing.T, v *knowledge.Vault, calls *atomic.Int32, want int32, stopped bool) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- v.Run(ctx, runtimeHistory{}, func() string { return "fixture" }) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("worker cancellation: %v", err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("worker did not stop")
+		}
+	}()
+	notice := "retrying automatically"
+	if stopped {
+		notice = "use Build or add new sources"
+	}
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		got := calls.Load()
+		state, err := v.Snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Read the call count before the status so an old failure cannot satisfy a new attempt.
+		if got == want && state.Build.Phase == knowledge.BuildFailed && strings.Contains(state.Build.Error, notice) {
+			t.Logf("paid calls=%d; error=%q", want, state.Build.Error)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("worker did not persist failure at paid calls=%d (got %d)", want, calls.Load())
+}
+
+func assertKnowledgeBuildIdle(t *testing.T, v *knowledge.Vault, calls *atomic.Int32, want int32) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2200*time.Millisecond)
+	defer cancel()
+	if err := v.Run(ctx, runtimeHistory{}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	state, err := v.Snapshot()
+	t.Logf("after restart and idle checks: paid calls=%d; error=%q", calls.Load(), state.Build.Error)
+	if err != nil || calls.Load() != want || state.Build.Phase != knowledge.BuildFailed || !strings.Contains(state.Build.Error, "use Build or add new sources") {
+		t.Fatalf("stopped build changed: state=%+v calls=%d want=%d err=%v", state.Build, calls.Load(), want, err)
+	}
+}
+
+func failKnowledgeRequests(t *testing.T, calls *atomic.Int32) {
+	t.Helper()
+	original := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = original })
+	http.DefaultTransport = knowledgeTransport(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		raw := fmt.Sprintf(`{"model":%q,"choices":[{"finish_reason":"length","message":{"content":"{"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"cost":0.125}}`, knowledge.Model)
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+	})
 }
 
 func TestKnowledgeMemoryOffDoesNotBuild(t *testing.T) {
@@ -94,6 +316,7 @@ func TestKnowledgeMemoryOffDoesNotBuild(t *testing.T) {
 			if err := v.Run(ctx, runtimeHistory{journals: journals}, func() string { return "fixture" }); !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatal(err)
 			}
+			t.Logf("memory off: paid calls=%d", calls.Load())
 			if err := v.Flush(context.Background(), "fixture", true); !errors.Is(err, knowledge.ErrDisabled) {
 				t.Fatalf("explicit compilation while off: %v", err)
 			}
@@ -168,6 +391,7 @@ func TestKnowledgeFactoryBuildRetainsOwnedFailureAndAccounting(t *testing.T) {
 	if len(billed) != int(calls.Load()) || len(billed) != 3 || unowned.Load() != 0 {
 		t.Fatalf("Factory attempts lost accounting: billed=%+v calls=%d unowned=%d", billed, calls.Load(), unowned.Load())
 	}
+	t.Logf("Factory: paid calls=%d; owned receipts=%d; unowned=%d", calls.Load(), len(billed), unowned.Load())
 	for _, bill := range billed {
 		if bill.Cost != 0.125 || bill.PromptTokens != 10 || bill.CompletionTokens != 2 {
 			t.Fatalf("Factory receipt changed: %+v", bill)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
+
+const ordinaryBuildAttemptLimit = 3
 
 type BuildPhase string
 
@@ -139,7 +142,7 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 				return loadErr
 			}
 			job["phase"] = string(BuildFailed)
-			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; retrying automatically."
+			job["error"] = "Knowledge build paused: " + err.Error() + ". " + buildRetryNotice(number(job["build_attempts"]))
 			saveErr := saveState(db, "job", job)
 			db.Close()
 			if saveErr != nil {
@@ -154,6 +157,13 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 		}
 	}
 }
+func buildRetryNotice(attempts float64) string {
+	if attempts >= ordinaryBuildAttemptLimit {
+		return fmt.Sprintf("Completed progress is retained; automatic retries stopped after %d attempts; use Build or add new sources.", ordinaryBuildAttemptLimit)
+	}
+	return "Completed progress is retained; retrying automatically."
+}
+
 func waitBuild(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
@@ -314,6 +324,25 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile'").Scan(&total); err != nil {
 		return err
 	}
+	var latest int64
+	var admitted int
+	var arrived float64
+	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
+		return err
+	}
+	attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
+	if job["build_input"] != attemptInput {
+		job["build_input"] = attemptInput
+		job["build_attempts"] = 0
+	}
+	if number(job["build_attempts"]) >= ordinaryBuildAttemptLimit {
+		if job["phase"] != string(BuildFailed) {
+			job["phase"] = string(BuildFailed)
+			job["error"] = "Knowledge build interrupted. " + buildRetryNotice(number(job["build_attempts"]))
+			return saveState(db, "job", job)
+		}
+		return nil
+	}
 	job["problems"] = problems
 	job["sources"] = total
 	job["chats"] = len(journals)
@@ -339,6 +368,8 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			}
 		}
 		job["phase"] = string(BuildRunning)
+		// Reserve the attempt durably before compilation can spend money.
+		job["build_attempts"] = number(job["build_attempts"]) + 1
 		if err = saveState(db, "job", job); err != nil {
 			return err
 		}
@@ -346,6 +377,10 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			if errors.Is(err, ErrDisabled) {
 				return nil
 			}
+			return err
+		}
+		job["build_attempts"] = 0
+		if err = saveState(db, "job", job); err != nil {
 			return err
 		}
 		var remaining int

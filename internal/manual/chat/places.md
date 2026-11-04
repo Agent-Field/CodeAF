@@ -791,10 +791,18 @@ characters.
 
 Search runs against the database index. Idle background checks do not launch
 refinement without pending sources. Failed ordinary-chat requests retain pending
-work and completed progress. The background build retries automatically, even
-when its input has not changed. Unreadable chats do not prevent other chats
-from being processed; their incomplete status remains visible. The Knowledge
-view over `--host` is not supported.
+work and completed progress. For unchanged input, the background build allows
+three compilation attempts in total, including the first attempt. The count
+survives quitting and restarting. While attempts remain, the failure says
+`Completed progress is retained; retrying automatically.` After three failed
+attempts, automatic retries stop; use **Build** or add new sources to start a new
+count. A successful compilation clears the count. One compilation attempt can
+make several model requests, so this is an attempt limit rather than a
+three-request spending cap. Jobs keep their own retry and accounting rules.
+
+Unreadable chats do not prevent other chats from being processed; their
+incomplete status remains visible. The Knowledge view over `--host` is not
+supported.
 
 Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
 model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
