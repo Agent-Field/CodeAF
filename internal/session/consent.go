@@ -168,6 +168,12 @@ func (a *Agent) deliverConsent(id uint64, answer consentAnswer) {
 // it is answered before this, in [Agent.approve], because a capability that is
 // off must not produce a question about a call that is never going to run.
 func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
+	// THE CREDENTIAL FLOOR HOLDS WITH NO POLICY AT ALL, and it is asked here so the
+	// early start of a read (loop.go) refuses it too. It runs with the workspace,
+	// which the policy does not have, so a relative path and a link are placed.
+	if read, hit := a.credentialRead(call); hit {
+		return read.Decision(), true
+	}
 	policy := a.approvalGate()
 	if policy == nil {
 		return approval.Decision{}, false
@@ -215,6 +221,13 @@ func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision appro
 // approve is the gate. It returns the refusal to hand the model and false when
 // the call must not run.
 func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (toolResult, bool) {
+	// AN AGENT DOES NOT READ THE PERSON'S CREDENTIALS, and nothing below can say
+	// otherwise: no mode, rule, memo, guardian or setup grant is asked about it
+	// (internal/approval's credentials.go). It reads as the refusal itself, with
+	// no rule's name in front of it, because the wording is what ends the attempt.
+	if read, hit := a.credentialRead(call); hit {
+		return refusal(read.Message()), false
+	}
 	// WHAT THE PERSON HAS TURNED OFF NEVER RUNS, and it is answered here rather
 	// than by the policy: it is not a judgement about this call, it is a hand
 	// this build does not have. It comes FIRST, ahead of the policy, the memo
@@ -303,6 +316,12 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal("denied by the person: " + decision.Rule), false
 	}
 	return toolResult{}, true
+}
+
+// credentialRead asks the floor about one call, standing in this agent's folder.
+func (a *Agent) credentialRead(call ai.ToolCall) (approval.CredentialRead, bool) {
+	scope := approval.DefaultCredentialScope(a.config.Workspace)
+	return scope.Read(call.Function.Name, json.RawMessage(call.Function.Arguments))
 }
 
 // notApprovedWording is what the model is told when the wait ended without

@@ -199,6 +199,9 @@ type Decision struct {
 	Scope  string
 	Action Action
 	Rule   string
+	// Credential marks a refusal by the credential floor (credentials.go), which
+	// is the one deny a person's own `!` command is not bound by.
+	Credential bool
 }
 
 // String is the one-line form: `bash pattern "rm -rf *" → prompt`.
@@ -207,11 +210,14 @@ func (d Decision) String() string { return d.Rule + " → " + string(d.Action) }
 // Check answers for one tool call. args is the raw JSON the model emitted; it
 // is read only for bash, and only for its "command" field.
 func (p Policy) Check(tool string, args json.RawMessage) Decision {
+	tool = strings.TrimSpace(tool)
+	if read, hit := DefaultCredentialScope("").Read(tool, args); hit {
+		return read.Decision()
+	}
 	if p.ProfileReadError != "" {
 		return Decision{Action: ActionPrompt, ProfileReadError: p.ProfileReadError,
 			Rule: "saved approval rules could not be read; every call needs your approval: " + p.ProfileReadError}
 	}
-	tool = strings.TrimSpace(tool)
 	base := p.base(tool, args)
 	if tool != ToolBash {
 		return p.maybeAllowSelfAsking(tool, p.maybeAllowReadOnly(tool, args, base))
@@ -234,6 +240,9 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 // string — a slash command, a queued shell action, a settings preview that
 // wants to show what a pattern would do.
 func (p Policy) CheckBash(command string) Decision {
+	if read, hit := DefaultCredentialScope("").Command(command); hit {
+		return read.Decision()
+	}
 	if p.ProfileReadError != "" {
 		return p.Check(ToolBash, nil)
 	}
