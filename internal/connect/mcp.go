@@ -65,6 +65,7 @@ const authMCP = "mcp"
 // MCPTool is one tool a connected service offers, in the shape a belt needs:
 // flat, already decided, nothing left to interpret.
 type MCPTool struct {
+	Title string
 	// Name is what the tool is called at the far end, and what
 	// [Manager.MCPCall] must be given back to run it.
 	Name string

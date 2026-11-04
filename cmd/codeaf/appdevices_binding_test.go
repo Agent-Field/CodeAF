@@ -233,3 +233,14 @@ func TestAppDevicesV1RelayChangeDropsOldRoster(t *testing.T) {
 		return len(v.Devices) == 2 && v.Devices[0].Name == "new relay desk" && v.Devices[1].ID == partner.Device.ID() && !v.Devices[1].Removed
 	})
 }
+
+// B11: a call refused because this computer was removed says so in words, with
+// the app's own remedy, never the wire's "wireauth: device revoked". Any call
+// lands here, the roster included, so it does not speak of "this chat".
+func TestB11RevokedReadSaysTheComputerWasRemoved(t *testing.T) {
+	err := appEngineError(errors.Join(errors.New("devices"), directory.ErrRevoked))
+	var wire *appwire.Error
+	if !errors.As(err, &wire) || wire.Message != appRemoved || strings.Contains(wire.Message, "wireauth") || strings.Contains(wire.Message, "this chat") || !strings.Contains(wire.Message, "Pair a computer") {
+		t.Fatalf("revoked read = %v, want %q", err, appRemoved)
+	}
+}

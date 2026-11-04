@@ -110,6 +110,9 @@ func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDr
 		it.BriefWriting = &BriefWriting{State: BriefFailed, AfterStep: after, Failure: why, At: now, Hash: w.Hash}
 		return BriefVersion{}, nil, false
 	}
+	if StoppedByPerson(*it) {
+		return fail(PersonStopReason)
+	}
 	if w.Failure != "" {
 		return fail(w.Failure)
 	}

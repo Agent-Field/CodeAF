@@ -241,6 +241,7 @@ func TestArchivedLifetimeSettlementSurvivesClearedOrReplacedMachine(t *testing.T
 				}
 				if err := f.st.Update(it.ID, func(it *factory.Item) error {
 					it.State = factory.StateNew
+					factory.ClearPersonStop(it)
 					if err := run.QueueItem(it, now.Add(time.Minute)); err != nil {
 						return err
 					}

@@ -136,6 +136,14 @@ func parseReset(raw string) time.Time {
 	if at, err := time.Parse(time.RFC3339, raw); err == nil {
 		return at
 	}
+	if clock, err := time.Parse("15:04 UTC", raw); err == nil {
+		now := time.Now().UTC()
+		at := time.Date(now.Year(), now.Month(), now.Day(), clock.Hour(), clock.Minute(), 0, 0, time.UTC)
+		if at.Before(now) {
+			at = at.Add(24 * time.Hour)
+		}
+		return at
+	}
 	for _, layout := range []string{"15:04", "3:04pm", "3pm"} {
 		if clock, err := time.Parse(layout, strings.ToLower(raw)); err == nil {
 			now := time.Now()
