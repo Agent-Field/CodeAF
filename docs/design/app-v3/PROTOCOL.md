@@ -1388,6 +1388,19 @@ the engine before sending work. Device and sync snapshots precede done.
 `paired`, `default`, `none`) and `off`. The source follows CODEAF_SYNC_URL, the
 saved pairing URL, then the hosted default. Off omits the URL.
 
+`Sync.unshared` counts this computer's chats that the other computers cannot
+list yet, because no directory record names them: `{total, waiting, failing,
+kept_here}`, where `total` is the sum of the rest. `waiting` chats are queued,
+uploading, or older chats still to be copied; `failing` chats failed their last
+upload and are retried; `kept_here` are older chats a rule keeps local: last
+used over 30 days ago, which opening on this computer shares, or working in the
+home folder, which stays on this computer. It is present only in mode `on`,
+after the first count, and a change emits `sync.changed`. One process per home
+publishes existing chats (the engine or a terminal, whichever holds the home's
+sharing lock); it counts and writes its count beside the lock, and the other
+process reports that count. The count describes this computer only; other
+computers' backlogs are not on the wire.
+
 `chats.take` advertises inventory, events and conditional continuation even
 when sync is off or unavailable; in those modes `chats.list` returns `[]`.
 Never-paired homes also return `[]` without contacting a relay. The first
