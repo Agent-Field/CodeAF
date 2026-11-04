@@ -69,10 +69,13 @@ def opencode_usage(cell_work, win):
     frontier = list(ids)
     while frontier:
         kids = [r[0] for r in c.execute(
-            "select id from session where parent_id in (%s)" % ",".join("?" * len(frontier)), frontier)]
+            "select id from session where parent_id in (select value from json_each(?))",
+            (json.dumps(frontier),))]
         kids = [k for k in kids if k not in ids]; ids += kids; frontier = kids
     tok = {"input": 0, "output": 0, "cache_read": 0}; native = 0.0; n = 0
-    for (data, created) in c.execute("select data, time_created from message where session_id in (%s)" % ",".join("?" * len(ids)), ids) if ids else []:
+    for (data, created) in c.execute(
+            "select data, time_created from message where session_id in (select value from json_each(?))",
+            (json.dumps(ids),)) if ids else []:
         if not (win[0] <= created / 1000 <= win[1]): continue
         try: m = json.loads(data)
         except Exception: continue
