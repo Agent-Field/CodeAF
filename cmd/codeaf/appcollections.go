@@ -10,12 +10,12 @@ package main
 //
 // RESOLUTION ASKS EACH OWNER ONCE PER CALL, NEVER ONCE PER MEMBER. A call
 // takes one agents listing (every state, closed and archived included), one
-// crews listing, one task list and one process list per distinct agent, and
-// one look for a git work tree per directory; a collection of a thousand
-// files in one repository costs one walk up to its .git. No transcript is
-// read to resolve anything, and a member whose owner cannot be asked is
-// "unknown", which says nothing about the member itself, with a reason that
-// names the owner and why it could not be asked.
+// folder lookup per unlisted agent id, one crews listing, one task list and
+// one process list per distinct agent, and one look for a git work tree per
+// directory; a collection of a thousand files in one repository costs one walk
+// up to its .git. No transcript is read to resolve anything. A member whose
+// owner cannot be asked is "unknown", which says nothing about the member
+// itself, with a reason naming the owner and why it could not be asked.
 
 import (
 	"bufio"
@@ -581,8 +581,8 @@ func (r *collectionResolver) target(ref workspace.Ref) appwire.Target {
 	return appwire.Target{State: appwire.TargetDeleted}
 }
 
-// agent is one agent off the one listing, or the target a member of it is
-// when there is no such agent (deleted) or no listing (unknown, and why).
+// agent is one agent off the listing or its saved folder, or the target a member
+// of it is when there is no such agent (deleted) or no listing (unknown, and why).
 func (r *collectionResolver) agent(id string) (appwire.Agent, *appwire.Target) {
 	if !r.agentsRead {
 		r.agentsRead = true
@@ -599,6 +599,14 @@ func (r *collectionResolver) agent(id string) (appwire.Agent, *appwire.Target) {
 	}
 	a, ok := r.agents[id]
 	if !ok {
+		// Named blanks stay out of agents.list but can still be held by a
+		// collection. Cache misses too, since several members can name one agent.
+		if row, found := appRowOnDisk(id); found {
+			a = appRowView(row)
+		}
+		r.agents[id] = a
+	}
+	if a.ID == "" {
 		return appwire.Agent{}, &appwire.Target{State: appwire.TargetDeleted}
 	}
 	return a, nil
