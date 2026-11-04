@@ -773,11 +773,11 @@ command opens it again. Running the session elsewhere with `--host` has its own 
 ## When the work folder is saved between commands and at pauses
 
 The desktop's background recorder writes each finished tool call to its local call
-log immediately. A shell command can change any file, so its full-folder save can
+ledger immediately. A shell command can change any file, so its full-folder save can
 wait for a pause. After each tool batch, codeaf first writes its result lines.
-The batch can then stay in the call log until turn end or a save boundary between
+The batch can then stay in the call ledger until turn end or a save boundary between
 steps, such as moving or continuing the chat elsewhere, uploading it or closing
-it. A boundary encountered during an open step leaves that step in the call log;
+it. A boundary encountered during an open step leaves that step in the call ledger;
 it does not wait for the running tool or save work without its result lines.
 
 While commands keep running, the next batch boundary saves all pending calls once
@@ -787,10 +787,10 @@ while no shell or other unknown-effect call is pending; transcript-only batches
 also save immediately. Setup calls and synchronous recorders keep their existing
 saves. Turn end and explicit forced settles still save pending calls immediately.
 
-A failed save during displacement leaves completed calls in the local call log
+A failed save during displacement leaves completed calls in the local call ledger
 for take-back; saved turns can still be kept as a separate chat. When calls remain
 unsaved, the notice says `kept <K> turns from <device> as a separate chat`.
-A crash also leaves finished calls in the local call log for the next save to
+A crash also leaves finished calls in the local call ledger for the next save to
 carry. File seals support moving, taking over and recovering a chat. Ordinary
 conversation rewind leaves files changed. The separate cell file-rewind path
 refuses an open tool step with “rewind refused: a tool step is open; settle it
