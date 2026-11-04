@@ -340,6 +340,13 @@ A change to any of them changes this section in the same commit.
 | `appwire.ProcessStopAllIDs` | 256 | Each id list in a receipt. A cut list answers `remaining_unknown` and keeps its counts whole. |
 | `service.LogCapBytes` | 2 MiB | A service's live log, cut back only while a codeaf runs. It is stated as `cap_bytes`. |
 
+Stop-all uses a lookup that never opens a cold owner or queues on its gate.
+An open has one completion channel from admission through initialization and
+publication, shared by all stop-all attempts. Timed-out attempts leave no waiter
+goroutine on the gate. A timeout makes no job call and reports zero jobs stopped,
+`remaining_unknown` and `partial`, even if an owner was published before the open
+finished. Services start independently of this wait.
+
 The services of a stop-all are the agent's own (`StopOwnerWait`). They are bounded by the supervisor's 64-service store, and they wait out each service's 5 s stop grace under the 10 s ceiling. `processes.actions` and `processes.log_target` share `processes.page`'s 4-read admission and its 2 s deadline.
 
 ## Saved harness list reads

@@ -276,7 +276,7 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 		return nil, err
 	}
 	agent := ask.Agent
-	a, err := b.findCrewOwner(agent)
+	a, err := b.find(agent)
 	if err != nil {
 		return nil, err
 	}
@@ -365,29 +365,30 @@ func (b *appBackend) StopAllProcesses(ctx context.Context, ask appwire.ProcessSt
 	return res, nil
 }
 
-// liveOnceOpened is a's held conversation, waiting for an open already under way
-// for as long as appStopAllOpenWait and ctx allow. A stuck open answers nil, as an
-// agent nobody holds does, and the receipt then says what is left is unknown. The
-// waiter takes the gate only to learn the open ended, and ends when the open does.
+// liveOnceOpened waits only for initialization already under way. The open's
+// completion signal covers publication and watcher setup, so a late live owner
+// cannot turn a timed-out wait into a job stop. No waiter queues on the gate.
 func (b *appBackend) liveOnceOpened(ctx context.Context, a *appAgent) *appLive {
-	opening := false
-	b.locked(func() { opening = a.opening })
-	if !opening {
-		return b.liveOf(a)
+	var live *appLive
+	var opened <-chan struct{}
+	b.locked(func() { live, opened = a.live, a.openDone })
+	if ctx.Err() != nil {
+		return nil
+	}
+	if opened == nil {
+		return live
 	}
 	wait, cancel := context.WithTimeout(ctx, appStopAllOpenWait)
 	defer cancel()
-	opened := make(chan struct{})
-	guard.Go("stop-all-open", func() {
-		defer close(opened)
-		a.gate.Lock()
-		defer a.gate.Unlock()
-	})
 	select {
 	case <-opened:
+		if wait.Err() != nil {
+			return nil
+		}
+		return b.liveOf(a)
 	case <-wait.Done():
+		return nil
 	}
-	return b.liveOf(a)
 }
 
 // appStopServices is what stopping one agent's services did.

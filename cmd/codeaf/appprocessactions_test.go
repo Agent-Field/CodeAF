@@ -538,3 +538,159 @@ func TestStopAllDuringAnOwnersOpen(t *testing.T) {
 		}
 	})
 }
+
+// stopAllWatchGate holds initialization after the owner has been published.
+type stopAllWatchGate struct {
+	*actorEngine
+	entered, release chan struct{}
+}
+
+func (e *stopAllWatchGate) WatchTaskUpdates() (<-chan session.Event, func()) {
+	close(e.entered)
+	<-e.release
+	return e.actorEngine.WatchTaskUpdates()
+}
+
+func TestStopAllTimeoutSkipsLatePublishedOwner(t *testing.T) {
+	b, _, paths, _ := lazyBackend(t, 1)
+	b.crews()
+	engine := &stopAllWatchGate{
+		actorEngine: &actorEngine{fakeConversation: &fakeConversation{}, receipt: session.ProcessStopReceipt{Eligible: 1, Stopped: 1}},
+		entered:     make(chan struct{}), release: make(chan struct{}),
+	}
+	entered, release, opened := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var releaseOnce, watchOnce sync.Once
+	releaseOpen := func() { releaseOnce.Do(func() { close(release) }) }
+	releaseWatch := func() { watchOnce.Do(func() { close(engine.release) }) }
+	opener := b.open
+	b.open = func(ask appOpenAsk) (*appConn, error) {
+		close(entered)
+		<-release
+		conn, err := opener(ask)
+		if err == nil {
+			conn.Conv = engine
+		}
+		return conn, err
+	}
+	agent := appAgentID(paths[0])
+	go func() { defer close(opened); _, _ = b.OpenAgent(agent) }()
+	defer func() { releaseOpen(); releaseWatch(); <-opened }()
+	<-entered
+	w := newSvcWorld(t)
+	b.attachServices(w.sup)
+	row := w.keep(t, agent, service.PolicyOnFailure)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	answered := make(chan *appwire.ProcessStopAllResult, 1)
+	go func() {
+		res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+		if err != nil {
+			t.Errorf("stop-all: %v", err)
+		}
+		answered <- res
+	}()
+	// Services establish that stop-all has begun while the opener is blocked.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Running && !got.Stopping {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("services waited for the opener")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	releaseOpen()
+	<-engine.entered
+	res := <-answered
+	releaseWatch()
+	<-opened
+	engine.mu.Lock()
+	called := engine.returned
+	engine.mu.Unlock()
+	if called || res == nil || res.Eligible != 0 || res.Stopped != 0 || !res.RemainingUnknown || !res.Partial {
+		t.Fatalf("timeout must skip actor and report zero jobs, unknown and partial: actor_called=%t receipt=%+v", called, res)
+	}
+}
+
+// stopAllTitleGate holds initialization before the live owner is published.
+type stopAllTitleGate struct {
+	*actorEngine
+	entered, release chan struct{}
+}
+
+func (e *stopAllTitleGate) Title() string {
+	close(e.entered)
+	<-e.release
+	return ""
+}
+
+func TestStopAllOwnerLookupNeverQueuesOrOpens(t *testing.T) {
+	t.Run("post-open publication deadline", func(t *testing.T) {
+		b, _, paths, _ := lazyBackend(t, 1)
+		b.crews()
+		engine := &stopAllTitleGate{
+			actorEngine: &actorEngine{fakeConversation: &fakeConversation{}},
+			entered:     make(chan struct{}), release: make(chan struct{}),
+		}
+		opener := b.open
+		b.open = func(ask appOpenAsk) (*appConn, error) {
+			conn, err := opener(ask)
+			if err == nil {
+				conn.Conv = engine
+			}
+			return conn, err
+		}
+		agent := appAgentID(paths[0])
+		opened := make(chan struct{})
+		go func() { defer close(opened); _, _ = b.OpenAgent(agent) }()
+		<-engine.entered
+		defer func() { close(engine.release); <-opened }()
+		w := newSvcWorld(t)
+		b.attachServices(w.sup)
+		row := w.keep(t, agent, service.PolicyOnFailure)
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		answered := make(chan *appwire.ProcessStopAllResult, 1)
+		go func() {
+			res, err := b.StopAllProcesses(ctx, appwire.ProcessStopAllAsk{Agent: agent})
+			if err != nil {
+				t.Errorf("stop-all: %v", err)
+			}
+			answered <- res
+		}()
+		select {
+		case res := <-answered:
+			if res == nil || !res.RemainingUnknown || !res.Partial || res.Stopped != 0 || res.ServicesStopped != 1 {
+				t.Errorf("initializing owner's receipt: %+v", res)
+			}
+		case <-time.After(300 * time.Millisecond):
+			t.Error("stop-all exceeded its 50ms deadline while Title held initialization")
+		}
+		got, err := w.sup.Get(agent, row.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Running || got.Stopping {
+			t.Errorf("services waited for initialization: running=%t stopping=%t", got.Running, got.Stopping)
+		}
+	})
+	t.Run("cold kept crew owner", func(t *testing.T) {
+		b, _, paths, opens := lazyBackend(t, 1)
+		b.crews()
+		res, err := b.StopAllProcesses(context.Background(), appwire.ProcessStopAllAsk{Agent: appAgentID(paths[0])})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := opens.Load(); got != 0 {
+			t.Errorf("stop-all opened %d cold owners", got)
+		}
+		if res == nil || !res.RemainingUnknown || !res.Partial || res.Stopped != 0 {
+			t.Errorf("cold owner's receipt: %+v", res)
+		}
+	})
+}
