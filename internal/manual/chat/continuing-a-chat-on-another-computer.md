@@ -263,6 +263,12 @@ Press enter on the kept turns' row. The card offers `1 open separately`, `2 disc
 
 Turns already shared do not become kept edits. Usage, reconciled task cost, naming failures and memory bookkeeping alone create no extra branch, kept-turns row or “kept as” notice. Their recorded usage stays in this computer's usage ledger. Opening an unchanged chat adds no empty turn, including when another computer holds it.
 
+## Spending after a move
+
+Saved calls missing from this computer’s ledger are added once. Shared call identities distinguish separate calls with identical prices and tokens. Remote charges keep their event identities alongside ordinary saved calls. Late receipts stay in the home where the chat opened.
+
+Old unidentified calls use settled ledger rows as an ordered prefix. New live rows and remote events cannot cover that prefix. Unrelated unmarked rows, queued receipts and out-of-order old calls cannot be matched exactly. Old files load without migration.
+
 ## The chat is arriving on this computer — why it waits to open
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.

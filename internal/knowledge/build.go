@@ -174,6 +174,29 @@ func waitBuild(ctx context.Context, delay time.Duration) error {
 		return nil
 	}
 }
+
+// markJobEvents marks one job session's saved events, so the compiler leaves them out. It runs on every pass with
+// Memory on, so it seeks through profile_session_lookup, which holds only events not marked yet.
+const markJobEvents = "UPDATE events SET payload=json_set(payload,'$.job',json('true')) WHERE partition='profile' AND json_extract(payload,'$.session')=? AND coalesce(json_extract(payload,'$.job'),0)=0"
+
+// profileSessionLookup is built here rather than with the schema: an open must not wait for it, and it is needed only
+// with Memory on. On an existing large database it holds the write lock while it builds (busyWaitMillis).
+const profileSessionLookup = "CREATE INDEX IF NOT EXISTS profile_session_lookup ON events(json_extract(payload,'$.session')) WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0"
+
+func markJobSessions(db *sql.DB, journals []Journal) error {
+	if _, err := db.Exec(profileSessionLookup); err != nil {
+		return err
+	}
+	for _, journal := range journals {
+		if journal.Job {
+			if _, err := db.Exec(markJobEvents, journal.Session); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (v *Vault) runPass(ctx context.Context, history History, key func() string, lastInventory *string) error {
 	journals, err := history.Inventory(ctx)
 	if err != nil {
@@ -184,13 +207,6 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		return err
 	}
 	defer db.Close()
-	for _, journal := range journals {
-		if journal.Job {
-			if _, err = db.Exec("UPDATE events SET payload=json_set(payload,'$.job',json('true')) WHERE partition='profile' AND json_extract(payload,'$.session')=? AND coalesce(json_extract(payload,'$.job'),0)=0", journal.Session); err != nil {
-				return err
-			}
-		}
-	}
 	job, err := stateDocument(db, "job")
 	if err != nil {
 		return err
@@ -236,6 +252,10 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		return nil
+	}
+
+	if err = markJobSessions(db, journals); err != nil {
+		return err
 	}
 
 	imported := int(number(job["imported"]))

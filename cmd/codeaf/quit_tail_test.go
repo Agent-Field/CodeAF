@@ -87,6 +87,7 @@ type hostedTailChat struct {
 	closing   chan struct{}
 	closeOnce sync.Once
 	seat      executor.Seat
+	agents    []*session.Agent
 }
 
 func newHostedTailChat(t *testing.T, g *tailPublishGate) *hostedTailChat {
@@ -161,6 +162,9 @@ func newHostedTailChat(t *testing.T, g *tailPublishGate) *hostedTailChat {
 			if err != nil {
 				return nil, err
 			}
+			chat.mu.Lock()
+			chat.agents = append(chat.agents, agent)
+			chat.mu.Unlock()
 			return &remote.Engine{Agent: agent, Workspace: h.work, SessionFile: agent.SessionPath(), Place: cfg.Place, ReleaseOnLeave: func(remote.WrappedAgent) bool { return true }, FinishSaving: func(remote.WrappedAgent) error {
 				chat.closeOnce.Do(func() { close(chat.closing) })
 				return syncDrives.closeCell(h.c.ID)
@@ -169,7 +173,37 @@ func newHostedTailChat(t *testing.T, g *tailPublishGate) *hostedTailChat {
 	}()
 	t.Cleanup(func() { _ = enginehost.Retire(h.work, true); <-done })
 	chat.connect()
-	t.Cleanup(func() { releaseTailGate(g.reply); releaseTailGate(g.titleRelease); releaseTailGate(g.costRelease) })
+	ledger := session.UsageLedgerPath()
+	t.Cleanup(func() {
+		releaseTailGate(g.reply)
+		releaseTailGate(g.titleRelease)
+		releaseTailGate(g.costRelease)
+		chat.mu.Lock()
+		agents := append([]*session.Agent(nil), chat.agents...)
+		chat.mu.Unlock()
+		for _, agent := range agents {
+			_ = agent.Close()
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		// This fixture's one delayed receipt is admitted before its HTTP request.
+		// Wait for admission before joining it, even on a failed test's cleanup.
+		if g.costOnce.Load() {
+			select {
+			case <-g.costRequested:
+			case <-ctx.Done():
+				t.Error("receipt was not admitted before cleanup")
+			}
+		}
+		for _, agent := range agents {
+			if err := agent.WaitReceipts(ctx); err != nil {
+				t.Errorf("settle pending receipt before removing home: %v", err)
+			}
+		}
+		if !session.StopUsageWriter(ledger) {
+			t.Error("ledger writer did not stop before removing home")
+		}
+	})
 	return chat
 }
 

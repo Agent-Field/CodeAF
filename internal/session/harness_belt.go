@@ -153,6 +153,7 @@ func HarnessBelt(workspace string, seams HarnessBeltSeams) []bare.Tool {
 		},
 		client: seams.Seer,
 	}
+	agent.config.bindUsageLedger()
 	tools = append(tools, agent.imageTools()...)
 	tools = append(tools, agent.speakTools()...)
 	tools = append(tools, agent.musicTools()...)

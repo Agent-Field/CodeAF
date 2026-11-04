@@ -112,6 +112,8 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Bind settlement ownership before construction can publish the child.
+	config.receipts = a.receiptTracker()
 	child, err := newAgent(config, client)
 	if err != nil {
 		return nil, err
@@ -125,6 +127,9 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 // newAgent is the seam New and the tests share: everything except which
 // Completer the turns run against.
 func newAgent(config Config, client Completer) (*Agent, error) {
+	// Accounting can outlive quit. Bind its destination before any producer
+	// starts, so a late receipt cannot follow a later change of home.
+	config.bindUsageLedger()
 	if strings.TrimSpace(config.Workspace) == "" {
 		return nil, errors.New("session: workspace is required")
 	}
@@ -165,6 +170,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent := &Agent{
 		taskComputerPrompt: config.mayNameTaskComputer(),
 		config:             config,
+		receipts:           config.receipts,
 		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this
