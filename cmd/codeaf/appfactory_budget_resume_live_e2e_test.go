@@ -120,6 +120,19 @@ func TestLiveJobTotalBudgetAcrossRerun(t *testing.T) {
 		"models.tiers.worker": liveFactoryModel, "task.model": liveFactoryModel, "models.fallbacks": "",
 		config.KeyKnowledgeModel: liveFactoryModel, config.KeyMemoryEnabled: "off",
 	})
+	// A knowledge capture can still be writing when the process closes. Removing
+	// the profile under it fails the test on its way out, so wait for its journal.
+	t.Cleanup(func() {
+		journal := filepath.Join(ambient, "knowledge", "knowledge.sqlite-journal")
+		quiet := 0
+		for deadline := time.Now().Add(10 * time.Second); quiet < 4 && time.Now().Before(deadline); time.Sleep(250 * time.Millisecond) {
+			if _, err := os.Stat(journal); err == nil {
+				quiet = 0
+			} else {
+				quiet++
+			}
+		}
+	})
 	t.Setenv("HOME", userHome)
 	t.Setenv(home.EnvVar, appHome)
 	t.Setenv(config.ProfileDirEnv, ambient)
@@ -200,6 +213,11 @@ func TestLiveJobTotalBudgetAcrossRerun(t *testing.T) {
 		}
 		paid.Lock()
 		defer paid.Unlock()
+		// A hedged second try queues here behind the slow first one and is cancelled
+		// when that one answers. It never reached the provider, so nothing is owed.
+		if req.Context().Err() != nil {
+			return
+		}
 		recorder.mu.Lock()
 		spent, bad := recorder.cost, len(recorder.problems) > 0
 		recorder.mu.Unlock()
