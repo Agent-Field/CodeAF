@@ -87,12 +87,12 @@ func StampCopyReady(root string) error {
 	return errors.Join(f.Sync(), f.Close())
 }
 
-// hasSealedTurns reports whether root already holds a cell with at least one
+// HasSealedTurns reports whether root already holds a cell with at least one
 // sealed turn or adopted remote head. Engine.Seal appends to turns.jsonl only
 // after composing meta.json and capturing the snapshot, and Materialize writes
 // adopted.json only after restoring an incoming head, so either file proves
 // root holds real conversation history rather than a half-copied scratch tree.
-func hasSealedTurns(root string) bool {
+func HasSealedTurns(root string) bool {
 	if raw, err := os.ReadFile(filepath.Join(root, StateDir, "turns.jsonl")); err == nil {
 		sc := bufio.NewScanner(bytes.NewReader(raw))
 		for sc.Scan() {
@@ -153,7 +153,7 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 	// earlier restore or take-back lost its copy-ready marker: reopen and
 	// re-stamp it when its cell record is valid, or fail loudly so newer turns
 	// cannot be destroyed.
-	if hasSealedTurns(root) {
+	if HasSealedTurns(root) {
 		c, openErr := OpenAt(root, filepath.Base(root))
 		if openErr != nil {
 			return Cell{}, fmt.Errorf("copy destination %s already holds sealed turns: %w", root, openErr)

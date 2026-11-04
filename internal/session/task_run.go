@@ -8706,6 +8706,9 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 		// read. Copying the world in would be the opposite of what was asked.
 		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
 	case TaskModeMirror:
+		if refusal := copyHomeRefusal(ground); refusal != "" {
+			return taskTree{}, errors.New(refusal)
+		}
 		if err := ensureOwnedMirrorGround(place, ground); err != nil {
 			return taskTree{}, err
 		}

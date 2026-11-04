@@ -1,52 +1,16 @@
-// sweep.go is the idle reaper: one pass over the
-// session folders, once per launch, that expires droppings and removes litter.
+// sweep.go reaps idle disposable storage once per launch.
 //
-// IT HAS EXACTLY THREE RULES, and the third one outranks the other two.
+//  1. Files in session logs expire after a week; live sessions stay untouched.
+//  2. Temp-rooted conversations idle for a week are removed after retiring forks.
+//  3. Other conversations and their work stay, except unfinished older-chat copies:
+//     a week-untouched .moving destination can go only under its existing exclusive
+//     copy lock, without copy-ready, sealed turns or an adopted head, and with its
+//     matching original transcript still beside .moving. The folder goes before
+//     its lock. Completed copies and all other .moving entries stay untouched.
+//  4. Unsaved, unlocked errands untouched for a week are removed. The errands
+//     pass cannot reach projects; the projects pass applies rules 1–3 there.
 //
-//  1. DROPPINGS EXPIRE. A file under a session's logs/ that nothing has touched
-//     for a week is a job log, a stub or a frame nobody is going to read. It is
-//     re-creatable by definition — that is what makes logs/ logs/ — so it goes.
-//
-//  2. LITTER IS REAPED. A session whose recorded workspace or launch directory
-//     was under a temp directory is a conversation opened in a place the machine
-//     itself considers disposable, and once a week has passed since the person
-//     last said anything to it, the whole folder goes. This is the rule that
-//     stops the flat layout's failure repeating: nineteen dead /tmp workspace
-//     directories on the author's own machine, none of them wanted, none of them
-//     removable without reading each one.
-//
-//  3. NOTHING ELSE IS EVER TOUCHED. transcript.jsonl is FOREVER, work/ is a
-//     person's own content, and a session whose transcript is flocked is a live
-//     conversation in another window. A sweep that could delete a real
-//     transcript would make every one of them provisional, and the whole value
-//     of a journal a person can cat, grep and rsync is that it is not.
-//
-//  4. AND HOME'S OWN LITTER GOES THE SAME WAY. An errand said at home lives in
-//     its own folder under v3/errands until it becomes something — `continue
-//     as a conversation` moves it into the project's bucket — and the folder of
-//     one that went nowhere accumulates with nobody asking to keep it. It is
-//     reaped after [errandKeep] and asked the same two questions rule 2 asks —
-//     is anybody holding it, and has anything touched it lately — with a third:
-//     whether an automation was saved from it, because "open where it was
-//     asked" reads that folder for as long as the automation exists. Everything
-//     under v3/projects is outside its reach by construction: rule 4 walks the
-//     errands root and nothing else, and answers immediately on an empty one.
-//
-// The two removals are DIFFERENT ACTS and the third rule reads differently
-// against each. Rule 1 reaches into logs/ and nowhere else, so no expiry can
-// ever reach a transcript or a person's work/ whatever its age. Rule 2 removes a
-// whole folder — its work/ and its transcript with it — and is allowed to only
-// because of what it proved first: a temp-rooted session is the disposable kind
-// by construction (Decision 26: "ephemeral" is not a mode a person picks, it is
-// what an owned session in a temp directory already is), and a week has passed
-// since the person last spoke to it. Everything that fails either half of that
-// proof keeps its transcript forever.
-//
-// The pass is a pure function of a directory and a clock so that it can be
-// proved rather than argued about: [SweepPlaces] takes both, and every failure
-// is one line to the caller's note and a move to the next folder. A sweep that
-// stopped on the first unreadable directory would be a sweep that never reached
-// the litter.
+// Roots and clocks are injected so these rules can be tested without real state.
 package session
 
 import (
@@ -59,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -110,7 +75,7 @@ func SweepHomeContext(ctx context.Context, errandsRoot string, held func(dir str
 	SweepErrandsContext(ctx, errandsRoot, now, held, note)
 }
 
-// SweepPlaces applies the three rules over one projects root.
+// SweepPlaces applies the session and unfinished-copy rules over one projects root.
 //
 // A root that is not there is not a failure — it is a machine that has not held
 // a conversation yet — and answers silently.
@@ -155,14 +120,16 @@ func SweepPlacesContext(ctx context.Context, root string, now time.Time, note fu
 			if !entry.IsDir() {
 				continue
 			}
+			if entry.Name() == ".moving" {
+				sweepUnfinishedCopies(ctx, path, sessions, now, note)
+				continue
+			}
 			sweepSession(ctx, filepath.Join(path, entry.Name()), now, note)
 		}
 	}
 }
 
-// sweepSession is the three rules over one session folder, in the order that
-// makes rule 3 unconditional: the live check first, and nothing at all happens
-// to a folder that fails it.
+// sweepSession checks live ownership before expiring logs or reaping litter.
 func sweepSession(ctx context.Context, dir string, now time.Time, note func(string)) {
 	if contextDone(ctx) || sessionIsOpen(dir) {
 		// Somebody is talking to it. Not its logs, not its folder, nothing.
@@ -529,4 +496,58 @@ func newestUnder(dir string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return newest, true
+}
+
+// sweepUnfinishedCopies only reaps scratch destinations whose untouched original
+// still exists. CopyLegacy uses the same lock and history test before replacing one.
+func sweepUnfinishedCopies(ctx context.Context, bucket string, originals []os.DirEntry, now time.Time, note func(string)) {
+	for _, original := range originals {
+		if contextDone(ctx) {
+			return
+		}
+		if !original.IsDir() || original.Name() == ".moving" {
+			continue
+		}
+		source := filepath.Join(bucket, original.Name())
+		info, err := os.Stat(filepath.Join(source, placeTranscript))
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		root := cell.CopyRoot(source)
+		info, err = os.Lstat(root)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		sweepUnfinishedCopy(ctx, root, now, note)
+	}
+}
+
+func sweepUnfinishedCopy(ctx context.Context, root string, now time.Time, note func(string)) {
+	lock, err := os.OpenFile(root+".lock", os.O_RDWR, 0)
+	if err != nil {
+		return
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, true); err != nil {
+		return
+	}
+	if _, err := os.Lstat(filepath.Join(root, cell.CopyReadyPath)); !errors.Is(err, fs.ErrNotExist) {
+		return
+	}
+	if cell.HasSealedTurns(root) {
+		return
+	}
+	newest, ok := newestUnder(root)
+	if !ok || !newest.Before(now.Add(-sweepTTL)) || contextDone(ctx) {
+		return
+	}
+	if err := os.RemoveAll(root); err != nil {
+		note(fmt.Sprintf("sweep: could not remove unfinished copy %s: %v", root, err))
+		return
+	}
+	// Home hides scratch copies by their lock, so the folder must disappear first.
+	note(fmt.Sprintf("sweep: removed unfinished copy %s", root))
+	if err := os.Remove(root + ".lock"); err != nil {
+		note(fmt.Sprintf("sweep: could not remove copy lock %s: %v", root, err))
+	}
 }
