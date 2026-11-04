@@ -37,13 +37,15 @@
 //     stamps copy-ready only after its first seal, so a kill before that leaves a
 //     scratch folder Home hides, and a chat that is never copied again never
 //     replaces it. It is removed once untouched for a week, under its own copy
-//     lock, when it has no copy-ready, no sealed turns and no adopted head, and
-//     its original's transcript is still beside .moving: the test CopyLegacy
-//     itself uses before replacing one. The folder goes before its lock, because
-//     Home lists a lockless .moving folder as a chat. A finished copy is a live
-//     conversation and is never touched.
+//     lock, when it has no copy-ready and no turns or adopted record at all, and
+//     its original's transcript is still beside .moving. CopyLegacy replaces such
+//     a folder on a retry; this reads the same evidence more cautiously, because
+//     nothing here replaces what it removes. The folder goes before its lock,
+//     because Home lists a lockless .moving folder as a chat, and sweep.log says
+//     so, since unlike the other rules this one removes a copy of a conversation.
+//     A finished copy is a live conversation and is never touched.
 //
-// The two removals are DIFFERENT ACTS and the third rule reads differently
+// Rules 1 and 2 are DIFFERENT ACTS and the third rule reads differently
 // against each. Rule 1 reaches into logs/ and nowhere else, so no expiry can
 // ever reach a transcript or a person's work/ whatever its age. Rule 2 removes a
 // whole folder — its work/ and its transcript with it — and is allowed to only
@@ -167,7 +169,7 @@ func SweepPlacesContext(ctx context.Context, root string, now time.Time, note fu
 			if !entry.IsDir() {
 				continue
 			}
-			if entry.Name() == ".moving" {
+			if entry.Name() == cell.MovingDir {
 				sweepUnfinishedCopies(ctx, path, sessions, now, note)
 				continue
 			}
@@ -554,7 +556,7 @@ func sweepUnfinishedCopies(ctx context.Context, bucket string, originals []os.Di
 		if contextDone(ctx) {
 			return
 		}
-		if !original.IsDir() || original.Name() == ".moving" {
+		if !original.IsDir() || original.Name() == cell.MovingDir {
 			continue
 		}
 		source := filepath.Join(bucket, original.Name())
@@ -583,7 +585,7 @@ func sweepUnfinishedCopy(ctx context.Context, root string, now time.Time, note f
 	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(cell.CopyReadyPath))); !errors.Is(err, fs.ErrNotExist) {
 		return
 	}
-	if cell.HasSealedTurns(root) {
+	if cell.MayHoldHistory(root) {
 		return
 	}
 	newest, ok := newestUnder(root)

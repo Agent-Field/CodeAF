@@ -873,7 +873,6 @@ type `--export`, so a report on its own writes no file and sends nothing.
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
 At launch, codeaf removes unfinished older-chat scratch copies untouched for a week only when their original transcript remains, their copy lock is free, and they have no ready marker or sealed history. Completed copies stay.
-Tasks and standing copies refuse your home folder or a folder containing it; choose one project's folder inside home instead.
 
 **`codeaf cell gc [--dry-run]`** (when cells are available) frees disk from finished
 conversations. A conversation that codeaf keeps its own working folder for has files that

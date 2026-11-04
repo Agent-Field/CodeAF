@@ -478,6 +478,14 @@ reach that folder — which is the whole point of choosing it. What it does **no
 move this conversation: the directory it is anchored to, the `AGENTS.md` it reads, and its
 own status line stay exactly as they were.
 
+## A task refuses to copy your home folder — choose one project instead
+
+A task that would work in a private copy of your home folder, or of a folder that holds it,
+stops before copying anything and asks for one project's folder. Your home folder holds far
+more than any task needs, private files included. A folder inside home copies as usual. A
+home folder that is itself a git repository is different: a task there still gets a worktree of
+what that repository tracks.
+
 ## Where edits go — the folder you are standing in, and the ones you chose
 
 Two rules, and they are the whole of it.

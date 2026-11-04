@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,6 +83,15 @@ func TestSweepKeepsOlderChatCopyUnlessEveryConditionHolds(t *testing.T) {
 		{"sealed turn", func(t *testing.T, original, copy string, now time.Time) {
 			writeFile(t, filepath.Join(copy, cell.StateDir, "turns.jsonl"), "{\"id\":\"sealed\"}\n")
 		}},
+		{"sealed turn longer than a scanner line", func(t *testing.T, original, copy string, now time.Time) {
+			writeFile(t, filepath.Join(copy, cell.StateDir, "turns.jsonl"), "{\"id\":\"sealed\",\"x\":\""+strings.Repeat("x", 128<<10)+"\"}\n")
+		}},
+		{"unparsable turns", func(t *testing.T, original, copy string, now time.Time) {
+			writeFile(t, filepath.Join(copy, cell.StateDir, "turns.jsonl"), "not json\n")
+		}},
+		{"unparsable adopted head", func(t *testing.T, original, copy string, now time.Time) {
+			writeFile(t, filepath.Join(copy, cell.StateDir, "adopted.json"), "not json")
+		}},
 		{"adopted head", func(t *testing.T, original, copy string, now time.Time) {
 			writeFile(t, filepath.Join(copy, cell.StateDir, "adopted.json"), "{\"head\":\"adopted\"}")
 		}},
@@ -119,7 +129,7 @@ func TestSweepKeepsOlderChatCopyUnlessEveryConditionHolds(t *testing.T) {
 			root, original, copy := unfinishedSweepCopy(t, now)
 			tc.change(t, original, copy, now)
 			// Readiness and history must protect even an otherwise old tree.
-			if tc.name == "ready" || tc.name == "sealed turn" || tc.name == "adopted head" {
+			if tc.name != "recent nested file" && tc.name != "exactly one week" && tc.name != "recent directory" {
 				stampTree(t, copy, now.Add(-8*24*time.Hour))
 			}
 			SweepPlaces(root, now, func(line string) { t.Fatalf("unexpected sweep notice: %s", line) })

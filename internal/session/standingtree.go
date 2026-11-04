@@ -515,9 +515,6 @@ func (a *Agent) treesAhead() *offpath.Write {
 // (memory.go), and the detail names the folder so the sentence is about
 // something they recognize rather than about machinery.
 func (a *Agent) cutStandingTree(place PlaceRef) (StandingTree, error) {
-	if refusal := copyHomeRefusal(place.Path); refusal != "" {
-		return StandingTree{}, errors.New(refusal)
-	}
 	// ONE CUT PER FOLDER, WHATEVER ARRIVES AT ONCE. Two tool calls in one turn
 	// can both find no copy and both start cutting, and the loser would leave a
 	// registered worktree nothing holds a record of. The agent's own lock cannot

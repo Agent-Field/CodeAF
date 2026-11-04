@@ -27,13 +27,16 @@ const CopyReadyPath = StateDir + "/copy-ready"
 // CopyOfferedPath is local bookkeeping inside the harness-owned state area.
 const CopyOfferedPath = StateDir + "/copy-offered"
 
+// MovingDir is the folder beside the older chats that holds their copies.
+const MovingDir = ".moving"
+
 // CopyRoot gives an older conversation one stable destination outside the
 // folders released builds scan. Its identity never depends on a retry (C29.6).
 func CopyRoot(original string) string {
 	sum := sha256.Sum256([]byte(filepath.Clean(original)))
 	var raw [16]byte
 	copy(raw[:], sum[:16])
-	return filepath.Join(filepath.Dir(original), ".moving", encode128(raw))
+	return filepath.Join(filepath.Dir(original), MovingDir, encode128(raw))
 }
 
 // CopyFolderReadme is the note in the folder that holds moved chats. The
@@ -58,6 +61,22 @@ func explainCopyFolder(dir string) error {
 	}
 	_, err = f.WriteString(copyFolderNote)
 	return errors.Join(err, f.Close())
+}
+
+// MayHoldHistory is the cautious reading of hasSealedTurns, for a caller about
+// to delete root rather than reuse it: any turn bytes or adopted record, however
+// they parse, and anything it cannot read, counts as history.
+func MayHoldHistory(root string) bool {
+	for _, name := range []string{"turns.jsonl", "adopted.json"} {
+		info, err := os.Lstat(filepath.Join(root, StateDir, name))
+		if err == nil && (name == "adopted.json" || info.Size() > 0) {
+			return true
+		}
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return true
+		}
+	}
+	return false
 }
 
 // Copied resolves only a fully prepared, durable copy. A crash before the
@@ -87,12 +106,12 @@ func StampCopyReady(root string) error {
 	return errors.Join(f.Sync(), f.Close())
 }
 
-// HasSealedTurns reports whether root already holds a cell with at least one
+// hasSealedTurns reports whether root already holds a cell with at least one
 // sealed turn or adopted remote head. Engine.Seal appends to turns.jsonl only
 // after composing meta.json and capturing the snapshot, and Materialize writes
 // adopted.json only after restoring an incoming head, so either file proves
 // root holds real conversation history rather than a half-copied scratch tree.
-func HasSealedTurns(root string) bool {
+func hasSealedTurns(root string) bool {
 	if raw, err := os.ReadFile(filepath.Join(root, StateDir, "turns.jsonl")); err == nil {
 		sc := bufio.NewScanner(bytes.NewReader(raw))
 		for sc.Scan() {
@@ -153,7 +172,7 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 	// earlier restore or take-back lost its copy-ready marker: reopen and
 	// re-stamp it when its cell record is valid, or fail loudly so newer turns
 	// cannot be destroyed.
-	if HasSealedTurns(root) {
+	if hasSealedTurns(root) {
 		c, openErr := OpenAt(root, filepath.Base(root))
 		if openErr != nil {
 			return Cell{}, fmt.Errorf("copy destination %s already holds sealed turns: %w", root, openErr)
