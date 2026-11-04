@@ -166,7 +166,7 @@ waiting:
 			dailyStops[i] = dailyStops[i] || errors.Is(event.Err, ErrSpendRail) && IsDailyLimit(event.Err) != jobCap
 		}
 	}
-	if requireStop {
+	if stopped == 4 {
 		waitFor(t, "cancelled calls settle their measured usage", func() bool {
 			FlushUsage()
 			spent, err := DailySpendUSD(UsageLedgerPath(), time.Now())
