@@ -2311,7 +2311,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTeamsShare, Category: CategoryInterface, Kind: SettingChoice,
 			Label: "share teams", Choices: teamsShareChoices,
-			Hint: "Share teams, their members and settings, and recent Traffic as read-only history; off until turned on, and both computers must turn it on (pairing required).",
+			Hint: "Share teams, their members and settings, and recent Traffic as read-only history with your other computers (pairing required). On by default; turning it off on either computer stops sharing.",
 			read: func() string {
 				if TeamsShareAt(dir) {
 					return "on"
@@ -3670,7 +3670,10 @@ func knownDocumentEngine(engine string) bool {
 // absent setting uses YOLO; an unrecognised persisted value still asks, so a
 // garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
-	values, _ := readProfileConfig(profileDir)
+	values, err := ReadProfileApprovalConfig(profileDir)
+	if err != nil {
+		return "prompt"
+	}
 	return toolApprovalMode(values, DefaultToolApprovalMode)
 }
 
@@ -3700,7 +3703,7 @@ func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
 	} else if found {
 		return project.ResolveString(profileDir, KeyToolApprovalMode)
 	}
-	values, err := readProfileConfig(profileDir)
+	values, err := ReadProfileApprovalConfig(profileDir)
 	if err != nil {
 		return "", err
 	}

@@ -22,8 +22,11 @@ const pubs = tally(await Promise.all(Array.from({ length: 50 }, (_, i) => call(o
 assert.deepEqual(pubs, { 200: 1, head_moved: 49 });
 console.log('head race', JSON.stringify(pubs));
 
+const blind = await call(rivals[0], 'POST', '/v1/dir/cells/heads/acquire', { force: true });
+assert.deepEqual([blind.status, blind.json.err], [409, 'lease_held']);
+const observed = (await call(rivals[0], 'GET', '/v1/dir/cells/heads')).json.cell.lease;
 const t0 = performance.now();
-const took = await call(rivals[0], 'POST', '/v1/dir/cells/heads/acquire', { force: true });
+const took = await call(rivals[0], 'POST', '/v1/dir/cells/heads/acquire', { force: true, expect: { device: observed.device, fence: observed.fence } });
 const ms = Math.round(performance.now() - t0);
 assert.equal(took.json.cell.lease.fence, fence + 1);
 const stale = await call(owner, 'POST', '/v1/dir/cells/heads/publish', { fence, old_head: 'h0', head: 'hx', size: 1, class: 'work', pending: 0 });

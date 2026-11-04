@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -343,18 +342,8 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.wait("hosted take-back arrival", func() bool { return strings.Contains(screen.String(), "Moved from other computer") })
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if len(h.acquires) == 0 {
-		t.Fatal("take-back made no acquire")
-	}
-	// The reopened writer resumes the hold the take acquired (F1, #2009): it
-	// renews that fence rather than acquiring another.
-	resumed := slices.IndexFunc(h.resumes, func(at time.Time) bool { return !at.Before(h.acquires[0]) })
-	if resumed < 0 {
-		t.Fatal("the reopened hosted writer never resumed the taken hold")
-	}
-	t.Logf("relay resume after first acquire: %s", h.resumes[resumed].Sub(h.acquires[0]))
-	if gap := h.resumes[resumed].Sub(h.acquires[0]); gap >= 5*time.Second {
-		t.Errorf("resume gap=%s", gap)
+	if len(h.acquires) < 2 {
+		t.Fatalf("take and reopened writer made %d acquires; want both", len(h.acquires))
 	}
 	t.Logf("relay first acquire after key: %s", h.acquires[0].Sub(started))
 	if elapsed := h.acquires[0].Sub(started); elapsed > time.Second {
