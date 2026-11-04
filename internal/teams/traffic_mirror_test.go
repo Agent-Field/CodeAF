@@ -11,6 +11,7 @@ import (
 )
 
 // A mirror must remain invisible to every old and current local delivery reader.
+// F1 preserves the existing sharing fixture and history contract.
 func TestTrafficMirrorNeverChangesLocalLogAndKeepsPortableThreads(t *testing.T) {
 	dir := t.TempDir()
 	if err := AppendTraffic(dir, "alpha", Entry{Kind: KindNote, From: FromYou, To: ToManager, Text: "local", Origin: "forged"}); err != nil {
@@ -34,7 +35,7 @@ func TestTrafficMirrorNeverChangesLocalLogAndKeepsPortableThreads(t *testing.T) 
 	if len(local) != 1 {
 		t.Fatal(local)
 	}
-	got, err := ReadHistory(dir, "alpha", 0)
+	got, err := ReadHistory(dir, "alpha", 0, true)
 	if err != nil || len(got) != 3 {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -106,23 +107,24 @@ func TestDeletingATeamRemovesItsDisplayMirrorAlongWithItsFolder(t *testing.T) {
 	}
 }
 
+// F1 preserves the existing sharing fixture and history contract.
 func TestOverviewTailCannotHideAMirrorChangeFromTheTrafficPane(t *testing.T) {
 	dir := t.TempDir()
 	if err := AppendTraffic(dir, "alpha", Entry{Kind: KindNote, From: FromManager, To: ToRoom, Text: "local"}); err != nil {
 		t.Fatal(err)
 	}
 	var w Watch
-	_, cursor, version, _, err := w.History(dir, "alpha", "", "", 100)
+	_, cursor, version, _, err := w.History(dir, "alpha", "", "", 100, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteTrafficMirror(dir, "alpha", []Entry{{ID: "a/1", At: time.Now(), Text: "new mirror"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, _, err := w.History(dir, "alpha", "", "", 100); err != nil {
+	if _, _, _, _, err := w.History(dir, "alpha", "", "", 100, true); err != nil {
 		t.Fatal(err)
 	}
-	lines, next, _, reset, err := w.History(dir, "alpha", cursor, version, 100)
+	lines, next, _, reset, err := w.History(dir, "alpha", cursor, version, 100, true)
 	if err != nil || !reset || next != cursor || len(lines) != 2 {
 		t.Fatal("overview consumed the pane's refresh", lines, next, reset, err)
 	}
@@ -141,6 +143,7 @@ func TestTrafficExportTakesOnlyTheNewestLineCount(t *testing.T) {
 	}
 }
 
+// F1 preserves the existing sharing fixture and history contract.
 func TestMirrorSurvivesLocalRotationWithoutDuplicatingRemoteLines(t *testing.T) {
 	dir := t.TempDir()
 	old := trafficRotateBytes
@@ -166,7 +169,7 @@ func TestMirrorSurvivesLocalRotationWithoutDuplicatingRemoteLines(t *testing.T) 
 			t.Fatal("rotation admitted mirror into local log")
 		}
 	}
-	all, _ := ReadHistory(dir, "alpha", 0)
+	all, _ := ReadHistory(dir, "alpha", 0, true)
 	count := 0
 	for _, e := range all {
 		if e.Origin == "a/1" {
@@ -191,6 +194,7 @@ func TestHistoryThreadsFollowTimeAcrossWritersAndKeepReferences(t *testing.T) {
 	}
 }
 
+// F1 preserves the existing sharing fixture and history contract.
 func TestHistoryWithoutMirrorKeepsLocalSequenceWhenClockMovesBack(t *testing.T) {
 	profile := t.TempDir()
 	for _, at := range []time.Time{time.Unix(200, 0), time.Unix(100, 0)} {
@@ -202,7 +206,7 @@ func TestHistoryWithoutMirrorKeepsLocalSequenceWhenClockMovesBack(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	history, err := ReadHistory(profile, "alpha", 0)
+	history, err := ReadHistory(profile, "alpha", 0, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,5 +217,31 @@ func TestHistoryWithoutMirrorKeepsLocalSequenceWhenClockMovesBack(t *testing.T) 
 		if history[i].ID != local[i].ID {
 			t.Fatal("history changed local sequence")
 		}
+	}
+}
+
+// F7 hides retained mirror history when sharing is off or unpaired without deleting it.
+func TestHistoryWithoutEffectiveSharingKeepsMirrorOnDisk(t *testing.T) {
+	dir := t.TempDir()
+	if err := AppendTraffic(dir, "alpha", Entry{Kind: KindNote, From: FromYou, To: ToRoom, Text: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteTrafficMirror(dir, "alpha", []Entry{{ID: "other/1", Kind: KindNote, Text: "foreign"}}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(TrafficMirrorPath(dir, "alpha"))
+	for _, sharing := range []bool{true, false, true} {
+		got, err := ReadHistory(dir, "alpha", 0, sharing)
+		want := 1
+		if sharing {
+			want = 2
+		}
+		if err != nil || len(got) != want {
+			t.Fatalf("sharing=%v history=%+v err=%v", sharing, got, err)
+		}
+	}
+	after, _ := os.ReadFile(TrafficMirrorPath(dir, "alpha"))
+	if !bytes.Equal(before, after) {
+		t.Fatal("history reader changed retained mirror")
 	}
 }

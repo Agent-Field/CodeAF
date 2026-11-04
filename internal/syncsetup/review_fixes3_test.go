@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
@@ -84,16 +85,20 @@ func (d *r3SwitchAfterList) List(ctx context.Context) (directory.Listing, error)
 // through the clients bound to the set it just left.
 func TestR3_1_StateRoundRefusesVaultFromNewPairing(t *testing.T) {
 	for _, replace := range []bool{true, false} {
-		t.Run(map[bool]string{true: "replace", false: "merge"}[replace], func(t *testing.T) {
+		t.Run(map[bool]string{true: "replace", false: "startup"}[replace], func(t *testing.T) {
 			home := t.TempDir()
 			old, err := identity.EnsureSolo(home)
 			mustNil(t, err)
 			if replace {
 				mustNil(t, identity.EndSolo(home))
 			}
-			v, err := keys.Open(home)
-			mustNil(t, err)
-			mustNil(t, v.Put("before", keys.Entry{Name: "BEFORE", Value: "old set"}))
+			if replace {
+				v, err := keys.Open(home)
+				mustNil(t, err)
+				mustNil(t, v.Put("before", keys.Entry{Name: "BEFORE", Value: "old set"}))
+			} else {
+				mustNil(t, config.WriteChatModel(home, "fixture/startup"))
+			}
 			oldDir := directory.NewMemory(time.Now).For("old-device")
 			oldStore := blobstore.NewMemory()
 			next, err := identity.Mint()
@@ -116,6 +121,8 @@ func TestR3_1_StateRoundRefusesVaultFromNewPairing(t *testing.T) {
 					t.Fatal(ctx.Err())
 				}
 				mustNil(t, <-done)
+				v, err := keys.Open(home)
+				mustNil(t, err)
 				mustNil(t, v.Put("after", keys.Entry{Name: "AFTER", Value: "new set only"}))
 			}
 			dir := &r3SwitchAfterList{Client: oldDir, switchHome: switchHome}
@@ -141,6 +148,8 @@ func TestR3_1_StateRoundRefusesVaultFromNewPairing(t *testing.T) {
 			if listing.Identity.Vault == "" {
 				t.Fatal("next round did not share the saved keys under the new binding")
 			}
+			v, err := keys.Open(home)
+			mustNil(t, err)
 			got, err := v.Get("after")
 			if err != nil || got.Value != "new set only" {
 				t.Fatalf("new saved key after retry = %+v, %v", got, err)

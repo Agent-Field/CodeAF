@@ -19,6 +19,7 @@ case "$channel" in
 		worker_name="caf-fabric"
 		bucket_name="caf-fabric-frames"
 		base_path="/fabric"
+		caf_limits='{"globalNewIdentitiesPerDay":10000,"globalStoreBytes":1099511627776}'
 		rate_offset=0
 		;;
 	staging)
@@ -26,6 +27,7 @@ case "$channel" in
 		worker_name="caf-fabric-staging"
 		bucket_name="caf-fabric-staging-frames"
 		base_path=""
+		caf_limits=""
 		rate_offset=100
 		;;
 	dev)
@@ -33,6 +35,7 @@ case "$channel" in
 		worker_name="caf-fabric-dev"
 		bucket_name="caf-fabric-dev-frames"
 		base_path=""
+		caf_limits=""
 		rate_offset=200
 		;;
 	*)
@@ -67,9 +70,20 @@ awk \
 	-v worker_name="$worker_name" \
 	-v bucket_name="$bucket_name" \
 	-v base_path="$base_path" \
+	-v caf_limits="$caf_limits" \
 	-v rate_offset="$rate_offset" \
 	-v account_id="$account_id" \
 '
+function emit_vars_tail() {
+	if (!emitted_base_path) {
+		printf "BASE_PATH = \"%s\"\n", base_path
+		emitted_base_path = 1
+	}
+	if (caf_limits != "" && !emitted_caf_limits) {
+		printf "CAF_LIMITS = \x27%s\x27\n", caf_limits
+		emitted_caf_limits = 1
+	}
+}
 BEGIN {
 	section = ""
 	saw_name = 0
@@ -77,12 +91,12 @@ BEGIN {
 	saw_bucket = 0
 	saw_vars = 0
 	emitted_base_path = 0
+	emitted_caf_limits = 0
 	ratelimits = 0
 }
 /^[[:space:]]*\[/ {
-	if (section == "[vars]" && !emitted_base_path) {
-		printf "BASE_PATH = \"%s\"\n", base_path
-		emitted_base_path = 1
+	if (section == "[vars]") {
+		emit_vars_tail()
 	}
 	section = $0
 	sub(/^[[:space:]]+/, "", section)
@@ -126,6 +140,13 @@ section == "[vars]" && /^BASE_PATH[[:space:]]*=/ {
 	emitted_base_path = 1
 	next
 }
+section == "[vars]" && /^CAF_LIMITS[[:space:]]*=/ {
+	if (caf_limits != "") {
+		printf "CAF_LIMITS = \x27%s\x27\n", caf_limits
+		emitted_caf_limits = 1
+	}
+	next
+}
 section == "[[ratelimits]]" && /^namespace_id[[:space:]]*=/ {
 	val = $0
 	sub(/^[^"]*"/, "", val)
@@ -142,9 +163,8 @@ section == "[[ratelimits]]" && /^namespace_id[[:space:]]*=/ {
 	print $0
 }
 END {
-	if (section == "[vars]" && !emitted_base_path) {
-		printf "BASE_PATH = \"%s\"\n", base_path
-		emitted_base_path = 1
+	if (section == "[vars]") {
+		emit_vars_tail()
 	}
 	if (!saw_name || !saw_compat || !saw_bucket || !saw_vars || ratelimits < 2) {
 		printf "incomplete base wrangler.toml (name=%d compat=%d bucket=%d vars=%d ratelimits=%d)\n", \

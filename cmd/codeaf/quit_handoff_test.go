@@ -269,7 +269,7 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 	engineB := cellstore.EngineFor("")
 	engineB.DataRoot = t.TempDir()
 	copies := t.TempDir()
-	taker := takeover{b.Continuer(engineB, syncsetup.TakeOptions{DeviceName: "receiver", RootFor: func(id string) string { return filepath.Join(copies, id) }})}
+	taker := takeover{c: b.Continuer(engineB, syncsetup.TakeOptions{DeviceName: "receiver", RootFor: func(id string) string { return filepath.Join(copies, id) }})}
 	landInput, landTyped := io.Pipe()
 	defer landInput.Close()
 	defer landTyped.Close()

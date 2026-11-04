@@ -12,7 +12,7 @@ test('R7 pending membership cannot stop surviving follower election clocks',asyn
  }]));
  members.set('3',{drainRecovery:async()=>{throw Error('standby unavailable');}});
  const host=Object.assign(Object.create(HostedIdentity.prototype),{
-  asleep:false,wakeVersion:0,started:0,elapsed:0,operations:1,membershipPending:true,
+  asleep:false,wakeVersion:0,started:0,elapsed:0,operations:1,membershipPending:true,seen:new Map(),
   manifest:{config:{anchors:['1','2','3']}},members,states:new Map(),queue:[],reads:[],waiters:new Set(),progressVersion:0,
   holds:{next:null},policy:{tick_every:5000},forwarding:{pending:new Map(),socket:()=>null},
   peers:{view:{'4':{voter:true}},boxes:new Map(),snapshots:new Map(),retryTargets:new Set()},

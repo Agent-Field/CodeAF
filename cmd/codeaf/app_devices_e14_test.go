@@ -114,7 +114,7 @@ func e14PairedEnginesRetry(t *testing.T, restart bool) {
 		t.Fatalf("A1: %d successful PUT attempts, want one per computer", puts.Load())
 	}
 	renamed := machineCall[appwire.DeviceRenameResult](t, wa, "devices.rename", appwire.DeviceRenameParams{Name: "studio"})
-	if renamed.Line != "This computer is now called studio." || puts.Load() != 3 {
+	if renamed.Line != "This computer is now called studio on all your devices." || puts.Load() != 3 {
 		t.Fatalf("A1/A3: rename was not published immediately: %+v, PUTs=%d", renamed, puts.Load())
 	}
 	appDeviceEvent(t, rb, func(v appwire.Devices) bool { return len(v.Devices) == 2 && v.Devices[1].Name == "studio" })
@@ -124,7 +124,7 @@ func e14PairedEnginesRetry(t *testing.T, restart bool) {
 	}
 	allow.Store(false)
 	pending := machineCall[appwire.DeviceRenameResult](t, wa, "devices.rename", appwire.DeviceRenameParams{Name: "office"})
-	if pending.Line != "This computer is now called office. Your other computers will see it once this computer is back online." {
+	if pending.Line != "This computer is now called office. Your other devices will show it after this one next connects." {
 		t.Fatalf("A3: pending rename receipt: %q", pending.Line)
 	}
 	allow.Store(true)
