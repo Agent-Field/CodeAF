@@ -4396,11 +4396,12 @@ list than on the conversation.
 ## Does the daily budget apply to chat and team tasks?
 
 The daily budget blocks a new chat call when today's recorded spending reaches
-the limit. Task crews and their helpers use it when checking the next call's
-estimated cost. Other conversations' completed usage receipts are read on each
+the limit. Task crews and their helpers use the same recorded-spend check
+before their next call. Other conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. When a recorded
 charge reaches the daily limit, running owned work
-in this engine is cancelled.
+in this engine is cancelled. Starting a tool also checks recorded spending, so
+a charge recorded between a call ending and its tool starting still stops work.
 The chat and work report the limit; raise it with `/budget day 30`, then submit
 again. Only recorded spending closes the cap; usage on an open stream and
 pending receipts do not count until recorded. A stream can continue spending
@@ -4417,6 +4418,24 @@ apply separately. The default profile and home errands follow the saved
 or environment daily limit too; `/budget day` changes apply on the next turn.
 Task checks use the same selected daily limit and spending permission as the work
 they check.
+
+
+## Can I resume while a spending receipt is pending?
+
+Yes, if recorded spending is still below the cap. A stopped call whose price is
+available only through a pending receipt has not added that price to `/cost`
+or today's spending. With no earlier charges the live status row keeps `$0.00`.
+The partial answer stays visible; Stop work says
+`everything running here was stopped, the reply with it`. There is no special
+pending-receipt warning or daily-limit notice during that window. A new explicit
+submission can start without raising the cap.
+
+When the receipt is recorded, a crossing cancels running work and names the limit.
+For $0.25 recorded against $0.24 it says
+`daily limit reached · $0.25 spent of $0.24 · /budget day changes it`.
+Raise the limit, then submit again. Receipt recovery has a 70-second ceiling
+from queueing, including retries and request time. A receipt that cannot be
+recovered leaves an unknown price; this ceiling does not guarantee a known bill.
 
 ## Is the desktop day cap the same limit as /budget?
 

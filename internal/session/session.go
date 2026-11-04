@@ -2776,6 +2776,8 @@ type Agent struct {
 	rewindUndo *rewindUndo
 	debugRun   string
 
+	budgetWorkStarted chan struct{}
+
 	// toolsInFlight and toolsStarted count this agent's tool calls
 	// ([Agent.executeTool]). A shell output is only vouched for as made by its
 	// own command when no other tool call overlapped it (shell_outputs.go).

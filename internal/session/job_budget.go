@@ -36,6 +36,7 @@ func (a *Agent) jobBudgetBlock() error {
 // is involved. StopWork closes admission before cancelling the complete family.
 func (a *Agent) watchJobBudget() {
 	changed := make(chan struct{}, 1)
+	a.budgetWorkStarted = make(chan struct{}, 1)
 	unwatch := OnUsageWritten(func() {
 		select {
 		case changed <- struct{}{}:
@@ -57,6 +58,8 @@ func (a *Agent) watchJobBudget() {
 			case <-closed:
 				return
 			case <-changed:
+				ledgerChanged = true
+			case <-a.budgetWorkStarted:
 				ledgerChanged = true
 			case <-ticks:
 			}

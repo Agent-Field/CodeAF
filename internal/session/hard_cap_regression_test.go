@@ -2,14 +2,17 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -516,4 +519,261 @@ func TestModelGatePricesResolvedModel(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDailyCrossingStopsToolStartedAfterTheWake(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	synctest.Test(t, func(t *testing.T) {
+		defer StopUsageWriter(UsageLedgerPath())
+		banked, resume := make(chan struct{}), make(chan struct{})
+		releaseTool, toolStarted := make(chan struct{}), make(chan string, 1)
+		var once sync.Once
+		unblock := func() { once.Do(func() { close(resume) }) }
+		defer unblock()
+		defer close(releaseTool)
+		var armed atomic.Bool
+		model := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
+			armed.Store(true)
+			return priced(toolResponse("work", "touch", "{}"), .25), nil
+		}}}
+		a, _ := newTestAgent(t, model, func(c *Config) {
+			c.OneModel = true
+			c.Routing = provider.RoutingOff
+			c.DailyBudgetResolved = true
+			c.DailyBudgetUSD = .24
+			c.SessionFile = filepath.Join(t.TempDir(), "chat.jsonl")
+		})
+		var pause sync.Once
+		a.file.onWrite = func() {
+			if armed.Load() {
+				pause.Do(func() { close(banked); <-resume })
+			}
+		}
+		a.tools = append(a.tools, countingTool("touch", toolStarted, releaseTool))
+		events := mustSubmit(t, a, "work")
+		<-banked
+		if a.hasBudgetCall() {
+			t.Fatal("fixture still has active model call")
+		}
+		if !StopUsageWriter(UsageLedgerPath()) {
+			t.Fatal("ledger flush failed")
+		}
+		spent, err := DailySpendUSD(UsageLedgerPath(), time.Now())
+		if err != nil || spent != .25 {
+			t.Fatalf("fixture: recorded spend=%g err=%v", spent, err)
+		}
+		synctest.Wait()
+		unblock()
+		synctest.Wait()
+		select {
+		case <-toolStarted:
+		default:
+			t.Fatal("fixture: tool did not start")
+		}
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		a.mu.Lock()
+		stopped := a.workStopped
+		a.mu.Unlock()
+		if !stopped {
+			t.Error("daily crossing wake consumed between call and tool; tool still running after 2s with no further ledger write")
+		}
+		RecordUsage(UsageLedgerPath(), UsageLine{Model: "later wake", Calls: 1, USD: .001})
+		if !StopUsageWriter(UsageLedgerPath()) {
+			t.Fatal("second ledger flush failed")
+		}
+		synctest.Wait()
+		a.mu.Lock()
+		recovered := a.workStopped
+		a.mu.Unlock()
+		if !recovered {
+			t.Error("later wake did not stop tool")
+		} else {
+			t.Log("a later ledger write immediately recovers the lost stop")
+		}
+		a.StopWork()
+		collect(t, events)
+	})
+}
+
+func TestChildStartedCrewStopsAtDailyCrossing(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	started, cut, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	defer close(release)
+	model := &scriptedCompleter{aside: func(messages []ai.Message) (*ai.Response, bool) {
+		if isPlannerCall(messages) {
+			return priced(textResponse(`{"add":[{"id":"worker","title":"read notes","goal":"read notes"}]}`), 0), true
+		}
+		if isNameCall(messages) || isSessionTitleCall(messages) {
+			return priced(textResponse("Read notes"), 0), true
+		}
+		return nil, false
+	}, steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		close(started)
+		select {
+		case <-ctx.Done():
+			close(cut)
+			return nil, ctx.Err()
+		case <-release:
+			return priced(textResponse("done"), 0), nil
+		}
+	}}}
+	parent, _ := newTestAgent(t, model, func(c *Config) { c.DailyBudgetResolved = true; c.DailyBudgetUSD = .24; c.Routing = provider.RoutingOff })
+	graph := parent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "parent task", brief: "work", acceptance: "done"})
+	child, err := parent.newTaskAgent(context.Background(), t.TempDir(), graph.node(id), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(child.SettleWrites)
+	t.Cleanup(func() { child.Close() })
+	if _, err := child.RunOrchestrate(context.Background(), "read notes", "", 5); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("crew not started")
+	}
+	RecordUsage(UsageLedgerPath(), UsageLine{Model: "crossing", Calls: 1, USD: .25})
+	FlushUsage()
+	select {
+	case <-cut:
+	case <-time.After(2 * time.Second):
+		t.Error("child-started crew still running after daily crossing")
+	}
+}
+
+// A missing wire price remains absent from the chat's money readings while
+// its receipt is pending. A fresh submission can spend against that gap.
+func TestResumeReopensCapWhileReceiptPending(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	release, receiptStarted := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	defer unblock()
+	var sends atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/generation" {
+			if r.URL.Query().Get("id") != "gen-pending-1" {
+				fmt.Fprint(w, `{"data":{"total_cost":0,"tokens_prompt":1,"tokens_completion":1}}`)
+				return
+			}
+			close(receiptStarted)
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+			fmt.Fprint(w, `{"data":{"total_cost":0.25,"tokens_prompt":10,"tokens_completion":2}}`)
+			return
+		}
+		if r.URL.Path != "/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		n := sends.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: {\"id\":\"gen-pending-%d\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"working\"}}]}\n\n", n)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	t.Cleanup(func() { unblock(); server.Close() })
+	client, err := provider.NewClient(provider.Config{APIKey: "fixture", BaseURL: server.URL, Model: "test/model", HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newTestAgent(t, client, func(c *Config) {
+		c.OneModel = true
+		c.Routing = provider.RoutingOff
+		c.DailyBudgetResolved = true
+		c.DailyBudgetUSD = .24
+	})
+	t.Cleanup(func() {
+		unblock()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = a.WaitReceipts(ctx)
+	})
+	waitText := func(events <-chan Event) {
+		t.Helper()
+		for {
+			select {
+			case e, open := <-events:
+				if !open {
+					t.Fatal("stream ended before working text")
+				}
+				if e.Kind == EventTextDelta && e.Text == "working" {
+					return
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("no working text")
+			}
+		}
+	}
+	events := mustSubmit(t, a, "work")
+	waitText(events)
+	if err := a.StopWork(); err != nil {
+		t.Fatal(err)
+	}
+	first := collect(t, events)
+	waitCloseRun(t, receiptStarted, "pending receipt")
+	waitFor(t, "stopped work joins", func() bool { a.mu.Lock(); defer a.mu.Unlock(); return !a.workStopping })
+	if !FlushUsage() {
+		t.Fatal("flush")
+	}
+	spent, err := DailySpendUSD(a.config.usageLedger, time.Now())
+	if err != nil || spent != 0 || a.Usage().CostUSD != 0 {
+		t.Fatalf("pending window: recorded=%g chat=%g err=%v", spent, a.Usage().CostUSD, err)
+	}
+	notice := ""
+	for _, e := range first {
+		if e.Kind == EventNotice {
+			notice += e.Text
+		}
+		if errors.Is(e.Err, ErrSpendRail) {
+			t.Fatalf("pending price closed cap: %v", e.Err)
+		}
+	}
+	if notice != "everything running here was stopped, the reply with it" {
+		t.Fatalf("pending chat notice=%q", notice)
+	}
+	for _, entry := range a.Transcript() {
+		if strings.Contains(entry.Text, "daily limit") {
+			t.Fatalf("pending window claims limit reached: %q", entry.Text)
+		}
+	}
+	events = mustSubmit(t, a, "resume without raising")
+	waitText(events)
+	if sends.Load() != 2 {
+		t.Fatalf("resume sends=%d", sends.Load())
+	}
+	t.Logf("pending window: chat keeps working and %q; recorded=$0.00, chat cost=$0.00, no daily-limit notice or pending-receipt warning; unchanged cap=$0.24 admits resume", notice)
+	unblock()
+	got := collect(t, events)
+	const usual = "daily limit reached · $0.25 spent of $0.24 · /budget day changes it"
+	stopped, said := false, ""
+	for _, e := range got {
+		stopped = stopped || errors.Is(e.Err, ErrSpendRail)
+		if e.Kind == EventNotice {
+			said += e.Text
+		}
+	}
+	if !stopped || said != usual {
+		t.Fatalf("settled receipt stop: rail=%v notice=%q", stopped, said)
+	}
+	waitFor(t, "receipt recorded", func() bool {
+		FlushUsage()
+		spent, err := DailySpendUSD(a.config.usageLedger, time.Now())
+		return err == nil && spent == .25
+	})
+	if _, err := a.Submit(context.Background(), "still capped"); !errors.Is(err, ErrSpendRail) {
+		t.Fatalf("receipt did not close cap: %v", err)
+	}
+	t.Logf("settled receipt: %s; recovery bound=%g seconds", said, provider.ReceiptWait.Seconds())
 }

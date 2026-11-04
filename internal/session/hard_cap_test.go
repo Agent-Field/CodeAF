@@ -21,9 +21,9 @@ import (
 // The same four crews, cap and provider script measure both revisions. Each
 // crew completes a tool pair before its held call. The provider has charged
 // two held calls two cents already; the last has supplied no usage at all.
-func hardCapCrews(t *testing.T, requireStop bool) { hardCapScope(t, requireStop, false) }
+func hardCapCrews(t *testing.T, requireStop bool) { hardCapScope(t, requireStop, false, false) }
 
-func hardCapScope(t *testing.T, requireStop, jobCap bool) {
+func hardCapScope(t *testing.T, requireStop, jobCap, interim bool) {
 	t.Helper()
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
@@ -46,6 +46,8 @@ func hardCapScope(t *testing.T, requireStop, jobCap bool) {
 	events := make([]<-chan Event, 4)
 	cancelled := make(chan int, 4)
 	var requests atomic.Int32
+	settled := make(chan struct{})
+	var completed atomic.Int32
 	for i := range agents {
 		ready := make(chan struct{})
 		var calls atomic.Int32
@@ -96,7 +98,7 @@ func hardCapScope(t *testing.T, requireStop, jobCap bool) {
 			if i == 0 {
 				cost = .25
 			}
-			if i == 0 {
+			if i == 0 && interim {
 				fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":4,\"cost\":0.25}}\n\n")
 				w.(http.Flusher).Flush()
 				select {
@@ -114,7 +116,11 @@ func hardCapScope(t *testing.T, requireStop, jobCap bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		a, _ := newTestAgent(t, client, func(c *Config) {
+		var completer Completer = client
+		if interim {
+			completer = &settledStreamBarrier{Completer: client, arrived: &completed, ready: settled}
+		}
+		a, _ := newTestAgent(t, completer, func(c *Config) {
 			c.OneModel = true
 			c.ProfileDir = profile
 			if jobCap {
@@ -148,13 +154,34 @@ func hardCapScope(t *testing.T, requireStop, jobCap bool) {
 	stopped := 0
 	deadline := time.NewTimer(time.Second)
 	defer deadline.Stop()
+	wantCancelled := 3
+	if interim {
+		wantCancelled = 4
+	}
 waiting:
-	for stopped < 4 {
+	for stopped < wantCancelled {
 		select {
 		case <-cancelled:
 			stopped++
 		case <-deadline.C:
 			break waiting
+		}
+	}
+	if interim {
+		if !FlushUsage() {
+			t.Fatal("flush before settlement")
+		}
+		spent, err := DailySpendUSD(UsageLedgerPath(), time.Now())
+		if err != nil || spent != 0 {
+			t.Fatalf("open streams recorded=%g err=%v", spent, err)
+		}
+		for i, a := range agents {
+			a.mu.Lock()
+			stopped := a.workStopped
+			a.mu.Unlock()
+			if stopped {
+				t.Fatalf("crew %d stopped before settlement", i)
+			}
 		}
 	}
 	releaseCalls()
@@ -165,8 +192,11 @@ waiting:
 			notices[i] += event.Text
 			dailyStops[i] = dailyStops[i] || errors.Is(event.Err, ErrSpendRail) && IsDailyLimit(event.Err) != jobCap
 		}
+		if err := agents[i].WaitReceipts(t.Context()); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if stopped == 4 {
+	if stopped == 3 {
 		waitFor(t, "cancelled calls settle their measured usage", func() bool {
 			FlushUsage()
 			spent, err := DailySpendUSD(UsageLedgerPath(), time.Now())
@@ -196,16 +226,24 @@ waiting:
 		}
 	}
 	t.Logf("crews=4 cap=$%.2f recorded=$%.2f past-cap=$%.2f cancelled=%d/4 unknown=%d", capUSD, spent, spent-capUSD, stopped, unknown)
+	if interim {
+		if stopped != 0 || spent < .5499 || spent > .5501 {
+			t.Fatalf("known interim limit changed: spent=%g cancelled=%d/4", spent, stopped)
+		}
+	}
 	if !requireStop {
 		return
 	}
-	if stopped != 4 {
+	if stopped != 3 {
 		t.Fatalf("cap crossing cancelled %d/4 running crew calls", stopped)
 	}
 	if spent < .2899 || spent > .2901 || unknown != 1 {
 		t.Fatalf("partial charges or unknown call lost: spent=%v unknown=%d", spent, unknown)
 	}
-	for i := 0; i < 4; i++ {
+	if !strings.Contains(notices[0], " done") {
+		t.Errorf("settled crossing call lost its answer: %q", notices[0])
+	}
+	for i := 1; i < 4; i++ {
 		if !dailyStops[i] {
 			t.Errorf("crew %d did not report a typed daily stop", i)
 		}
@@ -217,7 +255,16 @@ waiting:
 			t.Errorf("crew %d did not explain stop and raise: %q", i, notices[i])
 		}
 	}
-	for i := 0; i < 4; i++ {
+	// The crossing call has already completed, so it reports the cap through
+	// the next turn's admission rather than a stop of work that is now idle.
+	refused := collect(t, mustSubmit(t, agents[0], "still over cap"))
+	if len(refused) != 1 || !errors.Is(refused[0].Err, ErrSpendRail) || IsDailyLimit(refused[0].Err) == jobCap {
+		t.Fatalf("completed crossing call reopened: %v", refused)
+	}
+	if _, err := agents[0].RunOrchestrate(context.Background(), "new crew", "", 5); err == nil {
+		t.Error("completed crossing call admitted a new run")
+	}
+	for i := 1; i < 4; i++ {
 		waitFor(t, "budget stop joins", func() bool { agents[i].mu.Lock(); defer agents[i].mu.Unlock(); return !agents[i].workStopping })
 		if _, err := agents[i].Submit(context.Background(), "still over cap"); !errors.Is(err, ErrSpendRail) {
 			t.Errorf("crew %d reopened below the required raise: %v", i, err)
@@ -250,6 +297,34 @@ waiting:
 func TestHardCapCancelsEveryRunningCrew(t *testing.T)   { hardCapCrews(t, true) }
 func TestHardCapConcurrentCallMeasurement(t *testing.T) { hardCapCrews(t, false) }
 
+// Hold returned final answers until every released stream has decoded its final
+// usage. Otherwise one settlement can cancel a peer before its final chunk is read.
+type settledStreamBarrier struct {
+	Completer
+	arrived *atomic.Int32
+	ready   chan struct{}
+}
+
+func (b *settledStreamBarrier) CompleteWithMessages(ctx context.Context, messages []ai.Message, opts ...ai.Option) (*ai.Response, error) {
+	response, err := b.Completer.CompleteWithMessages(ctx, messages, opts...)
+	if err == nil && response != nil && response.Usage != nil && response.Usage.Cost != nil && *response.Usage.Cost > 0 {
+		if b.arrived.Add(1) == 4 {
+			close(b.ready)
+		}
+		select {
+		case <-b.ready:
+		case <-ctx.Done():
+		}
+	}
+	return response, err
+}
+
+// Routes that stream interim usage have this known limit: open-stream usage
+// does not close the cap until settlement. This records the limit, not a wish.
+func TestInterimUsageStreamOvershootIsTheKnownLimit(t *testing.T) {
+	hardCapScope(t, false, false, true)
+}
+
 func validateToolPairs(t *testing.T, messages []ai.Message) {
 	t.Helper()
 	pending := map[string]bool{}
@@ -275,12 +350,12 @@ func validateToolPairs(t *testing.T, messages []ai.Message) {
 
 type streamJobBudget struct{ namedBudgetStub }
 
-func (b *streamJobBudget) RefusalWithSpend(pending float64) string {
+func (b *streamJobBudget) Refusal() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.spent+pending >= b.cap {
+	if b.spent >= b.cap {
 		return "job budget reached · raise the job budget to continue"
 	}
 	return ""
 }
-func TestJobHardCapStopsEveryRunningCall(t *testing.T) { hardCapScope(t, true, true) }
+func TestJobHardCapStopsEveryRunningCall(t *testing.T) { hardCapScope(t, true, true, false) }
