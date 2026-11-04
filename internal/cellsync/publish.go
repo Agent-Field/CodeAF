@@ -29,6 +29,9 @@ type Publisher struct {
 	Engine         Engine
 	Store          blobstore.Store
 	Dir            directory.Client
+	// OnUpload hears how far an upload has got, in frame bytes: (0, total)
+	// when it starts, after each frame, and (0, 0) when it ends either way.
+	OnUpload func(sent, total int64)
 }
 
 // Driving is the state of one cell this device is driving.
@@ -43,6 +46,10 @@ type Driving struct {
 	// Remote is the directory id being driven when it is not Cell.ID: after a
 	// branch the local folder is unchanged but the directory record is new.
 	Remote string
+	// Size is the record's size: the bytes of the frames the plan names, which
+	// is what a computer without the chat copies. 0 is unknown, and a plan
+	// that started before sizes were kept stays unknown.
+	Size uint64
 }
 
 // ID is the directory id of the cell being driven.
@@ -58,9 +65,12 @@ type PublishInfo struct {
 	hints        []directory.FrameHint
 	savedAt      int64
 	Class, Title string
-	Size         uint64
-	Pending      uint32
-	Keys         map[string]map[string]string
+	// Folder is the sealed name of the folder the chat works in, "" when it
+	// has none worth naming.
+	Folder  string
+	Size    uint64
+	Pending uint32
+	Keys    map[string]map[string]string
 }
 
 // Publish uploads what head needs and then moves the directory head. Any store
@@ -85,13 +95,33 @@ func (p *Publisher) publish(ctx context.Context, d *Driving, head string, in Pub
 	if p.WarmFrameHints {
 		in.hints = latestFrameHints(ex.Frames, frames)
 	}
+	in.Size = planSize(*d, ex.Frames)
 	frames = unionFrames(d.Frames, frames)
 	fence, err := p.advance(ctx, *d, head, in, frames)
 	if err != nil {
 		return ex, syncwords.UploadFailure(err)
 	}
-	d.Fence, d.Head, d.Frames = fence, head, frames
+	d.Fence, d.Head, d.Frames, d.Size = fence, head, frames, in.Size
 	return ex, nil
+}
+
+// planSize is the record's size once this publish's frames join the plan: the
+// bytes of every frame the plan names, so a move can say how much it copies.
+// A new record's plan is exactly its first frames; a plan whose size is known
+// grows by what was put; a plan begun before sizes were kept stays unknown
+// rather than counting only its latest frames.
+func planSize(d Driving, put []FrameFile) uint64 {
+	var bytes uint64
+	for _, f := range put {
+		bytes += uint64(max(f.Bytes, 0))
+	}
+	switch {
+	case d.Fence == 0 && len(d.Frames) == 0:
+		return bytes
+	case d.Size > 0:
+		return d.Size + bytes
+	}
+	return 0
 }
 
 // unionFrames joins the plan so far with this publish's frames, first-seen
@@ -135,6 +165,14 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string, ke
 	ex = p.skipHeld(ctx, c, ex)
 	ids := make([]string, 0, len(ex.Frames))
 	paths := make([]string, len(ex.Frames))
+	var sent, total int64
+	for _, f := range ex.Frames {
+		total += max(f.Bytes, 0)
+	}
+	if p.OnUpload != nil && total > 0 {
+		p.OnUpload(0, total)
+		defer p.OnUpload(0, 0)
+	}
 	for i, f := range ex.Frames {
 		id, actualBytes, err := p.put(ctx, f)
 		if err != nil {
@@ -146,6 +184,9 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string, ke
 		ex.Frames[i].Bytes = actualBytes
 		ids = append(ids, id)
 		paths[i] = f.Path
+		if sent += max(f.Bytes, 0); p.OnUpload != nil && total > 0 {
+			p.OnUpload(sent, total)
+		}
 	}
 	if len(paths) == 0 {
 		return ex, ids, nil
@@ -195,7 +236,7 @@ func (p *Publisher) move(ctx context.Context, d Driving, head string, in Publish
 	_, err := p.Dir.Publish(ctx, d.ID(), directory.Publish{
 		Fence: d.Fence, OldHead: d.Head, Head: head,
 		SavedAt: in.savedAt,
-		Size:    in.Size, Class: in.Class, Title: in.Title, Pending: in.Pending,
+		Size:    in.Size, Class: in.Class, Title: in.Title, Folder: in.Folder, Pending: in.Pending,
 		Frames: frames, FrameHints: in.hints,
 	})
 	return d.Fence, refusal(err)
@@ -222,7 +263,7 @@ func (p *Publisher) resume(ctx context.Context, d Driving, head string, in Publi
 
 func (p *Publisher) create(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
 	v, err := p.Dir.Create(ctx, d.ID(), directory.CellInit{
-		Head: head, Class: in.Class, Title: in.Title, Size: in.Size, Keys: in.Keys,
+		Head: head, Class: in.Class, Title: in.Title, Folder: in.Folder, Size: in.Size, Keys: in.Keys,
 		SavedAt: in.savedAt,
 		Frames:  frames, FrameHints: in.hints,
 	})

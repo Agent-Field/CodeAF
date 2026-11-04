@@ -297,6 +297,8 @@ type job struct {
 	replying      bool
 	replyCancel   context.CancelFunc
 	accepted      map[string]bool
+	signalIDs     map[string]bool
+	signalPending map[string]bool
 	acknowledged  map[string]bool
 	thread        []factory.Message
 	pending       *pendingDelivery
@@ -404,7 +406,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	beat := time.NewTicker(o.BeatEvery)
 	defer beat.Stop()
 	for {
-		if !o.Runner.Running(it.ID) && !j.replyingNow() && j.pending == nil && j.blocked == "" {
+		if !o.Runner.Running(it.ID) && !j.replyingNow() && !j.signalsWaiting() && j.pending == nil && j.blocked == "" {
 			if j.flushFinal(ctx) {
 				if cur, err := o.Mirror.Get(it.ID); err == nil {
 					_ = w.Done(ctx, j.lease, final(cur))
@@ -584,11 +586,40 @@ func (j *job) flushFinal(ctx context.Context) bool {
 func (j *job) beat(ctx context.Context) bool {
 	beatCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
 	defer cancel()
-	hb, err := j.w.Heartbeat(beatCtx, j.lease)
+	j.mu.Lock()
+	// Bound each header even after a long outage accumulates pending receipts.
+	const ackBatch = 256
+	acknowledged := make([]string, 0, ackBatch)
+	for id := range j.signalIDs {
+		acknowledged = append(acknowledged, id)
+		if len(acknowledged) == ackBatch {
+			break
+		}
+	}
+	j.mu.Unlock()
+	hb, err := j.w.Heartbeat(beatCtx, j.lease, acknowledged)
 	if j.lostLease(err) {
 		return false
 	}
 	if err == nil {
+		// A returned ID can still be redelivered; keep it deduplicated until
+		// the factory confirms its removal by omitting it from a successful beat.
+		redelivered := make(map[string]bool, len(hb.Signals))
+		for _, signal := range hb.Signals {
+			redelivered[signal.Delivery] = true
+		}
+		j.mu.Lock()
+		for id := range j.signalPending {
+			if !redelivered[id] {
+				delete(j.signalPending, id)
+			}
+		}
+		for _, id := range acknowledged {
+			if !redelivered[id] {
+				delete(j.signalIDs, id)
+			}
+		}
+		j.mu.Unlock()
 		j.keepLocal(hb.Lease)
 	}
 	return j.signals(ctx, hb.Signals)
@@ -599,10 +630,22 @@ func (j *job) beat(ctx context.Context) bool {
 func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 	r := j.o.Runner
 	for _, s := range signals {
+		j.mu.Lock()
+		seen := s.Delivery != "" && j.signalIDs[s.Delivery]
+		if !seen && s.Delivery != "" {
+			if j.signalPending == nil {
+				j.signalPending = map[string]bool{}
+			}
+			j.signalPending[s.Delivery] = true
+		}
+		j.mu.Unlock()
+		if seen {
+			continue
+		}
 		// A generic Resume or manager reply cannot bypass reconciliation of a
 		// rejected result. Stop remains available and unsent replies stay pending.
 		if j.blocked != "" && s.Verb == lease.SignalReconcile {
-			if j.recoverBlocked(ctx, true) {
+			if j.recoverBlocked(ctx, true, s.Delivery) {
 				return false
 			}
 			continue
@@ -610,15 +653,17 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		if j.blocked != "" && s.Verb != lease.SignalStop {
 			continue
 		}
+		var effectErr error
 		switch s.Verb {
 		case lease.SignalReply:
 			j.reply(ctx, s)
+			continue
 		case lease.SignalBudget:
 			// The cap arrives before the answer that lets the runner carry on.
 			if s.Budget <= 0 {
 				continue
 			}
-			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error {
+			effectErr = j.o.Mirror.Update(j.id, func(it *factory.Item) error {
 				it.Cap = s.Budget
 				if it.QKind == "cap" && s.Budget <= factory.JobLifetimeSpent(*it) {
 					it.Question, _ = (*run.Money)(nil).CapQuestion(*it)
@@ -627,11 +672,9 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 					}
 				}
 				return nil
-			}); err != nil {
-				return false
-			}
+			})
 		case lease.SignalHold:
-			_ = r.Hold(j.id, s.Yes)
+			effectErr = r.Hold(j.id, s.Yes)
 		case lease.SignalAnswer:
 			if s.PublishAnyway != nil {
 				if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error {
@@ -646,22 +689,27 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			}
 			if s.ID != "" {
 				it, err := j.o.Mirror.Get(j.id)
-				if err != nil || factory.PendingQuestionID(it) != s.ID {
+				if err != nil {
+					return true
+				}
+				if factory.PendingQuestionID(it) != s.ID {
+					j.ackSignal(s.Delivery)
 					continue
 				}
 			}
-			_ = r.Answer(j.id, s.Yes, s.Words)
+			effectErr = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
-			_ = r.Steer(j.id, s.Words)
+			effectErr = r.Steer(j.id, s.Words)
 		case lease.SignalModel:
-			_ = r.SetModelSelection(j.id, s.Words, s.Automatic)
+			effectErr = r.SetModelSelection(j.id, s.Words, s.Automatic)
 		case lease.SignalAutonomy:
-			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Autonomy = s.Words; return nil }); err != nil {
-				return false
-			}
+			effectErr = j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Autonomy = s.Words; return nil })
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
-			_ = r.Stop(j.id)
+			if err := r.Stop(j.id); err != nil && !j.signalMoot(s) {
+				return true
+			}
+			j.ackSignal(s.Delivery)
 			if r.Running(j.id) {
 				return true
 			}
@@ -670,14 +718,68 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			cur, err := j.o.Mirror.Get(j.id)
 			return err == nil && cur.PullRequest != nil && cur.PublishStatus != nil && cur.PublishStatus.State == "opened"
 		}
+		if effectErr != nil && !j.signalMoot(s) {
+			// Keep the lease and retry in order when the next beat redelivers.
+			return true
+		}
+		j.ackSignal(s.Delivery)
 	}
 	return true
+}
+
+// signalMoot requires saved job state, never just an execution error.
+func (j *job) signalMoot(s api.WorkerSignal) bool {
+	switch s.Verb {
+	case lease.SignalHold, lease.SignalSteer, lease.SignalStop, lease.SignalAnswer:
+	default:
+		return false
+	}
+	if j.o.Runner.Running(j.id) {
+		return false
+	}
+	it, err := j.o.Mirror.Get(j.id)
+	if err != nil {
+		return false
+	}
+	if s.Verb == lease.SignalAnswer && (it.Asking != nil || it.Question != "") {
+		return false
+	}
+	switch it.State {
+	case factory.StateNew, factory.StateLanded, factory.StateShipped, factory.StateDismissed:
+		return true
+	}
+	return false
+}
+
+func (j *job) signalsWaiting() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return len(j.signalPending) != 0
+}
+
+// ackSignal retains handled delivery until the factory confirms removal.
+func (j *job) ackSignal(id string) {
+	if id == "" {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.signalIDs == nil {
+		j.signalIDs = map[string]bool{}
+	}
+	j.signalIDs[id] = true
+	delete(j.signalPending, id)
 }
 
 // reply serializes manager turns while reporting and renewing continue.
 func (j *job) reply(ctx context.Context, s api.WorkerSignal) {
 	j.mu.Lock()
-	if j.replying || j.accepted[s.ID] || j.o.Reply == nil {
+	if j.accepted[s.ID] {
+		j.mu.Unlock()
+		j.ackSignal(s.Delivery)
+		return
+	}
+	if j.replying || j.o.Reply == nil {
 		j.mu.Unlock()
 		return
 	}
@@ -690,6 +792,9 @@ func (j *job) reply(ctx context.Context, s api.WorkerSignal) {
 		it, err := j.o.Mirror.Get(j.id)
 		if err == nil {
 			err = j.o.Reply(ctx, it, s.Words)
+		}
+		if err == nil {
+			j.ackSignal(s.Delivery)
 		}
 		j.mu.Lock()
 		if err == nil {
@@ -720,7 +825,7 @@ func (j *job) converse(ctx context.Context) {
 				return
 			}
 			j.mu.Lock()
-			finished := !j.replying && len(j.accepted) > 0
+			finished := !j.replying && len(j.accepted) > 0 && len(j.signalPending) == 0
 			j.mu.Unlock()
 			if finished && j.flushFinal(ctx) {
 				_ = j.w.Done(ctx, j.lease, api.WorkerDone{})

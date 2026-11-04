@@ -355,6 +355,9 @@ func (b *appBackend) openingNotices(a *appAgent, conn *appConn) {
 	for i, line := range strings.Split(note, "\n") {
 		b.sayLocalNotice(a, "", fmt.Sprintf("%d:%s", i, line), line)
 	}
+	if conn.OlderModels {
+		b.sayLocalNotice(a, "", "older-host-models", appOlderHostModels)
+	}
 }
 
 // moveWindow runs outside the standing lane so finishing can join that lane.
