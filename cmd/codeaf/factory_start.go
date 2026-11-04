@@ -53,6 +53,9 @@ const (
 func startItem(st *store.Store, workspace, profileDir string, it factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
 	seam := factoryCheckouts(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(dirs)), st, dirs, factoryTokenOf(factoryProfile(profileDir)))
+	if err := factory.CheckPersonStop(it); err != nil {
+		return "", err
+	}
 	ref := it.Ref()
 	switch it.State {
 	case factory.StateLanded:

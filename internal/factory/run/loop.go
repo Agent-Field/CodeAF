@@ -178,6 +178,9 @@ func (r *Runner) Launch(id int) error {
 	if err != nil {
 		return err
 	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	// A PAUSED ITEM'S LAUNCH IS ITS RUN: the one top-bar button resumes it.
 	if done, err := r.resumePaused(it); done || err != nil {
 		return err
@@ -275,6 +278,9 @@ func strangerWrites(it factory.Item) error {
 // dismissed, or never put anywhere yet. A dropped job is refused with its way
 // back ([factory.RefuseDropped]).
 func launchable(it factory.Item) error {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}
@@ -439,6 +445,9 @@ func (lp *floorLoop) move(c *loopCtl, stage string, kind EventKind, text string,
 		return errLoopStopped
 	}
 	if err := lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return err
+		}
 		if kind != EventQueued && it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
 			return errLoopStopped
 		}
@@ -1572,6 +1581,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	return Job{
+		BeforeWrite:     func(ctx context.Context) error { return lp.r.publishBoundary(ctx, c.id) },
 		Lifetime:        c.ctx,
 		PendingSpend:    c.pendingSpend,
 		Item:            it,
@@ -2007,31 +2017,32 @@ func (r *Runner) Withdraw(id int) {
 func (r *Runner) Stop(id int) error {
 	lp := r.loop()
 	if c := lp.ctl(id); c != nil {
-		lp.stop(c)
-		return nil
-	}
-	it, err := r.opts.Store.Get(id)
-	if err != nil {
-		return err
-	}
-	switch it.State {
-	case factory.StateQueued, factory.StateRunning, factory.StateNeedsYou:
-		// AN ITEM NOBODY IS RUNNING IS NOT RUNNING, whatever its document
-		// says: a process that died mid-round left it so, and stop puts it
-		// back where a person can launch it again.
-		now := r.now()
-		var cut *factory.StepProgress
 		if err := r.opts.Store.Update(id, func(it *factory.Item) error {
-			cut = endRun(it, now, nil)
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
 			return nil
 		}); err != nil {
 			return err
 		}
-		lp.emit(id, "", EventStopped, "stopped")
-		lp.tellStep(id, sayStopped, cut)
+		lp.stop(c)
 		return nil
 	}
-	return fmt.Errorf("%s is not running", it.Ref())
+	now := r.now()
+	var cut *factory.StepProgress
+	if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		if !factory.UnderWay(*it) {
+			return fmt.Errorf("%s is not running", it.Ref())
+		}
+		cut = endRun(it, now, nil)
+		factory.MarkPersonStopped(it)
+		it.Asking = nil
+		return nil
+	}); err != nil {
+		return err
+	}
+	lp.emit(id, "", EventStopped, "stopped")
+	lp.tellStep(id, sayStopped, cut)
+	return nil
 }
 
 // stopStored is a person's stop with no run to cancel. A failure the job
@@ -2045,12 +2056,13 @@ func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
 // BOTH PATHS: the loop's own stop and a stop of a job no runner here holds
 // write exactly this.
 //
-// A PERSON'S STOP IS MARKED ONLY WHERE IT CUT A STEP. A step under way
+// A stopped-step failure is recorded only where Stop cut a step. The durable
+// person-stop record also covers queued jobs and completed proof. A step under way
 // (running or waiting) is failed with [stoppedByYou], and the job carries the
 // same stop, so it never reads as a fresh job with a step still running, and
 // running that step again carries on from it. A job stopped before any step
 // began (queued) or after the last one ended (landed) lost nothing: it is
-// simply back in the backlog with no failure, where a start picks it up.
+// stopped with no failed step; a person's Start grants execution again.
 //
 // It answers the step the stop cut, for the manager's `stopped` line: failed
 // when why is the step's own error, stopped when it is a person's; nil when it
@@ -2150,6 +2162,9 @@ func (r *Runner) Hold(id int, on bool) error {
 	if err != nil {
 		return err
 	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}
@@ -2243,6 +2258,9 @@ func (r *Runner) resumePaused(it factory.Item) (done bool, err error) {
 // it paused) a control again and puts it back on a bench. It goes on at the
 // phase and round it stopped in, and the phase's chat is carried on.
 func (r *Runner) revive(it factory.Item) error {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	lp := r.loop()
 	id := it.ID
 	if r.opts.Rail != nil && r.opts.SpentToday != nil {
@@ -2487,6 +2505,9 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 // HTTP door runs it before writing an approval, so a claim that is not shown
 // never leaves a receipt the publish door would then refuse.
 func ApprovalRefused(it *factory.Item, edited bool) error {
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if it.State != factory.StateLanded {
 		return fmt.Errorf("%s has not landed", it.Ref())
 	}

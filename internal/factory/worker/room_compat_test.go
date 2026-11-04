@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ const compatSpend = 0.25
 
 // reportLog is every report body the factory's wrapper saw, in order.
 type reportLog struct {
+	steps  atomic.Int32
 	mu     sync.Mutex
 	bodies []string
 }
@@ -77,6 +79,7 @@ func compatRig(t *testing.T, wrap func(next http.Handler, seen *reportLog) http.
 	r := run.New(run.Options{
 		Store: mirror,
 		Exec: map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(ctx context.Context, job run.Job) (factory.StageResult, error) {
+			seen.steps.Add(1)
 			if err := mirror.Annotate(job.Item.ID, func(it *factory.Item) error {
 				if it.Stream != nil {
 					it.Stream.Room = compatRoom
