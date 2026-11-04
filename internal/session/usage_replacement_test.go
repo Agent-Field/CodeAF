@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -108,5 +109,42 @@ func TestReview2332RewrittenLedgerDropsAbsentCharge(t *testing.T) {
 	t.Logf("same-inode/same-size rewritten ledger expected=$0.002000 recorded=$%.6f rows=%d drops=%d", total, n, UsageDrops()-before)
 	if n != 2 || math.Abs(total-.002) > 1e-9 || UsageDrops() != before {
 		t.Fatal("stale identity map suppresses a paid call absent from current ledger")
+	}
+}
+
+func TestLedgerReplayAfterInteriorRewriteAndGrowth(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	defer StopUsageWriter(path)
+	paid := UsageLine{ID: "a", Input: 1, USD: .001}
+	for i := range 200 {
+		line := UsageLine{ID: fmt.Sprintf("historical-%03d", i), Input: 1, USD: .001}
+		if i == 100 {
+			line = paid
+		}
+		RecordUsage(path, line)
+	}
+	if !FlushUsage() {
+		t.Fatal("initial flush")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := bytes.Replace(raw, []byte(`"id":"a"`), []byte(`"id":"b"`), 1)
+	if bytes.Equal(raw, rewritten) {
+		t.Fatal("fixture did not replace interior identity")
+	}
+	rewritten = append(rewritten, []byte("{\"at\":\"2026-11-03T12:00:00Z\",\"id\":\"external\",\"in\":1,\"usd\":0.001}\n")...)
+	if err = os.WriteFile(path, rewritten, 0600); err != nil {
+		t.Fatal(err)
+	}
+	RecordUsage(path, paid)
+	if !FlushUsage() {
+		t.Fatal("replay flush")
+	}
+	total, n := review2332Total(t, path)
+	t.Logf("interior rewrite plus growth expected=$0.202000 recorded=$%.6f rows=%d want_rows=202", total, n)
+	if n != 202 || math.Abs(total-.202) > 1e-9 {
+		t.Fatal("stale interior identity suppressed absent charge")
 	}
 }

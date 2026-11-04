@@ -27,7 +27,8 @@ the ledger. This wait follows the provider's 70-second bound; timeout warns that
 spending may be incomplete and lets quit proceed.
 
 Ledger writers validate their cached prefix before suppressing a replay. A
-same-size rewrite invalidates cached identities, and rotation reopens the active
+same-size rewrite invalidates cached identities. Suppression also checks the
+actual cached row, covering interior rewrites followed by growth. Rotation reopens the active
 path and retries the same charge rather than losing it or writing to the archive.
 
 First-write identity scanning now streams rows with a reused decode buffer

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"runtime"
 	"testing"
 	"time"
 
@@ -57,11 +59,7 @@ func processCloseReceipt(t *testing.T, forgotten, timeout bool) {
 			t.Fatal("quit exceeded bounded receipt wait")
 		}
 	} else {
-		select {
-		case <-closed:
-			early = true
-		case <-time.After(50 * time.Millisecond):
-		}
+		early = !processWaitingForReceipt(t, closed)
 	}
 	// Observe shutdown before allowing the real local HTTP receipt to settle.
 	if !timeout {
@@ -90,5 +88,36 @@ func processCloseReceipt(t *testing.T, forgotten, timeout bool) {
 	}
 	if early || got != want {
 		t.Errorf("shutdown receipt total: expected=$%.9f recorded=$%.9f", want, got)
+	}
+}
+
+// Observe the real shutdown waiter before releasing HTTP. Stack inspection is
+// synchronization only; the assertion remains the durable public ledger total.
+// This avoids a production test hook and follows liveUsageWriters' precedent.
+func processWaitingForReceipt(t *testing.T, closed <-chan struct{}) bool {
+	t.Helper()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	stack := make([]byte, 64<<10)
+	for {
+		n := runtime.Stack(stack, true)
+		if n == len(stack) {
+			stack = make([]byte, 2*len(stack))
+			continue
+		}
+		for _, thread := range bytes.Split(stack[:n], []byte("\n\n")) {
+			if bytes.Contains(thread, []byte("session.(*Agent).WaitReceipts")) && bytes.Contains(thread, []byte("(*v3Process).closeAll.func")) {
+				return true
+			}
+		}
+		select {
+		case <-closed:
+			return false
+		case <-deadline.C:
+			t.Fatal("shutdown did not reach receipt settlement")
+			return false
+		default:
+			runtime.Gosched()
+		}
 	}
 }
