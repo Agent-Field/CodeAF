@@ -270,6 +270,23 @@ func (b *appBackend) rememberLazyMember(id string) {
 	}
 }
 
+// liveAfterOpen is a's held conversation, waiting out an open already in
+// progress: an open holds the agent's gate until the conversation is live or
+// has failed, so a reader never takes "being opened" for "not held".
+func (b *appBackend) liveAfterOpen(a *appAgent) *appLive {
+	if live := b.liveOf(a); live != nil {
+		return live
+	}
+	opening := false
+	b.locked(func() { opening = a.opening })
+	if !opening {
+		return nil
+	}
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	return b.liveOf(a)
+}
+
 // findCrewOwner restores the owner-backed answer an open crew had before its
 // idle members became light records. Other closed conversations stay closed.
 func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {

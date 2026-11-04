@@ -90,7 +90,7 @@ func (b *appBackend) ProcessActions(ctx context.Context, id string) (*appwire.Pr
 	var record session.JobNotice
 	unknown := ""
 	answered := false
-	live := b.liveOf(a)
+	live := b.liveAfterOpen(a)
 	if live != nil {
 		if actor, can := live.conn.Conv.(appProcessActor); can {
 			facts, err := actor.ProcessActions(ctx, job, ms)

@@ -467,3 +467,38 @@ func TestProcessActionsOpensALightCrewOwnerOnce(t *testing.T) {
 		t.Fatalf("concurrent actions opened %d owners", got)
 	}
 }
+
+// A SLOW OPEN IS STILL AN OWNER. Callers that arrive while the light owner is
+// being opened wait for it, and none of them reads the job as not held.
+func TestProcessActionsWhileALightCrewOwnerIsStillOpening(t *testing.T) {
+	b, _, paths, opens := lazyBackend(t, 1)
+	b.crews()
+	job := session.JobNotice{ID: 41, Kind: session.JobKindCommand, State: session.JobDone, Started: time.UnixMilli(1700000000000)}
+	seedRecords(t, filepath.Dir(paths[0]), job)
+	engine := &actorEngine{fakeConversation: &fakeConversation{}, record: job, facts: session.ProcessActions{
+		Record: job, Rerun: session.ProcessAction{Available: true},
+	}}
+	opener := b.open
+	b.open = func(ask appOpenAsk) (*appConn, error) {
+		time.Sleep(300 * time.Millisecond)
+		conn, err := opener(ask)
+		if err == nil {
+			conn.Conv = engine
+		}
+		return conn, err
+	}
+	id := appProcessID(appAgentID(paths[0]), job)
+	var wg sync.WaitGroup
+	for range 12 {
+		wg.Go(func() {
+			got, err := b.ProcessActions(context.Background(), id)
+			if err != nil || !got.Rerun.Available {
+				t.Errorf("light owner's actions: rerun %+v stop %+v %v", got.Rerun, got.Stop, err)
+			}
+		})
+	}
+	wg.Wait()
+	if got := opens.Load(); got != 1 {
+		t.Fatalf("concurrent actions opened %d owners", got)
+	}
+}
