@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"math"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -399,9 +400,12 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		if r.SavedAt > 0 {
 			row.SavedAt = time.UnixMilli(r.SavedAt).UTC()
 		}
+		row.Folder = r.Folder
 		if l, ok := local[r.Cell]; ok {
 			row.LocalAgent = l.agent
 			row.CanTake = row.CanTake && l.copyable
+		} else if !here && r.Size > 0 {
+			row.Size = int64(min(r.Size, math.MaxInt64))
 		}
 		if row.Here {
 			row.Status = "here"

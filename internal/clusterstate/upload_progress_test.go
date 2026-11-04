@@ -34,3 +34,20 @@ func TestLeaseKeepsUploadProgressOnlyWhilePending(t *testing.T) {
 		t.Fatalf("an acquire kept progress: %+v, %v", taken.Lease, err)
 	}
 }
+
+// A record keeps the folder its creator named, and a publish that names none
+// keeps it, like the title.
+func TestRecordKeepsItsFolder(t *testing.T) {
+	c := Created(CellInit{Head: "h", Folder: "sealed-folder"}, "dev_a", 5)
+	if c.Folder != "sealed-folder" {
+		t.Fatalf("created %+v", c)
+	}
+	kept, err := PublishTo(c, "dev_a", Publish{Fence: c.Lease.Fence, OldHead: "h", Head: "h2"}, 6)
+	if err != nil || kept.Folder != "sealed-folder" {
+		t.Fatalf("a publish without a folder lost it: %+v, %v", kept, err)
+	}
+	moved, err := PublishTo(kept, "dev_a", Publish{Fence: c.Lease.Fence, OldHead: "h2", Head: "h3", Folder: "other"}, 7)
+	if err != nil || moved.Folder != "other" {
+		t.Fatalf("a publish naming a folder did not replace it: %+v, %v", moved, err)
+	}
+}

@@ -65,9 +65,12 @@ type PublishInfo struct {
 	hints        []directory.FrameHint
 	savedAt      int64
 	Class, Title string
-	Size         uint64
-	Pending      uint32
-	Keys         map[string]map[string]string
+	// Folder is the sealed name of the folder the chat works in, "" when it
+	// has none worth naming.
+	Folder  string
+	Size    uint64
+	Pending uint32
+	Keys    map[string]map[string]string
 }
 
 // Publish uploads what head needs and then moves the directory head. Any store
@@ -233,7 +236,7 @@ func (p *Publisher) move(ctx context.Context, d Driving, head string, in Publish
 	_, err := p.Dir.Publish(ctx, d.ID(), directory.Publish{
 		Fence: d.Fence, OldHead: d.Head, Head: head,
 		SavedAt: in.savedAt,
-		Size:    in.Size, Class: in.Class, Title: in.Title, Pending: in.Pending,
+		Size:    in.Size, Class: in.Class, Title: in.Title, Folder: in.Folder, Pending: in.Pending,
 		Frames: frames, FrameHints: in.hints,
 	})
 	return d.Fence, refusal(err)
@@ -260,7 +263,7 @@ func (p *Publisher) resume(ctx context.Context, d Driving, head string, in Publi
 
 func (p *Publisher) create(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
 	v, err := p.Dir.Create(ctx, d.ID(), directory.CellInit{
-		Head: head, Class: in.Class, Title: in.Title, Size: in.Size, Keys: in.Keys,
+		Head: head, Class: in.Class, Title: in.Title, Folder: in.Folder, Size: in.Size, Keys: in.Keys,
 		SavedAt: in.savedAt,
 		Frames:  frames, FrameHints: in.hints,
 	})

@@ -75,6 +75,9 @@ func (h *HTTP) Create(ctx context.Context, id string, in CellInit) (v CellView, 
 	if in.SavedAt != 0 && !h.savedTurnTimes(ctx, id) {
 		in.SavedAt = 0
 	}
+	if in.Folder != "" && !h.chatFolders(ctx, id) {
+		in.Folder = ""
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, ""), in, &v)
 }
 
@@ -136,6 +139,21 @@ const UploadProgressHeader = "Codeaf-Upload-Progress"
 
 var uploadProgressServices sync.Map
 
+// ChatFoldersHeader advertises a record's optional sealed folder name. Older
+// relays strictly decode signed bodies, so clients omit the field without it.
+const ChatFoldersHeader = "Codeaf-Chat-Folders"
+
+var chatFolderServices sync.Map
+
+func (h *HTTP) chatFolders(ctx context.Context, id string) bool {
+	if known, ok := chatFolderServices.Load(h.serviceKey()); ok {
+		return known == true
+	}
+	_, _ = h.Cell(ctx, id)
+	known, _ := chatFolderServices.Load(h.serviceKey())
+	return known == true
+}
+
 func (h *HTTP) savedTurnTimes(ctx context.Context, id string) bool {
 	if known, ok := savedTimeServices.Load(h.serviceKey()); ok {
 		return known == true
@@ -173,6 +191,9 @@ func (h *HTTP) Heartbeat(ctx context.Context, id string, b Beat) (v CellView, er
 func (h *HTTP) Publish(ctx context.Context, id string, p Publish) (v CellView, err error) {
 	if p.SavedAt != 0 && !h.savedTurnTimes(ctx, id) {
 		p.SavedAt = 0
+	}
+	if p.Folder != "" && !h.chatFolders(ctx, id) {
+		p.Folder = ""
 	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "publish"), p, &v)
 }
@@ -231,6 +252,7 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	if resp.StatusCode < http.StatusInternalServerError {
 		savedTimeServices.Store(h.serviceKey(), resp.Header.Get(SavedTurnTimeHeader) == "1")
 		uploadProgressServices.Store(h.serviceKey(), resp.Header.Get(UploadProgressHeader) == "1")
+		chatFolderServices.Store(h.serviceKey(), resp.Header.Get(ChatFoldersHeader) == "1")
 	}
 	if resp.StatusCode >= 300 {
 		return resp.Header, refusal(resp)

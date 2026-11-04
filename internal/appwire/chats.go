@@ -19,23 +19,29 @@ type Seen struct {
 	Head   string `json:"head,omitempty"`
 }
 type ChatRow struct {
-	Cell         string          `json:"cell"`
-	Title        string          `json:"title"`
-	LocalAgent   string          `json:"local_agent,omitempty"`
-	Here         bool            `json:"here"`
-	Holder       *LocationHolder `json:"holder,omitempty"`
-	Online       *bool           `json:"online,omitempty"`
-	SavedAt      time.Time       `json:"saved_at,omitzero"`
-	Status       string          `json:"status" enum:"here,running,idle,off"`
-	Crew         string          `json:"crew,omitempty"`
-	Seen         Seen            `json:"seen"`
-	CanTake      bool            `json:"can_take"`
-	Taking       bool            `json:"taking"`
-	Sharing      *ChatSharing    `json:"sharing,omitempty"`
-	Move         *ChatMove       `json:"move,omitempty"`
-	MoveEnded    *ChatMoveEnded  `json:"move_ended,omitempty"`
-	Line         string          `json:"line,omitempty"`
-	TakeoverLine string          `json:"takeover_line,omitempty"`
+	Cell       string          `json:"cell"`
+	Title      string          `json:"title"`
+	LocalAgent string          `json:"local_agent,omitempty"`
+	Here       bool            `json:"here"`
+	Holder     *LocationHolder `json:"holder,omitempty"`
+	Online     *bool           `json:"online,omitempty"`
+	SavedAt    time.Time       `json:"saved_at,omitzero"`
+	Status     string          `json:"status" enum:"here,running,idle,off"`
+	Crew       string          `json:"crew,omitempty"`
+	Seen       Seen            `json:"seen"`
+	CanTake    bool            `json:"can_take"`
+	Taking     bool            `json:"taking"`
+	// Folder is the name of the folder the chat works in on its holder, when
+	// the holder said; Size is the bytes moving it here copies, absent when
+	// unknown or when this computer already has a copy (a move then copies
+	// only what changed).
+	Folder       string         `json:"folder,omitempty"`
+	Size         int64          `json:"size,omitempty"`
+	Sharing      *ChatSharing   `json:"sharing,omitempty"`
+	Move         *ChatMove      `json:"move,omitempty"`
+	MoveEnded    *ChatMoveEnded `json:"move_ended,omitempty"`
+	Line         string         `json:"line,omitempty"`
+	TakeoverLine string         `json:"takeover_line,omitempty"`
 }
 
 // ChatSharing says the computer holding the chat has sealed turns it has not

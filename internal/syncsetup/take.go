@@ -842,7 +842,20 @@ func (s *Sync) publishInfo(c cell.Cell, title string) cellsync.PublishInfo {
 	if title != "" {
 		in.Title, _ = directory.SealTitle(directory.MetadataKey(s.Identity.CellKey()), title)
 	}
+	if folder := chatFolder(c.Root); folder != "" {
+		in.Folder, _ = directory.SealTitle(directory.MetadataKey(s.Identity.CellKey()), folder)
+	}
 	return in
+}
+
+// chatFolder is the name of the project folder a chat works in, which a move
+// copies with it; "" for a chat in its own private folder or with no meta.
+func chatFolder(root string) string {
+	meta, err := session.LoadMeta(root)
+	if err != nil || meta.Owned || meta.Workspace == "" {
+		return ""
+	}
+	return filepath.Base(filepath.Clean(meta.Workspace))
 }
 
 // Driving is how this device drives c now: the directory id it drives (the

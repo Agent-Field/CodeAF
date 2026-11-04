@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 )
 
 // The continue's line says what it is doing and how much has come through.
@@ -60,5 +63,23 @@ func TestAStalledContinueSaysWhy(t *testing.T) {
 	got := a.continueFailure(homeTakenMsg{row: continueRows[0], err: fmt.Errorf("%w: handoff: fetch", ErrMoveStalled)})
 	if !strings.Contains(got, "stopped: nothing came through for 2 minutes; the chat is still on host-a") {
 		t.Fatalf("a stalled continue says %q", got)
+	}
+}
+
+// Before a big folder the continue card says what moving it copies.
+func TestContinueCardWarnsBeforeABigFolder(t *testing.T) {
+	big := chatlist.Row{Cell: "c-big", Title: "Index", Device: "host-a", Status: chatlist.Off, DurableAgo: time.Hour, Folder: "CodeAF", Size: 1500 << 20}
+	if got := continueReason(big); !strings.Contains(got, "this chat works in the CodeAF folder on host-a; moving it copies that folder too: 1.5 GB, which can take several minutes") {
+		t.Fatalf("the card says %q", got)
+	}
+	small := big
+	small.Size = 20 << 20
+	if got := continueReason(small); strings.Contains(got, "copies that folder") {
+		t.Fatalf("a small chat warned: %q", got)
+	}
+	unnamed := big
+	unnamed.Folder = ""
+	if got := continueReason(unnamed); !strings.Contains(got, "this chat works in a folder on host-a") {
+		t.Fatalf("a chat with no folder name says %q", got)
 	}
 }

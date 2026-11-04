@@ -1468,7 +1468,17 @@ carry `upload_sent`/`upload_total` only to a relay that answers
 `Codeaf-Upload-Progress: 1`, which keeps them on the lease until the next
 publish, release or acquire. The record's `size`, set by publishers since
 this change, is the bytes of the frames its plan names (`0`: unknown); a move
-shows it as `move.total`.
+shows it as `move.total`. A chat shared in the background gets the bytes its
+upload attempts put.
+
+Before a move, a row says what it would copy: `folder` is the name of the
+folder the chat works in on its holder (absent for a chat in its own private
+folder, from older publishers, or from a relay that does not answer
+`Codeaf-Chat-Folders: 1`; publishers send the sealed name only then), and
+`size` is the record's size, absent when unknown or when this computer already
+has a copy of the chat (a move then copies only what changed). The desktop asks
+before moving a chat whose `size` is over 100 MB; the terminal's continue card
+says it.
 Older chats working in the home folder stay local.
 Copy `cell` and `seen` verbatim to `agents.take`; never open an agent using the
 remote cell id. It returns the adopted local Agent through the normal open path.

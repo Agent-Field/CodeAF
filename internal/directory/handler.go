@@ -65,6 +65,7 @@ func (h *handler) serve(rt route) http.HandlerFunc {
 		w.Header().Set(SavedTurnTimeHeader, "1")
 		w.Header().Set(HeadTakeHeader, "1")
 		w.Header().Set(UploadProgressHeader, "1")
+		w.Header().Set(ChatFoldersHeader, "1")
 		c, err := h.admit(w, r)
 		if err != nil {
 			refuse(w, err)

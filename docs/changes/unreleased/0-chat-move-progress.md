@@ -35,5 +35,12 @@ how it ended.
   (`upload_sent`/`upload_total`) only to a relay that answers
   `Codeaf-Upload-Progress: 1`; the Go relay does, the hosted relay does not yet,
   so rows from it say the chat is still being shared without numbers.
+- **Asks before a big folder.** Rows carry `folder` (the sealed folder name,
+  published only to relays that answer `Codeaf-Chat-Folders: 1`) and `size`,
+  so the app can ask "Move this chat here?" before copying more than 100 MB
+  (`chatlist.BigMoveBytes`). The terminal's continue card says the same. Chats
+  shared in the background now get a size too. Only chats shared after this
+  change have a size; the hosted relay does not keep folder names yet, so
+  against it the question says "a folder".
 - **The terminal** follows a continue on home's line ("copying to this computer:
   412 of 1,433 MB…") and stops after the same 2 minutes with the same reason.

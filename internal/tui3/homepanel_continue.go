@@ -338,7 +338,7 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			Form:    session.FormCard,
 			Asker:   session.Asker{Kind: session.AskerSurface},
 			Head:    continueAsk,
-			Reason:  chatlist.TakeoverLine(row),
+			Reason:  continueReason(row),
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: []session.AnswerOption{
 				{Key: "1", Label: chatlist.OfferContinue},
@@ -363,6 +363,15 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			return a.takeRemote(row)
 		},
 	}
+}
+
+// continueReason is the takeover sentence, and before a big folder the
+// warning that moving it copies the folder too.
+func continueReason(row chatlist.Row) string {
+	if big := chatlist.BigMoveLine(row); big != "" {
+		return chatlist.TakeoverLine(row) + "; " + big
+	}
+	return chatlist.TakeoverLine(row)
 }
 
 // continueBusyShown tells the person on the card itself that another take is

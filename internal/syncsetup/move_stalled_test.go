@@ -3,10 +3,14 @@ package syncsetup
 import (
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // A move whose bytes stop arriving ends with ErrMoveStalled once it has waited
@@ -71,6 +75,12 @@ func TestAMoveShowsTheChatsSizeAsItsTotal(t *testing.T) {
 	if v.Cell.Size == 0 {
 		t.Fatal("a published chat's record has no size")
 	}
+	meta, err := session.LoadMeta(h.cell.Root)
+	mustNil(t, err)
+	folder, err := directory.OpenName(directory.MetadataKey(h.a.Identity.CellKey()), v.Cell.Folder)
+	if err != nil || folder != filepath.Base(meta.Workspace) {
+		t.Fatalf("the record names folder %q (%v), want %q", folder, err, filepath.Base(meta.Workspace))
+	}
 	continuer := h.continuerB()
 	var total, done atomic.Int64
 	continuer.opt.OnMove = func(p MoveProgress) {
@@ -86,5 +96,19 @@ func TestAMoveShowsTheChatsSizeAsItsTotal(t *testing.T) {
 	}
 	if done.Load() == 0 {
 		t.Fatal("the move reported no bytes copied")
+	}
+}
+
+// A chat shared in the background says how many bytes a copy takes, so a
+// computer about to move it can warn before a big folder.
+func TestABackgroundSharedChatHasASize(t *testing.T) {
+	r := newDriveRig(t)
+	s := r.a
+	c := savedHomeChat(t, r, projectsOf(s), "big folder", 1<<20)
+	mustNil(t, s.PublishLocalChats(t.Context(), time.Now, nil))
+	v, err := s.Dir.Cell(t.Context(), c.ID)
+	mustNil(t, err)
+	if v.Cell.Size < 1<<20 {
+		t.Fatalf("a background-shared 1 MB chat's record says %d bytes", v.Cell.Size)
 	}
 }
