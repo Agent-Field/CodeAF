@@ -40,12 +40,14 @@ func (c *usageIdentityCursor) append(file *os.File, raw []byte) (bool, error) {
 		return false, err
 	}
 	var line struct {
-		ID string `json:"id"`
+		ID          string `json:"id"`
+		RemoteEvent string `json:"remote_event"`
 	}
 	if err := json.Unmarshal(raw, &line); err != nil {
 		return false, err
 	}
-	duplicate, err := c.duplicate(reader, line.ID)
+	id := (UsageLine{ID: line.ID, RemoteEvent: line.RemoteEvent}).ChargeID()
+	duplicate, err := c.duplicate(reader, id)
 	if err != nil {
 		return false, err
 	}
@@ -65,8 +67,8 @@ func (c *usageIdentityCursor) append(file *os.File, raw []byte) (bool, error) {
 	if _, err := file.Write(raw); err != nil {
 		return false, err
 	}
-	if line.ID != "" && !duplicate {
-		c.seen[line.ID] = position
+	if id != "" && !duplicate {
+		c.seen[id] = position
 	}
 	c.offset += int64(len(raw))
 	c.newline = false
@@ -112,8 +114,8 @@ func (c *usageIdentityCursor) readTail(file *os.File) error {
 	// object. An incomplete object stays invalid, without losing later charges.
 	start := c.offset
 	_, err = scanUsageLines(io.MultiReader(io.NewSectionReader(file, c.offset, size), strings.NewReader("\n")), -1, func(offset int64, row UsageLine) error {
-		if row.ID != "" {
-			c.seen[row.ID] = start + offset
+		if id := row.ChargeID(); id != "" {
+			c.seen[id] = start + offset
 		}
 		return nil
 	})
@@ -176,7 +178,7 @@ func (c *usageIdentityCursor) duplicate(file *os.File, id string) (bool, error) 
 		return false, err
 	}
 	var row UsageLine
-	if json.Unmarshal(raw, &row) == nil && !row.At.IsZero() && row.ID == id {
+	if json.Unmarshal(raw, &row) == nil && !row.At.IsZero() && row.ChargeID() == id {
 		return true, nil
 	}
 	*c = usageIdentityCursor{}

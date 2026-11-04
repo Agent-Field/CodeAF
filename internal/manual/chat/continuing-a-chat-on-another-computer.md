@@ -263,11 +263,11 @@ Press enter on the kept turns' row. The card offers `1 open separately`, `2 disc
 
 Turns already shared do not become kept edits. Usage, reconciled task cost, naming failures and memory bookkeeping alone create no extra branch, kept-turns row or “kept as” notice. Their recorded usage stays in this computer's usage ledger. Opening an unchanged chat adds no empty turn, including when another computer holds it.
 
-## Spending after continuing a chat — delayed cost receipts and older saved calls
+## Spending after a move
 
-Continuing a chat adds saved calls missing from this computer's usage ledger once. New calls carry shared identities, so their delayed cost receipts do not hide another saved call or repeat a call already recorded. Separate calls with the same model, token counts and cost remain separate calls. A receipt arriving after the conversation closes stays in the home where the chat opened.
+Saved calls missing from this computer’s ledger are added once. Shared call identities distinguish separate calls with identical prices and tokens. Remote charges keep their event identities alongside ordinary saved calls. Late receipts stay in the home where the chat opened.
 
-Older saved calls without shared call identities keep the previous assumption that usage rows already on disk cover the earliest saved calls in order. All newly recorded live usage, including delegate charges, memory calls, unbilled markers and mirrored remote charges, is marked and excluded from that old-row count. Imported older calls keep their historical coverage. Unmarked rows from earlier builds can have independent ledger IDs; they cannot be distinguished reliably from old-call coverage. Queued, out-of-order or unrelated unmarked rows cannot be matched exactly. Old saved chats and usage ledgers still load without migration. After a ledger is replaced or modified, mirrored remote charges check the restored ledger before accepting or suppressing a replay.
+Old unidentified calls use settled ledger rows as an ordered prefix. New live rows and remote events cannot cover that prefix. Unrelated unmarked rows, queued receipts and out-of-order old calls cannot be matched exactly. Old files load without migration.
 
 ## The chat is arriving on this computer — why it waits to open
 

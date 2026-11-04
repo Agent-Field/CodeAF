@@ -10,8 +10,7 @@ invalidates:
 
 A new shared-identity receipt is marked in the ledger so it no longer hides
 another saved call, including an older saved call in a mixed chat. Every live
-usage producer now receives that
-exclusion at the shared recorder, including delegate and fallback memory charges
+usage producer now receives that exclusion at the shared recorder, including delegate and fallback memory charges
 that supply no call identity. Historical imports use a separate entry point so
 unidentified old calls still cover their settled prefix. A queued live row
 and a take import of that call produce one ledger row, including when writers
@@ -38,6 +37,15 @@ interior restore introduces a previously uncached identity. Both present and
 absent identities are checked against that rebuilt generation. This can require
 a full scan when writers alternate across processes. Rotation reopens the active
 path and retries the same charge rather than losing it or writing to the archive.
+
+Mirrored remote charges retain their event identity through transcript digestion
+and take imports, even alongside ordinary sealed calls. Each receiving ledger
+compares the remote event independently of its row ID and provenance marker,
+including older rows that retain the remote event. Imports and live replay recognize the same event;
+remote rows cannot cover an unidentified ordinary call. Previously a remote-only
+round trip could repeat spending, while one ordinary receipt could hide all
+remote spending from the import. Earlier imports that discarded the remote
+event cannot be repaired automatically: their unidentified rows remain ambiguous.
 
 Mirrored remote charges also invalidate cached event membership after inode,
 size or modification-time changes. Removed events can be booked again and events

@@ -17,7 +17,8 @@ import (
 )
 
 // usageIndex is this session's share of the machine-wide usage ledger: one row
-// per model call the receipt chain sealed, so a rewind never drops spend. A cell
+// per ordinary sealed call and mirrored remote event. A rewind never drops
+// sealed ordinary spend. A cell
 // sealed before receipts carried model calls falls back to the usage lines the
 // transcript journaled.
 //
@@ -62,8 +63,8 @@ func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 // missingUsage reconciles identities rather than assuming all ledger rows are
 // an ordered prefix of saved calls. Legacy calls have no shared identity. For
 // those only, retain the old prefix rule after removing shared-identity rows
-// and identified saved calls from the row count. Legacy rows must already be settled and cover the saved
-// calls in order. Queued or out-of-order legacy receipts cannot be reconciled
+// and identified saved calls from the row count. Remote events never cover an
+// ordinary call. Legacy rows must already be settled and cover saved calls in order. Queued or out-of-order legacy receipts cannot be reconciled
 // exactly; their model, tokens and cost are never used as identity.
 func missingUsage(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
 	lines, err := usageLines(c, d)
@@ -78,8 +79,8 @@ func missingUsage(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
 	skip := max(legacyUsageRows(rows, saved, c.ID), legacyUsageRows(rows, saved, d.ID))
 	var missing []session.UsageLine
 	for _, line := range lines {
-		if line.ID != "" {
-			if !seen[line.ID] {
+		if id := line.ChargeID(); id != "" {
+			if !seen[id] {
 				missing = append(missing, line)
 			}
 		} else if skip > 0 {
@@ -94,8 +95,8 @@ func missingUsage(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
 func usageIDs(lines []session.UsageLine) map[string]bool {
 	ids := make(map[string]bool)
 	for _, line := range lines {
-		if line.ID != "" {
-			ids[line.ID] = true
+		if id := line.ChargeID(); id != "" {
+			ids[id] = true
 		}
 	}
 	return ids
@@ -107,16 +108,15 @@ func legacyUsageRows(rows []session.UsageLine, saved map[string]bool, owner stri
 	}
 	n := 0
 	for _, row := range rows {
-		if row.Session == owner && !row.SharedID && !saved[row.ID] {
+		if row.Session == owner && !row.SharedID && row.RemoteEvent == "" && !saved[row.ChargeID()] {
 			n++
 		}
 	}
 	return n
 }
 
-// usageLines is what the session spent: the receipt chain's model calls, which
-// no rewind removes; and, for a cell sealed before receipts carried them, the
-// transcript's usage lines.
+// usageLines combines ordinary sealed calls with transcript remote events.
+// With no ordinary receipts, the transcript supplies the ordinary fallback too.
 func usageLines(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
 	sealed, err := cellstore.ModelCalls(c)
 	if err != nil || len(sealed) == 0 {
@@ -125,6 +125,13 @@ func usageLines(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
 	lines := make([]session.UsageLine, len(sealed))
 	for i, s := range sealed {
 		lines[i] = usageOfCall(c, d, s)
+	}
+	// Mirrored charges live in the transcript, outside ordinary call receipts.
+	// They remain part of saved spending even when ordinary receipts exist.
+	for _, line := range d.Usage {
+		if line.RemoteEvent != "" {
+			lines = append(lines, line)
+		}
 	}
 	return lines, nil
 }

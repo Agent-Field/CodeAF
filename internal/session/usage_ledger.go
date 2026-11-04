@@ -107,6 +107,15 @@ import (
 // of one path are two ledgers with half a person's spending in each.
 const UsageLedgerName = "usage.jsonl"
 
+// ChargeID names the paid event independently of its ledger row. Remote events
+// retain this identity in old ledgers whose row IDs were unrelated or absent.
+func (line UsageLine) ChargeID() string {
+	if line.RemoteEvent != "" {
+		return "\x00remote:" + line.RemoteEvent
+	}
+	return line.ID
+}
+
 // usageDayLayout is the LOCAL calendar day a line belongs to, as an ISO date.
 // A day is the unit a person asks about — "what did Tuesday cost" — and it is
 // local because their Tuesday is, so a line carries the day it was made in
