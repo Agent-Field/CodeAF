@@ -174,7 +174,7 @@ func (b *appBackend) ConnectPluginKey(p appwire.PluginKeyParams) (appwire.Plugin
 	}
 	b.notePluginConnected(p.ID, status.Account)
 	b.emit.Emit(appwire.EventPluginsChanged, appwire.PluginsChanged{ID: p.ID})
-	return appwire.PluginKeyResult{Account: status.Account}, nil
+	return appwire.PluginKeyResult{Account: status.Account, Checked: status.Checked}, nil
 }
 func (b *appBackend) SetPluginCapability(p appwire.PluginCapabilityParams) error {
 	m, err := b.pluginManager()

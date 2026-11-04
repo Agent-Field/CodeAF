@@ -52,6 +52,7 @@ type PluginKeyParams struct {
 	Answer string `json:"answer,omitempty"`
 }
 type PluginKeyResult struct {
+	Checked bool   `json:"checked"`
 	Account string `json:"account,omitempty"`
 	Error   string `json:"error,omitempty" enum:"shape,refused,no_answer"`
 	Words   string `json:"words,omitempty"`

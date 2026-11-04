@@ -27,3 +27,8 @@ that attempt from saving credentials. Browser connections also recheck cancellat
 inside the credential commit after waiting for its lock. Plugin ask ids include
 the owning agent, so answering or stopping one agent cannot dismiss another
 agent's connection request with the same session question key.
+
+Key connections now return `checked`, true only after a catalog probe passes.
+Listed connectors expose `key_checkable`; saving a key without a catalog probe
+does not verify it. An unset key environment variable keeps its name in the
+refusal instead of replacing that name with `[key]`.

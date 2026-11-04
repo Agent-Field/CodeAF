@@ -10,19 +10,20 @@ import (
 )
 
 type Plugin struct {
-	ConnectedAt string         `json:"connected_at,omitempty"`
-	KeySavedAt  string         `json:"key_saved_at,omitempty"`
-	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	Kind        string         `json:"kind" enum:"browser,key,server"`
-	Category    string         `json:"category"`
-	Blurb       string         `json:"blurb"`
-	Connected   bool           `json:"connected"`
-	Account     string         `json:"account,omitempty"`
-	KeyEnv      string         `json:"key_env,omitempty"`
-	Expired     bool           `json:"expired,omitempty"`
-	Ask         *PluginAsk     `json:"ask,omitempty"`
-	KeyHint     *PluginKeyHint `json:"key_hint,omitempty"`
+	ConnectedAt  string         `json:"connected_at,omitempty"`
+	KeySavedAt   string         `json:"key_saved_at,omitempty"`
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	Kind         string         `json:"kind" enum:"browser,key,server"`
+	Category     string         `json:"category"`
+	Blurb        string         `json:"blurb"`
+	Connected    bool           `json:"connected"`
+	Account      string         `json:"account,omitempty"`
+	KeyEnv       string         `json:"key_env,omitempty"`
+	KeyCheckable bool           `json:"key_checkable"`
+	Expired      bool           `json:"expired,omitempty"`
+	Ask          *PluginAsk     `json:"ask,omitempty"`
+	KeyHint      *PluginKeyHint `json:"key_hint,omitempty"`
 }
 type PluginAsk struct {
 	Label   string   `json:"label"`
@@ -80,6 +81,11 @@ func (m *Manager) Plugins() []Plugin {
 			kind = "server"
 		}
 		p := Plugin{ID: s.ID, Name: s.Name, Kind: kind, Category: s.Category, Blurb: PluginBlurb(s.Service), Connected: s.Connected, Account: s.Account, KeyEnv: s.KeyEnv}
+		if plug, err := m.plug(s.ID); err == nil {
+			if keyed, ok := plug.(*keyPlug); ok {
+				p.KeyCheckable = keyed.probe.address != ""
+			}
+		}
 		if s.Blank != "" {
 			p.Ask = &PluginAsk{Label: s.Blank, Answers: s.Answers}
 		} else if s.KeyAsk != "" {

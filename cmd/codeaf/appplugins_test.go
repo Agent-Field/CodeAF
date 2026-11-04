@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -9,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -84,6 +86,88 @@ func TestAppPluginsListKeyShapeAndProviderPolicy(t *testing.T) {
 	rows := config.PersistedSources(b.profileDir)
 	if len(rows) != 1 || rows[0].PlanPaused != config.PlanPausedUseMeter {
 		t.Fatalf("source store: %+v", rows)
+	}
+}
+
+func TestAppPluginsListKeyCheckability(t *testing.T) {
+	b := newFakeBackend(newAppRecorder(), nil)
+	defer b.Close()
+	b.profileDir = t.TempDir()
+	list, err := b.ListPlugins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, checkable := 0, 0
+	for _, plugin := range list.Plugins {
+		if plugin.Kind != "key" {
+			continue
+		}
+		keys++
+		raw, err := json.Marshal(plugin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := `"key_checkable":false`
+		if plugin.ID == "breezy" || plugin.ID == "monaco" {
+			want = `"key_checkable":true`
+			checkable++
+		}
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("%s: missing %s", plugin.ID, want)
+		}
+	}
+	if keys != 99 || checkable != 2 {
+		t.Fatalf("keys = %d, checkable = %d; want 99 and 2", keys, checkable)
+	}
+}
+
+func TestAppPluginsKeyResultReportsOnlyPassedProbes(t *testing.T) {
+	for _, tt := range []struct {
+		name, id, key, failure string
+		status, calls          int
+		checked                bool
+	}{
+		{name: "unchecked", id: "stripe", key: "fixture-key"},
+		{name: "checked", id: "breezy", key: "fixture-key", status: 200, calls: 1, checked: true},
+		{name: "refused", id: "breezy", key: "fixture-key", status: 401, calls: 1, failure: "refused"},
+		{name: "no answer", id: "breezy", key: "fixture-key", calls: 1, failure: "no_answer"},
+		{name: "shape", id: "breezy", key: "two keys", failure: "shape"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			original := http.DefaultTransport
+			http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				if r.URL.String() != "https://api.breezy.hr/v3/companies" {
+					t.Errorf("unexpected request: %s", r.URL)
+				}
+				if tt.status == 0 {
+					return nil, fmt.Errorf("fixture: no answer")
+				}
+				return &http.Response{StatusCode: tt.status, Status: http.StatusText(tt.status), Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+			})
+			t.Cleanup(func() { http.DefaultTransport = original })
+			b := newFakeBackend(newAppRecorder(), nil)
+			defer b.Close()
+			b.profileDir = t.TempDir()
+			answer, err := b.ConnectPluginKey(appwire.PluginKeyParams{ID: tt.id, Key: tt.key})
+			if err != nil || answer.Error != tt.failure {
+				t.Fatalf("answer = %+v, err = %v; want failure %q", answer, err, tt.failure)
+			}
+			raw, err := json.Marshal(answer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := fmt.Sprintf(`"checked":%t`, tt.checked); !strings.Contains(string(raw), want) {
+				t.Errorf("answer = %s; want %s", raw, want)
+			}
+			if calls != tt.calls {
+				t.Errorf("probe requests = %d; want %d", calls, tt.calls)
+			}
+			if got := v3Connect(b.profileDir).Connected(tt.id); got != (tt.failure == "") {
+				t.Errorf("connected = %t; failure = %q", got, tt.failure)
+			}
+		})
 	}
 }
 

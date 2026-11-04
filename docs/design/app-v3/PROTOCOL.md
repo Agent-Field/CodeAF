@@ -1690,10 +1690,11 @@ The optional `plugins` hello feature enables these methods. They use
 | `plugins.disconnect` | `in.PluginDisconnectParams` | `Empty` |
 
 `plugins.list` returns `{plugins, providers, featured, featured_words}`.
-Each plugin has `id, name, kind, category, blurb, connected`, and optionally
+Each plugin has `id, name, kind, category, blurb, connected, key_checkable`, and optionally
 `account, key_env, expired, connected_at, key_saved_at, ask: {label, answers?},
 key_hint: {words, url?}`.
 Kind is `browser`, `key` or `server`. Category uses the catalog's spelling.
+`key_checkable` is true only for key connectors with a catalog probe.
 Blurb shortens the existing catalog words. Counts come from the returned
 catalog. `featured` contains ordered ids; `featured_words[id]` contains
 `{what, does}`.
@@ -1744,8 +1745,10 @@ also cancels pending attempts.
 
 `plugins.connect_key {id, key?, key_env?, answer?}` accepts one key or one
 environment variable name. `answer` supplies the workspace when needed.
-It returns `{account?}` on success, or
-`{error: "shape"|"refused"|"no_answer", words}` as a successful wire answer.
+It returns `{checked: bool, account?}` on success, or
+`{checked: false, error: "shape"|"refused"|"no_answer", words}` as a successful wire answer.
+`checked` is true only when a probe ran and passed; a key saved without a
+catalog probe returns false and is first tested on real use.
 A shape failure reaches no vendor, a refusal retains at most 120 characters,
 and a missing answer saves nothing. Key values never appear in replies.
 `plugins.disconnect {id, account?}` uses the existing disconnect path.

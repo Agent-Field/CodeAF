@@ -597,6 +597,9 @@ abandons the pending connection. A key connection accepts a pasted key or the
 name of an environment variable. A rejected or unanswered check saves nothing,
 and the desktop never receives the key back.
 
+When a connector has no catalog check, codeaf saves the key without checking it,
+and the first real use will tell you whether it works.
+
 An agent's connect question also appears in the desktop's waiting asks.
 Connecting the account and answering that question continues its turn.
 Not now saves no refusal, so a later need can ask again.
