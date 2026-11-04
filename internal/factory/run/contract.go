@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -178,6 +179,11 @@ type Options struct {
 	// carries first, else its repository's file, else the default
 	// (pipeline.JobFile). Nil bounds a job by the copy it carries alone.
 	Recipe func(it factory.Item) factory.Recipe
+	// RulesAfterClone reads the repository's rules again for a job that could
+	// not read them at its start because the repository was not here yet
+	// ([factory.StartRules.Pending]). It answers as a start's read does. Nil
+	// leaves such a job held at its plan.
+	RulesAfterClone func(ctx context.Context, it factory.Item) (pipeline.File, error)
 	// Source answers the item's source for a post stage, nil when none.
 	Source func(repo string) factory.Source
 	// Publisher resolves the assignee's account and one credential for both

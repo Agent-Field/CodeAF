@@ -1287,7 +1287,7 @@ func cloneStartRules(r *factory.StartRules) *factory.StartRules {
 	if r == nil {
 		return nil
 	}
-	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread, UnreadWhy: r.UnreadWhy, UnreadFile: r.UnreadFile, UnreadLine: r.UnreadLine}
+	return &factory.StartRules{AskFirst: append([]string{}, r.AskFirst...), Never: append([]string{}, r.Never...), Unread: r.Unread, UnreadWhy: r.UnreadWhy, UnreadFile: r.UnreadFile, UnreadLine: r.UnreadLine, Pending: r.Pending, NoFile: r.NoFile}
 }
 
 func fromRuleChecks(c *factory.RuleChecks) *RuleChecks {

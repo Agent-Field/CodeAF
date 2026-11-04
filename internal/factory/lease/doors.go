@@ -116,9 +116,8 @@ func (d *Doors) Launch(id int) error {
 	// job keeps the steps it has and is marked so its plan waits for a person.
 	var file *pipeline.File
 	var copied *factory.PipelineCopy
+	var readErr error
 	unread, decide := false, false
-	var unreadWhy, unreadFile string
-	var unreadLine int
 	if d.read != nil {
 		f, err := d.read(context.Background(), it)
 		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
@@ -127,8 +126,7 @@ func (d *Doors) Launch(id int) error {
 		if err == nil {
 			file = &f
 		}
-		unread = err != nil
-		unreadWhy, unreadFile, unreadLine = pipeline.UnreadDiagnostic(err)
+		readErr, unread = err, err != nil
 		copied, decide = f.Copy, true
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
@@ -172,8 +170,11 @@ func (d *Doors) Launch(id int) error {
 			case file != nil:
 				it.StartRules = pipeline.StartRulesOf(*file)
 			case unread:
-				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...), Unread: true, UnreadWhy: unreadWhy, UnreadFile: unreadFile, UnreadLine: unreadLine}
-				it.Note(now, "Started with the repository's rules unread; its plan will wait for you")
+				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...)}
+				pipeline.MarkUnread(it.StartRules, readErr)
+				if !it.StartRules.Pending {
+					it.Note(now, pipeline.UnreadNote)
+				}
 			default:
 				it.StartRules = &factory.StartRules{AskFirst: append([]string{}, house.AskFirst...), Never: append([]string{}, house.Never...)}
 			}

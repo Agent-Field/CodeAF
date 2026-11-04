@@ -67,8 +67,12 @@ func (l *PipelineLoader) Refresh(ctx context.Context, repo, dir string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	seen.at = l.now()
-	l.repos[repo] = seen
+	l.repos[repoKey(repo)] = seen
 }
+
+// repoKey is the name a read is kept under: GitHub's names ignore case, and a
+// job's spelling may differ from the watched repository's.
+func repoKey(repo string) string { return strings.ToLower(repo) }
 
 // Load returns independent file data so personal limits cannot alter the cache.
 // It waits for the forge when the read is missing or stale, so a start, an edit
@@ -84,15 +88,20 @@ func (l *PipelineLoader) Load(ctx context.Context, repo, dir, personal string) (
 }
 
 func (l *PipelineLoader) load(ctx context.Context, repo, dir, personal string, bound time.Duration) (pipeline.File, error) {
+	key := repoKey(repo)
 	l.mu.Lock()
-	seen, ok := l.repos[repo]
+	seen, ok := l.repos[key]
 	// A checkout used offline can change between reads without an intake tick.
 	// Its git read already chooses the main branch, so keep those edits visible.
 	if ok && seen.local && strings.TrimSpace(dir) != "" {
+		at := seen.at
 		seen = l.local(dir, nil)
-		l.repos[repo] = seen
+		seen.at = at
+		l.repos[key] = seen
 	}
-	stale := !ok || (!seen.local && l.now().Sub(seen.at) > PipelineFresh)
+	// A READ THAT HAD NO GITHUB IS ASKED AGAIN: once it is old, and at once by
+	// an action, which must never decide on a failure GitHub never gave.
+	stale := !ok || l.now().Sub(seen.at) > PipelineFresh || (bound == 0 && seen.local && seen.err != nil)
 	l.mu.Unlock()
 	switch {
 	case stale && bound == 0:
@@ -100,12 +109,12 @@ func (l *PipelineLoader) load(ctx context.Context, repo, dir, personal string, b
 		seen, ok = l.read(ctx, repo, dir), true
 		l.mu.Lock()
 		seen.at = l.now()
-		l.repos[repo] = seen
+		l.repos[key] = seen
 		l.mu.Unlock()
 	case stale:
 		l.ask(repo, dir).wait(ctx, bound)
 		l.mu.Lock()
-		if now, known := l.repos[repo]; known {
+		if now, known := l.repos[key]; known {
 			seen, ok = now, true
 		}
 		l.mu.Unlock()
@@ -126,11 +135,11 @@ func (l *PipelineLoader) ask(repo, dir string) *ask {
 		seen := l.read(ctx, repo, dir)
 		l.mu.Lock()
 		defer l.mu.Unlock()
-		if previous, known := l.repos[repo]; known && ctx.Err() != nil {
+		if previous, known := l.repos[repoKey(repo)]; known && ctx.Err() != nil {
 			seen = previous
 		}
 		seen.at = l.now()
-		l.repos[repo] = seen
+		l.repos[repoKey(repo)] = seen
 	})
 }
 
@@ -147,7 +156,7 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 		return l.local(dir, errors.New("github is not connected"))
 	}
 	l.mu.Lock()
-	previous := l.repos[repo]
+	previous := l.repos[repoKey(repo)]
 	l.mu.Unlock()
 	tag := ""
 	if previous.path == pipeline.RepoFile {
@@ -169,6 +178,9 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 			return previous
 		}
 		if missing(err) {
+			if err := l.absent.repoAnswers(ctx, api, l.now(), owner, name); err != nil {
+				return l.failure(dir, err)
+			}
 			f := pipeline.Defaults()
 			f.Source = pipeline.SourceDefaults
 			f.From = factory.FromDefault
@@ -239,7 +251,20 @@ func (l *PipelineLoader) failure(dir string, err error) pipelineRead {
 	if forge.IsTransportError(err) {
 		return l.local(dir, err)
 	}
-	return l.problem(err)
+	return l.problem(refusal(err))
+}
+
+// refusal gives a forge's HTTP answer the words a person sees.
+func refusal(err error) error {
+	var apiErr *forge.APIError
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	why := fmt.Sprintf("GitHub answered %d when asked for it; check this computer's GitHub connection", apiErr.StatusCode)
+	if apiErr.StatusCode == http.StatusNotFound {
+		why = "GitHub can't show this repository with this computer's connection"
+	}
+	return &pipeline.ReadRefusal{Why: why, Err: err}
 }
 
 func (l *PipelineLoader) local(dir string, offline error) pipelineRead {
@@ -248,7 +273,7 @@ func (l *PipelineLoader) local(dir string, offline error) pipelineRead {
 		return pipelineRead{file: f, err: err, local: true}
 	}
 	if offline != nil {
-		seen := l.problem(offline)
+		seen := l.problem(fmt.Errorf("%w: %v", pipeline.ErrNotHereYet, offline))
 		seen.local = true
 		return seen
 	}
