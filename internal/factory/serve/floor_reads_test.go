@@ -2,6 +2,7 @@ package serve_test
 
 import (
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -48,5 +49,93 @@ func TestIdleRequestsReadOnlyChangedJobs(t *testing.T) {
 	look()
 	if n := f.st.DocumentReads() - before; n != 1 {
 		t.Fatalf("settle and capacity after one change: read %d documents, want 1", n)
+	}
+}
+
+func TestSettleSeesExternalStopStartAndBudget(t *testing.T) {
+	for _, change := range []string{"stop", "start", "budget", "create"} {
+		t.Run(change, func(t *testing.T) {
+			f := newV2Jobs(t)
+			in := autoProof()
+			in.Autonomy = factory.AutonomyManual
+			if change == "start" {
+				in.Autonomy = factory.AutonomyAuto
+				factory.MarkPersonStopped(&in)
+			}
+			if change == "budget" {
+				in.Autonomy, in.Cap = factory.AutonomyAuto, 1
+			}
+			it := f.create(t, in)
+			f.read(t, it) // Warm List while publication is blocked.
+			other, err := store.Open(f.st.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if change == "create" {
+				in = autoProof()
+				in.Repo = "acme/api"
+				it, err = other.Create(in)
+			} else {
+				err = other.Update(it.ID, func(cur *factory.Item) error {
+					cur.Autonomy = factory.AutonomyAuto
+					switch change {
+					case "stop":
+						factory.MarkPersonStopped(cur)
+					case "start":
+						factory.ClearPersonStop(cur)
+					case "budget":
+						cur.Cap = 10
+					}
+					return nil
+				})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.read(t, it) // The next request must settle the new facts.
+			got, err := f.st.Get(it.ID)
+			if err != nil || got.Publishing != (change != "stop") {
+				t.Fatalf("next settlement after %s: publishing=%v, err=%v", change, got.Publishing, err)
+			}
+		})
+	}
+}
+
+func TestSettleRechecksStopAndBudgetAfterListing(t *testing.T) {
+	for _, change := range []string{"stop", "budget"} {
+		t.Run(change, func(t *testing.T) {
+			f := newV2Jobs(t)
+			it := f.create(t, autoProof())
+			if _, err := f.st.List(); err != nil {
+				t.Fatal(err)
+			}
+			other, err := store.Open(f.st.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Retention is the public seam after a candidate is copied. Change
+			// the disk before settlement can act on that candidate.
+			var once sync.Once
+			f.st.SetOutputPolicy(func() (int, int) {
+				once.Do(func() {
+					if err := other.Update(it.ID, func(cur *factory.Item) error {
+						if change == "stop" {
+							factory.MarkPersonStopped(cur)
+						} else {
+							cur.Cap = 1
+						}
+						return nil
+					}); err != nil {
+						t.Fatal(err)
+					}
+				})
+				return 0, 0
+			})
+			f.read(t, it)
+			got, err := f.st.Get(it.ID)
+			if err != nil || got.Publishing {
+				t.Fatalf("settlement used stale %s authority: publishing=%v, err=%v", change, got.Publishing, err)
+			}
+		})
 	}
 }

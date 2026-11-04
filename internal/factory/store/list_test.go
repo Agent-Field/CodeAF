@@ -85,13 +85,14 @@ func TestListOwnsMutableDocuments(t *testing.T) {
 func TestListReappliesOutputRetention(t *testing.T) {
 	st := listStore(t)
 	_, err := st.Create(factory.Item{Stream: &factory.Stream{Log: []factory.LogLine{
-		{At: time.Now(), Text: "older"}, {At: time.Now(), Text: "newer"},
+		{At: time.Now().Add(-48 * time.Hour), Text: "older"}, {At: time.Now(), Text: "newer"},
 	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	bytes := 100
-	st.SetOutputPolicy(func() (int, int) { return 1, bytes })
+	days := 3
+	st.SetOutputPolicy(func() (int, int) { return days, bytes })
 	if got := listOne(t, st); len(got.Stream.Log) != 2 {
 		t.Fatal("initial output missing")
 	}
@@ -103,6 +104,10 @@ func TestListReappliesOutputRetention(t *testing.T) {
 	bytes = 100
 	if got := listOne(t, st); len(got.Stream.Log) != 2 || got.Stream.Log[0].Text != "older" {
 		t.Fatal("a retained view destroyed the cached output")
+	}
+	days = 1
+	if got := listOne(t, st); len(got.Stream.Log) != 1 || got.Stream.Log[0].Text != "newer" {
+		t.Fatal("cached output ignored age retention")
 	}
 	if n := st.DocumentReads() - before; n != 0 {
 		t.Fatalf("retention read %d unchanged documents, want 0", n)

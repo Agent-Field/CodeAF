@@ -197,3 +197,48 @@ func TestPullRechecksLockedJobAfterListing(t *testing.T) {
 		})
 	}
 }
+
+func TestFloorLooksRaceExternalWrites(t *testing.T) {
+	f := setup(t)
+	it := f.add(t, factory.Item{State: factory.StateQueued, Assignee: "sam", OverLimit: true})
+	other, err := store.Open(f.store.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for range 30 {
+				if _, err := f.desk.Pull(worker("stranger", "other")); !errors.Is(err, lease.ErrNoJob) {
+					t.Error(err)
+				}
+				if _, err := f.desk.OverLimit(worker("idle", "sam")); err != nil {
+					t.Error(err)
+				}
+			}
+		}()
+	}
+	close(start)
+	for i := range 30 {
+		stopped := i%2 == 0
+		if err := other.Update(it.ID, func(cur *factory.Item) error {
+			if stopped {
+				factory.MarkPersonStopped(cur)
+			} else {
+				factory.ClearPersonStop(cur)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		n, err := f.desk.OverLimit(worker("idle", "sam"))
+		if err != nil || (n == 0) != stopped {
+			t.Errorf("next look after write %d: capacity=%d, stopped=%v, err=%v", i, n, stopped, err)
+		}
+	}
+	wg.Wait()
+}

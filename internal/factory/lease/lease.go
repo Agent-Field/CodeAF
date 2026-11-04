@@ -239,8 +239,8 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if _, err := rand.Read(token[:]); err != nil {
 				return false, err
 			}
-			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: factory.StoppedByPerson(it) || it.State != factory.StateQueued || paused(it)}
-			return false, d.reserve(doc, worker, taken)
+			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL())}
+			return false, d.reserve(doc, worker, &taken)
 		}
 		if full {
 			return false, ErrWorkerBusy
@@ -257,13 +257,16 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 // may have changed it after List. THE LEASE IS DURABLE BEFORE RUNNING: a crash
 // between files leaves a reserved queued job that expiry can recover, never
 // running work without a lease that another worker could immediately take.
-func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
+func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 	return d.store.Update(taken.Job, func(it *factory.Item) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
 		}
+		// A Stop may have landed after List. A pending reply may still borrow
+		// its manager, but only the locked job can authorize running steps.
+		taken.ThreadOnly = factory.CheckPersonStop(*it) != nil || it.State != factory.StateQueued || paused(*it)
 		delete(doc.Withdrawn, worker.ID)
-		doc.Leases = append(doc.Leases, taken)
+		doc.Leases = append(doc.Leases, *taken)
 		if err := d.write(*doc); err != nil {
 			return err
 		}
