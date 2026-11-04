@@ -43,6 +43,10 @@ type Driving struct {
 	// Remote is the directory id being driven when it is not Cell.ID: after a
 	// branch the local folder is unchanged but the directory record is new.
 	Remote string
+	// Size is the record's size: the bytes of the frames the plan names, which
+	// is what a computer without the chat copies. 0 is unknown, and a plan
+	// that started before sizes were kept stays unknown.
+	Size uint64
 }
 
 // ID is the directory id of the cell being driven.
@@ -85,13 +89,33 @@ func (p *Publisher) publish(ctx context.Context, d *Driving, head string, in Pub
 	if p.WarmFrameHints {
 		in.hints = latestFrameHints(ex.Frames, frames)
 	}
+	in.Size = planSize(*d, ex.Frames)
 	frames = unionFrames(d.Frames, frames)
 	fence, err := p.advance(ctx, *d, head, in, frames)
 	if err != nil {
 		return ex, syncwords.UploadFailure(err)
 	}
-	d.Fence, d.Head, d.Frames = fence, head, frames
+	d.Fence, d.Head, d.Frames, d.Size = fence, head, frames, in.Size
 	return ex, nil
+}
+
+// planSize is the record's size once this publish's frames join the plan: the
+// bytes of every frame the plan names, so a move can say how much it copies.
+// A new record's plan is exactly its first frames; a plan whose size is known
+// grows by what was put; a plan begun before sizes were kept stays unknown
+// rather than counting only its latest frames.
+func planSize(d Driving, put []FrameFile) uint64 {
+	var bytes uint64
+	for _, f := range put {
+		bytes += uint64(max(f.Bytes, 0))
+	}
+	switch {
+	case d.Fence == 0 && len(d.Frames) == 0:
+		return bytes
+	case d.Size > 0:
+		return d.Size + bytes
+	}
+	return 0
 }
 
 // unionFrames joins the plan so far with this publish's frames, first-seen

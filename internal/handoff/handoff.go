@@ -125,7 +125,7 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	if seen != nil && seen.Head != "" {
 		how.Expect.Head = seen.Head
 	}
-	head, fence, plan, err := t.claim(ctx, c, view.Cell.Head, how)
+	head, fence, acquired, err := t.claim(ctx, c, view.Cell.Head, how)
 	if err != nil {
 		return Taken{}, err
 	}
@@ -136,7 +136,7 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	// The plan is the acquired record's: the record read before the claim can
 	// trail a publish that landed during the fetch, and the next publish
 	// replaces the plan wholesale (contract §22.2).
-	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head, Frames: plan}, Kept: kept}, nil
+	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head, Frames: acquired.Frames, Size: acquired.Size}, Kept: kept}, nil
 }
 
 // displacing is the acquire the person's choice covers: they saw the chat's
@@ -195,10 +195,10 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, pl
 // if the head moved while the fetch ran, and only then puts the staging folder
 // in place of c's root. It answers the head that is on disk and the fence. The
 // staging folder never outlives a failed claim.
-func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
+func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, directory.Cell, error) {
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
 	t.stagedHead = new(string)
-	head, fence, plan, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
+	head, fence, acquired, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
 	if err == nil {
 		if err = t.install(ctx, stage, c, head); err != nil {
 			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
@@ -211,9 +211,9 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 		if (t.Preflight != nil && t.Prepare == nil || t.stagedHead != nil && *t.stagedHead != "") && exists(c.Root) && exists(stage.Root) {
 			err = errors.Join(err, t.Local.Follow(ctx, stage, c))
 		}
-		return "", 0, nil, errors.Join(err, os.RemoveAll(stage.Root))
+		return "", 0, directory.Cell{}, errors.Join(err, os.RemoveAll(stage.Root))
 	}
-	return head, fence, plan, nil
+	return head, fence, acquired, nil
 }
 
 // fetchAndAcquire is the part of a claim that touches only the store, the
@@ -229,7 +229,7 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 // acquired: another device may have published while the fetch ran, and the
 // next publish replaces the record's plan wholesale, so seeding from the
 // record read before the claim would carry the stale one (contract §22.2).
-func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
+func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, directory.Cell, error) {
 	if t.stagedHead == nil {
 		t.stagedHead = new(string)
 	}
@@ -265,7 +265,7 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 		return nil
 	}
 	if err := prepare(head); err != nil {
-		return "", 0, nil, err
+		return "", 0, directory.Cell{}, err
 	}
 	staged()
 	staged = nil
@@ -276,15 +276,15 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 	got, err := t.Dir.Acquire(ctx, stage.ID, how)
 	acquiring()
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
+		return "", 0, directory.Cell{}, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
 		if err := prepare(head); err != nil {
-			return "", 0, nil, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
+			return "", 0, directory.Cell{}, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
 		}
 	}
-	return head, got.Cell.Lease.Fence, got.Cell.Frames, nil
+	return head, got.Cell.Lease.Fence, got.Cell, nil
 }
 
 // bring puts head where the claim restores it from: in the store alone for a

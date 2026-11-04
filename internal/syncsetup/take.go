@@ -241,7 +241,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			return Continued{}, err
 		}
 		return Continued{AlreadyHere: true, Device: c.opt.DeviceName, Taken: handoff.Taken{
-			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames},
+			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames, Size: view.Cell.Size},
 		}}, nil
 	}
 	if seen == nil {

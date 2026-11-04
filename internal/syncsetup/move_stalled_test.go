@@ -51,3 +51,40 @@ func TestAMoveWhoseBytesStopEndsAndLeavesTheChat(t *testing.T) {
 		t.Fatalf("the chat's lease is %s@%d after a stalled move, want %s@%d", d, f, device, fence)
 	}
 }
+
+// A chat's record says how many bytes a copy takes, and a move to a computer
+// that never held the chat shows that as its total.
+func TestAMoveShowsTheChatsSizeAsItsTotal(t *testing.T) {
+	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "0")
+	was := moveReportEvery
+	moveReportEvery = time.Millisecond
+	t.Cleanup(func() { moveReportEvery = was })
+	h := newTwoHomes(t)
+	a := h.openA()
+	a.mustSay("a reply worth copying")
+	h.durable(h.cell.ID, h.cell)
+	if err := a.drive.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	v, err := h.a.Dir.Cell(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if v.Cell.Size == 0 {
+		t.Fatal("a published chat's record has no size")
+	}
+	continuer := h.continuerB()
+	var total, done atomic.Int64
+	continuer.opt.OnMove = func(p MoveProgress) {
+		if p.Total > 0 {
+			total.Store(p.Total)
+		}
+		done.Store(p.Done)
+	}
+	_, err = continuer.Take(t.Context(), h.cell.ID)
+	mustNil(t, err)
+	if got := total.Load(); got != int64(v.Cell.Size) {
+		t.Fatalf("the move's total was %d, want the record's %d", got, v.Cell.Size)
+	}
+	if done.Load() == 0 {
+		t.Fatal("the move reported no bytes copied")
+	}
+}

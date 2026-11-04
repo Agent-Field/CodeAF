@@ -353,7 +353,7 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	drv.Fence, drv.Head = v.Cell.Lease.Fence, v.Cell.Head
 	// The plan comes with the record: the frames the last publisher named for
 	// this head, which this device's publishes now extend (contract §22.2).
-	drv.Frames = v.Cell.Frames
+	drv.Frames, drv.Size = v.Cell.Frames, v.Cell.Size
 	return drv, "", nil
 }
 
