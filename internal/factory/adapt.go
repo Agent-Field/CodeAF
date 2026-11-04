@@ -756,14 +756,25 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 const ProofName = "proof"
 
 // IsProofStage says whether a stage is a proof conversation: the one named
-// proof, a send-back's prove*, or any stage that runs until proven, whatever
-// it is called. Checks and posts are NOT proof here, though their claims reach
+// proof, a send-back's prove or prove followed only by digits, or any stage
+// that runs until proven, whatever it is called.
+// Checks and posts are NOT proof here, though their claims reach
 // the sheet: they can precede legitimate work, so they never freeze an edit.
 // The run loop's sheet maker asks this same question so the two cannot drift.
 func IsProofStage(st Stage) bool {
 	name := strings.ToLower(strings.TrimSpace(st.Name))
-	return name == ProofName || strings.HasPrefix(name, "prove") ||
-		strings.TrimSpace(st.Until) == UntilProven
+	if name == ProofName || strings.TrimSpace(st.Until) == UntilProven {
+		return true
+	}
+	if !strings.HasPrefix(name, "prove") {
+		return false
+	}
+	for _, digit := range name[len("prove"):] {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // firstProof is the index of the earliest proof stage, or -1.
