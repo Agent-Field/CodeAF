@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // CommitEvery bounds the power-loss window in C28. Commands write to the kernel
@@ -165,12 +167,14 @@ func missingRecordParent(path string) error {
 }
 
 // Flush commits every local record before the CLI exits. Conversation close
-// drains its capture first; this final boundary also covers standalone verbs.
+// forces its capture first; this final boundary also covers standalone verbs.
+// Held calls between steps are captured, while an open step stays in the WAL
+// without making exit wait for its tool.
 func Flush(ctx context.Context) error {
 	// A seat may have started warming before opening its agent failed. Such a
 	// capture still belongs to this process and must finish before exit (E2).
 	captures.Lock()
-	active := make([]*captureState, 0, len(captures.cells))
+	active := make(map[string]bool, len(captures.cells)+len(captures.held))
 	for root, state := range captures.cells {
 		select {
 		case <-state.done:
@@ -182,16 +186,19 @@ func Flush(ctx context.Context) error {
 			}
 		default:
 		}
-		active = append(active, state)
+		active[root] = true
+	}
+	for root := range captures.held {
+		if _, err := os.Stat(root); os.IsNotExist(err) {
+			delete(captures.held, root)
+			continue
+		}
+		active[root] = true
 	}
 	captures.Unlock()
 	var fault error
-	for _, state := range active {
-		if err := awaitCapture(ctx, state.done); err != nil {
-			fault = errors.Join(fault, err)
-			continue
-		}
-		fault = errors.Join(fault, state.err)
+	for root := range active {
+		fault = errors.Join(fault, Captured(ctx, cell.Cell{Root: root}))
 	}
 	return errors.Join(fault, durable(ctx, ""))
 }

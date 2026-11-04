@@ -395,6 +395,18 @@ The `factory_item` card's thinking (`think strong`, `think cheap`, `default` for
 
 After your yes, the answer names the thinking the item was saved with, step by step (`thinking write strong, test strong`; `default` resets the changed steps to usual), and the steps that did not take it: `left as they were: plan cheap`. A budget or note alone says nothing about thinking. If another field changes but no step needs the requested thinking, the answer says `thinking unchanged`. A later turn's opening note lists thinking per running step when they differ (`thinking plan cheap, write strong`), one word when they agree, and nothing when none was set. A level other than cheap, strong or default is refused before any card, as `Invalid arguments: effort is one of cheap, strong, default, or left out.`
 
+## models that refuse thinking or reasoning effort
+
+If a Factory model explicitly rejects its thinking setting, codeaf retries once
+without that setting. This covers stages and their helpers, personal messages to
+job managers, reopened completed stages and their earlier rounds, runner manager
+turns on an already-open conversation, brief writing, and the repository, pipeline
+and topic page AI, including Step AI and My pipeline AI. Switching models or
+connected accounts keeps recovery available. Recovery follows actual job ownership
+or a Factory call: an ordinary conversation that merely offers Factory tools still
+returns the model's refusal. An ordinary conversation borrowed for a Factory call
+retains its usual refusal on later ordinary turns and errands.
+
 ## which model a cheap or strong step runs on — small work, checks model, effort models
 
 A factory step marked `cheap` opens on the **small work** model, and a step marked `strong` on the **checks** model: the same two rows the settings sheet already shows, so changing either changes the factory's cheap or strong steps from their next run. A model picked for the step, or for the whole job, wins over its effort. A step with no effort word runs on the job's model or the factory's default. With one model for every task, every step runs on that one model, whatever its effort.
@@ -468,6 +480,26 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 - the job's pull request is someone else's: codeaf merges only pull requests it opened.
 
 **Auto-merge** is off unless the repository's `.codeaf/factory.yaml` says `merge: {auto: on}` (`method: merge`, `squash` or `rebase`; omitted lets the repository's settings choose). A personal `~/.codeaf/factory.yaml` may only turn it off. The setting is fixed on a job when its proof is approved. An auto-merge also needs every claim proven and at least one passing check, and until then it waits quietly. A merge that failed is the person's to look at, says why, and is never tried again on its own.
+
+## a runner missed my choice — lost heartbeat replies, repeated signals
+
+A current factory keeps a choice sent to a current runner until that runner
+has received and handled it. Losing a heartbeat reply delays the choice until
+the next heartbeat; receiving it twice does not apply it twice during that run.
+A failed effect stays pending for the next heartbeat. A choice that no longer
+makes sense for an ended job, or an answer to a replaced question, is acknowledged
+as moot. Missing local data alone never counts as success. Confirmed delivery
+IDs leave the runner’s acknowledgement list; receipts are sent in bounded batches.
+This includes answers, steering words, manager replies, budget and model choices,
+autonomy changes, and pauses. Their order stays the same. Rechecks, publish
+and merge continue to wait for the runner that pulls that work; a live heartbeat does
+not start them. Stop clears pending choices, and choices from an ended run
+are not applied to a later run.
+
+This delivery protection needs a current factory and runner. Older runners
+keep their existing delivery behavior; current runners can still work with
+older factories. A runner process that disappears needs the existing job
+recovery flow rather than an automatic replay of its old choices.
 
 ## pause a running job — Pause, Hold, Resume, paused step, keep the conversation
 

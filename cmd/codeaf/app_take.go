@@ -64,13 +64,16 @@ func appTakeWords(words string) string {
 
 // Tests stand in for the copy that acquires the chat and for opening it here.
 var (
-	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation) (syncsetup.Continued, error) {
-		return chatContinuer(s, nil).TakeSeen(ctx, id, seen)
+	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, onMove func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
+		return chatMover(s, onMove).TakeSeen(ctx, id, seen)
 	}
 	appTakeOpen = (*appBackend).OpenAgent
 )
 
-func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
+// TakeAgent moves a chat here. Its row says the move is queued, then how far
+// it has got, and, when it did not move the chat, how it ended, so a client
+// that stopped waiting still learns the outcome.
+func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err error) {
 	if p.Cell == "" || p.Seen.Device == "" {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "a chat and its seen computer are required")
 	}
@@ -80,37 +83,52 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if err := b.pairingWorkRefusal(); err != nil {
 		return appwire.Agent{}, err
 	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	move := b.chats.beginMove(p.Cell, cancel)
+	if move == nil {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeBusy, appMoveAlready)
+	}
 	b.chats.countTake(p.Cell, 1)
 	b.publishTaking()
 	taking := true
 	defer func() {
+		var ended *appwire.ChatMoveEnded
+		if err != nil {
+			record, wire := appMoveEnding(err, context.Cause(ctx), b.chats.holderName(p.Cell))
+			ended, err = &record, wire
+		}
+		b.chats.endMove(p.Cell, move, ended)
 		if taking {
 			b.chats.countTake(p.Cell, -1)
 			b.publishTaking()
 		}
 	}()
-	b.chats.take.Lock()
-	defer b.chats.take.Unlock()
+	guard.Go("app/take-cancel", func() {
+		select {
+		case <-b.left:
+			cancel(errAppLeft)
+		case <-ctx.Done():
+		}
+	})
+	if err := b.chats.waitSlot(ctx); err != nil {
+		return appwire.Agent{}, err
+	}
+	defer b.chats.freeSlot()
+	b.chats.progress(p.Cell, move, appwire.ChatMove{State: "moving", Step: syncsetup.MovePreparing})
+	b.publishTaking()
 	s, ok, err := syncsetup.Open(b.relayHome())
 	if err != nil {
-		return appwire.Agent{}, appTakeError(err)
+		return appwire.Agent{}, err
 	}
 	if !ok {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, appSyncOff)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	guard.Go("app/take-cancel", func() {
-		select {
-		case <-b.left:
-			cancel()
-		case <-ctx.Done():
-		}
-	})
 	// Check even the already-here fast path against what the person saw.
 	view, err := s.Dir.Cell(ctx, p.Cell)
 	if err != nil {
-		return appwire.Agent{}, appTakeError(err)
+		// Unwrapped, so the row says why (sync unreachable, cancelled).
+		return appwire.Agent{}, err
 	}
 	seen := &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence, Head: p.Seen.Head}
 	if !seen.Matches(view.Cell) {
@@ -147,9 +165,11 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 			return appwire.Agent{}, err
 		}
 	}
-	got, err := appTakeSeen(ctx, s, p.Cell, seen)
+	report, stopReport := b.moveReporter(p.Cell, move)
+	got, err := appTakeSeen(ctx, s, p.Cell, seen, report)
+	stopReport()
 	if err != nil {
-		return appwire.Agent{}, appTakeError(err)
+		return appwire.Agent{}, err
 	}
 	// The chat is this computer's from here on, even if opening it fails.
 	b.chats.landTake(p.Cell, got.Taken.Driving.Fence)
@@ -184,7 +204,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		location.Seen.Head = ""
 	}
 	b.located(a, location)
-	agent, err := appTakeOpen(b, id)
+	agent, err = appTakeOpen(b, id)
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}
@@ -201,6 +221,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	}
 	b.located(a, location)
 	agent.Location = location
+	b.chats.endMove(p.Cell, move, nil)
 	taking = false
 	// Acquisition may have been observed before installation and admission.
 	// Reconcile the local id even when no later directory version will arrive.
