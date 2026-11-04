@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Saved agent spend reaches open answers and changes after late receipts
-pr: 0
+pr: 2347
 surface: [app, engine]
 invalidates:
   - "Agent spend was populated only in list answers, and late recovered cancellation charges left metadata stale until another spend stamp. Open answers and agent changes now carry saved spend, and late receipts save the cumulative meter immediately."
