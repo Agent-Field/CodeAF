@@ -24,23 +24,40 @@ func (b *appBackend) watchAgentSpend() (stop func()) {
 	unwatch := session.OnSpendSaved(b.agentSpendSaved)
 	return func() {
 		unwatch()
-		b.spendRestates.mu.Lock()
-		b.spendRestates.stopped = true
-		b.spendRestates.mu.Unlock()
-		b.spendRestates.settle()
+		for _, restate := range b.spendRestates.stop() {
+			restate.Settle()
+		}
 	}
 }
 
-func (s *appSpendRestates) settle() {
+// stop refuses later news and answers the restates already handed off, which
+// the caller settles outside the lock.
+func (s *appSpendRestates) stop() []*offpath.Write {
 	s.mu.Lock()
-	var pending []*offpath.Write
+	defer s.mu.Unlock()
+	s.stopped = true
+	return s.pendingLocked()
+}
+
+// settle joins the restates already handed off, outside the lock.
+func (s *appSpendRestates) settle() {
+	for _, restate := range s.pending() {
+		restate.Settle()
+	}
+}
+
+func (s *appSpendRestates) pending() []*offpath.Write {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pendingLocked()
+}
+
+func (s *appSpendRestates) pendingLocked() []*offpath.Write {
+	pending := make([]*offpath.Write, 0, len(s.of))
 	for _, restate := range s.of {
 		pending = append(pending, restate)
 	}
-	s.mu.Unlock()
-	for _, restate := range pending {
-		restate.Settle()
-	}
+	return pending
 }
 
 // agentSpendSaved only hands off identity. Even delayed news asks what is on
