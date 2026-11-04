@@ -105,6 +105,7 @@ func (st *Store) refreshTalks(ix *talkIndex) error {
 			ix.forget()
 			return nil
 		}
+		ix.stale.Store(true) // still owed the sweep this failed to do
 		return err
 	}
 	docs := make(map[string]talkDoc, len(entries))
