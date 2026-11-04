@@ -192,17 +192,18 @@ func (h *homeSharing) note(s *syncsetup.Sync, now time.Time) syncsetup.Unshared 
 	} else {
 		u = h.unshared(s, now)
 	}
-	h.mu.Lock()
-	h.shown = &u
-	h.mu.Unlock()
+	h.show(&u)
 	return u
 }
 
 // forget drops the count while sync is off: nothing is waiting to be shared.
-func (h *homeSharing) forget() {
+func (h *homeSharing) forget() { h.show(nil) }
+
+// show keeps u as the newest count; nil says sync is off.
+func (h *homeSharing) show(u *syncsetup.Unshared) {
 	h.mu.Lock()
-	h.shown = nil
-	h.mu.Unlock()
+	defer h.mu.Unlock()
+	h.shown = u
 }
 
 // last is the newest count, and false before the first or while sync is off.

@@ -190,9 +190,7 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 	offered := false
 	for _, id := range s.publicationOrder() {
 		if offered && s.BetweenChats != nil {
-			s.publicationMu.Unlock()
-			s.BetweenChats()
-			s.publicationMu.Lock()
+			s.betweenChats()
 		}
 		pending, ok := s.publication[id]
 		if !ok {
@@ -254,6 +252,14 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		}
 	}
 	return failures
+}
+
+// betweenChats runs BetweenChats with the pass's lock released, and takes it
+// again however the call ends.
+func (s *Sync) betweenChats() {
+	s.publicationMu.Unlock()
+	defer s.publicationMu.Lock()
+	s.BetweenChats()
 }
 
 // publicationOutcome is the log's word for how one attempt ended.
