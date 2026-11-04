@@ -465,6 +465,106 @@ func TestACollectionHeldBlankAgentIsLiveAfterRestart(t *testing.T) {
 	}
 }
 
+// STAB2-fix R1
+func TestAPermanentlyDeletedConversationStaysDeletedInItsCollection(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		name := "completed deletion"
+		if pending {
+			name = "pending deletion"
+		}
+		t.Run(name, func(t *testing.T) {
+			root, bucket := collectionKeepEnvironment(t)
+			const id = "deleted-agent"
+			dir := writeV3Session(t, bucket, id, "saved notes", time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC))
+			meta, err := session.LoadMeta(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			meta.Workspace, meta.Title = root, "Deleted notes"
+			if err := session.SaveMeta(dir, meta); err != nil {
+				t.Fatal(err)
+			}
+			store, err := workspace.Open(home.Join("v3", "collections.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			collection, err := store.Create(context.Background(), "Saved conversations")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ref := workspace.Ref{Kind: workspace.ConversationKind, ID: id}
+			if err := store.Add(context.Background(), collection.ID, ref); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			transcript := session.Place{Dir: dir}.Transcript()
+			if pending {
+				// A staged deletion keeps its cleanup receipt and pending journal.
+				if err := os.WriteFile(filepath.Join(dir, ".delete-task-cleanup.json"), []byte("{}"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, teams.ConversationDeletedFile), []byte("deleted\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(transcript, transcript+".delete-pending"); err != nil {
+					t.Fatal(err)
+				}
+				if row, ok := session.ReadRows([]string{transcript})[filepath.Clean(transcript)]; !ok || !row.DeletionPending {
+					t.Fatalf("pending deletion fixture: %+v, found=%t", row, ok)
+				}
+			} else {
+				if err := session.DeleteConversationUnder(session.PlacesRoot(), config.ProfileDir(), transcript, nil, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := os.Stat(transcript); !os.IsNotExist(err) {
+				t.Fatalf("permanent deletion kept the transcript: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, teams.ConversationDeletedFile)); err != nil {
+				t.Fatalf("permanent deletion lost its lifetime marker: %v", err)
+			}
+			if saved, err := session.LoadMeta(dir); err != nil || saved.ID != id || saved.Title != meta.Title {
+				t.Fatalf("permanent deletion lost its saved metadata: %+v, %v", saved, err)
+			}
+
+			b := newFakeBackend(newAppRecorder(), nil)
+			t.Cleanup(func() { _ = b.Close() })
+			b.profileDir = config.ProfileDir()
+			open, err := b.OpenCollection(collection.ID, 1, 500, "")
+			if err != nil || len(open.Members) != 1 {
+				t.Fatalf("collections.open: %+v, %v", open, err)
+			}
+			if member := open.Members[0]; member.ID != id || member.Target.State != appwire.TargetDeleted {
+				t.Fatalf("collections.open revived a permanently deleted conversation: %+v", member)
+			}
+			expanded, err := b.ExpandCollection(collection.ID, 3, 200)
+			if err != nil || expanded.Missing != 1 || expanded.Unavailable != 0 || len(expanded.Refs) != 0 {
+				t.Fatalf("collections.expand: %+v, %v", expanded, err)
+			}
+
+			other, err := b.CreateCollection("Other conversations")
+			if err != nil {
+				t.Fatal(err)
+			}
+			from := appwire.Ref{Kind: appwire.RefConversation, ID: "another-agent"}
+			if _, err := b.AddToCollection(other.ID, []appwire.Member{{Ref: from}}); err != nil {
+				t.Fatal(err)
+			}
+			to := appwire.Ref{Kind: appwire.RefConversation, ID: id}
+			if _, err := b.RelinkCollection(other.ID, from, to); wireCode(err) != appwire.CodeNotFound {
+				t.Fatalf("relink to a permanently deleted conversation: %v", err)
+			}
+			open, err = b.OpenCollection(other.ID, 1, 500, "")
+			if err != nil || len(open.Members) != 1 || open.Members[0].ID != from.ID {
+				t.Fatalf("refused relink changed the collection: %+v, %v", open, err)
+			}
+		})
+	}
+}
+
 // Contract (g): a restart recovers every identity field from a never-spoken meta.
 func TestCollectionHeldConversationIsFoundAndOpenedAfterRestart(t *testing.T) {
 	root, bucket := collectionKeepEnvironment(t)

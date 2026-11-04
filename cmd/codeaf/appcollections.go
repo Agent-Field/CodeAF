@@ -34,6 +34,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
@@ -601,8 +602,12 @@ func (r *collectionResolver) agent(id string) (appwire.Agent, *appwire.Target) {
 	if !ok {
 		// Named blanks stay out of agents.list but can still be held by a
 		// collection. Cache misses too, since several members can name one agent.
-		if row, found := appRowOnDisk(id); found {
-			a = appRowView(row)
+		if row, found := appRowOnDisk(id); found && !row.DeletionPending {
+			// Permanent deletion retains metadata, but its lifetime marker
+			// prevents the saved folder from becoming a live target again.
+			if _, err := os.Stat(filepath.Join(row.Dir, teams.ConversationDeletedFile)); errors.Is(err, fs.ErrNotExist) {
+				a = appRowView(row)
+			}
 		}
 		r.agents[id] = a
 	}
