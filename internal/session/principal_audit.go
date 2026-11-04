@@ -56,6 +56,7 @@ import (
 	"time"
 
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/verify"
@@ -259,7 +260,7 @@ func runOneCheck(ctx context.Context, tree, check string, windows ...time.Durati
 	}
 	// I0: the check uses its caller's seat, while retaining its unbounded drain.
 	command, err := procexec.For(ctx).In(tree).Command(ctx, procexec.ExecRequest{
-		Argv: []string{bash, "-c", check}, WaitDelay: -1,
+		Argv: []string{bash, "-c", check}, Env: bare.StreamingEnv(), WaitDelay: -1,
 	})
 	if err != nil {
 		return CheckRun{Command: check, Tail: err.Error()}
