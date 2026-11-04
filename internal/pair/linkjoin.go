@@ -85,6 +85,11 @@ func (j LinkJoining) free() (LinkJoining, error) {
 	if _, err := identity.Load(j.Home); err != nil {
 		return j, nil
 	}
+	// A removed paired computer may be returning to its own identity. The
+	// approved grant is checked by adoptWithDevice before any local switch.
+	if j.Revoked && !identity.Solo(j.Home) {
+		return j, nil
+	}
 	fresh, err := identity.Joinable(j.Home)
 	if err != nil {
 		return j, ErrDifferentChats

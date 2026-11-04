@@ -36,7 +36,7 @@ type Joining struct {
 	// Replace lets a computer that already has different chats give them up.
 	Replace bool
 	// Revoked says this computer's own device was removed. Rejoining the same
-	// identity then mints a new device key, as Replace does; nothing is given up.
+	// identity then mints a new device key without replacing local state.
 	Revoked bool
 	// ProfileDir names the preferences being joined, when outside Home.
 	ProfileDir string
@@ -170,15 +170,10 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	if err != nil && !errors.Is(err, identity.ErrNone) {
 		return Joined{}, err
 	}
-	// A removed computer holds the identity under a key the relay refuses, so
-	// "already joined" would leave it removed. Only a new device key returns it.
-	if err == nil && j.Revoked && held.ID() == grant.Identity.ID() {
-		j.Replace = true
-	}
-	if err == nil && !j.Replace && held.ID() == grant.Identity.ID() {
+	if err == nil && !j.Replace && !j.Revoked && held.ID() == grant.Identity.ID() {
 		return Joined{Already: true}, nil
 	}
-	if err == nil && !j.Replace && !slices.Contains(grant.Replaces, held.ID()) {
+	if err == nil && !j.Replace && held.ID() != grant.Identity.ID() && !slices.Contains(grant.Replaces, held.ID()) {
 		if ok, err := identity.Joinable(j.Home); err != nil || !ok {
 			return Joined{}, differentChats(j.Home)
 		}
@@ -195,6 +190,11 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	switch {
 	case err == nil && held.ID() == grant.Identity.ID():
 		if !j.Replace {
+			// A removed device needs a fresh key, while its identity and local
+			// state stay in place. Only explicit replacement runs cleanup.
+			if j.Revoked {
+				return j.merge(grant, dev, held.CellKey())
+			}
 			return Joined{Already: true}, nil
 		}
 		// Explicit replacement after approval renews this computer's key even
