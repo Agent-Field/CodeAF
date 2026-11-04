@@ -1,4 +1,5 @@
 ---
+pr: 2331
 kind: added
 title: Desktop plugin methods share terminal connections and capability settings
 surface: [engine, app, docs]
