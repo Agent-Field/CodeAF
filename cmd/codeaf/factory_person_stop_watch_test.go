@@ -302,6 +302,50 @@ func TestAWriteKeepingTheFilesTimeIsSeen(t *testing.T) {
 	}
 }
 
+// The floor going away is an answer, not a crash, and coming back is seen.
+func TestAFloorThatGoesAwayIsNoManagerAndNotACrash(t *testing.T) {
+	st, door, chats, ids := watchFloor(t, 3, 1)
+	setStopped(t, st, ids[0], true)
+	if got := door.WatchedRefusal(chats[0]); got != factory.PersonStopReason {
+		t.Fatalf("before: %q", got)
+	}
+	aside := st.Root() + ".aside"
+	if err := os.Rename(st.Root(), aside); err != nil {
+		t.Fatal(err)
+	}
+	if got := door.WatchedRefusal(chats[0]); got != "" {
+		t.Fatalf("with no floor, the watcher said %q", got)
+	}
+	if err := os.Rename(aside, st.Root()); err != nil {
+		t.Fatal(err)
+	}
+	if got := door.WatchedRefusal(chats[0]); got != factory.PersonStopReason {
+		t.Fatalf("with the floor back, the watcher said %q", got)
+	}
+}
+
+// A write through this store is seen on the next look even if the folder's time
+// comes out identical to the one the last sweep trusted.
+func TestAWriteHereIsSeenWhateverTheFolderTimeSays(t *testing.T) {
+	st, door, chats, ids := watchFloor(t, 3, 1)
+	setStopped(t, st, ids[0], true)
+	settleFloor(t, st)
+	if got := door.WatchedRefusal(chats[0]); got != factory.PersonStopReason {
+		t.Fatalf("before: %q", got)
+	}
+	settled, err := os.Stat(st.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	setStopped(t, st, ids[0], false)
+	if err := os.Chtimes(st.Root(), settled.ModTime(), settled.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if got := door.WatchedRefusal(chats[0]); got != "" {
+		t.Fatalf("after a person's Start here, the watcher still said %q", got)
+	}
+}
+
 // A link moved under a job's chat path changes no document, and a sweep sees it.
 func TestALinkRetargetedUnderAChatIsSeenWithinASweep(t *testing.T) {
 	st, door, _, _ := watchFloor(t, 3, 0)

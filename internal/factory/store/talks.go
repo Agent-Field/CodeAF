@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -53,7 +54,10 @@ type talkDoc struct {
 }
 
 type talkIndex struct {
-	mu     sync.Mutex
+	mu sync.Mutex
+	// stale says a write through this store came after the last sweep. Other
+	// writers show in the folder's time, unless a clock hides them: see quiet.
+	stale  atomic.Bool
 	dir    os.FileInfo
 	swept  time.Time
 	retry  bool // a document could not be read, and is owed another try
@@ -85,7 +89,7 @@ func (st *Store) refreshTalks(ix *talkIndex) error {
 	dir, err := os.Stat(st.root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			*ix = talkIndex{}
+			ix.forget()
 			return nil
 		}
 		return err
@@ -93,10 +97,12 @@ func (st *Store) refreshTalks(ix *talkIndex) error {
 	if ix.quiet(dir, now) {
 		return nil
 	}
+	// Cleared before the sweep, so a write during it is owed another.
+	ix.stale.Store(false)
 	entries, err := os.ReadDir(st.root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			*ix = talkIndex{}
+			ix.forget()
 			return nil
 		}
 		return err
@@ -150,9 +156,17 @@ func (st *Store) refreshTalks(ix *talkIndex) error {
 	return nil
 }
 
+// forget drops what was read, as for a floor that isn't there. Its lock is held.
+func (ix *talkIndex) forget() {
+	ix.dir, ix.swept, ix.retry, ix.docs, ix.owners = nil, time.Time{}, false, nil, nil
+}
+
 // quiet is whether the last sweep still stands, with dir the folder as it is now.
+// THE ONE LIMIT: another process's write whose folder time comes out identical,
+// which takes a clock moved back past the slack, waits for the next sweep, at
+// most talkSweepEvery. A write through this store never waits.
 func (ix *talkIndex) quiet(dir os.FileInfo, now time.Time) bool {
-	return ix.docs != nil && !ix.retry &&
+	return ix.docs != nil && !ix.retry && !ix.stale.Load() &&
 		now.Sub(ix.swept) < talkSweepEvery &&
 		os.SameFile(ix.dir, dir) && ix.dir.ModTime().Equal(dir.ModTime()) &&
 		ix.swept.Sub(dir.ModTime()) >= folderTimeSlack
