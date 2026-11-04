@@ -28,6 +28,8 @@ import (
 //     that a coarse clock cannot hide a later write, means no document changed.
 //   - Otherwise, a sweep compares each document's file with the one last read,
 //     and reads only those that differ.
+//   - A rewrite that bypasses the store and keeps the file's identity proves
+//     nothing either way, so every document is read again each talkRereadEvery.
 //
 // Both are looked at BEFORE reading, so a write landing during a sweep leaves
 // the older identity beside the newer content and the next look reads it again.
@@ -42,6 +44,10 @@ const (
 	// talkSweepEvery bounds how long a quiet folder goes unswept. A sweep resolves
 	// each job's chat path again: a link retargeted under it changes no document.
 	talkSweepEvery = time.Second
+	// talkRereadEvery bounds how long a document is trusted by file identity. An
+	// in-place rewrite keeping its size and time looks unchanged, and a Stop or a
+	// budget must not rest on file times with no limit.
+	talkRereadEvery = time.Minute
 )
 
 type talkDoc struct {
@@ -60,7 +66,8 @@ type talkIndex struct {
 	stale  atomic.Bool
 	dir    os.FileInfo
 	swept  time.Time
-	retry  bool // a document could not be read, and is owed another try
+	reread time.Time // when every document was last read
+	retry  bool      // a document could not be read, and is owed another try
 	docs   map[string]talkDoc
 	owners []talkDoc // the docs with a chat, newest first as [Store.List] orders
 }
@@ -85,7 +92,7 @@ func (st *Store) TalkStop(key string) (manager, stopped bool, err error) {
 }
 
 func (st *Store) refreshTalks(ix *talkIndex) error {
-	now := time.Now()
+	now := st.now()
 	dir, err := os.Stat(st.root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -108,6 +115,10 @@ func (st *Store) refreshTalks(ix *talkIndex) error {
 		ix.stale.Store(true) // still owed the sweep this failed to do
 		return err
 	}
+	known, reread := ix.docs, ix.reread
+	if now.Sub(reread) >= talkRereadEvery {
+		known, reread = nil, now
+	}
 	docs := make(map[string]talkDoc, len(entries))
 	retry := false
 	for _, entry := range entries {
@@ -125,7 +136,7 @@ func (st *Store) refreshTalks(ix *talkIndex) error {
 			retry = retry || !os.IsNotExist(err)
 			continue
 		}
-		if last, ok := ix.docs[name]; ok && sameDocument(last.file, info) {
+		if last, ok := known[name]; ok && sameDocument(last.file, info) {
 			last.key = FileKey(last.talk)
 			docs[name] = last
 			continue
@@ -153,13 +164,13 @@ func (st *Store) refreshTalks(ix *talkIndex) error {
 		}
 		return owners[a].created.After(owners[b].created)
 	})
-	ix.dir, ix.swept, ix.retry, ix.docs, ix.owners = dir, now, retry, docs, owners
+	ix.dir, ix.swept, ix.reread, ix.retry, ix.docs, ix.owners = dir, now, reread, retry, docs, owners
 	return nil
 }
 
 // forget drops what was read, as for a floor that isn't there. Its lock is held.
 func (ix *talkIndex) forget() {
-	ix.dir, ix.swept, ix.retry, ix.docs, ix.owners = nil, time.Time{}, false, nil, nil
+	ix.dir, ix.swept, ix.reread, ix.retry, ix.docs, ix.owners = nil, time.Time{}, time.Time{}, false, nil, nil
 }
 
 // quiet is whether the last sweep still stands, with dir the folder as it is now.
@@ -169,6 +180,7 @@ func (ix *talkIndex) forget() {
 func (ix *talkIndex) quiet(dir os.FileInfo, now time.Time) bool {
 	return ix.docs != nil && !ix.retry && !ix.stale.Load() &&
 		now.Sub(ix.swept) < talkSweepEvery &&
+		now.Sub(ix.reread) < talkRereadEvery &&
 		os.SameFile(ix.dir, dir) && ix.dir.ModTime().Equal(dir.ModTime()) &&
 		ix.swept.Sub(dir.ModTime()) >= folderTimeSlack
 }
