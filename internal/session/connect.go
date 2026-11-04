@@ -265,6 +265,7 @@ func (a *Agent) service(id string) (connectStatus, bool) {
 // whether it needs a typed answer — a key, or the one thing the service's
 // address is missing.
 type connectAsk struct {
+	service  string
 	answers  chan connectAnswer
 	needsKey bool
 	// name is the account in the words a person owns it by, and secret says what
@@ -318,7 +319,7 @@ func (a *Agent) ResolveConnect(id string, approve bool) {
 	if !waiting {
 		return
 	}
-	if ask.needsKey {
+	if ask.needsKey && (a.connect == nil || !a.connect.Connected(ask.service)) {
 		approve = false
 	}
 	// Buffered to one and read at most once, so this never blocks and never
@@ -384,6 +385,7 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 	a.connectSeq++
 	id := "connect-" + strconv.FormatUint(a.connectSeq, 10)
 	ask := connectAsk{
+		service:  service.ID,
 		answers:  make(chan connectAnswer, 1),
 		needsKey: service.keyed() || service.asks(),
 		name:     strings.TrimSpace(service.Name),
