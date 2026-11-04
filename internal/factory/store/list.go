@@ -4,13 +4,47 @@ import (
 	"os"
 	"reflect"
 	"sync"
+	"time"
 )
 
+// listRereadEvery bounds how long a document may be trusted by file identity. An
+// in-place rewrite keeping its size and time looks unchanged, and a Stop or a
+// budget must not rest on file times with no limit.
+const listRereadEvery = time.Minute
+
 // listIndex owns the decoded documents. Nothing returned by List aliases them.
-// mu guards only the docs pointer and is never held across a read or a write.
+// mu guards only these fields and is never held across a read or a write.
 type listIndex struct {
 	mu   sync.Mutex
 	docs map[string]listedDoc
+	// fullAt is when the running epoch began. Each epoch starts empty, so its
+	// first look reads every document.
+	fullAt time.Time
+	// epoch stops a scan that began before a full read from publishing over it.
+	epoch int
+}
+
+// listSnapshot is what one scan reuses. A published map is never changed, so the
+// scan may read it unlocked: migration during a scan takes item locks.
+func (st *Store) listSnapshot() (map[string]listedDoc, int) {
+	st.list.mu.Lock()
+	defer st.list.mu.Unlock()
+	if now := st.now(); now.Sub(st.list.fullAt) >= listRereadEvery {
+		st.list.docs, st.list.fullAt = nil, now
+		st.list.epoch++
+	}
+	return st.list.docs, st.list.epoch
+}
+
+// listPublish keeps a scan's documents unless a newer epoch began meanwhile. A
+// scan publishing over a newer one of its epoch costs only reads, because each
+// file's identity is checked on every look.
+func (st *Store) listPublish(docs map[string]listedDoc, epoch int) {
+	st.list.mu.Lock()
+	defer st.list.mu.Unlock()
+	if epoch == st.list.epoch {
+		st.list.docs = docs
+	}
 }
 
 type listedDoc struct {

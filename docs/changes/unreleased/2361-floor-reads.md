@@ -9,7 +9,9 @@ invalidates:
 
 Each List result owns its mutable data. Repository migration and output retention
 still run on each look. Writes from another store and replacements with unchanged
-size and modification time are visible on the next look.
+size and modification time are visible on the next look. Every document is read
+again at least once a minute, so an in-place edit that keeps its size and time is
+seen within that bound.
 
 Lease grants and execution gates still read the job under its lock. A Stop that
 lands during selection permits only a thread-only lease for a pending reply,
