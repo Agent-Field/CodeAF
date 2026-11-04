@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Closing a conversation waits for queued spending records
-pr: 0
+pr: 2357
 surface: [engine, chat]
 invalidates:
   - Session write settlement previously left queued usage rows behind; it now drains that ledger under a bounded wait.
