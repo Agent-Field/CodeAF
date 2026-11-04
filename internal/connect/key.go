@@ -44,7 +44,7 @@ type keyService interface {
 	sign(base http.RoundTripper, key string) http.RoundTripper
 	// check proves a key against the cheap read the catalog names, or says
 	// nothing when it names none.
-	check(ctx context.Context, client *http.Client) error
+	check(ctx context.Context, client *http.Client) (bool, error)
 }
 
 var _ keyService = (*keyPlug)(nil)
@@ -121,9 +121,9 @@ func (p *keyPlug) sign(base http.RoundTripper, key string) http.RoundTripper {
 // alternative — guessing at an address that might be free and might charge, and
 // might delete something — is worse than letting the first real call be the one
 // that says the key is wrong, which it will say in the service's own words.
-func (p *keyPlug) check(ctx context.Context, client *http.Client) error {
+func (p *keyPlug) check(ctx context.Context, client *http.Client) (bool, error) {
 	if p.probe.address == "" {
-		return nil
+		return false, nil
 	}
 	method := p.probe.method
 	if method == "" {
@@ -131,18 +131,18 @@ func (p *keyPlug) check(ctx context.Context, client *http.Client) error {
 	}
 	request, err := http.NewRequestWithContext(ctx, method, p.probe.address, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = response.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
 	if accepted(p.probe.accepts, response.StatusCode) {
-		return nil
+		return true, nil
 	}
-	return fmt.Errorf("%s: %s", response.Status, apiMessage(body))
+	return false, fmt.Errorf("%s: %s", response.Status, apiMessage(body))
 }
 
 // accepted reads the answers the catalog counts as yes, falling back to the two
@@ -238,15 +238,15 @@ func (m *Manager) ConnectKey(ctx context.Context, id string, key string) (Status
 		return Status{}, fmt.Errorf("%s is connected in a browser, not with a key", service.Name)
 	}
 	if strings.TrimSpace(key) == "" {
-		return Status{}, fmt.Errorf("%s needs a key", service.Name)
+		return Status{}, keyFailure("shape", fmt.Errorf("%s needs a key", service.Name), "")
 	}
 	blank, key, err := holder.read(key)
 	if err != nil {
-		return Status{}, err
+		return Status{}, keyFailure("shape", err, "")
 	}
 	address, err := holder.address(blank)
 	if err != nil {
-		return Status{}, err
+		return Status{}, keyFailure("shape", err, "")
 	}
 	// A NAME IS NOT A KEY, AND IT IS NOT STORED AS ONE. What a person pasted is
 	// read once, here, and lands in whichever of the two fields it means
@@ -263,17 +263,19 @@ func (m *Manager) ConnectKey(ctx context.Context, id string, key string) (Status
 		// with an answer in it — go and set it — and it is said before anything
 		// is written down, because a connection to a name that resolves to
 		// nothing is a row that says "connected" over a request that cannot go.
-		return Status{}, err
+		return Status{}, keyFailure("shape", err, "")
 	}
-	if err := holder.check(ctx, client); err != nil {
-		return Status{}, fmt.Errorf("%s did not accept that key: %w", service.Name, err)
+	checked, err := holder.check(ctx, client)
+	if err != nil {
+		secret, _ := entry.secret(service.Name)
+		return Status{}, keyFailure("refused", fmt.Errorf("%s did not accept that key: %w", service.Name, err), secret)
 	}
-	if err := m.store.put(service.ID, entry); err != nil {
+	if err := m.store.putConnected(ctx, service.ID, entry, nil); err != nil {
 		return Status{}, fmt.Errorf("connect %s: %w", service.Name, err)
 	}
 	service.Address = address
 	// Account stays empty. See [keyPlug.Account].
-	return Status{Service: service, Connected: true, KeyEnv: entry.KeyEnv}, nil
+	return Status{Service: service, Connected: true, KeyEnv: entry.KeyEnv, Checked: checked}, nil
 }
 
 // keyClient is the account-bearing client for one key entry.

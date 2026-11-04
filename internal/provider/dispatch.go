@@ -969,6 +969,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// never reaches the endpoint walk or model chain: it either takes the one
 		// configured metered door, once, or returns its typed pause immediately.
 		if refusal.Kind == refusalPlanPaused {
+			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
+			now := c.clock()
+			postPhase(PhaseNews{Phase: PhasePlanPaused, Detail: detail, Since: now, At: now,
+				Model: c.modelFor(request), SourceID: c.config.SourceID, PlanReset: refusal.Reset,
+				Role: RoleFrom(ctx), Session: SessionFrom(ctx), Subject: NodeFrom(ctx)})
 			useOverflow := c.config.OverflowOnPlanPause &&
 				strings.TrimSpace(c.config.PlanOverflow) != "" && !usingOverflow &&
 				claimPlanOverflow(ctx)
@@ -983,9 +988,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				pacedSince = time.Time{}
 				continue
 			}
-			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
-			now := c.clock()
-			notePhase(ctx, c.modelFor(request), PhasePlanPaused, detail, now, now, "")
+
 			return nil, &PlanPauseError{
 				Reset: refusal.Reset, OverflowDoor: c.config.PlanOverflowDoor, Cause: lastErr,
 			}
