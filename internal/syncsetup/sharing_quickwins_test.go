@@ -261,6 +261,11 @@ func TestPublishingLogsOneLinePerChatAndOutcome(t *testing.T) {
 			shared++
 		}
 	}
+	for _, line := range lines {
+		if strings.Contains(line, "sharing chat "+c.ID) && strings.Contains(line, ": failed: ") && !strings.Contains(line, " 0 of ") {
+			t.Fatalf("a refused upload counted bytes as sent: %q", line)
+		}
+	}
 	if failed != 1 || shared != 1 {
 		t.Fatalf("log has %d failure and %d shared lines, want one each:\n%s", failed, shared, out.String())
 	}
@@ -280,5 +285,40 @@ func TestPendingChatsGoUntriedNewestFirstThenSmallest(t *testing.T) {
 	got := strings.Join(s.publicationOrder(), " ")
 	if want := "new middle-new old small-try big-tried"; got != want {
 		t.Fatalf("order = %s, want %s", got, want)
+	}
+}
+
+// TestOnlyWaitingForTheRelayCountsAgainstTheBudget: the clock once ran from
+// the start of the attempt, so packing a large chat on this computer, before a
+// single byte went out, used up the budget and the chat failed on every
+// attempt. Time between requests does not count; a request the relay does not
+// answer within the budget ends the attempt.
+func TestOnlyWaitingForTheRelayCountsAgainstTheBudget(t *testing.T) {
+	within := 100 * time.Millisecond
+	ctx, watch, stop := progressContext(t.Context(), within)
+	defer stop()
+	var landed int64
+	store := progressStore{Store: blobstore.NewMemory(), watch: watch, landed: &landed}
+	for range 2 {
+		time.Sleep(3 * within) // packing the chat here
+		_, _ = store.Has(ctx, nil)
+		_, _ = store.PutFrame(ctx, []byte("frame"))
+		if ctx.Err() != nil {
+			t.Fatalf("local work between requests ended the attempt: %v", context.Cause(ctx))
+		}
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("local work ended the attempt: %v", context.Cause(ctx))
+	}
+	store.Store = slowStore{Store: blobstore.NewMemory(), delay: time.Minute}
+	began := time.Now()
+	if _, err := store.Has(ctx, nil); err == nil {
+		t.Fatal("an unanswered request succeeded")
+	}
+	if !errors.Is(context.Cause(ctx), errPublishStalled) {
+		t.Fatalf("an unanswered request ended with %v, want no progress", context.Cause(ctx))
+	}
+	if took := time.Since(began); took > 20*within {
+		t.Fatalf("an unanswered request took %s to end", took)
 	}
 }

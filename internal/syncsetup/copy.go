@@ -258,9 +258,9 @@ func (s *Sync) publishLocalChat(ctx context.Context, root, id string) (copyAttem
 	if meta.Owned {
 		e.Workspace = filepath.Join(root, "work")
 	}
-	idle, touch, stop := progressContext(ctx, PublishIdleWithin)
+	idle, watch, stop := progressContext(ctx, PublishIdleWithin)
 	defer stop()
-	attempt, err := s.publishCopy(idle, e, c, devname.Name(s.Home), meta.Title, touch)
+	attempt, err := s.publishCopy(idle, e, c, devname.Name(s.Home), meta.Title, watch)
 	if err != nil && context.Cause(idle) == errPublishStalled && ctx.Err() == nil {
 		err = fmt.Errorf("%w: %w", errPublishStalled, err)
 	}
@@ -271,33 +271,55 @@ func (s *Sync) publishLocalChat(ctx context.Context, root, id string) (copyAttem
 	return attempt, err
 }
 
-// progressContext is ctx ended once within passes with no call to touch.
-func progressContext(ctx context.Context, within time.Duration) (context.Context, func(), func()) {
+// progressContext is ctx ended once a request to the relay goes unanswered
+// for within. Only time spent waiting for the relay counts: packing a large chat
+// on this computer, or waiting for its seal, is not a stalled connection.
+func progressContext(ctx context.Context, within time.Duration) (context.Context, *watchdog, func()) {
 	idle, cancel := context.WithCancelCause(ctx)
 	timer := time.AfterFunc(within, func() { cancel(errPublishStalled) })
-	return idle, func() { timer.Reset(within) }, func() { timer.Stop(); cancel(nil) }
+	timer.Stop()
+	return idle, &watchdog{timer: timer, within: within}, func() { timer.Stop(); cancel(nil) }
 }
 
-// progressStore notes every answer from the relay as progress.
+// watchdog times one request to the relay at a time; a background publish
+// asks them one after another.
+type watchdog struct {
+	timer  *time.Timer
+	within time.Duration
+}
+
+// asking starts the clock for one request; the returned func stops it on the
+// answer, whatever it is. A nil watchdog times nothing.
+func (w *watchdog) asking() func() {
+	if w == nil {
+		return func() {}
+	}
+	w.timer.Reset(w.within)
+	return func() { w.timer.Stop() }
+}
+
+// progressStore times every request to the relay and counts the bytes that
+// reached it: a put that failed or was cut short sent nothing that stays.
 type progressStore struct {
 	blobstore.Store
-	touch func()
+	watch  *watchdog
+	landed *int64
 }
 
 func (p progressStore) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID, error) {
+	answered := p.watch.asking()
+	defer answered()
 	id, err := p.Store.PutFrame(ctx, frame)
 	if err == nil {
-		p.touch()
+		*p.landed += int64(len(frame))
 	}
 	return id, err
 }
 
 func (p progressStore) Has(ctx context.Context, rids []string) ([]bool, error) {
-	have, err := p.Store.Has(ctx, rids)
-	if err == nil {
-		p.touch()
-	}
-	return have, err
+	answered := p.watch.asking()
+	defer answered()
+	return p.Store.Has(ctx, rids)
 }
 
 // PublishCopy offers a background copy once, without ever acquiring an existing
@@ -308,17 +330,23 @@ func (s *Sync) PublishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	return err
 }
 
-// publishCopy is PublishCopy that notes each answer from the relay with touch
+// publishCopy is PublishCopy that times each request to the relay with watch
 // and reports what it sent.
-func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell, name, title string, touch func()) (copyAttempt, error) {
+func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell, name, title string, watch *watchdog) (copyAttempt, error) {
 	var attempt copyAttempt
 	if Quiet(s.Home) {
 		return attempt, ErrQuiet
 	}
-	if _, err := s.Dir.Cell(ctx, c.ID); !errors.Is(err, directory.ErrNotFound) {
-		return attempt, err
+	answered := watch.asking()
+	_, err := s.Dir.Cell(ctx, c.ID)
+	if errors.Is(err, directory.ErrNotFound) {
+		err = s.putDevice(ctx, name)
+	} else if err == nil {
+		answered()
+		return attempt, nil
 	}
-	if err := s.putDevice(ctx, name); err != nil {
+	answered()
+	if err != nil {
 		return attempt, err
 	}
 	if err := cellstore.Await(ctx, c); err != nil {
@@ -330,14 +358,12 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	}
 	scope := s.scope(c.ID)
 	defer scope.Settle()
-	store := scope.Store
-	if touch != nil {
-		store = progressStore{Store: store, touch: touch}
-	}
+	var landed int64
+	store := progressStore{Store: scope.Store, watch: watch, landed: &landed}
 	engine := e.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	publisher := cellsync.Publisher{Engine: engine, Store: store, Dir: s.Dir}
 	ex, err := publisher.Upload(ctx, c, head.Turn.ID)
-	attempt = copyAttempt{sent: scope.Sent(), size: ex.Bytes}
+	attempt = copyAttempt{sent: landed, size: ex.Bytes}
 	if err != nil {
 		return attempt, err
 	}
@@ -349,7 +375,9 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 		return attempt, err
 	}
 	defer lock.Close()
+	answered = watch.asking()
 	view, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Head: head.Turn.ID, SavedAt: head.Turn.SealedAtMs, Class: info.Class, Title: info.Title, Size: info.Size, Keys: info.Keys})
+	answered()
 	if errors.Is(err, directory.ErrExists) {
 		return attempt, nil
 	}
@@ -359,7 +387,9 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	if err := cellstore.NotePublished(c, head.Turn.ID); err != nil {
 		return attempt, err
 	}
+	answered = watch.asking()
 	err = directory.ReleaseQuiet(ctx, s.Dir, c.ID, view.Cell.Lease.Fence)
+	answered()
 	if errors.Is(err, directory.ErrFenceStale) {
 		return attempt, nil
 	}
