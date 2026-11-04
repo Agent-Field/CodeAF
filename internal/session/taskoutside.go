@@ -832,7 +832,6 @@ func commandVerb(words []string) (string, []string) {
 
 // ── reading a command line ──────────────────────────────────────────────────
 
-
 // taskSegmentHead drops what stands in front of a command — the environment it
 // was given and the words that only introduce it — and answers the command
 // itself with the environment that was set on it.
