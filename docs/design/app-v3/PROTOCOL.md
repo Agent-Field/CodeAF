@@ -129,10 +129,10 @@ the tail after all built-ins.
 as `Entry.message_id` on that message's chat entry in `agents.read` (and in
 `entry.added` when present). It is captured when the turn starts, never changed
 by a mid-turn steer or note, and survives journal restarts and call replays.
-It is absent when no message can be named exactly, including ordinary session
-wakes and mixed batches. A stopped answer reuses its recorded message id;
-quit or close continuation names a message only when its recorded run identifies
-exactly one person's opening line. With `agents.client_tools.source` advertised,
+It is absent when no message can be named exactly. A stopped answer reuses its
+recorded message id. Turns the engine starts itself, including ordinary session
+wakes, mixed batches and a carry-on after a quit or close, carry none.
+With `agents.client_tools.source` advertised,
 an absent field means no such message, rather than an older engine.
 
 One model call emits exactly one `agents.tool_call`. `turn` is the engine's

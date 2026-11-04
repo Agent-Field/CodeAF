@@ -30,20 +30,11 @@ type turnOrigin struct {
 type turnOriginKey struct{}
 
 // turnOriginLocked captures the message being answered before the turn runs.
-// A new person's opening also records its run on that line, so a later carry-on
-// can prove which message opened the interrupted run without guessing by recency.
-func (a *Agent) turnOriginLocked(user *userMessage, run string) turnOrigin {
-	origin := turnOrigin{run: run, turn: openingMessage(*user), answers: openingMessage(*user)}
-	if personMessageID(*user) != "" {
-		mark := *user.person
-		mark.RunID = run
-		user.person = &mark
-	} else if user.resumed {
+// A resumed stopped answer reuses its recorded id independently of crew provenance.
+func turnOriginLocked(user userMessage, run string) turnOrigin {
+	origin := turnOrigin{run: run, turn: openingMessage(user), answers: openingMessage(user)}
+	if user.resumed {
 		origin.answers = user.sourceMessage
-	} else if user.wake && !user.answersPerson && len(a.steering) == 1 && len(a.ambient) == 0 {
-		// A continuation note must be the whole opening. Mixed or coalesced
-		// news names no single message, even if one note knows an earlier id.
-		origin.answers = a.steering[0].sourceMessage
 	}
 	return origin
 }

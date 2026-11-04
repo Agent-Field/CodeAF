@@ -10,8 +10,7 @@ invalidates: []
 the message the running turn answers, the same string as `Entry.message_id`
 on that message's chat entry. It is captured when the turn starts, so it is the
 same after an engine restart and on a replayed call. A stopped turn asked again
-carries its recorded message, and a carry-on after a quit or close carries the
-message that opened the interrupted run when the record names it exactly. Turns
-the engine wakes on its own notes carry none. The hello feature
+carries its recorded message. Turns the engine starts itself, including a
+carry-on after a quit or close, carry none. The hello feature
 `agents.client_tools.source` is advertised with `agents.client_tools`. `turn`
 remains the process-local counter.

@@ -1424,7 +1424,7 @@ type userMessage struct {
 	// unknown, never a guess at the latest one.
 	answersMessage string
 	// sourceMessage is the exact recorded message a resumed answer continues.
-	// Only resume doors set it; ordinary notes never inherit the latest message.
+	// Only ResumeStoppedTurn sets it; ordinary notes never inherit the latest message.
 	sourceMessage string
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
@@ -2045,7 +2045,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// turn, or one a task or member report opened, has a run and no person
 	// message, which is the truth. A steer that lands later is NOT the opener
 	// and changes nothing here.
-	turnCtx = withTurnOrigin(turnCtx, a.turnOriginLocked(&user, runIdentity(turnCtx)))
+	turnCtx = withTurnOrigin(turnCtx, turnOriginLocked(user, runIdentity(turnCtx)))
 	// AND THE TURN CARRIES THE CREATION CONTEXT the accepting door stated on
 	// its opening message (creation_team.go), only when it stated one: any other
 	// turn leaves the team unknown. Never rewritten from who manages a team now.

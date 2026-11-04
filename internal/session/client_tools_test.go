@@ -138,7 +138,8 @@ func TestClientToolsSourceLegacyStoppedTurn(t *testing.T) {
 	}
 }
 
-// Source contract (b): quit and close continue only an exactly recorded person's run.
+// Source contract (b), (d): quit and close carry-ons never name a source message,
+// even when a person opened the interrupted run in the reopened journal.
 func TestClientToolsSourceCarryOnReplay(t *testing.T) {
 	for _, closeKey := range []bool{false, true} {
 		for _, wake := range []bool{false, true} {
@@ -169,9 +170,9 @@ func TestClientToolsSourceCarryOnReplay(t *testing.T) {
 				if err := a.Close(); err != nil {
 					t.Fatal(err)
 				}
-				want := ""
-				if !wake {
-					want = journalPersonIDs(t, path)[0]
+				ids := journalPersonIDs(t, path)
+				if len(ids) != 1 {
+					t.Fatalf("recorded person messages=%v want one", ids)
 				}
 				door := clientToolsFixture()
 				fresh, _ := newTestAgent(t, &scriptedCompleter{steps: []step{clientToolSourceStep("carry"), finishingStep()}},
@@ -188,8 +189,8 @@ func TestClientToolsSourceCarryOnReplay(t *testing.T) {
 					t.Fatal("carry-on refused")
 				}
 				finishJobWake(t, wakes)
-				if len(door.calls) != 1 || door.calls[0].SourceMessage != want {
-					t.Fatalf("calls=%+v want source %q", door.calls, want)
+				if len(door.calls) != 1 || door.calls[0].SourceMessage != "" {
+					t.Fatalf("carry-on calls=%+v want no source; recorded message=%q", door.calls, ids[0])
 				}
 			})
 		}
@@ -291,61 +292,6 @@ func TestClientToolsSourceSurvivesSteering(t *testing.T) {
 		if call.SourceMessage != ids[0] {
 			t.Errorf("source=%q want opener %q, steer=%q", call.SourceMessage, ids[0], ids[1])
 		}
-	}
-}
-
-// Source contract (b), (d): carry-on uses recorded run identity, never the latest person.
-func TestClientToolsSourceCarryOnRequiresExactRun(t *testing.T) {
-	for _, kind := range []string{"exact", "legacy", "duplicate", "woken", "unmarked tail", "mixed notes"} {
-		t.Run(kind, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "session.jsonl")
-			mark := `,"presentation":{"audience":"person","run_id":"run-person","composed":{"messageId":"msg-original"}}`
-			if kind == "legacy" {
-				mark = ""
-			}
-			journal := `{"type":"session","version":1,"id":"carry"}` + "\n" +
-				`{"type":"message","role":"user","content":"original question"` + mark + "}\n"
-			if kind == "duplicate" {
-				journal += `{"type":"message","role":"user","content":"ambiguous opener","presentation":{"audience":"person","run_id":"run-person","composed":{"messageId":"msg-duplicate"}}}` + "\n"
-			}
-			// A later steer has an id but did not open the interrupted run.
-			journal += `{"type":"message","role":"user","content":"newer correction","presentation":{"audience":"person","composed":{"messageId":"msg-steer"}}}` + "\n"
-			run := "run-person"
-			if kind == "woken" {
-				run = "run-note"
-			}
-			tail := `,"presentation":{"audience":"human","run_id":"` + run + `","interrupted":true}`
-			if kind == "unmarked tail" {
-				tail = ""
-			}
-			journal += `{"type":"message","role":"assistant","content":"partial answer"` + tail + "}\n"
-			if err := os.WriteFile(path, []byte(journal), 0600); err != nil {
-				t.Fatal(err)
-			}
-			door := clientToolsFixture()
-			a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{clientToolSourceStep("carry"), finishingStep()}},
-				func(c *Config) { c.SessionFile = path; c.ClientTools = door; c.PromptProfile = "full" })
-			if kind == "mixed notes" {
-				a.mu.Lock()
-				note := wakeNote("unrelated job finished")
-				note.authored = true
-				a.steering = append(a.steering, note)
-				a.mu.Unlock()
-			}
-			wakes, stop := a.WatchWakes()
-			defer stop()
-			if !a.ResumeAfterQuit() {
-				t.Fatal("carry-on refused")
-			}
-			finishJobWake(t, wakes)
-			want := ""
-			if kind == "exact" {
-				want = "msg-original"
-			}
-			if len(door.calls) != 1 || door.calls[0].SourceMessage != want {
-				t.Fatalf("calls=%+v want source %q", door.calls, want)
-			}
-		})
 	}
 }
 
