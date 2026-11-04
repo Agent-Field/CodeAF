@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: other computers list more of this one's chats, sooner, and say how many are not shared yet
-pr: 0
+pr: 2341
 surface: [engine, chat, docs]
 invalidates:
   - "Was true: a background publish of an existing chat had 30 seconds (cellstore.SealWithin) for the whole chat, so a chat whose saved folder could not be uploaded in 30 seconds failed on every attempt and was never listed on the other computer. Is true now: each request to the relay has two minutes (syncsetup.PublishIdleWithin) plus the time to send its frame at 64 KiB/s (syncsetup.PublishSlowestRate), and packing the chat on this computer is not timed; an upload cut short keeps the frames it sent (cellsync.Publisher.Upload records them), so the next attempt resumes."
