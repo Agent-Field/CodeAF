@@ -19,6 +19,17 @@ func (a *Agent) automaticFactoryRefusal() string {
 	return ""
 }
 
+// watchedFactoryRefusal is the same question for the ten-a-second budget
+// watcher, through the door's cheaper answer where it has one.
+func (a *Agent) watchedFactoryRefusal() string {
+	if a.config.FactoryWorkRefusal == nil {
+		if door, ok := a.config.FactoryRun.(interface{ WatchedRefusal(string) string }); ok {
+			return door.WatchedRefusal(a.config.SessionFile)
+		}
+	}
+	return a.automaticFactoryRefusal()
+}
+
 // factoryTurnRefusal excludes every turn owed to the person, including steering.
 func (a *Agent) factoryTurnRefusal(user userMessage) string {
 	if user.factoryWork || user.wake && !user.answersPerson && !user.answer {

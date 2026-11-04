@@ -61,7 +61,14 @@ type Store struct {
 	// clock is the store's now. A test may hold it still; it is nil in every
 	// real build, which reads as time.Now.
 	clock func() time.Time
+	// reads counts the job documents this store has decoded.
+	reads atomic.Int64
+	// talks is what [Store.TalkStop] last read.
+	talks talkIndex
 }
+
+// DocumentReads is how many job documents this store has decoded so far.
+func (st *Store) DocumentReads() int64 { return st.reads.Load() }
 
 // Open answers the store at root, creating the directory. It holds no handles.
 func Open(root string) (*Store, error) {
@@ -564,6 +571,7 @@ func (st *Store) now() time.Time {
 }
 
 func (st *Store) read(path string) (doc, error) {
+	st.reads.Add(1)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

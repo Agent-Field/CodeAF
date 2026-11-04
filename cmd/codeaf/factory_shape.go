@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -392,16 +391,7 @@ func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
 }
 
 // sameFileKey is a path as one spelling, links resolved.
-func sameFileKey(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		path = real
-	}
-	return filepath.Clean(path)
-}
+func sameFileKey(path string) string { return store.FileKey(path) }
 
 // ManagerStatus reads the durable job and lease without opening another agent
 // or making a provider request. The saved transcript is not execution state.

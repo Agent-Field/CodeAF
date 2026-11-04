@@ -17,3 +17,22 @@ func (d seamRunDoor) AutomaticRefusal(conversation string) string {
 	}
 	return ""
 }
+
+// WatchedRefusal is AutomaticRefusal for the watcher that looks ten times a
+// second for as long as a job's chat is open. It costs one look at the floor's
+// folder, not a read of every job ([store.Store.TalkStop]). What grants work
+// still asks AutomaticRefusal.
+func (d seamRunDoor) WatchedRefusal(conversation string) string {
+	want := sameFileKey(conversation)
+	if want == "" || d.st == nil {
+		return ""
+	}
+	manager, stopped, err := d.st.TalkStop(want)
+	if err != nil {
+		return "job could not be read; automatic work stopped"
+	}
+	if manager && stopped {
+		return factory.PersonStopReason
+	}
+	return ""
+}
