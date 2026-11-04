@@ -572,7 +572,8 @@ type usageWriter struct {
 	stopped      chan struct{}
 	path         string
 	beforeWrite  func()
-	pending      atomic.Int64 // rows admitted and not yet written or dropped
+	admitted     atomic.Int64 // rows taken in, in writing order
+	handled      atomic.Int64 // rows written or dropped
 	overflowMu   sync.Mutex
 	overflow     map[chan struct{}]struct{}
 	overflowRows []usageWrite
@@ -852,6 +853,35 @@ func flushUsage(path string) bool {
 	return true
 }
 
+// usageDrainPoll is how often [drainUsage] looks at its writer's count.
+const usageDrainPoll = time.Millisecond
+
+// drainUsage waits, under [usageFlushLimit], for the rows path's writer has taken
+// in so far. It leaves the writer running, so other conversations keep recording.
+//
+// IT READS A COUNT AND HANDS THE WRITER NOTHING. A flush marker carries a channel
+// the writer closes, and the writer outlives whoever asks: a channel made inside
+// a test's synctest bubble and closed from outside it kills the test process.
+// Rows are handled in the order taken in, so the count covers these rows exactly,
+// and later traffic can't hold the wait open.
+func drainUsage(path string) bool {
+	writers := usageWritersAt(path)
+	if len(writers) == 0 {
+		return true
+	}
+	writer := writers[0]
+	target := writer.admitted.Load()
+	deadline := time.Now().Add(usageFlushLimit)
+	for writer.handled.Load() < target {
+		if time.Now().After(deadline) {
+			writer.noteMiss()
+			return false
+		}
+		time.Sleep(usageDrainPoll)
+	}
+	return true
+}
+
 // usageWritersAt answers the writer at path, or every writer for an empty path.
 func usageWritersAt(path string) []*usageWriter {
 	usageWritersMu.Lock()
@@ -869,7 +899,7 @@ func usageWritersAt(path string) []*usageWriter {
 // pending. Those rows are written if the process lives and lost if it exits, so
 // they count as short until written, once however many waits reach the ceiling.
 func (w *usageWriter) noteMiss() {
-	pending := w.pending.Load()
+	pending := w.admitted.Load() - w.handled.Load()
 	if pending <= 0 {
 		return
 	}
@@ -885,7 +915,7 @@ func (w *usageWriter) noteMiss() {
 // rowsHandled ends n rows' wait, written or dropped, and takes back the count
 // of any that [usageWriter.noteMiss] had called short.
 func (w *usageWriter) rowsHandled(n int64) {
-	w.pending.Add(-n)
+	w.handled.Add(n)
 	w.overflowMu.Lock()
 	back := min(w.missed, n)
 	w.missed -= back
@@ -1061,7 +1091,7 @@ func queueUsage(path string, line UsageLine) {
 	usageWritersMu.Lock()
 	writer := usageWriterForLocked(path)
 	work := usageWrite{id: line.ChargeID(), line: append(payload, '\n')}
-	writer.pending.Add(1)
+	writer.admitted.Add(1)
 	// While rows are kept, new ones join them: the queue can then only shrink,
 	// so steady traffic can't hold the kept rows back.
 	if !writer.keepingRows() {

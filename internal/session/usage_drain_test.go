@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -415,4 +416,64 @@ func TestReachingTheUsageCeilingIsLoggedAndCounted(t *testing.T) {
 	if len(rows) != 3 {
 		t.Fatalf("rows=%d, want 3", len(rows))
 	}
+}
+
+// A close inside a test's fake-clock bubble must not hand the shared writer a
+// channel from that bubble: the writer lives outside it, and closing one there
+// kills the whole test process.
+func TestClosingAnAgentInsideASyncBubbleLeavesTheWriterAlone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	usageWriterFor(path)
+	defer StopUsageWriter(path)
+	synctest.Test(t, func(t *testing.T) {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.usageLedger = path })
+		agent.stopLaneBeat() // The process-wide lane queue is outside the fake-clock bubble.
+		RecordUsage(path, UsageLine{ID: "in-bubble", Input: 1, USD: .001})
+		if err := agent.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !flushUsage(path) {
+		t.Fatal("the row was not written after the bubble ended")
+	}
+	rows, err := ReadUsage(path, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ID != "in-bubble" {
+		t.Fatalf("rows=%+v, want the bubble's call once", rows)
+	}
+}
+
+// Traffic that keeps arriving after a close begins doesn't hold the close open:
+// it waits for the rows taken in when it began.
+func TestDrainingUsageWaitsOnlyForTheRowsAlreadyTakenIn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	writer := usageWriterFor(path)
+	defer StopUsageWriter(path)
+	writer.beforeWrite = func() { time.Sleep(time.Millisecond) }
+	stop := make(chan struct{})
+	var writers sync.WaitGroup
+	var issued atomic.Int64
+	writers.Add(1)
+	go func() {
+		defer writers.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				RecordUsage(path, UsageLine{ID: fmt.Sprintf("call-%d", issued.Add(1)), Input: 1})
+				time.Sleep(50 * time.Microsecond)
+			}
+		}
+	}()
+	for issued.Load() < 100 {
+		time.Sleep(time.Millisecond)
+	}
+	if !drainUsage(path) {
+		t.Fatal("the drain reached its ceiling under steady traffic")
+	}
+	close(stop)
+	writers.Wait()
 }

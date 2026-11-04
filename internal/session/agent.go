@@ -2979,7 +2979,7 @@ func (a *Agent) Close() (saveErr error) {
 	// here: a close is not on a person's input path, and a stalled ledger costs
 	// it one [usageFlushLimit].
 	if a.config.usageLedger != "" {
-		flushUsage(a.config.usageLedger)
+		drainUsage(a.config.usageLedger)
 	}
 
 	a.mu.Lock()
