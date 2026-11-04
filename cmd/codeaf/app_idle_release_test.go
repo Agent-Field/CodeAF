@@ -116,6 +116,12 @@ func TestAppBackgroundE13B2QueuedTaskAcquiresAndSettlesAtStartup(t *testing.T) {
 		}
 		for _, task := range session.ReadSessionTasks(transcript) {
 			if task.ID == 2 && (task.State == session.TaskDone || task.State == session.TaskFailed || task.State == session.TaskUnverified) && !task.EndedAt.IsZero() {
+				// The rig's model answers every call "done", which is no verdict, so
+				// the task lands unverified with that word on its report. A task that
+				// settled without its worker ever running has no such word.
+				if task.State == session.TaskFailed || !strings.Contains(task.Report, "done") {
+					t.Errorf("B2 queued task settled without its worker's answer: %s: %s", task.State, task.Report)
+				}
 				t.Logf("B2 queued task recovered as %s: %s", task.State, task.Report)
 				return true
 			}
