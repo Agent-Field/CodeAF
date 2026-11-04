@@ -152,6 +152,16 @@ func TestCredentialFloorReadsThroughTheCheapDisguises(t *testing.T) {
 		`zsh -c 'cat ~/.ssh/id_rsa'`,
 		`sh -c "sh -c 'gh auth token'"`,
 		`eval "gh auth token"`,
+		`gh config get -h github.com oauth_token`,
+		`find ~/.ssh -type f | xargs cat`,
+		`echo ~/.netrc | xargs cat`,
+		`env -S 'gh auth token'`,
+		`git -c alias.x='!gh auth token' x`,
+		`ssh localhost cat ~/.aws/credentials`,
+		`ln -s ~/.aws x && cat x/credentials`,
+		`echo 'find-generic-password -s x -w' | security -i`,
+		`echo 'cat ~/.aws/credentials' > x.sh; sh x.sh`,
+		`python3 -c 'import os,base64;os.system(base64.b64decode("Z2ggYXV0aCB0b2tlbg=="))'`,
 		`alias g='gh auth token'; g`,
 		`echo gh auth token | sh`,
 		`printf 'cat ~/.netrc' | bash`,
@@ -201,6 +211,19 @@ func TestCredentialFloorReadsAScriptBeforeItRuns(t *testing.T) {
 		if _, hit := scope.Read(ToolBash, bashArgs(command)); !hit {
 			t.Fatalf("%q ran a script that reads a credential", command)
 		}
+	}
+	outside := filepath.Join(t.TempDir(), "steal.sh")
+	if err := os.WriteFile(outside, []byte("gh auth token\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, hit := scope.Read(ToolBash, bashArgs("bash "+outside)); !hit {
+		t.Fatal("a script named by an absolute path was not read")
+	}
+	if err := os.WriteFile(filepath.Join(scope.Dir, "app.py"), []byte("import os\nkey = os.environ['OPENAI_API_KEY']\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if read, hit := scope.Read(ToolBash, bashArgs("python3 app.py")); hit {
+		t.Fatalf("a project's script that reads its own key was refused: %+v", read)
 	}
 	if err := os.WriteFile(filepath.Join(scope.Dir, "plain.sh"), []byte("#!/bin/sh\ngh pr list\n"), 0o755); err != nil {
 		t.Fatal(err)
@@ -262,6 +285,15 @@ func TestCredentialFilesAreRefusedThroughEveryFileTool(t *testing.T) {
 			if _, hit := scope.Read(tool, args); !hit {
 				t.Fatalf("%s %q was not refused", tool, path)
 			}
+		}
+	}
+	for _, args := range []string{
+		`{"path":"@~/.codeaf/config.json"}`,
+		`{"path":"file://` + app + `/config.json"}`,
+		`{"path":"My Dir/../../.npmrc"}`,
+	} {
+		if _, hit := scope.Read("read", json.RawMessage(args)); !hit {
+			t.Fatalf("read %s was not refused", args)
 		}
 	}
 	nested := json.RawMessage(`{"reference_paths":["a.png","~/.ssh/id_rsa"]}`)
@@ -381,6 +413,13 @@ func TestCredentialFloorLeavesOrdinaryWorkAlone(t *testing.T) {
 		"security list-keychains",
 		"security show-keychain-info",
 		"go test ./internal/approval/",
+		`rg '\.netrc' src/`,
+		"grep -n .netrc README.md",
+		"ps -eo pid,etime,cmd",
+		"ps -C node -o pid=",
+		"cat deploy/.kube/values.yaml",
+		"grep -r foo .docker",
+		"ssh git@github.com",
 		"aws s3 ls",
 		"kubectl get pods",
 		"kubectl config view",
@@ -404,6 +443,10 @@ func TestCredentialFloorLeavesOrdinaryWorkAlone(t *testing.T) {
 		`{"path":"~/.codeaf/v3/session.jsonl"}`,
 		`{"content":"see ~/.ssh/id_rsa for the key","path":"notes.md"}`,
 		`{"prompt":"explain how ~/.aws/credentials works"}`,
+		`{"prompt":"~/.aws/credentials is what I mean"}`,
+		`{"pattern":".aws/credentials"}`,
+		`{"pattern":"\\.netrc"}`,
+		`{"oldText":"~/.aws/credentials","newText":"x","path":"notes.md"}`,
 	} {
 		if read, hit := scope.Read("read", json.RawMessage(args)); hit {
 			t.Fatalf("read %s was refused as %q", args, read.What)
@@ -431,7 +474,7 @@ func TestCredentialRefusalSaysWhatToDoInstead(t *testing.T) {
 }
 
 func TestSecretEnvNames(t *testing.T) {
-	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "OPENROUTER_API_KEY", "ANTHROPIC_AUTH_TOKEN", "NPM_TOKEN", "HF_TOKEN", "MY_SERVICE_SECRET", "DB_PASSWORD", "GOOGLE_APPLICATION_CREDENTIALS", "VAULT_TOKEN", "DOCKER_AUTH_CONFIG"} {
+	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "OPENROUTER_API_KEY", "ANTHROPIC_AUTH_TOKEN", "NPM_TOKEN", "HF_TOKEN", "MY_SERVICE_SECRET", "DB_PASSWORD", "GOOGLE_APPLICATION_CREDENTIALS", "VAULT_TOKEN", "DOCKER_AUTH_CONFIG", "PGPASSWORD", "MYSQL_PWD", "GH_PAT"} {
 		if !SecretEnvName(name) {
 			t.Fatalf("%s is not read as a secret", name)
 		}

@@ -43,7 +43,13 @@ func (c CredentialRead) Message() string {
 	return "Blocked: this call reaches for a credential (a login, key or token): " + c.What + ". Agents cannot read credentials in any approval mode, and this is not a fault to work around. " +
 		"Do not try another route: a script, an encoded command, a copy of the file, or another tool will be treated the same way. " +
 		"You do not need the secret to do the work: gh and git sign themselves in, so run them normally (`gh pr list`, `git push`). " +
-		"If this work really needs the credential, stop and tell the person what it is for; they can run it themselves with `!` in front of the command."
+		"If they say you are not signed in, or this work really needs the credential, stop and tell the person what it is for; they can sign in with `gh auth login`, or run the command themselves with `!` in front of it."
+}
+
+// Decision is the refusal in the policy's shape. It sits above every rule, because
+// a rule cannot give away something that is not a question.
+func (c CredentialRead) Decision() Decision {
+	return Decision{Action: ActionDeny, Rule: c.Message(), Credential: true}
 }
 
 // CredentialScope is where the floor is standing: whose home it protects, which
@@ -102,7 +108,7 @@ func (s CredentialScope) Read(tool string, args json.RawMessage) (CredentialRead
 		if !ok {
 			return CredentialRead{}, false
 		}
-		return s.command(command)
+		return s.Command(command)
 	}
 	var value any
 	if json.Unmarshal(args, &value) != nil {
@@ -120,11 +126,25 @@ func (s CredentialScope) File(name string) (string, bool) {
 func (s CredentialScope) walkArguments(key string, value any) (CredentialRead, bool) {
 	switch typed := value.(type) {
 	case string:
-		if shellArgumentKeys[strings.ToLower(key)] {
-			return s.command(typed)
+		name := strings.ToLower(key)
+		if shellArgumentKeys[name] {
+			return s.Command(typed)
 		}
-		if what, hit := s.pathHit(typed, s.Dir, nil); hit {
-			return CredentialRead{What: "the file " + what}, true
+		if textArgumentKeys[name] {
+			return CredentialRead{}, false
+		}
+		for _, candidate := range pathCandidates(typed) {
+			// An argument named for a path is one, spaces and all. Any other string
+			// has to look like a path before it is read as one.
+			what, hit := "", false
+			if strings.Contains(name, "path") || strings.Contains(name, "file") {
+				what, hit = s.judgePath(candidate, s.Dir, nil)
+			} else {
+				what, hit = s.pathHit(candidate, s.Dir, nil)
+			}
+			if hit {
+				return CredentialRead{What: "the file " + what}, true
+			}
 		}
 	case []any:
 		for _, item := range typed {
@@ -146,11 +166,20 @@ func (s CredentialScope) walkArguments(key string, value any) (CredentialRead, b
 // that are a shell under another name: jobs, watch, keep-running and the rest.
 var shellArgumentKeys = map[string]bool{"command": true, "cmd": true, "job_command": true, "check": true, "script": true}
 
+// textArgumentKeys hold words and not a file to open: a search pattern, a file's
+// new contents, a question. Every other argument is judged, so that a tool added
+// later is covered without having to be listed.
+var textArgumentKeys = map[string]bool{
+	"pattern": true, "query": true, "glob": true, "content": true, "body": true, "text": true, "prompt": true, "message": true,
+	"question": true, "description": true, "title": true, "note": true, "oldtext": true, "newtext": true, "old_string": true,
+	"new_string": true, "oldstring": true, "newstring": true, "goal": true, "brief": true, "summary": true, "answer": true,
+}
+
 // ── which environment variables are secrets ─────────────────────────────────
 
-var secretEnvExact = map[string]bool{"AWS_ACCESS_KEY_ID": true, "TOKEN": true, "SECRET": true, "PASSWORD": true, "API_KEY": true, "APIKEY": true}
+var secretEnvExact = map[string]bool{"AWS_ACCESS_KEY_ID": true, "TOKEN": true, "SECRET": true, "PASSWORD": true, "API_KEY": true, "APIKEY": true, "PGPASSWORD": true, "MYSQL_PWD": true}
 
-var secretEnvSuffixes = []string{"_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_PASSPHRASE", "_API_KEY", "_APIKEY", "_SECRET_KEY", "_ACCESS_KEY", "_PRIVATE_KEY", "_CREDENTIAL", "_CREDENTIALS", "_AUTH_CONFIG"}
+var secretEnvSuffixes = []string{"_TOKEN", "_SECRET", "_PASSWORD", "_PASSWD", "_PASSPHRASE", "_API_KEY", "_APIKEY", "_SECRET_KEY", "_ACCESS_KEY", "_PRIVATE_KEY", "_CREDENTIAL", "_CREDENTIALS", "_AUTH_CONFIG", "_PAT"}
 
 // SecretEnvName reports whether a variable's NAME says it holds a credential. It
 // reads the shape of the name rather than a list of services, for the reason
@@ -181,7 +210,7 @@ var credentialTails = splitTails(
 	".git-credentials", ".config/git/credentials",
 	".aws/credentials", ".aws/sso/cache/*", ".aws/cli/cache/*",
 	".config/gh/hosts.yml", "github cli/hosts.yml", ".config/hub", ".config/glab-cli/config.yml",
-	".docker/config.json", ".kube/*",
+	".docker/config.json", ".kube/config", ".kube/config.*",
 	".config/gcloud/credentials.db", ".config/gcloud/access_tokens.db", ".config/gcloud/application_default_credentials.json",
 	".config/gcloud/legacy_credentials/*/*",
 	".azure/accesstokens.json", ".azure/msal_token_cache*", ".azure/service_principal_entries*",
@@ -281,6 +310,11 @@ func (s CredentialScope) isCredentialFile(clean string) bool {
 	if homeCredentials[name] && s.isSomeonesHome(path.Dir(clean)) {
 		return true
 	}
+	// A kube folder in somebody's home holds logins under any name. One in a project
+	// is usually manifests, and only its `config` is treated as a login.
+	if len(components) > 1 && components[len(components)-2] == ".kube" && s.isSomeonesHome(path.Dir(path.Dir(clean))) {
+		return true
+	}
 	for _, app := range s.appHomes {
 		rest, inside := strings.CutPrefix(clean, app+"/")
 		if !inside {
@@ -329,7 +363,16 @@ func (s CredentialScope) holdsCredentials(clean string) (holds, viaHome bool) {
 	}
 	components := strings.Split(strings.TrimPrefix(clean, "/"), "/")
 	for _, tail := range holderFolders {
-		if tailMatches(components, tail) {
+		if !tailMatches(components, tail) {
+			continue
+		}
+		// A project may have a `.docker` of its own. A relative path with no folder
+		// to place it in has to be taken at its word.
+		parent := clean
+		for range tail {
+			parent = path.Dir(parent)
+		}
+		if !strings.HasPrefix(clean, "/") || s.isSomeonesHome(parent) {
 			return true, false
 		}
 	}
@@ -381,14 +424,19 @@ func isPathShaped(word string) bool {
 // links under it resolve. It answers the word as it was written, for the refusal.
 func (s CredentialScope) pathHit(word, cwd string, vars map[string]string) (string, bool) {
 	word = strings.TrimSpace(word)
-	if !isPathShaped(word) {
+	if !isPathShaped(word) || !isPathShaped(s.expand(word, vars)) {
 		return "", false
 	}
-	expanded := s.expand(word, vars)
-	if !isPathShaped(expanded) {
+	return s.judgePath(word, cwd, vars)
+}
+
+// judgePath is the judgement itself, for a word already known to name a file.
+func (s CredentialScope) judgePath(word, cwd string, vars map[string]string) (string, bool) {
+	word = strings.TrimSpace(word)
+	if word == "" {
 		return "", false
 	}
-	full := joinTo(cwd, expanded)
+	full := joinTo(cwd, s.expand(word, vars))
 	if s.isCredentialFile(normalLower(full)) {
 		return word, true
 	}
@@ -563,6 +611,9 @@ func credentialVerb(head string, rest []string) string {
 	said := func(words ...string) string { return "`" + strings.Join(words, " ") + "`" }
 	switch base {
 	case "security":
+		if anyWord(rest, "-i") {
+			return said(base, "-i")
+		}
 		if firstIs(verbs, "find-generic-password", "find-internet-password", "find-key", "dump-keychain", "export", "dump-trust-settings") {
 			return said(base, verbs[0])
 		}
@@ -611,8 +662,12 @@ func credentialVerb(head string, rest []string) string {
 				}
 			}
 		}
-		if len(verbs) > 2 && verbs[0] == "config" && verbs[1] == "get" && strings.Contains(strings.ToLower(verbs[2]), "token") {
-			return said(base, "config get", verbs[2])
+		if len(verbs) > 2 && verbs[0] == "config" && verbs[1] == "get" {
+			for _, word := range verbs[2:] {
+				if strings.Contains(strings.ToLower(word), "token") {
+					return said(base, "config get", word)
+				}
+			}
 		}
 	case "git":
 		sub := gitSubcommand(rest)
@@ -671,7 +726,7 @@ func credentialVerb(head string, rest []string) string {
 		}
 	case "ps":
 		for _, word := range rest {
-			if word == "-E" || (!strings.HasPrefix(word, "-") && strings.Contains(word, "e") && !unicode.IsDigit(rune(word[0]))) {
+			if word == "-E" || bsdEnvFlag.MatchString(word) {
 				return said("ps", word)
 			}
 		}
@@ -681,6 +736,10 @@ func credentialVerb(head string, rest []string) string {
 	}
 	return ""
 }
+
+// bsdEnvFlag is `ps e` in its BSD spelling, which prints each process's
+// environment. `ps -eo pid,etime` and `ps -C node` are other things altogether.
+var bsdEnvFlag = regexp.MustCompile(`^[auxwfTr]*e[auxwfTr]*$`)
 
 func gitSubcommand(rest []string) []string {
 	for index := 0; index < len(rest); index++ {
@@ -699,7 +758,7 @@ func gitSubcommand(rest []string) []string {
 
 // credentialUsers run a key without showing it. SSH-based git is the point: the
 // key is opened by ssh and only ever signs, so naming it is use and not a read.
-var credentialUsers = map[string]bool{"ssh": true, "sftp": true, "sshfs": true, "ssh-add": true, "ssh-keygen": true, "ssh-copy-id": true}
+var credentialUsers = map[string]bool{"sshfs": true, "ssh-add": true, "ssh-keygen": true, "ssh-copy-id": true}
 
 // nameOnly commands handle a path without opening what is in it.
 var nameOnly = map[string]bool{
@@ -782,7 +841,8 @@ const maxShellDepth = 6
 // scriptReadLimit bounds the one file read this floor does before a script runs.
 const scriptReadLimit = 256 << 10
 
-func (s CredentialScope) command(command string) (CredentialRead, bool) {
+// Command reports whether one command line reaches for a credential.
+func (s CredentialScope) Command(command string) (CredentialRead, bool) {
 	return s.shellLine(command, s.Dir, map[string]string{}, 0)
 }
 
@@ -795,6 +855,12 @@ func (s CredentialScope) shellLine(command, cwd string, vars map[string]string, 
 	line, bodies := splitHeredocs(command)
 	segments := CommandWords(line)
 	runsCode, decodes := false, false
+	piped := false
+	for _, words := range segments {
+		if len(words) > 0 && commandBase(words[0]) == "xargs" {
+			piped = true
+		}
+	}
 	dumpsEnv, filtersSecrets := false, false
 	var earlier []string
 	for _, words := range segments {
@@ -804,6 +870,15 @@ func (s CredentialScope) shellLine(command, cwd string, vars map[string]string, 
 		}
 		if rawBase == "base64" || rawBase == "openssl" || rawBase == "xxd" {
 			decodes = true
+		}
+		if rawBase == "env" {
+			for index, word := range words {
+				if (word == "-S" || word == "--split-string") && index+1 < len(words) {
+					if read, found := s.shellLine(words[index+1], cwd, vars, depth+1); found {
+						return read, true
+					}
+				}
+			}
 		}
 		runnable := unwrap(words, vars, s)
 		if len(runnable) == 0 {
@@ -855,7 +930,7 @@ func (s CredentialScope) shellLine(command, cwd string, vars map[string]string, 
 		if read, found := s.runsOtherCode(base, head, expanded, cwd, vars, depth, earlier); found {
 			return read, true
 		}
-		if read, found := s.segmentPaths(base, expanded, cwd, vars); found {
+		if read, found := s.segmentPaths(base, expanded, cwd, vars, piped); found {
 			return read, true
 		}
 		earlier = append(earlier, expanded...)
@@ -897,7 +972,7 @@ func decodedText(word string) (string, bool) {
 	if len(word) < 12 {
 		return "", false
 	}
-	raw, err := base64.StdEncoding.DecodeString(word)
+	raw, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(word, "="))
 	if err != nil || !utf8.Valid(raw) {
 		return "", false
 	}
@@ -914,6 +989,13 @@ func (s CredentialScope) runsOtherCode(base, head string, rest []string, cwd str
 	switch {
 	case base == "eval":
 		return s.shellLine(strings.Join(rest, " "), cwd, vars, depth+1)
+	case base == "git":
+		// `git -c alias.x='!cmd' x` is a shell command in a config value.
+		for _, word := range rest {
+			if _, value, found := strings.Cut(word, "=!"); found && strings.HasPrefix(word, "alias.") {
+				return s.shellLine(value, cwd, vars, depth+1)
+			}
+		}
 	case base == "alias":
 		for _, word := range rest {
 			if _, value, ok := shellAssignment(word); ok {
@@ -935,7 +1017,12 @@ func (s CredentialScope) runsOtherCode(base, head string, rest []string, cwd str
 				return s.shellLine(rest[index+1], cwd, vars, depth+1)
 			}
 		}
-		script := withoutFlags(rest)
+		var script []string
+		for _, word := range rest {
+			if !strings.HasPrefix(word, "-") {
+				script = append(script, word)
+			}
+		}
 		if len(script) == 0 {
 			// A shell with no program reads one from its input, which is whatever
 			// the earlier stages of the pipeline said.
@@ -952,7 +1039,12 @@ func (s CredentialScope) runsOtherCode(base, head string, rest []string, cwd str
 		if read, found := s.shellLine(strings.Join(script, " "), cwd, vars, depth+1); found {
 			return read, true
 		}
-		return s.scanScript(script[0], cwd, vars, depth)
+		if read, found := s.scanScript(script[0], cwd, vars, depth); found {
+			return read, true
+		}
+		// A script written earlier in this same line does not exist yet, and what
+		// the earlier stages said is all there is to read of it.
+		return s.shellLine(strings.Join(earlier, " "), cwd, vars, depth+1)
 	case interpreters[base]:
 		for index, word := range rest {
 			if isInlineCodeFlag(base, word) && index+1 < len(rest) {
@@ -1019,7 +1111,7 @@ func (s CredentialScope) scanScript(name, cwd string, vars map[string]string, de
 	if strings.ContainsRune(string(body), 0) {
 		return CredentialRead{}, false
 	}
-	read, found := s.scanCode(string(body), cwd, vars, depth)
+	read, found := s.scanCodeText(string(body), cwd, vars, depth)
 	if found {
 		read.What += " (in the script " + name + ")"
 	}
@@ -1044,6 +1136,23 @@ var codeVerbHeads = map[string]bool{
 // string, so it only looks for shapes that mean one thing: a credential's path,
 // a command that hands one over, or an environment read of a secret's name.
 func (s CredentialScope) scanCode(code, cwd string, vars map[string]string, depth int) (CredentialRead, bool) {
+	if read, found := s.scanCodeText(code, cwd, vars, depth); found {
+		return read, true
+	}
+	if envReader.MatchString(code) {
+		for _, name := range envName.FindAllString(code, -1) {
+			if SecretEnvName(name) {
+				return hit("reading $" + name + " from the environment")
+			}
+		}
+	}
+	return CredentialRead{}, false
+}
+
+// scanCodeText is [CredentialScope.scanCode] for a script on disk, which leaves the
+// environment out of it. A project's script that reads OPENAI_API_KEY is ordinary,
+// the variable is already gone from its shell, and refusing it would protect nothing.
+func (s CredentialScope) scanCodeText(code, cwd string, vars map[string]string, depth int) (CredentialRead, bool) {
 	tokens := codeToken.FindAllString(code, -1)
 	kept := tokens[:0:0]
 	for _, token := range tokens {
@@ -1078,10 +1187,10 @@ func (s CredentialScope) scanCode(code, cwd string, vars map[string]string, dept
 			return hit(what)
 		}
 	}
-	if envReader.MatchString(code) {
-		for _, name := range envName.FindAllString(code, -1) {
-			if SecretEnvName(name) {
-				return hit("reading $" + name + " from the environment")
+	for _, token := range kept {
+		if text, ok := decodedText(strings.Trim(token, ".:")); ok && depth < maxShellDepth {
+			if read, found := s.shellLine(text, cwd, vars, depth+1); found {
+				return read, true
 			}
 		}
 	}
@@ -1090,19 +1199,33 @@ func (s CredentialScope) scanCode(code, cwd string, vars map[string]string, dept
 
 // ── the paths in one command ────────────────────────────────────────────────
 
-func (s CredentialScope) segmentPaths(base string, rest []string, cwd string, vars map[string]string) (CredentialRead, bool) {
+func (s CredentialScope) segmentPaths(base string, rest []string, cwd string, vars map[string]string, piped bool) (CredentialRead, bool) {
 	if credentialUsers[base] {
 		return CredentialRead{}, false
 	}
 	skipNext := false
-	checkAll := !nameOnly[base]
+	// A name handed down a pipe to xargs gets opened, whatever printed it.
+	checkAll := !nameOnly[base] || piped
+	patternFirst := patternFirstCommands[base]
 	if checkAll {
 		for _, word := range rest {
 			if skipNext {
 				skipNext = false
 				continue
 			}
-			if base == "scp" && word == "-i" {
+			// A search pattern is words and not a file, so `grep -n .netrc README.md`
+			// is asking about the README.
+			if patternFirst {
+				if word == "-e" {
+					skipNext, patternFirst = true, false
+					continue
+				}
+				if !strings.HasPrefix(word, "-") {
+					patternFirst = false
+					continue
+				}
+			}
+			if (base == "scp" || base == "ssh" || base == "sftp") && word == "-i" {
 				skipNext = true
 				continue
 			}
@@ -1113,8 +1236,10 @@ func (s CredentialScope) segmentPaths(base string, rest []string, cwd string, va
 			}
 		}
 	}
-	return s.treeRead(base, rest, cwd, vars)
+	return s.treeRead(base, rest, cwd, vars, piped)
 }
+
+var patternFirstCommands = map[string]bool{"grep": true, "egrep": true, "fgrep": true, "zgrep": true, "rg": true, "ag": true, "ack": true}
 
 // pathCandidates are the ways one word can name a file: itself, the value of a
 // `--flag=file`, curl's `@file`, and a `file://` address.
@@ -1136,7 +1261,7 @@ func pathCandidates(word string) []string {
 
 // treeRead is the commands that read a folder whole. They are refused on a folder
 // that holds credentials even though the folder itself is not one.
-func (s CredentialScope) treeRead(base string, rest []string, cwd string, vars map[string]string) (CredentialRead, bool) {
+func (s CredentialScope) treeRead(base string, rest []string, cwd string, vars map[string]string, piped bool) (CredentialRead, bool) {
 	skipsHidden := false
 	patternFirst := false
 	reads := false
@@ -1156,8 +1281,8 @@ func (s CredentialScope) treeRead(base string, rest []string, cwd string, vars m
 			}
 		}
 	case "find":
-		reads = anyWord(rest, "-exec", "-execdir", "-ok", "-okdir")
-	case "tar", "zip", "7z", "rsync", "rclone", "cpio", "scp":
+		reads = piped || anyWord(rest, "-exec", "-execdir", "-ok", "-okdir")
+	case "ln", "tar", "zip", "7z", "rsync", "rclone", "cpio", "scp":
 		reads = true
 	case "cp":
 		for _, word := range rest {

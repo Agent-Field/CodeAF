@@ -172,7 +172,7 @@ func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
 	// early start of a read (loop.go) refuses it too. It runs with the workspace,
 	// which the policy does not have, so a relative path and a link are placed.
 	if read, hit := a.credentialRead(call); hit {
-		return approval.Decision{Action: approval.ActionDeny, Rule: read.Message(), Credential: true}, true
+		return read.Decision(), true
 	}
 	policy := a.approvalGate()
 	if policy == nil {

@@ -1151,8 +1151,10 @@ reads the result.
 **Agent shells do not inherit credentials.** Anything named like one, such as `GH_TOKEN`,
 `AWS_SECRET_ACCESS_KEY` or `NPM_TOKEN`, is removed from the environment of the commands an agent
 runs, along with provider keys. A key in your vault for this project is still given to them. If
-`GH_TOKEN` is your only GitHub login, `gh` in an agent's shell says you are not signed in: run
-`gh auth login`, or set `CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL=1` for that launch.
+`GH_TOKEN` is your only GitHub login, `gh` and HTTPS `git` in an agent's shell, and in your own
+`!` commands, say you are not signed in: run `gh auth login`, or set
+`CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL=1` for that launch. A key from your vault is visible to a
+plain `env`, which is not refused.
 
 **This is not a sandbox.** It reads a command before the shell runs it. A compiled program, a
 script reached through a Makefile, or a path built at run time can still reach what your user

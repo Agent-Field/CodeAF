@@ -207,7 +207,7 @@ func (d Decision) String() string { return d.Rule + " → " + string(d.Action) }
 func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	tool = strings.TrimSpace(tool)
 	if read, hit := DefaultCredentialScope("").Read(tool, args); hit {
-		return credentialDecision(read)
+		return read.Decision()
 	}
 	base := p.base(tool, args)
 	if tool != ToolBash {
@@ -231,16 +231,10 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 // string — a slash command, a queued shell action, a settings preview that
 // wants to show what a pattern would do.
 func (p Policy) CheckBash(command string) Decision {
-	if read, hit := DefaultCredentialScope("").command(command); hit {
-		return credentialDecision(read)
+	if read, hit := DefaultCredentialScope("").Command(command); hit {
+		return read.Decision()
 	}
 	return p.checkBash(command, p.base(ToolBash, nil))
-}
-
-// credentialDecision is the floor's answer in the policy's shape. It sits above
-// every rule, because a rule cannot give away something that is not a question.
-func credentialDecision(read CredentialRead) Decision {
-	return Decision{Action: ActionDeny, Rule: read.Message(), Credential: true}
 }
 
 // base is the answer before any bash-specific reasoning: the tool's own rule

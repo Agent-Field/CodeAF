@@ -184,7 +184,7 @@ const taskLandingInstead = "This task's work comes home through its landing, and
 // path law and asked of a task with no ground at all: `git push` from inside the
 // ground reaches the same remote as `git push` from outside it.
 func refusedTaskReach(command string) string {
-	for _, segment := range taskSegments(command) {
+	for _, segment := range approval.CommandWords(command) {
 		words, _ := taskSegmentHead(segment)
 		if len(words) == 0 {
 			continue
@@ -379,7 +379,7 @@ func refusedOutsideGround(ground, command string) string {
 
 func outsideScopeAim(ground, command string, allowed func(string) bool) string {
 	cwd := ground
-	for _, segment := range taskSegments(command) {
+	for _, segment := range approval.CommandWords(command) {
 		words, assignments := taskSegmentHead(stripRedirections(segment))
 		for index, word := range segment {
 			if index+1 < len(segment) && fileWriteRedirection(word, segment[index+1]) {
@@ -832,8 +832,6 @@ func commandVerb(words []string) (string, []string) {
 
 // ── reading a command line ──────────────────────────────────────────────────
 
-// taskSegments is the shared reader of a command line ([approval.CommandWords]).
-func taskSegments(command string) [][]string { return approval.CommandWords(command) }
 
 // taskSegmentHead drops what stands in front of a command — the environment it
 // was given and the words that only introduce it — and answers the command
