@@ -791,8 +791,8 @@ characters.
 
 Search runs against the database index. Idle background checks do not launch
 refinement without pending sources. Failed ordinary-chat requests retain pending
-work. The same failed input does not spend again automatically; choose Build
-to retry or add new saved sources. Unreadable chats do not prevent other chats
+work and completed progress. The background build retries automatically, even
+when its input has not changed. Unreadable chats do not prevent other chats
 from being processed; their incomplete status remains visible. The Knowledge
 view over `--host` is not supported.
 
@@ -800,8 +800,7 @@ Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
 model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
 The compiler checks the returned model ID and rejects substitutions.
 
-Stable source IDs prevent duplicate records during an explicit retry or
-journal recovery. A failed or interrupted provider request can still incur charges;
+Stable source IDs prevent duplicate records during retries and journal recovery. A failed or interrupted provider request can still incur charges;
 retry safety does not mean every network request is billed only once.
 
 ## Updating existing knowledge pages and sections

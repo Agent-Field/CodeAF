@@ -1327,8 +1327,6 @@ meanings.
 
 ## What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder
 
-To make this one chat think harder, choose a higher effort with `alt+e` or `/effort`.
-
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
 The effort follows a colon with no space: `model:effort`. The model stays bold and
@@ -3849,6 +3847,7 @@ Its usage counts toward the conversation and any owning factory job budget.
 It stops at the budget limit or when the conversation closes, and falls back
 quietly if generation fails or the connected engine lacks this capability.
 This is a desktop composer feature; terminal Tab behavior is unchanged.
+
 ## Quitting before local saving finishes — no upload receipt yet
 
 The successful `saved here` receipt requires the chat engine to acknowledge that its local transcript and captured work finished saving. A network error alone, or an unanswered closing call, does not prove that. If local closing still has no receipt after about three seconds, it says `still saving on this computer — ctrl+c leaves the written turns here`. If you leave before local saving is confirmed, codeaf says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. A confirmed local save that is still uploading uses the successful sync-service receipt instead. A failed local write keeps the `codeaf could not save this chat` sentence.

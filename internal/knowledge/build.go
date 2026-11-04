@@ -139,7 +139,7 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 				return loadErr
 			}
 			job["phase"] = string(BuildFailed)
-			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; use Build to retry or add new sources."
+			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; retrying automatically."
 			saveErr := saveState(db, "job", job)
 			db.Close()
 			if saveErr != nil {
@@ -314,16 +314,6 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile'").Scan(&total); err != nil {
 		return err
 	}
-	var latest int64
-	var admitted int
-	var arrived float64
-	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
-		return err
-	}
-	attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
-	if job["failed_input"] == attemptInput {
-		return nil
-	}
 	job["problems"] = problems
 	job["sources"] = total
 	job["chats"] = len(journals)
@@ -355,10 +345,6 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		if err = v.Flush(ctx, key(), flag(job["backfill"])); err != nil {
 			if errors.Is(err, ErrDisabled) {
 				return nil
-			}
-			job["failed_input"] = attemptInput
-			if saveErr := saveState(db, "job", job); saveErr != nil {
-				return saveErr
 			}
 			return err
 		}
