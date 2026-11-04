@@ -129,7 +129,6 @@ func (a *Agent) railBlockLocked() error {
 			if a.crewDayHeld != nil {
 				spentToday = max(spentToday, a.crewDayHeld.Total())
 			}
-			spentToday += pendingBudgetSpend(a.config.usageLedger, "")
 			if spentToday >= daily {
 				return dailyLimitReached(spentToday, daily)
 			}

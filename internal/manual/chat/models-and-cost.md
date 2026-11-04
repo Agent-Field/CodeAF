@@ -4399,13 +4399,13 @@ The daily budget blocks a new chat call when today's recorded spending reaches
 the limit. Task crews and their helpers use it when checking the next call's
 estimated cost. Other conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. When a recorded
-charge or measured stream usage reaches the daily limit, running owned work
+charge reaches the daily limit, running owned work
 in this engine is cancelled.
 The chat and work report the limit; raise it with `/budget day 30`, then submit
-again. Measured spend keeps the cap closed while its final receipt is pending.
-Already-recorded usage counts once; previous-day readings do not close today’s cap.
-For a call running across midnight, new measured spending counts toward the new
-day; its earlier measured spending stays in the all-days total.
+again. Only recorded spending closes the cap; usage on an open stream and
+pending receipts do not count until recorded. A stream can continue spending
+past the limit unnoticed while no ledger write crosses it. Spending is assigned
+to the date recorded, including receipts arriving after midnight.
 Detached summaries are cancelled too. Running adaptive workers follow their owner's raised
 daily limit. A sampled job refusal is checked again against the current cap.
 Known-free auxiliary calls can continue despite another conversation's daily spend.

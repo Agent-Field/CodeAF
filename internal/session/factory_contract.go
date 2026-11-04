@@ -239,13 +239,6 @@ type JobChat interface {
 	Refusal() string
 }
 
-// JobLiveBudget checks measured usage still on open streams without booking it.
-// The stable ledger name lets sibling conversations share the same reading.
-type JobLiveBudget interface {
-	JobLedgerName
-	RefusalWithSpend(float64) string
-}
-
 // JobLedgerName is the optional half of a [JobChat] that names the job its
 // calls are spent for, as `owner/name#number`, so every ledger row of the
 // job's family carries it ([UsageLine.FactoryJob]).

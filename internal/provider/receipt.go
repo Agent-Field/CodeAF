@@ -169,12 +169,6 @@ func (m *receiptRouteMemo) heard(base string, now time.Time) {
 // produced a generation, not money the provider charged. Those mutually
 // exclusive doors keep one call from ever being counted twice.
 func (c *Client) settle(ctx context.Context, model string, response *ai.Response, reason string, answerBytes int, traces ...*callTrace) {
-	queued := false
-	defer func() {
-		if !queued {
-			noteUsageProgress(ctx, nil, traces...)
-		}
-	}()
 	base := c.config.BaseURL
 	if len(traces) > 0 && traces[0] != nil && traces[0].attemptBase != "" {
 		base = traces[0].attemptBase
@@ -190,7 +184,6 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 			return
 		}
 		c.bankBilledUsage(ctx, model, response, traces...)
-		noteUsageProgress(ctx, nil, traces...)
 	}
 
 	sink := reconcileFrom(ctx)
@@ -205,11 +198,6 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		}
 		// Nobody banks the receipt, but the attempt's token is still owed it.
 		sink = func(Reconciled) {}
-	}
-	bank := sink
-	sink = func(answer Reconciled) {
-		defer noteUsageProgress(ctx, nil, traces...)
-		bank(answer)
 	}
 	if served := CallFrom(ctx).Model(); served != "" {
 		model = served
@@ -308,8 +296,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// PENDING IS SAID BEFORE THE QUEUE, so a token never looks silent while its
 	// price is between the call and a worker.
 	handle.financial(PendingCost())
-	queued = c.queueReceipt(work)
-	if !queued {
+	if !c.queueReceipt(work) {
 		// A full queue reports the missing price without holding up the turn.
 		handle.unknown()
 		work.sink(result)

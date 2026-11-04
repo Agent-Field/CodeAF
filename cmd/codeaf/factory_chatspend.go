@@ -90,13 +90,6 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 
 type ownedStageBudget struct{ session.JobChat }
 
-func (c ownedStageBudget) RefusalWithSpend(pending float64) string {
-	if live, ok := c.JobChat.(session.JobLiveBudget); ok {
-		return live.RefusalWithSpend(pending)
-	}
-	return c.JobChat.Refusal()
-}
-
 // FactoryJob names the job on this chat's ledger rows.
 func (c ownedStageBudget) FactoryJob() string {
 	if named, ok := c.JobChat.(session.JobLedgerName); ok {
@@ -186,9 +179,7 @@ func (c *jobChat) book(usd float64, model string, calls, input, output int) {
 }
 
 // Refusal is the job's budget line once it is spent, read where it is checked.
-func (c *jobChat) Refusal() string { return c.RefusalWithSpend(0) }
-
-func (c *jobChat) RefusalWithSpend(pending float64) string {
+func (c *jobChat) Refusal() string {
 	if c.failed.Load() {
 		return "job spending could not be recorded; work stopped"
 	}
@@ -197,8 +188,8 @@ func (c *jobChat) RefusalWithSpend(pending float64) string {
 			if r.refusal != "" {
 				return r.refusal
 			}
-			if r.cap > 0 && r.spent+pending >= r.cap {
-				return fmt.Sprintf(factoryrun.ChatBudgetReached, appUSD(r.spent+pending), appUSD(r.cap))
+			if r.cap > 0 && r.spent >= r.cap {
+				return fmt.Sprintf(factoryrun.ChatBudgetReached, appUSD(r.spent), appUSD(r.cap))
 			}
 			return ""
 		}
