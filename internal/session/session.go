@@ -3143,6 +3143,10 @@ type Agent struct {
 	// reason: its callers are tool calls running in parallel inside one batch.
 	docs documentRung
 
+	// spendStampMu orders meter capture with its metadata write. The folder
+	// lock alone cannot keep an older captured total from being written last.
+	spendStampMu sync.Mutex
+
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that
 	// holds it while waiting on the network would deadlock Interrupt, which is

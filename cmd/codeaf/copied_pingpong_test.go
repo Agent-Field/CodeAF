@@ -184,7 +184,7 @@ func (h *copiedPingPong) takeB() (cell.Cell, error) {
 	if h.copyRoot == "" {
 		door = "home"
 	}
-	got, err := h.surfaceTake(h.b, takeover{c}, rootFor(h.c.ID), door, "computer A")
+	got, err := h.surfaceTake(h.b, takeover{c: c}, rootFor(h.c.ID), door, "computer A")
 	if err != nil {
 		return cell.Cell{}, err
 	}
@@ -203,7 +203,7 @@ func (h *copiedPingPong) takeA() cell.Cell {
 		options.BucketFor = takeCopyBucket
 	}
 	c := h.a.Continuer(h.ea, options)
-	got, err := h.surfaceTake(h.a, takeover{c}, h.c.Root, "home", "computer B")
+	got, err := h.surfaceTake(h.a, takeover{c: c}, h.c.Root, "home", "computer B")
 	if err != nil {
 		h.t.Fatal(err)
 	}

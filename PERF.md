@@ -404,3 +404,12 @@ on both revisions, with and without race instrumentation; run with `-run '^$'`.
 The writer batches at most 128 already admitted rows per ledger lock. A quiet
 queue flushes immediately, and flush/close barriers follow completed writes.
 Identity generation checks and duplicate suppression still run under that lock.
+
+## Factory signal acknowledgement bounds
+
+Each worker heartbeat sends at most 256 unconfirmed signal delivery IDs. A failed
+heartbeat retains its receipts; a successful heartbeat retires sent IDs unless
+the reply still carries them. Deduplication retains only outstanding deliveries,
+not the history of a lease. `TestAcknowledgementsLeaveOnlyUnconfirmedDeliveries`
+drives 25,000 receipts through real HTTP, checks failed-heartbeat retention, and
+requires the backlog to drain within 110 successful heartbeats.
