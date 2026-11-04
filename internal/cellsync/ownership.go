@@ -35,7 +35,7 @@ func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool,
 	if v.Cell.Head != d.Head {
 		return false, b.Publisher.Dir.Release(ctx, d.ID(), v.Cell.Lease.Fence)
 	}
-	d.Fence, d.Frames = v.Cell.Lease.Fence, v.Cell.Frames
+	d.Fence, d.Frames, d.Size = v.Cell.Lease.Fence, v.Cell.Frames, v.Cell.Size
 	b.mu.Lock()
 	*b.Driving = d
 	b.stale, b.renewalEnded = false, false

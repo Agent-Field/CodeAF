@@ -178,7 +178,7 @@ func (h *hostedMoveRig) publish(s *syncsetup.Sync, e cellstore.Engine, c cell.Ce
 }
 
 func (h *hostedMoveRig) taker(s *syncsetup.Sync, e cellstore.Engine, root func(string) string, phases func(handoff.Phase)) takeover {
-	return takeover{s.Continuer(e, syncsetup.TakeOptions{DeviceName: "receiver", RootFor: root, OnPhase: phases})}
+	return takeover{c: s.Continuer(e, syncsetup.TakeOptions{DeviceName: "receiver", RootFor: root, OnPhase: phases})}
 }
 
 func (h *hostedMoveRig) host(d *syncsetup.Drive, c cell.Cell, work string, e cellstore.Engine) *remote.Client {
