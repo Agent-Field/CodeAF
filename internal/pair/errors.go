@@ -148,8 +148,8 @@ var (
 	ErrRelayBusy = errors.New("sync is full right now; try again in a few minutes")
 	// ErrRelayTooOld is a relay that does not know pairing yet.
 	ErrRelayTooOld = errors.New("that sync service is too old for pairing")
-	// ErrDifferentChats is a used computer already sharing another set.
-	ErrDifferentChats = errors.New("This computer already shares chats with another set of computers; nothing was changed.")
+	// ErrDifferentChats is a computer that already has chats of its own.
+	ErrDifferentChats = errors.New("this computer has local work, so nothing was changed. To pair it anyway, run this again with --replace: local chats stay on this computer but no longer sync; shared memories and settings are cleared")
 	// ErrAlreadyPaired is a computer that already holds the chats being offered.
 	ErrAlreadyPaired = errors.New(AlreadyPairedLine)
 	// ErrCannotReach is a relay that does not answer, with its host after it.

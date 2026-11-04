@@ -1,7 +1,9 @@
 package config
 
 import (
+	"bytes"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -126,4 +128,91 @@ func replaceKeepingLength(raw []byte, from, to string) []byte {
 		}
 	}
 	panic("the fixture does not contain " + from)
+}
+
+func TestUnreadableProfileRefusesSpendingAndSettingsWrites(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read mode 000 files")
+	}
+	t.Setenv(dailyBudgetEnv, "")
+	profile := t.TempDir()
+	path := BudgetConfigPath(profile)
+	original := []byte(`{"model.talk":"keep/model","daily_budget_usd":1}`)
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0600) })
+	if limit, err := DailyBudgetUSDAt(profile); err == nil {
+		t.Errorf("unreadable saved spending authority returned %v without an error", limit)
+	}
+	if err := WriteChatModel(profile, "new/model"); err == nil || !strings.Contains(err.Error(), "preserve existing file") {
+		t.Errorf("settings write must refuse to replace unreadable config: %v", err)
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Errorf("settings write changed unreadable config: %s", got)
+	}
+}
+
+func TestUnreadableProfileAuthoritiesDoNotUseOrdinaryFallback(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read mode 000 files")
+	}
+	t.Setenv(dailyBudgetEnv, "")
+	for _, warm := range []bool{false, true} {
+		name := "cold"
+		if warm {
+			name = "cached"
+		}
+		t.Run(name, func(t *testing.T) {
+			profile := t.TempDir()
+			path := BudgetConfigPath(profile)
+			original := []byte(`{"model.talk":"keep/model","daily_budget_usd":1,"tool_approval_mode":"prompt"}`)
+			if err := os.WriteFile(path, original, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if warm {
+				if got, err := DailyBudgetBaseUSDAt(profile); err != nil || got != 1 {
+					t.Fatalf("warm budget: %v, %v", got, err)
+				}
+			}
+			if err := os.Chmod(path, 0000); err != nil {
+				t.Fatal(err)
+			}
+			defer os.Chmod(path, 0600)
+			if _, err := DailyBudgetBaseUSDAt(profile); err == nil {
+				t.Error("base budget hid read failure")
+			}
+			if _, err := DailyBudgetAuthorityEstablished(profile); err == nil {
+				t.Error("budget authority hid read failure")
+			}
+			if _, err := ReadPreferences(profile); err == nil {
+				t.Error("sync preferences hid read failure")
+			}
+			if _, err := ReadProviderKeys(profile); err == nil {
+				t.Error("sync provider keys hid read failure")
+			}
+			if got := ToolApprovalModeAt(profile); got != "prompt" {
+				t.Errorf("tool policy = %q; want prompt", got)
+			}
+			if got, err := HeadlessToolApprovalModeAt(t.TempDir(), profile); err == nil || !strings.Contains(err.Error(), path) {
+				t.Errorf("headless tool policy = %q, %v; want read failure naming %s", got, err, path)
+			}
+			if err := os.Chmod(path, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := DailyBudgetUSDAt(profile); err != nil || got != 1 {
+				t.Fatalf("restored budget: %v, %v", got, err)
+			}
+		})
+	}
 }

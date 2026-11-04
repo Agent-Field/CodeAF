@@ -155,7 +155,9 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 		if model == "" {
 			return "", errors.New("no model for the small-work seat")
 		}
-		client, err := provider.NewClient(settings.ClientConfig(model))
+		clientConfig := settings.ClientConfig(model)
+		clientConfig.DropRefusedEffort = true
+		client, err := provider.NewClient(clientConfig)
 		if err != nil {
 			return "", err
 		}

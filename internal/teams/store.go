@@ -2,6 +2,7 @@ package teams
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -318,6 +319,88 @@ func Inspect(profileDir string, fn func(*File) error) error {
 			f = &File{Version: Version, localIdentities: true}
 		}
 		return fn(f)
+	})
+}
+
+// BackupBeforeSharing preserves the full stored teams before any first merge.
+// A synced temporary copy is linked into place when possible. Filesystems
+// without hard links use an exclusive write, so an earlier copy always wins.
+func BackupBeforeSharing(profileDir string) error {
+	return backupBeforeSharing(profileDir, os.Link)
+}
+
+func backupBeforeSharing(profileDir string, link func(string, string) error) error {
+	return withLock(profileDir, lockWait, func() error {
+		backup := config.ProfilePath(profileDir, "teams.before-sharing.json")
+		if _, err := os.Lstat(backup); err == nil {
+			return nil
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		snapshot, err := readSnapshot(profileDir)
+		if err != nil {
+			return fmt.Errorf("preserving teams.before-sharing.json: %w", err)
+		}
+		if snapshot == nil {
+			return nil
+		}
+		file := snapshot.file()
+		for i := range file.Teams {
+			team := &file.Teams[i]
+			for _, members := range [][]Member{team.Members, team.FormerMembers} {
+				for j := range members {
+					members[j], err = WithBriefs(profileDir, team.ID, members[j])
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+		raw, err := json.MarshalIndent(struct {
+			Version int    `json:"version"`
+			Teams   []Team `json:"teams"`
+		}{Version: Version, Teams: file.Teams}, "", "  ")
+		if err != nil {
+			return err
+		}
+		temp, err := os.CreateTemp(filepath.Dir(backup), ".teams-before-sharing-*")
+		if err != nil {
+			return err
+		}
+		defer os.Remove(temp.Name())
+		if _, err := temp.Write(raw); err != nil {
+			temp.Close()
+			return err
+		}
+		if err := temp.Sync(); err != nil {
+			temp.Close()
+			return err
+		}
+		if err := temp.Close(); err != nil {
+			return err
+		}
+		if err := link(temp.Name(), backup); err == nil || os.IsExist(err) {
+			return nil
+		}
+		copy, err := os.OpenFile(backup, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if os.IsExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if _, err = copy.Write(raw); err == nil {
+			err = copy.Sync()
+		}
+		closed := copy.Close()
+		if err == nil {
+			err = closed
+		}
+		if err != nil {
+			// A failed fallback must not look like a completed backup on retry.
+			_ = os.Remove(backup)
+		}
+		return err
 	})
 }
 

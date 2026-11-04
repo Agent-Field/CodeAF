@@ -75,14 +75,27 @@ func JoinByLink(ctx context.Context, reqs directory.Requests, j LinkJoining, ui 
 	return me.install(ctx, j, grant)
 }
 
-// free checks that this home's pairing can be read. Whether the grant is the
-// same set, its successor, or a different set is decided only once it arrives.
+// free refuses a join that would overwrite chats, before any approval is spent.
+// A computer that has only been started holds nothing to lose, so it joins
+// without being told to replace; one that is used keeps its chats unless told.
 func (j LinkJoining) free() (LinkJoining, error) {
 	if j.Replace {
 		return j, nil
 	}
-	if _, err := identity.Load(j.Home); err != nil && !errors.Is(err, identity.ErrNone) {
-		return j, err
+	if _, err := identity.Load(j.Home); err != nil {
+		return j, nil
+	}
+	// A removed paired computer may be returning to its own identity. The
+	// approved grant is checked by adoptWithDevice before any local switch.
+	if j.Revoked && !identity.Solo(j.Home) {
+		return j, nil
+	}
+	fresh, err := identity.Joinable(j.Home)
+	if err != nil {
+		return j, ErrDifferentChats
+	}
+	if !fresh {
+		return j, differentChats(j.Home)
 	}
 	return j, nil
 }
@@ -189,13 +202,13 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	}
 	joined, err := adoptWithDevice(j.Joining, g.Grant, &dev)
 	if err != nil {
-		return LinkJoined{}, err
+		return LinkJoined{Joined: joined}, err
 	}
 	// Explicit re-pairing installs the approved device even in the same set,
 	// so a removed device can return without changing the shared identity.
 	if !joined.Already || j.Replace {
 		if err := identity.Install(j.Home, g.Identity, dev); err != nil {
-			return LinkJoined{}, err
+			return LinkJoined{Joined: joined}, err
 		}
 		joined.Already = false
 	}

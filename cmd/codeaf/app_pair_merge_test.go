@@ -71,7 +71,10 @@ func TestM1M2M5M9M10AppPairRealHomes(t *testing.T) {
 		return c, []byte(history)
 	}
 	chatA, wantA := seed(dirA, "A chat")
-	chatB, wantB := seed(dirB, "B chat")
+	// A startup-only joining home is legal; its own chat is created after pairing.
+	if _, err := identity.EnsureSolo(dirB); err != nil {
+		t.Fatal(err)
+	}
 	_, recA, wa := appDeviceBackend(t, dirA)
 	oldB, recB, wb := appDeviceBackend(t, dirB)
 	defer assertAppPairCopyM9(t, recA)
@@ -93,6 +96,7 @@ func TestM1M2M5M9M10AppPairRealHomes(t *testing.T) {
 	if err := oldB.Close(); err != nil {
 		t.Fatal(err)
 	}
+	chatB, wantB := seed(dirB, "B chat")
 	down.Store(true)
 	_, restarted, nextWire := appDeviceBackend(t, dirB)
 	wb = nextWire

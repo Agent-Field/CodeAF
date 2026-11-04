@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -40,8 +41,7 @@ func (chatPairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) 
 	return label, explainSyncUnreachable(err, route.URL)
 }
 
-// Join shares this solo computer's chats with the other computer, keeping
-// its local history and saved keys.
+// Join pairs this computer; submitted chats require explicit replacement.
 func (chatPairDoor) Join(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error) {
 	route, err := pairMailbox("")
 	if err != nil {
@@ -92,3 +92,6 @@ type chatOfferUI struct {
 func (u chatOfferUI) Show(code *pair.Code, _ string) {
 	u.OfferUI.Show(code, pair.ChatCardLines(code, u.service))
 }
+
+// HasTeams checks this computer's profile even while a hosted chat is open.
+func (chatPairDoor) HasTeams() bool { return pair.HasTeams(config.ProfileDir()) }
