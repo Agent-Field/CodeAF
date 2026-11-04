@@ -65,6 +65,8 @@ type Store struct {
 	reads atomic.Int64
 	// talks is what [Store.TalkStop] last read.
 	talks talkIndex
+	// list owns the documents last decoded by List.
+	list listIndex
 }
 
 // DocumentReads is how many job documents this store has decoded so far.
@@ -227,10 +229,13 @@ func (st *Store) Get(id int) (factory.Item, error) {
 	return d.Item, nil
 }
 
-// List reads every item, newest first by Created. An unreadable or
+// List lists every item, newest first by Created. Unchanged files reuse their
+// decoded documents; every returned item owns its mutable data. An unreadable or
 // newer-schema document is skipped rather than fatal: ONE DOCUMENT FROM THE
 // FUTURE, OR ONE TORN BY A FULL DISK, MUST NOT EMPTY THE WHOLE FLOOR.
 func (st *Store) List() ([]factory.Item, error) {
+	st.list.mu.Lock()
+	defer st.list.mu.Unlock()
 	entries, err := os.ReadDir(st.root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -238,6 +243,7 @@ func (st *Store) List() ([]factory.Item, error) {
 		}
 		return nil, err
 	}
+	next := make(map[string]listedDoc, len(entries))
 	items := make([]factory.Item, 0, len(entries))
 	var ids repositoryIDs
 	loadedIDs := false
@@ -252,7 +258,7 @@ func (st *Store) List() ([]factory.Item, error) {
 		if _, err := strconv.Atoi(strings.TrimSuffix(entry.Name(), ".json")); err != nil {
 			continue
 		}
-		d, err := st.read(filepath.Join(st.root, entry.Name()))
+		d, err := st.listed(filepath.Join(st.root, entry.Name()), st.list.docs, next)
 		if err != nil {
 			continue
 		}
@@ -270,6 +276,7 @@ func (st *Store) List() ([]factory.Item, error) {
 		st.retainOutput(&d.Item)
 		items = append(items, d.Item)
 	}
+	st.list.docs = next
 	sort.SliceStable(items, func(a, b int) bool {
 		if items[a].Created.Equal(items[b].Created) {
 			return items[a].ID > items[b].ID
