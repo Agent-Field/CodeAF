@@ -1491,6 +1491,8 @@ type app struct {
 	homeTakenSaid func() tea.Cmd
 	// homeTaking keeps a retiring session on its own continuation until arrival.
 	homeTaking string
+	// homeMoveSaid is the progress line home shows for the running continue.
+	homeMoveSaid string
 	// homeTakeSeq keeps each answer and cleanup tied to the operation that created it.
 	homeTakeSeq uint64
 	// homeTakeCancel belongs to the active mutation; automatic cleanup keeps it until settlement.
@@ -5592,6 +5594,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.automaticTakeSettled(msg)
 	case homeTakenMsg:
 		return a, a.tookTakeover(msg)
+	case homeMoveTickMsg:
+		return a, a.followMove(msg)
 
 	case homeBranchMsg:
 		return a, a.tookBranch(msg)

@@ -2470,6 +2470,24 @@ which is the whole machine's ledger rather than this conversation's — it was a
 conversation that has started no tasks prints `spend` alone. When they are there they add
 up to the line above them, always — that is the whole point of printing them.
 
+## Desktop saved agent spend after stopping a reply
+
+An agent's saved spend is the conversation's cumulative total in `meta.json`.
+The desktop engine's `agents.list` reads saved `spent_usd` from its disk row.
+`agents.open` reads the saved figure from disk, including for a conversation
+the engine already holds or is opening. Every `agent.changed` reads it when
+the event is sent, and `agents.take` carries it because it answers through
+`agents.open`. Other method answers omit `spent_usd`, so the desktop keeps
+its last figure. A zero figure is omitted.
+
+The total is saved when a turn ends. If a cancelled call's receipt is recovered
+later, the engine saves the updated total and sends one `agent.changed` if the
+figure differs from the one last said, without waiting for another message.
+Duplicate or delayed save news sends nothing if that figure has already been
+said. The charge is counted once.
+`agents.budget.get` reads the live meter in `engine.spent_usd`, which may include
+calls not yet saved to metadata.
+
 ## Why do the tokens on the status line jump instead of counting up
 
 They count up. While a turn is running, the money and the token figures on the status
@@ -4578,3 +4596,17 @@ Choose those separately there. A seat model pin still needs an available provide
 and its credentials on the receiving computer; pairing does not install a provider.
 The **share teams** switch does not change which crew choices follow preferences.
 Desktop app crews are separate.
+
+## Are queued spending records saved when I close a conversation?
+
+Closing a conversation waits for spending records already queued to its ledger,
+including the last call. Other conversations can keep writing to that ledger.
+The first write may need to scan older records, so a large spending history can
+make closing slower.
+
+Closing waits at most two seconds for the spending ledger, so a stalled ledger can
+add up to two seconds to each close. Pending rows can still be written if the process stays open and
+the mount recovers. If the process exits first, those rows can be lost. Reaching
+the limit writes one line to the log with the ledger path and the number of rows
+pending, and those rows count as records not written down until they are written.
+No warning appears on screen.
