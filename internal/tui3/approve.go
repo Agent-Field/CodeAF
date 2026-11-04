@@ -86,13 +86,25 @@ const (
 	approveKeys      = "a approve · d decline · esc later"
 	approveLoading   = "looking up the request…"
 	approveGone      = "that request has run out — ask the new device for a new link"
-	approveSlow      = "no answer from your devices — try again"
+	approveSlow      = "sync did not answer in time — try again"
+	approveUnsure    = "sync did not answer in time — your answer may still have arrived; check /devices before answering again"
 	approveWorking   = "approving…"
 	approveDeclining = "declining…"
 	approveDenied    = "%s was declined."
 	approveTimeout   = 8 * time.Second
-	joinedFleetWord  = "%s is now paired. Your chats can continue there."
+	// approveAnswerTimeout covers an answer's steps: the device record, the
+	// relay's decision, and the lookup when that reply is lost.
+	approveAnswerTimeout = 20 * time.Second
+	joinedFleetWord      = "%s is now paired. Your chats can continue there."
 )
+
+// ErrAnswerNotArrived is an answer the door looked for after a timeout and
+// found the request still waiting: nothing was decided, so trying again is safe.
+var ErrAnswerNotArrived = errors.New("the answer did not arrive")
+
+// ErrAlreadyPaired is a link whose request this fleet already approved, as
+// when an approval's reply was lost: there is nothing left to answer.
+var ErrAlreadyPaired = errors.New("that device is already paired — there is nothing left to approve")
 
 // linkShape is what link pairing is typed as (contract section 2): a short
 // code with an optional key, or a codeaf URL from any channel's hosted origin
@@ -208,7 +220,7 @@ func (m pendingMsg) land(a *app) tea.Cmd {
 		return nil
 	}
 	if m.err != nil {
-		m.card.line = approveFailure(m.err)
+		m.card.line = approveFailure(m.err, false)
 		return nil
 	}
 	m.card.req, m.card.line = &m.req, ""
@@ -222,7 +234,7 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 	m.card.working = false
 	switch {
 	case m.err != nil:
-		m.card.line = approveFailure(m.err)
+		m.card.line = approveFailure(m.err, m.approved)
 	case m.approved:
 		a.pair.close()
 		a.addMachine.grew()
@@ -237,8 +249,17 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 // approveFailure is the one sentence for a refused or failed answer. The door
 // already says what happened in words a person can act on, so they are shown
 // as they are; only a silent wait, which has no sentence of its own, gets one.
-func approveFailure(err error) string {
+// A wait on an approval that was sent may still have been decided by sync,
+// and /devices shows whether it was. A decline never shows there, so its wait
+// is the plain retry, as is one the door found still waiting.
+func approveFailure(err error, approved bool) string {
+	if errors.Is(err, ErrAnswerNotArrived) {
+		return approveSlow
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
+		if approved {
+			return approveUnsure
+		}
 		return approveSlow
 	}
 	return err.Error()
@@ -321,7 +342,7 @@ func (c *approveCard) key(a *app, name string) (tea.Cmd, bool) {
 func (a *app) decide(c *approveCard, approve bool) tea.Cmd {
 	door, req := a.approvals, *c.req
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), approveTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), approveAnswerTimeout)
 		defer cancel()
 		call := door.Deny
 		if approve {

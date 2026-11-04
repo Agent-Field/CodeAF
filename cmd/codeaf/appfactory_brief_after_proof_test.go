@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -109,6 +110,9 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		if briefRev(read) != 1 || briefBody(read)["verdict"] != first.Current.Brief.Verdict || read["verdict_behind"] != true {
 			t.Fatalf("old verdict not marked behind: %+v", read)
 		}
+		if kind, exists := read["failure_kind"]; exists {
+			t.Fatalf("ordinary model failure gained failure_kind: %v", kind)
+		}
 	})
 
 	t.Run("lifecycle outcomes refresh", func(t *testing.T) {
@@ -142,7 +146,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 			}},
 		} {
 			t.Run(c.name, func(t *testing.T) {
-				s, _, id, params := briefAfterProofSetup(t, factory.StateLanded)
+				s, door, id, params := briefAfterProofSetup(t, factory.StateLanded)
 				var first appwire.FactoryJobBriefWritten
 				s.must("factory.job_brief_write", params, &first)
 				if !first.Kept {
@@ -151,7 +155,11 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 				if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error { c.change(it); return nil }); err != nil {
 					t.Fatal(err)
 				}
-				briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+				if c.name == "stopped" {
+					assertStoppedBrief(t, s, door, params, first.Current.Brief)
+				} else {
+					briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+				}
 			})
 		}
 	})
@@ -246,8 +254,43 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		}
 		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 && g["verdict_behind"] == false })
 	})
+	t.Run("stopped brief settles without a writer", func(t *testing.T) {
+		s, door, id, params := briefAfterProofSetup(t, factory.StateQueued)
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		s.backend.briefs.stop()
+		s.backend.briefs = newBriefDebounce(time.Hour, s.backend.writeBriefLater)
+		r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor})
+		if err := r.Stop(id); err != nil {
+			t.Fatal(err)
+		}
+		assertStoppedBrief(t, s, door, params, first.Current.Brief)
+		var written map[string]any
+		s.must("factory.job_brief_write", params, &written)
+		current := written["current"].(map[string]any)
+		if current["failure_kind"] != "stopped" || current["status"] != factory.BriefStatusFailed {
+			t.Fatalf("stopped retry lost classification: %+v", written)
+		}
+	})
+	t.Run("stop during brief write classifies the returned current brief", func(t *testing.T) {
+		s, door, id, params := briefAfterProofSetup(t, factory.StateQueued)
+		r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor})
+		stopped := &stopDuringBriefDoor{briefDoor: door, stop: func() error { return nil }}
+		s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+			return &appConn{Conv: stopped, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+		}
+		var first appwire.FactoryJobBriefWritten
+		s.must("factory.job_brief_write", params, &first)
+		stopped.stop = func() error { return r.Stop(id) }
+		var got map[string]any
+		s.must("factory.job_brief_write", params, &got)
+		current := got["current"].(map[string]any)
+		if got["kept"] != false || current["failure_kind"] != "stopped" || current["status"] != factory.BriefStatusFailed || briefRev(current) != float64(first.Current.Brief.Rev) || briefBody(current)["verdict"] != first.Current.Brief.Verdict {
+			t.Fatalf("write returned a failure instead of a person Stop or lost paid content: %+v", got)
+		}
+	})
 	t.Run("stop without an active round refreshes", func(t *testing.T) {
-		s, _, id, params := briefAfterProofSetup(t, factory.StateQueued)
+		s, door, id, params := briefAfterProofSetup(t, factory.StateQueued)
 		var first appwire.FactoryJobBriefWritten
 		s.must("factory.job_brief_write", params, &first)
 		r := factoryrun.New(factoryrun.Options{Store: s.backend.local.host.floor})
@@ -258,7 +301,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		if cur.Failure != nil {
 			t.Fatalf("stop cut a step unexpectedly: %+v", cur.Failure)
 		}
-		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
+		assertStoppedBrief(t, s, door, params, first.Current.Brief)
 	})
 
 	t.Run("stop before a run starts refreshes", func(t *testing.T) {
@@ -278,13 +321,8 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		if err := r.Stop(id); err != nil {
 			t.Fatal(err)
 		}
-		briefAfterProofRead(t, s, params, func(g map[string]any) bool { return briefRev(g) == 2 })
-		door.mu.Lock()
-		input := door.asks[len(door.asks)-1].Messages[0].Text
-		door.mu.Unlock()
-		if !strings.Contains(input, `"end":"stopped"`) {
-			t.Fatalf("writer lacks stopped outcome: %s", input)
-		}
+		assertStoppedBrief(t, s, door, params, first.Current.Brief)
+
 	})
 	t.Run("plain step still costs too much", func(t *testing.T) {
 		it := factory.Item{Stream: &factory.Stream{Spent: 0.01, Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}}}, Briefs: []factory.BriefVersion{{AfterStep: "plan", CostUSD: 0.02, InputHash: "old"}}}
@@ -377,6 +415,61 @@ func (d *heldBriefDoor) RunErrand(ctx context.Context, ask session.ErrandAsk) (s
 		case <-ctx.Done():
 			return session.ErrandAnswer{Reason: session.ErrandDeadline}, nil
 		}
+	}
+	return d.briefDoor.RunErrand(ctx, ask)
+}
+
+func assertStoppedBrief(t *testing.T, s *localSetup, door *briefDoor, params map[string]any, paid factory.BriefVersion) {
+	t.Helper()
+	read := briefAfterProofRead(t, s, params, func(g map[string]any) bool { return g["status"] == factory.BriefStatusFailed })
+	if read["failure_kind"] != "stopped" {
+		t.Fatalf("person Stop must be classified separately from a brief failure: %+v", read)
+	}
+	if briefRev(read) != float64(paid.Rev) || briefBody(read)["verdict"] != paid.Verdict || read["failure"] != factory.PersonStopReason {
+		t.Fatalf("stopped brief lost paid content or stop reason: %+v", read)
+	}
+	door.mu.Lock()
+	calls := len(door.asks)
+	door.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("Stop bought %d new model calls; want zero", calls-1)
+	}
+}
+
+func TestAppFactoryStoppedBriefFailureKindRoundTrips(t *testing.T) {
+	const raw = `{"factory":"f","job":7,"status":"failed","failure_kind":"stopped","failure":"stopped by person","brief":{"rev":1,"verdict":"Paid content"}}`
+	for _, target := range []any{&appwire.FactoryJobBrief{}, &api.JobBrief{}} {
+		// The factory API names the factory as an object, while the app names its connection.
+		input := raw
+		if _, ok := target.(*api.JobBrief); ok {
+			input = strings.Replace(raw, `"factory":"f"`, `"factory":{"name":"f"}`, 1)
+		}
+		if err := json.Unmarshal([]byte(input), target); err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var back map[string]any
+		if err := json.Unmarshal(data, &back); err != nil {
+			t.Fatal(err)
+		}
+		if back["failure_kind"] != "stopped" || back["status"] != "failed" || briefBody(back)["verdict"] != "Paid content" {
+			t.Fatalf("%T lost stopped classification or paid content: %s", target, data)
+		}
+	}
+}
+
+// stopDuringBriefDoor delivers the person's Stop after begin and before keep.
+type stopDuringBriefDoor struct {
+	*briefDoor
+	stop func() error
+}
+
+func (d *stopDuringBriefDoor) RunErrand(ctx context.Context, ask session.ErrandAsk) (session.ErrandAnswer, error) {
+	if err := d.stop(); err != nil {
+		return session.ErrandAnswer{}, err
 	}
 	return d.briefDoor.RunErrand(ctx, ask)
 }

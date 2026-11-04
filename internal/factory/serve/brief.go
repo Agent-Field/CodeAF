@@ -40,6 +40,10 @@ func jobBrief(f api.Factory, it factory.Item, since int) api.JobBrief {
 	if w := it.BriefWriting; out.Status == factory.BriefStatusFailed && w != nil {
 		out.Failure, out.FailedAfter = w.Failure, w.AfterStep
 	}
+	if factory.StoppedByPerson(it) {
+		out.Failure = factory.PersonStopReason
+		out.FailureKind = factory.CodeStopped
+	}
 	return out
 }
 
