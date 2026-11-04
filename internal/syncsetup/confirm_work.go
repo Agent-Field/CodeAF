@@ -8,10 +8,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
-// ConfirmWork checks only this chat's directory record. Unlike CheckLease it
-// never waits for a capture before reading ownership. The caller bounds ctx
-// and decides how to degrade a failed read. True confirms the current fence;
-// false means either a viewer or a drive that cannot confirm ownership yet.
+// ConfirmWork checks only this chat's directory record without waiting for
+// capture before reading ownership. Reacquisition captures closed steps before
+// comparing heads. The caller bounds ctx and decides how to degrade a failed
+// read. True confirms the current fence; false means either a viewer or a drive
+// that cannot confirm ownership yet.
 func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	held := d.sendLeaseSnapshot()
 	if d.batcher == nil {
@@ -40,6 +41,9 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	if lease.Expires <= v.Now {
 		d.availableAfter(held, lease)
 		// Never resume an older tree over work saved by another computer.
+		if err := cellstore.Captured(ctx, d.cell); err != nil {
+			return false, err
+		}
 		head, err := cellstore.Head(d.cell)
 		if err != nil || head == nil || head.Turn.ID != v.Cell.Head {
 			return false, err

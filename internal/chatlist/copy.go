@@ -50,6 +50,7 @@ const (
 	lastHeldHere   = "this chat was last held here"
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
+	keptTurns      = "kept %s from %s as a separate chat"
 	supersededLine = "%s continued this chat; this window now only shows it"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
@@ -292,6 +293,11 @@ func holderLead(r Row) string {
 // KeptEdits is said after a takeover kept local edits as a branch.
 func KeptEdits(n uint32, device string) string {
 	return fmt.Sprintf(keptEdits, turns(n), device)
+}
+
+// KeptTurns names only the saved turns when unsaved calls remain on this device.
+func KeptTurns(n uint32, device string) string {
+	return fmt.Sprintf(keptTurns, turns(n), device)
 }
 
 // CopiesCame is said after a takeover brought the working copies of tasks that
