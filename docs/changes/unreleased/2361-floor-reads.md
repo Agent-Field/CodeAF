@@ -1,6 +1,7 @@
 ---
 kind: fixed
 title: Idle factory polls read only job documents that changed
+pr: 2361
 surface: [engine]
 invalidates:
   - "Idle lease pulls, settlement and runner capacity checks decoded every job document on each look. They now reuse unchanged documents after checking every file's identity, size and modification time."
