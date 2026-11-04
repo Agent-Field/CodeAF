@@ -424,10 +424,12 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 	switch {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return lostRaceWord
+	case errors.Is(msg.err, ErrMoveStalled):
+		// Before unreachable: the stall ends the request it waited on, and
+		// that request's error reads as an unreachable relay.
+		return fmt.Sprintf("stopped: nothing came through for 2 minutes; the chat is still on %s", nonemptyDevice(msg.row.Device))
 	case errors.Is(msg.err, directory.ErrUnreachable):
 		return continueUnreachable
-	case errors.Is(msg.err, ErrMoveStalled):
-		return fmt.Sprintf("stopped: nothing came through for 2 minutes; the chat is still on %s", nonemptyDevice(msg.row.Device))
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		return directory.ErrConditionalTake.Error()
 	case errors.Is(msg.err, directory.ErrRevoked):

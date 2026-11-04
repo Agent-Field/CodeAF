@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -217,5 +218,54 @@ func TestAppChatSharingWaitsForTheHolder(t *testing.T) {
 	appChatSharing(&row, chatlist.Row{Pending: 1, Mine: true})
 	if row.Sharing != nil || !row.CanTake {
 		t.Fatalf("this computer's own pending turns read as another's sharing: %+v", row)
+	}
+}
+
+// A refusal TakeAgent put in its own words reaches the client and the row as
+// it is, not as the generic sentence with the words as detail.
+func TestAppMoveKeepsTheEnginesOwnRefusal(t *testing.T) {
+	for _, words := range []string{appSyncOff, "This older chat stays on this computer."} {
+		ended, err := appMoveEnding(&appwire.Error{Code: appwire.CodeEngine, Message: words}, nil, "studio")
+		var w *appwire.Error
+		if !errors.As(err, &w) || w.Message != words || ended.Line != words || ended.Outcome != "failed" {
+			t.Fatalf("refusal %q became %v, row %+v", words, err, ended)
+		}
+	}
+}
+
+// A second take of a chat already moving is refused, and the first keeps its
+// Cancel and its outcome.
+func TestAppMoveSecondTakeOfTheSameChatIsRefused(t *testing.T) {
+	backend, _, wire, _, row := appLandedTakeFixture(t, appOpened)
+	started := make(chan struct{}, 2)
+	appTakeSeen = func(ctx context.Context, _ *syncsetup.Sync, _ string, _ *directory.LeaseExpectation, _ func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
+		started <- struct{}{}
+		<-ctx.Done()
+		return syncsetup.Continued{}, ctx.Err()
+	}
+	first := make(chan *appwire.Error, 1)
+	go func() {
+		_, refusal := wire.call("agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen})
+		first <- refusal
+	}()
+	<-started
+	backend.chats.mu.Lock()
+	m := backend.chats.moves[row.Cell]
+	backend.chats.mu.Unlock()
+	_, refusal := wire.call("agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen})
+	if refusal == nil || refusal.Code != appwire.CodeBusy || refusal.Message != appMoveAlready {
+		t.Fatalf("a second take of a moving chat answered %v, want busy %q", refusal, appMoveAlready)
+	}
+	backend.chats.mu.Lock()
+	same := backend.chats.moves[row.Cell] == m
+	backend.chats.mu.Unlock()
+	if !same {
+		t.Fatal("the second take replaced the first move")
+	}
+	if got := machineCall[appwire.TakeCancelResult](t, wire, "agents.take_cancel", appwire.TakeCancelParams{Cell: row.Cell}); !got.Cancelled {
+		t.Fatal("the first move could not be cancelled after a second take")
+	}
+	if refusal := <-first; refusal == nil || !strings.Contains(refusal.Message, "Cancelled.") {
+		t.Fatalf("the cancelled first move answered %v", refusal)
 	}
 }

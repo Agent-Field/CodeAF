@@ -16,6 +16,9 @@ import (
 // errMoveCancelled is the cause of a move the person cancelled.
 var errMoveCancelled = errors.New("the move was cancelled")
 
+// appMoveAlready answers a second agents.take of a chat already moving here.
+const appMoveAlready = "This chat is already moving to this computer."
+
 // errAppLeft is the cause of a move the app left behind.
 var errAppLeft = errors.New("the app closed")
 
@@ -48,12 +51,16 @@ func (c *appChats) waitSlot(ctx context.Context) error {
 func (c *appChats) freeSlot() { <-c.takeSlot() }
 
 // beginMove files a move of chat id as queued. A new move clears how the last
-// one ended.
+// one ended. It answers nil while another move of the same chat runs or
+// waits: that move keeps its Cancel and its outcome.
 func (c *appChats) beginMove(id string, cancel context.CancelCauseFunc) *appMove {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.moves == nil {
 		c.moves = map[string]*appMove{}
+	}
+	if _, running := c.moves[id]; running {
+		return nil
 	}
 	m := &appMove{cancel: cancel, state: appwire.ChatMove{State: "queued"}}
 	c.moves[id] = m
@@ -174,6 +181,11 @@ func (b *appBackend) moveReporter(id string, m *appMove) (report func(syncsetup.
 // ended, if it did.
 func appMoveEnding(err, cause error, holder string) (appwire.ChatMoveEnded, error) {
 	wire := appTakeError(err)
+	if made, ok := err.(*appwire.Error); ok {
+		// TakeAgent's own answer (sync is off, an older chat stays here, a
+		// refusal already put in words): it reaches the client as it is.
+		wire = made
+	}
 	var w *appwire.Error
 	errors.As(wire, &w)
 	detail := ""

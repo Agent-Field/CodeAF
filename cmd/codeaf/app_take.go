@@ -85,8 +85,11 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	}
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	b.chats.countTake(p.Cell, 1)
 	move := b.chats.beginMove(p.Cell, cancel)
+	if move == nil {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeBusy, appMoveAlready)
+	}
+	b.chats.countTake(p.Cell, 1)
 	b.publishTaking()
 	taking := true
 	defer func() {
@@ -124,7 +127,8 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	// Check even the already-here fast path against what the person saw.
 	view, err := s.Dir.Cell(ctx, p.Cell)
 	if err != nil {
-		return appwire.Agent{}, appTakeError(err)
+		// Unwrapped, so the row says why (sync unreachable, cancelled).
+		return appwire.Agent{}, err
 	}
 	seen := &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence, Head: p.Seen.Head}
 	if !seen.Matches(view.Cell) {
