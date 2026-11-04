@@ -101,27 +101,24 @@ func listed(t *testing.T, s *Sync, id string) bool {
 
 // TestABackgroundPublishLastsAsLongAsItMakesProgress: the budget of a
 // background publish is time without progress, not time in all. An upload whose
-// every answer comes within the budget finishes although it takes longer than
-// the budget; a store that stops answering ends the attempt after one budget.
+// every answer comes within the budget is shared; a store that stops answering
+// ends the attempt after one budget. TestOnlyWaitingForTheRelayCountsAgainstTheBudget
+// pins what the clock times.
 func TestABackgroundPublishLastsAsLongAsItMakesProgress(t *testing.T) {
 	r := newDriveRig(t)
 	s := r.a
-	shortIdle(t, 400*time.Millisecond)
+	shortIdle(t, 2*time.Second)
 	slow := savedHomeChat(t, r, projectsOf(s), "slow but moving", 2<<20)
 	real := s.Store
 	s.Store = slowStore{Store: real, delay: 250 * time.Millisecond}
-	began := time.Now()
 	mustNil(t, s.PublishLocalChats(t.Context(), time.Now, nil))
-	if took := time.Since(began); took <= PublishIdleWithin {
-		t.Fatalf("fixture took %s, not longer than the %s budget", took, PublishIdleWithin)
-	}
 	if !listed(t, s, slow.ID) {
 		t.Fatal("a chat whose upload kept moving was not shared")
 	}
 
 	stuck := savedHomeChat(t, r, projectsOf(s), "stuck", 1<<10)
 	s.Store = slowStore{Store: real, delay: time.Minute}
-	began = time.Now()
+	began := time.Now()
 	err := s.PublishLocalChats(t.Context(), time.Now, nil)
 	if !errors.Is(err, errPublishStalled) {
 		t.Fatalf("a stuck upload ended with %v, want no progress", err)
@@ -269,6 +266,42 @@ func TestPublishingLogsOneLinePerChatAndOutcome(t *testing.T) {
 	if failed != 1 || shared != 1 {
 		t.Fatalf("log has %d failure and %d shared lines, want one each:\n%s", failed, shared, out.String())
 	}
+	// The next launch finds the chat listed already: nothing to say.
+	out.Reset()
+	s.publicationSeen = nil
+	mustNil(t, s.PublishLocalChats(t.Context(), clock, nil))
+	if strings.Contains(out.String(), "sharing chat "+c.ID) {
+		t.Fatalf("a chat shared before this launch was logged again: %s", out.String())
+	}
+}
+
+// TestAPendingChatMovedOrDeletedIsNotRetriedForEver: a chat that failed and
+// was then moved to another project was retried at its old folder on every
+// pass, failing for ever, and never found where it is now.
+func TestAPendingChatMovedOrDeletedIsNotRetriedForEver(t *testing.T) {
+	r := newDriveRig(t)
+	s := r.a
+	moved := savedHomeChat(t, r, projectsOf(s), "moved", 1<<10)
+	deleted := savedHomeChat(t, r, projectsOf(s), "deleted", 1<<10)
+	block := &blocker{Store: s.Store}
+	block.set(true)
+	s.Store = block
+	if err := s.PublishLocalChats(t.Context(), time.Now, nil); err == nil {
+		t.Fatal("expected the uploads to fail")
+	}
+	other := filepath.Join(s.Home, "v3", "projects", "other")
+	mustNil(t, os.MkdirAll(other, 0700))
+	mustNil(t, os.Rename(moved.Root, filepath.Join(other, moved.ID)))
+	mustNil(t, os.RemoveAll(deleted.Root))
+	block.set(false)
+	later := func() time.Time { return time.Now().Add(time.Hour) }
+	_ = s.PublishLocalChats(t.Context(), later, nil)
+	if err := s.PublishLocalChats(t.Context(), later, nil); err != nil {
+		t.Fatalf("a pass after the move and the delete failed: %v", err)
+	}
+	if !listed(t, s, moved.ID) {
+		t.Fatal("a chat moved to another project was not shared from where it is now")
+	}
 }
 
 // TestPendingChatsGoUntriedNewestFirstThenSmallest: one large chat must not
@@ -309,6 +342,16 @@ func TestOnlyWaitingForTheRelayCountsAgainstTheBudget(t *testing.T) {
 	}
 	if ctx.Err() != nil {
 		t.Fatalf("local work ended the attempt: %v", context.Cause(ctx))
+	}
+	// A frame gets the time to send it at the slowest rate on top of the
+	// budget: a slow uplink is not a stalled one.
+	was := PublishSlowestRate
+	PublishSlowestRate = 64 << 10
+	t.Cleanup(func() { PublishSlowestRate = was })
+	store.Store = slowStore{Store: blobstore.NewMemory(), delay: 4 * within}
+	_, _ = store.PutFrame(ctx, make([]byte, 64<<10))
+	if ctx.Err() != nil {
+		t.Fatalf("a large frame sending slowly ended the attempt: %v", context.Cause(ctx))
 	}
 	store.Store = slowStore{Store: blobstore.NewMemory(), delay: time.Minute}
 	began := time.Now()

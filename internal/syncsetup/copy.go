@@ -37,17 +37,25 @@ type pendingPublication struct {
 // SharingRetryMax bounds retry pauses for unfinished pairing publication.
 const SharingRetryMax = time.Minute
 
-// PublishIdleWithin is how long a background publish may go without progress.
+// PublishIdleWithin is how long a background publish waits for the relay to
+// answer one request, beyond the time a frame takes to send (PublishSlowestRate).
 //
 // A BACKGROUND PUBLISH IS BOUNDED BY PROGRESS, NOT BY SIZE. It once ran under
 // cellstore.SealWithin for the whole chat, the budget that keeps a save from
 // stalling a turn. Thirty seconds moves perhaps a hundred megabytes over a home
 // uplink, so a chat whose saved folder was larger failed on every attempt and
-// was never listed on the other computer. Now each answer from the relay starts
-// the clock again: a large chat uploads for as long as it keeps moving, and a
+// was never listed on the other computer. Now each request to the relay is
+// timed on its own, and packing the chat on this computer between requests is
+// not timed at all: a large chat uploads for as long as it keeps moving, and a
 // stuck connection still ends the attempt. Frames already sent are kept
 // (cellsync.Publisher.Upload), so the next attempt resumes. Tests shorten it.
 var PublishIdleWithin = 2 * time.Minute
+
+// PublishSlowestRate is the slowest uplink, in bytes a second, a background
+// publish waits for: a frame of up to 16 MiB gets the time to send it at this
+// rate on top of PublishIdleWithin, so a slow but working connection does not
+// read as a stalled one. Tests change it.
+var PublishSlowestRate int64 = 64 << 10
 
 // An unsaved chat stays pending without reporting a failure or delaying retry.
 var errNoChatHead = errors.New("chat has nothing to share yet")
@@ -184,6 +192,14 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if _, err := os.Stat(pending.root); errors.Is(err, os.ErrNotExist) {
+			// Deleted, or moved to another project: forget the folder, so a
+			// moved chat is found where it is now and a deleted one is not
+			// retried for ever.
+			delete(s.publication, id)
+			delete(s.publicationSeen, id)
+			continue
+		}
 		if now().Before(pending.retryAt) {
 			failures = errors.Join(failures, pending.err)
 			continue
@@ -191,6 +207,11 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		began := time.Now()
 		attempt, err := s.publishLocalChat(ctx, pending.root, id)
 		if errors.Is(err, errNoChatHead) {
+			continue
+		}
+		if err == nil && attempt.listed && pending.logged == "" {
+			// Shared before this launch: nothing happened worth a line.
+			delete(s.publication, id)
 			continue
 		}
 		if attempt.size > 0 {
@@ -235,6 +256,8 @@ func publicationOutcome(err error) string {
 // copyAttempt is what one background publish sent and had to send.
 type copyAttempt struct {
 	sent, size int64
+	// listed says the directory already named the chat; nothing was sent.
+	listed bool
 }
 
 func (s *Sync) publishLocalChat(ctx context.Context, root, id string) (copyAttempt, error) {
@@ -288,13 +311,17 @@ type watchdog struct {
 	within time.Duration
 }
 
-// asking starts the clock for one request; the returned func stops it on the
-// answer, whatever it is. A nil watchdog times nothing.
-func (w *watchdog) asking() func() {
+// asking starts the clock for one request sending size bytes; the returned
+// func stops it on the answer, whatever it is. A nil watchdog times nothing.
+func (w *watchdog) asking(size int) func() {
 	if w == nil {
 		return func() {}
 	}
-	w.timer.Reset(w.within)
+	sending := time.Duration(0)
+	if PublishSlowestRate > 0 {
+		sending = time.Duration(int64(size) * int64(time.Second) / PublishSlowestRate)
+	}
+	w.timer.Reset(w.within + sending)
 	return func() { w.timer.Stop() }
 }
 
@@ -307,7 +334,7 @@ type progressStore struct {
 }
 
 func (p progressStore) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID, error) {
-	answered := p.watch.asking()
+	answered := p.watch.asking(len(frame))
 	defer answered()
 	id, err := p.Store.PutFrame(ctx, frame)
 	if err == nil {
@@ -317,7 +344,7 @@ func (p progressStore) PutFrame(ctx context.Context, frame []byte) (blobstore.Fr
 }
 
 func (p progressStore) Has(ctx context.Context, rids []string) ([]bool, error) {
-	answered := p.watch.asking()
+	answered := p.watch.asking(0)
 	defer answered()
 	return p.Store.Has(ctx, rids)
 }
@@ -337,12 +364,13 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	if Quiet(s.Home) {
 		return attempt, ErrQuiet
 	}
-	answered := watch.asking()
+	answered := watch.asking(0)
 	_, err := s.Dir.Cell(ctx, c.ID)
 	if errors.Is(err, directory.ErrNotFound) {
 		err = s.putDevice(ctx, name)
 	} else if err == nil {
 		answered()
+		attempt.listed = true
 		return attempt, nil
 	}
 	answered()
@@ -375,7 +403,7 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 		return attempt, err
 	}
 	defer lock.Close()
-	answered = watch.asking()
+	answered = watch.asking(0)
 	view, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Head: head.Turn.ID, SavedAt: head.Turn.SealedAtMs, Class: info.Class, Title: info.Title, Size: info.Size, Keys: info.Keys})
 	answered()
 	if errors.Is(err, directory.ErrExists) {
@@ -387,7 +415,7 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	if err := cellstore.NotePublished(c, head.Turn.ID); err != nil {
 		return attempt, err
 	}
-	answered = watch.asking()
+	answered = watch.asking(0)
 	err = directory.ReleaseQuiet(ctx, s.Dir, c.ID, view.Cell.Lease.Fence)
 	answered()
 	if errors.Is(err, directory.ErrFenceStale) {
