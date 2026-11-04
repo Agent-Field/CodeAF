@@ -41,10 +41,41 @@ It is given two tools that no other conversation has:
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
+## shipped step methods — planning, implementation, diagnosis, review and proof
+
+After the stage placement and before repository rules, an unchanged shipped chat
+step receives a short engineering method. It describes the goal, handover,
+completion and when to ask. Plan follows relevant code and tests without edits;
+write implements slices with a failing test first; test reuses passing evidence
+for unchanged code, runs missing coverage once and diagnoses failures;
+review checks scope and standards and repairs substantive findings. Security
+traces attack paths; proof challenges promises with current observations; read
+inspects without edits; checks runs claim-specific checks; bisect narrows the
+first failure; fix reproduces and repairs the cause.
+
+The method is selected only when both the name and ask match the shipped step.
+A person's own ask carries only their words for the method; the common brief,
+repository rules and reporting contract still apply. Resuming the same chat does
+not repeat the method already in its history. The editable ask stays short.
+
+Later rounds correct unresolved checks or changed code and check the affected
+behaviour using current passing evidence. A check is reported as run from its
+tool output; refused and skipped commands are reported as unrun.
+
+Every step hands over what changed, each command actually run and its result,
+unrun checks and why, and open work. Only proof and Follow PR are asked for
+publication bullets. Test and bisect preserve the checkout; when revision
+movement is refused, bisect uses history and recorded runs and states which
+revisions it did not run. Follow PR reproduces CI failures before repairs. The service merges the PR's
+remote head into the checkout; Follow PR resolves conflicts left there, keeping
+the intent of both sides and other people's work. Publication stays with the
+service; the step does not push or force-push.
+
 ## plan file list — structured files, unknown paths and Auto approval
 
 A plan's `stage_result` answer includes `files`, an array of every file it will
-change or add, relative to the repository root. `output` carries the plan's prose.
+change or add, relative to the repository root. `output` carries the plan's prose. New plans are asked for this one structured
+list, without a second prose `Files:` declaration.
 The plan schema requires `files`; code validates the paths before using them.
 The list allows at most 200 entries and each path at most 512 bytes. Absolute
 paths, traversal, folders, globs and any other invalid entry make the whole list
@@ -552,6 +583,9 @@ review feedback and merge conflicts can queue another round in that same step.
 Repeated observations do not start duplicate repairs. Healthy checks leave the job
 watching until GitHub reports merge or closure. General PR discussion comments are
 not a repair trigger. Closing the app pauses local polling and workers.
+
+Fresh and resumed Follow PR rounds keep the repair decision, untrusted-evidence
+and no-push/no-merge rules even before a follow-up record is queued.
 
 The original changed-file list is context, not a publish restriction. Necessary
 dependency and test changes are allowed within the issue objective. The repair receives

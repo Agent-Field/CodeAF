@@ -128,8 +128,8 @@ func TestEveryPlanStepIsToldTheFileListShapeTheFactoryReads(t *testing.T) {
 		t.Fatal("a step that is not the plan is told how to list a plan's files")
 	}
 
-	if got := factory.ParsePlanFiles(briefPlanFiles); !slices.Equal(got, []string{"cmd/app/main.go", "docs/usage.md"}) {
-		t.Fatalf("the brief's own example reads as %q", got)
+	if got := factory.ParsePlanFiles(briefPlanFiles); len(got) != 0 {
+		t.Fatalf("the instruction must not contain a prose file declaration: %q", got)
 	}
 	asked := "Add Session.Working and show it on the status line.\n\n" +
 		"CHANGE, PER FILE\n" +
