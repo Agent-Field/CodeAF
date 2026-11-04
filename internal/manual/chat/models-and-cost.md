@@ -4381,7 +4381,8 @@ The daily budget blocks a new chat call when today's recorded spending reaches
 the limit. Task crews and their helpers use it when checking the next call's
 estimated cost. Other conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. When a recorded
-charge reaches the daily limit, running owned work in this engine is cancelled.
+charge or measured stream usage reaches the daily limit, running owned work
+in this engine is cancelled.
 The chat and work report the limit; raise it with `/budget day 30`, then submit
 again. Partial usage is kept; a cancelled call without usage has unknown cost.
 Provider charges already in flight can exceed the cap; cancellation cannot undo them.

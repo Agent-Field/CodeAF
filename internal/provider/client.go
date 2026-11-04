@@ -1990,6 +1990,7 @@ func (c *Client) completeWithMessagesStreaming(
 			// [usageWire.mergeInto], which both transports read a usage frame
 			// through).
 			response.Usage, reasoningTokens = chunk.Usage.mergeInto(response.Usage, reasoningTokens)
+			noteUsageProgress(ctx, response.Usage, knobs.trace)
 			if knobs.trace != nil {
 				knobs.trace.usageObservation.observeUsage(chunk.Usage)
 			}
@@ -2510,6 +2511,7 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 			rawKnobs.trace.usageObservation.observeUsage(wire.Usage)
 			if wire.Usage != nil {
 				response.Usage, _ = wire.Usage.mergeInto(response.Usage, 0)
+				noteUsageProgress(ctx, response.Usage, rawKnobs.trace)
 			}
 			chunk := ai.StreamChunk{ID: wire.ID, Object: wire.Object, Created: wire.Created, Model: wire.Model, Usage: wire.Usage.usage()}
 			for _, choice := range wire.Choices {

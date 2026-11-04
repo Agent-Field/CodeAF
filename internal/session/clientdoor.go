@@ -835,6 +835,8 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		ctx = provider.WithServedModel(ctx, a.servedModel)
 		defer func() { a.endModelRequest(actual) }()
 	}
+	ctx, releaseProgress := a.withBudgetProgress(ctx)
+	defer releaseProgress()
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), materializeImageRefs(messages), append(options, ai.WithModel(wire))...)
 	if response != nil && response.Model != "" {
 		actual = response.Model

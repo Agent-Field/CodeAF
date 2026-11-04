@@ -169,6 +169,7 @@ func (m *receiptRouteMemo) heard(base string, now time.Time) {
 // produced a generation, not money the provider charged. Those mutually
 // exclusive doors keep one call from ever being counted twice.
 func (c *Client) settle(ctx context.Context, model string, response *ai.Response, reason string, answerBytes int, traces ...*callTrace) {
+	noteUsageProgress(ctx, nil, traces...)
 	base := c.config.BaseURL
 	if len(traces) > 0 && traces[0] != nil && traces[0].attemptBase != "" {
 		base = traces[0].attemptBase

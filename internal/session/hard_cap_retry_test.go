@@ -15,6 +15,10 @@ func TestHardCapStopsProviderRetryAndFallback(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	var sends atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
 		if sends.Add(1) == 1 {
 			close(started)
 			select {

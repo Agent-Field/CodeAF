@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"os"
 	"path/filepath"
@@ -89,6 +90,13 @@ func (d jobChatDoor) Chat(transcript string) session.JobChat {
 
 type ownedStageBudget struct{ session.JobChat }
 
+func (c ownedStageBudget) RefusalWithSpend(pending float64) string {
+	if live, ok := c.JobChat.(session.JobLiveBudget); ok {
+		return live.RefusalWithSpend(pending)
+	}
+	return c.JobChat.Refusal()
+}
+
 // FactoryJob names the job on this chat's ledger rows.
 func (c ownedStageBudget) FactoryJob() string {
 	if named, ok := c.JobChat.(session.JobLedgerName); ok {
@@ -139,9 +147,10 @@ type jobChat struct {
 // chatRead is one holder's document as Refusal last read it: the file it
 // was, and whether that document is this chat's job and, if so, its line.
 type chatRead struct {
-	file    os.FileInfo
-	ours    bool
-	refusal string
+	file       os.FileInfo
+	ours       bool
+	refusal    string
+	cap, spent float64
 }
 
 // sameFile is whether info is still the document read was taken from. Every
@@ -177,13 +186,21 @@ func (c *jobChat) book(usd float64, model string, calls, input, output int) {
 }
 
 // Refusal is the job's budget line once it is spent, read where it is checked.
-func (c *jobChat) Refusal() string {
+func (c *jobChat) Refusal() string { return c.RefusalWithSpend(0) }
+
+func (c *jobChat) RefusalWithSpend(pending float64) string {
 	if c.failed.Load() {
 		return "job spending could not be recorded; work stopped"
 	}
 	for _, st := range c.holders() {
 		if r, ok := c.readOf(st); ok && r.ours {
-			return r.refusal
+			if r.refusal != "" {
+				return r.refusal
+			}
+			if r.cap > 0 && r.spent+pending >= r.cap {
+				return fmt.Sprintf(factoryrun.ChatBudgetReached, appUSD(r.spent+pending), appUSD(r.cap))
+			}
+			return ""
 		}
 	}
 	return session.JobBudgetUnreadable
@@ -208,7 +225,7 @@ func (c *jobChat) readOf(st *store.Store) (chatRead, bool) {
 	if err != nil {
 		return chatRead{}, false
 	}
-	r := chatRead{file: info, ours: c.owns(st, it)}
+	r := chatRead{file: info, ours: c.owns(st, it), cap: it.Cap, spent: factory.JobSpent(it)}
 	if r.ours {
 		r.refusal = factoryrun.ChatRefusal(it)
 	}

@@ -920,6 +920,11 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
 	dir := c.ProfileDir
 	return func(ctx context.Context, model, tag string) error {
+		if admit, _ := ctx.Value(budgetAdmissionKey{}).(func(context.Context) error); admit != nil {
+			if err := admit(ctx); err != nil {
+				return err
+			}
+		}
 		if err := factoryCallRefusal(ctx); err != nil {
 			return err
 		}

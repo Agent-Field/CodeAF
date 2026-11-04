@@ -85,7 +85,9 @@ func (b *stageBudget) book(usd float64, memory bool, model string, calls, input,
 		b.failed = true
 	}
 }
-func (b *stageBudget) Refusal() string {
+func (b *stageBudget) Refusal() string { return b.RefusalWithSpend(0) }
+
+func (b *stageBudget) RefusalWithSpend(pending float64) string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.stopped != "" {
@@ -99,6 +101,7 @@ func (b *stageBudget) Refusal() string {
 	if err != nil || it.Repo != b.item.Repo {
 		return session.JobBudgetUnreadable
 	}
+	factory.AddChatSpend(&it, pending)
 	b.stopped = factoryrun.ChatRefusal(it)
 	b.reached = b.stopped != ""
 	return b.stopped

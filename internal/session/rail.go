@@ -127,9 +127,7 @@ func (a *Agent) railBlockLocked() error {
 				spentToday = max(spentToday, a.crewDayHeld.Total())
 			}
 			if spentToday >= daily {
-				return spendRailReached{daily: true, said: fmt.Sprintf(
-					"daily limit reached · %s spent of %s · /budget day changes it",
-					railMoney(spentToday), railMoney(daily))}
+				return dailyLimitReached(spentToday, daily)
 			}
 		}
 	}
@@ -162,6 +160,10 @@ func (a *Agent) railBlockLocked() error {
 	return spendRailReached{said: fmt.Sprintf(
 		"conversation limit reached · %s spent of %s · /budget conversation changes it",
 		railMoney(spent), railMoney(rail))}
+}
+
+func dailyLimitReached(spent, capUSD float64) error {
+	return spendRailReached{daily: true, said: fmt.Sprintf("daily limit reached · %s spent of %s · /budget day changes it", railMoney(spent), railMoney(capUSD))}
 }
 
 // spendRailReached is the refused turn's error, and it exists for ONE reason:

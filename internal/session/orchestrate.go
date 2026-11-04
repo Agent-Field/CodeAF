@@ -338,8 +338,9 @@ func orchestrateRoleCall(reader roleReader, role roles.Role, named, session stri
 // the write-up are all on the run's own snapshot, and a second copy of any of
 // them would be a second answer to the same question.
 type orchestration struct {
-	run    *orchestrate.Orchestrator
-	cancel context.CancelFunc
+	stopReason string
+	run        *orchestrate.Orchestrator
+	cancel     context.CancelFunc
 	// family is this run's rows on the roster (the family seam at the foot of this
 	// file), and it is kept here for ONE reason: the gate's answer arrives through
 	// [Agent.ResolveOrchestrate], which holds the registry rather than the closures
@@ -975,6 +976,13 @@ func (e *orchestrateExec) Exec(ctx context.Context, node orchestrate.Node, deps 
 	changed, stopped, runErr := runTaskChild(ctx, child, nil, orchestrateBrief(e.root(), node, deps, shared),
 		dir, taskLimits{maxSteps: orchestrateMaxSteps, noProgress: orchestrateNoProgress}, nil, io.Discard)
 
+	if errors.Is(runErr, ErrSpendRail) {
+		e.agent.mu.Lock()
+		if live := e.agent.orchestrations[e.id]; live != nil {
+			live.stopReason = runErr.Error()
+		}
+		e.agent.mu.Unlock()
+	}
 	cost := e.spend(child)
 	digest := orchestrateDigest(child, changed)
 	switch {
@@ -2163,6 +2171,16 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 		if notice.Report == "" {
 			notice.Report = err.Error()
 		}
+	}
+	f.agent.mu.Lock()
+	why := ""
+	if live := f.agent.orchestrations[f.run]; live != nil {
+		why = live.stopReason
+	}
+	f.agent.mu.Unlock()
+	if why != "" && (notice.State == TaskFailed || notice.Report == "") {
+		notice.State, notice.Stopped = TaskFailed, true
+		notice.Report = strings.TrimSpace(notice.Report + "\n" + why)
 	}
 	f.publish(notice)
 	// AND THE PROJECT'S RECORD IS CLOSED IN THE SAME BREATH. The roster reads the

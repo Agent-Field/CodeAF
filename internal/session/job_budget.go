@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -24,7 +23,13 @@ func (a *Agent) jobBudgetOf() JobChat {
 
 func (a *Agent) jobBudgetBlock() error {
 	if budget := a.jobBudgetOf(); budget != nil {
-		if why := budget.Refusal(); why != "" {
+		why := ""
+		if live, ok := budget.(JobLiveBudget); ok {
+			why = live.RefusalWithSpend(pendingBudgetSpend(a.config.usageLedger, live.FactoryJob()))
+		} else {
+			why = budget.Refusal()
+		}
+		if why != "" {
 			return spendRailReached{said: why}
 		}
 	}
@@ -42,9 +47,13 @@ func (a *Agent) watchJobBudget() {
 		default:
 		}
 	})
+	budgetProgress.Lock()
+	budgetProgress.watchers[changed] = a.config.usageLedger
+	budgetProgress.Unlock()
 	closed := a.ClosedSignal()
 	go func() {
 		defer unwatch()
+		defer func() { budgetProgress.Lock(); defer budgetProgress.Unlock(); delete(budgetProgress.watchers, changed) }()
 		var ticks <-chan time.Time
 		if a.jobBudgetOf() != nil {
 			ticker := time.NewTicker(100 * time.Millisecond)
@@ -100,8 +109,9 @@ func (a *Agent) dailyBudgetBlock() error {
 	if err != nil {
 		return spendUnverified{said: spendAccountingUnread}
 	}
+	spent += pendingBudgetSpend(a.config.usageLedger, "")
 	if spent >= capUSD {
-		return spendRailReached{daily: true, said: fmt.Sprintf("daily limit reached · %s spent of %s · /budget day changes it", railMoney(spent), railMoney(capUSD))}
+		return dailyLimitReached(spent, capUSD)
 	}
 	return nil
 }

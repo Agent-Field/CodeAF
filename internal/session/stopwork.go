@@ -43,6 +43,7 @@ func (a *Agent) stopWorkLocked(why string, cause error) error {
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
 	cancel, done := a.cancel, a.done
+	idle := !a.running
 	// A pass a surface asked for outside any turn is work too.
 	defer a.cutManualPassLocked()()
 	memoryStop, titleStop := a.memoryStop, a.titleStop
@@ -51,6 +52,7 @@ func (a *Agent) stopWorkLocked(why string, cause error) error {
 	// registry; stopping a conversation must preserve it.
 	runs := make([]*orchestration, 0, len(a.orchestrations))
 	for _, live := range a.orchestrations {
+		live.stopReason = why
 		runs = append(runs, live)
 	}
 	orchestrateStop := a.orchestrateStop
@@ -92,6 +94,15 @@ func (a *Agent) stopWorkLocked(why string, cause error) error {
 	// The UI receives acceptance promptly. Reopening admission waits for the old
 	// producers themselves, so a late tool cannot join a freshly resumed registry.
 	beltDone := a.stopOwnedBeltRun(why)
+	// Admission stays closed until the idle notice is on the transcript.
+	if idle && errors.Is(cause, ErrSpendRail) {
+		a.record(textMessage("assistant", why))
+		a.mu.Lock()
+		for _, watcher := range a.taskWatchers {
+			watcher.send(Event{Kind: EventNotice, Text: why})
+		}
+		a.mu.Unlock()
+	}
 	go a.finishWorkStop(done, graph, jobs, beltDone, why)
 	return nil
 }

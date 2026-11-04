@@ -244,6 +244,7 @@ func reconcileFrom(ctx context.Context) ReconcileSink {
 // because a row naming the model somebody asked for is a row that cannot be
 // summed per model after an escalation.
 func (c *Client) bill(ctx context.Context, model string, response *ai.Response, traces ...*callTrace) {
+	noteUsageProgress(ctx, nil, traces...)
 	// THE ATTEMPT'S OWN TOKEN HEARS THE PRICE FIRST AND INDEPENDENTLY of every
 	// sink below (attemptobserver.go): Billed.Empty cannot tell a stated zero
 	// from a missing figure, so the typed fact is read straight off the usage
