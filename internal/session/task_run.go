@@ -8677,6 +8677,7 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 	if WorkspaceOwnershipEnabled(place) && stand.mode == TaskModeFolder {
 		stand.mode = ownershipPlainMode(ground)
 	}
+	stand.mode = neverMirrorHome(ground, stand.mode)
 	if ground == "" {
 		// A PART REACHES THIS ROAD AND ITS FREEZE HAS TO TRAVEL WITH IT. A part
 		// admitted by `divide_work` carries no ground of its own (task_divide.go
@@ -8706,7 +8707,32 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 		// read. Copying the world in would be the opposite of what was asked.
 		return taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: stand.mode}, nil
 	case TaskModeMirror:
-		return prepareMirrorTree(ctx, place, workspace, session, id, title, ground)
+		if err := ensureOwnedMirrorGround(place, ground); err != nil {
+			return taskTree{}, err
+		}
+		dir, mode := taskOwnFolder(place, workspace, session, id)
+		tree, err := carveGround(ctx, groundOrder{
+			place:   place,
+			ground:  ground,
+			dir:     dir,
+			mode:    mode,
+			title:   title,
+			promise: TaskModeMirror,
+		})
+		if err != nil {
+			return taskTree{}, err
+		}
+		// AND THE COPY IS WRITTEN DOWN AS THE FOLDER AS IT STOOD
+		// (task_mirror_manners.go). The bytes in it are the ones the family was
+		// given, and without a record of them the landing cannot tell the person's
+		// own edit from the family's work and writes over it in silence.
+		rememberGroundBaseline(tree.dir)
+		// AND THE COPY IS OPENED AS THE FAMILY'S OWN TREE (task_tree_mirror.go).
+		// A mirror that is a repository is a mirror whose parts cut real
+		// worktrees off it and merge back into it through the one road every
+		// repository part already takes — which is how the promise both prompts
+		// make to a part becomes true for a folder as well.
+		return openFamilyTree(tree), nil
 	}
 	root, ok := repositoryRoot(ground)
 	if !ok || !hasCommit(root) {
@@ -8721,40 +8747,6 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 		return taskTree{dir: ground, merge: mergeInPlace, ground: ground, mode: TaskModeInPlace, rung: GroundRungHere}, nil
 	}
 	return cutTaskWorktree(ctx, place, root, session, id, title, stand.frozen)
-}
-
-// prepareMirrorTree copies a plain folder into the node's own directory. It
-// refuses a folder that holds the home folder before anything is created.
-func prepareMirrorTree(ctx context.Context, place Place, workspace, session string, id uint64, title, ground string) (taskTree, error) {
-	if refusal := copyHomeRefusal(ground); refusal != "" {
-		return taskTree{}, errors.New(refusal)
-	}
-	if err := ensureOwnedMirrorGround(place, ground); err != nil {
-		return taskTree{}, err
-	}
-	dir, mode := taskOwnFolder(place, workspace, session, id)
-	tree, err := carveGround(ctx, groundOrder{
-		place:   place,
-		ground:  ground,
-		dir:     dir,
-		mode:    mode,
-		title:   title,
-		promise: TaskModeMirror,
-	})
-	if err != nil {
-		return taskTree{}, err
-	}
-	// AND THE COPY IS WRITTEN DOWN AS THE FOLDER AS IT STOOD
-	// (task_mirror_manners.go). The bytes in it are the ones the family was
-	// given, and without a record of them the landing cannot tell the person's
-	// own edit from the family's work and writes over it in silence.
-	rememberGroundBaseline(tree.dir)
-	// AND THE COPY IS OPENED AS THE FAMILY'S OWN TREE (task_tree_mirror.go).
-	// A mirror that is a repository is a mirror whose parts cut real
-	// worktrees off it and merge back into it through the one road every
-	// repository part already takes — which is how the promise both prompts
-	// make to a part becomes true for a folder as well.
-	return openFamilyTree(tree), nil
 }
 
 // mirrorGround copies a plain folder into the node's own directory so that work

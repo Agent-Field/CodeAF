@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -62,15 +61,41 @@ func (a *Agent) ownershipPlacement(spec taskSpec, workspace string) (taskStand, 
 	if root, ok := repositoryRoot(dir); ok && hasCommit(root) {
 		dir, mode = root, TaskModeWorktree
 	}
-	return taskStand{dir: dir, mode: mode, rung: taskGroundNamed,
-		redirect: "The task works in its own private copy of " + dir + "; review and apply its results with /task review and /task apply."}, true
+	redirect := "The task works in its own private copy of " + dir + "; review and apply its results with /task review and /task apply."
+	if mode == TaskModeReference {
+		redirect = homeTaskRedirect(dir)
+	}
+	return taskStand{dir: dir, mode: mode, rung: taskGroundNamed, redirect: redirect}, true
 }
 
 // Home is a reference, not a project snapshot. A general task must not copy a
 // person's unrelated files merely because the conversation was opened there.
 func ownershipPlainMode(dir string) TaskMode {
-	if personHome, err := os.UserHomeDir(); err == nil && canonicalPath(personHome) == canonicalPath(dir) {
+	if HoldsHomeFolder(dir) {
 		return TaskModeReference
 	}
 	return TaskModeMirror
+}
+
+// neverMirrorHome is the same rule for a stand that already carries a mode: a
+// mirror of a folder holding the home folder reads it instead of copying it.
+func neverMirrorHome(ground string, mode TaskMode) TaskMode {
+	if mode == TaskModeMirror && HoldsHomeFolder(ground) {
+		return TaskModeReference
+	}
+	return mode
+}
+
+// homeTaskRedirect is what a person reads when a task named a folder holding home.
+func homeTaskRedirect(dir string) string {
+	return "The task reads " + dir + " and keeps what it makes in its own folder; nothing in " + dir + " changes."
+}
+
+// withHomeReadingNote is [taskCopy.ownFolderNote] for a run, whose workers learn
+// their folder as the assigned working directory and read the run's words.
+func withHomeReadingNote(brief string, stand taskStand) string {
+	if stand.mode != TaskModeReference || !HoldsHomeFolder(stand.dir) {
+		return brief
+	}
+	return brief + "\n\n" + cleanFolder(stand.dir) + " is yours to read, not to change. Everything you make goes in your assigned working directory. In your report, say where in that folder the results are."
 }

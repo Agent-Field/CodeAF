@@ -615,6 +615,7 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 			return false, err
 		}
 	}
+	brief = withHomeReadingNote(brief, stand)
 	ctx, engine, err = a.placeTaskRunEngine(ctx, engine, stand, via != nil)
 	if err != nil {
 		return false, err

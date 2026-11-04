@@ -928,7 +928,7 @@ func groundMode(stand taskStand, spec taskSpec, workspace string, trees string, 
 	case stand.rung == taskGroundNothing || stand.dir == workspace:
 		return TaskModeFolder
 	case writes:
-		return TaskModeMirror
+		return ownershipPlainMode(stand.dir)
 	}
 	return TaskModeReference
 }

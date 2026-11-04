@@ -386,14 +386,6 @@ func HoldsHomeFolder(dir string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// copyHomeRefusal keeps private working copies within one project.
-func copyHomeRefusal(dir string) string {
-	if !HoldsHomeFolder(dir) {
-		return ""
-	}
-	return "a task works in one project's folder, and this folder is or holds your home folder; choose a project folder inside it"
-}
-
 // DelegateUnknownError is the refusal for a `via` or a command naming no
 // program this build carries. It names the ones it does, sorted, so the next
 // attempt has the words in front of it.
