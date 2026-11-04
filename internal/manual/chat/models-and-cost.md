@@ -4583,8 +4583,7 @@ including the last call. Other conversations can keep writing to that ledger.
 The first write may need to scan older records, so a large spending history can
 make closing slower.
 
-Each write settlement waits at most two seconds for the spending ledger. Closing
-settles before stopping work and again afterward, so a stalled ledger can add up
-to four seconds. Pending rows can still be written if the process stays open and
+Closing waits at most two seconds for the spending ledger, so a stalled ledger can
+add up to two seconds to each close. Pending rows can still be written if the process stays open and
 the mount recovers. If the process exits first, those rows can be lost; reaching
 the wait limit does not show a warning or count a failed write.

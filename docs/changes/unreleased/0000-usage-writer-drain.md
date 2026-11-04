@@ -9,5 +9,5 @@ invalidates:
 
 Closing a conversation now waits for its queued spending records, including the
 last call, before returning. A stalled ledger can still leave rows pending after
-the two-second limit on each settlement. Other conversations sharing the ledger
+the two-second limit on each close. Other conversations sharing the ledger
 can keep recording spending.

@@ -272,3 +272,24 @@ func TestOverlappingSettlementsDrainAFullUsageQueue(t *testing.T) {
 		t.Fatalf("rows=%d distinct=%d, want %d calls once", len(rows), len(seen), 1+usageQueueDepth)
 	}
 }
+
+// A stalled ledger costs one close one ceiling, not one for each time the close
+// settles its writes: two ceilings is a floor the second wait cannot get under.
+func TestClosingAnAgentWaitsOneCeilingOnAStalledLedger(t *testing.T) {
+	previous := usageFlushLimit
+	usageFlushLimit = time.Second
+	defer func() { usageFlushLimit = previous }()
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.usageLedger = path })
+	release := holdUsageLedger(t, path)
+	defer StopUsageWriter(path)
+	defer release()
+	RecordUsage(path, UsageLine{ID: "before-close", Input: 1, USD: .001})
+	start := time.Now()
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed >= 2*usageFlushLimit {
+		t.Fatalf("close waited %s on a stalled ledger with a ceiling of %s", elapsed, usageFlushLimit)
+	}
+}

@@ -128,15 +128,22 @@ func (a *Agent) SettleWrites() {
 	if a == nil {
 		return
 	}
+	a.settleDeferredWrites()
+	if a.config.usageLedger != "" {
+		flushUsage(a.config.usageLedger)
+	}
+}
+
+// settleDeferredWrites is [Agent.SettleWrites] without the usage drain. [Agent.Close]
+// settles twice and drains only on the second, after the close's own rows, so a
+// stalled ledger costs one close one [usageFlushLimit].
+func (a *Agent) settleDeferredWrites() {
 	a.metaStamp().settle()
 	a.modelStamp().settle()
 	a.toldStamp().settle()
 	a.fixShelfFor().settle()
 	a.treesAhead().Settle()
 	a.settleTeamEvents()
-	if a.config.usageLedger != "" {
-		flushUsage(a.config.usageLedger)
-	}
 }
 
 // stampWriter is [offpath.Write] with the patch it is to perform carried beside

@@ -2729,8 +2729,9 @@ func (a *Agent) Close() (saveErr error) {
 	// stops while one is owed, and this is the answer to it ([Agent.SettleWrites],
 	// placemeta.go). IT IS HERE AND NOT PAST THE LOCK BELOW: every write it waits
 	// on takes `a.mu` to read or replace what it is writing, so a call from inside
-	// the lock would wait forever on work waiting for this goroutine.
-	a.SettleWrites()
+	// the lock would wait forever on work waiting for this goroutine. The usage
+	// drain waits for the second settle below, which sees this close's own rows.
+	a.settleDeferredWrites()
 	// AND THE ENDED RUNS' STORES ARE GIVEN BACK. They are held open for the life
 	// of the conversation because an ended store never changes ([planState.archives]),
 	// and this is where that life ends. A second close finds none.
