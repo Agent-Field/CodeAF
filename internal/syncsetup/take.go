@@ -53,6 +53,12 @@ type TakeOptions struct {
 	BucketFor func(origin string) string
 	// Notify hears the one sentence the vault hook says about what it left alone.
 	Notify func(string)
+	// OnMove hears how far a move has got, a few times a second while it
+	// changes. It is never called after the take returns.
+	OnMove func(MoveProgress)
+	// IdleWithin stops a move that waited this long on the relay with nothing
+	// coming through, with ErrMoveStalled; 0 waits as long as the caller does.
+	IdleWithin time.Duration
 }
 
 // Continued is a takeover that worked, with what the surface says about it.
@@ -122,6 +128,13 @@ func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	}
 }
 
+// holds says this machine already holds most of chat id's history, so a copy
+// fetches only what changed and the record's size says nothing about it.
+func (c *Continuer) holds(id, root string) bool {
+	s := c.sync
+	return c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger).Holds(cell.Cell{ID: id, Root: root})
+}
+
 // Take continues chat id here. Everything the surface says about it comes back
 // with it.
 func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
@@ -159,12 +172,21 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	// continue, and diagnostics must survive both early refusal and late failure.
 	started := time.Now()
 	phases := map[string]time.Duration{}
+	parent := ctx
+	ctx, watch, stopWatch := watchMove(ctx, c.opt.OnMove, c.opt.IdleWithin)
+	defer stopWatch()
+	defer func() {
+		if err != nil && context.Cause(ctx) == ErrMoveStalled && parent.Err() == nil {
+			err = fmt.Errorf("%w: %w", ErrMoveStalled, err)
+		}
+	}()
 	observed := *c
 	report := c.opt.OnPhase
 	observed.opt.OnPhase = func(p handoff.Phase) {
 		if !p.Ended.IsZero() {
 			phases[p.Name] += p.Ended.Sub(p.Started)
 		}
+		watch.phase(p)
 		if report != nil {
 			report(p)
 		}
@@ -224,6 +246,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	if seen == nil {
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
+	}
+	if watch != nil && view.Cell.Size > 0 && !c.holds(id, root) {
+		watch.expect(int64(view.Cell.Size))
 	}
 	directoryRead = handoff.Trace(c.opt.OnPhase, "directory")
 	from := c.sync.deviceName(lease.Device)
