@@ -241,7 +241,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 				return false, err
 			}
 			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: factory.StoppedByPerson(it) || it.State != factory.StateQueued || paused(it)}
-			if err := d.reserve(doc, worker, taken); errors.Is(err, ErrNoJob) {
+			if err := d.reserve(doc, worker, &taken); errors.Is(err, ErrNoJob) {
 				continue
 			} else {
 				return false, err
@@ -262,7 +262,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 // may have changed it after List. THE LEASE IS DURABLE BEFORE RUNNING: a crash
 // between files leaves a reserved queued job that expiry can recover, never
 // running work without a lease that another worker could immediately take.
-func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
+func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 	blocked := false
 	err := d.store.Update(taken.Job, func(it *factory.Item) error {
 		if !eligible(*it, worker) {
@@ -272,8 +272,11 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 			blocked = true
 			return nil
 		}
+		// A Stop may have landed after List. A pending reply may still borrow
+		// its manager, but only the locked job can authorize running steps.
+		taken.ThreadOnly = factory.StoppedByPerson(*it) || it.State != factory.StateQueued || paused(*it)
 		delete(doc.Withdrawn, worker.ID)
-		doc.Leases = append(doc.Leases, taken)
+		doc.Leases = append(doc.Leases, *taken)
 		if err := d.write(*doc); err != nil {
 			return err
 		}
@@ -302,6 +305,10 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 func holdAtJobBudget(it *factory.Item, now time.Time) bool {
 	if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap || approvedWriteOnly(*it) {
 		return false
+	}
+	// A Stop stays what the job says. A person starts it again, and is asked then.
+	if factory.StoppedByPerson(*it) {
+		return true
 	}
 	ask := factory.Asked{With: factory.AskedYou, At: now}
 	if it.QKind == "cap" && it.Asking != nil {
