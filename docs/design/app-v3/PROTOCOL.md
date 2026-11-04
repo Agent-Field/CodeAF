@@ -255,6 +255,7 @@ decides which combinations are accepted.
 | `factory.job_request_changes` | `in.FactoryJobChangesParams` | `FactoryJobActed` |
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_publish_anyway` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -1680,6 +1681,25 @@ manager chat or composer (and discards the returned step chats). They require a
 desktop update before pairing with this engine for jobs without a manager.
 The hello feature is capability advertisement, not client negotiation; it does
 not by itself make those older desktops compatible.
+### factory.job_publish_anyway
+
+Hello feature `factory.publish_anyway` advertises this person action. Params:
+`factory`, `job`, and `expect.version`. The result is `FactoryJobActed` with
+`action: "publish_anyway"` and the current job. The desk shows **Publish anyway**
+only when `can.publish_anyway` is true.
+
+The factory requires an authenticated person allowed to publish the job. Only
+correctly skipped conditional checks under the every-check policy qualify.
+Failed, pending or unmeasured checks refuse. Stale versions return `stale`
+without recording consent. Auto mode and automatic answers cannot grant it.
+
+The job's `publish_anyway` uses the existing approval shape. Its `matched`
+identity hashes the reported head, change, files and skipped-check set. The
+existing approved ledger event records the person and time. A held worker
+receives this decision on the existing answer signal and validates the identity
+before resuming. Its `words` carries the server-minted approval trailer; a post
+checks its head and person before using it without a local copy of the ledger.
+Skipped checks stay unmeasured and the PR lists each reason and the person decision.
 
 ## plugins methods
 
