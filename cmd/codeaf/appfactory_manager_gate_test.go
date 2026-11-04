@@ -125,6 +125,7 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			makeJobManager(t, s, job.ID)
 			var chats appwire.FactoryJobChats
 			s.must("factory.job_chats", map[string]any{"factory": local.Factory, "job": job.ID}, &chats)
 			read := func() api.Job {

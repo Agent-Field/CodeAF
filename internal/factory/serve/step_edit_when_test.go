@@ -35,12 +35,17 @@ func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
 				t.Fatalf("unclear condition refusal: %s", bad.Body)
 			}
 			st := factory.Stage{When: read.Steps[1].When}
-			if factory.Fits(st, it) {
-				t.Fatal("conditional step runs on an item without auth")
+			if !factory.Fits(st, it) {
+				t.Fatal("conditional step skips while files and area are unknown")
 			}
 			it.Triage.Area = "auth"
 			if !factory.Fits(st, it) {
 				t.Fatal("conditional step skips an auth item")
+			}
+
+			// A known nonmatching area is still a reason to skip at the step.
+			if err := f.st.Update(it.ID, func(it *factory.Item) error { it.Triage.Area = "docs"; return nil }); err != nil {
+				t.Fatal(err)
 			}
 
 			runner := run.New(run.Options{Store: f.st, Exec: map[factory.StageKind]run.Executor{
@@ -59,8 +64,31 @@ func TestJobScreensAddedStepConditionSurvives(t *testing.T) {
 			for {
 				job := f.read(t, it)
 				if job.Ready {
-					if len(job.Steps) != 2 || job.Steps[0].State != api.StepDone || job.Steps[1].InRun || job.Steps[1].Round != 0 {
+					if len(job.Steps) != 2 || job.Steps[0].State != api.StepDone || !job.Steps[1].InRun || job.Steps[1].State != api.StepSkipped || job.Steps[1].Note != "" || job.Steps[1].Tests != nil || !strings.Contains(job.Steps[1].SkipReason, "does not match the triage area") || job.Steps[1].Round != 0 {
 						t.Fatalf("run did not skip conditional step: %+v", job.Steps)
+					}
+					finished, err := f.st.Get(it.ID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if factory.BriefStub(finished).StepsDone != 1 || len(job.Claims) != 0 {
+						t.Fatal("skipped step counted as verified work")
+					}
+					server := factory.Item{ID: it.ID, State: factory.StateRunning, Stages: finished.Stages, Triage: finished.Triage, Stream: &factory.Stream{}}
+					report, _ := run.Diff(server, finished)
+					wire, err := json.Marshal(api.FromRunReport(report))
+					if err != nil {
+						t.Fatal(err)
+					}
+					var worker api.WorkerReport
+					if err := json.Unmarshal(wire, &worker); err != nil {
+						t.Fatal(err)
+					}
+					if err := run.ApplyReport(&server, api.ToWorkerReport(worker), time.Now()); err != nil {
+						t.Fatal(err)
+					}
+					if server.Stream.Phases[1].State != factory.PhaseSkipped || server.Stream.Phases[1].SkipReason != job.Steps[1].SkipReason {
+						t.Fatal("worker report lost conditional skip")
 					}
 					break
 				}

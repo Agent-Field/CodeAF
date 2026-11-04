@@ -84,6 +84,7 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 			var held api.WorkerPull
 			var baseline factory.Item
 			if outcome == "remote worker" {
+				makeJobManager(t, s, it.ID)
 				var chats appwire.FactoryJobChats
 				s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
 				// local_start also runs this app's worker. Only the simulated

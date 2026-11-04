@@ -2,6 +2,7 @@ package verification
 
 import (
 	"encoding/json"
+	"os"
 	"path"
 	"slices"
 	"sort"
@@ -108,7 +109,7 @@ func (next goScope) covers(old goScope) bool {
 
 func goRequirement(c Check) (goScope, bool) {
 	var scope goScope
-	a := c.Args
+	a := portableCheckArgs(c.Args)
 	if len(a) < 2 || a[0] != "go" || a[1] != "test" || c.Cwd == "" {
 		return scope, false
 	}
@@ -182,4 +183,41 @@ func goRequirement(c Check) (goScope, bool) {
 	raw, _ := json.Marshal([]any{c.Cwd, c.Context, invariant})
 	scope.identity = string(raw)
 	return scope, true
+}
+
+// CoversUnrun accepts only a literal Go test invocation whose scope is covered
+// by a measured pass. Shell setup, substitutions and unknown contexts cannot
+// establish the identity of a check that never ran.
+func CoversUnrun(command, cwd string, pass Check) bool {
+	args := strings.Fields(command)
+	for i, arg := range args {
+		// Admit whole literal quoted words, including single-quoted regex dollars.
+		if len(arg) >= 2 && arg[0] == '\'' && arg[len(arg)-1] == '\'' && !strings.Contains(arg[1:len(arg)-1], "'") {
+			args[i] = arg[1 : len(arg)-1]
+			continue
+		}
+		if len(arg) >= 2 && arg[0] == '"' && arg[len(arg)-1] == '"' {
+			arg = arg[1 : len(arg)-1]
+		}
+		if strings.ContainsAny(arg, "\"'`$;&|<>\\()") {
+			return false
+		}
+		args[i] = arg
+	}
+	if strings.ContainsAny(command, "\n\r") {
+		return false
+	}
+	if len(args) == 0 || args[0] != "go" {
+		return false
+	}
+	var context []string
+	for _, name := range checkContextNames {
+		context = append(context, os.Getenv(name))
+	}
+	old, ok := goRequirement(Check{Args: args, Cwd: cwd, Context: context})
+	if !ok || pass.Cwd != cwd || pass.Diagnostic || pass.Problem != "" || pass.Exit == nil || *pass.Exit != 0 || pass.Before.Head == "" || pass.Before != pass.After {
+		return false
+	}
+	next, ok := goRequirement(pass)
+	return ok && next.covers(old)
 }

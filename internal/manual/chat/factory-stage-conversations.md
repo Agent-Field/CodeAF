@@ -474,8 +474,32 @@ A running step publishes its chat identity immediately, so the desktop can show 
 open that conversation while it works. Provider turn errors are recovery events; only the
 runner announces the final stage outcome. Progress uses paths relative to the checkout.
 Completed stage results carry command receipts in their notes: the command, starting folder,
-outcome and explicit test outcomes when the output has them. A final PASS summary is not a test.
+outcome and named test counts only when a measured exit establishes passed or failed.
+A final PASS summary is not a test.
 Later steps receive these receipts instead of rediscovering the working directory and flags.
+## Execution notes, command outcomes and background checks
+
+The journal records the tool producer’s outcome separately from command output.
+Printed launch or timeout text cannot override that outcome. Background launch
+identity comes from the tool call or its recorded process.
+A command refused for approval or policy reads `refused` with the actual reason;
+it did not run. Interrupted commands read `cancelled` or `timed out`, even if partial
+output includes PASS. These outcomes remain unresolved until a later measured
+covering pass qualifies for the completion guard. A background launch without a
+measured exit reads `started`; its measured check exit decides verification later.
+Literal quoted Go test filters, such as `-run '^TestProbe$'`, can be covered by a
+later measured wider pass; a refused check without covering evidence still holds.
+For older journals without producer status, printed cancellation or timeout words
+are command output and do not establish an interruption.
+Measured check exits bound to the call and its exact command decide before
+producer status or output:
+any non-zero exit reads `failed`; otherwise any unmeasured check reads `completed`,
+even with PASS output. Only a measured exit of 0 for every check reads `passed`.
+Producer failures, refusals, cancellations and timeouts can lower that outcome.
+Shell success alone cannot hide a failed check. Without measured exits, PASS or
+`ok  ` output reads `completed`, never `passed`. A later passing rerun can clear
+the guard. Publication uses each command's last outcome: a later failed or
+unmeasured rerun removes that command from passing validation.
 
 In Manual, Approve at the final gate pushes the approved commit and creates a draft PR.
 Auto records and carries out that routine approval automatically. Its description
@@ -596,6 +620,20 @@ spend/attempt limits and human merge authority continue to apply.
 
 
 ## public PR descriptions and private command receipts
+
+A local command publishes as passed only when every measured check exit is zero
+and its shell form cannot hide an unobserved failure. A compound with unquoted
+`;` or `||` publishes nothing. Single `&`, newlines, command substitutions and
+backticks also prevent a passing command claim. Quoted literal separators are
+allowed. `&&` chains and `|` pipes remain eligible, including `cd sub && go test
+./...`, `go test ./a && go test ./b` and `go test ./... | tail -5`.
+`bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
+app/v3. This is an existing observation limit, not a check failure.
+A measured-zero command with a refused shell form reads `completed`; that outcome
+does not itself hold completion. An unfinished background shell still holds unless
+the guard accepts its measured checks as covering the command.
+Rerunning the identical compound on the current checkout with every measured exit
+zero clears its earlier failure, even when it uses `;` and publishes nothing.
 
 Factory publication renders known local factory checkout prefixes as repo-relative
 paths, and other local home prefixes as `[local home]`. The preview and final
@@ -760,7 +798,9 @@ extra tests. A new or resumed job uses the same checkout boundary. Historical
 checks outside that checkout (including deleted negative-test fixtures and base
 probes) remain diagnostic records, not obligations for the job. Unknown paths,
 corrupt owned records and actual failures inside the checkout remain unresolved.
-Original histories, exits and timestamps are not rewritten.
+Original histories, exits and timestamps are not rewritten. A shell failure whose
+measured checks are all outside-checkout diagnostics does not recreate an obligation
+for those checks, even after the scratch directory is deleted.
 
 A later measured Go test pass can cover an earlier failed invocation on the
 current checkout. Output verbosity, JSON formatting and build parallelism do
@@ -770,7 +810,22 @@ settings, race mode, build tags and other semantic flags must still match.
 Unknown options remain exact. A newer actual failure still blocks completion;
 changing source invalidates old successful evidence. These rules also apply
 when a saved round is resumed or its results are carried into the next round.
+A refused, cancelled or timed-out literal Go test attempt remains owed until a
+later measured pass covers it on the current checkout with matching environment
+and test scope. A refusal is never evidence that a test passed. Unknown compound
+commands retain their obligation. Holds name every owed check on one line; three
+unchanged refusals or six total refusals stop recovery with an incomplete result.
 The agent should reuse valid passes and rerun only unresolved scope.
+
+## Owed commands from another machine — absolute executable paths
+
+Owed literal checks name known tools through PATH, such as `go test ./...`,
+rather than retaining another machine's installation path. A measured rerun
+with that name can resolve a saved absolute invocation with the same scope.
+Raw receipts retain the original argv. Unknown tools or shell text that cannot
+be safely simplified keep their command and name any executable path missing
+on this machine. An unmeasured absolute invocation remains an obligation;
+changing its displayed command does not turn it into a pass.
 
 ## An already-fixed published PR does not need another commit
 
@@ -935,6 +990,13 @@ cap and only optional memory crosses it, the finished step stays done. The next
 step asks before starting, using the full job spend. On the last step, the job
 finishes with its true spend shown and no question for work it will not run.
 
+## Job budget read unavailable — existing work and new paid calls
+
+If a job budget cannot be read, new paid calls wait with
+`job budget could not be read; new work held`. The read error alone does not
+cancel work already running. A later successful read can admit work again;
+confirmed budget exhaustion and unrecorded spending still stop owned work.
+
 ## Stop spending after this step in a job's Spend menu
 
 **Stop spending after this step** lets the current step finish before you
@@ -957,8 +1019,12 @@ spending choice stays armed for the next step boundary. After the final step,
 the job holds before landing, so automatic publication cannot pass this hold.
 The choice adds no dollar limit and does not interrupt a model call already
 under way. A leased worker checks the saved choice before each step and landing.
-If that read fails, it keeps the last saved choice, including an armed hold,
-and tries again at the next boundary. The read failure does not fail the job.
+If that read fails, it retries up to three times within two seconds while the
+run is active. If the choice remains unknown, the worker holds before the next
+paid step and says `could not confirm Stop before the next step; work held:`
+with the read error. The job is not marked failed. Answer yes to retry the
+authority read when the factory is reachable, or no to stop the job. A missing route on an older factory keeps the existing behavior.
+Unconfirmed delivery still follows the ordinary recovery cutoff.
 
 ## Follow PR — comments that need no code change
 

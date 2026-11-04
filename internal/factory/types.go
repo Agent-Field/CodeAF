@@ -276,6 +276,7 @@ const (
 	PhasePending PhaseState = "pending"
 	PhaseRunning PhaseState = "running"
 	PhaseDone    PhaseState = "done"
+	PhaseSkipped PhaseState = "skipped"
 	PhaseFailed  PhaseState = "failed"
 	PhaseWaiting PhaseState = "waiting"
 )
@@ -288,6 +289,7 @@ type Phase struct {
 	Name       string
 	Kind       StageKind
 	State      PhaseState
+	SkipReason string `json:",omitempty"`
 	Note       string
 	Round      int
 	// RoundLimit is the effective limit, including explicit user extensions.
@@ -309,7 +311,7 @@ type Phase struct {
 	// out, its output cut at [ResultOutputMost]), kept so a run revived
 	// after a restart still hands the steps after it what came before.
 	Result *StageResult `json:",omitempty"`
-	// At is when the phase ended, done or failed. Zero while it has not
+	// At is when the phase ended, done, skipped or failed. Zero while it has not
 	// ended, and again once it is sent back to run. The wire's step.at is
 	// this instant.
 	At time.Time `json:",omitempty"`
@@ -534,7 +536,10 @@ type Item struct {
 	Scout    *Scout    `json:",omitempty"`
 	DoneAt   time.Time `json:",omitempty"`
 	Approval *Approval `json:",omitempty"`
-	StopUndo *StopUndo `json:",omitempty"`
+	// PersonStopped survives state resets, expiry of Undo and engine restarts.
+	// Only an explicit person control may clear it.
+	PersonStopped *bool     `json:",omitempty"`
+	StopUndo      *StopUndo `json:",omitempty"`
 
 	// BriefSeen is the Brief revision each person last saw, by normalised
 	// handle (brief_seen.go). It is private to each person: it never crosses

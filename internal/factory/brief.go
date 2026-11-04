@@ -234,6 +234,9 @@ type BriefWriting struct {
 
 // BriefStatusOf is what a reader says about the job's brief.
 func BriefStatusOf(it Item) string {
+	if StoppedByPerson(it) {
+		return BriefStatusFailed
+	}
 	if w := it.BriefWriting; w != nil && (w.State == BriefGenerating || w.State == BriefFailed) {
 		return w.State
 	}
@@ -256,7 +259,7 @@ func LatestBrief(it Item) BriefVersion {
 func BriefStub(it Item) BriefVersion {
 	done, total := briefProgress(it)
 	return BriefVersion{
-		Stub: true, Issue: it.Title, Verdict: it.Title, StepsDone: done, StepsTotal: total,
+		Stub: true, Issue: it.Title, Verdict: briefStubVerdict(it), StepsDone: done, StepsTotal: total,
 		Facts: BriefFacts(it), Blocks: []BriefBlock{}, ChangedKeys: []string{},
 	}
 }
@@ -391,7 +394,7 @@ func BriefFacts(it Item) []BriefFact {
 	out := []BriefFact{}
 	if it.Stream != nil {
 		for _, p := range it.Stream.Phases {
-			if p.Result == nil {
+			if p.State == PhaseSkipped || p.Result == nil {
 				continue
 			}
 			if f, ok := phaseFact(briefStageOf(it.Stages, p), p); ok {

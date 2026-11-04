@@ -739,11 +739,12 @@ type NeedsYouGroup struct {
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
 	// EngineState preserves old documents without adding a sixth public state.
-	EngineState string               `json:"engine_state,omitempty"`
-	Priority    *factory.JobPriority `json:"priority,omitempty"`
-	DoneHow     string               `json:"done_how,omitempty"`
-	Approval    *factory.Approval    `json:"approval,omitempty"`
-	StopUndo    *factory.StopUndo    `json:"stop_undo,omitempty"`
+	EngineState   string               `json:"engine_state,omitempty"`
+	Priority      *factory.JobPriority `json:"priority,omitempty"`
+	DoneHow       string               `json:"done_how,omitempty"`
+	Approval      *factory.Approval    `json:"approval,omitempty"`
+	PersonStopped *bool                `json:"person_stopped,omitempty"`
+	StopUndo      *factory.StopUndo    `json:"stop_undo,omitempty"`
 
 	ChangeBase      string    `json:"change_base,omitempty"`
 	Thread          []Message `json:"thread,omitempty"`
@@ -816,6 +817,7 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
+	SkipReason string `json:"skip_reason,omitempty"`
 	// RoundCosts is carried only on worker admission; readers retain one Cost.
 	RoundCosts map[int]float64 `json:"round_costs,omitempty"`
 	// Files is the plan answer. An explicit empty list stays (it means unknown,
@@ -882,8 +884,9 @@ const (
 // open ask and an answered one cannot drift.
 type Question = factory.Question
 
-// Expect is the job a caller last read. Every job verb accepts one. A field
-// that no longer matches is a stale read: the verb does not run.
+// Expect is the job a caller last read. Every job verb accepts one.
+// Content decisions refuse mismatches. Progress-tolerant verbs keep their own
+// guards; budget edits compare budget history instead of run progress.
 type Expect struct {
 	State   string `json:"state,omitempty"`
 	Step    string `json:"step,omitempty"`

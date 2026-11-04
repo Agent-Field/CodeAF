@@ -121,6 +121,8 @@ type BriefInput struct {
 	Hold                   string                 `json:"rule_hold,omitempty"`
 	Facts                  []BriefFact            `json:"facts"`
 	Previous               *BriefVersion          `json:"previous,omitempty"`
+	// beforeWork says the writer reads only the issue, so only that moves it.
+	beforeWork bool
 }
 
 // BriefApprovalInput is consent as the writer needs it, without its timing.
@@ -157,6 +159,9 @@ func BriefProofApprovalWaiting(it Item) bool {
 // BriefEndOf is the outcome of the work, including a run that stopped while
 // retaining its branch. Publication is an outcome even while the PR is open.
 func BriefEndOf(it Item) string {
+	if StoppedByPerson(it) {
+		return "stopped"
+	}
 	if pr := it.PullRequest; pr != nil {
 		switch pr.State {
 		case PRMerged:
@@ -202,6 +207,7 @@ func BriefVerdictBehind(it Item) bool {
 // BriefInputOf assembles the writer's input from the job.
 func BriefInputOf(it Item) BriefInput {
 	var in BriefInput
+	in.beforeWork = briefBeforeWork(it)
 	in.PersonRequests = briefPersonRequests(it)
 	in.Issue.Title, in.Issue.Body, in.Issue.Labels = it.Title, clip(it.Body, briefOutputMost), it.Labels
 	in.NeedsYou, in.Question, in.Model = JobState(it) == "needs_you", it.Question, it.Model
@@ -289,6 +295,10 @@ func briefPersonRequests(it Item) []BriefPersonRequest {
 // result, which carries the structured fields.
 func stepInputs(st Stage, p Phase) []BriefStepInput {
 	base := BriefStepInput{Step: p.Name, Kind: string(st.Kind), Until: st.Until, State: string(p.State)}
+	if p.State == PhaseSkipped {
+		base.Summary = p.SkipReason
+		return []BriefStepInput{base}
+	}
 	var out []BriefStepInput
 	latest := briefTry(p)
 	for _, r := range p.Rounds {
@@ -320,6 +330,9 @@ func clip(s string, most int) string {
 func BriefInputHash(in BriefInput) string {
 	in.Previous = nil
 	raw, _ := json.Marshal(in)
+	if in.beforeWork {
+		raw = []byte(briefFirstReadInput(in))
+	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
@@ -345,8 +358,14 @@ const (
 // the last failed write) was made from; or the cost guard holds it back. A
 // retry skips only for a write on its way.
 func BriefBeginSkip(it Item, trigger, hash string, now time.Time) string {
+	if StoppedByPerson(it) {
+		return PersonStopReason
+	}
 	if w := it.BriefWriting; w != nil && w.State == BriefGenerating && now.Sub(w.At) < briefWritingStale {
 		return BriefSkipWriting
+	}
+	if briefBeforeWork(it) && briefIssueThin(it) {
+		return BriefSkipThin
 	}
 	if trigger == BriefTriggerRetry {
 		return ""
@@ -377,14 +396,16 @@ func briefLastHash(it Item) string {
 // BriefCostAllowed is the cost guard for a write no one asked for: the last
 // version cost at most [BriefVersionCostMost], and one more like it keeps
 // the brief's spend within [BriefSpendShare] of the job's. The first version
-// is always allowed, since nothing is known of its cost.
+// after work is always allowed, since nothing is known of its cost: a read
+// before work is a person's asking, and is no share of work not yet paid for.
 func BriefCostAllowed(it Item) bool {
-	n := len(it.Briefs)
-	if n == 0 {
-		return true
+	spent, last, n := 0.0, 0.0, 0
+	for _, v := range it.Briefs {
+		if v.AfterStep != "" {
+			spent, last, n = spent+v.CostUSD, v.CostUSD, n+1
+		}
 	}
-	last := it.Briefs[n-1].CostUSD
-	return last <= BriefVersionCostMost && BriefSpent(it)+last <= BriefSpendShare*JobSpent(it)
+	return n == 0 || (last <= BriefVersionCostMost && spent+last <= BriefSpendShare*JobSpent(it))
 }
 
 // BriefDraft is the writer's answer: the words, the blocks it picked and the
@@ -464,6 +485,10 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 		}
 	}
 	numberSpots(v.Blocks)
+	briefPlainQuestions(v.Blocks)
+	if fault := briefRepeatsFault(v, it); fault != "" {
+		return BriefVersion{}, drops, fault
+	}
 	return v, drops, ""
 }
 
@@ -480,7 +505,7 @@ func briefEvidenceOf(it Item) briefEvidence {
 	e := briefEvidence{it: it, tries: map[string]int{}, files: map[string]ChangedFile{}}
 	if it.Stream != nil {
 		for _, p := range it.Stream.Phases {
-			if p.Result != nil || len(p.Rounds) > 0 {
+			if p.State != PhaseSkipped && (p.Result != nil || len(p.Rounds) > 0) {
 				e.tries[p.Name] = briefTry(p)
 			}
 		}
@@ -508,11 +533,13 @@ var briefEvidenceKinds = map[string]func(e briefEvidence, ref BriefEvidence) ([]
 	"file":          fileNumbers,
 	"change":        changeNumbers,
 	"hunk":          hunkNumbers,
+	// The read before work's only kind, which its own prompt names.
+	briefIssueEvidence: issueNumbers,
 }
 
 const briefEvidencePR = "pr"
 
-// BriefEvidenceKinds is every kind of evidence a claim may name.
+// BriefEvidenceKinds is every kind of evidence a claim after work may name.
 var BriefEvidenceKinds = []string{"tests", "exit", "findings", "claims", "output", "summary", "rule_checks", "file", "change", "hunk", briefEvidencePR}
 
 func prNumbers(e briefEvidence, _ BriefEvidence) ([]int, bool) {
@@ -528,7 +555,7 @@ func (e briefEvidence) phaseOf(step string) (Phase, bool) {
 		return Phase{}, false
 	}
 	for _, p := range e.it.Stream.Phases {
-		if p.Name == step {
+		if p.Name == step && p.State != PhaseSkipped {
 			return p, true
 		}
 	}

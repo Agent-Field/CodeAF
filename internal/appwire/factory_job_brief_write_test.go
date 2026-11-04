@@ -46,7 +46,7 @@ func TestJobBriefWriteIsRegisteredAnnouncedAndAbsentWithoutItsEngine(t *testing.
 	if got, _ := json.Marshal(out); string(got) != `{"skip":"writing","kept":false,"drops":null,"current":{"factory":"","job":0,"status":"","brief":{"rev":0,"issue":"","steps_done":0,"steps_total":0,"verdict":"","facts":null,"blocks":null,"changed_keys":null},"verdict_behind":false,"changed_since_seen":null}}` {
 		t.Fatalf("answered %s", got)
 	}
-	if h := withFactoryJobBriefWriterFeature(Hello{}, e); len(h.Features) != 1 || h.Features[0] != FeatureFactoryJobBriefWriter {
+	if h := withFactoryJobBriefWriterFeature(Hello{}, e); len(h.Features) != 2 || h.Features[0] != FeatureFactoryJobBriefWriter || h.Features[1] != FeatureFactoryJobBriefFirstRead {
 		t.Fatalf("announced %v", h.Features)
 	}
 	for _, bad := range []string{`{"factory":"","job":12}`, `{"factory":"f","job":0}`, `{"factory":"f","job":1,"trigger":"step"}`} {

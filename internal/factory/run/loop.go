@@ -107,6 +107,9 @@ type loopCtl struct {
 	// step; askMu keeps one question at a time.
 	wmu   sync.Mutex
 	askMu sync.Mutex
+	// pauseMu keeps pause writes and paid round admission in order without
+	// taking floorLoop.mu inside a store callback.
+	pauseMu sync.Mutex
 	// reverify says the control runs the checks again, holding no bench.
 	reverify bool
 	// hearMu keeps one reading of the manager conversation at a time
@@ -173,6 +176,9 @@ func (r *Runner) Launch(id int) error {
 	lp := r.loop()
 	it, err := st.Get(id)
 	if err != nil {
+		return err
+	}
+	if err := factory.CheckPersonStop(it); err != nil {
 		return err
 	}
 	// A PAUSED ITEM'S LAUNCH IS ITS RUN: the one top-bar button resumes it.
@@ -261,7 +267,7 @@ func strangerWrites(it factory.Item) error {
 		return nil
 	}
 	for _, s := range it.Stages {
-		if s.On && s.Name == "write" && factory.Fits(s, it) {
+		if s.On && s.Name == "write" && runsIn(it, s) {
 			return errors.New("a stranger's work does not run write in this factory")
 		}
 	}
@@ -272,6 +278,9 @@ func strangerWrites(it factory.Item) error {
 // dismissed, or never put anywhere yet. A dropped job is refused with its way
 // back ([factory.RefuseDropped]).
 func launchable(it factory.Item) error {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}
@@ -296,8 +305,8 @@ func launchable(it factory.Item) error {
 }
 
 // loopPhases compiles an item's stages into its phases, in order: a stage
-// that is on and fits the item is a pending phase, and one that does not is
-// left out. The tail is re-read at each round: what has not started yet is
+// that is on and fits the item is a pending phase. File conditions stay
+// pending until their turn; other nonmatching stages are left out. The tail is re-read at each round: what has not started yet is
 // compiled again from the item's stages as they stand then ([tailPhases]), so
 // the manager's edit during a run (its own `factory_run`) reaches the stages
 // after it.
@@ -312,11 +321,12 @@ func loopPhases(it factory.Item) []factory.Phase {
 	return out
 }
 
-// runsIn says whether stage s is a phase of it's run: on and fitting it, or
+// runsIn says whether stage s belongs in the run, retaining file conditions
+// until their turn: on and fitting it, or
 // the plan's approve step turned off while the rules the job started under
 // guard paths ([forcedGate]).
 func runsIn(it factory.Item, s factory.Stage) bool {
-	return (s.On || forcedGate(it, s)) && factory.Fits(s, it)
+	return (s.On || forcedGate(it, s)) && (factory.FileCondition(s) || factory.Fits(s, it))
 }
 
 // forcedGate says whether s is the plan's approve step ([factory.PlanGateStage])
@@ -435,6 +445,9 @@ func (lp *floorLoop) move(c *loopCtl, stage string, kind EventKind, text string,
 		return errLoopStopped
 	}
 	if err := lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return err
+		}
 		if kind != EventQueued && it.State == factory.StateNew && it.Stream != nil && !it.Stream.Ended.IsZero() {
 			return errLoopStopped
 		}
@@ -524,7 +537,7 @@ func (lp *floorLoop) drive(c *loopCtl) {
 // is one a person said to skip, and is finished too.
 func nextPhase(ph []factory.Phase) int {
 	for i, p := range ph {
-		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseSkipped && p.State != factory.PhaseFailed {
 			return i
 		}
 	}
@@ -662,7 +675,7 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	prev := factory.PreviousWork(ph, i)
 	last := true
 	for _, p := range ph[i+1:] {
-		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseSkipped && p.State != factory.PhaseFailed {
 			last = false
 			break
 		}
@@ -859,6 +872,26 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	}
 	st, index := lp.stageAt(it, i)
 	name := st.Name
+
+	// File conditions are decided only at the step, after earlier rounds have
+	// recorded their change. A skipped phase is finished and keeps its reason.
+	if factory.FileCondition(st) && !factory.Fits(st, it) {
+		reason := "skipping " + name + ": when " + st.When + " does not match the change files"
+		if (it.Change == nil || len(it.Change.Files) == 0) && len(it.Files) == 0 {
+			reason = "skipping " + name + ": when " + st.When + " does not match the triage area"
+		}
+		now := lp.r.now()
+		return lp.write(c, func(it *factory.Item) error {
+			ph := &it.Stream.Phases[i]
+			skipPhase(it, ph, reason, now)
+			lp.mu.Lock()
+			delete(lp.results[c.id], i)
+			lp.mu.Unlock()
+			it.Stream.Cur = i
+			loopSay(it, now, "said", reason)
+			return nil
+		}) == nil
+	}
 
 	// AN APPROVE STEP IS A PERSON, so their answer is the step: nothing runs it.
 	if st.Kind == factory.StageGate {
@@ -1184,6 +1217,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				q += ": " + why
 			}
 			q += " · " + stepShortChoices(back)
+			if st.Kind == factory.StagePost {
+				if reason := skippedPolicyQuestion(job.Item, res); reason != "" {
+					q = reason
+				}
+			}
 			// OUT OF ATTEMPTS IS A QUESTION, not a failed step. The phase waits.
 			a, ok := lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
 			if !ok {
@@ -1347,6 +1385,8 @@ func shortfall(res factory.StageResult) string {
 // held ends a paused drive so its bench and worker lease can serve another
 // job. The saved stream keeps the interrupted step for the ordinary resume path.
 func (lp *floorLoop) held(c *loopCtl) bool {
+	c.pauseMu.Lock()
+	defer c.pauseMu.Unlock()
 	lp.mu.Lock()
 	paused := c.paused
 	lp.mu.Unlock()
@@ -1359,15 +1399,18 @@ func (lp *floorLoop) held(c *loopCtl) bool {
 func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.StageResult, again bool, err error) {
 	rctx, cancel := context.WithCancel(c.ctx)
 	defer cancel()
+	c.pauseMu.Lock()
 	lp.mu.Lock()
 	if c.paused {
 		// Paused before it began: the chat it was to carry on waits for run.
 		c.carry = job.Resume
 		lp.mu.Unlock()
+		c.pauseMu.Unlock()
 		return res, true, nil
 	}
 	c.roundCancel = cancel
 	lp.mu.Unlock()
+	c.pauseMu.Unlock()
 	// The manager can spend while a shell/check stage is running too. Every
 	// check executor owns this context. Chat agents use their live family meter
 	// so cancellation still returns the round's precise cost and chat identity.
@@ -1497,6 +1540,9 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	// (workdir.go), else in the repository's checkout; a worktree that could
 	// not be made fails the round rather than running in the person's tree.
 	dir, dirErr := lp.jobDir(it)
+	if dirErr == nil {
+		it = lp.settleRules(c, it)
+	}
 	if dirErr == nil && factory.IsCIRepairStage(st) {
 		dirErr = lp.reconcilePR(it, dir)
 	}
@@ -1538,6 +1584,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		}
 	}
 	return Job{
+		BeforeWrite:     func(ctx context.Context) error { return lp.r.publishBoundary(ctx, c.id) },
 		Lifetime:        c.ctx,
 		PendingSpend:    c.pendingSpend,
 		Item:            it,
@@ -1973,31 +2020,32 @@ func (r *Runner) Withdraw(id int) {
 func (r *Runner) Stop(id int) error {
 	lp := r.loop()
 	if c := lp.ctl(id); c != nil {
-		lp.stop(c)
-		return nil
-	}
-	it, err := r.opts.Store.Get(id)
-	if err != nil {
-		return err
-	}
-	switch it.State {
-	case factory.StateQueued, factory.StateRunning, factory.StateNeedsYou:
-		// AN ITEM NOBODY IS RUNNING IS NOT RUNNING, whatever its document
-		// says: a process that died mid-round left it so, and stop puts it
-		// back where a person can launch it again.
-		now := r.now()
-		var cut *factory.StepProgress
 		if err := r.opts.Store.Update(id, func(it *factory.Item) error {
-			cut = endRun(it, now, nil)
+			factory.MarkPersonStopped(it)
+			it.Asking = nil
 			return nil
 		}); err != nil {
 			return err
 		}
-		lp.emit(id, "", EventStopped, "stopped")
-		lp.tellStep(id, sayStopped, cut)
+		lp.stop(c)
 		return nil
 	}
-	return fmt.Errorf("%s is not running", it.Ref())
+	now := r.now()
+	var cut *factory.StepProgress
+	if err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		if !factory.UnderWay(*it) {
+			return fmt.Errorf("%s is not running", it.Ref())
+		}
+		cut = endRun(it, now, nil)
+		factory.MarkPersonStopped(it)
+		it.Asking = nil
+		return nil
+	}); err != nil {
+		return err
+	}
+	lp.emit(id, "", EventStopped, "stopped")
+	lp.tellStep(id, sayStopped, cut)
+	return nil
 }
 
 // stopStored is a person's stop with no run to cancel. A failure the job
@@ -2011,12 +2059,13 @@ func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
 // BOTH PATHS: the loop's own stop and a stop of a job no runner here holds
 // write exactly this.
 //
-// A PERSON'S STOP IS MARKED ONLY WHERE IT CUT A STEP. A step under way
+// A stopped-step failure is recorded only where Stop cut a step. The durable
+// person-stop record also covers queued jobs and completed proof. A step under way
 // (running or waiting) is failed with [stoppedByYou], and the job carries the
 // same stop, so it never reads as a fresh job with a step still running, and
 // running that step again carries on from it. A job stopped before any step
 // began (queued) or after the last one ended (landed) lost nothing: it is
-// simply back in the backlog with no failure, where a start picks it up.
+// stopped with no failed step; a person's Start grants execution again.
 //
 // It answers the step the stop cut, for the manager's `stopped` line: failed
 // when why is the step's own error, stopped when it is a person's; nil when it
@@ -2116,6 +2165,9 @@ func (r *Runner) Hold(id int, on bool) error {
 	if err != nil {
 		return err
 	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	if err := factory.RequireIssueJob(it); err != nil {
 		return err
 	}
@@ -2138,28 +2190,17 @@ func (r *Runner) Hold(id int, on bool) error {
 	return r.setPaused(c, func(bool) bool { return on })
 }
 
-// setPaused moves the control to the paused state want answers for the one
-// it is in, under the loop's lock, and says the word on the stream and into
-// the manager's conversation only when that changed anything.
+// setPaused saves a pause before exposing it to the drive. Round admission
+// waits for the write, so a failed save leaves execution unchanged.
 func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 	lp := r.loop()
-	id := c.id
-	paused, changed := func() (bool, bool) {
-		lp.mu.Lock()
-		defer lp.mu.Unlock()
-		next := want(c.paused)
-		if next == c.paused {
-			return next, false
-		}
-		c.paused = next
-		if next {
-			if c.roundCancel != nil {
-				c.roundCancel()
-			}
-		}
-		return next, true
-	}()
-	if !changed {
+	c.pauseMu.Lock()
+	lp.mu.Lock()
+	paused := want(c.paused)
+	unchanged := paused == c.paused
+	lp.mu.Unlock()
+	if unchanged {
+		c.pauseMu.Unlock()
 		return nil
 	}
 	kind, word := EventResumed, sayResumed
@@ -2167,14 +2208,23 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 		kind, word = EventPaused, sayPaused
 	}
 	now := r.now()
-	if err := lp.move(c, "", kind, word, func(it *factory.Item) error {
+	if err := lp.write(c, func(it *factory.Item) error {
 		it.Stream.Paused = paused
 		loopSay(it, now, "said", word)
 		return nil
 	}); err != nil {
+		c.pauseMu.Unlock()
 		return err
 	}
-	lp.tell(id, word)
+	lp.mu.Lock()
+	c.paused = paused
+	if paused && c.roundCancel != nil {
+		c.roundCancel()
+	}
+	lp.mu.Unlock()
+	c.pauseMu.Unlock()
+	lp.emit(c.id, "", kind, word)
+	lp.tell(c.id, word)
 	return nil
 }
 
@@ -2211,6 +2261,9 @@ func (r *Runner) resumePaused(it factory.Item) (done bool, err error) {
 // it paused) a control again and puts it back on a bench. It goes on at the
 // phase and round it stopped in, and the phase's chat is carried on.
 func (r *Runner) revive(it factory.Item) error {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return err
+	}
 	lp := r.loop()
 	id := it.ID
 	if r.opts.Rail != nil && r.opts.SpentToday != nil {
@@ -2235,7 +2288,7 @@ func (r *Runner) revive(it factory.Item) error {
 		lp.results[id] = map[int]factory.StageResult{}
 		lp.notes[id] = nil
 		for i, ph := range it.Stream.Phases {
-			if ph.Result == nil {
+			if ph.State == factory.PhaseSkipped || ph.Result == nil {
 				continue
 			}
 			lp.results[id][i] = *ph.Result
@@ -2455,6 +2508,9 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 // HTTP door runs it before writing an approval, so a claim that is not shown
 // never leaves a receipt the publish door would then refuse.
 func ApprovalRefused(it *factory.Item, edited bool) error {
+	if err := factory.CheckPersonStop(*it); err != nil {
+		return err
+	}
 	if it.State != factory.StateLanded {
 		return fmt.Errorf("%s has not landed", it.Ref())
 	}
@@ -2608,7 +2664,7 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	}
 	at := 0
 	for k, p := range s.Phases {
-		if p.State == factory.PhaseDone {
+		if p.State == factory.PhaseDone || p.State == factory.PhaseSkipped {
 			at = k + 1
 		}
 	}

@@ -67,12 +67,13 @@ func ClearJobRun(it *Item) {
 }
 
 // JobUnworked says nothing has been done on the job: no start, taker, run,
-// chat, work folder, pull request, spend, failure, change, brief, note, reply,
-// answer, edited steps, Look closer or approval.
+// personal touch, work folder, pull request, failure, change, note, reply,
+// answer, edited steps, Look closer or approval. System-made manager
+// conversations, briefs and their spending do not count as work.
 func JobUnworked(it Item) bool {
-	return it.Starter == "" && it.Taker == "" && it.Stream == nil && it.Talk == "" && it.WorktreeMachine == "" &&
-		it.PullRequest == nil && !it.Publishing && JobSpent(it) == 0 && it.Failure == nil &&
-		it.Change == nil && it.BriefWriting == nil && len(it.Briefs) == 0 && len(it.Notes) == 0 &&
+	return it.Starter == "" && it.Taker == "" && it.Stream == nil && !it.PersonTouched && it.WorktreeMachine == "" &&
+		it.PullRequest == nil && !it.Publishing && it.Failure == nil &&
+		it.Change == nil && len(it.Notes) == 0 &&
 		len(it.Thread) == 0 && len(it.AnsweredQuestions) == 0 && len(it.Adapted) == 0 && it.Scout == nil && it.Approval == nil
 }
 

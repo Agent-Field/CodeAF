@@ -22,12 +22,11 @@ import (
 
 // ── TALK IT THROUGH: THE ITEM'S OWN CONVERSATION ────────────────────────────
 //
-// `T` on the factory floor opens an item's own conversation, made on the first
-// press and the same one on every press after ([factory.Seam.Talk]). It is
-// OPTIONAL AND NEVER MADE BY DEFAULT: an item that nobody pressed `T` on has no
-// conversation and no team.
+// The item's own conversation is made for a personal send, a system brief or
+// a run, and every later ask reuses it ([factory.Seam.Talk]). Making the
+// conversation records no personal touch; accepted personal messages do.
 //
-// What the first press makes, all of it on this machine's disk and none of it
+// What creation makes, all of it on this machine's disk and none of it
 // a model call:
 //
 //   - a team for the item, named by its ref and title (`#12 · fix the ledger

@@ -240,6 +240,7 @@ decides which combinations are accepted.
 | `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
+| `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
@@ -1413,7 +1414,15 @@ and rows omit the unknown time. Existing records are not backfilled by startup.
 `local_agent` is the app's saved/open folder id, resolved independently from
 `cell`. Remote-only chats have no local agent. Cell locations include the
 observed computer, fence and optional saved `head` in opaque `seen`, plus `can_take` and the engine's
-`takeover_line` when known. Older chats working in the home folder stay local.
+`takeover_line` when known. `taking` is true while `agents.take` runs for that
+chat, including while it waits behind another take, so a row that says the chat
+is here can still say it; a followed inventory emits the row again when the take
+starts and when it ends without moving the chat. Once a take has acquired the
+chat, rows that still show it elsewhere keep `taking:true` until a row says the
+chat is here or a later take holds it, even when opening the moved chat fails.
+A client that stopped waiting for a take reads `taking:false`
+on a chat still elsewhere as a take that did not move it.
+Older chats working in the home folder stay local.
 Copy `cell` and `seen` verbatim to `agents.take`; never open an agent using the
 remote cell id. It returns the adopted local Agent through the normal open path.
 Stale observations answer `conflict`, `detail:{kind:"holder_changed"}` and the
@@ -1656,3 +1665,121 @@ captions; `text` remains readable, with one tool name and home paths replaced
 by `~` before a 240-character limit. Other lines omit `kind`. Worker reports
 retain their existing body shape, carrying tool identity in `tone: "tool"`;
 no hello feature or new error code is needed.
+
+## Factory job first message and empty agent compatibility
+
+The hello feature `factory.job_send` announces first-message creation. With this
+feature, `factory.job_chats` returns `agent: ""` when no manager exists, preserving
+existing step chats. A client must render a composer even without an agent and
+send `factory.job_send` with `factory`, `job`, `text` and optional `client_id`.
+The result contains `agent` and `turn`; later messages can use `agents.send`.
+Reads do not count as a person's touch. Storage and lifecycle maintenance remain.
+
+Older desktops reject an empty agent in `jobChatsOf`, so the Run view has no
+manager chat or composer (and discards the returned step chats). They require a
+desktop update before pairing with this engine for jobs without a manager.
+The hello feature is capability advertisement, not client negotiation; it does
+not by itself make those older desktops compatible.
+
+## plugins methods
+
+The optional `plugins` hello feature enables these methods. They use
+`internal/connect`, the same account and capability stores as terminal
+`/connect`. Provider connection methods and the `Provider` type stay unchanged.
+
+| method | params | result |
+|---|---|---|
+| `plugins.list` | `{}` | `PluginsResult` |
+| `plugins.describe` | `in.PluginID` | `PluginDescription` |
+| `plugins.connect_browser` | `in.PluginBrowserParams` | `PluginBrowserResult` |
+| `plugins.cancel` | `in.PluginID` | `Empty` |
+| `plugins.connect_key` | `in.PluginKeyParams` | `PluginKeyResult` |
+| `plugins.set_capability` | `in.PluginCapabilityParams` | `Empty` |
+| `plugins.disconnect` | `in.PluginDisconnectParams` | `Empty` |
+
+`plugins.list` returns `{plugins, providers, featured, featured_words}`.
+Each plugin has `id, name, kind, category, blurb, connected, key_checkable`, and optionally
+`account, key_env, expired, connected_at, key_saved_at, ask: {label, answers?},
+key_hint: {words, url?}`.
+Kind is `browser`, `key` or `server`. Category uses the catalog's spelling.
+`key_checkable` is true only for key connectors with a catalog probe.
+Blurb shortens the existing catalog words. Counts come from the returned
+catalog. `featured` contains ordered ids; `featured_words[id]` contains
+`{what, does}`.
+
+Plugin dates are UTC RFC 3339 instants saved in the existing credential store.
+`connected_at` records the first saved connection; replacing a key preserves it
+and updates `key_saved_at`. Browser token refresh does not change either date.
+Older entries retain absent dates; disconnect removes them.
+`ask.label` is the catalog's short field label (for example, "Workspace"),
+not the terminal's instruction to paste the fact and key together. The protocol
+accepts the fact in `answer` and the credential in `key` or `key_env` separately.
+
+Only `plugins.list` extends each existing provider view with optional
+`account, key_env, connected_at, running, plan_paused: {resets_at?}`.
+`providers.list` is unchanged. Account comes from ChatGPT's stored email;
+key_env names the environment variable actually supplying the credential.
+Provider connection dates have no stored source and remain absent.
+
+`running` is only for loopback Ollama addresses. A background GET to `/api/tags`
+has a 200 ms deadline, accepts an Ollama model-list response and follows no
+redirects. The list returns immediately; `running` is absent until the first
+probe finishes, then true or false, cached for five seconds. Remote Ollama
+addresses leave it absent. Fetch the list again to read a completed probe.
+
+`plan_paused` comes from subscription refusal phase news, identified by source.
+`resets_at` preserves the vendor's reset value, including readable clock text;
+it is absent when the vendor gives none. The refusal is remembered for this
+engine connection, expires when its reset instant can be parsed, and clears
+when the plan answers again. Metered overflow does not clear a paused plan.
+A generic quota/rate limit is not evidence of a paused subscription. No account
+quota polling or durable pause history is added.
+
+`plugins.describe {id}` returns
+`{capabilities, scopes_words, tools?, notes?, accounts?, key_note?}`.
+Capabilities contain `{id, phrase, covers, acts, state, tools}`. State is
+`yes`, `ask` or `off`; the same `SetCapabilityState` store serves chat's
+Always answer and `plugins.set_capability {id, capability, state}`.
+Off removes that capability's tools when the next session builds its tools.
+Connected servers' `tools` come from the existing MCP listing, as
+`{name, title, read_only}`. Tool names grouped under a capability also form
+its `covers` text.
+
+`plugins.connect_browser {id, answer?}` answers
+`{state: "waiting", link}`. The desk opens `link` in the browser.
+Completion emits `plugins.changed`; `error` carries a safe sign-in failure.
+`plugins.cancel {id}` abandons an unfinished attempt. Closing the engine
+also cancels pending attempts.
+
+`plugins.connect_key {id, key?, key_env?, answer?}` accepts one key or one
+environment variable name. `answer` supplies the workspace when needed.
+It returns `{checked: bool, account?}` on success, or
+`{checked: false, error: "shape"|"refused"|"no_answer", words}` as a successful wire answer.
+`checked` is true only when a probe ran and passed; a key saved without a
+catalog probe returns false and is first tested on real use.
+A shape failure reaches no vendor, a refusal retains at most 120 characters,
+and a missing answer saves nothing. Key values never appear in replies.
+`plugins.disconnect {id, account?}` uses the existing disconnect path.
+The optional account must match the stored account.
+
+`settings.set` accepts `when_plan_paused: {[provider]: policy}`, where policy
+is `wait` or `use pay-as-you-go`. It changes the existing persisted source
+rows. `settings.get` and `settings.changed` return the map in
+`settings.when_plan_paused`. An unknown provider is refused.
+
+| event | data |
+|---|---|
+| `plugins.changed` | `PluginsChanged`: `{id, error?}` |
+| `plugins.needed` | `PluginsNeeded`: `{agent, plugin, why, ask_id}` |
+| `plugins.needed_done` | `PluginsNeededDone`: `{ask_id}` |
+
+A connect question reaches the app on the existing `WatchQuestions` lane.
+`plugins.needed` identifies that same question, also listed by `asks.list`.
+After connecting through the plugin methods, the desk calls
+`asks.answer {agent, id: ask_id, option: "1"}` to continue the turn without
+a second sign-in. `option: "2"` means Not now and saves no refusal.
+Answering in either chat or Inbox resolves the same question.
+An answer or withdrawal emits `plugins.needed_done`.
+
+The current account store holds one account per plugin, including Slack.
+It has no plugin call history; a Lately section remains absent.

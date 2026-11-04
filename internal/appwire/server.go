@@ -202,6 +202,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withSlashCatalogFeature(hello, engine)
 	hello = withSyncFeatures(hello, engine)
 	hello = withSkillsFeatures(hello, engine)
+	hello = withPluginsFeature(hello, engine)
 	hello = withHealthFeature(hello, engine)
 	hello = withManualCorpusFeature(hello, engine)
 	hello = withMachinePolicyFeatures(hello, engine)
@@ -230,6 +231,9 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryJobStepEditFeature(hello, engine)
 	hello = withFactoryJobStepEditMaxFeature(hello, engine)
 	hello = withFactoryJobStepEditWhenFeature(hello, engine)
+	if _, ok := engine.(Factory); ok {
+		hello = withFeature(hello, FeatureFactoryStepSkipped)
+	}
 	hello = withFactoryJobStepEditModelFeature(hello, engine)
 	hello = withFactoryIssueCommentFeature(hello, engine)
 	hello = withFactoryJobRejectPlanFeature(hello, engine)

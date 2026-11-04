@@ -27,6 +27,13 @@ func StampSteps(it *factory.Item, f File) bool {
 	return true
 }
 
+// StepsWouldChange says f would have replaced the steps of it had it been read
+// when it started, for a read that came after its stream began.
+func StepsWouldChange(it factory.Item, f File) bool {
+	it.Stream = nil
+	return StampSteps(&it, f)
+}
+
 // sameSteps compares two step lists as the store keeps them, where an empty
 // proof list and a missing one are the same.
 func sameSteps(a, b []factory.Stage) bool {

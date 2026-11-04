@@ -20,6 +20,9 @@ const (
 	appPairFollowed   = "Paired. This computer now shares your current chats and keeps its saved keys."
 	appPairListUnread = "Paired. Your computers could not be listed yet. Open codeaf again in a moment."
 	appPairFailed     = "This computer could not finish pairing. Try again."
+	// appRemoved answers any call refused because this computer was removed,
+	// so it names no chat; the app's own remedy is Pair a computer.
+	appRemoved = "This computer was removed by another of your devices. To bring it back, choose Pair a computer."
 )
 
 func pairApprovalOptions() []appwire.PairOption {
@@ -27,7 +30,7 @@ func pairApprovalOptions() []appwire.PairOption {
 }
 
 func appPairCodeLines(code string) []string {
-	return []string{"Pairing shares your chats with another computer.", fmt.Sprintf("On your other computer, choose Pair a computer, then Enter a code from the other computer, and type %s. This code lasts %d minutes.", code, int(pair.CodeValidFor/time.Minute))}
+	return []string{"Pairing shares your chats with another computer.", fmt.Sprintf("On your other computer, choose Pair a computer, then Enter a code from the other computer, and type %s (dashes optional). This code lasts %d minutes.", code, int(pair.CodeValidFor/time.Minute))}
 }
 func appPairApproveTitle(name string) string { return fmt.Sprintf("Pair with %s?", name) }
 func appPairWords(words string) string {

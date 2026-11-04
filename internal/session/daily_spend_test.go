@@ -200,3 +200,26 @@ func TestDailySpendTallyFollowsTheLedger(t *testing.T) {
 		t.Fatalf("rewritten: %v, %v", got, err)
 	}
 }
+
+func TestDailySpendFactoryPageAIIsNotChats(t *testing.T) {
+	for _, role := range []string{"step_ai", "my_pipeline_ai"} {
+		t.Run(role, func(t *testing.T) {
+			now := time.Now()
+			path := filepath.Join(t.TempDir(), "usage.jsonl")
+			row, err := json.Marshal(UsageLine{At: now, Day: now.Format(usageDayLayout), Role: role, USD: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, append(row, '\n'), 0600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := ReadDailySpend(path, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.USD != 1 || got.FactoryAIUSD != 1 || got.USD-got.FactoryAIUSD != 0 {
+				t.Fatalf("%s: total=%g Factory AI=%g chats=%g; want 1, 1, 0", role, got.USD, got.FactoryAIUSD, got.USD-got.FactoryAIUSD)
+			}
+		})
+	}
+}

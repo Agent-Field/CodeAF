@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,7 +45,7 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			}
 		}
 	})
-	for _, road := range []string{"app", "chat", "no line", "house rules unread", "clean file without budget"} {
+	for _, road := range []string{"app", "chat", "no line", "house rules unread", "clean file without budget", "no repository file", "no repository file from chat", "not on this Mac yet", "not on this Mac yet from chat"} {
 		t.Run(road, func(t *testing.T) {
 			s := newLocalSetup(t)
 			config.AppCredentialSource().Set("openrouter", "test-key-no-network")
@@ -67,6 +68,14 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 				}
 			}
 			read := func(context.Context, string, string) (pipeline.File, error) {
+				if strings.HasPrefix(road, "no repository file") {
+					f := pipeline.Defaults()
+					f.Source, f.From = pipeline.SourceDefaults, factory.FromDefault
+					return f, nil
+				}
+				if strings.HasPrefix(road, "not on this Mac yet") {
+					return pipeline.Defaults(), fmt.Errorf("%s: %w", pipeline.RepoFile, pipeline.ErrNotHereYet)
+				}
 				b, err := os.ReadFile(path)
 				if err != nil {
 					return pipeline.Defaults(), err
@@ -148,7 +157,7 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 				}
 				return
 			}
-			if road == "chat" {
+			if strings.HasSuffix(road, "chat") {
 				if err := launch(id); err != nil {
 					t.Fatal(err)
 				}
@@ -162,13 +171,27 @@ func TestFactoryStartBadRepositoryFile(t *testing.T) {
 			var got struct {
 				api.Job
 				StartRules struct {
-					Unread bool   `json:"unread"`
-					Why    string `json:"unread_why"`
-					File   string `json:"unread_file"`
-					Line   *int   `json:"unread_line"`
+					Unread  bool   `json:"unread"`
+					Why     string `json:"unread_why"`
+					File    string `json:"unread_file"`
+					Line    *int   `json:"unread_line"`
+					NoFile  bool   `json:"no_file"`
+					Pending bool   `json:"pending"`
 				} `json:"start_rules"`
 			}
 			s.must("factory.job", params, &got)
+			if strings.HasPrefix(road, "no repository file") || strings.HasPrefix(road, "not on this Mac yet") {
+				noFile := strings.HasPrefix(road, "no repository file")
+				if got.StartRules.NoFile != noFile || got.StartRules.Pending == noFile || got.StartRules.Unread == noFile || strings.Contains(got.StartRules.Why, "syntax") {
+					t.Fatalf("start rules: %+v", got.StartRules)
+				}
+				for _, a := range got.Desk.Activity {
+					if strings.Contains(a.What, "unread") {
+						t.Fatalf("a person is told the rules are unread: %q", a.What)
+					}
+				}
+				return
+			}
 			wantWhy := ".codeaf/factory.yaml line 3: mapping values are not allowed in this context"
 			if road == "no line" {
 				wantWhy = pipeline.RepoFile + ": could not read repository rules; check the file's syntax and access"
