@@ -51,7 +51,7 @@ func enableAppConversationModels(conv any, desired ...*session.ConversationModel
 
 // appOlderHostModels is what a person reads when a host from before the
 // main/fallback pair holds their conversation.
-const appOlderHostModels = "An older codeaf window holds this conversation, so its models can't be changed here. Close or update that window to change them."
+const appOlderHostModels = "An older codeaf engine holds this conversation, so its models can't be changed here. Stop that engine, then open this chat again to change them."
 
 // appOlderHost says an engine answered from before the door that was called.
 // The name is all that crosses the wire, as for every other older door
