@@ -669,7 +669,7 @@ func TestClientToolsEndedQueuedCallsAreNotEmitted(t *testing.T) {
 			switch ending {
 			case "deadline":
 				r.mu.Lock()
-				pending.deadline = time.Now().Add(-time.Second)
+				pending.answerBy = time.Now().Add(-time.Second)
 				r.mu.Unlock()
 			case "turn end":
 				cancelQueued()

@@ -34,7 +34,7 @@ type clientToolPending struct {
 	ctx      context.Context
 	done     chan struct{}
 	call     session.ClientToolCall
-	deadline time.Time
+	answerBy time.Time
 	answer   session.ClientToolAnswer
 	event    *appwire.AgentsToolCall
 }
@@ -340,7 +340,7 @@ func (r *appClientTools) nextEmission() *appwire.AgentsToolCall {
 	for _, pending := range r.pending {
 		event := pending.event
 		pending.event = nil
-		if event != nil && pending.ctx.Err() == nil && time.Now().Before(pending.deadline) {
+		if event != nil && pending.ctx.Err() == nil && time.Now().Before(pending.answerBy) {
 			return event
 		}
 	}
@@ -364,15 +364,15 @@ func (r *appClientTools) beginLocked(ctx context.Context, agent, id string, call
 	if pending := r.pending[id]; pending != nil {
 		return pending, session.ClientToolAnswer{}, false
 	}
-	deadline, attached := r.attachedLocked(agent, call.Set, call.Name)
+	waitMS, attached := r.attachedLocked(agent, call.Set, call.Name)
 	if r.closed || !attached {
 		return nil, session.ClientToolUnavailable(call.Name), false
 	}
 	if call.DeadlineMS >= session.ClientToolMinDeadlineMS && call.DeadlineMS <= session.ClientToolMaxDeadlineMS {
-		deadline = call.DeadlineMS
+		waitMS = call.DeadlineMS
 	}
-	call.DeadlineMS = deadline
-	pending := &clientToolPending{ctx: ctx, done: make(chan struct{}), call: call, deadline: time.Now().Add(time.Duration(deadline) * time.Millisecond)}
+	call.DeadlineMS = waitMS
+	pending := &clientToolPending{ctx: ctx, done: make(chan struct{}), call: call, answerBy: time.Now().Add(time.Duration(waitMS) * time.Millisecond)}
 	if r.pending == nil {
 		r.pending = make(map[string]*clientToolPending)
 	}
@@ -395,7 +395,7 @@ func (r *appClientTools) attachedLocked(agent, setID, name string) (int, bool) {
 }
 
 func (r *appClientTools) wait(ctx context.Context, id string, pending *clientToolPending) session.ClientToolAnswer {
-	timer := time.NewTimer(time.Until(pending.deadline))
+	timer := time.NewTimer(time.Until(pending.answerBy))
 	defer timer.Stop()
 	var failed session.ClientToolAnswer
 	select {
@@ -472,7 +472,7 @@ func (b *appBackend) ClientToolResult(p appwire.ClientToolResultParams) (appwire
 		r.settleLocked(p.Call, pending, clientToolTurnEnded(pending.call.Name))
 		return appwire.ClientToolResultAck{}, nil
 	}
-	if !time.Now().Before(pending.deadline) {
+	if !time.Now().Before(pending.answerBy) {
 		r.settleLocked(p.Call, pending, clientToolTimeout(pending.call))
 		return appwire.ClientToolResultAck{}, nil
 	}
