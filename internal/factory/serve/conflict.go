@@ -70,7 +70,7 @@ func (h *Handler) fresh(w http.ResponseWriter, r *http.Request, it factory.Item,
 		return true
 	}
 	// Stop expresses the same intent after any progress on an active run.
-	if exp == nil || ((verb == "stop" || verb == "step_stop") && factory.UnderWay(it)) {
+	if exp == nil || ((verb == "stop" || verb == "step_stop") && (factory.UnderWay(it) || it.State == factory.StateRunning)) {
 		return true
 	}
 	job := h.withVersion(api.FromItem(it))
@@ -334,7 +334,7 @@ func classify(err error) (int, string) {
 		return http.StatusGatewayTimeout, ""
 	case errors.Is(err, context.Canceled):
 		return http.StatusRequestTimeout, ""
-	case errors.Is(err, run.ErrAlreadyRunning):
+	case errors.Is(err, run.ErrAlreadyRunning), errors.Is(err, factory.ErrPersonStopped):
 		return http.StatusConflict, "conflict"
 	}
 	msg := err.Error()

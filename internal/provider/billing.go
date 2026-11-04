@@ -125,6 +125,7 @@ type ReceiptPending func() (done func())
 type billingContextKey struct{}
 type reconcileContextKey struct{}
 type receiptPendingContextKey struct{}
+type receiptSettlementContextKey struct{}
 type unmeteredReceiptsContextKey struct{}
 type finalReceiptsContextKey struct{}
 
@@ -157,6 +158,14 @@ func WithReceiptPending(ctx context.Context, pending ReceiptPending) context.Con
 		return ctx
 	}
 	return context.WithValue(ctx, receiptPendingContextKey{}, pending)
+}
+
+// WithReceiptSettlement registers the lifetime of receipts that still owe
+// accounting, including unmetered answers that do not delay the next job step.
+// The returned release runs after the receipt sink, even if queue admission fails.
+// Stage readiness remains the separate responsibility of WithReceiptPending.
+func WithReceiptSettlement(ctx context.Context, pending ReceiptPending) context.Context {
+	return context.WithValue(ctx, receiptSettlementContextKey{}, pending)
 }
 
 // WithUnmeteredReceipts arms one piece of work to have an answer that arrived

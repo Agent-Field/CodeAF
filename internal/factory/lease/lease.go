@@ -240,7 +240,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if _, err := rand.Read(token[:]); err != nil {
 				return false, err
 			}
-			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: it.State != factory.StateQueued || paused(it)}
+			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: factory.StoppedByPerson(it) || it.State != factory.StateQueued || paused(it)}
 			if err := d.reserve(doc, worker, taken); errors.Is(err, ErrNoJob) {
 				continue
 			} else {
@@ -399,6 +399,9 @@ func (d *Desk) Requeue(id int, worker string) error {
 }
 
 func eligible(it factory.Item, worker Worker) bool {
+	if factory.StoppedByPerson(it) && !pendingReply(it) {
+		return false
+	}
 	if factory.JobState(it) == "done" {
 		return false
 	}

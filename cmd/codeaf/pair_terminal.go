@@ -114,11 +114,15 @@ func saidYes(typed string) bool {
 	return false
 }
 
+// pairApproveKeys sits on its own line under the check number, so the typed
+// answer does not run into the question.
+const pairApproveKeys = "a approve · d decline: "
+
 // approveLink uses the same deliberate approval key as the chat card. Code
 // pairing keeps its own yes/no question because its comparison is different.
 func (t *terminal) approveLink(ctx context.Context, question string) bool {
 	t.stopProgress()
-	fmt.Fprint(t.out, question+"  a / d ")
+	fmt.Fprint(t.out, question+"\n"+pairApproveKeys)
 	typed, ok := t.lines.next(ctx)
 	if !ok {
 		fmt.Fprintln(t.out)

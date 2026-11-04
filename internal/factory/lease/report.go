@@ -3,7 +3,6 @@ package lease
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -155,8 +154,8 @@ func (d *Desk) CheckPublish(id, worker string) error {
 			return false, err
 		}
 		return false, d.store.Update(held.Job, func(it *factory.Item) error {
-			if !it.Publishing || (it.State != factory.StateRunning && it.State != factory.StateQueued) {
-				return fmt.Errorf("publication stopped; no write is permitted")
+			if err := factory.CheckPersonStop(*it); err != nil {
+				return err
 			}
 			return nil
 		})

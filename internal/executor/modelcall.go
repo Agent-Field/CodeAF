@@ -3,6 +3,8 @@ package executor
 // ModelCall is one model call as a seat is told of it: who answered, for what,
 // and what it cost. The seat that keeps a record puts it in the next receipt.
 type ModelCall struct {
+	// ID is the live usage ledger row identity, absent on older saved calls.
+	ID           string
 	Model        string
 	Role         string
 	TokensIn     int

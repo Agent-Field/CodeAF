@@ -39,7 +39,7 @@ func (b Brancher) Branch(ctx context.Context, from *Driving, head string, turns 
 	if err != nil {
 		return "", err
 	}
-	_, frames, err := b.Publisher.uploadPlan(ctx, from.Cell, head)
+	_, frames, err := b.Publisher.uploadPlan(ctx, from.Cell, head, false)
 	if err != nil {
 		return "", err
 	}

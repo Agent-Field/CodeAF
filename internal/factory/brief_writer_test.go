@@ -99,9 +99,9 @@ func TestBriefInputOf(t *testing.T) {
 func TestBriefBeginSkip(t *testing.T) {
 	now := briefNow
 	at := func(spent float64, costs ...float64) Item {
-		it := Item{Stream: &Stream{Spent: spent}}
+		it := Item{Stream: &Stream{Spent: spent, Phases: []Phase{{Name: "plan", State: PhaseDone}}}}
 		for _, c := range costs {
-			it.Briefs = append(it.Briefs, BriefVersion{CostUSD: c, InputHash: "old"})
+			it.Briefs = append(it.Briefs, BriefVersion{AfterStep: "plan", CostUSD: c, InputHash: "old"})
 		}
 		return it
 	}
@@ -325,5 +325,23 @@ func TestBriefChangeEvidence(t *testing.T) {
 	none := briefEvidenceOf(it).claimFault("2 files", []BriefEvidence{{Kind: "change"}})
 	if ok != "" || bad == "" || none == "" {
 		t.Fatalf("ok %q bad %q none %q", ok, bad, none)
+	}
+}
+
+func TestStopKeepsTheLastPaidBriefWhenAnEarlierWriterReturns(t *testing.T) {
+	it := writerJob()
+	first, _, kept := it.EndBrief(BriefWritten{Hash: "paid", Model: "m", CostUSD: .002, Draft: []byte(`{"verdict":"The paid brief.","verdict_evidence":[],"blocks":[]}`)}, briefNow)
+	if !kept {
+		t.Fatal("seed brief did not pass")
+	}
+	if skip := it.BeginBrief(BriefTriggerRetry, "later", briefNow); skip != "" {
+		t.Fatal(skip)
+	}
+	MarkPersonStopped(&it)
+	if _, _, kept := it.EndBrief(BriefWritten{Hash: "later", Model: "m", CostUSD: .002, Draft: []byte(`{"verdict":"A late answer.","verdict_evidence":[],"blocks":[]}`)}, briefNow); kept {
+		t.Fatal("a pre-Stop writer replaced the last paid content after Stop")
+	}
+	if len(it.Briefs) != 1 || LatestBrief(it).Verdict != first.Verdict || BriefStatusOf(it) != BriefStatusFailed || it.BriefWriting.Failure != PersonStopReason {
+		t.Fatalf("stopped brief did not retain its paid content and stop reason: %+v", it)
 	}
 }

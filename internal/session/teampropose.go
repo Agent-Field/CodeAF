@@ -97,6 +97,7 @@ type TeamProposerConfig struct {
 // journal, tools or lifecycle watches, so asking for suggestions cannot repair teams.
 func NewTeamProposer(settings TeamProposerConfig) (TeamProposer, error) {
 	config := Config{Model: settings.Model, APIKey: settings.APIKey, BaseURL: settings.BaseURL, ProfileDir: settings.ProfileDir, Sources: settings.Sources, RolesSource: settings.RolesSource}
+	config.bindUsageLedger()
 	client, err := newProviderClient(config, config.Model)
 	if err != nil {
 		return nil, err

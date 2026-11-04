@@ -2700,7 +2700,9 @@ const ConsentFallbackReason = "it will not run this without your word"
 // to one of those is read as a decline (connect.go) and a chip that means no
 // while reading yes is worse than no chip.
 func (a *Agent) connectQuestion(id string, ask connectAsk) Question {
-	return a.said(QuestionConnect, id, ConnectQuestion(id, ask.name, ask.needsKey, "", ask.secret))
+	q := ConnectQuestion(id, ask.name, ask.needsKey, "", ask.secret)
+	q.Subject.Name = ask.service
+	return a.said(QuestionConnect, id, q)
 }
 
 // ConnectQuestion is that object, and it is ONE BUILDER for the two roads it

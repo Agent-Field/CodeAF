@@ -11,7 +11,9 @@ const AutonomyManual = "manual"
 
 // Automatic is deliberately false for old records without a saved mode and
 // while Take over has suspended the pipeline. A mode never resumes Take over.
-func Automatic(it Item) bool { return it.Autonomy == AutonomyAuto && !it.Manual }
+func Automatic(it Item) bool {
+	return !StoppedByPerson(it) && it.Autonomy == AutonomyAuto && !it.Manual
+}
 
 // AsksBeforeStep says Manual holds phase i for the person's word before its
 // first round. Only an explicit Manual asks: a record with no saved mode keeps
@@ -52,6 +54,9 @@ func answeredByApprove(it Item, i int) bool {
 // A settled ("approved") automatic approval is history, not a queued decision:
 // it must not refuse a person's later answer after a switch to Manual.
 func CheckAutomaticApproval(it Item) error {
+	if err := CheckPersonStop(it); err != nil {
+		return err
+	}
 	if it.Approval == nil || !it.Approval.Automatic || it.Approval.State == "approved" {
 		return nil
 	}

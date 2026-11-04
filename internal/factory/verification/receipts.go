@@ -98,10 +98,10 @@ func (c Check) Key() string {
 	if len(c.Args) == 0 {
 		return "incomplete:" + c.Source + ":" + c.ID
 	}
-	args := c.Args
+	args := portableCheckArgs(c.Args)
 	if len(args) > 1 && args[0] == "go" && args[1] == "test" {
 		args = make([]string, 0, len(c.Args))
-		for i, arg := range c.Args {
+		for i, arg := range portableCheckArgs(c.Args) {
 			if arg == "-args" {
 				args = append(args, c.Args[i:]...)
 				break
@@ -123,15 +123,15 @@ func (c Check) Key() string {
 func (c Check) Label() string {
 	if len(c.Args) == 0 {
 		if c.Command != "" {
-			return c.Command
+			return OwedCommand(c.Command)
 		}
 		return "incomplete recorded check"
 	}
 	parts := make([]string, len(c.Args))
-	for i, arg := range c.Args {
+	for i, arg := range portableCheckArgs(c.Args) {
 		parts[i] = quote(arg)
 	}
-	return strings.Join(parts, " ") + " (in " + c.Cwd + ")"
+	return strings.Join(parts, " ") + " (in " + c.Cwd + ")" + missingCheckPath(portableCheckArgs(c.Args))
 }
 
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

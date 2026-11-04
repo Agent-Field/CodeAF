@@ -627,6 +627,17 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		case lease.SignalHold:
 			_ = r.Hold(j.id, s.Yes)
 		case lease.SignalAnswer:
+			if s.PublishAnyway != nil {
+				if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error {
+					it.PublishAnyway = s.PublishAnyway
+					if !factory.PublishedAnyway(*it) {
+						return errors.New("Publish anyway decision no longer matches the current change")
+					}
+					return nil
+				}); err != nil {
+					continue
+				}
+			}
 			if s.ID != "" {
 				it, err := j.o.Mirror.Get(j.id)
 				if err != nil || factory.PendingQuestionID(it) != s.ID {

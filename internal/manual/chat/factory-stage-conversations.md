@@ -41,10 +41,41 @@ It is given two tools that no other conversation has:
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
+## shipped step methods — planning, implementation, diagnosis, review and proof
+
+After the stage placement and before repository rules, an unchanged shipped chat
+step receives a short engineering method. It describes the goal, handover,
+completion and when to ask. Plan follows relevant code and tests without edits;
+write implements slices with a failing test first; test reuses passing evidence
+for unchanged code, runs missing coverage once and diagnoses failures;
+review checks scope and standards and repairs substantive findings. Security
+traces attack paths; proof challenges promises with current observations; read
+inspects without edits; checks runs claim-specific checks; bisect narrows the
+first failure; fix reproduces and repairs the cause.
+
+The method is selected only when both the name and ask match the shipped step.
+A person's own ask carries only their words for the method; the common brief,
+repository rules and reporting contract still apply. Resuming the same chat does
+not repeat the method already in its history. The editable ask stays short.
+
+Later rounds correct unresolved checks or changed code and check the affected
+behaviour using current passing evidence. A check is reported as run from its
+tool output; refused and skipped commands are reported as unrun.
+
+Every step hands over what changed, each command actually run and its result,
+unrun checks and why, and open work. Only proof and Follow PR are asked for
+publication bullets. Test and bisect preserve the checkout; when revision
+movement is refused, bisect uses history and recorded runs and states which
+revisions it did not run. Follow PR reproduces CI failures before repairs. The service merges the PR's
+remote head into the checkout; Follow PR resolves conflicts left there, keeping
+the intent of both sides and other people's work. Publication stays with the
+service; the step does not push or force-push.
+
 ## plan file list — structured files, unknown paths and Auto approval
 
 A plan's `stage_result` answer includes `files`, an array of every file it will
-change or add, relative to the repository root. `output` carries the plan's prose.
+change or add, relative to the repository root. `output` carries the plan's prose. New plans are asked for this one structured
+list, without a second prose `Files:` declaration.
 The plan schema requires `files`; code validates the paths before using them.
 The list allows at most 200 entries and each path at most 512 bytes. Absolute
 paths, traversal, folders, globs and any other invalid entry make the whole list
@@ -554,6 +585,9 @@ Repeated observations do not start duplicate repairs. Healthy checks leave the j
 watching until GitHub reports merge or closure. General PR discussion comments are
 not a repair trigger. Closing the app pauses local polling and workers.
 
+Fresh and resumed Follow PR rounds keep the repair decision, untrusted-evidence
+and no-push/no-merge rules even before a follow-up record is queued.
+
 The original changed-file list is context, not a publish restriction. Necessary
 dependency and test changes are allowed within the issue objective. The repair receives
 check names and log evidence, with truncation called out when complete logs do not fit.
@@ -818,6 +852,16 @@ commands retain their obligation. Holds name every owed check on one line; three
 unchanged refusals or six total refusals stop recovery with an incomplete result.
 The agent should reuse valid passes and rerun only unresolved scope.
 
+## Owed commands from another machine — absolute executable paths
+
+Owed literal checks name known tools through PATH, such as `go test ./...`,
+rather than retaining another machine's installation path. A measured rerun
+with that name can resolve a saved absolute invocation with the same scope.
+Raw receipts retain the original argv. Unknown tools or shell text that cannot
+be safely simplified keep their command and name any executable path missing
+on this machine. An unmeasured absolute invocation remains an obligation;
+changing its displayed command does not turn it into a pass.
+
 ## An already-fixed published PR does not need another commit
 
 A Follow PR recheck can find that the current published head already addresses
@@ -981,6 +1025,13 @@ cap and only optional memory crosses it, the finished step stays done. The next
 step asks before starting, using the full job spend. On the last step, the job
 finishes with its true spend shown and no question for work it will not run.
 
+## Job budget read unavailable — existing work and new paid calls
+
+If a job budget cannot be read, new paid calls wait with
+`job budget could not be read; new work held`. The read error alone does not
+cancel work already running. A later successful read can admit work again;
+confirmed budget exhaustion and unrecorded spending still stop owned work.
+
 ## Stop spending after this step in a job's Spend menu
 
 **Stop spending after this step** lets the current step finish before you
@@ -1003,8 +1054,12 @@ spending choice stays armed for the next step boundary. After the final step,
 the job holds before landing, so automatic publication cannot pass this hold.
 The choice adds no dollar limit and does not interrupt a model call already
 under way. A leased worker checks the saved choice before each step and landing.
-If that read fails, it keeps the last saved choice, including an armed hold,
-and tries again at the next boundary. The read failure does not fail the job.
+If that read fails, it retries up to three times within two seconds while the
+run is active. If the choice remains unknown, the worker holds before the next
+paid step and says `could not confirm Stop before the next step; work held:`
+with the read error. The job is not marked failed. Answer yes to retry the
+authority read when the factory is reachable, or no to stop the job. A missing route on an older factory keeps the existing behavior.
+Unconfirmed delivery still follows the ordinary recovery cutoff.
 
 ## Follow PR — comments that need no code change
 

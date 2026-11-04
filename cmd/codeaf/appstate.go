@@ -430,6 +430,14 @@ func (b *appBackend) Settings() (appwire.Settings, error) {
 	if rung := config.DefaultEffortAt(profile); rung.Valid() {
 		settings.Effort = rung.String()
 	}
+	settings.WhenPlanPaused = map[string]string{}
+	for _, row := range config.PersistedSources(b.crewProfile()) {
+		policy := row.PlanPaused
+		if policy == "" {
+			policy = config.PlanPausedWait
+		}
+		settings.WhenPlanPaused[row.ID] = policy
+	}
 	settingsExtra(&settings, file, profile)
 	return settings, nil
 }
@@ -442,6 +450,11 @@ func (b *appBackend) SetSettings(patch appwire.SettingsPatch) (appwire.Settings,
 		// Before any other field lands: a limit the environment pins is
 		// refused whole, not half-applied.
 		if err := dayLimitFree(); err != nil {
+			return appwire.Settings{}, err
+		}
+	}
+	if patch.WhenPlanPaused != nil {
+		if err := b.setPlanPaused(patch.WhenPlanPaused); err != nil {
 			return appwire.Settings{}, err
 		}
 	}

@@ -61,6 +61,15 @@ func appTakeWords(words string) string {
 	}
 	return words
 }
+
+// Tests stand in for the copy that acquires the chat and for opening it here.
+var (
+	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation) (syncsetup.Continued, error) {
+		return chatContinuer(s, nil).TakeSeen(ctx, id, seen)
+	}
+	appTakeOpen = (*appBackend).OpenAgent
+)
+
 func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if p.Cell == "" || p.Seen.Device == "" {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeBadParams, "a chat and its seen computer are required")
@@ -71,6 +80,15 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	if err := b.pairingWorkRefusal(); err != nil {
 		return appwire.Agent{}, err
 	}
+	b.chats.countTake(p.Cell, 1)
+	b.publishTaking()
+	taking := true
+	defer func() {
+		if taking {
+			b.chats.countTake(p.Cell, -1)
+			b.publishTaking()
+		}
+	}()
 	b.chats.take.Lock()
 	defer b.chats.take.Unlock()
 	s, ok, err := syncsetup.Open(b.relayHome())
@@ -129,10 +147,12 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 			return appwire.Agent{}, err
 		}
 	}
-	got, err := chatContinuer(s, nil).TakeSeen(ctx, p.Cell, seen)
+	got, err := appTakeSeen(ctx, s, p.Cell, seen)
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}
+	// The chat is this computer's from here on, even if opening it fails.
+	b.chats.landTake(p.Cell, got.Taken.Driving.Fence)
 	// The continuer's already-here shortcut may observe a local acquisition
 	// that happened after our preflight read. It must not accept older consent.
 	if got.AlreadyHere && (p.Seen.Device != s.Device.ID() || !seen.Matches(directory.Cell{Head: got.Taken.Driving.Head, Lease: directory.Lease{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence}})) {
@@ -164,7 +184,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 		location.Seen.Head = ""
 	}
 	b.located(a, location)
-	agent, err := b.OpenAgent(id)
+	agent, err := appTakeOpen(b, id)
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
 	}
@@ -181,18 +201,16 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (appwire.Agent, error) {
 	}
 	b.located(a, location)
 	agent.Location = location
+	taking = false
 	// Acquisition may have been observed before installation and admission.
 	// Reconcile the local id even when no later directory version will arrive.
-	reconcileInventory := func() error {
-		b.chats.op.Lock()
-		defer b.chats.op.Unlock()
-		_, err := b.readChats(ctx, s, b.chats.feed, true)
-		return err
-	}
-	err = reconcileInventory()
+	err = b.settleTake(ctx, s, p.Cell)
 	if err != nil {
-		// The take has completed. Inventory recovery belongs to its follower.
+		// The take has completed. Inventory recovery belongs to its follower,
+		// whose reading that shows the chat here clears the row's taking.
 		b.startChatInventory()
 	}
+	// A newer cached version skips the reading's own taking.
+	b.publishTaking()
 	return agent, nil
 }

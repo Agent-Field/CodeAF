@@ -38,9 +38,9 @@ func TestRefreshDoesNotRebookALegacyTurnAggregate(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// The live ledger already booked each of the two provider calls.
+	// The historical live ledger already booked each of the two provider calls.
 	for i, usd := range []float64{0.25, 0.50} {
-		session.RecordUsage(session.UsageLedgerPath(), session.UsageLine{At: at.Add(time.Duration(i) * time.Second), Session: d.ID, Model: "m", Calls: 1, Input: 10 * (i + 1), Output: 5, USD: usd})
+		session.RecordImportedUsage(session.UsageLedgerPath(), session.UsageLine{At: at.Add(time.Duration(i) * time.Second), Session: d.ID, Model: "m", Calls: 1, Input: 10 * (i + 1), Output: 5, USD: usd})
 	}
 	session.FlushUsage()
 	if _, err := Refresh(c, ""); err != nil {
