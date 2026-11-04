@@ -140,6 +140,7 @@ func TestTheSchemaIsGeneratedForTheWholeWire(t *testing.T) {
 		Events  map[string]json.RawMessage `json:"events"`
 		Defs    map[string]struct {
 			Properties map[string]map[string]any `json:"properties"`
+			Required   []string                  `json:"required"`
 		} `json:"$defs"`
 	}
 	if err := json.Unmarshal(out, &doc); err != nil {
@@ -147,6 +148,15 @@ func TestTheSchemaIsGeneratedForTheWholeWire(t *testing.T) {
 	}
 	if len(doc.Methods) != len(Methods()) || len(doc.Events) != len(Events()) {
 		t.Fatalf("schema has %d methods and %d events, want %d and %d", len(doc.Methods), len(doc.Events), len(Methods()), len(Events()))
+	}
+	// Source contract (d): the event registry exposes the optional durable id.
+	if got := doc.Defs["AgentsToolCall"].Properties["source_message_id"]["type"]; got != "string" {
+		t.Fatalf("AgentsToolCall.source_message_id schema type=%v", got)
+	}
+	for _, field := range doc.Defs["AgentsToolCall"].Required {
+		if field == "source_message_id" {
+			t.Fatal("source_message_id became required")
+		}
 	}
 	for _, field := range []string{"invoked", "rejected_before_run", "harness_made", "refused", "media_attempt"} {
 		for _, name := range []string{"TurnTool", "Entry"} {
