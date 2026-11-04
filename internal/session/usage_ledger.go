@@ -143,6 +143,10 @@ type UsageLine struct {
 	// rewritten: a row already carrying one keeps it. Rows written before this field existed have none, and
 	// every reader counts them by position, exactly as it always did.
 	ID string `json:"id,omitempty"`
+	// SharedID says the caller supplied the identity, rather than this writer
+	// inventing an independent ledger ID. Unmatched shared identities cannot
+	// cover older saved calls during a take. Absence preserves legacy coverage.
+	SharedID bool `json:"shared_id,omitempty"`
 	// Billing is what kind of money this call was — "metered", "included" in a
 	// plan — and is written ONLY where the road that answered stated it
 	// (internal/provider's billingfact.go): a bound billing door, or the plan
@@ -648,10 +652,9 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 // run drains the queue forever, holding ONE descriptor open across rows.
 //
 // The descriptor is opened lazily and dropped on the first write that fails, so
-// the next row opens a fresh one: a ledger that was rotated or a mount that came
-// back is picked up by the row after the failure rather than by a restart. The
-// failing row itself is lost, which is this file's stated bargain — a spending
-// record is worth less than the turn that earned it.
+// a replaced or removed pathname reopens and retries the same row once. Other
+// filesystem failures drop the descriptor and count that row in UsageDrops;
+// the next row tries a fresh descriptor without blocking the turn.
 func (w *usageWriter) run(path string) {
 	var file *os.File
 	var identities usageIdentityCursor
@@ -677,6 +680,16 @@ func (w *usageWriter) run(path string) {
 		// before the last newline are whole lines, and what keeps two processes
 		// appending to one ledger from interleaving halves of two rows.
 		written, err := identities.append(file, line)
+		if errors.Is(err, errUsageLedgerReplaced) || errors.Is(err, fs.ErrNotExist) {
+			_ = file.Close()
+			file = openUsageLedger(path)
+			identities = usageIdentityCursor{}
+			if file == nil {
+				dropUsageRow()
+				return
+			}
+			written, err = identities.append(file, line)
+		}
 		if err != nil {
 			dropUsageRow()
 			_ = file.Close()
@@ -748,7 +761,7 @@ func openUsageLedger(path string) *os.File {
 			return nil
 		}
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil
 	}
@@ -928,6 +941,8 @@ func RecordUsage(path string, line UsageLine) {
 	// Other callers get a fresh row identity here ([UsageLine.ID]).
 	if strings.TrimSpace(line.ID) == "" {
 		line.ID = newUsageRowID()
+	} else {
+		line.SharedID = true
 	}
 	payload, err := json.Marshal(line)
 	if err != nil {

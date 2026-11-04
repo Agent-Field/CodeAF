@@ -379,3 +379,14 @@ always coordinate through it, so no build leaves it out. On linux/amd64 it adds
 3,379,200 bytes to the stripped binary (75,755,785 to 79,134,985 on the same dev
 base), and the cap moves by the same amount, from 75,811,848 to 79,191,048, so
 the 56,063 bytes of headroom the base had are kept.
+
+## Usage writer identity startup
+
+`TestUsageMillionRowLedgerFlush` constructs 1,000,000 unique historical call
+identities in 185,000,000 bytes before measuring the public writer. Initialization
+streams valid full rows and retains their identities rather than a decoded row
+slice. Enqueue through flush has a 256 MiB allocation budget. The existing
+two-second flush contract must complete the new $0.002 call; replaying that call
+and historical identities adds no rows. An independent public ledger walk checks
+1,000,001 records, exact consumed bytes and $1000.002 total after the measurement.
+Elapsed times are diagnostic. The retained identity set still grows with history.

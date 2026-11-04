@@ -16,10 +16,14 @@ import (
 // queued live calls, take imports and other processes all book an identity once.
 // Rows without an identity remain distinct, as they were before identities.
 type usageIdentityCursor struct {
-	offset  int64
-	seen    map[string]bool
-	newline bool
+	offset   int64
+	seen     map[string]bool
+	newline  bool
+	ends     string
+	modified time.Time
 }
+
+var errUsageLedgerReplaced = errors.New("usage ledger replaced during append")
 
 func (c *usageIdentityCursor) append(file *os.File, raw []byte) (bool, error) {
 	if err := filelock.Lock(file, true, false); err != nil {
@@ -54,7 +58,7 @@ func (c *usageIdentityCursor) append(file *os.File, raw []byte) (bool, error) {
 	}
 	c.offset += int64(len(raw))
 	c.newline = false
-	return true, nil
+	return true, c.remember(file)
 }
 
 func (c *usageIdentityCursor) readTail(file *os.File) error {
@@ -62,42 +66,59 @@ func (c *usageIdentityCursor) readTail(file *os.File) error {
 	if err != nil {
 		return err
 	}
-	if c.seen == nil || info.Size() < c.offset {
-		c.offset = 0
-		c.seen = make(map[string]bool)
+	source, err := os.Stat(file.Name())
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(info, source) {
+		return errUsageLedgerReplaced
+	}
+	valid := c.seen != nil && info.Size() >= c.offset
+	if valid {
+		ends, err := usagePrefixEnds(file, c.offset)
+		if err != nil {
+			return err
+		}
+		valid = ends == c.ends && (info.Size() != c.offset || info.ModTime().Equal(c.modified))
+	}
+	if !valid {
+		*c = usageIdentityCursor{seen: make(map[string]bool)}
 	}
 	size := info.Size() - c.offset
 	if size == 0 {
 		return nil
 	}
-	reader, err := os.Open(file.Name())
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	source, err := reader.Stat()
-	if err != nil {
-		return err
-	}
-	if !os.SameFile(info, source) {
-		return errors.New("usage ledger replaced during append")
-	}
 	var last [1]byte
-	if _, err := reader.ReadAt(last[:], info.Size()-1); err != nil {
+	if _, err := file.ReadAt(last[:], info.Size()-1); err != nil {
 		return err
 	}
 	c.newline = last[0] != '\n'
 	// The added delimiter lets the ordinary reader recognize a complete EOF
 	// object. An incomplete object stays invalid, without losing later charges.
-	rows, _, err := scanUsage(io.MultiReader(io.NewSectionReader(reader, c.offset, size), strings.NewReader("\n")), time.Time{})
-	if err != nil {
-		return err
-	}
-	for _, row := range rows {
+	_, err = scanUsageLines(io.MultiReader(io.NewSectionReader(file, c.offset, size), strings.NewReader("\n")), -1, func(_ int64, row UsageLine) error {
 		if row.ID != "" {
 			c.seen[row.ID] = true
 		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	c.offset += size
+	return c.remember(file)
+}
+
+// remember validates the cached prefix on the next append at a fixed read cost.
+// Same-size modifications also invalidate it even if both ends were preserved.
+func (c *usageIdentityCursor) remember(file *os.File) error {
+	ends, err := usagePrefixEnds(file, c.offset)
+	if err != nil {
+		return err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	c.ends, c.modified = ends, info.ModTime()
 	return nil
 }

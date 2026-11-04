@@ -265,9 +265,9 @@ Turns already shared do not become kept edits. Usage, reconciled task cost, nami
 
 ## Spending after continuing a chat — delayed cost receipts and older saved calls
 
-Continuing a chat adds saved calls missing from this computer's usage ledger once. A delayed cost receipt does not hide another saved call or repeat a call already recorded. Separate calls with the same model, token counts and cost remain separate calls. A receipt arriving after quit stays in the home where the chat opened.
+Continuing a chat adds saved calls missing from this computer's usage ledger once. New calls carry shared identities, so their delayed cost receipts do not hide another saved call or repeat a call already recorded. Separate calls with the same model, token counts and cost remain separate calls. A receipt arriving after the conversation closes stays in the home where the chat opened.
 
-Older saved calls without shared call identities keep the previous assumption that usage rows already on disk cover the earliest saved calls in order. Queued or out-of-order old rows cannot be matched exactly. Old saved chats and usage ledgers still load.
+Older saved calls without shared call identities keep the previous assumption that usage rows already on disk cover the earliest saved calls in order. New ledger rows with a supplied call identity are marked and excluded from that old-row count. Unmarked rows from earlier builds can have independent ledger IDs; they cannot be distinguished reliably from old-call coverage. Queued, out-of-order or unrelated unmarked rows cannot be matched exactly. Old saved chats and usage ledgers still load without migration.
 
 ## The chat is arriving on this computer — why it waits to open
 

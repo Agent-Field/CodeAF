@@ -61,8 +61,8 @@ func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 
 // missingUsage reconciles identities rather than assuming all ledger rows are
 // an ordered prefix of saved calls. Legacy calls have no shared identity. For
-// those only, retain the old prefix rule after removing identified saved calls
-// from the row count. Legacy rows must already be settled and cover the saved
+// those only, retain the old prefix rule after removing shared-identity rows
+// and identified saved calls from the row count. Legacy rows must already be settled and cover the saved
 // calls in order. Queued or out-of-order legacy receipts cannot be reconciled
 // exactly; their model, tokens and cost are never used as identity.
 func missingUsage(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
@@ -107,7 +107,7 @@ func legacyUsageRows(rows []session.UsageLine, saved map[string]bool, owner stri
 	}
 	n := 0
 	for _, row := range rows {
-		if row.Session == owner && !saved[row.ID] {
+		if row.Session == owner && !row.SharedID && !saved[row.ID] {
 			n++
 		}
 	}
