@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
@@ -301,6 +302,31 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 // rather than a second grep: every cap, every notice and every path rule below
 // is written once and neither engine can drift from it.
 func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReached, linesTruncated bool, contextValue int, searchPath string, isDirectory bool, effectiveLimit int) (string, bool, error) {
+	matches, matchCount, withheld := withoutCredentialFiles(matches, matchCount)
+	text, failed, err := grepRenderKept(caps, matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
+	if withheld > 0 {
+		text += fmt.Sprintf("\n[%d match(es) in credential files were left out: agents cannot read credentials in any approval mode. Do not look for them another way.]", withheld)
+	}
+	return text, failed, err
+}
+
+// withoutCredentialFiles takes out what a recursive search found in a credential
+// file. The approval floor judges the path a search was GIVEN, and it would be
+// wrong to refuse a search of a home folder or of this program's state for being
+// able to reach one; so the reader that walks the tree judges what it found.
+func withoutCredentialFiles(matches []grepMatch, matchCount int) ([]grepMatch, int, int) {
+	scope := approval.DefaultCredentialScope("")
+	kept := matches[:0:0]
+	for _, match := range matches {
+		if _, hit := scope.File(match.filePath); !hit {
+			kept = append(kept, match)
+		}
+	}
+	withheld := len(matches) - len(kept)
+	return kept, matchCount - withheld, withheld
+}
+
+func grepRenderKept(caps Caps, matches []grepMatch, matchCount int, matchLimitReached, linesTruncated bool, contextValue int, searchPath string, isDirectory bool, effectiveLimit int) (string, bool, error) {
 	if matchCount == 0 {
 		return "No matches found", false, nil
 	}
