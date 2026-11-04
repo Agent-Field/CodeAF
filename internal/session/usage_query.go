@@ -59,6 +59,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	fastjson "github.com/segmentio/encoding/json"
 )
 
 // The two grains a ledger row can have.
@@ -362,6 +364,9 @@ func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLi
 		r = io.LimitReader(r, limit)
 	}
 	buffered := bufio.NewReaderSize(r, usageLineBytes)
+	// The callback receives a value. Reuse the decode buffer rather than
+	// allocating a full row for every historical call in an identity scan.
+	var line UsageLine
 	for {
 		chunk, err := buffered.ReadSlice('\n')
 		if errors.Is(err, bufio.ErrBufferFull) {
@@ -383,8 +388,11 @@ func scanUsageLines(r io.Reader, limit int64, fn func(offset int64, line UsageLi
 		}
 		offset := stats.Bytes
 		stats.Bytes += int64(len(chunk))
-		var line UsageLine
-		if json.Unmarshal(bytes.TrimSpace(chunk), &line) != nil || line.At.IsZero() {
+		line = UsageLine{}
+		// Validate the full row, including price and token types, before an
+		// identity can suppress a charge. The compiled decoder keeps this
+		// validation within the writer's existing flush budget.
+		if fastjson.Unmarshal(bytes.TrimSpace(chunk), &line) != nil || line.At.IsZero() {
 			stats.Malformed++
 			continue
 		}

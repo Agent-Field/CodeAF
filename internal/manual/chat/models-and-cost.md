@@ -1820,6 +1820,10 @@ machine at most **four** times, with the same waits between them, and then moves
 fallback or ends. So does a watched conversation that still has a fallback model to go to. A router's pool is **never** treated as one machine, whatever your `routing` row
 says: it keeps the short allowance above, because the next ask can land on another machine.
 
+## Pending receipts at exit
+
+Shutdown waits for admitted receipts across chats together, including closed chats, retired children and successful Factory answers. This wait lasts at most 70 seconds, followed by the bounded ledger drain. On timeout, quit proceeds with `codeaf: receipt settlement timed out; spending may be incomplete`. Unavailable provider or disk responses can leave spending incomplete.
+
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
 Yes, a provider may still charge for the prompt and the tokens it produced before a stream

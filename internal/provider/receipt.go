@@ -281,6 +281,14 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 			sink(answer)
 		}
 	}
+	if pending, _ := ctx.Value(receiptSettlementContextKey{}).(ReceiptPending); !bankedUsage && pending != nil {
+		done := pending()
+		sink := work.sink
+		work.sink = func(answer Reconciled) {
+			defer done()
+			sink(answer)
+		}
+	}
 	// THE RECEIPT'S BOUND STARTS HERE, when it is owed, and not when a worker
 	// gets to it ([receiptWork.deadline]).
 	work.queued = time.Now()
