@@ -21,6 +21,7 @@ type fakePairing struct {
 	join     func(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error)
 	replace  func(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error)
 	hasChats bool
+	hasTeams bool
 }
 
 func (f *fakePairing) Offer(ctx context.Context, ui pair.OfferUI) (string, error) {
@@ -36,6 +37,7 @@ func (f *fakePairing) JoinReplacing(ctx context.Context, typed string, ui pair.J
 }
 
 func (f *fakePairing) HasOwnChats() bool { return f.hasChats }
+func (f *fakePairing) HasTeams() bool    { return f.hasTeams }
 
 // pairRig runs the commands a pairing returns the way the program would: each
 // on its own goroutine, its message fed back through Update, and whatever

@@ -43,13 +43,13 @@ Edit it and press enter to save, ctrl+u to clear it, esc to leave it as it was. 
 After a rename it says:
 
 ```
-This computer is now called atlas.
+This computer is now called atlas on all your devices.
 ```
 
 Your other devices show the new name the next time they list devices or draw a home row. If the sync service cannot be reached at that moment, the device keeps the name and says:
 
 ```
-This computer is now called atlas. Your other computers will see it once this computer is back online.
+This computer is now called atlas. Your other devices will show it after this one next connects.
 ```
 
 You do not type it again. A running paired desktop engine retries automatically,

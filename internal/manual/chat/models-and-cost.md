@@ -1689,16 +1689,16 @@ provider translates whichever one it was given for a model that reads the other.
 endpoint that cannot be given a number at all falls back to `high`, which is the honest
 answer: it cannot think harder than its own ceiling.
 
-**None of this can fail a turn.**
+**Budget repairs are automatic; unsupported thinking can still fail an ordinary turn.**
 
 - A model whose endpoint refuses the thinking budget has the budget dropped and the refusal
   remembered, so it costs one rejected request for that model and never a failed reply.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
 - If an unlisted endpoint says its model does not support thinking or reasoning,
-  codeaf retries the request once without the knob and remembers that capability
-  for the model until this process exits. That capability refusal is permanent;
-  it does not schedule the same failed turn again later.
+  only opted-in task clients retry once without the knob and remember the refusal
+  in that client. Ordinary clients return the refusal and keep the requested
+  effort; they do not inherit a task client's memo.
 - On a small context window the budget shrinks to the room the conversation leaves beside
   an answer. When less than 1,024 tokens of thinking would fit, the budget is dropped and
   the rung travels as `high`, so `xhigh` on a 32,000-token window is never refused for the

@@ -225,4 +225,10 @@ func TestL4Fix2MemoryOnFirstStartCanJoin(t *testing.T) {
 	if ok, err := identity.Joinable(home); err != nil || !ok {
 		t.Fatalf("a first start with memory on cannot join: %v %v", ok, err)
 	}
+	if err := vault.Capture(knowledge.Source{ID: "work", Session: "chat", Role: "user", TS: time.Now().UTC().Format(time.RFC3339Nano), Text: "Cedar queues jobs."}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := identity.Joinable(home); err != nil || ok {
+		t.Fatalf("a home with a real memory source can join: %v %v", ok, err)
+	}
 }

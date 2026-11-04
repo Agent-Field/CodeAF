@@ -159,7 +159,7 @@ func DailyBudgetBaseUSDAt(profileDir string) (float64, error) {
 	if raw := strings.TrimSpace(env.Get(dailyBudgetEnv)); raw != "" {
 		return parseDailyBudget(raw, dailyBudgetEnv)
 	}
-	held, err := readProfileConfig(profileDir)
+	held, err := readProfileConfigStrict(profileDir)
 	if err != nil {
 		return 0, err
 	}
@@ -181,7 +181,7 @@ func DailyBudgetUSDAtTime(profileDir string, now time.Time) (float64, error) {
 	if raw := strings.TrimSpace(env.Get(dailyBudgetEnv)); raw != "" {
 		return parseDailyBudget(raw, dailyBudgetEnv)
 	}
-	held, err := readProfileConfig(profileDir)
+	held, err := readProfileConfigStrict(profileDir)
 	if err != nil {
 		return 0, err
 	}
@@ -210,7 +210,7 @@ func DailyBudgetUSDAtTime(profileDir string, now time.Time) (float64, error) {
 // DailyBudgetAuthorityEstablished says whether the limit's authority marker is
 // written, so legacy values are over.
 func DailyBudgetAuthorityEstablished(profileDir string) (bool, error) {
-	held, err := readProfileConfig(profileDir)
+	held, err := readProfileConfigStrict(profileDir)
 	if err != nil {
 		return false, err
 	}
@@ -271,7 +271,7 @@ func RaiseDailyBudgetToday(profileDir string, usd float64, now time.Time) error 
 		return fmt.Errorf("the daily limit is set by %s", name)
 	}
 	for range dailyWriteTries {
-		held, err := readProfileConfig(profileDir)
+		held, err := readProfileConfigStrict(profileDir)
 		if err != nil {
 			return err
 		}
@@ -344,7 +344,7 @@ func AdoptLegacyDailyLimit(profileDir string, legacy LegacyDailyLimit, now time.
 		}
 	}
 	for range dailyWriteTries {
-		held, err := readProfileConfig(profileDir)
+		held, err := readProfileConfigStrict(profileDir)
 		if err != nil {
 			return err
 		}

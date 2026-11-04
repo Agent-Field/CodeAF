@@ -50,7 +50,7 @@ type Config struct {
 	// explicitly accepts an empty key. The ordinary keyless client remains the
 	// first-run state and refuses before the wire.
 	KeyOptional bool
-	// DropRefusedEffort lets a task child repair an explicit thinking refusal
+	// DropRefusedEffort lets a task or Factory client repair an explicit thinking refusal
 	// without teaching other clients or processes on this home.
 	DropRefusedEffort bool
 	// BillingDoor is the person-facing name of a bound road. Empty is a service
@@ -823,7 +823,7 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		// The compatible usage option earns only its own repair. Peeking at an
 		// unrelated refusal must not admit it to the older learning road.
 		repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
-		dropEffort := c.config.DropRefusedEffort && c.refusedEffortRepairable(model, knobs, response.StatusCode)
+		dropEffort := (c.config.DropRefusedEffort || knobs.effort.dropRefused) && c.refusedEffortRepairable(model, knobs, response.StatusCode)
 		if !foreign && !repairable && !dropEffort && !(streamUsage && usageRefusalStatus) {
 			return response, nil
 		}
@@ -924,7 +924,7 @@ func (c *Client) resend(ctx context.Context, request *ai.Request, knobs callKnob
 // adapter knows how to answer. It is asked before the error body is touched, so
 // a 400 that could not be ours costs no extra read.
 func (c *Client) repairable(model string, knobs callKnobs) bool {
-	return c.resolveEffort(model, knobs.effort) != EffortNone ||
+	return c.resolveEffort(model, knobs.effort) == EffortOff ||
 		c.resolveReasoningBudget(model, knobs.effort) > 0 ||
 		c.dialectFor(model) == cacheDialectBreakpoints ||
 		(len(knobs.reasoning) > 0 && !reasoningReplayRefused(model))
@@ -937,12 +937,6 @@ func (c *Client) repairable(model string, knobs callKnobs) bool {
 // first match winning, because a single 400 can name more than one field.
 func (c *Client) learn(model string, knobs callKnobs, payload []byte) []string {
 	var learned []string
-	// Only an effort that was on the wire can have been refused. A request the
-	// endpoint ladder had already stripped teaches nothing about the model.
-	if !knobs.relaxed.has(relaxReasoning) && c.resolveEffort(model, knobs.effort) != EffortNone && refusesReasoning(payload) {
-		quirks.record(func(q *quirksStore) map[string]time.Time { return q.noReasoning }, model, time.Now())
-		learned = append(learned, learnedReasoningUnsupported)
-	}
 	if c.resolveEffort(model, knobs.effort) == EffortOff && refusesDisabledReasoning(payload) {
 		noteReasoningMandatory(model)
 		learned = append(learned, learnedReasoningMandatory)

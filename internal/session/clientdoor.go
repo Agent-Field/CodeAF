@@ -742,6 +742,11 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	// Job ownership also covers personal manager turns and reopened stages.
+	// Keep recovery on the call so shared clients retain ordinary refusals.
+	if a.jobBudgetOf() != nil {
+		ctx = provider.WithRefusedEffortRecovery(ctx)
+	}
 	if purpose == purposeTurn {
 		messages = a.jobAutonomyMessages(messages)
 	}
@@ -885,6 +890,9 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 		configured.Model = c.workerWireModel
 	}
 	configured.Timeout = timeout
+	// Factory stages, their children and manager turns keep local effort repair.
+	// Merely offering Factory tools does not opt an ordinary conversation in.
+	configured.DropRefusedEffort = c.DropRefusedEffort || c.Stage != nil || c.JobBudget != nil
 	// The catalog gate on optional knobs, and the two answers about the model's
 	// reasoning profile and list price, are seams the surface resolves. A caller
 	// that hands over none of them keeps today's behaviour exactly — knobs travel

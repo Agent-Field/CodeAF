@@ -41,7 +41,7 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 	}
 	sess := s.session
 	sess.mu.Lock()
-	dir := sess.engine.ProfileDir
+	dir, paired := sess.engine.ProfileDir, sess.engine.TeamsPaired
 	sess.mu.Unlock()
 
 	switch call.Method {
@@ -50,7 +50,7 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 		if err != nil {
 			return nil, true, err
 		}
-		reading, err := teamsRead(dir, args)
+		reading, err := teamsRead(dir, args, paired)
 		if err != nil {
 			return nil, true, err
 		}
@@ -79,7 +79,7 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 			limit = teamsPage
 		}
 		if args.History {
-			entries, cursor, mirror, reset, err := teamsWatch.History(dir, args.Team, args.After, args.Mirror, limit)
+			entries, cursor, mirror, reset, err := teamsWatch.History(dir, args.Team, args.After, args.Mirror, limit, config.TeamsSharingAt(dir, paired))
 			if err != nil {
 				return nil, true, err
 			}
@@ -104,12 +104,13 @@ func (s *server) teamsCall(call Frame) (json.RawMessage, bool, error) {
 // hand back an older list with a newer stamp, and the window would be told
 // "same" about a change it never saw. A colour repair the load writes back
 // moves the stamp the same way, and costs the same one extra read.
-func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
+func teamsRead(dir string, args TeamsReadArgs, paired func() bool) (TeamsReading, error) {
+	sharing := config.TeamsSharingAt(dir, paired)
 	stamp := teamstore.Stamp(dir)
 	if args.Stamp != "" && args.Stamp == stamp {
-		return TeamsReading{Stamp: stamp, Same: true}, nil
+		return TeamsReading{Sharing: &sharing, Stamp: stamp, Same: true}, nil
 	}
-	if args.Stamp != "" && config.TeamsShareAt(dir) {
+	if args.Stamp != "" && sharing {
 		// Refresh is observational. Persisted repairs remain at the
 		// explicit opening and write boundaries, even over a host connection.
 		f, err := teamstore.Snapshot(dir)
@@ -117,7 +118,7 @@ func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
 			return TeamsReading{}, err
 		}
 		f.Colour(args.Reserved)
-		return TeamsReading{Stamp: stamp, Teams: f.Teams}, nil
+		return TeamsReading{Sharing: &sharing, Stamp: stamp, Teams: f.Teams}, nil
 	}
 	f, err := teamstore.LoadHued(dir, args.Reserved)
 	if err != nil {
@@ -129,9 +130,9 @@ func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
 		if _, aside := teamstore.SetAside(dir); aside != nil {
 			return TeamsReading{}, err
 		}
-		return TeamsReading{Stamp: teamstore.Stamp(dir)}, nil
+		return TeamsReading{Sharing: &sharing, Stamp: teamstore.Stamp(dir)}, nil
 	}
-	return TeamsReading{Stamp: stamp, Teams: f.Teams}, nil
+	return TeamsReading{Sharing: &sharing, Stamp: stamp, Teams: f.Teams}, nil
 }
 
 // teamsUpdate is [MethodTeamsUpdate]: the list written whole, under the store's

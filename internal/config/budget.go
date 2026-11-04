@@ -56,7 +56,7 @@ var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 		return values, nil
 	})
 
-// readProfileConfig is the single reader of the profile's config.json.
+// readProfileConfig is the ordinary reader of the profile's config.json.
 //
 // EVERY CALLER GETS THE SAME MAP AND NOBODY MAY WRITE IT. A memo hands back the
 // value it holds rather than a copy, so the eight readers in this package treat
@@ -71,6 +71,12 @@ var profileConfigMemo = filememo.Stamped(SettingsGeneration,
 // exists to remove. The law is free; the clone is not.
 func readProfileConfig(profileDir string) (map[string]json.RawMessage, error) {
 	return profileConfigMemo.Read(BudgetConfigPath(profileDir))
+}
+
+// readProfileConfigStrict preserves read errors at spending, privacy and write boundaries.
+// Absence still means a new profile; an unreadable existing file does not.
+func readProfileConfigStrict(profileDir string) (map[string]json.RawMessage, error) {
+	return profileConfigMemo.ReadStrict(BudgetConfigPath(profileDir))
 }
 
 // writeProfileValue is the single writer every persisted setting goes through:
@@ -209,7 +215,7 @@ func editProfile(profileDir, key string, decide func(held map[string]json.RawMes
 	}
 	defer profileLock.Close()
 
-	held, err := readProfileConfig(profileDir)
+	held, err := readProfileConfigStrict(profileDir)
 	if err != nil {
 		return fmt.Errorf("write config: preserve existing file: %w", err)
 	}

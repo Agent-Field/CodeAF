@@ -83,6 +83,12 @@ var factoryAIRoles = map[string]bool{
 	"view_topic": true, "factory_brief": true,
 }
 
+// IsFactoryAIPurpose identifies Factory-owned AI calls for billing and per-call
+// provider recovery. Ordinary errands on the same agent remain ordinary.
+func IsFactoryAIPurpose(purpose string) bool {
+	return factoryAIRoles[purpose]
+}
+
 type spendTally struct {
 	day     string
 	file    os.FileInfo
@@ -122,7 +128,7 @@ func (t *spendTally) read(file *os.File, info os.FileInfo) error {
 			return fmt.Errorf("spending ledger contains an invalid charge")
 		}
 		usd += line.USD
-		if factoryAIRoles[line.Role] && line.FactoryJob == "" {
+		if IsFactoryAIPurpose(line.Role) && line.FactoryJob == "" {
 			factoryAI += line.USD
 		}
 		if math.IsInf(usd, 0) {
