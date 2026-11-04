@@ -120,9 +120,13 @@ capture barrier share the tool admission lock. During an open step these calls
 only join an existing capture: they never wait on its tool or seal work before its
 result lines. `Dirty` and `LocalWork` still count unsealed WAL completions as local
 work. Ordinary command ownership checks use the wait-only `WaitCapture`.
-Displacement between steps keeps held calls in its branch even after the writer
-loses its lease. Cell file rewind refuses an open step. Conversation rewind
-leaves files changed; task ground takes its own fresh workspace capture.
+Displacement between steps tries to capture held calls even after the writer loses
+its lease. If saving fails or calls remain unsaved, it logs once and keeps the
+already noted turns in a branch, or becomes a viewer when none were noted.
+Completed calls stay in the local WAL for take-back. A viewer's refused recovery
+save stays quiet, and closing the recorder detaches it from the held registry.
+Cell file rewind refuses an open step. Conversation rewind leaves files changed;
+task ground takes its own fresh workspace capture.
 
 Use a managed profile and compatible workspace-aware builds at both ends. Fetch
 and Take use the harness's private staging and identity registry. Do not restore

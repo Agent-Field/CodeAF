@@ -787,7 +787,10 @@ while no shell or other unknown-effect call is pending; transcript-only batches
 also save immediately. Setup calls and synchronous recorders keep their existing
 saves. Turn end and explicit forced settles still save pending calls immediately.
 
-A crash still leaves finished calls in the local call log for the next save to
+A failed save during displacement leaves completed calls in the local call log
+for take-back; saved turns can still be kept as a separate chat. When calls remain
+unsaved, the notice says `kept <K> turns from <device> as a separate chat`.
+A crash also leaves finished calls in the local call log for the next save to
 carry. File seals support moving, taking over and recovering a chat. Ordinary
 conversation rewind leaves files changed. The separate cell file-rewind path
 refuses an open tool step with “rewind refused: a tool step is open; settle it

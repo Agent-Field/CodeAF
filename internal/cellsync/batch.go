@@ -48,8 +48,8 @@ type Batcher struct {
 	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
 	Now     func() time.Time // default time.Now; tests inject a fake clock
 	// BeforeResolve settles finished calls before displacement chooses the head
-	// to keep. A failed save must leave resolution pending rather than branch
-	// an older head and announce that all work was kept.
+	// to keep. The recorder's hook is best effort: unsaved calls stay in its
+	// local WAL while resolution keeps the turns already noted.
 	BeforeResolve func(context.Context) error
 	// OnRenewalChange wakes local readers when renewal health or ownership changes.
 	OnRenewalChange func()

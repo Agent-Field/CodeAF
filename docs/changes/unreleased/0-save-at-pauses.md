@@ -11,7 +11,8 @@ invalidates:
 Exact-path-only and transcript-only steps still capture immediately when no
 unknown-effect call is pending. Setup calls and synchronous recording keep their
 existing behavior. Turn end and other forced settles capture everything pending.
-Boundaries never wait on an open step's tool. Displacement between steps preserves
-held calls in its kept branch, and cell file rewind refuses an open step. Finished
-call records keep the existing WAL recovery path; conversation rewind still
-leaves files changed.
+Boundaries never wait on an open step's tool. Displacement between steps saves
+held calls into its kept branch when capture succeeds; calls that cannot be saved
+stay completed in the local WAL for take-back while displacement continues.
+Cell file rewind refuses an open step. Finished call records keep the existing
+WAL recovery path; conversation rewind still leaves files changed.

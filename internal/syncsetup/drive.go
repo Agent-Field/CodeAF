@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -376,6 +377,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 	engine.MaxFrame = blobstore.BulkFrame // a flush's objects share frames up to the bulk size (contract §22.6); a small save still writes one small frame
 	d.scope = s.scope(c.ID)
 	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir}
+	var unsavedWarning sync.Once
 	b := &cellsync.Batcher{
 		Publisher: pub,
 		Brancher: cellsync.Brancher{
@@ -389,7 +391,13 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		OnSuperseded: d.becomeViewer,
 		OnLost:       d.loseHold,
 		BeforeResolve: func(ctx context.Context) error {
-			return cellstore.Captured(ctx, c)
+			err := cellstore.Captured(ctx, c)
+			if n := cellstore.Unsaved(c); err != nil || n > 0 {
+				unsavedWarning.Do(func() {
+					log.Printf("chat %s displaced with %d unsaved calls; local WAL retained (capture: %v)", c.ID, n, err)
+				})
+			}
+			return nil
 		},
 		OnError:         d.refusal,
 		Sleep:           d.opt.Sleep,
@@ -413,7 +421,7 @@ func (d *Drive) info() cellsync.PublishInfo {
 
 // loseHold retires this writer's permission to run tools at once, while
 // leaving the viewer line, the notice and the send receipt until pending work
-// has been preserved as a branch and the holder read ([Drive.becomeViewer]):
+// has been kept as noted turns or in the WAL and the holder read ([Drive.becomeViewer]):
 // a hold this computer still has keeps its receipt.
 func (d *Drive) loseHold() {
 	d.mu.Lock()
@@ -497,7 +505,7 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 	if d.opt.OnViewer != nil {
 		d.opt.OnViewer(viewer)
 	}
-	// Refuse new work immediately, then preserve the pending save before
+	// Refuse new work immediately, then try to preserve the pending save before
 	// announcing displacement. A routine ownership check does no fsync (C28).
 	if d.batcher != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
@@ -507,7 +515,11 @@ func (d *Drive) becomeViewer(s cellsync.Superseded) {
 		}
 	}
 	if s.Branch != "" {
-		d.notice(chatlist.KeptEdits(s.Turns, d.opt.DeviceName))
+		kept := chatlist.KeptEdits(s.Turns, d.opt.DeviceName)
+		if cellstore.Unsaved(d.cell) > 0 {
+			kept = chatlist.KeptTurns(s.Turns, d.opt.DeviceName)
+		}
+		d.notice(kept)
 	}
 	// A repeated refusal or ownership check that names the same holder says
 	// nothing new: displacement is announced once.
