@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: moving a chat says how far it has got, stops when nothing comes through, and always says how it ended
+title: moving a chat says how far it has got, stops when nothing comes through, and says how it ended
 pr: 0
 surface: [engine, chat, docs]
 invalidates:
