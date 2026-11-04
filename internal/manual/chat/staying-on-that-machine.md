@@ -471,6 +471,13 @@ it says `no engine is holding /home/you/api on this machine`. `--status-all` doe
 workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
 your home directory.
 
+## An older window holds the chat — why its models can't be changed in the app
+
+The desktop app opens a chat that an older codeaf window holds, and you can read it there.
+Its models stay as that window set them, and a pick answers `An older codeaf window holds
+this conversation, so its models can't be changed here. Close or update that window to
+change them.` The same sentence shows in the chat when it opens.
+
 ## An older engine cannot move chats — what happens when a new window needs them
 
 Moving chats is available by default on Linux, macOS and native Windows with a compatible engine.

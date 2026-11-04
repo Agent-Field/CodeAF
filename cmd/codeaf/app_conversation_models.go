@@ -49,6 +49,17 @@ func enableAppConversationModels(conv any, desired ...*session.ConversationModel
 	return err
 }
 
+// appOlderHostModels is what a person reads when a host from before the
+// main/fallback pair holds their conversation.
+const appOlderHostModels = "An older codeaf window holds this conversation, so its models can't be changed here. Close or update that window to change them."
+
+// appOlderHost says an engine answered from before the door that was called.
+// The name is all that crosses the wire, as for every other older door
+// (internal/remote/client.go).
+func appOlderHost(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no such method")
+}
+
 func appModelSwitchEntry(id string, n session.ModelSwitch) appwire.Entry {
 	return appwire.Entry{ID: "model-switch-" + n.ID, Agent: id, At: n.At, Kind: appwire.EntryNotice, Text: n.Text, Quiet: true, NoticeKind: "model_switch"}
 }
@@ -93,6 +104,9 @@ func (b *appBackend) setConversationModels(id string, pair session.ConversationM
 		}
 	}
 	notes, err := door.SetConversationModels(pair)
+	if appOlderHost(err) {
+		return appwire.Agent{}, appwire.Errorf(appwire.CodeUnknownMethod, "%s", appOlderHostModels)
+	}
 	if err != nil {
 		return appwire.Agent{}, err
 	}
