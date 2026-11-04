@@ -56,6 +56,12 @@ type Lease struct {
 	Pending uint32 `json:"pending"` // turns sealed on the holder and not yet durable
 	// ReleasedAt is directory time of an explicit release, separate from the last turn.
 	ReleasedAt int64 `json:"released_at,omitempty"`
+	// UploadSent of UploadTotal bytes is how far the holder's upload of its
+	// pending turns had got at its last beat. Absent when nothing is pending,
+	// when the holder is not uploading, or from a holder or relay that predates
+	// it; a publish, a release and an acquire clear it. Display only.
+	UploadSent  uint64 `json:"upload_sent,omitempty"`
+	UploadTotal uint64 `json:"upload_total,omitempty"`
 }
 
 // MaxFrameHints and FrameHintBudget bound optional warm-transfer metadata and
@@ -72,16 +78,20 @@ type FrameHint struct {
 // Cell is keyed by cell ULID. It exists only once it has a durable head.
 type Cell struct {
 	// FrameHints is optional and absent by default; every cluster member must understand it before a device sends it.
-	FrameHints  []FrameHint                  `json:"frame_hints,omitempty"`
-	V           uint16                       `json:"V"`
-	Head        string                       `json:"head"`               // last durable turn id (hex64)
-	DurableAt   int64                        `json:"durable_at"`         // directory ms
-	SavedAt     int64                        `json:"saved_at,omitempty"` // sealed head's time, independent of publication
-	Class       string                       `json:"class"`
-	Size        uint64                       `json:"size"`
-	ParentCell  string                       `json:"parent_cell,omitempty"`
-	Title       string                       `json:"title,omitempty"` // b64, sealed
-	Keys        map[string]map[string]string `json:"keys"`            // cell_key_id -> identity -> wrapped
+	FrameHints []FrameHint `json:"frame_hints,omitempty"`
+	V          uint16      `json:"V"`
+	Head       string      `json:"head"`               // last durable turn id (hex64)
+	DurableAt  int64       `json:"durable_at"`         // directory ms
+	SavedAt    int64       `json:"saved_at,omitempty"` // sealed head's time, independent of publication
+	Class      string      `json:"class"`
+	Size       uint64      `json:"size"`
+	ParentCell string      `json:"parent_cell,omitempty"`
+	Title      string      `json:"title,omitempty"` // b64, sealed
+	// Folder is the name of the folder the chat works in, sealed like the
+	// title, so another computer can say what a move copies. Absent from older
+	// publishers and from relays that do not advertise Codeaf-Chat-Folders.
+	Folder      string                       `json:"folder,omitempty"`
+	Keys        map[string]map[string]string `json:"keys"` // cell_key_id -> identity -> wrapped
 	Lease       Lease                        `json:"lease"`
 	OrphanTurns uint32                       `json:"orphan_turns,omitempty"` // turns in a death branch
 	Archived    bool                         `json:"archived,omitempty"`     // a merged or discarded branch
@@ -112,6 +122,7 @@ type CellInit struct {
 	Head        string                       `json:"head"`
 	Class       string                       `json:"class"`
 	Title       string                       `json:"title,omitempty"`
+	Folder      string                       `json:"folder,omitempty"`
 	ParentCell  string                       `json:"parent_cell,omitempty"`
 	Size        uint64                       `json:"size"`
 	Keys        map[string]map[string]string `json:"keys"`
@@ -123,6 +134,10 @@ type CellInit struct {
 type Beat struct {
 	Fence   uint64 `json:"fence"`
 	Pending uint32 `json:"pending"`
+	// UploadSent of UploadTotal is how far the upload of the pending turns has
+	// got; both absent while nothing uploads.
+	UploadSent  uint64 `json:"upload_sent,omitempty"`
+	UploadTotal uint64 `json:"upload_total,omitempty"`
 }
 
 // Publish moves a cell's durable head under a lease the caller holds.
@@ -135,6 +150,7 @@ type Publish struct {
 	Size       uint64      `json:"size"`
 	Class      string      `json:"class"`
 	Title      string      `json:"title,omitempty"`  // empty keeps the current title
+	Folder     string      `json:"folder,omitempty"` // empty keeps the current folder
 	Pending    uint32      `json:"pending"`          // turns still not durable after this one
 	Frames     []string    `json:"frames,omitempty"` // empty or absent replaces the record's plan with none
 }

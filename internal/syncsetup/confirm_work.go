@@ -8,10 +8,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
-// ConfirmWork checks only this chat's directory record. Unlike CheckLease it
-// never waits for a capture before reading ownership. The caller bounds ctx
-// and decides how to degrade a failed read. True confirms the current fence;
-// false means either a viewer or a drive that cannot confirm ownership yet.
+// ConfirmWork checks only this chat's directory record without waiting for
+// capture before reading ownership. The caller bounds ctx and decides how to
+// degrade a failed read. True confirms the current fence; false means either a
+// viewer or a drive that cannot confirm ownership yet.
 func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	held := d.sendLeaseSnapshot()
 	if d.batcher == nil || d.displaced() {
