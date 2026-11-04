@@ -386,6 +386,20 @@ func chatContinuer(s *syncsetup.Sync, notify func(string)) *syncsetup.Continuer 
 	})
 }
 
+// chatMover is chatContinuer for a move the app watches: it reports how far it
+// has got and stops when nothing comes through for syncsetup.MoveIdleWithin.
+func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
+		DeviceName: devname.Name(s.Home),
+		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
+		BucketFor: func(origin string) string {
+			return filepath.Join(s.Home, "v3", "projects", "copy-"+encodeWorkspace(origin))
+		},
+		OnMove:     onMove,
+		IdleWithin: syncsetup.MoveIdleWithin,
+	})
+}
+
 // ReleaseUnused leaves the installed files and kept work intact, just as closing
 // a chat does, while returning an abandoned automatic acquisition to the directory.
 func (t takeover) ReleaseUnused(ctx context.Context, id string, fence uint64) error {

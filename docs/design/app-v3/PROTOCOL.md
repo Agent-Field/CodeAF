@@ -60,6 +60,7 @@ decides which combinations are accepted.
 | `agents.move_to_closed` | `in.tidyIDs` | `Empty` |
 | `agents.move_to_task` | `{id, turn}` | `MoveResult` |
 | `agents.take` | `in.TakeParams` | `TakeResult` |
+| `agents.take_cancel` | `in.TakeCancelParams` | `TakeCancelResult` |
 | `agents.open` | `{id, warm}` | `agentResult` |
 | `agents.queue` | `in.sayTo` | `queueResult` |
 | `agents.rename` | `{id, title}` | `agentResult` |
@@ -1436,6 +1437,25 @@ chat, rows that still show it elsewhere keep `taking:true` until a row says the
 chat is here or a later take holds it, even when opening the moved chat fails.
 A client that stopped waiting for a take reads `taking:false`
 on a chat still elsewhere as a take that did not move it.
+
+`chats.move` advertises move progress, outcomes and `agents.take_cancel`.
+Moves run one at a time. While `agents.take` runs, its row carries
+`move:{state, step, done, total}`: `state` is `queued` while it waits behind
+another move, then `moving`; `step` is `preparing`, `copying` (bytes are
+arriving) or `opening` (the chat is acquired and is being put in place);
+`done` is the bytes copied here so far and `total` the bytes the chat's record
+says a copy takes, absent when unknown, when this computer already holds most
+of the chat, or once more than that has arrived. A running move emits its row
+at most four times a second. A move that waits 2 minutes on the relay with
+nothing coming through stops; local work between requests does not count.
+When a move ends without moving the chat, the row that clears `taking` carries
+`move_ended:{outcome, line, detail}` (`stopped`, `failed` or `cancelled`), and
+every later row keeps it until the chat is here or another move of it starts,
+so a client that stopped waiting always learns how the move ended. `line` is
+the person's sentence (also `agents.take`'s error message) and `detail` the
+error text for "Copy details". `agents.take_cancel {cell}` cancels a running or
+queued move of that chat and answers `cancelled:false` when there was none; the
+cancelled `agents.take` answers `engine` with the cancelled sentence.
 Older chats working in the home folder stay local.
 Copy `cell` and `seen` verbatim to `agents.take`; never open an agent using the
 remote cell id. It returns the adopted local Agent through the normal open path.

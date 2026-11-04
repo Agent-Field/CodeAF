@@ -26,7 +26,10 @@ type appChats struct {
 	byAgent         map[string]appwire.ChatRow
 	taking          map[string]int
 	landed          map[string]uint64
-	take            sync.Mutex
+	moves           map[string]*appMove
+	ended           map[string]appwire.ChatMoveEnded
+	slot            chan struct{}
+	slotOnce        sync.Once
 	op              sync.Mutex
 	mu              sync.Mutex
 	rows            []appwire.ChatRow
@@ -445,6 +448,7 @@ func (c *appChats) markTaking(rows []appwire.ChatRow, prune bool) {
 			landed = false
 		}
 		r.Taking = c.taking[r.Cell] > 0 || landed
+		c.markMoves(r)
 	}
 	if !prune {
 		return
@@ -675,8 +679,8 @@ func (b *appBackend) closeChats() {
 		<-c.publicationDone
 	}
 	// Join foreground continuations and inventory reads before the remaining teardown.
-	c.take.Lock()
-	defer c.take.Unlock()
+	c.takeSlot() <- struct{}{}
+	defer c.freeSlot()
 	c.op.Lock()
 	defer c.op.Unlock()
 }
