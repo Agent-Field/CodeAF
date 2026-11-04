@@ -851,6 +851,16 @@ commands retain their obligation. Holds name every owed check on one line; three
 unchanged refusals or six total refusals stop recovery with an incomplete result.
 The agent should reuse valid passes and rerun only unresolved scope.
 
+## Owed commands from another machine — absolute executable paths
+
+Owed literal checks name known tools through PATH, such as `go test ./...`,
+rather than retaining another machine's installation path. A measured rerun
+with that name can resolve a saved absolute invocation with the same scope.
+Raw receipts retain the original argv. Unknown tools or shell text that cannot
+be safely simplified keep their command and name any executable path missing
+on this machine. An unmeasured absolute invocation remains an obligation;
+changing its displayed command does not turn it into a pass.
+
 ## An already-fixed published PR does not need another commit
 
 A Follow PR recheck can find that the current published head already addresses
@@ -1014,6 +1024,13 @@ cap and only optional memory crosses it, the finished step stays done. The next
 step asks before starting, using the full job spend. On the last step, the job
 finishes with its true spend shown and no question for work it will not run.
 
+## Job budget read unavailable — existing work and new paid calls
+
+If a job budget cannot be read, new paid calls wait with
+`job budget could not be read; new work held`. The read error alone does not
+cancel work already running. A later successful read can admit work again;
+confirmed budget exhaustion and unrecorded spending still stop owned work.
+
 ## Stop spending after this step in a job's Spend menu
 
 **Stop spending after this step** lets the current step finish before you
@@ -1036,8 +1053,12 @@ spending choice stays armed for the next step boundary. After the final step,
 the job holds before landing, so automatic publication cannot pass this hold.
 The choice adds no dollar limit and does not interrupt a model call already
 under way. A leased worker checks the saved choice before each step and landing.
-If that read fails, it keeps the last saved choice, including an armed hold,
-and tries again at the next boundary. The read failure does not fail the job.
+If that read fails, it retries up to three times within two seconds while the
+run is active. If the choice remains unknown, the worker holds before the next
+paid step and says `could not confirm Stop before the next step; work held:`
+with the read error. The job is not marked failed. Answer yes to retry the
+authority read when the factory is reachable, or no to stop the job. A missing route on an older factory keeps the existing behavior.
+Unconfirmed delivery still follows the ordinary recovery cutoff.
 
 ## Follow PR — comments that need no code change
 

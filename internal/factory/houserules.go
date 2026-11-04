@@ -158,6 +158,14 @@ type StartRules struct {
 	UnreadWhy  string `json:"unread_why,omitempty"`
 	UnreadFile string `json:"unread_file,omitempty"`
 	UnreadLine int    `json:"unread_line,omitempty"`
+	// Pending says the read waits for the repository to reach this computer:
+	// nothing could be asked at the start. Unread stays set, so the plan holds
+	// if the read never happens; the runner reads again after the clone, before
+	// the first model call.
+	Pending bool `json:"pending,omitempty"`
+	// NoFile says the repository was read and has no pipeline file, so the job
+	// runs on the default rules. It is a plain fact and holds nothing.
+	NoFile bool `json:"no_file,omitempty"`
 }
 
 // StartRulesUnreadHold is the hold a plan gets when its job started with the

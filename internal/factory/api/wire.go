@@ -455,15 +455,16 @@ type Job struct {
 	// FactoryModel is the factory's default model the job was last queued
 	// under (factory.Spending), which a step that names no model, on a job
 	// that names none, runs on; absent when the factory sets none.
-	FactoryModel string            `json:"factory_model,omitempty"`
-	Reason       string            `json:"reason,omitempty"`
-	DoneHow      string            `json:"done_how,omitempty"`
-	DoneAt       time.Time         `json:"done_at"`
-	Dismissed    bool              `json:"dismissed"`
-	DismissedBy  []string          `json:"dismissed_by,omitempty"`
-	WaitingFor   string            `json:"waiting_for,omitempty"`
-	Overlap      []string          `json:"overlap,omitempty"`
-	Approval     *factory.Approval `json:"approval,omitempty"`
+	FactoryModel  string            `json:"factory_model,omitempty"`
+	Reason        string            `json:"reason,omitempty"`
+	DoneHow       string            `json:"done_how,omitempty"`
+	DoneAt        time.Time         `json:"done_at"`
+	Dismissed     bool              `json:"dismissed"`
+	DismissedBy   []string          `json:"dismissed_by,omitempty"`
+	WaitingFor    string            `json:"waiting_for,omitempty"`
+	Overlap       []string          `json:"overlap,omitempty"`
+	PublishAnyway *factory.Approval `json:"publish_anyway,omitempty"`
+	Approval      *factory.Approval `json:"approval,omitempty"`
 	// Estimate is what jobs like this one cost and took, measured from the
 	// factory's finished jobs; absent on a finished job, on one nobody
 	// scored, and while too few similar jobs finished ("no cost history yet").
@@ -663,6 +664,7 @@ type RoundLine struct {
 // and retry publishing; anyone who can see the repo for a plain question
 // and for reply. false is the app hiding the button.
 type Can struct {
+	PublishAnyway  bool `json:"publish_anyway"`
 	Run            bool `json:"run"`
 	StartNow       bool `json:"start_now"`
 	Stop           bool `json:"stop"`
@@ -739,11 +741,12 @@ type NeedsYouGroup struct {
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
 	// EngineState preserves old documents without adding a sixth public state.
-	EngineState string               `json:"engine_state,omitempty"`
-	Priority    *factory.JobPriority `json:"priority,omitempty"`
-	DoneHow     string               `json:"done_how,omitempty"`
-	Approval    *factory.Approval    `json:"approval,omitempty"`
-	StopUndo    *factory.StopUndo    `json:"stop_undo,omitempty"`
+	EngineState   string               `json:"engine_state,omitempty"`
+	Priority      *factory.JobPriority `json:"priority,omitempty"`
+	DoneHow       string               `json:"done_how,omitempty"`
+	Approval      *factory.Approval    `json:"approval,omitempty"`
+	PersonStopped *bool                `json:"person_stopped,omitempty"`
+	StopUndo      *factory.StopUndo    `json:"stop_undo,omitempty"`
 
 	ChangeBase      string    `json:"change_base,omitempty"`
 	Thread          []Message `json:"thread,omitempty"`
@@ -883,8 +886,9 @@ const (
 // open ask and an answered one cannot drift.
 type Question = factory.Question
 
-// Expect is the job a caller last read. Every job verb accepts one. A field
-// that no longer matches is a stale read: the verb does not run.
+// Expect is the job a caller last read. Every job verb accepts one.
+// Content decisions refuse mismatches. Progress-tolerant verbs keep their own
+// guards; budget edits compare budget history instead of run progress.
 type Expect struct {
 	State   string `json:"state,omitempty"`
 	Step    string `json:"step,omitempty"`

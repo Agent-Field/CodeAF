@@ -40,6 +40,10 @@ func jobBrief(f api.Factory, it factory.Item, since int) api.JobBrief {
 	if w := it.BriefWriting; out.Status == factory.BriefStatusFailed && w != nil {
 		out.Failure, out.FailedAfter = w.Failure, w.AfterStep
 	}
+	if factory.StoppedByPerson(it) {
+		out.Failure = factory.PersonStopReason
+		out.FailureKind = factory.CodeStopped
+	}
 	return out
 }
 
@@ -61,7 +65,7 @@ func (h *Handler) beginBrief(w http.ResponseWriter, r *http.Request, it factory.
 		in := factory.BriefInputOf(*cur)
 		out.Hash = factory.BriefInputHash(in)
 		if out.Skip = cur.BeginBrief(body.Trigger, out.Hash, h.clock()); out.Skip == "" {
-			out.System, out.Input = factory.BriefSystem(), factory.BriefInputText(in)
+			out.System, out.Input = factory.BriefPrompt(*cur, in)
 		}
 		return nil
 	})

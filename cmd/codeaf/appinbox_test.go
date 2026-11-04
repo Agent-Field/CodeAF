@@ -239,7 +239,7 @@ func TestAppInboxRefusesInvalidAnswersBeforeHolding(t *testing.T) {
 			rec.waitFor(t, 5*time.Second, func(_ string, data any) bool { _, ok := data.(appwire.InboxAddedEvent); return ok })
 			id, option, want := appInboxID(agent.ID, "ask:9"), "sqlite", appwire.CodeNotFound
 			if strings.HasPrefix(scenario, "empty ") {
-				id, option, want = appInboxID(agent.ID, appAskID(q)), "", appwire.CodeBadParams
+				id, option, want = appInboxID(agent.ID, appAskID(agent.ID, q)), "", appwire.CodeBadParams
 			}
 			switch scenario {
 			case "closed":
@@ -313,7 +313,7 @@ func TestAppInboxValidatesLandingAndFuelAnswers(t *testing.T) {
 			q := session.Question{ID: 9, Kind: tc.kind, Head: "What next?", Options: session.AnswerOptions(tc.kind)}
 			conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
 			rec.waitFor(t, 5*time.Second, func(_ string, data any) bool { _, ok := data.(appwire.InboxAddedEvent); return ok })
-			id := appInboxID(agent.ID, appAskID(q))
+			id := appInboxID(agent.ID, appAskID(agent.ID, q))
 			until, err := b.AnswerInbox(id, tc.option, tc.text, tc.why, "")
 			undo := b.UndoInbox(id)
 			if tc.valid {
@@ -329,7 +329,7 @@ func TestAppInboxValidatesLandingAndFuelAnswers(t *testing.T) {
 			if done, _, err := b.ListInbox(appwire.InboxDone, ""); err != nil || len(done) != 0 {
 				t.Errorf("validation wrote Done: %+v %v", done, err)
 			}
-			if asks, err := b.ListAsks(agent.ID); err != nil || len(asks) != 1 || asks[0].ID != appAskID(q) {
+			if asks, err := b.ListAsks(agent.ID); err != nil || len(asks) != 1 || asks[0].ID != appAskID(agent.ID, q) {
 				t.Errorf("validation changed asks: %+v %v", asks, err)
 			}
 			a := mustFind(t, b, agent.ID)
@@ -358,7 +358,7 @@ func TestAppInboxRetainsFreeTextAnswers(t *testing.T) {
 			q := session.Question{ID: 9, Kind: kind, Head: "What next?", Options: session.AnswerOptions(kind)}
 			conv.raise(session.Event{Kind: session.EventQuestion, Question: &q})
 			rec.waitFor(t, 5*time.Second, func(_ string, data any) bool { _, ok := data.(appwire.InboxAddedEvent); return ok })
-			id := appInboxID(agent.ID, appAskID(q))
+			id := appInboxID(agent.ID, appAskID(agent.ID, q))
 			until, err := b.AnswerInbox(id, "", "use the existing reader", "", "")
 			if err != nil || until.IsZero() {
 				t.Fatalf("text-only answer = %v %v", until, err)

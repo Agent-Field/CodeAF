@@ -27,7 +27,7 @@ var Verbs = []Verb{
 	{"answer", []string{"Answer"}},
 	{"steer", []string{"Steer"}},
 	{"approve", []string{"SignOff", "Answer"}},
-	{"retry_publish", nil},
+	{"retry_publish", nil}, {"publish_anyway", nil},
 	// Merge is the factory's own: its gate and the lease's merge signal.
 	{"merge", nil},
 	{"pr-ready", nil},

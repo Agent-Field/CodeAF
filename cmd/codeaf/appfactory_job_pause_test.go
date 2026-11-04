@@ -94,6 +94,7 @@ func TestFactoryRunningJobPause(t *testing.T) {
 		s.backend.open = func(ask appOpenAsk) (*appConn, error) {
 			return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 		}
+		makeJobManager(t, s, it.ID)
 		var chats appwire.FactoryJobChats
 		s.must("factory.job_chats", params, &chats)
 		desk, err := lease.Open(floor, lease.Options{})
@@ -639,6 +640,7 @@ func TestFactoryResumeChat(t *testing.T) {
 				}
 			}
 			params := map[string]any{"factory": status.Factory, "job": it.ID}
+			makeJobManager(t, s, it.ID)
 			var chats appwire.FactoryJobChats
 			s.must("factory.job_chats", params, &chats)
 			act := func(method string) {
@@ -689,6 +691,7 @@ func TestFactoryResumeChatRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	makeJobManager(t, s, it.ID)
 	var chats appwire.FactoryJobChats
 	s.must("factory.job_chats", map[string]any{"factory": status.Factory, "job": it.ID}, &chats)
 	desk, err := lease.Open(floor, lease.Options{})

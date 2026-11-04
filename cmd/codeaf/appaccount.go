@@ -270,6 +270,7 @@ func (b *appBackend) providerConnected() bool {
 // providerChanged says provider.changed for one provider, with key carried
 // only when this process made the key itself and the app has never seen it.
 func (b *appBackend) providerChanged(p appProvider, key string) {
+	b.locked(func() { delete(b.pluginPauses, p.id) })
 	view := b.providerView(p, appSourcesNow(), appPersistedRows())
 	b.emit.Emit(appwire.EventProviderChanged, appwire.ProviderChanged{Provider: view, Key: key})
 }

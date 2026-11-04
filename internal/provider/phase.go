@@ -186,6 +186,9 @@ const PhaseWindow = 15 * time.Second
 // said at the seam rather than at the surface: no reader has to invent a figure
 // to have something to print.
 type PhaseNews struct {
+	// SourceID identifies the account behind this request; PlanReset is the vendor reset value.
+	SourceID  string
+	PlanReset string
 	// Phase is what is happening. An empty phase is the end of the story —
 	// posted when a turn stops, so a surface stops drawing a clock for work
 	// that is over.
@@ -377,9 +380,10 @@ type phaseClock struct {
 	// mu is here because a raced request has TWO stream loops and one story.
 	// Both arms hold the same clock; only the one the person is hearing drives
 	// it, and the handover happens on a third goroutine (hedge.go's flip).
-	mu    sync.Mutex
-	model string
-	role  lanes.Role
+	mu       sync.Mutex
+	model    string
+	sourceID string
+	role     lanes.Role
 	// session is the conversation these requests belong to, carried so that an
 	// engine serving many windows can put this clock on the right one
 	// (roles.go's [WithSession]). It is empty in a build where there is only
@@ -428,11 +432,12 @@ func (c *Client) newPhaseClock(ctx context.Context, model string) *phaseClock {
 		return nil
 	}
 	return &phaseClock{
-		model:   strings.TrimSpace(model),
-		role:    RoleFrom(ctx),
-		session: SessionFrom(ctx),
-		subject: NodeFrom(ctx),
-		now:     c.clock,
+		model:    strings.TrimSpace(model),
+		sourceID: c.config.SourceID,
+		role:     RoleFrom(ctx),
+		session:  SessionFrom(ctx),
+		subject:  NodeFrom(ctx),
+		now:      c.clock,
 	}
 }
 
@@ -586,6 +591,7 @@ func (p *phaseClock) say(detail string, now time.Time) {
 		Door:     p.door,
 		Detail:   detail,
 		Model:    p.model,
+		SourceID: p.sourceID,
 		Role:     p.role,
 		Session:  p.session,
 		Subject:  p.subject,
