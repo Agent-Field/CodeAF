@@ -86,6 +86,10 @@ func TestAcknowledgedSignalsStayWithinTheirLeaseAndStopClearsThem(t *testing.T) 
 	if err := doors.Stop(it.ID); err != nil {
 		t.Fatal(err)
 	}
+	// A person's Start is what lets a stopped job run again.
+	if err := f.store.Update(it.ID, func(it *factory.Item) error { factory.ClearPersonStop(it); return nil }); err != nil {
+		t.Fatal(err)
+	}
 	if err := doors.Launch(it.ID); err != nil {
 		t.Fatal(err)
 	}
