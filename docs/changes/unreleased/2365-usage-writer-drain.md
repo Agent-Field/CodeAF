@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Closing a conversation waits for queued spending records
-pr: 2357
+pr: 2365
 surface: [engine, chat]
 invalidates:
   - Closing a session previously left queued usage rows behind; it now drains that ledger under a bounded wait.
