@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a big move from the hosted relay goes through, and a move sync failed with an error says so
-pr: 0
+pr: 2366
 surface: [engine, app, chat]
 invalidates:
   - "Was true: every 5xx from the relay's store that named no refusal was only blobstore.ErrUnreachable, so a move it failed said \"Couldn't move it: sync could not be reached.\" Is true now: an unnamed 5xx from the store, other than a gateway's or proxy's (502, 503, 504, 511) or a CDN's (520-527, 530), is also blobstore.ErrAnswered, and the move says \"Couldn't move it: sync answered with an error. The chat is still on <computer>.\" Callers that degrade on ErrUnreachable still do."
