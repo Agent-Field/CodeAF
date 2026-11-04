@@ -63,7 +63,9 @@ func (a *Agent) approveUserBash(ctx context.Context, hub *eventHub, call ai.Tool
 		return refusal(off), false
 	}
 	decision, governed := a.decide(call)
-	if governed && decision.Action == approval.ActionDeny {
+	// THE PERSON'S OWN COMMAND IS NOT THE AGENT'S. Typing `! gh auth token` is what
+	// the credential floor sends a person to do, so it does not refuse them here.
+	if governed && decision.Action == approval.ActionDeny && !decision.Credential {
 		return refusal("denied by approval rule: " + decision.Rule), false
 	}
 	args := json.RawMessage(call.Function.Arguments)
