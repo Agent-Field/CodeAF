@@ -742,6 +742,9 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	if err := factoryCallRefusal(ctx); err != nil {
+		return nil, model, err
+	}
 	// Job ownership also covers personal manager turns and reopened stages.
 	// Keep recovery on the call so shared clients retain ordinary refusals.
 	if a.jobBudgetOf() != nil {
@@ -808,6 +811,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 			ctx = provider.WithReceiptPending(ctx, pending)
 		}
 	}
+	ctx = a.withReceiptTracking(ctx)
 	ctx = provider.WithDiscardedUsage(ctx, func(served string, tag string, response *ai.Response) {
 		// Full billing owners (program model APIs) already bank every transport
 		// attempt. Ordinary session callers bank only the returned answer.

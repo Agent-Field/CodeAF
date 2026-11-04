@@ -540,6 +540,9 @@ func MayAct(it Item, caller string) Acts {
 	caller = NormalizeHandle(caller)
 	person := it.Person()
 	owner := person == "" || caller == person
+	if StoppedByPerson(it) {
+		return Acts{RunAgain: owner, CancelJob: owner, Reply: true}
+	}
 	var answer bool
 	switch NeedsKind(it) {
 	case NeedsQuestion:

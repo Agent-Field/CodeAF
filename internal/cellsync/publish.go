@@ -78,7 +78,7 @@ func (p *Publisher) publish(ctx context.Context, d *Driving, head string, in Pub
 	if err != nil {
 		return Export{}, err
 	}
-	ex, frames, err := p.uploadPlan(ctx, d.Cell, head)
+	ex, frames, err := p.uploadPlan(ctx, d.Cell, head, false)
 	if err != nil {
 		return Export{}, err
 	}
@@ -110,10 +110,11 @@ func unionFrames(plan, uploaded []string) []string {
 }
 
 // Upload exports what the store lacks for head, puts every frame, and only
-// then records them as published. Objects are content-addressed, so what a
+// then records them as published. An upload cut short still records the frames
+// it put, and answers the export so the caller knows its size. Objects are content-addressed, so what a
 // refused publish uploaded is reused by whatever comes next.
 func (p *Publisher) Upload(ctx context.Context, c cell.Cell, head string) (Export, error) {
-	ex, _, err := p.uploadPlan(ctx, c, head)
+	ex, _, err := p.uploadPlan(ctx, c, head, true)
 	return ex, err
 }
 
@@ -121,7 +122,12 @@ func (p *Publisher) Upload(ctx context.Context, c cell.Cell, head string) (Expor
 // is what the plan for the head names (contract §22.2). Frames skipHeld
 // dropped are not named: their ids are whatever earlier upload carried them,
 // which this publish does not know, and the take's want loop covers them.
-func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string) (Export, []string, error) {
+//
+// keep records the frames of an upload cut short (keepSent). Only Upload, which
+// names no plan, keeps them: Publish and Branch name the frames they put in
+// the head's plan, and a frame recorded by an attempt that failed would be
+// left out of the next export and so out of the plan.
+func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string, keep bool) (Export, []string, error) {
 	ex, err := p.Engine.Export(ctx, c, head)
 	if err != nil {
 		return Export{}, nil, err
@@ -132,7 +138,10 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string) (E
 	for i, f := range ex.Frames {
 		id, actualBytes, err := p.put(ctx, f)
 		if err != nil {
-			return Export{}, nil, err
+			if keep {
+				p.keepSent(ctx, c, paths[:i])
+			}
+			return ex, nil, err
 		}
 		ex.Frames[i].Bytes = actualBytes
 		ids = append(ids, id)
@@ -142,6 +151,20 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string) (E
 		return ex, ids, nil
 	}
 	return ex, ids, p.Engine.Published(ctx, c, paths)
+}
+
+// keepSent records the frames an interrupted upload already put. They are in
+// the store whatever happens to the rest, and recording them lets the next
+// export pack only what is still missing, so a large chat that runs out of time
+// resumes where it stopped instead of sending everything again. The head does
+// not move: only Publish or Create does that, after every frame is in.
+func (p *Publisher) keepSent(ctx context.Context, c cell.Cell, paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cellstore.SealWithin)
+	defer cancel()
+	_ = p.Engine.Published(ctx, c, paths)
 }
 
 // put stores one frame and answers the id the store named it, which is what

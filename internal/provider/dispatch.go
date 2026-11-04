@@ -275,11 +275,6 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			return nil, &UnsupportedAttemptSurfaceError{SurfaceDocument, "this send carries no attempt identity"}
 		}
 	}
-	if gate := c.config.RouteGate; gate != nil {
-		if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
-			return nil, err
-		}
-	}
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
 	// plus the thinking pass's room — and not for the caller's figure alone.
@@ -658,6 +653,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			cancelAttempt()
 			return nil, err
 		}
+		if gate := c.config.RouteGate; gate != nil {
+			if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
+				sharedLimiter.release(false, 0)
+				cancelAttempt()
+				return nil, &AttemptDeniedError{Cause: err}
+			}
+		}
 		// THE ONE PLACE A SEND IS ADMITTED: after the request is built and the
 		// limiter has let it through, and before anything is written to the log
 		// or the watchdog, so a refusal leaves no trace of a send that never was.
@@ -967,6 +969,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// never reaches the endpoint walk or model chain: it either takes the one
 		// configured metered door, once, or returns its typed pause immediately.
 		if refusal.Kind == refusalPlanPaused {
+			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
+			now := c.clock()
+			postPhase(PhaseNews{Phase: PhasePlanPaused, Detail: detail, Since: now, At: now,
+				Model: c.modelFor(request), SourceID: c.config.SourceID, PlanReset: refusal.Reset,
+				Role: RoleFrom(ctx), Session: SessionFrom(ctx), Subject: NodeFrom(ctx)})
 			useOverflow := c.config.OverflowOnPlanPause &&
 				strings.TrimSpace(c.config.PlanOverflow) != "" && !usingOverflow &&
 				claimPlanOverflow(ctx)
@@ -981,9 +988,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				pacedSince = time.Time{}
 				continue
 			}
-			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
-			now := c.clock()
-			notePhase(ctx, c.modelFor(request), PhasePlanPaused, detail, now, now, "")
+
 			return nil, &PlanPauseError{
 				Reset: refusal.Reset, OverflowDoor: c.config.PlanOverflowDoor, Cause: lastErr,
 			}

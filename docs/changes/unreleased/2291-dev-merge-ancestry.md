@@ -1,9 +1,10 @@
 ---
-kind: internal
+kind: fixed
 title: Record dev ancestry in app/v3 with a true merge
 pr: 2291
-surface: [build]
-invalidates: []
+surface: [build, app, engine, docs]
+invalidates:
+  - "Removed computers previously entered replacement cleanup when rejoining their own identity; app re-pairing now retains their local state."
 ---
 
 The merge records dev ancestry and retains non-conflicting app/v3 work. Under
@@ -50,3 +51,10 @@ Missing profiles still use their normal defaults.
 A failed chat installation leaves the source read-only until a fresh Continue
 here action. A released takeover updates the source window to available instead
 of retaining a stale continuation notice; release never restores its old fence.
+
+A removed computer re-pairing from the app is not choosing replacement. Code
+and link pairing check the approved identity, preserve local chats, memories
+and settings when it is the same, and install a fresh device key. An unremoved
+computer keeps its key and reports no change. Used solo computers still refuse
+without confirmed replacement; explicit same-identity replacement still runs
+cleanup. Removal no longer implies consent to replace local state.

@@ -353,6 +353,9 @@ func (a *Agent) runErrand(ctx context.Context, ask ErrandAsk, check func(string)
 // errandRefusal is why no errand may start now, or "". The job budget is
 // asked outside the agent's lock, as its watcher asks it.
 func (a *Agent) errandRefusal() string {
+	if why := a.automaticFactoryRefusal(); why != "" {
+		return why
+	}
 	a.mu.Lock()
 	closed, stopped, railed := a.closed, a.workStopped, a.railBlockLocked() != nil
 	a.mu.Unlock()

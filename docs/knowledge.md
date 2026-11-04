@@ -75,9 +75,14 @@ ceiling are preserved. The process worker does not launch another refinement
 pass merely because the previous pass left editorial work pending. New source
 input or an explicit build can advance that work. The projection records the
 Build request it consumed, so a forced flush alone cannot buy another refinement
-pass on unchanged sources. Failed input is attempted once;
-new sources or an explicit Build permit another attempt. Historical unrecorded costs
-are not backfilled.
+pass on unchanged sources. Ordinary failed input permits three compilation
+attempts in total, including the first. The worker persists each attempt before
+compilation, so restarts retain the limit. Its input identity includes the latest
+ordinary source rowid, source count, latest arrival, Build request and projection
+version. Changed input or an explicit Build starts a new count; a successful
+compilation clears it. Each attempt can make several paid requests. Owned job
+compilation retains its separate retry and accounting rules. Historical
+unrecorded costs are not backfilled.
 
 A successful stage result is retained even when deferred memory spending reaches
 its cap. The runner records the finished phase before checking admission for the

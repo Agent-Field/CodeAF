@@ -241,9 +241,12 @@ LC_ALL=C sort "$tmp/ran" >"$tmp/ran.sorted"
 ran_count="$(wc -l <"$tmp/ran.sorted" | tr -d ' ')"
 if ! cmp -s "$tmp/tests" "$tmp/ran.sorted"; then
 	status=1
-	comm -23 "$tmp/tests" "$tmp/ran.sorted" >"$tmp/missing"
-	if [ ! -s "$tmp/failed" ]; then cat "$tmp/missing" >>"$tmp/failed"; fi
-	printf 'shard-test: %s listed %s tests but the shards reported %s terminal test results\n' "$import_path" "$listed_count" "$ran_count" >&2
+	# Both files are in C order, so comm must compare in C order too: outside it
+	# comm exits nonzero and set -e would end the run with no result line.
+	LC_ALL=C comm -23 "$tmp/tests" "$tmp/ran.sorted" >"$tmp/missing"
+	LC_ALL=C comm -13 "$tmp/tests" "$tmp/ran.sorted" >"$tmp/extra"
+	cat "$tmp/missing" "$tmp/extra" >>"$tmp/failed"
+	printf 'shard-test: %s listed %s tests but the shards reported %s terminal test results; missing: %s; extra: %s\n' "$import_path" "$listed_count" "$ran_count" "$(paste -sd, "$tmp/missing")" "$(paste -sd, "$tmp/extra")" >&2
 fi
 LC_ALL=C sort -u "$tmp/failed" >"$tmp/failed.sorted"
 failed_names="$(paste -sd, "$tmp/failed.sorted")"

@@ -390,6 +390,7 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	cfg.Automations = nil
 	cfg.Memory = nil
 	cfg.automationID = item.ID
+	cfg.bindUsageLedger()
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet

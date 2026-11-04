@@ -81,6 +81,8 @@ type ServiceRec struct {
 
 // ModelCall is one model call of the turn, by hashes.
 type ModelCall struct {
+	// ID is the live usage ledger row identity, absent on older saved calls.
+	ID           string `json:"id,omitempty"`
 	Model        string `json:"model"`
 	Role         string `json:"role,omitempty"`
 	ParamsHash   string `json:"params_hash"`

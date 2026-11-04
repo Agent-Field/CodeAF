@@ -96,11 +96,19 @@ func TestAppTakeInstallFailureS5(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("S5 rows before take: %+v", rows)
 	}
+	logged := faultLog(t)
 	armed.Store(true)
 	_, failure := wire.call("agents.take", appwire.TakeParams{Cell: c.ID, Seen: rows[0].Seen})
 	_ = os.Chmod(parent, 0700)
 	if !injected.Load() || failure == nil || failure.Message != appTakeFailed {
 		t.Fatalf("S5 injection=%v failure=%+v", injected.Load(), failure)
+	}
+	// B5a: the reason travels with the failure and into the continue log line.
+	if reason, _ := failure.Detail.(string); reason == "" || reason == appTakeFailed {
+		t.Fatalf("B5a: failed take carries no reason: %+v", failure)
+	}
+	if !strings.Contains(logged(), "outcome=failed reason=") {
+		t.Fatalf("B5a: continue log names no reason:\n%s", logged())
 	}
 	after, err := owner.Dir.Cell(t.Context(), c.ID)
 	if err != nil {

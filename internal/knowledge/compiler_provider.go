@@ -183,6 +183,10 @@ func (m compilerModel) cached(role string, payload document) (document, bool, er
 
 // callContext gates every memory model step, including recall and provider retries.
 func (m compilerModel) callContext(ctx context.Context) (context.Context, error) {
+	// A job's memory compiles on a context carried over from the turn that
+	// wrote it. Its answer is a document, never a reply, so the chat's stream
+	// must not hear it.
+	ctx = provider.WithoutStream(ctx)
 	if !config.MemoryEnabledAt(filepath.Dir(m.root)) {
 		return nil, ErrDisabled
 	}

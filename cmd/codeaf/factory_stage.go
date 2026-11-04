@@ -465,6 +465,7 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 		prose.Reset()
 	}
 	for event := range events {
+		tellStageNews(c.file, event)
 		switch event.Kind {
 		case session.EventTextDelta:
 			if c.progress != nil && prose.Len() < 4*1024 {

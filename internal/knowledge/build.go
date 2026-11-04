@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
+
+const ordinaryBuildAttemptLimit = 3
 
 type BuildPhase string
 
@@ -139,7 +142,7 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 				return loadErr
 			}
 			job["phase"] = string(BuildFailed)
-			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; use Build to retry or add new sources."
+			job["error"] = "Knowledge build paused: " + err.Error() + ". " + buildRetryNotice(number(job["build_attempts"]))
 			saveErr := saveState(db, "job", job)
 			db.Close()
 			if saveErr != nil {
@@ -154,6 +157,13 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 		}
 	}
 }
+func buildRetryNotice(attempts float64) string {
+	if attempts >= ordinaryBuildAttemptLimit {
+		return fmt.Sprintf("Completed progress is retained; automatic retries stopped after %d attempts; use Build or add new sources.", ordinaryBuildAttemptLimit)
+	}
+	return "Completed progress is retained; retrying automatically."
+}
+
 func waitBuild(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
@@ -164,6 +174,29 @@ func waitBuild(ctx context.Context, delay time.Duration) error {
 		return nil
 	}
 }
+
+// markJobEvents marks one job session's saved events, so the compiler leaves them out. It runs on every pass with
+// Memory on, so it seeks through profile_session_lookup, which holds only events not marked yet.
+const markJobEvents = "UPDATE events SET payload=json_set(payload,'$.job',json('true')) WHERE partition='profile' AND json_extract(payload,'$.session')=? AND coalesce(json_extract(payload,'$.job'),0)=0"
+
+// profileSessionLookup is built here rather than with the schema: an open must not wait for it, and it is needed only
+// with Memory on. On an existing large database it holds the write lock while it builds (busyWaitMillis).
+const profileSessionLookup = "CREATE INDEX IF NOT EXISTS profile_session_lookup ON events(json_extract(payload,'$.session')) WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0"
+
+func markJobSessions(db *sql.DB, journals []Journal) error {
+	if _, err := db.Exec(profileSessionLookup); err != nil {
+		return err
+	}
+	for _, journal := range journals {
+		if journal.Job {
+			if _, err := db.Exec(markJobEvents, journal.Session); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (v *Vault) runPass(ctx context.Context, history History, key func() string, lastInventory *string) error {
 	journals, err := history.Inventory(ctx)
 	if err != nil {
@@ -174,13 +207,6 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		return err
 	}
 	defer db.Close()
-	for _, journal := range journals {
-		if journal.Job {
-			if _, err = db.Exec("UPDATE events SET payload=json_set(payload,'$.job',json('true')) WHERE partition='profile' AND json_extract(payload,'$.session')=? AND coalesce(json_extract(payload,'$.job'),0)=0", journal.Session); err != nil {
-				return err
-			}
-		}
-	}
 	job, err := stateDocument(db, "job")
 	if err != nil {
 		return err
@@ -226,6 +252,10 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		return nil
+	}
+
+	if err = markJobSessions(db, journals); err != nil {
+		return err
 	}
 
 	imported := int(number(job["imported"]))
@@ -320,9 +350,21 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
 		return err
 	}
-	attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
-	if job["failed_input"] == attemptInput {
-		return nil
+	// An empty vault has no build input or retry budget to persist.
+	if total > 0 {
+		attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
+		if job["build_input"] != attemptInput {
+			job["build_input"] = attemptInput
+			job["build_attempts"] = 0
+		}
+		if number(job["build_attempts"]) >= ordinaryBuildAttemptLimit {
+			if job["phase"] != string(BuildFailed) {
+				job["phase"] = string(BuildFailed)
+				job["error"] = "Knowledge build interrupted. " + buildRetryNotice(number(job["build_attempts"]))
+				return saveState(db, "job", job)
+			}
+			return nil
+		}
 	}
 	job["problems"] = problems
 	job["sources"] = total
@@ -349,6 +391,8 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			}
 		}
 		job["phase"] = string(BuildRunning)
+		// Reserve the attempt durably before compilation can spend money.
+		job["build_attempts"] = number(job["build_attempts"]) + 1
 		if err = saveState(db, "job", job); err != nil {
 			return err
 		}
@@ -356,10 +400,10 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			if errors.Is(err, ErrDisabled) {
 				return nil
 			}
-			job["failed_input"] = attemptInput
-			if saveErr := saveState(db, "job", job); saveErr != nil {
-				return saveErr
-			}
+			return err
+		}
+		job["build_attempts"] = 0
+		if err = saveState(db, "job", job); err != nil {
 			return err
 		}
 		var remaining int
