@@ -1,6 +1,8 @@
 package session
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -54,10 +56,10 @@ func hardCapCrews(t *testing.T, requireStop bool) {
 				fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"resumed\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
 				return
 			}
-			fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"working\"}}]}\n\n")
 			if i == 1 || i == 2 {
 				fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"cost\":0.02}}\n\n")
 			}
+			fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"working\"}}]}\n\n")
 			w.(http.Flusher).Flush()
 			close(ready)
 			if i == 0 {
@@ -91,6 +93,20 @@ func hardCapCrews(t *testing.T, requireStop bool) {
 		case <-time.After(10 * time.Second):
 			t.Fatal("crew did not hold its call open")
 		}
+		// Seeing text emitted after usage proves the client decoded the interim
+		// frame before another crew crosses the cap.
+		observed := false
+		for !observed {
+			select {
+			case event, open := <-events[i]:
+				if !open {
+					t.Fatal("held crew ended before crossing")
+				}
+				observed = event.Kind == EventTextDelta && strings.Contains(event.Text, "working")
+			case <-time.After(10 * time.Second):
+				t.Fatal("interim usage was not followed by streamed text")
+			}
+		}
 	}
 	close(cross)
 	stopped := 0
@@ -107,9 +123,11 @@ waiting:
 	}
 	releaseCalls()
 	notices := make([]string, 4)
+	dailyStops := make([]bool, 4)
 	for i := range agents {
 		for _, event := range collect(t, events[i]) {
 			notices[i] += event.Text
+			dailyStops[i] = dailyStops[i] || errors.Is(event.Err, ErrSpendRail) && IsDailyLimit(event.Err)
 		}
 	}
 	if !FlushUsage() {
@@ -138,8 +156,20 @@ waiting:
 		t.Fatalf("partial charges or unknown call lost: spent=%v unknown=%d", spent, unknown)
 	}
 	for i := 1; i < 4; i++ {
+		if !dailyStops[i] {
+			t.Errorf("crew %d did not report a typed daily stop", i)
+		}
 		if !strings.Contains(notices[i], "daily limit") || !strings.Contains(notices[i], "/budget day") {
 			t.Errorf("crew %d did not explain stop and raise: %q", i, notices[i])
+		}
+	}
+	for i := 1; i < 4; i++ {
+		waitFor(t, "budget stop joins", func() bool { agents[i].mu.Lock(); defer agents[i].mu.Unlock(); return !agents[i].workStopping })
+		if _, err := agents[i].Submit(context.Background(), "still over cap"); !errors.Is(err, ErrSpendRail) {
+			t.Errorf("crew %d reopened below the required raise: %v", i, err)
+		}
+		if _, err := agents[i].RunOrchestrate(context.Background(), "new crew", "", 5); err == nil {
+			t.Errorf("crew %d admitted a new run after stopping", i)
 		}
 	}
 	if requests.Load() != 8 {

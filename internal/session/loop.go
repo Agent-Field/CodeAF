@@ -1759,10 +1759,19 @@ func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *part
 		}
 		a.journalFailedCall(ctx, model, "", cause, 1, a.requestEstimate())
 		if said := stopSentence(door, stopName(cause)); said != "" {
+			if door == StopByWorkStopped && stopName(cause) != "" {
+				a.record(textMessage("assistant", said))
+			}
 			hub.send(Event{Kind: EventNotice, Text: said})
 		}
 	}
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+	usage := a.sealTurn(turn, started, model)
+	var reached spendRailReached
+	if errors.As(context.Cause(ctx), &reached) {
+		hub.send(Event{Kind: EventError, Err: reached, Usage: usage})
+		return
+	}
+	hub.send(Event{Kind: EventTurnDone, Usage: usage})
 }
 
 // cutDroppedCallNote is WHY a half-arrived tool call is not in the record, in

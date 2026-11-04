@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -33,29 +35,75 @@ func (a *Agent) jobBudgetBlock() error {
 // until the agent closes, not just until its foreground turn ends. No model call
 // is involved. StopWork closes admission before cancelling the complete family.
 func (a *Agent) watchJobBudget() {
-	if a.jobBudgetOf() == nil {
-		return
-	}
+	changed := make(chan struct{}, 1)
+	unwatch := OnUsageWritten(func() {
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
+	})
+	closed := a.ClosedSignal()
 	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for range ticker.C {
-			a.mu.Lock()
-			closed, stopped, epoch := a.closed, a.workStopped, a.workEpoch
-			a.mu.Unlock()
-			if closed {
+		defer unwatch()
+		var ticks <-chan time.Time
+		if a.jobBudgetOf() != nil {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			ticks = ticker.C
+		}
+		for {
+			ledgerChanged := false
+			select {
+			case <-closed:
 				return
+			case <-changed:
+				ledgerChanged = true
+			case <-ticks:
 			}
-			if !stopped {
-				stopOwned := a.factoryOwnedStop()
-				if err := a.jobBudgetBlock(); err != nil && err.Error() != JobBudgetUnreadable {
-					_ = a.stopWorkEpoch(epoch)
-				} else if a.automaticFactoryRefusal() == factory.PersonStopReason {
-					stopOwned()
-				}
+			a.mu.Lock()
+			stopped, epoch := a.workStopped, a.workEpoch
+			a.mu.Unlock()
+			if stopped {
+				continue
+			}
+			stopOwned := a.factoryOwnedStop()
+			var why error
+			if ledgerChanged {
+				why = a.dailyBudgetBlock()
+			}
+			if why == nil {
+				why = a.jobBudgetBlock()
+			}
+			if errors.Is(why, ErrSpendRail) && why.Error() != JobBudgetUnreadable {
+				_ = a.stopWorkEpoch(epoch, why)
+			} else if a.automaticFactoryRefusal() == factory.PersonStopReason {
+				stopOwned()
 			}
 		}
 	}()
+}
+
+// Daily checks run on recorded spending and at admission, never on the job
+// watcher's clock. Each agent reads its captured ledger and selected authority.
+func (a *Agent) dailyBudgetBlock() error {
+	if a.config.SpendPreauthorized {
+		return nil
+	}
+	capUSD, err := a.dailyCeiling()
+	if err != nil {
+		return spendUnverified{said: spendLimitUnread}
+	}
+	if capUSD <= 0 {
+		return nil
+	}
+	spent, err := DailySpendUSD(a.config.usageLedger, time.Now())
+	if err != nil {
+		return spendUnverified{said: spendAccountingUnread}
+	}
+	if spent >= capUSD {
+		return spendRailReached{daily: true, said: fmt.Sprintf("daily limit reached · %s spent of %s · /budget day changes it", railMoney(spent), railMoney(capUSD))}
+	}
+	return nil
 }
 
 // Check again at each model boundary, including retries and auxiliary calls.
@@ -63,10 +111,10 @@ func (a *Agent) admitJobCall(ctx context.Context) error {
 	if err := factoryCallRefusal(ctx); err != nil {
 		return err
 	}
-	if a.jobBudgetOf() == nil {
-		return nil
-	}
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := a.dailyBudgetBlock(); err != nil {
 		return err
 	}
 	return a.jobBudgetBlock()

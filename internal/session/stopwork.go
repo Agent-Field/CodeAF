@@ -14,20 +14,20 @@ func (a *Agent) StopWork() error { return a.stopWorkFor("", StopByWorkStopped) }
 
 func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 	a.mu.Lock()
-	return a.stopWorkLocked(why, door)
+	return a.stopWorkLocked(why, stopAs(door, why))
 }
 
-func (a *Agent) stopWorkEpoch(epoch uint64) error {
+func (a *Agent) stopWorkEpoch(epoch uint64, why error) error {
 	a.mu.Lock()
 	if a.workEpoch != epoch {
 		a.mu.Unlock()
 		return nil
 	}
-	return a.stopWorkLocked("", StopByWorkStopped)
+	return a.stopWorkLocked(why.Error(), errors.Join(stopAs(StopByWorkStopped, why.Error()), why))
 }
 
 // stopWorkLocked consumes the agent lock, including on refusal.
-func (a *Agent) stopWorkLocked(why string, door StopDoor) error {
+func (a *Agent) stopWorkLocked(why string, cause error) error {
 	if a.closed {
 		a.mu.Unlock()
 		return errAgentClosed
@@ -80,7 +80,7 @@ func (a *Agent) stopWorkLocked(why string, door StopDoor) error {
 	}
 	a.interrupt.begin()
 	if cancel != nil {
-		cancel(stopFor(door))
+		cancel(cause)
 	}
 	for _, live := range runs {
 		live.run.Cancel()
@@ -160,6 +160,9 @@ func (a *Agent) resumeWorkLocked() error {
 	}
 	if !a.workStopped {
 		return nil
+	}
+	if err := a.railBlockLocked(); err != nil {
+		return err
 	}
 	// The old auxiliary producers have joined before admission reopens. A
 	// fresh explicit input gets fresh lifetimes; old retries keep cancelled ones.

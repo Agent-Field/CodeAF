@@ -10,8 +10,9 @@ package main
 // checked here, before a turn is handed to the engine: a turn the cap refuses
 // is never sent, so it costs nothing and its words are kept for a retry.
 //
-// NEITHER CUTS A TURN IN HALF. A turn that crosses a line finishes, as the
-// engine's own limit does, and the line is looked at again when it ends.
+// A RECORDED DAY-CAP CROSSING STOPS OWNED WORK through the session's
+// job-budget watcher and StopWork route. The conversation limit still checks
+// before a turn; the day cap also cancels calls already running.
 //
 // AND EVERY LINE IS AN ASK, NOT A WALL. Near or at its budget, an agent asks
 // whether to raise it, stop, or be told something; at the day cap it asks

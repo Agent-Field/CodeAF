@@ -4380,8 +4380,12 @@ list than on the conversation.
 The daily budget blocks a new chat call when today's recorded spending reaches
 the limit. Task crews and their helpers use it when checking the next call's
 estimated cost. Other conversations' completed usage receipts are read on each
-check, and completed spending resets at the local date boundary. Calls already
-in flight may finish; this is not an atomic reservation across processes.
+check, and completed spending resets at the local date boundary. When a recorded
+charge reaches the daily limit, running owned work in this engine is cancelled.
+The chat and work report the limit; raise it with `/budget day 30`, then submit
+again. Partial usage is kept; a cancelled call without usage has unknown cost.
+Provider charges already in flight can exceed the cap; cancellation cannot undo them.
+This is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately. The default profile and home errands follow the saved
 or environment daily limit too; `/budget day` changes apply on the next turn.
@@ -4404,15 +4408,13 @@ potentially paid admission instead of being read as zero. Legacy malformed rows
 are still skipped and reported as coverage gaps; their dates are not guessed.
 These totals do not prove a complete bill. Repair the named
 record or explicitly set a valid limit, then retry. Per-task and per-role limits
-remain separate. This is not yet a universal per-request cap: the main chat
-turn can finish after crossing it, and native media has no shared dispatch
-reservation. A monthly cap is not available yet. Provider charges already in
+remain separate. Native media has no shared dispatch reservation. A monthly cap is not available yet. Provider charges already in
 flight can exceed a limit. If startup could not establish the limit, repair it
 and reopen the app before standing orders can start.
 
 ## Why is my conversation blocked
 
-A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. A turn already running may finish above its limit.
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. The conversation limit lets a running turn finish; a recorded daily-limit crossing cancels running owned work.
 
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
