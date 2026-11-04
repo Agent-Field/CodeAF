@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -186,3 +187,35 @@ func TestAppMoveEndingWords(t *testing.T) {
 func errBlobNotFound() error    { return blobstore.ErrNotFound }
 func errBlobUnreachable() error { return blobstore.ErrUnreachable }
 func timeNowForTest() time.Time { return time.Now() }
+
+// A chat whose holder has not finished sharing its newest turns says how far
+// it has got and waits, unless the holder is not a known computer.
+func TestAppChatSharingWaitsForTheHolder(t *testing.T) {
+	online := true
+	row := appwire.ChatRow{CanTake: true, Online: &online}
+	appChatSharing(&row, chatlist.Row{Pending: 2, UploadSent: 412, UploadTotal: 1433})
+	if row.Sharing == nil || *row.Sharing != (appwire.ChatSharing{Pending: 2, Sent: 412, Total: 1433}) || row.CanTake {
+		t.Fatalf("a sharing holder's row = %+v %+v", row, row.Sharing)
+	}
+	offline := false
+	row = appwire.ChatRow{CanTake: true, Online: &offline}
+	appChatSharing(&row, chatlist.Row{Pending: 1})
+	if row.Sharing == nil || row.Sharing.Total != 0 || row.CanTake {
+		t.Fatalf("an offline holder's unshared chat = %+v", row)
+	}
+	row = appwire.ChatRow{CanTake: true}
+	appChatSharing(&row, chatlist.Row{Pending: 1})
+	if row.Sharing == nil || !row.CanTake {
+		t.Fatalf("a holder of unknown presence locked the chat: %+v", row)
+	}
+	row = appwire.ChatRow{CanTake: true, Online: &online}
+	appChatSharing(&row, chatlist.Row{Pending: 1, HolderRemoved: true})
+	if !row.CanTake {
+		t.Fatal("a removed holder locked the chat")
+	}
+	row = appwire.ChatRow{CanTake: true, Online: &online}
+	appChatSharing(&row, chatlist.Row{Pending: 1, Mine: true})
+	if row.Sharing != nil || !row.CanTake {
+		t.Fatalf("this computer's own pending turns read as another's sharing: %+v", row)
+	}
+}

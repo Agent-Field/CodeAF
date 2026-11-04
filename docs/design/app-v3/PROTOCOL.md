@@ -1456,6 +1456,19 @@ the person's sentence (also `agents.take`'s error message) and `detail` the
 error text for "Copy details". `agents.take_cancel {cell}` cancels a running or
 queued move of that chat and answers `cancelled:false` when there was none; the
 cancelled `agents.take` answers `engine` with the cancelled sentence.
+
+`sharing:{pending, sent, total}` is on a row whose holder (another computer)
+has `pending` sealed turns it has not finished sharing; a move now would copy
+the chat without them. `sent` of `total` bytes is how far the holder's upload
+had got at its last beat (every 30 seconds while it changes), absent when the
+holder or the relay did not say. While a known computer (`online` present)
+holds such a chat, `can_take` is false; a holder whose presence is unknown or
+that was removed never finishes, so its chat stays takeable. Directory beats
+carry `upload_sent`/`upload_total` only to a relay that answers
+`Codeaf-Upload-Progress: 1`, which keeps them on the lease until the next
+publish, release or acquire. The record's `size`, set by publishers since
+this change, is the bytes of the frames its plan names (`0`: unknown); a move
+shows it as `move.total`.
 Older chats working in the home folder stay local.
 Copy `cell` and `seen` verbatim to `agents.take`; never open an agent using the
 remote cell id. It returns the adopted local Agent through the normal open path.

@@ -130,6 +130,12 @@ const SavedTurnTimeHeader = "Codeaf-Saved-Turn-Times"
 
 var savedTimeServices sync.Map
 
+// UploadProgressHeader advertises a beat's optional upload progress, which
+// the record keeps on its lease. Clients send it only to a relay that says so.
+const UploadProgressHeader = "Codeaf-Upload-Progress"
+
+var uploadProgressServices sync.Map
+
 func (h *HTTP) savedTurnTimes(ctx context.Context, id string) bool {
 	if known, ok := savedTimeServices.Load(h.serviceKey()); ok {
 		return known == true
@@ -157,6 +163,10 @@ func (h *HTTP) requireConditionalTake(ctx context.Context, id string) error {
 }
 
 func (h *HTTP) Heartbeat(ctx context.Context, id string, b Beat) (v CellView, err error) {
+	// Ordinary reads teach the capability; a beat never probes for it.
+	if known, _ := uploadProgressServices.Load(h.serviceKey()); known != true {
+		b.UploadSent, b.UploadTotal = 0, 0
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "heartbeat"), b, &v)
 }
 
@@ -220,6 +230,7 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusInternalServerError {
 		savedTimeServices.Store(h.serviceKey(), resp.Header.Get(SavedTurnTimeHeader) == "1")
+		uploadProgressServices.Store(h.serviceKey(), resp.Header.Get(UploadProgressHeader) == "1")
 	}
 	if resp.StatusCode >= 300 {
 		return resp.Header, refusal(resp)

@@ -395,6 +395,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 			row.Holder = &appwire.LocationHolder{ID: r.DeviceID, Name: r.Device}
 		}
 		appChatPresence(&row, r, state, known)
+		appChatSharing(&row, r)
 		if r.SavedAt > 0 {
 			row.SavedAt = time.UnixMilli(r.SavedAt).UTC()
 		}
@@ -519,6 +520,23 @@ func (b *appBackend) settleTake(ctx context.Context, s *syncsetup.Sync, id strin
 	c.countTake(id, -1)
 	_, err := b.readChats(ctx, s, c.feed, true)
 	return err
+}
+
+// appChatSharing says another computer has not finished sharing the chat's
+// newest turns. A move now would copy the chat without them, so it waits,
+// unless the holder is no longer a known computer (removed, or presence
+// unknown) and would never finish.
+func appChatSharing(row *appwire.ChatRow, fact chatlist.Row) {
+	if fact.Mine || fact.Pending == 0 || row.Here {
+		return
+	}
+	row.Sharing = &appwire.ChatSharing{Pending: fact.Pending}
+	if fact.UploadTotal > 0 {
+		row.Sharing.Sent, row.Sharing.Total = int64(min(fact.UploadSent, fact.UploadTotal)), int64(fact.UploadTotal)
+	}
+	if row.Online != nil && !fact.HolderRemoved {
+		row.CanTake = false
+	}
 }
 
 func appChatPresence(row *appwire.ChatRow, fact chatlist.Row, state dirwatch.State, known map[string]bool) {
@@ -648,6 +666,7 @@ func (b *appBackend) refreshChatInventory(ctx context.Context, feed dirwatch.Fol
 		for i := range rows {
 			r := &rows[i]
 			appChatPresence(r, c.facts[r.Cell], state, known)
+			appChatSharing(r, c.facts[r.Cell])
 		}
 		c.markTaking(rows, false)
 		// Presence still refreshes local agents' lines, but a cached row from

@@ -31,10 +31,21 @@ type ChatRow struct {
 	Seen         Seen            `json:"seen"`
 	CanTake      bool            `json:"can_take"`
 	Taking       bool            `json:"taking"`
+	Sharing      *ChatSharing    `json:"sharing,omitempty"`
 	Move         *ChatMove       `json:"move,omitempty"`
 	MoveEnded    *ChatMoveEnded  `json:"move_ended,omitempty"`
 	Line         string          `json:"line,omitempty"`
 	TakeoverLine string          `json:"takeover_line,omitempty"`
+}
+
+// ChatSharing says the computer holding the chat has sealed turns it has not
+// finished sharing yet; can_take stays false until it has, while that
+// computer is a known one. Sent and Total are how far its upload had got at
+// its last beat, absent when it did not say (an older engine or relay).
+type ChatSharing struct {
+	Pending uint32 `json:"pending"`
+	Sent    int64  `json:"sent,omitempty"`
+	Total   int64  `json:"total,omitempty"`
 }
 
 // ChatMove is how far agents.take has got moving this chat here. A queued

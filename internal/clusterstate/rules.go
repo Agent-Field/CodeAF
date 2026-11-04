@@ -44,6 +44,10 @@ func Heartbeat(c Cell, device string, b Beat, now int64) (Cell, error) {
 	}
 	c.Lease.Expires = now + ttlMs
 	c.Lease.Pending = b.Pending
+	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
+	if b.Pending > 0 && b.UploadTotal > 0 {
+		c.Lease.UploadSent, c.Lease.UploadTotal = min(b.UploadSent, b.UploadTotal), b.UploadTotal
+	}
 	return c, nil
 }
 
@@ -64,6 +68,7 @@ func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	c.Frames = p.Frames
 	c.FrameHints = boundedFrameHints(p.FrameHints)
 	c.Lease.Pending, c.DurableAt = p.Pending, now
+	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
 	if p.Head != p.OldHead || p.SavedAt > 0 {
 		c.SavedAt = p.SavedAt
 	}
@@ -79,6 +84,7 @@ func ReleaseOf(c Cell, device string, fence uint64, at ...int64) (Cell, error) {
 		return c, err
 	}
 	c.Lease.Expires, c.Lease.Pending = 0, 0
+	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
 	if len(at) > 0 {
 		c.Lease.ReleasedAt = at[0]
 	}

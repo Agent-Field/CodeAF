@@ -56,6 +56,12 @@ type Lease struct {
 	Pending uint32 `json:"pending"` // turns sealed on the holder and not yet durable
 	// ReleasedAt is directory time of an explicit release, separate from the last turn.
 	ReleasedAt int64 `json:"released_at,omitempty"`
+	// UploadSent of UploadTotal bytes is how far the holder's upload of its
+	// pending turns had got at its last beat. Absent when nothing is pending,
+	// when the holder is not uploading, or from a holder or relay that predates
+	// it; a publish, a release and an acquire clear it. Display only.
+	UploadSent  uint64 `json:"upload_sent,omitempty"`
+	UploadTotal uint64 `json:"upload_total,omitempty"`
 }
 
 // MaxFrameHints and FrameHintBudget bound optional warm-transfer metadata and
@@ -123,6 +129,10 @@ type CellInit struct {
 type Beat struct {
 	Fence   uint64 `json:"fence"`
 	Pending uint32 `json:"pending"`
+	// UploadSent of UploadTotal is how far the upload of the pending turns has
+	// got; both absent while nothing uploads.
+	UploadSent  uint64 `json:"upload_sent,omitempty"`
+	UploadTotal uint64 `json:"upload_total,omitempty"`
 }
 
 // Publish moves a cell's durable head under a lease the caller holds.

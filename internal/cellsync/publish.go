@@ -29,6 +29,9 @@ type Publisher struct {
 	Engine         Engine
 	Store          blobstore.Store
 	Dir            directory.Client
+	// OnUpload hears how far an upload has got, in frame bytes: (0, total)
+	// when it starts, after each frame, and (0, 0) when it ends either way.
+	OnUpload func(sent, total int64)
 }
 
 // Driving is the state of one cell this device is driving.
@@ -159,6 +162,14 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string, ke
 	ex = p.skipHeld(ctx, c, ex)
 	ids := make([]string, 0, len(ex.Frames))
 	paths := make([]string, len(ex.Frames))
+	var sent, total int64
+	for _, f := range ex.Frames {
+		total += max(f.Bytes, 0)
+	}
+	if p.OnUpload != nil && total > 0 {
+		p.OnUpload(0, total)
+		defer p.OnUpload(0, 0)
+	}
 	for i, f := range ex.Frames {
 		id, actualBytes, err := p.put(ctx, f)
 		if err != nil {
@@ -170,6 +181,9 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string, ke
 		ex.Frames[i].Bytes = actualBytes
 		ids = append(ids, id)
 		paths[i] = f.Path
+		if sent += max(f.Bytes, 0); p.OnUpload != nil && total > 0 {
+			p.OnUpload(sent, total)
+		}
 	}
 	if len(paths) == 0 {
 		return ex, ids, nil
