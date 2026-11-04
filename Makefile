@@ -513,6 +513,8 @@ app-sidecar: embed $(if $(filter windows,$(APP_GOOS)),,$(GARBLE))
 	if [ "$(APP_GOOS)" = windows ]; then \
 		ext=".exe"; build="go build"; \
 	else \
+		case " $${GOFLAGS:-} " in *" -x "*|*" -n "*) \
+			echo 'app-sidecar: -x and -n print the seed; unset them' >&2; exit 1 ;; esac; \
 		seed=$$(head -c 8 /dev/urandom | base64 | tr -d '=\n'); \
 		build="$(GARBLE) -seed=$$seed $(GARBLE_FLAGS) build"; \
 	fi; \
