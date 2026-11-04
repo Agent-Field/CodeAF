@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -43,8 +44,6 @@ func TestACollectionHeldBlankIsNeverTheConversationALaunchResumes(t *testing.T) 
 		{name: "only a held blank", held: true},
 		{name: "an unreadable store beside an older spoken conversation", spoken: true, unreadable: true},
 		{name: "only a blank with an unreadable store", unreadable: true},
-		{name: "an unreferenced blank beside an older spoken conversation", spoken: true},
-		{name: "only an unreferenced blank"},
 		{name: "a blank held by both a team and a collection", held: true, team: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -98,13 +97,8 @@ func TestACollectionHeldBlankIsNeverTheConversationALaunchResumes(t *testing.T) 
 			} else if len(spoken) != 0 {
 				t.Fatalf("a blank became a resume candidate: %+v", spoken)
 			}
-			kept := test.held || test.unreadable || test.team
-			if kept {
-				if len(empty) != 0 {
-					t.Fatalf("a kept blank was offered for reuse: %+v", empty)
-				}
-			} else if len(empty) != 1 || empty[0].dir != blank {
-				t.Fatalf("unreferenced blank candidates: %+v", empty)
+			if len(empty) != 0 {
+				t.Fatalf("a kept blank was offered for reuse: %+v", empty)
 			}
 			folder, resumed, found := v3PickFolder(spoken, empty, true)
 			if test.spoken {
@@ -117,59 +111,87 @@ func TestACollectionHeldBlankIsNeverTheConversationALaunchResumes(t *testing.T) 
 			want := ""
 			if test.spoken {
 				want = session.Place{Dir: conversation}.Transcript()
-			} else if !kept {
-				want = session.Place{Dir: blank}.Transcript()
 			}
 			if got := v3LatestTranscript(root); got != want {
 				t.Fatalf("host discovery found %q, want %q", got, want)
 			}
 			// Recheck a stale cleanup candidate as well as the scan's own pile.
 			v3ReapEmpty([]v3Folder{{dir: blank}}, "")
-			_, err := os.Stat(blank)
-			if kept && err != nil {
+			if _, err := os.Stat(blank); err != nil {
 				t.Fatalf("cleanup removed a kept blank: %v", err)
-			}
-			if !kept && !os.IsNotExist(err) {
-				t.Fatalf("cleanup kept an unreferenced blank: %v", err)
 			}
 		})
 	}
 }
 
 func TestABlankConversationCanBeReapedAfterItsLastCollectionReferenceIsRemoved(t *testing.T) {
-	_, bucket := collectionKeepEnvironment(t)
-	dir := writeV3Session(t, bucket, "reserved-agent", "", time.Time{})
-	store, err := workspace.Open(home.Join("v3", "collections.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	collection, err := store.Create(context.Background(), "Reserved")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ref := workspace.Ref{Kind: workspace.ConversationKind, ID: filepath.Base(dir)}
-	if err := store.Add(context.Background(), collection.ID, ref); err != nil {
-		t.Fatal(err)
-	}
-	spoken, empty := v3ScanBucket(bucket)
-	if len(spoken) != 0 || len(empty) != 0 || v3EmptySession(dir) {
-		t.Fatal("a held blank was offered for resume or cleanup")
-	}
-	if err := store.Remove(context.Background(), collection.ID, ref); err != nil {
-		t.Fatal(err)
-	}
-	spoken, empty = v3ScanBucket(bucket)
-	if len(spoken) != 0 || len(empty) != 1 || empty[0].dir != dir || !v3EmptySession(dir) {
-		t.Fatalf("a detached blank was still kept: spoken=%+v empty=%+v", spoken, empty)
-	}
-	folder, resumed, found := v3PickFolder(spoken, empty, false)
-	if !found || resumed || folder.dir != dir {
-		t.Fatalf("host discovery did not reuse the detached blank: %+v, resumed=%t found=%t", folder, resumed, found)
-	}
-	v3ReapEmpty(empty, "")
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("cleanup kept a detached blank: %v", err)
+	for _, withSpoken := range []bool{false, true} {
+		name := "only a detached blank"
+		if withSpoken {
+			name = "a detached blank beside an older spoken conversation"
+		}
+		t.Run(name, func(t *testing.T) {
+			root, bucket := collectionKeepEnvironment(t)
+			dir := writeV3Session(t, bucket, "reserved-agent", "", time.Time{})
+			older := time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC)
+			newer := older.Add(24 * time.Hour)
+			if err := os.Chtimes(dir, newer, newer); err != nil {
+				t.Fatal(err)
+			}
+			var conversation string
+			wantSpoken := 0
+			if withSpoken {
+				conversation = writeV3Session(t, bucket, "spoken-agent", "keep these notes", older)
+				wantSpoken = 1
+			}
+			store, err := workspace.Open(home.Join("v3", "collections.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			collection, err := store.Create(context.Background(), "Reserved")
+			if err != nil {
+				t.Fatal(err)
+			}
+			ref := workspace.Ref{Kind: workspace.ConversationKind, ID: filepath.Base(dir)}
+			if err := store.Add(context.Background(), collection.ID, ref); err != nil {
+				t.Fatal(err)
+			}
+			spoken, empty := v3ScanBucket(bucket)
+			if len(spoken) != wantSpoken || withSpoken && spoken[0].dir != conversation || len(empty) != 0 || v3EmptySession(dir) {
+				t.Fatalf("a held blank was offered for resume or cleanup: spoken=%+v empty=%+v", spoken, empty)
+			}
+			if err := store.Remove(context.Background(), collection.ID, ref); err != nil {
+				t.Fatal(err)
+			}
+			spoken, empty = v3ScanBucket(bucket)
+			if len(spoken) != wantSpoken || withSpoken && spoken[0].dir != conversation || len(empty) != 1 || empty[0].dir != dir || !v3EmptySession(dir) {
+				t.Fatalf("a detached blank was still kept: spoken=%+v empty=%+v", spoken, empty)
+			}
+			want := dir
+			if withSpoken {
+				want = conversation
+			}
+			folder, resumed, found := v3PickFolder(spoken, empty, false)
+			if !found || resumed != withSpoken || folder.dir != want {
+				t.Fatalf("host discovery picked %+v, resumed=%t found=%t", folder, resumed, found)
+			}
+			if got := v3LatestTranscript(root); got != (session.Place{Dir: want}).Transcript() {
+				t.Fatalf("host discovery found %q, want the transcript in %s", got, want)
+			}
+			folder, resumed, found = v3PickFolder(spoken, empty, true)
+			if withSpoken {
+				if !found || !resumed || folder.dir != conversation {
+					t.Fatalf("launch picked %+v, resumed=%t found=%t", folder, resumed, found)
+				}
+			} else if found || resumed {
+				t.Fatalf("launch did not ask for a fresh identity: %+v, resumed=%t found=%t", folder, resumed, found)
+			}
+			v3ReapEmpty(empty, "")
+			if _, err := os.Stat(dir); !os.IsNotExist(err) {
+				t.Fatalf("cleanup kept a detached blank: %v", err)
+			}
+		})
 	}
 }
 
@@ -460,6 +482,108 @@ func TestACollectionHeldBlankAgentIsLiveAfterRestart(t *testing.T) {
 			}
 			if opened != 0 {
 				t.Fatalf("resolving a missing member opened %d conversations", opened)
+			}
+		})
+	}
+}
+
+// STAB2-fix R4
+func TestACollectionReadNeverOpensAHeldBlankToResolveItsChildren(t *testing.T) {
+	for _, method := range []string{"collections.open", "collections.expand"} {
+		t.Run(method, func(t *testing.T) {
+			root, bucket := collectionKeepEnvironment(t)
+			const id = "reserved-agent"
+			dir := writeV3Session(t, bucket, id, "", time.Time{})
+			if err := session.SaveMeta(dir, session.Meta{ID: id, Workspace: root, Title: "Reserved notes",
+				Created: time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC),
+			}); err != nil {
+				t.Fatal(err)
+			}
+			transcript := session.Place{Dir: dir}.Transcript()
+			if err := teams.Update(config.ProfileDir(), func(f *teams.File) error {
+				crew := teams.NewID()
+				f.Teams = append(f.Teams, teams.Team{ID: crew, Name: "Notes", Made: time.Now()})
+				if err := f.AddMember(crew, teams.Member{Key: transcript, File: transcript, Where: root, Word: "notes", Handle: "notes"}); err != nil {
+					return err
+				}
+				return f.SetManager(crew, transcript)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			store, err := workspace.Open(home.Join("v3", "collections.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			collection, err := store.Create(context.Background(), "Reserved")
+			if err != nil {
+				t.Fatal(err)
+			}
+			refs := []workspace.Ref{
+				{Kind: workspace.ConversationKind, ID: id},
+				{Kind: workspace.TaskKind, ID: "1", SessionID: id},
+				{Kind: workspace.ProcessKind, ID: id + ":p1", SessionID: id},
+			}
+			// Reads visit newest members first, so resolve the conversation's
+			// fallback before either child asks for its owner.
+			if _, _, err := store.AddRefs(context.Background(), collection.ID, []workspace.Addition{
+				{Ref: refs[0], AddedAt: 3},
+				{Ref: refs[1], AddedAt: 2},
+				{Ref: refs[2], AddedAt: 1},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			var opened atomic.Int32
+			b := newFakeBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+				opened.Add(1)
+				return refuseAppOpen(ask)
+			})
+			t.Cleanup(func() {
+				_ = b.Close()
+				if got := opened.Load(); got != 0 {
+					t.Errorf("resolving collection members opened %d conversations", got)
+				}
+			})
+			b.profileDir = config.ProfileDir()
+			list, err := b.ListAgents("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, found := listsAgent(list, id); found {
+				t.Fatal("agents.list included a blank conversation")
+			}
+			if method == "collections.open" {
+				open, err := b.OpenCollection(collection.ID, 1, 500, "")
+				if err != nil || len(open.Members) != len(refs) {
+					t.Fatalf("collections.open: %+v, %v", open, err)
+				}
+				for i, member := range open.Members {
+					if member.Kind != string(refs[i].Kind) || member.ID != refs[i].ID || member.SessionID != refs[i].SessionID {
+						t.Fatalf("collections.open member %d: %+v", i, member)
+					}
+					state := appwire.TargetDeleted
+					if i == 0 {
+						state = appwire.TargetLive
+						if member.Target.Title != "Reserved notes" || !reflect.DeepEqual(member.Target.In, []string{"Notes"}) {
+							t.Fatalf("held blank conversation: %+v", member)
+						}
+					}
+					if member.Target.State != state {
+						t.Fatalf("collections.open member: %+v, want %s", member, state)
+					}
+				}
+			} else {
+				expanded, err := b.ExpandCollection(collection.ID, 3, 200)
+				if err != nil || expanded.Missing != 2 || expanded.Unavailable != 0 || len(expanded.Refs) != 1 {
+					t.Fatalf("collections.expand: %+v, %v", expanded, err)
+				}
+				live := expanded.Refs[0]
+				if live.Kind != appwire.RefConversation || live.ID != id || live.Target.State != appwire.TargetLive || live.Target.Title != "Reserved notes" || !reflect.DeepEqual(live.Target.In, []string{"Notes"}) {
+					t.Fatalf("collections.expand member: %+v", live)
+				}
 			}
 		})
 	}
