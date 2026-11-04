@@ -25,7 +25,9 @@ how it ended.
   one, with the error as detail.
 - **The outcome stays on the row.** `move_ended` says how a move that did not
   move the chat ended, so the app learns it even after it stopped waiting.
-- **Cancel.** `agents.take_cancel {cell}` cancels a running or queued move.
+- **Cancel.** `agents.take_cancel {cell}` cancels a running or queued move; a
+  lease it had acquired is handed back. A second `agents.take` of a chat
+  already moving answers `busy`.
 - **The record's size.** Publishers now fill the directory record's `size` with
   the bytes of the frames the plan names, which is what a computer without the
   chat copies.

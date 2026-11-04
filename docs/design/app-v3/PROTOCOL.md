@@ -1455,7 +1455,10 @@ so a client that stopped waiting always learns how the move ended. `line` is
 the person's sentence (also `agents.take`'s error message) and `detail` the
 error text for "Copy details". `agents.take_cancel {cell}` cancels a running or
 queued move of that chat and answers `cancelled:false` when there was none; the
-cancelled `agents.take` answers `engine` with the cancelled sentence.
+cancelled `agents.take` answers `engine` with the cancelled sentence. A lease
+the move had already acquired is handed back. A second `agents.take` of a chat
+already moving answers `busy` ("This chat is already moving to this
+computer."); the first keeps its Cancel and its outcome.
 
 `sharing:{pending, sent, total}` is on a row whose holder (another computer)
 has `pending` sealed turns it has not finished sharing; a move now would copy
