@@ -47,6 +47,10 @@ type Batcher struct {
 	OnLost  func()
 	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
 	Now     func() time.Time // default time.Now; tests inject a fake clock
+	// BeforeResolve settles finished calls before displacement chooses the head
+	// to keep. A failed save must leave resolution pending rather than branch
+	// an older head and announce that all work was kept.
+	BeforeResolve func(context.Context) error
 	// OnRenewalChange wakes local readers when renewal health or ownership changes.
 	OnRenewalChange func()
 	// Liveness, when set, is a watch socket that can vouch for the lease, so
@@ -594,6 +598,11 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 // resolve turns the orphaned turns into a branch, or, when there are none,
 // just tells the caller the chat is now a viewer. The caller holds flushMu.
 func (b *Batcher) resolve(ctx context.Context) error {
+	if b.BeforeResolve != nil {
+		if err := b.BeforeResolve(ctx); err != nil {
+			return err
+		}
+	}
 	head, n := b.newest()
 	by := b.holder(ctx)
 	if local, ok := b.Publisher.Engine.(interface {

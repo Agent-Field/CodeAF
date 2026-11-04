@@ -382,12 +382,15 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 			Dir: s.Dir, Publisher: pub, Map: branches,
 			NewID: func() (string, error) { return cell.NewID(time.Now()) },
 		},
-		Driving:         &drv,
-		Interval:        s.Interval,
-		Info:            d.info,
-		OnFlush:         d.flushed(),
-		OnSuperseded:    d.becomeViewer,
-		OnLost:          d.loseHold,
+		Driving:      &drv,
+		Interval:     s.Interval,
+		Info:         d.info,
+		OnFlush:      d.flushed(),
+		OnSuperseded: d.becomeViewer,
+		OnLost:       d.loseHold,
+		BeforeResolve: func(ctx context.Context) error {
+			return cellstore.Captured(ctx, c)
+		},
 		OnError:         d.refusal,
 		Sleep:           d.opt.Sleep,
 		Liveness:        s.Liveness(),
@@ -597,7 +600,7 @@ func (d *Drive) HoldsLease(ctx context.Context) bool {
 // heartbeat or directory change has reached this process since the move.
 func (d *Drive) CheckLease(ctx context.Context) error {
 	held := d.sendLeaseSnapshot()
-	if err := cellstore.Captured(ctx, d.cell); err != nil {
+	if err := cellstore.WaitCapture(ctx, d.cell); err != nil {
 		return err
 	}
 	if d.batcher == nil {
@@ -628,7 +631,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 
 // retireForAnotherHolder retires this writer's hold when CheckLease finds
 // another computer holding the chat. It retires the hold at once so no new
-// seal starts, waits for any seal already past Gate, and lets the batcher keep
+// tool starts, waits for any seal already past Gate, and lets the batcher keep
 // unsent turns as a branch before the window names the new holder (#2091).
 // The send receipt goes before the
 // batcher marks itself stale, because that mark already wakes renewal readers
@@ -746,7 +749,13 @@ func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo
 	d := s.drive
 	d.sealMu.Lock()
 	defer d.sealMu.Unlock()
-	if d.Gate() != nil {
+	d.mu.Lock()
+	stopped := d.stopped
+	d.mu.Unlock()
+	// Finished calls still belong to this computer's work after its hold is
+	// lost. Seal them locally so displacement can keep them in the branch;
+	// the gate continues to refuse new tools and bookkeeping-only saves.
+	if stopped || d.Gate() != nil && len(info.Calls) == 0 {
 		return cellstore.Sealed{}, cellstore.ErrReadOnly
 	}
 	if d.sync.isRemoved() {
