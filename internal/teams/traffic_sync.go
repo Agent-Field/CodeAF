@@ -20,7 +20,7 @@ const (
 	TrafficSyncBytes       = 16 << 10
 	TrafficSyncTextBytes   = 2 << 10
 	TrafficSyncDeviceBytes = 64 << 10
-	TrafficSyncEvery       = 30 * time.Second
+	TrafficSyncEvery       = 2 * time.Minute
 )
 
 // TrafficForSync reads this computer's bounded tail across rotation. Received
@@ -188,10 +188,13 @@ func sortHistory(lines []Entry) {
 
 // ReadHistory merges a local tail with the display mirror. Delivery always
 // uses ReadTraffic instead; a mirror id is never a delivery position.
-func ReadHistory(profile, team string, limit int) ([]Entry, error) {
+func ReadHistory(profile, team string, limit int, sharing bool) ([]Entry, error) {
 	local, err := ReadTraffic(profile, team, "", limit)
 	if err != nil {
 		return nil, err
+	}
+	if !sharing {
+		return local, nil
 	}
 	remote, err := readTrafficFile(TrafficMirrorPath(profile, team))
 	if err != nil {

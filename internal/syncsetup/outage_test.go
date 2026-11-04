@@ -31,7 +31,7 @@ func TestRelayOutageO1O2OwnExpiredLeaseWithUnpublishedHead(t *testing.T) {
 	waitFor(t, "O2 unpublished descendant to reach the relay", func() bool { return r.directoryHead(r.cell.ID) == latest.Turn.ID })
 	v, err := r.a.Dir.Cell(t.Context(), r.cell.ID)
 	mustNil(t, err)
-	if v.Cell.Lease.Device != r.a.Device.ID() || v.Cell.Lease.Fence != created.Cell.Lease.Fence || v.Cell.Lease.Expires <= v.Now {
-		t.Fatalf("O2 recovery did not renew the unchanged own hold: %+v", v)
+	if v.Cell.Lease.Device != r.a.Device.ID() || v.Cell.Lease.Fence != created.Cell.Lease.Fence+1 || v.Cell.Lease.Expires <= v.Now {
+		t.Fatalf("O2 recovery did not acquire a fresh hold: %+v", v)
 	}
 }

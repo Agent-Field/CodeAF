@@ -197,11 +197,10 @@ func (r *pairRig) joinWith(t *testing.T, code string, replace bool) (*pairScreen
 // L4-M12b: code approval uses the same completion sentence as link approval.
 func TestM1M8PairBothDoorsOnATerminal(t *testing.T) {
 	rig := newPairRig(t)
-	if _, err := identity.EnsureSolo(rig.homeB); err != nil {
-		t.Fatal(err)
-	}
-	chat := filepath.Join(rig.homeB, "own-chat")
-	if err := os.WriteFile(chat, []byte("first question\nfirst answer\n"), 0600); err != nil {
+	// Dev permits startup preferences, but refuses submitted chats and unknown files.
+	kept := filepath.Join(rig.homeB, "config.json")
+	const preferences = `{"model.talk":"fixture/saved"}`
+	if err := os.WriteFile(kept, []byte(preferences), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,14 +230,14 @@ func TestM1M8PairBothDoorsOnATerminal(t *testing.T) {
 	}
 
 	wanted := pair.WaitingChatsLine(asked[1])
-	if got, want := joiner.String(), wanted+"\n"+pair.PairedWithLine("laptop-a")+"\n"+terminalSharingLine+"\n"; got != want {
-		t.Fatalf("the joining terminal printed:\n%s\nwant:\n%s", got, want)
+	if got := joiner.String(); got != wanted+"\n"+"Paired with laptop-a. Run codeaf to open your chats."+"\n" {
+		t.Fatalf("the joining terminal printed:\n%s\nwant:\n%s\n%s", got, wanted, "Paired with laptop-a. Run codeaf to open your chats.")
 	}
 	if !strings.HasSuffix(shown.out.String(), pair.PairedChatsLine("laptop")+"\n") {
 		t.Fatalf("the sharing terminal did not end on the paired line:\n%s", shown.out.String())
 	}
-	if got, err := os.ReadFile(chat); err != nil || string(got) != "first question\nfirst answer\n" {
-		t.Fatalf("M1 terminal history: %q, %v", got, err)
+	if got, err := os.ReadFile(kept); err != nil || string(got) != preferences {
+		t.Fatalf("startup preferences changed: %q, %v", got, err)
 	}
 	first, _ := identity.Load(rig.homeA)
 	second, err := identity.Load(rig.homeB)

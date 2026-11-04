@@ -245,42 +245,27 @@ func TestDisplacingReadingKeepsTheConcurrentlyReacquiredReceipt(t *testing.T) {
 	}
 }
 
-// A released fence can still heartbeat as its unchanged owner, so availability
-// must retain its receipt until the same fence resumes.
-func TestReleasedSameFenceKeepsTheReceiptItCanResume(t *testing.T) {
+// A released fence retires its receipt and cannot regain work permission by heartbeat.
+func TestReleasedSameFenceRetiresReceiptUntilContinuation(t *testing.T) {
 	d := sameComputerDrive(t)
 	held := d.recordedFence
-	assertReceipt := func() {
-		t.Helper()
-		remote, fence, err := d.sync.SendLease(d.cell.ID)
-		if err != nil || remote != d.directoryID || fence != held {
-			t.Fatalf("released same-fence receipt = %q, %d, %v; want %q, %d, nil", remote, fence, err, d.directoryID, held)
-		}
-	}
 	mustNil(t, d.sync.Dir.Release(t.Context(), d.directoryID, held))
 	mustNil(t, d.CheckLease(t.Context()))
-	assertReceipt()
-	d.becomeViewer(cellsync.Superseded{})
-	assertReceipt()
-	if err := d.Gate(); err == nil {
-		t.Fatal("released drive admits work before its heartbeat")
+	if _, _, err := d.sync.SendLease(d.cell.ID); !os.IsNotExist(err) {
+		t.Fatalf("released receipt survived: %v", err)
 	}
-	if _, _, held := d.RenewalStatus(); held {
-		t.Fatal("released drive reports a held lease before its heartbeat")
+	if d.Gate() == nil {
+		t.Fatal("released drive admits work")
 	}
-	renewed, err := d.sync.Dir.Heartbeat(t.Context(), d.directoryID, directory.Beat{Fence: held})
+	_, err := d.sync.Dir.Heartbeat(t.Context(), d.directoryID, directory.Beat{Fence: held})
 	mustNil(t, err)
-	if renewed.Cell.Lease.Fence != held || renewed.Cell.Lease.Expires <= renewed.Now {
-		t.Fatalf("same-fence heartbeat = %+v at %d; want live fence %d", renewed.Cell.Lease, renewed.Now, held)
-	}
 	mustNil(t, d.CheckLease(t.Context()))
-	if err := d.Gate(); err != nil {
-		t.Fatalf("same-fence heartbeat did not reopen the work gate: %v", err)
+	if d.Gate() == nil {
+		t.Fatal("heartbeat revived retired work permission")
 	}
-	if _, _, held := d.RenewalStatus(); !held {
-		t.Fatal("resumed same-fence drive does not report its held lease")
+	if confirmed, err := d.ConfirmWork(t.Context()); err != nil || confirmed {
+		t.Fatalf("retired admission = %v, %v", confirmed, err)
 	}
-	assertReceipt()
 }
 
 // Receipt lock contention must close the work gate immediately while delaying
@@ -462,15 +447,14 @@ func TestDisplacedReceiptRetiresWhenTheReplacementIsFree(t *testing.T) {
 }
 
 // A lapse that may still renew the same fence keeps the receipt, so the window
-// that resumes can send without being asked to continue its own chat.
-func TestAvailableAfterALapseKeepsTheReceiptItMayResume(t *testing.T) {
+// cannot send until continuation acquires a new hold.
+func TestAvailableAfterALapseRetiresTheReceipt(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	d := sameComputerDrive(t, func() time.Time { return now })
 	assertReceipt := func() {
 		t.Helper()
-		remote, fence, err := d.sync.SendLease(d.cell.ID)
-		if err != nil || remote != d.directoryID || fence != d.recordedFence {
-			t.Fatalf("resumable receipt = %q, %d, %v; want %q, %d, nil", remote, fence, err, d.directoryID, d.recordedFence)
+		if _, _, err := d.sync.SendLease(d.cell.ID); !os.IsNotExist(err) {
+			t.Fatalf("lapsed receipt survived: %v", err)
 		}
 	}
 	renewals, viewers := 0, 0
@@ -506,15 +490,6 @@ func TestAvailableAfterALapseKeepsTheReceiptItMayResume(t *testing.T) {
 	d.available()
 	if renewals != 1 || viewers != 1 || len(d.ownership) != 0 {
 		t.Fatalf("repeated lapse notifications = %d renewal, %d viewer, %d ownership; want 1, 1, 0", renewals, viewers, len(d.ownership))
-	}
-	d.resumeViewer()
-	mustNil(t, d.recordSendLease())
-	assertReceipt()
-	if _, _, held := d.RenewalStatus(); !held {
-		t.Fatal("resumed drive does not report its held lease")
-	}
-	if err := d.Gate(); err != nil {
-		t.Fatalf("resumed drive refuses work: %v", err)
 	}
 }
 
@@ -617,7 +592,7 @@ func sameComputerDriveWithDirectory(t *testing.T, clock ...func() time.Time) (*D
 	created, err := s.Dir.Create(t.Context(), c.ID, directory.CellInit{})
 	mustNil(t, err)
 	d := &Drive{sync: s, cell: c, directoryID: c.ID, ownership: make(chan struct{}, 1),
-		batcher: &cellsync.Batcher{Driving: &cellsync.Driving{Cell: c, Fence: created.Cell.Lease.Fence}}}
+		batcher: &cellsync.Batcher{Publisher: &cellsync.Publisher{Dir: s.Dir}, Driving: &cellsync.Driving{Cell: c, Fence: created.Cell.Lease.Fence}}}
 	mustNil(t, d.recordSendLease())
 	return d, memory
 }

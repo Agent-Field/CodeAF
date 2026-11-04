@@ -106,3 +106,13 @@ func TestR16DeviceStampCannotUndoRevocationOrTrustClientTimes(t *testing.T) {
 		t.Fatalf("self revoke: %v", err)
 	}
 }
+
+// A saved-head match cannot authorize a take after ownership changed.
+func TestConditionalAcquireRejectsNewerFenceWithSameHead(t *testing.T) {
+	c := Cell{Head: "saved", Lease: Lease{Device: "a", Fence: 8, Expires: 100}}
+	seen := &LeaseExpectation{Device: "a", Fence: 7, Head: "saved"}
+	got, err := Acquire(c, "b", 101, true, seen)
+	if err != ErrLeaseHeld || !reflect.DeepEqual(got, c) {
+		t.Fatalf("stale take = %+v, %v", got, err)
+	}
+}

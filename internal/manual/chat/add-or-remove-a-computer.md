@@ -6,12 +6,11 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. The original files stay untouched and remain usable in older codeaf builds.
 
-Pairing a computer that has never shared keeps and shares its existing chats,
-full history, saved keys, memory and preferences. It asks no replacement question.
-The chat list updates as background sharing finishes. Each computer's own chats
-stay here; Continue here moves a chat from the other one. Reopen codeaf after an
-interruption to finish pairing and retry sharing. A used computer already
-sharing another set refuses and changes nothing.
+A computer with submitted chats and its own pairing keys refuses ordinary
+pairing without changing its chats. Use `--replace` to join the other set after
+confirming: existing chats stay here but stop syncing, shared memories and
+settings clear, and local provider keys stay here. A startup-only computer can
+pair directly.
 
 Your chats and your work can follow you to a second device. You add it in two steps. There is no account to make and no form to fill.
 
@@ -239,7 +238,11 @@ this device was removed by another of your devices, so this chat stays here only
 
 ## Can a removed computer rejoin — /devices, pairing again and retained local chats
 
-`/devices` on a removed computer says the same line in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair --replace to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair --replace` here, then approve the link it shows from a device that is still in (the steps above); plain `codeaf pair` does not bring a removed device back. The desktop app's Pair a computer does this on its own. Rejoining keeps the same identity, so only the device key is replaced: existing chats stay here and sync again, and shared memories and settings are not cleared. Approve the new link from a computer still in your devices. The exception for a fresh computer does not apply here: a computer that has only opened codeaf, even with a provider connected, and whose chats contain only startup headers needs no `--replace` when it joins your devices for the first time, but a removed computer already holds your identity, so it always needs `--replace`; saved knowledge, automations, tracked work and unknown local files require the explicit replacement road in either case. An active, already-paired computer is refused with the names of its other devices; `codeaf devices` lists them.
+`/devices` on a removed computer says the removal notice in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair --replace to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. Removal is shown in an open window and after restarting. Your local chats stay usable while this computer is removed.
+
+In the desktop app, choose Pair a computer and enter a current device's code or ask to join by link. After approval from a device still in your devices, this computer keeps the same identity, its local chats, shared memories and settings, and receives a fresh device key. Its chats can sync again. No replacement confirmation is needed. A computer that was never removed reports that nothing changed.
+
+The terminal command still requires `codeaf pair --replace` on a removed computer. This is explicit replacement, even with the same identity: existing chats are moved aside and stop syncing, shared memories and settings are cleared, and locally saved provider keys remain. Approve the link from a device still in your devices. An active, already-paired computer is refused with the names of its other devices; `codeaf devices` lists them.
 
 ## Pair again in the chat — replace confirmation keeps local chats
 

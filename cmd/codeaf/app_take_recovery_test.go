@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -21,7 +23,7 @@ import (
 )
 
 // S5 uses L4's post-acquisition permission failure with a real open source
-// conversation, then submits through the source app's ordinary send door.
+// conversation. Dev requires fresh consent before that source may send again.
 func TestAppTakeInstallFailureS5(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("L4 injection needs ordinary file permissions")
@@ -120,15 +122,35 @@ func TestAppTakeInstallFailureS5(t *testing.T) {
 		t.Fatalf("S5 failed taker row: %+v", rows)
 	}
 	t.Setenv(home.EnvVar, dirA)
-	if err = drive.started().CheckLease(t.Context()); err != nil {
-		t.Fatal(err)
-	}
 	var view appwire.Agent
-	source.locked(func() { view = source.agents[agent.ID].view })
+	appSyncWait(t, "released take is available without restoring work", func() bool {
+		if err := drive.started().CheckLease(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		source.locked(func() { view = source.agents[agent.ID].view })
+		return view.Location != nil && view.Location.Line == chatlist.Available
+	})
 	if view.Location != nil && strings.Contains(view.Location.Line, "continued") {
 		t.Fatalf("S5 released chat claims a continuation: %+v", view.Location)
 	}
-	turn, err := source.Send(agent.ID, "continue after the failed move", "s5-recover")
+	// A failed destination install releases the hold, not consent for this stale window.
+	if _, err := source.Send(agent.ID, "without fresh consent", "s5-refused"); err == nil {
+		t.Fatal("S5 stale source send was admitted without a new hold")
+	} else {
+		var failure *appwire.Error
+		if !errors.As(err, &failure) || failure.Code != appwire.CodeConflict {
+			t.Fatalf("S5 stale source refusal: %v", err)
+		}
+	}
+	current, err := source.ListChats()
+	if err != nil || len(current.Chats) != 1 || !current.Chats[0].CanTake {
+		t.Fatalf("S5 source continuation: %+v, %v", current, err)
+	}
+	resumed, err := source.TakeAgent(appwire.TakeParams{Cell: c.ID, Seen: current.Chats[0].Seen})
+	if err != nil {
+		t.Fatalf("S5 explicit source continuation: %v", err)
+	}
+	turn, err := source.Send(resumed.ID, "continue after the failed move", "s5-recover")
 	if err != nil {
 		t.Fatalf("S5 source send: %v", err)
 	}

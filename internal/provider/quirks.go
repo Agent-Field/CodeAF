@@ -66,8 +66,6 @@ type quirksStore struct {
 	// fields. It is per model because one incompatible endpoint must not erase
 	// continuity for every reasoning model routed through this process.
 	noReasoningReplay map[string]time.Time
-	// noReasoning is process-local evidence that the model accepts no knob.
-	noReasoning map[string]time.Time
 	// answerCut is the sixth learned fact and the only one that is a NUMBER
 	// rather than a date: how many completion tokens a model spent before its
 	// structured answer was cut off, keyed by model and by the lane that asked.
@@ -101,7 +99,6 @@ type quirksStore struct {
 }
 
 var quirks = &quirksStore{
-	noReasoning:       map[string]time.Time{},
 	mandatory:         map[string]time.Time{},
 	disableIgnored:    map[string]time.Time{},
 	noCacheControl:    map[string]time.Time{},
@@ -615,7 +612,6 @@ func (q *quirksStore) forget() {
 	q.noCacheControl = map[string]time.Time{}
 	q.noReasoningBudget = map[string]time.Time{}
 	q.noReasoningReplay = map[string]time.Time{}
-	q.noReasoning = map[string]time.Time{}
 	q.answerCut = map[string]int{}
 	q.servedWindow = map[string]int{}
 	q.contextLimits = map[string]ContextLimit{}
