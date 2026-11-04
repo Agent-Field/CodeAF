@@ -3801,11 +3801,7 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 	a.toolsStarted.Add(1)
 	a.toolsInFlight.Add(1)
 	defer a.toolsInFlight.Add(-1)
-	// Recheck recorded spending when work starts after an idle ledger wake.
-	select {
-	case a.budgetWorkStarted <- struct{}{}:
-	default:
-	}
+	a.wakeBudgetForWork()
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on

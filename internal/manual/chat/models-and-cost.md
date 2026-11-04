@@ -4400,8 +4400,9 @@ the limit. Task crews and their helpers use the same recorded-spend check
 before their next call. Other conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. When a recorded
 charge reaches the daily limit, running owned work
-in this engine is cancelled. Starting a tool also checks recorded spending, so
-a charge recorded between a call ending and its tool starting still stops work.
+in this engine is cancelled. Starting a tool or rerunning a command also checks
+recorded spending, so a charge recorded while the conversation was idle still
+stops a rerun without waiting for another charge.
 The chat and work report the limit; raise it with `/budget day 30`, then submit
 again. Only recorded spending closes the cap; usage on an open stream and
 pending receipts do not count until recorded. A stream can continue spending

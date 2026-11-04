@@ -777,3 +777,54 @@ func TestResumeReopensCapWhileReceiptPending(t *testing.T) {
 	}
 	t.Logf("settled receipt: %s; recovery bound=%g seconds", said, provider.ReceiptWait.Seconds())
 }
+
+func TestDailyCrossingStopsRerunAfterIdleWake(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Place = Place{Dir: t.TempDir()}
+		c.SessionFile = c.Place.Transcript()
+		c.DailyBudgetResolved = true
+		c.DailyBudgetUSD = .24
+	})
+	id := startJob(t, a, "if test -e review5-marker; then sleep 30; else touch review5-marker; fi")
+	waitFor(t, "original command exits", func() bool { return !a.jobs.find(id).running() })
+	facts, err := a.ProcessActions(context.Background(), id, a.jobs.find(id).info().started.UnixMilli())
+	if err != nil || !facts.Rerun.Available {
+		t.Fatalf("fixture rerun unavailable: %+v err=%v", facts.Rerun, err)
+	}
+	RecordUsage(a.config.usageLedger, UsageLine{Model: "fixture", Calls: 1, USD: .25})
+	if !StopUsageWriter(a.config.usageLedger) {
+		t.Fatal("ledger flush failed")
+	}
+	spent, err := DailySpendUSD(a.config.usageLedger, time.Now())
+	if err != nil || spent != .25 {
+		t.Fatalf("recorded spend=%g err=%v", spent, err)
+	}
+	time.Sleep(250 * time.Millisecond)
+	a.mu.Lock()
+	stopped := a.workStopped
+	a.mu.Unlock()
+	if stopped {
+		t.Fatal("fixture: idle chat stopped before rerun")
+	}
+	original := a.jobs.find(id).info()
+	rerun, err := a.RerunProcessAt(context.Background(), id, original.started.UnixMilli())
+	if err != nil {
+		t.Logf("rerun refused: %v", err)
+		return
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && a.jobs.find(rerun.ID).running() {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if a.jobs.find(rerun.ID).running() {
+		t.Error("rerun still running after 2s at recorded daily cap with no further ledger write")
+	}
+	RecordUsage(a.config.usageLedger, UsageLine{Model: "later wake", Calls: 1, USD: .001})
+	if !StopUsageWriter(a.config.usageLedger) {
+		t.Fatal("second ledger flush failed")
+	}
+	waitFor(t, "later ledger wake stops rerun", func() bool { return !a.jobs.find(rerun.ID).running() })
+	t.Log("later ledger write stopped rerun")
+}

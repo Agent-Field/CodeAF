@@ -4,13 +4,14 @@ title: Stop running work when recorded spending reaches its cap
 pr: 2364
 surface: [chat, engine, app, factory, docs]
 invalidates:
-  - "A recorded daily crossing could be discarded between a completed call and its tool starting, leaving the tool running until another ledger write. Tool starts now wake a fresh recorded-spend check."
+  - "A recorded daily crossing could be discarded between a completed call and its tool starting, leaving the tool running until another ledger write. Tool starts and command reruns now wake a fresh recorded-spend check."
   - "Unsettled stream usage and pending receipts do not close admission. Only recorded spending counts toward the cap."
 ---
 
 Daily caps stop active provider calls, tools, detached summaries and owned crews
-through the existing epoch-checked StopWork route. Ledger writes and tool starts
-wake checks; the 100 ms job-budget clock does not read the daily ledger. Idle
+through the existing epoch-checked StopWork route. Ledger writes, tool starts
+and command reruns wake checks; the 100 ms job-budget clock does not read the
+daily ledger. Idle
 conversations remain idle, and turns waiting for their first provider admission
 report a refusal through their event stream without latching stopped. Running
 children follow their owner's selected daily authority. Raising the named cap

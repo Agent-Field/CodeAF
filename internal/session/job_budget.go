@@ -31,6 +31,14 @@ func (a *Agent) jobBudgetBlock() error {
 	return nil
 }
 
+// wakeBudgetForWork rechecks recorded spending after an idle ledger wake.
+func (a *Agent) wakeBudgetForWork() {
+	select {
+	case a.budgetWorkStarted <- struct{}{}:
+	default:
+	}
+}
+
 // Idle managers can still own detached commands or delegated work. Keep watching
 // until the agent closes, not just until its foreground turn ends. No model call
 // is involved. StopWork closes admission before cancelling the complete family.
