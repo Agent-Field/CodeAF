@@ -83,7 +83,7 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		case "pr":
 			action.Draft = strings.EqualFold(strings.TrimSpace(rest), "draft")
 			action.Branch = branchFor(it)
-			action.Body = factory.PublicText(proofList(it, job.Prior) + "\n\nby codeaf factory")
+			action.Body = factory.PublicText(proofList(it, job.Prior) + "\n" + factory.SkippedValidation(it) + "\nby codeaf factory")
 		case "close":
 		default:
 			return factory.StageResult{}, fmt.Errorf("a post stage says comment, label, pr or close")
@@ -112,7 +112,13 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		// without the job's recorded approval, and a comment or a pull
 		// request carries its trailer as the body's last line.
 		if o.Record != nil {
-			trailer, err := o.Record.Trailer(ctx, it.ID)
+			trailer := ""
+			var err error
+			if factory.PublishedAnyway(it) && ValidTrailer(it.PublishAnyway.Words) && TrailerCommit(it.PublishAnyway.Words) == it.HeadCommit && TrailerHandle(it.PublishAnyway.Words) == it.PublishAnyway.DecidedBy {
+				trailer = it.PublishAnyway.Words
+			} else {
+				trailer, err = o.Record.Trailer(ctx, it.ID)
+			}
 			if err != nil {
 				return factory.StageResult{}, err
 			}

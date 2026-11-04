@@ -817,6 +817,16 @@ commands retain their obligation. Holds name every owed check on one line; three
 unchanged refusals or six total refusals stop recovery with an incomplete result.
 The agent should reuse valid passes and rerun only unresolved scope.
 
+## Owed commands from another machine — absolute executable paths
+
+Owed literal checks name known tools through PATH, such as `go test ./...`,
+rather than retaining another machine's installation path. A measured rerun
+with that name can resolve a saved absolute invocation with the same scope.
+Raw receipts retain the original argv. Unknown tools or shell text that cannot
+be safely simplified keep their command and name any executable path missing
+on this machine. An unmeasured absolute invocation remains an obligation;
+changing its displayed command does not turn it into a pass.
+
 ## An already-fixed published PR does not need another commit
 
 A Follow PR recheck can find that the current published head already addresses
