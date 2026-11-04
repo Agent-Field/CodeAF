@@ -171,6 +171,9 @@ func JobState(it Item) string {
 	if it.DoneHow != "" || it.State == StateDismissed {
 		return "done"
 	}
+	if StoppedByPerson(it) {
+		return "needs_you"
+	}
 	if it.FollowUp != nil && it.FollowUp.State == "needs_you" && it.PullRequest != nil && it.PullRequest.State == PROpen {
 		return "needs_you"
 	}
@@ -240,7 +243,7 @@ func RefuseDropped(it Item) error {
 // RunEnded says the job's last run is over and says why, a step's failure or
 // a person's stop, and nothing has started it again. Such a job has nothing
 // to stop: it waits for a person to start it, run it again or drop it.
-func RunEnded(it Item) bool { return it.State == StateNew && it.Failure != nil }
+func RunEnded(it Item) bool { return StoppedByPerson(it) || it.State == StateNew && it.Failure != nil }
 
 func JobDoneHow(it Item) string {
 	if it.DoneHow != "" {
@@ -330,6 +333,9 @@ func JobApprovalSummary(it Item) *Approval {
 }
 
 func JobApproval(it Item) *Approval {
+	if StoppedByPerson(it) {
+		return nil
+	}
 
 	kind := ""
 	switch JobReason(it) {

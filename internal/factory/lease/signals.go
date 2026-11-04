@@ -114,8 +114,12 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 		}
 		var kept []Signal
 		holdSent := false
+		stopped := factory.StoppedByPerson(it)
 		for _, s := range doc.Signals[held.Job] {
 			if received(s.Delivery) {
+				continue
+			}
+			if stopped && s.Verb == SignalHold {
 				continue
 			}
 			if reliable && !publishing && s.Verb == SignalHold && !run.StoredPaused(it) {
@@ -143,7 +147,7 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 		}
 		// Hold is desired state, not a one-shot notification. Reuse the existing
 		// signal vocabulary so older workers also retry a lost heartbeat reply.
-		if !reliable && !publishing && !holdSent && run.StoredPaused(it) {
+		if !stopped && !reliable && !publishing && !holdSent && run.StoredPaused(it) {
 			out = append(out, Signal{Verb: SignalHold, Yes: true})
 		}
 		if len(out) == 0 && len(doc.Signals[held.Job]) == len(kept) {

@@ -494,11 +494,11 @@ no running slot.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
-**Stop** ends a running, queued or waiting job at once. When it cut a step that was running or waiting, the job says so and waits for you: `Step stopped`, `Stopped by you`. That step reads failed with the same words, so no step reads running, and what the run spent stays on the job. A job stopped before any step began, or after its last step ended, lost nothing: it simply goes back to Backlog with no mark, ready to start. Either way the job's log says `stopped · branch kept`. A no to a step that ran out of rounds, to the budget, or to an approve step with nothing before it is the same stop. A job whose run already ended on a failure or a stop has nothing to stop and refuses with `#12 is not running`.
+**Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Resume only continues a paused job; after Stop it refuses with `is not paused`. Carry on reruns the stopped step. Reading the chat does not start work; you can still ask the manager questions without starting the job. Stop also withdraws proof awaiting sign-off and draft-PR maintenance. An already stopped or closed job refuses with `#12 is not running`.
 
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
-**Run again** starts a job that says `Step stopped` over, taking the stop mark off; a job stopped with no mark has **Start** instead. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the new run's cost starts again from nothing; the job's lifetime spending stays, and its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
+**Run again** starts a stopped job over, taking the stop mark off. **Start** also starts it again. It begins a new run at the first step. What the stopped run's steps reported is not carried over, and the new run's cost starts again from nothing; the job's lifetime spending stays, and its budget stays what it was. What is kept is the job's worktree and branch on the runner that ran it: the new run works in that same folder, on that branch, with every commit and every unsaved edit the stopped run left there. A different runner that picks the job up makes a fresh branch from the repository's default branch, because a job's branch leaves its machine only when the pull request is opened. Your notes on the job are kept, and every step's brief still carries them.
 
 A job owned by this factory has one manager, however many asks race to open it. A remote job running here may still get separate managers from its Talk door and its runner; those opens are not deduplicated. Every conversation owned by a job, including an extra manager left by an earlier build, spends from that job’s budget. Its model calls appear on the job and count toward its cap, wherever its working folder is. Reopening a conversation does not charge its saved calls again.
 
@@ -516,8 +516,13 @@ and tells you it was not closed; review it on GitHub. Nothing is closed automati
 Run again is available immediately after Stop. An old publisher can still report
 an already opened PR, but that receipt does not change the new run's state.
 
-Workers confirm Stop immediately before executing each push and sending the PR
-request. A transient confirmation error gets up to three attempts within two
+Workers confirm Stop immediately before pushes, PR requests, merges, proof
+comments, repair descriptions and post-step writes. A revoked worker lease
+refuses the next paid step. A temporary Stop-after-step read failure keeps the
+stored choice. Stop also cancels the job manager’s background commands; a
+manager’s answer to your chat can still finish. A stopped manager shows the
+current Stop reason before its answer, so the status does not depend on the
+model’s wording. A transient confirmation error gets up to three attempts within two
 seconds. If confirmation still fails, publication fails with "could not confirm
 Stop"; press **Approve** again to retry. An older factory that answers 404 has no
 publish-check endpoint: publication uses its earlier behavior, without a fresh
@@ -768,10 +773,14 @@ A new request makes an earlier Brief out of date.
 The job's Brief refreshes when proof waits for your publication approval and
 after publication opens or updates a pull request or posts a comment. It also
 refreshes when the job ships, its PR merges or closes without merge, or the run
-stops or fails. A publication failure refreshes it too. Updates within 10 seconds
+fails. A publication failure refreshes it too. Updates within 10 seconds
 are taken as one. An approval or end update waits if an earlier Brief is still
-being written. Stopping a queued job or declining to continue at the start gate refreshes it
-too, even before a step has run. Auto skips the intermediate proof update when approval can
+being written. Stop settles the Brief without a model call, including for queued
+jobs and jobs stopped at the start gate. Its status stays `failed` for older
+desks, and `failure_kind: "stopped"` identifies a person's Stop separately from a
+failed refresh. Only a person's Stop sets this field. The reason is
+`the person stopped this job; this job is stopped; a person presses Start to run it`.
+The last paid Brief stays visible; no paid refresh runs until a person starts the job. Auto skips the intermediate proof update when approval can
 proceed automatically; an exception that waits on you still gets an update.
 
 These approval and end updates bypass the ordinary brief cost guard, and their

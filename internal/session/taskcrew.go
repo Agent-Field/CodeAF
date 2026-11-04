@@ -918,11 +918,14 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 // is routed to, and the person's turn, whose model is theirs. send is the id
 // the client was built for and wire how it is spelled on the wire.
 func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
-	if c.RouteCrew == nil {
-		return nil
-	}
 	dir := c.ProfileDir
 	return func(ctx context.Context, model, tag string) error {
+		if err := factoryCallRefusal(ctx); err != nil {
+			return err
+		}
+		if c.RouteCrew == nil {
+			return nil
+		}
 		if isCrewSeatCall(ctx) || tag == string(purposeTurn) {
 			return nil
 		}

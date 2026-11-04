@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,9 +15,10 @@ import (
 )
 
 func TestReadinessSourceRevalidatesEverythingAndConfirmsTheMutation(t *testing.T) {
-	for _, mode := range []string{"ok", "review required", "feedback addressed", "body moved", "comment arrived", "head moved", "checks pending", "already ready", "uncertain", "wrong check app", "auto uncertain", "auto transient", "auto denied", "auto exhausted", "auto head moved", "auto body moved"} {
+	for _, mode := range []string{"ok", "review required", "feedback addressed", "body moved", "comment arrived", "head moved", "checks pending", "already ready", "uncertain", "wrong check app", "auto uncertain", "auto transient", "auto denied", "auto exhausted", "auto head moved", "auto body moved", "auto stopped during read", "auto stopped during retry"} {
 		t.Run(mode, func(t *testing.T) {
 			policyPinned := false
+			armed, stopped := false, false
 			draft := true
 			head := strings.Repeat("a", 40)
 			body := "Verified result"
@@ -27,6 +29,11 @@ func TestReadinessSourceRevalidatesEverythingAndConfirmsTheMutation(t *testing.T
 				switch {
 				case r.URL.Path == "/graphql":
 					writes++
+					if mode == "auto stopped during retry" {
+						stopped = true
+						w.WriteHeader(503)
+						return
+					}
 					if mode == "auto denied" {
 						w.WriteHeader(403)
 						return
@@ -48,6 +55,9 @@ func TestReadinessSourceRevalidatesEverythingAndConfirmsTheMutation(t *testing.T
 					}
 					fmt.Fprintf(w, `{"data":{"markPullRequestReadyForReview":{"pullRequest":{"isDraft":false,"headRefOid":%q}}}}`, head)
 				case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+					if armed && mode == "auto stopped during read" {
+						stopped = true
+					}
 					if strings.Contains(r.Header.Get("Accept"), "diff") {
 						fmt.Fprint(w, "diff --git a/a.go b/a.go\n+fixed\n")
 						return
@@ -118,7 +128,13 @@ func TestReadinessSourceRevalidatesEverythingAndConfirmsTheMutation(t *testing.T
 			case "already ready":
 				draft = false
 			}
-			got, err := s.Ready(context.Background(), it)
+			armed = true
+			got, err := s.ReadyChecked(context.Background(), it, func(context.Context) error {
+				if stopped {
+					return factory.ErrPersonStopped
+				}
+				return nil
+			})
 			if mode == "ok" || mode == "already ready" || mode == "review required" || mode == "feedback addressed" || mode == "auto uncertain" || mode == "auto transient" {
 				if err != nil || got.Draft {
 					t.Fatalf("ready not confirmed: %v", err)
@@ -126,7 +142,13 @@ func TestReadinessSourceRevalidatesEverythingAndConfirmsTheMutation(t *testing.T
 			} else if err == nil {
 				t.Fatal("changed/uncertain result accepted")
 			}
+			if strings.HasPrefix(mode, "auto stopped") && !errors.Is(err, factory.ErrPersonStopped) {
+				t.Fatalf("Stop during preparation was ignored: %v", err)
+			}
 			want := 0
+			if mode == "auto stopped during retry" {
+				want = 1
+			}
 			if mode == "ok" || mode == "uncertain" || mode == "review required" || mode == "feedback addressed" {
 				want = 1
 			}
