@@ -739,11 +739,12 @@ type NeedsYouGroup struct {
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
 	// EngineState preserves old documents without adding a sixth public state.
-	EngineState string               `json:"engine_state,omitempty"`
-	Priority    *factory.JobPriority `json:"priority,omitempty"`
-	DoneHow     string               `json:"done_how,omitempty"`
-	Approval    *factory.Approval    `json:"approval,omitempty"`
-	StopUndo    *factory.StopUndo    `json:"stop_undo,omitempty"`
+	EngineState   string               `json:"engine_state,omitempty"`
+	Priority      *factory.JobPriority `json:"priority,omitempty"`
+	DoneHow       string               `json:"done_how,omitempty"`
+	Approval      *factory.Approval    `json:"approval,omitempty"`
+	PersonStopped *bool                `json:"person_stopped,omitempty"`
+	StopUndo      *factory.StopUndo    `json:"stop_undo,omitempty"`
 
 	ChangeBase      string    `json:"change_base,omitempty"`
 	Thread          []Message `json:"thread,omitempty"`

@@ -337,6 +337,14 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (finished bool) {
+	if user.factoryWork || user.wake && !user.answersPerson && !user.answer {
+		ctx = context.WithValue(ctx, factoryAutomaticTurnKey{}, a.automaticFactoryRefusal)
+	} else if why := a.automaticFactoryRefusal(); why != "" {
+		// The current execution refusal is a receipt, independent of the
+		// model's explanation. A person's conversation still gets its answer.
+		a.record(ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: why}}})
+		hub.send(Event{Kind: EventTextDelta, Text: why + "\n\n"})
+	}
 	defer func() {
 		if finished {
 			a.finishJobKnowledge(ctx)
@@ -969,6 +977,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 	frozenToolHistory := len(a.snapshot())
 
 	for {
+		if why := a.factoryTurnRefusal(user); why != "" {
+			a.finishFactoryStop(hub, why, turn, started, model)
+			return true
+		}
 		// The cancel check comes BEFORE the drain: steering typed in the
 		// instant before an interrupt must not be spliced into a transcript
 		// this turn is abandoning unanswered. Nothing is lost — the turn's end
@@ -1062,6 +1074,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 			rung = a.effortFor(model)
 		}
 		if err != nil {
+			if why := a.factoryTurnRefusal(user); why != "" {
+				a.finishFactoryStop(hub, why, turn, started, model)
+				return true
+			}
 			// A STEER CUTS THIS GENERATION AND OPENS THE NEXT BOUNDARY. It is not
 			// an interrupt: the turn context is alive, the partial assistant text
 			// stays immediately before the person's words, and the loop continues
@@ -1145,6 +1161,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// Stop condition: the loop ends when the assistant response has NO tool
 		// call.
 		if len(calls) == 0 {
+			if why := a.factoryTurnRefusal(user); why != "" {
+				a.finishFactoryStop(hub, why, turn, started, model)
+				return true
+			}
 			// A CALL THAT ANSWERED NOTHING IS A FAILED CALL, AND IT IS WRITTEN
 			// DOWN AS ONE. No words, no tool call, nothing the provider counted:
 			// that is not a short answer, it is an endpoint that did not answer,
@@ -1356,6 +1376,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 
 		assistant := ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls}
 		a.recordAssistant(assistant, reasoning.snapshot(), runIdentity(ctx))
+		if why := a.factoryTurnRefusal(user); why != "" {
+			warm.reset()
+			a.refuseFactoryTools(hub, calls, why)
+			a.finishFactoryStop(hub, why, turn, started, model)
+			return true
+		}
 		visibleText := strings.TrimSpace(messageContentText(assistant)) != ""
 		partial.reset()
 		usedTools = true

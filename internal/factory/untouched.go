@@ -15,7 +15,7 @@ func UntouchedIssue(it Item) bool {
 			return false
 		}
 	}
-	return IsIssueJob(it) && it.Origin == OriginForge && it.Num > 0 && !it.PersonTouched &&
+	return !StoppedByPerson(it) && IsIssueJob(it) && it.Origin == OriginForge && it.Num > 0 && !it.PersonTouched &&
 		!it.Marked && !it.StopAfterStep && len(it.Followers) == 0 && len(it.BriefSeen) == 0 && it.Triage.TriagedAt.IsZero() &&
 		it.Cap == 0 && it.Model == "" && it.Effort == "" && it.Priority == nil && !it.Manual && it.AutomaticModels == nil &&
 		((it.DoneHow == "" && (it.State == StateNew || it.State == StateNeedsYou)) ||

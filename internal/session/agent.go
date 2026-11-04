@@ -1353,6 +1353,8 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// factoryWork marks a runtime manager turn, never the person's chat.
+	factoryWork bool
 	// answer continues an existing question, including a replacement or
 	// clarification, so ownership is checked at its tools rather than admission.
 	answer bool
@@ -1996,6 +1998,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.rebindClientLocked(a.model)
 	a.stopJobWakeLocked()
 	a.running = true
+	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false
@@ -4540,6 +4543,16 @@ func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "", fals
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
 func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, answer bool) bool {
+	if why := a.automaticFactoryRefusal(); !answersPerson && !answer && why != "" {
+		kept := a.steering[:0]
+		for _, note := range a.steering {
+			if !note.wake {
+				kept = append(kept, note)
+			}
+		}
+		a.steering = kept
+		return false
+	}
 	if !answer {
 		if err := a.CheckWork(); err != nil {
 			return false

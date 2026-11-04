@@ -35,6 +35,9 @@ type Joining struct {
 	Platform string
 	// Replace lets a computer that already has different chats give them up.
 	Replace bool
+	// Revoked says this computer's own device was removed. Rejoining the same
+	// identity then mints a new device key, as Replace does; nothing is given up.
+	Revoked bool
 	// ProfileDir names the preferences being joined, when outside Home.
 	ProfileDir string
 	// TeamsPaired supplies the live quiet gate after adopting the new identity.
@@ -166,6 +169,11 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	held, err := identity.Load(j.Home)
 	if err != nil && !errors.Is(err, identity.ErrNone) {
 		return Joined{}, err
+	}
+	// A removed computer holds the identity under a key the relay refuses, so
+	// "already joined" would leave it removed. Only a new device key returns it.
+	if err == nil && j.Revoked && held.ID() == grant.Identity.ID() {
+		j.Replace = true
 	}
 	if err == nil && !j.Replace && held.ID() == grant.Identity.ID() {
 		return Joined{Already: true}, nil
