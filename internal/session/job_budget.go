@@ -70,9 +70,12 @@ func (a *Agent) watchJobBudget() {
 			case <-ticks:
 			}
 			a.mu.Lock()
-			stopped, epoch := a.workStopped, a.workEpoch
+			stopped, epoch, running := a.workStopped, a.workEpoch, a.running
 			a.mu.Unlock()
 			if stopped {
+				continue
+			}
+			if !running && !a.hasBudgetCall() && !a.ownedWorkIsMoving() {
 				continue
 			}
 			stopOwned := a.factoryOwnedStop()

@@ -129,6 +129,9 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	if goal = strings.TrimSpace(goal); goal == "" {
 		return "", errors.New("an adaptive run needs a goal")
 	}
+	if err := a.admitJobCall(ctx); err != nil {
+		return "", err
+	}
 	a.mu.Lock()
 	if a.closed || a.workStopped {
 		a.mu.Unlock()

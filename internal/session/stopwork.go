@@ -23,6 +23,17 @@ func (a *Agent) stopWorkEpoch(epoch uint64, why error) error {
 		a.mu.Unlock()
 		return nil
 	}
+	// A raise may supersede the watcher's reading before its stop reaches us.
+	// Recheck under the admission lock so it cannot cancel a freshly resumed turn.
+	check := a.jobBudgetBlock
+	if IsDailyLimit(why) {
+		check = a.dailyBudgetBlock
+	}
+	why = check()
+	if !errors.Is(why, ErrSpendRail) || why.Error() == JobBudgetUnreadable {
+		a.mu.Unlock()
+		return nil
+	}
 	return a.stopWorkLocked(why.Error(), errors.Join(stopAs(StopByWorkStopped, why.Error()), why))
 }
 

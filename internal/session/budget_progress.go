@@ -17,12 +17,18 @@ var budgetProgress = struct {
 	watchers map[chan struct{}]string
 }{calls: make(map[*budgetCall]map[string]float64), watchers: make(map[chan struct{}]string)}
 
-type budgetCall struct{ ledger, job string }
+type budgetCall struct {
+	ledger, job string
+	owner       *Agent
+}
 
 type budgetAdmissionKey struct{}
 
 func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()) {
-	call := &budgetCall{ledger: a.config.usageLedger, job: a.factoryJobName()}
+	call := &budgetCall{ledger: a.config.usageLedger, job: a.factoryJobName(), owner: a}
+	budgetProgress.Lock()
+	budgetProgress.calls[call] = nil
+	budgetProgress.Unlock()
 	closed := false
 	observe := func(id string, usage *ai.Usage) {
 		budgetProgress.Lock()
@@ -71,4 +77,15 @@ func pendingBudgetSpend(ledger, job string) float64 {
 		}
 	}
 	return total
+}
+
+func (a *Agent) hasBudgetCall() bool {
+	budgetProgress.Lock()
+	defer budgetProgress.Unlock()
+	for call := range budgetProgress.calls {
+		if call.owner == a {
+			return true
+		}
+	}
+	return false
 }

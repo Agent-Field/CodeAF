@@ -96,6 +96,9 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 		ctx = context.WithValue(ctx, factoryAutomaticTurnKey{}, a.automaticFactoryRefusal)
 	}
 	if err := a.admitJobCall(ctx); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			a.journalFailedCall(ctx, sessionDefault, string(role), err, 1, 0)
+		}
 		return nil, sessionDefault, err
 	}
 	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG, and that is decided by the
