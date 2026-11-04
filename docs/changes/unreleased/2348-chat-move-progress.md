@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: moving a chat says how far it has got, stops when nothing comes through, and says how it ended
-pr: 0
+pr: 2348
 surface: [engine, chat, docs]
 invalidates:
   - "Was true: agents.take had no deadline; its context ended only when the app left, so a move whose relay stream stalled waited forever and held up every move behind it. Is true now: a move stops once a request to the relay has waited 2 minutes with nothing coming through (syncsetup.MoveIdleWithin, ErrMoveStalled); local work between requests does not count."
