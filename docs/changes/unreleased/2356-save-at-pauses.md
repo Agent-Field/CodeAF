@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Background work folder saves wait for pauses between commands
-pr: 0
+pr: 2356
 surface: [app, chat, engine, docs]
 invalidates:
   - "The session previously forced a capture after every tool batch. Pipeline step settles now hold unknown-effect calls until the oldest unsaved completion reaches 30 seconds or a forced settle saves the pending batch."
