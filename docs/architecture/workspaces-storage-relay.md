@@ -107,6 +107,23 @@ private roots. Ordinary chats without a workspace plan use the existing transfer
 route and remain unowned on the receiver. Optional frame hints ride the Raft relay
 and stay off by default.
 
+The pipeline recorder writes every finished call to the local WAL immediately.
+The session uses `executor.SettleStep` after each tool batch's result lines.
+Unknown-effect calls stay pending until the next step settle at least 30 seconds
+after the oldest unsaved completion, or a forced settle at turn end or another
+explicit boundary. Exact-path-only and transcript-only steps still capture
+immediately. Setup and synchronous recording retain their existing cadence.
+
+Between steps, `cellstore.Await` forces held calls into a capture before joining
+disk durability; `Captured` does the same without a disk flush. The step check and
+capture barrier share the tool admission lock. During an open step these calls
+only join an existing capture: they never wait on its tool or seal work before its
+result lines. `Dirty` and `LocalWork` still count unsealed WAL completions as local
+work. Ordinary command ownership checks use the wait-only `WaitCapture`.
+Displacement between steps keeps held calls in its branch even after the writer
+loses its lease. Cell file rewind refuses an open step. Conversation rewind
+leaves files changed; task ground takes its own fresh workspace capture.
+
 Use a managed profile and compatible workspace-aware builds at both ends. Fetch
 and Take use the harness's private staging and identity registry. Do not restore
 into an arbitrary absolute destination or hand-edit registry/checkpoint files.

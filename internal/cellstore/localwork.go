@@ -26,6 +26,9 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if err := Captured(ctx, c); err != nil {
+		return false, err
+	}
 	if len(recovery.Completed) > 0 {
 		log.Printf("continuation needs a choice: %d completed calls have not been saved", len(recovery.Completed))
 		return true, nil

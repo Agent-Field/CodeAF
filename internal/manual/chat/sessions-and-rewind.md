@@ -770,6 +770,29 @@ the connection to devbox is gone — run the same command to pick the conversati
 That is not advice dressed up: the conversation is on that machine's disk and the same
 command opens it again. Running the session elsewhere with `--host` has its own page.
 
+## When the work folder is saved between commands and at pauses
+
+The desktop's background recorder writes each finished tool call to its local call
+log immediately. A shell command can change any file, so its full-folder save can
+wait for a pause. After each tool batch, codeaf first writes its result lines.
+The batch can then stay in the call log until turn end or a save boundary between
+steps, such as moving or continuing the chat elsewhere, uploading it or closing
+it. A boundary encountered during an open step leaves that step in the call log;
+it does not wait for the running tool or save work without its result lines.
+
+While commands keep running, the next batch boundary saves all pending calls once
+the oldest completion is at least 30 seconds old. There is no timer that saves
+underneath a running tool. A batch with exact changed paths can save immediately
+while no shell or other unknown-effect call is pending; transcript-only batches
+also save immediately. Setup calls and synchronous recorders keep their existing
+saves. Turn end and explicit forced settles still save pending calls immediately.
+
+A crash still leaves finished calls in the local call log for the next save to
+carry. File seals support moving, taking over and recovering a chat. Ordinary
+conversation rewind leaves files changed. The separate cell file-rewind path
+refuses an open tool step with “rewind refused: a tool step is open; settle it
+first” rather than save or restore underneath it.
+
 ## A command was running when codeaf was killed — what the chat says when you come back, and whether it runs again
 
 When the codeaf process is killed hard (`kill -9`, a crash) while a command is running,
