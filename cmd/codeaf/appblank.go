@@ -139,7 +139,7 @@ func (b *appBackend) reapBlank(a *appAgent) bool {
 	}
 	gone := false
 	_ = teamstore.InspectConversation(b.crewProfile(), transcript, func(referenced bool) error {
-		if referenced || session.InUse(transcript) || !v3EmptyUnassignedSession(dir) {
+		if referenced || session.InUse(transcript) || !v3EmptyUnassignedSession(dir) || collectionKeepsConversation(dir) {
 			return nil
 		}
 		gone = os.RemoveAll(dir) == nil
