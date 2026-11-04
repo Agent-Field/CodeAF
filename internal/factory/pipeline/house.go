@@ -58,6 +58,7 @@ func StartRulesOf(f File) *factory.StartRules {
 	return &factory.StartRules{
 		AskFirst: append([]string{}, f.Start.AskFirst...),
 		Never:    append([]string{}, f.Start.Never...),
+		NoFile:   f.Source == SourceDefaults && f.From == factory.FromDefault,
 	}
 }
 
