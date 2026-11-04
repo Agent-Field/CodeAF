@@ -2,18 +2,37 @@ package session
 
 import (
 	"context"
+	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
-// WaitReceipts waits for this agent's already registered pending receipts.
+// receiptTracker outlives individual children until their admitted receipts
+// have reached the accounting sink.
+type receiptTracker struct {
+	mu      sync.Mutex
+	pending int
+	done    chan struct{}
+}
+
+func (a *Agent) receiptTracker() *receiptTracker {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.receipts == nil {
+		a.receipts = &receiptTracker{}
+	}
+	return a.receipts
+}
+
+// WaitReceipts waits for this agent family's already registered pending receipts.
 // Callers stop new requests or observe their receipt admission before waiting.
 // It does not join requests that might register more receipts later. Close
 // deliberately permits receipt accounting to finish after quit.
 func (a *Agent) WaitReceipts(ctx context.Context) error {
-	a.mu.Lock()
-	done := a.receiptsDone
-	a.mu.Unlock()
+	receipts := a.receiptTracker()
+	receipts.mu.Lock()
+	done := receipts.done
+	receipts.mu.Unlock()
 	if done == nil {
 		return nil
 	}
@@ -26,32 +45,25 @@ func (a *Agent) WaitReceipts(ctx context.Context) error {
 }
 
 func (a *Agent) pendingReceipt() func() {
-	a.mu.Lock()
-	if a.receiptsPending == 0 {
-		a.receiptsDone = make(chan struct{})
+	receipts := a.receiptTracker()
+	receipts.mu.Lock()
+	if receipts.pending == 0 {
+		receipts.done = make(chan struct{})
 	}
-	a.receiptsPending++
-	a.mu.Unlock()
+	receipts.pending++
+	receipts.mu.Unlock()
 	return func() {
-		a.mu.Lock()
-		a.receiptsPending--
-		if a.receiptsPending == 0 {
-			close(a.receiptsDone)
+		receipts.mu.Lock()
+		receipts.pending--
+		if receipts.pending == 0 {
+			close(receipts.done)
 		}
-		a.mu.Unlock()
+		receipts.mu.Unlock()
 	}
 }
 
-// withReceiptTracking preserves a caller's accounting lifetime while also
-// letting this agent's owner join the registered receipt after its sink returns.
+// withReceiptTracking joins accounting after the sink returns without changing
+// the caller's stage-readiness callback.
 func (a *Agent) withReceiptTracking(ctx context.Context) context.Context {
-	parent := provider.ReceiptPendingFrom(ctx)
-	return provider.WithReceiptPending(ctx, func() func() {
-		done := a.pendingReceipt()
-		if parent == nil {
-			return done
-		}
-		finish := parent()
-		return func() { defer done(); finish() }
-	})
+	return provider.WithReceiptSettlement(ctx, a.pendingReceipt)
 }

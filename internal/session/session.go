@@ -2617,6 +2617,7 @@ type Config struct {
 	// is exactly one of it. What it is for is a test that wants to read back what
 	// a turn recorded without depending on where this machine keeps its state.
 	usageLedger string
+	receipts    *receiptTracker
 
 	// rootSession is the CONVERSATION every dollar this agent spends belongs to,
 	// and it is empty in a conversation — where the agent's own journal already
@@ -2819,11 +2820,10 @@ type Agent struct {
 	// moveAsked is the person's ask to move the running reply to a task, taken
 	// at the next step boundary ([Agent.MoveTurnToTask]).
 	moveAsked atomic.Bool
-	// receiptsPending and receiptsDone are guarded by mu. They track receipts
-	// already admitted by the provider, including accounting owed after quit.
-	receiptsPending int
-	receiptsDone    chan struct{}
-	client          Completer
+	// receipts is shared by the family before a child can make requests.
+	// The pointer is initialized under mu; the tracker owns its own lock.
+	receipts *receiptTracker
+	client   Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.

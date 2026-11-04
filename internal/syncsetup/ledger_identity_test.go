@@ -265,3 +265,37 @@ func TestReviewMixedLegacyPrefixAndNewUnsealedReceipt(t *testing.T) {
 	}
 	assertTakeLedger(t, path, h.cell.ID, .006, 4)
 }
+
+func TestReviewMixedLegacyPrefixAndNewUnbilledMarker(t *testing.T) {
+	h := newTwoHomes(t)
+	seedTree(t, h.work)
+	t.Setenv(home.EnvVar, h.homeA)
+	path := session.UsageLedgerPath()
+	t.Cleanup(func() { session.StopUsageWriter(path) })
+	a := h.openA()
+	a.answer("old paid call one")
+	a.answer("old paid call two")
+	appendTo(t, path, fmt.Sprintf(`{"id":"old-independent-row-id","at":"2026-09-29T10:00:01Z","session":%q,"model":"m","input":100,"output":10,"usd":0.001}`+"\n", h.cell.ID))
+	a.ledgerAnswer("new identified paid call", "new-saved")
+	session.RecordUsage(path, session.UsageLine{ID: "new-saved", Session: h.cell.ID, Model: "m", Input: 100, Output: 10, Calls: 1, USD: .001})
+	if !session.FlushUsage() {
+		t.Fatal("flush")
+	}
+	h.durable(h.cell.ID, h.cell)
+	if err := a.drive.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(home.EnvVar, h.homeB)
+	if _, err := h.continuerB().Take(t.Context(), h.cell.ID); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(home.EnvVar, h.homeA)
+	session.RecordUnbilledCall(path, session.UsageLine{Session: h.cell.ID, Model: "m"})
+	if !session.FlushUsage() {
+		t.Fatal("late flush")
+	}
+	if _, err := h.continuerA().Take(t.Context(), h.cell.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertTakeLedger(t, path, h.cell.ID, .003, 4)
+}

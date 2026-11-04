@@ -43,3 +43,24 @@ func TestABankedCallReachesTheSeatBesideTheLedger(t *testing.T) {
 		t.Fatalf("got %+v want %+v", seat.got[0], want)
 	}
 }
+
+// Remote accounting bypasses RecordUsage, but its new charge must still be
+// distinguishable from the historical prefix used by legacy take imports.
+func TestRemoteUsageCannotCoverAnOldSavedCall(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	defer StopUsageWriter(path)
+	agent, _ := ledgerAgent(t, path)
+	if err := agent.recordUsageLine(bankedCall{
+		model: "remote/m", used: Usage{Input: 30, Output: 3, Calls: 1, CostUSD: .003},
+		remote: &remoteUsage{Task: "1", Computer: "fixture", Event: "attempt:1", Seat: SeatWorker},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := ReadUsage(path, time.Time{})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("remote ledger rows=%v err=%v", rows, err)
+	}
+	if !rows[0].SharedID || rows[0].USD != .003 {
+		t.Fatalf("remote charge must retain its price without legacy coverage: %+v", rows[0])
+	}
+}

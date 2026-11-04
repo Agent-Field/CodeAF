@@ -112,6 +112,8 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Bind settlement ownership before construction can publish the child.
+	config.receipts = a.receiptTracker()
 	child, err := newAgent(config, client)
 	if err != nil {
 		return nil, err
@@ -168,6 +170,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent := &Agent{
 		taskComputerPrompt: config.mayNameTaskComputer(),
 		config:             config,
+		receipts:           config.receipts,
 		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this

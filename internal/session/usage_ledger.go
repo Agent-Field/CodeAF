@@ -143,9 +143,9 @@ type UsageLine struct {
 	// rewritten: a row already carrying one keeps it. Rows written before this field existed have none, and
 	// every reader counts them by position, exactly as it always did.
 	ID string `json:"id,omitempty"`
-	// SharedID says the caller supplied the identity, rather than this writer
-	// inventing an independent ledger ID. Unmatched shared identities cannot
-	// cover older saved calls during a take. Absence preserves legacy coverage.
+	// SharedID marks modern call identities and bookkeeping rows that cannot
+	// cover older saved calls during a take. Absence preserves coverage by
+	// historical independent ledger IDs and imported legacy calls.
 	SharedID bool `json:"shared_id,omitempty"`
 	// Billing is what kind of money this call was — "metered", "included" in a
 	// plan — and is written ONLY where the road that answered stated it
@@ -1175,6 +1175,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	line = TagUsage(line, roles.Role(call.role), seat)
 	line = withUsageBilling(line, call.billing)
 	if remote := call.remote; remote != nil {
+		line.SharedID = true
 		line.Task, line.Computer, line.RemoteEvent = remote.Task, remote.Computer, remote.Event
 		line.Seat = remote.Seat
 		return appendRemoteUsage(path, line)
@@ -1392,6 +1393,7 @@ func (c *UsageCache) since(floor time.Time) []UsageLine {
 func RecordUnbilledCall(path string, line UsageLine) {
 	countUnbilledCall()
 	line.Unbilled = true
+	line.SharedID = true
 	RecordUsage(path, line)
 }
 

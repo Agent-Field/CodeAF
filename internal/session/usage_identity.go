@@ -13,8 +13,8 @@ import (
 )
 
 // usageIdentityCursor remembers only identities already read from this open
-// ledger. Each append reads the new tail under the same lock as its write, so
-// queued live calls, take imports and other processes all book an identity once.
+// ledger. Each append validates the generation under the same lock as its write,
+// so queued live calls, take imports and other processes book an identity once.
 // Rows without an identity remain distinct, as they were before identities.
 type usageIdentityCursor struct {
 	offset   int64
@@ -85,13 +85,16 @@ func (c *usageIdentityCursor) readTail(file *os.File) error {
 	if !os.SameFile(info, source) {
 		return errUsageLedgerReplaced
 	}
-	valid := c.seen != nil && info.Size() >= c.offset
+	// External growth can include an interior restore. Neither sampled ends
+	// nor a cached positive row can prove that a missing identity is absent.
+	// Only our unchanged generation is trusted; external changes rebuild it.
+	valid := c.seen != nil && info.Size() == c.offset && info.ModTime().Equal(c.modified)
 	if valid {
 		ends, err := usagePrefixEnds(file, c.offset)
 		if err != nil {
 			return err
 		}
-		valid = ends == c.ends && (info.Size() != c.offset || info.ModTime().Equal(c.modified))
+		valid = ends == c.ends
 	}
 	if !valid {
 		*c = usageIdentityCursor{seen: make(map[string]int64)}
