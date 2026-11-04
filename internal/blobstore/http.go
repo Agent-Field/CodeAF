@@ -197,16 +197,37 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 
 // answerError turns a non-200 answer into an error: the code the server named,
 // else a 5xx as "unreachable" (the server is not doing its job now, so
-// callers degrade), else a plain error carrying the status. A refusal keeps the
-// Retry-After the relay sent with it.
+// callers degrade) that is also ErrAnswered when the server itself answered
+// rather than a gateway in front of it, else a plain error carrying the
+// status. A refusal keeps the Retry-After the relay sent with it.
 func answerError(status int, h http.Header, answer []byte) error {
 	var e errBody
 	_ = json.Unmarshal(answer, &e)
 	if named := errOf(e.Err); named != nil {
 		return Capped(wireauth.Wait(fmt.Errorf("%w (%d)", named, status), h), e.LimitBytes)
 	}
+	if status >= 500 && !gatewayStatus(status) {
+		return answered{status}
+	}
 	if status >= 500 {
 		return fmt.Errorf("%w: server answered %d", ErrUnreachable, status)
 	}
 	return fmt.Errorf("blobstore: server refused with %d %q", status, e.Err)
+}
+
+// answered is an unnamed 5xx answer from a server that was reached. Its text is
+// the unreachable one it always had, so logs and copied details read the same.
+type answered struct{ status int }
+
+func (a answered) Error() string {
+	return fmt.Sprintf("%v: server answered %d", ErrUnreachable, a.status)
+}
+
+func (a answered) Is(target error) bool { return target == ErrUnreachable || target == ErrAnswered }
+
+// gatewayStatus is a 5xx a proxy or the network edge in front of the server
+// answers for it (bad gateway, unavailable, gateway timeout): the server
+// itself was not reached, so it stays plain unreachable.
+func gatewayStatus(status int) bool {
+	return status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
 }

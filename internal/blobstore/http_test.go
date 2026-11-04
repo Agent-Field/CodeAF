@@ -292,6 +292,42 @@ func TestHTTPUnreachable(t *testing.T) {
 	}
 }
 
+// N21: a relay that was reached and failed a request without naming a
+// refusal answered with an error; it is still unreachable to callers that
+// degrade. A gateway's 5xx and a closed server were never reached, and a named
+// refusal stays what it names.
+func TestHTTPAnsweredWithAnError(t *testing.T) {
+	cases := []struct {
+		status   int
+		body     string
+		answered bool
+		is       error
+	}{
+		{500, `{"err":"internal"}`, true, blobstore.ErrUnreachable},
+		{500, "", true, blobstore.ErrUnreachable},
+		{501, "", true, blobstore.ErrUnreachable},
+		{502, "", false, blobstore.ErrUnreachable},
+		{503, "", false, blobstore.ErrUnreachable},
+		{504, "", false, blobstore.ErrUnreachable},
+		{500, `{"err":"damaged"}`, false, blobstore.ErrDamaged},
+	}
+	for _, c := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(c.status)
+			_, _ = w.Write([]byte(c.body))
+		}))
+		client := blobstore.NewHTTP(srv.URL, fakeSign("alice"), srv.Client())
+		_, err := client.GetMany(context.Background(), []string{strings.Repeat("a", 64)})
+		srv.Close()
+		if !errors.Is(err, c.is) || errors.Is(err, blobstore.ErrAnswered) != c.answered {
+			t.Errorf("%d %q: GetMany = %v; want %v, answered %v", c.status, c.body, err, c.is, c.answered)
+		}
+		if c.answered && !strings.Contains(err.Error(), fmt.Sprintf("server answered %d", c.status)) {
+			t.Errorf("%d: %q lost the status a person copies", c.status, err)
+		}
+	}
+}
+
 // Skew is surfaced, never retried: the person must be told once.
 func TestHTTPClientSurfacesSkew(t *testing.T) {
 	var asked int
