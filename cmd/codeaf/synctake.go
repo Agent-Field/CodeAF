@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/automation"
@@ -54,7 +56,8 @@ func wireSync(o *tui3.Options) {
 	if o.NotShared == nil {
 		o.NotShared = terminalNotShared
 	}
-	take := takeover{chatContinuer(s, surfaceNotices.Say)}
+	moving := &takeProgress{}
+	take := takeover{c: chatContinuer(s, surfaceNotices.Say, moving.report), moving: moving}
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
@@ -275,7 +278,51 @@ func standingRefusal(err error) error {
 
 // takeover is the surface's Taker over the take side: what a takeover reports,
 // in the shape the surface knows.
-type takeover struct{ c *syncsetup.Continuer }
+type takeover struct {
+	c      *syncsetup.Continuer
+	moving *takeProgress
+}
+
+// takeProgress is how far the terminal's one running continue has got.
+type takeProgress struct {
+	mu   sync.Mutex
+	cell string
+	at   tui3.MoveProgress
+	ok   bool
+}
+
+func (p *takeProgress) start(cell string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cell, p.ok = cell, false
+}
+
+func (p *takeProgress) report(m syncsetup.MoveProgress) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.at, p.ok = tui3.MoveProgress{Step: m.Step, Done: m.Done, Total: m.Total}, true
+}
+
+// MoveProgress says how far the continue of cell has got.
+func (t takeover) MoveProgress(cell string) (tui3.MoveProgress, bool) {
+	if t.moving == nil {
+		return tui3.MoveProgress{}, false
+	}
+	t.moving.mu.Lock()
+	defer t.moving.mu.Unlock()
+	return t.moving.at, t.moving.ok && t.moving.cell == cell
+}
+
+// surfaceTakeError names a stalled continue in the terminal's words.
+func surfaceTakeError(err error) error {
+	if errors.Is(err, syncsetup.ErrMoveStalled) {
+		return fmt.Errorf("%w: %w", tui3.ErrMoveStalled, err)
+	}
+	return err
+}
 
 var _ tui3.Taker = takeover{}
 
@@ -287,19 +334,21 @@ func (t takeover) Take(ctx context.Context, id string) (tui3.Taken, error) {
 // acquire, so its consent cannot displace a holder that arrived meanwhile.
 func (t takeover) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExpectation) (tui3.Taken, error) {
 	began := time.Now()
+	t.moving.start(id)
 	got, err := t.c.TakeSeen(ctx, id, seen)
 	elapsed := time.Since(began)
 	if err != nil {
-		return tui3.Taken{}, err
+		return tui3.Taken{}, surfaceTakeError(err)
 	}
 	return surfaceTaken(got, elapsed), nil
 }
 
 func (t takeover) TakeSeenWithWorkspaceRoots(ctx context.Context, id string, seen *directory.LeaseExpectation, roots map[string]string) (tui3.Taken, error) {
 	began := time.Now()
+	t.moving.start(id)
 	got, err := t.c.TakeSeenWithWorkspaceRoots(ctx, id, seen, roots)
 	if err != nil {
-		return tui3.Taken{}, err
+		return tui3.Taken{}, surfaceTakeError(err)
 	}
 	return surfaceTaken(got, time.Since(began)), nil
 }
@@ -375,15 +424,24 @@ func (t takeover) SafeToContinue(ctx context.Context, id, current string, automa
 }
 
 // chatContinuer is the shared CLI and app continuation assembly.
-func chatContinuer(s *syncsetup.Sync, notify func(string)) *syncsetup.Continuer {
+// chatContinuer is the terminal's continue: it stops when nothing comes
+// through for syncsetup.MoveIdleWithin, and tells onMove how far it has got.
+func chatContinuer(s *syncsetup.Sync, notify func(string), onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
 	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
 		DeviceName: devname.Name(s.Home),
 		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
 		BucketFor: func(origin string) string {
 			return filepath.Join(s.Home, "v3", "projects", "copy-"+encodeWorkspace(origin))
 		},
-		Notify: notify,
+		Notify:     notify,
+		OnMove:     onMove,
+		IdleWithin: syncsetup.MoveIdleWithin,
 	})
+}
+
+// chatMover is chatContinuer for a move the app watches.
+func chatMover(s *syncsetup.Sync, onMove func(syncsetup.MoveProgress)) *syncsetup.Continuer {
+	return chatContinuer(s, nil, onMove)
 }
 
 // ReleaseUnused leaves the installed files and kept work intact, just as closing
