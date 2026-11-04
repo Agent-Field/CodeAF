@@ -187,10 +187,23 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		return err
 	}
 	var failures error
+	offered := false
 	for _, id := range s.publicationOrder() {
-		pending := s.publication[id]
+		if offered && s.BetweenChats != nil {
+			s.publicationMu.Unlock()
+			s.BetweenChats()
+			s.publicationMu.Lock()
+		}
+		pending, ok := s.publication[id]
+		if !ok {
+			continue
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if Quiet(s.Home) {
+			// Sync was turned off during the pass: the rest is not tried.
+			return failures
 		}
 		if _, err := os.Stat(pending.root); errors.Is(err, os.ErrNotExist) {
 			// Deleted, or moved to another project: forget the folder, so a
@@ -205,6 +218,7 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 			continue
 		}
 		began := time.Now()
+		offered = true
 		attempt, err := s.publishLocalChat(ctx, pending.root, id)
 		if errors.Is(err, errNoChatHead) {
 			continue

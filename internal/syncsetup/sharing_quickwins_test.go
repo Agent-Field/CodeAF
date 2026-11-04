@@ -101,24 +101,31 @@ func listed(t *testing.T, s *Sync, id string) bool {
 
 // TestABackgroundPublishLastsAsLongAsItMakesProgress: the budget of a
 // background publish is time without progress, not time in all. An upload whose
-// every answer comes within the budget is shared; a store that stops answering
-// ends the attempt after one budget. TestOnlyWaitingForTheRelayCountsAgainstTheBudget
-// pins what the clock times.
+// every answer comes within the budget is shared although it takes longer than
+// the budget in all; a store that stops answering ends the attempt after one
+// budget. TestOnlyWaitingForTheRelayCountsAgainstTheBudget pins what the clock
+// times.
 func TestABackgroundPublishLastsAsLongAsItMakesProgress(t *testing.T) {
 	r := newDriveRig(t)
 	s := r.a
 	shortIdle(t, 2*time.Second)
 	slow := savedHomeChat(t, r, projectsOf(s), "slow but moving", 2<<20)
 	real := s.Store
-	s.Store = slowStore{Store: real, delay: 250 * time.Millisecond}
+	// A large chat asks what the relay holds and then puts its frame: two
+	// answers, each within the budget, the two together past it.
+	s.Store = slowStore{Store: real, delay: 1200 * time.Millisecond}
+	began := time.Now()
 	mustNil(t, s.PublishLocalChats(t.Context(), time.Now, nil))
+	if took := time.Since(began); took <= PublishIdleWithin {
+		t.Fatalf("fixture took %s, not longer than the %s budget", took, PublishIdleWithin)
+	}
 	if !listed(t, s, slow.ID) {
 		t.Fatal("a chat whose upload kept moving was not shared")
 	}
 
 	stuck := savedHomeChat(t, r, projectsOf(s), "stuck", 1<<10)
 	s.Store = slowStore{Store: real, delay: time.Minute}
-	began := time.Now()
+	began = time.Now()
 	err := s.PublishLocalChats(t.Context(), time.Now, nil)
 	if !errors.Is(err, errPublishStalled) {
 		t.Fatalf("a stuck upload ended with %v, want no progress", err)
@@ -363,5 +370,36 @@ func TestOnlyWaitingForTheRelayCountsAgainstTheBudget(t *testing.T) {
 	}
 	if took := time.Since(began); took > 20*within {
 		t.Fatalf("an unanswered request took %s to end", took)
+	}
+}
+
+// offStore turns sync off on its first frame, as a person turning sync off in
+// the middle of a pass does.
+type offStore struct {
+	blobstore.Store
+}
+
+func (o offStore) PutFrame(ctx context.Context, frame []byte) (blobstore.FrameID, error) {
+	os.Setenv(URLVar, "off")
+	return o.Store.PutFrame(ctx, frame)
+}
+
+// TestAPassStopsWhenSyncIsTurnedOff: a pass lasts as long as its uploads keep
+// moving, and once sync was turned off every chat left in it failed in turn,
+// each with its own failure line and retry.
+func TestAPassStopsWhenSyncIsTurnedOff(t *testing.T) {
+	r := newDriveRig(t)
+	s := r.a
+	last := savedHomeChat(t, r, projectsOf(s), "older", 1<<10)
+	time.Sleep(20 * time.Millisecond)
+	savedHomeChat(t, r, projectsOf(s), "newer, offered first", 1<<10)
+	t.Setenv(URLVar, os.Getenv(URLVar))
+	var out bytes.Buffer
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	s.Store = offStore{Store: s.Store}
+	_ = s.PublishLocalChats(t.Context(), time.Now, nil)
+	if strings.Contains(out.String(), "sharing chat "+last.ID) {
+		t.Fatalf("a chat was offered after sync was turned off:\n%s", out.String())
 	}
 }
