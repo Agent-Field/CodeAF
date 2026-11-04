@@ -81,22 +81,56 @@ func (c *appChats) wakePublication() {
 func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() time.Time, ticks <-chan time.Time, settled chan<- struct{}) {
 	c := &b.chats
 	var source *syncsetup.Sync
-	// offered says the first pass for this binding has run, failing that the
-	// last pass left chats to try again; both decide only the sharing line.
-	offered, failing := false, false
+	// offered says the first pass for this binding has run; failing that the
+	// last pass left chats to try again; sharingNow that a first pass is
+	// running; stateFailing that the last pass over keys, memory and
+	// preferences failed. Together they decide the sharing line (say).
+	offered, failing, sharingNow, stateFailing := false, false, false, false
 	refresh := false
 	var stateRetry time.Time
 	var stateBackoff time.Duration
 	sharing := newHomeSharing(b.relayHome())
 	defer sharing.release()
-	// stateFailing says the last pass over keys, memory and preferences failed;
-	// a chat pass that went well does not clear its line.
-	stateFailing := false
-	chatLine := func(err error) {
-		if err == nil && stateFailing {
+	said := ""
+	say := func() {
+		line := ""
+		switch {
+		case stateFailing:
+			line = "Saved keys, memory and preferences could not be shared yet; codeaf will try again."
+		case failing:
+			line = "Some chats could not be shared yet. They are still saved here; codeaf will try again."
+		case sharingNow:
+			line = "Sharing this computer's chats."
+		}
+		if line != said {
+			said = line
+			b.sharingStatus(line)
+		}
+	}
+	// shareState shares keys, memory and preferences when pairing left them
+	// pending and no retry is waiting. It runs before each round's chat pass
+	// and between its chats: a pass lasts as long as its uploads keep moving,
+	// which for a large backlog is hours, and a computer just paired needs the
+	// keys first. Home state has its own lock.
+	shareState := func() {
+		if ctx.Err() != nil || !pair.SharingPending(source.Home, source.Identity.ID()) || now().Before(stateRetry) {
 			return
 		}
-		b.sharingLine(err)
+		if err := source.SyncState(ctx); err != nil {
+			if stateBackoff == 0 {
+				stateBackoff = syncsetup.DefaultInterval
+			} else {
+				stateBackoff = min(2*stateBackoff, syncsetup.SharingRetryMax)
+			}
+			stateRetry = now().Add(stateBackoff)
+			stateFailing = true
+		} else {
+			stateFailing = false
+		}
+	}
+	count := func() {
+		u := sharing.note(source, now())
+		b.noteUnshared(&u)
 	}
 	for {
 		if b.pairingWorkRefusal() == nil {
@@ -106,7 +140,8 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 				}
 				next, ok, err := syncsetup.Open(b.relayHome())
 				if err != nil {
-					b.sharingStatus("Sharing could not finish yet. Your chats are still saved here; codeaf will try again.")
+					said = "Sharing could not finish yet. Your chats are still saved here; codeaf will try again."
+					b.sharingStatus(said)
 					return false
 				}
 				if !ok || !syncsetup.MayTalk(b.relayHome()) {
@@ -123,46 +158,34 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 				}
 				return true
 			}()
-			// Keys, memory and preferences go before the chats: a chat pass
-			// lasts as long as its uploads keep moving, which for a large
-			// backlog is hours, and a computer just paired needs the keys
-			// first. Home state has its own lock.
-			if ready && ctx.Err() == nil && pair.SharingPending(source.Home, source.Identity.ID()) && !now().Before(stateRetry) {
-				err := source.SyncState(ctx)
-				if err != nil {
-					if stateBackoff == 0 {
-						stateBackoff = syncsetup.DefaultInterval
-					} else {
-						stateBackoff = min(2*stateBackoff, syncsetup.SharingRetryMax)
-					}
-					stateRetry = now().Add(stateBackoff)
-					stateFailing = true
-					b.sharingStatus("Saved keys, memory and preferences could not be shared yet; codeaf will try again.")
-				} else {
-					stateFailing = false
-					if !failing {
-						b.sharingStatus("")
-					}
-				}
-			}
 			if ready && ctx.Err() == nil {
+				shareState()
+				say()
 				// One process publishes for the home (homesharing.go). Every
 				// round rescans, so a chat that appears on disk is found.
 				if sharing.claim() {
-					err := b.publishLocalChats(source, now, !offered)
-					if !offered || (err != nil) != failing {
-						chatLine(err)
+					sharingNow = !offered
+					say()
+					var counted time.Time
+					source.BetweenChats = func() {
+						shareState()
+						if now().Sub(counted) >= unsharedRecount/3 {
+							counted = now()
+							count()
+						}
+						say()
 					}
-					offered, failing = true, err != nil
+					err := b.publishLocalChats(source, now)
+					source.BetweenChats = nil
+					offered, failing, sharingNow = true, err != nil, false
 					if ctx.Err() == nil {
 						sharing.copyOne(ctx)
 					}
-				} else if !offered || failing {
+				} else {
 					offered, failing = true, false
-					chatLine(nil)
 				}
-				u := sharing.note(source, now())
-				b.noteUnshared(&u)
+				count()
+				say()
 			}
 		}
 		if settled != nil {
@@ -306,9 +329,8 @@ func (b *appBackend) startChatFeed(s *syncsetup.Sync) dirwatch.Follower {
 
 // PublishCopy is also the terminal's background publication door. One finite,
 // sequential pass offers existing cell chats, and finished copies of older
-// chats, without opening or resealing them. first shows the sharing line while
-// the binding's first pass runs.
-func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time, first bool) error {
+// chats, without opening or resealing them. The caller says the sharing line.
+func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	guard.Go("app/existing-chats-cancel", func() {
@@ -318,9 +340,6 @@ func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time, 
 		case <-ctx.Done():
 		}
 	})
-	if first {
-		b.sharingStatus("Sharing this computer's chats.")
-	}
 	err := s.PublishLocalChats(ctx, now, func(c cell.Cell, line string) {
 		// Unopened chats use the global sync reason. Queueing one identical
 		// per-chat fact on every outage retry would grow without a reader.
@@ -340,14 +359,6 @@ func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time, 
 	return err
 }
 
-// sharingLine says whether the last pass left chats to try again.
-func (b *appBackend) sharingLine(err error) {
-	if err != nil {
-		b.sharingStatus("Some chats could not be shared yet. They are still saved here; codeaf will try again.")
-	} else {
-		b.sharingStatus("")
-	}
-}
 func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower, emit bool) (appwire.ChatsResult, error) {
 	ctx, cancel := context.WithTimeout(parent, syncsetup.DeviceRequestWithin)
 	defer cancel()

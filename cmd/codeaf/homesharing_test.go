@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -257,5 +259,150 @@ func TestKeysAreSharedBeforeTheChatBacklog(t *testing.T) {
 			t.Fatal("keys, memory and preferences waited for the chat backlog")
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// TestTheKeysLineGoesWhenTheKeysAreShared: with a chat that keeps failing, a
+// failed pass over keys, memory and preferences put up its line, and the pass
+// that then succeeded left it up, because the chat line had not changed.
+func TestTheKeysLineGoesWhenTheKeysAreShared(t *testing.T) {
+	celltest.RequireEngine(t)
+	t.Cleanup(cellstore.StopSpawned)
+	var vaultDown atomic.Bool
+	var refused atomic.Value
+	refused.Store("")
+	relay := e2Relay(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if vaultDown.Load() && r.URL.Path == "/v1/dir/vault" {
+				http.Error(w, "state unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if id := refused.Load().(string); id != "" && r.Method == http.MethodPost && r.URL.Path == "/v1/dir/cells/"+id {
+				http.Error(w, "refused", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	rig := &pairRig{url: relay.URL, homeA: t.TempDir(), homeB: t.TempDir()}
+	if _, err := identity.Ensure(rig.homeA); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	keptKey(t, rig.homeB)
+	r1PairHomes(t, rig)
+	refused.Store(r1SavedChat(t, rig.homeB, "a chat the relay refuses").ID)
+	vaultDown.Store(true)
+	b := &appBackend{left: make(chan struct{}), emit: newAppRecorder()}
+	b.chats.publicationWake = make(chan struct{}, 1)
+	round := r1PublicationRounds(t, b)
+	reason := func() string {
+		t.Helper()
+		status, err := b.SyncStatus()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return status.Reason
+	}
+	if got := reason(); !strings.Contains(got, "Saved keys, memory and preferences could not be shared") {
+		t.Fatalf("after a failed state pass the line reads %q", got)
+	}
+	vaultDown.Store(false)
+	round(syncsetup.DefaultInterval)
+	if got := reason(); !strings.Contains(got, "Some chats could not be shared yet") {
+		t.Fatalf("after the keys were shared the line reads %q", got)
+	}
+}
+
+// TestBetweenChatsTheKeysAndTheCountMoveOn: a chat pass lasts as long as its
+// uploads keep moving. A failed pass over keys, memory and preferences was
+// retried only after the whole backlog, and the count of chats not shared yet
+// was missing until the first pass ended.
+func TestBetweenChatsTheKeysAndTheCountMoveOn(t *testing.T) {
+	celltest.RequireEngine(t)
+	t.Cleanup(cellstore.StopSpawned)
+	var clock atomic.Int64
+	at := time.Now()
+	now := func() time.Time { return at.Add(time.Duration(clock.Load())) }
+	var armed, vaultFailed atomic.Bool
+	var first, second atomic.Value
+	first.Store("")
+	second.Store("")
+	release := make(chan struct{})
+	relay := e2Relay(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if armed.Load() && r.URL.Path == "/v1/dir/vault" && vaultFailed.CompareAndSwap(false, true) {
+				http.Error(w, "state unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if armed.Load() && r.Method == http.MethodGet {
+				switch r.URL.Path {
+				case "/v1/dir/cells/" + first.Load().(string):
+					// The first chat's upload takes a while: the state retry is due.
+					clock.Store(int64(time.Hour))
+				case "/v1/dir/cells/" + second.Load().(string):
+					select {
+					case <-release:
+					case <-r.Context().Done():
+						return
+					}
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	rig := &pairRig{url: relay.URL, homeA: t.TempDir(), homeB: t.TempDir()}
+	if _, err := identity.Ensure(rig.homeA); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	keptKey(t, rig.homeB)
+	r1PairHomes(t, rig)
+	id, err := identity.Load(rig.homeB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Chats not tried yet go newest first.
+	second.Store(r1SavedChat(t, rig.homeB, "offered second").ID)
+	time.Sleep(20 * time.Millisecond)
+	first.Store(r1SavedChat(t, rig.homeB, "offered first").ID)
+	armed.Store(true)
+	b := &appBackend{left: make(chan struct{}), emit: newAppRecorder()}
+	b.chats.publicationWake = make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { defer close(done); b.runLocalChatPublication(ctx, now, make(chan time.Time), nil) }()
+	t.Cleanup(func() { close(release); cancel(); <-done })
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		status, err := b.SyncStatus()
+		if err != nil {
+			t.Fatal(err)
+		}
+		counted := status.Unshared != nil && status.Unshared.Total == 1
+		if counted && !pair.SharingPending(rig.homeB, id.ID()) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("while the second chat uploads: keys pending %v, count %+v", pair.SharingPending(rig.homeB, id.ID()), status.Unshared)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !vaultFailed.Load() {
+		t.Fatal("fixture: the first state pass did not fail")
+	}
+}
+
+// keptKey saves a key on home, so pairing leaves a state pass to share it.
+func keptKey(t *testing.T, home string) {
+	t.Helper()
+	v, err := keys.Open(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Put("kept", keys.Entry{Name: "KEY", Value: "kept"}); err != nil {
+		t.Fatal(err)
 	}
 }

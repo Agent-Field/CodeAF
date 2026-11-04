@@ -81,7 +81,17 @@ func runOlderChats(ctx context.Context) {
 					source = s
 				}
 				if sharing.claim() {
+					// A pass lasts as long as its uploads keep moving: the
+					// count is kept current between its chats.
+					var counted time.Time
+					source.BetweenChats = func() {
+						if time.Since(counted) >= unsharedRecount/3 {
+							counted = time.Now()
+							sharing.note(source, counted)
+						}
+					}
 					_ = source.PublishLocalChats(ctx, time.Now, func(_ cell.Cell, line string) { surfaceNotices.SayHomeOnce(line) })
+					source.BetweenChats = nil
 					sharing.copyOne(ctx)
 				}
 				sharing.note(source, time.Now())
