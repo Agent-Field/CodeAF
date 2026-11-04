@@ -113,13 +113,18 @@ func TestFetchCapsEachRequestAtManyMax(t *testing.T) {
 	head := r.publishFirst(files)
 	f, c := fetcherFor(t, r.mem)
 	f.ManyMax = HostedGetMany
-	before := gets(r.mem)
+	before, logged := gets(r.mem), len(r.mem.Log())
 	if err := f.Fetch(context.Background(), c, head); err != nil {
 		t.Fatal(err)
 	}
 	objects := 301
 	if got, least := gets(r.mem)-before, objects/HostedGetMany; got < least {
 		t.Fatalf("%d store requests for %d objects at %d per request, want at least %d", got, objects, HostedGetMany, least)
+	}
+	for _, op := range r.mem.Log()[logged:] {
+		if op.Kind == "get" && len(op.RIDs) > HostedGetMany {
+			t.Fatalf("a request asked for %d rids, over the %d cap", len(op.RIDs), HostedGetMany)
+		}
 	}
 	if got := readFiles(t, c.Root); !reflect.DeepEqual(got, files) {
 		t.Fatalf("materialized %d files, want %d", len(got), len(files))
