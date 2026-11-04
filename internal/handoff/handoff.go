@@ -425,7 +425,20 @@ func (t Taker) open(ctx context.Context, c cell.Cell, fence uint64) (cell.Cell, 
 // giveBack releases the lease and answers cause, joined with a release failure
 // if there was one (the lease then lapses by itself).
 func (t Taker) giveBack(ctx context.Context, id string, fence uint64, cause error) error {
+	ctx, cancel := ReleaseContext(ctx)
+	defer cancel()
 	return errors.Join(cause, t.Dir.Release(ctx, id, fence))
+}
+
+// GiveBackWithin bounds handing a lease back after a take failed.
+var GiveBackWithin = 20 * time.Second
+
+// ReleaseContext is ctx for handing back a lease a failed take acquired. The
+// take's own context may be what ended it (the person cancelled the move, it
+// stalled, the app left), and the release must still reach the relay, or the
+// chat stays fenced to this computer until its lease lapses.
+func ReleaseContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), GiveBackWithin)
 }
 
 func exists(path string) bool {

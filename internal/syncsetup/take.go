@@ -327,7 +327,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	place := session.Place{Dir: taken.Cell.Root, Workspace: intendedPrimary}
 	workspacePlan, err := session.TaskWorkspaceTransferPlan(place)
 	if err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if workspacePlan != nil {
 		if !session.WorkspaceOwnershipEnabled(place) {
@@ -339,13 +339,13 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		err = session.ValidateTaskRestoreRoots(place, intendedPrimary)
 	}
 	if err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	var filed func()
 	defer func() {
@@ -354,23 +354,23 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 	}()
 	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell); err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	taken.Driving.Cell = taken.Cell
 	var taskCopies []string
 	if workspacePlan != nil {
 		taskCopies, err = session.RestoreTaskWorkspaceSets(ctx, session.Place{Dir: taken.Cell.Root, Workspace: workspaceOf(taken.Cell.Root)}, c.opt.WorkspaceRoots)
 		if err != nil {
-			return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 		}
 	} else {
 		if err := session.AdoptChatWorkspaceIdentity(session.Place{Dir: taken.Cell.Root}); err != nil {
-			return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 		}
 		taskCopies = c.restoreCopies(taken.Cell)
 	}
 	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if c.sync.teamsSharing() {
 		if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
@@ -384,6 +384,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
 	return out, nil
+}
+
+// giveBack hands back the lease a take acquired before it failed, even when
+// the take's context is what ended it (handoff.ReleaseContext).
+func (c *Continuer) giveBack(ctx context.Context, id string, fence uint64) error {
+	ctx, cancel := handoff.ReleaseContext(ctx)
+	defer cancel()
+	return c.sync.Dir.Release(ctx, id, fence)
 }
 
 // releaseWithin bounds the wait for a session on this machine to let go of the
