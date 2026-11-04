@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"log"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -155,6 +156,13 @@ func (a *app) knowledgeRead(create bool) tea.Cmd {
 			}
 		}
 		r, err := v.Status()
+		if err == nil && !r.Enabled && cached.Revision == "" {
+			// The offer is on screen: count the saved chats now, as nothing
+			// does with Memory off until a person is looking.
+			if problem := v.AskDiscovery(); problem != nil {
+				log.Printf("knowledge: asking for a count: %v", problem)
+			}
+		}
 		if err == nil {
 			if r.Revision == cached.Revision {
 				r.Pages = cached.Pages

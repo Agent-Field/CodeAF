@@ -276,6 +276,9 @@ func TestKnowledgeInitialBuildImportsAllProjectsAndAutopopulates(t *testing.T) {
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	calls := knowledgeProviderFixture(t, started, release)
+	if err := v.AskDiscovery(); err != nil {
+		t.Fatal(err)
+	}
 	runKnowledgeWorker(t, v, root)
 	state := waitKnowledgeState(t, v, func(s knowledge.Snapshot) bool { return s.Build.Phase == knowledge.BuildUnbuilt })
 	if state.Enabled || state.Build.Chats != 2 || calls.Load() != 0 {

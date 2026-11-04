@@ -198,6 +198,11 @@ func markJobSessions(db *sql.DB, journals []Journal) error {
 }
 
 func (v *Vault) runPass(ctx context.Context, history History, key func() string, lastInventory *string) error {
+	// Memory off costs one look at the setting and one at the ask: no saved chat
+	// is read, and no database opened, until the Memory page asks for a count.
+	if !v.Enabled() && !v.takeDiscoveryAsk() {
+		return nil
+	}
 	journals, err := history.Inventory(ctx)
 	if err != nil {
 		return err
@@ -212,7 +217,8 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		return err
 	}
 	if !v.Enabled() {
-		// Discovery is local. No inventory, including an empty one, opts in.
+		// Discovery is local, and asked for. No inventory, including an empty
+		// one, opts in.
 		fingerprint := identity(journals)
 		if textValue(job["inventory_hash"]) == fingerprint {
 			return nil
@@ -427,4 +433,23 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		job["phase"] = string(BuildWaiting)
 	}
 	return saveState(db, "job", job)
+}
+
+// discoveryAsk is the file that says the Memory page asked for a count.
+const discoveryAsk = ".discovery-asked"
+
+// AskDiscovery asks the worker, in whichever process runs it, to count the
+// saved chats while Memory is off. The Memory page asks when it opens; nothing
+// reads saved chats with Memory off until then.
+func (v *Vault) AskDiscovery() error {
+	if err := os.MkdirAll(v.root, 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(v.root, discoveryAsk), nil, 0600)
+}
+
+// takeDiscoveryAsk says whether a count was asked for, and clears the ask first,
+// so one that arrives during the count is answered by another count.
+func (v *Vault) takeDiscoveryAsk() bool {
+	return os.Remove(filepath.Join(v.root, discoveryAsk)) == nil
 }
