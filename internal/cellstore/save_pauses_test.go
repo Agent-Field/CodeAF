@@ -281,7 +281,7 @@ func TestSavePausesSetupAndSyncStillCaptureImmediately(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &countingCapture{}
-			r, _, _ := pauseRecorder(t, s, Options{Async: tc.async})
+			r, c, _ := pauseRecorder(t, s, Options{Async: tc.async})
 			for n := range 2 {
 				pauseCall(t, r, executor.Call{Tool: "bash", Args: []byte(fmt.Sprint(n))}, tc.trigger)
 				waitPauseCapture(t, r)
@@ -289,14 +289,50 @@ func TestSavePausesSetupAndSyncStillCaptureImmediately(t *testing.T) {
 					t.Fatalf("immediate capture changed: %+v", turns)
 				}
 			}
-			if !tc.async {
-				pauseCall(t, r, executor.Call{Tool: "bash", Args: []byte("deferred sync step"), Deferred: true}, tc.trigger)
-				executor.SettleStep(t.Context(), sealed{rec: r})
-				if turns := s.captured(); len(turns) != 3 || len(turns[2].Calls) != 1 {
-					t.Fatalf("synchronous step settle was held: %+v", turns)
-				}
+			var seat executor.Seat = sealed{Stance: executor.Stance{Class: executor.HostBound}, rec: r}
+			if tc.trigger == Setup {
+				seat = executor.ForSetup(seat)
+			}
+			if err := seat.Around(t.Context(), executor.Call{Tool: "bash", Deferred: true}, func() ([]byte, bool) {
+				return []byte("deferred result"), false
+			}); err != nil {
+				t.Fatal(err)
+			}
+			waitPauseCapture(t, r)
+			if got := len(s.captured()); got != 2 {
+				t.Fatalf("deferred call captured before its result lines: %d", got)
+			}
+			pauseResult(t, c, "deferred result line")
+			executor.SettleStep(t.Context(), seat)
+			waitPauseCapture(t, r)
+			if turns := s.captured(); len(turns) != 3 || len(turns[2].Calls) != 1 || turns[2].Trigger != tc.trigger {
+				t.Fatalf("deferred step settle was held: %+v", turns)
+			}
+			if got := s.contents()[2]; got != "deferred result line\n" {
+				t.Fatalf("deferred step lost its result lines: %q", got)
 			}
 		})
+	}
+}
+
+func TestSavePausesSetupInMixedBatchCapturesAfterResults(t *testing.T) {
+	s := &countingCapture{}
+	r, c, _ := pauseRecorder(t, s, Options{Async: true})
+	setup := executor.ForSetup(sealed{Stance: executor.Stance{Class: executor.HostBound}, rec: r})
+	if err := setup.Around(t.Context(), executor.Call{Tool: "bash", Args: []byte("setup"), Deferred: true}, func() ([]byte, bool) {
+		return []byte("setup result"), false
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pauseCall(t, r, executor.Call{Tool: "bash", Args: []byte("ordinary"), Deferred: true}, AgentRun)
+	pauseResult(t, c, "both result lines")
+	executor.SettleStep(t.Context(), sealed{rec: r})
+	waitPauseCapture(t, r)
+	if turns := s.captured(); len(turns) != 1 || turns[0].Trigger != Setup || len(turns[0].Calls) != 2 {
+		t.Fatalf("setup call in a young unknown-effect batch was held: %+v", turns)
+	}
+	if got := s.contents(); !reflect.DeepEqual(got, []string{"both result lines\n"}) {
+		t.Fatalf("mixed setup batch lost its result lines: %q", got)
 	}
 }
 
@@ -483,16 +519,66 @@ func TestSavePausesOpenStepBoundaryJoinsOnlyTheExistingCapture(t *testing.T) {
 	}
 }
 
-func TestSavePausesReadOnlyBoundaryKeepsTheWALAndFails(t *testing.T) {
-	r, c, wal := pauseRecorder(t, failedCapture{ErrReadOnly}, Options{Async: true})
-	pauseCall(t, r, executor.Call{Tool: "bash"}, AgentRun)
-	executor.SettleStep(t.Context(), sealed{rec: r})
-	if err := Await(t.Context(), c); !errors.Is(err, ErrReadOnly) {
-		t.Fatalf("boundary acknowledged a refused capture: %v", err)
+func TestSavePausesViewerRecoveryKeepsTheWALQuietly(t *testing.T) {
+	old, c, wal := pauseRecorder(t, failedCapture{ErrReadOnly}, Options{})
+	pauseCall(t, old, executor.Call{Tool: "bash", Args: []byte("recovered output"), Deferred: true}, AgentRun)
+	var reports []error
+	r, err := NewRecorder(&stubExec{}, failedCapture{ErrReadOnly}, c, wal, Options{Async: true, Report: func(err error) {
+		reports = append(reports, err)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Unsaved(c); got != 1 {
+		t.Fatalf("recovered call not held: %d", got)
+	}
+	for _, boundary := range []func(context.Context, cell.Cell) error{Await, Captured} {
+		if err := boundary(t.Context(), c); err != nil {
+			t.Fatalf("viewer boundary blocked WAL recovery: %v", err)
+		}
+	}
+	if err := r.Drain(t.Context()); err != nil {
+		t.Fatalf("viewer close blocked WAL recovery: %v", err)
+	}
+	if len(reports) != 0 || Unsaved(c) != 0 {
+		t.Fatalf("viewer refusal reported an error or retained its recorder: reports=%v unsaved=%d", reports, Unsaved(c))
 	}
 	_, recovery, err := OpenWAL(wal)
-	if err != nil || len(recovery.Completed) != 1 {
-		t.Fatalf("refused boundary lost its held call: %+v %v", recovery, err)
+	if err != nil || len(recovery.Completed) != 1 || string(recovery.Completed[0].Stdout) != "recovered output" {
+		t.Fatalf("viewer boundary lost its recovered call: %+v %v", recovery, err)
+	}
+}
+
+func TestSavePausesDrainDetachesUnsavedCalls(t *testing.T) {
+	fault := errors.New("capture failed")
+	for _, tc := range []struct {
+		name string
+		seal error
+		want error
+	}{{"read only", ErrReadOnly, nil}, {"failure", fault, fault}} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, c, wal := pauseRecorder(t, failedCapture{tc.seal}, Options{Async: true})
+			if Unsaved(c) != 0 {
+				t.Fatal("empty recorder has unsaved calls")
+			}
+			pauseCall(t, r, executor.Call{Tool: "bash", Deferred: true}, AgentRun)
+			if got := Unsaved(c); got != 1 {
+				t.Fatalf("held completion not counted: %d", got)
+			}
+			if err := r.Drain(t.Context()); !errors.Is(err, tc.want) {
+				t.Fatalf("Drain returned %v, want %v", err, tc.want)
+			}
+			captures.Lock()
+			held := captures.held[c.Root]
+			captures.Unlock()
+			if held != nil || Unsaved(c) != 0 {
+				t.Fatal("closed recorder remained in the held registry")
+			}
+			_, recovery, err := OpenWAL(wal)
+			if err != nil || len(recovery.Completed) != 1 {
+				t.Fatalf("Drain lost its unsaved call: %+v %v", recovery, err)
+			}
+		})
 	}
 }
 

@@ -252,8 +252,9 @@ func (r *Recorder) captureDue() bool {
 }
 
 // Settle implements executor.Settler. Step settles may hold a young full-workspace
-// batch in the WAL; every other settle forces pending calls and the transcript
-// tail into a seal. Both kinds close the step because its results are written.
+// batch in the WAL unless it contains setup calls; every other settle forces
+// pending calls and the transcript tail into a seal. Both kinds close the step
+// because its results are written.
 // A seal with no call looks at the state directory only: nothing but the
 // transcript changed.
 func (r *Recorder) Settle(ctx context.Context) {
@@ -262,7 +263,7 @@ func (r *Recorder) Settle(ctx context.Context) {
 		if executor.Stepping(ctx) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
-			due = r.captureDue()
+			due = triggerOfBatch(r.pending) == Setup || r.captureDue()
 		}
 		r.asyncMu.Lock()
 		defer r.asyncMu.Unlock()
@@ -329,12 +330,6 @@ func (r *Recorder) seal(ctx context.Context) {
 	if _, err := r.store.Seal(ctx, r.cell, TurnInfo{Trigger: triggerOfBatch(batch), Calls: batch, Models: r.models, Changed: changedOf(batch)}); err != nil {
 		if !errors.Is(err, ErrReadOnly) {
 			r.report(err)
-		} else if r.opts.Async && len(batch) > 0 {
-			// A viewer's bookkeeping stays quiet, but a boundary cannot
-			// acknowledge finished calls that its store refused to keep.
-			r.errorMu.Lock()
-			r.lastError = err
-			r.errorMu.Unlock()
 		}
 		return
 	}

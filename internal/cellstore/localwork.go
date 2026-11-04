@@ -26,7 +26,8 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if err := Captured(ctx, c); err != nil {
+	// Completed WAL calls remain local work even when their capture fails.
+	if err := Captured(ctx, c); err != nil && len(recovery.Completed) == 0 {
 		return false, err
 	}
 	if len(recovery.Completed) > 0 {

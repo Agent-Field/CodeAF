@@ -48,6 +48,20 @@ func Captured(ctx context.Context, c cell.Cell) error {
 	return WaitCapture(ctx, c)
 }
 
+// Unsaved counts pending calls in the recorder held for this literal cell root.
+// A closing recorder detaches; its unsaved calls remain in the WAL for recovery.
+func Unsaved(c cell.Cell) int {
+	captures.Lock()
+	r := captures.held[c.Root]
+	captures.Unlock()
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.pending)
+}
+
 // scheduleAtPause checks the step and queues its capture under one lock, so a
 // new tool cannot enter between the decision and the capture barrier.
 func (r *Recorder) scheduleAtPause(ctx context.Context) bool {
@@ -254,8 +268,10 @@ func completeCapture(root string, state *captureState) {
 }
 
 // Drain is the final, bounded boundary: it includes a transcript tail and
-// propagates a saving error to the caller that is closing the chat.
+// propagates a saving error to the caller that is closing the chat. The WAL
+// keeps unsaved calls after the closing recorder leaves the held registry.
 func (r *Recorder) Drain(ctx context.Context) error {
+	defer r.releaseHeld()
 	r.Settle(ctx)
 	if err := r.wait(ctx); err != nil {
 		r.report(err)
