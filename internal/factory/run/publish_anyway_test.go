@@ -194,3 +194,18 @@ func TestPublishAnywayPostUsesServerReceiptWithEmptyLocalLedger(t *testing.T) {
 		})
 	}
 }
+
+// A person's Stop stands until they start the job; Publish anyway isn't offered past it.
+func TestPublishAnywayIsNotOfferedOnAStoppedJob(t *testing.T) {
+	it := publishAnywayJob()
+	if !factory.OffersPublishAnyway(it) {
+		t.Fatal("fixture should be offered Publish anyway before Stop")
+	}
+	factory.MarkPersonStopped(&it)
+	if factory.OffersPublishAnyway(it) {
+		t.Fatal("a stopped job was offered Publish anyway")
+	}
+	if err := factory.DecidePublishAnyway(&it, "alice", time.Now()); err == nil {
+		t.Fatal("a stopped job accepted Publish anyway")
+	}
+}

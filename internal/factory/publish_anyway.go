@@ -74,6 +74,9 @@ func SkippedChecksIdentity(it Item) string {
 
 // OffersPublishAnyway is the engine's current offer at a refused post step.
 func OffersPublishAnyway(it Item) bool {
+	if StoppedByPerson(it) {
+		return false
+	}
 	if it.State != StateNeedsYou || it.QKind != QKindOutOfAttempts || SkippedChecksIdentity(it) == "" || it.Stream.Cur < 0 || it.Stream.Cur >= len(it.Stream.Phases) {
 		return false
 	}
