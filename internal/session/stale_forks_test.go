@@ -30,6 +30,9 @@ func TestSweepAbandonedFurrowFolders(t *testing.T) {
 			dir := newSweptSession(t, root, bucket, "session", Meta{ID: "session", Workspace: "/project", LastUserAt: now})
 			if tc.ready {
 				writeFile(t, filepath.Join(dir, ".cell", "copy-ready"), "ready")
+				if err := os.Rename(filepath.Join(dir, placeTranscript), layoutOf(dir).transcript(dir)); err != nil {
+					t.Fatal(err)
+				}
 			}
 			trees := filepath.Join(dir, "trees")
 			old := now.Add(-8 * 24 * time.Hour)
@@ -59,7 +62,7 @@ func TestSweepAbandonedFurrowFolders(t *testing.T) {
 			writeFile(t, filepath.Join(dir, placeLogs, "old.log"), "keep in moving")
 			stampTree(t, filepath.Join(dir, placeLogs), old)
 			if tc.open {
-				held, _, err := openSessionFile(filepath.Join(dir, placeTranscript), dir, "test-model", "")
+				held, _, err := openSessionFile(layoutOf(dir).transcript(dir), dir, "test-model", "")
 				if err != nil {
 					t.Fatal(err)
 				}
