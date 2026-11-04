@@ -4608,6 +4608,9 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 	// half was missing. The row is evidence and never spend; the money moved
 	// through the door above and nowhere else.
 	a.file.appendCall(armCall(receipt))
+	// A cancelled turn has already sealed. Save the meter now rather than
+	// leaving its late charge out of every reader of meta.json until another turn.
+	a.stampSpend()
 }
 
 // addUsage folds one response's accounting into the turn and the session, and

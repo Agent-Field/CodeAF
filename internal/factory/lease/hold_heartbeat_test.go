@@ -66,7 +66,7 @@ func TestStoppedJobNeverReceivesRepeatedHold(t *testing.T) {
 			for n := 0; n < 3; n++ {
 				drain := f.desk.Drain
 				if live {
-					drain = f.desk.DrainLive
+					drain = func(id, worker string) ([]lease.Signal, error) { return f.desk.DrainLive(id, worker) }
 				}
 				signals, err := drain(held.ID, held.Worker)
 				if err != nil {
