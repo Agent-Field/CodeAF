@@ -21,6 +21,11 @@ are rechecked after a raise. Known-free helpers are not refused because another
 conversation reached the day cap. The HTTP gate checks the actual model, so a
 free helper cannot substitute a paid seat after the cap.
 
+The watcher only stops active provider calls, tools and owned work. A delayed
+ledger wake leaves a turn waiting for its first admission to report the limit
+in its own event stream, without latching the conversation stopped. An idle
+child no longer treats its parent's borrowed task graph as work it owns.
+
 Cancellation cannot undo provider charges. If L is the cap, S the settled spend
 plus live usage already measured when cancellation begins, and U_i the remaining
 unrecorded charge of each send already

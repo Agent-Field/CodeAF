@@ -70,12 +70,14 @@ func (a *Agent) watchJobBudget() {
 			case <-ticks:
 			}
 			a.mu.Lock()
-			stopped, epoch, running := a.workStopped, a.workEpoch, a.running
+			stopped, epoch := a.workStopped, a.workEpoch
 			a.mu.Unlock()
 			if stopped {
 				continue
 			}
-			if !running && !a.hasBudgetCall() && !a.ownedWorkIsMoving() {
+			// A turn marked running may still be waiting for its first admission.
+			// Only producers already in flight belong to this watcher.
+			if a.toolsInFlight.Load() == 0 && !a.hasBudgetCall() && !a.ownedWorkIsMoving() {
 				continue
 			}
 			stopOwned := a.factoryOwnedStop()

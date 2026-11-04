@@ -4440,7 +4440,7 @@ and reopen the app before standing orders can start.
 
 ## Why is my conversation blocked
 
-A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. The conversation limit lets a running turn finish; a recorded daily-limit crossing cancels running owned work.
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. The conversation limit lets a running turn finish; a recorded daily-limit crossing cancels running owned work. A turn with no call, tool or owned work in flight checks its own limit before work starts. An earlier spending record does not stop that conversation. A refused message shows the daily-limit explanation without starting a provider call.
 
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
