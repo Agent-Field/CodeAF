@@ -920,8 +920,12 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
 	dir := c.ProfileDir
 	return func(ctx context.Context, model, tag string) error {
-		if admit, _ := ctx.Value(budgetAdmissionKey{}).(func(context.Context) error); admit != nil {
-			if err := admit(ctx); err != nil {
+		asked := strings.TrimSpace(model)
+		if asked == "" || asked == wire {
+			asked = send
+		}
+		if admit, _ := ctx.Value(budgetAdmissionKey{}).(func(context.Context, string) error); admit != nil {
+			if err := admit(ctx, asked); err != nil {
 				return err
 			}
 		}
@@ -933,10 +937,6 @@ func (c Config) routeGate(send, wire string) func(context.Context, string, strin
 		}
 		if isCrewSeatCall(ctx) || tag == string(purposeTurn) {
 			return nil
-		}
-		asked := strings.TrimSpace(model)
-		if asked == "" || asked == wire {
-			asked = send
 		}
 		if config.CrewRouteAnswers(dir, asked) {
 			return nil

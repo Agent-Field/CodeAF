@@ -13,11 +13,13 @@ notifications and measured stream usage drive checks; they add no directory read
 clock. Pending tool results stay paired, partial usage is settled, and the stop
 names the limit and how to raise it. Raising the cap permits a fresh submission;
 old producers, retries and completion notices cannot restart stopped work.
-Measured spend remains visible until receipt settlement, so an unchanged cap
-cannot reopen during that wait. StopWork also cancels detached summaries.
+Measured spend remains visible while its receipt is pending; already-banked usage
+is counted once, and previous-day readings do not close a fresh day’s cap.
+StopWork also cancels detached summaries.
 Running adaptive workers read their owner's live day limit, and sampled job refusals
 are rechecked after a raise. Known-free helpers are not refused because another
-conversation reached the day cap.
+conversation reached the day cap. The HTTP gate checks the actual model, so a
+free helper cannot substitute a paid seat after the cap.
 
 Cancellation cannot undo provider charges. If L is the cap, S the settled spend
 plus live usage already measured when cancellation begins, and U_i the remaining

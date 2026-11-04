@@ -189,6 +189,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 			c.bill(ctx, model, response, traces...)
 			return
 		}
+		noteUsageProgress(ctx, nil, traces...)
 		c.bankBilledUsage(ctx, model, response, traces...)
 	}
 

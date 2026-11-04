@@ -108,11 +108,12 @@ func (a *Agent) dailyBudgetBlock() error {
 	if capUSD <= 0 {
 		return nil
 	}
-	spent, err := DailySpendUSD(a.config.usageLedger, time.Now())
+	now := time.Now()
+	spent, err := DailySpendUSD(a.config.usageLedger, now)
 	if err != nil {
 		return spendUnverified{said: spendAccountingUnread}
 	}
-	spent += pendingBudgetSpend(a.config.usageLedger, "")
+	spent += pendingBudgetSpendOnDay(a.config.usageLedger, "", now.Format(usageDayLayout))
 	if spent >= capUSD {
 		return dailyLimitReached(spent, capUSD)
 	}

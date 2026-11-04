@@ -4403,6 +4403,7 @@ charge or measured stream usage reaches the daily limit, running owned work
 in this engine is cancelled.
 The chat and work report the limit; raise it with `/budget day 30`, then submit
 again. Measured spend keeps the cap closed while its final receipt is pending.
+Already-recorded usage counts once; previous-day readings do not close today’s cap.
 Detached summaries are cancelled too. Running adaptive workers follow their owner's raised
 daily limit. A sampled job refusal is checked again against the current cap.
 Known-free auxiliary calls can continue despite another conversation's daily spend.

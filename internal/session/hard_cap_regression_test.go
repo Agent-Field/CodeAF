@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -346,4 +349,216 @@ func TestRunningChildHonorsOwnerDayCapRaise(t *testing.T) {
 	case <-time.After(250 * time.Millisecond):
 	}
 	unblock()
+}
+
+// The fixture exposes a measured, cancelled HTTP call with its receipt still pending.
+func pendingReceiptFixture(t *testing.T, legacy bool) (*Agent, func()) {
+	t.Helper()
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	release := make(chan struct{})
+	receipt := make(chan struct{})
+	var once, receiptOnce sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			if r.URL.Path != "/generation" {
+				http.NotFound(w, r)
+				return
+			}
+			receiptOnce.Do(func() { close(receipt) })
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+			fmt.Fprint(w, `{"data":{"total_cost":0.25,"tokens_prompt":10,"tokens_completion":2}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"id\":\"gen-pending-cap\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"working\"}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"cost\":0.25}}\n\n")
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(func() { unblock(); server.Close() })
+	client, err := provider.NewClient(provider.Config{APIKey: "fixture", BaseURL: server.URL, Model: "test/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newTestAgent(t, client, func(c *Config) { c.OneModel = true; c.DailyBudgetResolved = true; c.DailyBudgetUSD = .4 })
+	t.Cleanup(func() {
+		unblock()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		a.WaitReceipts(ctx)
+		FlushUsage()
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx = provider.WithReconcile(ctx, a.reconciled)
+	if legacy {
+		var err error
+		ctx, err = provider.WithActualAttemptObserver(ctx, &admissionObserver{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err = provider.WithWorkOwner(ctx, provider.WorkOwner{Kind: "review", ID: "pending"})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if legacy {
+		ctx = provider.WithBilling(ctx, func(b provider.Billed) {
+			RecordUsage(a.config.usageLedger, UsageLine{Model: b.Model, Calls: 1, USD: b.Cost})
+		})
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, err := a.completeWithModel(ctx, purposeInherited, []ai.Message{textMessage("user", "work")}, "test/model")
+		t.Logf("fixture call ended: %v", err)
+	}()
+	waitFor(t, "measured usage", func() bool { return pendingBudgetSpend(a.config.usageLedger, "") == .25 })
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancel did not join")
+	}
+	select {
+	case <-receipt:
+	case <-time.After(3 * time.Second):
+		t.Fatal("receipt did not start")
+	}
+	return a, unblock
+}
+
+func TestPendingLegacyBillingCountedOnce(t *testing.T) {
+	a, unblock := pendingReceiptFixture(t, true)
+	FlushUsage()
+	spent, err := DailySpendUSD(a.config.usageLedger, time.Now())
+	if err != nil || spent != .25 {
+		data, _ := os.ReadFile(a.config.usageLedger)
+		t.Fatalf("fixture ledger=%g err=%v raw=%s now=%v", spent, err, data, time.Now())
+	}
+	if err := a.dailyBudgetBlock(); err != nil {
+		t.Errorf("single $0.25 call under $0.40 cap refused: ledger=$%.2f pending=$%.2f: %v", spent, pendingBudgetSpend(a.config.usageLedger, ""), err)
+	}
+	unblock()
+	waitFor(t, "pending reading retired", func() bool { return pendingBudgetSpend(a.config.usageLedger, "") == 0 })
+	FlushUsage()
+	spent, err = DailySpendUSD(a.config.usageLedger, time.Now())
+	if err != nil || spent != .25 {
+		t.Errorf("settled ledger=%g err=%v; want exactly one $0.25 charge", spent, err)
+	}
+}
+
+func TestPendingPreviousDayDoesNotBlockNewDay(t *testing.T) {
+	original := time.Local
+	// Restore the zone only after receipt workers and the HTTP server have joined.
+	t.Cleanup(func() { time.Local = original })
+	a, unblock := pendingReceiptFixture(t, false)
+	_, offset := time.Now().Zone()
+	time.Local = time.FixedZone("next-day", offset+24*60*60)
+	a.config.DailyBudgetUSD = .24
+	spent, err := DailySpendUSD(a.config.usageLedger, time.Now())
+	if err != nil || spent != 0 {
+		t.Fatalf("new day ledger=%g err=%v", spent, err)
+	}
+	if err := a.dailyBudgetBlock(); err != nil {
+		t.Errorf("ended previous-day call blocks fresh day: ledger=$%.2f pending=$%.2f: %v", spent, pendingBudgetSpend(a.config.usageLedger, ""), err)
+	}
+	unblock()
+}
+
+func TestFreeRequestCannotSubstitutePaidSeat(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	defaultServer := newForbiddenClientDoorServer(t)
+	paidServer := newClientDoorServer(t, "paid answer")
+	defaultSource := modelsource.DefaultSource(defaultServer.URL)
+	directSource := modelsource.Source{ID: "direct", Written: "direct", Address: paidServer.URL}
+	RecordUsage(UsageLedgerPath(), UsageLine{Model: "other", Calls: 1, USD: .25})
+	FlushUsage()
+	a, err := New(Config{Workspace: t.TempDir(), Model: "direct/stub/paid-seat", DailyBudgetResolved: true, DailyBudgetUSD: .24,
+		ModelPrice: func(model string) (float64, float64, bool) {
+			if model == "vendor/free" {
+				return 0, 0, true
+			}
+			return .001, .002, true
+		},
+		Sources: modelsource.NewSet(modelsource.Connected{Source: defaultSource, Address: defaultServer.URL}, modelsource.Connected{Source: directSource, Key: "fixture", Address: paidServer.URL}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Close() })
+	_, called, err := a.completeWithNamedModel(t.Context(), purposeInherited, []ai.Message{textMessage("user", "helper")}, "vendor/free")
+	t.Logf("free request resolved called=%s err=%v calls=%d", called, err, len(paidServer.allCalls()))
+	if len(paidServer.allCalls()) != 0 {
+		t.Errorf("exhausted $0.24 day cap dispatched %d paid-seat calls: requested=vendor/free called=%s err=%v", len(paidServer.allCalls()), called, err)
+	}
+}
+
+func TestKnownFreeHTTPHelperSurvivesDayCap(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	server := newClientDoorServer(t, "free answer")
+	RecordUsage(UsageLedgerPath(), UsageLine{Model: "other", Calls: 1, USD: .25})
+	FlushUsage()
+	a, err := New(Config{Workspace: t.TempDir(), Model: "test/free", APIKey: "fixture", BaseURL: server.URL,
+		DailyBudgetResolved: true, DailyBudgetUSD: .24, ModelPrice: func(string) (float64, float64, bool) { return 0, 0, true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Close() })
+	_, err = a.completeWithModel(t.Context(), purposeInherited, []ai.Message{textMessage("user", "free helper")}, "test/free")
+	if err != nil || len(server.allCalls()) != 1 {
+		t.Errorf("known-free HTTP helper blocked: calls=%d err=%v", len(server.allCalls()), err)
+	}
+}
+
+func TestRaiseAdmitsWhileReceiptPending(t *testing.T) {
+	a, unblock := pendingReceiptFixture(t, false)
+	a.config.DailyBudgetUSD = .24
+	if a.dailyBudgetBlock() == nil {
+		t.Fatal("fixture did not close old cap")
+	}
+	a.config.DailyBudgetUSD = .4
+	if err := a.dailyBudgetBlock(); err != nil {
+		t.Errorf("raise did not reopen cap: %v", err)
+	}
+	unblock()
+}
+
+func TestChildReadsUnlimitedAndClosedOwner(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	profile := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profile, 0); err != nil {
+		t.Fatal(err)
+	}
+	a, dir := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.ProfileDir = profile })
+	e := &orchestrateExec{agent: a, id: "pending-cap"}
+	child, err := e.newChild(dir, orchestrate.Node{ID: "worker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { child.Close(); child.SettleWrites() })
+	if cap, err := child.dailyCeiling(); cap != 0 || err != nil {
+		t.Fatalf("unlimited owner cap=%g err=%v", cap, err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
+		t.Fatal(err)
+	}
+	if cap, err := child.dailyCeiling(); cap != 1 || err != nil {
+		t.Fatalf("closed owner cap=%g err=%v", cap, err)
+	}
 }

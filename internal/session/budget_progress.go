@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -12,9 +13,14 @@ import (
 // Live readings bridge measured usage to settlement, including pending receipts.
 var budgetProgress = struct {
 	sync.Mutex
-	calls    map[*budgetCall]map[string]float64
+	calls    map[*budgetCall]map[string]budgetReading
 	watchers map[chan struct{}]string
-}{calls: make(map[*budgetCall]map[string]float64), watchers: make(map[chan struct{}]string)}
+}{calls: make(map[*budgetCall]map[string]budgetReading), watchers: make(map[chan struct{}]string)}
+
+type budgetReading struct {
+	cost float64
+	day  string
+}
 
 type budgetCall struct {
 	ledger, job string
@@ -53,9 +59,14 @@ func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()
 			return
 		}
 		if budgetProgress.calls[call] == nil {
-			budgetProgress.calls[call] = make(map[string]float64)
+			budgetProgress.calls[call] = make(map[string]budgetReading)
 		}
-		budgetProgress.calls[call][id] = *usage.Cost
+		reading := budgetProgress.calls[call][id]
+		if reading.day == "" {
+			reading.day = time.Now().Format(usageDayLayout)
+		}
+		reading.cost = *usage.Cost
+		budgetProgress.calls[call][id] = reading
 		for changed, ledger := range budgetProgress.watchers {
 			if ledger == call.ledger {
 				select {
@@ -65,7 +76,7 @@ func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()
 			}
 		}
 	}
-	ctx = context.WithValue(ctx, budgetAdmissionKey{}, a.admitJobCall)
+	ctx = context.WithValue(ctx, budgetAdmissionKey{}, a.admitModelCall)
 	return provider.WithUsageProgress(ctx, observe), func() {
 		budgetProgress.Lock()
 		defer budgetProgress.Unlock()
@@ -79,13 +90,19 @@ func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()
 }
 
 func pendingBudgetSpend(ledger, job string) float64 {
+	return pendingBudgetSpendOnDay(ledger, job, "")
+}
+
+func pendingBudgetSpendOnDay(ledger, job, day string) float64 {
 	budgetProgress.Lock()
 	defer budgetProgress.Unlock()
 	var total float64
 	for call, attempts := range budgetProgress.calls {
 		if call.ledger == ledger && (job == "" || call.job == job) {
-			for _, cost := range attempts {
-				total += cost
+			for _, reading := range attempts {
+				if day == "" || reading.day == day {
+					total += reading.cost
+				}
 			}
 		}
 	}
