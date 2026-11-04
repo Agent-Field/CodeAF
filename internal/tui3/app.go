@@ -2352,6 +2352,7 @@ type app struct {
 	// fleet counts this person's devices and addMachine is the home card that
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
+	notShared  func() (NotShared, bool)
 	addMachine addMachine
 	// resume is the one-time "continue where you left off" offer (homeband_resume.go).
 	leftOff resumeOffer
@@ -3108,6 +3109,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		approvals:           opts.Approvals,
 		taskComputers:       opts.TaskComputers,
 		fleet:               opts.Fleet,
+		notShared:           opts.NotShared,
 		branches:            opts.Branches,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
