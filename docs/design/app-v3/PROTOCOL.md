@@ -1460,6 +1460,21 @@ established open crew holds and kept services retain their conversations.
 agent in Closed or the archive is refused with `conflict` and the mark stays.
 Only an open without `warm` (the person's own, Reopen) takes it out.
 
+## Saved agent spend
+
+`Agent.spent_usd` is the conversation's cumulative spend saved in `meta.json`.
+`agents.list` carries its disk row's saved figure. `agents.open` reads the saved
+figure from disk, including while the engine holds or is opening the conversation.
+Every `agent.changed` reads it in the same step that sends the event. Other
+method answers omit `spent_usd`, so the window keeps its last figure. A zero
+figure is omitted.
+Turn-end saves and late recovered receipts update it; a save sends one
+`agent.changed` if the saved figure differs from the figure last said. Duplicate
+or delayed news sends nothing when that figure has already been said.
+An answer dressed before an event may reach the window after it, as for every
+other field of an answer. `agents.budget.get` keeps the live meter in
+`engine.spent_usd`, which can include calls not yet saved to metadata.
+
 ## Unread
 
 Every Agent carries `unread: bool`: it said something new to the person after

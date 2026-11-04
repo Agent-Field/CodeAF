@@ -2470,6 +2470,23 @@ which is the whole machine's ledger rather than this conversation's — it was a
 conversation that has started no tasks prints `spend` alone. When they are there they add
 up to the line above them, always — that is the whole point of printing them.
 
+## Desktop saved agent spend after stopping a reply
+
+An agent's saved spend is the conversation's cumulative total in `meta.json`.
+The desktop engine's `agents.list` reads saved `spent_usd` from its disk row.
+`agents.open` reads the saved figure from disk, including for a conversation
+the engine already holds or is opening. Every `agent.changed` reads it when
+the event is sent. Other method answers omit `spent_usd`, so the desktop keeps
+its last figure. A zero figure is omitted.
+
+The total is saved when a turn ends. If a cancelled call's receipt is recovered
+later, the engine saves the updated total and sends one `agent.changed` if the
+figure differs from the one last said, without waiting for another message.
+Duplicate or delayed save news sends nothing if that figure has already been
+said. The charge is counted once.
+`agents.budget.get` reads the live meter in `engine.spent_usd`, which may include
+calls not yet saved to metadata.
+
 ## Why do the tokens on the status line jump instead of counting up
 
 They count up. While a turn is running, the money and the token figures on the status
