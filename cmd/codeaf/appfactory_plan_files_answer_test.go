@@ -201,7 +201,7 @@ func TestAppFactoryPlanFilesAnswer(t *testing.T) {
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if len(requests) == 0 || !strings.Contains(requests[0], "End the plan with its file list") {
+			if len(requests) == 0 || !strings.Contains(requests[0], "fill files with every repository-relative file") {
 				t.Errorf("plan request did not carry briefPlanFiles")
 			}
 			var first struct {

@@ -78,7 +78,12 @@ func appDeviceBackend(t *testing.T, dir string) (*appBackend, *appRecorder, *act
 	// process warmer that normally follows hello.
 	b.warmed = make(chan struct{})
 	close(b.warmed)
-	t.Cleanup(func() { _ = b.Close() })
+	t.Cleanup(func() {
+		_ = b.Close()
+		// Closing the wire starts its own Close, and a second Close returns at
+		// once. Wait for the running one: listeners still read test overrides.
+		<-b.sweepDone
+	})
 	w := newActionWire(t, b)
 	if !slices.Contains(w.hello, appwire.FeatureDevicesManage) {
 		t.Fatal("hello is missing devices.manage")
