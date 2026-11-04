@@ -153,7 +153,10 @@ func (r *Runner) merge(ctx context.Context, it factory.Item, commit string) (*fa
 	if !strings.EqualFold(v.Commit, commit) {
 		return &fresh, "", "the pull request has commits you did not approve"
 	}
-	rcpt, err := src.Write(ctx, factory.Action{Verb: "merge", Item: check, Commit: commit, Method: method})
+	if err := r.publishBoundary(ctx, it.ID); err != nil {
+		return &fresh, "", err.Error()
+	}
+	rcpt, err := src.Write(ctx, factory.Action{Verb: "merge", Item: check, Commit: commit, Method: method, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 	if err != nil {
 		// A LOST ANSWER MAY HIDE A MERGE. Read the pull request again before
 		// saying the merge failed; never send it a second time.

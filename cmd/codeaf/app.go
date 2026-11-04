@@ -552,11 +552,14 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
-	chats       appChats
-	pair        appPair
-	drives      *driveBook
-	sync        appSync
-	syncPending map[string][]appSyncFact
+	pluginPauses map[string]appPluginPause
+	pluginOllama appPluginOllama
+	pluginAuth   map[string]*appPluginAttempt
+	chats        appChats
+	pair         appPair
+	drives       *driveBook
+	sync         appSync
+	syncPending  map[string][]appSyncFact
 
 	// devices observes existing sync traffic without starting a roster watch.
 	devices            *appDevices
@@ -583,6 +586,9 @@ type appBackend struct {
 	// stopProgress the factory runner's progress news (appfactory_progress.go).
 	stopPhases   func()
 	stopProgress func()
+	// stopStages and stepStreams: the factory steps' events (appfactory_stepstream.go).
+	stopStages  func()
+	stepStreams map[string]*appStepStream
 	// briefs takes the progress news of this machine's factory's jobs as
 	// writes of their briefs (appfactory_brief_writer.go).
 	briefs *briefDebounce
@@ -1046,6 +1052,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	b.stopPhases = b.listenPhases()
 	b.briefs = newBriefDebounce(appBriefDebounce, b.writeBriefLater)
 	b.stopProgress = b.listenProgress()
+	b.stopStages = b.listenStages()
 	guard.Go("app/sweep", b.sweep)
 	b.startLocalChatPublication()
 	return b
@@ -1976,14 +1983,18 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	return view
 }
 
-// appAskID is the stable id of one ask: the engine's own question key.
-func appAskID(q session.Question) string {
-	return string(q.Kind) + ":" + q.Token()
+// appAskID scopes connection questions to their agent because plugin completion events carry only this id.
+func appAskID(agent string, q session.Question) string {
+	id := string(q.Kind) + ":" + q.Token()
+	if q.Kind == session.QuestionConnect {
+		return agent + "/" + id
+	}
+	return id
 }
 
 // appAskOf is the engine's question as the app's ask.
 func appAskOf(agent string, q session.Question) appwire.Ask {
-	ask := appwire.Ask{ID: appAskID(q), Agent: agent, Kind: appwire.AskQuestion, Title: strings.TrimSpace(q.Head), Detail: strings.TrimSpace(q.Reason)}
+	ask := appwire.Ask{ID: appAskID(agent, q), Agent: agent, Kind: appwire.AskQuestion, Title: strings.TrimSpace(q.Head), Detail: strings.TrimSpace(q.Reason)}
 	if q.Kind == session.QuestionConsent {
 		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindPermission
 		ask.Irreversible = q.Stakes == session.StakesIrreversible
@@ -2141,7 +2152,7 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			q.ConsentScopes, q.AlwaysAsk = nil, "critical"
 		}
 	}
-	askID := appAskID(q)
+	askID := appAskID(id, q)
 	switch event.Kind {
 	case session.EventQuestion:
 		if q.Subject.Kind == session.SubjectCall {
@@ -2176,6 +2187,9 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			return
 		}
 		live.box.Event(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+		if q.Kind == session.QuestionConnect {
+			live.box.Event(appwire.EventPluginsNeeded, appwire.PluginsNeeded{Agent: id, Plugin: q.Subject.Name, Why: q.Reason, AskID: askID})
+		}
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
@@ -2236,6 +2250,9 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			}
 		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
+		if q.Kind == session.QuestionConnect {
+			live.box.Event(appwire.EventPluginsNeededDone, appwire.PluginsNeededDone{AskID: askID})
+		}
 		receipt := appwire.Entry{ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: words}
 		if scope != "" {
 			receipt.Text = "Always allowed · " + scope + " · you · " + at.Local().Format("15:04")
@@ -2291,6 +2308,7 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 	mine := false
 	var view appwire.Agent
 	var asks []appwire.Ask
+	pluginAsks := map[string]bool{}
 	b.locked(func() {
 		if mine = a.live == live; !mine {
 			return
@@ -2300,6 +2318,11 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 		a.view.State = appwire.StateStopped
 		view = a.view
 		asks = live.asks
+		for id, q := range live.questions {
+			if q.Kind == session.QuestionConnect {
+				pluginAsks[id] = true
+			}
+		}
 		live.asks, live.questions = nil, map[string]session.Question{}
 	})
 	if !mine {
@@ -2307,6 +2330,9 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 	}
 	at := b.now()
 	for _, ask := range asks {
+		if pluginAsks[ask.ID] {
+			live.box.Event(appwire.EventPluginsNeededDone, appwire.PluginsNeededDone{AskID: ask.ID})
+		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: view.ID, ID: ask.ID, By: appwire.ClosedByStopped, At: at})
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 			ID: appReceiptEntryID(ask.ID), Agent: view.ID, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(appwire.ClosedByStopped, "", nil, at),
@@ -3010,6 +3036,20 @@ func appUserEntryID(n int) string { return "u" + strconv.Itoa(n) }
 
 func appAnswerEntryID(n, m int) string { return "a" + strconv.Itoa(n) + "." + strconv.Itoa(m) }
 
+// appEntryMessage is the person's message an entry id of those two is under.
+func appEntryMessage(id string) (n int, ok bool) {
+	at, found := strings.CutPrefix(id, "u")
+	if !found {
+		answer, isAnswer := strings.CutPrefix(id, "a")
+		at, _, found = strings.Cut(answer, ".")
+		if !isAnswer {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(at)
+	return n, found && err == nil
+}
+
 func appToolEntryID(call string) string { return "t" + call }
 
 func appNoteEntryID(n, k int) string { return "n" + strconv.Itoa(n) + "." + strconv.Itoa(k) }
@@ -3384,6 +3424,7 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 			refused = appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", askID)
 			return
 		}
+		q = b.connectedPluginQuestion(q)
 		key, refused = appValidateQuestionAnswer(askID, q, option, text, scope)
 		if refused != nil {
 			return
@@ -4477,11 +4518,16 @@ func (b *appBackend) Close() error {
 	var warmed chan struct{}
 	var balances *appBalances
 	var stopModelNotices func()
+	var pluginAttempts []*appPluginAttempt
 	b.locked(func() {
 		if already = b.closing; already {
 			return
 		}
 		b.closing = true
+		for id, attempt := range b.pluginAuth {
+			pluginAttempts = append(pluginAttempts, attempt)
+			delete(b.pluginAuth, id)
+		}
 		if b.left != nil {
 			close(b.left)
 		}
@@ -4508,6 +4554,12 @@ func (b *appBackend) Close() error {
 	})
 	if already {
 		return nil
+	}
+	for _, attempt := range pluginAttempts {
+		attempt.cancel()
+		if attempt.flow != nil {
+			attempt.flow.Cancel()
+		}
 	}
 	b.closePair()
 	if b.stopSyncedSettings != nil {
@@ -4538,6 +4590,9 @@ func (b *appBackend) Close() error {
 	<-b.sweepDone
 	if b.stopPhases != nil {
 		b.stopPhases()
+	}
+	if b.stopStages != nil {
+		b.stopStages()
 	}
 	if b.stopProgress != nil {
 		b.stopProgress()

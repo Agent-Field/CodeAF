@@ -679,16 +679,17 @@ type MemorySettings struct {
 }
 
 type Settings struct {
-	Memory             MemorySettings `json:"memory"`
-	DefaultModel       string         `json:"default_model"`
-	BudgetUSD          *float64       `json:"budget_usd"`
-	AsksBefore         string         `json:"asks_before"`
-	DayCapUSD          *float64       `json:"day_cap_usd"`
-	WorkFolder         string         `json:"work_folder"`
-	TaskCapUSD         *float64       `json:"task_cap_usd"`
-	ProposedTaskClockS int            `json:"proposed_task_clock_s"`
-	IdleCloseDays      int            `json:"idle_close_days"`
-	Effort             string         `json:"effort,omitempty" enum:"low,medium,high"`
+	WhenPlanPaused     map[string]string `json:"when_plan_paused"`
+	Memory             MemorySettings    `json:"memory"`
+	DefaultModel       string            `json:"default_model"`
+	BudgetUSD          *float64          `json:"budget_usd"`
+	AsksBefore         string            `json:"asks_before"`
+	DayCapUSD          *float64          `json:"day_cap_usd"`
+	WorkFolder         string            `json:"work_folder"`
+	TaskCapUSD         *float64          `json:"task_cap_usd"`
+	ProposedTaskClockS int               `json:"proposed_task_clock_s"`
+	IdleCloseDays      int               `json:"idle_close_days"`
+	Effort             string            `json:"effort,omitempty" enum:"low,medium,high"`
 	// The General rows the window draws by (Wave 8): kept here so every window
 	// reads the same answer.
 	Appearance  string `json:"appearance" enum:"system,light,dark"`
@@ -712,6 +713,7 @@ type Settings struct {
 // money figure sent as null is cleared, which the settings that always have a
 // figure refuse.
 type SettingsPatch struct {
+	WhenPlanPaused     map[string]string
 	MemoryEnabled      *bool
 	DefaultModel       *string
 	BudgetUSD          *Figure

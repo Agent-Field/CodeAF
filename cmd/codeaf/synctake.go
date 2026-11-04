@@ -51,6 +51,9 @@ func wireSync(o *tui3.Options) {
 	if o.Fleet == nil {
 		o.Fleet = s
 	}
+	if o.NotShared == nil {
+		o.NotShared = terminalNotShared
+	}
 	take := takeover{chatContinuer(s, surfaceNotices.Say)}
 	if o.Takeover == nil {
 		o.Takeover = take

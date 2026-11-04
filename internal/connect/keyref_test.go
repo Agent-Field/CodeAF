@@ -211,7 +211,7 @@ func TestConnectingToAnUnsetVariableStoresNothing(t *testing.T) {
 	if err == nil {
 		t.Fatal("connecting to an unset variable succeeded")
 	}
-	if !strings.Contains(err.Error(), "$NOTHING_IS_SET_HERE") {
+	if err.Error() != "Example reads its key from $NOTHING_IS_SET_HERE, and nothing is set there" {
 		t.Errorf("the refusal does not name the variable: %q", err)
 	}
 	if _, ok, _ := manager.store.get("example"); ok {

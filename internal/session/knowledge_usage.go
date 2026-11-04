@@ -62,7 +62,7 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 			a.recordUnbilledReceipt(r.Model)
 		}
 	})
-	return provider.WithUnmeteredReceipts(ctx), nil
+	return a.withReceiptTracking(provider.WithUnmeteredReceipts(ctx)), nil
 }
 
 // jobKnowledgeWait limits the part of optional learning a stage waits for.

@@ -26,6 +26,7 @@ type ChatRow struct {
 	Crew         string          `json:"crew,omitempty"`
 	Seen         Seen            `json:"seen"`
 	CanTake      bool            `json:"can_take"`
+	Taking       bool            `json:"taking"`
 	Line         string          `json:"line,omitempty"`
 	TakeoverLine string          `json:"takeover_line,omitempty"`
 }

@@ -72,7 +72,7 @@ func TestParseTheOwnersRecipe(t *testing.T) {
 		t.Fatalf("pr = %+v", pr)
 	}
 	// ONE NAME IS ONE SHIPPED STAGE: a pull request's review is the issue's.
-	if rv := pr[2]; rv.Ask != "review the diff as a careful colleague; fix what you find" || rv.Fanout != "per-finding" || rv.Max != 2 {
+	if rv := pr[2]; rv.Ask != "review the diff against the issue and repository standards; fix substantive findings" || rv.Fanout != "per-finding" || rv.Max != 2 {
 		t.Fatalf("pr review = %+v", rv)
 	}
 	// The copy is never fixed: only the line's own `fixed` fixes it.
@@ -166,7 +166,7 @@ func TestFormatRoundTripsTheDefault(t *testing.T) {
 	if again := factory.Format(r); again != first {
 		t.Fatalf("not byte-stable:\n%s\n---\n%s", first, again)
 	}
-	if !strings.Contains(first, "5. review · chat · review the diff as a careful colleague; fix what you find · until clean · max 3\n6. proof · chat · show each claim in its own medium · until proven · max 3 · fixed") {
+	if !strings.Contains(first, "5. review · chat · review the diff against the issue and repository standards; fix substantive findings · until clean · max 3\n6. proof · chat · show each claim in its own medium · until proven · max 3 · fixed") {
 		t.Fatalf("default file =\n%s", first)
 	}
 	// The owner's file comes back in the same shape it went in.
