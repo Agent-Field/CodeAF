@@ -95,13 +95,7 @@ func PublishBody(it Item, trailer string) string {
 		fmt.Fprintf(&b, "\nCloses #%d.\n", it.Num)
 	}
 	b.WriteString("\n## Validation\n\n")
-	if it.Stream != nil {
-		for _, ph := range it.Stream.Phases {
-			if ph.State == PhaseSkipped {
-				fmt.Fprintf(&b, "- %s: skipped · %s\n", ph.Name, publicationSentence(ph.SkipReason))
-			}
-		}
-	}
+	b.WriteString(SkippedValidation(it))
 	seen := map[string]bool{}
 	for _, cmd := range commands {
 		if seen[cmd] || lastOutcome[cmd] != "passed" {
@@ -143,4 +137,24 @@ func PublishBody(it Item, trailer string) string {
 		b.WriteString("\n\n" + trailer)
 	}
 	return PublicText(b.String())
+}
+
+// SkippedValidation is shared by post stages and the publication preview.
+func SkippedValidation(it Item) string {
+	var b strings.Builder
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.State == PhaseSkipped {
+				fmt.Fprintf(&b, "- %s: skipped · %s\n", ph.Name, publicationSentence(ph.SkipReason))
+			}
+		}
+	}
+	if PublishedAnyway(it) {
+		person := "a person"
+		if approverHandle.MatchString("@" + strings.ToLower(it.PublishAnyway.DecidedBy)) {
+			person = "@" + it.PublishAnyway.DecidedBy
+		}
+		fmt.Fprintf(&b, "- Published anyway by %s at %s; skipped checks remain unmeasured.\n", person, it.PublishAnyway.At.UTC().Format("2006-01-02T15:04:05Z"))
+	}
+	return b.String()
 }

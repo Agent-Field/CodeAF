@@ -242,6 +242,14 @@ A repository's steps are its `.codeaf/factory.yaml`, read from the main branch, 
 
 Only the factory's operator may save or stop a copy, as with the factory's own rules; on a factory you run yourself, that is you. The copy is kept on the factory (on a team, the shared server), never in one Mac's settings. A copy the factory cannot read refuses to start jobs rather than quietly running main's steps. Steps that use kind, when, effort or fanout are saved as a copy only when the factory has confirmed it runs them for the file they were edited from, as for a pull request. A factory older than this feature answers `This factory doesn't support that yet; nothing was changed. Update the factory to use it.`
 
+## a running step's chat — watching a step work, its words as it writes them
+
+Press a running step to open its chat. If the step is still getting ready, the
+view says so: `Cloning owner/repo onto this Mac`, then `Starting Plan`, and it
+moves into the chat by itself when the chat exists. An open chat shows the step's
+words as it writes them and each thing it does, with no press. A step's chat that
+was closed comes back current when opened again.
+
 ## repository rules unread — bad factory.yaml, no factory.yaml, default rules, Start, plan waiting for you
 
 A repository with no `.codeaf/factory.yaml` is normal: the job says `No .codeaf/factory.yaml in this repository, so this job uses the default rules.`, and nothing waits because of it. A file GitHub cannot be reached for and that isn't on this computer yet is read after the clone, before the first model call. If it then names other steps than the job started with, the plan waits.
@@ -330,21 +338,31 @@ A nonmatching step ends as `skipped`, with a structured reason (`skip_reason` on
 
 The other conditions are `always`, `thin` and `large`; their behavior is unchanged. An unknown condition is refused; without `when`, the step runs as before. Apps send this field only when the engine announces `factory.job_step_edit_when`.
 
-## skipped required checks — publishing waits, rerun, policy approval
+## skipped required checks — Publish anyway, rerun, policy approval
 
-Under `tests pass before anything posts`, a skipped check still blocks the
-post. The job waits for you. Its open question and Needs you reason name the
-check, why it was skipped, and the recovery action; the policy result retains
-the rule that refused publishing. For example:
-`Publishing waits: check inspect was skipped (when touches auth does not match the change files). Rerun from write after revising the change files to match, or stop the job.`
+Under `tests pass before anything posts`, a skipped check leaves the job
+waiting. If every unmet check is a conditional check correctly skipped with a
+reason, and its condition still does not match the known change files, the
+engine offers **Publish anyway**. For example:
+`Publishing waits: check inspect was skipped (when touches auth does not match the change files). Publish anyway, rerun from write after revising the change files to match, or stop the job.`
 
-Approval cannot bypass this policy wait. Trying the post again with the same
-files still refuses. Rerun from the earlier work step after revising the files
-to match the condition; the check must actually run and pass. A rerun of only
-the conditional check with unchanged files skips again. Step edit cannot change
-an already-run step or remove its condition. If the condition is inappropriate,
-stop the job and correct the pipeline before starting a new job. With no earlier
-work step, the question names that stop-and-correct action instead.
+Only a signed-in person allowed to publish this job can press Publish anyway.
+Failed, pending or unmeasured checks prevent the offer and refuse the press.
+An ordinary approval, automatic answer, Auto mode or automatic budget increase
+cannot make this decision. Skipped checks remain unmeasured and supply no proof.
+The PR lists their reasons and says who published anyway and when. Only a plain
+login is shown as a handle; other values appear as "by a person". The saved
+decision retains the original value.
+
+The saved person decision uses the job's approval record shape and decision
+ledger. It is bound to the current head, reported change and skipped-check set;
+a rerun clears it, and changed files or skips require a new press. Rerun from
+an earlier work step to make the condition match and run the check, or stop the
+job and correct the pipeline. Step edit cannot remove an already-run condition.
+
+Apps show the action only when `can.publish_anyway` is true. Hello announces
+`factory.publish_anyway`; `factory.job_publish_anyway` takes `factory`, `job`
+and `expect.version`. A stale version refuses without recording a decision.
 
 A skip without a check policy does not block posting. Under
 `no pull request without a green check`, a measured passing check beside a skip
@@ -450,6 +468,26 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 - the job's pull request is someone else's: codeaf merges only pull requests it opened.
 
 **Auto-merge** is off unless the repository's `.codeaf/factory.yaml` says `merge: {auto: on}` (`method: merge`, `squash` or `rebase`; omitted lets the repository's settings choose). A personal `~/.codeaf/factory.yaml` may only turn it off. The setting is fixed on a job when its proof is approved. An auto-merge also needs every claim proven and at least one passing check, and until then it waits quietly. A merge that failed is the person's to look at, says why, and is never tried again on its own.
+
+## a runner missed my choice — lost heartbeat replies, repeated signals
+
+A current factory keeps a choice sent to a current runner until that runner
+has received and handled it. Losing a heartbeat reply delays the choice until
+the next heartbeat; receiving it twice does not apply it twice during that run.
+A failed effect stays pending for the next heartbeat. A choice that no longer
+makes sense for an ended job, or an answer to a replaced question, is acknowledged
+as moot. Missing local data alone never counts as success. Confirmed delivery
+IDs leave the runner’s acknowledgement list; receipts are sent in bounded batches.
+This includes answers, steering words, manager replies, budget and model choices,
+autonomy changes, and pauses. Their order stays the same. Rechecks, publish
+and merge continue to wait for the runner that pulls that work; a live heartbeat does
+not start them. Stop clears pending choices, and choices from an ended run
+are not applied to a later run.
+
+This delivery protection needs a current factory and runner. Older runners
+keep their existing delivery behavior; current runners can still work with
+older factories. A runner process that disappears needs the existing job
+recovery flow rather than an automatic replay of its old choices.
 
 ## pause a running job — Pause, Hold, Resume, paused step, keep the conversation
 

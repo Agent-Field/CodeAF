@@ -353,7 +353,7 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 	drv.Fence, drv.Head = v.Cell.Lease.Fence, v.Cell.Head
 	// The plan comes with the record: the frames the last publisher named for
 	// this head, which this device's publishes now extend (contract §22.2).
-	drv.Frames = v.Cell.Frames
+	drv.Frames, drv.Size = v.Cell.Frames, v.Cell.Size
 	return drv, "", nil
 }
 
@@ -376,7 +376,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 	engine.MaxFrame = blobstore.BulkFrame // a flush's objects share frames up to the bulk size (contract §22.6); a small save still writes one small frame
 	d.scope = s.scope(c.ID)
 	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir}
-	return &cellsync.Batcher{
+	b := &cellsync.Batcher{
 		Publisher: pub,
 		Brancher: cellsync.Brancher{
 			Dir: s.Dir, Publisher: pub, Map: branches,
@@ -392,7 +392,11 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 		Sleep:           d.opt.Sleep,
 		Liveness:        s.Liveness(),
 		OnRenewalChange: d.renewalChanged,
-	}, nil
+	}
+	// Another computer says how far this chat's sharing has got from the
+	// beats, which carry the upload's progress.
+	pub.OnUpload = b.Uploading
+	return b, nil
 }
 
 // info is what a publish tells the directory about this chat.

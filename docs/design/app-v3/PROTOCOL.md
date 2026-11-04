@@ -60,6 +60,7 @@ decides which combinations are accepted.
 | `agents.move_to_closed` | `in.tidyIDs` | `Empty` |
 | `agents.move_to_task` | `{id, turn}` | `MoveResult` |
 | `agents.take` | `in.TakeParams` | `TakeResult` |
+| `agents.take_cancel` | `in.TakeCancelParams` | `TakeCancelResult` |
 | `agents.open` | `{id, warm}` | `agentResult` |
 | `agents.queue` | `in.sayTo` | `queueResult` |
 | `agents.rename` | `{id, title}` | `agentResult` |
@@ -255,6 +256,7 @@ decides which combinations are accepted.
 | `factory.job_request_changes` | `in.FactoryJobChangesParams` | `FactoryJobActed` |
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_publish_anyway` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -1387,6 +1389,19 @@ the engine before sending work. Device and sync snapshots precede done.
 `paired`, `default`, `none`) and `off`. The source follows CODEAF_SYNC_URL, the
 saved pairing URL, then the hosted default. Off omits the URL.
 
+`Sync.unshared` counts this computer's chats that the other computers cannot
+list yet, because no directory record names them: `{total, waiting, failing,
+kept_here}`, where `total` is the sum of the rest. `waiting` chats are queued,
+uploading, or older chats still to be copied; `failing` chats failed their last
+upload and are retried; `kept_here` are older chats a rule keeps local: last
+used over 30 days ago, which opening on this computer shares, or working in the
+home folder, which stays on this computer. It is present only in mode `on`,
+after the first count, and a change emits `sync.changed`. One process per home
+publishes existing chats (the engine or a terminal, whichever holds the home's
+sharing lock); it counts and writes its count beside the lock, and the other
+process reports that count. The count describes this computer only; other
+computers' backlogs are not on the wire.
+
 `chats.take` advertises inventory, events and conditional continuation even
 when sync is off or unavailable; in those modes `chats.list` returns `[]`.
 Never-paired homes also return `[]` without contacting a relay. The first
@@ -1422,6 +1437,51 @@ chat, rows that still show it elsewhere keep `taking:true` until a row says the
 chat is here or a later take holds it, even when opening the moved chat fails.
 A client that stopped waiting for a take reads `taking:false`
 on a chat still elsewhere as a take that did not move it.
+
+`chats.move` advertises move progress, outcomes and `agents.take_cancel`.
+Moves run one at a time. While `agents.take` runs, its row carries
+`move:{state, step, done, total}`: `state` is `queued` while it waits behind
+another move, then `moving`; `step` is `preparing`, `copying` (bytes are
+arriving) or `opening` (the chat is acquired and is being put in place);
+`done` is the bytes copied here so far and `total` the bytes the chat's record
+says a copy takes, absent when unknown, when this computer already holds most
+of the chat, or once more than that has arrived. A running move emits its row
+at most four times a second. A move that waits 2 minutes on the relay with
+nothing coming through stops; local work between requests does not count.
+When a move ends without moving the chat, the row that clears `taking` carries
+`move_ended:{outcome, line, detail}` (`stopped`, `failed` or `cancelled`), and
+every later row keeps it until the chat is here or another move of it starts,
+so a client that stopped waiting always learns how the move ended. `line` is
+the person's sentence (also `agents.take`'s error message) and `detail` the
+error text for "Copy details". `agents.take_cancel {cell}` cancels a running or
+queued move of that chat and answers `cancelled:false` when there was none; the
+cancelled `agents.take` answers `engine` with the cancelled sentence. A lease
+the move had already acquired is handed back. A second `agents.take` of a chat
+already moving answers `busy` ("This chat is already moving to this
+computer."); the first keeps its Cancel and its outcome.
+
+`sharing:{pending, sent, total}` is on a row whose holder (another computer)
+has `pending` sealed turns it has not finished sharing; a move now would copy
+the chat without them. `sent` of `total` bytes is how far the holder's upload
+had got at its last beat (every 30 seconds while it changes), absent when the
+holder or the relay did not say. While a known computer (`online` present)
+holds such a chat, `can_take` is false; a holder whose presence is unknown or
+that was removed never finishes, so its chat stays takeable. Directory beats
+carry `upload_sent`/`upload_total` only to a relay that answers
+`Codeaf-Upload-Progress: 1`, which keeps them on the lease until the next
+publish, release or acquire. The record's `size`, set by publishers since
+this change, is the bytes of the frames its plan names (`0`: unknown); a move
+shows it as `move.total`. A chat shared in the background gets the bytes its
+upload attempts put.
+
+Before a move, a row says what it would copy: `folder` is the name of the
+folder the chat works in on its holder (absent for a chat in its own private
+folder, from older publishers, or from a relay that does not answer
+`Codeaf-Chat-Folders: 1`; publishers send the sealed name only then), and
+`size` is the record's size, absent when unknown or when this computer already
+has a copy of the chat (a move then copies only what changed). The desktop asks
+before moving a chat whose `size` is over 100 MB; the terminal's continue card
+says it.
 Older chats working in the home folder stay local.
 Copy `cell` and `seen` verbatim to `agents.take`; never open an agent using the
 remote cell id. It returns the adopted local Agent through the normal open path.
@@ -1445,6 +1505,22 @@ established open crew holds and kept services retain their conversations.
 `warm` marks a window's guess at a view (a hover's prefetch): a warm open of an
 agent in Closed or the archive is refused with `conflict` and the mark stays.
 Only an open without `warm` (the person's own, Reopen) takes it out.
+
+## Saved agent spend
+
+`Agent.spent_usd` is the conversation's cumulative spend saved in `meta.json`.
+`agents.list` carries its disk row's saved figure. `agents.open` reads the saved
+figure from disk, including while the engine holds or is opening the conversation.
+Every `agent.changed` reads it in the same step that sends the event, and
+`agents.take` answers through `agents.open` and carries it too. Other method
+answers omit `spent_usd`, so the window keeps its last figure. A zero
+figure is omitted.
+Turn-end saves and late recovered receipts update it; a save sends one
+`agent.changed` if the saved figure differs from the figure last said. Duplicate
+or delayed news sends nothing when that figure has already been said.
+An answer dressed before an event may reach the window after it, as for every
+other field of an answer. `agents.budget.get` keeps the live meter in
+`engine.spent_usd`, which can include calls not yet saved to metadata.
 
 ## Unread
 
@@ -1680,6 +1756,25 @@ manager chat or composer (and discards the returned step chats). They require a
 desktop update before pairing with this engine for jobs without a manager.
 The hello feature is capability advertisement, not client negotiation; it does
 not by itself make those older desktops compatible.
+### factory.job_publish_anyway
+
+Hello feature `factory.publish_anyway` advertises this person action. Params:
+`factory`, `job`, and `expect.version`. The result is `FactoryJobActed` with
+`action: "publish_anyway"` and the current job. The desk shows **Publish anyway**
+only when `can.publish_anyway` is true.
+
+The factory requires an authenticated person allowed to publish the job. Only
+correctly skipped conditional checks under the every-check policy qualify.
+Failed, pending or unmeasured checks refuse. Stale versions return `stale`
+without recording consent. Auto mode and automatic answers cannot grant it.
+
+The job's `publish_anyway` uses the existing approval shape. Its `matched`
+identity hashes the reported head, change, files and skipped-check set. The
+existing approved ledger event records the person and time. A held worker
+receives this decision on the existing answer signal and validates the identity
+before resuming. Its `words` carries the server-minted approval trailer; a post
+checks its head and person before using it without a local copy of the ledger.
+Skipped checks stay unmeasured and the PR lists each reason and the person decision.
 
 ## plugins methods
 

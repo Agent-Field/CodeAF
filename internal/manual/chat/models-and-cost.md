@@ -1820,6 +1820,10 @@ machine at most **four** times, with the same waits between them, and then moves
 fallback or ends. So does a watched conversation that still has a fallback model to go to. A router's pool is **never** treated as one machine, whatever your `routing` row
 says: it keeps the short allowance above, because the next ask can land on another machine.
 
+## Pending receipts at exit
+
+Shutdown waits for admitted receipts across chats together, including closed chats, retired children and successful Factory answers. This wait lasts at most 70 seconds, followed by the bounded ledger drain. On timeout, quit proceeds with `codeaf: receipt settlement timed out; spending may be incomplete`. Unavailable provider or disk responses can leave spending incomplete.
+
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
 Yes, a provider may still charge for the prompt and the tokens it produced before a stream
@@ -2465,6 +2469,24 @@ which is the whole machine's ledger rather than this conversation's — it was a
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
 conversation that has started no tasks prints `spend` alone. When they are there they add
 up to the line above them, always — that is the whole point of printing them.
+
+## Desktop saved agent spend after stopping a reply
+
+An agent's saved spend is the conversation's cumulative total in `meta.json`.
+The desktop engine's `agents.list` reads saved `spent_usd` from its disk row.
+`agents.open` reads the saved figure from disk, including for a conversation
+the engine already holds or is opening. Every `agent.changed` reads it when
+the event is sent, and `agents.take` carries it because it answers through
+`agents.open`. Other method answers omit `spent_usd`, so the desktop keeps
+its last figure. A zero figure is omitted.
+
+The total is saved when a turn ends. If a cancelled call's receipt is recovered
+later, the engine saves the updated total and sends one `agent.changed` if the
+figure differs from the one last said, without waiting for another message.
+Duplicate or delayed save news sends nothing if that figure has already been
+said. The charge is counted once.
+`agents.budget.get` reads the live meter in `engine.spent_usd`, which may include
+calls not yet saved to metadata.
 
 ## Why do the tokens on the status line jump instead of counting up
 

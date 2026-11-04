@@ -68,6 +68,8 @@ type deviceCard struct {
 	naming *string
 	// removing freezes the chosen device across asynchronous roster refreshes.
 	removing *DeviceRow
+	// notShared reads this computer's chats not shared yet; nil draws nothing.
+	notShared func() (NotShared, bool)
 	// read is the newest directory version the rows were read at, so a change another computer
 	// makes (a device revoked, renamed or added) is read again once and not on every signal.
 	read uint64
@@ -375,6 +377,9 @@ func (c *deviceCard) rows(width int, now time.Time, pal palette) []string {
 		add = pal.glyph(tokens.GPointer) + " " + addDeviceWord
 	}
 	out = append(out, pal.ink(fit(add, width)))
+	if line := notSharedDetail(c.notShared); line != "" {
+		out = append(out, dressed(wrap(line, max(width, 4)), pal.dim)...)
+	}
 	if c.naming != nil {
 		out = append(out, pal.ink(fit(devicesNameAsk+*c.naming+"▏", width)))
 	}
@@ -565,5 +570,5 @@ func (a *app) newDeviceCard() *deviceCard {
 	if !service.On() {
 		address = ""
 	}
-	return &deviceCard{presence: a.presence, service: address}
+	return &deviceCard{presence: a.presence, service: address, notShared: a.notShared}
 }
