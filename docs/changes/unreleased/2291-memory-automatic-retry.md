@@ -13,6 +13,8 @@ in total, they stop and say to use Build or add new sources. Changed input or
 Build starts a fresh count; success clears it. Attempts survive restarts, and
 each can make several paid requests. Old databases with `failed_input` still
 load. Memory off still prevents compilation.
+An empty memory-on home does not persist retry metadata, so a first start
+can still pair. Real memory sources still prevent joining another home.
 Factory sources remain excluded from independent background compilation, with
 failures, ownership and usage accounting handled by the owning job.
 

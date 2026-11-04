@@ -330,18 +330,21 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
 		return err
 	}
-	attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
-	if job["build_input"] != attemptInput {
-		job["build_input"] = attemptInput
-		job["build_attempts"] = 0
-	}
-	if number(job["build_attempts"]) >= ordinaryBuildAttemptLimit {
-		if job["phase"] != string(BuildFailed) {
-			job["phase"] = string(BuildFailed)
-			job["error"] = "Knowledge build interrupted. " + buildRetryNotice(number(job["build_attempts"]))
-			return saveState(db, "job", job)
+	// An empty vault has no build input or retry budget to persist.
+	if total > 0 {
+		attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
+		if job["build_input"] != attemptInput {
+			job["build_input"] = attemptInput
+			job["build_attempts"] = 0
 		}
-		return nil
+		if number(job["build_attempts"]) >= ordinaryBuildAttemptLimit {
+			if job["phase"] != string(BuildFailed) {
+				job["phase"] = string(BuildFailed)
+				job["error"] = "Knowledge build interrupted. " + buildRetryNotice(number(job["build_attempts"]))
+				return saveState(db, "job", job)
+			}
+			return nil
+		}
 	}
 	job["problems"] = problems
 	job["sources"] = total

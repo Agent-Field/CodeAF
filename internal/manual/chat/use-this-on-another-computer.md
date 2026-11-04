@@ -552,7 +552,7 @@ field. Use `codeaf pair approve <link>` there instead.
 
 ## I opened codeaf once without sending a turn — can this computer pair?
 
-Yes. A computer that has only opened codeaf and quit without sending a turn can pair without `--replace`, including when a provider such as Ollama is connected. Its fetched model lists do not count as local work. Startup logs, locks, the empty chat header, and empty knowledge and automation stores do not count as your work. The name you enter for pairing is kept.
+Yes. A computer that has only opened codeaf and quit without sending a turn can pair without `--replace`, including when a provider such as Ollama is connected. Its fetched model lists do not count as local work. Startup logs, locks, the empty chat header, and empty knowledge and automation stores do not count as your work. Turning memory on also leaves a home joinable while it has no sources to compile. Saved knowledge sources count as local work. The name you enter for pairing is kept.
 
 Once this computer has its own saved pairing keys, a sent turn, tracked work, a chat memory, an automation, a saved knowledge page or a stored conversation makes the computer used. Unknown files or database tables also keep the conservative local-work refusal. Existing personal memories in the graph keep their normal merge behavior. A computer with an unrelated shared account is never silently merged; use the explicit replacement road when appropriate.
 
