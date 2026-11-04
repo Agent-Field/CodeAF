@@ -55,8 +55,8 @@ import (
 	"strings"
 	"time"
 
-	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/verify"
