@@ -547,10 +547,10 @@ func (w *laneWitness) answered(seen hedgeSeen, output int) laneFacts {
 const usageQueueDepth = 256
 
 // usageFlushLimit is the longest [FlushUsage] may wait for the rows in front of
-// it, across every ledger it is flushing. Two seconds is far longer than a disk
-// that is answering needs — a flush costs microseconds on a working mount — and
-// far shorter than a person will wait for a terminal to come back from a mount
-// that is not. It is a var only so a test can shrink it: a test that wants the
+// it, across every ledger it is flushing. The first write scans the ledger's
+// identities, so even a working mount can need time for a large ledger. The
+// two-second ceiling keeps a stalled mount from holding the terminal open.
+// It is a var only so a test can shrink it: a test that wants the
 // deadline to fire should say so in one line rather than put load on the box to
 // provoke it.
 var usageFlushLimit = 2 * time.Second
@@ -813,7 +813,13 @@ func openUsageLedger(path string) *os.File {
 // exactly that: the writer's next append rebuilds the directory underneath the
 // cleanup. A caller that wants a join wants [StopUsageWriter] or [CloseUsage].
 func FlushUsage() bool {
-	dones := enqueueUsageFlush()
+	return flushUsage("")
+}
+
+// flushUsage drains one path without stopping its shared writer. An empty path
+// selects every writer for [FlushUsage]. Rows admitted later may keep writing.
+func flushUsage(path string) bool {
+	dones := enqueueUsageFlush(path)
 	// IT WAITS UNDER A CEILING, because the one thing it waits on is the thing
 	// this whole file exists to survive. A writer parked inside [openUsageLedger]
 	// on a stalled mount never drains its queue again, so an unbounded flush
@@ -876,18 +882,21 @@ func detachUsageWriter(path string) *usageWriter {
 	return writer
 }
 
-// enqueueUsageFlush hands a flush marker to every live writer UNDER the writers
+// enqueueUsageFlush hands a flush marker to the selected writers UNDER the writers
 // lock, the same door [RecordUsage] enqueues through, so a marker is never sent
 // on a queue [CloseUsage] closed under that lock (a send on a closed channel
 // would panic the process). The send is non-blocking for [RecordUsage]'s
 // reason: a full queue is a writer stalled on a disk that is not answering, and
 // a flush will not wait on a marker that cannot land, no more than on a row that
 // cannot. An unaccepted marker makes the bounded flush report false.
-func enqueueUsageFlush() []chan struct{} {
+func enqueueUsageFlush(path string) []chan struct{} {
 	usageWritersMu.Lock()
 	defer usageWritersMu.Unlock()
 	dones := make([]chan struct{}, 0, len(usageWriters))
-	for _, writer := range usageWriters {
+	for ledger, writer := range usageWriters {
+		if path != "" && ledger != path {
+			continue
+		}
 		dones = append(dones, writer.pendingOverflow()...)
 		done := make(chan struct{})
 		select {
@@ -1040,10 +1049,19 @@ const usageWriteBatchSize = 128
 
 // writeOverflow writes the rows kept so far.
 func (w *usageWriter) writeOverflow(write func([]usageWrite)) {
+	// An older queue marker must not complete a newer overflow barrier ahead
+	// of the queued rows it covers. Snapshot only an empty queue, under the
+	// admission lock, so no row can enter between the check and the snapshot.
+	usageWritersMu.Lock()
+	if len(w.queue) != 0 {
+		usageWritersMu.Unlock()
+		return
+	}
 	w.overflowMu.Lock()
 	rows := w.overflowRows
 	w.overflowRows = nil
 	w.overflowMu.Unlock()
+	usageWritersMu.Unlock()
 	for len(rows) > 0 {
 		n := min(len(rows), usageWriteBatchSize)
 		batch := rows[:n]
