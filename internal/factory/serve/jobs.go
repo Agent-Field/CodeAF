@@ -854,9 +854,10 @@ func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
 // capResumes is a raise that answers the open cap question on Auto or Manual
 // when the new cap clears spend. Take over, publishing and other questions
 // keep their own decisions; a cap at or under spend keeps the cap question.
+// A person's Stop requires their explicit Start even after a raise.
 func capResumes(it factory.Item) bool {
 	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
-	return asksCap && it.Cap > factory.JobLifetimeSpent(it) && !it.Manual && !it.Publishing
+	return asksCap && it.Cap > factory.JobLifetimeSpent(it) && !it.Manual && !it.Publishing && !factory.StoppedByPerson(it)
 }
 
 // jobModelMost is the longest model id a job keeps.

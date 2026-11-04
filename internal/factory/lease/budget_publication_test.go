@@ -69,3 +69,39 @@ func TestBudgetStillRejectsPaidStepDuringApprovedWrite(t *testing.T) {
 		})
 	}
 }
+
+func TestBudgetAllowsPublishAnywayAtLifetimeCap(t *testing.T) {
+	f := setup(t)
+	it := factory.Item{Assignee: "sam", State: factory.StateNeedsYou, QKind: factory.QKindOutOfAttempts, Cap: 1, SpentBefore: .5, HeadCommit: "abc123",
+		Change: &factory.Change{Files: []factory.ChangedFile{{Path: "docs.md"}}},
+		Stages: []factory.Stage{{Name: "inspect", Kind: factory.StageCheck, When: "touches auth"}, {Name: "post", Kind: factory.StagePost, Ask: "pr"}, {Name: "model", Kind: factory.StageChat}},
+		Stream: &factory.Stream{Spent: .5, Cur: 1, Phases: []factory.Phase{
+			{Name: "inspect", Kind: factory.StageCheck, State: factory.PhaseSkipped, SkipReason: "no auth files"},
+			{Name: "post", Kind: factory.StagePost, State: factory.PhaseWaiting, Result: &factory.StageResult{Claims: []factory.Claim{{Medium: "policy", Evidence: factory.EveryCheckPolicy}}}},
+			{Name: "model", Kind: factory.StageChat, State: factory.PhasePending},
+		}}}
+	if err := factory.DecidePublishAnyway(&it, "sam", f.now); err != nil {
+		t.Fatal(err)
+	}
+	it = f.add(t, it)
+	if err := lease.NewDoors(f.desk).Answer(it.ID, true, factory.ChoiceTryOnceMore); err != nil {
+		t.Fatal(err)
+	}
+	held, err := f.desk.Pull(worker("publisher", "sam"))
+	if err != nil {
+		t.Fatalf("Publish anyway at lifetime cap refused: %v", err)
+	}
+	if err := f.desk.CheckPublish(held.ID, held.Worker); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.desk.Apply(held.ID, held.Worker, false, false, func(it *factory.Item) error {
+		return run.ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{Name: "post", State: factory.PhaseRunning, Round: 1}}}, f.now)
+	}); err != nil {
+		t.Fatalf("approved post at lifetime cap refused: %v", err)
+	}
+	if err := f.desk.Apply(held.ID, held.Worker, false, false, func(it *factory.Item) error {
+		return run.ApplyReport(it, factory.RunReport{Stages: []factory.StageReport{{Name: "model", State: factory.PhaseRunning, Round: 1}}}, f.now)
+	}); !errors.Is(err, lease.ErrWithdrawn) {
+		t.Fatalf("paid step beside Publish anyway: %v, want withdrawn", err)
+	}
+}

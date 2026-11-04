@@ -347,6 +347,8 @@ engine offers **Publish anyway**. For example:
 `Publishing waits: check inspect was skipped (when touches auth does not match the change files). Publish anyway, rerun from write after revising the change files to match, or stop the job.`
 
 Only a signed-in person allowed to publish this job can press Publish anyway.
+That approved publication can finish at the job's lifetime budget cap. Any
+model call still needs budget; Stop still prevents publication.
 Failed, pending or unmeasured checks prevent the offer and refuse the press.
 An ordinary approval, automatic answer, Auto mode or automatic budget increase
 cannot make this decision. Skipped checks remain unmeasured and supply no proof.
@@ -481,7 +483,9 @@ continues the job. Repeated spending reports count once and cannot lower a round
 **Resume** continues the step and round where they paused, in the same
 conversation when it can be reopened. It takes a free Jobs at once slot, or
 waits in the ordinary queue until a slot is available. No model round starts
-while it waits. Completed steps are kept and are not run again. The activity
+while it waits. If the paused run is still saving spending receipts, Resume
+waits for those receipts before continuing. Completed steps are kept and are
+not run again. The activity
 says `paused`, then `resumed`; both actions record who made them. If a heartbeat
 reply is lost, the factory repeats its current hold on later heartbeats. Resume
 supersedes an older hold still waiting to be collected.
@@ -683,6 +687,9 @@ budget question and puts the job back in the queue.
 
 Raising Budget does not answer another open question or undo Stop spending after
 this step. A raise that does not clear recorded spend keeps the budget question.
+A stopped job saves the new budget successfully and stays stopped, including
+when a pending manager reply raised a budget question. A person presses Start
+to run it again.
 
 ## budget recovery and external PR commits
 

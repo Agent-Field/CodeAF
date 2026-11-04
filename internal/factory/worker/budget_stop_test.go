@@ -108,3 +108,58 @@ func TestBudgetAdmissionCountsUnreportedRoundSpend(t *testing.T) {
 		t.Fatalf("paid rounds=%d, want 1: admission ignored unreported $0.50 beside server $0.60", got)
 	}
 }
+
+func TestBudgetAdmissionDrainsOlderPendingSpend(t *testing.T) {
+	var calls atomic.Int32
+	var clock atomic.Int64
+	clock.Store(time.Now().UnixNano())
+	failed := make(chan struct{})
+	var rejected atomic.Bool
+	var g rig
+	g = newRigWithDelivery(t, nil, func(o *run.Options) {
+		o.Exec = map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(ctx context.Context, j run.Job) (factory.StageResult, error) {
+			if calls.Add(1) == 1 {
+				if err := g.mirror.Update(j.Item.ID, func(it *factory.Item) error { it.Stream.Spent = .1; return nil }); err != nil {
+					return factory.StageResult{}, err
+				}
+				select {
+				case <-failed:
+				case <-ctx.Done():
+					return factory.StageResult{}, ctx.Err()
+				}
+				clock.Add(int64(3 * time.Second))
+				if err := g.st.Update(j.Item.ID, func(it *factory.Item) error { it.SpentBefore = .6; return nil }); err != nil {
+					return factory.StageResult{}, err
+				}
+			}
+			return factory.StageResult{Done: true, Spent: .5}, nil
+		})}
+	}, time.Second, func(w http.ResponseWriter, r *http.Request) bool {
+		if isReport(r) && strings.Contains(peek(r), `"cost":0.1`) && rejected.CompareAndSwap(false, true) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return true
+		}
+		return false
+	}, func() time.Time {
+		now := time.Unix(0, clock.Load())
+		if rejected.Load() {
+			select {
+			case <-failed:
+			default:
+				close(failed)
+			}
+		}
+		return now
+	}, 1)
+	id := g.add(t, check("first"), factory.Stage{Name: "second", Kind: factory.StageCheck, On: true})
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Cap = 1; it.Autonomy = factory.AutonomyAuto; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.floor.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitFor(t, id, factory.StateNeedsYou)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("paid rounds=%d, want 1: older pending report hid newer spending", got)
+	}
+}

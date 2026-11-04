@@ -49,3 +49,32 @@ func TestBudgetRaiseDoesNotClaimContinueWhenTheAnswerFails(t *testing.T) {
 		t.Fatalf("failed answer changed the wait: %+v", got)
 	}
 }
+
+func TestBudgetRaiseKeepsStoppedJobWithPendingManagerReplyStopped(t *testing.T) {
+	f := workerSetupAs(t, "sam")
+	worker := f.attach(t, "sam")
+	job := f.add(t, "sam")
+	if err := f.st.Update(job.ID, func(it *factory.Item) error {
+		it.Cap, it.SpentBefore, it.Talk = 5, 5, "manager"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/v1/jobs/%d", job.ID)
+	f.request(t, "POST", path+"/stop", "", nil, 200, nil)
+	f.request(t, "POST", path+"/reply", "", map[string]string{"words": "status?"}, 200, nil)
+	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
+	f.request(t, "POST", path+"/raise_budget", "", map[string]float64{"budget": 10}, 200, nil)
+	got, err := f.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Cap != 10 || !factory.StoppedByPerson(got) || got.State != factory.StateNeedsYou || len(got.Thread) != 1 || got.Thread[0].State != "pending" {
+		t.Fatalf("raise resumed or lost stopped job: %+v", got)
+	}
+	for _, line := range got.Stream.Log {
+		if strings.Contains(line.Text, "carrying on") {
+			t.Fatalf("stopped raise claimed continuation: %q", line.Text)
+		}
+	}
+}

@@ -53,3 +53,13 @@ therefore no longer admit another paid round when local spending crosses it.
 Approved publication and queued merges retain their lease at the cap while no
 pipeline phase is running. These forge writes make no model calls; a running
 pipeline phase still passes the cap gate, and Stop retains its existing checks.
+
+Admission also flushes spending recorded after an older pending report's
+snapshot once that report is acknowledged. Publish anyway counts as a person's
+approved publication at the lifetime cap; model calls remain gated. Raising a
+stopped job's budget succeeds without continuing its queued manager reply or
+pipeline; the person's Start remains required.
+
+Resuming a paused run waits for its canceled control's pending spend receipts
+to settle, then resumes the saved chat. It no longer tries to write through
+that canceled control and refuse with "factory run: the item was stopped".

@@ -615,16 +615,17 @@ func (d *Desk) HasLiveHold(id int) (bool, error) {
 	return held, err
 }
 
-// Approved forge writes spend no model budget. A running pipeline phase still
-// needs admission even when publication consent or a merge remains on the job.
+// Approved forge writes spend no model budget. A running model or check phase
+// still needs budget even when publication consent or a merge remains on the job.
 func approvedWriteOnly(it factory.Item) bool {
-	writing := it.Publishing || it.Merging != nil && (it.Merging.State == factory.MergeQueued || it.Merging.State == factory.MergeMerging)
+	anyway := factory.PublishedAnyway(it)
+	writing := it.Publishing || anyway || it.Merging != nil && (it.Merging.State == factory.MergeQueued || it.Merging.State == factory.MergeMerging)
 	if !writing {
 		return false
 	}
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
-			if ph.State == factory.PhaseRunning {
+			if ph.State == factory.PhaseRunning && !(anyway && ph.Kind == factory.StagePost) {
 				return false
 			}
 		}

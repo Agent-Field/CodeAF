@@ -416,6 +416,12 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		case request := <-admit:
 			// Admission shares the delivery loop so its spend flush cannot race
 			// periodic reporting or replay an unacknowledged cost delta.
+			if j.pending != nil && !j.flush(request.ctx) {
+				request.done <- client.ErrLeaseGone
+				j.drop()
+				return
+			}
+			// A retried snapshot may precede spending now saved in the mirror.
 			if !j.flush(request.ctx) {
 				request.done <- client.ErrLeaseGone
 				j.drop()
