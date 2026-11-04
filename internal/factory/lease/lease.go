@@ -264,7 +264,7 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 		}
 		// A Stop may have landed after List. A pending reply may still borrow
 		// its manager, but only the locked job can authorize running steps.
-		taken.ThreadOnly = factory.CheckPersonStop(*it) != nil || it.State != factory.StateQueued || paused(*it)
+		taken.ThreadOnly = factory.StoppedByPerson(*it) || it.State != factory.StateQueued || paused(*it)
 		delete(doc.Withdrawn, worker.ID)
 		doc.Leases = append(doc.Leases, *taken)
 		if err := d.write(*doc); err != nil {
