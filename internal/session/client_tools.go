@@ -50,6 +50,7 @@ type ClientToolSet struct {
 
 type ClientToolCall struct {
 	Set, Name, TurnCall string
+	SourceMessage       string
 	Args                json.RawMessage
 	DeadlineMS          int
 }
@@ -205,6 +206,7 @@ func (a *Agent) clientTool(set ClientToolSet, spec ClientTool) bare.Tool {
 			}
 			answer, err := a.config.ClientTools.CallClientTool(ctx, ClientToolCall{
 				Set: set.ID, Name: spec.Name, Args: args, TurnCall: callIDFrom(ctx), DeadlineMS: set.DeadlineMS,
+				SourceMessage: turnOriginFrom(ctx).answers,
 			})
 			if err != nil {
 				return err.Error(), true, nil

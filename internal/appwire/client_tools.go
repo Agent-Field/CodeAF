@@ -8,6 +8,7 @@ import (
 )
 
 const FeatureClientTools = "agents.client_tools"
+const FeatureClientToolsSource = "agents.client_tools.source"
 const EventAgentsToolCall = "agents.tool_call"
 
 // ClientTooler is optional because only a connected app can answer these tools.
@@ -31,14 +32,15 @@ type ClientToolsSetResult struct {
 }
 
 type AgentsToolCall struct {
-	Agent      string          `json:"agent"`
-	Turn       uint64          `json:"turn"`
-	Call       string          `json:"call"`
-	TurnCall   string          `json:"turn_call"`
-	Set        string          `json:"set"`
-	Name       string          `json:"name"`
-	Args       json.RawMessage `json:"args"`
-	DeadlineMS int             `json:"deadline_ms"`
+	Agent           string          `json:"agent"`
+	Turn            uint64          `json:"turn"`
+	Call            string          `json:"call"`
+	TurnCall        string          `json:"turn_call"`
+	SourceMessageID string          `json:"source_message_id,omitempty"`
+	Set             string          `json:"set"`
+	Name            string          `json:"name"`
+	Args            json.RawMessage `json:"args"`
+	DeadlineMS      int             `json:"deadline_ms"`
 }
 
 type ClientToolResultParams struct {
@@ -130,7 +132,7 @@ func (p ClientToolResultParams) Validate() error {
 
 func withClientToolsFeature(hello Hello, engine Engine) Hello {
 	if _, ok := engine.(ClientTooler); ok {
-		return withFeature(hello, FeatureClientTools)
+		return withFeature(withFeature(hello, FeatureClientTools), FeatureClientToolsSource)
 	}
 	return hello
 }

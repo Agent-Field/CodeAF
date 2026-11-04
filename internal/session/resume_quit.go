@@ -32,6 +32,7 @@ func (a *Agent) ResumeAfterClose() bool {
 // A running turn is left alone: recovery must never credit older work.
 func (a *Agent) ResumeAfterCloseKey(key string) bool {
 	note := wakeNote(ResumeAfterCloseNote)
+	note.sourceMessage = a.interruptedSourceMessage()
 	note.closeKey = key
 	note.batch = false
 	return a.enqueueNote(note)
@@ -42,8 +43,40 @@ func (a *Agent) ResumeAfterCloseKey(key string) bool {
 // running takes the words at its next step instead, as any wake does.
 func (a *Agent) ResumeAfterQuit() bool {
 	note := wakeNote(ResumeAfterQuitNote)
+	note.sourceMessage = a.interruptedSourceMessage()
 	note.batch = false
 	return a.enqueueNote(note)
+}
+
+// interruptedSourceMessage accepts only the run named on the transcript's
+// final line and exactly one person's message recorded as opening that run.
+// Legacy marks, a woken run, and ambiguous records all leave the answer unknown.
+// The id is copied onto the note before enqueueing; later steers cannot move it.
+func (a *Agent) interruptedSourceMessage() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.running || len(a.messages) == 0 {
+		return ""
+	}
+	last := a.presentation.of(a.messages[len(a.messages)-1])
+	if last == nil || last.RunID == "" {
+		return ""
+	}
+	id, count := "", 0
+	for _, message := range a.messages {
+		if message.Role != "user" {
+			continue
+		}
+		mark := a.presentation.of(message)
+		if mark != nil && mark.Audience == audiencePerson && mark.RunID == last.RunID && mark.Composed != nil && mark.Composed.MessageID != "" {
+			id = mark.Composed.MessageID
+			count++
+		}
+	}
+	if count != 1 {
+		return ""
+	}
+	return id
 }
 
 // consumeCloseNotesLocked runs only at the request drain, never at turn-end.
