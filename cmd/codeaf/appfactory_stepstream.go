@@ -78,6 +78,13 @@ type appStepPlacing struct {
 	n, msg int
 }
 
+// appStepReading is one reading of a conversation's newest entries.
+type appStepReading struct {
+	page  []appwire.Entry
+	place appStepPlacing
+	err   error
+}
+
 // listenStages starts hearing the steps' events, and answers the function that stops.
 func (b *appBackend) listenStages() func() {
 	hear := b.stageEvent
@@ -168,30 +175,36 @@ func (b *appBackend) stepArm(s *appStepStream) {
 // that reading stale for placing words, so another saying follows it. After a
 // failed read nothing follows until the next event: the page's reading catches up.
 func (b *appBackend) stepSay(s *appStepStream) {
-	s.mu.Lock()
-	s.timer, s.saying = nil, true
-	seen := s.boundaries
-	read := seen > 0 || !s.seeded || (!s.placed && s.speakable())
-	s.mu.Unlock()
-
-	var page []appwire.Entry
-	var place appStepPlacing
-	var err error
+	seen, read := s.beginSaying()
+	var reading appStepReading
 	if read {
-		page, place, err = b.stepRead(s.id)
+		reading.page, reading.place, reading.err = b.stepRead(s.id)
 	}
+	b.stepEndSaying(s, seen, read, reading)
+}
 
+// beginSaying notes a saying has begun, and answers the boundaries it covers and
+// whether it needs a reading.
+func (s *appStepStream) beginSaying() (seen int, read bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.timer, s.saying = nil, true
+	return s.boundaries, s.boundaries > 0 || !s.seeded || (!s.placed && s.speakable())
+}
+
+// stepEndSaying says what the reading found and the words held.
+func (b *appBackend) stepEndSaying(s *appStepStream, seen int, read bool, reading appStepReading) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.saying = false
-	if read && err != nil {
+	if read && reading.err != nil {
 		return
 	}
 	if !s.seeded && read {
-		s.seed(page, false)
+		s.seed(reading.page, false)
 	}
 	if seen > 0 {
-		s.sayEntries(page, place.n)
+		s.sayEntries(reading.page, reading.place.n)
 	}
 	if s.boundaries != seen {
 		b.stepArm(s)
@@ -199,7 +212,7 @@ func (b *appBackend) stepSay(s *appStepStream) {
 	}
 	s.boundaries = 0
 	if read && !s.placed && s.speakable() {
-		s.turn, s.msg, s.placed = b.stepMark(s.id, place.n), place.msg, true
+		s.turn, s.msg, s.placed = b.stepMark(s.id, reading.place.n), reading.place.msg, true
 	}
 	s.flush()
 }
