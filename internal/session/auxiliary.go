@@ -95,7 +95,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	if role == roles.RoleTitle {
 		ctx = context.WithValue(ctx, factoryAutomaticTurnKey{}, a.automaticFactoryRefusal)
 	}
-	if err := a.admitJobCall(ctx); err != nil {
+	if err := factoryCallRefusal(ctx); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			a.journalFailedCall(ctx, sessionDefault, string(role), err, 1, 0)
 		}
@@ -224,7 +224,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// per rung on a title would turn one bad minute at a provider into several
 	// charges and several waits for an answer nobody asked for.
 	for attempt, rung := range rungs {
-		if err := a.admitJobCall(errandCtx); err != nil {
+		if err := a.admitModelCall(errandCtx, rung.Model); err != nil {
 			return nil, rung.Model, err
 		}
 		// AND THE CALLER THAT HAS SOMEBODY WATCHING IS TOLD, before the wait

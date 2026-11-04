@@ -742,9 +742,6 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
-	if err := a.admitJobCall(ctx); err != nil {
-		return nil, model, err
-	}
 	if purpose == purposeTurn {
 		messages = a.jobAutonomyMessages(messages)
 	}
@@ -752,6 +749,9 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// (taskcrew.go's [Agent.healthyModel]).
 	if _, paired := requestConversationModels(ctx); !paired && (!a.foregroundModelCall(purpose) || a.automaticModelsAllowed()) {
 		model = a.healthyModel(ctx, purpose, model)
+	}
+	if err := a.admitModelCall(ctx, model); err != nil {
+		return nil, model, err
 	}
 	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap —
 	// and, made for a task, that task's limit — before it is made, and on the

@@ -1118,7 +1118,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		rootSession: root,
 		// AND THE DAILY CEILING IT SPENDS UNDER, resolved and carried for a task
 		// node's exact reason (task_run.go's newChildAgent): a worker reads no
-		// profile, so the root's figure travels with it (rail.go's
+		// profile; its owner supplies the live authority (rail.go's
 		// [Agent.dailyCeilingUSD]) and the person's `--yes-spend` with it.
 		DailyBudgetUSD:      a.dailyCeilingUSD(),
 		DailyBudgetResolved: true,
@@ -1129,6 +1129,8 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		BaseURL:             parent.BaseURL,
 		Sources:             parent.Sources,
 		ContextWindow:       window,
+
+		dailyBudgetAuthority: a.dailyCeiling,
 		// And the catalog with it, for the reason newTaskAgent hands it down:
 		// a worker that switches its own model has to be able to learn that
 		// model's window.

@@ -83,6 +83,7 @@ func (a *Agent) stopWorkLocked(why string, cause error) error {
 		graph.quitting = true
 		graph.mu.Unlock()
 	}
+	a.cancelBudgetCalls()
 	a.mu.Unlock()
 	a.cancelJobKnowledge()
 	if memoryStop != nil {

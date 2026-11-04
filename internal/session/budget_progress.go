@@ -9,8 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
-// Live readings bridge measured usage to settlement. They are retired before
-// billing, so the ledger and a still-open stream never count the same charge.
+// Live readings bridge measured usage to settlement, including pending receipts.
 var budgetProgress = struct {
 	sync.Mutex
 	calls    map[*budgetCall]map[string]float64
@@ -20,24 +19,34 @@ var budgetProgress = struct {
 type budgetCall struct {
 	ledger, job string
 	owner       *Agent
+	cancel      context.CancelFunc
 }
 
 type budgetAdmissionKey struct{}
 
 func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()) {
-	call := &budgetCall{ledger: a.config.usageLedger, job: a.factoryJobName(), owner: a}
+	ctx, cancel := context.WithCancel(ctx)
+	call := &budgetCall{ledger: a.config.usageLedger, job: a.factoryJobName(), owner: a, cancel: cancel}
+	a.mu.Lock()
+	if a.workStopped || a.closed {
+		cancel()
+	}
 	budgetProgress.Lock()
 	budgetProgress.calls[call] = nil
 	budgetProgress.Unlock()
+	a.mu.Unlock()
 	closed := false
 	observe := func(id string, usage *ai.Usage) {
 		budgetProgress.Lock()
 		defer budgetProgress.Unlock()
-		if closed {
+		if closed && usage != nil {
 			return
 		}
 		if usage == nil {
 			delete(budgetProgress.calls[call], id)
+			if closed && len(budgetProgress.calls[call]) == 0 {
+				delete(budgetProgress.calls, call)
+			}
 			return
 		}
 		if usage.Cost == nil || *usage.Cost <= 0 || math.IsNaN(*usage.Cost) || math.IsInf(*usage.Cost, 0) {
@@ -61,7 +70,11 @@ func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()
 		budgetProgress.Lock()
 		defer budgetProgress.Unlock()
 		closed = true
-		delete(budgetProgress.calls, call)
+		cancel()
+		call.cancel = nil
+		if len(budgetProgress.calls[call]) == 0 {
+			delete(budgetProgress.calls, call)
+		}
 	}
 }
 
@@ -83,9 +96,19 @@ func (a *Agent) hasBudgetCall() bool {
 	budgetProgress.Lock()
 	defer budgetProgress.Unlock()
 	for call := range budgetProgress.calls {
-		if call.owner == a {
+		if call.owner == a && call.cancel != nil {
 			return true
 		}
 	}
 	return false
+}
+
+func (a *Agent) cancelBudgetCalls() {
+	budgetProgress.Lock()
+	defer budgetProgress.Unlock()
+	for call := range budgetProgress.calls {
+		if call.owner == a && call.cancel != nil {
+			call.cancel()
+		}
+	}
 }

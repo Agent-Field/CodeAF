@@ -62,8 +62,8 @@ func (a *Agent) spendRailUSD() float64 {
 // zero when there is none.
 //
 // A ROOT reads its profile live, including the ordinary empty default-profile
-// path, so a `/budget day` change takes effect on the next turn. A WORKER carries
-// the value resolved by its parent without gaining the profile's settings door.
+// path, so a `/budget day` change takes effect on the next check. A WORKER reads
+// its parent's authority without gaining the profile's settings door.
 // [Config.DailyBudgetResolved] distinguishes that authority from an unset root
 // field; neither an empty path nor a zero amount can make that distinction.
 func (a *Agent) dailyCeilingUSD() float64 {
@@ -77,6 +77,9 @@ func (a *Agent) dailyCeilingUSD() float64 {
 // dailyCeiling is [Agent.dailyCeilingUSD] with the profile's read error kept,
 // for the turn gate that must not start work on a limit it could not read.
 func (a *Agent) dailyCeiling() (float64, error) {
+	if a.config.dailyBudgetAuthority != nil {
+		return a.config.dailyBudgetAuthority()
+	}
 	if a.config.DailyBudgetResolved {
 		return a.config.DailyBudgetUSD, nil
 	}
@@ -126,6 +129,7 @@ func (a *Agent) railBlockLocked() error {
 			if a.crewDayHeld != nil {
 				spentToday = max(spentToday, a.crewDayHeld.Total())
 			}
+			spentToday += pendingBudgetSpend(a.config.usageLedger, "")
 			if spentToday >= daily {
 				return dailyLimitReached(spentToday, daily)
 			}

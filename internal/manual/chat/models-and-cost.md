@@ -4402,7 +4402,11 @@ check, and completed spending resets at the local date boundary. When a recorded
 charge or measured stream usage reaches the daily limit, running owned work
 in this engine is cancelled.
 The chat and work report the limit; raise it with `/budget day 30`, then submit
-again. Partial usage is kept; a cancelled call without usage has unknown cost.
+again. Measured spend keeps the cap closed while its final receipt is pending.
+Detached summaries are cancelled too. Running adaptive workers follow their owner's raised
+daily limit. A sampled job refusal is checked again against the current cap.
+Known-free auxiliary calls can continue despite another conversation's daily spend.
+Partial usage is kept; a cancelled call without usage has unknown cost.
 Provider charges already in flight can exceed the cap; cancellation cannot undo them.
 This is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still

@@ -102,9 +102,12 @@ func (b *stageBudget) RefusalWithSpend(pending float64) string {
 		return session.JobBudgetUnreadable
 	}
 	factory.AddChatSpend(&it, pending)
-	b.stopped = factoryrun.ChatRefusal(it)
-	b.reached = b.stopped != ""
-	return b.stopped
+	why := factoryrun.ChatRefusal(it)
+	if pending == 0 {
+		b.stopped = why
+	}
+	b.reached = why != ""
+	return why
 }
 func (b *stageBudget) total() float64 {
 	b.mu.Lock()

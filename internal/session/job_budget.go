@@ -121,11 +121,21 @@ func (a *Agent) dailyBudgetBlock() error {
 
 // Check again at each model boundary, including retries and auxiliary calls.
 func (a *Agent) admitJobCall(ctx context.Context) error {
+	return a.admitModelCall(ctx, "")
+}
+
+func (a *Agent) admitModelCall(ctx context.Context, model string) error {
 	if err := factoryCallRefusal(ctx); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if model != "" && a.config.ModelPrice != nil {
+		input, output, known := a.config.ModelPrice(model)
+		if known && input <= 0 && output <= 0 {
+			return a.jobBudgetBlock()
+		}
 	}
 	if err := a.dailyBudgetBlock(); err != nil {
 		return err
