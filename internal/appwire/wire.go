@@ -201,8 +201,8 @@ type Agent struct {
 	// away; LastActiveAt is when the person last spoke in it, absent for one
 	// they never spoke in (a crew member a manager started). SpentUSD is the
 	// cumulative spend saved in meta.json: the disk row's figure in list answers,
-	// read from disk for open answers and when every agent.changed is said.
-	// Other method answers omit it. The live meter belongs to agents.budget.get.
+	// read from disk for open (and take, which answers through open) and when
+	// every agent.changed is said. Other method answers omit it. The live meter belongs to agents.budget.get.
 	ClosedAt     *time.Time `json:"closed_at,omitempty"`
 	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
 	LastActiveAt time.Time  `json:"last_active_at,omitzero"`

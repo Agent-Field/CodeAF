@@ -2476,7 +2476,8 @@ An agent's saved spend is the conversation's cumulative total in `meta.json`.
 The desktop engine's `agents.list` reads saved `spent_usd` from its disk row.
 `agents.open` reads the saved figure from disk, including for a conversation
 the engine already holds or is opening. Every `agent.changed` reads it when
-the event is sent. Other method answers omit `spent_usd`, so the desktop keeps
+the event is sent, and `agents.take` carries it because it answers through
+`agents.open`. Other method answers omit `spent_usd`, so the desktop keeps
 its last figure. A zero figure is omitted.
 
 The total is saved when a turn ends. If a cancelled call's receipt is recovered

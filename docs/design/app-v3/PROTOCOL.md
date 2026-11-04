@@ -1465,8 +1465,9 @@ Only an open without `warm` (the person's own, Reopen) takes it out.
 `Agent.spent_usd` is the conversation's cumulative spend saved in `meta.json`.
 `agents.list` carries its disk row's saved figure. `agents.open` reads the saved
 figure from disk, including while the engine holds or is opening the conversation.
-Every `agent.changed` reads it in the same step that sends the event. Other
-method answers omit `spent_usd`, so the window keeps its last figure. A zero
+Every `agent.changed` reads it in the same step that sends the event, and
+`agents.take` answers through `agents.open` and carries it too. Other method
+answers omit `spent_usd`, so the window keeps its last figure. A zero
 figure is omitted.
 Turn-end saves and late recovered receipts update it; a save sends one
 `agent.changed` if the saved figure differs from the figure last said. Duplicate
