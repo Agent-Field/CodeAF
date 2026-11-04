@@ -37,6 +37,11 @@ const BriefWriterDeadline = 45 * time.Second
 // its factory's briefs and serves factory.job_brief_write.
 const FeatureFactoryJobBriefWriter = "factory.job_brief_writer"
 
+// FeatureFactoryJobBriefFirstRead is announced with the writer when a job that
+// has not worked gets a read of its issue on a write, and a thin issue answers
+// skip "thin" and spends nothing. A reader may then write on first open.
+const FeatureFactoryJobBriefFirstRead = "factory.job_brief_first_read"
+
 // FactoryJobBriefWriteParams names one job of this machine's factory.
 type FactoryJobBriefWriteParams struct {
 	Factory string `json:"factory"`
@@ -48,7 +53,7 @@ type FactoryJobBriefWriteParams struct {
 // the parts of the answer its check dropped, and Model and CostUSD are the
 // call's. Current is the job's brief as it then reads.
 type FactoryJobBriefWritten struct {
-	Skip    string              `json:"skip,omitempty" enum:"unchanged,cost,writing"`
+	Skip    string              `json:"skip,omitempty" enum:"unchanged,cost,writing,thin"`
 	Kept    bool                `json:"kept"`
 	Drops   []factory.BriefDrop `json:"drops"`
 	Model   string              `json:"model,omitempty"`
@@ -66,7 +71,7 @@ func withFactoryJobBriefWriterFeature(hello Hello, e Engine) Hello {
 		return hello
 	}
 	if _, ok := e.(FactoryJobBriefWriter); ok {
-		hello = withFeature(hello, FeatureFactoryJobBriefWriter)
+		hello = withFeature(withFeature(hello, FeatureFactoryJobBriefWriter), FeatureFactoryJobBriefFirstRead)
 	}
 	return hello
 }

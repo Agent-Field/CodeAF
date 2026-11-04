@@ -308,6 +308,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 		s, door, id, params := briefAfterProofSetup(t, factory.StateNeedsYou)
 		if err := s.backend.local.host.floor.Update(id, func(it *factory.Item) error {
 			it.Stream = nil
+			it.Body = "Retries send the message twice when a worker restarts in the middle of one send."
 			it.QKind = factory.QKindAskFirst
 			it.Question = "Start this job?"
 			return nil
@@ -324,7 +325,7 @@ func TestAppFactoryBriefAfterProof(t *testing.T) {
 
 	})
 	t.Run("plain step still costs too much", func(t *testing.T) {
-		it := factory.Item{Stream: &factory.Stream{Spent: 0.01}, Briefs: []factory.BriefVersion{{CostUSD: 0.02, InputHash: "old"}}}
+		it := factory.Item{Stream: &factory.Stream{Spent: 0.01, Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}}}, Briefs: []factory.BriefVersion{{AfterStep: "plan", CostUSD: 0.02, InputHash: "old"}}}
 		if factory.BriefCostAllowed(it) {
 			t.Fatal("plain step allowed over the spend share")
 		}

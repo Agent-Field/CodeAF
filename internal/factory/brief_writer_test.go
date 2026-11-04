@@ -99,9 +99,9 @@ func TestBriefInputOf(t *testing.T) {
 func TestBriefBeginSkip(t *testing.T) {
 	now := briefNow
 	at := func(spent float64, costs ...float64) Item {
-		it := Item{Stream: &Stream{Spent: spent}}
+		it := Item{Stream: &Stream{Spent: spent, Phases: []Phase{{Name: "plan", State: PhaseDone}}}}
 		for _, c := range costs {
-			it.Briefs = append(it.Briefs, BriefVersion{CostUSD: c, InputHash: "old"})
+			it.Briefs = append(it.Briefs, BriefVersion{AfterStep: "plan", CostUSD: c, InputHash: "old"})
 		}
 		return it
 	}

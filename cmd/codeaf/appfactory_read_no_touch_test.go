@@ -113,7 +113,8 @@ func TestFactoryAutomaticBriefDoesNotTouchJob(t *testing.T) {
 	}
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 74, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 74, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew,
+		Body: "The ledger total goes negative after two very large entries are added in one run."})
 	if err != nil {
 		t.Fatal(err)
 	}
