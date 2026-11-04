@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"io"
 	"math"
 	"os"
@@ -31,10 +32,15 @@ func TestLedgerIdentityAcrossProcesses(t *testing.T) {
 	const writers = 4
 	cmds := make([]*exec.Cmd, writers)
 	gates := make([]io.WriteCloser, writers)
+	outputs := make([]*bytes.Buffer, writers)
 	for i := range writers {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestLedgerIdentityProcessWriter$", "-test.v")
 		cmd.Env = append(os.Environ(), "CODEAF_TEST_LEDGER_IDENTITY="+path)
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		// A helper's -test.v lines must not reach this binary's stdout: the shard
+		// runner counts every "--- PASS" it sees there as a result of this package.
+		output := new(bytes.Buffer)
+		cmd.Stdout, cmd.Stderr = output, output
+		outputs[i] = output
 		gate, err := cmd.StdinPipe()
 		if err != nil {
 			t.Fatal(err)
@@ -57,9 +63,9 @@ func TestLedgerIdentityAcrossProcesses(t *testing.T) {
 		}
 		_ = gate.Close()
 	}
-	for _, cmd := range cmds {
+	for i, cmd := range cmds {
 		if err := cmd.Wait(); err != nil {
-			t.Fatal(err)
+			t.Fatalf("%v\n%s", err, outputs[i])
 		}
 	}
 	rows, err := ReadUsage(path, time.Time{})

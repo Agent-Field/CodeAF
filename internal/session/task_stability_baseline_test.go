@@ -120,7 +120,8 @@ type originalTaskNotice struct {
 }
 
 type originalUsageLine struct {
-	ID            string    `json:"id,omitempty"` // app/v3: each row names itself once
+	ID            string    `json:"id,omitempty"`        // app/v3: each row names itself once
+	SharedID      bool      `json:"shared_id,omitempty"` // #2332: this id is shared with the saved call, so a take holds it once
 	At            time.Time `json:"at"`
 	Day           string    `json:"day"`
 	Model         string    `json:"model,omitempty"`

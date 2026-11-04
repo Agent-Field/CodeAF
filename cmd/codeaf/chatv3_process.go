@@ -399,10 +399,14 @@ func (p *v3Process) forget(agent *session.Agent) {
 	// admitted receipts settle. The reaper bounds retention in a long-lived host.
 	guard.Go("chatv3/retired-receipts", func() {
 		waitV3Receipts(agent)
-		p.mu.Lock()
-		delete(p.receiptAgents, agent)
-		p.mu.Unlock()
+		p.forgetReceiptAgent(agent)
 	})
+}
+
+func (p *v3Process) forgetReceiptAgent(agent *session.Agent) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.receiptAgents, agent)
 }
 
 // setAPIKey is the key arriving after the door: the first-run screen or the
