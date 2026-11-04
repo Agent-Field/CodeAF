@@ -2729,9 +2729,8 @@ func (a *Agent) Close() (saveErr error) {
 	// stops while one is owed, and this is the answer to it ([Agent.SettleWrites],
 	// placemeta.go). IT IS HERE AND NOT PAST THE LOCK BELOW: every write it waits
 	// on takes `a.mu` to read or replace what it is writing, so a call from inside
-	// the lock would wait forever on work waiting for this goroutine. The usage
-	// drain waits for the second settle below, which sees this close's own rows.
-	a.settleDeferredWrites()
+	// the lock would wait forever on work waiting for this goroutine.
+	a.SettleWrites()
 	// AND THE ENDED RUNS' STORES ARE GIVEN BACK. They are held open for the life
 	// of the conversation because an ended store never changes ([planState.archives]),
 	// and this is where that life ends. A second close finds none.
@@ -2976,6 +2975,12 @@ func (a *Agent) Close() (saveErr error) {
 	// IT IS SAFE HERE AND ONLY HERE: `a.mu` was released above, and everything
 	// this waits on takes that lock.
 	a.SettleWrites()
+	// THE SPENDING ROWS GO LAST AND ONCE, after the close's own rows, and only
+	// here: a close is not on a person's input path, and a stalled ledger costs
+	// it one [usageFlushLimit].
+	if a.config.usageLedger != "" {
+		flushUsage(a.config.usageLedger)
+	}
 
 	a.mu.Lock()
 	deleting, deletionGrace := a.deleting, a.deletionGrace

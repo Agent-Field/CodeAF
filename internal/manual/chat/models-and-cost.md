@@ -4603,5 +4603,7 @@ make closing slower.
 
 Closing waits at most two seconds for the spending ledger, so a stalled ledger can
 add up to two seconds to each close. Pending rows can still be written if the process stays open and
-the mount recovers. If the process exits first, those rows can be lost; reaching
-the wait limit does not show a warning or count a failed write.
+the mount recovers. If the process exits first, those rows can be lost. Reaching
+the limit writes one line to the log with the ledger path and the number of rows
+pending, and those rows count as records not written down until they are written.
+No warning appears on screen.

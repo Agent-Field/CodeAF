@@ -109,8 +109,7 @@ func (a *Agent) stampModel() {
 // SettleWrites waits until everything this session owes a file BEHIND a person's
 // path has landed: the meta.json stamp, the delta reading's told.json stamp, the
 // fix shelf's counters, and the working copy of any folder referred but not yet
-// cut. Usage rows already queued for this session's ledger are drained under
-// [usageFlushLimit]; a stalled mount may leave them pending after that ceiling.
+// cut.
 //
 // IT IS THE ONE EXIT DOOR, and there is one rather than one per owner because a
 // caller closing a session should not have to know which parts of it defer a
@@ -128,16 +127,6 @@ func (a *Agent) SettleWrites() {
 	if a == nil {
 		return
 	}
-	a.settleDeferredWrites()
-	if a.config.usageLedger != "" {
-		flushUsage(a.config.usageLedger)
-	}
-}
-
-// settleDeferredWrites is [Agent.SettleWrites] without the usage drain. [Agent.Close]
-// settles twice and drains only on the second, after the close's own rows, so a
-// stalled ledger costs one close one [usageFlushLimit].
-func (a *Agent) settleDeferredWrites() {
 	a.metaStamp().settle()
 	a.modelStamp().settle()
 	a.toldStamp().settle()

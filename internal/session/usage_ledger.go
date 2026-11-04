@@ -85,6 +85,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -569,13 +570,18 @@ type usageWrite struct {
 type usageWriter struct {
 	queue        chan usageWrite
 	stopped      chan struct{}
+	path         string
 	beforeWrite  func()
+	pending      atomic.Int64 // rows admitted and not yet written or dropped
 	overflowMu   sync.Mutex
 	overflow     map[chan struct{}]struct{}
 	overflowRows []usageWrite
+	missed       int64 // pending rows already in usageDropped, under overflowMu
 }
 
-// usageDropped counts serialization and filesystem failures across all ledgers.
+// usageDropped counts serialization and filesystem failures across all ledgers,
+// and rows still pending when a wait reached [usageFlushLimit]; a pending row
+// that is written later takes its count back ([usageWriter.noteMiss]).
 // A full queue no longer contributes: overflow writes through instead.
 var usageDropped atomic.Int64
 
@@ -631,6 +637,7 @@ func usageWriterForLocked(path string) *usageWriter {
 		return writer
 	}
 	writer := &usageWriter{
+		path:     path,
 		queue:    make(chan usageWrite, usageQueueDepth),
 		stopped:  make(chan struct{}),
 		overflow: make(map[chan struct{}]struct{}),
@@ -677,6 +684,7 @@ func (w *usageWriter) run(path string) {
 		if charges == 0 {
 			return
 		}
+		defer w.rowsHandled(int64(charges))
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
@@ -835,10 +843,54 @@ func flushUsage(path string) bool {
 		select {
 		case <-done:
 		case <-deadline.C:
+			for _, writer := range usageWritersAt(path) {
+				writer.noteMiss()
+			}
 			return false
 		}
 	}
 	return true
+}
+
+// usageWritersAt answers the writer at path, or every writer for an empty path.
+func usageWritersAt(path string) []*usageWriter {
+	usageWritersMu.Lock()
+	defer usageWritersMu.Unlock()
+	writers := make([]*usageWriter, 0, len(usageWriters))
+	for ledger, writer := range usageWriters {
+		if path == "" || ledger == path {
+			writers = append(writers, writer)
+		}
+	}
+	return writers
+}
+
+// noteMiss leaves a trace of a wait that reached its ceiling with rows still
+// pending. Those rows are written if the process lives and lost if it exits, so
+// they count as short until written, once however many waits reach the ceiling.
+func (w *usageWriter) noteMiss() {
+	pending := w.pending.Load()
+	if pending <= 0 {
+		return
+	}
+	w.overflowMu.Lock()
+	if extra := pending - w.missed; extra > 0 {
+		w.missed += extra
+		usageDropped.Add(extra)
+	}
+	w.overflowMu.Unlock()
+	log.Printf("usage: %d rows pending for %s after %s", pending, w.path, usageFlushLimit)
+}
+
+// rowsHandled ends n rows' wait, written or dropped, and takes back the count
+// of any that [usageWriter.noteMiss] had called short.
+func (w *usageWriter) rowsHandled(n int64) {
+	w.pending.Add(-n)
+	w.overflowMu.Lock()
+	back := min(w.missed, n)
+	w.missed -= back
+	w.overflowMu.Unlock()
+	usageDropped.Add(-back)
 }
 
 // StopUsageWriter ends ONE path's writer and waits for it, the same detach and
@@ -899,6 +951,11 @@ func enqueueUsageFlush(path string) []chan struct{} {
 		}
 		dones = append(dones, writer.pendingOverflow()...)
 		done := make(chan struct{})
+		if writer.keepingRows() {
+			writer.addBarrier(done)
+			dones = append(dones, done)
+			continue
+		}
 		select {
 		case writer.queue <- usageWrite{done: done}:
 		default:
@@ -928,6 +985,9 @@ func CloseUsage() {
 		select {
 		case <-writer.stopped:
 		case <-deadline.C:
+			for _, left := range writers {
+				left.noteMiss()
+			}
 			return
 		}
 	}
@@ -1001,14 +1061,26 @@ func queueUsage(path string, line UsageLine) {
 	usageWritersMu.Lock()
 	writer := usageWriterForLocked(path)
 	work := usageWrite{id: line.ChargeID(), line: append(payload, '\n')}
-	select {
-	case writer.queue <- work:
-		usageWritersMu.Unlock()
-		return
-	default:
+	writer.pending.Add(1)
+	// While rows are kept, new ones join them: the queue can then only shrink,
+	// so steady traffic can't hold the kept rows back.
+	if !writer.keepingRows() {
+		select {
+		case writer.queue <- work:
+			usageWritersMu.Unlock()
+			return
+		default:
+		}
 	}
 	writer.addOverflow(work)
 	usageWritersMu.Unlock()
+}
+
+// keepingRows says the writer still holds kept rows. Callers hold usageWritersMu.
+func (w *usageWriter) keepingRows() bool {
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	return len(w.overflowRows) > 0
 }
 
 // addOverflow keeps a row the full queue couldn't take. The queue's own writer
@@ -1027,8 +1099,12 @@ func (w *usageWriter) addOverflow(work usageWrite) {
 
 // wakeForOverflow covers a writer that emptied the queue between the caller
 // seeing it full and keeping the row: an empty item sends it back to the kept
-// rows. If the queue is full again, the writer has work and will reach them.
+// rows. If the queue holds anything, the writer has work and will reach them,
+// and another empty item would only keep the queue from reading empty.
 func (w *usageWriter) wakeForOverflow() {
+	if len(w.queue) != 0 {
+		return
+	}
 	select {
 	case w.queue <- usageWrite{}:
 	default:
