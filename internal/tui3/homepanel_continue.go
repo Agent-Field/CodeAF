@@ -231,7 +231,7 @@ func (a *app) finishHomeTake(restoreDraft bool) {
 	if restoreDraft && a.homeTakeDraft != nil {
 		a.restoreTakeDraft(*a.homeTakeDraft)
 	}
-	a.homeTaking, a.homeTakeDraft, a.homeTakenSaid = "", nil, nil
+	a.homeTaking, a.homeTakeDraft, a.homeTakenSaid, a.homeMoveSaid = "", nil, nil, ""
 	a.homeTakeAutomatic, a.homeTakeOriginAutomatic, a.homeTakeAbandoned = false, false, false
 	a.homeTakeResult = nil
 }
@@ -262,8 +262,9 @@ func (a *app) cancelHomeTake() bool {
 		return true
 	}
 	a.homeTakeSeq++
+	line := a.homeMoveLine()
 	a.finishHomeTake(true)
-	if a.at(pageHome) && a.home.msg == continuing {
+	if a.at(pageHome) && a.home.msg == line {
 		a.home.say("", "")
 	}
 	a.touch()
@@ -550,7 +551,7 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 			msg.draft = &composer
 		}
 	}
-	return func() tea.Msg {
+	take := func() tea.Msg {
 		seen := &directory.LeaseExpectation{Device: msg.row.DeviceID, Fence: msg.row.Fence}
 		if mapped, ok := taker.(workspaceRootTaker); ok && len(msg.roots) > 0 {
 			msg.taken, msg.err = mapped.TakeSeenWithWorkspaceRoots(ctx, msg.row.Cell, seen, msg.roots)
@@ -561,6 +562,10 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 		}
 		return msg
 	}
+	if _, ok := taker.(moveReporter); ok {
+		return tea.Batch(take, moveTick(msg.seq))
+	}
+	return take
 }
 
 // abandonAutomaticTake withdraws navigation without interrupting a mutation that
