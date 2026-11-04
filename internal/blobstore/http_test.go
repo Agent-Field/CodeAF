@@ -312,6 +312,7 @@ func TestHTTPAnsweredWithAnError(t *testing.T) {
 		{505, "", true, blobstore.ErrUnreachable},
 		{522, "", false, blobstore.ErrUnreachable},
 		{530, "", false, blobstore.ErrUnreachable},
+		{511, "", false, blobstore.ErrUnreachable},
 		{500, `{"err":"damaged"}`, false, blobstore.ErrDamaged},
 	}
 	for _, c := range cases {

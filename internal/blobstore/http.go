@@ -225,11 +225,12 @@ func (a answered) Is(target error) bool { return target == ErrUnreachable || tar
 
 // gatewayStatus is a 5xx a proxy or the network edge in front of the server
 // answers for it: bad gateway, unavailable, gateway timeout, and a CDN's own
-// origin-down codes (Cloudflare's 520-527 and 530). The server itself was not
-// reached, so it stays plain unreachable.
+// origin-down codes (Cloudflare's 520-527 and 530), and an intercepting
+// proxy's sign-in wall (511). The server itself was not reached, so it stays
+// plain unreachable.
 func gatewayStatus(status int) bool {
 	switch {
-	case status == http.StatusBadGateway, status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout:
+	case status == http.StatusBadGateway, status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout, status == http.StatusNetworkAuthenticationRequired:
 		return true
 	case status >= 520 && status <= 527, status == 530:
 		return true
