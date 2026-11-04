@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -188,5 +191,57 @@ func TestTheAppEngineLeavesAHomeAnotherProcessShares(t *testing.T) {
 	}
 	if want := (appwire.SyncUnshared{Total: 1, Waiting: 1}); status.Unshared == nil || *status.Unshared != want {
 		t.Fatalf("sync status unshared = %+v, want %+v", status.Unshared, want)
+	}
+}
+
+// TestKeysAreSharedBeforeTheChatBacklog: keys, memory and preferences were
+// shared after the round's chat pass, and a chat pass lasts as long as its
+// uploads keep moving. A computer just paired waited for this one's whole
+// backlog before it got the keys.
+func TestKeysAreSharedBeforeTheChatBacklog(t *testing.T) {
+	celltest.RequireEngine(t)
+	t.Cleanup(cellstore.StopSpawned)
+	var hold atomic.Bool
+	release := make(chan struct{})
+	relay := e2Relay(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if hold.Load() && r.URL.Path == "/v1/store/frames" {
+				select {
+				case <-release:
+				case <-r.Context().Done():
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	rig := &pairRig{url: relay.URL, homeA: t.TempDir(), homeB: t.TempDir()}
+	if _, err := identity.Ensure(rig.homeA); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	r1PairHomes(t, rig)
+	id, err := identity.Load(rig.homeB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pair.SharingPending(rig.homeB, id.ID()) {
+		t.Fatal("pairing left no state pass pending")
+	}
+	r1SavedChat(t, rig.homeB, "a backlog that does not finish")
+	hold.Store(true)
+	b := &appBackend{left: make(chan struct{}), emit: newAppRecorder()}
+	b.chats.publicationWake = make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { defer close(done); b.runLocalChatPublication(ctx, time.Now, make(chan time.Time), nil) }()
+	t.Cleanup(func() { close(release); cancel(); <-done })
+	deadline := time.Now().Add(10 * time.Second)
+	for pair.SharingPending(rig.homeB, id.ID()) {
+		if time.Now().After(deadline) {
+			t.Fatal("keys, memory and preferences waited for the chat backlog")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
