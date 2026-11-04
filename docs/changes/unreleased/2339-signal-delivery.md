@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Factory signals survive lost heartbeat replies
-pr: 0
+pr: 2339
 surface: [factory]
 invalidates:
   - Building a heartbeat reply used to consume interactive signals before its worker received them; a current worker now acknowledges delivery on its next heartbeat.
