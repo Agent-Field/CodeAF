@@ -395,6 +395,18 @@ The `factory_item` card's thinking (`think strong`, `think cheap`, `default` for
 
 After your yes, the answer names the thinking the item was saved with, step by step (`thinking write strong, test strong`; `default` resets the changed steps to usual), and the steps that did not take it: `left as they were: plan cheap`. A budget or note alone says nothing about thinking. If another field changes but no step needs the requested thinking, the answer says `thinking unchanged`. A later turn's opening note lists thinking per running step when they differ (`thinking plan cheap, write strong`), one word when they agree, and nothing when none was set. A level other than cheap, strong or default is refused before any card, as `Invalid arguments: effort is one of cheap, strong, default, or left out.`
 
+## models that refuse thinking or reasoning effort
+
+If a Factory model explicitly rejects its thinking setting, codeaf retries once
+without that setting. This covers stages and their helpers, personal messages to
+job managers, reopened completed stages and their earlier rounds, runner manager
+turns on an already-open conversation, brief writing, and the repository, pipeline
+and topic page AI, including Step AI and My pipeline AI. Switching models or
+connected accounts keeps recovery available. Recovery follows actual job ownership
+or a Factory call: an ordinary conversation that merely offers Factory tools still
+returns the model's refusal. An ordinary conversation borrowed for a Factory call
+retains its usual refusal on later ordinary turns and errands.
+
 ## which model a cheap or strong step runs on — small work, checks model, effort models
 
 A factory step marked `cheap` opens on the **small work** model, and a step marked `strong` on the **checks** model: the same two rows the settings sheet already shows, so changing either changes the factory's cheap or strong steps from their next run. A model picked for the step, or for the whole job, wins over its effort. A step with no effort word runs on the job's model or the factory's default. With one model for every task, every step runs on that one model, whatever its effort.

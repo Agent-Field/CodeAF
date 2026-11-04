@@ -426,3 +426,76 @@ func TestWrapUpRoundTripThroughChange(t *testing.T) {
 		t.Fatalf("a cleared wrap was still written:\n%s", raw)
 	}
 }
+
+// R5/F2 preserves a synced first-sharing copy on filesystems that reject hard links.
+func TestBackupBeforeSharingFallsBackWithoutOverwriting(t *testing.T) {
+	dir := t.TempDir()
+	raw := []byte(`{"version":2,"teams":[{"id":"local","name":"harbor"}]}`)
+	if err := Save(dir, []Team{{ID: "local", Name: "harbor"}}); err != nil {
+		t.Fatal(err)
+	}
+	link := func(string, string) error { return errors.New("hard links unavailable") }
+	if err := backupBeforeSharing(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(dir, "teams.before-sharing.json")
+	got, err := os.ReadFile(backup)
+	if err != nil || !json.Valid(got) || !bytes.Contains(got, []byte(`"name": "harbor"`)) {
+		t.Fatalf("fallback backup = %s, %v", got, err)
+	}
+	raw = got
+	info, err := os.Stat(backup)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("backup permissions", info, err)
+	}
+	if err := Save(dir, []Team{{ID: "later", Name: "later teams"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backupBeforeSharing(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(backup)
+	if err != nil || string(got) != string(raw) {
+		t.Fatal("fallback overwrote original backup", string(got), err)
+	}
+	if err := os.Remove(backup); err != nil {
+		t.Fatal(err)
+	}
+	link = func(_, target string) error {
+		if err := os.WriteFile(target, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		return errors.New("another publisher won")
+	}
+	if err := backupBeforeSharing(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(backup)
+	if err != nil || string(got) != string(raw) {
+		t.Fatal("exclusive fallback replaced an existing backup", string(got), err)
+	}
+}
+
+func TestBackupBeforeSharingPreservesSQLiteTeamsAndBriefs(t *testing.T) {
+	dir := t.TempDir()
+	if err := Save(dir, []Team{{ID: "local", Name: "harbor", Members: []Member{{Key: "worker", Word: "worker", FactoryBrief: "keep the factory brief"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := BackupBeforeSharing(dir); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "teams.before-sharing.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backup struct {
+		Version int    `json:"version"`
+		Teams   []Team `json:"teams"`
+	}
+	if err := json.Unmarshal(raw, &backup); err != nil {
+		t.Fatalf("backup is not a team document: %v", err)
+	}
+	if len(backup.Teams) != 1 || backup.Teams[0].Name != "harbor" || len(backup.Teams[0].Members) != 1 || backup.Teams[0].Members[0].FactoryBrief != "keep the factory brief" {
+		t.Fatalf("backup lost saved team data: %+v", backup)
+	}
+}

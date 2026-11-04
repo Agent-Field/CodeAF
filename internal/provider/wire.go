@@ -502,10 +502,7 @@ func (c *Client) effortAsked(requested effortRequest) effortRequest {
 
 // resolveEffort decides whether the knob may travel, and in what shape.
 func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
-	if quirks.recorded(func(q *quirksStore) map[string]time.Time { return q.noReasoning }, model) {
-		return EffortNone
-	}
-	if c.config.DropRefusedEffort {
+	if c.config.DropRefusedEffort || requested.dropRefused {
 		if _, refused := c.refusedEffort.Load(normalizeModel(model)); refused {
 			return EffortNone
 		}

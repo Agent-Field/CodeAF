@@ -53,8 +53,8 @@ func TestTheTeamsDoorsCrossFromTheEnginesProfile(t *testing.T) {
 	}
 	// Device and inode widths vary by filesystem; only the stamp and flag cross.
 	stamp, _ := json.Marshal(wrote.Stamp)
-	if raw, _ := json.Marshal(same); string(raw) != `{"stamp":`+string(stamp)+`,"same":true}` {
-		t.Fatalf("an unchanged answer must carry only the held stamp and same: %s", raw)
+	if raw, _ := json.Marshal(same); string(raw) != `{"sharing":false,"stamp":`+string(stamp)+`,"same":true}` {
+		t.Fatalf("an unchanged answer must carry sharing, the held stamp and same: %s", raw)
 	}
 
 	if err := teamstore.AppendTraffic(dir, "0a0a0a0a0a0a", teamstore.Entry{Kind: teamstore.KindNote,

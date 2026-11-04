@@ -68,7 +68,7 @@ func TestMemoBoundsRetainedPaths(t *testing.T) {
 	}
 }
 
-func TestMemoReadErrorIsNeitherMissingNorCachedContent(t *testing.T) {
+func TestMemoStrictReadErrorIsNeitherMissingNorCachedContent(t *testing.T) {
 	path := t.TempDir()
 	calls := 0
 	memo := New(func(_ string, data []byte, missing bool) (string, error) {
@@ -76,11 +76,27 @@ func TestMemoReadErrorIsNeitherMissingNorCachedContent(t *testing.T) {
 		return string(data), nil
 	})
 	for range 2 {
-		if _, err := memo.Read(path); err == nil || os.IsNotExist(err) {
+		if _, err := memo.ReadStrict(path); err == nil || os.IsNotExist(err) {
 			t.Fatalf("directory read error became absence: %v", err)
 		}
 	}
 	if calls != 0 || len(memo.held) != 0 || memo.Reads() != 2 {
 		t.Fatalf("failed reads derived=%d held=%d reads=%d", calls, len(memo.held), memo.Reads())
+	}
+}
+
+// Source reads crew routing history, so a failed stat cannot mean empty data.
+func TestSourcePreservesStatErrors(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(parent, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	memo := Source(func(_ string, _ os.FileInfo) (string, error) { calls++; return "empty", nil })
+	if _, err := memo.Read(filepath.Join(parent, "child")); err == nil {
+		t.Fatal("source stat error became empty data")
+	}
+	if calls != 0 {
+		t.Fatal("source derived a value after a failed stat")
 	}
 }

@@ -62,7 +62,9 @@ func factoryScoutChat(load func() (config.Config, error)) scout.Chat {
 		if model == "" {
 			return scout.Reply{}, errors.New("no model for the small-work seat")
 		}
-		client, err := provider.NewClient(settings.ClientConfig(model))
+		clientConfig := settings.ClientConfig(model)
+		clientConfig.DropRefusedEffort = true
+		client, err := provider.NewClient(clientConfig)
 		if err != nil {
 			return scout.Reply{}, err
 		}
