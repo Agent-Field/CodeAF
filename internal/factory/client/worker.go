@@ -308,7 +308,10 @@ func (w *WorkerClient) StopAfterStep(ctx context.Context, lease string) (bool, e
 	var out struct {
 		On bool `json:"on"`
 	}
-	_, err := w.send(ctx, http.MethodGet, leasePath(lease, "stop-after-step"), w.credential, nil, &out)
+	status, err := w.send(ctx, http.MethodGet, leasePath(lease, "stop-after-step"), w.credential, nil, &out)
+	if status == http.StatusMethodNotAllowed || status == http.StatusNotFound && !errors.Is(err, ErrLeaseWithdrawn) {
+		return false, nil
+	}
 	return out.On, err
 }
 

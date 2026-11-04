@@ -14,6 +14,20 @@ func (a *Agent) StopWork() error { return a.stopWorkFor("", StopByWorkStopped) }
 
 func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 	a.mu.Lock()
+	return a.stopWorkLocked(why, door)
+}
+
+func (a *Agent) stopWorkEpoch(epoch uint64) error {
+	a.mu.Lock()
+	if a.workEpoch != epoch {
+		a.mu.Unlock()
+		return nil
+	}
+	return a.stopWorkLocked("", StopByWorkStopped)
+}
+
+// stopWorkLocked consumes the agent lock, including on refusal.
+func (a *Agent) stopWorkLocked(why string, door StopDoor) error {
 	if a.closed {
 		a.mu.Unlock()
 		return errAgentClosed

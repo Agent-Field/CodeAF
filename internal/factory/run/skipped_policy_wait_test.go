@@ -73,6 +73,7 @@ func TestSkippedRequiredCheckExplainsPolicyWaitToClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := g.st.Update(id, func(it *factory.Item) error {
+		factory.ClearPersonStop(it)
 		if err := StepControl(it, "write", true, "revise files to match inspect", g.r.now()); err != nil {
 			return err
 		}

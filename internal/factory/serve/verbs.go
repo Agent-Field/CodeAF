@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -228,6 +229,10 @@ func (h *Handler) holdVerb(on bool) jobAction {
 		kind := record.Held
 		if !on {
 			kind = record.Resumed
+			if factory.StoppedByPerson(it) {
+				h.finish(w, fmt.Errorf("%s is not paused", it.Ref()))
+				return
+			}
 		}
 		h.finish(w, h.recordAction(r, it, kind, "", func() error { return h.seam.Hold(it.ID, on) }))
 	}

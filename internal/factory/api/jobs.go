@@ -277,6 +277,7 @@ type JobBrief struct {
 	Job              int                  `json:"job"`
 	Status           string               `json:"status"`
 	Failure          string               `json:"failure,omitempty"`
+	FailureKind      string               `json:"failure_kind,omitempty"`
 	FailedAfter      string               `json:"failed_after,omitempty"`
 	Since            int                  `json:"since,omitempty"`
 	Brief            factory.BriefVersion `json:"brief"`

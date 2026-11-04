@@ -6,7 +6,7 @@ import (
 )
 
 func TestA3PairingInstructionsNameDesktopControls(t *testing.T) {
-	want := "On your other computer, choose Pair a computer, then Enter a code from the other computer, and type 42-715-302. This code lasts 10 minutes."
+	want := "On your other computer, choose Pair a computer, then Enter a code from the other computer, and type 42-715-302 (dashes optional). This code lasts 10 minutes."
 	if got := appPairCodeLines("42-715-302")[1]; got != want {
 		t.Fatalf("A3: instructions = %q, want %q", got, want)
 	}
