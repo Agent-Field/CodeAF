@@ -1,10 +1,11 @@
 ---
 kind: fixed
-title: a move whose chat copy sync failed with an error no longer says sync could not be reached
+title: a move from the hosted relay asks for smaller batches, and one sync failed with an error says so
 pr: 0
 surface: [engine, app, chat]
 invalidates:
   - "Was true: every 5xx from the relay's store that named no refusal was only blobstore.ErrUnreachable, so a move it failed said \"Couldn't move it: sync could not be reached.\" Is true now: an unnamed 5xx from the store, other than a gateway's or proxy's (502, 503, 504, 511) or a CDN's (520-527, 530), is also blobstore.ErrAnswered, and the move says \"Couldn't move it: sync answered with an error. The chat is still on <computer>.\" Callers that degrade on ErrUnreachable still do."
+  - "Was true: a move asked the relay for up to 256 objects per batch get (blobstore.MaxGetMany) whatever the relay. Is true now: against a hosted relay (syncwords.Hosted) a move asks for at most cellsync.HostedGetMany (16) per request, in the same order; a relay of the person's own still gets 256."
 ---
 
 A move that failed because the relay's store answered 500 while copying the
@@ -21,3 +22,8 @@ returned an error (N21).
   the chat's record) still says "sync could not be reached".
 - **Nothing degrades differently.** `blobstore.ErrAnswered` also matches
   `blobstore.ErrUnreachable`, so retries and fallbacks are unchanged.
+- **Smaller batches from the hosted relay.** A move asks the hosted relay for
+  at most 16 objects per batch get, in the same order, so the relay reads about
+  8 MB per request instead of up to 65 MB. A big move makes about three times
+  as many requests (about 1,900 instead of 600 for a 1.4 GB chat); a relay of
+  your own still answers 256 at a time.

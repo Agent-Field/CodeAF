@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // fetcherFor is a second device's fetcher over store, with its own engine.
@@ -98,6 +99,49 @@ func TestFetchAsksOncePerBatchNotOncePerObject(t *testing.T) {
 	}
 	if got := readFiles(t, c.Root); !reflect.DeepEqual(got, files) {
 		t.Fatalf("materialized %d files, want %d", len(got), len(files))
+	}
+}
+
+// N21: a fetch from the hosted relay asks for at most ManyMax rids per
+// request, still in want order, so a big want list is several smaller requests.
+func TestFetchCapsEachRequestAtManyMax(t *testing.T) {
+	r := newRig(t)
+	files := map[string]string{}
+	for i := range 300 {
+		files[fmt.Sprintf("f%03d", i)] = fmt.Sprint("body ", i)
+	}
+	head := r.publishFirst(files)
+	f, c := fetcherFor(t, r.mem)
+	f.ManyMax = HostedGetMany
+	before := gets(r.mem)
+	if err := f.Fetch(context.Background(), c, head); err != nil {
+		t.Fatal(err)
+	}
+	objects := 301
+	if got, least := gets(r.mem)-before, objects/HostedGetMany; got < least {
+		t.Fatalf("%d store requests for %d objects at %d per request, want at least %d", got, objects, HostedGetMany, least)
+	}
+	if got := readFiles(t, c.Root); !reflect.DeepEqual(got, files) {
+		t.Fatalf("materialized %d files, want %d", len(got), len(files))
+	}
+}
+
+func TestManyMaxForHostedRelayOnly(t *testing.T) {
+	was, hosts := syncwords.HostedURL, []string{"fabric.example.test"}
+	syncwords.UseHosted("https://fabric.example.test/fabric", hosts)
+	t.Cleanup(func() { syncwords.UseHosted(was, nil) })
+	for relay, want := range map[string]int{
+		"https://fabric.example.test/fabric": HostedGetMany,
+		"https://fabric.example.test":        HostedGetMany,
+		"https://relay.home.example.test":    blobstore.MaxGetMany,
+		"http://127.0.0.1:8443":              blobstore.MaxGetMany,
+	} {
+		if got := ManyMaxFor(relay); got != want {
+			t.Errorf("ManyMaxFor(%q) = %d, want %d", relay, got, want)
+		}
+	}
+	if got := (&Fetcher{ManyMax: 0}).manyMax(); got != blobstore.MaxGetMany {
+		t.Errorf("an unset ManyMax asks for %d, want the full %d", got, blobstore.MaxGetMany)
 	}
 }
 
