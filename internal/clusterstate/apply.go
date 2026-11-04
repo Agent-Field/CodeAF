@@ -150,7 +150,7 @@ func Sign(c Command, key ed25519.PrivateKey) (Command, error) {
 // immutable records from unread records.
 func Dependencies(c Command) []RecordKey {
 	keys := []RecordKey{QuiescenceKey(), IdentityKey(), DeviceKey(c.Actor), AuthorityKey(c.Actor), SessionKey(c.Actor, c.Session), SessionsKey()}
-	if c.Change.InitMembership != nil {
+	if c.Change.InitMembership != nil || c.Change.PrepareQuiescence != nil {
 		keys = append(keys, LegacyImportKey())
 	}
 	m := c.Change
@@ -360,11 +360,13 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 	// Old imported groups retain their exact manifest and rows. Their FIRST
 	// registry command may use only a manifest-provisioned anchor key; it logs
 	// the authority installation instead of rewriting a frozen import snapshot.
-	if rows[AuthorityKey(c.Actor)] == nil && c.Change.InitMembership != nil {
+	// Before that installation, the initial singleton anchor may only prepare
+	// a quorum-confirmed idle marker for its actual one-voter configuration.
+	if rows[AuthorityKey(c.Actor)] == nil && (c.Change.InitMembership != nil || c.Change.PrepareQuiescence != nil && len(meta.Configuration.Voters) == 1 && !meta.Configuration.Joint()) {
 		var manifest LegacyManifest
 		if raw := rows[LegacyImportKey()]; raw != nil && Decode(raw, &manifest) == nil && manifest.Validate() == nil && manifest.Config.Cluster == c.Cluster && bytes.Equal(manifest.Config.SigningKey, identity.SigningKey) {
 			for i, node := range manifest.Config.Anchors {
-				if c.Actor == AnchorActor(node) && i < len(manifest.Config.AnchorKeys) {
+				if c.Actor == AnchorActor(node) && i < len(manifest.Config.AnchorKeys) && (c.Change.InitMembership != nil || i == 0 && meta.Configuration.Voters[0] == node) {
 					auth = Authority{Cluster: c.Cluster, Key: manifest.Config.AnchorKeys[i], Anchor: true}
 				}
 			}
@@ -419,7 +421,7 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 			return out, nil
 		}
 	}
-	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil || auth.Effects && (c.Change.WorkerBeatBatch != nil || c.Change.DeviceSeen != nil)
+	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil || auth.Effects && (c.Change.WorkerBeatBatch != nil || c.Change.DeviceSeen != nil || c.Change.AdvanceTime != nil)
 	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || (c.Change.EnrollMember == nil || c.Change.EnrollMember.Admission == nil) && (c.Change.RemoveMember == nil || c.Change.RemoveMember.Admission == nil) && c.Change.InitMembership == nil && c.Change.PrepareQuiescence == nil && c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
 		return out, nil
 	}
@@ -521,7 +523,10 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 				}
 			}
 		} else if service {
-			code = applyEffect(c, out.Now, rows, put)
+			// A clock witness advances logical time without stamping presence.
+			if c.Change.AdvanceTime == nil {
+				code = applyEffect(c, out.Now, rows, put)
+			}
 		} else {
 			if assignmentMutation(c.Change) {
 				code = applyAssignment(c, out.Now, identity, rows, put, &out.Result)

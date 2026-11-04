@@ -48,6 +48,16 @@ func learnerReady(d *decoder) ([]byte, error) {
 
 func anchorRegistry(d *decoder) ([]byte, error) {
 	raw := d.blob()
+	var conf *pb.ConfState
+	if len(d.b) > 0 {
+		conf = new(pb.ConfState)
+		d.message(conf)
+		var manifest clusterstate.LegacyManifest
+		manifestRaw, birth := d.blob(), d.blob()
+		if clusterstate.Decode(manifestRaw, &manifest) != nil || !validSingleton(manifest, birth) {
+			return nil, errFrame
+		}
+	}
 	if err := d.end(); err != nil {
 		return nil, err
 	}
@@ -61,6 +71,23 @@ func anchorRegistry(d *decoder) ([]byte, error) {
 	peers, err := clusterstate.AnchorEnrollments(input.Anchors, input.Voters)
 	if err != nil {
 		return nil, err
+	}
+	if conf != nil {
+		for _, node := range append(append(append([]uint64{}, conf.GetVoters()...), conf.GetVotersOutgoing()...), conf.GetLearners()...) {
+			found := false
+			for _, peer := range peers {
+				found = found || peer.Node == node
+			}
+			if !found {
+				return nil, errFrame
+			}
+		}
+		for i := range peers {
+			peers[i].Voter = false
+			for _, node := range append(append([]uint64{}, conf.GetVoters()...), conf.GetVotersOutgoing()...) {
+				peers[i].Voter = peers[i].Voter || peers[i].Node == node
+			}
+		}
 	}
 	b, err := clusterstate.Encode(peers)
 	if err != nil {
