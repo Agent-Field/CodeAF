@@ -410,6 +410,8 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 			if money, found := a.live.money[ask]; found {
 				_, refused = appValidateMoneyAnswer(money.scope, ask, option, words, a.live.running)
 			} else if question, found := a.live.questions[ask]; found {
+				question = b.connectedPluginQuestion(question)
+				q.Options = appAskOf(agent, question).Options
 				_, refused = appValidateQuestionAnswer(ask, question, option, words, scope)
 			}
 		})

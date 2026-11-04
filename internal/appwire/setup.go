@@ -2,6 +2,7 @@ package appwire
 
 import (
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"math"
 	"strings"
 )
@@ -198,23 +199,24 @@ type ProviderParams struct {
 // optional, and a field present is changed. A money field sent as null means
 // none. [decodeSettingsPatch] reads exactly these fields and refuses any other.
 type SettingsPatchWire struct {
-	MemoryEnabled      *bool    `json:"memory_enabled,omitempty"`
-	DefaultModel       *string  `json:"default_model,omitempty"`
-	AsksBefore         *string  `json:"asks_before,omitempty"`
-	WorkFolder         *string  `json:"work_folder,omitempty"`
-	Effort             *string  `json:"effort,omitempty"`
-	BudgetUSD          *float64 `json:"budget_usd,omitempty" nullable:"true"`
-	DayCapUSD          *float64 `json:"day_cap_usd,omitempty" nullable:"true"`
-	TaskCapUSD         *float64 `json:"task_cap_usd,omitempty" nullable:"true"`
-	ProposedTaskClockS *int     `json:"proposed_task_clock_s,omitempty"`
-	IdleCloseDays      *int     `json:"idle_close_days,omitempty"`
-	Appearance         *string  `json:"appearance,omitempty" enum:"system,light,dark"`
-	TextSize           *string  `json:"text_size,omitempty" enum:"small,medium,large"`
-	OpenAtLogin        *bool    `json:"open_at_login,omitempty"`
-	DockBadge          *bool    `json:"dock_badge,omitempty"`
-	ChecksModel        *string  `json:"checks_model,omitempty"`
-	PlannerModel       *string  `json:"planner_model,omitempty"`
-	FallbackModel      *string  `json:"fallback_model,omitempty"`
+	WhenPlanPaused     map[string]string `json:"when_plan_paused,omitempty"`
+	MemoryEnabled      *bool             `json:"memory_enabled,omitempty"`
+	DefaultModel       *string           `json:"default_model,omitempty"`
+	AsksBefore         *string           `json:"asks_before,omitempty"`
+	WorkFolder         *string           `json:"work_folder,omitempty"`
+	Effort             *string           `json:"effort,omitempty"`
+	BudgetUSD          *float64          `json:"budget_usd,omitempty" nullable:"true"`
+	DayCapUSD          *float64          `json:"day_cap_usd,omitempty" nullable:"true"`
+	TaskCapUSD         *float64          `json:"task_cap_usd,omitempty" nullable:"true"`
+	ProposedTaskClockS *int              `json:"proposed_task_clock_s,omitempty"`
+	IdleCloseDays      *int              `json:"idle_close_days,omitempty"`
+	Appearance         *string           `json:"appearance,omitempty" enum:"system,light,dark"`
+	TextSize           *string           `json:"text_size,omitempty" enum:"small,medium,large"`
+	OpenAtLogin        *bool             `json:"open_at_login,omitempty"`
+	DockBadge          *bool             `json:"dock_badge,omitempty"`
+	ChecksModel        *string           `json:"checks_model,omitempty"`
+	PlannerModel       *string           `json:"planner_model,omitempty"`
+	FallbackModel      *string           `json:"fallback_model,omitempty"`
 }
 
 type setupResult struct {
@@ -305,6 +307,15 @@ func decodeSettingsPatch(raw json.RawMessage) (SettingsPatch, error) {
 	for name := range fields {
 		var err error
 		switch name {
+		case "when_plan_paused":
+			if err = json.Unmarshal(fields[name], &patch.WhenPlanPaused); err != nil || patch.WhenPlanPaused == nil {
+				return SettingsPatch{}, Errorf(CodeBadParams, "when_plan_paused must map provider ids to wait or use pay-as-you-go")
+			}
+			for id, policy := range patch.WhenPlanPaused {
+				if strings.TrimSpace(id) == "" || (policy != config.PlanPausedWait && policy != config.PlanPausedUseMeter) {
+					return SettingsPatch{}, Errorf(CodeBadParams, "when_plan_paused must map provider ids to wait or use pay-as-you-go")
+				}
+			}
 		case "default_model":
 			err = text(name, &patch.DefaultModel)
 		case "asks_before":

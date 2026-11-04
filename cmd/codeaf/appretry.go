@@ -56,6 +56,7 @@ func (b *appBackend) listenPhases() func() {
 
 // phaseNews says a conversation's wait before its reply is asked again.
 func (b *appBackend) phaseNews(news session.PhaseNews) {
+	b.pluginPlanPhase(news)
 	// Only the reply a person is reading is said: a task's own request and the
 	// errands beside a reply (its naming, its memory) have their own pages.
 	if news.Subject != "" || news.Role != lane.RoleTalk {
