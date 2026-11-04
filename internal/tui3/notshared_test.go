@@ -43,7 +43,7 @@ func TestTheDevicesCardSaysWhyChatsAreNotSharedYet(t *testing.T) {
 		"12 chats on " + thisComputer() + " aren't shared yet.",
 		"2 are still uploading.",
 		"1 could not be uploaded yet; codeaf keeps trying.",
-		"9 older ones stay here until you open them on " + thisComputer() + ".",
+		"9 older ones are kept on " + thisComputer() + ".",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)

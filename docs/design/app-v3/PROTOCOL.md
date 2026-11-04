@@ -1392,8 +1392,9 @@ list yet, because no directory record names them:
 `{total, waiting, failing, kept_here}`, where `total` is the sum of the rest.
 `waiting` chats are queued, uploading, or older chats still to be copied;
 `failing` chats failed their last upload and are retried; `kept_here` are older
-chats a rule keeps local (last used over 30 days ago, or working in the home
-folder), which opening on this computer shares. It is present only in mode
+chats a rule keeps local: last used over 30 days ago, which opening on this
+computer shares, or working in the home folder, which stays on this computer.
+It is present only in mode
 `on`, after the first count, and a change emits `sync.changed`. One process per
 home publishes existing chats (the engine or a terminal, whichever holds the
 home's sharing lock); every process counts from disk, so a process that does

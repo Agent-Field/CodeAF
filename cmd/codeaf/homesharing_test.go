@@ -59,7 +59,8 @@ func TestOneProcessSharesAHome(t *testing.T) {
 // TestOlderChatsAreCountedByWhyTheyAreNotShared: a recent older chat is
 // waiting for its copy, one used over 30 days ago or in the home folder is kept
 // here, one whose copy failed is failing until it changes, and a chat with a
-// cell or a finished copy is left to the cell count.
+// cell or a finished copy is left to the cell count. The copy of a home-folder
+// chat is kept here unless it was shared.
 func TestOlderChatsAreCountedByWhyTheyAreNotShared(t *testing.T) {
 	root := t.TempDir()
 	person := t.TempDir()
@@ -77,12 +78,39 @@ func TestOlderChatsAreCountedByWhyTheyAreNotShared(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(celled, cell.MetaPath), []byte("{}"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	// Copies of home-folder chats from older builds: one never shared, which
+	// stays here, and one shared when it was made, which is not counted.
+	homeCopy := func(name string, shared bool) {
+		original := olderChatAt(t, root, name, person, now)
+		moving := filepath.Join(filepath.Dir(original), ".moving")
+		c, err := cell.CreateIn(moving, cell.Options{Class: cell.FilesOnly})
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := cell.CopyRoot(original)
+		if err := os.Rename(c.Root, at); err != nil {
+			t.Fatal(err)
+		}
+		if c, err = cell.OpenAt(at, filepath.Base(at)); err != nil {
+			t.Fatal(err)
+		}
+		if err := cell.StampCopyReady(at); err != nil {
+			t.Fatal(err)
+		}
+		if shared {
+			if err := cellstore.NotePublished(c, "turn"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	homeCopy("home-copy", false)
+	homeCopy("home-copy-shared", true)
 	chats := olderChats{copy: func(context.Context, string) (cell.Cell, error) {
 		return cell.Cell{}, errors.New("files kept changing while saving this chat; try again")
 	}}
 	chats.visit(t.Context(), failing)
 	got := chats.count(olderChatDirs(root), now)
-	if want := (syncsetup.Unshared{Waiting: 1, Failing: 1, KeptHere: 2}); got != want {
+	if want := (syncsetup.Unshared{Waiting: 1, Failing: 1, KeptHere: 3}); got != want {
 		t.Fatalf("older chats counted %+v, want %+v (recent is %s)", got, want, recent)
 	}
 }

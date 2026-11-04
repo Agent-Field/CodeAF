@@ -407,8 +407,8 @@ type Unshared struct {
 	// Failing are chats whose last upload failed; codeaf tries again.
 	Failing int `json:"failing"`
 	// KeptHere are older chats a rule keeps on this computer: they were last
-	// used over 30 days ago, or they work in the home folder. Opening one here
-	// shares it.
+	// used over 30 days ago, which opening one here shares, or they work in
+	// the home folder, which stays here.
 	KeptHere int `json:"kept_here"`
 }
 

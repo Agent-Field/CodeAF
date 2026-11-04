@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -182,10 +183,11 @@ func (o *olderChats) count(dirs []string, now time.Time) syncsetup.Unshared {
 		if err != nil || meta.ID == "" {
 			continue
 		}
-		if cell.Copied(dir) != dir {
+		if copied := cell.Copied(dir); copied != dir {
 			// The copy of a chat that may be shared is a cell chat; the copy
-			// of one in the home folder stays here.
-			if !olderChatCopyable(meta) {
+			// of one in the home folder stays here unless it was shared when
+			// it was made.
+			if !olderChatCopyable(meta) && !copyShared(copied) {
 				out.KeptHere++
 			}
 			continue
@@ -200,6 +202,17 @@ func (o *olderChats) count(dirs []string, now time.Time) syncsetup.Unshared {
 		}
 	}
 	return out
+}
+
+// copyShared says whether an older chat's copy crossed a publication or
+// adoption boundary.
+func copyShared(root string) bool {
+	c, err := cell.OpenAt(root, filepath.Base(root))
+	if err != nil {
+		return false
+	}
+	shared, err := cellstore.Shared(c)
+	return err == nil && shared
 }
 
 // terminalNotShared is the terminal's count for the screen (tui3.NotShared).

@@ -22,8 +22,9 @@ type NotShared struct {
 	Waiting int
 	// Failing failed their last upload; codeaf tries again.
 	Failing int
-	// KeptHere are older chats kept on this computer until they are opened
-	// here: last used over 30 days ago, or working in the home folder.
+	// KeptHere are older chats kept on this computer: last used over 30 days
+	// ago, which opening one here shares, or working in the home folder, which
+	// stays here.
 	KeptHere int
 }
 
@@ -80,7 +81,7 @@ func notSharedDetail(read func() (NotShared, bool)) string {
 		line += fmt.Sprintf(" %d could not be uploaded yet; codeaf keeps trying.", n.Failing)
 	}
 	if n.KeptHere > 0 {
-		line += fmt.Sprintf(" %d older ones stay here until you open them on %s.", n.KeptHere, thisComputer())
+		line += fmt.Sprintf(" %d older ones are kept on %s.", n.KeptHere, thisComputer())
 	}
 	return line
 }

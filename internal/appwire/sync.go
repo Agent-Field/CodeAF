@@ -37,7 +37,8 @@ type SyncUnshared struct {
 	// Failing are chats whose last upload failed; the engine tries again.
 	Failing int `json:"failing"`
 	// KeptHere are older chats a rule keeps here: last used over 30 days ago,
-	// or working in the home folder. Opening one on this computer shares it.
+	// which opening one on this computer shares, or working in the home
+	// folder, which stays on this computer.
 	KeptHere int `json:"kept_here"`
 }
 
