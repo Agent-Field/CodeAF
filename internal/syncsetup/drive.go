@@ -248,8 +248,7 @@ var ownDeviceWrites sync.Map
 func PutOwnDevice(ctx context.Context, dir directory.Client, id identity.Identity, dev identity.Dev, name string) error {
 	// Chat starts, pairing and the app publisher can arrive together. Compare
 	// and write under one device lock so they cannot publish duplicate rows.
-	value, _ := ownDeviceWrites.LoadOrStore(dev.ID(), &sync.Mutex{})
-	mu := value.(*sync.Mutex)
+	mu := ownDeviceLock(dev.ID())
 	mu.Lock()
 	defer mu.Unlock()
 	rec, err := deviceRecord(id, name)
@@ -261,6 +260,8 @@ func PutOwnDevice(ctx context.Context, dir directory.Client, id identity.Identit
 		return err
 	}
 	if old, ok := listing.Devices[dev.ID()]; ok {
+		// Messages waiting in this record are not the name's to drop.
+		rec.Outbox, rec.Took = old.Outbox, old.Took
 		opened, err := directory.OpenName(directory.MetadataKey(id.CellKey()), old.Name)
 		if err == nil && opened == name && old.V == rec.V && old.Platform == rec.Platform && old.Caps == rec.Caps && old.AddedBy == rec.AddedBy {
 			return nil
@@ -677,6 +678,14 @@ func (d *Drive) Gate() error {
 
 // Idle says the agent stopped to wait for the person: what is sealed and not yet
 // uploaded goes up now. A chat that only views has nothing to upload.
+// Working tells the directory, through the next beat, whether a turn is
+// running on this computer, so another one can say the chat is working here.
+func (d *Drive) Working(on bool) {
+	if d.batcher != nil {
+		d.batcher.Working(on)
+	}
+}
+
 func (d *Drive) Idle() {
 	if d.batcher != nil {
 		go func() {
