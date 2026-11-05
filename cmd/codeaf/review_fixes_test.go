@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -185,8 +186,7 @@ func TestR1_7IdlePublicationSendsNoPeriodicRequests(t *testing.T) {
 
 func TestR1_6InventoryDoesNotWaitForPublication(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
-	home := t.TempDir()
+	home := cellstoretest.EngineDir(t)
 	t.Setenv("CODEAF_HOME", home)
 	if _, err := identity.Ensure(home); err != nil {
 		t.Fatal(err)
@@ -231,8 +231,7 @@ func TestR1_6InventoryDoesNotWaitForPublication(t *testing.T) {
 // retry the failed request at every interval.
 func TestR1_6CompletedChatsAreNotRetried(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
-	home := t.TempDir()
+	home := cellstoretest.EngineDir(t)
 	t.Setenv("CODEAF_HOME", home)
 	if _, err := identity.Ensure(home); err != nil {
 		t.Fatal(err)
@@ -275,8 +274,7 @@ func TestR1_6CompletedChatsAreNotRetried(t *testing.T) {
 
 func TestR1_6SlowFailureWaitsAfterCompletion(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
-	home := t.TempDir()
+	home := cellstoretest.EngineDir(t)
 	t.Setenv("CODEAF_HOME", home)
 	if _, err := identity.Ensure(home); err != nil {
 		t.Fatal(err)
@@ -314,8 +312,7 @@ func TestR1_6SlowFailureWaitsAfterCompletion(t *testing.T) {
 // completed chats or shortening a pending chat's retry pause.
 func TestR2_PairingRefreshKeepsPublicationProgress(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
-	home := t.TempDir()
+	home := cellstoretest.EngineDir(t)
 	t.Setenv("CODEAF_HOME", home)
 	if _, err := identity.Ensure(home); err != nil {
 		t.Fatal(err)
@@ -372,9 +369,8 @@ func TestR2_PairingRefreshKeepsPublicationProgress(t *testing.T) {
 // it takes the ordinary conversion and real-drive publication path.
 func TestR1_5OpeningAnOlderChatSharesIt(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
 	relay := appSyncRelay(t)
-	home := t.TempDir()
+	home := cellstoretest.EngineDir(t)
 	t.Setenv("CODEAF_HOME", home)
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	if _, err := identity.Ensure(home); err != nil {
@@ -428,7 +424,7 @@ func TestR1_4TerminalExplainsAndResumesDeferredSharing(t *testing.T) {
 	rig := newPairRig(t)
 	t.Setenv("CODEAF_HOME", rig.homeB)
 	t.Setenv(syncsetup.URLVar, rig.url)
-	t.Cleanup(cellstore.StopSpawned)
+	cellstoretest.EngineDir(t)
 	out := r1PairHomes(t, rig)
 	c := r1SavedChat(t, rig.homeB, "brought chat")
 	if !strings.Contains(out.String(), ". Run codeaf to open your chats.\n") {
