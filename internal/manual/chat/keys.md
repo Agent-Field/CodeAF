@@ -594,7 +594,7 @@ by then, so a turn nobody waited for is never a turn nobody can account for. Wha
 is already on your spending page either way: codeaf counts money as each request is
 answered rather than when a turn ends.
 
-**You should almost never see this.** Ten seconds is well above the longest ordinary
+**You should almost never see this happen.** Ten seconds is well above the longest ordinary
 letting-go, so the deadline only fires on a turn that was genuinely not going to end. If
 something is wedged even further down, `ctrl+c` at rest still quits and takes the whole
 process with it — but you no longer have to reach for that just to get your prompt back.

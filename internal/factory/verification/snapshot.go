@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
@@ -114,7 +115,7 @@ func canonicalOwner(dir string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("rev-parse", "--show-toplevel")...)
 	cmd.Dir = abs
 	boundSnapshot(cmd)
 	out, err := cmd.Output()

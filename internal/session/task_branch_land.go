@@ -52,6 +52,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -230,7 +231,7 @@ func landEnv() []string {
 // --auto` after a merge: a pre-auto-gc hook the plan never named, and a gc that
 // detaches into a session of its own where no group kill reaches it. The
 // settings ride GIT_CONFIG_PARAMETERS into every git those gits start.
-var landQuiet = []string{"-c", "core.fsmonitor=false", "-c", "maintenance.auto=false", "-c", "gc.auto=0"}
+var landQuiet = gitpolicy.WithoutAutoMaintenance("-c", "core.fsmonitor=false")
 
 // landCapture keeps what git writes up to max, and past it stops the git: the
 // write fails and the read's own context is cancelled.

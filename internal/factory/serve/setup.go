@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -626,7 +627,7 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 }
 
 func (h *Handler) keepSetupCheckout(ctx context.Context, repo, path string) error {
-	out, err := exec.CommandContext(ctx, "git", "-C", path, "remote", "get-url", "origin").Output()
+	out, err := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("-C", path, "remote", "get-url", "origin")...).Output()
 	if err != nil {
 		return errors.New("Choose an existing GitHub checkout")
 	}
@@ -838,7 +839,7 @@ func (h *Handler) cloneSetupRepo(ctx context.Context, repo, path string) error {
 		return err
 	}
 	// Git obtains credentials from the person's credential helper; no token enters argv or a remote URL.
-	cmd := exec.CommandContext(ctx, "git", "clone", "--", "https://github.com/"+repo+".git", path)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("clone", "--", "https://github.com/"+repo+".git", path)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	token, err := h.setupToken(ctx)
 	if err != nil {

@@ -23,6 +23,10 @@ func landRepo(t *testing.T) (repo string, place Place) {
 	t.Helper()
 	repo = t.TempDir()
 	gitT(t, repo, "init", "-q", "-b", "main")
+	// An uninstalled git build may have no hook templates to copy.
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("a\n"), 0o644)
 	gitT(t, repo, "add", ".")
 	gitT(t, repo, "commit", "-q", "-m", "base")
