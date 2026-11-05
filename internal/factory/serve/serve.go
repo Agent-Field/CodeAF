@@ -247,6 +247,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/edit-source", h.pipelineEditSource)
 	h.read("/v1/repos/{owner}/{repo}/read", h.repoRead)
+	h.read("/v1/repos/{owner}/{repo}/issues", h.repoIssues)
 	h.read("/v1/repos/{owner}/{repo}/pipeline/prs", h.pipelinePRs)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/repos/{owner}/{repo}/estimate", h.estimateNew)
