@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -285,6 +286,9 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 	case resp.StatusCode == http.StatusUnauthorized && path != "/v1/workers/attach":
 		return resp.StatusCode, ErrNotAttached
 	case resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound:
+		if resp.StatusCode == http.StatusConflict && sentence(raw).Error() == factory.WriteAccessRefusalWords {
+			return resp.StatusCode, Refusal{error: sentence(raw), Status: resp.StatusCode}
+		}
 		if resp.Header.Get(api.LeaseWithdrawnHeader) == "1" {
 			return resp.StatusCode, ErrLeaseWithdrawn
 		}

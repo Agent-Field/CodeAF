@@ -65,7 +65,7 @@ func PolicyAllows(policy []string, it factory.Item, action factory.Action, prior
 				return false, line
 			}
 		case shapeNoStranger:
-			if action.Verb == "comment" && it.Tier == factory.TierStranger {
+			if action.Verb == "comment" && it.RefusesWrite() {
 				return false, line
 			}
 		case shapePRNeedsGreen:

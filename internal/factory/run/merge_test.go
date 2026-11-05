@@ -57,7 +57,7 @@ func mergeRig(t *testing.T, f *fakeForge, m factory.MergeRun) (*Runner, *store.S
 	}
 	pr := cleanPR()
 	it, err := st.Create(factory.Item{
-		Repo: "acme/api", Num: 12, Kind: factory.KindIssue, State: factory.StateShipped,
+		Repo: "acme/api", Num: 12, Kind: factory.KindIssue, Tier: factory.TierOwner, State: factory.StateShipped,
 		Publish: "pr", HeadCommit: runMergeHead, PullRequest: &pr,
 		Proof:   []factory.Claim{{Text: "works", OK: true}},
 		Merging: &m,

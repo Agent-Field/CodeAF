@@ -66,12 +66,19 @@ func (d *Doors) update(id int, change func(doc *document, held *Lease, it *facto
 // document; a different revision is the store's StaleError and change never
 // runs. The lease file is persisted separately after the item write.
 func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
-	return d.desk.change(func(doc *document, now time.Time) (bool, error) {
+	var refusal error
+	err := d.desk.change(func(doc *document, now time.Time) (bool, error) {
 		held := find(doc, id)
 		dirty := false
 		write := func(it *factory.Item) error {
 			var err error
 			dirty, err = change(doc, held, it, now)
+			var denied run.WriteAccessRefusal
+			if errors.As(err, &denied) {
+				factory.StampFailure(it, denied.Failure(*it, now))
+				refusal = err
+				return nil
+			}
 			return err
 		}
 		var err error
@@ -82,6 +89,10 @@ func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held 
 		}
 		return dirty && err == nil, err
 	})
+	if err != nil {
+		return err
+	}
+	return refusal
 }
 
 // Launch queues the job for a worker; a paused job goes on instead.
@@ -454,12 +465,15 @@ func (d *Doors) Steer(id int, words string) error {
 // pushes and opens the pull request, and the job is done when it reports the
 // pr. A job with no recorded approval publishes nothing.
 func (d *Doors) SignOff(id int, edited bool) (bool, error) {
-	trailer, err := d.trailer(id)
-	if err != nil {
-		return false, err
-	}
 	var repo string
-	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.CheckWriteAccess(*it, "publish"); err != nil {
+			return false, err
+		}
+		trailer, err := d.trailer(id, it.HeadCommit)
+		if err != nil {
+			return false, err
+		}
 		if it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
 			return false, fmt.Errorf("job budget reached; raise Budget before publishing")
 		}
@@ -508,6 +522,9 @@ func (d *Doors) Merge(id int, m factory.MergeRun) error {
 		return errors.New("a merge names the exact commit to merge")
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.CheckWriteAccess(*it, "merge"); err != nil {
+			return false, err
+		}
 		if it.State != factory.StateShipped {
 			return false, fmt.Errorf("%s has not opened its pull request", it.Ref())
 		}
@@ -528,12 +545,12 @@ func (d *Doors) Merge(id int, m factory.MergeRun) error {
 
 // trailer is the job's recorded approval as its trailer line, read from the
 // record beside the desk's store: the one consent a publish may cite.
-func (d *Doors) trailer(id int) (string, error) {
+func (d *Doors) trailer(id int, commit string) (string, error) {
 	history, err := record.Open(d.desk.store, record.Options{})
 	if err != nil {
 		return "", err
 	}
-	trailer, err := history.Trailer(context.Background(), id)
+	trailer, err := history.TrailerFor(context.Background(), id, commit)
 	if err != nil {
 		return "", err
 	}

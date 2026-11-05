@@ -197,7 +197,10 @@ func (r *Runner) Launch(id int) error {
 		if saveErr := st.Update(id, func(it *factory.Item) error {
 			if launchable(*it) == nil {
 				if refusal := strangerWrites(*it); refusal != nil {
-					factory.StampFailure(it, refusal.(WriteAccessRefusal).Failure(*it, r.now()))
+					var denied WriteAccessRefusal
+					if errors.As(refusal, &denied) {
+						factory.StampFailure(it, denied.Failure(*it, r.now()))
+					}
 				}
 			}
 			return nil
@@ -269,7 +272,7 @@ func (r *Runner) Launch(id int) error {
 	return nil
 }
 
-const refuseStrangerWrite = "This job came from someone without write access to this repository, so it can't run a step that can change files or update the repository. No further steps were run. To do this work, open it yourself as a new job, or give the author write access."
+const refuseStrangerWrite = factory.WriteAccessRefusalWords
 
 // WriteAccessRefusal stops a stranger's job before a step that can write.
 type WriteAccessRefusal struct {
@@ -306,8 +309,8 @@ func (e WriteAccessRefusal) Failure(it factory.Item, at time.Time) factory.Failu
 }
 
 func strangerStage(it factory.Item, st factory.Stage) error {
-	if it.Tier == factory.TierStranger && st.CanWrite() {
-		return WriteAccessRefusal{Step: st.Name}
+	if st.CanWrite() {
+		return CheckWriteAccess(it, st.Name)
 	}
 	return nil
 }
@@ -326,7 +329,7 @@ func strangerWrites(it factory.Item) error {
 func (lp *floorLoop) allowRound(c *loopCtl, st factory.Stage) bool {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err == nil {
-		err = strangerStage(it, st)
+		err = lp.r.allowWrite(c.ctx, it, st)
 	}
 	if err != nil {
 		lp.failStop(c, st.Name, err)
@@ -1466,7 +1469,7 @@ func (lp *floorLoop) held(c *loopCtl) bool {
 func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job, before factory.Phase) (res factory.StageResult, again bool, err error) {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err == nil {
-		err = strangerStage(it, job.Stage)
+		err = lp.r.allowWrite(c.ctx, it, job.Stage)
 	}
 	if err != nil {
 		var refused WriteAccessRefusal
@@ -1621,6 +1624,13 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	dir, dirErr := lp.jobDir(it)
 	if dirErr == nil {
 		it = lp.settleRules(c, it)
+	}
+	if dirErr == nil {
+		fresh, err := lp.r.opts.Store.Get(c.id)
+		dirErr = err
+		if dirErr == nil {
+			dirErr = lp.r.allowWrite(c.ctx, fresh, st)
+		}
 	}
 	if dirErr == nil && factory.IsCIRepairStage(st) {
 		dirErr = lp.reconcilePR(it, dir)
@@ -1971,7 +1981,19 @@ func (lp *floorLoop) land(c *loopCtl) {
 		}
 		// Commit before opening proof so approval names the work being shown.
 		if lp.r.opts.Workdir != nil {
+			if err := lp.r.allowWrite(c.ctx, it, factory.Stage{Name: "land", Kind: factory.StageCheck}); err != nil {
+				lp.failStop(c, "land", err)
+				return
+			}
 			if dir, err := lp.r.opts.Workdir(it); err == nil {
+				fresh, readErr := lp.r.opts.Store.Get(c.id)
+				if readErr == nil {
+					readErr = lp.r.allowWrite(c.ctx, fresh, factory.Stage{Name: "land", Kind: factory.StageCheck})
+				}
+				if readErr != nil {
+					lp.failStop(c, "land", readErr)
+					return
+				}
 				git := lp.r.opts.Git
 				if git == nil {
 					git = ExecGit{}

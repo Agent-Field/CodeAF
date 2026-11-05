@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 // Renew uses the hold's identity rather than the job number so a delayed
@@ -134,7 +135,8 @@ func identified(doc *document, id, worker string) (*Lease, error) {
 // CheckPublish reads the current job under its row lock and the worker's lease.
 // A worker must check again at each push and immediately before its PR request.
 func (d *Desk) CheckPublish(id, worker string) error {
-	return d.change(func(doc *document, _ time.Time) (bool, error) {
+	var refusal error
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
 			return false, err
@@ -143,9 +145,14 @@ func (d *Desk) CheckPublish(id, worker string) error {
 			if err := factory.CheckPersonStop(*it); err != nil {
 				return err
 			}
+			refusal = run.RefuseWrite(it, "write", now)
 			return nil
 		})
 	})
+	if err != nil {
+		return err
+	}
+	return refusal
 }
 
 func receiptIdentity(doc *document, id, worker string, now time.Time) (*Lease, error) {

@@ -120,6 +120,9 @@ func ShipPublished(it *factory.Item, now time.Time) error {
 // already recorded stays valid for that same commit, and retrying does not
 // ask for a second one.
 func (r *Runner) Publish(id int, trailer string) error {
+	if err := r.refuseWrite(id, "publish"); err != nil {
+		return err
+	}
 	trailer = strings.TrimSpace(trailer)
 	if !ValidTrailer(trailer) {
 		return ErrNoApproval
@@ -619,7 +622,8 @@ func portablePublishText(s string) string {
 	return publishHomePath.ReplaceAllStringFunc(s, func(string) string { return "$HOME" })
 }
 
-// SetPublishCheck binds a worker's authoritative lease read to each external write.
+// SetPublishCheck binds the service's current permission to writing rounds,
+// manager replies and external writes.
 // Nil removes the binding after the worker has settled its publication receipt.
 func (r *Runner) SetPublishCheck(id int, check func(context.Context) error) {
 	if check == nil {
@@ -629,20 +633,29 @@ func (r *Runner) SetPublishCheck(id int, check func(context.Context) error) {
 	}
 }
 
-// publishBoundary reads Stop afresh under the row lock immediately before a write.
+// publishBoundary reads Stop and permission under the row lock before a write.
 func (r *Runner) publishBoundary(ctx context.Context, id int) error {
-	return r.opts.Store.Update(id, func(it *factory.Item) error {
+	var refusal error
+	err := r.opts.Store.Update(id, func(it *factory.Item) error {
 		if factory.StoppedByPerson(*it) {
 			return factory.ErrPersonStopped
 		}
 		if ctx.Err() != nil || it.State == factory.StateNew || it.State == factory.StateDismissed {
 			return errLoopStopped
 		}
-		if check, ok := r.publishChecks.Load(id); ok {
-			return check.(func(context.Context) error)(ctx)
+		err := r.allowWrite(ctx, *it, factory.Stage{Name: "publish", Kind: factory.StagePost})
+		var refused WriteAccessRefusal
+		if errors.As(err, &refused) {
+			factory.StampFailure(it, refused.Failure(*it, r.now()))
+			refusal = err
+			return nil
 		}
-		return nil
+		return err
 	})
+	if err != nil {
+		return err
+	}
+	return refusal
 }
 
 func stoppedPRWords(url string) string {

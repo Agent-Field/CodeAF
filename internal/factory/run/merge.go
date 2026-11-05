@@ -30,6 +30,9 @@ import (
 // goroutine, so [Runner.Running] holds while it works and the worker keeps
 // beating.
 func (r *Runner) Merge(id int, commit string) error {
+	if err := r.refuseWrite(id, "merge"); err != nil {
+		return err
+	}
 	commit = strings.TrimSpace(commit)
 	if commit == "" {
 		return errors.New("a merge names the exact commit to merge")

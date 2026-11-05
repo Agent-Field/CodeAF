@@ -51,7 +51,7 @@ func TestFactoryJobSendTouchesJob(t *testing.T) {
 	}
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 72, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 72, Tier: factory.TierOwner, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
