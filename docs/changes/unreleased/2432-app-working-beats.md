@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Advertise running desktop chat turns on other computers
-pr: 2430
+pr: 2432
 surface: [app, engine, remote, docs]
 invalidates:
   - A desktop chat turn starting before its sync drive was ready used to lose its working flag.
