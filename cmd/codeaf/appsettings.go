@@ -68,7 +68,6 @@ func settingsExtra(settings *appwire.Settings, file appStateFile, profile string
 	if saved {
 		source = "saved"
 	}
-	settings.KnowledgeModel = config.KnowledgeModelAt(profile)
 	settings.Memory = appwire.MemorySettings{Enabled: enabled, Source: source, CostNote: config.MemoryCostNote}
 	settings.Appearance, settings.TextSize = appwire.AppearanceSystem, appwire.TextMedium
 	if file.Appearance != "" {
@@ -91,11 +90,6 @@ func settingsExtra(settings *appwire.Settings, file appStateFile, profile string
 // applyExtra writes the wave 8 rows a patch names: the profile's rows first,
 // because they can refuse, then the app's own.
 func (b *appBackend) applyExtra(patch appwire.SettingsPatch, profile string) error {
-	if patch.KnowledgeModel != nil {
-		if err := applyRow(profile, config.KeyKnowledgeModel, *patch.KnowledgeModel); err != nil {
-			return err
-		}
-	}
 	if patch.MemoryEnabled != nil {
 		if err := config.WriteMemoryEnabled(profile, *patch.MemoryEnabled); err != nil {
 			return appEngineError(err)

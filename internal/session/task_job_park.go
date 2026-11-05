@@ -188,12 +188,6 @@ func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	// A stage has its runner's absolute wall. A shorter park handback would
 	// buy an unnecessary model request merely to learn that a check still runs.
 	defer stop()
-	a.waitOnOwedJob(ctx, jobs, timer)
-}
-
-// waitOnOwedJob reads the news generation before the debt, so an ending cannot
-// arrive between the read and the wait without releasing this worker.
-func (a *Agent) waitOnOwedJob(ctx context.Context, jobs *jobRegistry, timer <-chan time.Time) {
 	for {
 		news := a.taskNewsWait()
 		if !(jobs.owedRunning() || jobs.stageRunning()) {

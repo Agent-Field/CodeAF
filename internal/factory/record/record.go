@@ -278,7 +278,9 @@ func (r *Record) Trailer(ctx context.Context, id int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	it, err := st.Get(id)
+	// Consent is read inside job mutations; author hydration would write
+	// through the same item lock that the caller already holds.
+	it, err := st.GetSaved(id)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return "", err
 	}
