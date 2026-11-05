@@ -52,9 +52,6 @@ type Row struct {
 	// UploadSent of UploadTotal bytes is how far the holder's upload of its
 	// pending turns had got at its last beat; both 0 when it did not say.
 	UploadSent, UploadTotal uint64
-	// Working says the holder was in the middle of a turn at its last beat.
-	// Only a running row carries it: an expired or released lease is not working.
-	Working bool
 	// Fence binds the continuation card to the holder the person saw.
 	Fence uint64
 	// Mine says this device was the chat's last holder, so a lapsed lease is
@@ -179,7 +176,6 @@ func rowOf(id string, c directory.Cell, l directory.Listing, self string, open O
 		Size:        c.Size,
 		UploadSent:  c.Lease.UploadSent,
 		UploadTotal: c.Lease.UploadTotal,
-		Working:     c.Lease.Working && heldStatus(c, l, self) == Running,
 
 		HolderRemoved: l.Devices[c.Lease.Device].Revoked,
 	}

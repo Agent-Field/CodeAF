@@ -843,9 +843,7 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	failed(watch, err)
 	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
 	if drive != nil {
-		// The agent waits for the person: upload what is sealed now, and say the turn is over.
-		watch.OnTurnEnd = func() { drive.Working(false); drive.Idle() }
-		watch.OnTurnStart = func() { drive.Working(true) }
+		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
 	failed(watch, err)

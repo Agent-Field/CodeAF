@@ -8,13 +8,9 @@ const (
 	// agents.take_cancel exists: a client learns how every move ends from the
 	// rows and needs its own timer only as a fallback.
 	FeatureChatsMove = "chats.move"
-	// FeatureChatsWorking says chat rows carry working: the holder said at its
-	// last beat that a turn is running there. A relay that does not keep the
-	// flag leaves it false, so a client says "open there", never "idle there".
-	FeatureChatsWorking = "chats.working"
-	FeatureSyncRelay    = "sync.relay"
-	EventChatChanged    = "chat.changed"
-	EventChatRemoved    = "chat.removed"
+	FeatureSyncRelay = "sync.relay"
+	EventChatChanged = "chat.changed"
+	EventChatRemoved = "chat.removed"
 )
 
 type Seen struct {
@@ -46,9 +42,6 @@ type ChatRow struct {
 	MoveEnded    *ChatMoveEnded `json:"move_ended,omitempty"`
 	Line         string         `json:"line,omitempty"`
 	TakeoverLine string         `json:"takeover_line,omitempty"`
-	// Working says the computer holding the chat is in the middle of a turn
-	// (status running only). Absent while it is merely open there.
-	Working bool `json:"working,omitempty"`
 }
 
 // ChatSharing says the computer holding the chat has sealed turns it has not
@@ -133,9 +126,6 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 	}
 	if _, ok := e.(ChatsMover); ok {
 		h = withFeature(h, FeatureChatsMove)
-	}
-	if _, ok := e.(ChatsTaker); ok {
-		h = withFeature(h, FeatureChatsWorking)
 	}
 	if d, ok := e.(RelayReporter); ok && d.RelayKnown() {
 		h = withFeature(h, FeatureSyncRelay)

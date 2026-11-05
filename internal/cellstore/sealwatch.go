@@ -39,9 +39,6 @@ type SealWatch struct {
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
 	// sets it to the sync side's idle call.
 	OnTurnEnd func()
-	// OnTurnStart, when set, hears each time a turn begins. The door sets it to
-	// the sync side's working call, so other computers can say a turn runs here.
-	OnTurnStart func()
 	// OnTail, when set, is called once the record has been quiet for Quiet after
 	// writes that came behind the turn-end seal. The door seals the tree and asks
 	// the sync side to upload, exactly as it does at the end of a turn, so there
@@ -162,13 +159,10 @@ func (w *SealWatch) Waiting() {
 // record itself and every call seals it, so no tail seal is owed.
 func (w *SealWatch) TurnStarted() {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.started = true
 	w.idle = false
 	w.stopTail()
-	w.mu.Unlock()
-	if w.OnTurnStart != nil {
-		w.OnTurnStart()
-	}
 }
 
 // Wrote is the session's word that something the chat owns was written: a line
