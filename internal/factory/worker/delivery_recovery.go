@@ -153,7 +153,9 @@ func (j *job) recoverBlocked(ctx context.Context, manual bool, delivery ...strin
 	_, ok := j.o.recoverOne(ctx, j.w, j.id, j.deliveryPath(), j.pending, j.now())
 	if ok {
 		j.pending = nil
+		j.mu.Lock()
 		j.blocked = ""
+		j.mu.Unlock()
 		return true
 	}
 	return false

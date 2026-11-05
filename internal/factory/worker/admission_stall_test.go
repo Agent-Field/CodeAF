@@ -22,7 +22,7 @@ import (
 // TestAdmissionStall measures the real loop at its HTTP and executor boundaries.
 // The executor's first completion requests the next paid round; no provider runs.
 func TestAdmissionStall(t *testing.T) {
-	for _, mode := range []string{"admission", "periodic"} {
+	for _, mode := range []string{"admission", "admission-stop", "periodic"} {
 		t.Run(mode, func(t *testing.T) {
 			mirror, err := store.Open(t.TempDir())
 			if err != nil {
@@ -52,6 +52,15 @@ func TestAdmissionStall(t *testing.T) {
 			var mu sync.Mutex
 			var beats []time.Time
 			var queuedAt, deliveredAt time.Time
+			observeModel := func() {
+				if cur, err := mirror.Get(item.ID); err == nil && cur.Model == "chosen" {
+					mu.Lock()
+					if deliveredAt.IsZero() {
+						deliveredAt = time.Now()
+					}
+					mu.Unlock()
+				}
+			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				_, _ = io.Copy(io.Discard, r.Body)
 				if strings.HasSuffix(r.URL.Path, "/report") && armed.Load() && stalled.CompareAndSwap(false, true) {
@@ -65,12 +74,10 @@ func TestAdmissionStall(t *testing.T) {
 					mu.Unlock()
 					hb := api.WorkerHeartbeat{}
 					if queued.Load() {
-						mu.Lock()
-						if deliveredAt.IsZero() {
-							deliveredAt = time.Now()
+						hb.Signals = []api.WorkerSignal{{Verb: "model", Words: "chosen", Delivery: "lease/model"}}
+						if mode != "admission" {
+							hb.Signals = append(hb.Signals, api.WorkerSignal{Verb: "stop", Delivery: "lease/stop"})
 						}
-						mu.Unlock()
-						hb.Signals = []api.WorkerSignal{{Verb: "model", Words: "chosen", Delivery: "lease/model"}, {Verb: "stop", Delivery: "lease/stop"}}
 					}
 					_ = json.NewEncoder(w).Encode(hb)
 					return
@@ -87,7 +94,7 @@ func TestAdmissionStall(t *testing.T) {
 			}
 			go func() {
 				defer close(done)
-				Options{cap: &capacity{jobs: map[int]chan struct{}{}}, Runner: runner, Mirror: mirror, BeatEvery: 100 * time.Millisecond, ReportEvery: reportEvery, DeliveryRoot: t.TempDir()}.work(ctx, client.Open(server.URL, "").Worker("worker"), api.WorkerPull{Lease: api.WorkerLease{ID: "lease_test", Job: item.ID}, Job: api.FromItem(item)})
+				Options{cap: &capacity{jobs: map[int]chan struct{}{}}, Runner: runner, Mirror: mirror, BeatEvery: 100 * time.Millisecond, ReportEvery: reportEvery, DeliveryRoot: t.TempDir(), LocalLease: func(_ string, _ api.WorkerLease) { observeModel() }}.work(ctx, client.Open(server.URL, "").Worker("worker"), api.WorkerPull{Lease: api.WorkerLease{ID: "lease_test", Job: item.ID}, Job: api.FromItem(item)})
 			}()
 			select {
 			case <-entered:
@@ -98,7 +105,7 @@ func TestAdmissionStall(t *testing.T) {
 			time.Sleep(220 * time.Millisecond)
 			requested := time.Now()
 			armed.Store(true)
-			if mode == "admission" {
+			if strings.HasPrefix(mode, "admission") {
 				close(advance)
 			} else {
 				if err := mirror.Update(item.ID, func(it *factory.Item) error { it.Stream.Spent = .1; return nil }); err != nil {
@@ -119,6 +126,7 @@ func TestAdmissionStall(t *testing.T) {
 			var outcomeAt time.Time
 			outcome := "refused"
 			for outcomeAt.IsZero() {
+				observeModel()
 				select {
 				case outcomeAt = <-next:
 					outcome = "started"
@@ -145,14 +153,116 @@ func TestAdmissionStall(t *testing.T) {
 			}
 			deliveryDelay := deliveredAt.Sub(queuedAt)
 			stopDelay := stoppedAt.Sub(queuedAt)
+			if mode == "admission" {
+				stopDelay = 0
+			}
 			mu.Unlock()
 			admissionDelay := outcomeAt.Sub(requested)
 			if mode == "periodic" {
 				admissionDelay, outcome = 0, "already_running"
 			}
 			t.Logf("mode=%s admission_seconds=%.6f outcome=%s heartbeat_gap_seconds=%.6f stop_seconds=%.6f other_delivery_seconds=%.6f report_stall_seconds=%.6f heartbeat_period_seconds=0.100000 request_timeout_seconds=5", mode, admissionDelay.Seconds(), outcome, longest.Seconds(), stopDelay.Seconds(), deliveryDelay.Seconds(), stoppedAt.Sub(stallAt).Seconds())
+			if longest >= time.Second {
+				t.Errorf("heartbeat gap %s, want under 1s", longest)
+			}
+			if deliveryDelay < 0 || deliveryDelay >= time.Second {
+				t.Errorf("other signal delivery %s, want under 1s", deliveryDelay)
+			}
+			if mode != "admission" && stopDelay >= time.Second {
+				t.Errorf("Stop delivery %s, want under 1s", stopDelay)
+			}
+			if strings.HasPrefix(mode, "admission") && outcome != "refused" {
+				t.Errorf("step %s, want refused", outcome)
+			}
+			if mode == "admission" && (outcomeAt.Sub(stallAt) < deliveryRequestTimeout || admissionDelay > deliveryRequestTimeout+time.Second) {
+				t.Errorf("admission refused after %s (stall %s), want report timeout %s through 6s", admissionDelay, outcomeAt.Sub(stallAt), deliveryRequestTimeout)
+			}
 			cancel()
-			<-done
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("worker reporter did not end within 1s of cancellation")
+			}
 		})
 	}
+}
+
+// A reply can finish while the final snapshot is in flight. Done must wait
+// for its spending and delivery receipt too, without holding up heartbeats.
+func TestFinalReportIncludesReplyDeliveredDuringFlush(t *testing.T) {
+	mirror, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := mirror.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateNew, Autonomy: factory.AutonomyAuto, Stages: []factory.Stage{{Name: "check", Kind: factory.StageCheck, On: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var finished atomic.Bool
+	runner := run.New(run.Options{Store: mirror, RepoDir: func(string) string { return mirror.Root() }, Exec: map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(context.Context, run.Job) (factory.StageResult, error) {
+		finished.Store(true)
+		return factory.StageResult{Done: true}, nil
+	})}})
+	var stalled atomic.Bool
+	replyDone, release := make(chan struct{}), make(chan struct{})
+	var spending atomic.Int64
+	doneSpend := make(chan int64, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/report"):
+			var report api.WorkerReport
+			if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
+				t.Error(err)
+			}
+			if finished.Load() && stalled.CompareAndSwap(false, true) {
+				select {
+				case <-release:
+				case <-r.Context().Done():
+					return
+				}
+			}
+			spending.Add(int64(report.Cost * 100))
+		case strings.HasSuffix(r.URL.Path, "/heartbeat"):
+			hb := api.WorkerHeartbeat{}
+			if stalled.Load() {
+				hb.Signals = []api.WorkerSignal{{Verb: "reply", ID: "reply", Words: "hello", Delivery: "lease/reply"}}
+			}
+			_ = json.NewEncoder(w).Encode(hb)
+			return
+		case strings.HasSuffix(r.URL.Path, "/done"):
+			doneSpend <- spending.Load()
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		Options{cap: &capacity{jobs: map[int]chan struct{}{}}, Runner: runner, Mirror: mirror, BeatEvery: 10 * time.Millisecond, ReportEvery: time.Hour, DeliveryRoot: t.TempDir(), Reply: func(_ context.Context, _ factory.Item, _ string) error {
+			err := mirror.Update(item.ID, func(it *factory.Item) error { it.Stream.Spent = .2; return nil })
+			close(replyDone)
+			return err
+		}}.work(ctx, client.Open(server.URL, "").Worker("worker"), api.WorkerPull{Lease: api.WorkerLease{ID: "lease_test", Job: item.ID}, Job: api.FromItem(item)})
+	}()
+	select {
+	case <-replyDone:
+	case <-ctx.Done():
+		t.Fatal("reply did not finish during final reporting")
+	}
+	// Let the reply return and the worker observe its completion before the
+	// older snapshot is acknowledged.
+	time.Sleep(30 * time.Millisecond)
+	close(release)
+	select {
+	case got := <-doneSpend:
+		if got != 20 {
+			t.Errorf("Done after reporting %d cents, want 20 from the concurrent reply", got)
+		}
+	case <-ctx.Done():
+		t.Error("worker did not release lease")
+	}
+	cancel()
+	<-done
 }

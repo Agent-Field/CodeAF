@@ -950,7 +950,11 @@ ordinary conversation processes stop for sleep or turn an interrupted check gree
 
 Worker result delivery retains one exact per-lease request and retry identity
 before sending. A lost reply retries that request before reporting newer work;
-only a confirmed response advances its baseline. Retryable delivery uses a
+only a confirmed response advances its baseline. A step waits for the factory's
+admission answer before starting. During a running job, a stalled report does
+not delay heartbeats or Stop and other signals; Stop cancels an admission wait.
+Heartbeats themselves still run serially with signals and can wait up to five
+seconds for their own request. Retryable delivery uses a
 two-minute window with bounded request waits. Deterministic rejection stops work,
 retains the unsent results privately and asks for reporting-problem reconciliation,
 without claiming that the tests failed. It does not release the job as complete.

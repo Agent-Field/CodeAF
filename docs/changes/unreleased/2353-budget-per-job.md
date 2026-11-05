@@ -48,7 +48,7 @@ server still replaces that question with its own total; a running-step report
 cannot claim this exception.
 
 Step admission first delivers the mirror's unreported spending through the same
-serialized delivery loop as periodic reports. A server total below the cap can
+serialized report goroutine as periodic reports. A server total below the cap can
 therefore no longer admit another paid round when local spending crosses it.
 Approved publication and queued merges retain their lease at the cap while no
 pipeline phase is running. These forge writes make no model calls; a running
@@ -63,3 +63,13 @@ pipeline; the person's Start remains required.
 Resuming a paused run waits for its canceled control's pending spend receipts
 to settle, then resumes the saved chat. It no longer tries to write through
 that canceled control and refuse with "factory run: the item was stopped".
+
+Running-job reports no longer block the heartbeat and signal loop. Admission
+still waits for the factory's answer before a step starts; Stop cancels that
+wait. Periodic ticks during a report are skipped. Final delivery and lease
+release wait for reporting to finish. Heartbeat requests themselves remain
+on the loop, each bounded to five seconds.
+
+Later thread and usage reports on a job already waiting at its cap retain the
+budget-wait acknowledgment. They no longer withdraw that parked lease and
+cause a completed chat to resume and spend again after a budget raise.

@@ -307,6 +307,7 @@ type job struct {
 	control       *client.PreparedWorkerReport
 	controlTries  int
 	controlSent   bool
+	reconcile     func(string)
 	spendReport   *client.PreparedWorkerReport
 	spendBaseline float64
 }
@@ -405,45 +406,94 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer report.Stop()
 	beat := time.NewTicker(o.BeatEvery)
 	defer beat.Stop()
+	// One reporter owns delivery state and spend baselines. Admission and
+	// periodic flushes must never race or replay an unacknowledged cost delta.
+	type reportResult struct {
+		alive bool
+		final bool
+	}
+	work := make(chan func() reportResult, 1)
+	results := make(chan reportResult, 1)
+	reporterDone := make(chan struct{})
+	go func() {
+		defer close(reporterDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case report := <-work:
+				results <- report()
+			}
+		}
+	}()
+	defer func() {
+		cancel()
+		<-reporterDone
+	}()
+	busy := false
+	queue := func(report func() reportResult) {
+		busy = true
+		work <- report
+	}
+	j.reconcile = func(delivery string) {
+		if !busy {
+			queue(func() reportResult {
+				return reportResult{alive: !j.recoverBlocked(ctx, true, delivery)}
+			})
+		}
+	}
 	for {
-		if !o.Runner.Running(it.ID) && !j.replyingNow() && !j.signalsWaiting() && j.pending == nil && j.blocked == "" {
-			if j.flushFinal(ctx) {
+		if !busy && !o.Runner.Running(it.ID) && !j.replyingNow() && !j.signalsWaiting() && j.pending == nil && j.blocked == "" {
+			queue(func() reportResult {
+				return reportResult{alive: true, final: j.flushFinal(ctx)}
+			})
+		}
+		// A step waits under its own context while another report is in flight.
+		var admissionReady chan admission
+		if !busy {
+			admissionReady = admit
+		}
+		select {
+		case result := <-results:
+			busy = false
+			if !result.alive {
+				j.drop()
+				return
+			}
+			if result.final && !o.Runner.Running(it.ID) && !j.replyingNow() && !j.signalsWaiting() {
 				if cur, err := o.Mirror.Get(it.ID); err == nil {
 					_ = w.Done(ctx, j.lease, final(cur))
 				}
 				return
 			}
-		}
-		select {
-		case request := <-admit:
-			// Admission shares the delivery loop so its spend flush cannot race
-			// periodic reporting or replay an unacknowledged cost delta.
-			if j.pending != nil && !j.flush(request.ctx) {
-				request.done <- client.ErrLeaseGone
-				j.drop()
-				return
-			}
-			// A retried snapshot may precede spending now saved in the mirror.
-			if !j.flush(request.ctx) {
-				request.done <- client.ErrLeaseGone
-				j.drop()
-				return
-			}
-			if j.pending != nil || j.blocked != "" {
-				request.done <- errors.New("step admission waits for unreported spending")
-				continue
-			}
-			readCtx, cancel := context.WithTimeout(request.ctx, deliveryRequestTimeout)
-			err := w.Report(readCtx, pulled.Lease.ID, api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{request.step}}))
-			cancel()
-			request.done <- err
+		case request := <-admissionReady:
+			queue(func() reportResult {
+				if j.pending != nil && !j.flush(request.ctx) {
+					request.done <- client.ErrLeaseGone
+					return reportResult{}
+				}
+				// A retried snapshot may precede spending now saved in the mirror.
+				if !j.flush(request.ctx) {
+					request.done <- client.ErrLeaseGone
+					return reportResult{}
+				}
+				if j.pending != nil || j.blocked != "" {
+					request.done <- errors.New("step admission waits for unreported spending")
+					return reportResult{alive: true}
+				}
+				readCtx, cancel := context.WithTimeout(request.ctx, deliveryRequestTimeout)
+				err := w.Report(readCtx, pulled.Lease.ID, api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{request.step}}))
+				cancel()
+				request.done <- err
+				return reportResult{alive: !j.lostLease(err)}
+			})
 		case <-ctx.Done():
 			j.drop()
 			return
 		case <-report.C:
-			if !j.flush(ctx) {
-				j.drop()
-				return
+			// Ticks during an in-flight report are skipped, never queued.
+			if !busy {
+				queue(func() reportResult { return reportResult{alive: j.flush(ctx)} })
 			}
 		case <-beat.C:
 			if !j.beat(ctx) {
@@ -561,6 +611,15 @@ func (j *job) flush(ctx context.Context) bool {
 	if !ok {
 		return true
 	}
+	// Later thread or usage updates must still identify a parked budget wait;
+	// otherwise the factory treats them as execution at the exhausted cap.
+	if report.Question == nil && cur.State == factory.StateNeedsYou && cur.QKind == "cap" && cur.Cap > 0 && factory.JobLifetimeSpent(cur) >= cur.Cap {
+		report.Question = &factory.Asked{Question: cur.Question, Stage: cur.Stream.Phases[cur.Stream.Cur].Name}
+		if cur.Asking != nil {
+			report.Question = cur.Asking
+		}
+		report.QuestionKind = cur.QKind
+	}
 	pending, err := j.prepareDelivery(cur, report)
 	if err != nil {
 		j.blockDelivery("Results could not be retained locally; work stopped before sending them.")
@@ -644,13 +703,17 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		}
 		// A generic Resume or manager reply cannot bypass reconciliation of a
 		// rejected result. Stop remains available and unsent replies stay pending.
-		if j.blocked != "" && s.Verb == lease.SignalReconcile {
+		if j.deliveryBlocked() && s.Verb == lease.SignalReconcile {
+			if j.reconcile != nil {
+				j.reconcile(s.Delivery)
+				continue
+			}
 			if j.recoverBlocked(ctx, true, s.Delivery) {
 				return false
 			}
 			continue
 		}
-		if j.blocked != "" && s.Verb != lease.SignalStop {
+		if j.deliveryBlocked() && s.Verb != lease.SignalStop {
 			continue
 		}
 		var effectErr error
@@ -845,7 +908,10 @@ const StopWait = 5 * time.Second
 // ending and the lease will expire into the queue for another worker.
 func (j *job) drop() {
 	j.keepLocal(api.WorkerLease{Job: j.id})
-	if j.withdrawn {
+	j.mu.Lock()
+	withdrawn := j.withdrawn
+	j.mu.Unlock()
+	if withdrawn {
 		j.o.Runner.Withdraw(j.id)
 	} else {
 		_ = j.o.Runner.Stop(j.id)
@@ -934,7 +1000,9 @@ func (j *job) settleAccounting(ctx context.Context) {
 
 func (j *job) lostLease(err error) bool {
 	if errors.Is(err, client.ErrLeaseWithdrawn) {
+		j.mu.Lock()
 		j.withdrawn = true
+		j.mu.Unlock()
 	}
 	return gone(err)
 }

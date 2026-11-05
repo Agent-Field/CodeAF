@@ -224,7 +224,9 @@ func (j *job) retryDelivery(ctx context.Context) bool {
 }
 
 func (j *job) blockDelivery(reason string) {
+	j.mu.Lock()
 	j.blocked = reason
+	j.mu.Unlock()
 	if j.pending != nil {
 		j.pending.Reason = reason
 		_ = j.retainDeliverySnapshot()
@@ -293,4 +295,11 @@ func (j *job) reportBlocked(ctx context.Context) bool {
 	}
 	j.controlSent = err == nil
 	return true
+}
+
+// deliveryBlocked is the reporting state read by the heartbeat's signal path.
+func (j *job) deliveryBlocked() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.blocked != ""
 }
