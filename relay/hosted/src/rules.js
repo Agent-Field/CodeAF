@@ -53,7 +53,7 @@ export function makeRules({ ttlMs, renewOnPublish }) {
     // wholesale: a publish that says nothing is a true statement, a stale one is not kept.
     const { frames, frame_hints, saved_at, ...kept } = c;
     const next = { ...kept, head: p.head, size: p.size, class: p.class, durable_at: now, lease: { ...c.lease, expires, pending: p.pending } };
-    return omitEmpty(next, { title, frames: p.frames, frame_hints: boundedFrameHints(p.frame_hints), saved_at: p.saved_at > 0 ? p.saved_at : (p.head === p.old_head ? saved_at : undefined) });
+    return omitEmpty(next, { title, folder: p.folder == null || p.folder === '' ? c.folder : p.folder, frames: p.frames, frame_hints: boundedFrameHints(p.frame_hints), saved_at: p.saved_at > 0 ? p.saved_at : (p.head === p.old_head ? saved_at : undefined) });
   };
 
   const releaseOf = (c, device, fence, now) => {
@@ -65,7 +65,7 @@ export function makeRules({ ttlMs, renewOnPublish }) {
   const created = (init, device, now) => {
     const c = { V: 1, head: init.head, durable_at: now, class: init.class, size: init.size, keys: init.keys,
       lease: { device, fence: 1, expires: now + ttlMs, pending: 0 } };
-    return omitEmpty(c, { parent_cell: init.parent_cell, title: init.title, orphan_turns: init.orphan_turns, frames: init.frames, frame_hints: boundedFrameHints(init.frame_hints), saved_at: init.saved_at });
+    return omitEmpty(c, { parent_cell: init.parent_cell, title: init.title, folder: init.folder ?? undefined, orphan_turns: init.orphan_turns, frames: init.frames, frame_hints: boundedFrameHints(init.frame_hints), saved_at: init.saved_at });
   };
 
   return { acquire, heartbeat, publishTo, releaseOf, created };

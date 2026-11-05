@@ -53,7 +53,7 @@ export class IdentityDO extends DurableObject {
 
   fetch(request) {
     return respond(() => this.#serve(request)).then(reply => {
-      if (new URL(request.url).pathname.startsWith('/v1/dir/')) { reply.headers.set('Codeaf-Saved-Turn-Times', '1'); reply.headers.set('Codeaf-Working-Beats', '1'); reply.headers.set('Codeaf-Chat-Notes', '1'); }
+      if (new URL(request.url).pathname.startsWith('/v1/dir/')) { reply.headers.set('Codeaf-Saved-Turn-Times', '1'); reply.headers.set('Codeaf-Working-Beats', '1'); reply.headers.set('Codeaf-Chat-Notes', '1'); reply.headers.set('Codeaf-Chat-Folders', '1'); }
       return reply;
     });
   }
