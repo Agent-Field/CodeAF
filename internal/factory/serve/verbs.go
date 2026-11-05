@@ -758,7 +758,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
-	if !h.checkNewJobExtras(w, &body) {
+	if !h.checkNewJobExtras(w, r, &body) {
 		return
 	}
 	if strings.TrimSpace(body.Repo) == "" || strings.TrimSpace(body.Title) == "" {

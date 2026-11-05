@@ -406,6 +406,7 @@ type Job struct {
 	// RoundCostTables advertises table support only on worker admission.
 	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
 	FromJob         int    `json:"from_job,omitempty"`
+	SplitFrom       int    `json:"split_from,omitempty"`
 	SourceIssue     string `json:"source_issue,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent

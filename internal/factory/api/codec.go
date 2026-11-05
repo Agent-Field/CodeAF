@@ -153,7 +153,7 @@ func FromItem(it factory.Item) Job {
 	}
 	j := Job{
 		Group: it.Group, Milestone: it.Milestone, Context: mapList(it.Context, fromJobContext),
-		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
+		FromJob: it.FromJob, SplitFrom: it.SplitFrom, SourceIssue: it.SourceIssue,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
@@ -487,7 +487,7 @@ func ToItem(j Job) factory.Item {
 	}
 	it := factory.Item{
 		Group: j.Group, Milestone: j.Milestone, Context: mapList(j.Context, toJobContext),
-		FromJob: j.FromJob, SourceIssue: j.SourceIssue,
+		FromJob: j.FromJob, SplitFrom: j.SplitFrom, SourceIssue: j.SourceIssue,
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
 		Owners: append([]string(nil), j.Owners...),

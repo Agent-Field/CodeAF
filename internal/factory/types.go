@@ -533,6 +533,8 @@ type Item struct {
 
 	// FromJob is the ended job whose request this person started afresh.
 	FromJob int `json:",omitempty"`
+	// SplitFrom is the job this job was split from, independent of run-as-new.
+	SplitFrom int `json:",omitempty"`
 	// SourceIssue is a reference only; it never gives this job a forge identity.
 	SourceIssue string `json:",omitempty"`
 
