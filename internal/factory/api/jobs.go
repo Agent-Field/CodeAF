@@ -14,8 +14,6 @@ func ForViewer(job *Job, it factory.Item, viewer string) {
 
 // NewJob keeps hand-off metadata in the binary; the app sends no store shape.
 type NewJob struct {
-	Group string `json:"group,omitempty"`
-
 	Repo      string             `json:"repo"`
 	Title     string             `json:"title"`
 	Text      string             `json:"text"`

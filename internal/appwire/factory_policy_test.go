@@ -98,20 +98,3 @@ func TestPolicyWireBounds(t *testing.T) {
 		}
 	}
 }
-
-// P11, P12: create_group is a typed scalar and shares the service's bounds.
-func TestPolicyCreateGroupWire(t *testing.T) {
-	e := &actorEngine{}
-	if _, err := methods["factory.job_create"].call(e, json.RawMessage(`{"factory":"f","repo":"owner/api","title":"job","group":" g "}`)); err != nil {
-		t.Fatal(err)
-	}
-	if p, ok := e.got[0].(FactoryJobCreateParams); !ok || p.Group != "g" {
-		t.Fatalf("create = %+v", e.got)
-	}
-	for _, group := range []string{strings.Repeat("x", 201), "g\x00"} {
-		raw, _ := json.Marshal(map[string]any{"factory": "f", "repo": "owner/api", "title": "job", "group": group})
-		if _, err := methods["factory.job_create"].call(e, raw); wireCode(t, err) != CodeBadParams || len(e.got) != 1 {
-			t.Fatalf("invalid group = %v", err)
-		}
-	}
-}

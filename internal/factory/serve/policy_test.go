@@ -2,7 +2,6 @@ package serve
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -456,32 +455,5 @@ func TestPolicyUnreadableRelease(t *testing.T) {
 	f.scan(t)
 	if it := f.item(t, child.ID); f.launches != 0 || it.State != factory.StateNew || it.Blocked == nil || it.Blocked.Reason != "its group's policy cannot be read" {
 		t.Fatalf("unreadable started: %+v", it)
-	}
-}
-
-// P11, P12: create_group carries a trimmed opaque group through HTTP and reads.
-func TestPolicyCreateGroup(t *testing.T) {
-	f := waitsSetup(t)
-	f.h.seam.NewJob = func(repo, title, text string) (int, error) {
-		it, err := f.st.Create(factory.Item{Kind: factory.KindIssue, State: factory.StateNew, Repo: repo, Title: title, Body: text})
-		return it.ID, err
-	}
-	var created struct {
-		ID int `json:"id"`
-	}
-	f.request(t, "POST", "/v1/jobs", "operator-secret", map[string]any{"repo": "owner/api", "title": "job", "text": "work", "group": " g "}, 201, &created)
-	if j := f.readJob(t, created.ID); j.Group != "g" {
-		t.Fatal(j)
-	}
-	for _, group := range []string{strings.Repeat("x", 201), "g\x00"} {
-		f.request(t, "POST", "/v1/jobs", "operator-secret", map[string]any{"repo": "owner/api", "title": "job", "text": "work", "group": group}, 422, nil)
-	}
-	jobs, err := f.st.List()
-	if err != nil || len(jobs) != 1 {
-		t.Fatalf("invalid created: %d, %v", len(jobs), err)
-	}
-	raw, err := json.Marshal(api.FromItem(f.item(t, created.ID)))
-	if err != nil || !strings.Contains(string(raw), `"group":"g"`) {
-		t.Fatalf("group read = %s, %v", raw, err)
 	}
 }

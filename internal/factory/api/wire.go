@@ -394,8 +394,6 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
-	Group string `json:"group,omitempty"`
-
 	WaitsOn   []int     `json:"waits_on,omitempty"`
 	WaitingOn []int     `json:"waiting_on,omitempty"`
 	Blocked   *JobBlock `json:"blocked,omitempty"`
