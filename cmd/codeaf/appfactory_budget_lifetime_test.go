@@ -78,7 +78,7 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
 
 			status := s.start()
 			workerURL, replays := replayBudgetReports(t, status.URL)
-			it, err := st.Create(factory.Item{Title: "Lifetime budget", Repo: "acme/api", Num: 99, Kind: factory.KindIssue, State: factory.StateNew, Cap: 6, Autonomy: factory.AutonomyManual, Talk: transcript,
+			it, err := st.Create(factory.Item{Tier: factory.TierOwner, Title: "Lifetime budget", Repo: "acme/api", Num: 99, Kind: factory.KindIssue, State: factory.StateNew, Cap: 6, Autonomy: factory.AutonomyManual, Talk: transcript,
 				Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write", Until: "done", Max: 1, On: true}}})
 			if err != nil {
 				t.Fatal(err)

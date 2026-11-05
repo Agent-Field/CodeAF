@@ -97,8 +97,8 @@ type Source struct {
 	meDone bool
 	// issueTags holds each repository's last issue-list ETag.
 	issueTags map[string]string
-	// tiers is each repository and login's standing, for the process.
-	tiers map[string]factory.Tier
+	// Positive permissions expire after fifteen minutes; refusals stay cached.
+	tiers map[string]tierEntry
 	// comments is each item's last comments and the count they were read at.
 	// THE COMMENTS ARE READ ONLY WHEN THE COUNT MOVES: the list already says
 	// how many an issue has, so an item whose count is the one this process
@@ -121,6 +121,13 @@ type Source struct {
 	owed map[string]map[int]forge.Issue
 }
 
+const tierLifetime = 15 * time.Minute
+
+type tierEntry struct {
+	tier factory.Tier
+	at   time.Time
+}
+
 type seenComments struct {
 	count int
 	list  []factory.Comment
@@ -137,7 +144,7 @@ func New(api API, repos []string, now func() time.Time) *Source {
 	return &Source{
 		api: api, now: now, repos: append([]string(nil), repos...),
 		issueTags: map[string]string{},
-		tiers:     map[string]factory.Tier{}, comments: map[string]seenComments{},
+		tiers:     map[string]tierEntry{}, comments: map[string]seenComments{},
 		budget: commentBudget,
 		owed:   map[string]map[int]forge.Issue{},
 	}
@@ -676,7 +683,7 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 	return out, nil
 }
 
-// tier is an author's standing on one repository, asked once per process.
+// tier is an author's standing on one repository, with bounded positive caching.
 // Write access makes a collaborator, and the token's own login with write
 // access is the owner; read access, none, a 404 or a refusal is a stranger. A
 // failure to ask is a stranger for this Read and is asked again next time.
@@ -686,12 +693,13 @@ func (s *Source) tier(ctx context.Context, owner, name, login string) factory.Ti
 	}
 	key := strings.ToLower(owner + "/" + name + "|" + login)
 	s.mu.Lock()
-	t, ok := s.tiers[key]
+	cached, ok := s.tiers[key]
 	me := s.me
 	s.mu.Unlock()
-	if ok {
-		return t
+	if ok && (cached.tier == factory.TierStranger || s.now().Before(cached.at.Add(tierLifetime))) {
+		return cached.tier
 	}
+	var t factory.Tier
 	perm, err := s.api.Permission(ctx, owner, name, login)
 	if err != nil {
 		return factory.TierStranger
@@ -706,7 +714,7 @@ func (s *Source) tier(ctx context.Context, owner, name, login string) factory.Ti
 		t = factory.TierStranger
 	}
 	s.mu.Lock()
-	s.tiers[key] = t
+	s.tiers[key] = tierEntry{tier: t, at: s.now()}
 	s.mu.Unlock()
 	return t
 }

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/githubcalls"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 )
 
 // The four answers, and the one for a line the file already had.
@@ -141,7 +142,7 @@ func BankRecipeChange(ctx context.Context, dir, sentence, why, line string, writ
 	if _, err := gitRun(ctx, wt, "diff", "--cached", "--quiet"); err == nil {
 		return RecipeNoteHad, nil
 	}
-	if _, err := gitRun(ctx, wt, "commit", "-q", "-m", "recipe: "+sentence); err != nil {
+	if _, err := gitRun(ctx, wt, append(gitidentity.ConfigArgs(), "commit", "-q", "-m", "recipe: "+sentence)...); err != nil {
 		return "", errors.New("could not commit the recipe change: " + err.Error())
 	}
 	// From here the branch holds the work; keep it.

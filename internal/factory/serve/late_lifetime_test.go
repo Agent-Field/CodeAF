@@ -24,6 +24,7 @@ func TestLateArchivedUsageStopsAdmittedWorker(t *testing.T) {
 	f.request(t, "POST", path, worker.Credential, body, 200, &recovered)
 	if err := f.st.Update(it.ID, func(it *factory.Item) error {
 		it.State, it.Cap = factory.StateNew, 1
+		it.Tier = factory.TierOwner
 		it.PullRequest, it.FollowUp = nil, nil
 		it.Publish, it.HeadCommit = "", ""
 		it.Stages = []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true, Until: factory.UntilDone, Max: 1}}
@@ -86,6 +87,7 @@ func TestLateArchivedUsageStopsActualWorker(t *testing.T) {
 	f.request(t, "POST", path, attached.Credential, body, 200, &recovered)
 	if err := f.st.Update(it.ID, func(it *factory.Item) error {
 		it.State, it.Cap = factory.StateNew, 1
+		it.Tier = factory.TierOwner
 		it.PullRequest, it.FollowUp = nil, nil
 		it.Publish, it.HeadCommit = "", ""
 		it.Stages = []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true, Until: factory.UntilDone, Max: 1}}

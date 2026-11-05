@@ -117,7 +117,7 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 						cap = 5
 					}
 					status := s.start()
-					it, err := st.Create(factory.Item{Title: "Resume capped write", Repo: "acme/api", Num: 99, Kind: factory.KindIssue,
+					it, err := st.Create(factory.Item{Tier: factory.TierOwner, Title: "Resume capped write", Repo: "acme/api", Num: 99, Kind: factory.KindIssue,
 						State: factory.StateNew, Cap: cap, SpentBefore: .5, Autonomy: mode, Talk: transcript,
 						Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write it", Until: "done", Max: 1, On: true}}})
 					if err != nil {

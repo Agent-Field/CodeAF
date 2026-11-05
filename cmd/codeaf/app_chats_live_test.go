@@ -140,6 +140,10 @@ func TestAppChatsExistingBeforePairL1(t *testing.T) {
 	})
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	dirA, dirB := t.TempDir(), t.TempDir()
+	// The engine daemons this test starts own the stores under dirA and dirB,
+	// and one can still finish an accepted sync after the apps close. Stop them
+	// before the folders are removed (cleanups run last-registered first).
+	t.Cleanup(cellstore.StopSpawned)
 	if _, err := identity.Ensure(dirA); err != nil {
 		t.Fatal(err)
 	}

@@ -65,7 +65,7 @@ func PolicyAllows(policy []string, it factory.Item, action factory.Action, prior
 				return false, line
 			}
 		case shapeNoStranger:
-			if action.Verb == "comment" && it.Tier == factory.TierStranger {
+			if action.Verb == "comment" && it.RefusesWrite() {
 				return false, line
 			}
 		case shapePRNeedsGreen:
@@ -76,17 +76,6 @@ func PolicyAllows(policy []string, it factory.Item, action factory.Action, prior
 			if action.Verb == "close" {
 				return false, line
 			}
-		}
-	}
-	return true, ""
-}
-
-// PolicyAllowsStage is the loop's half: it refuses a stage before it runs.
-// Only `a stranger's PR never runs write` speaks here.
-func PolicyAllowsStage(policy []string, it factory.Item, stage factory.Stage) (bool, string) {
-	for _, line := range policy {
-		if shapeOf(line) == shapeStrangerWrite && stage.Name == "write" && it.Tier == factory.TierStranger {
-			return false, line
 		}
 	}
 	return true, ""

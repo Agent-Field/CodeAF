@@ -53,7 +53,7 @@ func TestAppFactoryPageChargesReachSpendingOnce(t *testing.T) {
 				if err := s.backend.local.host.floor.SetCheckout("acme/api", dir); err != nil {
 					t.Fatal(err)
 				}
-				item, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Check retries", Kind: factory.KindIssue, State: factory.StateNew})
+				item, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Check retries", Kind: factory.KindIssue, State: factory.StateNew})
 				if err != nil {
 					t.Fatal(err)
 				}

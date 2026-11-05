@@ -27,7 +27,7 @@ func TestPersonalFactoryManagerRecoversEffort(t *testing.T) {
 				opened = a
 				return &appConn{Conv: a, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = a.Close() }}, nil
 			}
-			it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 72, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew, Effort: "high"})
+			it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 72, Kind: factory.KindIssue, Origin: factory.OriginForge, Tier: factory.TierOwner, State: factory.StateNew, Effort: "high"})
 			if err != nil {
 				t.Fatal(err)
 			}
