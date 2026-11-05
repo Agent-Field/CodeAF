@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"net/url"
 	"os"
@@ -185,6 +187,10 @@ func TestLiveFourCrewsWallTime(t *testing.T) {
 		}
 		a.SettleWrites()
 	}
+	// Join both forwarding handlers before reading their totals. A canceled
+	// trailing call can outlive crew completion and otherwise escape the sample.
+	recorder.server.Close()
+	timing.server.Close()
 	counts := make([]int, 4)
 	for i, workspace := range workspaces {
 		for n := 1; n <= 20; n++ {
@@ -230,10 +236,20 @@ func TestLiveFourCrewsWallTime(t *testing.T) {
 	}
 	t.Logf("FOURCREW ledger_usd=%.9f recorder_usd=%.9f", ledgerUSD, cost)
 	t.Logf("FOURCREW provider_ms_sum=%d provider_calls=%d max_in_flight=%d", timing.total().Milliseconds(), timing.count(), timing.peak())
+	if timing.count() != calls {
+		t.Errorf("timing proxy captured %d/%d calls", timing.count(), calls)
+	}
+	timing.report(t)
 	// Each ledger row may round at six decimal places.
 	if math.Abs(ledgerUSD-cost) > float64(len(rows))*0.0000005+1e-9 {
 		t.Errorf("usage ledger $%.9f differs from recorder $%.9f (%d rows)", ledgerUSD, cost, len(rows))
 	}
+}
+
+type fourCrewSample struct {
+	ttfb, end time.Duration
+	stream    bool
+	canceled  bool
 }
 
 // fourCrewTiming forwards to the provider and measures each call.
@@ -244,6 +260,7 @@ type fourCrewTiming struct {
 	calls    int
 	inFlight int
 	maxIn    int
+	samples  []fourCrewSample
 }
 
 func newFourCrewTiming(upstream string) *fourCrewTiming {
@@ -258,12 +275,22 @@ func newFourCrewTiming(upstream string) *fourCrewTiming {
 		f.maxIn = max(f.maxIn, f.inFlight)
 		f.mu.Unlock()
 		began := time.Now()
+		var first time.Duration
+		r = r.WithContext(httptrace.WithClientTrace(r.Context(), &httptrace.ClientTrace{
+			GotFirstResponseByte: func() { first = time.Since(began) },
+		}))
+		// ReverseProxy may panic with ErrAbortHandler when a caller cancels.
+		// Keep that call in the accounting even when no complete body arrives.
+		defer func() {
+			ended := time.Since(began)
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.inFlight--
+			f.calls++
+			f.sum += ended
+			f.samples = append(f.samples, fourCrewSample{first, ended, strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream"), r.Context().Err() != nil})
+		}()
 		proxy.ServeHTTP(w, r)
-		f.mu.Lock()
-		f.inFlight--
-		f.calls++
-		f.sum += time.Since(began)
-		f.mu.Unlock()
 	}))
 	return f
 }
@@ -271,6 +298,67 @@ func newFourCrewTiming(upstream string) *fourCrewTiming {
 func (f *fourCrewTiming) total() time.Duration { f.mu.Lock(); defer f.mu.Unlock(); return f.sum }
 func (f *fourCrewTiming) count() int           { f.mu.Lock(); defer f.mu.Unlock(); return f.calls }
 func (f *fourCrewTiming) peak() int            { f.mu.Lock(); defer f.mu.Unlock(); return f.maxIn }
+
+// report measures TTFB at the upstream response's first byte (including headers).
+// End includes forwarding the body to the recorder; it is not model token TTFT.
+func (f *fourCrewTiming) report(t *testing.T) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var firsts, reads []time.Duration
+	var firstSum, readSum time.Duration
+	for i, sample := range f.samples {
+		t.Logf("FOURCREW call=%d stream=%t canceled=%t ttfb_us=%d end_us=%d read_us=%d", i+1, sample.stream, sample.canceled, sample.ttfb.Microseconds(), sample.end.Microseconds(), (sample.end - sample.ttfb).Microseconds())
+		if sample.stream {
+			firsts = append(firsts, sample.ttfb)
+			reads = append(reads, sample.end-sample.ttfb)
+			firstSum += sample.ttfb
+			readSum += sample.end - sample.ttfb
+		}
+	}
+	t.Logf("FOURCREW stream_calls=%d ttfb_us_sum=%d ttfb_us_median=%d read_us_sum=%d read_us_median=%d", len(firsts), firstSum.Microseconds(), fourCrewMedian(firsts).Microseconds(), readSum.Microseconds(), fourCrewMedian(reads).Microseconds())
+}
+
+func fourCrewMedian(values []time.Duration) time.Duration {
+	if len(values) == 0 {
+		return 0
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	n := len(values)
+	if n%2 == 0 {
+		return values[n/2-1]/2 + values[n/2]/2
+	}
+	return values[n/2]
+}
+
+// fourCrewDeltas splits the real reply across frames, preserving assembled output.
+func fourCrewDeltas(delta map[string]any, chunks int) []map[string]any {
+	out := make([]map[string]any, chunks)
+	if content, ok := delta["content"].(string); ok {
+		for i := range chunks {
+			out[i] = map[string]any{"content": content[len(content)*i/chunks : len(content)*(i+1)/chunks]}
+		}
+		return out
+	}
+	calls := delta["tool_calls"].([]any)
+	for i := range chunks {
+		var fragments []any
+		for _, raw := range calls {
+			call := raw.(map[string]any)
+			function := call["function"].(map[string]any)
+			args := function["arguments"].(string)
+			part := map[string]any{"arguments": args[len(args)*i/chunks : len(args)*(i+1)/chunks]}
+			fragment := map[string]any{"index": call["index"], "function": part}
+			if i == 0 {
+				fragment["id"] = call["id"]
+				fragment["type"] = call["type"]
+				part["name"] = function["name"]
+			}
+			fragments = append(fragments, fragment)
+		}
+		out[i] = map[string]any{"tool_calls": fragments}
+	}
+	return out
+}
 
 func fourCrewFakeCompletion(w http.ResponseWriter, r *http.Request) {
 	// A fixed provider delay makes engine overhead comparable across trees.
@@ -327,8 +415,23 @@ func fourCrewFakeCompletion(w http.ResponseWriter, r *http.Request) {
 	usage := map[string]any{"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120, "cost": 0.001234567}
 	if req.Stream {
 		w.Header().Set("Content-Type", "text/event-stream")
-		chunk, _ := json.Marshal(map[string]any{"id": "fourcrew-local", "model": liveFactoryModel, "choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": nil}}})
-		fmt.Fprintf(w, "data: %s\n\n", chunk)
+		chunks, _ := strconv.Atoi(os.Getenv("CODEAF_FOURCREW_FAKE_CHUNKS"))
+		chunks = max(1, chunks)
+		delay, _ := strconv.Atoi(os.Getenv("CODEAF_FOURCREW_FAKE_CHUNK_MS"))
+		for _, part := range fourCrewDeltas(delta, chunks) {
+			chunk, _ := json.Marshal(map[string]any{"id": "fourcrew-local", "model": liveFactoryModel, "choices": []any{map[string]any{"index": 0, "delta": part, "finish_reason": nil}}})
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", chunk); err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+			if delay > 0 {
+				select {
+				case <-r.Context().Done():
+					return
+				case <-time.After(time.Duration(delay) * time.Millisecond):
+				}
+			}
+		}
 		end, _ := json.Marshal(map[string]any{"id": "fourcrew-local", "model": liveFactoryModel, "choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": finish}}, "usage": usage})
 		fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", end)
 		return
@@ -336,4 +439,39 @@ func fourCrewFakeCompletion(w http.ResponseWriter, r *http.Request) {
 	delta["role"] = "assistant"
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"id": "fourcrew-local", "model": liveFactoryModel, "choices": []any{map[string]any{"index": 0, "message": delta, "finish_reason": finish}}, "usage": usage})
+}
+
+// A canceled trailing call still belongs in the proxy's count. ReverseProxy
+// aborts its handler on a broken stream instead of returning normally.
+func TestFourCrewTimingIncludesCanceledStream(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: first\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+	timing := newFourCrewTiming(upstream.URL)
+	defer timing.server.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, timing.server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var first [1]byte
+	if _, err := io.ReadFull(response.Body, first[:]); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	response.Body.Close()
+	timing.server.Close()
+	if got := timing.count(); got != 1 {
+		t.Fatalf("proxy captured %d calls, want the canceled call counted once", got)
+	}
 }
