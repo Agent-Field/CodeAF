@@ -574,6 +574,22 @@ func quickStartedWord(id uint64, spec taskSpec) string {
 // so two quick nodes that claim one path run one after the other with no retry
 // and nothing new in the frontier. The look and the admission are one move
 // under [TaskGraph.quickGate], which [Agent.admitQuick] holds.
+// refuseUnsafeScopes checks each declared write scope before cleaning can hide
+// a traversal segment, and returns the refusal for the first unsafe one.
+// Exact absolute paths keep their existing normalization.
+func refuseUnsafeScopes(files []string) string {
+	for _, raw := range files {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || filepath.IsAbs(raw) && !strings.ContainsAny(raw, "*?[\\") {
+			continue
+		}
+		if err := orchestrate.ValidateScope(raw); err != nil {
+			return fmt.Sprintf("Write scope %q: %s. Redraw the scope and call again.", raw, err)
+		}
+	}
+	return ""
+}
+
 func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	line := strings.TrimSpace(ask.line)
 	if line == "" {
@@ -585,16 +601,8 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 			kept = append(kept, item)
 		}
 	}
-	for _, raw := range ask.files {
-		raw = strings.TrimSpace(raw)
-		// Exact absolute paths retain their existing normalization. New relative
-		// declarations must be checked before cleaning hides a traversal segment.
-		if raw == "" || filepath.IsAbs(raw) && !strings.ContainsAny(raw, "*?[\\") {
-			continue
-		}
-		if err := orchestrate.ValidateScope(raw); err != nil {
-			return taskSpec{}, fmt.Sprintf("Write scope %q: %s. Redraw the scope and call again.", raw, err)
-		}
+	if refusal := refuseUnsafeScopes(ask.files); refusal != "" {
+		return taskSpec{}, refusal
 	}
 	scope, refusal := normalizeWriteScope(a.config.Workspace, ask.files)
 	if refusal != "" {
