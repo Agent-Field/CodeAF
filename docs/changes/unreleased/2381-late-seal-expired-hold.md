@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Keep late saves from renewing expired chat holds
-pr: 0
+pr: 2381
 surface: [chat, engine, remote]
 invalidates:
   - "Publishing a late save previously renewed an expired hold if nobody had acquired it; publication now refuses that hold and preserves the turn in a separate copy."
