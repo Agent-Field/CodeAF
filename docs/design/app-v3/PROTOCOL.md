@@ -1405,6 +1405,11 @@ role pins and checked as the other pins are.
 | `turn.thinking_done` | `TurnThinkingDone` |
 | `turn.tool` | `TurnTool` |
 
+`turn.tool` optionally carries `spent_usd`, the conversation's live spend when
+the step was said (the same meter as `agents.budget.get`'s `engine.spent_usd`,
+which can be ahead of the saved `Agent.spent_usd`); zero or unknown readings and
+history rows omit it, and absence means the engine did not say.
+
 ## Slash catalogue commands and forms
 
 `slash.catalog` lists the shared terminal vocabulary; the table is 54 commands, 93 rows, 31 aliases.

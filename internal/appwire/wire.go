@@ -965,6 +965,11 @@ type (
 		Phase   string `json:"phase"`
 		OK      *bool  `json:"ok,omitempty"`
 		Summary string `json:"summary,omitempty"`
+		// SpentUSD is the conversation's live spend when this step was said,
+		// the same meter agents.budget.get calls engine.spent_usd. It can be
+		// ahead of Agent.SpentUSD, saved at turn end, and is omitted when zero
+		// or unknown.
+		SpentUSD *float64 `json:"spent_usd,omitempty"`
 		ToolFacts
 	}
 	TurnDone struct {
