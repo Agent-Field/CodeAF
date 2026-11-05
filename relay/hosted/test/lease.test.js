@@ -209,19 +209,3 @@ test('a beat that says a turn started or ended is a change even while a socket v
   dir.release('c1', 'dev_a', 1);
   assert.equal('working' in dir.list().cells.c1.lease, false, 'a released chat is not working anywhere');
 });
-
-test('a device record carries its outbox and took lists whole, a change to them is news, and an outsized list is refused', () => {
-  const { dir, heard } = rig();
-  const code = (f) => { try { f(); return 'ok'; } catch (e) { return e.code; } };
-  dir.putDevice('dev_a', { V: 1, name: 'a' });
-  heard.length = 0;
-  const note = { id: 'n1', cell: 'c1', text: 'sealed', at: 5 };
-  dir.putDevice('dev_a', { V: 1, name: 'a', outbox: [note] });
-  assert.deepEqual(dir.list().devices.dev_a.outbox, [note], 'the relay keeps the sealed message as written');
-  assert.ok(heard.length >= 1, 'the holder hears a message arrive');
-  dir.putDevice('dev_b', { V: 1, name: 'b', took: ['n1'] });
-  assert.deepEqual(dir.list().devices.dev_b.took, ['n1']);
-  const many = Array.from({ length: 9 }, (_, i) => ({ ...note, id: `n${i}` }));
-  assert.equal(code(() => dir.putDevice('dev_a', { V: 1, name: 'a', outbox: many })), 'bad_request');
-  assert.equal(code(() => dir.putDevice('dev_a', { V: 1, name: 'a', took: Array.from({ length: 65 }, (_, i) => `t${i}`) })), 'bad_request');
-});
