@@ -150,13 +150,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	}
 	switch {
 	case app == applicationID && version == schemaVersion:
-		if err := ensureOriginRevision(ctx, tx); err != nil {
-			return err
-		}
-		if err := ensureRunAsked(ctx, tx); err != nil {
-			return err
-		}
-		return tx.Commit()
+		return finishAutomationSchema(ctx, tx)
 	case app != 0 || version != 0:
 		return fmt.Errorf("automations: %s is not an automations database this build can read (application %d, version %d)", filepath.Join(s.root, DatabaseName), app, version)
 	}
@@ -209,6 +203,12 @@ CREATE INDEX runs_by_seq ON runs(seq);
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)); err != nil {
 		return fmt.Errorf("automations: %w", err)
 	}
+	return finishAutomationSchema(ctx, tx)
+}
+
+// finishAutomationSchema keeps both supported schema paths on the same
+// additive migrations and commits them in the transaction that admitted the store.
+func finishAutomationSchema(ctx context.Context, tx *sql.Tx) error {
 	if err := ensureOriginRevision(ctx, tx); err != nil {
 		return err
 	}
