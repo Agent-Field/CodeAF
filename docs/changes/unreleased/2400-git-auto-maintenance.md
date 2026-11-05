@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Keep automatic git maintenance out of codeaf operations
-pr: 0
+pr: 2400
 surface: [engine, factory, resident, docs]
 invalidates:
   - Only the branch land path used to disable automatic git maintenance.
