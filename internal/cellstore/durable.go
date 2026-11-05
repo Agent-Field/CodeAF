@@ -83,11 +83,11 @@ func syncEngines(ctx context.Context, root string, boundary bool) error {
 	return nil
 }
 
-// durable joins both halves even when the engine acknowledged a previous group
-// already. Keeping this explicit makes every exit and ownership boundary fail
-// closed when either local records or saved files cannot reach disk.
+// durable joins both halves. A named chat's ownership boundary syncs even an
+// acknowledged group. Process exit syncs only outstanding engine debt: retained
+// routes for already durable chats may belong to owners that explicitly stopped.
 func durable(ctx context.Context, root string) error {
-	if err := syncEngines(ctx, root, true); err != nil {
+	if err := syncEngines(ctx, root, root != ""); err != nil {
 		return err
 	}
 	return commits.flush(ctx, root)

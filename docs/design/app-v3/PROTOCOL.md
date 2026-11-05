@@ -203,6 +203,7 @@ decides which combinations are accepted.
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.send` | `ChatSendParams` | `ChatSendResult` |
 
 ## pair methods
 
@@ -1474,6 +1475,33 @@ this change, is the bytes of the frames its plan names (`0`: unknown); a move
 shows it as `move.total`. A chat shared in the background gets the bytes its
 upload attempts put.
 
+`working:true` is on a `running` row whose holder said at its last beat that a
+turn is running there; absent while the chat is merely open there, and never
+on any other status. The holder beats as soon as a turn starts, and as soon as
+the ended turn's last saves are published, so a take on seeing the flag drop
+names the newest save. `chats.working` in `hello` says rows can carry
+it. Directory beats carry `working` only to a relay that answers
+`Codeaf-Working-Beats: 1`; the lease keeps it through publishes until the next
+beat, and a release or an acquire clears it. Behind a relay that does not keep
+it, rows never say `working`, so a client says "open there", not "idle there".
+It is display only: `agents.take` does not consult it.
+
+`chats.send {cell, text, client_id?}` leaves a message for whichever computer
+holds the chat; `chats.send` in `hello` says it exists. The message travels in
+this device's own directory record (`outbox`, sealed under the metadata key,
+at most 8 messages of at most 2000 bytes), only to a relay that answers
+`Codeaf-Chat-Notes: 1`; a relay that does not is refused with "This sync
+service can't carry a message to another computer yet." The engine holding the
+chat reads it with the chat list, puts it in that chat's queue (`agents.queue`,
+client id `note:<id>`), so it is sent when the turn there ends or at once when
+none runs, and lists the id in its own record's `took`; the sender then drops
+it. The sender's row carries it in `notes [{id, text, at, state}]`: `waiting`
+while it is in the outbox, then `delivered` once taken, kept while that engine
+runs (20 per chat) and dropped once the chat is here. The
+chat, not the computer, is the address: a message not yet taken goes to
+whichever computer holds the chat when it is read, including the sender after a
+move. Only an engine that keeps the chat list (the app) takes messages.
+
 Before a move, a row says what it would copy: `folder` is the name of the
 folder the chat works in on its holder (absent for a chat in its own private
 folder, from older publishers, or from a relay that does not answer
@@ -1878,3 +1906,38 @@ An answer or withdrawal emits `plugins.needed_done`.
 
 The current account store holds one account per plugin, including Slack.
 It has no plugin call history; a Lately section remains absent.
+
+## Library
+
+Hello feature `knowledge` exposes the same opt-in profile vault as Memory → Knowledge.
+Errors contain no source text or credentials. Stale mutations return `conflict`.
+
+| method | params | result |
+|---|---|---|
+| `knowledge.snapshot` | `{}` | revision, enabled, build counters, pending, model, page heads |
+| `knowledge.read` | `{id}` | current Page including sections, evidence and links |
+| `knowledge.search` | `{query, limit?}` | full-text hits; no model call |
+| `knowledge.recall` | `{question, scope?}` | answer, abstain, citations |
+| `knowledge.edit` | `{id, revision, markdown}` | new revision |
+| `knowledge.rename` | `{id, revision, title}` | new revision; changes only the label, retaining page identity, scope, links and generated learning |
+| `knowledge.delete` | `{id, revision}` | `{}` |
+| `knowledge.build` | `{}` | starts the process-owned build with the profile knowledge model |
+
+| event | data |
+|---|---|
+| `knowledge.changed` | `{revision}`; refresh the snapshot |
+
+| method | params | result |
+|---|---|---|
+| `knowledge.settle` | `{id, revision, conflict, keep, note?}` | `{revision}`; keeps the chosen account and replacement history |
+| `knowledge.source` | `{id, source}` | `{chat, message}`; exact message locator, or `not_found` |
+
+| method | params | result |
+|---|---|---|
+| `knowledge.capture` | `{chat, message, text}` | admits a bounded passage from an actual saved agent reply; requires existing opt-in |
+
+Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. Clearing it restores the default, `deepseek/deepseek-v4.1-flash`. Building the Library never changes a saved model choice.
+
+`knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
+
+Library page detail includes `changes: [{before, after, reason}]` for automatic replacements; `claim_details` and `sources` retain the corresponding claims and chat locators.
