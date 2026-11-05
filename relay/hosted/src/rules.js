@@ -43,6 +43,7 @@ export function makeRules({ ttlMs, renewOnPublish }) {
 
   const publishTo = (c, device, p, now) => {
     holder(c, device, p.fence);
+    if (c.lease.expires <= now) throw refuse('fence_stale');
     if (p.old_head !== c.head) throw refuse('head_moved');
     const title = p.title === '' || p.title === undefined ? c.title : p.title;
     const expires = renewOnPublish ? now + ttlMs : c.lease.expires;

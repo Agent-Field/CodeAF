@@ -2,13 +2,70 @@ package syncsetup
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
+
+func TestLateSealOnExpiredUnacquiredHoldDoesNotRenewLease(t *testing.T) {
+	r := newDriveRig(t)
+	ctx := t.Context()
+	r.spokenFixture()
+	first, err := r.engine.Seal(ctx, r.cell, cellstore.TurnInfo{})
+	mustNil(t, err)
+	_, err = r.a.Dir.Create(ctx, r.cell.ID, directory.CellInit{Head: first.Turn.ID})
+	mustNil(t, err)
+	mustNil(t, cellstore.NotePublished(r.cell, first.Turn.ID))
+	d, err := r.a.Drive(ctx, r.engine, r.cell, DriveOptions{})
+	mustNil(t, err)
+	t.Cleanup(func() { mustNil(t, d.Close(context.Background())) })
+	// Stop renewal traffic so expiry leaves the original fence unacquired.
+	d.cancel()
+	<-d.done
+	before, err := r.a.Dir.Cell(ctx, r.cell.ID)
+	mustNil(t, err)
+	r.clock.Advance(directory.LeaseTTL + time.Second)
+	confirmed, err := d.ConfirmWork(ctx)
+	mustNil(t, err)
+	if confirmed || d.Gate() == nil {
+		t.Fatal("expired hold admitted work")
+	}
+	sealed, err := d.Store(r.engine).Seal(ctx, r.cell, cellstore.TurnInfo{Calls: []cellstore.Executed{{Call: cellstore.Call{Tool: "external", Started: 1, Ended: 2}, Stdout: []byte("finished once")}}})
+	mustNil(t, err)
+	// Observe publication before Close can hide a renewal by releasing it.
+	driving := cellsync.Driving{Cell: r.cell, Fence: before.Cell.Lease.Fence, Head: first.Turn.ID}
+	err = d.batcher.Publisher.Publish(ctx, &driving, sealed.Turn.ID, cellsync.PublishInfo{})
+	after, readErr := r.b.Dir.Cell(ctx, r.cell.ID)
+	mustNil(t, readErr)
+	if after.Cell.Lease != before.Cell.Lease {
+		t.Fatalf("late seal changed expired lease: expiry %d -> %d at %d", before.Cell.Lease.Expires, after.Cell.Lease.Expires, after.Now)
+	}
+	if !errors.Is(err, cellsync.ErrSuperseded) || after.Cell.Head != first.Turn.ID {
+		t.Fatalf("expired publish = %v; original head preserved = %v", err, after.Cell.Head == first.Turn.ID)
+	}
+	mustNil(t, d.Close(ctx))
+	branches, err := branchMapOf(r.homeA)
+	mustNil(t, err)
+	id := branches.Resolve(r.cell.ID)
+	if id == r.cell.ID {
+		t.Fatal("late seal was not preserved in a branch")
+	}
+	kept, err := r.a.Dir.Cell(ctx, id)
+	mustNil(t, err)
+	if kept.Cell.Head != sealed.Turn.ID || kept.Cell.ParentCell != r.cell.ID || d.batcher.Pending() != 0 {
+		t.Fatal("branch did not preserve the late seal")
+	}
+	taken, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{})
+	mustNil(t, err)
+	if taken.Cell.Lease.Fence != before.Cell.Lease.Fence+1 {
+		t.Fatal("continuation did not increment the original fence exactly once")
+	}
+}
 
 // TestLateSealAfterLostHoldOrders walks a call that finishes after its hold is
 // gone through each order of events. The call stays in local history or a kept
@@ -119,11 +176,8 @@ func TestLateSealAfterLostHoldOrders(t *testing.T) {
 			branches, err := branchMapOf(r.homeA)
 			mustNil(t, err)
 			id := branches.Resolve(r.cell.ID)
-			if order == "expire-confirm-seal" {
-				if id != r.cell.ID || view.Cell.Head != sealed.Turn.ID || view.Cell.Lease.Fence != before.Cell.Lease.Fence {
-					t.Fatal("expected late publish to renew the unchanged expired fence")
-				}
-				return
+			if expiry && (view.Cell.Lease.Fence != before.Cell.Lease.Fence || view.Cell.Lease.Expires != before.Cell.Lease.Expires) {
+				t.Fatal("late seal changed the expired hold")
 			}
 			if id == r.cell.ID || view.Cell.Head != first.Turn.ID {
 				t.Fatal("late call overwrote the original head or was not branched")

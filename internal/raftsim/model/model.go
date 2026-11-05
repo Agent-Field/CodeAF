@@ -117,6 +117,9 @@ func domain(s State, op Call) (State, Outcome) {
 			}
 			switch op.Kind {
 			case "publish":
+				if c.Until <= next.Now {
+					return next, Outcome{Code: "fence_stale"}
+				}
 				if c.Head != op.OldHead {
 					return next, Outcome{Code: "head_moved"}
 				}

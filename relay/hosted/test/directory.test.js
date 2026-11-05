@@ -36,9 +36,12 @@ test('R2 saved_at follows the sealed head independently of publication and relea
   assert.equal(dir.cell('c1').cell.durable_at, 1_010_000);
   dir.release('c1', 'dev_a', 1);
   assert.equal(dir.cell('c1').cell.saved_at, 800_000);
-  dir.publish('c1', 'dev_a', { ...p, old_head: 'h1', saved_at: undefined });
+  // A released lease refuses publication, as in Go: take it again to publish.
+  assert.equal(code(() => dir.publish('c1', 'dev_a', { ...p, old_head: 'h1' })), 'fence_stale');
+  dir.acquire('c1', 'dev_a');
+  dir.publish('c1', 'dev_a', { ...p, fence: 2, old_head: 'h1', saved_at: undefined });
   assert.equal(dir.cell('c1').cell.saved_at, 800_000);
-  dir.publish('c1', 'dev_a', { ...p, old_head: 'h1', head: 'h2', saved_at: undefined });
+  dir.publish('c1', 'dev_a', { ...p, fence: 2, old_head: 'h1', head: 'h2', saved_at: undefined });
   assert.equal(dir.cell('c1').cell.saved_at, undefined);
 });
 
