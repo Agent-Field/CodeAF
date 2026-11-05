@@ -130,10 +130,11 @@ type loopCtl struct {
 	roundCancel context.CancelFunc
 	// opened is the chat the round now running opened, and carry the chat a
 	// pause cut short, which the next round continues rather than replaces.
-	opened   string
-	carry    string
-	benchNo  int
-	released bool
+	opened       string
+	carry        string
+	benchNo      int
+	released     bool
+	releasedDone chan struct{}
 	// finishing says the final proof write is in progress, under floorLoop.mu.
 	finishing bool
 }
@@ -456,6 +457,9 @@ func (lp *floorLoop) release(c *loopCtl) {
 		return
 	}
 	c.released = true
+	if c.releasedDone != nil {
+		close(c.releasedDone)
+	}
 	if c.benchNo > 0 && lp.bench[c.benchNo] == c.id {
 		delete(lp.bench, c.benchNo)
 	}
@@ -1067,6 +1071,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			}
 			lp.tellStep(c.id, fmt.Sprintf(sayStarted, name), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressStarted})
 		}
+		if begin, ok := lp.r.stepBegins.Load(c.id); ok {
+			step := factory.StageReport{Name: name, State: factory.PhaseRunning, Round: round}
+			if err := begin.(func(context.Context, factory.StageReport) error)(c.ctx, step); err != nil {
+				lp.r.Withdraw(c.id)
+				return false
+			}
+		}
 		job := lp.job(c, st, index, i, round)
 		job.Resume, job.Opened, job.CarryOn = resume, lp.opened(c, i), carried
 		if job.Progress != nil {
@@ -1460,6 +1471,10 @@ func (lp *floorLoop) held(c *loopCtl) bool {
 	lp.mu.Lock()
 	paused := c.paused
 	lp.mu.Unlock()
+	if paused {
+		// Resume must see this drive draining before it can leave the pause lock.
+		c.cancel()
+	}
 	return !paused && c.ctx.Err() == nil
 }
 
@@ -1519,8 +1534,8 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job, before factory.Ph
 					cancel()
 					return
 				}
-				if it.Cap > 0 && factory.JobSpent(it) >= it.Cap {
-					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobSpent(it)), loopUSD(it.Cap))
+				if it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap {
+					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobLifetimeSpent(it)), loopUSD(it.Cap))
 					cancel()
 					return
 				}
@@ -1746,12 +1761,17 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string, memoryBefore float
 	if err != nil {
 		return false
 	}
+	// The person's skipped-check decision permits this forge write without
+	// granting any model spending.
+	if factory.PublishedAnyway(it) && it.Stream.Phases[i].Kind == factory.StagePost {
+		return true
+	}
 	if memoryBefore >= 0 && it.Stream != nil {
 		stream := *it.Stream
 		stream.Spent -= max(0, it.MemorySpent-memoryBefore)
 		it.Stream = &stream
 	}
-	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
+	reached := it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap
 	q, kind := (*Money)(nil).CapQuestion(it)
 	if p := lp.r.opts.Pool; p != nil {
 		reached = p.CapReached(it)
@@ -2304,6 +2324,22 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 	lp.mu.Lock()
 	paused := want(c.paused)
 	unchanged := paused == c.paused
+	if !paused && c.paused && c.ctx.Err() != nil {
+		if c.releasedDone == nil {
+			c.releasedDone = make(chan struct{})
+		}
+		done, released := c.releasedDone, c.released
+		lp.mu.Unlock()
+		c.pauseMu.Unlock()
+		if !released {
+			<-done
+		}
+		it, err := r.opts.Store.Get(c.id)
+		if err != nil {
+			return err
+		}
+		return r.revive(it)
+	}
 	lp.mu.Unlock()
 	if unchanged {
 		c.pauseMu.Unlock()

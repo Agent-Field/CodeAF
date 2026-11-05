@@ -189,7 +189,7 @@ func TestEverySignalSurvivesALostHeartbeatReply(t *testing.T) {
 				}
 				_ = runner.Stop(it.ID)
 				waitSignalRunner(t, runner, it.ID)
-				if err := desk.Apply(held.ID, held.Worker, true, func(it *factory.Item) error {
+				if err := desk.Apply(held.ID, held.Worker, true, false, func(it *factory.Item) error {
 					if verb == "merge" {
 						it.Merging = &factory.MergeRun{State: factory.MergeQueued, Commit: signal.Words}
 					}

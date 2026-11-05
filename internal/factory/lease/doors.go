@@ -474,7 +474,7 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
+		if it.Cap > 0 && factory.JobLifetimeSpent(*it) >= it.Cap {
 			return false, fmt.Errorf("job budget reached; raise Budget before publishing")
 		}
 		if err := factory.CheckAutomaticApproval(*it); err != nil {

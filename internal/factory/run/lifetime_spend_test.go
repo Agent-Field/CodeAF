@@ -24,8 +24,8 @@ func TestRestartKeepsJobLifetimeSpend(t *testing.T) {
 	if !in || math.Abs(got-.168) > 1e-9 {
 		t.Fatalf("restart lifetime = %.6f, want 0.168000", got)
 	}
-	// The cap deliberately reads only this run, pending the owner's ruling.
-	if (*run.Money)(nil).CapReached(it) || factory.JobSpent(it) != .03 {
-		t.Fatalf("cap must read only current run: %+v", it)
+	// The budget covers all known runs of this job.
+	if !(*run.Money)(nil).CapReached(it) || factory.JobSpent(it) != .03 {
+		t.Fatalf("cap must read lifetime spending: %+v", it)
 	}
 }
