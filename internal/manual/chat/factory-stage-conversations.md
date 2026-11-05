@@ -403,7 +403,9 @@ from the job's budget like the job's steps: everything done for the job spends f
   both completed calls count toward the job, including the answer that was discarded.
 - **At the budget** new model calls and tools are refused. The job's owned agent families
   stop promptly, including delegated tasks, background commands and adaptive runs. This
-  applies while the manager is idle too. Calls already sent can still report charges afterward;
+  applies while the manager is idle too. Once its work finishes stopping, the owning chat
+  records the job budget refusal once, even if its own reply had already finished.
+  Pressing Stop yourself does not add a budget notice. Calls already sent can still report charges afterward;
   stopping work cannot reverse a provider charge already incurred. Approved publication
   and merge writes can finish at the cap; they make no model calls. Stop remains available.
 - **Change Budget** by clicking its sidebar value or through Actions. Both menus offer $5,

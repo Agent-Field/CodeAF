@@ -35,7 +35,7 @@ func wireError() step {
 func endingAgent(t *testing.T, completer Completer) (*Agent, *TaskGraph) {
 	t.Helper()
 	repo := newGoModuleRepo(t)
-	t.Setenv("HOME", t.TempDir())
+	useTaskUsageHome(t)
 	t.Setenv("CODEAF_RESPONSE_ATTEMPTS", "2")
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo
