@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // wireVersion is the daemon protocol's V; every message carries it (L11).
@@ -81,7 +83,12 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	defer conn.Close()
+	pending := false
+	defer func() {
+		if !pending {
+			_ = conn.Close()
+		}
+	}()
 	// The watch on ctx starts before the health check, so a cancelled take
 	// frees a check that is waiting on a daemon that never answers.
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
@@ -89,7 +96,52 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	if err := d.verify(conn); err != nil {
 		return nil, unavailable(err)
 	}
-	response, err := exchange(conn, newRequest(t, op))
+	// Once a request can write, cancellation must not release its store gate:
+	// closing the connection does not stop the daemon's already-running seal.
+	stop()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	release, err := lockStoreOperation(ctx, t.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	type answer struct {
+		response wireResponse
+		err      error
+	}
+	done := make(chan answer, 1)
+	finished := make(chan struct{})
+	req := newRequest(t, op)
+	pending = true
+	guard.Go("saving engine operation", func() {
+		defer release()
+		defer conn.Close()
+		defer close(finished)
+		response, err := exchange(conn, req)
+		done <- answer{response, err}
+	})
+	var response wireResponse
+	select {
+	case result := <-done:
+		response, err = result.response, result.err
+	case <-ctx.Done():
+		// The gate stays held while a cancelled request may still be writing,
+		// but never forever: a daemon that has not answered within the grace is
+		// treated as hung, and closing its connection frees the store for every
+		// other save, which would otherwise wait on it until this process exits.
+		wait := abandonedOperationGrace
+		guard.Go("abandoned engine operation", func() {
+			grace := time.NewTimer(wait)
+			defer grace.Stop()
+			select {
+			case <-finished:
+			case <-grace.C:
+				_ = conn.Close()
+			}
+		})
+		return nil, fmt.Errorf("engine %s answer interrupted: %w", op.Verb(), ctx.Err())
+	}
 	if err != nil {
 		// The engine may have completed its writes before the answer was lost.
 		// Replaying a mutation through a fallback would cross C28's no-repeat boundary.
@@ -128,6 +180,12 @@ func (d Daemon) verify(conn net.Conn) error {
 // it is then treated as no daemon and the verb falls back to a spawned engine,
 // where without this bound a caller with no deadline of its own waited for ever.
 var healthWait = 5 * time.Second
+
+// abandonedOperationGrace is how long a cancelled request keeps its store gate
+// waiting for the daemon's answer. It is long enough for any real seal to land,
+// so the first-pack race stays closed, and short enough that one hung daemon
+// cannot wedge a chat's saving for the rest of the session.
+var abandonedOperationGrace = 2 * time.Minute
 
 // Stop asks the daemon to finish what it is doing and exit. A daemon that is
 // not running is already stopped.
