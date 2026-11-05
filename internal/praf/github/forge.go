@@ -566,10 +566,21 @@ func (c *client) RequiredReviews(ctx context.Context, owner, repo, branch string
 // may not read the list) is "none" and no error, because it is an answer: the
 // factory then trusts the author as a stranger, which is the safe direction.
 func (c *client) Permission(ctx context.Context, owner, repo, user string) (string, error) {
+	p, err := c.PermissionStrict(ctx, owner, repo, user)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden && !readRetryable(err) {
+		return "none", nil
+	}
+	return p, err
+}
+
+// PermissionStrict preserves forbidden responses as lookup failures. A missing
+// collaborator (404) is definitive and resolves to none.
+func (c *client) PermissionStrict(ctx context.Context, owner, repo, user string) (string, error) {
 	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/collaborators/"+url.PathEscape(user)+"/permission"), "")
 	if err != nil {
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || (apiErr.StatusCode == http.StatusForbidden && !readRetryable(err))) {
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return "none", nil
 		}
 		return "", err
