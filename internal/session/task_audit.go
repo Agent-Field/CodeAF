@@ -3211,6 +3211,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// belt is what actually constrains this agent: there is no hand here
 		// that writes. AskConsent is off and InTask is on for the node's own
 		// reason — there is nobody in a worktree to ask.
+		// An unreadable profile still requires a person, just as it does for a worker.
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
