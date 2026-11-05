@@ -44,6 +44,10 @@ type pendingDelivery struct {
 	RetrySeen        time.Time
 }
 
+// admissionWaitTimeout includes queueing, pending deltas and the admission report.
+// Leave scheduling room for one full five-second request without multiplying waits.
+const admissionWaitTimeout = 5500 * time.Millisecond
+
 const deliveryRequestTimeout = 5 * time.Second
 const deliveryControlAttempts = 3
 

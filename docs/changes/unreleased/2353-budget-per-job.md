@@ -73,3 +73,12 @@ on the loop, each bounded to five seconds.
 Later thread and usage reports on a job already waiting at its cap retain the
 budget-wait acknowledgment. They no longer withdraw that parked lease and
 cause a completed chat to resume and spend again after a budget raise.
+
+A refused, unspent step admission now retries automatically after one second
+once its reporter and previous drive are idle, within a two-minute recovery
+window. It retains the same round and does not consume an attempt or invent a
+cap question. Previously withdrawal could return the job to backlog instead.
+One 5.5-second deadline covers the entire admission wait, including a queued
+periodic report, pending-spend retry and fresh delta. Cancellation and lease-loss
+proofs cover delivered and undelivered requests, late spend, joined reporting
+and replayed accounting recovery through the initial empty report's receipt.

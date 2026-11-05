@@ -377,7 +377,21 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		done chan error
 	}
 	admit := make(chan admission)
-	o.Runner.SetStepBegin(it.ID, func(ctx context.Context, step factory.StageReport) error {
+	// A refused admission has spent nothing in its round. Withdraw releases
+	// that drive; retry the same saved round without consuming an attempt.
+	retryAdmission := make(chan struct{}, 1)
+	o.Runner.SetStepBegin(it.ID, func(ctx context.Context, step factory.StageReport) (err error) {
+		parent := ctx
+		ctx, cancel := context.WithTimeout(ctx, admissionWaitTimeout)
+		defer cancel()
+		defer func() {
+			if err != nil && !gone(err) && reportRetryable(err) && parent.Err() == nil {
+				select {
+				case retryAdmission <- struct{}{}:
+				default:
+				}
+			}
+		}()
 		request := admission{ctx: ctx, step: step, done: make(chan error, 1)}
 		select {
 		case admit <- request:
@@ -409,8 +423,9 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	// One reporter owns delivery state and spend baselines. Admission and
 	// periodic flushes must never race or replay an unacknowledged cost delta.
 	type reportResult struct {
-		alive bool
-		final bool
+		admitted bool
+		alive    bool
+		final    bool
 	}
 	work := make(chan func() reportResult, 1)
 	results := make(chan reportResult, 1)
@@ -431,6 +446,14 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		<-reporterDone
 	}()
 	busy := false
+	// Wait for the withdrawn drive to release its executor before resuming
+	// the saved round, so replacement execution cannot overlap its cleanup.
+	const retryEvery = time.Second
+	retry := time.NewTimer(time.Hour)
+	retry.Stop()
+	defer retry.Stop()
+	retrying := false
+	var retryUntil time.Time
 	queue := func(report func() reportResult) {
 		busy = true
 		work <- report
@@ -443,7 +466,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		}
 	}
 	for {
-		if !busy && !o.Runner.Running(it.ID) && !j.replyingNow() && !j.signalsWaiting() && j.pending == nil && j.blocked == "" {
+		if !retrying && !busy && !o.Runner.Running(it.ID) && len(retryAdmission) == 0 && !j.replyingNow() && !j.signalsWaiting() && j.pending == nil && j.blocked == "" {
 			queue(func() reportResult {
 				return reportResult{alive: true, final: j.flushFinal(ctx)}
 			})
@@ -454,7 +477,34 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 			admissionReady = admit
 		}
 		select {
+		case <-retryAdmission:
+			if retryUntil.IsZero() {
+				retryUntil = time.Now().Add(factory.RecoveryWindow)
+			}
+			retrying = true
+			retry.Reset(retryEvery)
+		case <-retry.C:
+			if busy || o.Runner.Running(it.ID) {
+				retry.Reset(retryEvery)
+				continue
+			}
+			retrying = false
+			if j.blocked != "" || time.Now().After(retryUntil) {
+				continue
+			}
+			if err := o.Mirror.Update(it.ID, func(cur *factory.Item) error {
+				if err := factory.CheckPersonStop(*cur); err != nil {
+					return err
+				}
+				cur.Stream.Paused = true
+				return nil
+			}); err == nil {
+				_ = o.Runner.Hold(it.ID, false)
+			}
 		case result := <-results:
+			if result.admitted {
+				retryUntil = time.Time{}
+			}
 			busy = false
 			if !result.alive {
 				j.drop()
@@ -485,7 +535,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 				err := w.Report(readCtx, pulled.Lease.ID, api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{request.step}}))
 				cancel()
 				request.done <- err
-				return reportResult{alive: !j.lostLease(err)}
+				return reportResult{alive: !j.lostLease(err), admitted: err == nil}
 			})
 		case <-ctx.Done():
 			j.drop()

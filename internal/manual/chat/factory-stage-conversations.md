@@ -966,6 +966,22 @@ The server's response cache still has a gap between applying results and saving
 the replay response; it is not transactional accounting. Retained artifacts need
 reconciliation before retry, and do not restore execution or publication authority.
 
+## Admission report stalls, retries and shutdown accounting
+
+Each admission waits at most 5.5 seconds total, including any report ahead of
+it and both spending flushes. A transient refusal retries the same unspent round
+one second after the reporter and previous drive finish, for up to two minutes
+from the first refusal. Pending result delivery keeps its 2, 5, then 15-second
+backoff. No paid round or attempt is consumed by admission refusal. During this
+wait the job remains running, with no new question or stall log line; the factory
+continues to show its last acknowledged step and spend. A retry keeps the round
+number. Lease loss and Stop end the wait.
+Cancellation and lease loss join the reporter before cleanup. The initial empty
+report's receipt reconciles cumulative late spend through the accounting-only
+recovery door; acknowledged deltas and repeated recovery responses count once.
+Unaccepted execution results remain in the private delivery artifact; accounting
+recovery does not restore their execution authority.
+
 
 ## Checkpoints and essential checks
 
