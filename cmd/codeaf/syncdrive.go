@@ -74,9 +74,8 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 	return d
 }
 
-// startDrive opens the drive side of c. The error it answers is already
-// reported; it is returned so a caller can tell a computer that has no identity
-// yet (which /pair will change) from one that cannot sync at all.
+// startDrive opens the drive side of c. Local failures are reported here;
+// liveDrive owns refusal notices and waits across startup attempts.
 func startDrive(c cell.Cell, engine cellstore.Engine, report func(error), changed ...func()) (*syncsetup.Drive, error) {
 	s, ok, err := syncsetup.Open(home.Dir())
 	if errors.Is(err, syncsetup.ErrNoIdentity) {
@@ -111,7 +110,7 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error), change
 		// A line is said by the surface the moment it happens (tui3/notices.go).
 		OnNotice: surfaceNotices.Say,
 	})
-	if sayRefusal(err) {
+	if _, refused := cellsync.RefusalOf(err); refused {
 		return nil, err
 	}
 	report(err)

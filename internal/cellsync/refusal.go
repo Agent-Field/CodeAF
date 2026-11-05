@@ -23,21 +23,23 @@ type Refusal struct {
 	Quiet time.Duration      // how long the refusal must last before the person hears of it
 	Flat  bool               // retry every interval: only time cures it, so backing off adds nothing
 	Halts bool               // Wait MaxHalt because frequent retries cannot create capacity; Freed can wake it sooner.
+	// RetryStartup also retries before a batcher exists, when time or capacity can cure the refusal.
+	RetryStartup bool
 }
 
 // refusals is listed from most to least final. A refusal that time cures
 // within minutes stays quiet for a few of them, because a burst that ended
 // before anyone could act is noise; a longer refusal is said at once.
 var refusals = []Refusal{
-	// The shared ceiling wraps ErrFull, so it must be matched first to keep its own sentence.
-	{Is: blobstore.ErrRelayFull, Say: said(chatlist.RelayStorageFull), Halts: true},
-	{Is: blobstore.ErrFull, Say: fullLine, Halts: true},
+	// Both decoders preserve a general full match, so shared capacity must come first.
+	{Is: wireauth.ErrRelayFull, Say: said(chatlist.RelayStorageFull), Halts: true, RetryStartup: true},
+	{Is: blobstore.ErrFull, Say: fullLine, Halts: true, RetryStartup: true},
 	{Is: wireauth.ErrRevoked, Say: said(chatlist.Removed), Halts: true},
 	{Is: wireauth.ErrGone, Say: said(chatlist.ReplacedGone), Halts: true},
 	{Is: wireauth.ErrRotated, Say: said(chatlist.Replaced), Halts: true},
 	{Is: wireauth.ErrSkew, Say: said(chatlist.ClockOff), Flat: true},
-	{Is: wireauth.ErrTooManyIdentities, Say: tooManyLine},
-	{Is: wireauth.ErrRateLimited, Say: said(chatlist.SlowDown), Quiet: 3 * time.Minute},
+	{Is: wireauth.ErrTooManyIdentities, Say: tooManyLine, RetryStartup: true},
+	{Is: wireauth.ErrRateLimited, Say: said(chatlist.SlowDown), Quiet: 3 * time.Minute, RetryStartup: true},
 }
 
 // said is the Say of a refusal whose sentence never varies.
@@ -59,6 +61,15 @@ func RefusalOf(err error) (Refusal, bool) {
 		}
 	}
 	return Refusal{}, false
+}
+
+// StartupWait shares the running retry policy with a chat whose drive could
+// not start. Refusals that need a person leave startup stopped as before.
+func (r Refusal) StartupWait(prev, interval time.Duration, err error) (time.Duration, bool) {
+	if !r.RetryStartup {
+		return 0, false
+	}
+	return r.next(prev, interval, err), true
 }
 
 // next is the wait after a failed flush that followed a wait of prev. The relay's

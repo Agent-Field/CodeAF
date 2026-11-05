@@ -48,10 +48,11 @@ var wireErrors = []wireError{
 	{ErrRequestGone, "gone", http.StatusNotFound},
 	{ErrAlreadyDecided, "already_decided", http.StatusConflict},
 	{ErrTooBig, "too_big", http.StatusRequestEntityTooLarge},
+	// Shared capacity must precede the directory's general full error when encoding.
+	{wireauth.ErrRelayFull, "relay_storage_full", http.StatusInsufficientStorage},
 	{ErrFull, "full", http.StatusServiceUnavailable},
 	// Hosted deployment brakes leave existing identities readable and erasable.
 	{wireauth.ErrRateLimited, "relay_admission_full", http.StatusTooManyRequests},
-	{ErrFull, "relay_storage_full", http.StatusInsufficientStorage},
 }
 
 // Codes that have no sentinel a Client returns: the wire's own refusals.
@@ -79,6 +80,10 @@ func classify(err error) wireError {
 func errorOf(code string, status int) error {
 	for _, w := range wireErrors {
 		if w.code == code && w.status == status {
+			if w.err == wireauth.ErrRelayFull {
+				// Existing directory callers still match the general full error.
+				return errors.Join(w.err, ErrFull)
+			}
 			return w.err
 		}
 	}

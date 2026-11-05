@@ -44,6 +44,9 @@ func TestHostedGlobalBrakesReachTheStoreClient(t *testing.T) {
 			if tc.status == 507 && (!errors.Is(err, blobstore.ErrFull) || errors.Is(err, blobstore.ErrRelayFull) != (tc.code == "relay_storage_full")) {
 				t.Fatalf("Has = %v, want a full store with the correct ceiling", err)
 			}
+			if errors.Is(err, wireauth.ErrRelayFull) != (tc.code == "relay_storage_full") {
+				t.Fatalf("Has = %v, want the shared sentinel only for shared capacity", err)
+			}
 		})
 	}
 }
@@ -56,6 +59,7 @@ func TestFullWireAnswersKeepTheCeilingsDistinct(t *testing.T) {
 		{blobstore.ErrFull, `{"err":"full"}`},
 		{blobstore.Capped(blobstore.ErrFull, 5<<30), `{"err":"full","limit_bytes":5368709120}`},
 		{blobstore.ErrRelayFull, `{"err":"relay_storage_full"}`},
+		{wireauth.ErrRelayFull, `{"err":"relay_storage_full"}`},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
 			g := newRig(t)

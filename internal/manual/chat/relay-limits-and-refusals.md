@@ -28,7 +28,7 @@ Pairing has limits on both kinds of relay: 10 new codes in an hour for one netwo
 
 ## What do I see when the relay says no
 
-**The chat says one plain sentence for each refusal.** The turns you save always stay on this computer, and they go up when the relay takes them again. What differs is what the chat says and how it tries again:
+**The chat says one plain sentence for each refusal.** The turns you save stay on this computer. Capacity and rate refusals retry automatically while the chat stays open, including when sync could not start; saved turns upload when a retry succeeds. What differs is what the chat says and how it tries again:
 
 - **Your sync space is full** (`507`, code `full`). The chat says `your sync space is full (5 GiB), so new turns stay on this computer`. The number is the stored-bytes ceiling the relay names (5 GiB on the hosted relay). Without a number, it says `your sync space is full, so new turns stay on this computer`, with no brackets. The hosted daily count of new chunks and a self-hosted relay's full disk give this answer without a number. The chat says it at once and retries after an hour while it stays open. New turns remain on this computer; reopening is not required for that retry. The daily count clears the next day.
 - **Sync is full for everyone right now** (`507`, code `relay_storage_full`). The chat says `sync is full for everyone right now, so new turns stay on this computer and go up when it has room`. This is shared capacity, separate from your identity's ceiling. It says this at once and retries after an hour while the chat stays open. Saved turns upload when a retry succeeds.
@@ -45,10 +45,10 @@ On a self-hosted relay, the full case is its disk. Free space on the machine tha
 A refused upload leaves the saved turn on this computer. These are the other sentences:
 
 - **Too many new identities from this network** (`429`, code `too_many_identities`). The chat says `too many new identities from this network today — try again in about 3 hours` at once. The time is the relay's `Retry-After`, rounded up to minutes or hours; when the relay names none, the chat says `this network has started too many new identities today; sync begins when it allows more`. It waits as long as the `Retry-After` says, up to an hour at a time.
-- **Another of your computers stopped this one** (`401`, code `revoked`). The chat says `this device was removed by another of your devices, so this chat stays here only — run codeaf pair to bring it back`. It retries after an hour, but only a new pairing brings the computer back.
-- **The clock is off** (`401`, code `skew`). The chat says `this computer's clock is off by more than 5 minutes`, once, and tries again at each normal turn of sync.
+- **Another of your computers stopped this one** (`401`, code `revoked`). The chat says `this device was removed by another of your devices, so this chat stays here only — run codeaf pair to bring it back`. Once removal is known, this computer stops contacting the relay; only a new pairing brings it back.
+- **The clock is off** (`401`, code `skew`). The chat says `this computer's clock is off by more than 5 minutes`, once. Running sync tries again at each normal turn of sync. If the clock refusal prevented sync from starting, correct the clock and reopen the chat.
 
-Each sentence is said once for as long as the trouble lasts, and again if the relay answers in between and then refuses again. An unreachable relay is retried with the doubling wait. If this computer holds the chat and renewals fail for longer than one renewal period, it says `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back` once. A successful renewal or publish then says `this chat is syncing again` once. A displaced or removed computer does not claim that it is syncing again.
+Each startup refusal is said once while the chat waits. Running sync says each sentence once for as long as the trouble lasts, and again if the relay answers in between and then refuses again. Running sync retries an unreachable relay with the doubling wait; an unreachable startup is tried again on the chat's next activity. If this computer holds the chat and renewals fail for longer than one renewal period, it says `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back` once. A successful renewal or publish then says `this chat is syncing again` once. A displaced or removed computer does not claim that it is syncing again.
 
 ## Is the hosted relay full for everyone — global admission and storage limits
 
@@ -66,6 +66,8 @@ default, that refuses new chunks for everyone with `507 relay_storage_full` if t
 exceed its ceiling; setting it to zero refuses all new chunks. Under either brake, existing
 chunks stay readable, retries of a chunk already held are allowed, and retiring an identity
 still erases its data after the grace period and returns capacity. A local turn stays on this
-computer if upload is refused; an open chat retries after an hour.
+computer if upload is refused. An open chat retries storage refusals after an hour,
+including when sync could not start. Admission refusals follow `Retry-After`, up to
+an hour at a time; new turns do not shorten either wait.
 These operator brakes do not delete your existing data. There is no automatic expiry for
 an identity whose computers have all gone silent.

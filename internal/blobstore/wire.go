@@ -22,8 +22,8 @@ var wireErrors = []struct {
 	{"not_found", http.StatusNotFound, ErrNotFound},
 	{"range_not_satisfiable", http.StatusRequestedRangeNotSatisfiable, errRange},
 	{"conflict", http.StatusConflict, ErrConflict},
-	// The shared ceiling precedes ErrFull because it wraps the general full-store error.
-	{"relay_storage_full", http.StatusInsufficientStorage, ErrRelayFull},
+	// Shared capacity precedes ErrFull because the decoder preserves both matches.
+	{"relay_storage_full", http.StatusInsufficientStorage, wireauth.ErrRelayFull},
 	{"full", http.StatusInsufficientStorage, ErrFull},
 	{"damaged", http.StatusInternalServerError, ErrDamaged},
 	{"unreachable", http.StatusServiceUnavailable, ErrUnreachable},
@@ -53,6 +53,10 @@ func codeOf(err error) (code string, status int, ok bool) {
 func errOf(code string) error {
 	for _, row := range wireErrors {
 		if row.code == code {
+			if row.err == wireauth.ErrRelayFull {
+				// Existing store callers still match the general full error.
+				return ErrRelayFull
+			}
 			return row.err
 		}
 	}
