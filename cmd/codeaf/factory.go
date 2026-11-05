@@ -224,6 +224,7 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// `github`, `ghlogin` and `connectgithub` doors exist. The fixture seam
 	// above returns before this line and is never wrapped.
 	profileDir = factoryProfile(profileDir)
+	registerFactoryTierResolver(st, profileDir, "")
 	// AND THE ITEM'S OWN CONVERSATION (`T`, factory_talk.go) is made on this
 	// machine, so its door is hung only here, where the floor is this
 	// machine's: --once and --host never build this seam.
