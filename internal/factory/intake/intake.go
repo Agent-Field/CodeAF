@@ -98,7 +98,7 @@ func (in *Intake) Once(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
+		if factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) || factory.WaitsPending(it) {
 			continue
 		}
 		if err := in.decide(ctx, it, book); err != nil {

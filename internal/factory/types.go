@@ -509,6 +509,11 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	WaitsOn       []int     `json:",omitempty"`
+	WaitingOn     []int     `json:",omitempty"`
+	WaitsReleased bool      `json:",omitempty"`
+	Blocked       *JobBlock `json:",omitempty"`
+
 	// PublishAnyway preserves the person decision without changing measured proof.
 	PublishAnyway *Approval `json:",omitempty"`
 	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
