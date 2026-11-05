@@ -123,7 +123,7 @@ func TestFactoryWaitsSetReadsCurrentOnce(t *testing.T) {
 					w.WriteHeader(503)
 					return
 				}
-				_, _ = w.Write([]byte(`{"id":1,"state":"backlog","waits_on":[2,3],"waiting_on":[3]}`))
+				_, _ = w.Write([]byte(`{"id":"job 1","state":"backlog","waits_on":[2,3],"waiting_on":[3]}`))
 			default:
 				t.Errorf("unexpected method %s", r.Method)
 			}
