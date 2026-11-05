@@ -1474,6 +1474,16 @@ this change, is the bytes of the frames its plan names (`0`: unknown); a move
 shows it as `move.total`. A chat shared in the background gets the bytes its
 upload attempts put.
 
+`working:true` is on a `running` row whose holder said at its last beat that a
+turn is running there; absent while the chat is merely open there, and never
+on any other status. The holder beats as soon as a turn starts or ends, so the
+flag follows within a request. `chats.working` in `hello` says rows can carry
+it. Directory beats carry `working` only to a relay that answers
+`Codeaf-Working-Beats: 1`; the lease keeps it through publishes until the next
+beat, and a release or an acquire clears it. Behind a relay that does not keep
+it, rows never say `working`, so a client says "open there", not "idle there".
+It is display only: `agents.take` does not consult it.
+
 Before a move, a row says what it would copy: `folder` is the name of the
 folder the chat works in on its holder (absent for a chat in its own private
 folder, from older publishers, or from a relay that does not answer

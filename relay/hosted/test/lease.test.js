@@ -190,3 +190,22 @@ test('parseHolds reads distinct pairs, splits at the last colon, and refuses wha
   assert.equal(code(() => parseHolds(Array.from({ length: 17 }, (_, i) => `c${i}:1`), 16)), 'bad_request');
   assert.equal(code(() => parseHolds(Array.from({ length: 16 }, (_, i) => `c${i}:1`), 16)), 'ok');
 });
+
+test('a beat that says a turn started or ended is a change even while a socket vouches; a publish keeps it, a release clears it', () => {
+  const { clock, socks, dir, heard } = rig();
+  dir.create('c1', init(), 'dev_a');
+  const w = socks.add('dev_a', [['c1', 1]], clock.now);
+  w.pinged = clock.now;
+  heard.length = 0;
+  dir.heartbeat('c1', 'dev_a', { fence: 1, pending: 0, working: true });
+  assert.equal(heard.length, 1, 'other computers hear that a turn runs here');
+  assert.equal(dir.list().cells.c1.lease.working, true);
+  dir.heartbeat('c1', 'dev_a', { fence: 1, pending: 0, working: true });
+  assert.equal(heard.length, 1, 'the same flag again is not news');
+  dir.heartbeat('c1', 'dev_a', { fence: 1, pending: 0 });
+  assert.equal(heard.length, 2, 'the turn ending is news');
+  assert.equal('working' in dir.list().cells.c1.lease, false, 'false is absent, as the Go relay writes it');
+  dir.heartbeat('c1', 'dev_a', { fence: 1, pending: 0, working: true });
+  dir.release('c1', 'dev_a', 1);
+  assert.equal('working' in dir.list().cells.c1.lease, false, 'a released chat is not working anywhere');
+});

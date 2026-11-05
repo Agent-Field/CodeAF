@@ -139,6 +139,12 @@ const UploadProgressHeader = "Codeaf-Upload-Progress"
 
 var uploadProgressServices sync.Map
 
+// WorkingBeatsHeader advertises a beat's optional working flag, which the
+// record keeps on its lease. Clients send it only to a relay that says so.
+const WorkingBeatsHeader = "Codeaf-Working-Beats"
+
+var workingServices sync.Map
+
 // ChatFoldersHeader advertises a record's optional sealed folder name. Older
 // relays strictly decode signed bodies, so clients omit the field without it.
 const ChatFoldersHeader = "Codeaf-Chat-Folders"
@@ -184,6 +190,9 @@ func (h *HTTP) Heartbeat(ctx context.Context, id string, b Beat) (v CellView, er
 	// Ordinary reads teach the capability; a beat never probes for it.
 	if known, _ := uploadProgressServices.Load(h.serviceKey()); known != true {
 		b.UploadSent, b.UploadTotal = 0, 0
+	}
+	if known, _ := workingServices.Load(h.serviceKey()); known != true {
+		b.Working = false
 	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "heartbeat"), b, &v)
 }
@@ -252,6 +261,7 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 	if resp.StatusCode < http.StatusInternalServerError {
 		savedTimeServices.Store(h.serviceKey(), resp.Header.Get(SavedTurnTimeHeader) == "1")
 		uploadProgressServices.Store(h.serviceKey(), resp.Header.Get(UploadProgressHeader) == "1")
+		workingServices.Store(h.serviceKey(), resp.Header.Get(WorkingBeatsHeader) == "1")
 		chatFolderServices.Store(h.serviceKey(), resp.Header.Get(ChatFoldersHeader) == "1")
 	}
 	if resp.StatusCode >= 300 {
