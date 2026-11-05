@@ -19,8 +19,9 @@ import (
 )
 
 // The same four crews, cap and provider script measure both revisions. Each
-// crew completes a tool pair before its held call. The provider has charged
-// two held calls two cents already; the last has supplied no usage at all.
+// crew completes a tool pair before its held call. Two calls are replying;
+// the last daily-capped call waits for its first token and has a zero bill.
+// Job caps retain their separate immediate-cancellation rule.
 func hardCapCrews(t *testing.T, requireStop bool) { hardCapScope(t, requireStop, false, false) }
 
 func hardCapScope(t *testing.T, requireStop, jobCap, interim bool) {
@@ -77,7 +78,9 @@ func hardCapScope(t *testing.T, requireStop, jobCap, interim bool) {
 			if i == 1 || i == 2 {
 				fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"cost\":0.02}}\n\n")
 			}
-			fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"working\"}}]}\n\n")
+			if jobCap || interim || i != 3 {
+				fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"working\"}}]}\n\n")
+			}
 			w.(http.Flusher).Flush()
 			close(ready)
 			if i == 0 {
@@ -137,7 +140,7 @@ func hardCapScope(t *testing.T, requireStop, jobCap, interim bool) {
 		}
 		// Seeing text emitted after usage proves the client decoded the interim
 		// frame before another crew crosses the cap.
-		observed := false
+		observed := !jobCap && !interim && i == 3
 		for !observed {
 			select {
 			case event, open := <-events[i]:
@@ -154,7 +157,10 @@ func hardCapScope(t *testing.T, requireStop, jobCap, interim bool) {
 	stopped := 0
 	deadline := time.NewTimer(time.Second)
 	defer deadline.Stop()
-	wantCancelled := 3
+	wantCancelled := 1
+	if jobCap {
+		wantCancelled = 3
+	}
 	if interim {
 		wantCancelled = 4
 	}
@@ -234,24 +240,40 @@ waiting:
 	if !requireStop {
 		return
 	}
-	if stopped != 3 {
-		t.Fatalf("cap crossing cancelled %d/4 running crew calls", stopped)
+	wantStops, wantSpend := 1, .45
+	if jobCap {
+		wantStops, wantSpend = 3, .29
 	}
-	if spent < .2899 || spent > .2901 || unknown != 1 {
+	if stopped != wantStops {
+		t.Fatalf("cap crossing cancelled %d/4 running crew calls, want %d waiting calls", stopped, wantStops)
+	}
+	if spent < wantSpend-.0001 || spent > wantSpend+.0001 || unknown != 1 {
 		t.Fatalf("partial charges or unknown call lost: spent=%v unknown=%d", spent, unknown)
 	}
 	if !strings.Contains(notices[0], " done") {
 		t.Errorf("settled crossing call lost its answer: %q", notices[0])
 	}
 	for i := 1; i < 4; i++ {
-		if !dailyStops[i] {
+		validateToolPairs(t, agents[i].snapshot())
+		if !jobCap && i < 3 && !strings.Contains(notices[i], " done") {
+			t.Errorf("replying crew %d lost its completed answer: %q", i, notices[i])
+		}
+		if (jobCap || i == 3) && !dailyStops[i] {
 			t.Errorf("crew %d did not report a typed daily stop", i)
 		}
 		word, raise := "daily limit", "/budget day"
 		if jobCap {
 			word, raise = "job budget", "raise"
 		}
-		if !strings.Contains(notices[i], word) || !strings.Contains(notices[i], raise) {
+		waitFor(t, "limit notice persisted after drain", func() bool {
+			for _, entry := range agents[i].Transcript() {
+				if strings.Contains(entry.Text, word) && strings.Contains(entry.Text, raise) {
+					return true
+				}
+			}
+			return false
+		})
+		if jobCap && (!strings.Contains(notices[i], word) || !strings.Contains(notices[i], raise)) {
 			t.Errorf("crew %d did not explain stop and raise: %q", i, notices[i])
 		}
 	}
@@ -319,8 +341,8 @@ func (b *settledStreamBarrier) CompleteWithMessages(ctx context.Context, message
 	return response, err
 }
 
-// Routes that stream interim usage have this known limit: open-stream usage
-// does not close the cap until settlement. This records the limit, not a wish.
+// Interim usage still closes no gate until settlement. Once the cap crosses,
+// all four calls here are already replying and must keep their final usage.
 func TestInterimUsageStreamOvershootIsTheKnownLimit(t *testing.T) {
 	hardCapScope(t, false, false, true)
 }

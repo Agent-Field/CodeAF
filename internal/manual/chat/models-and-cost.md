@@ -4399,8 +4399,10 @@ The daily budget blocks a new chat call when today's recorded spending reaches
 the limit. Task crews and their helpers use the same recorded-spend check
 before their next call. Other conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. When a recorded
-charge reaches the daily limit, running owned work
-in this engine is cancelled. Starting a tool or rerunning a command also checks
+charge reaches the daily limit, new calls are refused. Calls waiting for their
+first reply token are cancelled; calls already replying finish and record their
+full usage. Reasoning and tool-call fragments count as reply tokens. Remaining
+owned work stops after those replies settle. Starting a tool or rerunning a command also checks
 recorded spending, so a charge recorded while the conversation was idle still
 stops a rerun without waiting for another charge.
 The chat and work report the limit; raise it with `/budget day 30`, then submit
@@ -4408,17 +4410,29 @@ again. Only recorded spending closes the cap; usage on an open stream and
 pending receipts do not count until recorded. A stream can continue spending
 past the limit unnoticed while no ledger write crosses it. Spending is assigned
 to the date recorded, including receipts arriving after midnight.
-Detached summaries are cancelled too. Running adaptive workers follow their owner's raised
+Detached summaries follow the same first-token rule. Running adaptive workers follow their owner's raised
 daily limit. A sampled job refusal is checked again against the current cap.
 Known-free auxiliary calls can continue despite another conversation's daily spend.
 Partial usage is kept; a cancelled call without usage has unknown cost.
-Provider charges already in flight can exceed the cap; cancellation cannot undo them.
-This is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately. The default profile and home errands follow the saved
 or environment daily limit too; `/budget day` changes apply on the next turn.
 Task checks use the same selected daily limit and spending permission as the work
 they check.
+
+
+## How far can spending exceed the daily cap while replies finish?
+
+At a recorded daily-cap crossing, calls waiting for their first reply token are
+cancelled. Calls already replying finish, including reasoning and tool-call
+fragments, and record their real usage. No further paid call is admitted.
+
+Spending can exceed the cap by the remaining cost of calls already replying
+at the crossing. There is no fixed dollar bound without per-call provider limits;
+cutting a reply cannot undo its bill. The chat keeps completed replies and tool
+results, then shows the daily-limit notice. Raise the cap and send another message
+after the old work finishes stopping.
+This is not an atomic reservation across processes.
 
 
 ## Can I resume while a spending receipt is pending?
@@ -4431,7 +4445,8 @@ The partial answer stays visible; Stop work says
 pending-receipt warning or daily-limit notice during that window. A new explicit
 submission can start without raising the cap.
 
-When the receipt is recorded, a crossing cancels running work and names the limit.
+When the receipt is recorded, a crossing cancels waiting calls, lets replies finish,
+and names the limit.
 For $0.25 recorded against $0.24 it says
 `daily limit reached · $0.25 spent of $0.24 · /budget day changes it`.
 Raise the limit, then submit again. Receipt recovery has a 70-second ceiling
@@ -4460,7 +4475,7 @@ and reopen the app before standing orders can start.
 
 ## Why is my conversation blocked
 
-A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. The conversation limit lets a running turn finish; a recorded daily-limit crossing cancels running owned work. A turn with no call, tool or owned work in flight checks its own limit before work starts. An earlier spending record does not stop that conversation. A refused message shows the daily-limit explanation without starting a provider call.
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. The conversation limit lets a running turn finish; a recorded daily-limit crossing cancels calls waiting for their first token and lets replies finish before stopping owned work. A turn with no call, tool or owned work in flight checks its own limit before work starts. An earlier spending record does not stop that conversation. A refused message shows the daily-limit explanation without starting a provider call.
 
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 

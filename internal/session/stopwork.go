@@ -51,12 +51,15 @@ func (a *Agent) stopWorkLocked(why string, cause error) error {
 	a.workEpoch++
 	a.workStopReason = why
 	a.workStopDone = make(chan struct{})
+	var replies []<-chan struct{}
+	if IsDailyLimit(cause) {
+		replies = dailyReplyDrain()
+	}
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
 	cancel, done := a.cancel, a.done
-	idle := !a.running
 	// A pass a surface asked for outside any turn is work too.
-	defer a.cutManualPassLocked()()
+	manualStop := a.cutManualPassLocked()
 	memoryStop, titleStop := a.memoryStop, a.titleStop
 	// Keep completed runs inspectable, and mark cancellation as the person's
 	// decision before cutting their contexts. Close deliberately discards this
@@ -67,8 +70,9 @@ func (a *Agent) stopWorkLocked(why string, cause error) error {
 		runs = append(runs, live)
 	}
 	orchestrateStop := a.orchestrateStop
+	var harnessStops []context.CancelFunc
 	for _, cut := range a.harnessRuns {
-		cut()
+		harnessStops = append(harnessStops, cut)
 	}
 	jobs := a.jobs
 	if jobs != nil {
@@ -83,43 +87,52 @@ func (a *Agent) stopWorkLocked(why string, cause error) error {
 		graph.quitting = true
 		graph.mu.Unlock()
 	}
-	a.cancelBudgetCalls()
+	if len(replies) == 0 {
+		a.cancelBudgetCalls()
+	}
 	a.mu.Unlock()
-	a.cancelJobKnowledge()
-	if memoryStop != nil {
-		memoryStop()
-	}
-	if titleStop != nil {
-		titleStop()
-	}
-	a.interrupt.begin()
-	if cancel != nil {
-		cancel(cause)
-	}
-	for _, live := range runs {
-		live.run.Cancel()
-		live.cancel()
-	}
-	if orchestrateStop != nil {
-		orchestrateStop()
-	}
-	// The UI receives acceptance promptly. Reopening admission waits for the old
-	// producers themselves, so a late tool cannot join a freshly resumed registry.
-	beltDone := a.stopOwnedBeltRun(why)
-	// Admission stays closed until the idle notice is on the transcript.
-	if idle && errors.Is(cause, ErrSpendRail) {
-		a.record(textMessage("assistant", why))
-		a.mu.Lock()
-		for _, watcher := range a.taskWatchers {
-			watcher.send(Event{Kind: EventNotice, Text: why})
+	stop := func() {
+		for _, reply := range replies {
+			<-reply
 		}
-		a.mu.Unlock()
+		manualStop()
+		for _, cut := range harnessStops {
+			cut()
+		}
+		a.cancelBudgetCalls()
+		a.cancelJobKnowledge()
+		if memoryStop != nil {
+			memoryStop()
+		}
+		if titleStop != nil {
+			titleStop()
+		}
+		a.interrupt.begin()
+		if cancel != nil {
+			cancel(cause)
+		}
+		for _, live := range runs {
+			live.run.Cancel()
+			live.cancel()
+		}
+		if orchestrateStop != nil {
+			orchestrateStop()
+		}
+		// The UI receives acceptance promptly. Reopening admission waits for the old
+		// producers themselves, so a late tool cannot join a freshly resumed registry.
+		beltDone := a.stopOwnedBeltRun(why)
+
+		go a.finishWorkStop(done, graph, jobs, beltDone, why, errors.Is(cause, ErrSpendRail))
 	}
-	go a.finishWorkStop(done, graph, jobs, beltDone, why)
+	if len(replies) == 0 {
+		stop()
+	} else {
+		go stop()
+	}
 	return nil
 }
 
-func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *jobRegistry, beltDone <-chan struct{}, why string) {
+func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *jobRegistry, beltDone <-chan struct{}, why string, notify bool) {
 	if graph != nil {
 		graph.mu.Lock()
 		ids := append([]uint64(nil), graph.order...)
@@ -166,7 +179,17 @@ func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *job
 	if late != nil {
 		<-late
 	}
+	// Persist the limit after the turn and tools settle, including a reply that
+	// finished naturally during the drain. No live-turn branch owns this notice.
+	if notify {
+		a.record(textMessage("assistant", why))
+	}
 	a.mu.Lock()
+	if notify {
+		for _, watcher := range a.taskWatchers {
+			watcher.send(Event{Kind: EventNotice, Text: why})
+		}
+	}
 	a.workStopping = false
 	close(a.workStopDone)
 	a.mu.Unlock()

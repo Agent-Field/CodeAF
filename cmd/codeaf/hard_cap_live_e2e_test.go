@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -33,10 +34,11 @@ const hardCapRequest = .02
 // TestLiveDayCapStopsFourCrews uses the same public engine door as
 // internal/session/hard_cap_measure_test.go. Ordinary chat cannot start an
 // adaptive run; v3OpenSession wires the real agent, then RunOrchestrate starts it.
-// CODEAF_HARD_CAP_FAKE=1 exercises only the concurrent recorder locally.
+// CODEAF_HARD_CAP_FAKE=1 exercises the recorder and four real v3 crews locally.
 func TestLiveDayCapStopsFourCrews(t *testing.T) {
 	if os.Getenv("CODEAF_HARD_CAP_FAKE") == "1" {
 		hardCapFakeRecorder(t)
+		hardCapFakeCrews(t)
 		return
 	}
 	if os.Getenv(liveFactoryOptIn) != "1" {
@@ -555,10 +557,8 @@ func hardCapPairs(t *testing.T, root string) {
 			return nil
 		}
 		record := session.ReadTranscript(path)
-		for _, e := range append(record.Earlier, record.Entries...) {
-			if e.Role == "tool" && !e.Answered {
-				t.Errorf("unpaired tool call in %s: %s", path, e.CallID)
-			}
+		for _, id := range hardCapUnpaired(append(record.Earlier, record.Entries...)) {
+			t.Errorf("unpaired tool call in %s: %s", path, id)
 		}
 		return nil
 	})
@@ -574,9 +574,10 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 	rows := append([]*hardCapRow(nil), s.rows...)
 	peak := s.peak
 	s.mu.Unlock()
-	receiptCtx, cancel := context.WithDeadline(context.Background(), started.Add(150*time.Second))
+	// Billing must still be fetched when the product wait exhausted its deadline.
+	receiptCtx, cancel := context.WithTimeout(context.Background(), provider.ReceiptWait)
 	defer cancel()
-	providerTotal, cutBefore, cutMid := 0., 0, 0
+	providerTotal, beforeRaise, cutBefore, cutMid := 0., 0., 0, 0
 	seen := map[string]bool{}
 	paidCrews, workedCrews := map[int]bool{}, map[int]bool{}
 	for _, row := range rows {
@@ -601,10 +602,13 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 		seen[row.Generation] = true
 		billed, found := hardCapReceipt(receiptCtx, s.upstream, key, row.Generation)
 		providerTotal += billed
+		if !row.AfterRaise {
+			beforeRaise += billed
+		}
 		if billed > 0 && row.WorkerCrew >= 0 {
 			paidCrews[row.WorkerCrew] = true
 		}
-		t.Logf("generation=%q billed=%.9f found=%t cut_mid_stream=%t", row.Generation, billed, found, row.CutMid)
+		t.Logf("seq=%d generation=%q recorded=%.9f billed=%.9f found=%t cut_mid_stream=%t", row.Seq, row.Generation, row.Cost, billed, found, row.CutMid)
 		if !found {
 			t.Errorf("required provider billing receipt unavailable for generation %q", row.Generation)
 		}
@@ -636,11 +640,11 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 	if ledger > providerTotal+1e-9 {
 		t.Errorf("ledger %.9f exceeds provider %.9f", ledger, providerTotal)
 	}
-	t.Logf("cap=%.9f ledger_day=%.9f recorder_usage=%.9f provider_billed=%.9f cut_before_reply=%d cut_mid_stream=%d peak_concurrent=%d crews_started=%d past_cap=%.9f seconds=%.3f provider_minus_ledger=%.9f", hardCapDay, ledger, recorded, providerTotal, cutBefore, cutMid, peak, len(paidCrews), max(0, providerTotal-hardCapDay), time.Since(started).Seconds(), providerTotal-ledger)
+	t.Logf("cap=%.9f ledger_day=%.9f recorder_usage=%.9f provider_billed=%.9f cut_before_reply=%d cut_mid_stream=%d peak_concurrent=%d crews_started=%d past_cap=%.9f seconds=%.3f provider_minus_ledger=%.9f", hardCapDay, ledger, recorded, providerTotal, cutBefore, cutMid, peak, len(paidCrews), max(0, beforeRaise-hardCapDay), time.Since(started).Seconds(), providerTotal-ledger)
 }
 func hardCapReceipt(ctx context.Context, upstream, key, id string) (float64, bool) {
-	// Billing becomes visible seconds after a completion; wait out the run's
-	// own deadline (ctx) rather than a fixed count.
+	// Billing becomes visible seconds after a completion; wait out the receipt
+	// lookup deadline (ctx) rather than a fixed count.
 	for {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, upstream+"/generation?id="+url.QueryEscape(id), nil)
 		req.Header.Set("Authorization", "Bearer "+key)
@@ -778,5 +782,54 @@ func hardCapFakeRecorder(t *testing.T) {
 	for _, row := range trace.rows {
 		t.Logf("local seq=%d begin=%s took=%s status=%d bytes=%d usage=%t finish=%q cost=%.9f recorded_total=%.9f caller_left_early=%t generation=%q", row.Seq, row.Begin.Format(time.RFC3339Nano), row.Took, row.Status, row.Bytes, row.Usage, row.Finish, row.Cost, row.Total, row.Early, row.Generation)
 	}
-	t.Log("local recorder: four overlapping calls, usage crossing, cancellation and emergency refusal verified; real crews and provider billing remain unrun")
+	t.Log("local recorder: four overlapping calls, usage crossing, cancellation, billing receipt and emergency refusal verified")
+}
+
+func TestHardCapReportUsesFinalReceiptsAfterRunDeadline(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	session.RecordUsage(session.UsageLedgerPath(), session.UsageLine{Model: liveFactoryModel, Calls: 2, USD: .028958292})
+	session.FlushUsage()
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("id") == "cut" {
+			fmt.Fprint(w, `{"data":{"total_cost":0.0066456}}`)
+			return
+		}
+		fmt.Fprint(w, `{"data":{"total_cost":0.022312692}}`)
+	}))
+	defer fake.Close()
+	recorder := newLiveRecorder(t, fake.URL)
+	recorder.cost = .022312692 // The cut call's final usage never reached it.
+	trace := &hardCapTrace{upstream: fake.URL, rows: []*hardCapRow{
+		{Seq: 1, Generation: "complete", Admitted: true, WorkerCrew: 0, Cost: .022312692, Usage: true},
+		{Seq: 2, Generation: "cut", Admitted: true, WorkerCrew: 1, CutMid: true},
+	}}
+	trace.report(t, recorder, time.Now().Add(-151*time.Second), 0, "fixture")
+}
+
+func hardCapUnpaired(entries []session.DisplayEntry) []string {
+	var pending []string
+	for _, entry := range entries {
+		// Plain tool-result rows have no Tool and do not carry Answered.
+		if entry.Role == "tool" && entry.Tool != "" && !entry.Answered {
+			pending = append(pending, entry.CallID)
+		}
+	}
+	return pending
+}
+
+func TestHardCapPairsChecksCallsNotResultRows(t *testing.T) {
+	const pair = `{"type":"session","version":1,"id":"fixture","cwd":"/tmp"}
+{"type":"message","role":"assistant","toolCalls":[{"id":"paired","function":{"name":"read","arguments":"{}"}}]}
+{"type":"message","role":"tool","toolCallId":"paired","content":"read done"}
+`
+	entries := session.ReadTranscriptBytes([]byte(pair)).Entries
+	if ids := hardCapUnpaired(entries); len(ids) != 0 {
+		t.Fatalf("complete pair reported as pending: %v", ids)
+	}
+	const unfinished = `{"type":"message","role":"assistant","toolCalls":[{"id":"pending","function":{"name":"read","arguments":"{}"}}]}
+`
+	entries = session.ReadTranscriptBytes([]byte(pair + unfinished)).Entries
+	if ids := hardCapUnpaired(entries); len(ids) != 1 || ids[0] != "pending" {
+		t.Fatalf("real unanswered call not identified: %v", ids)
+	}
 }

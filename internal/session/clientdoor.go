@@ -843,6 +843,11 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	ctx, releaseProgress := a.withBudgetProgress(ctx)
 	defer releaseProgress()
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), materializeImageRefs(messages), append(options, ai.WithModel(wire))...)
+	if response == nil && ctx.Err() != nil {
+		if why := a.dailyBudgetBlock(); IsDailyLimit(why) {
+			err = why
+		}
+	}
 	if response != nil && response.Model != "" {
 		actual = response.Model
 	}

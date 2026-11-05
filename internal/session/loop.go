@@ -1762,7 +1762,7 @@ func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *part
 		}
 		a.journalFailedCall(ctx, model, "", cause, 1, a.requestEstimate())
 		if said := stopSentence(door, stopName(cause)); said != "" {
-			if door == StopByWorkStopped && stopName(cause) != "" {
+			if door == StopByWorkStopped && stopName(cause) != "" && !errors.Is(cause, ErrSpendRail) {
 				a.record(textMessage("assistant", said))
 			}
 			hub.send(Event{Kind: EventNotice, Text: said})

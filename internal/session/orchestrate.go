@@ -984,7 +984,12 @@ func (e *orchestrateExec) Exec(ctx context.Context, node orchestrate.Node, deps 
 		if live := e.agent.orchestrations[e.id]; live != nil {
 			live.stopReason = runErr.Error()
 		}
+		epoch := e.agent.workEpoch
 		e.agent.mu.Unlock()
+		// The child can finish before the owner's ledger watcher observes it.
+		// Carry its refusal home while the epoch still identifies this work;
+		// otherwise an idle owner skips the wake and never records the limit.
+		_ = e.agent.stopWorkEpoch(epoch, runErr)
 	}
 	cost := e.spend(child)
 	digest := orchestrateDigest(child, changed)

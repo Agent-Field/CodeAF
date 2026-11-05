@@ -654,6 +654,7 @@ func TestResumeReopensCapWhileReceiptPending(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	release, receiptStarted := make(chan struct{}), make(chan struct{})
+	finishReply := make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
 	defer unblock()
@@ -681,7 +682,15 @@ func TestResumeReopensCapWhileReceiptPending(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprintf(w, "data: {\"id\":\"gen-pending-%d\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"working\"}}]}\n\n", n)
 		w.(http.Flusher).Flush()
-		<-r.Context().Done()
+		if n == 1 {
+			<-r.Context().Done()
+			return
+		}
+		select {
+		case <-finishReply:
+			fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\" done\"},\"finish_reason\":\"stop\"}],\"usage\":{\"cost\":0}}\n\ndata: [DONE]\n\n")
+		case <-r.Context().Done():
+		}
 	}))
 	t.Cleanup(func() { unblock(); server.Close() })
 	client, err := provider.NewClient(provider.Config{APIKey: "fixture", BaseURL: server.URL, Model: "test/model", HTTPClient: server.Client()})
@@ -755,16 +764,27 @@ func TestResumeReopensCapWhileReceiptPending(t *testing.T) {
 	}
 	t.Logf("pending window: chat keeps working and %q; recorded=$0.00, chat cost=$0.00, no daily-limit notice or pending-receipt warning; unchanged cap=$0.24 admits resume", notice)
 	unblock()
+	waitFor(t, "settled receipt closes admission while reply drains", func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.workStopped })
+	close(finishReply)
 	got := collect(t, events)
 	const usual = "daily limit reached · $0.25 spent of $0.24 · /budget day changes it"
-	stopped, said := false, ""
+	stopped, said, completedReply := false, "", false
 	for _, e := range got {
+		completedReply = completedReply || e.Kind == EventTextDelta && strings.Contains(e.Text, " done")
 		stopped = stopped || errors.Is(e.Err, ErrSpendRail)
 		if e.Kind == EventNotice {
 			said += e.Text
 		}
 	}
-	if !stopped || said != usual {
+	// The resumed call already supplied a token, so the receipt crossing lets it
+	// finish. Its persisted limit notice belongs to the shared stop route.
+	waitFor(t, "reply drain and notice", func() bool { a.mu.Lock(); defer a.mu.Unlock(); return !a.workStopping })
+	for _, entry := range a.Transcript() {
+		if entry.Text == usual {
+			said = usual
+		}
+	}
+	if stopped || !completedReply || said != usual {
 		t.Fatalf("settled receipt stop: rail=%v notice=%q", stopped, said)
 	}
 	waitFor(t, "receipt recorded", func() bool {

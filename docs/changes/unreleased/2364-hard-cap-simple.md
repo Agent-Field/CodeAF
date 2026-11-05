@@ -1,47 +1,51 @@
 ---
 kind: fixed
-title: Stop running work when recorded spending reaches its cap
+title: Let replying calls finish at the daily spending cap
 pr: 2364
 surface: [chat, engine, app, factory, docs]
 invalidates:
   - "A recorded daily crossing could be discarded between a completed call and its tool starting, leaving the tool running until another ledger write. Tool starts and command reruns now wake a fresh recorded-spend check."
-  - "Unsettled stream usage and pending receipts do not close admission. Only recorded spending counts toward the cap."
+  - "Daily-cap crossings previously cut replies mid-stream. Calls already returning text, reasoning or tool fragments now finish and record their full usage."
+  - "The e2e checker classified plain tool-result display rows as unanswered calls. It now checks actual tool-call entries and still rejects genuine missing results."
 ---
 
-Daily caps stop active provider calls, tools, detached summaries and owned crews
-through the existing epoch-checked StopWork route. Ledger writes, tool starts
-and command reruns wake checks; the 100 ms job-budget clock does not read the
-daily ledger. Idle
-conversations remain idle, and turns waiting for their first provider admission
-report a refusal through their event stream without latching stopped. Running
-children follow their owner's selected daily authority. Raising the named cap
-permits a fresh submission after old work joins.
+Daily caps close admission when recorded spending reaches the limit. Calls
+waiting for their first reply token are cancelled; calls already replying finish
+and record their full usage. Parent crew cancellation waits for those replies,
+so inherited contexts cannot cut a child's reply. Remaining owned work stops
+through the epoch-checked StopWork route. A raise permits a fresh submission
+once old work joins. Job caps and a person's Stop retain immediate cancellation.
 
-The four-call HTTP fixture now sends the crossing usage in its final chunk and
-closes that stream, matching the normal route. All three other held calls are
-cancelled: recorded spending is $0.29 against $0.24, $0.05 past cap, with one
-unknown-price call retained. The completed crossing call keeps its answer;
-stop notices and closed admission apply to the other calls still running.
+Ledger writes, tool starts and command reruns wake daily checks. The 100 ms
+job-budget clock does not read the daily ledger. Idle conversations remain idle;
+children follow their owner's selected daily authority, and known-free auxiliary
+calls retain their admission exemption. Only recorded spending counts toward the
+cap. Interim stream usage and pending receipts do not close admission.
 
-Two limits are pinned by named regression tests:
+The mixed four-call HTTP fixture records $0.45 against $0.24: $0.21 past cap,
+one waiting call cancelled at zero recorded cost, and both other replies
+finishing at $0.10 each. Overshoot is bounded by the remaining cost of calls
+already replying, with no fixed dollar bound unless the provider bounds each
+call. Missing prices remain unknown; receipts belong to their recorded local
+date, including after midnight.
 
-- A route reporting interim usage while its stream stays open does not stop
-  before settlement. Four calls record $0.55 against $0.24, $0.31 past cap,
-  with zero of four cancelled before release. Final responses are decoded
-  together before banking so cancellation after release cannot discard a peer's
-  final usage chunk. This is the known limit, not a requested future behavior.
-- A stopped call whose cost is known only through a pending receipt leaves
-  recorded spending and the chat's cost at $0.00. The chat retains `working`
-  and says `everything running here was stopped, the reply with it`. There is
-  no daily-limit notice or pending-receipt warning. An unchanged $0.24 cap
-  admits a fresh submission. Once the $0.25 receipt is recorded, running work
-  stops with `daily limit reached · $0.25 spent of $0.24 · /budget day changes it`.
-  Receipt recovery is bounded by 70 seconds from queueing, including request
-  allowances and retry delays; an unavailable receipt can remain unpriced.
+The shared stop path persists its budget explanation after the turn and tools
+settle, including a turn that finished naturally while draining. A child budget
+refusal reaches its owner directly: a watcher that runs after the last worker
+ends cannot discard the notice as idle. The app/v3 comparison reproduced a
+missing idle crew-owner budget notice. Ordinary Stop mid-reply and between calls
+already preserve tool pairs and accept the next turn. No product transcript
+repair or spend-accounting change was needed for the e2e checker's false alarm.
 
-The separate four-crew settlement measurement records $0.31 against $0.24,
-$0.07 past cap, with all three other calls cancelled. These local scripted
-fixtures measure durable dollars, not provider cancellation latency. There is
-no finite dollar overshoot bound without provider-enforced per-call maxima.
-Cancelled charges are retained when measured; missing prices remain unknown.
-Spending belongs to its recorded local date, including receipts after midnight.
+Billing reports fetch final generation receipts with a fresh lookup deadline
+after the run ends, show recorded versus billed cost per call, and exclude the
+raised cap's resume calls from pre-raise overshoot. Fake e2e mode drives four
+real v3 crews, all four stop notices, their tool histories and resumed turns,
+as well as the concurrent recorder.
+
+The interim-usage regression remains: usage is not recorded until settlement,
+so four already replying calls still record $0.55. The pending-receipt regression
+now allows the resumed reply to finish when the delayed receipt crosses the cap;
+it asserts the completed answer, persisted notice and blocked next admission
+instead of expecting mid-reply cancellation. Receipt recovery remains bounded
+by 70 seconds; unavailable receipts can remain unpriced.
