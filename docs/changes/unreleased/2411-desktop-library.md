@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Desktop Library shares knowledge guides and sources with the terminal
-pr: 2369
+pr: 2411
 surface: [app, engine, chat, docs]
 invalidates:
   - Library titles were previously generated-only labels; guides and collection labels can now be renamed without changing identity, scope, links or learned body text.
