@@ -121,6 +121,14 @@ func (e Engine) captureEvidence(ctx context.Context, c cell.Cell, problem error)
 				bundle.Notes = append(bundle.Notes, name+": "+err.Error())
 				continue
 			}
+			// The name can change between Lstat and Open. Check the opened identity
+			// before reading so a swapped link cannot redirect evidence into credentials.
+			opened, statErr := f.Stat()
+			if statErr != nil || !os.SameFile(info, opened) {
+				_ = f.Close()
+				bundle.Notes = append(bundle.Notes, name+": changed while opening; omitted")
+				continue
+			}
 			raw, readErr := io.ReadAll(io.LimitReader(f, captureMetadataLimit+1))
 			_ = f.Close()
 			if readErr != nil || len(raw) > captureMetadataLimit || len(raw) > captureMetadataBudget-metadataBytes {
