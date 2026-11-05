@@ -330,6 +330,8 @@ Proof is the step named proof, a send-back's prove step, or any step that runs u
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
 
+Jobs from someone without write access refuse every step that can write, including job chat, publishing and merging, whatever their names, at start and before every round. An outside job with no tier recorded is refused too. Approvals alone can run; preparing a commit requires write access. A refusal stops the job without running that step or spending on it. The reason stays on the job. A refused Start keeps its saved state and spending and adds no attempted round. Open the work yourself as a new job, or give the author write access.
+
 ## when conditions — touches auth, has ui, unknown files, before write
 
 An added conversation, check or approval step may use `when: touches auth` or `when: has ui`. These conditions are decided when the step comes up, using the change's files once known, otherwise the pull request's known files, otherwise an explicitly set triage area. Without files or area the answer is not known yet: the step stays pending and runs if still unknown at its turn. A conditional step before write therefore runs when no files or area are known.
