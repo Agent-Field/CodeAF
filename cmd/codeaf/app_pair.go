@@ -224,7 +224,7 @@ func (o *appPairOperation) ask(ctx context.Context, kind, title, detail string, 
 		return ""
 	}
 }
-func (o *appPairOperation) finish(state, line string, err error, restart bool) {
+func (o *appPairOperation) finish(state, line string, failure *appwire.PairError, restart bool) {
 	o.backend.pair.mu.Lock()
 	defer o.backend.pair.mu.Unlock()
 	if o.finished {
@@ -241,8 +241,9 @@ func (o *appPairOperation) finish(state, line string, err error, restart bool) {
 	if line != "" {
 		o.view.Lines = append(o.view.Lines, strings.Split(line, "\n")...)
 	}
-	if err != nil {
-		o.view.Error = &appwire.PairError{Code: appwire.CodeEngine, Message: err.Error()}
+	if failure != nil {
+		e := *failure
+		o.view.Error = &e
 	}
 	o.view.Restart = restart
 	o.backend.pair.restart = restart
@@ -268,7 +269,7 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 		o.finish("cancelled", appPairDeclined, nil, false)
 	default:
 		// The failure sentence is the error alone; repeating it as a line showed it twice.
-		o.finish("failed", "", errors.New(appPairFailure(err)), false)
+		o.finish("failed", "", appPairError(err), false)
 	}
 }
 func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
@@ -309,8 +310,20 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		o.line(appPairPaired(name))
 		return nil, false
 	case "use_code":
+		// A typo is refused before the directory is asked anything.
+		if _, err := pair.ReadJoinCode(p.Code); err != nil {
+			return err, false
+		}
 		joining := pairJoiningAt(dir)(false)
-		joining.Revoked = ownDeviceRevoked(o.ctx, dir, route)
+		// What this computer already holds is refused before the other one is
+		// asked to approve, as the terminal does. A directory that cannot be read
+		// leaves refusals to after the approval, where the other computer still
+		// never says it paired one that refused.
+		standing, _ := joinStanding(o.ctx, dir, route)
+		if err := standing.refusal(); err != nil {
+			return err, false
+		}
+		joining.Revoked, joining.Alone = standing.revoked, standing.alone()
 		if p.Name != "" {
 			joining.Label = p.Name
 		}
@@ -325,7 +338,11 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return nil, !joined.Already
 	case "request_link":
 		joining := linkJoining(dir)(route, false)
-		joining.Revoked = ownDeviceRevoked(o.ctx, dir, route)
+		standing, _ := joinStanding(o.ctx, dir, route)
+		if err := standing.refusal(); err != nil {
+			return err, false
+		}
+		joining.Revoked = standing.revoked
 		if p.Name != "" {
 			joining.Label = p.Name
 		}

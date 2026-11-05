@@ -200,7 +200,7 @@ func (a *asker) install(ctx context.Context, j LinkJoining, g LinkGrant) (LinkJo
 	if err != nil {
 		return LinkJoined{}, err
 	}
-	joined, err := adoptWithDevice(j.Joining, g.Grant, &dev)
+	joined, err := adoptWithDevice(j.Joining, g.Grant, &dev, nil)
 	if err != nil {
 		return LinkJoined{Joined: joined}, err
 	}

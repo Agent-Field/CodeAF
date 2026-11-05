@@ -83,6 +83,13 @@ const (
 	// that failed on the way: the message names the job, and the repository
 	// is still on.
 	CodeHasRunning = "has_running"
+	// CodeCannotJoin is the code of a failed joining pairing (use_code or
+	// request_link) that this computer refused because of what it already
+	// holds: it is paired with other computers, or has chats of its own. The
+	// message says which. A new code or link would end the same way, so the app
+	// does not suggest one. It is additive: an app that does not know the word
+	// treats it as any failure.
+	CodeCannotJoin = "cannot_join"
 )
 
 // The states an agent can be in, as the app draws them.

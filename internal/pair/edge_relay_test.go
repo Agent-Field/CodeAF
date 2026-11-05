@@ -49,7 +49,9 @@ func startPairWith(t *testing.T, r *chatRig, offering, joining time.Duration) *a
 
 // A RELAY THAT LOSES A MESSAGE LEAVES BOTH DEVICES WAITING FOR IT, and each says
 // the pairing did not finish. Nothing lands on the joining device, and no
-// grant leaves the other one unless message 4 itself is the one that was lost.
+// grant leaves the other one unless message 4 itself is the one that was lost:
+// then the grant went out, so A says it was not confirmed and names B, rather
+// than that nothing was changed.
 func TestRelayDrops(t *testing.T) {
 	for n := 1; n <= 4; n++ {
 		t.Run(fmt.Sprintf("message %d", n), func(t *testing.T) {
@@ -59,7 +61,12 @@ func TestRelayDrops(t *testing.T) {
 
 			b := joinWithin(t, att.join)
 			a := att.offer.wait(t)
-			for name, err := range map[string]error{"A": a.err, "B": b.err} {
+			ended := map[string]error{"A": a.err, "B": b.err}
+			if n == 4 {
+				wantNotConfirmed(t, a, "laptop")
+				delete(ended, "A")
+			}
+			for name, err := range ended {
 				if !errors.Is(err, ErrDidNotFinish) || err.Error() != ErrDidNotFinish.Error() {
 					t.Errorf("%s ended with %v, want the pairing did not finish", name, err)
 				}

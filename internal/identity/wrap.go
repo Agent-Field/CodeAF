@@ -118,6 +118,21 @@ func (w wrapped) open(passphrase string) ([]byte, error) {
 // ErrDifferent reports that the home already holds another identity.
 var ErrDifferent = errors.New("identity: this machine already has a different identity; pass --replace to overwrite it")
 
+// AdoptRefuses says, and writes nothing to say it, whether [Adopt] without
+// replace would refuse next with [ErrDifferent]: home holds another identity,
+// or a vault key from before identities, which becomes an identity of its own
+// (with a signing key that cannot be next's) the first time it is read.
+func AdoptRefuses(home string, next Identity) (bool, error) {
+	cur, err := Load(home)
+	if errors.Is(err, ErrNone) {
+		return hasLegacyKey(home), nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return cur.ID() != next.ID(), nil
+}
+
 // Adopt makes next the identity under home. It refuses to overwrite a
 // different identity unless replace is set, and says whether it did.
 func Adopt(home string, next Identity, replace bool) (replaced bool, err error) {

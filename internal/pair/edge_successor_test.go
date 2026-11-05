@@ -76,10 +76,11 @@ func TestM7JoinRefusesUnrelated(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := filesIn(t, r.homeB)
-	_, err = pairGrant(t, r, Grant{Identity: r.a, Replaces: []string{stranger.ID()}}, joiningAt(r.homeB))
+	a, err := pairRefused(t, r, Grant{Identity: r.a, Replaces: []string{stranger.ID()}}, joiningAt(r.homeB))
 	if !errors.Is(err, ErrDifferentChats) {
 		t.Fatalf("B was told %v", err)
 	}
+	wantNotConfirmed(t, a, "laptop")
 	same(t, before, filesIn(t, r.homeB))
 	if held, _ := identity.Load(r.homeB); held.ID() != mine.ID() {
 		t.Fatal("this computer's identity was disturbed")

@@ -47,7 +47,11 @@ func (chatPairDoor) Join(ctx context.Context, typed string, ui pair.JoinUI) (pai
 	if err != nil {
 		return pair.Joined{}, err
 	}
-	joined, err := pair.Join(ctx, route, pairJoining(false), typed, ui)
+	joining, err := chatJoining(ctx, route, typed, false)
+	if err != nil {
+		return pair.Joined{}, err
+	}
+	joined, err := pair.Join(ctx, route, joining, typed, ui)
 	if err == nil {
 		if f, e := pullFleet(home.Dir(), route)(ctx); e == nil {
 			joined.With = f.With
@@ -65,11 +69,34 @@ func (chatPairDoor) JoinReplacing(ctx context.Context, typed string, ui pair.Joi
 	if err != nil {
 		return pair.Joined{}, err
 	}
-	joined, err := pair.Join(ctx, route, pairJoining(true), typed, ui)
+	joining, err := chatJoining(ctx, route, typed, true)
+	if err != nil {
+		return pair.Joined{}, err
+	}
+	joined, err := pair.Join(ctx, route, joining, typed, ui)
 	if err == nil {
 		err = ownDeviceRecord(ctx, home.Dir(), route)
 	}
 	return joined, explainSyncUnreachable(err, route.URL)
+}
+
+// chatJoining is this computer as the chat's joining side, after the check the
+// terminal makes before a code is used: a computer whose chats already sync
+// with others is refused, even when replacing was confirmed, and one whose
+// identity no other device holds refuses its own chats before the other
+// computer is asked. A typo is refused first and costs no request; a directory
+// that cannot be read leaves the refusals to after the approval.
+func chatJoining(ctx context.Context, route pair.Mailbox, typed string, replace bool) (pair.Joining, error) {
+	j := pairJoining(replace)
+	if _, err := pair.ReadJoinCode(typed); err != nil {
+		return j, err
+	}
+	standing, _ := joinStanding(ctx, j.Home, route)
+	if err := standing.refusal(); err != nil {
+		return j, err
+	}
+	j.Alone = standing.alone()
+	return j, nil
 }
 
 // HasOwnChats reports whether this home holds an identity of its own — the

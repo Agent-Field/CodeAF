@@ -231,7 +231,8 @@ func pairOnce(t *testing.T, r *chatRig, j Joining) (Joined, offerEnd, error) {
 func joiningAt(home string) Joining { return Joining{Home: home, Label: "laptop"} }
 
 // A COMPUTER THAT HAS CHATS OF ITS OWN KEEPS THEM. Without --replace the pairing
-// says so and changes not one byte; with it, this computer takes the other's.
+// says so and changes not one byte, and the computer that approved does not say
+// they are paired; with it, this computer takes the other's.
 func TestM7JoinRefusesDifferentIdentity(t *testing.T) {
 	r := newChatRig(t)
 	mine, err := identity.Ensure(r.homeB)
@@ -243,10 +244,11 @@ func TestM7JoinRefusesDifferentIdentity(t *testing.T) {
 	}
 	before := filesIn(t, r.homeB)
 
-	_, _, err = pairOnce(t, r, joiningAt(r.homeB))
+	a, err := pairRefused(t, r, Grant{Identity: r.a}, joiningAt(r.homeB))
 	if !errors.Is(err, ErrDifferentChats) || err.Error() != ErrDifferentChats.Error() {
 		t.Fatalf("B was told %v", err)
 	}
+	wantNotConfirmed(t, a, "laptop")
 	same(t, before, filesIn(t, r.homeB))
 	held, err := identity.Load(r.homeB)
 	if err != nil || held.ID() != mine.ID() || !bytes.Equal(held.CellKey(), mine.CellKey()) {
@@ -295,10 +297,11 @@ func TestJoinLegacyVaultKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err := pairOnce(t, r, joiningAt(r.homeB))
+	a, err := pairRefused(t, r, Grant{Identity: r.a}, joiningAt(r.homeB))
 	if !errors.Is(err, ErrDifferentChats) {
 		t.Fatalf("B was told %v", err)
 	}
+	wantNotConfirmed(t, a, "laptop")
 	if now, err := os.ReadFile(legacy); err != nil || !bytes.Equal(now, text) {
 		t.Fatalf("the vault key was changed (%v)", err)
 	}

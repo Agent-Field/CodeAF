@@ -230,6 +230,32 @@ confirmation remains; a no or Esc leaves everything as it was. This clean-slate
 option is required for a solo computer with submitted chats. Old chat
 folders are set aside outside the chat list and are not shared into the new set.
 
+## Pairing was not confirmed, or this computer is already paired — refused before or after approval
+
+The computer that typed the code says it kept your chats only once it has
+decided to, and before it changes anything. If it refuses them, stops, or its
+word is lost, the computer that showed the code does not say they are paired.
+It names the other computer instead, after waiting up to ten seconds:
+
+```
+pairing was not confirmed by laptop; check that computer to see whether it joined
+```
+
+The computer that typed the code shows its own reason, such as the refusal above.
+
+Most refusals come before the other computer is asked to approve. A computer
+whose chats already sync with other computers is refused by `codeaf pair <code>`
+and `/pair <code>` alike, even with `--replace`, and the code stays unused:
+
+```
+this computer is already paired with laptop-a — codeaf devices lists them
+```
+
+A computer that showed a code once but never paired is no longer solo. When no
+other computer holds its chats, its own chats are refused before approval too,
+with the counted sentence above. A removed computer is not refused here: it can
+pair back.
+
 ## Interrupted explicit replacement — clean slate and saved keys
 
 Reopening codeaf finishes an interrupted explicit `--replace` pairing. Recovery
