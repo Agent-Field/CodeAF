@@ -376,7 +376,7 @@ It is refused above three or below one (`a step gets 1 to 3 tries`), for a check
 
 ## remove or move a step of one job — delete a step, reorder, run it after, skip versus remove
 
-A proof step is named `proof`, `prove`, or `prove` followed only by digits (such as `prove2`), or runs until `proven`. Names are trimmed and matched without regard to case. Names such as `provenance`, `prover` and `proved` alone do not make a step proof.
+A proof step is named `proof`, starts with `prove` (such as `prove2` or `prove-it`), or runs until `proven`. Names are trimmed and matched without regard to case. The words `provenance`, `proved`, `prover` and `provers` alone do not make a step proof.
 
 Skipping a step leaves it in the job, switched off. Removing it takes it out of the job's steps altogether; moving it puts it after another step, or first. Both change this job only, never the repository's pipeline, and both go through the same edit and bounds as every other change: tell the job's manager (`remove pretest`, `run docs after write`), or use the step's menu on the job's tab.
 

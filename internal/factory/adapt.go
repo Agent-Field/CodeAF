@@ -756,8 +756,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 const ProofName = "proof"
 
 // IsProofStage says whether a stage is a proof conversation: the one named
-// proof, a send-back's prove or prove followed only by digits, or any stage
-// that runs until proven, whatever it is called.
+// proof, a name starting with prove other than [proveWordsNotProof], or any
+// stage that runs until proven, whatever it is called.
 // Checks and posts are NOT proof here, though their claims reach
 // the sheet: they can precede legitimate work, so they never freeze an edit.
 // The run loop's sheet maker asks this same question so the two cannot drift.
@@ -766,15 +766,18 @@ func IsProofStage(st Stage) bool {
 	if name == ProofName || strings.TrimSpace(st.Until) == UntilProven {
 		return true
 	}
-	if !strings.HasPrefix(name, "prove") {
-		return false
-	}
-	for _, digit := range name[len("prove"):] {
-		if digit < '0' || digit > '9' {
-			return false
-		}
-	}
-	return true
+	return strings.HasPrefix(name, "prove") && !proveWordsNotProof[name]
+}
+
+// proveWordsNotProof are ordinary words that start with prove. It is a stopgap:
+// explicit step roles replace it. Any other name starting with prove stays
+// proof, because a pipeline's stored names have lost their hyphens, so prove-it
+// arrives here as proveit, and an unknown word on the safe side stays locked.
+var proveWordsNotProof = map[string]bool{
+	"provenance": true,
+	"proved":     true,
+	"prover":     true,
+	"provers":    true,
 }
 
 // firstProof is the index of the earliest proof stage, or -1.
