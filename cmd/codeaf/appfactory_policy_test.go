@@ -27,7 +27,8 @@ func TestFactoryPolicyRefusals(t *testing.T) {
 		{422, `{"error":"allowance jobs must be distinct positive job ids"}`, appwire.CodeBadParams, ""},
 	} {
 		for _, put := range []bool{false, true} {
-			if !put && tc.status != 404 && tc.status != 405 && tc.status != 403 {
+			// Reads are never owner-guarded: only a replacement can meet 403.
+			if !put && tc.status != 404 && tc.status != 405 {
 				continue
 			}
 			var sends atomic.Int64
@@ -130,7 +131,7 @@ func TestFactoryPolicyCreateGroup(t *testing.T) {
 			}
 			_, _ = w.Write([]byte(`{"id":1}`))
 		} else {
-			_, _ = w.Write([]byte(`{"id":1,"group":"g","state":"backlog"}`))
+			_, _ = w.Write([]byte(`{"id":"job 1","group":"g","state":"backlog"}`))
 		}
 	})
 	got, err := b.FactoryJobCreate(context.Background(), appwire.FactoryJobCreateParams{Factory: "f", Repo: "owner/api", Title: "job", Group: " g "})
