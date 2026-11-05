@@ -611,12 +611,20 @@ whatever posture or `--yolo` you selected. The prompt names the file and explain
 that saved approval rules could not be read. Remembered approvals and the guardian
 cannot answer these questions for you. A headless call with nobody to ask returns
 an error naming the file. Once the file is readable, its rules apply again.
-Malformed JSON still fails policy construction.
+Malformed JSON still fails ordinary policy construction; the readable default-stage
+bypass below also applies to malformed JSON.
 
-Two kinds of work do not get this protection yet. A default Factory stage runs on
-its own allow posture and does not read your saved rules, whether the file is
-readable or not. A task child started by a conversation does not carry the failed
-read over from its parent, so it can run a call your saved rules would deny.
+Factory stages and work started by tasks get the same protection: every call
+needs a person, and with nobody to ask it is refused. Workers, repair rounds and
+checkers see a parent's current read failure even after they start. Standalone
+run workers check the profile before each call. A refused Factory job keeps the
+failed-read reason and config filename in its result, without report retries.
+This includes a daily-limit check that refuses the first turn because the
+profile cannot be read; no model request is made.
+
+**Readable default-stage bypass:** with a readable file, a default Factory stage
+runs on its own allow posture and does not apply your saved rules. This named
+limit also covers readable malformed JSON.
 
 ## Default YOLO in interactive conversations and headless runs
 
