@@ -306,8 +306,11 @@ func holdAtJobBudget(it *factory.Item, now time.Time) bool {
 	if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap || approvedWriteOnly(*it) {
 		return false
 	}
-	// A Stop stays what the job says. A person starts it again, and is asked then.
+	// A stopped job keeps its Stop and waits on a person. It gets no cap question:
+	// a person starts it again, and is asked then.
 	if factory.StoppedByPerson(*it) {
+		it.State = factory.StateNeedsYou
+		it.OverLimit = false
 		return true
 	}
 	ask := factory.Asked{With: factory.AskedYou, At: now}

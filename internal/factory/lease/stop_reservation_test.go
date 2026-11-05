@@ -59,7 +59,8 @@ func TestPullHonoursStopLandingAfterListing(t *testing.T) {
 }
 
 // A job held at its budget takes no lease, whichever of the Stop and the budget
-// came first, and a Stop stays what the job says: no cap question replaces it.
+// came first. A stopped job gets no cap question, and with a pending reply it
+// waits on a person and keeps the reply.
 func TestPullHoldsAJobAtItsBudgetInAnyOrderWithAStop(t *testing.T) {
 	for _, reply := range []bool{false, true} {
 		for _, stopFirst := range []bool{false, true} {
@@ -117,11 +118,11 @@ func TestPullHoldsAJobAtItsBudgetInAnyOrderWithAStop(t *testing.T) {
 				if !factory.StoppedByPerson(after) {
 					t.Fatal("the Stop was lost")
 				}
-				if stopFirst && (after.State != before.State || after.Question != before.Question) {
-					t.Fatalf("a stopped job was rewritten: state %q question %q", after.State, after.Question)
-				}
-				if !stopFirst && after.QKind == "cap" {
+				if after.QKind == "cap" || after.Question != before.Question {
 					t.Fatalf("a stopped job was asked to raise its budget: %q", after.Question)
+				}
+				if reply && (after.State != factory.StateNeedsYou || len(after.Thread) != 1 || after.Thread[0].State != "pending") {
+					t.Fatalf("a stopped job's wait or reply was lost: state %q thread %+v", after.State, after.Thread)
 				}
 			})
 		}
