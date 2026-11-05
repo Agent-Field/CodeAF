@@ -5005,7 +5005,9 @@ func (a *Agent) readsTheDecisionLocked(node *TaskNode) bool {
 // A surface reading both sees an in-turn update on both, exactly as a surface
 // holding two Submit channels sees each event on each (see [Agent.Submit]).
 func (a *Agent) emitTaskUpdate(notice TaskNotice) {
-	notice.Retryable = a.tasker().retrySupported(notice.ID)
+	if notice.Run == "" {
+		notice.Retryable = a.tasker().retrySupported(notice.ID)
+	}
 
 	// WHETHER THE PERSON HID IT is the graph's fact, said on the one door every
 	// move goes through, so no road that builds a notice by hand can un-hide a task

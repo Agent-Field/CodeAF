@@ -226,6 +226,21 @@ type Snapshot struct {
 	Planner string `json:"planner,omitempty"`
 }
 
+// EmptyPlanReason describes an ended run with no work or answer. It derives
+// the display from existing snapshot facts so saved snapshots keep their format.
+// Retry admission additionally checks that no worker was ever created.
+func (s Snapshot) EmptyPlanReason() string {
+	if !s.Done || s.Stopped || len(s.Nodes) != 0 || s.Answer != "" {
+		return ""
+	}
+	if len(s.Notes) > 0 {
+		if reason := strings.TrimSpace(s.Notes[len(s.Notes)-1]); reason != "" {
+			return reason
+		}
+	}
+	return "The crew didn't plan any work for this goal."
+}
+
 // View is what the planner sees on each call: the goal, condensed results,
 // the frontier as it stands, the fuel gauge, and any steering the person
 // typed since the last call. Digests only — the planner is the one
