@@ -89,6 +89,7 @@ const callDeadline = 10 * time.Second
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
 type Client struct {
+	clientTools clientToolLink
 	// host keeps the typed destination as the fallback until the window chooses
 	// its displayed name. Keeping the two apart preserves the connection route.
 	host string
@@ -736,6 +737,7 @@ func (c *Client) Close() error {
 	c.closing = true
 	conn := c.conn
 	c.mu.Unlock()
+	c.endClientToolCalls()
 	// A CLOSE ENDS THE ROAMING TOO, and it has to end it now rather than at the
 	// end of whatever backoff the redial loop is sitting in: the person quit,
 	// and a client that went on dialling a machine nobody is watching would be
@@ -870,6 +872,8 @@ func (c *Client) read() {
 			return
 		}
 		switch frame.Kind {
+		case clientToolCallKind, clientToolEndedKind:
+			c.clientToolFrame(frame)
 		case "observed", "observerClosed":
 			c.observerFrame(frame)
 		case "sideAskDelta":
@@ -1041,6 +1045,7 @@ func (c *Client) streamLocked(id uint64) *stream {
 // a channel left open would leave the surface spinning on a turn nobody is
 // running.
 func (c *Client) bury(cause error) {
+	c.endClientToolCalls()
 	c.closeObservers()
 	c.mu.Lock()
 	if c.dead != nil {

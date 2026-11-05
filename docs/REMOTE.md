@@ -76,6 +76,15 @@ Frame gzip is that shape: an old engine ignores the offer and answers plain JSON
 a new engine sends plain JSON unless the surface offered gzip. This does not
 negotiate protocol semantics down — a version mismatch is still refused.
 
+Client tools use the same version-22 rule: `Welcome.clientTools` advertises
+`ClientTools.Set` (one connection's whole snapshot) and `ClientTool.Answer`.
+Only a connection that attaches sets receives `clientToolCall` and
+`clientToolEnded` frames; neither frame requires a reply. Calls and answers stay
+with that connection, and leaving removes its sets and settles its waits.
+Watching connections cannot attach or answer tools. A roaming client resends
+its last acknowledged snapshot after redial; a holder without the flag receives
+none of these new calls.
+
 **Why the handshake happens before the TUI starts.** Everything that might ask
 the person a question happens on a plain terminal: ssh's passphrase prompt, its
 unknown-host-key question, and this refusal. A TUI that came up first would
