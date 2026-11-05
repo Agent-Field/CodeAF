@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Task prompts and manual describe folders without promising copies
-pr: 0
+pr: 2393
 surface: [chat, engine, docs]
 invalidates:
   - "Task prompts and the manual promised every task a project copy; tasks that would copy home instead read it in place and start with an empty folder of their own."
