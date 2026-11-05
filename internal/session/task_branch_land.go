@@ -758,31 +758,41 @@ func landTaskCopies(ctx context.Context, root, branch, branchHead string) (strin
 				bound = append(bound, path+"\x00missing")
 				continue
 			}
-			config, err := landConfig(ctx, path)
+			stamp, err := landTaskCopyStamp(ctx, path, branch, branchHead)
 			if err != nil {
 				return "", err
 			}
-			attributes := ""
-			if len(landFilterDrivers(config)) > 0 {
-				compared, err := landFilterPaths(ctx, path, branchHead, branchHead)
-				if err != nil {
-					return "", err
-				}
-				if attributes, err = landFilterAttributes(ctx, path, config, compared, ""); err != nil {
-					return "", err
-				}
-			}
-			paths, err := landStatus(ctx, path)
-			if err != nil {
-				return "", err
-			}
-			if len(paths) > 0 {
-				return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" has work that is not on the branch", paths...)
-			}
-			bound = append(bound, path+"\x00clean\x00"+config.digest+"\x00"+attributes)
+			bound = append(bound, stamp)
 		}
 	}
 	return strings.Join(bound, "\x01"), nil
+}
+
+// landTaskCopyStamp binds the copy's configuration and filter attributes only
+// after confirming it has no work beyond the branch being landed.
+func landTaskCopyStamp(ctx context.Context, path, branch, branchHead string) (string, error) {
+	config, err := landConfig(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	attributes := ""
+	if len(landFilterDrivers(config)) > 0 {
+		compared, err := landFilterPaths(ctx, path, branchHead, branchHead)
+		if err != nil {
+			return "", err
+		}
+		if attributes, err = landFilterAttributes(ctx, path, config, compared, ""); err != nil {
+			return "", err
+		}
+	}
+	paths, err := landStatus(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if len(paths) > 0 {
+		return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" has work that is not on the branch", paths...)
+	}
+	return path + "\x00clean\x00" + config.digest + "\x00" + attributes, nil
 }
 
 // landBranchChange reads what the branch changes from its base: a submodule
