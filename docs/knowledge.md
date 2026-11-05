@@ -69,9 +69,15 @@ the next finished owned turn. The process worker never takes over owned sources.
 A standalone owned conversation cancels and joins its compilation on Close.
 After a job is cancelled, closing its stage conversation joins that compiler too.
 Closing an active job's stage does not join or cancel the job-owned compiler.
-Session close also joins current and retired journal scanners, including their
-final local copy. These joins have no deadline for a database operation already
-in progress; a stalled filesystem can delay close.
+Session close cancels current and retired journal scanners and standalone or
+cancelled job compilers before joining them. `knowledgeCloseWait` sets one shared
+10-second deadline for all those writers, including the final local copy. A miss
+logs the writer kind, hashed journal/profile path identities, and elapsed wait,
+then close returns. Compiler lookup uses an atomic pointer so a scanner holding
+its cursor mutex during SQLite I/O cannot block cancellation or the deadline.
+A database operation already in progress may finish after close; capture and
+publication writes remain atomic SQLite transactions. The cap does not bound
+other close phases or an unavailable logging sink.
 
 One compilation can need several dependent requests: extraction and discovery
 already require two for a small new concept; guide writing and evidence review

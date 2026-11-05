@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,9 @@ import (
 
 // The test hook counts scans without changing the journal or the capture path.
 var knowledgeScanHook atomic.Pointer[func(string)]
+
+// knowledgeCloseWait caps all scanner and cancelled compiler joins together.
+const knowledgeCloseWait = 10 * time.Second
 
 // knowledgeSafetyTick bounds discovery of journal lines this process did not
 // write, such as a session host's or terminal's writes. With consentRecheck,
@@ -58,8 +62,10 @@ func (a *Agent) KnowledgeCaptureError() string {
 }
 
 type knowledgeJournal struct {
-	ctx       context.Context
-	compile   *jobKnowledgeCompile
+	ctx context.Context
+	// Compilation is published separately because scanning holds mu during SQLite I/O.
+	compile   atomic.Pointer[jobKnowledgeCompile]
+	path      string
 	vault     *knowledge.Vault
 	project   string
 	scope     string
@@ -102,7 +108,7 @@ func (a *Agent) startKnowledge() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	j := &knowledgeJournal{ctx: ctx, cancel: cancel, done: make(chan struct{}), vault: vault, project: a.config.Workspace}
+	j := &knowledgeJournal{path: path, ctx: ctx, cancel: cancel, done: make(chan struct{}), vault: vault, project: a.config.Workspace}
 	a.knowledgeMu.Lock()
 	a.knowledgeJournal = j
 	a.knowledgeMu.Unlock()
@@ -199,23 +205,42 @@ func (a *Agent) stopKnowledge() {
 		workers = append(workers, a.knowledgeJournal)
 	}
 	a.knowledgeMu.RUnlock()
+	started := time.Now()
+	limit := a.knowledgeCloseWait
+	if limit == 0 {
+		limit = knowledgeCloseWait
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), started.Add(limit))
+	defer cancel()
+	joinCompiler := a.config.JobContext == nil || a.config.JobContext.Err() != nil
+	// Cancel every writer before waiting for any one of them.
 	for _, j := range workers {
 		j.cancel()
-		if a.config.JobContext == nil {
-			a.cancelJobKnowledge()
+		if work := j.compile.Load(); work != nil && joinCompiler {
+			work.cancel()
+		}
+	}
+	wait := func(j *knowledgeJournal, kind string, done <-chan struct{}) {
+		// Prefer an already finished writer even after the shared deadline expired.
+		select {
+		case <-done:
+			return
+		default:
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			// Hash identities so a miss is traceable without exposing private paths.
+			journal := sha256.Sum256([]byte(j.path))
+			profile := sha256.Sum256([]byte(a.config.ProfileDir))
+			log.Printf("knowledge: close timeout: writer=%s journal=%x profile=%x waited=%s", kind, journal[:8], profile[:8], time.Since(started))
 		}
 	}
 	for _, j := range workers {
-		// Cancellation bounds further scanning, but a database operation already
-		// in progress must finish before the profile can be removed.
-		<-j.done
-		j.mu.Lock()
-		work := j.compile
-		j.mu.Unlock()
-		// An active job owns compilation across stage closes. Once cancelled,
-		// its remaining local writes must finish before close returns.
-		if work != nil && (a.config.JobContext == nil || a.config.JobContext.Err() != nil) {
-			<-work.done
+		wait(j, "scanner", j.done)
+		// Active jobs retain ownership across stage closes.
+		if work := j.compile.Load(); work != nil && joinCompiler {
+			wait(j, "compiler", work.done)
 		}
 	}
 }

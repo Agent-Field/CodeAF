@@ -1,8 +1,13 @@
 package session
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
+	"log"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -110,9 +115,7 @@ func checkJobKnowledgeClose(t *testing.T, stopped bool) {
 	if stopped {
 		cancelJob()
 	}
-	agent.knowledgeJournal.mu.Lock()
-	work := agent.knowledgeJournal.compile
-	agent.knowledgeJournal.mu.Unlock()
+	work := agent.knowledgeJournal.compile.Load()
 	closed := make(chan error, 1)
 	go func() { closed <- agent.Close() }()
 	var early bool
@@ -143,5 +146,86 @@ func checkJobKnowledgeClose(t *testing.T, stopped bool) {
 	}
 	if !early && !stopped {
 		t.Fatal("closing a stage waited for learning owned by its still-running job")
+	}
+}
+
+func TestCloseCapsKnowledgeWritersAndNamesMisses(t *testing.T) {
+	agent := consentChat(t, t.TempDir())
+	agent.stopKnowledge()
+	const cap = 80 * time.Millisecond
+	agent.knowledgeCloseWait = cap
+	scannerCtx, cancelScanner := context.WithCancel(context.Background())
+	compilerCtx, cancelCompiler := context.WithCancel(context.Background())
+	retiredCtx, cancelRetired := context.WithCancel(context.Background())
+	scannerDone, compilerDone, retiredDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(scannerDone); close(compilerDone); close(retiredDone) }) }
+	defer unblock()
+	agent.knowledgeJournal = &knowledgeJournal{path: agent.file.journalName(), ctx: scannerCtx, cancel: cancelScanner, done: scannerDone, vault: agent.Knowledge()}
+	retired := &knowledgeJournal{path: "retired.jsonl", ctx: retiredCtx, cancel: cancelRetired, done: retiredDone, vault: agent.Knowledge()}
+	retired.compile.Store(&jobKnowledgeCompile{cancel: cancelCompiler, done: compilerDone})
+	agent.knowledgeRetired = []*knowledgeJournal{retired}
+	// A scanner stalled in SQLite can hold its cursor lock beyond the deadline.
+	retired.mu.Lock()
+	unlock := sync.OnceFunc(retired.mu.Unlock)
+	defer unlock()
+	var logs bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&logs)
+	defer log.SetOutput(previous)
+	closed := make(chan error, 1)
+	started := time.Now()
+	go func() { closed <- agent.Close() }()
+	select {
+	case <-scannerCtx.Done():
+		if retiredCtx.Err() == nil || compilerCtx.Err() == nil {
+			t.Error("Close waited before cancelling the retired scanner and compiler")
+		}
+	case <-time.After(5 * cap):
+		t.Error("Close did not cancel scanners promptly")
+	}
+
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * cap):
+		unlock()
+		unblock()
+		<-closed
+		t.Fatal("Close exceeded its shared knowledge deadline")
+	}
+	elapsed := time.Since(started)
+	if elapsed < cap || elapsed > 3*cap {
+		t.Fatalf("Close waited %s; want one shared %s cap", elapsed, cap)
+	}
+	if scannerCtx.Err() == nil || retiredCtx.Err() == nil || compilerCtx.Err() == nil {
+		t.Fatal("Close did not cancel every scanner and retired compiler")
+	}
+	output := logs.String()
+	profile := sha256.Sum256([]byte(agent.config.ProfileDir))
+	for _, writer := range []struct{ kind, path string }{
+		{"scanner", agent.knowledgeJournal.path},
+		{"scanner", retired.path},
+		{"compiler", retired.path},
+	} {
+		journal := sha256.Sum256([]byte(writer.path))
+		prefix := fmt.Sprintf("knowledge: close timeout: writer=%s journal=%x profile=%x waited=", writer.kind, journal[:8], profile[:8])
+		if got := strings.Count(output, prefix); got != 1 {
+			t.Fatalf("named miss count = %d, want 1 for %s: %s", got, writer.kind, output)
+		}
+		duration := strings.Fields(strings.SplitN(output, prefix, 2)[1])[0]
+		waited, err := time.ParseDuration(duration)
+		if err != nil || waited < cap || waited > elapsed {
+			t.Fatalf("miss wait %q does not describe close's %s wait", duration, elapsed)
+		}
+	}
+	if strings.Contains(output, agent.config.ProfileDir) || strings.Contains(output, agent.knowledgeJournal.path) {
+		t.Fatal("timeout log exposed a private path")
+	}
+
+	if strings.Count(output, "journal=") != 3 || strings.Count(output, "profile=") != 3 || strings.Count(output, "waited=") != 3 {
+		t.Fatalf("misses lack identity or wait duration: %s", output)
 	}
 }

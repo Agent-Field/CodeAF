@@ -657,11 +657,14 @@ can continue arriving while that initial collection is built.
 
 ## Closing a chat waits for knowledge capture
 
-Closing a chat waits for its knowledge capture to finish its current database
-operation. Once a job stops, closing its chat also waits for its learning to
-finish. Learning owned by an active job keeps running across stage chat closes,
-under that job's existing budget and cancellation rules. A slow database or
-learning call can delay close. Saved journals remain available for later recovery.
+Closing a chat cancels its knowledge scanners and learning from stopped jobs
+before waiting up to 10 seconds total for them to finish. If a writer misses
+that deadline, close logs its kind (scanner or compiler), journal and profile
+identities, and elapsed wait, then returns. The identities are hashes of paths.
+A database write already in progress can finish later as a whole transaction.
+Saved journals remain available for later recovery. Learning owned by an active
+job keeps running across stage chat closes under that job's existing budget
+and cancellation rules.
 
 ## Knowledge build progress and concurrency
 
