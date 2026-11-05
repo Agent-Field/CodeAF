@@ -194,6 +194,7 @@ type oneEngineProcess struct {
 
 func startOneEngine(t *testing.T, root, mode string) *oneEngineProcess {
 	t.Helper()
+	cleanupAppChildDaemons(t, root)
 	p := &oneEngineProcess{lines: make(chan string, 4096), done: make(chan struct{})}
 	p.cmd = exec.Command(os.Args[0], "-test.run=^TestAppOneEngine$")
 	p.cmd.Env = append(os.Environ(), "CODEAF_TEST_ONE_ENGINE="+mode, home.EnvVar+"="+filepath.Join(root, "inherited"), "CODEAF_TEST_ONE_HOME="+root)
