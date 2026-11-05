@@ -128,3 +128,16 @@ func TestAppTaskRetrySupportIsAnExplicitProducerFact(t *testing.T) {
 		}
 	}
 }
+
+func TestAppEmptyCrewEndingKeepsFailureReasonAndRetry(t *testing.T) {
+	const reason = "The crew didn't plan any work for this goal."
+	notice := &session.TaskNotice{ID: 7, Run: "1", State: session.TaskFailed, Report: reason, Retryable: true}
+	task, ok := appTaskOf("a", notice, false, "", time.Now())
+	if !ok || task.State != appwire.TaskFailed || task.Result != reason || !task.Retryable {
+		t.Fatalf("live empty crew ending = %+v", task)
+	}
+	read := appTaskOfView("a", session.AppTaskView{ID: "7", State: "failed", Result: reason, Retryable: true})
+	if read.State != appwire.TaskFailed || read.Result != reason || !read.Retryable {
+		t.Fatalf("read empty crew ending = %+v", read)
+	}
+}

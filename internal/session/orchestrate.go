@@ -134,6 +134,10 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		a.mu.Unlock()
 		return "", errAgentClosed
 	}
+	if err := a.railBlockLocked(); err != nil {
+		a.mu.Unlock()
+		return "", err
+	}
 	// Admission belongs to the close boundary even before the family has a
 	// registry entry: constructing that family already writes its first row.
 	a.orchestrateWorkers.Add(1)
@@ -205,6 +209,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// says which model is doing the work, and the answer must not be able to move
 	// under a `/model` switch half way through the run.
 	family.worker = worker.model()
+	family.retryModel = named
 	// THE TANK ASKS A PUBLISHED TARIFF FIRST, and only falls back to the
 	// meter package's own table when nobody published one for the model — the
 	// same order of authority the reported cost on a call's usage already has
@@ -229,6 +234,13 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		// and with no tiers set it is not the model the person is talking to.
 		Planner: plannerModel,
 		OnNote: func(text string) {
+			family.mu.Lock()
+			hasWork := family.born > 0
+			family.mu.Unlock()
+			// An empty opening's reason is delivered once as a saved notice.
+			if !hasWork {
+				return
+			}
 			a.emitOrchestrate(Event{Kind: EventOrchestrateNote, ID: seq, Text: text})
 		},
 		OnFuel: func(fuel orchestrate.Fuel) {
@@ -571,6 +583,15 @@ func (a *Agent) landOrchestrate(run uint64, goal string, snap orchestrate.Snapsh
 		// somebody who has just stopped work wants to know and the two that were
 		// still moving at the moment they pressed the key (cancel.go).
 		line = stoppedRunNote(snap)
+	case snap.EmptyPlanReason() != "" && err != nil:
+		line = snap.EmptyPlanReason()
+		a.mu.Lock()
+		a.recordLocked(textMessage("assistant", line))
+		for _, watcher := range a.taskWatchers {
+			watcher.send(Event{Kind: EventNotice, Text: line})
+		}
+		a.mu.Unlock()
+		return
 	case err != nil:
 		line = fmt.Sprintf("the adaptive run for %q ended early: %v", clip(goal, 80), err)
 	case snap.Answer != "":
@@ -1473,6 +1494,8 @@ func (c Config) WorktreePath(jobID string) string {
 // on every launch, landing, note and steer, and a roster redrawing twelve rows
 // for a note is a roster nobody can read.
 type orchestrateFamily struct {
+	retryModel string
+
 	// gate orders pause notifications and their accepted answers.
 	gate  sync.Mutex
 	agent *Agent
@@ -1608,10 +1631,10 @@ type orchestrateFamily struct {
 // [TaskGraph.document] and [Agent.replayTaskRoster] free to walk those rows under
 // the graph's own lock and closes no cycle.
 func (f *orchestrateFamily) publish(notice TaskNotice) {
-	notice.Retryable = false // Adaptive run rows have no retry road.
 	if f == nil || f.agent == nil {
 		return
 	}
+	notice.Retryable = notice.Retryable && notice.ID == f.root
 	f.say.Lock()
 	defer f.say.Unlock()
 	f.mu.Lock()
@@ -2145,6 +2168,7 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 	letGo := f.letGo
 	f.letGo = nil
 	title := f.title
+	empty := f.born == 0 && snap.EmptyPlanReason() != "" && err != nil
 	f.mu.Unlock()
 	if letGo != nil {
 		// AND SO DOES THE QUESTION. A run that ended at its gate leaves nobody
@@ -2154,8 +2178,9 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 	}
 	notice := TaskNotice{
 		ID: f.root, Run: f.run, Title: title, State: TaskDone, Model: f.model,
-		Report:  strings.TrimSpace(snap.Answer),
-		CostUSD: snap.Fuel.Spent,
+		Retryable: empty,
+		Report:    strings.TrimSpace(snap.Answer),
+		CostUSD:   snap.Fuel.Spent,
 	}
 	switch {
 	case snap.Stopped:
@@ -2247,4 +2272,33 @@ func orchestrateNodeReport(node orchestrate.NodeStatus) string {
 		return firstLine(node.Err)
 	}
 	return ""
+}
+
+// retryEmptyOrchestrate admits a new run only when this family never created
+// a worker. Rows restored without a live run have no restart instructions.
+func (a *Agent) retryEmptyOrchestrate(root uint64) (bool, error) {
+	a.mu.Lock()
+	var live *orchestration
+	for _, candidate := range a.orchestrations {
+		if candidate.family != nil && candidate.family.root == root {
+			live = candidate
+			break
+		}
+	}
+	a.mu.Unlock()
+	if live == nil {
+		return false, nil
+	}
+	f := live.family
+	f.mu.Lock()
+	row := f.rows[root]
+	eligible := f.settled && f.born == 0 && row.Retryable && row.State == TaskFailed && !row.Stopped
+	model := f.retryModel
+	f.mu.Unlock()
+	if !eligible {
+		return true, errors.New("only an empty opening plan can be retried as a fresh run")
+	}
+	snap := live.run.Snapshot()
+	_, err := a.RunOrchestrate(context.Background(), snap.Goal, model, snap.Fuel.Cap)
+	return true, err
 }

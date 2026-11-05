@@ -46,8 +46,7 @@ type e2App struct {
 	log    string
 }
 
-// e2TempDir retains native evidence and avoids deleting state still held by
-// the shared daemon, which outlives the app processes until its idle shutdown.
+// e2TempDir optionally retains native evidence for inspecting failed app tests.
 func e2TempDir(t *testing.T) string {
 	t.Helper()
 	if os.Getenv("CODEAF_E2_KEEP_FAILED") != "1" {
@@ -78,6 +77,7 @@ func e2StartApp(t *testing.T, dir string, daemon ...bool) *e2App {
 
 func e2StartAppWithSetup(t *testing.T, dir string, setup func(*e2App), daemon ...bool) *e2App {
 	t.Helper()
+	cleanupAppChildDaemons(t, dir)
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

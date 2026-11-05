@@ -3,10 +3,13 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -272,6 +275,201 @@ func TestARunPlansExecutesAndSynthesizes(t *testing.T) {
 	}
 	if _, err := agent.ResolveOrchestrate(id, "topup:1"); err == nil {
 		t.Fatalf("a finished run is not at the gate")
+	}
+}
+
+func TestEmptyCrewPlanReportsWhyAndOffersRecovery(t *testing.T) {
+	for _, reason := range []string{"", "The goal needs a repository path."} {
+		t.Run(reason, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			completer := replier(func(messages []ai.Message) string {
+				if isPlannerCall(messages) {
+					reply, err := json.Marshal(orchestrate.Amendment{Note: reason})
+					if err != nil {
+						t.Error(err)
+					}
+					return string(reply)
+				}
+				return "repository audit"
+			})
+			path := filepath.Join(t.TempDir(), "session.jsonl")
+			agent, _ := newTestAgent(t, completer, func(config *Config) {
+				config.AskConsent = true
+				config.SessionFile = path
+			})
+			runNotes, stopRunNotes := agent.WatchOrchestrations()
+			defer stopRunNotes()
+			lane, stopNotes := agent.WatchTaskUpdates()
+			defer stopNotes()
+			updates, stopUpdates := agent.WatchTaskUpdates()
+			defer stopUpdates()
+			id, err := agent.RunOrchestrate(context.Background(), "audit the repository", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap := waitForRun(t, agent, id)
+			if len(snap.Nodes) != 0 {
+				t.Fatalf("fake planner unexpectedly created workers: %+v", snap.Nodes)
+			}
+			if err := agent.Close(); err != nil {
+				t.Fatal(err)
+			}
+			want := reason
+			if want == "" {
+				want = "The crew didn't plan any work for this goal."
+			}
+			if !snap.Done || snap.Stopped || snap.Answer != "" {
+				t.Errorf("empty plan ending = %+v", snap)
+			}
+			// The ending is an ordinary saved assistant notice, like a budget stop.
+			var endings []string
+		readNotes:
+			for {
+				select {
+				case event := <-lane:
+					if event.Kind == EventNotice {
+						endings = append(endings, event.Text)
+					}
+				case <-time.After(250 * time.Millisecond):
+					break readNotes
+				}
+			}
+			if len(endings) != 1 || endings[0] != want {
+				t.Errorf("want one exact ending notice %q, got %q", want, endings)
+			}
+			var saved []string
+			for _, entry := range agent.Transcript() {
+				if entry.Role == "assistant" {
+					saved = append(saved, entry.Text)
+				}
+			}
+			if len(saved) != 1 || saved[0] != want {
+				t.Errorf("want one saved assistant line %q, got %q", want, saved)
+			}
+			var reopened []string
+			for _, entry := range ReadTranscript(path).Entries {
+				if entry.Role == "assistant" {
+					reopened = append(reopened, entry.Text)
+				}
+			}
+			if len(reopened) != 1 || reopened[0] != want {
+				t.Errorf("saved journal lost ending: %q", reopened)
+			}
+		readRunNotes:
+			for {
+				select {
+				case event := <-runNotes:
+					if event.Kind == EventOrchestrateNote {
+						t.Errorf("duplicate chat line on orchestration lane: %q", event.Text)
+					}
+				case <-time.After(250 * time.Millisecond):
+					break readRunNotes
+				}
+			}
+
+			var root TaskNotice
+			for _, notice := range familyNotices(t, updates) {
+				if notice.Run == id && notice.Parent == 0 {
+					root = notice
+				}
+			}
+			if root.State != TaskFailed || !root.Retryable || root.Stopped || root.Report != want {
+				t.Errorf("empty crew must offer non-success recovery: state=%s retryable=%t", root.State, root.Retryable)
+			}
+		})
+	}
+}
+
+func TestEmptyCrewRetryStartsFreshAndChecksAdmission(t *testing.T) {
+	for _, via := range []string{"task", "app"} {
+		t.Run(via, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			var calls atomic.Int32
+			completer := replier(func(messages []ai.Message) string {
+				if !isPlannerCall(messages) {
+					return "audit"
+				}
+				if calls.Add(1) == 1 {
+					return `{"note":"Need the repository path."}`
+				}
+				asked := lastUserText(messages)
+				if strings.Contains(asked, "Need the repository path.") {
+					t.Errorf("retry reused earlier plan output: %s", asked)
+				}
+				if strings.Contains(asked, "nothing yet") {
+					return `{"add":[{"id":"fresh","goal":"read the repository"}]}`
+				}
+				return `{"done":{"brief":"report the new audit"}}`
+			})
+			agent, _ := newTestAgent(t, completer, func(c *Config) { c.SpendRailUSD = 5 })
+			defer agent.Close()
+			id, err := agent.RunOrchestrate(context.Background(), "audit the repository", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitForRun(t, agent, id)
+			var row TaskNotice
+			waitFor(t, "empty-plan root", func() bool {
+				for _, r := range agent.appRunRows() {
+					if r.Run == id && r.Parent == 0 {
+						row = r
+					}
+				}
+				return row.State == TaskFailed
+			})
+			view, found, err := agent.AppTask(strconv.FormatUint(row.ID, 10))
+			if err != nil || !found || !view.Retryable || view.State != "failed" || view.Result != "Need the repository path." {
+				t.Fatalf("app ending = %+v, %v", view, err)
+			}
+			retry := func() error {
+				if via == "app" {
+					return agent.AppTaskAction(AppTaskIntent{ID: view.ID, Action: "retry"})
+				}
+				return agent.RetryTask(row.ID)
+			}
+			spend(agent, 5)
+			if err := retry(); !errors.Is(err, ErrSpendRail) {
+				t.Fatalf("over-budget retry = %v", err)
+			}
+			if _, err := agent.RunOrchestrate(context.Background(), "edited goal", "", 5); !errors.Is(err, ErrSpendRail) {
+				t.Fatalf("normal admission bypassed budget: %v", err)
+			}
+			if calls.Load() != 1 {
+				t.Fatal("refused retry called planner")
+			}
+			spend(agent, 0)
+			if err := retry(); err != nil {
+				t.Fatal(err)
+			}
+			fresh := waitForRun(t, agent, "2")
+			if fresh.Goal != "audit the repository" || fresh.Answer != "audit" || len(fresh.Nodes) != 1 || fresh.Nodes[0].ID != "fresh" || len(fresh.Notes) != 0 {
+				t.Fatalf("retry reused old state: %+v", fresh)
+			}
+			var completed TaskNotice
+			waitFor(t, "fresh run landing", func() bool {
+				for _, r := range agent.appRunRows() {
+					if r.Run == "2" && r.Parent == 0 {
+						completed = r
+					}
+				}
+				return completed.State == TaskDone
+			})
+			before := calls.Load()
+			if completed.Retryable || agent.RetryTask(completed.ID) == nil || calls.Load() != before {
+				t.Fatal("non-empty ending supported an empty-plan retry")
+			}
+			old, _ := agent.OrchestrateSnapshot(id)
+			if len(old.Notes) != 1 || old.Notes[0] != "Need the repository path." {
+				t.Fatalf("retry mutated old run: %+v", old)
+			}
+			edited, err := agent.RunOrchestrate(context.Background(), "audit /tmp/example", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := waitForRun(t, agent, edited).Goal; got != "audit /tmp/example" {
+				t.Fatal(got)
+			}
+		})
 	}
 }
 
