@@ -271,6 +271,15 @@ func TestCoversSegmentGlobs(t *testing.T) {
 		{"/tmp/*", "/tmp/x", false},
 		{"docs/[", "docs/x", false},
 		{"docs/**", "docs/x", false},
+		// Like the shell, a wildcard never matches a leading dot: .git hooks run code.
+		{"*", ".git/hooks/x", false},
+		{"*", ".env", false},
+		{"*", "src/.env", true},
+		{"src/*", "src/.env", false},
+		{"?env", ".env", false},
+		{"[.]env", ".env", false},
+		{".env*", ".env.local", true},
+		{".git", ".git/hooks/x", true},
 	} {
 		if got := Covers([]string{tc.scope}, tc.target); got != tc.want {
 			t.Errorf("Covers(%q, %q)=%v, want %v", tc.scope, tc.target, got, tc.want)

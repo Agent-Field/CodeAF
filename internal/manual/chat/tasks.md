@@ -167,7 +167,8 @@ ticks a box. The items belong to the worker; the words belong to you.
 ## Why it said waits for task 5 — two quick tasks that would write the same file
 
 File claims accept workspace-relative files, directories and segment globs
-(`*`, `?`, `[...]`), for example `crew-0-*.md`. Wildcards never cross `/`; a matched
+(`*`, `?`, `[...]`), for example `crew-0-*.md`. Wildcards never cross `/` and never match a leading `.` (`*` skips `.git` and
+`.env`; `.env*` names them); a matched
 directory covers its subtree. `**`, `..` segments, absolute glob patterns and
 malformed patterns return a tool refusal so the model can correct the claim.
 Exact absolute paths inside the workspace still normalize to relative paths.

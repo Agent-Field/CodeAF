@@ -553,7 +553,9 @@ Each node is a child agent working in your workspace, and two bounds are put on 
 
 Write scopes name workspace-relative files, directories or globs like
 `crew-0-*.md`. `*`, `?` and `[...]` match within one path segment, never across
-`/`. Matched directories cover their subtrees. `**`, `..` segments, absolute
+`/`. As in the shell, a wildcard never matches a name starting with `.`, so `*`
+never reaches `.git` or `.env`; write `.env*` to mean them. Matched directories
+cover their subtrees. `**`, `..` segments, absolute
 scopes and malformed patterns are refused before work starts; the planner
 receives the reason and can correct it.
 Writes through symlinks that leave the workspace are refused too.

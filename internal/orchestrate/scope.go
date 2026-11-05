@@ -67,7 +67,14 @@ func pathCovers(pattern, target string) bool {
 	return true
 }
 
+// scopeSegmentMatches follows the shell: a wildcard or class never matches a
+// leading dot, so only a pattern segment that itself starts with "." reaches
+// .git, .env or .codeaf. Git hooks run code, and a scope that reads as narrow
+// must not reach them.
 func scopeSegmentMatches(pattern, target string) bool {
+	if strings.HasPrefix(target, ".") && !strings.HasPrefix(pattern, ".") {
+		return false
+	}
 	matched, err := path.Match(pattern, target)
 	return err == nil && matched
 }

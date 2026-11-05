@@ -8,7 +8,8 @@ invalidates:
 ---
 
 Crew and adaptive workers can write under segment globs such as `crew-0-*.md`.
-`*`, `?` and `[...]` match within one segment; matched directories cover their
+`*`, `?` and `[...]` match within one segment and,
+as in the shell, never match a leading dot, so `*` never reaches `.git` or `.env`; matched directories cover their
 subtrees. Planning refuses traversal, absolute patterns, malformed patterns and
 unsupported `**`, with a repairable reason. The write guard refuses symlink
 escapes, including dangling links. Worker guards, amendment collision and retry
