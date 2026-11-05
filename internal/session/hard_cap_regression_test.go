@@ -114,7 +114,7 @@ func TestIdleWatcherDoesNotPollBudgetAndUnregisters(t *testing.T) {
 	if stopped || b.reads.Load() != before {
 		t.Errorf("idle watcher stopped=%v budget reads=%d", stopped, b.reads.Load()-before)
 	}
-	_, retire := a.withBudgetProgress(context.Background())
+	_, retire := a.withBudgetProgress(context.Background(), "")
 	retire()
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
@@ -501,7 +501,7 @@ func TestModelGatePricesResolvedModel(t *testing.T) {
 	})
 	RecordUsage(a.config.usageLedger, UsageLine{Model: "earlier", Calls: 1, USD: .25})
 	FlushUsage()
-	ctx, retire := a.withBudgetProgress(context.Background())
+	ctx, retire := a.withBudgetProgress(context.Background(), "")
 	defer retire()
 	gate := a.config.routeGate("vendor/free", "free")
 	for _, tc := range []struct {

@@ -280,6 +280,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	}
 	a.orchestrations[id] = live
 	a.mu.Unlock()
+	a.wakeBudgetForWork()
 
 	// AND THE RUN IS NAMED, if its goal is a sentence rather than a name
 	// (taskname.go). It is asked for HERE, at the door, and not inside the

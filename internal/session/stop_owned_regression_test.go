@@ -297,6 +297,10 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
 	entered, finish := make(chan struct{}), make(chan struct{})
 	model := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
 		close(entered)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}, func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		close(entered)
 		select {
 		case <-finish:
 			provider.Emit(ctx, provider.StreamDelta, "resumed")
@@ -306,6 +310,10 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
 		}
 	}}}
 	a, _ := newTestAgent(t, model, func(c *Config) { c.JobBudget = budget })
+	// The watcher never samples an idle agent; start owned work before arming
+	// the delayed read, so admission itself cannot consume the sample.
+	initial := mustSubmit(t, a, "Start the work whose budget will be sampled")
+	<-entered
 	armed.Store(true)
 	select {
 	case <-sampled:
@@ -316,6 +324,8 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, "person Stop settles", func() bool { a.mu.Lock(); defer a.mu.Unlock(); return !a.workStopping })
+	collect(t, initial)
+	entered = make(chan struct{})
 	events := mustSubmit(t, a, "Start fresh work after raising the budget")
 	<-entered
 	unblock()

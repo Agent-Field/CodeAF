@@ -2776,6 +2776,7 @@ type Agent struct {
 	rewindUndo *rewindUndo
 	debugRun   string
 
+	budgetWatchOnce   sync.Once
 	budgetWorkStarted chan struct{}
 
 	// toolsInFlight and toolsStarted count this agent's tool calls

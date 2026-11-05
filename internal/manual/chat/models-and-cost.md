@@ -4402,9 +4402,11 @@ check, and completed spending resets at the local date boundary. When a recorded
 charge reaches the daily limit, new calls are refused. Calls waiting for their
 first reply token are cancelled; calls already replying finish and record their
 full usage. Reasoning and tool-call fragments count as reply tokens. Remaining
-owned work stops after those replies settle. Starting a tool or rerunning a command also checks
-recorded spending, so a charge recorded while the conversation was idle still
-stops a rerun without waiting for another charge.
+owned work stops after those replies settle. While capped work is moving,
+recorded charges are checked at 100 ms intervals. Idle conversations do no
+background budget checking. Starting a model call, tool, background command,
+task, crew or program run checks again, so a charge recorded while idle still
+stops new work without waiting for another charge.
 The chat and work report the limit; raise it with `/budget day 30`, then submit
 again. Only recorded spending closes the cap; usage on an open stream and
 pending receipts do not count until recorded. A stream can continue spending

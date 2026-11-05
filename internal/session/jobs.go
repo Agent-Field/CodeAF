@@ -584,6 +584,9 @@ func (j *job) signal(sig syscall.Signal) {
 // for a turn: a job started in one turn is still running, and still listable,
 // three turns later, and Close is what ends it.
 type jobRegistry struct {
+	// workStarted wakes the owner after a job becomes visible to StopWork.
+	workStarted func()
+
 	// renderMu makes "count the running renders, then add one" one step, so two
 	// renders starting together cannot both pass the cap.
 	renderMu sync.Mutex
@@ -948,6 +951,9 @@ func (r *jobRegistry) join(started *job) error {
 	}
 	r.jobs = append(r.jobs, started)
 	r.mu.Unlock()
+	if r.workStarted != nil {
+		r.workStarted()
+	}
 	return nil
 }
 

@@ -1685,6 +1685,7 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 	a.beltMu.Lock()
 	a.beltRun = run
 	a.beltMu.Unlock()
+	a.wakeBudgetForWork()
 	a.publishJoinedRunRows(g, run)
 	// Setup admitted before a stop inherits its closed admission gate.
 	a.mu.Lock()

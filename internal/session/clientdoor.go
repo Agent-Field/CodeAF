@@ -840,11 +840,12 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		ctx = provider.WithServedModel(ctx, a.servedModel)
 		defer func() { a.endModelRequest(actual) }()
 	}
-	ctx, releaseProgress := a.withBudgetProgress(ctx)
+	ctx, releaseProgress := a.withBudgetProgress(ctx, called)
 	defer releaseProgress()
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), materializeImageRefs(messages), append(options, ai.WithModel(wire))...)
-	if response == nil && ctx.Err() != nil {
-		if why := a.dailyBudgetBlock(); IsDailyLimit(why) {
+	if response == nil {
+		// A call the daily stop cancelled carries the limit as its cause.
+		if why := context.Cause(ctx); IsDailyLimit(why) {
 			err = why
 		}
 	}

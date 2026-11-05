@@ -14,20 +14,27 @@ var budgetProgress = struct {
 }{calls: make(map[*budgetCall]struct{})}
 
 type budgetCall struct {
-	owner    *Agent
-	cancel   context.CancelFunc
-	replying bool
-	done     chan struct{}
+	owner       *Agent
+	dailyExempt bool
+	jobBudgeted bool
+	epoch       uint64
+	limit       error
+	cancel      context.CancelCauseFunc
+	replying    bool
+	done        chan struct{}
 }
 
 type budgetAdmissionKey struct{}
 
-func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()) {
-	ctx, cancel := context.WithCancel(ctx)
-	call := &budgetCall{owner: a, cancel: cancel, done: make(chan struct{})}
+func (a *Agent) withBudgetProgress(ctx context.Context, model string) (context.Context, func()) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	call := &budgetCall{owner: a, dailyExempt: a.dailyModelExempt(model), jobBudgeted: a.jobBudgetOf() != nil, cancel: cancel, done: make(chan struct{})}
 	a.mu.Lock()
-	if a.workStopped || a.closed {
-		cancel()
+	call.epoch = a.workEpoch
+	if a.closed {
+		cancel(stopFor(StopByClosing))
+	} else if a.workStopped {
+		cancel(stopFor(StopByWorkStopped))
 	}
 	budgetProgress.Lock()
 	budgetProgress.calls[call] = struct{}{}
@@ -39,12 +46,20 @@ func (a *Agent) withBudgetProgress(ctx context.Context) (context.Context, func()
 		budgetProgress.Unlock()
 	})
 	ctx = context.WithValue(ctx, budgetAdmissionKey{}, a.admitModelCall)
+	a.wakeBudgetForWork()
 	return ctx, func() {
-		cancel()
+		// This retires only the completed call context, not its owning turn.
+		cancel(context.Canceled)
 		budgetProgress.Lock()
 		delete(budgetProgress.calls, call)
 		close(call.done)
+		limit := call.limit
 		budgetProgress.Unlock()
+		// The shared drain observed this owner while its call was live. Its
+		// own watcher may next see an idle agent, so retain that stop here.
+		if limit != nil {
+			_ = a.stopWorkEpoch(call.epoch, limit)
+		}
 	}
 }
 
@@ -52,7 +67,7 @@ func (a *Agent) hasBudgetCall() bool {
 	budgetProgress.Lock()
 	defer budgetProgress.Unlock()
 	for call := range budgetProgress.calls {
-		if call.owner == a && call.cancel != nil {
+		if call.owner == a && call.cancel != nil && (!call.dailyExempt || call.jobBudgeted) {
 			return true
 		}
 	}
@@ -64,7 +79,7 @@ func (a *Agent) cancelBudgetCalls() {
 	defer budgetProgress.Unlock()
 	for call := range budgetProgress.calls {
 		if call.owner == a && call.cancel != nil {
-			call.cancel()
+			call.cancel(stopFor(StopByWorkStopped))
 		}
 	}
 }
@@ -82,17 +97,24 @@ func dailyReplyDrain() []<-chan struct{} {
 	budgetProgress.Unlock()
 	var done []<-chan struct{}
 	for _, call := range calls {
+		if call.dailyExempt {
+			continue
+		}
 		// Read authority outside the progress lock: the provider's first-token
 		// callback must never wait for ledger or profile I/O.
-		if !IsDailyLimit(call.owner.dailyBudgetBlock()) {
+		limit := call.owner.dailyBudgetBlock()
+		if !IsDailyLimit(limit) {
 			continue
 		}
 		budgetProgress.Lock()
 		if _, live := budgetProgress.calls[call]; live {
+			call.limit = limit
 			if call.replying {
 				done = append(done, call.done)
 			} else {
-				call.cancel()
+				// The cause names the limit, so the caller reports it without
+				// reading the ledger again.
+				call.cancel(limit)
 			}
 		}
 		budgetProgress.Unlock()

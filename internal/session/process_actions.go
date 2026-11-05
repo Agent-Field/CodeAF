@@ -291,7 +291,6 @@ func (a *Agent) rerunUnder(ctx context.Context, h processHold) (JobNotice, error
 	if err != nil {
 		return JobNotice{}, err
 	}
-	a.wakeBudgetForWork()
 	return noticeOf(started.info()), nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -31,7 +32,16 @@ func (a *Agent) jobBudgetBlock() error {
 	return nil
 }
 
-// wakeBudgetForWork rechecks recorded spending after an idle ledger wake.
+// budgetWatchActive is whether the watcher must poll: work that can spend is
+// moving and a job or daily cap could stop it. Without a cap it never polls.
+func (a *Agent) budgetWatchActive() bool {
+	if a.toolsInFlight.Load() == 0 && !a.hasBudgetCall() && !a.ownedWorkIsMoving() {
+		return false
+	}
+	return a.jobBudgetOf() != nil || a.dailyCeilingUSD() > 0
+}
+
+// wakeBudgetForWork rechecks recorded spending when an owned producer starts.
 func (a *Agent) wakeBudgetForWork() {
 	select {
 	case a.budgetWorkStarted <- struct{}{}:
@@ -39,37 +49,57 @@ func (a *Agent) wakeBudgetForWork() {
 	}
 }
 
+// budgetPollEvery bounds ledger detection while capped work is moving.
+const budgetPollEvery = 100 * time.Millisecond
+
 // Idle managers can still own detached commands or delegated work. Keep watching
 // until the agent closes, not just until its foreground turn ends. No model call
 // is involved. StopWork closes admission before cancelling the complete family.
 func (a *Agent) watchJobBudget() {
-	changed := make(chan struct{}, 1)
-	a.budgetWorkStarted = make(chan struct{}, 1)
-	unwatch := OnUsageWritten(func() {
-		select {
-		case changed <- struct{}{}:
-		default:
-		}
-	})
+	a.budgetWatchOnce.Do(a.startBudgetWatch)
+}
+
+func (a *Agent) startBudgetWatch() {
+	// THE LEDGER'S WRITER ONLY BUMPS A COUNTER; THIS GOROUTINE POLLS IT. The
+	// writer is process-wide, so a channel send from it would cross into
+	// whatever scheduler owns this agent (a synctest bubble in tests). The
+	// cost is one poll interval of latency between a write and the stop.
+	var writes atomic.Uint64
+	unwatch := OnUsageWritten(func() { writes.Add(1) })
 	closed := a.ClosedSignal()
 	go func() {
 		defer unwatch()
-		var ticks <-chan time.Time
-		if a.jobBudgetOf() != nil {
-			ticker := time.NewTicker(100 * time.Millisecond)
-			defer ticker.Stop()
-			ticks = ticker.C
-		}
+		// AN IDLE AGENT HOLDS NO TIMER. The poll runs only while this agent has
+		// paid or owned work moving under a cap that could stop it; every start
+		// of such work wakes it ([Agent.wakeBudgetForWork]).
+		var ticker *time.Ticker
+		defer func() {
+			if ticker != nil {
+				ticker.Stop()
+			}
+		}()
+		seen := writes.Load()
 		for {
+			var ticks <-chan time.Time
+			if a.budgetWatchActive() {
+				if ticker == nil {
+					ticker = time.NewTicker(budgetPollEvery)
+				}
+				ticks = ticker.C
+			} else if ticker != nil {
+				ticker.Stop()
+				ticker = nil
+			}
 			ledgerChanged := false
 			select {
 			case <-closed:
 				return
-			case <-changed:
-				ledgerChanged = true
 			case <-a.budgetWorkStarted:
 				ledgerChanged = true
 			case <-ticks:
+			}
+			if n := writes.Load(); n != seen {
+				seen, ledgerChanged = n, true
 			}
 			a.mu.Lock()
 			stopped, epoch := a.workStopped, a.workEpoch
@@ -99,8 +129,8 @@ func (a *Agent) watchJobBudget() {
 	}()
 }
 
-// Daily checks run on recorded spending and at admission, never on the job
-// watcher's clock. Each agent reads its captured ledger and selected authority.
+// Daily checks read settled ledger changes and new-work admission, not interim
+// stream usage. Each agent reads its captured ledger and selected authority.
 func (a *Agent) dailyBudgetBlock() error {
 	if a.config.SpendPreauthorized {
 		return nil
@@ -132,19 +162,24 @@ func (a *Agent) admitModelCall(ctx context.Context, model string) error {
 	if err := factoryCallRefusal(ctx); err != nil {
 		return err
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if model != "" && a.config.ModelPrice != nil {
-		input, output, known := a.config.ModelPrice(model)
-		if known && input <= 0 && output <= 0 {
-			return a.jobBudgetBlock()
-		}
+	// The transport owns context cancellation. Budget admission must preserve
+	// uncapped auxiliary calls' existing cancellation and cleanup path.
+	if a.dailyModelExempt(model) {
+		return a.jobBudgetBlock()
 	}
 	if err := a.dailyBudgetBlock(); err != nil {
 		return err
 	}
 	return a.jobBudgetBlock()
+}
+
+// Known-free calls keep their daily exemption through admission and draining.
+func (a *Agent) dailyModelExempt(model string) bool {
+	if model == "" || a.config.ModelPrice == nil {
+		return false
+	}
+	input, output, known := a.config.ModelPrice(model)
+	return known && input <= 0 && output <= 0
 }
 
 // A job Stop cancels this manager's owned producers without closing the

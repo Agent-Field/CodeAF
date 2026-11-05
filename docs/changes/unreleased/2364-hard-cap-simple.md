@@ -4,6 +4,7 @@ title: Let replying calls finish at the daily spending cap
 pr: 2364
 surface: [chat, engine, app, factory, docs]
 invalidates:
+  - "The job-budget watcher previously kept its 100 ms clock running while idle. It now polls recorded daily and job spending only while capped work is moving, and every owned-work start wakes it."
   - "A recorded daily crossing could be discarded between a completed call and its tool starting, leaving the tool running until another ledger write. Tool starts and command reruns now wake a fresh recorded-spend check."
   - "Daily-cap crossings previously cut replies mid-stream. Calls already returning text, reasoning or tool fragments now finish and record their full usage."
   - "The e2e checker classified plain tool-result display rows as unanswered calls. It now checks actual tool-call entries and still rejects genuine missing results."
@@ -16,9 +17,18 @@ so inherited contexts cannot cut a child's reply. Remaining owned work stops
 through the epoch-checked StopWork route. A raise permits a fresh submission
 once old work joins. Job caps and a person's Stop retain immediate cancellation.
 
-Ledger writes, tool starts and command reruns wake daily checks. The 100 ms
-job-budget clock does not read the daily ledger. Idle conversations remain idle;
-children follow their owner's selected daily authority, and known-free auxiliary
+The process-wide ledger writer only increments an atomic counter, so it cannot
+send into a synctest-owned channel. The watcher samples that counter every
+100 ms only while capped model calls, tools or owned work are moving. Model,
+tool, background-job, task-node, orchestration, harness and task-belt starts
+wake the watcher. Repeated watcher setup is idempotent. Idle conversations hold
+no polling timer; uncapped conversations never poll. A shared daily drain keeps
+each observed owner's epoch-bound stop even when its last reply finishes before
+its own watcher samples again.
+
+Budget admission leaves context cancellation to the transport, retaining
+uncapped helpers' cancellation and cleanup path. Children follow their owner's
+selected daily authority, and known-free auxiliary
 calls retain their admission exemption. Only recorded spending counts toward the
 cap. Interim stream usage and pending receipts do not close admission.
 
