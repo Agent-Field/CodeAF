@@ -238,18 +238,6 @@ yet. Keys or preferences saved in that gap are discarded as part of the confirme
 clean slate. Anything saved after the new pairing takes effect is kept. Saved
 keys remain readable after recovery.
 
-## First share fails with durable object pack is missing
-
-Sharing saves a capture before sending the chat. Saves and sharing captures wait
-for other operations on the same local chat store, including requests from another
-codeaf process. This keeps a first share from reading a half-finished first save.
-Canceling a request still lets an accepted save finish before another reader enters.
-
-If capture planning still reports `durable object pack is missing`, codeaf keeps
-bounded local diagnostic metadata and tries once more with a fresh plan. A second
-failure keeps the original error and names the evidence bundle when it was saved.
-The chat stays on this computer for the existing sharing retry.
-
 ## Pairing progress could not finish — saved chats and retry messages
 
 A chat with nothing saved yet waits for its first save, without a failure notice
