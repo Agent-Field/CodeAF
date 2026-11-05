@@ -229,7 +229,10 @@ func TestPolicyStop(t *testing.T) {
 	if !f.item(t, child.ID).StopAfterStep {
 		t.Fatal("running job has no step stop")
 	}
-	if err := f.h.workers.desk.Apply(held.ID, worker.ID, false, false, func(*factory.Item) error { return nil }); !errors.Is(err, lease.ErrWithdrawn) {
+	if err := f.h.workers.desk.Apply(held.ID, worker.ID, false, false, func(it *factory.Item) error {
+		it.Stream.Phases[0].State = factory.PhaseRunning
+		return nil
+	}); !errors.Is(err, lease.ErrWithdrawn) {
 		t.Fatal(err)
 	}
 	putPolicy(t, f, false, policyAllowance(f, child.ID))
@@ -247,7 +250,7 @@ func TestPolicyStop(t *testing.T) {
 	}
 }
 
-// P7: a stopped group's paid step keeps its lease until its saved boundary.
+// P7: a stopped group's paid step finishes before the next admission is held.
 func TestPolicyStopFinishesTheStep(t *testing.T) {
 	f := waitsSetup(t)
 	parent, child := policyPair(t, f)
@@ -274,8 +277,15 @@ func TestPolicyStopFinishesTheStep(t *testing.T) {
 		it.Stream.Spent = 2
 		it.Stream.Phases[0].State = factory.PhaseDone
 		return nil
+	}); err != nil {
+		t.Fatalf("completion = %v", err)
+	}
+	if err := f.h.workers.desk.Apply(held.ID, w.ID, false, false, func(it *factory.Item) error {
+		it.Stream.Phases[0].State = factory.PhaseRunning
+		it.Stream.Phases[0].Round++
+		return nil
 	}); !errors.Is(err, lease.ErrWithdrawn) {
-		t.Fatalf("next boundary = %v", err)
+		t.Fatalf("next admission = %v", err)
 	}
 	if it := f.item(t, child.ID); it.State != factory.StateNeedsYou || it.Blocked == nil || it.Blocked.Reason != "its group is stopped" || factory.JobLifetimeSpent(it) != 2 {
 		t.Fatal(it)
