@@ -96,6 +96,10 @@ const (
 	StagePost  StageKind = "post"  // a source write, consent-gated
 )
 
+// CanWrite reports whether a stage can change files or write to the source.
+// Only approval gates cannot write; empty and unknown kinds fail closed.
+func (s Stage) CanWrite() bool { return s.Kind != StageGate }
+
 // Stage is one sentence the factory runs at its place in the recipe. The
 // fields after Ask are the whole of what is structured about it. When is how
 // a recipe adapts without anyone touching it: a stage with a condition is

@@ -23,7 +23,7 @@ func TestAppFactoryApprovalSurvivesLaterGatesAndRestart(t *testing.T) {
 	if _, err := worker.Attach(ctx, api.WorkerAttach{Machine: "approval-fixture", Name: "fixture", Handle: "owner", Slots: 1}); err != nil {
 		t.Fatal(err)
 	}
-	it, err := s.backend.local.host.floor.Create(factory.Item{
+	it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner,
 		Repo: "acme/api", Num: 54, Kind: factory.KindIssue, Title: "Keep my plan approval", State: factory.StateQueued,
 		Autonomy: factory.AutonomyManual, Starter: "owner", Cap: 10,
 		Stages: []factory.Stage{

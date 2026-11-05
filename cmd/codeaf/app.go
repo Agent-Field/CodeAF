@@ -323,6 +323,9 @@ type appConn struct {
 	// Assembled says this process built the conversation itself, so the shared
 	// engine half must be closed when the app leaves.
 	Assembled bool
+	// OlderModels says a host from before the main/fallback pair holds this
+	// conversation, so its models cannot be set from here.
+	OlderModels bool
 	// Lent says this is a factory stage the factory owns, lent as a view
 	// (app_lend.go): its model, posture and budget are not the app's to set.
 	Lent bool
@@ -347,6 +350,11 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
 		if err == nil {
 			err = enableAppConversationModels(conn.Conv)
+			// AN OLDER HOST LOSES THE PAIR, NOT THE CONVERSATION: it stays
+			// open and readable, and the person is told ([appBackend.openingNotices]).
+			if appOlderHost(err) {
+				conn.OlderModels, err = true, nil
+			}
 		}
 		return conn, err
 	}
@@ -554,15 +562,17 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
-	clientTools  appClientTools
-	pluginPauses map[string]appPluginPause
-	pluginOllama appPluginOllama
-	pluginAuth   map[string]*appPluginAttempt
-	chats        appChats
-	pair         appPair
-	drives       *driveBook
-	sync         appSync
-	syncPending  map[string][]appSyncFact
+	clientTools    appClientTools
+	libraryWatch   sync.Once
+	libraryInboxMu sync.Mutex
+	pluginPauses   map[string]appPluginPause
+	pluginOllama   appPluginOllama
+	pluginAuth     map[string]*appPluginAttempt
+	chats          appChats
+	pair           appPair
+	drives         *driveBook
+	sync           appSync
+	syncPending    map[string][]appSyncFact
 
 	// devices observes existing sync traffic without starting a roster watch.
 	devices            *appDevices
@@ -828,6 +838,9 @@ type appAgent struct {
 	// ([appBackend.FactoryJobChats]).
 	jobEffort func() string
 	opening   bool
+	// openDone closes after initialization, including live publication and watchers.
+	// Waiters can abandon an open without leaving a goroutine on the gate.
+	openDone chan struct{}
 	// starting says agents.create took a first message whose turn has not
 	// started yet: the conversation is still being opened (bootAgent). While
 	// it lasts the agent reads starting, and nothing waits on the gate the
@@ -1536,6 +1549,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			a.dials = &appDials{effort: ask.Effort, posture: ask.ApprovalPosture}
 		}
 		a.opening, a.minted = true, true
+		a.openDone = make(chan struct{})
 		a.users, a.counted = 0, true
 		view = a.view
 	})
@@ -1565,7 +1579,7 @@ func (b *appBackend) bootOpen(a *appAgent, first appFirst) bool {
 	defer a.gate.Unlock()
 	view, opened, err := b.ensureLocked(a)
 	stopped := false
-	b.locked(func() { a.opening, stopped = false, a.stopAsked })
+	b.locked(func() { stopped = a.stopAsked })
 	if err != nil {
 		b.bootFailed(a, first, err)
 		return false
@@ -1781,6 +1795,15 @@ func (b *appBackend) ensure(a *appAgent) (appwire.Agent, bool, error) {
 
 // ensureLocked is [appBackend.ensure] for a caller already holding a.gate.
 func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
+	// Opening includes initialization after b.open returns. Readers must not
+	// queue on the gate in the gap before the live owner is ready.
+	defer b.locked(func() {
+		a.opening = false
+		if a.openDone != nil {
+			close(a.openDone)
+			a.openDone = nil
+		}
+	})
 	var moved bool
 	b.locked(func() { moved = a.windowMoved })
 	if moved {
@@ -1838,10 +1861,13 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	// OPENING IS SAID WHILE IT LASTS, so a caller that only reads or stops
 	// (agents.open, agents.stop, processes.list) does not queue on the gate
 	// behind it ([appBackend.findCrewOwner]).
-	wasOpening := false
-	b.locked(func() { wasOpening, a.opening = a.opening, true })
+	b.locked(func() {
+		a.opening = true
+		if a.openDone == nil {
+			a.openDone = make(chan struct{})
+		}
+	})
 	conn, err := b.open(ask)
-	b.locked(func() { a.opening = wasOpening })
 	if err != nil {
 		var wire *appwire.Error
 		if errors.As(err, &wire) && wire.Code == appwire.CodeUnreachable {

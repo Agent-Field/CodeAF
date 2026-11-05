@@ -483,11 +483,14 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		failUpdates.Store(true)
 		defer failUpdates.Store(false)
 		before := calls.Load()
-		ctx, cancel := context.WithTimeout(context.Background(), 6500*time.Millisecond)
+		// Three-attempt rule: an unchanged failed input makes exactly three attempts,
+		// ordinaryBuildAttemptLimit in internal/knowledge/build.go. Failures wait 5, 10
+		// and 20 seconds, so a fourth attempt would come at about 35 seconds.
+		ctx, cancel := context.WithTimeout(context.Background(), 38*time.Second)
 		defer cancel()
 		_ = v.Run(ctx, history, func() string { return "fixture" })
-		if got := calls.Load() - before; got != 1 {
-			t.Errorf("unchanged failed input spent %d model calls, want 1", got)
+		if got := calls.Load() - before; got != 3 {
+			t.Errorf("unchanged failed input spent %d model calls, want exactly 3 and no further retries", got)
 		}
 	})
 	t.Run("unchanged refinement", func(t *testing.T) {

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -53,6 +54,9 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	started := time.Now()
 
 	root := resolvedTempDir(t)
+	callPath := filepath.Join(t.TempDir(), "logs", "calls.jsonl")
+	t.Setenv(calllog.EnvVar, callPath)
+	t.Setenv(calllog.BodiesEnvVar, "")
 	appHome := filepath.Join(root, "state")
 	userHome := filepath.Join(root, "home")
 	ambient := v3Profile(t, map[string]any{
@@ -241,6 +245,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	}
 	ledger := func() (float64, int) {
 		t.Helper()
+		awaitLiveMoneyReceipts(t, callPath)
 		if !session.FlushUsage() {
 			t.Fatal("usage ledger did not flush")
 		}
@@ -285,8 +290,7 @@ func TestLiveQuestionPendingStopIsStop(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// Finish accounting before Stop so this run needs no in-flight exception.
-	time.Sleep(2 * time.Second)
+	// Join receipts before Stop so this run needs no in-flight exception.
 	beforeUSD, beforeCalls := ledger()
 	recorder.mu.Lock()
 	if math.Abs(beforeUSD-recorder.cost) > 0.000001 || beforeCalls != recorder.calls {

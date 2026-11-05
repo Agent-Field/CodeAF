@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -126,8 +127,7 @@ func TestOlderChatsAreCountedByWhyTheyAreNotShared(t *testing.T) {
 // the sync status counts the one a rule keeps here.
 func TestTheAppEngineCopiesAndSharesOlderChats(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
-	root := t.TempDir()
+	root := cellstoretest.EngineDir(t)
 	t.Setenv("CODEAF_HOME", root)
 	if _, err := identity.Ensure(root); err != nil {
 		t.Fatal(err)
@@ -167,8 +167,7 @@ func TestTheAppEngineCopiesAndSharesOlderChats(t *testing.T) {
 // knows which chats failed, and the app once counted them as waiting.
 func TestTheAppEngineLeavesAHomeAnotherProcessShares(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
-	root := t.TempDir()
+	root := cellstoretest.EngineDir(t)
 	t.Setenv("CODEAF_HOME", root)
 	if _, err := identity.Ensure(root); err != nil {
 		t.Fatal(err)
@@ -216,7 +215,6 @@ func TestTheAppEngineLeavesAHomeAnotherProcessShares(t *testing.T) {
 // backlog before it got the keys.
 func TestKeysAreSharedBeforeTheChatBacklog(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
 	var hold atomic.Bool
 	release := make(chan struct{})
 	relay := e2Relay(t, func(next http.Handler) http.Handler {
@@ -231,7 +229,7 @@ func TestKeysAreSharedBeforeTheChatBacklog(t *testing.T) {
 			next.ServeHTTP(w, r)
 		})
 	})
-	rig := &pairRig{url: relay.URL, homeA: t.TempDir(), homeB: t.TempDir()}
+	rig := &pairRig{url: relay.URL, homeA: cellstoretest.EngineDir(t), homeB: t.TempDir()}
 	if _, err := identity.Ensure(rig.homeA); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +265,6 @@ func TestKeysAreSharedBeforeTheChatBacklog(t *testing.T) {
 // that then succeeded left it up, because the chat line had not changed.
 func TestTheKeysLineGoesWhenTheKeysAreShared(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
 	var vaultDown atomic.Bool
 	var refused atomic.Value
 	refused.Store("")
@@ -284,14 +281,14 @@ func TestTheKeysLineGoesWhenTheKeysAreShared(t *testing.T) {
 			next.ServeHTTP(w, r)
 		})
 	})
-	rig := &pairRig{url: relay.URL, homeA: t.TempDir(), homeB: t.TempDir()}
+	rig := &pairRig{url: relay.URL, homeA: cellstoretest.EngineDir(t), homeB: t.TempDir()}
 	if _, err := identity.Ensure(rig.homeA); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEAF_HOME", rig.homeB)
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	keptKey(t, rig.homeB)
 	r1PairHomes(t, rig)
+	keptKey(t, rig.homeB)
 	refused.Store(r1SavedChat(t, rig.homeB, "a chat the relay refuses").ID)
 	vaultDown.Store(true)
 	b := &appBackend{left: make(chan struct{}), emit: newAppRecorder()}
@@ -321,7 +318,6 @@ func TestTheKeysLineGoesWhenTheKeysAreShared(t *testing.T) {
 // was missing until the first pass ended.
 func TestBetweenChatsTheKeysAndTheCountMoveOn(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
 	var clock atomic.Int64
 	at := time.Now()
 	now := func() time.Time { return at.Add(time.Duration(clock.Load())) }
@@ -352,14 +348,14 @@ func TestBetweenChatsTheKeysAndTheCountMoveOn(t *testing.T) {
 			next.ServeHTTP(w, r)
 		})
 	})
-	rig := &pairRig{url: relay.URL, homeA: t.TempDir(), homeB: t.TempDir()}
+	rig := &pairRig{url: relay.URL, homeA: cellstoretest.EngineDir(t), homeB: t.TempDir()}
 	if _, err := identity.Ensure(rig.homeA); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEAF_HOME", rig.homeB)
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	keptKey(t, rig.homeB)
 	r1PairHomes(t, rig)
+	keptKey(t, rig.homeB)
 	id, err := identity.Load(rig.homeB)
 	if err != nil {
 		t.Fatal(err)

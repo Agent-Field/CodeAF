@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -139,7 +140,7 @@ func TestAppChatsExistingBeforePairL1(t *testing.T) {
 		})
 	})
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	dirA, dirB := t.TempDir(), t.TempDir()
+	dirA, dirB := cellstoretest.EngineDir(t), t.TempDir()
 	if _, err := identity.Ensure(dirA); err != nil {
 		t.Fatal(err)
 	}

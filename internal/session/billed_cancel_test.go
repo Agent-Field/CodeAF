@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -57,23 +56,44 @@ func TestCancelledHelperRetryBooksEachAttemptOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	agent.addAuxiliaryUsageAs(response, "cancel/model", 1, "caption")
-	FlushUsage()
-	rows, err := ReadUsage(ledger, time.Time{})
-	if err != nil {
-		t.Fatal(err)
+	// Cancellation returns before the stream arm necessarily banks its receipt.
+	// Use the provider's receipt bound plus the same unwind margin as settleSpend.
+	deadline := time.NewTimer(provider.ReceiptWait + time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	var rows []UsageLine
+	for {
+		if !FlushUsage() {
+			t.Fatal("usage ledger did not flush")
+		}
+		rows, err = ReadUsage(ledger, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		used := agent.Usage()
+		if len(rows) >= 2 && used.Calls >= 2 && used.CostUSD >= 0.14 {
+			break
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("receipt wait expired: rows=%+v usage=%+v", rows, used)
+		case <-tick.C:
+		}
 	}
 	if len(rows) != 2 || agent.Usage().Calls != 2 || agent.Usage().CostUSD != 0.14 {
 		t.Fatalf("retry bookings: rows=%+v usage=%+v", rows, agent.Usage())
 	}
+	seen := make(map[string]int)
 	for i, row := range rows {
-		data, _ := json.Marshal(row)
-		var fields map[string]any
-		json.Unmarshal(data, &fields)
-		if fields["generation_id"] != fmt.Sprintf("helper-%d", i+1) {
-			t.Errorf("helper receipt id: %s", data)
-		}
+		seen[row.GenerationID]++
 		if row.USD != 0.07 || row.Calls != 1 || row.Role != "caption" {
 			t.Errorf("row %d=%+v", i, row)
+		}
+	}
+	for _, id := range []string{"helper-1", "helper-2"} {
+		if seen[id] != 1 {
+			t.Errorf("helper receipt %s booked %d times, want once", id, seen[id])
 		}
 	}
 }

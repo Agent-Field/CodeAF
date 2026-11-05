@@ -186,7 +186,7 @@ func TestVerbsOnAJobNobodyHolds(t *testing.T) {
 	if err := doors.Hold(it.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.desk.Apply(held.ID, "w1", true, func(*factory.Item) error { return nil }); err != nil {
+	if err := f.desk.Apply(held.ID, "w1", true, false, func(*factory.Item) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err := doors.Steer(it.ID, "faster"); err == nil {
@@ -233,7 +233,7 @@ func TestApprovingQueuesAPublishWithTheTrailer(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.state(t, it.ID, factory.StateLanded)
-	if err := f.desk.Apply(held.ID, "w1", true, func(x *factory.Item) error { return nil }); err != nil {
+	if err := f.desk.Apply(held.ID, "w1", true, false, func(x *factory.Item) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	f.state(t, it.ID, factory.StateQueued)

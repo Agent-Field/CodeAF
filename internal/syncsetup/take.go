@@ -221,9 +221,6 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
 	lease := view.Cell.Lease
-	if seen != nil && !seen.Matches(view.Cell) {
-		return Continued{}, directory.ErrLeaseHeld
-	}
 	// Kept turns may name this device before their separate copy exists here.
 	known, err := cellstore.KnowsHead(cell.Cell{ID: id, Root: root}, view.Cell.Head)
 	if err != nil {
@@ -243,6 +240,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{AlreadyHere: true, Device: c.opt.DeviceName, Taken: handoff.Taken{
 			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames, Size: view.Cell.Size},
 		}}, nil
+	}
+	if seen != nil && !seen.Matches(view.Cell) {
+		return Continued{}, directory.ErrLeaseHeld
 	}
 	if seen == nil {
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
@@ -805,8 +805,10 @@ func (s *Sync) profile() string {
 	return s.Home
 }
 
-// teamsSharing reads this computer's local opt-in for team sharing.
-func (s *Sync) teamsSharing() bool { return config.TeamsShareAt(s.profile()) }
+// teamsSharing leaves every carrier quiet when this computer has not paired.
+func (s *Sync) teamsSharing() bool {
+	return config.TeamsSharingAt(s.profile(), func() bool { return MayTalk(s.Home) })
+}
 
 // carried is the profile state that travels in the vault beside the secrets.
 func (s *Sync) carried() []vaultsync.Carrier {

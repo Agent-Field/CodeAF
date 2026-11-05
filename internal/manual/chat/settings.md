@@ -82,10 +82,14 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
-**Settings → General → share teams** is off until turned on. Both paired computers
-must turn it on to share teams, their members and settings, and recent Traffic as
-read-only history. The choice stays on each computer. Turning it off stops sharing
-and keeps teams already received.
+**Settings → General → share teams** is on by default for paired computers. It
+shares teams, their members and settings, and recent Traffic as read-only history.
+The choice stays on each computer. Turning it off on either computer stops sharing
+between them: that computer stops sending and receiving teams and Traffic. What
+was already exchanged stays, including encrypted copies in the vault. Received
+history is hidden while sharing is off and is kept for when it is turned back
+on. Unpaired computers are unaffected. A missing or empty choice reads on; a
+damaged configuration or invalid value reads off, as shown in Settings.
 
 ## AI teams settings versus an individual AI team
 
@@ -192,10 +196,26 @@ There is no practice limit any more: codeaf no longer practises on its own, and
 Settings → Models has a **knowledge** model choice (`knowledge.model`).
 It controls the OpenRouter model used to extract, organize and review project
 knowledge, separately from your conversation and task models. The default is
-`deepseek/deepseek-v4.1-flash`. Clearing the choice restores that default.
+`deepseek/deepseek-v4.1-flash-1017`. Clearing the choice restores that default.
 
 A saved change applies to the next compilation without restarting your chats.
 A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
 setting. Turn automatic learning on with the shared Memory setting.
+
+## Unreadable profile settings and saved spending limits
+
+If an existing `config.json` cannot be read, changing a setting refuses with
+`write config: preserve existing file:` followed by the read error. The file is
+left unchanged. Daily spending-limit reads return the read error instead of
+substituting the default limit. Restore read access to resume these operations.
+A missing file still uses new-profile defaults.
+
+Preference and saved-provider-key sharing also refuses unreadable profile data.
+An unreadable profile does not by itself block interactive startup: tool approvals
+fall back to prompting, with saved profile exceptions withheld. Headless approval
+resolution also falls back to prompting. A missing profile keeps its usual defaults;
+malformed JSON still reports an error. Spending-limit reads and settings writes
+continue to refuse unreadable files unless an explicit daily-limit override supplies
+the spending authority.

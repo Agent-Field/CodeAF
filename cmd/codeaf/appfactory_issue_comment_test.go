@@ -53,7 +53,7 @@ func (g *issueCommentGitHub) sent() int { g.mu.Lock(); defer g.mu.Unlock(); retu
 
 // issueJob is a running job from issue acme/api#12 whose comments were read.
 func issueJob() factory.Item {
-	return factory.Item{Product: "acme", Repo: "api", Num: 12, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "retry the sync",
+	return factory.Item{Tier: factory.TierOwner, Product: "acme", Repo: "api", Num: 12, Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "retry the sync",
 		State: factory.StateRunning, Assignee: "alice", Comments: []factory.Comment{}, CommentsSeen: []string{},
 		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", Kind: factory.StageChat, State: factory.PhaseRunning}}}}
 }

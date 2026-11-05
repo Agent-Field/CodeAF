@@ -521,6 +521,7 @@ func forkGround(ctx context.Context, order groundOrder) (taskTree, error) {
 	}
 	if err != nil {
 		_ = os.RemoveAll(order.dir)
+		removeForkStaging(order.dir)
 		return taskTree{}, err
 	}
 	if order.promise == TaskModeWorktree {

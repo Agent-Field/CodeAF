@@ -17,7 +17,7 @@ func TestFactoryOwnershipSurvivesRestartAndDropKeepsOrdinaryChats(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	job := factory.Item{ID: 41, Num: 59, Repo: "acme/api"}
+	job := factory.Item{Tier: factory.TierOwner, ID: 41, Num: 59, Repo: "acme/api"}
 	orphan, ordinary, other, legacy := conversation("old-round"), conversation("ordinary"), conversation("other-job"), conversation("legacy-round")
 	if err := markFactoryChat(floor, job, orphan); err != nil {
 		t.Fatal(err)

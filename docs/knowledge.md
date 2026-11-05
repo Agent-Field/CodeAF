@@ -66,7 +66,18 @@ lifetime on termination. Owner admission is checked before requests and retries;
 Pause and Stop cancel the active call, and no new call starts for a paused or
 ended job. Quit drops compilation, retaining source journals and checkpoints for
 the next finished owned turn. The process worker never takes over owned sources.
-A standalone owned conversation cancels its compilation on Close.
+A standalone owned conversation cancels and joins its compilation on Close.
+After a job is cancelled, closing its stage conversation joins that compiler too.
+Closing an active job's stage does not join or cancel the job-owned compiler.
+Session close cancels current and retired journal scanners and standalone or
+cancelled job compilers before joining them. `knowledgeCloseWait` sets one shared
+10-second deadline for all those writers, including the final local copy. A miss
+logs the writer kind, hashed journal/profile path identities, and elapsed wait,
+then close returns. Compiler lookup uses an atomic pointer so a scanner holding
+its cursor mutex during SQLite I/O cannot block cancellation or the deadline.
+A database operation already in progress may finish after close; capture and
+publication writes remain atomic SQLite transactions. The cap does not bound
+other close phases or an unavailable logging sink.
 
 One compilation can need several dependent requests: extraction and discovery
 already require two for a small new concept; guide writing and evidence review
@@ -75,9 +86,14 @@ ceiling are preserved. The process worker does not launch another refinement
 pass merely because the previous pass left editorial work pending. New source
 input or an explicit build can advance that work. The projection records the
 Build request it consumed, so a forced flush alone cannot buy another refinement
-pass on unchanged sources. Failed input is attempted once;
-new sources or an explicit Build permit another attempt. Historical unrecorded costs
-are not backfilled.
+pass on unchanged sources. Ordinary failed input permits three compilation
+attempts in total, including the first. The worker persists each attempt before
+compilation, so restarts retain the limit. Its input identity includes the latest
+ordinary source rowid, source count, latest arrival, Build request and projection
+version. Changed input or an explicit Build starts a new count; a successful
+compilation clears it. Each attempt can make several paid requests. Owned job
+compilation retains its separate retry and accounting rules. Historical
+unrecorded costs are not backfilled.
 
 A successful stage result is retained even when deferred memory spending reaches
 its cap. The runner records the finished phase before checking admission for the

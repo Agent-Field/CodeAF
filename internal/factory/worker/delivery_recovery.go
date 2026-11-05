@@ -130,7 +130,7 @@ func (o Options) recoverRetained(ctx context.Context, w *client.WorkerClient) {
 
 // A blocked live worker never resumes its runner. It first reconciles saved
 // results and releases the old lease; subsequent work needs a fresh pull.
-func (j *job) recoverBlocked(ctx context.Context, manual bool) bool {
+func (j *job) recoverBlocked(ctx context.Context, manual bool, delivery ...string) bool {
 	if j.pending == nil {
 		return false
 	}
@@ -144,13 +144,18 @@ func (j *job) recoverBlocked(ctx context.Context, manual bool) bool {
 		return false
 	}
 	if manual {
+		if len(delivery) > 0 {
+			j.ackSignal(delivery[0])
+		}
 		j.pending.RecoveryAttempts = 0
 		j.pending.RecoveryNextAt = time.Time{}
 	}
 	_, ok := j.o.recoverOne(ctx, j.w, j.id, j.deliveryPath(), j.pending, j.now())
 	if ok {
 		j.pending = nil
+		j.mu.Lock()
 		j.blocked = ""
+		j.mu.Unlock()
 		return true
 	}
 	return false

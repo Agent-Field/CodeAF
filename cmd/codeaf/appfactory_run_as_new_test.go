@@ -51,7 +51,7 @@ func TestAppFactoryRunAsNew(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			source := factory.Item{Repo: "acme/api", Num: 42, Kind: factory.KindIssue, Origin: factory.OriginForge,
+			source := factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 42, Kind: factory.KindIssue, Origin: factory.OriginForge,
 				Title: "Fix auto-save $5", Body: "  security, two review rounds\nKeep  these words.\n", URL: "https://github.com/acme/api/issues/42",
 				Ask:  &factory.JobAsk{Text: "  cheaper; ship it; plan first\n", Source: factory.AskApp},
 				Talk: "old-conversation", Head: "old-branch",

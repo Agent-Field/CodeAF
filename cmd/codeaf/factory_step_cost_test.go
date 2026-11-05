@@ -23,7 +23,7 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 	}))
 	defer server.Close()
 	st, _ := chatSpendFloor(t)
-	it, err := st.Create(factory.Item{Repo: "acme/api", Num: 7, State: factory.StateRunning, Talk: filepath.Join(t.TempDir(), "manager.jsonl"), Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, Round: 1}}}})
+	it, err := st.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, State: factory.StateRunning, Talk: filepath.Join(t.TempDir(), "manager.jsonl"), Stages: []factory.Stage{{Name: "proof", Kind: factory.StageChat, On: true}}, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, Round: 1}}}})
 	if err != nil {
 		t.Fatal(err)
 	}

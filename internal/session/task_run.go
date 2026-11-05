@@ -65,10 +65,11 @@ package session
 // ── WHY A NODE NEVER ASKS ──
 //
 // There is nobody to ask. Its approval posture is composed from the same
-// [approval.Policy] the conversation uses — allow everything, with the critical
+// approval machinery the conversation uses — allow everything, with the critical
 // table (rm -rf /, mkfs, a redirect onto a raw disk, shutdown) still a floor
-// under it — and where a conversation would raise a question, the node reads a
-// refusal it can act on. That is exactly consent.go's law for a headless run,
+// under it and any profile read failure carried forward. Where a conversation
+// would raise a question, the node reads a refusal it can act on.
+// That is exactly consent.go's law for a headless run,
 // said in the node's own words.
 
 import (
@@ -7898,6 +7899,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// turns an allow into a "prompt" for the handful of shapes that destroy
 		// a disk or drop the machine, and a prompt in a node is a refusal it can
 		// read (consent.go, InTask) — never a question and never a hang.
+		// An unreadable profile also requires a person because saved denials are unknown.
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
@@ -8674,9 +8676,7 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 		return taskTree{}, err
 	}
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
-	if WorkspaceOwnershipEnabled(place) && stand.mode == TaskModeFolder {
-		stand.mode = ownershipPlainMode(ground)
-	}
+	stand.mode = preparedTaskMode(place, ground, stand.mode)
 	if ground == "" {
 		// A PART REACHES THIS ROAD AND ITS FREEZE HAS TO TRAVEL WITH IT. A part
 		// admitted by `divide_work` carries no ground of its own (task_divide.go

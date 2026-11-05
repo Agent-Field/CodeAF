@@ -62,6 +62,12 @@ func (a *Agent) SetApprovalPolicy(policy *approval.Policy) {
 // [Agent.SetApprovalPolicy] existed, a single unguarded read became a race the
 // detector finds in a second and a person would never reproduce.
 func (a *Agent) approvalGate() *approval.Policy {
+	if a.approvalReadParent != nil {
+		if parent := a.approvalReadParent.approvalGate(); parent != nil && parent.ProfileReadError != "" {
+			return &approval.Policy{ProfileReadError: parent.ProfileReadError}
+		}
+	}
+
 	if source, ok := a.jobBudgetOf().(interface{ FactoryAuto() bool }); ok && source.FactoryAuto() {
 		return automaticJobPolicy(a.baseApprovalGate())
 	}

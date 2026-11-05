@@ -54,7 +54,7 @@ func TestTheManagersEditOfARunningJobIsNotLostToItsWorker(t *testing.T) {
 	}
 	// The worker reports a reshaped pipeline from the copy it runs.
 	report := factory.RunReport{Pipeline: &factory.PipelineChange{Stages: mirror.Stages, Phases: mirror.Stream.Phases}}
-	_ = desk.Apply(held.ID, "w1", false, func(it *factory.Item) error { return factoryrun.ApplyReport(it, report, time.Now()) })
+	_ = desk.Apply(held.ID, "w1", false, false, func(it *factory.Item) error { return factoryrun.ApplyReport(it, report, time.Now()) })
 
 	saved, err := st.Get(id)
 	if err != nil {

@@ -311,7 +311,8 @@ func classify(err error) (int, string) {
 	var stepRefusal run.StepControlRefusal
 	var editRefusal factory.EditRefusal
 	var planRefusal run.PlanRevisionRefusal
-	if errors.As(err, &stepRefusal) || errors.As(err, &editRefusal) || errors.As(err, &planRefusal) {
+	var writeRefusal run.WriteAccessRefusal
+	if errors.As(err, &stepRefusal) || errors.As(err, &editRefusal) || errors.As(err, &planRefusal) || errors.As(err, &writeRefusal) {
 		return http.StatusConflict, "conflict"
 	}
 	var stale *store.StaleError

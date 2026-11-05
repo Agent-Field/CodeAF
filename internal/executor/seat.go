@@ -66,6 +66,22 @@ func Settle(ctx context.Context, s Seat) {
 	}
 }
 
+type stepKey struct{}
+
+// Stepping reports whether this settle ends a tool batch whose result lines
+// are written, rather than a turn or a boundary that must force a save.
+func Stepping(ctx context.Context) bool {
+	stepping, _ := ctx.Value(stepKey{}).(bool)
+	return stepping
+}
+
+// SettleStep lets a recording seat choose its saving cadence after a tool
+// batch. The marker follows the existing Settle path through seat wrappers;
+// ordinary Settle callers still force their boundary.
+func SettleStep(ctx context.Context, s Seat) {
+	Settle(context.WithValue(ctx, stepKey{}, true), s)
+}
+
 // Drainer waits for any pipelined captures before the session gives up its files.
 type Drainer interface{ Drain(context.Context) error }
 

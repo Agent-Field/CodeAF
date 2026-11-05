@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -33,6 +34,9 @@ func TestLiveFactoryJobUsageByModel(t *testing.T) {
 		t.Fatal("BLOCKED: no OpenRouter key by any road the product reads; not faking a pass")
 	}
 	root := resolvedTempDir(t)
+	callPath := filepath.Join(t.TempDir(), "logs", "calls.jsonl")
+	t.Setenv(calllog.EnvVar, callPath)
+	t.Setenv(calllog.BodiesEnvVar, "")
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv(home.EnvVar, filepath.Join(root, "state"))
 	t.Setenv(config.ProfileDirEnv, "")
@@ -109,6 +113,7 @@ func TestLiveFactoryJobUsageByModel(t *testing.T) {
 	if it.State != factory.StateLanded {
 		t.Fatalf("job is %s (failure %+v, question %q)", it.State, it.Failure, it.Question)
 	}
+	awaitLiveMoneyReceipts(t, callPath)
 	session.FlushUsage()
 	today := time.Now().Format(time.DateOnly)
 	var usage appwire.FactoryUsage

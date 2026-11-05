@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -86,7 +86,7 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &hostedMoveRig{t: t, c: c, work: cfg.Place.Workspace, bRoots: t.TempDir(), changes: make(chan struct{}, 1)}
+	h := &hostedMoveRig{t: t, c: c, work: cfg.Place.Workspace, bRoots: cellstoretest.EngineDir(t), changes: make(chan struct{}, 1)}
 	service := relayserveForMove(t)
 	for _, decorate := range wrap {
 		service = decorate(service)
@@ -120,7 +120,6 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 	}
 	h.ea, h.eb = cellstore.EngineFor(h.work), cellstore.EngineFor("")
 	h.ea.DataRoot, h.eb.DataRoot = t.TempDir(), t.TempDir()
-	t.Cleanup(cellstore.StopSpawned)
 	if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Workspace: h.work, Title: "take-back chat"}); err != nil {
 		t.Fatal(err)
 	}
@@ -343,18 +342,8 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.wait("hosted take-back arrival", func() bool { return strings.Contains(screen.String(), "Moved from other computer") })
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if len(h.acquires) == 0 {
-		t.Fatal("take-back made no acquire")
-	}
-	// The reopened writer resumes the hold the take acquired (F1, #2009): it
-	// renews that fence rather than acquiring another.
-	resumed := slices.IndexFunc(h.resumes, func(at time.Time) bool { return !at.Before(h.acquires[0]) })
-	if resumed < 0 {
-		t.Fatal("the reopened hosted writer never resumed the taken hold")
-	}
-	t.Logf("relay resume after first acquire: %s", h.resumes[resumed].Sub(h.acquires[0]))
-	if gap := h.resumes[resumed].Sub(h.acquires[0]); gap >= 5*time.Second {
-		t.Errorf("resume gap=%s", gap)
+	if len(h.acquires) < 2 {
+		t.Fatalf("take and reopened writer made %d acquires; want both", len(h.acquires))
 	}
 	t.Logf("relay first acquire after key: %s", h.acquires[0].Sub(started))
 	if elapsed := h.acquires[0].Sub(started); elapsed > time.Second {

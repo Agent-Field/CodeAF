@@ -14,9 +14,8 @@ import (
 
 func sh(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -27,10 +26,6 @@ func sh(t *testing.T, dir string, args ...string) string {
 // repoWithCommit is a temp repository on main with one commit.
 func repoWithCommit(t *testing.T) string {
 	t.Helper()
-	t.Setenv("GIT_AUTHOR_NAME", "t")
-	t.Setenv("GIT_AUTHOR_EMAIL", "t@example.com")
-	t.Setenv("GIT_COMMITTER_NAME", "t")
-	t.Setenv("GIT_COMMITTER_EMAIL", "t@example.com")
 	dir := t.TempDir()
 	sh(t, dir, "init", "-q", "-b", "main")
 	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("hi\n"), 0o644); err != nil {
@@ -178,5 +173,31 @@ func TestRecipeChangeALineAlreadyThereChangesNothing(t *testing.T) {
 	}
 	if out := sh(t, dir, "branch", "--list", "factory/recipe-*"); out != "" {
 		t.Fatalf("a branch was left: %q", out)
+	}
+}
+
+func TestRecipeChangeCommitsWithCodeafIdentityWithoutGitIdentity(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	for _, key := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"} {
+		// Setenv registers restoration; unset removes even an explicitly empty identity.
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir := repoWithCommit(t)
+	note, err := BankRecipeChange(context.Background(), dir, "ship on green", "", "- ship on green", habitWriter("ship on green"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf(RecipeNoteLocal, "factory/recipe-ship"); note != want {
+		t.Fatalf("note = %q, want %q", note, want)
+	}
+	got := sh(t, dir, "log", "-1", "--format=%an <%ae>%n%cn <%ce>", "factory/recipe-ship")
+	const want = "codeaf <agentfield-bot@users.noreply.github.com>\ncodeaf <agentfield-bot@users.noreply.github.com>"
+	if got != want {
+		t.Fatalf("commit identity = %q, want %q", got, want)
 	}
 }

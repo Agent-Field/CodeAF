@@ -403,8 +403,11 @@ from the job's budget like the job's steps: everything done for the job spends f
   both completed calls count toward the job, including the answer that was discarded.
 - **At the budget** new model calls and tools are refused. The job's owned agent families
   stop promptly, including delegated tasks, background commands and adaptive runs. This
-  applies while the manager is idle too. Calls already sent can still report charges afterward;
-  stopping work cannot reverse a provider charge already incurred.
+  applies while the manager is idle too. Once its work finishes stopping, the owning chat
+  records the job budget refusal once, even if its own reply had already finished.
+  Pressing Stop yourself does not add a budget notice. Calls already sent can still report charges afterward;
+  stopping work cannot reverse a provider charge already incurred. Approved publication
+  and merge writes can finish at the cap; they make no model calls. Stop remains available.
 - **Change Budget** by clicking its sidebar value or through Actions. Both menus offer $5,
   $10, $20 and $30 and share the confirmed value. Decreasing $10 back to $5 is allowed when
   recorded spend is at most $5. The server rechecks spend while writing the new cap.
@@ -949,7 +952,11 @@ ordinary conversation processes stop for sleep or turn an interrupted check gree
 
 Worker result delivery retains one exact per-lease request and retry identity
 before sending. A lost reply retries that request before reporting newer work;
-only a confirmed response advances its baseline. Retryable delivery uses a
+only a confirmed response advances its baseline. A step waits for the factory's
+admission answer before starting. During a running job, a stalled report does
+not delay heartbeats or Stop and other signals; Stop cancels an admission wait.
+Heartbeats themselves still run serially with signals and can wait up to five
+seconds for their own request. Retryable delivery uses a
 two-minute window with bounded request waits. Deterministic rejection stops work,
 retains the unsent results privately and asks for reporting-problem reconciliation,
 without claiming that the tests failed. It does not release the job as complete.
@@ -960,6 +967,22 @@ This delivery bridge does not automatically replay old leases after a restart.
 The server's response cache still has a gap between applying results and saving
 the replay response; it is not transactional accounting. Retained artifacts need
 reconciliation before retry, and do not restore execution or publication authority.
+
+## Admission report stalls, retries and shutdown accounting
+
+Each admission waits at most 5.5 seconds total, including any report ahead of
+it and both spending flushes. A transient refusal retries the same unspent round
+one second after the reporter and previous drive finish, for up to two minutes
+from the first refusal. Pending result delivery keeps its 2, 5, then 15-second
+backoff. No paid round or attempt is consumed by admission refusal. During this
+wait the job remains running, with no new question or stall log line; the factory
+continues to show its last acknowledged step and spend. A retry keeps the round
+number. Lease loss and Stop end the wait.
+Cancellation and lease loss join the reporter before cleanup. The initial empty
+report's receipt reconciles cumulative late spend through the accounting-only
+recovery door; acknowledged deltas and repeated recovery responses count once.
+Unaccepted execution results remain in the private delivery artifact; accounting
+recovery does not restore their execution authority.
 
 
 ## Checkpoints and essential checks

@@ -92,6 +92,10 @@ type ErrandMessage struct {
 
 // ErrandAsk is one errand. It travels as JSON to a remote owner unchanged.
 type ErrandAsk struct {
+	// DropRefusedEffort scopes explicit reasoning-refusal recovery to this errand,
+	// including when the ask travels to a remote owner.
+	DropRefusedEffort bool `json:"drop_refused_effort,omitempty"`
+
 	// Purpose labels the receipt and keys the one-in-flight slot.
 	Purpose string `json:"purpose"`
 	// Role is any role this build has a tier for; empty is the naming role.
@@ -271,6 +275,9 @@ func (ask ErrandAsk) cacheKey() [32]byte {
 // answering — closed, stopped, over budget, busy, deadline, a failed or
 // unusable answer — is an empty text with a Reason.
 func (a *Agent) RunErrand(ctx context.Context, ask ErrandAsk) (ErrandAnswer, error) {
+	if ask.DropRefusedEffort {
+		ctx = provider.WithRefusedEffortRecovery(ctx)
+	}
 	ask, err := ask.Normalize()
 	if err != nil {
 		return ErrandAnswer{}, err

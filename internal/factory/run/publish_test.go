@@ -228,6 +228,10 @@ func newPublishRig(t *testing.T, it factory.Item) publishRig {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Publication fixtures have recorded permission unless the test selects a tier.
+	if it.Tier == "" {
+		it.Tier = factory.TierOwner
+	}
 	it.State = factory.StateLanded
 	it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone}}}
 	saved, err := st.Create(it)
@@ -349,7 +353,7 @@ func TestStandalonePRJobsCannotPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := st.Create(factory.Item{Num: 40, Kind: factory.KindPR, Repo: "acme/api", Title: "legacy PR job", State: factory.StateLanded})
+	saved, err := st.Create(factory.Item{Tier: factory.TierOwner, Num: 40, Kind: factory.KindPR, Repo: "acme/api", Title: "legacy PR job", State: factory.StateLanded})
 	if err != nil {
 		t.Fatal(err)
 	}

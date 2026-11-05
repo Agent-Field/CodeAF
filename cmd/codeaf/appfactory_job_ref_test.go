@@ -54,7 +54,7 @@ func TestAppFactoryJobWithoutIssueHasAnHonestReference(t *testing.T) {
 	var local factory.Item
 	for range 21 {
 		var err error
-		local, err = floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "Typed work", State: factory.StateNew})
+		local, err = floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Kind: factory.KindIssue, Origin: factory.OriginForge, Title: "Typed work", State: factory.StateNew})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +85,7 @@ func TestAppFactoryJobWithoutIssueHasAnHonestReference(t *testing.T) {
 			t.Errorf("%s request misidentifies local job: %s", c.Spec.Name, c.Spec.Brief)
 		}
 	}
-	real, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, Origin: factory.OriginForge, Num: 87, Title: "A GitHub issue", State: factory.StateNew})
+	real, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Kind: factory.KindIssue, Origin: factory.OriginForge, Num: 87, Title: "A GitHub issue", State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}

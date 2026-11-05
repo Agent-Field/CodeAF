@@ -193,8 +193,8 @@ same commit; derive repeated values from constants.
 
 ## Paired team history
 
-These sharing budgets apply only when **share teams** is on in Settings → Devices.
-Sharing is off by default on each computer; off rounds run no team carriers,
+These sharing budgets apply only when **share teams** is on in Settings → General.
+Sharing is on by default for paired computers; off rounds run no team carriers,
 identity discovery, mirror writes or ownership lookups and retain existing polling.
 
 `teams.TrafficSyncLines` limits each writing computer's window to 32 lines per
@@ -202,7 +202,7 @@ team, and `teams.TrafficSyncBytes` limits encoded lines to 16 KiB per team.
 `teams.TrafficSyncTextBytes` shortens text beyond 2 KiB at a rune boundary.
 `teams.TrafficSyncDeviceBytes` caps each device's encoded Traffic share at 64 KiB
 across teams, newest local activity first. `teams.TrafficSyncEvery` permits a
-publication at most once every 30 seconds; team record edits are not delayed.
+publication at most once every 2 minutes; team record edits are not delayed.
 Capture reads the bounded backward tail across the current and rotated logs. Received windows replace a
 separate display mirror and are never republished. An unchanged round on 500
 chats and 5 teams performs zero world scans and opens zero cell metadata files;
@@ -212,8 +212,11 @@ compare deterministic values, and verify quiet rounds leave the vault unchanged.
 Mirror filtering makes zero directory requests per vault round, using only an
 already-held local roster, or every other writer when none is available. A send
 shares one ownership reading across its recipients, with a 3-second timeout and
-a 5-second process cache (including failures). Cursor saves stat identity files
-but decode them only after a stamp changes. Mirror refresh never acknowledges
+a 5-second process cache (including failures). With effective sharing, cursor saves stat identity files
+but decode them only after a stamp changes. Unpaired computers retain legacy
+cursors, repairing reads and completion catalogs, with no sharing refresh clock
+or mirror reads. The first team capture preserves the original file once as
+`teams.before-sharing.json` before creating its ledger. Mirror refresh never acknowledges
 local news and each hosted window carries its own mirror version.
 
 ## Binary size
@@ -334,10 +337,21 @@ A change to any of them changes this section in the same commit.
 | --- | --- | --- |
 | `appwire.ProcessStopAllCeiling` | 10 s | The ONE deadline of a `processes.stop_all`, from the moment it is asked. Jobs and services run at once beneath it, and both are joined before the answer. |
 | `session.ProcessStopAllWait` | 5 s (2 × 2 s grace + 1 s) | The shared deadline of every job a stop-all signals. They are stopped concurrently, never 4 s each in turn. |
+| `appStopAllOpenWait` | 5 s (the ceiling less the jobs' wait) | How long a stop-all waits for a cold kept owner or an open under way before its jobs' side answers `remaining_unknown`. Services do not wait. |
 | `session.ProcessStopAllMax` | 256 | Running jobs one stop-all signals. More are counted in `unenumerated` and left running. |
 | `session.ProcessStopAllScan` | 4096 | Registry entries and live marks one stop-all examines. A scan cut short answers `remaining_unknown`. |
 | `appwire.ProcessStopAllIDs` | 256 | Each id list in a receipt. A cut list answers `remaining_unknown` and keeps its counts whole. |
 | `service.LogCapBytes` | 2 MiB | A service's live log, cut back only while a codeaf runs. It is stated as `cap_bytes`. |
+
+Stop-all looks up the record without opening before admission. Its jobs side
+opens a cold owner only when a crew keeps it, it is not held or closing, and the
+person has not closed or archived it. Non-kept conversations stay cold.
+An open has one completion channel from admission through initialization and
+publication, shared by all stop-all attempts. Timed-out attempts leave no waiter
+goroutine on the gate; retries join the same open instead of starting another
+opener. A timeout makes no job call and reports zero jobs stopped,
+`remaining_unknown` and `partial`, even if an owner was published before the open
+finished. Services start independently of this wait.
 
 The services of a stop-all are the agent's own (`StopOwnerWait`). They are bounded by the supervisor's 64-service store, and they wait out each service's 5 s stop grace under the 10 s ceiling. `processes.actions` and `processes.log_target` share `processes.page`'s 4-read admission and its 2 s deadline.
 
@@ -401,3 +415,12 @@ on both revisions, with and without race instrumentation; run with `-run '^$'`.
 The writer batches at most 128 already admitted rows per ledger lock. A quiet
 queue flushes immediately, and flush/close barriers follow completed writes.
 Identity generation checks and duplicate suppression still run under that lock.
+
+## Factory signal acknowledgement bounds
+
+Each worker heartbeat sends at most 256 unconfirmed signal delivery IDs. A failed
+heartbeat retains its receipts; a successful heartbeat retires sent IDs unless
+the reply still carries them. Deduplication retains only outstanding deliveries,
+not the history of a lease. `TestAcknowledgementsLeaveOnlyUnconfirmedDeliveries`
+drives 25,000 receipts through real HTTP, checks failed-heartbeat retention, and
+requires the backlog to drain within 110 successful heartbeats.

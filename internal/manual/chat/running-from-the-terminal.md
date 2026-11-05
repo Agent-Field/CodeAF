@@ -665,7 +665,7 @@ by default on Linux and macOS on every build. Native Windows is supported too; a
 
 **`codeaf pair approve <link>`** compares the four-digit check number and asks `y / n`: only `y` or `yes` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
 
-**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and ordinary pairing keeps and shares a solo computer's own chats, history, saved keys, memory and preferences. Terminal pairing prints “Sharing finishes the next time codeaf runs.” Start codeaf again to share existing chats, saved keys, memory and preferences in the background; reopen after an interruption to resume. A used computer already sharing another set refuses and changes nothing. Only explicit `--replace` chooses a clean slate, with its existing confirmation. The page *Pairing your chats with a second computer* has the whole story.
+**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and a solo computer with submitted chats refuses ordinary pairing and explains `--replace`. Terminal pairing prints “Paired with <name>. Run codeaf to open your chats.” Start codeaf again to share existing chats, saved keys, memory and preferences in the background; reopen after an interruption to resume. A computer with local work refuses and changes nothing. Explicit `--replace` confirms replacement: local chats stay here but stop syncing, shared memories and settings clear, and local provider keys stay here. The page *Pairing your chats with a second computer* has the whole story.
 
 ## The architecture map — codeaf atlas [map], /atlas [map], what talks to what, how two computers pair and continue a chat
 
@@ -872,6 +872,8 @@ type `--export`, so a report on its own writes no file and sends nothing.
 
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
+At launch, codeaf removes unfinished older-chat scratch copies untouched for a week only when their original transcript remains, their copy lock is free, and they have no ready marker or sealed history. Completed copies stay.
+
 **`codeaf cell gc [--dry-run]`** (when cells are available) frees disk from finished
 conversations. A conversation that codeaf keeps its own working folder for has files that
 can always be written back from what codeaf sealed. `gc` removes those working files of
@@ -884,7 +886,7 @@ minutes, and one with a call still in flight or not yet sealed are passed over, 
 says why beside each. Your own project folders are never removed: a conversation
 working in a folder of yours is passed over with "workspace is yours", however much disk
 you are short of. What stays is the conversation itself (its transcript and history),
-so it still lists and opens, and opening one writes its files back, byte for byte. Nothing is removed automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
+so it still lists and opens, and opening one writes its files back, byte for byte. These sealed working files are removed only by explicit gc, not automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
 removes nothing and prints the exact top-level paths that would go (it still checks a fresh capture):
 
 ```

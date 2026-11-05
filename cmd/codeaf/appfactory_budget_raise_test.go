@@ -79,7 +79,7 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 					finish := make(chan struct{})
 					spent := 5.25
 					if budget == 20 {
-						spent = 20
+						spent = 19.5
 					}
 					model := &budgetModel{spent: spent}
 					model.maker.Script = func(ctx context.Context, c *factoryrun.FakeConversation) {
@@ -112,13 +112,13 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 						}
 						return seam
 					}
-					cap := .01
+					cap := 1.0
 					if budget == 0 {
 						cap = 5
 					}
 					status := s.start()
-					it, err := st.Create(factory.Item{Title: "Resume capped write", Repo: "acme/api", Num: 99, Kind: factory.KindIssue,
-						State: factory.StateNew, Cap: cap, Autonomy: mode, Talk: transcript,
+					it, err := st.Create(factory.Item{Tier: factory.TierOwner, Title: "Resume capped write", Repo: "acme/api", Num: 99, Kind: factory.KindIssue,
+						State: factory.StateNew, Cap: cap, SpentBefore: .5, Autonomy: mode, Talk: transcript,
 						Stages: []factory.Stage{{Name: "write", Kind: factory.StageChat, Ask: "write it", Until: "done", Max: 1, On: true}}})
 					if err != nil {
 						t.Fatal(err)
@@ -185,12 +185,12 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 					} else {
 						act("factory.job_set_budget", map[string]any{"budget": budget})
 					}
-					if budget > 0 && budget <= spent {
+					if budget > 0 && budget <= spent+.5 {
 						held := read()
 						if held.Budget != budget || held.SpendingLimit == nil || calls.Load() != 1 {
 							t.Fatalf("exhausted edit released work: %+v", held)
 						}
-						if len(held.Questions) == 0 || !strings.Contains(held.Questions[0].Text, fmt.Sprintf("$%g", budget)) || strings.Contains(held.Questions[0].Text, "$0.01") {
+						if len(held.Questions) == 0 || !strings.Contains(held.Questions[0].Text, fmt.Sprintf("$%g", budget)) || strings.Contains(held.Questions[0].Text, fmt.Sprintf("budget of $%g reached", cap)) {
 							t.Fatalf("stale budget question: %+v", held.Questions)
 						}
 						return
@@ -230,7 +230,7 @@ func TestAppFactoryBudgetRaiseResumes(t *testing.T) {
 					if raised != 1 {
 						t.Fatalf("budget continuation chat lines=%d, want 1", raised)
 					}
-					if finished.Cost != spent+.25 || calls.Load() != 2 {
+					if finished.Cost != spent+.25 || finished.LifetimeCost != spent+.75 || calls.Load() != 2 {
 						t.Fatalf("spend=%g calls=%d", finished.Cost, calls.Load())
 					}
 					logged := 0

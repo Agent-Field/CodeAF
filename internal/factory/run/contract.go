@@ -290,6 +290,7 @@ type Runner struct {
 	// lanes were handed.
 	loopOnce      sync.Once
 	floor         *floorLoop
+	stepBegins    sync.Map
 	stopReaders   sync.Map
 	publishChecks sync.Map
 }

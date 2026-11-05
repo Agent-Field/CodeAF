@@ -69,12 +69,10 @@ func TestTakeF2SameHolderSameHeadFenceChange(t *testing.T) {
 				}
 			}
 			_, err := b.taker().TakeSeen(context.Background(), chatID, seen)
-			if change == "fence" && err != nil {
-				t.Fatalf("F2 harmless fence bump refused: %v", err)
+			if !errors.Is(err, directory.ErrLeaseHeld) {
+				t.Fatalf("stale %s must conflict: %v", change, err)
 			}
-			if change != "fence" && !errors.Is(err, directory.ErrLeaseHeld) {
-				t.Fatalf("F2 %s must conflict: %v", change, err)
-			}
+
 		})
 	}
 }

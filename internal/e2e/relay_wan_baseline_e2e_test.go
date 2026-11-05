@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/furrow"
@@ -180,7 +181,7 @@ func wanBaselineChild(t *testing.T, config string) {
 		run("tc", "qdisc", "add", "dev", "lo", "root", "netem", "limit", "1000", "delay", fmt.Sprintf("%dms", rtt/2), "rate", fmt.Sprintf("%dmbit", mbps))
 		defer exec.Command("tc", "qdisc", "del", "dev", "lo", "root").Run()
 	}
-	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv(home.EnvVar, cellstoretest.EngineDir(t))
 	evidence := os.Getenv("CODEAF_WAN_EVIDENCE_DIR")
 	if err := os.MkdirAll(evidence, 0700); err != nil {
 		t.Fatal(err)
@@ -195,7 +196,6 @@ func wanBaselineChild(t *testing.T, config string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(cellstore.StopSpawned)
 	cleanup := map[string]bool{"namespace_isolated": current != os.Getenv("CODEAF_WAN_PARENT_NETNS")}
 	newDevice := func(role string) (cellstore.Engine, *wanNativeMode) {
 		deviceHome := t.TempDir()

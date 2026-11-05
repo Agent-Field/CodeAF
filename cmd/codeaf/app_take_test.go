@@ -20,7 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
-	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
@@ -290,7 +290,7 @@ func appTakeRoundTrip(t *testing.T, daemon bool, missingWorkspace ...bool) {
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	t.Setenv(syncsetup.IntervalVar, "50")
 	dirA, dirB := home.Dir(), e2TempDir(t)
-	t.Cleanup(cellstore.StopSpawned)
+	cellstoretest.EngineDir(t)
 	id, err := identity.Ensure(dirA)
 	if err != nil {
 		t.Fatal(err)

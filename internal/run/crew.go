@@ -151,6 +151,7 @@ func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	dailyBudgetUSD, _ := config.DailyBudgetUSDAt(profileDir)
 	workerFor := func(model string, completer session.Completer) *BashWorker {
 		worker := NewBashWorker(store, workspace, model, completer, workerOpts...)
+		worker.profileDir = profileDir
 		worker.dailyBudgetUSD = dailyBudgetUSD
 		worker.spendPreauthorized = preauthorized
 		// The memory section rides on every worker this run seats, read once by

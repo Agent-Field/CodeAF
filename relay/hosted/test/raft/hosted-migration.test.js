@@ -6,12 +6,12 @@ import { hostedFixture } from './hosted-fixture.js';
 // including partial imports at each rank. Every resumed call uses public HTTP.
 test('H2 R3 R24 R28 hosted first-use migration resumes every cut with one UUID and unchanged originals',{timeout:120000},async()=>{
  const cuts=[
-  {name:'freeze',needle:'if(!this.source.gate())await this.source.freeze(this.provisioning.config);'},
+  {name:'freeze',needle:'if(!this.source.gate())await this.source.freeze(this.provisioning.config,this.provisioning.singleton===true);'},
   {name:'inventory',needle:'this.manifest=await this.source.inventory();'},
   ...['1','2','3'].map(id=>({name:'stage-'+id,needle:'await this.member(id).legacyImport(this.config(id),this.manifest,copied);',after:`if(id==='${id}')throw new Error('H2 injected process cut');`})),
   ...['1','2','3'].map(id=>({name:'install-'+id,needle:'await this.member(id).legacyImport(this.config(id),this.manifest,null,true);',after:`if(id==='${id}')throw new Error('H2 injected process cut');`})),
   {name:'readback',needle:'await this.pump();await this.elect();await this.barrier();'},
-  {name:'ownership',needle:'if(!owned)await this.source.own(receipts);'},
+  {name:'ownership',needle:'if(!owned){await this.source.own(receipts);'},
  ];
  for(const cut of cuts){
   const h=await hostedFixture({fixture:true}),a=h.client();
