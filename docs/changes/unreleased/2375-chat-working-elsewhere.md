@@ -1,7 +1,7 @@
 ---
 kind: added
 title: a chat open on another computer says when a turn is running there
-pr: 0
+pr: 2375
 surface: [engine, chat, docs]
 invalidates:
   - "Was true: a chat row's status running meant only that another computer held the chat open; nothing said whether a turn was running there, so home said held on <device> either way and the app could not tell open from working. Is true now: the holder beats as soon as a turn starts or ends, the lease keeps working, rows carry working:true (hello: chats.working), and home says working on <device> while a turn runs there."
