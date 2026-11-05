@@ -40,6 +40,7 @@ const (
 	briefMakeHeading   = "WHAT TO PRODUCE"
 	briefDoneHeading   = "DONE WHEN"
 	briefCopyHeading   = "THE FOLDER THIS WORK IS ABOUT, AND YOUR OWN COPY OF IT"
+	briefOwnHeading    = "YOUR OWN FOLDER"
 	briefOriginHeading = "THE PERSON'S ORIGINAL MESSAGE"
 )
 
@@ -259,6 +260,7 @@ func composeBriefScoped(scope briefScope, role briefRole, request, work, deliver
 	// what done means.
 	assignment := []briefPart{
 		{briefCopyHeading, briefCopyRule, stated},
+		{briefOwnHeading, "", own.ownFolderNote()},
 		{briefWorkHeading, "", work},
 		{briefMakeHeading, "", deliverable},
 		{briefDoneHeading, "", acceptance},
@@ -372,6 +374,9 @@ type taskCopy struct {
 	// the ground's to bind, and only what that rule leaves behind may be
 	// considered as another task's tree.
 	trees string
+	// readsHome is the home folder, or a folder holding it, when this task reads it
+	// from a folder of its own. It binds nothing: the folder is not a copy.
+	readsHome string
 }
 
 // newTaskCopy is the ONE PLACE A FOLDER IS SPELLED FOR THIS TYPE, and it exists
@@ -643,6 +648,12 @@ func copyOnto(ground string, mode TaskMode, dir string, place Place) taskCopy {
 	switch mode {
 	case TaskModeWorktree, TaskModeMirror:
 		return newTaskCopyOf(ground, dir, place.Work(), place.Trees())
+	case TaskModeReference:
+		if HoldsHomeFolder(ground) {
+			own := standingOn(dir)
+			own.readsHome = cleanFolder(ground)
+			return own
+		}
 	}
 	return standingOn(dir)
 }
@@ -852,6 +863,16 @@ func (c taskCopy) note(sections ...string) string {
 			c.dir + "."
 	}
 	return note
+}
+
+// ownFolderNote tells a worker on the home folder where its output belongs, since
+// the task was given no copy to work in and a person has to find what it made.
+func (c taskCopy) ownFolderNote() string {
+	if c.readsHome == "" {
+		return ""
+	}
+	return c.readsHome + " is yours to read, not to change. Everything you make goes in " + c.dir +
+		", your own folder. In your report, say where in that folder the results are."
 }
 
 // names answers whether EITHER folder this map moves is spelled as a whole path

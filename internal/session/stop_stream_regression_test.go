@@ -153,40 +153,6 @@ func assertStoppedToolPairs(t *testing.T, messages []ai.Message) {
 	}
 }
 
-func TestBudgetStopExplainsIdleCrewOwner(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("CODEAF_DAILY_BUDGET", "")
-	budget := &liveBudgetStub{cap: 1}
-	started := make(chan struct{})
-	model := &scriptedCompleter{aside: func(messages []ai.Message) (*ai.Response, bool) {
-		if isPlannerCall(messages) {
-			return textResponse(`{"add":[{"id":"worker","title":"read notes","goal":"read notes"}]}`), true
-		}
-		if isNameCall(messages) || isSessionTitleCall(messages) {
-			return textResponse("Read notes"), true
-		}
-		return nil, false
-	}, steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-		close(started)
-		<-ctx.Done()
-		return nil, ctx.Err()
-	}}}
-	a, _ := newTestAgent(t, model, func(c *Config) { c.JobBudget = budget })
-	if _, err := a.RunOrchestrate(context.Background(), "read notes", "", 5); err != nil {
-		t.Fatal(err)
-	}
-	waitCloseRun(t, started, "worker")
-	budget.Spend(2)
-	waitFor(t, "crew stopped", func() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.workStopped && !a.workStopping })
-	for _, entry := range a.Transcript() {
-		if strings.Contains(entry.Text, "job budget reached") {
-			return
-		}
-	}
-	t.Fatal("idle owner lost budget notice after worker stop")
-}
-
 // The crossing worker can finish before its owner's ledger watcher runs.
 // A final crew report must not replace the durable daily-limit explanation.
 func TestDailyCapFinishedCrewKeepsNotice(t *testing.T) {

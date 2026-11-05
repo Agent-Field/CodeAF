@@ -872,6 +872,8 @@ type `--export`, so a report on its own writes no file and sends nothing.
 
 ## Free disk from old conversations — codeaf cell gc and the cell disk budget
 
+At launch, codeaf removes unfinished older-chat scratch copies untouched for a week only when their original transcript remains, their copy lock is free, and they have no ready marker or sealed history. Completed copies stay.
+
 **`codeaf cell gc [--dry-run]`** (when cells are available) frees disk from finished
 conversations. A conversation that codeaf keeps its own working folder for has files that
 can always be written back from what codeaf sealed. `gc` removes those working files of
@@ -884,7 +886,7 @@ minutes, and one with a call still in flight or not yet sealed are passed over, 
 says why beside each. Your own project folders are never removed: a conversation
 working in a folder of yours is passed over with "workspace is yours", however much disk
 you are short of. What stays is the conversation itself (its transcript and history),
-so it still lists and opens, and opening one writes its files back, byte for byte. Nothing is removed automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
+so it still lists and opens, and opening one writes its files back, byte for byte. These sealed working files are removed only by explicit gc, not automatically when opening a chat, while idle or on a timer. The budget is the default for explicit gc only. A fresh snapshot is checked by restoring it into a temporary folder. Only top-level entries that match that restored copy byte for byte are removed. Withheld secrets, `.furrowpolicy` exclusions, rebuildable dependency folders and any directory containing excluded files stay in place. The policy file and the lockfiles (or their containing folders) stay too, so reopening preserves those exclusions. `--dry-run`
 removes nothing and prints the exact top-level paths that would go (it still checks a fresh capture):
 
 ```

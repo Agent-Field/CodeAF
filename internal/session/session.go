@@ -2787,9 +2787,11 @@ type Agent struct {
 	// liveOutputWanted counts the windows that joined this conversation asking
 	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
 	// beside the window that opened it with [Config.LiveToolOutput].
-	liveOutputWanted   atomic.Int32
-	chatStarts         map[string]bool
-	knowledgeMu        sync.RWMutex
+	liveOutputWanted atomic.Int32
+	chatStarts       map[string]bool
+	knowledgeMu      sync.RWMutex
+	// Tests shorten the join deadline without changing other agents.
+	knowledgeCloseWait time.Duration
 	knowledgeRetired   []*knowledgeJournal
 	knowledgeVault     *knowledge.Vault
 	knowledgeJournal   *knowledgeJournal

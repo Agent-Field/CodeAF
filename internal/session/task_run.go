@@ -8688,9 +8688,7 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 		return taskTree{}, err
 	}
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
-	if WorkspaceOwnershipEnabled(place) && stand.mode == TaskModeFolder {
-		stand.mode = ownershipPlainMode(ground)
-	}
+	stand.mode = preparedTaskMode(place, ground, stand.mode)
 	if ground == "" {
 		// A PART REACHES THIS ROAD AND ITS FREEZE HAS TO TRAVEL WITH IT. A part
 		// admitted by `divide_work` carries no ground of its own (task_divide.go
