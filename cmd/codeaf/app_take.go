@@ -193,6 +193,9 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	}
 	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Title: meta.Title, Created: meta.Created, Model: meta.Model, ModelIdentity: meta.ModelIdentity})
 	a := b.agent(id)
+	// Under the agent's gate, as releaseForTake: a send waits for the reset
+	// rather than numbering a message from the old copy's count meanwhile.
+	a.gate.Lock()
 	users := 0
 	if !got.AlreadyHere && moved {
 		users = appUserCount(transcript)
@@ -222,6 +225,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 			a.view.Retryable = false
 		}
 	})
+	a.gate.Unlock()
 	location := &appwire.Location{Here: true, Cell: p.Cell, Seen: &appwire.Seen{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head}, Holder: &appwire.LocationHolder{ID: s.Device.ID(), Name: got.Device}}
 	if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
 		location.Seen.Head = ""
