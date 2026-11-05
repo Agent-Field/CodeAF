@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // wireVersion is the daemon protocol's V; every message carries it (L11).
@@ -81,7 +83,12 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	defer conn.Close()
+	pending := false
+	defer func() {
+		if !pending {
+			_ = conn.Close()
+		}
+	}()
 	// The watch on ctx starts before the health check, so a cancelled take
 	// frees a check that is waiting on a daemon that never answers.
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
@@ -89,7 +96,36 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	if err := d.verify(conn); err != nil {
 		return nil, unavailable(err)
 	}
-	response, err := exchange(conn, newRequest(t, op))
+	// Once a request can write, cancellation must not release its store gate:
+	// closing the connection does not stop the daemon's already-running seal.
+	stop()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	release, err := lockStoreOperation(ctx, t.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	type answer struct {
+		response wireResponse
+		err      error
+	}
+	done := make(chan answer, 1)
+	req := newRequest(t, op)
+	pending = true
+	guard.Go("saving engine operation", func() {
+		defer release()
+		defer conn.Close()
+		response, err := exchange(conn, req)
+		done <- answer{response, err}
+	})
+	var response wireResponse
+	select {
+	case result := <-done:
+		response, err = result.response, result.err
+	case <-ctx.Done():
+		return nil, fmt.Errorf("engine %s answer interrupted: %w", op.Verb(), ctx.Err())
+	}
 	if err != nil {
 		// The engine may have completed its writes before the answer was lost.
 		// Replaying a mutation through a fallback would cross C28's no-repeat boundary.
