@@ -138,7 +138,7 @@ func StartDecision(p GroupPolicy, job Item, spentOf func(int) float64, now time.
 		why := allowanceEnd(a, now)
 		if why == "" {
 			spent := allowanceSpend(a, spentOf)
-			if job.Cap > 0 && spent+job.Cap <= a.CapUSD {
+			if job.Cap > 0 && PolicyMoneyCompare(spent+job.Cap, a.CapUSD) <= 0 {
 				return a.ID, "", true
 			}
 			left := a.CapUSD - spent
@@ -164,7 +164,7 @@ func ContinueDecision(p GroupPolicy, job Item, spentOf func(int) float64, now ti
 		if why := allowanceEnd(a, now); why != "" {
 			return why, false
 		}
-		if allowanceSpend(a, spentOf) >= a.CapUSD {
+		if PolicyMoneyCompare(allowanceSpend(a, spentOf), a.CapUSD) >= 0 {
 			return fmt.Sprintf("allowance %s reached its $%.2f cap", a.ID, a.CapUSD), false
 		}
 		return "", true

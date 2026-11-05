@@ -82,13 +82,14 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 			return false, err
 		}
 		if err := d.store.Update(held.Job, func(it *factory.Item) error {
+			admitted := policyAdmittedSteps(*it)
 			if err := change(it); err != nil {
 				return err
 			}
 			if !complete && holdAtJobBudget(it, now) {
 				blocked = !capWait
 			}
-			if !complete && d.holdAtPolicy(it, now) {
+			if !complete && d.holdAtPolicy(it, now, admitted) {
 				blocked = true
 			}
 			if complete && !held.ThreadOnly {

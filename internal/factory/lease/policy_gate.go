@@ -8,9 +8,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
-// holdAtPolicy reads settings and an unlocked snapshot while this job's lock
-// is held. Its own spend comes from the locked report, never the snapshot.
-func (d *Desk) holdAtPolicy(it *factory.Item, now time.Time) bool {
+// holdAtPolicy reads settings and a bounded, non-migrating spend snapshot
+// while this job's lock is held. A lease has no admitted report steps.
+func (d *Desk) holdAtPolicy(it *factory.Item, now time.Time, admitted ...map[policyStep]bool) bool {
 	if it.Group == "" {
 		return false
 	}
@@ -22,7 +22,8 @@ func (d *Desk) holdAtPolicy(it *factory.Item, now time.Time) bool {
 	case p.Version == 0:
 		return false
 	case p.Stopped:
-		if policyFinishingStep(*it, p) {
+		if len(admitted) != 0 && !policyNewStep(*it, admitted[0]) {
+			it.StopAfterStep = true
 			return false
 		}
 		reason = "its group is stopped"
@@ -32,18 +33,8 @@ func (d *Desk) holdAtPolicy(it *factory.Item, now time.Time) bool {
 	case it.PolicyRun == "":
 		return false
 	default:
-		jobs, err := d.store.List()
-		if err != nil {
-			reason = "its group's policy cannot be read"
-			break
-		}
-		spent := make(map[int]float64, len(jobs))
-		for _, job := range jobs {
-			spent[job.ID] = factory.JobLifetimeSpent(job)
-		}
-		spent[it.ID] = factory.JobLifetimeSpent(*it)
 		var ok bool
-		reason, ok = factory.ContinueDecision(p, *it, func(id int) float64 { return spent[id] }, now)
+		reason, ok = factory.ContinueDecision(p, *it, d.policySpentOf(p, *it, now), now)
 		if ok {
 			return false
 		}
@@ -63,18 +54,4 @@ func (d *Desk) holdAtPolicy(it *factory.Item, now time.Time) bool {
 	it.State, it.QKind, it.Question, it.Asking = factory.StateNeedsYou, "cap", reason, &ask
 	it.PolicyRun, it.OverLimit, it.StopAfterStep = "", false, false
 	return true
-}
-
-// A group stop lets an already paid step finish through Stop after this step.
-// A queued job or a new step has no running phase begun before that decision.
-func policyFinishingStep(it factory.Item, p factory.GroupPolicy) bool {
-	if !it.StopAfterStep || it.State != factory.StateRunning || it.Stream == nil || p.UpdatedAt == nil {
-		return false
-	}
-	for _, ph := range it.Stream.Phases {
-		if ph.State == factory.PhaseRunning && !ph.Started.IsZero() && ph.Started.Before(*p.UpdatedAt) {
-			return true
-		}
-	}
-	return false
 }

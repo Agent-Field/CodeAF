@@ -111,6 +111,8 @@ type Desk struct {
 	record *record.Record
 	// persist is the atomic lease-file writer; nil uses writeAtomic.
 	persist func(string, []byte) error
+
+	policySpend policySpendCache
 }
 
 // Open holds no handles. Reading is deferred to each operation so a desk

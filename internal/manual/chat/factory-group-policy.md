@@ -38,6 +38,11 @@ else `spent` at the cap, else `active`. An unset group returns an empty policy
 and its group spending. Reads include `version`; send that optional version
 with a replacement to reject stale changes with a conflict.
 
+Money decisions compare whole micro-dollars, so $0.10 spent plus a $0.20
+job budget fits a $0.30 allowance. During a run, other listed jobs' spending
+may be cached for up to two seconds; this job's own spending is current.
+Missing or unreadable listed jobs contribute $0.
+
 On a team factory the first setter owns the policy. Only that owner or the
 operator may replace it, and it automatically starts only jobs the owner may
 start. A solo factory skips ownership checks. Every replacement is recorded
@@ -58,3 +63,8 @@ queued jobs meet the lease gate. Clearing stopped allows new automatic starts
 of covered releases. Jobs already held wait for a person to Continue or Start.
 An unreadable policy file holds with `its group's policy cannot be read` and
 prevents automatic starts.
+
+A stopped group's progress, cost and completion reports keep the admitted
+step's work. Admission of a new step or round is held even if the worker's
+clock differs. Repeating a stopped replacement retries Stop after this step
+for running jobs.

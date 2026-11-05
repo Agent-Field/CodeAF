@@ -32,7 +32,7 @@ func PolicyFrom(p factory.GroupPolicy, jobs []factory.Item, now time.Time) Polic
 		end, _ := time.Parse(time.RFC3339, a.EndsAt)
 		if !now.Before(end) {
 			state = "ended"
-		} else if per[a.ID] >= a.CapUSD {
+		} else if factory.PolicyMoneyCompare(per[a.ID], a.CapUSD) >= 0 {
 			state = "spent"
 		}
 		a.Jobs = append([]int(nil), a.Jobs...)

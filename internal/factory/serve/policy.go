@@ -74,7 +74,7 @@ func (h *Handler) groupPolicy(w http.ResponseWriter, r *http.Request) {
 		if body.Version != nil && *body.Version != cur.Version {
 			return errPolicyMoved
 		}
-		stopped = !cur.Stopped && next.Stopped
+		stopped = next.Stopped
 		next.Owner = cur.Owner
 		if next.Owner == "" {
 			next.Owner = caller
