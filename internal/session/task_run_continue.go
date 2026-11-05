@@ -72,9 +72,21 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		return "", err
 	}
 
-	kept, err := interruptedRunRow(g, row)
-	if err != nil {
-		return "", err
+	kept, found := runRowOf(g, row)
+	if !found {
+		return "", fmt.Errorf("there is no run %d in this conversation", row)
+	}
+	if why := runCannotContinue(kept.Copy, kept.Program); kept.Program != "" {
+		// A PROGRAM'S ROW IS REFUSED BEFORE ITS STATE IS READ. It carries no
+		// copy (the program works in the folder itself), so the copy road below
+		// would refuse it in a sentence about a copy, and nothing here seats the
+		// program itself: the run rebuilt would be codeaf's own workers.
+		return "", fmt.Errorf("%s", why)
+	}
+	if kept.State != TaskInterrupted {
+		// A run that finished, failed or was stopped has said its last word.
+		// Only work nothing is driving is waiting to be picked up.
+		return "", fmt.Errorf("%s is %s, so there is nothing to carry on", taskStopName(row, kept.Title), kept.State)
 	}
 
 	crew, err := a.restoreTaskCrew(row, kept.CrewState)
@@ -157,27 +169,4 @@ func liveContinueRefusal(live *beltRun, row uint64) error {
 		return fmt.Errorf("%s is already running", taskStopName(row, live.title))
 	}
 	return fmt.Errorf("%s is running, and a conversation drives one run at a time", taskStopName(row, live.title))
-}
-
-// interruptedRunRow admits only an ordinary run whose process went away.
-// It checks the program before the state so the refusal names the actual road.
-func interruptedRunRow(g *TaskGraph, row uint64) (TaskNotice, error) {
-	kept, found := runRowOf(g, row)
-	if !found {
-		return TaskNotice{}, fmt.Errorf("there is no run %d in this conversation", row)
-	}
-	if why := runCannotContinue(kept.Copy, kept.Program); kept.Program != "" {
-		// A PROGRAM'S ROW IS REFUSED BEFORE ITS STATE IS READ. It carries no
-		// copy (the program works in the folder itself), so the copy road below
-		// would refuse it in a sentence about a copy, and nothing here seats the
-		// program itself: the run rebuilt would be codeaf's own workers.
-		return TaskNotice{}, fmt.Errorf("%s", why)
-	}
-	if kept.State != TaskInterrupted {
-		// A run that finished, failed or was stopped has said its last word.
-		// Only work nothing is driving is waiting to be picked up.
-		return TaskNotice{}, fmt.Errorf("%s is %s, so there is nothing to carry on", taskStopName(row, kept.Title), kept.State)
-	}
-
-	return kept, nil
 }

@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -11,7 +12,11 @@ import (
 // CheckWriteAccess refuses work that can write on a job without permission.
 func CheckWriteAccess(it factory.Item, step string) error {
 	if it.RefusesWrite() {
-		return WriteAccessRefusal{Step: step}
+		reason := ""
+		if it.Tier == "" && it.Failure != nil && strings.HasPrefix(it.Failure.Detail, factory.AuthorAccessUnknownPrefix) {
+			reason = it.Failure.Detail
+		}
+		return WriteAccessRefusal{Step: step, Reason: reason}
 	}
 	return nil
 }

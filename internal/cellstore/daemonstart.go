@@ -141,7 +141,7 @@ func launch(d Daemon) (<-chan struct{}, error) {
 		return nil, fmt.Errorf("start engine daemon: %w", err)
 	}
 	exited := make(chan struct{})
-	remember(cmd.Process, exited)
+	remember(cmd.Process, exited, d.Socket)
 	daemonExits.Store(d.Socket, (<-chan struct{})(exited))
 	owner := &spawnedDaemon{process: cmd.Process, exited: exited}
 	daemonOwners.Store(d.Socket, owner)
