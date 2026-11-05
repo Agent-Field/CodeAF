@@ -71,7 +71,7 @@ jobs:
   full-tests-shard:
     name: full tests ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -112,7 +112,7 @@ jobs:
           # still dies at -p 1, it is not, and the package that was running is
           # the suspect by name. The shards keep the wall clock acceptable
           # while each one runs serial.
-          make test TEST_FLAGS='-p 1' PKGS="$pkgs"
+          make test TEST_TIMEOUT=45m TEST_FLAGS='-p 1' PKGS="$pkgs"
 
   # ONE NAME FOR THE THREE, for the same reason cross build has one below: a
   # branch rule can only require a name it can spell, and a matrix's legs are
