@@ -99,9 +99,10 @@ func (b *stageBudget) Refusal() string {
 	if err != nil || it.Repo != b.item.Repo {
 		return session.JobBudgetUnreadable
 	}
-	b.stopped = factoryrun.ChatRefusal(it)
-	b.reached = b.stopped != ""
-	return b.stopped
+	why := factoryrun.ChatRefusal(it)
+	b.stopped = why
+	b.reached = why != ""
+	return why
 }
 func (b *stageBudget) total() float64 {
 	b.mu.Lock()

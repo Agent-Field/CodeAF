@@ -129,6 +129,9 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	if goal = strings.TrimSpace(goal); goal == "" {
 		return "", errors.New("an adaptive run needs a goal")
 	}
+	if err := a.admitJobCall(ctx); err != nil {
+		return "", err
+	}
 	a.mu.Lock()
 	if a.closed || a.workStopped {
 		a.mu.Unlock()
@@ -276,7 +279,9 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		a.orchestrations = make(map[string]*orchestration, 1)
 	}
 	a.orchestrations[id] = live
+	epoch := a.workEpoch
 	a.mu.Unlock()
+	a.wakeBudgetForWork()
 
 	// AND THE RUN IS NAMED, if its goal is a sentence rather than a name
 	// (taskname.go). It is asked for HERE, at the door, and not inside the
@@ -288,6 +293,11 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	go func() {
 		defer a.orchestrateWorkers.Done()
 		snap, err := run.Run(runCtx)
+		// A planner can finish without starting a worker. Carry a recorded
+		// crossing home before the watcher sees an idle run and goes to sleep.
+		if why := a.dailyBudgetBlock(); IsDailyLimit(why) {
+			_ = a.stopWorkEpoch(epoch, why)
+		}
 		// The family settles before the write-up is announced: the roster is where
 		// somebody looks when the note lands, and a root still saying "running"
 		// beside a report of what the run came to is the roster disagreeing with
@@ -338,8 +348,9 @@ func orchestrateRoleCall(reader roleReader, role roles.Role, named, session stri
 // the write-up are all on the run's own snapshot, and a second copy of any of
 // them would be a second answer to the same question.
 type orchestration struct {
-	run    *orchestrate.Orchestrator
-	cancel context.CancelFunc
+	stopReason string
+	run        *orchestrate.Orchestrator
+	cancel     context.CancelFunc
 	// family is this run's rows on the roster (the family seam at the foot of this
 	// file), and it is kept here for ONE reason: the gate's answer arrives through
 	// [Agent.ResolveOrchestrate], which holds the registry rather than the closures
@@ -975,6 +986,18 @@ func (e *orchestrateExec) Exec(ctx context.Context, node orchestrate.Node, deps 
 	changed, stopped, runErr := runTaskChild(ctx, child, nil, orchestrateBrief(e.root(), node, deps, shared),
 		dir, taskLimits{maxSteps: orchestrateMaxSteps, noProgress: orchestrateNoProgress}, nil, io.Discard)
 
+	if errors.Is(runErr, ErrSpendRail) {
+		e.agent.mu.Lock()
+		if live := e.agent.orchestrations[e.id]; live != nil {
+			live.stopReason = runErr.Error()
+		}
+		epoch := e.agent.workEpoch
+		e.agent.mu.Unlock()
+		// The child can finish before the owner's ledger watcher observes it.
+		// Carry its refusal home while the epoch still identifies this work;
+		// otherwise an idle owner skips the wake and never records the limit.
+		_ = e.agent.stopWorkEpoch(epoch, runErr)
+	}
 	cost := e.spend(child)
 	digest := orchestrateDigest(child, changed)
 	switch {
@@ -1107,7 +1130,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		rootSession: root,
 		// AND THE DAILY CEILING IT SPENDS UNDER, resolved and carried for a task
 		// node's exact reason (task_run.go's newChildAgent): a worker reads no
-		// profile, so the root's figure travels with it (rail.go's
+		// profile; its owner supplies the live authority (rail.go's
 		// [Agent.dailyCeilingUSD]) and the person's `--yes-spend` with it.
 		DailyBudgetUSD:      a.dailyCeilingUSD(),
 		DailyBudgetResolved: true,
@@ -1118,6 +1141,8 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		BaseURL:             parent.BaseURL,
 		Sources:             parent.Sources,
 		ContextWindow:       window,
+
+		dailyBudgetAuthority: a.dailyCeiling,
 		// And the catalog with it, for the reason newTaskAgent hands it down:
 		// a worker that switches its own model has to be able to learn that
 		// model's window.
@@ -2163,6 +2188,16 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 		if notice.Report == "" {
 			notice.Report = err.Error()
 		}
+	}
+	f.agent.mu.Lock()
+	why := ""
+	if live := f.agent.orchestrations[f.run]; live != nil {
+		why = live.stopReason
+	}
+	f.agent.mu.Unlock()
+	if why != "" && (notice.State == TaskFailed || notice.Report == "") {
+		notice.State, notice.Stopped = TaskFailed, true
+		notice.Report = strings.TrimSpace(notice.Report + "\n" + why)
 	}
 	f.publish(notice)
 	// AND THE PROJECT'S RECORD IS CLOSED IN THE SAME BREATH. The roster reads the

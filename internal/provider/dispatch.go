@@ -716,6 +716,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			// A cancelled or expired parent is a decision, not a fault. Retrying
 			// it would burn the remaining deadline on calls that cannot land.
 			if ctx.Err() != nil {
+				if sent.Load() {
+					c.settle(ctx, c.modelFor(request), nil, receiptTornReason, 0, knobs.trace)
+				}
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			// A TRANSPORT MAY KNOW THE CREDENTIAL IT OWNS IS FINISHED. That is

@@ -1762,10 +1762,19 @@ func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *part
 		}
 		a.journalFailedCall(ctx, model, "", cause, 1, a.requestEstimate())
 		if said := stopSentence(door, stopName(cause)); said != "" {
+			if door == StopByWorkStopped && stopName(cause) != "" && !errors.Is(cause, ErrSpendRail) {
+				a.record(textMessage("assistant", said))
+			}
 			hub.send(Event{Kind: EventNotice, Text: said})
 		}
 	}
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+	usage := a.sealTurn(turn, started, model)
+	var reached spendRailReached
+	if errors.As(context.Cause(ctx), &reached) {
+		hub.send(Event{Kind: EventError, Err: reached, Usage: usage})
+		return
+	}
+	hub.send(Event{Kind: EventTurnDone, Usage: usage})
 }
 
 // cutDroppedCallNote is WHY a half-arrived tool call is not in the record, in
@@ -3794,6 +3803,7 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 	a.toolsStarted.Add(1)
 	a.toolsInFlight.Add(1)
 	defer a.toolsInFlight.Add(-1)
+	a.wakeBudgetForWork()
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on

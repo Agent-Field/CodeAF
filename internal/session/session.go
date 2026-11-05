@@ -2711,6 +2711,9 @@ type Config struct {
 	// It is read only when DailyBudgetResolved is true; zero then means unlimited.
 	DailyBudgetUSD float64
 
+	// dailyBudgetAuthority keeps descendants on their owner's live day limit.
+	dailyBudgetAuthority func() (float64, error)
+
 	// DailyBudgetResolved says the daily ceiling was deliberately carried into
 	// this agent. Roots leave it false and read their profile and environment live,
 	// including the ordinary default profile whose ProfileDir is empty. A separate
@@ -2772,6 +2775,9 @@ type Agent struct {
 	// rewindUndo keeps one reversible cut; a new cut replaces it.
 	rewindUndo *rewindUndo
 	debugRun   string
+
+	budgetWatchOnce   sync.Once
+	budgetWorkStarted chan struct{}
 
 	// toolsInFlight and toolsStarted count this agent's tool calls
 	// ([Agent.executeTool]). A shell output is only vouched for as made by its
