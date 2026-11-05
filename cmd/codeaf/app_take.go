@@ -200,8 +200,8 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 			// It may also remember how many of the person's messages its own
 			// copy held, and what it sent at each place (N20-1). The next
 			// message is numbered from the chat that moved here, or it would
-			// take the id of one the other computer added: the open below
-			// counts them again, as a relaunch's would. The old copy's places
+			// take the id of one the other computer added: they are counted
+			// again below, as a relaunch's open would. The old copy's places
 			// and last failure do not describe this conversation.
 			a.users, a.counted, a.marks = 0, false, nil
 			a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
@@ -216,6 +216,18 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	agent, err = appTakeOpen(b, id)
 	if err != nil {
 		return appwire.Agent{}, appTakeError(err)
+	}
+	// An agent that still held its conversation (its own lease had expired)
+	// opens nothing, so nothing counted: count the installed transcript here.
+	counted := true
+	b.locked(func() { counted = a.counted })
+	if !counted {
+		users := appUserCount(transcript)
+		b.locked(func() {
+			if !a.counted {
+				a.users, a.counted = users, true
+			}
+		})
 	}
 	// A local display replica may still be catching up to the acquired receipt.
 	if agent.Location != nil {
