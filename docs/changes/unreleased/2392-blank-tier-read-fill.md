@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Old Factory jobs fill missing author access when read
-pr: 0
+pr: 2392
 surface: [factory, docs]
 invalidates:
   - "Old outside jobs could keep a blank author tier after an unchanged poll. Reading them now checks the author's repository access and saves a successful result."
