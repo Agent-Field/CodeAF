@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Task prompt facts promise a folder of their own rather than a copy
-pr: 0
+pr: 2391
 surface: [chat]
 invalidates:
   - "The chat prompt claimed every task gets a copy. Tasks get a folder of their own; Reference tasks and tasks on the home folder get an empty folder."
