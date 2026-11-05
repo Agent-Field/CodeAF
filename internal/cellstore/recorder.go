@@ -54,6 +54,8 @@ type Recorder struct {
 	errorMu   sync.Mutex
 	lastError error
 
+	daemonGeneration uint64
+
 	mu      sync.Mutex // serialises seals; guards pending and models
 	pending []Executed
 	models  []ModelCall // model calls since the last seal
@@ -76,7 +78,7 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 	wal.owner = c.Root
 	reapOrphans(rec.Incomplete, reapGrace)
 	r := &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
-		pending: rec.Completed, incomplete: rec.Incomplete}
+		pending: rec.Completed, incomplete: rec.Incomplete, daemonGeneration: daemonClock.Load()}
 	if opts.Async && len(r.pending) > 0 {
 		r.hold()
 	}
@@ -323,6 +325,7 @@ func lastEnd(head *Sealed) int64 {
 // seal takes everything pending into one turn. On failure the batch stays
 // pending and the next call's seal carries it. Callers hold r.mu.
 func (r *Recorder) seal(ctx context.Context) {
+	ctx = context.WithValue(ctx, daemonOwnerKey{}, r.daemonGeneration)
 	if r.opts.Refresh != nil {
 		r.opts.Refresh()
 	}
