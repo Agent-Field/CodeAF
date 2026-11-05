@@ -19,7 +19,8 @@ import (
 
 const captureEvidenceLimit = 1 << 20
 const captureEvidenceKeep = 3
-const captureMetadataLimit = 64 << 10
+const captureMetadataLimit = 256 << 10
+const captureMetadataBudget = 512 << 10
 
 // missingPackPlan matches the engine's whole diagnostic, rather than treating
 // unrelated pack errors as permission to repeat a capture.
@@ -100,7 +101,8 @@ func (e Engine) captureEvidence(ctx context.Context, c cell.Cell, problem error)
 	confined, err := os.OpenRoot(root)
 	if err == nil {
 		defer confined.Close()
-		for _, name := range []string{"catalog.sqlite3", "catalog.sqlite3-wal", "catalog.sqlite3-shm", "group-commit.json"} {
+		metadataBytes := 0
+		for _, name := range []string{"catalog.sqlite3", "group-commit.json", "catalog.sqlite3-wal", "catalog.sqlite3-shm"} {
 			info, err := confined.Lstat(name)
 			if err != nil {
 				bundle.Notes = append(bundle.Notes, name+": "+err.Error())
@@ -110,7 +112,7 @@ func (e Engine) captureEvidence(ctx context.Context, c cell.Cell, problem error)
 				bundle.Notes = append(bundle.Notes, name+": not a regular metadata file")
 				continue
 			}
-			if info.Size() > captureMetadataLimit {
+			if info.Size() > captureMetadataLimit || info.Size() > int64(captureMetadataBudget-metadataBytes) {
 				bundle.Notes = append(bundle.Notes, name+": exceeds metadata limit; omitted")
 				continue
 			}
@@ -121,11 +123,12 @@ func (e Engine) captureEvidence(ctx context.Context, c cell.Cell, problem error)
 			}
 			raw, readErr := io.ReadAll(io.LimitReader(f, captureMetadataLimit+1))
 			_ = f.Close()
-			if readErr != nil || len(raw) > captureMetadataLimit {
+			if readErr != nil || len(raw) > captureMetadataLimit || len(raw) > captureMetadataBudget-metadataBytes {
 				bundle.Notes = append(bundle.Notes, name+": could not copy within metadata limit")
 				continue
 			}
 			bundle.Metadata[name] = raw
+			metadataBytes += len(raw)
 		}
 	} else {
 		bundle.Notes = append(bundle.Notes, err.Error())

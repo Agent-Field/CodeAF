@@ -289,7 +289,8 @@ It records the furrow binary path and reported version, the full original error,
 and store file names, sizes and modification times. It copies only the catalog,
 its SQLite sidecars and the durability-frontier metadata, encoded as base64.
 It never copies object or pack contents or reads files under `keys/` or
-`credentials/`. Metadata files over 64 KiB are omitted with a note. The listing
+`credentials/`. Metadata files over 256 KiB or beyond a combined 512 KiB budget are omitted
+with a note. The listing
 stops at 1024 entries. Each bundle is at most 1 MiB; only the newest three are kept.
 If evidence cannot be written, the log explains why and the retry still runs.
 This evidence does not establish why a pack was missing or repair the store.
