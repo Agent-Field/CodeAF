@@ -49,7 +49,7 @@ func (a *Agent) watchJobBudget() {
 			if !stopped {
 				stopOwned := a.factoryOwnedStop()
 				if err := a.jobBudgetBlock(); err != nil && err.Error() != JobBudgetUnreadable {
-					_ = a.stopWorkEpoch(epoch)
+					_ = a.stopWorkEpoch(epoch, err.Error())
 				} else if a.automaticFactoryRefusal() == factory.PersonStopReason {
 					stopOwned()
 				}
