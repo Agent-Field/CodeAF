@@ -16,6 +16,8 @@ const waitsScanEvery = 2 * time.Second
 const waitsSafetyEvery = time.Minute
 
 type waitsScheduler struct {
+	launch func(int) error
+
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -44,7 +46,7 @@ func (h *Handler) scanWaits() error {
 		}
 	}
 	if parents == nil {
-		return nil
+		return h.scanPolicyStarts(items)
 	}
 	for _, it := range items {
 		parents[it.ID] = it
@@ -82,6 +84,7 @@ func (h *Handler) scanWaits() error {
 			errs = append(errs, err)
 		}
 	}
+	errs = append(errs, h.scanPolicyStarts(items))
 	return errors.Join(errs...)
 }
 

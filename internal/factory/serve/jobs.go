@@ -255,6 +255,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					if cur.State != factory.StateQueued {
 						return fmt.Errorf("%s is no longer queued", cur.Ref())
 					}
+					factory.ClearPolicyRun(cur)
 					cur.OverLimit = true
 					if cur.Stream != nil {
 						cur.Stream.Paused = false

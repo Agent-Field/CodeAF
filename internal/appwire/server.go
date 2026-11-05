@@ -287,6 +287,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryWaitsSetFeature(hello, engine)
 	hello = withFactoryFeaturesFeature(hello, engine)
 	hello = withFactoryRepoIssuesFeature(hello, engine)
+	hello = withFactoryGroupPolicyFeature(hello, engine)
 	s.Emit(EventHello, hello)
 	if warmer, ok := engine.(Warmer); ok {
 		go warmer.Warm()

@@ -827,6 +827,7 @@ func (b *appBackend) PipelineAdaptKindEdits() {}
 
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
+		GroupPolicy: true,
 		WaitsOn:     true,
 		CreateIssue: true, CreateGroup: true, CreateBudget: true, JobContext: true, CreateKey: true,
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,

@@ -509,6 +509,8 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	PolicyRun string `json:",omitempty"`
+
 	WaitsOn       []int     `json:",omitempty"`
 	WaitingOn     []int     `json:",omitempty"`
 	WaitsReleased bool      `json:",omitempty"`

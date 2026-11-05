@@ -14,15 +14,20 @@ func (h *Handler) waitsLaunches(seam factory.Seam) factory.Seam {
 	}
 	if launch := seam.Launch; launch != nil {
 		seam.Launch = func(id int) error {
+			resumed := false
 			err := h.config.Store.Update(id, func(it *factory.Item) error {
-				if it.WaitsReleased || len(it.WaitsOn) == 0 {
+				if (it.WaitsReleased || len(it.WaitsOn) == 0) && it.PolicyRun == "" && (it.Blocked == nil || it.Blocked.By != factory.BlockPolicy) {
 					return errWaitsUnchanged
 				}
-				it.WaitsReleased, it.WaitingOn, it.Blocked = true, nil, nil
+				resumed = h.resumePolicyStart(it)
+				retireLaunchWaits(it, "")
 				return nil
 			})
 			if err != nil && !errors.Is(err, errWaitsUnchanged) {
 				return err
+			}
+			if resumed {
+				return nil
 			}
 			return launch(id)
 		}
@@ -31,4 +36,13 @@ func (h *Handler) waitsLaunches(seam factory.Seam) factory.Seam {
 		seam.ForJob = func(id int) factory.Seam { return h.waitsLaunches(forJob(id)) }
 	}
 	return seam
+}
+
+// retireLaunchWaits binds automatic admission to the same write as retirement.
+// Every other launch clears the allowance that belonged to the earlier run.
+func retireLaunchWaits(it *factory.Item, allowance string) {
+	if len(it.WaitsOn) != 0 {
+		it.WaitsReleased = true
+	}
+	it.PolicyRun, it.WaitingOn, it.Blocked = allowance, nil, nil
 }

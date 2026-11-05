@@ -12,6 +12,9 @@ const WaitsOnMost = 20
 // BlockWaitsOn names a block caused by a parent job.
 const BlockWaitsOn = "waits_on"
 
+// BlockPolicy names an allowance refusal or a group stop.
+const BlockPolicy = "policy"
+
 // JobBlock says why a job waits for a parent to be fixed.
 type JobBlock struct {
 	By     string    `json:"by"`

@@ -425,6 +425,8 @@ reads, including unavailable results, share a ten-second cache of at most
 | `factory.waits_set` | `in.FactoryWaitsSetParams` | `FactoryWaitsSet` |
 | `factory.features` | `in.FactoryFeaturesParams` | `FactoryFeatures` |
 | `factory.repo_issues` | `in.FactoryRepoIssuesParams` | `FactoryRepoIssues` |
+| `factory.policy_get` | `in.FactoryPolicyGetParams` | `FactoryPolicy` |
+| `factory.policy_set` | `in.FactoryPolicySetParams` | `FactoryPolicy` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |

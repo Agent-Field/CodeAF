@@ -299,6 +299,9 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 // through the answer door: the runner holding it carries on, and the answer
 // is recorded. A cap no runner waits on any more goes back to the queue.
 func (h *Handler) continueCap(r *http.Request, it factory.Item, words string) error {
+	if handled, err := h.continuePolicy(r, it, words); handled {
+		return err
+	}
 	if h.seam.Answer != nil {
 		err := h.recordAnswer(r, it, true, words)
 		if err == nil || !strings.Contains(err.Error(), "is not waiting on you") {
