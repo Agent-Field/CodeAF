@@ -4,6 +4,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -44,7 +45,11 @@ func (a *knowledgeTestAgent) KnowledgeCaptureError() string { return a.captureEr
 
 func TestMemoryCreatesProjectKnowledgeOnlyOnEnter(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(profile)
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	drive(t, a, key(placeChord(pageMemory)), key("alt+u"))
 	if v.Enabled() {
@@ -120,7 +125,11 @@ func TestMemoryInlineKnowledgeLinkRespondsToMouse(t *testing.T) {
 
 func TestMemoryBlankSpaceDoesNotCreateKnowledge(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(profile)
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	drive(t, a, key(placeChord(pageMemory)), key("alt+u"))
 	placeFrameText(a)

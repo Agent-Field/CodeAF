@@ -200,6 +200,9 @@ type UsageLine struct {
 	// in the program records which slot a call ran under, and a page that
 	// labelled this column with those words would be inventing the join.
 	Role string `json:"role,omitempty"`
+	// LibraryActivity distinguishes recorded learning from explicit answers.
+	// Absence on older memory rows preserves that the activity was not recorded.
+	LibraryActivity string `json:"library_activity,omitempty"`
 	// Seat is WHICH TIER'S MODEL ANSWERED, one word of the closed vocabulary
 	// [Seat] spells — reflex, low, worker, high, mastermind, judge, talk — derived at
 	// the bank door ([TagUsage], [SeatOfRole], [SeatOfAgent]) and never typed
@@ -1297,19 +1300,20 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	a.mu.Unlock()
 	now := time.Now()
 	line := UsageLine{
-		ID:           newUsageRowID(),
-		GenerationID: strings.TrimSpace(call.generationID),
-		Unbilled:     call.unpriced,
-		At:           now,
-		Day:          now.Local().Format(usageDayLayout),
-		Model:        strings.TrimSpace(call.model),
-		Calls:        used.Calls,
-		Input:        used.Input,
-		Output:       used.Output,
-		USD:          used.CostUSD,
-		Empty:        used.EmptyReflex > 0,
-		Reconciled:   call.reconciled,
-		Price:        usagePrice(used.CostUSD, call.price),
+		ID:              newUsageRowID(),
+		GenerationID:    strings.TrimSpace(call.generationID),
+		Unbilled:        call.unpriced,
+		At:              now,
+		Day:             now.Local().Format(usageDayLayout),
+		Model:           strings.TrimSpace(call.model),
+		Calls:           used.Calls,
+		Input:           used.Input,
+		Output:          used.Output,
+		USD:             used.CostUSD,
+		Empty:           used.EmptyReflex > 0,
+		Reconciled:      call.reconciled,
+		Price:           usagePrice(used.CostUSD, call.price),
+		LibraryActivity: call.libraryActivity,
 
 		Session: session,
 		Run:     call.run,

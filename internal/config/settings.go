@@ -686,13 +686,13 @@ const (
 	MemoryOn  = "on"
 )
 
-// MemoryModes lists off first, the default until a person opts in.
-var MemoryModes = []string{MemoryOff, MemoryOn}
+// MemoryModes lists the default first; saved choices remain authoritative.
+var MemoryModes = []string{MemoryOn, MemoryOff}
 
-const DefaultMemory = MemoryOff
+const DefaultMemory = MemoryOn
 
 // MemoryCostNote is the cost disclosure shared by settings surfaces.
-const MemoryCostNote = "Off by default. When on, it learns from your chats and jobs so later work can use it, and makes extra model calls on your key. On one small test job, memory was 39% of the cost ($0.0124 of $0.0315); it varies by job."
+const MemoryCostNote = "Learns from chats and jobs so later work can use what you learned. On by default; uses extra model calls on your key. See actual costs in Spending."
 
 // The prompt profile's three answers, and they are three rather than two
 // because the honest default is not a size at all: it is "work it out". A row
@@ -3908,7 +3908,7 @@ func TaskStartAt(profileDir string) string {
 	return DefaultTaskStart
 }
 
-// MemoryAt resolves the one automatic-memory switch, absent means off.
+// MemoryAt resolves the learning switch, retaining an explicit saved choice.
 func MemoryAt(profileDir string) string {
 	enabled, _ := MemorySettingAt(profileDir)
 	if enabled {
@@ -3930,7 +3930,12 @@ func MemorySettingAt(profileDir string) (enabled, saved bool) {
 	if value, ok := persistedBool(profileDir, KeyMemoryEnabled); ok {
 		return value, true
 	}
-	return false, false
+	// Invalid saved values do not authorize automatic model calls.
+	values, err := readProfileConfig(profileDir)
+	if _, present := values[KeyMemoryEnabled]; err != nil || present {
+		return false, false
+	}
+	return DefaultMemory == MemoryOn, false
 }
 
 // WriteMemoryEnabled saves an explicit choice through the shared profile writer.

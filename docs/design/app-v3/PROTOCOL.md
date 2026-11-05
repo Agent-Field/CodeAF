@@ -1201,6 +1201,14 @@ role pins and checked as the other pins are.
 | `spend.report` | `in.SpendReportParams` | `SpendReportResult` |
 | `spend.today` | `{}` | `SpendResult` |
 
+`spend.report` cells may carry `library_activity`: `learning`, `answers`, or
+`unspecified` for historical memory calls whose activity was not recorded.
+Non-Library calls omit it. These cells are parts of the existing totals, never
+additional charges. The report retains the same date, model and owner filters,
+recorded model names, and unknown-price semantics. Older clients can ignore
+this optional field; older engines provide no Library breakdown.
+
+
 ## sync methods
 
 | method | params | result |

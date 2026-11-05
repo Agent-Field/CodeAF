@@ -55,3 +55,20 @@ type ownerSessionsKey struct{}
 func WithOwnerSessions(ctx context.Context, sessions []string) context.Context {
 	return context.WithValue(ctx, ownerSessionsKey{}, append([]string(nil), sessions...))
 }
+
+// LibraryActivity reports the recorded purpose of a knowledge request for spending.
+// It changes attribution only; compiler roles and quality checks stay unchanged.
+func LibraryActivity(ctx context.Context) string {
+	activity, _ := ctx.Value(libraryActivityKey{}).(string)
+	return activity
+}
+
+type libraryActivityKey struct{}
+
+func withLibraryActivity(ctx context.Context, role string) context.Context {
+	activity := "learning"
+	if role == "query" || role == "recall" {
+		activity = "answers"
+	}
+	return context.WithValue(ctx, libraryActivityKey{}, activity)
+}

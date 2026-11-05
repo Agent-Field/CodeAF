@@ -59,7 +59,7 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, err := m.callContext(m.ctx)
+	ctx, err := m.callContext(withLibraryActivity(m.ctx, role))
 	if err != nil {
 		return nil, err
 	}
