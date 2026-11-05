@@ -28,7 +28,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// The separate fake crew fixture banks a $0.025 crossing charge.
 const hardCapDay = .02
+const hardCapInitialDay = .40
 const hardCapRequest = .02
 
 // TestLiveDayCapStopsFourCrews uses the same public engine door as
@@ -70,7 +72,7 @@ func TestLiveDayCapStopsFourCrews(t *testing.T) {
 	keys := config.NewAppCredentials()
 	t.Cleanup(config.UseAppCredentials(keys))
 	keys.Set(modelsource.DefaultID, liveFactoryKey)
-	if err := config.WriteDailyBudgetUSD(profile, hardCapDay); err != nil {
+	if err := config.WriteDailyBudgetUSD(profile, hardCapInitialDay); err != nil {
 		t.Fatal(err)
 	}
 	input, output := hardCapPrices(t, ctx)
@@ -181,6 +183,7 @@ func TestLiveDayCapStopsFourCrews(t *testing.T) {
 		}
 	}()
 
+	trace.arm(t, ctx, profile)
 	hardCapWait(t, ctx, "daily cap crossing and all four chat notices", func() bool {
 		trace.mu.Lock()
 		crossed := !trace.crossed.IsZero()
@@ -229,7 +232,7 @@ func TestLiveDayCapStopsFourCrews(t *testing.T) {
 	if !refused || trace.count() != before {
 		t.Fatal("later submit was not refused without a model call")
 	}
-	if err := config.WriteDailyBudgetUSD(profile, .40); err != nil {
+	if err := config.WriteDailyBudgetUSD(profile, hardCapInitialDay); err != nil {
 		t.Fatal(err)
 	}
 	trace.mu.Lock()
@@ -338,13 +341,71 @@ type hardCapTrace struct {
 	active, peak  int
 	handlers      int
 	reserved      float64
+	cap           float64
+	armed         time.Time
 	crossed       time.Time
 	raised        bool
 }
 
 func (s *hardCapTrace) count() int { s.mu.Lock(); defer s.mu.Unlock(); return len(s.rows) }
 
-// Locks protect counters only. No lock is held over a provider request. Each
+// Arm through the profile only after every crew has reached a real worker call.
+func (s *hardCapTrace) arm(t *testing.T, ctx context.Context, profile string) {
+	t.Helper()
+	deadline := time.NewTimer(120 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		s.mu.Lock()
+		var worked [4]bool
+		for _, row := range s.rows {
+			if row.Admitted && row.WorkerCrew >= 0 && row.WorkerCrew < len(worked) && !row.AfterRaise {
+				worked[row.WorkerCrew] = true
+			}
+		}
+		s.mu.Unlock()
+		var missing []int
+		for crew, admitted := range worked {
+			if !admitted {
+				missing = append(missing, crew)
+			}
+		}
+		if len(missing) == 0 {
+			break
+		}
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatalf("120s limit: cannot arm daily cap; crews without an admitted worker call: %v", missing)
+		case <-ctx.Done():
+			t.Fatalf("cannot arm daily cap: %v; crews without an admitted worker call: %v", ctx.Err(), missing)
+		}
+	}
+	if !session.FlushUsage() {
+		t.Fatal("ledger flush before arming failed")
+	}
+	lines, err := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
+	if err != nil {
+		t.Fatalf("ledger read before arming: %v", err)
+	}
+	cap := session.SpendToday(lines, time.Now()) + .005
+	// Serialize the profile change with crossing detection in the recorder.
+	s.mu.Lock()
+	err = config.WriteDailyBudgetUSD(profile, cap)
+	if err == nil {
+		s.cap = cap
+		s.armed = time.Now()
+	}
+	armed := s.armed
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatalf("arm daily cap: %v", err)
+	}
+	t.Logf("armed cap=%.9f at=%s after admitted worker calls from all four crews", cap, armed.Format(time.RFC3339Nano))
+}
+
+// Locks protect counters and cap state. No lock is held over a provider request. Each
 // admitted call reserves its entire cost bound until final usage is known;
 // missing usage retains that reservation, including calls cut before an id.
 func (s *hardCapTrace) handler(recorder *liveRecorder) http.Handler {
@@ -502,7 +563,7 @@ func (s *hardCapTrace) handler(recorder *liveRecorder) http.Handler {
 				recorder.cost += max(0, chunk.Usage.Cost-row.Cost)
 				row.Cost = max(row.Cost, chunk.Usage.Cost)
 				row.Usage = true
-				if s.crossed.IsZero() && recorder.cost >= hardCapDay {
+				if !s.armed.IsZero() && s.crossed.IsZero() && recorder.cost >= s.cap {
 					s.crossed = time.Now()
 				}
 			}
@@ -597,7 +658,7 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 	t.Helper()
 	s.mu.Lock()
 	rows := append([]*hardCapRow(nil), s.rows...)
-	peak := s.peak
+	peak, cap, armed := s.peak, s.cap, s.armed
 	s.mu.Unlock()
 	// Billing must still be fetched when the product wait exhausted its deadline.
 	receiptCtx, cancel := context.WithTimeout(context.Background(), provider.ReceiptWait)
@@ -665,7 +726,7 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 	if ledger > providerTotal+1e-9 {
 		t.Errorf("ledger %.9f exceeds provider %.9f", ledger, providerTotal)
 	}
-	t.Logf("cap=%.9f ledger_day=%.9f recorder_usage=%.9f provider_billed=%.9f cut_before_reply=%d cut_mid_stream=%d peak_concurrent=%d crews_started=%d past_cap=%.9f seconds=%.3f provider_minus_ledger=%.9f", hardCapDay, ledger, recorded, providerTotal, cutBefore, cutMid, peak, len(paidCrews), max(0, beforeRaise-hardCapDay), time.Since(started).Seconds(), providerTotal-ledger)
+	t.Logf("cap=%.9f armed_at=%s ledger_day=%.9f recorder_usage=%.9f provider_billed=%.9f cut_before_reply=%d cut_mid_stream=%d peak_concurrent=%d crews_started=%d past_cap=%.9f seconds=%.3f provider_minus_ledger=%.9f", cap, armed.Format(time.RFC3339Nano), ledger, recorded, providerTotal, cutBefore, cutMid, peak, len(paidCrews), max(0, beforeRaise-cap), time.Since(started).Seconds(), providerTotal-ledger)
 }
 func hardCapReceipt(ctx context.Context, upstream, key, id string) (float64, bool) {
 	// Billing becomes visible seconds after a completion; wait out the receipt
@@ -695,6 +756,13 @@ func hardCapReceipt(ctx context.Context, upstream, key, id string) (float64, boo
 }
 
 func hardCapFakeRecorder(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	session.RecordUsage(session.UsageLedgerPath(), session.UsageLine{Model: "fixture planning", Calls: 1, USD: .01})
+	profile := v3Profile(t, map[string]any{})
+	if err := config.WriteDailyBudgetUSD(profile, hardCapInitialDay); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	ready := make(chan struct{}, 4)
@@ -737,9 +805,9 @@ func hardCapFakeRecorder(t *testing.T) {
 	trace := &hardCapTrace{ctx: ctx, upstream: fake.URL, input: 1e-7, output: 1e-6}
 	r.server.Config.Handler = trace.handler(r)
 	done := make(chan error, 4)
-	for range 4 {
+	for crew := range 4 {
 		go func() {
-			resp, err := http.Post(r.server.URL+"/chat/completions", "application/json", strings.NewReader(`{"model":"`+liveFactoryModel+`","max_tokens":128}`))
+			resp, err := http.Post(r.server.URL+"/chat/completions", "application/json", strings.NewReader(fmt.Sprintf(`{"model":%q,"max_tokens":128,"tools":[{}],"messages":[{"role":"user","content":"crew-%d-work"}]}`, liveFactoryModel, crew)))
 			if err == nil {
 				_, err = io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
@@ -755,6 +823,7 @@ func hardCapFakeRecorder(t *testing.T) {
 			t.Fatal("local requests did not overlap")
 		}
 	}
+	trace.arm(t, ctx, profile)
 	close(release)
 	for range 4 {
 		if err := <-done; err != nil {
@@ -762,7 +831,10 @@ func hardCapFakeRecorder(t *testing.T) {
 		}
 	}
 	trace.wait(t)
-	if trace.peak != 4 || trace.crossed.IsZero() || math.Abs(r.cost-.024) > 1e-9 {
+	if cap, err := config.DailyBudgetUSDAt(profile); err != nil || math.Abs(cap-.015) > 1e-9 {
+		t.Errorf("recorder did not arm cap at ledger day total plus $0.005: cap=%f err=%v", cap, err)
+	}
+	if trace.peak != 4 || trace.crossed.IsZero() || !trace.crossed.After(trace.armed) || math.Abs(r.cost-.024) > 1e-9 {
 		t.Fatalf("fake accounting peak=%d crossed=%t cost=%f", trace.peak, !trace.crossed.IsZero(), r.cost)
 	}
 	cutCtx, stopCut := context.WithCancel(ctx)
