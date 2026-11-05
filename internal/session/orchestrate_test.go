@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -821,6 +822,57 @@ func TestWriteScopeBindsTheHandsThatKnowTheirPath(t *testing.T) {
 }
 
 // ── the small parts ─────────────────────────────────────────────────────────
+
+func TestWorkerWriteScopeAcceptsSegmentGlobs(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.writeScope = []string{"crew-0-*.md"}
+	})
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"crew-0-a.md", true},
+		{"crew-1-a.md", false},
+		{"../x", false},
+		{"crew-0-sub/a.md", false},
+	} {
+		_, result, allowed := (writeGuard{agent: agent}).PreAction(context.Background(), nil, nil,
+			scopedCall("write", workspace+"/"+tc.path))
+		if allowed != tc.want {
+			t.Errorf("write %s: allowed=%v, want %v; result: %s", tc.path, allowed, tc.want, result.text)
+		}
+	}
+}
+
+func TestWorkerGlobScopeRefusesSymlinkEscapes(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.writeScope = []string{"crew-*"}
+	})
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(workspace, "crew-outside")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(workspace, "crew-inside"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "missing.md"), filepath.Join(workspace, "crew-dangling.md")); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"crew-outside/new/deep.md", false},
+		{"crew-dangling.md", false},
+		{"crew-inside/new/deep.md", true},
+	} {
+		_, result, allowed := (writeGuard{agent: agent}).PreAction(context.Background(), nil, nil,
+			scopedCall("write", filepath.Join(workspace, tc.path)))
+		if allowed != tc.want {
+			t.Errorf("write %s: allowed=%v, want %v; result: %s", tc.path, allowed, tc.want, result.text)
+		}
+	}
+}
 
 func TestOrchestrateBriefCarriesTheDigestsAndTheBound(t *testing.T) {
 	brief := orchestrateBrief("",
