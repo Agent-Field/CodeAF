@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -76,8 +77,24 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 	wal.owner = c.Root
 	reapOrphans(rec.Incomplete, reapGrace)
 	r := &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
-		pending: rec.Completed, incomplete: rec.Incomplete}
-	if opts.Async && len(r.pending) > 0 {
+		pending: rec.Completed, models: rec.Models, incomplete: rec.Incomplete}
+	// A crash after receipt publication can leave the same model in the WAL.
+	if len(r.models) > 0 {
+		if calls, e := ModelCalls(c); e == nil {
+			booked := map[string]bool{}
+			for _, m := range calls {
+				booked[m.ID] = true
+			}
+			kept := r.models[:0]
+			for _, m := range r.models {
+				if m.ID == "" || !booked[m.ID] {
+					kept = append(kept, m)
+				}
+			}
+			r.models = kept
+		}
+	}
+	if opts.Async && (len(r.pending) > 0 || len(r.models) > 0) {
 		r.hold()
 	}
 	return r, nil
@@ -145,10 +162,45 @@ func exitOfFailure(failed bool) int {
 // in the receipt of the turn it was made in.
 func (r *Recorder) NoteModelCall(m executor.ModelCall) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.models = append(r.models, modelCallOf(m))
+	model := modelCallOf(m)
+	for _, pending := range r.models {
+		if model.ID != "" && pending.ID == model.ID {
+			r.mu.Unlock()
+			return
+		}
+	}
+	r.models = append(r.models, model)
+	err := r.wal.recordModels(r.models)
 	if r.opts.Async {
 		r.hold()
+	}
+	r.mu.Unlock()
+	if err != nil {
+		log.Print("model receipt pending; retaining for retry")
+		r.report(err)
+		go r.retryModel(model)
+	}
+}
+
+func (r *Recorder) retryModel(m ModelCall) {
+	for attempt := 0; ; attempt++ {
+		time.Sleep(min(10*time.Millisecond<<min(attempt, 7), time.Second))
+		r.mu.Lock()
+		pending := false
+		for _, model := range r.models {
+			if model.ID == m.ID {
+				pending = true
+				break
+			}
+		}
+		var err error
+		if pending {
+			err = r.wal.recordModels(r.models)
+		}
+		r.mu.Unlock()
+		if !pending || err == nil {
+			return
+		}
 	}
 }
 
@@ -335,8 +387,9 @@ func (r *Recorder) seal(ctx context.Context) {
 	}
 	// Ordered turn and receipt writes survive process death. Group commit and
 	// explicit boundaries make both stores durable before work leaves this computer (C28/U1).
+	models := r.models
 	r.pending, r.models = nil, nil
-	r.outcome(r.wal.Sealed(batch))
+	r.outcome(r.wal.Sealed(batch, models...))
 	r.releaseHeld()
 }
 

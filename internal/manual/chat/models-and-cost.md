@@ -4607,3 +4607,22 @@ the mount recovers. If the process exits first, those rows can be lost. Reaching
 the limit writes one line to the log with the ledger path and the number of rows
 pending, and those rows count as records not written down until they are written.
 No warning appears on screen.
+
+## Usage totals after a crash or forced exit
+
+codeaf saves each complete priced usage row in a pending journal before handing
+it to the background ledger writer. On the next start, missing charges are
+replayed once with their original amount, day and ownership. Already booked
+charges are not added again. This protects new charges whose journal write
+succeeded; it cannot recover facts that an older build never saved.
+
+The sidecar is `usage.jsonl.pending-v1.jsonl`, beside `usage.jsonl` in your
+profile's `v3` directory. Startup and clean close compact booked rows out of it.
+Keep this file with the ledger when recovering a profile. If disk writes fail,
+chat continues with its in-memory counters while accounting retries; an unsaved
+row cannot survive process exit.
+
+Model-only calls also keep a local receipt record until sealing succeeds. An
+older build can lose that receipt detail when it rewrites the call log. The
+pending usage journal remains the source for exact money recovery; downgrading
+can lose model-call receipt detail, never money already saved by this journal.

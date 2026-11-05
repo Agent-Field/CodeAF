@@ -6,17 +6,14 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
-// Holding the ledger's file lock models a stalled disk without replacing the
-// seekable ledger with a pipe. Enqueue must finish while the lock is held;
-// releasing it must durably drain every charge, including queue overflow.
-func TestRecordingUsageNeverWaitsOnTheDisk(t *testing.T) {
+// Journal handoff shares the ledger lock, so it must wait before claiming durability.
+func TestRecordingUsageWaitsForTheDurableJournal(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
@@ -50,8 +47,8 @@ func TestRecordingUsageNeverWaitsOnTheDisk(t *testing.T) {
 	}()
 	select {
 	case <-returned:
-	case <-time.After(2 * time.Second):
-		t.Fatal("RecordUsage was still inside the disk two seconds later: the turn path is waiting on the ledger")
+		t.Fatal("RecordUsage returned before acquiring the journal lock")
+	case <-time.After(50 * time.Millisecond):
 	}
 	info, err := file.Stat()
 	if err != nil {
@@ -61,6 +58,11 @@ func TestRecordingUsageNeverWaitsOnTheDisk(t *testing.T) {
 		t.Fatal("the writer bypassed the held ledger lock")
 	}
 	release()
+	select {
+	case <-returned:
+	case <-time.After(time.Minute):
+		t.Fatal("journal did not resume")
+	}
 	if !FlushUsage() {
 		t.Fatal("the flush hit its deadline rather than draining; the rows in front of it are still queued")
 	}
@@ -93,18 +95,11 @@ func TestRecordingUsageNeverWaitsOnTheDisk(t *testing.T) {
 	}
 }
 
-// A FLUSH ANSWERS EVEN WHEN THE DISK NEVER WILL. [FlushUsage] used to send into
-// a writer's queue and wait on the answer with no ceiling on either, so a writer
-// parked inside [openUsageLedger] on a stalled mount held the flush for good —
-// and the caller holding the bag is [v3Process.closeAll], which is to say the
-// terminal never came back. A fifo nobody ever reads is that mount.
+// A flush keeps its ceiling even when journaled rows cannot reach the ledger.
 func TestFlushingUsageGivesUpOnAStalledLedger(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
-	if err := syscall.Mkfifo(path, 0o600); err != nil {
-		t.Skipf("this filesystem has no fifos to stall on: %v", err)
-	}
-	// Nobody ever opens the reading end, so the writer's own open blocks for the
-	// life of the process and its queue is never drained.
+	release := holdUsageProjection(t, path)
+	defer func() { release(); StopUsageWriter(path) }()
 	RecordUsage(path, UsageLine{At: usageAt(t, "2026-08-25 08:00"),
 		Model: "opus-4.1", Calls: 1, Input: 10, USD: 0.01})
 
@@ -135,21 +130,18 @@ func TestAFlushThatHitsItsDeadlineSaysSoAndStoppingTheWriterIsTheJoin(t *testing
 
 	home := t.TempDir()
 	path := filepath.Join(home, UsageLedgerName)
-	if err := syscall.Mkfifo(path, 0o600); err != nil {
-		t.Skipf("this filesystem has no fifos to stall on: %v", err)
-	}
+	release := holdUsageProjection(t, path)
+	defer release()
 	at := usageAt(t, "2026-08-25 08:00")
-	// Nobody is reading the fifo, so the writer parks inside its open and every
-	// row stays queued behind it.
+	// The projection is held after the durable handoff.
 	RecordUsage(path, UsageLine{At: at, Model: "opus-4.1", Calls: 1, Input: 10, USD: 0.01})
 
 	if FlushUsage() {
 		t.Fatal("the flush claimed a drain while its writer was parked on a fifo nobody reads")
 	}
 
-	// The writer is parked inside an open that will never answer, so the join
-	// reports that it gave up rather than pretending. Either way the path is off
-	// the registry, so no later row can be queued for this home.
+	// Releasing projection lets stop join the writer after the timed-out flush.
+	release()
 	StopUsageWriter(path)
 	usageWritersMu.Lock()
 	_, kept := usageWriters[path]

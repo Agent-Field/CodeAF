@@ -131,6 +131,7 @@ func (c *Config) bindUsageLedger() {
 	if c.usageLedger == "" {
 		c.usageLedger = UsageLedgerPath()
 	}
+	prepareUsage(c.usageLedger)
 }
 
 // UsageLedgerPath resolves the current home's ledger. Accounting owners capture
@@ -561,9 +562,11 @@ var usageFlushLimit = 2 * time.Second
 // The flush travels through the SAME queue as the rows, which is what makes it
 // an answer about them rather than a race with them.
 type usageWrite struct {
-	id   string
-	line []byte
-	done chan struct{}
+	row       *UsageLine
+	journaled bool
+	id        string
+	line      []byte
+	done      chan struct{}
 }
 
 // usageWriter is one ledger file's background writer.
@@ -612,10 +615,7 @@ func countUnbilledCall() { unbilledCalls.Add(1) }
 // node banker but no [Agent] method to receive the reconciliation.
 func CountUnbilledCall() { countUnbilledCall() }
 
-// usageWriters is the writer per path, and usageWritersMu guards the map ALONE.
-// It is never held across a file operation, so [RecordUsage] can never be made
-// to wait on a disk by another caller's write — the property the process-wide
-// append mutex this replaced could not offer.
+// usageWritersMu guards only admission, never journal I/O or projection.
 //
 // A writer, once started, lives as long as the process. There is one path in an
 // ordinary run and a handful in a test binary, so the map is bounded in practice
@@ -660,64 +660,76 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 	return pending
 }
 
-// run drains the queue forever, holding ONE descriptor open across rows.
-//
-// The descriptor is opened lazily and dropped on the first write that fails, so
-// a replaced or removed pathname reopens and retries the same row once. Other
-// filesystem failures drop the descriptor and count that row in UsageDrops;
-// the next row tries a fresh descriptor without blocking the turn.
+// run projects journaled rows in order. Failed rows stay in memory with capped
+// backoff; close can reach its deadline while the journal keeps the durable copy.
 func (w *usageWriter) run(path string) {
-	var file *os.File
-	var identities usageIdentityCursor
 	defer close(w.stopped)
-	defer func() {
-		if file != nil {
-			_ = file.Close()
-		}
-	}()
+	defer RecoverUsage(path)
+	var identities usageIdentityCursor
 	write := func(rows []usageWrite) {
 		charges := 0
 		for _, row := range rows {
-			if row.line != nil {
+			if row.line != nil || row.row != nil {
 				charges++
 			}
 		}
 		if charges == 0 {
 			return
 		}
-		defer w.rowsHandled(int64(charges))
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
-		if file == nil {
-			file = openUsageLedger(path)
-			if file == nil {
-				usageDropped.Add(int64(charges))
+		for attempt := 0; ; attempt++ {
+			var err error
+			for i := range rows {
+				row := &rows[i]
+				if row.row != nil && row.line == nil {
+					var payload []byte
+					payload, err = json.Marshal(*row.row)
+					if err == nil {
+						row.line = append(payload, '\n')
+					}
+				}
+				if err == nil && len(row.line) > usageLineBytes {
+					err = errors.New("usage row exceeds reader limit")
+				}
+				if err == nil && row.line != nil && !row.journaled {
+					err = pendingUsage(path).append(path, *row)
+					if err == nil {
+						row.journaled = true
+					}
+				}
+				if err != nil {
+					break
+				}
+			}
+			written := 0
+			if err == nil {
+				file := openUsageLedger(path)
+				if file == nil {
+					err = errors.New("open usage ledger")
+				} else {
+					written, err = identities.append(file, rows)
+					if err == nil {
+						err = file.Sync()
+					}
+					file.Close()
+				}
+			}
+			if err == nil {
+				w.rowsHandled(int64(charges))
+				for range written {
+					announceUsageWritten()
+				}
 				return
 			}
-		}
-		// One append holds complete rows under the same ledger lock. Batching
-		// amortizes generation validation without delaying a quiet writer.
-		written, err := identities.append(file, rows)
-		if errors.Is(err, errUsageLedgerReplaced) || errors.Is(err, fs.ErrNotExist) {
-			_ = file.Close()
-			file = openUsageLedger(path)
 			identities = usageIdentityCursor{}
-			if file == nil {
-				usageDropped.Add(int64(charges))
-				return
+			for _, row := range rows {
+				if row.line != nil || row.row != nil {
+					pendingUsage(path).failed(row.id)
+				}
 			}
-			written, err = identities.append(file, rows)
-		}
-		if err != nil {
-			usageDropped.Add(int64(charges))
-			_ = file.Close()
-			file = nil
-			identities = usageIdentityCursor{}
-			return
-		}
-		for range written {
-			announceUsageWritten()
+			time.Sleep(usageRetryDelay(attempt))
 		}
 	}
 	batch := make([]usageWrite, 0, usageWriteBatchSize)
@@ -735,7 +747,7 @@ func (w *usageWriter) run(path string) {
 			close(work.done)
 			continue
 		}
-		if work.line != nil {
+		if work.line != nil || work.row != nil {
 			batch = append(batch, work)
 			if len(batch) == usageWriteBatchSize || len(w.queue) == 0 {
 				flush()
@@ -786,9 +798,7 @@ func announceUsageWritten() {
 	}
 }
 
-// openUsageLedger opens one ledger for appending, creating its directory, and
-// answers nil where it could not — the caller drops the row for [RecordUsage]'s
-// reason and tries again on the next one.
+// openUsageLedger opens the current generation; a failed open leaves rows pending.
 func openUsageLedger(path string) *os.File {
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -1039,15 +1049,9 @@ func detachUsageWriters() []*usageWriter {
 	return writers
 }
 
-// RecordUsage queues one line. Every failure is silence, for
-// [RecordArtifact]'s reason: the caller has just finished a piece of a person's
-// turn, and there is nothing it could usefully do with the news that a spending
-// record could not be written — least of all tell them about it mid-sentence.
-//
-// A LINE THAT SPENT NOTHING IS NOT WRITTEN, which is [sessionFile.appendUsage]'s
-// own guard kept here as well rather than trusted: this file is appended to from
-// more than one door over its life, and a zero row in a spending ledger is worse
-// than no row — it is a day that looks measured and was not.
+// RecordUsage retains a complete row and syncs its journal before queueing ledger
+// projection. Disk errors are logged and retried without failing the caller's chat.
+// Calls with no money or tokens do not create ledger rows.
 func RecordUsage(path string, line UsageLine) {
 	// Every live producer is modern, even when it has no saved-call identity.
 	// Only imported historical calls may cover the old ordered prefix.
@@ -1081,16 +1085,25 @@ func queueUsage(path string, line UsageLine) {
 	} else {
 		line.SharedID = true
 	}
+	prepareUsage(path)
 	payload, err := json.Marshal(line)
-	if err != nil {
-		dropUsageRow()
-		return
+	work := usageWrite{id: line.ChargeID(), row: &line}
+	if err == nil {
+		work.line = append(payload, '\n')
+		if len(work.line) <= usageLineBytes {
+			err = pendingUsage(path).append(path, work)
+		} else {
+			err = errors.New("usage row exceeds reader limit")
+		}
 	}
-	// Overflow is kept for the writer, so a saturated queue never discards a
-	// charge and the caller still never waits on the disk.
+	if err == nil {
+		work.journaled = true
+	} else {
+		pendingUsage(path).failed(work.id)
+	}
 	usageWritersMu.Lock()
 	writer := usageWriterForLocked(path)
-	work := usageWrite{id: line.ChargeID(), line: append(payload, '\n')}
+
 	writer.admitted.Add(1)
 	// While rows are kept, new ones join them: the queue can then only shrink,
 	// so steady traffic can't hold the kept rows back.
@@ -1206,6 +1219,7 @@ func ReadUsage(path string, since time.Time) ([]UsageLine, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
 	}
+	prepareUsage(path)
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -1466,6 +1480,7 @@ func (c *UsageCache) Read(since time.Time) ([]UsageLine, error) {
 	if path == "" {
 		path = UsageLedgerPath()
 	}
+	prepareUsage(path)
 	info, err := os.Stat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
