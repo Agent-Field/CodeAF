@@ -323,6 +323,8 @@ A command's result returns after its call log is written, while its file capture
 
 ## Quitting while saving — local confirmation and a slow upload
 
+Quitting another chat does not invalidate a chat's earlier confirmed local save.
+
 A save wait lasts at most 30 seconds. After the screen closes, a pending sync save says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 
 If the turns are saved locally but not uploaded, the final sentence is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service’s host. That is a successful exit. Ctrl+c during this wait leaves promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`; that failure may include the local recovery path.
