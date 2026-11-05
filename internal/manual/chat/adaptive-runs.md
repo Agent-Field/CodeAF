@@ -343,6 +343,19 @@ do is change what a node already running was asked for.
 When no page is open, the planner's notes land in the conversation as dim lines beginning
 `run · `.
 
+## Planner reply cut off or empty repair — the plan stays unchanged
+
+After work has started, a planner reply cut off by its output cap is refused.
+A blank reply or an empty syntax repair is also refused. The run's planner notes
+say `the planner did not answer: the planner's reply was cut off`. The current
+plan stays unchanged, workers continue, and later completions can ask the planner
+again. A complete explicit `{}` still means no change and adds no failure note.
+
+Syntax repair requests at least 8,192 output tokens or twice the original reply's
+reported completion tokens, whichever is greater. A larger output cap already
+requested for recovery is preserved. This applies to opening and later replies;
+existing provider and spending checks still apply.
+
 ## The crew planned no work — reason, retry, or edit the goal
 
 If the opening plan creates no nodes, the run ends as **incomplete**, with the
