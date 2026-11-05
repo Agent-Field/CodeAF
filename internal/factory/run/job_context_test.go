@@ -128,3 +128,64 @@ func TestJobContextBriefCompiledPlan(t *testing.T) {
 		}
 	}
 }
+
+// E9/M1: a plan skipped after inspect defers context to write, which keeps it
+// after finishing; a plan that opened a chat keeps priority even if later skipped.
+func TestJobContextBriefAfterConditionalPlan(t *testing.T) {
+	for _, mode := range []string{"skipped", "runs", "runs then skipped"} {
+		runPlan := mode != "skipped"
+		path, recipient := "docs/guide.md", 2
+		if runPlan {
+			path, recipient = "auth/login.go", 1
+		}
+		t.Run(mode, func(t *testing.T) {
+			stages := []factory.Stage{
+				{Name: "inspect", Kind: factory.StageChat, On: true},
+				{Name: "plan", Kind: factory.StageChat, On: true, When: "touches auth"},
+				{Name: "write", Kind: factory.StageChat, On: true},
+				{Name: "review", Kind: factory.StageChat, On: true},
+				{Name: "summarize", Kind: factory.StageChat, On: true},
+			}
+			attachments := []factory.JobContext{
+				{Title: "reference alpha", Source: "guide alpha", Markdown: "alpha beginning\n" + strings.Repeat("é", 59900) + "\nalpha end"},
+				{Title: "reference beta", Source: "guide beta", Markdown: "beta beginning\n\nbeta end"},
+			}
+			it := factory.Item{Stages: stages, Context: attachments, Files: []factory.FileChange{{Path: path}}}
+			if factory.Fits(stages[1], it) != runPlan {
+				t.Fatal("conditional plan does not match the scenario")
+			}
+			it.Stream = &factory.Stream{Phases: loopPhases(it)}
+			if len(it.Stream.Phases) != len(stages) {
+				t.Fatal("file-conditional plan must stay pending until its turn")
+			}
+			for i, stage := range stages {
+				it.Stream.Cur = i
+				if i == 1 && !runPlan {
+					it.Stream.Phases[i].State = factory.PhaseSkipped
+					continue
+				}
+				it.Stream.Phases[i].State = factory.PhaseRunning
+				brief := stageBrief(Job{Item: it, Stage: stage, Index: i, Round: 1})
+				want := 0
+				if i == recipient {
+					want = 1
+				}
+				for _, attachment := range attachments {
+					for _, part := range []string{attachment.Title, attachment.Source, attachment.Markdown} {
+						if got := strings.Count(brief, part); got != want {
+							t.Fatalf("step %q has %d copies of attachment %q content; want %d", stage.Name, got, attachment.Title, want)
+						}
+					}
+				}
+				it.Stream.Phases[i].State = factory.PhaseDone
+				if i == 1 && runPlan {
+					it.Stream.Phases[i].Chat = "plan-conversation"
+					if mode == "runs then skipped" {
+						it.Files[0].Path = "docs/guide.md"
+						it.Stream.Phases[i].State = factory.PhaseSkipped
+					}
+				}
+			}
+		})
+	}
+}

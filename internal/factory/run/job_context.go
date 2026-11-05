@@ -51,11 +51,17 @@ func firstContextPhase(it factory.Item) string {
 		if i := factory.StageIndex(it.Stages, p.Name); kind == "" && i >= 0 {
 			kind = it.Stages[i].Kind
 		}
-		if p.State != factory.PhaseSkipped && (kind == "" || kind == factory.StageChat) {
+		if kind == "" || kind == factory.StageChat {
 			if strings.EqualFold(p.Name, planStep) {
-				return p.Name
+				if p.State != factory.PhaseSkipped || p.Chat != "" {
+					return p.Name
+				}
+				// Earlier conversations deferred to this unread plan. Keep the first
+				// conversation after it as recipient, even after that step ends.
+				first = ""
+				continue
 			}
-			if first == "" {
+			if p.State != factory.PhaseSkipped && first == "" {
 				first = p.Name
 			}
 		}
