@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: Tasks on the home folder read it instead of copying it, and launch clears abandoned older-chat scratch copies
+title: Tasks read the home folder instead of copying it; launch clears unfinished older-chat copies
 pr: 2350
 surface: [chat, engine]
 invalidates:
