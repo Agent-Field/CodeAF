@@ -39,25 +39,20 @@ func sameTierAuthor(it factory.Item, r *tierRead) bool {
 
 func (st *Store) readHydrated(it factory.Item) (factory.Item, error) {
 	st.hydrateTier(it)
-	// Lookup happened without the item lock. Return the current document, not
-	// the snapshot that started the lookup or a concurrent writer's old state.
-	err := st.underItemLock(it.ID, func() error {
-		d, err := st.read(st.ItemPath(it.ID))
-		if err == nil {
-			it = d.Item
-		}
-		return err
-	})
+	// Lookup runs without the item lock. Atomic document replacement lets
+	// us reload the latest saved snapshot without acquiring that lock.
+	d, err := st.read(st.ItemPath(it.ID))
 	if err != nil {
 		return factory.Item{}, err
 	}
+	it = d.Item
 	st.tierDetail(&it)
 	st.retainOutput(&it)
 	return it, nil
 }
 
 func (st *Store) hydrateTier(it factory.Item) {
-	if it.Tier != "" || !it.RefusesWrite() {
+	if it.Tier != "" || !it.RefusesWrite() || it.Author == "" || factory.RepoOf(it) == "" {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -138,7 +133,7 @@ func (st *Store) hydrateTier(it factory.Item) {
 // tierDetail projects transient lookup state through the existing failure view.
 // The projection is never a saved job field or a saved retry record.
 func (st *Store) tierDetail(it *factory.Item) {
-	if it.Tier != "" {
+	if it.Tier != "" || it.Author == "" || factory.RepoOf(*it) == "" {
 		return
 	}
 	st.tierMu.Lock()

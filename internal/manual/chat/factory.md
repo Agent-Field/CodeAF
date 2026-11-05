@@ -336,6 +336,8 @@ Jobs from someone without write access refuse every step that can write, includi
 
 Reading an old outside job with no recorded author tier checks that author's permission on its repository using the factory's read credential. The result fills the saved tier without changing the job's age. A job with any recorded tier keeps it; normal source polling follows its existing refresh policy.
 
+Jobs without an author or repository skip this lookup and show no lookup failure. Lookup failures are a read-only view: they do not change reconciliation or saved job failures. Consent checks during a job update read the saved snapshot without starting author lookup.
+
 A missing collaborator (HTTP 404) resolves as someone without write access. A forbidden lookup (HTTP 403), missing credential, timeout or connection failure leaves the tier blank and steps that can write remain refused. The job's failure detail shows `Author access unknown: <redacted reason>; retry after <time>`.
 
 After a failed lookup, the next read retries after 1, 2, 4, 8 and then 10 minutes. A later retry time requested by GitHub takes precedence. There is no retry timer. Retry state stays in memory and resets when the factory restarts; a successfully filled tier stays saved.

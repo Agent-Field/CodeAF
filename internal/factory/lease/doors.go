@@ -66,11 +66,12 @@ func (d *Doors) update(id int, change func(doc *document, held *Lease, it *facto
 // document; a different revision is the store's StaleError and change never
 // runs. The lease file is persisted separately after the item write.
 func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
-	if _, err := d.desk.store.Get(id); err != nil {
+	read, err := d.desk.store.Get(id)
+	if err != nil {
 		return err
 	}
 	var refusal error
-	err := d.desk.change(func(doc *document, now time.Time) (bool, error) {
+	err = d.desk.change(func(doc *document, now time.Time) (bool, error) {
 		held := find(doc, id)
 		dirty := false
 		write := func(it *factory.Item) error {
@@ -79,7 +80,15 @@ func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held 
 			var denied run.WriteAccessRefusal
 			if errors.As(err, &denied) {
 				factory.StampFailure(it, denied.Failure(*it, now))
-				refusal = err
+				// Read-only lookup detail belongs on the admission response,
+				// never in the saved failure or the mutation's input.
+				if it.Tier == "" && it.Author == read.Author && factory.RepoOf(*it) == factory.RepoOf(read) {
+					var detail run.WriteAccessRefusal
+					if errors.As(run.CheckWriteAccess(read, denied.Step), &detail) {
+						denied.Reason = detail.Reason
+					}
+				}
+				refusal = denied
 				return nil
 			}
 			return err

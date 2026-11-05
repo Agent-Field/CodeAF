@@ -226,10 +226,10 @@ func (st *Store) get(id int, hydrate bool) (factory.Item, error) {
 	if err != nil {
 		return factory.Item{}, err
 	}
-	st.retainOutput(&d.Item)
 	if hydrate {
 		return st.readHydrated(d.Item)
 	}
+	st.retainOutput(&d.Item)
 	return d.Item, nil
 }
 
@@ -279,13 +279,14 @@ func (st *Store) list(hydrate bool) ([]factory.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		st.retainOutput(&d.Item)
 		if hydrate {
 			it, err := st.readHydrated(d.Item)
 			if err != nil {
 				return nil, err
 			}
 			d.Item = it
+		} else {
+			st.retainOutput(&d.Item)
 		}
 		items = append(items, d.Item)
 	}
@@ -520,7 +521,6 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 			before.PublishStatus = &copy
 		}
 		savedFailure := it.Failure
-		st.tierDetail(&it)
 		if err := change(&it); err != nil {
 			return err
 		}

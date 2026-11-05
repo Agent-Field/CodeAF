@@ -175,3 +175,102 @@ func TestSavingReadProjectionDoesNotSaveRetryState(t *testing.T) {
 		t.Fatal("saving a read projection persisted retry state")
 	}
 }
+
+func TestTierReadDoesNotProjectIntoMutations(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := legacyTierJob(t, st)
+	st.SetTierResolver(func(context.Context, factory.Item) (factory.Tier, time.Time, error) {
+		return "", time.Time{}, errors.New("offline")
+	})
+	if got, err := st.Get(it.ID); err != nil || got.Failure == nil {
+		t.Fatalf("read failure=%+v err=%v", got.Failure, err)
+	}
+	for _, mutate := range []func(int, func(*factory.Item) error) error{st.Update, st.Annotate} {
+		if err := mutate(it.ID, func(cur *factory.Item) error {
+			if cur.Failure != nil {
+				t.Fatalf("mutation saw read projection: %+v", cur.Failure)
+			}
+			cur.Title = "updated"
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := st.GetSaved(it.ID)
+	if err != nil || got.Title != "updated" || got.Failure != nil {
+		t.Fatalf("saved=%+v err=%v", got, err)
+	}
+}
+
+func TestSavedTierReadInsideMutationUsesSavedSnapshot(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := legacyTierJob(t, st)
+	other, err := Open(st.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	inside := true
+	for _, reader := range []*Store{st, other} {
+		reader.SetTierResolver(func(context.Context, factory.Item) (factory.Tier, time.Time, error) {
+			if inside {
+				t.Error("nested read attempted author lookup")
+			}
+			return factory.TierCollab, time.Time{}, nil
+		})
+	}
+	if err := st.Update(it.ID, func(cur *factory.Item) error {
+		for _, reader := range []*Store{st, other} {
+			got, err := reader.GetSaved(it.ID)
+			if err != nil || got.Tier != "" || got.Title != it.Title {
+				t.Fatalf("nested snapshot=%+v err=%v", got, err)
+			}
+		}
+		cur.Title = "updated"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inside = false
+	if got, err := st.Get(it.ID); err != nil || got.Title != "updated" || got.Tier != factory.TierCollab {
+		t.Fatalf("unlocked read=%+v err=%v", got, err)
+	}
+}
+
+func TestTierReadSkipsMissingAuthorOrRepository(t *testing.T) {
+	for _, field := range []string{"author", "repository"} {
+		t.Run(field, func(t *testing.T) {
+			st, err := Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			it := factory.Item{Origin: factory.OriginForge, Author: "bob", Repo: "acme/api"}
+			if field == "author" {
+				it.Author = ""
+			} else {
+				it.Repo = ""
+			}
+			it, err = st.Create(it)
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.SetTierResolver(func(context.Context, factory.Item) (factory.Tier, time.Time, error) {
+				t.Error("lookup without author or repository")
+				return "", time.Time{}, errors.New("missing identity")
+			})
+			got, err := st.Get(it.ID)
+			if err != nil || got.Failure != nil {
+				t.Fatalf("read=%+v err=%v", got, err)
+			}
+			items, err := st.List()
+			if err != nil || len(items) != 1 || items[0].Failure != nil {
+				t.Fatalf("list=%+v err=%v", items, err)
+			}
+		})
+	}
+}
