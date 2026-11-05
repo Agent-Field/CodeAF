@@ -332,7 +332,7 @@ func validateWorkspaceSetSources(ctx context.Context, place Place, request Works
 		if withinDir(use.Source, base) || withinDir(base, use.Source) {
 			return nil, errors.New("workspace source overlaps its owned destination")
 		}
-		if ownershipPlainMode(use.Source) == TaskModeReference {
+		if HoldsHomeFolder(use.Source) {
 			return nil, errors.New("a personal home cannot be copied as a workspace root; select an explicit working folder")
 		}
 	}
