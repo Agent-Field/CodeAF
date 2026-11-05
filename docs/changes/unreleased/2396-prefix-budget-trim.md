@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Keep both chat prefixes within their existing byte budgets
-pr: 0
+pr: 2396
 surface: [chat, engine]
 invalidates: []
 ---
