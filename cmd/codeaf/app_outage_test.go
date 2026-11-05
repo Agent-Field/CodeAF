@@ -120,6 +120,8 @@ func outageHomes(t *testing.T, relayURL string) (string, string) {
 	t.Setenv(syncsetup.URLVar, relayURL)
 	t.Setenv(syncsetup.IntervalVar, "50")
 	a, b := home.Dir(), e2TempDir(t)
+	cleanupAppChildDaemons(t, a)
+	cleanupAppChildDaemons(t, b)
 	id, err := identity.Ensure(a)
 	if err != nil {
 		t.Fatal(err)
