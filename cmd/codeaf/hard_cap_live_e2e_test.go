@@ -24,7 +24,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
-	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -661,7 +660,9 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 	peak, cap, armed := s.peak, s.cap, s.armed
 	s.mu.Unlock()
 	// Billing must still be fetched when the product wait exhausted its deadline.
-	receiptCtx, cancel := context.WithTimeout(context.Background(), provider.ReceiptWait)
+	// Each receipt gets its own wait: one slow receipt must not spend the
+	// window of every receipt after it.
+	receiptsDone, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	providerTotal, beforeRaise, cutBefore, cutMid := 0., 0., 0, 0
 	seen := map[string]bool{}
@@ -686,7 +687,9 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 			continue
 		}
 		seen[row.Generation] = true
+		receiptCtx, cancelReceipt := context.WithTimeout(receiptsDone, 30*time.Second)
 		billed, found := hardCapReceipt(receiptCtx, s.upstream, key, row.Generation)
+		cancelReceipt()
 		providerTotal += billed
 		if !row.AfterRaise {
 			beforeRaise += billed
