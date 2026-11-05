@@ -278,6 +278,196 @@ func TestARunPlansExecutesAndSynthesizes(t *testing.T) {
 	}
 }
 
+// openingPlannerReplier keeps syntax repair separate from planning so a repair
+// that discards the nodes cannot masquerade as a successful opening.
+type openingPlannerReplier struct {
+	mu                            sync.Mutex
+	first, second, repair, finish string
+	secondFinish                  string
+	outputTokens                  int
+	repairFinish                  string
+	repairs                       int
+	openings                      int
+	budgets                       []int
+}
+
+func (r *openingPlannerReplier) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if isPlannerCall(messages) {
+		opening := false
+		for _, message := range messages {
+			if strings.Contains(messageText(message), "nothing yet") {
+				opening = true
+			}
+		}
+		if !opening {
+			return textResponse(`{"done":{"brief":"report the findings"}}`), nil
+		}
+		r.openings++
+		request := &ai.Request{}
+		for _, option := range options {
+			if err := option(request); err != nil {
+				return nil, err
+			}
+		}
+		budget := 0
+		if request.MaxTokens != nil {
+			budget = *request.MaxTokens
+		}
+		r.budgets = append(r.budgets, budget)
+		raw, finish := r.first, r.finish
+		if r.openings > 1 {
+			raw, finish = r.second, "stop"
+			if r.secondFinish != "" {
+				finish = r.secondFinish
+			}
+		}
+		response := textResponse(raw)
+		response.Choices[0].FinishReason = finish
+		tokens := r.outputTokens
+		if tokens == 0 {
+			tokens = 2048
+		}
+		response.Usage = &ai.Usage{CompletionTokens: tokens}
+		return response, nil
+	}
+	if strings.Contains(messageText(messages[0]), "You repair malformed JSON") {
+		r.repairs++
+		response := textResponse(r.repair)
+		if r.repairFinish != "" {
+			response.Choices[0].FinishReason = r.repairFinish
+		}
+		return response, nil
+	}
+	return textResponse("read the notes"), nil
+}
+
+func TestOpeningPlannerRejectsLostReplies(t *testing.T) {
+	const plan = `{"add":[{"id":"read-notes","title":"read notes","goal":"read the release notes"}]}`
+	for _, tc := range []struct {
+		name, first, finish, repair, second string
+		proceeds                            bool
+		calls                               int
+	}{
+		{"cut-off twice", `{"add":[{"id":"n1","goal":"read`, "length", "{}", `{"add":[`, false, 2},
+		{"cut-off then complete", `{"add":[`, "length", "{}", plan, true, 2},
+		{"large cut-off then complete", `{"add":[`, "length", "{}", plan, true, 2},
+		{"cut-off empty JSON", "{}", "length", "{}", "{}", false, 2},
+		{"cut-off valid JSON", plan, "length", "{}", plan, true, 2},
+		{"retry stays malformed", `{"add":[`, "length", "[", `{"add":[`, false, 2},
+		{"blank twice", "", "stop", "", "", false, 2},
+		{"blank then complete", "", "stop", "", plan, true, 2},
+		{"repair loses nodes", `{"add":[{"id":"n1",`, "stop", "{}", "", false, 2},
+		{"repair becomes blank", `{"add":[`, "stop", "", "", false, 2},
+		{"repair becomes null", `{"add":[`, "stop", "null", "", false, 2},
+		{"repair becomes empty add", `{"add":[`, "stop", `{"add":[]}`, "", false, 2},
+		{"repair itself cut off", `{"add":[`, "stop", plan, plan, true, 2},
+		{"repair retains nodes", `{"add":[{"id":"n1",`, "stop", plan, "", true, 1},
+		{"explicit empty", "{}", "stop", "", "", false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			fake := &openingPlannerReplier{first: tc.first, finish: tc.finish, repair: tc.repair, second: tc.second}
+			if tc.name == "cut-off twice" {
+				fake.secondFinish = "length"
+			}
+			if tc.name == "large cut-off then complete" {
+				fake.outputTokens = 6000
+			}
+			if tc.name == "repair itself cut off" {
+				fake.repairFinish = "length"
+			}
+			agent, _ := newTestAgent(t, fake, func(config *Config) { config.AskConsent = true })
+			updates, stop := agent.WatchTaskUpdates()
+			defer stop()
+			runNotes, stopRun := agent.WatchOrchestrations()
+			defer stopRun()
+			id, err := agent.RunOrchestrate(t.Context(), "read the release notes", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap := waitForRun(t, agent, id)
+			if err := agent.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if fake.openings != tc.calls {
+				t.Errorf("opening calls = %d, want %d; snapshot = %+v", fake.openings, tc.calls, snap)
+			}
+			if fake.budgets[0] != 0 {
+				t.Errorf("initial output cap = %d, want provider default", fake.budgets[0])
+			}
+			if tc.calls == 2 && len(fake.budgets) == 2 {
+				want := 8192
+				if tc.name == "large cut-off then complete" {
+					want = 12000
+				}
+				if fake.budgets[1] != want {
+					t.Errorf("retry budget = %d, want %d", fake.budgets[1], want)
+				}
+			}
+			if tc.finish == "length" && tc.name != "retry stays malformed" && fake.repairs != 0 {
+				t.Errorf("cut-off reply reached syntax repair %d times", fake.repairs)
+			}
+			if tc.proceeds {
+				if len(snap.Nodes) != 1 || snap.Nodes[0].State != orchestrate.Done || snap.Answer == "" {
+					t.Fatalf("recovered plan did not execute and synthesize: %+v", snap)
+				}
+				return
+			}
+			want := "the planner's reply was cut off"
+			if tc.name == "explicit empty" {
+				want = "The crew didn't plan any work for this goal."
+			}
+			if snap.EmptyPlanReason() != want {
+				t.Errorf("ending = %q, want %q; snapshot = %+v", snap.EmptyPlanReason(), want, snap)
+			}
+			var notices []string
+			var root TaskNotice
+		readUpdates:
+			for {
+				select {
+				case event := <-updates:
+					if event.Kind == EventNotice {
+						notices = append(notices, event.Text)
+					}
+					if event.Kind == EventTaskUpdate && event.Task != nil && event.Task.Run == id && event.Task.Parent == 0 {
+						root = *event.Task
+					}
+				case <-time.After(20 * time.Millisecond):
+					break readUpdates
+				}
+			}
+			if len(notices) != 1 || notices[0] != want {
+				t.Errorf("chat notices = %q, want exactly %q", notices, want)
+			}
+			if root.State != TaskFailed || root.Report != want || !root.Retryable {
+				t.Errorf("crew ending: state=%s report=%q retryable=%t", root.State, root.Report, root.Retryable)
+			}
+			var saved []string
+			for _, entry := range agent.Transcript() {
+				if entry.Role == "assistant" {
+					saved = append(saved, entry.Text)
+				}
+			}
+			if len(saved) != 1 || saved[0] != want {
+				t.Errorf("saved notices = %q, want exactly %q", saved, want)
+			}
+		readRunNotes:
+			for {
+				select {
+				case event := <-runNotes:
+					if event.Kind == EventOrchestrateNote {
+						t.Errorf("duplicate ending on run lane: %q", event.Text)
+					}
+				case <-time.After(20 * time.Millisecond):
+					break readRunNotes
+				}
+			}
+		})
+	}
+}
+
 func TestEmptyCrewPlanReportsWhyAndOffersRecovery(t *testing.T) {
 	for _, reason := range []string{"", "The goal needs a repository path."} {
 		t.Run(reason, func(t *testing.T) {
