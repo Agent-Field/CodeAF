@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +42,27 @@ type capturePlan struct {
 // concurrent editor or background writer invalidates the token; every retry
 // obtains a new scope and screens it again (C9/U2).
 func (e Engine) plannedSnapshot(ctx context.Context, c cell.Cell, receipt string, changed []string, calls []Executed) (captureReply, error) {
+	reply, original := e.plannedSnapshotOnce(ctx, c, receipt, changed, calls)
+	if original == nil || !strings.HasPrefix(original.Error(), "plan capture: ") || !missingPackPlan(original) {
+		return reply, original
+	}
+	path, evidenceErr := e.captureEvidence(ctx, c, original)
+	if evidenceErr != nil {
+		log.Printf("capture evidence could not be saved: %v", evidenceErr)
+	}
+	// Evidence precedes the retry because opening the store can repair or change
+	// the very metadata needed to explain its first failure. Planning stays mandatory.
+	reply, retryErr := e.plannedSnapshotOnce(ctx, c, receipt, changed, calls)
+	if retryErr == nil {
+		return reply, nil
+	}
+	if evidenceErr != nil {
+		return captureReply{}, fmt.Errorf("%w (capture evidence could not be saved: %v)", original, evidenceErr)
+	}
+	return captureReply{}, fmt.Errorf("%w (capture evidence: %s)", original, path)
+}
+
+func (e Engine) plannedSnapshotOnce(ctx context.Context, c cell.Cell, receipt string, changed []string, calls []Executed) (captureReply, error) {
 	tree := e.tree(c)
 	hints := e.Guard.index.hints(captureKey(tree, c.ID), tree, changed)
 	// Rebinding can preserve the timeline's old path index. The caller knows

@@ -8,6 +8,14 @@ const (
 	// agents.take_cancel exists: a client learns how every move ends from the
 	// rows and needs its own timer only as a fallback.
 	FeatureChatsMove = "chats.move"
+	// FeatureChatsWorking says chat rows carry working: the holder said at its
+	// last beat that a turn is running there. A relay that does not keep the
+	// flag leaves it false, so a client says "open there", never "idle there".
+	FeatureChatsWorking = "chats.working"
+	// FeatureChatsSend says chats.send exists and chat rows carry notes: a
+	// message written here to a chat another computer holds, which that
+	// computer puts in the chat's queue, so it runs when the turn there ends.
+	FeatureChatsSend = "chats.send"
 	FeatureSyncRelay = "sync.relay"
 	EventChatChanged = "chat.changed"
 	EventChatRemoved = "chat.removed"
@@ -42,6 +50,47 @@ type ChatRow struct {
 	MoveEnded    *ChatMoveEnded `json:"move_ended,omitempty"`
 	Line         string         `json:"line,omitempty"`
 	TakeoverLine string         `json:"takeover_line,omitempty"`
+	// Working says the computer holding the chat is in the middle of a turn
+	// (status running only). Absent while it is merely open there.
+	Working bool `json:"working,omitempty"`
+	// Notes are the messages this computer wrote to the chat while another
+	// computer held it, oldest first: waiting until that computer takes one into
+	// the chat's queue, then delivered. Delivered ones are kept while this engine
+	// runs and the chat is elsewhere; they leave once it is here, where the
+	// transcript has them.
+	Notes []ChatNote `json:"notes,omitempty"`
+}
+
+// ChatNote is one message on its way to the computer holding a chat.
+type ChatNote struct {
+	ID    string    `json:"id"`
+	Text  string    `json:"text"`
+	At    time.Time `json:"at"`
+	State string    `json:"state" enum:"waiting,delivered"`
+}
+
+// ChatNote states.
+const (
+	ChatNoteWaiting   = "waiting"
+	ChatNoteDelivered = "delivered"
+)
+
+// ChatSendParams is chats.send: text for whichever computer holds cell.
+type ChatSendParams struct {
+	Cell     string `json:"cell"`
+	Text     string `json:"text"`
+	ClientID string `json:"client_id,omitempty"`
+}
+
+// ChatSendResult names the message, so a client can follow it in the row's
+// notes until the holder takes it.
+type ChatSendResult struct {
+	Note ChatNote `json:"note"`
+}
+
+// ChatsSender leaves a message for the computer holding a chat.
+type ChatsSender interface {
+	SendToChat(ChatSendParams) (ChatNote, error)
 }
 
 // ChatSharing says the computer holding the chat has sealed turns it has not
@@ -127,6 +176,12 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 	if _, ok := e.(ChatsMover); ok {
 		h = withFeature(h, FeatureChatsMove)
 	}
+	if _, ok := e.(ChatsTaker); ok {
+		h = withFeature(h, FeatureChatsWorking)
+	}
+	if _, ok := e.(ChatsSender); ok {
+		h = withFeature(h, FeatureChatsSend)
+	}
 	if d, ok := e.(RelayReporter); ok && d.RelayKnown() {
 		h = withFeature(h, FeatureSyncRelay)
 	}
@@ -155,6 +210,20 @@ func init() {
 		}
 		got, err := d.TakeAgent(p)
 		return &TakeResult{Agent: got}, err
+	})
+	methods["chats.send"] = typed(func(e Engine, p ChatSendParams) (*ChatSendResult, error) {
+		d, ok := e.(ChatsSender)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not send messages to other computers")
+		}
+		if _, err := required("cell", p.Cell); err != nil {
+			return nil, err
+		}
+		if _, err := required("text", p.Text); err != nil {
+			return nil, err
+		}
+		got, err := d.SendToChat(p)
+		return &ChatSendResult{Note: got}, err
 	})
 	methods["agents.take_cancel"] = typed(func(e Engine, p TakeCancelParams) (*TakeCancelResult, error) {
 		d, ok := e.(ChatsMover)
