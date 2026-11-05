@@ -257,26 +257,33 @@ func (l *liveDrive) Working(on bool) {
 // an older capture must never clear the newer turn's working flag.
 func (l *liveDrive) TurnEnded(c cell.Cell, report func(error)) {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	turn := l.turn
-	l.mu.Unlock()
 	guard.Go("chat sync turn end", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
 		defer cancel()
 		if err := cellstore.WaitCapture(ctx, c); err != nil {
 			report(err)
 		}
-		l.mu.Lock()
-		if l.closed || l.turn != turn {
-			l.mu.Unlock()
-			return
+		if l.finishTurn(turn) {
+			l.Idle()
 		}
-		l.working = false
-		if l.drive != nil {
-			l.drive.Working(false)
-		}
-		l.mu.Unlock()
-		l.Idle()
 	})
+}
+
+// finishTurn changes the flag under one lock so a newer start cannot race
+// between the generation check and the end notification.
+func (l *liveDrive) finishTurn(turn uint64) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed || l.turn != turn {
+		return false
+	}
+	l.working = false
+	if l.drive != nil {
+		l.drive.Working(false)
+	}
+	return true
 }
 
 // Idle uploads what is sealed, once a drive side exists.
