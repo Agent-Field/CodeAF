@@ -226,7 +226,7 @@ func TestResumedStageKeepsItsOpeningBriefThroughTheRealMaker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	item, err := floor.Create(factory.Item{Kind: factory.KindIssue, Repo: "acme/api", Num: 1, State: factory.StateRunning, Cap: 10, Stream: &factory.Stream{Room: team, Phases: []factory.Phase{{Name: "review", Kind: factory.StageChat, State: factory.PhaseRunning}}}})
+	item, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindIssue, Repo: "acme/api", Num: 1, State: factory.StateRunning, Cap: 10, Stream: &factory.Stream{Room: team, Phases: []factory.Phase{{Name: "review", Kind: factory.StageChat, State: factory.PhaseRunning}}}})
 	if err != nil {
 		t.Fatal(err)
 	}

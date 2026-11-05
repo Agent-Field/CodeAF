@@ -176,9 +176,9 @@ func TestADropDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
 	talk, stage, earlier, mine := conversation("job-talk"), conversation("job-stage"), conversation("job-stage-round-1"), conversation("mine")
 	round := conversation("job-write-round-1")
 	otherTalk, otherStage, lead := conversation("other-talk"), conversation("other-stage"), conversation("my-lead")
-	job := factory.Item{ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk,
+	job := factory.Item{Tier: factory.TierOwner, ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk,
 		Stream: &factory.Stream{Room: teams.NewID(), Phases: []factory.Phase{{Name: "write", Chat: stage, Rounds: []factory.RoundLine{{Round: 1, Chat: round}}}}}}
-	other := factory.Item{ID: 42, Num: 42, Repo: "acme/api", Title: "Another job", Talk: otherTalk,
+	other := factory.Item{Tier: factory.TierOwner, ID: 42, Num: 42, Repo: "acme/api", Title: "Another job", Talk: otherTalk,
 		Stream: &factory.Stream{Room: teams.NewID(), Phases: []factory.Phase{{Name: "write", Chat: otherStage}}}}
 	parent, crew := teams.NewID(), teams.NewID()
 	if err := teams.Save(profile, []teams.Team{
@@ -247,7 +247,7 @@ func TestADropDeletesOnlyTheJobsOwnCrewAndConversations(t *testing.T) {
 func TestADropFindsTheCrewOfAJobThatNeverRan(t *testing.T) {
 	places, profile, conversation := bringBackFixture(t)
 	talk, lead := conversation("job-talk"), conversation("my-lead")
-	job := factory.Item{ID: 7, Num: 7, Repo: "acme/api", Title: "Never ran", Talk: talk}
+	job := factory.Item{Tier: factory.TierOwner, ID: 7, Num: 7, Repo: "acme/api", Title: "Never ran", Talk: talk}
 	parent, room, crew := teams.NewID(), teams.NewID(), teams.NewID()
 	if err := teams.Save(profile, []teams.Team{
 		{ID: parent, Name: factoryTeamName, FactoryManaged: true},
@@ -277,7 +277,7 @@ func TestADropFindsTheCrewOfAJobThatNeverRan(t *testing.T) {
 func TestADropClosesACrewItCannotDelete(t *testing.T) {
 	places, profile, conversation := bringBackFixture(t)
 	talk, helper := conversation("job-talk"), conversation("helper")
-	job := factory.Item{ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk, Stream: &factory.Stream{Room: teams.NewID()}}
+	job := factory.Item{Tier: factory.TierOwner, ID: 41, Num: 41, Repo: "acme/api", Title: "Total double-counts", Talk: talk, Stream: &factory.Stream{Room: teams.NewID()}}
 	parent, nested := teams.NewID(), teams.NewID()
 	if err := teams.Save(profile, []teams.Team{
 		{ID: parent, Name: factoryTeamName, FactoryManaged: true},

@@ -22,7 +22,7 @@ func TestAJobsChatsAreItsExistingAgentAndItsStepsThatRan(t *testing.T) {
 	}
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix the ledger", Kind: factory.KindIssue, State: factory.StateNew})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Fix the ledger", Kind: factory.KindIssue, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestAJobsChatsNameEachFinishedRoundsChat(t *testing.T) {
 	latest, latestID := jobConversation(t)
 	t0 := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 8, Title: "Review it", Kind: factory.KindIssue, State: factory.StateRunning,
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 8, Title: "Review it", Kind: factory.KindIssue, State: factory.StateRunning,
 		Stream: &factory.Stream{Phases: []factory.Phase{
 			{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 3, Chat: latest, Started: t0.Add(9 * time.Minute), At: t0.Add(12 * time.Minute),
 				Rounds: []factory.RoundLine{
@@ -146,7 +146,7 @@ func TestFinishedStageChatKeepsItsSavedModel(t *testing.T) {
 	}
 	st := s.start()
 	transcript, id := jobConversation(t)
-	it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 9, Title: "Fix it", Kind: factory.KindIssue, State: factory.StateNeedsYou,
+	it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 9, Title: "Fix it", Kind: factory.KindIssue, State: factory.StateNeedsYou,
 		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Chat: transcript, Result: &factory.StageResult{Model: "vendor/strong"}}}}})
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +173,7 @@ func TestFactoryChatRefreshKeepsThePersonsModelPair(t *testing.T) {
 	st := s.start()
 	floor := s.backend.local.host.floor
 	step, _ := jobConversation(t)
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, Num: 9, State: factory.StateRunning, Model: "prior/main", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, Chat: step, State: factory.PhaseDone, Result: &factory.StageResult{Model: "prior/execution"}}}}})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Kind: factory.KindIssue, Num: 9, State: factory.StateRunning, Model: "prior/main", Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, Chat: step, State: factory.PhaseDone, Result: &factory.StageResult{Model: "prior/execution"}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}

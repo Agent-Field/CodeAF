@@ -26,7 +26,7 @@ func TestFactoryOwnedManagerChargesAfterTalkMoves(t *testing.T) {
 			s.backend.open = func(ask appOpenAsk) (*appConn, error) {
 				return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 			}
-			it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Owned manager", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: .005})
+			it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Owned manager", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: .005})
 			if err != nil {
 				t.Fatal(err)
 			}

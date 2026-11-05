@@ -42,7 +42,7 @@ func TestLiveBriefWriterKeepsACheckedBrief(t *testing.T) {
 	s.backend.open = appOpenInProcess
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Kind: factory.KindIssue, State: factory.StateNeedsYou, Model: liveFactoryModel,
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Kind: factory.KindIssue, State: factory.StateNeedsYou, Model: liveFactoryModel,
 		Title: "Retries double-send after a worker restart",
 		Body:  "When a worker restarts mid-send, the retry loop sends the message again although the first send landed.",
 		Stages: []factory.Stage{
@@ -135,7 +135,7 @@ func TestLiveBriefFirstReads(t *testing.T) {
 	floor := s.backend.local.host.floor
 	total, worst := 0.0, 0.0
 	for _, issue := range issues {
-		it, err := floor.Create(factory.Item{Repo: "acme/api", Num: issue.Number, Kind: factory.KindIssue, State: factory.StateNew, Model: liveFactoryModel,
+		it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: issue.Number, Kind: factory.KindIssue, State: factory.StateNew, Model: liveFactoryModel,
 			Title: issue.Title, Body: issue.Body})
 		if err != nil {
 			t.Fatal(err)

@@ -24,7 +24,7 @@ func TestAStepTrysTasksAreListedThroughItsOwnAgent(t *testing.T) {
 	first, firstID := jobConversation(t)
 	latest, latestID := jobConversation(t)
 	t0 := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
-	it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 8, Title: "Review it", Kind: factory.KindIssue, State: factory.StateRunning,
+	it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 8, Title: "Review it", Kind: factory.KindIssue, State: factory.StateRunning,
 		Stream: &factory.Stream{Phases: []factory.Phase{
 			{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 2, Chat: latest, Started: t0.Add(5 * time.Minute), At: t0.Add(8 * time.Minute),
 				Rounds: []factory.RoundLine{
