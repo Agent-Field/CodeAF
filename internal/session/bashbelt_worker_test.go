@@ -198,7 +198,7 @@ func TestBashWorkerPageSaysToDeleteScratchBeforeDone(t *testing.T) {
 	// line breaks folded to the spaces they stand for.
 	doc := strings.Join(strings.Fields(bashWorkerPage()), " ")
 	for _, want := range []string{
-		"Delete every scratch file you made in your copy before `plandb done`: it would land.",
+		"Delete every scratch file you made in your folder before `plandb done`: it would land.",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Fatalf("the worker page does not say %q:\n%s", want, doc)
