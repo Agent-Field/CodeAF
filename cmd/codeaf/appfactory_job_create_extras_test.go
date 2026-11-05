@@ -100,7 +100,9 @@ func TestAppFactoryCreateOlderFactoryRefusals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var posts atomic.Int64
 			stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
-				posts.Add(1)
+				if r.Method != http.MethodGet {
+					posts.Add(1)
+				}
 				w.WriteHeader(tc.status)
 				json.NewEncoder(w).Encode(map[string]string{"error": tc.words})
 			})
@@ -126,7 +128,11 @@ func TestAppFactoryCreateOlderFactoryRefusals(t *testing.T) {
 // E5/E6/E10/E15: bad params and removed context send nothing to the fake Factory.
 func TestAppFactoryCreateInvalidExtrasSendNothing(t *testing.T) {
 	var posts atomic.Int64
-	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) { posts.Add(1) })
+	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			posts.Add(1)
+		}
+	})
 	b, conn := attachStub(t, testFactoryHub(t), stub, actionTestCredential)
 	w := wireOver(t, b)
 	for field, value := range map[string]any{

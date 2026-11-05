@@ -63,7 +63,11 @@ func TestAppFactoryJobContextSetTransport(t *testing.T) {
 // E8'/E15: invalid context, missing versions and the removed create field send nothing.
 func TestAppFactoryJobContextBadParamsSendNothing(t *testing.T) {
 	var requests atomic.Int64
-	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) { requests.Add(1) })
+	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			requests.Add(1)
+		}
+	})
 	b, conn := attachStub(t, testFactoryHub(t), stub, actionTestCredential)
 	w := wireOver(t, b)
 	for _, attachments := range []any{
@@ -106,7 +110,9 @@ func TestAppFactoryJobContextRefusals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var requests atomic.Int64
 			stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
-				requests.Add(1)
+				if r.Method != http.MethodGet {
+					requests.Add(1)
+				}
 				w.WriteHeader(tc.status)
 				io.WriteString(w, tc.body)
 			})

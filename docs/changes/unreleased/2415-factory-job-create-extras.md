@@ -1,6 +1,6 @@
 ---
 kind: added
-title: App clients can make a Factory job with an issue, labels, a budget and a retry key, and attach context
+title: Factory jobs can be made with an issue, labels, a budget and a retry key, and take context
 pr: 2415
 surface: [engine, factory]
 invalidates:
