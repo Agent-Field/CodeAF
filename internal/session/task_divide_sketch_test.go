@@ -782,7 +782,7 @@ func (c *besideCompleter) verdictAt() int {
 // the worker, and the bound on the wait is what fails it.
 func TestAWideTaskStartsItsWorkerFirstAndTheJudgesPartsArriveAsTheReceipt(t *testing.T) {
 	repo := newGoModuleRepo(t)
-	t.Setenv("HOME", t.TempDir())
+	useTaskUsageHome(t)
 
 	completer := newBesideCompleter(sketchReviewer("the auth test", "the http client", "the release notes").answer)
 	completer.judge = `{"parallelizable":true,"parts":["the auth test","the http client","the release notes"],"why":"three independent jobs"}`

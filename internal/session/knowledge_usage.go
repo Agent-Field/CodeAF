@@ -113,9 +113,7 @@ func (a *Agent) finishJobKnowledge(ctx context.Context) {
 	compileCtx, cancel := context.WithCancel(context.WithValue(context.WithoutCancel(ctx), jobKnowledgeContextKey{}, true))
 	detach := context.AfterFunc(parent, cancel)
 	work := &jobKnowledgeCompile{cancel: cancel, done: make(chan struct{})}
-	j.mu.Lock()
-	j.compile = work
-	j.mu.Unlock()
+	j.compile.Store(work)
 	settled := func() {}
 	if a.config.JobPendingSpend != nil {
 		settled = a.config.JobPendingSpend()
@@ -166,9 +164,7 @@ func (a *Agent) cancelJobKnowledge() {
 	if j == nil {
 		return
 	}
-	j.mu.Lock()
-	work := j.compile
-	j.mu.Unlock()
+	work := j.compile.Load()
 	if work != nil {
 		work.cancel()
 	}

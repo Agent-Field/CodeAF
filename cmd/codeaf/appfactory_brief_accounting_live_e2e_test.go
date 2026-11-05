@@ -23,7 +23,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
-	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -210,7 +209,7 @@ func TestLiveBriefHeaderMatchesLedger(t *testing.T) {
 	// Let the real app's final debounced brief enter the measured call log.
 	t.Logf("allowing %s for the final automatic brief", factory.BriefDebounce+time.Second)
 	time.Sleep(factory.BriefDebounce + time.Second)
-	briefAwaitReceipts(t, callPath)
+	awaitLiveMoneyReceipts(t, callPath)
 	var header api.Job
 	w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &header)
 	briefAssertTotals(t, callPath, header.Cost, recorder)
@@ -219,55 +218,6 @@ func TestLiveBriefHeaderMatchesLedger(t *testing.T) {
 	t.Logf("models requested=%v answered=%v provider_total=%.8f problems=%v", recorder.requests, recorder.replies, recorder.cost, recorder.problems)
 	if len(recorder.problems) > 0 || recorder.requests[liveFactoryModel] != recorder.calls || len(recorder.requests) != 1 || len(recorder.replies) != 1 || recorder.replies[liveFactoryModel] == 0 {
 		t.Error("live model policy failed")
-	}
-}
-
-// Receipt recovery is measured after the job, outside every stage-tail interval.
-// The live fixture does not turn the two-second user wait into a receipt wait.
-func briefAwaitReceipts(t *testing.T, path string) {
-	t.Helper()
-	deadline := time.Now().Add(provider.ReceiptWait)
-	for {
-		file, err := os.Open(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		pending := map[string]bool{}
-		unpriced := false
-		scanner := bufio.NewScanner(file)
-		scanner.Buffer(make([]byte, 64<<10), 4<<20)
-		for scanner.Scan() {
-			var row calllog.Record
-			if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
-				file.Close()
-				t.Fatal(err)
-			}
-			if row.Phase == "start" {
-				pending[row.ID] = true
-				continue
-			}
-			delete(pending, row.ID)
-			if row.Cost == 0 && (row.Error != "" || row.Ended != "") {
-				unpriced = true
-			}
-		}
-		scanErr := scanner.Err()
-		file.Close()
-		if scanErr != nil {
-			t.Fatal(scanErr)
-		}
-		if len(pending) == 0 {
-			if unpriced {
-				t.Logf("waiting %s for interrupted-call receipts after the job ended", provider.ReceiptWait+time.Second)
-				time.Sleep(provider.ReceiptWait + time.Second)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Errorf("%d model calls still lack terminal records after job end", len(pending))
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
 	}
 }
 
