@@ -162,7 +162,12 @@ func TestPolicyHoldPersonDoors(t *testing.T) {
 	for _, door := range []string{"answer", "run", "start_now"} {
 		t.Run(door, func(t *testing.T) {
 			f := waitsSetup(t)
-			f.h.seam.Answer = func(int, bool, string) error { t.Fatal("policy hold used a withdrawn worker's answer"); return nil }
+			// The answer door exists only when the seam has Answer at New, so build the handler with it.
+			f.h.Close()
+			f.seam.Answer = func(int, bool, string) error { t.Fatal("policy hold used a withdrawn worker's answer"); return nil }
+			f.h = New(f.seam, f.cfg)
+			t.Cleanup(f.h.Close)
+			f.h.stopWaits()
 			parent, child := policyPair(t, f)
 			a := policyAllowance(f, child.ID)
 			a.CapUSD = 5
