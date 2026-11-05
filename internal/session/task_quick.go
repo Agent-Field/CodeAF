@@ -32,11 +32,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
 // quickWord is the word a quick node's row leads with, and it is the same word
@@ -356,7 +358,7 @@ var quickTaskDescription = "Quick work runs here; its last message is the answer
 const quickTaskSchemaJSON = `{"type":"object","properties":{` +
 	`"line":{"type":"string","description":"What to do, one sentence"},` +
 	`"items":{"type":"array","items":{"type":"string"},"description":"Ordered steps to complete and tick"},` +
-	`"files":{"type":"array","items":{"type":"string"},"description":"Paths it will write. Two claiming one path run one after the other; named none, it writes anywhere"},` +
+	`"files":{"type":"array","items":{"type":"string"},"description":"Root-relative paths/dirs; segment * ? [...]; no ** or ..; overlaps wait; empty: unscoped"},` +
 	`"inherit":{"type":"boolean","description":"Opens on this conversation"},` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids whose result it needs"},` +
 	`"title":{"type":"string","description":"Row title; defaults to line"},` +
@@ -572,6 +574,22 @@ func quickStartedWord(id uint64, spec taskSpec) string {
 // so two quick nodes that claim one path run one after the other with no retry
 // and nothing new in the frontier. The look and the admission are one move
 // under [TaskGraph.quickGate], which [Agent.admitQuick] holds.
+// refuseUnsafeScopes checks each declared write scope before cleaning can hide
+// a traversal segment, and returns the refusal for the first unsafe one.
+// Exact absolute paths keep their existing normalization.
+func refuseUnsafeScopes(files []string) string {
+	for _, raw := range files {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || filepath.IsAbs(raw) && !strings.ContainsAny(raw, "*?[\\") {
+			continue
+		}
+		if err := orchestrate.ValidateScope(raw); err != nil {
+			return fmt.Sprintf("Write scope %q: %s. Redraw the scope and call again.", raw, err)
+		}
+	}
+	return ""
+}
+
 func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	line := strings.TrimSpace(ask.line)
 	if line == "" {
@@ -582,6 +600,9 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 		if item = strings.TrimSpace(item); item != "" {
 			kept = append(kept, item)
 		}
+	}
+	if refusal := refuseUnsafeScopes(ask.files); refusal != "" {
+		return taskSpec{}, refusal
 	}
 	scope, refusal := normalizeWriteScope(a.config.Workspace, ask.files)
 	if refusal != "" {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -19,6 +20,7 @@ func factoryServerSeam(st *store.Store, tokensPath string, limit *githubLimit) f
 		token, _, _ := factorygithub.ReadTokenAt(ctx, home.Dir(), grantPath)
 		return token
 	}
+	registerFactoryTierResolver(st, home.Dir(), grantPath)
 	seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(st.CheckoutDir),
 		factory.WithRepoLister(func(ctx context.Context) ([]factory.RepoInfo, error) {
 			token, _, err := factorygithub.ReadTokenAt(ctx, home.Dir(), grantPath)
@@ -67,5 +69,20 @@ func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath str
 				return
 			}
 		}
+	})
+}
+
+// registerFactoryTierResolver runs before page reads, even without a usable poll.
+// Resolve the read grant per attempt so replacing it takes effect on retry.
+func registerFactoryTierResolver(st *store.Store, profileDir, grantPath string) {
+	if st == nil {
+		return
+	}
+	st.SetTierResolver(func(ctx context.Context, it factory.Item) (factory.Tier, time.Time, error) {
+		token, _, err := factorygithub.ReadTokenAt(ctx, profileDir, grantPath)
+		if err != nil || token == "" {
+			return "", time.Time{}, errors.New("factory read credential is unavailable")
+		}
+		return factorygithub.New(forge.NewClient(token), nil, nil).ResolveTier(ctx, it)
 	})
 }
