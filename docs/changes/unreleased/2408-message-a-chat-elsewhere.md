@@ -1,7 +1,7 @@
 ---
 kind: added
 title: a chat open or working on another computer takes messages, queued there
-pr: 0
+pr: 2408
 surface: [engine, chat, docs]
 invalidates:
   - "Was true: a chat another computer held open or working was read-only in the desktop; the only way to write to it was to bring it here. Is true now: the app engine advertises chats.send, the desktop composer says Message <name> (· runs after this turn while working), and the message goes into that chat's queue on the holding computer without moving the chat."
