@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a chat moved back to a computer whose app kept running numbers its next message from the moved chat
-pr: 0
+pr: 2434
 surface: [engine, app, chat]
 invalidates:
   - "Was true: an agent counted the person's messages once per engine process, so after agents.take installed a chat another computer had continued, its next message took the entry id (u<n>, a<n>.<m>) of one that computer added. Is true now: a take that installs the moved chat counts them again when it opens it, as a relaunch would, and forgets what this process sent at each place and its last failure (Retry goes with it)."
