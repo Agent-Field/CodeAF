@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Refuse lost later planner replies and give repairs output room
-pr: 0
+pr: 2407
 surface: [engine, chat]
 invalidates:
   - "Later cut-off replies and empty syntax repairs could silently settle as no change. They now leave a failure note while keeping the current plan and continuing the run."
