@@ -308,9 +308,10 @@ exactly `[image /path/to/file — file changed or gone]`.
 
 ## Is my spend written down — the usage lines in the file
 
-Yes. Every piece of work that cost money appends a `usage` line to the transcript, carrying
-the model it ran on, tokens in and out, cache read and cache write, the money, how many
-requests it took and how long it lasted.
+Yes. Turn seals and auxiliary accounting append `usage` lines to the transcript, carrying
+the model, tokens in and out, cache read and cache write, the money, how many requests it
+took and how long it lasted. Late receipts write marked `call` lines instead, as described
+below.
 
 There is one line per **completed turn**, and one more for each call made beside a turn —
 naming the conversation, the memory reflex, the check on a reply, a task's fold-up, a
@@ -323,10 +324,11 @@ One exception to "one line per turn": a turn that was answered by **more than on
 model's own tokens and money. A single sum could only name one of them, and naming the one
 standing at the end would hand the whole turn's bill to the wrong model.
 
-**On a resume these lines are added up, and that sum is the session's totals.** So `/cost`,
-`/status` and the status line show what the whole conversation has spent across every
-restart, not only what has happened since you reopened it. The spend ceiling reads the same
-sum — see the spending pages for what that means the day after you reach one.
+**On a resume the usage lines and late-receipt call lines are added up.** The late lines
+carry `arm: reconciled` or `arm: hedge`; their money was banked outside every turn seal.
+They restore money, tokens and calls without adding turns. So `/cost`, `/status` and the
+status line keep those charges across restarts. The spend ceiling reads the same sum — see
+the spending pages for what that means the day after you reach one.
 
 The file version is still `1`. A file written before `usage` lines existed opens exactly as
 it always did, and a file that has them opens in an older build too, which skips the lines
@@ -354,11 +356,11 @@ provider's own **receipt** is fetched afterwards, the request writes its line th
 with `arm`: `hedge` for a rescue arm, `reconciled` for any other late receipt. A receipt
 names no endpoint, so the line leaves that field out rather than guess.
 
-These lines are **evidence, never spending**. Nothing adds them up, `/cost` does not read
-them, and a resume ignores them entirely, because every dollar on them is already in the
-`usage` line that sealed the turn. They are there so a question about *shape* — what does a
-mostly-cached request actually cost here — can be read out of the file instead of guessed
-at.
+Ordinary call lines with no `arm` are **evidence, never additional spending**: their money
+is already in the `usage` line that sealed the turn. They let a question about *shape* —
+what does a mostly-cached request actually cost here — be read out of the file instead of
+guessed at. A marked late-receipt line is the exception: its charge is outside every seal,
+so a resume restores it from that line, once.
 
 ## Picking up where you left off
 
