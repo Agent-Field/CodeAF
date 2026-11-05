@@ -220,14 +220,92 @@ func TestPlannerErrorIsNotAnAmendment(t *testing.T) {
 type repairPlanner struct {
 	fixed Amendment
 	asked int
+	why   string
 }
 
 func (r *repairPlanner) Plan(context.Context, View) (Amendment, error) { return Amendment{}, nil }
 
 func (r *repairPlanner) Repair(_ context.Context, _ View, why string) (Amendment, error) {
 	r.asked++
+	r.why = why
 	if why == "" {
 		return Amendment{}, errors.New("a repair with no complaint is not a repair")
 	}
 	return r.fixed, nil
+}
+
+func TestPlannerRepairsInvalidWriteScopes(t *testing.T) {
+	for _, scope := range []string{"../*.md", "docs/../*.md", "/tmp/*.md", "docs/[", "docs/**/x"} {
+		t.Run(scope, func(t *testing.T) {
+			run := bare()
+			fixer := &repairPlanner{fixed: Amendment{Add: []Node{{ID: "fixed", Goal: "write", WriteScope: []string{"crew-0-*.md"}}}}}
+			run.planner = fixer
+			run.absorb(context.Background(), thought{amendment: Amendment{Add: []Node{{ID: "bad", Goal: "write", WriteScope: []string{scope}}}}})
+			if fixer.asked != 1 || !strings.Contains(fixer.why, scope) || !strings.Contains(fixer.why, "write_scope") {
+				t.Fatalf("planner received %d repairs, reason %q for %q", fixer.asked, fixer.why, scope)
+			}
+			if snap := run.Snapshot(); len(snap.Nodes) != 1 || snap.Nodes[0].ID != "fixed" {
+				t.Fatalf("only the corrected plan may land: %+v", snap.Nodes)
+			}
+		})
+	}
+}
+
+func TestCoversSegmentGlobs(t *testing.T) {
+	for _, tc := range []struct {
+		scope, target string
+		want          bool
+	}{
+		{"crew-0-*.md", "crew-0-a.md", true},
+		{"crew-0-*.md", "crew-1-a.md", false},
+		{"crew-0-*.md", "crew-0-dir/a.md", false},
+		{"crew-?/report-[ab].md", "crew-0/report-a.md", true},
+		{"crew-?/report-[ab].md", "crew-0/report-c.md", false},
+		{"crew-?/report-[ab].md", "crew-00/report-a.md", false},
+		{"crew-*", "crew-0/deep/report.md", true},
+		{"docs", "docs/deep/report.md", true},
+		{"docs", "docs-other/report.md", false},
+		{"*", "../x", false},
+		{"*", "/tmp/x", false},
+		{"docs/../*", "x", false},
+		{"/tmp/*", "/tmp/x", false},
+		{"docs/[", "docs/x", false},
+		{"docs/**", "docs/x", false},
+		// Like the shell, a wildcard never matches a leading dot: .git hooks run code.
+		{"*", ".git/hooks/x", false},
+		{"*", ".env", false},
+		{"*", "src/.env", true},
+		{"src/*", "src/.env", false},
+		{"?env", ".env", false},
+		{"[.]env", ".env", false},
+		{".env*", ".env.local", true},
+		{".git", ".git/hooks/x", true},
+	} {
+		if got := Covers([]string{tc.scope}, tc.target); got != tc.want {
+			t.Errorf("Covers(%q, %q)=%v, want %v", tc.scope, tc.target, got, tc.want)
+		}
+	}
+}
+
+func TestGlobScopesSerializeSharedPaths(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"crew-0-*.md", "crew-0-a.md"},
+		{"crew-*", "crew-0/deep/report.md"},
+		{"crew-0-*.md", "crew-?-a.md"},
+		{"docs/a*.md", "docs/*b.md"},
+	} {
+		for _, scopes := range [][2]string{pair, {pair[1], pair[0]}} {
+			run := bare()
+			run.absorb(context.Background(), thought{amendment: Amendment{Add: []Node{
+				{ID: "a", Goal: "write first", WriteScope: []string{scopes[0]}},
+				{ID: "b", Goal: "write second", WriteScope: []string{scopes[1]}},
+			}}})
+			if snap := run.Snapshot(); len(snap.Nodes) != 2 || !contains(snap.Nodes[1].Needs, "a") {
+				t.Errorf("overlapping %v must serialize: %+v", scopes, snap.Nodes)
+			}
+		}
+	}
+	if ScopesOverlap([]string{"docs/*.md"}, []string{"src/*.md"}) {
+		t.Error("different literal directories do not overlap")
+	}
 }
