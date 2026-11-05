@@ -573,7 +573,8 @@ func TestShareRefusedFromATaskBranchLeavesNoCopy(t *testing.T) {
 }
 
 // TestShareNeverTouchesAGenuineCreatedRow: a file the conversation wrote is
-// already a made deliverable. Sharing it adds a row of its own, shared, and the
+// already a made deliverable, then changed outside write/edit. Sharing the new
+// bytes adds a row of its own, shared, and the
 // made row is not rewritten, downgraded or claimed by the share.
 func TestShareNeverTouchesAGenuineCreatedRow(t *testing.T) {
 	w := newShareWorld(t)
@@ -583,6 +584,7 @@ func TestShareNeverTouchesAGenuineCreatedRow(t *testing.T) {
 		t.Fatalf("the written file is not a made row: %+v", before)
 	}
 	made := sharePlanJSON(t, before[0].Fact)
+	w.file(t, "plan.md", []byte("# Changed outside write\n"))
 	result, _ := w.share(t, w.shareCall(t, "call-share"), "op-made", "plan.md")
 	if result.Status != ShareOpAccepted || result.RecordedIDs[0] == before[0].ID {
 		t.Fatalf("share = %+v", result)
@@ -742,5 +744,75 @@ func TestShareRefusesRatherThanDropsALongCallIdentity(t *testing.T) {
 	}
 	if _, err := LoadShareReceipt(filepath.Dir(w.index), w.session, "op-long"); !errors.Is(err, ErrShareOpMissing) {
 		t.Fatalf("a refused identity left a receipt: %v", err)
+	}
+}
+
+func TestShareWrittenDeliverableSkipsUnchangedBytes(t *testing.T) {
+	for _, mode := range []string{"unchanged", "mixed", "changed", "same-bytes"} {
+		t.Run(mode, func(t *testing.T) {
+			w := newShareWorld(t)
+			writeNewFile(t, w.agent, "report.md", "# Original report\n")
+			before := listDeliverables(t, w.index, DeliverableQuery{}, 10)
+			if len(before) != 1 || !before[0].Fact.Authored {
+				t.Fatalf("write did not record authored report: %+v", before)
+			}
+			paths := []string{"report.md"}
+			wantNew := 0
+			if mode == "mixed" {
+				w.file(t, "extra.md", []byte("# Extra\n"))
+				paths = append(paths, "extra.md")
+				wantNew = 1
+			}
+			if mode == "changed" {
+				w.file(t, "report.md", []byte("# Changed outside write\n"))
+				wantNew = 1
+			}
+			if mode == "same-bytes" {
+				w.file(t, "report.md", []byte("# Original report\n"))
+			}
+			lines := indexLines(t, w.index)
+			seen := shareEvents(w.agent)
+			usage := w.agent.Usage()
+			result, bad := w.share(t, w.shareCall(t, "share-written"), "op-written", paths...)
+			if bad || result.Status != ShareOpAccepted {
+				t.Fatalf("share: %+v, bad=%v", result, bad)
+			}
+			if got := indexLines(t, w.index) - lines; got != wantNew {
+				t.Errorf("share appended %d records, want %d", got, wantNew)
+			}
+			authored, err := FindDeliverable(w.index, w.session, before[0].ID, shareSoon())
+			if err != nil || !reflect.DeepEqual(authored.Fact, before[0].Fact) {
+				t.Fatalf("sharing changed the authored record: %+v, %v", authored.Fact, err)
+			}
+			after := listDeliverables(t, w.index, DeliverableQuery{}, 10)
+			if len(after) != len(before)+wantNew || len(result.RecordedIDs) != wantNew {
+				t.Errorf("deliverables=%d, recorded=%v; want %d new", len(after), result.RecordedIDs, wantNew)
+			}
+			if len(*seen) != wantNew {
+				t.Errorf("share emitted %d events, want %d", len(*seen), wantNew)
+			}
+			if !reflect.DeepEqual(w.agent.Usage(), usage) {
+				t.Error("sharing charged usage")
+			}
+			if mode != "changed" && !strings.Contains(result.Reason, "report.md is already among this conversation's deliverables") {
+				t.Errorf("missing plain already-recorded explanation: %+v", result)
+			}
+			if mode == "changed" {
+				row, err := FindDeliverable(w.index, w.session, result.RecordedIDs[0], shareSoon())
+				if err != nil || row.Fact.Version == before[0].Fact.Version || row.Fact.Origin != DeliverOriginSharedByAgent {
+					t.Fatalf("changed bytes were not shared as a new version: %+v, %v", row, err)
+				}
+			}
+			events := len(*seen)
+			// A settled no-op must replay even if the file subsequently changes.
+			w.file(t, "report.md", []byte("# Later bytes\n"))
+			replay, bad := w.share(t, w.shareCall(t, "retry-written"), "op-written", paths...)
+			if bad || !replay.Replayed || replay.Status != ShareOpAccepted || !reflect.DeepEqual(replay.RecordedIDs, result.RecordedIDs) || replay.Reason != result.Reason {
+				t.Errorf("retry changed the original result: %+v", replay)
+			}
+			if indexLines(t, w.index) != lines+wantNew || len(*seen) != events+wantNew {
+				t.Error("retry recorded or announced a skipped file")
+			}
+		})
 	}
 }
