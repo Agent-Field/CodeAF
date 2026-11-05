@@ -81,17 +81,6 @@ func PolicyAllows(policy []string, it factory.Item, action factory.Action, prior
 	return true, ""
 }
 
-// PolicyAllowsStage is the loop's half: it refuses a stage before it runs.
-// Only `a stranger's PR never runs write` speaks here.
-func PolicyAllowsStage(policy []string, it factory.Item, stage factory.Stage) (bool, string) {
-	for _, line := range policy {
-		if shapeOf(line) == shapeStrangerWrite && stage.Name == "write" && it.Tier == factory.TierStranger {
-			return false, line
-		}
-	}
-	return true, ""
-}
-
 // checkIndexes are the places in prior that came from check stages. A prior
 // result lines up with the item's stage of the same place; a result past the
 // item's stages has no kind and is not counted as a check.

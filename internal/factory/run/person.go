@@ -24,6 +24,7 @@ func QueueItem(it *factory.Item, now time.Time) error {
 		return err
 	}
 	if err := strangerWrites(*it); err != nil {
+		factory.StampFailure(it, err.(WriteAccessRefusal).Failure(*it, now))
 		return err
 	}
 	it.State = factory.StateQueued

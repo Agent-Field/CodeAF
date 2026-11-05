@@ -129,7 +129,8 @@ func (d *Doors) Launch(id int) error {
 		readErr, unread = err, err != nil
 		copied, decide = f.Copy, true
 	}
-	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	var refusal error
+	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := factory.CheckPersonStop(*it); err != nil {
 			return false, err
 		}
@@ -184,6 +185,11 @@ func (d *Doors) Launch(id int) error {
 			it.Cap = factory.DefaultJobBudget
 		}
 		if err := run.QueueItem(it, now); err != nil {
+			var refused run.WriteAccessRefusal
+			if errors.As(err, &refused) {
+				refusal = err
+				return false, nil
+			}
 			return false, err
 		}
 		for i := range doc.Receipts {
@@ -202,6 +208,10 @@ func (d *Doors) Launch(id int) error {
 		delete(doc.Signals, id)
 		return stale, nil
 	})
+	if err != nil {
+		return err
+	}
+	return refusal
 }
 
 // Stop puts the job back to new and takes its lease away: the worker learns
