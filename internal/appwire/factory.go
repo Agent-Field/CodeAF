@@ -72,6 +72,9 @@ const factoryCallBudget = 25 * time.Second
 // FactoryCapabilities is what this engine can do about a factory, stated
 // plainly so an unsupported verb is absent from the screen and not broken.
 type FactoryCapabilities struct {
+	// GroupPolicy: factory.policy_get and factory.policy_set are served; whether
+	// a connected factory keeps policies is its own features answer.
+	GroupPolicy bool `json:"group_policy"`
 	// JobEvents: factory.events_since is served and factory.event is pushed
 	// (feature factory.job_events); a factory older than the route answers supported false.
 	JobEvents bool `json:"job_events"`
