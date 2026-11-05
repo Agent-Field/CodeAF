@@ -486,6 +486,47 @@ The job title alone supplies the draft PR title. Existing jobs are not rewritten
 The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
 Factories without the separate-title capability retain their prior behavior.
 
+`factory.job_create` also accepts these optional fields. The engine announces
+them through `factory.capabilities`: `create_issue`, `create_group` (both group
+and milestone), `create_budget`, `create_context` and `create_key`. Each is true
+when the engine carries that field end to end; an older engine omits it or
+answers false. These flags describe the engine; the attached Factory may still
+be older than a field.
+
+| Parameter | Rule |
+| --- | --- |
+| `open_issue` | Boolean, default false. True sends `POST /v1/issues`: open one GitHub issue using only `title` and `text`, then create the job tied to its number. False sends `POST /v1/jobs` and opens no issue. |
+| `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Empty means none. |
+| `budget` | Initial job budget in USD: one of the standard steps, 5, 10, 20 or 30. Recorded as a budget action before starting; a start now or later keeps it instead of taking the pipeline default. |
+| `context` | At most 20 attachments, each `{title, markdown, source?}`. Title is 1–200 characters after trimming; markdown is non-empty; source is an optional label, path or URL of at most 500 characters. Total markdown is at most 100,000 characters, independent of the unchanged 20,000-character `text` limit. |
+| `key` | A non-empty create key of 1–128 characters from `[A-Za-z0-9._:-]`, sent only as the create request's `Idempotency-Key` header. Omit when no key is needed. |
+
+The Factory stores group, milestone and context outside the description.
+`factory.job`, queue rows and `current` carry the labels when present and
+context as `[{title, source?}]`, without markdown. The `plan` step's brief
+receives every attachment whole after notes, as reference material that does
+not override the description or step instructions. With no `plan` step, only
+the first conversation step receives it. Later steps do not receive the
+attachments, and their markdown is never added to a GitHub issue, PR or comment.
+Worker admission alone carries the full attachments needed to compile that brief.
+
+Bad extras answer `bad_params`, naming the field and limit, before anything is
+sent. The Factory also validates extras before opening an issue or making a job.
+A Factory's 422 strict-decoder refusal of `group`, `milestone`, `budget`,
+`context` or `issue`, or a 404/405 on the issue create route, answers `conflict`
+with `detail.reason: "factory_too_old"` and the existing update instruction:
+"This factory doesn't support that yet; nothing was changed. Update the factory
+to use it." No fallback request is sent. A 501 stays `engine` with "this factory
+does not provide that action"; GitHub and sign-in refusals retain their existing
+mapping. A timeout or 5xx stays `uncertain`.
+
+The reply is unchanged: `FactoryJobActed` with `action: "create"`, `job` and
+optional `current`. A Factory that keeps keys replays the first response for
+the same caller, route and key for 24 hours, so resending a create with the same
+key after an uncertain response is safe. A different key creates a separate job.
+With none of the new fields, the route, body and absent idempotency header are
+unchanged.
+
 
 An engine whose hello carries `factory.stop_any_version` accepts
 `factory.job_stop {factory, job, expect?}` and
