@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -24,7 +25,6 @@ import (
 // desktop's existing methods, including a joining backend restart and events.
 func TestM1M2M5M9M10AppPairRealHomes(t *testing.T) {
 	celltest.RequireEngine(t)
-	t.Cleanup(cellstore.StopSpawned)
 	var down atomic.Bool
 	relay := e2Relay(t, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +36,7 @@ func TestM1M2M5M9M10AppPairRealHomes(t *testing.T) {
 		})
 	})
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	dirA, dirB := t.TempDir(), t.TempDir()
+	dirA, dirB := cellstoretest.EngineDir(t), t.TempDir()
 	seed := func(home, name string) (cell.Cell, []byte) {
 		t.Setenv("CODEAF_HOME", home)
 		if _, err := identity.EnsureSolo(home); err != nil {
