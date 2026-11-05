@@ -44,7 +44,12 @@ func TestMissingPackCapturePreservesEvidenceBeforeOneFreshPlan(t *testing.T) {
 							t.Fatal("retry ran before evidence was written")
 						}
 					}
-					if calls == 1 || !recover {
+					if calls == 2 && recover {
+						if err := os.WriteFile(pack, []byte("PRIVATE PACK BYTES"), 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if _, err := os.Stat(pack); errors.Is(err, os.ErrNotExist) {
 						return nil, original
 					}
 					return []byte(`{"token":"fresh-plan","full":true,"paths":[]}`), nil
