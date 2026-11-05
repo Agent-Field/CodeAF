@@ -22,6 +22,8 @@ var wireErrors = []struct {
 	{"not_found", http.StatusNotFound, ErrNotFound},
 	{"range_not_satisfiable", http.StatusRequestedRangeNotSatisfiable, errRange},
 	{"conflict", http.StatusConflict, ErrConflict},
+	// The shared ceiling precedes ErrFull because it wraps the general full-store error.
+	{"relay_storage_full", http.StatusInsufficientStorage, ErrRelayFull},
 	{"full", http.StatusInsufficientStorage, ErrFull},
 	{"damaged", http.StatusInternalServerError, ErrDamaged},
 	{"unreachable", http.StatusServiceUnavailable, ErrUnreachable},
@@ -33,9 +35,8 @@ var wireErrors = []struct {
 	{"rotated", http.StatusGone, wireauth.ErrRotated},
 	{"gone", http.StatusGone, wireauth.ErrGone},
 	{"unauthorized", http.StatusUnauthorized, wireauth.ErrUnauthorized},
-	// Hosted deployment brakes reuse the client's existing retry and full handling.
+	// The admission brake reuses the client's retry handling without changing the server's rate-limit code.
 	{"relay_admission_full", http.StatusTooManyRequests, wireauth.ErrRateLimited},
-	{"relay_storage_full", http.StatusInsufficientStorage, ErrFull},
 }
 
 // codeOf finds the row for err; ok is false for an error the wire has no name for.

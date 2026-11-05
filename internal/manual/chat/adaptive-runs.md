@@ -1254,7 +1254,7 @@ has not finished, and the acceptance line is where you see that.
 
 **And the record always says what was read, whoever read it.** The two readings above
 are taken by the worker that does the work; when the worker took no reading — nothing to
-size one against, or no room left to afford one — the check at the end of the job takes its
+size one against, or no capacity left to afford one — the check at the end of the job takes its
 own reading of the tree it is judging.
 Either way there is a row in the run's record saying what ran, what it named — or, when
 there was no reading, which of the reasons it was: your project declares no way of checking

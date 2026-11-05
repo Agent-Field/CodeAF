@@ -9,9 +9,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
-// MaxHalt is the longest a wait may be, and how long a halted chat waits: a
-// refusal that only a person can cure is not retried, and a Retry-After is
-// never trusted past an hour, so a wrong clock on the relay cannot silence sync.
+// MaxHalt bounds even halting refusals so sync discovers recovered capacity
+// without reopening the chat or trusting a relay's clock beyond an hour.
 const MaxHalt = time.Hour
 
 // Refusal is one way the relay says no: the sentinel the wire names it by, the
@@ -23,14 +22,15 @@ type Refusal struct {
 	Say   func(error) string // what the person is told; it may read the refusal, for a number the relay named
 	Quiet time.Duration      // how long the refusal must last before the person hears of it
 	Flat  bool               // retry every interval: only time cures it, so backing off adds nothing
-	Halts bool               // retrying is pointless until something changes, so stop until Freed or close
+	Halts bool               // Wait MaxHalt because frequent retries cannot create capacity; Freed can wake it sooner.
 }
 
 // refusals is listed from most to least final. A refusal that time cures
 // within minutes stays quiet for a few of them, because a burst that ended
-// before anyone could act is noise; one that only the person can cure is
-// said at once.
+// before anyone could act is noise; a longer refusal is said at once.
 var refusals = []Refusal{
+	// The shared ceiling wraps ErrFull, so it must be matched first to keep its own sentence.
+	{Is: blobstore.ErrRelayFull, Say: said(chatlist.RelayStorageFull), Halts: true},
 	{Is: blobstore.ErrFull, Say: fullLine, Halts: true},
 	{Is: wireauth.ErrRevoked, Say: said(chatlist.Removed), Halts: true},
 	{Is: wireauth.ErrGone, Say: said(chatlist.ReplacedGone), Halts: true},
