@@ -125,3 +125,33 @@ func TestModelWALPreservesRepeatedAnonymousCalls(t *testing.T) {
 		}
 	}
 }
+
+func TestSealRecoveredDoesNotRepeatAlreadySealedModel(t *testing.T) {
+	c := newCell(t)
+	fake := &fakeEngine{}
+	engine := fake.engine(t)
+	path := engine.WALPath(c)
+	wal, _, err := OpenWAL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := ModelCall{ID: "already-sealed", Model: "fixture/model", CostMicroUSD: 9000}
+	if err = wal.Model(model); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = engine.Seal(t.Context(), c, TurnInfo{Models: []ModelCall{model}}); err != nil {
+		t.Fatal(err)
+	}
+	// The receipt reached disk but the process died before removing its WAL row.
+	if _, err = engine.SealRecovered(t.Context(), c); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := ModelCalls(c)
+	if err != nil || len(calls) != 1 || calls[0].ID != model.ID {
+		t.Fatalf("calls=%+v %v", calls, err)
+	}
+	_, recovery, err := OpenWAL(path)
+	if err != nil || len(recovery.Models) != 0 {
+		t.Fatalf("WAL not pruned: %+v %v", recovery, err)
+	}
+}

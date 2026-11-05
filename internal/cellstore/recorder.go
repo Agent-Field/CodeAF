@@ -78,26 +78,38 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 	reapOrphans(rec.Incomplete, reapGrace)
 	r := &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
 		pending: rec.Completed, models: rec.Models, incomplete: rec.Incomplete}
-	// A crash after receipt publication can leave the same model in the WAL.
-	if len(r.models) > 0 {
-		if calls, e := ModelCalls(c); e == nil {
-			booked := map[string]bool{}
-			for _, m := range calls {
-				booked[m.ID] = true
-			}
-			kept := r.models[:0]
-			for _, m := range r.models {
-				if m.ID == "" || !booked[m.ID] {
-					kept = append(kept, m)
-				}
-			}
-			r.models = kept
-		}
+	if models, e := unsealedModels(c, r.models); e == nil {
+		r.models = models
 	}
 	if opts.Async && (len(r.pending) > 0 || len(r.models) > 0) {
 		r.hold()
 	}
 	return r, nil
+}
+
+// Receipt publication can survive a crash before WAL cleanup. Shared identities
+// suppress those receipts; anonymous legacy calls cannot be matched by identity.
+func unsealedModels(c cell.Cell, models []ModelCall) ([]ModelCall, error) {
+	if len(models) == 0 {
+		return models, nil
+	}
+	calls, err := ModelCalls(c)
+	if err != nil {
+		return nil, err
+	}
+	booked := map[string]bool{}
+	for _, m := range calls {
+		if m.ID != "" {
+			booked[m.ID] = true
+		}
+	}
+	var pending []ModelCall
+	for _, m := range models {
+		if m.ID == "" || !booked[m.ID] {
+			pending = append(pending, m)
+		}
+	}
+	return pending, nil
 }
 
 // Wrap leaves the executor unchanged when this build cannot move chats, so

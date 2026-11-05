@@ -93,7 +93,11 @@ func (e Engine) SealRecovered(ctx context.Context, c cell.Cell) (Sealed, error) 
 	if err != nil {
 		return Sealed{}, err
 	}
-	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Models: recovery.Models, Changed: changedOf(recovery.Completed)})
+	models, err := unsealedModels(c, recovery.Models)
+	if err != nil {
+		return Sealed{}, err
+	}
+	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Models: models, Changed: changedOf(recovery.Completed)})
 	if err != nil || len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return sealed, err
 	}
