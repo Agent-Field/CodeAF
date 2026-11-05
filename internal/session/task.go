@@ -1846,14 +1846,19 @@ func taskWhereNotice(place Place, workspace string, id uint64, where string, mod
 		}
 		return "task folder"
 	}
-	if strings.EqualFold(where, "in place") {
-		return workspace
-	}
 	if where != "" {
-		if resolved, err := resolveTaskWhere(where, workspace); err == nil {
-			return resolved
+		target := workspace
+		if !strings.EqualFold(where, "in place") {
+			resolved, err := resolveTaskWhere(where, workspace)
+			if err != nil {
+				return where
+			}
+			target = resolved
 		}
-		return where
+		if trees := place.Trees(); mode == TaskModeReference && trees != "" && HoldsHomeFolder(target) {
+			return filepath.Join(trees, strconv.FormatUint(id, 10))
+		}
+		return target
 	}
 	if trees := place.Trees(); trees != "" {
 		return filepath.Join(trees, strconv.FormatUint(id, 10))
