@@ -34,6 +34,7 @@ func sealInheritedDescriptors() {
 
 // spawnedDaemon is a daemon this process started and has not seen exit.
 type spawnedDaemon struct {
+	socket  string
 	process *os.Process
 	exited  <-chan struct{}
 }
@@ -44,10 +45,10 @@ var (
 )
 
 // remember records a daemon this process started, for [StopSpawned].
-func remember(process *os.Process, exited <-chan struct{}) {
+func remember(process *os.Process, exited <-chan struct{}, socket string) {
 	spawnedMu.Lock()
 	defer spawnedMu.Unlock()
-	spawned = append(spawned, spawnedDaemon{process: process, exited: exited})
+	spawned = append(spawned, spawnedDaemon{process: process, exited: exited, socket: socket})
 }
 
 // stopGrace is how long a daemon gets to exit after SIGTERM before SIGKILL.
@@ -59,11 +60,14 @@ const stopGrace = 3 * time.Second
 // that started it; a test binary calls it at the end of its run, so that no
 // engine it caused to start is left behind.
 func StopSpawned() {
+	daemonLifecycle.Lock()
+	defer daemonLifecycle.Unlock()
 	spawnedMu.Lock()
 	all := spawned
 	spawned = nil
 	spawnedMu.Unlock()
 	for _, d := range all {
+		stoppedDaemons.Store(d.socket, struct{}{})
 		select {
 		case <-d.exited:
 			continue

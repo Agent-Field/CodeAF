@@ -53,7 +53,22 @@ var nextID atomic.Uint64
 // An interrupted operation answer is surfaced because the engine may already
 // have completed the writes; a fallback must never replay that request (C28).
 func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
+	// Join daemon starts before an explicit owner stop takes its child list.
+	// A queued durability retry must not start a replacement after that stop.
+	daemonLifecycle.RLock()
+	if op.Verb() == "sync" {
+		if _, stopped := stoppedDaemons.Load(d.Socket); stopped {
+			daemonLifecycle.RUnlock()
+			return nil, errDaemonStopped
+		}
+	}
 	conn, err := d.connect(ctx)
+	if err == nil && op.Verb() != "sync" {
+		// A new foreground request deliberately reuses this engine. Retried
+		// durability work alone cannot reopen an owner's stopped daemon.
+		stoppedDaemons.Delete(d.Socket)
+	}
+	daemonLifecycle.RUnlock()
 	if err != nil {
 		return nil, unavailable(err)
 	}
@@ -108,6 +123,9 @@ var healthWait = 5 * time.Second
 // Stop asks the daemon to finish what it is doing and exit. A daemon that is
 // not running is already stopped.
 func (d Daemon) Stop(ctx context.Context) error {
+	daemonLifecycle.Lock()
+	defer daemonLifecycle.Unlock()
+	stoppedDaemons.Store(d.Socket, struct{}{})
 	conn, err := dial(ctx, d.Socket)
 	if err != nil && ctx.Err() != nil {
 		return ctx.Err()
