@@ -275,22 +275,3 @@ If the last one is still there after about two minutes, the new one stops and th
 A removal check returns a local vault read error rather than stopping the
 background sync worker. Background sync can retry on a later round. This does
 not repair a damaged vault or change the saved keys shared between computers.
-
-## Sharing fails with durable object pack is missing
-
-If saving for sharing reports `durable object pack is missing`, codeaf records
-local diagnostic evidence before retrying capture once with a new capture plan.
-It never skips planning. A successful retry lets sharing continue; another
-failure keeps the original error and adds `capture evidence: <path>` to the
-error details and sharing log.
-
-The JSON bundle is beside that chat's local store state in `capture-evidence/`.
-It records the furrow binary path and reported version, the full original error,
-and store file names, sizes and modification times. It copies only the catalog,
-its SQLite sidecars and the durability-frontier metadata, encoded as base64.
-It never copies object or pack contents or reads files under `keys/` or
-`credentials/`. Metadata files over 256 KiB or beyond a combined 512 KiB budget are omitted
-with a note. The listing
-stops at 1024 entries. Each bundle is at most 1 MiB; only the newest three are kept.
-If evidence cannot be written, the log explains why and the retry still runs.
-This evidence does not establish why a pack was missing or repair the store.
