@@ -997,18 +997,12 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 		return err
 	}
 
-	return replaceTaskCheckpoint(s.path, encoded)
-}
-
-// replaceTaskCheckpoint makes stale temporary files private before writing
-// and installs the complete checkpoint only after the file closes successfully.
-func replaceTaskCheckpoint(path string, encoded []byte) error {
-	if directory := filepath.Dir(path); directory != "" && directory != "." {
+	if directory := filepath.Dir(s.path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return err
 		}
 	}
-	temporary := path + ".tmp"
+	temporary := s.path + ".tmp"
 	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -1028,7 +1022,7 @@ func replaceTaskCheckpoint(path string, encoded []byte) error {
 	if err := errors.Join(writeErr, closeErr); err != nil {
 		return err
 	}
-	if err := fsreplace.Rename(temporary, path); err != nil {
+	if err := fsreplace.Rename(temporary, s.path); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}

@@ -51,7 +51,7 @@ plandb task cancel t-<id>            # plandb what-if cancel t-<id> previews the
 
 Use `--description`: it is the next worker's work order, not your whole brief.
 Every delegated task has at least one `--check`. Repeat it for each proof
-command. Each is one rerunnable command, run separately at the task-copy root
+command. Each is one rerunnable command, run separately at the task-folder root
 with relative paths. Omit `cd`, joins, pipes, redirections, variable expansions
 and command substitutions. Rejected checks leave the plan unchanged; fix them
 and retry add/set-checks.
@@ -96,7 +96,7 @@ BEFORE `plandb done`, walk every requirement sentence of your work order and of
 the ask it serves, one per line, and beside each name the command or test that
 proved it in THIS run. A requirement with no proof is not done — prove it now, or
 report it undone. The walk is the last check, not a summary. Delete every
-scratch file you made in your copy before `plandb done`: it would land.
+scratch file you made in your folder before `plandb done`: it would land.
 
 ACT with a bash call; FINISH only your own task with `plandb done` after the
 work holds; WAIT on another task with `plandb wait`. Replies without actions

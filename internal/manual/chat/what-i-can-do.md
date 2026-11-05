@@ -746,8 +746,9 @@ It tries rungs in order and names the one that answered, e.g.
 `<path> is over the 25MB document limit`. A path it cannot open answers
 `could not read <path>`. With no API key on the session:
 `the document rungs are out of reach: this session has no API key — read_document rides this session's own API key and base URL`.
-When every rung fails, each is named, e.g.
-`could not read <path> — native: 402 insufficient credits; cloudflare-ai: no readable text`.
+When every rung fails, each is named and the error points to `read` for local
+text extraction, e.g.
+`could not read <path> — all document parsers failed; native: 402 insufficient credits; cloudflare-ai: no readable text; try read for local text extraction`.
 
 Extraction is remembered for the conversation, so paging through a long document
 costs nothing extra.
@@ -757,6 +758,13 @@ rung only, which is a model's own eyes. When the model you are talking to cannot
 see, that rung is sent to the **looking model** instead of to your blind one, so
 `read_document` reads a photograph on any model. Everything else (PDFs, docx,
 xlsx, pptx) goes to your own model and the parsers, as before.
+
+## Can read_document read a short or one-line office document?
+
+`read_document` accepts complete office text, even a single line. Length alone
+does not trigger another parser. Invalid UTF-8 or binary control characters are
+rejected, so unreadable output still tries the next rung. If every parser fails,
+the error names them and suggests `read` for local text extraction.
 
 ## Can you look at an image, listen to audio or watch a video I have on disk?
 
@@ -1309,7 +1317,7 @@ commit trailer, and every credential row. The permissions page lists them exactl
 model that could widen its own restraints would not have any.
 
 Both tools are absent inside a running task, along with `watch`. A task node
-works in a copy of its own with nobody watching it, and a permanent change to your
+works in a folder of its own with nobody watching it, and a permanent change to your
 machine that no transcript ever showed you is the one thing this pair must not be
 able to make. `propose_task` and `tasks` are NOT absent there: a task may hand
 pieces of its own work out, tasks nesting 3 deep at most, and `tasks` shows it those
