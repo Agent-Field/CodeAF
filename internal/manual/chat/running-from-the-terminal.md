@@ -432,6 +432,9 @@ and twelve once it ends. A command's whole output is kept on this Mac for a
 week under the app's folder in codeaf's home, so it can be opened after the
 reply ends, or after the app restarts.
 
+Live step events also carry the conversation's spend so far when it is known
+and positive; the saved conversation total can catch up after the reply ends.
+
 ## The desktop app's conversation — steer or queue, the decision dock, and notes to a task
 
 In the desktop app a message typed while the agent works can steer or queue.

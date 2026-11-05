@@ -2914,7 +2914,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			b.stepMoved(a, live, title)
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
-			live.box.Event(appwire.EventTurnTool, row)
+			live.sayTool(row)
 		case session.EventToolOutput:
 			b.callOutput(a, id, live, event)
 		case session.EventToolFinished:
@@ -2933,7 +2933,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if title == "" {
 				title = redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, ""))
 			}
-			live.box.Event(appwire.EventTurnTool, b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
+			live.sayTool(b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
 			b.noteContext(a, live)
 			// THE SEVENTEENTH PROCESS is refused by the engine, and the turn
 			// says so once at its end.
