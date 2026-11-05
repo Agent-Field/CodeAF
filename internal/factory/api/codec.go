@@ -222,6 +222,7 @@ func FromItem(it factory.Item) Job {
 
 	j.FollowPR = factory.IsIssueJob(it) && it.DoneHow != "dropped" && it.DoneHow != "closed_locally"
 	waitsFromItem(&j, it)
+	policyFromItem(&j, it)
 
 	return j
 }

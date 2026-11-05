@@ -98,7 +98,7 @@ func (in *Intake) Once(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) || factory.WaitsPending(it) {
+		if factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) || factory.WaitsPending(it) || it.Group != "" {
 			continue
 		}
 		if err := in.decide(ctx, it, book); err != nil {
@@ -231,7 +231,7 @@ func (in *Intake) lookFirst(ctx context.Context, it factory.Item) (factory.Item,
 // after Once listed the backlog still wins. Only a person's Run door may
 // restart a job they stopped; labels never restore that permission.
 func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
-	if factory.WaitsPending(it) {
+	if factory.WaitsPending(it) || it.Group != "" {
 		return errMoved
 	}
 	if factory.StoppedByPerson(it) || it.SetupHeld || factory.JobState(it) == "done" {

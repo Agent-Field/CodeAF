@@ -203,6 +203,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 func validate(e Event) error {
 	switch e.Kind {
 	case ContextSet:
+	case PolicyChanged:
 	case RunAsNew, StopAfterStepChanged, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted, PRReady:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
@@ -214,6 +215,7 @@ func validate(e Event) error {
 	}
 	switch e.Verb {
 	case "set context":
+	case "changed policy":
 	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "marked ready for review":
 	default:
 		return errors.New("factory record: unknown Activity verb")
@@ -221,7 +223,7 @@ func validate(e Event) error {
 	if e.Commit != "" && !publish.ValidCommit(e.Commit) {
 		return errors.New("factory record: approval requires a full commit SHA")
 	}
-	if e.Job <= 0 && e.Kind != RunnerAdded && e.Kind != RunnerChanged && e.Kind != ReposChanged && e.Kind != LinkCreated && e.Kind != LinkRevoked && e.Kind != SessionsRevoked && e.Kind != OperatorClaimed && e.Kind != GitHubGranted {
+	if e.Job <= 0 && e.Kind != RunnerAdded && e.Kind != RunnerChanged && e.Kind != ReposChanged && e.Kind != LinkCreated && e.Kind != LinkRevoked && e.Kind != SessionsRevoked && e.Kind != OperatorClaimed && e.Kind != GitHubGranted && e.Kind != PolicyChanged {
 		return errors.New("factory record: job must be positive")
 	}
 	if e.Cost < 0 {
