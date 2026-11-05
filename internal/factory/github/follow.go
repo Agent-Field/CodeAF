@@ -256,7 +256,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 	if !ok || st == nil {
 		return nil
 	}
-	items, err := st.List()
+	items, err := st.ListSaved()
 	if err != nil || len(items) == 0 {
 		return err
 	}

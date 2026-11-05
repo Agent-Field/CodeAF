@@ -53,7 +53,31 @@ var nextID atomic.Uint64
 // An interrupted operation answer is surfaced because the engine may already
 // have completed the writes; a fallback must never replay that request (C28).
 func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
+	// Join daemon starts before an explicit owner stop takes its child list.
+	// A queued durability retry must not start a replacement after that stop.
+	if err := daemonLifecycle.Acquire(ctx, 1); err != nil {
+		return nil, err
+	}
+	generation, owned := ctx.Value(daemonOwnerKey{}).(uint64)
+	if owned && generation < recorderFence.Load() {
+		daemonLifecycle.Release(1)
+		return nil, errDaemonStopped
+	}
+	var stopped *stoppedDaemon
+	if value, ok := stoppedDaemons.Load(d.Socket); ok {
+		stopped = value.(*stoppedDaemon)
+		if (owned && generation < stopped.generation) || (op.Verb() == "sync" && !stopped.resumed.Load()) {
+			daemonLifecycle.Release(1)
+			return nil, errDaemonStopped
+		}
+	}
 	conn, err := d.connect(ctx)
+	if err == nil && op.Verb() != "sync" && stopped != nil {
+		// Only a new owner or a direct foreground request can resume saving.
+		// Keep the generation so old captures remain refused after reuse.
+		stopped.resumed.Store(true)
+	}
+	daemonLifecycle.Release(1)
 	if err != nil {
 		return nil, unavailable(err)
 	}
@@ -108,6 +132,11 @@ var healthWait = 5 * time.Second
 // Stop asks the daemon to finish what it is doing and exit. A daemon that is
 // not running is already stopped.
 func (d Daemon) Stop(ctx context.Context) error {
+	if err := daemonLifecycle.Acquire(ctx, daemonStopWeight); err != nil {
+		return err
+	}
+	defer daemonLifecycle.Release(daemonStopWeight)
+	stoppedDaemons.Store(d.Socket, &stoppedDaemon{generation: daemonClock.Add(1)})
 	conn, err := dial(ctx, d.Socket)
 	if err != nil && ctx.Err() != nil {
 		return ctx.Err()
