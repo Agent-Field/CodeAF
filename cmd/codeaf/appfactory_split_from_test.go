@@ -132,7 +132,7 @@ func TestAppFactoryCreateSplitFromOlderFactory(t *testing.T) {
 	words, detail := p.refused(t, "factory.job_create", map[string]any{
 		"factory": conn.ID, "repo": "o/r", "title": "Fix", "split_from": 80,
 	}, appwire.CodeConflict)
-	if detail == nil || detail.Reason != appwire.FactoryReasonTooOld || words != factoryTooOld().Error() || posts.Load() != 1 || created.Load() != 0 {
+	if detail == nil || detail.Reason != appwire.FactoryReasonTooOld || words != factoryTooOld().(*appwire.Error).Message || posts.Load() != 1 || created.Load() != 0 {
 		t.Fatalf("old Factory refusal: %+v; posts=%d created=%d", detail, posts.Load(), created.Load())
 	}
 }
