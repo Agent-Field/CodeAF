@@ -283,6 +283,8 @@ type FactoryJobCreateParams struct {
 	Budget *float64 `json:"budget,omitempty"`
 	// Key is carried as Idempotency-Key on this create request alone.
 	Key string `json:"key,omitempty"`
+	// SplitFrom is a visible job number on the same Factory, at least 1.
+	SplitFrom *int `json:"split_from,omitempty"`
 }
 
 func (p *FactoryJobCreateParams) pickedPipeline() string { return p.Pipeline }
