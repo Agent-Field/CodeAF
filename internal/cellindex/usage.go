@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -123,13 +124,17 @@ func usageLines(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
 		return d.Usage, err
 	}
 	lines := make([]session.UsageLine, len(sealed))
+	hasCalls := false
 	for i, s := range sealed {
 		lines[i] = usageOfCall(c, d, s)
+		if s.Kind != executor.UnbilledMarkerKind {
+			hasCalls = true
+		}
 	}
-	// Mirrored charges live in the transcript, outside ordinary call receipts.
-	// They remain part of saved spending even when ordinary receipts exist.
+	// Mirrored charges always live in the transcript. Markers alone cannot
+	// replace historical transcript spending because they contain no figures.
 	for _, line := range d.Usage {
-		if line.RemoteEvent != "" {
+		if !hasCalls || line.RemoteEvent != "" {
 			lines = append(lines, line)
 		}
 	}
@@ -137,8 +142,13 @@ func usageLines(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
 }
 
 func usageOfCall(c cell.Cell, d session.Digest, s cellstore.SealedCall) session.UsageLine {
+	calls := 1
+	if s.Kind == executor.UnbilledMarkerKind {
+		calls = 0
+	}
 	return session.UsageLine{
-		ID: s.ID, At: time.UnixMilli(s.SealedAtMs), Model: s.Model, Role: s.Role, Calls: 1,
+		Kind: s.Kind, Billing: s.Billing, BillingBasis: s.BillingBasis, Unbilled: s.Unbilled, FactoryJob: s.FactoryJob,
+		ID: s.ID, At: time.UnixMilli(s.SealedAtMs), Model: s.Model, Role: s.Role, Calls: calls,
 		Input: int(s.TokensIn), Output: int(s.TokensOut), USD: float64(s.CostMicroUSD) / 1e6,
 		Session: usageOwner(c, d), Workspace: d.Workspace,
 	}

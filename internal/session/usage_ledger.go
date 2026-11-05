@@ -137,13 +137,15 @@ func (c *Config) bindUsageLedger() {
 // it at creation and pass that path to RecordUsage, including after quit.
 func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 
-// UsageLine is one model call as the ledger remembers it.
+// UsageLine is one model call or missing-receipt marker in the ledger.
 //
 // Every field is a fact somebody asked for by name on the spend page, and there
 // is nothing here that is not: which day, which model, what for, how many calls,
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
+	// Kind separates missing-receipt markers from measured calls.
+	Kind string `json:"kind,omitempty"`
 	// GenerationID links this call to its provider receipt.
 	GenerationID string `json:"generation_id,omitempty"`
 	// ID names this one row, once, so two readers that meet the same row — a
@@ -220,7 +222,7 @@ type UsageLine struct {
 	// field is kept rather than dropped because rows written before issue #269
 	// carry a whole turn's worth on one line — an observed `calls: 41` — and a
 	// reader summing a year of this file has to be able to add those honestly.
-	// Nothing this build writes says anything but 1.
+	// Missing-receipt markers carry zero; measured calls carry one.
 	Calls int `json:"calls,omitempty"`
 	// Input and Output are the tokens. The cache split is deliberately not here:
 	// this file answers "how much and on what", and the four-way breakdown with
@@ -1564,21 +1566,26 @@ func (c *UsageCache) since(floor time.Time) []UsageLine {
 func RecordUnbilledCall(path string, line UsageLine) {
 	countUnbilledCall()
 	line.Unbilled = true
+	line.Kind = procexec.UnbilledMarkerKind
 	line.SharedID = true
 	RecordUsage(path, line)
 }
 
 // recordUnbilledReceipt uses the same ownership fields as an ordinary usage row.
-func (a *Agent) recordUnbilledReceipt(model string) {
+func (a *Agent) recordUnbilledReceipt(receipt provider.Reconciled) {
 	path := a.config.usageLedger
 	a.mu.Lock()
 	owner := a.sessionID()
 	a.mu.Unlock()
-	RecordUnbilledCall(path, UsageLine{
-		Session: owner, Model: model, Task: usageTaskID(a.config.taskID),
+	line := UsageLine{
+		ID: newUsageRowID(), Kind: procexec.UnbilledMarkerKind, Unbilled: true,
+		Session: owner, Model: receipt.Model, Role: receipt.Tag, Task: usageTaskID(a.config.taskID),
 		Root: a.config.rootSession, Automation: a.config.automationID, Workspace: a.config.Workspace,
 		FactoryJob: a.factoryJobName(),
-	})
+	}
+	line = withUsageBilling(line, receipt.Billing)
+	RecordUnbilledCall(path, line)
+	procexec.NoteModelCall(a.config.seat(), modelCallOf(line, Usage{}))
 }
 
 // modelCallOf is the receipt's word for one ledger row: the same call, seen
@@ -1586,6 +1593,7 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
 	return procexec.ModelCall{
 		ID: line.ID, Model: line.Model, Role: line.Role,
+		Kind: line.Kind, Billing: line.Billing, BillingBasis: line.BillingBasis, Unbilled: line.Unbilled, FactoryJob: line.FactoryJob,
 		TokensIn: line.Input, TokensOut: line.Output, TokensCached: used.CacheRead,
 		CostMicroUSD: int64(math.Round(line.USD * microPerUSD)),
 	}
@@ -1593,3 +1601,11 @@ func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
 
 // microPerUSD is the receipt's money unit: whole millionths of a dollar.
 const microPerUSD = 1e6
+
+// modelCalls preserves the legacy default without inventing a call for a marker.
+func (line UsageLine) modelCalls() int {
+	if line.Kind == procexec.UnbilledMarkerKind {
+		return 0
+	}
+	return max(line.Calls, 1)
+}

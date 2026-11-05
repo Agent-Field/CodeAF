@@ -79,7 +79,7 @@ type ServiceRec struct {
 	Ports []int    `json:"ports,omitempty"`
 }
 
-// ModelCall is one model call of the turn, by hashes.
+// ModelCall is one model call or missing-receipt marker saved with a turn.
 type ModelCall struct {
 	// ID is the live usage ledger row identity, absent on older saved calls.
 	ID           string `json:"id,omitempty"`
@@ -92,6 +92,11 @@ type ModelCall struct {
 	TokensOut    uint32 `json:"tokens_out"`
 	TokensCached uint32 `json:"tokens_cached,omitempty"`
 	CostMicroUSD int64  `json:"cost_micro_usd"`
+	Kind         string `json:"kind,omitempty"`
+	Billing      string `json:"billing,omitempty"`
+	BillingBasis string `json:"billing_basis,omitempty"`
+	Unbilled     bool   `json:"unbilled,omitempty"`
+	FactoryJob   string `json:"factory_job,omitempty"`
 }
 
 // Receipt is what a phone needs to render a turn (SCHEMAS.md 5).

@@ -7,7 +7,7 @@ import "sort"
 // Every call made for a factory job carries the job on its ledger row
 // ([UsageLine.FactoryJob]), so the factory's spending by model is a fold of
 // this machine's ledger: no transcript is opened. It counts only what this
-// machine ran; a job run on another computer is on that computer's ledger.
+// machine has recorded, including calls imported by a take.
 
 // FactoryModelUsage is one model's calls for factory jobs. Priced counts the
 // rows that carried dollars, Unpriced the rows that carried none (a plan, a
@@ -71,7 +71,7 @@ func (f modelFold) add(line UsageLine) {
 		t = &modelTally{FactoryModelUsage: FactoryModelUsage{Model: line.Model}, billings: map[string]bool{}}
 		f[line.Model] = t
 	}
-	t.Calls += max(line.Calls, 1)
+	t.Calls += line.modelCalls()
 	t.Input += int64(line.Input)
 	t.Output += int64(line.Output)
 	t.billings[line.Billing] = true
