@@ -37,7 +37,12 @@ func heldChatRelay(t *testing.T, id string) (*syncsetup.Sync, *atomic.Int64) {
 	writes := &atomic.Int64{}
 	path := "/v1/dir/cells/" + id
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && (r.URL.Path == path || strings.HasPrefix(r.URL.Path, path+"/")) {
+		// A heartbeat is the holder renewing its own lease, never another
+		// computer's write: here both computers are one device in one process,
+		// so P2 opening re-dials the watch socket that vouched for P1's lease
+		// and P1 renews by heartbeat (cellsync's socketMoved). That P2 drives
+		// nothing on the held cell, and so cannot beat it, is asserted apart.
+		if r.Method != http.MethodGet && (r.URL.Path == path || strings.HasPrefix(r.URL.Path, path+"/")) && !strings.HasSuffix(r.URL.Path, "/heartbeat") {
 			writes.Add(1)
 		}
 		service.Handler.ServeHTTP(w, r)

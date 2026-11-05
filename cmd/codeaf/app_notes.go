@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
@@ -172,7 +173,7 @@ func (b *appBackend) carryNotes(s *syncsetup.Sync, mail syncsetup.Mail, local ma
 	if len(took) == 0 && len(drop) == 0 {
 		return
 	}
-	go func() {
+	guard.Go("app/chat-notes-write", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), syncsetup.DeviceRequestWithin)
 		defer cancel()
 		if len(took) > 0 {
@@ -186,7 +187,7 @@ func (b *appBackend) carryNotes(s *syncsetup.Sync, mail syncsetup.Mail, local ma
 			_ = s.DropNotes(ctx, drop)
 			b.chats.notes.endDrop(drop)
 		}
-	}()
+	})
 }
 
 // appChatNotes is a row's notes: this device's own messages to the chat, the
