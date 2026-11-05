@@ -28,7 +28,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
-	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -256,7 +255,7 @@ func liveMemoryStageMeasure(t *testing.T, pause, memoryOn bool) {
 			w.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &current)
 			w.must("factory.job_hold", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": current.Version}}, &appwire.FactoryJobActed{})
 			pausedAt = time.Now()
-			memoryAwaitReceipts(t, callPath)
+			awaitLiveMoneyReceipts(t, callPath)
 			before := memoryCallsAfter(t, callPath, time.Time{}).started
 			time.Sleep(5 * time.Second)
 			after := memoryCallsAfter(t, callPath, time.Time{}).started
@@ -296,7 +295,7 @@ func liveMemoryStageMeasure(t *testing.T, pause, memoryOn bool) {
 	t.Logf("allowing %s for the final automatic brief", factory.BriefDebounce+time.Second)
 	time.Sleep(factory.BriefDebounce + time.Second)
 	memoryAwaitQuiet(t, callPath)
-	memoryAwaitReceipts(t, callPath)
+	awaitLiveMoneyReceipts(t, callPath)
 	it, err = floor.Get(id)
 	if err != nil {
 		t.Fatal(err)
@@ -521,53 +520,6 @@ func memoryAwaitQuiet(t *testing.T, path string) {
 		}
 	}
 	t.Error("the call log kept growing after the job ended")
-}
-
-func memoryAwaitReceipts(t *testing.T, path string) {
-	t.Helper()
-	deadline := time.Now().Add(provider.ReceiptWait)
-	for {
-		file, err := os.Open(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		pending := map[string]bool{}
-		unpriced := false
-		scanner := bufio.NewScanner(file)
-		scanner.Buffer(make([]byte, 64<<10), 4<<20)
-		for scanner.Scan() {
-			var row calllog.Record
-			if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
-				file.Close()
-				t.Fatal(err)
-			}
-			if row.Phase == "start" {
-				pending[row.ID] = true
-				continue
-			}
-			delete(pending, row.ID)
-			if row.Cost == 0 && (row.Error != "" || row.Ended != "") {
-				unpriced = true
-			}
-		}
-		scanErr := scanner.Err()
-		file.Close()
-		if scanErr != nil {
-			t.Fatal(scanErr)
-		}
-		if len(pending) == 0 {
-			if unpriced {
-				t.Logf("waiting %s for interrupted-call receipts after the job ended", provider.ReceiptWait+time.Second)
-				time.Sleep(provider.ReceiptWait + time.Second)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Errorf("%d model calls still lack terminal records after job end", len(pending))
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
 }
 
 type memoryCallWindow struct{ started, active int }
