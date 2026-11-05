@@ -655,6 +655,17 @@ in the background. You can leave Memory, change chats, and return later; pages
 appear after the initial history has been processed and organized. New chats
 can continue arriving while that initial collection is built.
 
+## Closing a chat waits for knowledge capture
+
+Closing a chat cancels its knowledge scanners and learning from stopped jobs
+before waiting up to 10 seconds total for them to finish. If a writer misses
+that deadline, close logs its kind (scanner or compiler), journal and profile
+identities, and elapsed wait, then returns. The identities are hashes of paths.
+A database write already in progress can finish later as a whole transaction.
+Saved journals remain available for later recovery. Learning owned by an active
+job keeps running across stage chat closes under that job's existing budget
+and cancellation rules.
+
 ## Knowledge build progress and concurrency
 
 Build progress separates **History imported** from **Sources processed**. Each

@@ -147,4 +147,6 @@ runs out with codeaf open. Opening codeaf again does not bring that report a sec
 "Make the crew" closes the proposal in the chat and removes it from Inbox
 Waiting. Inbox Done records that answer once. The chat keeps one crew formation
 fact, including when a create request is retried. "Edit" leaves the proposal
-open; "Keep it one agent" closes it with its own receipt.
+open in Inbox Waiting, including immediately after the answer returns. A proposal
+card reaches the app after its Inbox item is available. "Keep it one agent"
+closes it with its own receipt.
