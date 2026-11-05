@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Retry lost opening planner replies before failing the crew
-pr: 0
+pr: 2404
 surface: [engine, chat, app]
 invalidates:
   - "Cut-off opening planner replies and JSON repairs that lost all nodes could be treated as deliberate empty plans. They now trigger one fresh planning attempt and retain the cut-off reason if recovery fails."
