@@ -121,6 +121,97 @@ func TestALateReceiptSurvivesResumeAndTheNextSpendStamp(t *testing.T) {
 	}
 }
 
+// Contract (b), review 1 major finding: a receipt pending across Close must
+// keep its paid arm line, so a resume restores .375 and the next turn saves
+// .385. Ordinary call lines must still be refused after close.
+func TestALateReceiptAfterCloseSurvivesResumeAndTheNextSpendStamp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	t.Cleanup(func() { StopUsageWriter(ledger) })
+	held := make(chan struct{})
+	first, workspace := newTestAgent(t, &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return priced(toolResponse("first", "ls", `{"path":"."}`), .25), nil
+		},
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(held)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}}, func(config *Config) {
+		config.Place = Place{Dir: dir, Workspace: config.Workspace}
+		config.SessionFile = path
+		config.usageLedger = ledger
+	})
+	events := mustSubmit(t, first, "look around")
+	waitMetaPatch(t, held)
+	settled := first.pendingReceipt()
+	first.Interrupt()
+	collect(t, events)
+	if meta := stampedMeta(t, first, dir); meta.SpentUSD != .25 || meta.Tokens != 27 {
+		t.Fatalf("cancelled turn saved %+v, want .25 and 27 tokens", meta)
+	}
+	if seals := turnUsageLines(t, path); len(seals) != 1 || seals[0].CostUSD != .25 {
+		t.Fatalf("cancelled turn seals = %+v, want one .25 seal", seals)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close with a pending receipt: %v", err)
+	}
+	lines := len(readLines(t, path))
+	if first.file.writeLine(sessionEntry{
+		Type: "call", Call: &journalCall{Model: "test/model", Input: 1, Output: 1, CostUSD: 1}, Timestamp: stamp(),
+	}) {
+		t.Error("ordinary call line was accepted after close")
+	}
+	if got := len(readLines(t, path)); got != lines {
+		t.Fatalf("ordinary call changed the closed journal from %d to %d lines", lines, got)
+	}
+	first.reconciled(provider.Reconciled{
+		Billed: provider.Billed{Model: "test/model", PromptTokens: 80, CompletionTokens: 20, CachedTokens: 30, Cost: .125},
+		Ref:    "late-after-close", Reason: "torn", Found: true,
+	})
+	settled()
+	if meta := stampedMeta(t, first, dir); meta.SpentUSD != .375 || meta.Tokens != 127 {
+		t.Fatalf("post-close receipt saved %+v, want .375 and 127 tokens", meta)
+	}
+	if seals := turnUsageLines(t, path); len(seals) != 1 || seals[0].CostUSD != .25 {
+		t.Fatalf("post-close receipt changed turn seals: %+v", seals)
+	}
+	digest, err := ReadDigest(path)
+	if err != nil {
+		t.Fatalf("digest after close: %v", err)
+	}
+	if usd, tokens := digest.Spend(); usd != .375 || tokens != 127 {
+		t.Errorf("post-close digest spend = %v / %d tokens, want .375 / 127", usd, tokens)
+	}
+
+	second, err := newAgent(Config{
+		Workspace: workspace, Model: "test/model", System: "SYSTEM",
+		Place: Place{Dir: dir, Workspace: workspace}, SessionFile: path, usageLedger: ledger,
+	}, &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return priced(textResponse("done"), .01), nil
+		},
+	}})
+	if err != nil {
+		t.Fatalf("resume after post-close receipt: %v", err)
+	}
+	t.Cleanup(second.SettleWrites)
+	t.Cleanup(func() { _ = second.Close() })
+	if used := second.Usage(); used.CostUSD != .375 || used.Input != 100 || used.Output != 27 || used.CacheRead != 30 || used.Calls != 2 || used.Turns != 1 {
+		t.Errorf("resumed meter = %+v, want the seal plus its post-close receipt", used)
+	}
+	collect(t, mustSubmit(t, second, "finish up"))
+	meta := stampedMeta(t, second, dir)
+	if math.Abs(meta.SpentUSD-.385) > 1e-12 || meta.Tokens != 142 {
+		t.Fatalf("next turn saved %+v, want .385 and 142 tokens after the post-close receipt", meta)
+	}
+	if used := second.Usage(); math.Abs(used.CostUSD-.385) > 1e-12 || used.Calls != 3 || used.Turns != 2 {
+		t.Fatalf("next turn meter = %+v, want .385, three calls and two conversation steps", used)
+	}
+}
+
 // Contract (d), (c): the digest adds late reconciled and hedge receipts to
 // saved spend while Usage still contains only the seal, never the call rows.
 func TestDigestSpendIncludesLateReceiptsWithoutAddingUsageLines(t *testing.T) {
