@@ -222,6 +222,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h := &Handler{config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.seam = h.areas.remembering(seam)
+	h.waits.launch = h.seam.Launch
 	h.seam = h.waitsLaunches(h.seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
@@ -239,6 +240,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
 	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
 	h.read("/v1/queue", h.queue)
+	h.policyRoutes()
 	h.read("/v1/jobs/{id}", h.job)
 	h.read("/v1/jobs/{id}/thread", h.thread)
 	h.read("/v1/events", h.events)
@@ -859,7 +861,7 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		GitHubLimited   string     `json:"github_limited,omitempty"`
 		GitHubResumesAt *time.Time `json:"github_resumes_at,omitempty"`
 	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
-		h.accessMode(), h.pollingEvery(), h.servedBy(), true, []string{factory.BlockWaitsOn}, limited, resumes})
+		h.accessMode(), h.pollingEvery(), h.servedBy(), true, []string{factory.BlockWaitsOn, "group_policy"}, limited, resumes})
 }
 
 // githubLimited is the reason and reset time about carries while GitHub's

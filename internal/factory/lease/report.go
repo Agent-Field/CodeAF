@@ -88,6 +88,9 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 			if !complete && holdAtJobBudget(it, now) {
 				blocked = !capWait
 			}
+			if !complete && d.holdAtPolicy(it, now) {
+				blocked = true
+			}
 			if complete && !held.ThreadOnly {
 				it.Publishing = false
 				if it.State == factory.StateShipped && it.PullRequest == nil && it.CommentURL != "" {

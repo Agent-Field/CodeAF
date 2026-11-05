@@ -268,6 +268,10 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
 		}
+		if d.holdAtPolicy(it, d.now()) {
+			blocked = true
+			return nil
+		}
 		if holdAtJobBudget(it, d.now()) {
 			blocked = true
 			return nil
