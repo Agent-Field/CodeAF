@@ -11,6 +11,9 @@ import (
 // H5: task commits are authored with the current product name and address.
 func TestH5TaskCommitIdentityUsesTheCurrentName(t *testing.T) {
 	got := strings.Join(codeafGitIdentity(), " ")
+	if want := "-c user.name=codeaf -c user.email=agentfield-bot@users.noreply.github.com"; got != want {
+		t.Fatalf("identity flags = %q, want exactly %q", got, want)
+	}
 	for _, want := range []string{"user.name=codeaf", "user.email=agentfield-bot@users.noreply.github.com"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("identity %q does not contain %q", got, want)
