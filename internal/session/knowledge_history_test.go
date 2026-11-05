@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
@@ -46,7 +47,7 @@ func knowledgeProviderFixture(t *testing.T, started chan<- struct{}, release <-c
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			return nil, err
 		}
-		if body.Model != "deepseek/deepseek-v4.1-flash" {
+		if body.Model != config.DefaultKnowledgeModel {
 			t.Errorf("unexpected model %q", body.Model)
 		}
 		var payload struct{ Messages []knowledge.Source }
