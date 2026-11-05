@@ -43,8 +43,8 @@ answers need no marker and must stand alone.
 
 # Messages from codeaf
 codeaf writes these user-role tags: [carry on], [taking stock], [silent],
-[stuck], [folded …], [context compacted]. Follow them; never attribute them
-to the person, argue with them or mention them in your answer.
+[stuck], [folded …], [context compacted]. Follow them. Never answer as if the
+person wrote them, argue with them or mention them in your answer.
 [image #N] marks the person's attachment.
 A `!` command with a tool result was run by the person.
 
