@@ -29,7 +29,7 @@ func TestAppFactoryCreateSplitFromRoutesAndRead(t *testing.T) {
 			var posts atomic.Int64
 			stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
-					io.WriteString(w, `{"id":81,"job_id":"j","version":1,"split_from":80}`)
+					io.WriteString(w, `{"id":"j","document_id":81,"version":1,"split_from":80}`)
 					return
 				}
 				posts.Add(1)
@@ -85,7 +85,9 @@ func TestAppFactoryCreateSplitFromPersistsAndLeavesParent(t *testing.T) {
 func TestAppFactoryCreateSplitFromRefusals(t *testing.T) {
 	var posts atomic.Int64
 	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
-		posts.Add(1)
+		if r.Method != http.MethodGet {
+			posts.Add(1)
+		}
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		io.WriteString(w, `{"error":"split_from must name a visible job in this factory"}`)
 	})
@@ -111,7 +113,9 @@ func TestAppFactoryCreateSplitFromRefusals(t *testing.T) {
 func TestAppFactoryCreateSplitFromOlderFactory(t *testing.T) {
 	var posts, created atomic.Int64
 	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) {
-		posts.Add(1)
+		if r.Method != http.MethodGet {
+			posts.Add(1)
+		}
 		var body struct{ Repo, Title, Text, Source string }
 		decoder := json.NewDecoder(r.Body)
 		decoder.DisallowUnknownFields()
