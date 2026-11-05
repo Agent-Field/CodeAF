@@ -26,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -85,7 +86,7 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &hostedMoveRig{t: t, c: c, work: cfg.Place.Workspace, bRoots: t.TempDir(), changes: make(chan struct{}, 1)}
+	h := &hostedMoveRig{t: t, c: c, work: cfg.Place.Workspace, bRoots: cellstoretest.EngineDir(t), changes: make(chan struct{}, 1)}
 	service := relayserveForMove(t)
 	for _, decorate := range wrap {
 		service = decorate(service)
@@ -119,7 +120,6 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 	}
 	h.ea, h.eb = cellstore.EngineFor(h.work), cellstore.EngineFor("")
 	h.ea.DataRoot, h.eb.DataRoot = t.TempDir(), t.TempDir()
-	t.Cleanup(cellstore.StopSpawned)
 	if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Workspace: h.work, Title: "take-back chat"}); err != nil {
 		t.Fatal(err)
 	}
