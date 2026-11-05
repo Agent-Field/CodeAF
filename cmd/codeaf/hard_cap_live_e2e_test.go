@@ -578,8 +578,13 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 	defer cancel()
 	providerTotal, cutBefore, cutMid := 0., 0, 0
 	seen := map[string]bool{}
-	paidCrews := map[int]bool{}
+	paidCrews, workedCrews := map[int]bool{}, map[int]bool{}
 	for _, row := range rows {
+		// A crew's admitted worker call counts whether it was paid or cut at
+		// $0 by the cap: a $0 cut is the cap working, not a missing crew.
+		if row.Admitted && row.WorkerCrew >= 0 && !row.AfterRaise {
+			workedCrews[row.WorkerCrew] = true
+		}
 		t.Logf("seq=%d begin=%s took=%s status=%d bytes=%d usage=%t finish=%q cost=%.9f recorded_total=%.9f caller_left_early=%t generation=%q", row.Seq, row.Begin.Format(time.RFC3339Nano), row.Took, row.Status, row.Bytes, row.Usage, row.Finish, row.Cost, row.Total, row.Early, row.Generation)
 		if row.Admitted && row.CutBefore {
 			cutBefore++
@@ -604,8 +609,11 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 			t.Errorf("required provider billing receipt unavailable for generation %q", row.Generation)
 		}
 	}
-	if crews == 4 && len(paidCrews) != 4 {
-		t.Errorf("paid worker evidence from %d/4 crews", len(paidCrews))
+	if crews == 4 && len(workedCrews) != 4 {
+		t.Errorf("admitted worker calls from %d/4 crews", len(workedCrews))
+	}
+	if len(paidCrews) < 2 {
+		t.Errorf("paid worker evidence from %d crews, want at least 2", len(paidCrews))
 	}
 	if !session.FlushUsage() {
 		t.Error("ledger flush failed")
@@ -631,7 +639,9 @@ func (s *hardCapTrace) report(t *testing.T, r *liveRecorder, started time.Time, 
 	t.Logf("cap=%.9f ledger_day=%.9f recorder_usage=%.9f provider_billed=%.9f cut_before_reply=%d cut_mid_stream=%d peak_concurrent=%d crews_started=%d past_cap=%.9f seconds=%.3f provider_minus_ledger=%.9f", hardCapDay, ledger, recorded, providerTotal, cutBefore, cutMid, peak, len(paidCrews), max(0, providerTotal-hardCapDay), time.Since(started).Seconds(), providerTotal-ledger)
 }
 func hardCapReceipt(ctx context.Context, upstream, key, id string) (float64, bool) {
-	for attempt := 0; attempt < 8; attempt++ {
+	// Billing becomes visible seconds after a completion; wait out the run's
+	// own deadline (ctx) rather than a fixed count.
+	for {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, upstream+"/generation?id="+url.QueryEscape(id), nil)
 		req.Header.Set("Authorization", "Bearer "+key)
 		resp, err := http.DefaultClient.Do(req)
@@ -650,10 +660,9 @@ func hardCapReceipt(ctx context.Context, upstream, key, id string) (float64, boo
 		select {
 		case <-ctx.Done():
 			return 0, false
-		case <-time.After(250 * time.Millisecond):
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	return 0, false
 }
 
 func hardCapFakeRecorder(t *testing.T) {
