@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Keep billing facts and missing receipts when taking a chat
-pr: 0
+pr: 2386
 surface: [chat, engine, remote, app, factory, docs]
 invalidates:
   - "Taking a chat used to lose receipt billing facts and Factory job attribution; newly saved calls now retain them."
