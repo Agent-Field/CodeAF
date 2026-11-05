@@ -71,7 +71,7 @@ func appTakenChatWorking(t *testing.T, overlap bool) {
 	var startOnce sync.Once
 	resumeStartup := func() { startOnce.Do(func() { close(start) }) }
 	defer resumeStartup()
-	_, _ = heldChatRelay(t, "fixture", func(next http.Handler) http.Handler {
+	_, _, _ = heldChatRelay(t, "fixture", func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if holdStartup.Load() && r.Method == http.MethodGet && r.URL.Path == "/v1/dir/list" && r.Header.Get(reqsign.HeaderCert) == taker.Load().(string) {
 				select {
