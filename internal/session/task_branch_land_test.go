@@ -451,6 +451,7 @@ func gcRepo(t *testing.T) (repo string, place Place, marker string) {
 	marker = filepath.Join(t.TempDir(), "pre-auto-gc-ran")
 	hook := "#!/bin/sh\necho ran > '" + marker + "'\nexit 1\n"
 	os.WriteFile(filepath.Join(repo, ".git", "hooks", "pre-auto-gc"), []byte(hook), 0o755)
+	// Git 2.56 defaults to geometric maintenance, which does not use gc.auto.
 	gitT(t, repo, "config", "maintenance.strategy", "gc")
 	gitT(t, repo, "config", "gc.auto", "1")
 	gitT(t, repo, "config", "gc.autoDetach", "false")
