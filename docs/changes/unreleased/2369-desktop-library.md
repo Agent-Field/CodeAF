@@ -17,3 +17,7 @@ cannot resurface through older notes; their source chats remain reachable from C
 or independent knowledge store is introduced.
 Library questions deferred to Later survive restarts and remain available while learning is paused.
 The desktop sidebar separates the review queue from collapsed collections; long guide summaries wrap without overlapping other guides.
+
+The pre-merge complexity gate also exposed seven functions already over its ceiling on
+app/v3. Their existing admission, wait, checkpoint, worktree, schema and bounded-page
+phases are now separate private helpers; limits, locking and user-visible behavior stay the same.
