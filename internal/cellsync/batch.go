@@ -585,7 +585,9 @@ func (b *Batcher) beat(ctx context.Context) {
 	}
 	up := b.beatUpload(pending)
 	b.mu.Lock()
-	working := b.working
+	// Progress and lease beats must preserve the same end-of-turn ordering
+	// as turn-change beats while the final publication is still pending.
+	working := b.working || b.toldWork && len(b.noted) > 0
 	b.mu.Unlock()
 	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total), Working: working})
 	b.renewalResult(d, err)

@@ -31,12 +31,12 @@ import (
 
 // heldChatRelay counts every cell write, including creation, rather than only
 // the heartbeat that first exposed the second opener's ownership side effect.
-func heldChatRelay(t *testing.T, id string) (*syncsetup.Sync, *atomic.Int64) {
+func heldChatRelay(t *testing.T, id string, wrappers ...func(http.Handler) http.Handler) (*syncsetup.Sync, *atomic.Int64) {
 	t.Helper()
 	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	writes := &atomic.Int64{}
 	path := "/v1/dir/cells/" + id
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// A heartbeat is the holder renewing its own lease, never another
 		// computer's write: here both computers are one device in one process,
 		// so P2 opening re-dials the watch socket that vouched for P1's lease
@@ -47,6 +47,10 @@ func heldChatRelay(t *testing.T, id string) (*syncsetup.Sync, *atomic.Int64) {
 		}
 		service.Handler.ServeHTTP(w, r)
 	}))
+	for _, wrap := range wrappers {
+		handler = wrap(handler)
+	}
+	server := httptest.NewServer(handler)
 	t.Cleanup(func() { server.Close(); _ = service.Close() })
 	t.Setenv(syncsetup.URLVar, server.URL)
 	t.Setenv(syncsetup.IntervalVar, "3600000")

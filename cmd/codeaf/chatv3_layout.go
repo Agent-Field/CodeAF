@@ -843,8 +843,15 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	failed(watch, err)
 	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
 	if drive != nil {
-		// The agent waits for the person: upload what is sealed now, and say the turn is over.
-		watch.OnTurnEnd = func() { drive.Working(false); drive.Idle() }
+		// Settle schedules the final capture asynchronously. Its turn must be
+		// noted before the end beat can wait for that turn's publication.
+		watch.OnTurnEnd = func() {
+			ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+			defer cancel()
+			failed(watch, cellstore.WaitCapture(ctx, c))
+			drive.Working(false)
+			drive.Idle()
+		}
 		watch.OnTurnStart = func() { drive.Working(true) }
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())

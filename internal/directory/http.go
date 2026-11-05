@@ -276,7 +276,8 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 		return nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusInternalServerError {
+	// Open pairing routes share this transport but carry no directory capabilities.
+	if strings.HasPrefix(path, dirBase+"/") && resp.StatusCode < http.StatusInternalServerError {
 		savedTimeServices.Store(h.serviceKey(), resp.Header.Get(SavedTurnTimeHeader) == "1")
 		uploadProgressServices.Store(h.serviceKey(), resp.Header.Get(UploadProgressHeader) == "1")
 		workingServices.Store(h.serviceKey(), resp.Header.Get(WorkingBeatsHeader) == "1")
