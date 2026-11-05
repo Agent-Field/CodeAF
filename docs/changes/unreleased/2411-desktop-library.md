@@ -1,12 +1,11 @@
 ---
 kind: added
 title: Desktop Library shares knowledge guides and sources with the terminal
-pr: 2369
+pr: 2411
 surface: [app, engine, chat, docs]
 invalidates:
   - Library titles were previously generated-only labels; guides and collection labels can now be renamed without changing identity, scope, links or learned body text.
   - The desktop previously exposed only saved memory lines; it can now browse the terminal’s knowledge guides through explicit Library commands.
-  - The default knowledge model previously followed an unversioned Flash name; it now starts on DeepSeek v4.1 Flash 1017 and retains a saved choice.
   - Pausing learning previously blocked explicit desktop questions too; Home can now answer from saved guides without resuming capture, while automatic recall remains disabled.
   - Guide clicks previously kept another desktop tab; ordinary Library navigation now follows pages in the current tab, with explicit new-tab actions.
 ---

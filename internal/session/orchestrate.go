@@ -134,6 +134,10 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		a.mu.Unlock()
 		return "", errAgentClosed
 	}
+	if err := a.railBlockLocked(); err != nil {
+		a.mu.Unlock()
+		return "", err
+	}
 	// Admission belongs to the close boundary even before the family has a
 	// registry entry: constructing that family already writes its first row.
 	a.orchestrateWorkers.Add(1)
@@ -205,6 +209,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// says which model is doing the work, and the answer must not be able to move
 	// under a `/model` switch half way through the run.
 	family.worker = worker.model()
+	family.retryModel = named
 	// THE TANK ASKS A PUBLISHED TARIFF FIRST, and only falls back to the
 	// meter package's own table when nobody published one for the model — the
 	// same order of authority the reported cost on a call's usage already has
@@ -229,6 +234,13 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		// and with no tiers set it is not the model the person is talking to.
 		Planner: plannerModel,
 		OnNote: func(text string) {
+			family.mu.Lock()
+			hasWork := family.born > 0
+			family.mu.Unlock()
+			// An empty opening's reason is delivered once as a saved notice.
+			if !hasWork {
+				return
+			}
 			a.emitOrchestrate(Event{Kind: EventOrchestrateNote, ID: seq, Text: text})
 		},
 		OnFuel: func(fuel orchestrate.Fuel) {
@@ -571,6 +583,15 @@ func (a *Agent) landOrchestrate(run uint64, goal string, snap orchestrate.Snapsh
 		// somebody who has just stopped work wants to know and the two that were
 		// still moving at the moment they pressed the key (cancel.go).
 		line = stoppedRunNote(snap)
+	case snap.EmptyPlanReason() != "" && err != nil:
+		line = snap.EmptyPlanReason()
+		a.mu.Lock()
+		a.recordLocked(textMessage("assistant", line))
+		for _, watcher := range a.taskWatchers {
+			watcher.send(Event{Kind: EventNotice, Text: line})
+		}
+		a.mu.Unlock()
+		return
 	case err != nil:
 		line = fmt.Sprintf("the adaptive run for %q ended early: %v", clip(goal, 80), err)
 	case snap.Answer != "":
@@ -676,15 +697,29 @@ type orchestratePlanner struct {
 	request string
 }
 
-// Plan is one call, salvaged, with the ONE repair turn this pipeline allows —
-// exactly the ladder a harness design is held to (harness_build.go), for
-// exactly its reason: a reply that is a good amendment wearing a code fence
-// costs nothing to fix, and re-asking costs the whole view again.
+// Plan salvages syntax before asking for a transcription repair. An opening
+// reply lost to truncation gets one fresh planning attempt with more output room;
+// an explicit complete empty plan keeps its own explanation.
 func (p *orchestratePlanner) Plan(ctx context.Context, view orchestrate.View) (orchestrate.Amendment, error) {
-	return p.think(ctx, []ai.Message{
+	messages := []ai.Message{
 		textMessage("system", orchestratePlannerBrief),
 		textMessage("user", renderOrchestrateView(view, p.request)),
-	})
+	}
+	opening := len(view.Results) == 0 && len(view.Frontier) == 0
+	amendment, response, err := p.think(ctx, messages, opening)
+	if !opening || !errors.Is(err, orchestrate.ErrPlannerReplyCutOff) {
+		return amendment, err
+	}
+	// The first call leaves output size to the provider. Recovery requests at
+	// least 8192 answer tokens, or twice the output it actually exhausted.
+	budget := plannerRecoveryBudget(response)
+	messages = append(messages, textMessage("user",
+		"Your opening reply was cut off or lost its nodes. Answer again with one complete amendment. Preserve the work needed for the goal."))
+	amendment, _, err = p.think(ctx, messages, true, ai.WithMaxTokens(budget))
+	if err != nil || len(amendment.Add) == 0 {
+		return orchestrate.Amendment{}, orchestrate.ErrPlannerReplyCutOff
+	}
+	return amendment, err
 }
 
 // Repair is the second half of that bargain, and the half only the run can
@@ -692,43 +727,73 @@ func (p *orchestratePlanner) Plan(ctx context.Context, view orchestrate.View) (o
 // a running node, a need on an id nobody minted — is handed back with the
 // sentence that refused it.
 func (p *orchestratePlanner) Repair(ctx context.Context, view orchestrate.View, why string) (orchestrate.Amendment, error) {
-	return p.think(ctx, []ai.Message{
+	amendment, _, err := p.think(ctx, []ai.Message{
 		textMessage("system", orchestratePlannerBrief),
 		textMessage("user", renderOrchestrateView(view, p.request)),
 		textMessage("user", "Your last amendment was REFUSED: "+why+
 			"\n\nAnswer again with one amendment that does not do that. {} is a fine answer."),
-	})
+	}, false)
+	return amendment, err
 }
 
-func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message) (orchestrate.Amendment, error) {
-	raw, err := p.ask(ctx, messages)
+func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message, opening bool, options ...ai.Option) (orchestrate.Amendment, *ai.Response, error) {
+	response, err := p.ask(ctx, messages, options...)
 	if err != nil {
-		return orchestrate.Amendment{}, err
+		return orchestrate.Amendment{}, response, err
+	}
+	raw := response.Text()
+	if provider.FinishReason(response) == "length" || strings.TrimSpace(raw) == "" {
+		// Incomplete content cannot be fixed by a syntax-only transcription.
+		return orchestrate.Amendment{}, response, orchestrate.ErrPlannerReplyCutOff
 	}
 	amendment, parseErr := orchestrate.ParseAmendment(raw)
 	if parseErr == nil {
-		return amendment, nil
+		return amendment, response, nil
 	}
-	// THE REPAIR TURN CARRIES NO BRIEF. It is a transcription job, and handing
-	// it the law that produced the first reply would invite it to reconsider
-	// the plan while it is meant to be fixing a delimiter.
+	// Transcription needs room for both reasoning and the original content.
+	// Preserve any larger cap already requested by the opening retry.
+	request := &ai.Request{}
+	for _, option := range options {
+		if err := option(request); err != nil {
+			return orchestrate.Amendment{}, response, err
+		}
+	}
+	budget := plannerRecoveryBudget(response)
+	if request.MaxTokens != nil {
+		budget = max(budget, *request.MaxTokens)
+	}
+	repairOptions := append(append([]ai.Option{}, options...), ai.WithMaxTokens(budget))
 	second, err := p.ask(ctx, []ai.Message{
 		textMessage("system", "You repair malformed JSON and do nothing else. You never change content, never add a field, never drop one, and never explain. Your whole reply is one JSON value."),
 		textMessage("user", "This was meant to be one JSON object:\n\n"+raw+
 			"\n\nIt did not parse. "+parseErr.Error()+
 			"\n\nReply with ONLY the corrected JSON — the same content, nothing added, nothing dropped, no prose, no code fence."),
-	})
+	}, repairOptions...)
 	if err != nil {
-		return orchestrate.Amendment{}, err
+		return orchestrate.Amendment{}, response, err
 	}
-	return orchestrate.ParseAmendment(second)
+	amendment, err = orchestrate.ParseAmendment(second.Text())
+	if provider.FinishReason(second) == "length" || err == nil && (amendment.Empty() || opening && len(amendment.Add) == 0) {
+		return orchestrate.Amendment{}, second, orchestrate.ErrPlannerReplyCutOff
+	}
+	return amendment, second, err
+}
+
+// plannerRecoveryBudget reuses the opening retry rule: at least 8192 tokens,
+// or twice the reported completion tokens to leave room for reasoning.
+func plannerRecoveryBudget(response *ai.Response) int {
+	budget := 8192
+	if response != nil && response.Usage != nil {
+		budget = max(budget, 2*response.Usage.CompletionTokens)
+	}
+	return budget
 }
 
 // ask is one call, billed twice: to the person's session usage, because an
 // auxiliary call is not free (title.go, guardian.go), and to the run's tank,
 // because a planner that did not meter would be spending money the gauge never
 // sees.
-func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (string, error) {
+func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	ctx = p.call.context(ctx)
 	response, err := p.agent.completeWithModel(
 		// The plan a run is steered by: nobody reads it arriving, and it has to
@@ -736,16 +801,16 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
 		callPurpose(roles.RolePlanner),
 		messages,
-		p.call.model)
+		p.call.model, options...)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if response == nil {
-		return "", errors.New("the planner answered with nothing")
+		return nil, errors.New("the planner answered with nothing")
 	}
 	p.agent.addAuxiliaryUsageAs(response, p.call.model, 1, string(roles.RolePlanner))
 	p.orch.Charge(orchestrateCost(response, p.call.model))
-	return response.Text(), nil
+	return response, nil
 }
 
 // orchestrateCost is what one call spent: THE PROVIDER'S OWN FIGURE WHEN THERE
@@ -885,6 +950,8 @@ THE RULES:
   finding exists. Two nodes with no edge between them run at the same time, so
   every edge you add that was not necessary is time somebody waits for nothing.
 - WRITE_SCOPE IS THE PATHS A NODE MAY WRITE. Nodes that only read leave it out.
+  Use root-relative files, dirs or globs: * ? [...] per segment; no **, .. or
+  absolute paths. A matched directory covers its subtree.
   Two nodes that write the same path are serialized for you — you do not need
   an edge for that.
 - YOU MAY NOT CANCEL A RUNNING NODE. Cancel is for work that has not started.
@@ -1406,6 +1473,9 @@ func orchestrateInScope(workspace string, scope []string, path string) bool {
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return false
 	}
+	if err := checkMovedDestination(workspace, path); err != nil {
+		return false
+	}
 	return orchestrate.Covers(scopeAsGuarded(workspace, scope), filepath.ToSlash(relative))
 }
 
@@ -1468,6 +1538,8 @@ func (c Config) WorktreePath(jobID string) string {
 // on every launch, landing, note and steer, and a roster redrawing twelve rows
 // for a note is a roster nobody can read.
 type orchestrateFamily struct {
+	retryModel string
+
 	// gate orders pause notifications and their accepted answers.
 	gate  sync.Mutex
 	agent *Agent
@@ -1603,10 +1675,10 @@ type orchestrateFamily struct {
 // [TaskGraph.document] and [Agent.replayTaskRoster] free to walk those rows under
 // the graph's own lock and closes no cycle.
 func (f *orchestrateFamily) publish(notice TaskNotice) {
-	notice.Retryable = false // Adaptive run rows have no retry road.
 	if f == nil || f.agent == nil {
 		return
 	}
+	notice.Retryable = notice.Retryable && notice.ID == f.root
 	f.say.Lock()
 	defer f.say.Unlock()
 	f.mu.Lock()
@@ -2140,6 +2212,7 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 	letGo := f.letGo
 	f.letGo = nil
 	title := f.title
+	empty := f.born == 0 && snap.EmptyPlanReason() != "" && err != nil
 	f.mu.Unlock()
 	if letGo != nil {
 		// AND SO DOES THE QUESTION. A run that ended at its gate leaves nobody
@@ -2149,8 +2222,9 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 	}
 	notice := TaskNotice{
 		ID: f.root, Run: f.run, Title: title, State: TaskDone, Model: f.model,
-		Report:  strings.TrimSpace(snap.Answer),
-		CostUSD: snap.Fuel.Spent,
+		Retryable: empty,
+		Report:    strings.TrimSpace(snap.Answer),
+		CostUSD:   snap.Fuel.Spent,
 	}
 	switch {
 	case snap.Stopped:
@@ -2242,4 +2316,33 @@ func orchestrateNodeReport(node orchestrate.NodeStatus) string {
 		return firstLine(node.Err)
 	}
 	return ""
+}
+
+// retryEmptyOrchestrate admits a new run only when this family never created
+// a worker. Rows restored without a live run have no restart instructions.
+func (a *Agent) retryEmptyOrchestrate(root uint64) (bool, error) {
+	a.mu.Lock()
+	var live *orchestration
+	for _, candidate := range a.orchestrations {
+		if candidate.family != nil && candidate.family.root == root {
+			live = candidate
+			break
+		}
+	}
+	a.mu.Unlock()
+	if live == nil {
+		return false, nil
+	}
+	f := live.family
+	f.mu.Lock()
+	row := f.rows[root]
+	eligible := f.settled && f.born == 0 && row.Retryable && row.State == TaskFailed && !row.Stopped
+	model := f.retryModel
+	f.mu.Unlock()
+	if !eligible {
+		return true, errors.New("only an empty opening plan can be retried as a fresh run")
+	}
+	snap := live.run.Snapshot()
+	_, err := a.RunOrchestrate(context.Background(), snap.Goal, model, snap.Fuel.Cap)
+	return true, err
 }

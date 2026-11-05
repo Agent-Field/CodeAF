@@ -302,3 +302,15 @@ over. That is a real answer, not a refusal.
 Everything is the terminal chat and these commands. There is no server, and no
 longer a standing watch either: nothing runs here on a timer while no terminal
 is open.
+
+## Craft git history and automatic maintenance
+
+The craft history is a repository only codeaf commits to, so Git's automatic
+maintenance stays on there, but it runs inside the save instead of in the
+background: when a save crosses Git's threshold, that save waits for the
+cleanup to finish, and no git keeps running after it returns. codeaf does not
+schedule or explicitly run garbage collection or maintenance.
+
+This is a setting on each git command codeaf starts, not a repository config
+change. Your own git commands still run automatic maintenance as usual, including
+commands in your real project repositories.

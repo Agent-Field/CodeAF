@@ -343,6 +343,48 @@ do is change what a node already running was asked for.
 When no page is open, the planner's notes land in the conversation as dim lines beginning
 `run · `.
 
+## Planner reply cut off or empty repair — the plan stays unchanged
+
+After work has started, a planner reply cut off by its output cap is refused.
+A blank reply or an empty syntax repair is also refused. The run's planner notes
+say `the planner did not answer: the planner's reply was cut off`. The current
+plan stays unchanged, workers continue, and later completions can ask the planner
+again. A complete explicit `{}` still means no change and adds no failure note.
+
+Syntax repair requests at least 8,192 output tokens or twice the original reply's
+reported completion tokens, whichever is greater. A larger output cap already
+requested for recovery is preserved. This applies to opening and later replies;
+existing provider and spending checks still apply.
+
+## The crew planned no work — reason, retry, or edit the goal
+
+If the opening plan creates no nodes, the run ends as **incomplete**, with the
+planner's reason. If the planner gave no reason, the conversation says exactly:
+`The crew didn't plan any work for this goal.` The line is saved in the chat.
+This ending does not mean you ended the run yourself, and it does not claim success.
+
+For this ending only, the task's retry control starts a **fresh run** through the
+usual ownership and budget checks. The old run stays readable; its notes, nodes,
+and answer are not carried into the new plan. Retry is available while the
+original run is still held by this session. Reopened historical rows have no
+saved restart instructions.
+
+To edit the goal, start a new run with the revised goal. There is no dedicated
+editor for an ended adaptive run; steering an ended run does not restart it.
+Other adaptive endings do not offer this retry control.
+
+## The opening planner reply was cut off or lost its work
+
+If the opening planner reply hits its output limit, is blank, or loses all its
+nodes during JSON repair, codeaf tries the opening plan once more with more
+output room. A cut-off reply is never handed to syntax repair as an empty plan.
+If recovery still cannot produce a plan, the crew ends as incomplete and the
+chat saves exactly: `the planner's reply was cut off`.
+
+This ending uses the same fresh-run retry control and ownership and budget
+checks described above. A complete, explicit empty plan still uses the
+planner's reason or `The crew didn't plan any work for this goal.`.
+
 ## A run's nodes on the roster
 
 A run registers itself with the same machinery tasks use, so the work shows up where you
@@ -550,6 +592,15 @@ handed, word for word.
 ## What a run's workers may touch
 
 Each node is a child agent working in your workspace, and two bounds are put on it.
+
+Write scopes name workspace-relative files, directories or globs like
+`crew-0-*.md`. `*`, `?` and `[...]` match within one path segment, never across
+`/`. As in the shell, a wildcard never matches a name starting with `.`, so `*`
+never reaches `.git` or `.env`; write `.env*` to mean them. Matched directories
+cover their subtrees. `**`, `..` segments, absolute
+scopes and malformed patterns are refused before work starts; the planner
+receives the reason and can correct it.
+Writes through symlinks that leave the workspace are refused too.
 
 - **A write scope.** The planner says which paths a node may write. That is enforced by the
   harness, not by asking politely in the brief: a `write`, an `edit`, or an `edit_video`

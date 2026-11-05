@@ -29,15 +29,31 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
-// heldChatRelay counts every cell write, including creation, rather than only
-// the heartbeat that first exposed the second opener's ownership side effect.
-func heldChatRelay(t *testing.T, id string) (*syncsetup.Sync, *atomic.Int64) {
+// heldChatSender labels the clients captured by each simulated process, even
+// though both openers use the same profile, device and relay URL.
+type heldChatSender struct {
+	next   http.RoundTripper
+	sender string
+}
+
+func (s heldChatSender) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("Codeaf-Test-Sender", s.sender)
+	return s.next.RoundTrip(r)
+}
+
+// heldChatRelay counts every P2 cell write, including creation and heartbeats.
+// Call startP2 after P1's clients have captured their own transport.
+func heldChatRelay(t *testing.T, id string) (*syncsetup.Sync, *atomic.Int64, func()) {
 	t.Helper()
+	original := http.DefaultTransport
+	http.DefaultTransport = heldChatSender{next: original, sender: "P1"}
+	t.Cleanup(func() { http.DefaultTransport = original })
 	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	writes := &atomic.Int64{}
 	path := "/v1/dir/cells/" + id
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && (r.URL.Path == path || strings.HasPrefix(r.URL.Path, path+"/")) {
+		if r.Header.Get("Codeaf-Test-Sender") == "P2" && r.Method != http.MethodGet && (r.URL.Path == path || strings.HasPrefix(r.URL.Path, path+"/")) {
 			writes.Add(1)
 		}
 		service.Handler.ServeHTTP(w, r)
@@ -55,7 +71,9 @@ func heldChatRelay(t *testing.T, id string) (*syncsetup.Sync, *atomic.Int64) {
 	if err != nil || !ok {
 		t.Fatalf("open relay sync = %v, %v; want true, nil", ok, err)
 	}
-	return s, writes
+	return s, writes, func() {
+		http.DefaultTransport = heldChatSender{next: original, sender: "P2"}
+	}
 }
 
 type heldChatReceipt struct {
@@ -152,7 +170,7 @@ func TestAChatAnotherProcessHoldsIsNeitherRenewedNorReleasedFromHere(t *testing.
 		t.Fatalf("hold P1's journal with the session's exclusive nonblocking flock: %v", err)
 	}
 	defer filelock.Unlock(journal)
-	s, writes := heldChatRelay(t, c.ID)
+	s, writes, startP2 := heldChatRelay(t, c.ID)
 	if _, err := s.Dir.Create(t.Context(), c.ID, directory.CellInit{}); err != nil {
 		t.Fatalf("create P1's relay record and lease: %v", err)
 	}
@@ -182,7 +200,7 @@ func TestAChatAnotherProcessHoldsIsNeitherRenewedNorReleasedFromHere(t *testing.
 		t.Fatalf("P1's initial relay lease = %+v, %v; want a live fence", before, err)
 	}
 	receipt := snapshotHeldChatReceipt(t, s, c.ID)
-	writes.Store(0)
+	startP2()
 	syncDrives = &driveBook{}
 	seated := refuseHeldChatOpen(t, cfg, writes)
 	// Drain only this failed opener's warm capture before removing its files.
@@ -210,7 +228,7 @@ func TestAChatAnotherProcessHoldsIsNeitherRenewedNorReleasedFromHere(t *testing.
 
 func TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable(t *testing.T) {
 	cfg, c := spokenDoorChat(t)
-	s, writes := heldChatRelay(t, c.ID)
+	s, writes, startP2 := heldChatRelay(t, c.ID)
 	firstBook := syncDrives
 	defer firstBook.closeAll()
 	agent, firstSeat, _, err := openV3Agent(cfg, cfg.Place.Workspace, session.New)
@@ -250,7 +268,7 @@ func TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable(t *testing.T) {
 	}
 	receipt := snapshotHeldChatReceipt(t, s, c.ID)
 	first := firstBook.renewalsOf(c.ID)
-	writes.Store(0)
+	startP2()
 	syncDrives = &driveBook{}
 	t.Cleanup(func() { syncDrives.closeAll(); syncDrives = firstBook })
 	seated := refuseHeldChatOpen(t, cfg, writes)
@@ -277,7 +295,7 @@ func TestAQuitAtTheMoveQuestionLeavesTheOtherWindowsChatSendable(t *testing.T) {
 
 func TestTheFreshChatBesideAHeldOneWorksOnItsOwnSeat(t *testing.T) {
 	cfg, c := spokenDoorChat(t)
-	s, writes := heldChatRelay(t, c.ID)
+	s, writes, startP2 := heldChatRelay(t, c.ID)
 	firstBook := syncDrives
 	defer firstBook.closeAll()
 	agent, firstCfg, _, err := openV3Agent(cfg, cfg.Place.Workspace, session.New)
@@ -317,7 +335,7 @@ func TestTheFreshChatBesideAHeldOneWorksOnItsOwnSeat(t *testing.T) {
 	}
 	receipt := snapshotHeldChatReceipt(t, s, c.ID)
 	first := firstBook.renewalsOf(c.ID)
-	writes.Store(0)
+	startP2()
 	syncDrives = &driveBook{}
 	defer func() { syncDrives.closeAll(); syncDrives = firstBook }()
 	_, seated, _, err := openV3Agent(cfg, cfg.Place.Workspace, session.New)

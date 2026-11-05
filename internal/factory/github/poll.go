@@ -119,6 +119,9 @@ func Backoff(every time.Duration, failed int) time.Duration {
 // folded; the cursor is what Read answered, so the failed repository is read
 // again from its old mark next tick.
 func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor string, now func() time.Time) (string, error) {
+	if real, ok := src.(*Source); ok {
+		st.SetTierResolver(real.ResolveTier)
+	}
 	repos, err := st.Repos()
 	if err != nil {
 		return cursor, err
@@ -154,7 +157,7 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 		k.SetSink(func(items []factory.Item) { _ = Merge(st, name, items) })
 		defer k.SetSink(nil)
 	}
-	before, err := st.List()
+	before, err := st.ListSaved()
 	if err != nil {
 		return cursor, err
 	}
@@ -229,7 +232,7 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 	if len(items) == 0 {
 		return nil
 	}
-	have, err := st.List()
+	have, err := st.ListSaved()
 	if err != nil {
 		return err
 	}

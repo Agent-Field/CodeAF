@@ -278,12 +278,19 @@ const refuseStrangerWrite = factory.WriteAccessRefusalWords
 // WriteAccessRefusal stops a stranger's job before a step that can write.
 type WriteAccessRefusal struct {
 	Step   string
+	Reason string
 	before *factory.Phase
 }
 
-func (e WriteAccessRefusal) Error() string { return refuseStrangerWrite }
+func (e WriteAccessRefusal) Error() string {
+	if e.Reason != "" {
+		return e.Reason
+	}
+	return refuseStrangerWrite
+}
 
 // Failure keeps prior rounds without counting the refusal as an attempt.
+// Lookup retry details stay in memory; the saved refusal keeps its usual words.
 func (e WriteAccessRefusal) Failure(it factory.Item, at time.Time) factory.Failure {
 	attempts := 0
 	var phases []factory.Phase
@@ -300,13 +307,13 @@ func (e WriteAccessRefusal) Failure(it factory.Item, at time.Time) factory.Failu
 			if ph.State == factory.PhasePending {
 				attempts = max(0, attempts-1)
 			}
-			if ph.Failure != nil && ph.Failure.Detail == e.Error() {
+			if ph.Failure != nil && ph.Failure.Detail == refuseStrangerWrite {
 				attempts = ph.Failure.Attempts
 			}
 			break
 		}
 	}
-	return factory.Failure{Step: e.Step, Code: factory.CodeToolError, Detail: e.Error(), Attempts: attempts, Machine: it.WorktreeMachine, Next: factory.FailureStopped, At: at}
+	return factory.Failure{Step: e.Step, Code: factory.CodeToolError, Detail: refuseStrangerWrite, Attempts: attempts, Machine: it.WorktreeMachine, Next: factory.FailureStopped, At: at}
 }
 
 func strangerStage(it factory.Item, st factory.Stage) error {

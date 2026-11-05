@@ -32,7 +32,7 @@ func TestLibraryRecallWithDeepSeekFlash1017(t *testing.T) {
 	if !ok {
 		t.Fatal("knowledge model setting missing")
 	}
-	if err := row.Apply("deepseek/deepseek-v4.1-flash-1017"); err != nil {
+	if err := row.Apply("deepseek/deepseek-v4.1-flash"); err != nil {
 		t.Fatal(err)
 	}
 	fixture := `{"relations":[],"sources":{"s":{"id":"s","session":"chat","text":"The relay listens on port 8443.","role":"user","ts":"2026-11-01T12:00:00Z"}},"claims":[{"id":"port","text":"The relay listens on port 8443.","scope":"codeaf","kind":"fact","status":"active","evidence":[{"source":"s","quote":"The relay listens on port 8443."}]}],"notes":[{"id":"relay","title":"Relay port","kind":"subject","scope":"codeaf","folder":["codeaf"],"claims":["port"],"sections":[{"heading":"Port","paragraphs":[{"text":"The relay listens on port 8443.","claims":["port"],"evidence":[{"source":"s","quote":"The relay listens on port 8443."}]}]}]}]}`
@@ -46,7 +46,7 @@ func TestLibraryRecallWithDeepSeekFlash1017(t *testing.T) {
 	defer cancel()
 	answer, err := v.RecallSaved(ctx, libraryLiveKey, "Which port does the relay listen on?", "codeaf")
 	if err != nil {
-		t.Fatalf("DeepSeek Flash 1017 recall failed: %T", err)
+		t.Fatalf("DeepSeek Flash recall failed: %T", err)
 	}
 	if answer.Abstain || !strings.Contains(answer.Answer, "8443") || len(answer.Citations) == 0 {
 		t.Fatal("Expected a sourced answer naming port 8443")
@@ -60,7 +60,7 @@ func TestLibraryRecallWithDeepSeekFlash1017(t *testing.T) {
 	if v.Enabled() {
 		t.Fatal("An explicit Library question resumed learning")
 	}
-	t.Log("deepseek/deepseek-v4.1-flash-1017 answered 8443 with a citation to the supplied chat")
+	t.Log("deepseek/deepseek-v4.1-flash answered 8443 with a citation to the supplied chat")
 }
 
 func TestLibraryRecallKeepsTheOlderAccountChosenByYou(t *testing.T) {
@@ -93,5 +93,5 @@ func TestLibraryRecallKeepsTheOlderAccountChosenByYou(t *testing.T) {
 	if answer.Abstain || !strings.Contains(answer.Answer, "7443") || strings.Contains(answer.Answer, "8443") || len(answer.Citations) == 0 || answer.Citations[0].Claim != "old" {
 		t.Fatalf("the chosen account was not recalled: %+v", answer)
 	}
-	t.Log("deepseek/deepseek-v4.1-flash-1017 recalled the older account chosen by you, with its citation")
+	t.Log("deepseek/deepseek-v4.1-flash recalled the older account chosen by you, with its citation")
 }

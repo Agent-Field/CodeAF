@@ -224,6 +224,14 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	}
 	acquires.Store(0)
 	releases.Store(0)
+	if leftover {
+		// The two device feeds can report the chat before the asynchronous
+		// lease-holder watch arrives. Include all three startup watches in the
+		// baseline so a late initial dial is not mistaken for an idle restart.
+		appSyncWait(t, "device feeds and initial lease-holder watch", func() bool {
+			return watches.Load() >= 3
+		})
+	}
 	network := [3]int32{watches.Load(), devices.Load(), vaults.Load()}
 	for period := 0; period < 2; period++ {
 		if leftover {

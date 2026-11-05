@@ -79,11 +79,11 @@ The card still says `this chat was last held here; last saved turn 2h ago` when 
 
 If unpublished work needs to be kept separately, the number of kept turns counts conversation turns. Intermediate saves and tool records within one question and answer do not become extra turns.
 
-## What does held on tower mean — a row on home and the verb it offers
+## What does held on tower or working on tower mean — a row on home and the verb it offers
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Home lists chats from your other devices. A chat another device still holds says `held on <device>`. The hold alone does not establish that work is running there. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
+Home lists chats from your other devices. A chat another device still holds says `held on <device>`: it is open there, and nothing is running in it right now. While that device is in the middle of a turn the row says `working on <device>` instead; it changes back as soon as the turn ends. A sync service too old to carry that word never shows it, so its rows say `held on <device>` either way. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
 
 Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
 
@@ -322,6 +322,8 @@ If Git cannot read the project's ignore rules, saving stops with `cannot read wh
 A command's result returns after its call log is written, while its file capture finishes in the background. The next tool call waits until the previous capture has finished reading files. Continuing the chat on this computer, uploading it, closing it, quitting codeaf and `codeaf cell gc` also wait for both the call log and the saved files to reach durable storage. A storage failure is reported and stops that boundary. Opening a chat screens its folder in the background without sealing an empty turn. A command submitted before that screen finishes waits for it. A window that only views a chat held elsewhere does not seal turns. A failed capture keeps the finished call in its local log for the next save; codeaf never runs that command again to recover it.
 
 ## Quitting while saving — local confirmation and a slow upload
+
+Quitting another chat does not invalidate a chat's earlier confirmed local save.
 
 A save wait lasts at most 30 seconds. After the screen closes, a pending sync save says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 

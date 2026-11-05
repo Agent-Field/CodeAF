@@ -104,7 +104,7 @@ func TestLibraryChoiceOpensItsGuideFromInboxAndClosesEverywhere(t *testing.T) {
 func TestLibraryModelSettingUsesTheSameProfileRowAsTheTerminal(t *testing.T) {
 	profile := t.TempDir()
 	b := &appBackend{profileDir: profile}
-	model := "deepseek/deepseek-v4.1-flash-1017"
+	model := "deepseek/deepseek-v4.1-flash"
 	if err := b.applyExtra(appwire.SettingsPatch{KnowledgeModel: &model}, profile); err != nil {
 		t.Fatal(err)
 	}

@@ -816,7 +816,7 @@ incomplete status remains visible. The Knowledge view over `--host` is not
 supported.
 
 Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
-model for the next compilation. The default is `deepseek/deepseek-v4.1-flash-1017`.
+model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
 The compiler checks the returned model ID and rejects substitutions.
 
 Stable source IDs prevent duplicate records during retries and journal recovery. A failed or interrupted provider request can still incur charges;

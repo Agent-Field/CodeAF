@@ -34,6 +34,7 @@ on:
   pull_request:
     branches:
       - dev
+      - app/v3
       - santos/dev2
       - workstreams/main
   # Also on the push, because a merge of two individually-green branches can

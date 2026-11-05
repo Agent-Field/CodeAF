@@ -219,7 +219,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			}
 		}
 		full := worker.Slots > 0 && occupied >= worker.Slots
-		items, err := d.store.List()
+		items, err := d.store.ListSaved()
 		if err != nil {
 			return false, err
 		}
@@ -345,7 +345,7 @@ func (d *Desk) OverLimit(worker Worker) (int, error) {
 	worker.Machine = strings.TrimSpace(worker.Machine)
 	n := 0
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
-		items, err := d.store.List()
+		items, err := d.store.ListSaved()
 		if err != nil {
 			return false, err
 		}
