@@ -176,6 +176,9 @@ func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, d
 	if s == nil || s.open == nil {
 		return "", errors.New("no manager to ask")
 	}
+	if err := factoryrun.CheckWriteAccess(it, "chat"); err != nil {
+		return "", err
+	}
 	if door != nil && s.checkWork != nil {
 		if err := s.checkWork(it.ID); err != nil {
 			return "", err

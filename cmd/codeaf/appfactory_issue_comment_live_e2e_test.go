@@ -166,7 +166,7 @@ func TestLiveIssueCommentPostsOnceAndRefusesADoubleClick(t *testing.T) {
 	if err := floor.SetRepos([]string{repo}); err != nil {
 		t.Fatal(err)
 	}
-	job, err := floor.Create(factory.Item{Product: owner, Repo: name, Num: number, Kind: factory.KindIssue, Origin: factory.OriginForge,
+	job, err := floor.Create(factory.Item{Tier: factory.TierOwner, Product: owner, Repo: name, Num: number, Kind: factory.KindIssue, Origin: factory.OriginForge,
 		Title: "Login is flaky", State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)

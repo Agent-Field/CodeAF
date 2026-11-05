@@ -21,11 +21,11 @@ func TestFactoryUsageByModelReadsTheJobsLedgerRows(t *testing.T) {
 	s := newLocalSetup(t)
 	st := s.start()
 	floor := s.backend.local.host.floor
-	a, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "a", Kind: factory.KindIssue, State: factory.StateNew})
+	a, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "a", Kind: factory.KindIssue, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := floor.Create(factory.Item{Repo: "acme/api", Num: 8, Title: "b", Kind: factory.KindIssue, State: factory.StateNew})
+	b, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 8, Title: "b", Kind: factory.KindIssue, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestFactoryUsageByModelReadsTheJobsLedgerRows(t *testing.T) {
 
 // A step's meter and a job's chat both name their job for the ledger.
 func TestAJobsMetersNameTheJobForTheLedger(t *testing.T) {
-	it := factory.Item{ID: 3, Repo: "Acme/API", Num: 7}
+	it := factory.Item{Tier: factory.TierOwner, ID: 3, Repo: "Acme/API", Num: 7}
 	for _, meter := range []session.JobChat{
 		&stageBudget{item: it},
 		ownedStageBudget{&jobChat{id: it.ID, name: factory.LedgerName(it)}},

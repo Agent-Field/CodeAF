@@ -196,7 +196,7 @@ func TestLaunchRefusesWhatIsAlreadyRunningAndAStrangersWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := g.r.Launch(sid); err == nil || err.Error() != "a stranger's work does not run write in this factory" {
+	if err := g.r.Launch(sid); err == nil || err.Error() != refuseStrangerWrite {
 		t.Fatalf("a stranger's write launched: %v", err)
 	}
 }

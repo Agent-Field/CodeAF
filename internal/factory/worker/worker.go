@@ -330,6 +330,12 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		return
 	}
 	j.keepLocal(pulled.Lease)
+	o.Runner.SetPublishCheck(it.ID, func(ctx context.Context) error {
+		readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
+		defer cancel()
+		return w.CheckPublish(readCtx, pulled.Lease.ID)
+	})
+	defer o.Runner.SetPublishCheck(it.ID, nil)
 	if pulled.Lease.ThreadOnly {
 		j.sent = it
 		j.signals(ctx, pulled.Signals)
@@ -345,12 +351,6 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		})
 		defer o.Runner.SetStopAfterStepReader(it.ID, nil)
 	}
-	o.Runner.SetPublishCheck(it.ID, func(ctx context.Context) error {
-		readCtx, cancel := context.WithTimeout(ctx, deliveryRequestTimeout)
-		defer cancel()
-		return w.CheckPublish(readCtx, pulled.Lease.ID)
-	})
-	defer o.Runner.SetPublishCheck(it.ID, nil)
 	// Establish an accounting acknowledgment before the first paid call.
 	key, err := deliveryKey()
 	if err != nil {
@@ -742,6 +742,9 @@ func (j *job) reply(ctx context.Context, s api.WorkerSignal) {
 		defer cancel()
 		it, err := j.o.Mirror.Get(j.id)
 		if err == nil {
+			err = j.o.Runner.CheckJobChat(ctx, it)
+		}
+		if err == nil {
 			err = j.o.Reply(ctx, it, s.Words)
 		}
 		if err == nil {
@@ -816,7 +819,15 @@ func (j *job) keepLocal(held api.WorkerLease) {
 // refuse says why this worker could not run the job, and gives it back.
 func (j *job) refuse(ctx context.Context, why error) {
 	line := factory.LogLine{At: time.Now(), Tone: "fail", Text: "this machine could not run it: " + why.Error()}
-	_ = j.w.Report(ctx, j.lease, api.FromRunReport(factory.RunReport{Log: []factory.LogLine{line}}))
+	report := factory.RunReport{Log: []factory.LogLine{line}}
+	var refused run.WriteAccessRefusal
+	if errors.As(why, &refused) {
+		it, _ := j.o.Mirror.Get(j.id)
+		it.WorktreeMachine = j.o.Attach.Machine
+		failure := refused.Failure(it, line.At)
+		report.Stages = []factory.StageReport{{Name: refused.Step, State: factory.PhaseFailed, Failure: &failure}}
+	}
+	_ = j.w.Report(ctx, j.lease, api.FromRunReport(report))
 	_ = j.w.Done(ctx, j.lease, api.WorkerDone{State: api.StateBacklog})
 }
 

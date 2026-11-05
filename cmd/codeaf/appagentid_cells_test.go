@@ -86,7 +86,7 @@ func TestAJobsChatsNameTheCellTalksFolder(t *testing.T) {
 		return &appConn{Conv: &fakeConversation{}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
 	}
 	st := s.start()
-	it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 8, Title: "Fix the ledger", Kind: factory.KindIssue, State: factory.StateNew})
+	it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 8, Title: "Fix the ledger", Kind: factory.KindIssue, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}

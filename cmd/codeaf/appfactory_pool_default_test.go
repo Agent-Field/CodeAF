@@ -91,7 +91,7 @@ func TestAppFactoryModelPoolRequiresOptIn(t *testing.T) {
 		s.backend.open = appOpenInProcess
 		st := s.start()
 		floor := s.backend.local.host.floor
-		it, err := floor.Create(factory.Item{Model: model, Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}}}}})
+		it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Model: model, Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}}}}})
 		if err != nil {
 			t.Fatal(err)
 		}
