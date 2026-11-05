@@ -42,6 +42,7 @@ func testStopRejectsPendingGroupCommit(t *testing.T, spawnedStop bool) {
 	var scheduled []func()
 	commits.after = func(_ time.Duration, f func()) { scheduled = append(scheduled, f) }
 	t.Cleanup(func() {
+		verifyOwnedFixtureDaemon(t, d)
 		StopSpawned()
 		commits = previous
 		engineCommits.Lock()
@@ -118,9 +119,16 @@ func testStopRejectsPendingGroupCommit(t *testing.T, spawnedStop bool) {
 	if err != nil || len(recovery.Completed) != 1 || string(recovery.Completed[0].Stdout) != "receipt survives stop" {
 		t.Fatalf("stopped flush lost completed WAL output: %+v %v", recovery, err)
 	}
-	// A fresh capture explicitly reuses the engine; stopping is not a permanent
+	// A fresh recorder explicitly reuses the engine; stopping is not a permanent
 	// process-wide ban that would break another chat or the next test fixture.
-	if err := r.Drain(ctx); err != nil {
+	if err := r.Drain(ctx); err == nil {
+		t.Error("stopped recorder reopened its engine")
+	}
+	reopened, err := NewRecorder(&stubExec{}, e, c, e.WALPath(c), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Drain(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := Flush(context.Background()); err != nil {
@@ -129,5 +137,27 @@ func testStopRejectsPendingGroupCommit(t *testing.T, spawnedStop bool) {
 	head, err = Head(c)
 	if err != nil || head == nil || len(head.Receipt.Calls) != 1 || head.Receipt.Calls[0].Tool != "bash" {
 		t.Fatalf("reopened recorder lost receipt: %+v %v", head, err)
+	}
+}
+
+// Verify the live child's command before this fixture asks teardown to signal it.
+func verifyOwnedFixtureDaemon(t *testing.T, d Daemon) {
+	t.Helper()
+	value, ok := daemonOwners.Load(d.Socket)
+	if !ok {
+		return
+	}
+	child := value.(*spawnedDaemon)
+	select {
+	case <-child.exited:
+		return
+	default:
+	}
+	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(child.process.Pid), "cmdline"))
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil || !bytes.Contains(raw, []byte(d.Socket+"\x00")) || !bytes.Contains(raw, []byte("serve\x00")) {
+		t.Fatalf("cannot verify owned fixture PID %d: %v", child.process.Pid, err)
 	}
 }

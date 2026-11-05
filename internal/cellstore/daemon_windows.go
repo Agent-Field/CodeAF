@@ -1,6 +1,7 @@
 package cellstore
 
 import (
+	"context"
 	"golang.org/x/sys/windows"
 	"os"
 	"os/exec"
@@ -41,14 +42,17 @@ func remember(process *os.Process, exited <-chan struct{}, socket string) {
 // StopSpawned reaps only this process's children. Windows has no SIGTERM;
 // ordinary idle shutdown and Daemon.Stop use the engine's protocol (K2).
 func StopSpawned() {
-	daemonLifecycle.Lock()
-	defer daemonLifecycle.Unlock()
+	_ = daemonLifecycle.Acquire(context.Background(), daemonStopWeight)
+	defer daemonLifecycle.Release(daemonStopWeight)
+	// Invalidate even recorders whose first capture has not started a child.
+	generation := daemonClock.Add(1)
+	recorderFence.Store(generation)
 	spawnedMu.Lock()
 	all := spawned
 	spawned = nil
 	spawnedMu.Unlock()
 	for _, d := range all {
-		stoppedDaemons.Store(d.socket, struct{}{})
+		stoppedDaemons.Store(d.socket, &stoppedDaemon{generation: generation})
 		select {
 		case <-d.exited:
 			continue

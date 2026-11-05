@@ -3,6 +3,7 @@
 package cellstore
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strconv"
@@ -60,14 +61,17 @@ const stopGrace = 3 * time.Second
 // that started it; a test binary calls it at the end of its run, so that no
 // engine it caused to start is left behind.
 func StopSpawned() {
-	daemonLifecycle.Lock()
-	defer daemonLifecycle.Unlock()
+	_ = daemonLifecycle.Acquire(context.Background(), daemonStopWeight)
+	defer daemonLifecycle.Release(daemonStopWeight)
+	// Invalidate even recorders whose first capture has not started a child.
+	generation := daemonClock.Add(1)
+	recorderFence.Store(generation)
 	spawnedMu.Lock()
 	all := spawned
 	spawned = nil
 	spawnedMu.Unlock()
 	for _, d := range all {
-		stoppedDaemons.Store(d.socket, struct{}{})
+		stoppedDaemons.Store(d.socket, &stoppedDaemon{generation: generation})
 		select {
 		case <-d.exited:
 			continue
