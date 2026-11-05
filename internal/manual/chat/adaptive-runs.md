@@ -362,6 +362,7 @@ If the opening plan creates no nodes, the run ends as **incomplete**, with the
 planner's reason. If the planner gave no reason, the conversation says exactly:
 `The crew didn't plan any work for this goal.` The line is saved in the chat.
 This ending does not mean you stopped the run, and it does not claim success.
+This ending does not mean you ended the run yourself, and it does not claim success.
 
 For this ending only, the task's retry control starts a **fresh run** through the
 usual ownership and budget checks. The old run stays readable; its notes, nodes,

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // sayWriteUnchanged is why a write round that reported done is not done. It
@@ -249,7 +250,7 @@ func validateChange(change *factory.Change) error {
 type changeGit struct{}
 
 func (changeGit) Run(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.Command("git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	raw, err := cmd.Output()
 	return string(raw), err

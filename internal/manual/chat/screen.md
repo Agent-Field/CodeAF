@@ -2122,8 +2122,8 @@ below is drawn as plain text on purpose:
   they arrived. Sweeping them for pathish words would underline half a test log. What
   **is** linked on a tool card is the part codeaf wrote itself: the call's own target.
 - **Everything on a task's page and inside a task's room** — that is the `/history`
-  page and a room both. A task works in its own copy of your folder, so `internal/tui3/app.go`
-  on one of those rows means THAT tree's copy and not this one's, and a link built
+  page and a room both. A task works in a folder of its own, so `internal/tui3/app.go`
+  on one of those rows means a file in THAT folder and not this one's, and a link built
   against the wrong tree opens a file with the right name and the wrong contents. The
   `/history` page names no file paths of its own anyway: a row says what a task did and
   which branch it left behind, never where its journal is.

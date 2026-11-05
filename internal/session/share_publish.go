@@ -24,15 +24,16 @@ package session
 //
 // shared_by_agent: the agent handed the file over. It is never Authored, its
 // state is unknown, and nothing about the file being new is inferred, because
-// sharing is not making. An existing created row of the same file is never
-// touched: a share is a row of its own. Its media fact, for a picture, a sound
-// or a video, is origin shared — never generated, never a declared shell output.
+// sharing is not making. Unchanged authored files are skipped; changed bytes
+// get a new shared row without touching the created row. Shared media has
+// origin shared — never generated, never a declared shell output.
 
 import (
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -227,7 +228,9 @@ func shareDescribed(result ShareResult, claim *ShareClaim, reason string) ShareR
 	if receipt, err := claim.frozen(); err == nil {
 		result = shareResultOf(result, receipt)
 	}
-	result.Reason = reason
+	if reason != "" {
+		result.Reason = reason
+	}
 	return result
 }
 
@@ -250,7 +253,11 @@ func (t shareTarget) plan(ctx context.Context, claim *ShareClaim, receipt ShareR
 		t.refuse(claim, receipt)
 		return reason, false
 	}
-	if err := claim.Plan(rows); err != nil {
+	alreadyRecorded, err := t.alreadyRecorded(rows)
+	if err != nil || ctx.Err() != nil {
+		return shareRetryCheck, false
+	}
+	if err := claim.plan(rows, alreadyRecorded); err != nil {
 		if errors.Is(err, ErrShareOpInvalid) {
 			t.refuse(claim, receipt)
 			return shareReasonPlanInvalid, false
@@ -258,6 +265,25 @@ func (t shareTarget) plan(ctx context.Context, claim *ShareClaim, receipt ShareR
 		return shareRetryPlan, false
 	}
 	return "", true
+}
+
+// alreadyRecorded compares the inspected bytes with the conversation's latest
+// authored record. Persisting this decision in the plan keeps retries independent
+// of later file changes. No shared-only identity is adopted or rewritten.
+func (t shareTarget) alreadyRecorded(rows []Artifact) (map[string]bool, error) {
+	artifactsMu.Lock()
+	defer artifactsMu.Unlock()
+	skipped := make(map[string]bool)
+	for _, row := range rows {
+		latest, err := latestWrittenArtifact(t.index, row)
+		if err != nil {
+			return nil, err
+		}
+		if latest.Deliver != nil && latest.Deliver.File != nil && latest.Deliver.File.SHA256 == row.Deliver.File.SHA256 {
+			skipped[row.Deliver.ID] = true
+		}
+	}
+	return skipped, nil
 }
 
 // refuse settles a receipt that was never planned as refused, and only then
@@ -474,12 +500,24 @@ func shareResultOf(result ShareResult, receipt ShareReceipt) ShareResult {
 	result.Status = receipt.Status
 	result.RecordedIDs = append([]string(nil), receipt.RecordedIDs...)
 	result.Files = shareResultFiles(receipt)
+	var skipped []string
+	for _, planned := range receipt.Planned {
+		if planned.AlreadyRecorded {
+			skipped = append(skipped, filepath.Base(planned.Path)+" is already among this conversation's deliverables")
+		}
+	}
+	if len(skipped) > 0 {
+		result.Reason = strings.Join(skipped, "; ") + "; nothing new was recorded for it."
+	}
 	return result
 }
 
 func shareResultFiles(receipt ShareReceipt) []ShareResultFile {
 	var files []ShareResultFile
 	for _, planned := range receipt.Planned {
+		if planned.AlreadyRecorded {
+			continue
+		}
 		file := ShareResultFile{ID: planned.ID, Path: planned.Path}
 		if row := planned.Row; row != nil {
 			file.Path, file.Kind, file.Version = row.Path, row.Kind, row.Deliver.Version

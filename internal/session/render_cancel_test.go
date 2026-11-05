@@ -218,7 +218,7 @@ func TestFailedSaveLeavesNoPlaceholder(t *testing.T) {
 }
 
 // Renders are admitted up to the cap; the next is refused with the reason, and
-// stopping one gives its place back.
+// stopping one gives its place back once its provider goroutine exits.
 func TestRenderAdmissionIsBoundedAndReleasedOnSettle(t *testing.T) {
 	media := newGatedMedia([]byte("MP4"), true)
 	agent, _ := newGatedAgent(t, media)
@@ -238,6 +238,9 @@ func TestRenderAdmissionIsBoundedAndReleasedOnSettle(t *testing.T) {
 
 	runTool(t, agent, "jobs", `{"action":"kill","id":1}`)
 	<-renderJob(t, agent, 1).done
+	// The row settles before the provider goroutine releases its place.
+	// Wait for that release before asserting that the place can be reused.
+	waitGateFree(t, agent.jobs.gate, 1)
 	if reply, isError := runTool(t, agent, "generate_video", `{"prompt":"now there is room"}`); isError {
 		t.Fatalf("a freed place was not reusable: %s", reply)
 	}
