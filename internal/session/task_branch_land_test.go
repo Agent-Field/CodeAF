@@ -23,6 +23,10 @@ func landRepo(t *testing.T) (repo string, place Place) {
 	t.Helper()
 	repo = t.TempDir()
 	gitT(t, repo, "init", "-q", "-b", "main")
+	// An uninstalled git build may have no hook templates to copy.
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("a\n"), 0o644)
 	gitT(t, repo, "add", ".")
 	gitT(t, repo, "commit", "-q", "-m", "base")
@@ -447,6 +451,7 @@ func gcRepo(t *testing.T) (repo string, place Place, marker string) {
 	marker = filepath.Join(t.TempDir(), "pre-auto-gc-ran")
 	hook := "#!/bin/sh\necho ran > '" + marker + "'\nexit 1\n"
 	os.WriteFile(filepath.Join(repo, ".git", "hooks", "pre-auto-gc"), []byte(hook), 0o755)
+	gitT(t, repo, "config", "maintenance.strategy", "gc")
 	gitT(t, repo, "config", "gc.auto", "1")
 	gitT(t, repo, "config", "gc.autoDetach", "false")
 	looseObjects(t, repo, 2000)
