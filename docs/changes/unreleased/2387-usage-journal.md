@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Recover journaled usage after a crash without changing charges
-pr: 0
+pr: 2387
 surface: [chat, engine, docs]
 invalidates:
   - "Usage queued only in process memory could disappear after the close deadline; complete journaled rows now replay once."
