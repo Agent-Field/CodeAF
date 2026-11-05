@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -235,6 +236,18 @@ func TestLiveFourCrewsWallTime(t *testing.T) {
 		}
 	}
 	t.Logf("FOURCREW ledger_usd=%.9f recorder_usd=%.9f", ledgerUSD, cost)
+	var inTok, outTok int64
+	for _, row := range rows {
+		inTok += int64(row.Input)
+		outTok += int64(row.Output)
+	}
+	timing.mu.Lock()
+	var reqSum int
+	for _, n := range timing.reqBytes {
+		reqSum += n
+	}
+	t.Logf("FOURCREW input_tokens=%d output_tokens=%d request_bytes_sum=%d request_bytes_each=%v", inTok, outTok, reqSum, timing.reqBytes)
+	timing.mu.Unlock()
 	t.Logf("FOURCREW provider_ms_sum=%d provider_calls=%d max_in_flight=%d", timing.total().Milliseconds(), timing.count(), timing.peak())
 	if timing.count() != calls {
 		t.Errorf("timing proxy captured %d/%d calls", timing.count(), calls)
@@ -261,6 +274,7 @@ type fourCrewTiming struct {
 	inFlight int
 	maxIn    int
 	samples  []fourCrewSample
+	reqBytes []int
 }
 
 func newFourCrewTiming(upstream string) *fourCrewTiming {
@@ -270,6 +284,18 @@ func newFourCrewTiming(upstream string) *fourCrewTiming {
 	proxy.FlushInterval = -1
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Host = target.Host
+		// Request size per call, and an optional capture, let two trees'
+		// prompts be compared for the same script.
+		body, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		f.mu.Lock()
+		f.reqBytes = append(f.reqBytes, len(body))
+		seq := len(f.reqBytes)
+		f.mu.Unlock()
+		if dir := os.Getenv("CODEAF_FOURCREW_CAPTURE_DIR"); dir != "" {
+			_ = os.WriteFile(filepath.Join(dir, fmt.Sprintf("req-%03d.json", seq)), body, 0600)
+		}
 		f.mu.Lock()
 		f.inFlight++
 		f.maxIn = max(f.maxIn, f.inFlight)
