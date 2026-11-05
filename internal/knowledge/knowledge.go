@@ -48,6 +48,7 @@ type Evidence struct {
 	Role   string `json:"role,omitempty"`
 }
 type Paragraph struct {
+	Derivation  string       `json:"derivation,omitempty"`
 	Text        string       `json:"text"`
 	Claims      []string     `json:"claims"`
 	Evidence    []Evidence   `json:"evidence"`
@@ -58,30 +59,32 @@ type Section struct {
 	Paragraphs []Paragraph `json:"paragraphs"`
 }
 type Conflict struct {
+	ID     string   `json:"id,omitempty"`
 	Claims []string `json:"claims"`
 	Reason string   `json:"reason"`
 	State  string   `json:"state"`
 }
 type Page struct {
-	Conflicts            []Conflict `json:"conflicts,omitempty"`
-	OriginalEvidence     []Evidence `json:"original_evidence,omitempty"`
-	Revision             string     `json:"revision,omitempty"`
-	HumanEditedAt        string     `json:"human_edited_at,omitempty"`
-	HumanEdited          bool       `json:"human_edited,omitempty"`
-	Markdown             string     `json:"manual_markdown,omitempty"`
-	ID                   string     `json:"id"`
-	Title                string     `json:"title"`
-	Scope                string     `json:"scope"`
-	Kind                 string     `json:"kind"`
-	Folder               []string   `json:"folder"`
-	Sections             []Section  `json:"sections"`
-	Links                []Link     `json:"links"`
-	Backlinks            []Link     `json:"backlinks"`
-	Aliases              []string   `json:"aliases"`
-	Claims               []string   `json:"claims"`
-	Evidence             []Evidence `json:"evidence,omitempty"`
-	NeedsEditorialUpdate bool       `json:"needs_editorial_update"`
-	LearningState        string     `json:"learning_state"`
+	Resolutions          []Resolution `json:"resolutions,omitempty"`
+	Conflicts            []Conflict   `json:"conflicts,omitempty"`
+	OriginalEvidence     []Evidence   `json:"original_evidence,omitempty"`
+	Revision             string       `json:"revision,omitempty"`
+	HumanEditedAt        string       `json:"human_edited_at,omitempty"`
+	HumanEdited          bool         `json:"human_edited,omitempty"`
+	Markdown             string       `json:"manual_markdown,omitempty"`
+	ID                   string       `json:"id"`
+	Title                string       `json:"title"`
+	Scope                string       `json:"scope"`
+	Kind                 string       `json:"kind"`
+	Folder               []string     `json:"folder"`
+	Sections             []Section    `json:"sections"`
+	Links                []Link       `json:"links"`
+	Backlinks            []Link       `json:"backlinks"`
+	Aliases              []string     `json:"aliases"`
+	Claims               []string     `json:"claims"`
+	Evidence             []Evidence   `json:"evidence,omitempty"`
+	NeedsEditorialUpdate bool         `json:"needs_editorial_update"`
+	LearningState        string       `json:"learning_state"`
 }
 type Snapshot struct {
 	Revision    string

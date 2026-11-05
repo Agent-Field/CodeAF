@@ -15,11 +15,13 @@ var ErrPageChanged = errors.New("knowledge page changed; reopen it before saving
 // Human overrides are separate database records. Publishing generated pages
 // always overlays the latest committed edits and tombstones in its transaction.
 type pageOverride struct {
-	ID                   string `json:"id"`
-	Deleted              bool   `json:"deleted,omitempty"`
-	Markdown             string `json:"markdown,omitempty"`
-	UpdatedAt            string `json:"updated_at"`
-	EvidenceBaselineHash string `json:"evidence_baseline_hash,omitempty"`
+	ChoicesOnly          bool         `json:"choices_only,omitempty"`
+	Resolutions          []Resolution `json:"resolutions,omitempty"`
+	ID                   string       `json:"id"`
+	Deleted              bool         `json:"deleted,omitempty"`
+	Markdown             string       `json:"markdown,omitempty"`
+	UpdatedAt            string       `json:"updated_at"`
+	EvidenceBaselineHash string       `json:"evidence_baseline_hash,omitempty"`
 }
 
 func evidenceFingerprint(evidence []Evidence) string {
@@ -101,6 +103,9 @@ func (v *Vault) changePage(id, revision string, override pageOverride) error {
 	if override.Deleted {
 		override.Markdown = PageMarkdown(page)
 	}
+	if len(override.Resolutions) == 0 {
+		override.Resolutions = page.Resolutions
+	}
 	override.EvidenceBaselineHash = evidenceFingerprint(page.Evidence)
 	override.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	payload, err := json.Marshal(override)
@@ -147,15 +152,18 @@ func applyPageOverrides(pages []Page, overrides map[string]pageOverride) ([]Page
 			if override.Deleted {
 				continue
 			}
-			page.HumanEdited = true
-			page.HumanEditedAt = override.UpdatedAt
-			page.Links = nil
-			page.Backlinks = nil
-			page.Markdown = override.Markdown
-			page.Sections = manualSections(override.Markdown)
-			page.Claims = nil
-			page.NeedsEditorialUpdate = override.EvidenceBaselineHash == "" || override.EvidenceBaselineHash != evidenceFingerprint(page.Evidence)
-			page.LearningState = "human_edited"
+			page.Resolutions = override.Resolutions
+			if !override.ChoicesOnly {
+				page.HumanEdited = true
+				page.HumanEditedAt = override.UpdatedAt
+				page.Links = nil
+				page.Backlinks = nil
+				page.Markdown = override.Markdown
+				page.Sections = manualSections(override.Markdown)
+				page.Claims = nil
+				page.NeedsEditorialUpdate = override.EvidenceBaselineHash == "" || override.EvidenceBaselineHash != evidenceFingerprint(page.Evidence)
+				page.LearningState = "human_edited"
+			}
 		}
 		visible[page.ID] = true
 		kept = append(kept, page)

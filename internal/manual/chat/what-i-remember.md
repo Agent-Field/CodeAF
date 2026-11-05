@@ -651,3 +651,67 @@ Machine-scoped memories describe one computer and stay there. An unpaired home s
 ## Memory in older local conversations and new moving chats
 
 Memories use the local store on each computer. After pairing, an older conversation gets an independent movable copy with its earlier memory history sealed into `.cell/memories.jsonl`; the original is untouched. Person and project memory also sync independently through the encrypted vault.
+
+## Library in the desktop app and Knowledge in the terminal
+
+The desktop's Library reads the same opt-in, profile-wide knowledge vault as
+Memory → Knowledge in the terminal. Saved memory remains separate. Starting a
+Library build enables knowledge capture. The default knowledge model is
+DeepSeek v4.1 Flash 1017 (`deepseek/deepseek-v4.1-flash-1017`); a model chosen in
+Settings is kept across builds and is shared with the terminal. Library does not
+change the model of an ordinary chat.
+
+Search reads the full-text index without a model call. Ask the Library uses the
+knowledge model and returns source citations, or says that the answer is not in
+your Library. With learning paused, saved guides stay readable and explicit Library questions
+can still use them. Asking does not capture chats or resume learning. Opening a citation takes you to the cited guide. Open in chat uses
+the saved source's own conversation and message, never its title or folder.
+
+Edits made through either surface are visible in both. A stale save or delete
+is refused. Your words remain human edits; the earlier source quotes do not
+become evidence for something you added. Keeping an account in a disagreement
+retains the chosen claim and the replaced words in the guide’s Changes view.
+Other disagreements stay available until you choose an account for each.
+Recall follows your choice across older notes that shared the claim. Changes
+keeps the replaced account’s source chat reachable.
+Deleting a guide suppresses it in later builds and does not delete its chats.
+
+Keep in Library admits a selected passage from a saved agent reply immediately;
+it still needs existing knowledge consent. Use in chat opens a draft with a
+bounded excerpt and its Library address. The chat can also use
+`search_knowledge` and `read_knowledge` to consult the current guide.
+
+## Library disagreements in Inbox and Later
+
+The desktop sidebar separates Home from To review. Collections start
+collapsed; opening a guide reveals its collection and topic. To review opens
+the review list without putting that queue above the collection tree.
+
+A guide with two conflicting accounts also appears as a question in Inbox.
+Open it to compare the source chats and keep an account. Later keeps the question
+across app restarts; Back returns it to Waiting. Learning can be paused without
+losing these questions. A deferred guide still shows its disagreement and says
+“In Later”; deferring does not choose an account. Resolving the disagreement in
+either Library or the terminal removes its Inbox question.
+
+## Home, Library questions, cross-links and numbered sources
+
+Home starts with “Ask anything about your Library…”: an explicit question uses
+the saved guides and your Library model, even while learning is paused. Answers
+include sources; Continue with an agent opens a draft with the question, answer
+and cited pages. An answer without enough saved evidence offers the agent handoff.
+
+Collections remain available for browsing. A collection groups guides by topic and lets you find
+a guide by its title or summary without a model call. The collection's saved
+introduction appears when one is available.
+
+Ordinary guide and cross-link clicks follow pages inside the current Library
+tab. Back and Forward return through that window's places. Open in New Tab
+creates an independent tab; Command-click or Control-click opens a background
+tab. A copied cross-link keeps its section heading.
+
+Numbered references such as [1] show the source quote and date on hover or
+keyboard focus. Open in chat goes to the saved source message. Paragraphs have
+no source gutter or clickable hover background. Unfinished guide edits stay
+available while navigating in this window; Save writes them to the shared
+knowledge vault. Unsaved text is not written to disk.

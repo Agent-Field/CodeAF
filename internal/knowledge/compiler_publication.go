@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -13,10 +14,26 @@ func applyNativeOverrides(vault document, overrides map[string]pageOverride) doc
 		return vault
 	}
 	claims := index(items(vault["claims"]))
+	applyHumanChoices(claims, overrides)
 	kept := []document{}
 	suppressed := map[string]bool{}
 	for _, note := range items(vault["notes"]) {
 		if change, ok := overrides[textValue(note["id"])]; ok {
+			if change.ChoicesOnly {
+				applyAccountChoices(note, change.Resolutions, claims)
+				for _, choice := range change.Resolutions {
+					if claims[choice.Keep] == nil {
+						continue
+					}
+					for _, id := range choice.Claims {
+						if id != choice.Keep {
+							suppressed[id] = true
+						}
+					}
+				}
+				kept = append(kept, note)
+				continue
+			}
 			original := stringsValue(note["original_claims"])
 			if note["original_claims"] == nil {
 				original = stringsValue(note["claims"])
@@ -55,9 +72,21 @@ func applyNativeOverrides(vault document, overrides map[string]pageOverride) doc
 	}
 	visible := index(kept)
 	refs := map[string]bool{}
+	for _, override := range overrides {
+		for _, choice := range override.Resolutions {
+			for _, id := range choice.Claims {
+				refs[id] = true
+			}
+		}
+	}
 	for _, note := range kept {
 		for _, id := range stringsValue(note["claims"]) {
 			refs[id] = true
+		}
+		for _, conflict := range items(note["conflicts"]) {
+			for _, id := range stringsValue(conflict["claims"]) {
+				refs[id] = true
+			}
 		}
 		for _, section := range items(note["sections"]) {
 			for _, p := range items(section["paragraphs"]) {
@@ -263,3 +292,91 @@ func linkCompilation(vault document) {
 	}
 }
 func isWord(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) || r == '_' }
+
+// A choice changes only its named disagreement. Other claims, sources and
+// disagreements remain available to both the reader and the recall compiler.
+func applyAccountChoices(note document, choices []Resolution, claims map[string]document) {
+	for _, choice := range choices {
+		if claims[choice.Keep] == nil {
+			note["needs_editorial_update"] = true
+			continue
+		}
+		losing := map[string]bool{}
+		for _, id := range choice.Claims {
+			if id != choice.Keep {
+				losing[id] = true
+			}
+		}
+		keptClaims := []string{}
+		for _, id := range stringsValue(note["claims"]) {
+			if !losing[id] {
+				keptClaims = append(keptClaims, id)
+			}
+		}
+		note["claims"] = keptClaims
+		included := false
+		for _, section := range items(note["sections"]) {
+			paragraphs := []document{}
+			for _, p := range items(section["paragraphs"]) {
+				omit, keep := false, false
+				for _, id := range stringsValue(p["claims"]) {
+					if losing[id] {
+						omit = true
+					}
+					if id == choice.Keep {
+						keep = true
+						included = true
+					}
+				}
+				if !omit {
+					paragraphs = append(paragraphs, p)
+				} else if keep {
+					paragraphs = append(paragraphs, document{"text": textValue(claims[choice.Keep]["text"]), "claims": []string{choice.Keep}, "evidence": items(claims[choice.Keep]["evidence"])})
+				}
+			}
+			section["paragraphs"] = paragraphs
+		}
+
+		if !included {
+			note["sections"] = append(items(note["sections"]), document{"heading": "", "paragraphs": []document{{"text": textValue(claims[choice.Keep]["text"]), "claims": []string{choice.Keep}, "evidence": items(claims[choice.Keep]["evidence"])}}})
+		}
+		conflicts := []document{}
+		for _, c := range items(note["conflicts"]) {
+			if ConflictID(Conflict{Claims: stringsValue(c["claims"])}) != choice.Conflict {
+				conflicts = append(conflicts, c)
+			}
+		}
+		note["conflicts"] = conflicts
+	}
+}
+
+// Legacy notes may still point at the same claim. A human choice retires the
+// rejected account for recall everywhere, while its evidence stays in history.
+func applyHumanChoices(claims map[string]document, overrides map[string]pageOverride) {
+	choices := []Resolution{}
+	for _, override := range overrides {
+		choices = append(choices, override.Resolutions...)
+	}
+	sort.Slice(choices, func(i, j int) bool {
+		a, _ := time.Parse(time.RFC3339Nano, choices[i].At)
+		b, _ := time.Parse(time.RFC3339Nano, choices[j].At)
+		if a.Equal(b) {
+			return choices[i].Conflict < choices[j].Conflict
+		}
+		return a.Before(b)
+	})
+	for _, choice := range choices {
+		chosen := claims[choice.Keep]
+		if chosen == nil {
+			continue
+		}
+		for _, id := range choice.Claims {
+			if id != choice.Keep && claims[id] != nil {
+				claims[id]["status"] = "superseded"
+			}
+		}
+		chosen["status"] = "active"
+		chosen["human_edited"] = true
+		chosen["human_edited_at"] = choice.At
+	}
+}

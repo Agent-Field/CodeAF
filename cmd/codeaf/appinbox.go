@@ -326,6 +326,7 @@ func (b *appBackend) inboxCounts() {
 // ListInbox answers one of the Inbox's lists, newest first, narrowed by a
 // query over its words and where it comes from.
 func (b *appBackend) ListInbox(list, query string) ([]appwire.InboxItem, appwire.InboxCounts, error) {
+	b.syncLibraryInbox()
 	in := b.inbox
 	query = strings.ToLower(query)
 	matches := func(item appwire.InboxItem) bool {
@@ -495,6 +496,9 @@ func (b *appBackend) UndoInbox(id string) error {
 // LaterInbox puts an item aside, or brings it back to waiting; the dock reads
 // the same mark.
 func (b *appBackend) LaterInbox(id string, later bool) error {
+	if strings.HasPrefix(id, "library:") {
+		return b.laterLibraryInbox(id, later)
+	}
 	agent, askID, ok := appInboxSplit(id)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)

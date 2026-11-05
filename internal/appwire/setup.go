@@ -199,6 +199,7 @@ type ProviderParams struct {
 // optional, and a field present is changed. A money field sent as null means
 // none. [decodeSettingsPatch] reads exactly these fields and refuses any other.
 type SettingsPatchWire struct {
+	KnowledgeModel     *string           `json:"knowledge_model,omitempty"`
 	WhenPlanPaused     map[string]string `json:"when_plan_paused,omitempty"`
 	MemoryEnabled      *bool             `json:"memory_enabled,omitempty"`
 	DefaultModel       *string           `json:"default_model,omitempty"`
@@ -316,6 +317,8 @@ func decodeSettingsPatch(raw json.RawMessage) (SettingsPatch, error) {
 					return SettingsPatch{}, Errorf(CodeBadParams, "when_plan_paused must map provider ids to wait or use pay-as-you-go")
 				}
 			}
+		case "knowledge_model":
+			err = text(name, &patch.KnowledgeModel)
 		case "default_model":
 			err = text(name, &patch.DefaultModel)
 		case "asks_before":
