@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	profileconfig "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/router"
@@ -90,7 +91,14 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// allow into a prompt for the shapes that destroy a disk or drop the
 	// machine, and a prompt in a worker is a refusal it can read — never a
 	// question and never a hang.
-	config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+	policy := &approval.Policy{Default: approval.ActionAllow}
+	if config.ApprovalPolicy != nil {
+		policy.ProfileReadError = config.ApprovalPolicy.ProfileReadError
+	}
+	config.ApprovalPolicy = policy
+	if config.ApprovalGate == nil {
+		config.ApprovalGate = beltWorkerApprovalGate{policy: policy, profileDir: config.ProfileDir}
+	}
 	config.AskConsent = false
 	// THE WORKER'S OWN RECORD FOLDER. The transcript this agent writes and the
 	// whole outputs the belt's cut files land in the task's own folder beside
@@ -364,4 +372,31 @@ func (a *Agent) sendBeltStep(ctx context.Context, hub *eventHub, event Event) {
 	case <-handled:
 	case <-ctx.Done():
 	}
+}
+
+// BeltWorkerApprovalGate supplies live failed-read protection to a standalone
+// run worker without giving unrelated session settings a different profile.
+func BeltWorkerApprovalGate(profileDir string) ApprovalGate {
+	return beltWorkerApprovalGate{profileDir: profileDir, policy: &approval.Policy{Default: approval.ActionAllow}}
+}
+
+// beltWorkerApprovalGate checks the run's profile at each decision because a
+// standalone run worker has no parent agent whose current gate it can consult.
+// Readable files retain the worker's own allowance, including parse failures.
+type beltWorkerApprovalGate struct {
+	policy     *approval.Policy
+	profileDir string
+}
+
+func (g beltWorkerApprovalGate) Standing() string {
+	return PostureAllow
+}
+
+func (g beltWorkerApprovalGate) Build(_ string) (*approval.Policy, bool, error) {
+	_, err := profileconfig.ReadProfileApprovalConfig(g.profileDir)
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return &approval.Policy{ProfileReadError: err.Error()}, false, nil
+	}
+	return g.policy, false, nil
 }

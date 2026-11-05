@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
@@ -295,6 +296,7 @@ func factoryStagePosture() string {
 // name) still hold, because they sit under every policy and they are not a
 // person's preference. A person who wants a stage narrower says so with
 // [factoryPostureEnv].
+// An unreadable profile still requires a person: its saved denials are unknown.
 type stageApprovalGate struct {
 	rows    *v3ApprovalGate
 	posture string
@@ -302,6 +304,13 @@ type stageApprovalGate struct {
 
 // Build is the gate for one posture.
 func (g stageApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
+	if g.rows != nil {
+		_, err := config.ReadProfileApprovalConfig(g.rows.profileDir)
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) {
+			return &approval.Policy{ProfileReadError: err.Error()}, false, nil
+		}
+	}
 	if posture != session.PostureAllow {
 		return g.rows.Build(posture)
 	}
@@ -486,6 +495,10 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 			}
 			c.say(factory.ToolCaptionPrefix + factory.ToolLogText(hint, c.dir))
 		case session.EventToolFailed:
+			var refused *approval.ProfileReadFailure
+			if errors.As(event.Err, &refused) {
+				c.fail(refused)
+			}
 			reason := event.Hint
 			if reason == "" && event.Err != nil {
 				reason = event.Err.Error()
@@ -519,7 +532,10 @@ func (c *stageConversation) fail(err error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.failure = err
+	var refused *approval.ProfileReadFailure
+	if !errors.As(c.failure, &refused) {
+		c.failure = err
+	}
 }
 
 // say puts one caption on the account, dropping it rather than holding the
@@ -631,6 +647,10 @@ func (c *stageConversation) Wait(ctx context.Context) error {
 	case <-done:
 		c.mu.Lock()
 		defer c.mu.Unlock()
+		var refused *approval.ProfileReadFailure
+		if errors.As(c.failure, &refused) {
+			return refused
+		}
 		if c.budget != nil {
 			if why := c.budget.Refusal(); why != "" {
 				// A daily refusal already recorded was not caused by memory, so
