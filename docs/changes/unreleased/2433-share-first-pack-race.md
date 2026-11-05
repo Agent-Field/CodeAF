@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Serialize first-share capture with concurrent store writers
-pr: 2431
+pr: 2433
 surface: [engine, chat, app]
 invalidates:
   - Different codeaf transports and daemon sockets used to open one physical store concurrently; their requests now share a cross-process store operation lock.
