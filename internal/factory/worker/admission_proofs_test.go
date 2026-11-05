@@ -3,6 +3,8 @@ package worker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -348,6 +350,183 @@ func TestReportGoroutineEndsWithoutLosingSpend(t *testing.T) {
 				t.Fatalf("spent=%g want .1875; applied_deltas=%v sum=%g; report_requests=%d recovery_requests=%d", cur.Stream.Spent, deltas, sum, reports.Load(), recovery.Load())
 			}
 			t.Logf("shutdown=%s work_and_reporter=%s received_spend=%g recovery_calls=%d", mode, time.Since(before), cur.Stream.Spent, recovery.Load())
+		})
+	}
+}
+
+// The admission window is shorter than the immutable delivery window here:
+// report expiry has its own retained-results recovery proof.
+func TestAdmissionRetryWindowEnd(t *testing.T) {
+	old := admissionRetryWindow
+	admissionRetryWindow = 500 * time.Millisecond
+	t.Cleanup(func() { admissionRetryWindow = old })
+	for _, mode := range []string{"during", "after", "after-cap"} {
+		t.Run(mode, func(t *testing.T) {
+			var armed, restored atomic.Bool
+			answers, stalled := make(chan struct{}), make(chan struct{})
+			var stalledOnce sync.Once
+			var calls, beats, capQuestions, releases atomic.Int32
+			refused := make(chan struct{})
+			var once sync.Once
+			var mu sync.Mutex
+			var deltas []float64
+			var base string
+			var lastLease api.WorkerLease
+			var st *store.Store
+			var id int
+			first := make(chan struct{})
+			advance := make(chan struct{})
+			st, mirror, runner, id, cancel, done, _ := proofWorker(t, run.ExecutorFunc(func(ctx context.Context, j run.Job) (factory.StageResult, error) {
+				calls.Add(1)
+				if j.Stage.Name == "first" {
+					close(first)
+					select {
+					case <-advance:
+					case <-ctx.Done():
+						return factory.StageResult{}, ctx.Err()
+					}
+					return factory.StageResult{Done: true, Spent: .125}, nil
+				}
+				if j.Round != 1 {
+					t.Errorf("resumed round=%d, want 1", j.Round)
+				}
+				return factory.StageResult{Done: true, Spent: .0625}, nil
+			}), func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if strings.HasSuffix(r.URL.Path, "/report") && armed.Load() && !restored.Load() {
+						raw, err := io.ReadAll(r.Body)
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						r.Body = io.NopCloser(bytes.NewReader(raw))
+						stalledOnce.Do(func() { close(stalled) })
+						select {
+						case <-r.Context().Done():
+							once.Do(func() { close(refused) })
+							return
+						case <-answers:
+						}
+					}
+					if strings.HasSuffix(r.URL.Path, "/done") {
+						releases.Add(1)
+					}
+					rec := httptest.NewRecorder()
+					if strings.HasSuffix(r.URL.Path, "/report") && armed.Load() {
+						before, _ := st.Get(id)
+						next.ServeHTTP(rec, r)
+						after, _ := st.Get(id)
+						mu.Lock()
+						deltas = append(deltas, factory.JobLifetimeSpent(after)-factory.JobLifetimeSpent(before))
+						if before.QKind != "cap" && after.QKind == "cap" {
+							capQuestions.Add(1)
+						}
+						mu.Unlock()
+					} else {
+						next.ServeHTTP(rec, r)
+					}
+					if strings.HasSuffix(r.URL.Path, "/heartbeat") && rec.Code == 200 {
+						var hb api.WorkerHeartbeat
+						if err := json.Unmarshal(rec.Body.Bytes(), &hb); err != nil {
+							t.Error(err)
+						}
+						mu.Lock()
+						lastLease = hb.Lease
+						base = "http://" + r.Host
+						mu.Unlock()
+						beats.Add(1)
+					}
+					for k, vs := range rec.Header() {
+						for _, v := range vs {
+							w.Header().Add(k, v)
+						}
+					}
+					w.WriteHeader(rec.Code)
+					_, _ = w.Write(rec.Body.Bytes())
+				})
+			}, 100*time.Millisecond)
+			awaitProof(t, first, time.Second, "first executor did not start")
+			armed.Store(true)
+			close(advance)
+			if mode == "during" {
+				// Answer the first request before its five-second transport deadline.
+				awaitProof(t, stalled, time.Second, "report did not stall")
+				restored.Store(true)
+				close(answers)
+			} else {
+				awaitProof(t, refused, 7*time.Second, "report did not refuse admission")
+				before := beats.Load()
+				time.Sleep(2500 * time.Millisecond)
+				if beats.Load() <= before {
+					t.Fatal("heartbeats stopped past retry window")
+				}
+				cur, err := mirror.Get(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cur.State != factory.StateRunning || cur.Question != "" || cur.QKind != "" || cur.Failure != nil || cur.Stream.Spent != .125 || cur.Stream.Phases[1].Round != 1 || len(cur.Stream.Log) != 1 || cur.Stream.Log[0].Text != "queued" || runner.Running(id) {
+					t.Errorf("mirror past window: state=%s question=%q failure=%+v stream=%+v running=%t", cur.State, cur.Question, cur.Failure, cur.Stream, runner.Running(id))
+				}
+				mu.Lock()
+				url := base
+				held := lastLease
+				mu.Unlock()
+				resp, err := http.Get(fmt.Sprintf("%s/v1/jobs/%d", url, id))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var wire api.JobRead
+				err = json.NewDecoder(resp.Body).Decode(&wire)
+				resp.Body.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+				visible := api.ToItem(wire.Job)
+				if wire.State != api.StateRunning || visible.Question != "" || visible.Failure != nil || visible.Stream.Spent != 0 || visible.Stream.Phases[0].Round != 1 || visible.Stream.Phases[0].State != factory.PhaseRunning || capQuestions.Load() != 0 || len(visible.Stream.Log) != 1 || visible.Stream.Log[0].Text != "queued" || held.ID == "" || held.Job != id || !held.ExpiresAt.After(time.Now()) || calls.Load() != 1 || releases.Load() != 0 {
+					t.Errorf("factory past window: wire=%+v lease=%+v calls=%d releases=%d", wire.Job, held, calls.Load(), releases.Load())
+				}
+				t.Logf("past window mirror=%s question=%q log=%+v; wire=%s question=%q log=%+v lease=%s alive", cur.State, cur.Question, cur.Stream.Log, wire.State, visible.Question, visible.Stream.Log, held.ID)
+				if mode == "after-cap" {
+					if err := st.Update(id, func(it *factory.Item) error { it.SpentBefore = 10; return nil }); err != nil {
+						t.Fatal(err)
+					}
+				}
+				restored.Store(true)
+				close(answers)
+			}
+			awaitProof(t, done, 9*time.Second, "work did not finish within 9s after restoration")
+			cur, err := st.Get(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			sum := 0.0
+			for _, d := range deltas {
+				sum += d
+			}
+			gotDeltas := append([]float64(nil), deltas...)
+			mu.Unlock()
+			want := .1875
+			if mode == "after-cap" {
+				want = .125
+				if calls.Load() != 1 || cur.State != factory.StateNeedsYou || cur.QKind != "cap" || cur.Question != "budget of $10 reached · job total $10.12 · raise it to $20, or stop?" || capQuestions.Load() != 1 {
+					t.Errorf("cap: calls=%d questions=%d state=%s question=%q", calls.Load(), capQuestions.Load(), cur.State, cur.Question)
+				}
+			} else if calls.Load() != 2 || (cur.State != factory.StateShipped && cur.State != factory.StateLanded) || cur.Question != "" || cur.Failure != nil || cur.Stream.Phases[1].Round != 1 || cur.Stream.Phases[1].RoundLimit != 1 || cur.Stream.Phases[1].RoundCosts[1] != .0625 || cur.Recovery != nil {
+				t.Errorf("automatic same-round restart: calls=%d state=%s question=%q failure=%+v phases=%+v", calls.Load(), cur.State, cur.Question, cur.Failure, cur.Stream.Phases)
+			}
+			if sum != want || cur.Stream.Spent != want || runner.Running(id) {
+				t.Errorf("accounting/cleanup: deltas=%v sum=%g spent=%g want=%g running=%t", gotDeltas, sum, cur.Stream.Spent, want, runner.Running(id))
+			}
+			cancel()
+			var stacks bytes.Buffer
+			if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(stacks.String(), "worker.Options.work.func") {
+				t.Error("work ended with reporter goroutine alive")
+			}
+			t.Logf("restored: calls=%d state=%s question=%q deltas=%v sum=%g; work and reporter joined within 9s", calls.Load(), cur.State, cur.Question, gotDeltas, sum)
 		})
 	}
 }

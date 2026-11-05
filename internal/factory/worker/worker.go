@@ -312,6 +312,8 @@ type job struct {
 	spendBaseline float64
 }
 
+var admissionRetryWindow = factory.RecoveryWindow
+
 // work runs one pulled job to its end, or until the lease is gone.
 func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.WorkerPull) {
 	it := api.ToItem(pulled.Job)
@@ -423,9 +425,10 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	// One reporter owns delivery state and spend baselines. Admission and
 	// periodic flushes must never race or replay an unacknowledged cost delta.
 	type reportResult struct {
-		admitted bool
-		alive    bool
-		final    bool
+		admitted  bool
+		alive     bool
+		final     bool
+		recovered bool
 	}
 	work := make(chan func() reportResult, 1)
 	results := make(chan reportResult, 1)
@@ -479,7 +482,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		select {
 		case <-retryAdmission:
 			if retryUntil.IsZero() {
-				retryUntil = time.Now().Add(factory.RecoveryWindow)
+				retryUntil = time.Now().Add(admissionRetryWindow)
 			}
 			retrying = true
 			retry.Reset(retryEvery)
@@ -489,7 +492,18 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 				continue
 			}
 			retrying = false
-			if j.blocked != "" || time.Now().After(retryUntil) {
+			if j.blocked != "" {
+				continue
+			}
+			if !retryUntil.IsZero() && time.Now().After(retryUntil) {
+				// Keep the unspent round and lease while delivery catches up.
+				// Finishing a withdrawn drive would return it to backlog.
+				retrying = true
+				retry.Reset(retryEvery)
+				queue(func() reportResult {
+					alive := j.flush(ctx)
+					return reportResult{alive: alive, recovered: j.pending == nil && j.blocked == ""}
+				})
 				continue
 			}
 			if err := o.Mirror.Update(it.ID, func(cur *factory.Item) error {
@@ -502,7 +516,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 				_ = o.Runner.Hold(it.ID, false)
 			}
 		case result := <-results:
-			if result.admitted {
+			if result.admitted || result.recovered {
 				retryUntil = time.Time{}
 			}
 			busy = false

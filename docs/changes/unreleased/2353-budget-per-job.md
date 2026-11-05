@@ -5,6 +5,7 @@ pr: 2353
 surface: [factory, app]
 invalidates:
   - "Job budget stops previously compared only the current run. They now compare all known saved spending on the job."
+  - "Admission retry expiry previously returned withdrawn work to Backlog. It now holds the round while reporting catches up."
   - "Budget edits previously conflicted with worker progress. They now conflict only with intervening budget edits or an ended job."
 ---
 
@@ -82,3 +83,11 @@ One 5.5-second deadline covers the entire admission wait, including a queued
 periodic report, pending-spend retry and fresh delta. Cancellation and lease-loss
 proofs cover delivered and undelivered requests, late spend, joined reporting
 and replayed accounting recovery through the initial empty report's receipt.
+
+Admission retry expiry no longer finishes a withdrawn drive as Backlog. It
+holds the same unspent round and keeps heartbeats alive while flushing reports.
+Once the reports are acknowledged, the next one-second retry resumes that round
+without consuming an attempt. The separate result-delivery recovery window and
+its retained-results block still apply; admission cannot bypass reconciliation.
+A work-loop proof covers answers before and after admission expiry, exact spend
+deltas, factory-side cap enforcement and joined reporter shutdown.

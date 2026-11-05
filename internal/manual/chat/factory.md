@@ -761,6 +761,21 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
 
+## Step admission retry window — waiting for the factory report
+
+A worker waits for the factory to accept a step's start before running it.
+If that report cannot be confirmed, the unspent step retries after one second,
+keeping its round and attempt. After two minutes, the worker holds that round
+while it flushes pending reports; it does not return the job to Backlog.
+Heartbeats continue renewing the lease and delivering your actions.
+Once reporting catches up, the worker automatically resumes the same round.
+The factory checks the job total again before accepting another step. At the
+cap, it asks the usual budget question and no next executor starts.
+
+Pending result delivery has its own two-minute window. If those results remain
+unconfirmed, the existing results-not-saved recovery block retains them for
+reconciliation. Admission recovery does not bypass that block or a person's Stop.
+
 ## Unread repository rules — file and line before plan approval
 
 When repository rules cannot be read, the plan approval question shows the
