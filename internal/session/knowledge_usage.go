@@ -16,6 +16,15 @@ import (
 
 func init() {
 	knowledge.SetUsageRecorder(func(ctx context.Context, billed provider.Billed) {
+		// The provider sends empty figures only when a final receipt was unavailable.
+		// Keep the request and its attribution without guessing a monetary amount.
+		if billed.Empty() {
+			RecordUnbilledCall(UsageLedgerPath(), withUsageBilling(UsageLine{
+				GenerationID: billed.GenerationID, Model: billed.Model, Role: string(lane.RoleMemory),
+				Session: provider.SessionFrom(ctx), LibraryActivity: knowledge.LibraryActivity(ctx),
+			}, billed.Billing))
+			return
+		}
 		RecordUsage(UsageLedgerPath(), withUsageBilling(UsageLine{
 			GenerationID: billed.GenerationID, At: time.Now(), Model: billed.Model, Role: string(lane.RoleMemory), Session: provider.SessionFrom(ctx),
 			Calls: 1, Input: billed.PromptTokens, Output: billed.CompletionTokens, USD: billed.Cost,
@@ -59,7 +68,10 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 		if r.Found {
 			bill(r.Billed)
 		} else {
-			a.recordUnbilledReceipt(r.Model)
+			a.bank(bankedCall{generationID: r.Ref, model: r.Model, role: string(lane.RoleMemory),
+				libraryActivity: knowledge.LibraryActivity(ctx), used: Usage{Calls: 1},
+				ledger: true, late: true, unpriced: true, billing: r.Billing})
+			a.stampSpend()
 		}
 	})
 	return a.withReceiptTracking(provider.WithUnmeteredReceipts(ctx)), nil

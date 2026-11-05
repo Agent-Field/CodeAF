@@ -48,3 +48,21 @@ func TestMemorySavedValuesAndInvalidValues(t *testing.T) {
 		})
 	}
 }
+
+func TestUnreadableLearningChoiceDoesNotEnablePaidCalls(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read mode 000 files")
+	}
+	dir := t.TempDir()
+	path := BudgetConfigPath(dir)
+	if err := os.WriteFile(path, []byte(`{"memory.enabled":"off"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0600) })
+	if enabled, _ := MemorySettingAt(dir); enabled {
+		t.Fatal("unreadable existing choice enabled learning")
+	}
+}

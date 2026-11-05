@@ -37,6 +37,8 @@ func TestLibraryAccountingOwnedVaultWritesLedgerOnce(t *testing.T) {
 				c.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
 				c.usageLedger = ledger
 			})
+			// Drive the public Vault directly, without its journal scanner racing Flush.
+			agent.stopKnowledge()
 			v := agent.Knowledge()
 			if v == nil {
 				t.Fatal("persisted conversation has no public vault")
@@ -117,6 +119,60 @@ func TestLibraryAccountingOwnedVaultWritesLedgerOnce(t *testing.T) {
 				}
 			}
 			t.Logf("public vault: paid calls=%d owned rows=%d", calls, len(lines))
+		})
+	}
+}
+
+func TestLibraryUnresolvedReceiptRetainsActivityAndOwner(t *testing.T) {
+	for _, owned := range []bool{false, true} {
+		t.Run(fmt.Sprintf("owned=%t", owned), func(t *testing.T) {
+			t.Setenv("CODEAF_HOME", t.TempDir())
+			profile := t.TempDir()
+			row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyKnowledgeModel)
+			if err := row.Apply("deepseek/deepseek-v4.1-flash-1017"); err != nil {
+				t.Fatal(err)
+			}
+			ledger := UsageLedgerPath()
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+				c.ProfileDir = profile
+				c.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+				c.usageLedger = ledger
+			})
+			// Drive the public Vault directly, without its journal scanner racing Flush.
+			agent.stopKnowledge()
+			v := knowledge.Open(profile)
+			if owned {
+				v = agent.Knowledge()
+			}
+			if err := v.StartBuild(); err != nil {
+				t.Fatal(err)
+			}
+			if err := v.Capture(knowledge.Source{ID: "s", Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Cedar queues jobs."}); err != nil {
+				t.Fatal(err)
+			}
+			original := http.DefaultTransport
+			t.Cleanup(func() { http.DefaultTransport = original })
+			http.DefaultTransport = libraryAccountingTransport(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"model":"deepseek/deepseek-v4.1-flash-1017","choices":[{"finish_reason":"length","message":{"content":"{"}}]}`))}, nil
+			})
+			if err := v.Flush(context.Background(), "fixture", true); err == nil {
+				t.Fatal("expected incomplete reply")
+			}
+			FlushUsage()
+			lines, err := ReadUsage(ledger, time.Time{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(lines) != 1 {
+				t.Fatalf("unresolved request: %d ledger rows, want one", len(lines))
+			}
+			line := lines[0]
+			if line.Role != "memory" || line.LibraryActivity != "learning" || !line.Unbilled || line.USD != 0 {
+				t.Fatalf("missing receipt lost attribution: %+v", line)
+			}
+			if owned && line.Session == "" {
+				t.Fatal("unresolved owned request lost owner")
+			}
 		})
 	}
 }

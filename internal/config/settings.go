@@ -3919,23 +3919,30 @@ func MemoryAt(profileDir string) string {
 
 // MemorySettingAt reads saved words and booleans, and whether one was saved.
 func MemorySettingAt(profileDir string) (enabled, saved bool) {
-	if value, ok := persistedString(profileDir, KeyMemoryEnabled); ok {
-		switch strings.TrimSpace(value) {
+	values, err := readProfileConfigStrict(profileDir)
+	if err != nil {
+		return false, false
+	}
+	raw, present := values[KeyMemoryEnabled]
+	if !present {
+		return DefaultMemory == MemoryOn, false
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return false, false
+	}
+	switch choice := value.(type) {
+	case string:
+		switch strings.TrimSpace(choice) {
 		case MemoryOn:
 			return true, true
 		case MemoryOff:
 			return false, true
 		}
+	case bool:
+		return choice, true
 	}
-	if value, ok := persistedBool(profileDir, KeyMemoryEnabled); ok {
-		return value, true
-	}
-	// Invalid saved values do not authorize automatic model calls.
-	values, err := readProfileConfig(profileDir)
-	if _, present := values[KeyMemoryEnabled]; err != nil || present {
-		return false, false
-	}
-	return DefaultMemory == MemoryOn, false
+	return false, false
 }
 
 // WriteMemoryEnabled saves an explicit choice through the shared profile writer.

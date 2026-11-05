@@ -33,9 +33,11 @@ func memoryBilling(ctx context.Context) context.Context {
 	base := ctx
 	ctx = provider.WithBilling(ctx, func(b provider.Billed) { record(base, b) })
 	ctx = provider.WithReconcile(ctx, func(r provider.Reconciled) {
-		if r.Found {
-			record(base, r.Billed)
+		billed := r.Billed
+		if billed.GenerationID == "" {
+			billed.GenerationID = r.Ref
 		}
+		record(base, billed)
 	})
 	return provider.WithUnmeteredReceipts(ctx)
 }
