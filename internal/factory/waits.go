@@ -79,6 +79,7 @@ func EvaluateWaits(it Item, parents map[int]Item) WaitsRule {
 			}
 		}
 		if why != "" && out.Blocked == nil {
+			parent, why = waitsParentWords(it, parent, why)
 			out.Blocked = &JobBlock{By: BlockWaitsOn, Job: id, Reason: "waits on " + JobRef(parent) + ", which " + why}
 		}
 	}
@@ -90,6 +91,9 @@ func EvaluateWaits(it Item, parents map[int]Item) WaitsRule {
 func WaitsSatisfied(it Item) bool {
 	if it.PullRequest != nil {
 		return it.PullRequest.State == PRMerged
+	}
+	if strings.TrimSpace(it.CommentURL) == "" || it.DoneHow == "closed" {
+		return false
 	}
 	return it.State == StateShipped && WaitsEndedReason(it) == "" && waitsFailureReason(it) == ""
 }
@@ -111,6 +115,9 @@ func WaitsEndedReason(it Item) string {
 	}
 	if it.State == StateDismissed {
 		return "was dismissed"
+	}
+	if it.DoneHow == "closed" || it.State == StateShipped && it.PullRequest == nil && strings.TrimSpace(it.CommentURL) == "" {
+		return "closed without merging"
 	}
 	if it.DoneHow != "" && it.State != StateShipped {
 		return "closed without merging"

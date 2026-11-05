@@ -28,6 +28,23 @@ use waits only when that list also includes `waits_on`. Older factories that
 omit the list answer an empty list. An older factory refusing the waits route
 answers a conflict with reason `factory_too_old` and asks you to update it.
 
+## closed issues, comment receipts and parent visibility for waits
+
+A closed GitHub issue does not satisfy its children. A job that shipped with
+nothing to merge must have a saved comment receipt; choosing comment publication
+alone is not enough. Closing without a merge or that receipt blocks its children
+and refuses new waits on it.
+
+You can set waits only on parents whose repositories you can read. An unreadable
+parent gets the same refusal as an unknown job. A parent in another repository
+appears in the child's block and release activity as `job` and its number. Its
+block says only `failed` or `closed without merging`; its repository and failed
+step stay out of the child's text. Parents in the same repository keep their
+usual references and failed-step labels.
+
+Your Start retires waits immediately. They stay inert after Drop and Bring back,
+even when no factory check happened between those actions.
+
 ## factory repository list refresh, saved repositories and available_read_at
 
 The factory saves the last complete GitHub repository list across a restart.

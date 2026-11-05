@@ -222,6 +222,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h := &Handler{config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.seam = h.areas.remembering(seam)
+	h.seam = h.waitsLaunches(h.seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {

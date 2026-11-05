@@ -231,6 +231,9 @@ func (in *Intake) lookFirst(ctx context.Context, it factory.Item) (factory.Item,
 // after Once listed the backlog still wins. Only a person's Run door may
 // restart a job they stopped; labels never restore that permission.
 func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
+	if factory.WaitsPending(it) {
+		return errMoved
+	}
 	if factory.StoppedByPerson(it) || it.SetupHeld || factory.JobState(it) == "done" {
 		return errMoved
 	}

@@ -65,6 +65,9 @@ func (h *Handler) setWaits(w http.ResponseWriter, r *http.Request, it factory.It
 	for _, parent := range items {
 		parents[parent.ID] = parent
 	}
+	if !h.waitsParentsVisible(w, r, *body.WaitsOn, parents) {
+		return
+	}
 	if err := checkWaitsParents(it.ID, *body.WaitsOn, parents); err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return

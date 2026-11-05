@@ -107,6 +107,7 @@ func (h *Handler) releaseWaits(it *factory.Item, parents map[int]factory.Item) {
 	words := make([]string, 0, len(it.WaitsOn))
 	for _, id := range it.WaitsOn {
 		parent := parents[id]
+		parent = factory.WaitsParent(*it, parent)
 		why := "merged"
 		if parent.PullRequest == nil {
 			why = "shipped with nothing to merge"
