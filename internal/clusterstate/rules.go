@@ -51,12 +51,15 @@ func Heartbeat(c Cell, device string, b Beat, now int64) (Cell, error) {
 	return c, nil
 }
 
-// PublishTo moves the durable head and renews the lease, because a publish is
-// proof that the holder is alive. The fence is checked before the head, so a
-// superseded holder always learns it lost the lease first.
+// PublishTo moves the durable head and renews a live lease. A late seal cannot
+// revive an expired hold, even when nobody acquired it. Ownership is checked
+// before the head, so a superseded holder learns it lost the lease first.
 func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	if err := holder(c, device, p.Fence); err != nil {
 		return c, err
+	}
+	if c.Lease.Expires <= now {
+		return c, ErrFenceStale
 	}
 	if p.OldHead != c.Head {
 		return c, ErrHeadMoved
