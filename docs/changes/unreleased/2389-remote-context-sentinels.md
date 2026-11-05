@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Preserve context deadline and cancellation errors for all remote callers
-pr: 0
+pr: 2389
 surface: [remote]
 invalidates:
   - "Resident deadline and cancellation replies previously lost their context error identity. All remote callers now preserve the sentinels when those replies arrive before the caller stops waiting."
