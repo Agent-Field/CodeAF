@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -25,7 +26,7 @@ func nativeSealingRig(t *testing.T) *twoHomes {
 		t.Fatalf("native engine: %v", err)
 	}
 	server := relay(t)
-	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv(home.EnvVar, cellstoretest.EngineDir(t))
 	t.Setenv(IntervalVar, "50")
 	r := &driveRig{t: t, bin: bin, work: t.TempDir()}
 	r.a = openSync(t, machine(t, server.URL))
@@ -34,7 +35,6 @@ func nativeSealingRig(t *testing.T) *twoHomes {
 	r.engine = cellstore.EngineFor(r.work)
 	r.engine.DataRoot, r.engine.Binary, r.engine.Transport = t.TempDir(), bin, cellstore.Spawn{Binary: bin}
 	r.sealMeta()
-	t.Cleanup(cellstore.StopSpawned)
 	t.Cleanup(session.CloseUsage)
 	return &twoHomes{driveRig: r}
 }
