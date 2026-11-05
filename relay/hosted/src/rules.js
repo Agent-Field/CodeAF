@@ -36,9 +36,12 @@ export function makeRules({ ttlMs, renewOnPublish }) {
     return { ...c, lease: { device, fence: c.lease.fence + 1, expires: now + ttlMs, pending: 0 } };
   };
 
+  // A beat says whether a turn is running on the holder (Codeaf-Working-Beats); the lease keeps it until the next
+  // beat, through publishes, and an acquire or a release clears it. Absent and false are the same record.
   const heartbeat = (c, device, b, now) => {
     holder(c, device, b.fence);
-    return { ...c, lease: { ...c.lease, expires: now + ttlMs, pending: b.pending } };
+    const { working: _was, ...lease } = c.lease;
+    return { ...c, lease: { ...lease, expires: now + ttlMs, pending: b.pending, ...(b.working === true ? { working: true } : {}) } };
   };
 
   const publishTo = (c, device, p, now) => {
@@ -55,7 +58,8 @@ export function makeRules({ ttlMs, renewOnPublish }) {
 
   const releaseOf = (c, device, fence, now) => {
     holder(c, device, fence);
-    return { ...c, lease: { ...c.lease, expires: 0, pending: 0, ...(now === undefined ? {} : { released_at: now }) } };
+    const { working: _was, ...lease } = c.lease;
+    return { ...c, lease: { ...lease, expires: 0, pending: 0, ...(now === undefined ? {} : { released_at: now }) } };
   };
 
   const created = (init, device, now) => {

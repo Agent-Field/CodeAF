@@ -33,6 +33,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"can I send a message to the chat running on my other computer", "desktop-sync"},
+		{"queue a message for my other computer while its turn is working", "desktop-sync"},
 		// C9: Windows shell questions must reach the self-contained Git Bash section.
 		{"why do my commands fail on Windows", "running-commands-on-windows"},
 		{"which bash does codeaf use on Windows", "running-commands-on-windows"},

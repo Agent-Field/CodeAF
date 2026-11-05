@@ -30,6 +30,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // DenyList is every path a read never shows, one glob per word. A word with
@@ -533,8 +534,8 @@ func hits(re *regexp.Regexp, name string, body []byte, out *api.RepoRead) bool {
 // an index refresh is written; replace objects and pathspec magic are off;
 // fsmonitor never runs; and git never prompts.
 func git(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir, "-c", "core.fsmonitor=false",
-		"--no-replace-objects", "--literal-pathspecs"}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir, "-c", "core.fsmonitor=false",
+		"--no-replace-objects", "--literal-pathspecs"}, args...)...)...)
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, "GIT_") {
 			cmd.Env = append(cmd.Env, kv)
