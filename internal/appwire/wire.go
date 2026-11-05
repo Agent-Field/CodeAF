@@ -681,7 +681,6 @@ type MemorySettings struct {
 }
 
 type Settings struct {
-	KnowledgeModel     string            `json:"knowledge_model,omitempty"`
 	WhenPlanPaused     map[string]string `json:"when_plan_paused"`
 	Memory             MemorySettings    `json:"memory"`
 	DefaultModel       string            `json:"default_model"`
@@ -716,7 +715,6 @@ type Settings struct {
 // money figure sent as null is cleared, which the settings that always have a
 // figure refuse.
 type SettingsPatch struct {
-	KnowledgeModel     *string
 	WhenPlanPaused     map[string]string
 	MemoryEnabled      *bool
 	DefaultModel       *string
