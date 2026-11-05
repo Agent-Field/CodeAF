@@ -427,6 +427,7 @@ reads, including unavailable results, share a ten-second cache of at most
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_model` | `in.FactorySpendByModelParams` | `FactorySpendByModel` |
+| `factory.events_since` | `in.FactoryEventsSinceParams` | `FactoryEvents` |
 | `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
@@ -548,6 +549,45 @@ On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
 manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
+
+An engine whose hello carries `factory.job_events` and whose capabilities
+answer `job_events: true` serves `factory.events_since
+{factory, after?, limit?, follow?}`. `factory` is required; `after`, when
+present, is an integer at least zero. An absent cursor requests an initial
+reset; zero requests the beginning. `limit` is 1–500, or 0/omitted for 100.
+Invalid parameters answer `bad_params`. An engine without the Factory outcome
+reader answers `unknown_method` and does not announce the feature.
+
+The result is `{factory, supported, events, cursor, reset, more}`. `events`
+is always an array, in increasing `seq` order, and includes only jobs the
+caller may see; the cursor also advances past hidden outcomes. The cursor
+belongs to the Factory and survives an engine restart. `more: true` asks for
+another read after `cursor`. With no further outcomes, `cursor` is the latest
+position. Other Factory errors retain their usual codes. A Factory older
+than `GET /v1/job-events` answers `supported: false` with an empty event array
+and no error; following does not start for that answer.
+
+Each event is `{factory, seq, kind, job, at, title?, group?, how?, reason?,
+need?, code?, step?, pr_number?, pr_url?}`. `kind` is `finished`, `merged`,
+`failed` or `needs_you`. `how` describes a non-merge finish; merged outcomes
+carry the PR number and URL; failures carry code and step; needs-you outcomes
+carry need and reason. Titles are limited to 200 bytes at a rune boundary.
+The Factory records outcomes at job updates even with no app connected and
+keeps the newest 2,000 independently of its live notifications.
+
+`reset: true` means read the Factory's current state once, then continue from
+the returned cursor. A reset has no events. It occurs on an initial read,
+an expired or replaced cursor, or a gap caused by an older writer. Cursor
+zero on an empty record is caught up and does not reset repeatedly.
+
+`follow: true` starts one follower per attached Factory. A later outcome is
+pushed as `factory.event` with the same `FactoryEvent` shape and sequence.
+The push is a prompt copy: the app can always read again from its own cursor.
+Repeated follow calls raise the follower's cursor without duplicating it.
+A follower takes reset cursors silently; the app's own read observes resets.
+Closing the engine or detaching the Factory ends following. The Factory HTTP
+read takes `after`, `limit` and optional `wait` seconds (0–15, default 0),
+returning on an outcome or reset when a watch is available.
 
 An engine whose hello carries `factory.spend_by_model` (and capabilities
 `spend_by_model: true`) serves `factory.spend_by_model {factory, from, to}`:
@@ -1370,6 +1410,7 @@ role pins and checked as the other pins are.
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
 | `factory.sessions_changed` | `Empty` |
+| `factory.event` | `FactoryEvent` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |
 | `inbox.counts` | `InboxCounts` |

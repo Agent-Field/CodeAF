@@ -165,8 +165,9 @@ type appFactoryHub struct {
 	keptChanged func()
 	// linkSt is the invitations the engine holds and the lists it owes
 	// (appfactory_links.go), made by the first use.
-	linkSt *linkState
-	closed bool
+	linkSt    *linkState
+	jobEvents *appFactoryJobEvents
+	closed    bool
 }
 
 // newAppFactoryHub is a registry whose HTTP client takes no ambient proxy,
@@ -211,6 +212,7 @@ func (b *appBackend) closeFactories() {
 }
 
 func (h *appFactoryHub) close() {
+	h.stopJobEvents()
 	h.forgetAll()
 	h.client.CloseIdleConnections()
 }
@@ -828,7 +830,7 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
 		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, SpendByModel: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, JobEvents: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 
