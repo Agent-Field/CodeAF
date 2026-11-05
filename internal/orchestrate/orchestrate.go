@@ -62,7 +62,8 @@ type Node struct {
 	Goal  string   `json:"goal"`            // self-contained: no "see above"
 	Needs []string `json:"needs,omitempty"` // ids that must be Done before this may run
 	Kind  string   `json:"kind,omitempty"`  // subharness node kind; empty is agent.loop
-	// WriteScope is the set of repo paths this node may write (law 10). Two
+	// WriteScope names root-relative files, directories or segment globs
+	// (*, ?, [...]), without ** or .. segments. Two
 	// nodes whose scopes intersect are not independent, and the scheduler
 	// serializes them by force of an added Needs edge. Read-only nodes leave
 	// this empty.
