@@ -551,6 +551,13 @@ handed, word for word.
 
 Each node is a child agent working in your workspace, and two bounds are put on it.
 
+Write scopes name workspace-relative files, directories or globs like
+`crew-0-*.md`. `*`, `?` and `[...]` match within one path segment, never across
+`/`. Matched directories cover their subtrees. `**`, `..` segments, absolute
+scopes and malformed patterns are refused before work starts; the planner
+receives the reason and can correct it.
+Writes through symlinks that leave the workspace are refused too.
+
 - **A write scope.** The planner says which paths a node may write. That is enforced by the
   harness, not by asking politely in the brief: a `write`, an `edit`, or an `edit_video`
   cut, frame or score aimed outside the scope is refused with a result the node reads, so

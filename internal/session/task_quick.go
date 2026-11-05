@@ -32,11 +32,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
 // quickWord is the word a quick node's row leads with, and it is the same word
@@ -356,7 +358,7 @@ var quickTaskDescription = "Quick work runs here; its last message is the answer
 const quickTaskSchemaJSON = `{"type":"object","properties":{` +
 	`"line":{"type":"string","description":"What to do, one sentence"},` +
 	`"items":{"type":"array","items":{"type":"string"},"description":"Ordered steps to complete and tick"},` +
-	`"files":{"type":"array","items":{"type":"string"},"description":"Paths it will write. Two claiming one path run one after the other; named none, it writes anywhere"},` +
+	`"files":{"type":"array","items":{"type":"string"},"description":"Root-relative paths/dirs; segment * ? [...]; no ** or ..; overlaps wait; empty: unscoped"},` +
 	`"inherit":{"type":"boolean","description":"Opens on this conversation"},` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids whose result it needs"},` +
 	`"title":{"type":"string","description":"Row title; defaults to line"},` +
@@ -581,6 +583,17 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	for _, item := range ask.items {
 		if item = strings.TrimSpace(item); item != "" {
 			kept = append(kept, item)
+		}
+	}
+	for _, raw := range ask.files {
+		raw = strings.TrimSpace(raw)
+		// Exact absolute paths retain their existing normalization. New relative
+		// declarations must be checked before cleaning hides a traversal segment.
+		if raw == "" || filepath.IsAbs(raw) && !strings.ContainsAny(raw, "*?[\\") {
+			continue
+		}
+		if err := orchestrate.ValidateScope(raw); err != nil {
+			return taskSpec{}, fmt.Sprintf("Write scope %q: %s. Redraw the scope and call again.", raw, err)
 		}
 	}
 	scope, refusal := normalizeWriteScope(a.config.Workspace, ask.files)
