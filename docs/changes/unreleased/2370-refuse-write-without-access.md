@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Jobs require write access before every step that can write
-pr: 0
+pr: 2370
 surface: [factory, engine, chat, docs]
 invalidates:
   - "Write permission was not checked consistently before work. Jobs now use one permission rule before writing steps, job chat, publishing and merging."
