@@ -44,7 +44,7 @@ func TestAppFactoryNoteNamesItsNextReader(t *testing.T) {
 				phases = append([]factory.Phase{{Name: "ci", State: factory.PhasePending}}, phases...)
 				phases = append(phases, factory.Phase{Name: "publish", Kind: factory.StagePost, State: factory.PhasePending}, factory.Phase{Name: "approve", Kind: factory.StageGate, State: factory.PhaseWaiting})
 			}
-			it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 21, Kind: factory.KindIssue, Title: "Fix the ledger", State: factory.StateNeedsYou, Stages: stages, Stream: &factory.Stream{Phases: phases}, PullRequest: &factory.PullRequest{Number: 42, URL: "https://github.com/acme/api/pull/42"}})
+			it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 21, Kind: factory.KindIssue, Title: "Fix the ledger", State: factory.StateNeedsYou, Stages: stages, Stream: &factory.Stream{Phases: phases}, PullRequest: &factory.PullRequest{Number: 42, URL: "https://github.com/acme/api/pull/42"}})
 			if err != nil {
 				t.Fatal(err)
 			}

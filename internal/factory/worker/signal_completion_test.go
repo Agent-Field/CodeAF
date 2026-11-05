@@ -39,9 +39,16 @@ func TestFinishedRunnerRetriesFailedSignalBeforeReleasingLease(t *testing.T) {
 	beats := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/heartbeat") {
+			// A step's admission report shares the worker's delivery loop, so a
+			// heartbeat held until the step enters would wait on itself.
+			select {
+			case <-entered:
+			default:
+				_ = json.NewEncoder(w).Encode(api.WorkerHeartbeat{})
+				return
+			}
 			beats++
 			if beats == 1 {
-				<-entered
 				if err := runner.Stop(item.ID); err != nil {
 					t.Error(err)
 				}

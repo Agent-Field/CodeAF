@@ -611,12 +611,20 @@ whatever posture or `--yolo` you selected. The prompt names the file and explain
 that saved approval rules could not be read. Remembered approvals and the guardian
 cannot answer these questions for you. A headless call with nobody to ask returns
 an error naming the file. Once the file is readable, its rules apply again.
-Malformed JSON still fails policy construction.
+Malformed JSON still fails ordinary policy construction; the readable default-stage
+bypass below also applies to malformed JSON.
 
-Two kinds of work do not get this protection yet. A default Factory stage runs on
-its own allow posture and does not read your saved rules, whether the file is
-readable or not. A task child started by a conversation does not carry the failed
-read over from its parent, so it can run a call your saved rules would deny.
+Factory stages and work started by tasks get the same protection: every call
+needs a person, and with nobody to ask it is refused. Workers, repair rounds and
+checkers see a parent's current read failure even after they start. Standalone
+run workers check the profile before each call. A refused Factory job keeps the
+failed-read reason and config filename in its result, without report retries.
+This includes a daily-limit check that refuses the first turn because the
+profile cannot be read; no model request is made.
+
+**Readable default-stage bypass:** with a readable file, a default Factory stage
+runs on its own allow posture and does not apply your saved rules. This named
+limit also covers readable malformed JSON.
 
 ## Default YOLO in interactive conversations and headless runs
 
@@ -1132,6 +1140,51 @@ later runs through (*Automations*). A wait that ends without an answer
 is never worded as a person's no. A timed-out question refuses with
 `not approved: the question timed out`. A turn (or the agent) that ends first
 refuses with `not approved: ended before an answer`.
+
+## Agents cannot read your credentials — gh auth token, keychain, ~/.ssh keys, config.json, Blocked: this call reaches for a credential
+
+An agent cannot read your credentials, in any approval mode. This holds under allow,
+`--yolo`, a rule you wrote, a remembered answer and the guardian. It is a refusal and not a
+question, because a crew running on its own has nobody to ask. The agent reads back
+`Blocked: this call reaches for a credential (a login, key or token): <what>.`, is told not to try another
+route, and is told what to do instead.
+
+**Commands that are refused:** the read commands of `security`, `secret-tool`, `pass`,
+`keyctl`, `cmdkey` and `vaultcmd`; `gh auth token`; `gh auth status --show-token`;
+`git credential fill` and the credential helpers; `gcloud auth print-access-token`,
+`aws configure export-credentials`, `az account get-access-token` and
+`kubectl config view --raw`; and printing a secret from the environment, such as
+`echo $GH_TOKEN`. Putting one inside `sh -c`, `python -c`, `eval`, a pipe into a shell or
+base64 is read the same way.
+
+**Files that are refused, by every tool:** private keys in `~/.ssh`; `~/.aws/credentials`;
+`~/.config/gh/hosts.yml`; `.netrc`; your home `~/.npmrc` and `~/.pypirc`; Docker, kube, gcloud
+and Azure logins; browser password stores; `/proc/<pid>/environ`; and codeaf's own
+`config.json`, `credentials.json`, `identity.json`, `device.json` and vault files in your
+profile, with their backups. A search of a folder that holds them leaves those files out and
+says so; `grep -r`, `tar` and `cp -r` on such a folder are refused.
+
+**What still works.** `git push` and `git fetch`, over HTTPS or SSH. `gh pr list` and every other
+ordinary `gh` command, which sign themselves in. `ssh -i ~/.ssh/key`, because ssh uses a key
+without showing it. `~/.ssh/config`, `known_hosts` and `*.pub`. Listing a folder. A project's
+own `.codeaf/config.json`, `.npmrc` and `.env`. codeaf's own GitHub calls, pushes and publishing.
+
+**Your own `!` commands are not refused.** `! gh auth token` is you, not the agent, and it is
+the way to use one credential on purpose. Tokens it prints are still masked before the model
+reads the result.
+
+**Agent shells do not inherit credentials.** Anything named like one, such as `GH_TOKEN`,
+`AWS_SECRET_ACCESS_KEY` or `NPM_TOKEN`, is removed from the environment of the commands an agent
+runs, along with provider keys. A key in your vault for this project is still given to them. If
+`GH_TOKEN` is your only GitHub login, `gh` and HTTPS `git` in an agent's shell, and in your own
+`!` commands, say you are not signed in: run `gh auth login`, or set
+`CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL=1` for that launch. A key from your vault is visible to a
+plain `env`, which is not refused.
+
+**This is not a sandbox.** It reads a command before the shell runs it. A compiled program, a
+script reached through a Makefile, or a path built at run time can still reach what your user
+account can reach. Treat it as stopping an agent from taking the obvious routes, and do not
+run an agent you do not trust on a machine holding credentials you care about.
 
 ## What a refused call looks like to the model
 

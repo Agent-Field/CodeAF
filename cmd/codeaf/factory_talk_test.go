@@ -242,7 +242,7 @@ func TestFactoryTalkMarker(t *testing.T) {
 	if got := talkMarker(factory.Item{ID: 1}); got != "[factory item #1]" {
 		t.Errorf("a floor-numbered item = %q", got)
 	}
-	if got := talkMarker(factory.Item{ID: 7, Num: 1540}); got != "[factory item #1540 · 7]" {
+	if got := talkMarker(factory.Item{Tier: factory.TierOwner, ID: 7, Num: 1540}); got != "[factory item #1540 · 7]" {
 		t.Errorf("a forge-numbered item = %q", got)
 	}
 	brief := talkBrief(factory.Item{ID: 3, Repo: "web", Title: "t", Notes: []string{"the fixture is flaky"}}, factory.DefaultRecipe())

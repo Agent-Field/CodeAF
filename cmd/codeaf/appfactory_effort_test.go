@@ -13,7 +13,7 @@ func TestFactoryChatEffortIsDurableAndRepeatedReadsDoNotMoveJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	it, err := st.Create(factory.Item{Kind: factory.KindIssue, Num: 12, Repo: "acme/api"})
+	it, err := st.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindIssue, Num: 12, Repo: "acme/api"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,7 +24,7 @@ func TestViewingAJobsPageLeavesItsClosedChatsClosed(t *testing.T) {
 	latest, latestID := jobConversation(t)
 	t0 := time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 11, Title: "Close the page", Kind: factory.KindIssue, State: factory.StateNeedsYou, Effort: "high",
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 11, Title: "Close the page", Kind: factory.KindIssue, State: factory.StateNeedsYou, Effort: "high",
 		Stream: &factory.Stream{Phases: []factory.Phase{
 			{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 2, Chat: latest, Started: t0.Add(5 * time.Minute), At: t0.Add(8 * time.Minute),
 				Rounds: []factory.RoundLine{
@@ -111,7 +111,7 @@ func TestAJobsClosedChatTakesTheJobsEffortWhenItIsOpenedAgain(t *testing.T) {
 	}
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 12, Title: "Effort on reopen", Kind: factory.KindIssue, State: factory.StateNeedsYou, Effort: "medium"})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 12, Title: "Effort on reopen", Kind: factory.KindIssue, State: factory.StateNeedsYou, Effort: "medium"})
 	if err != nil {
 		t.Fatal(err)
 	}

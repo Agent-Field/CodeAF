@@ -15,7 +15,7 @@ func TestReviewForeignManagerDoesNotSpendLocalBudgetAfterWorkerLeaves(t *testing
 	for _, mode := range []string{"issue", "created", "legacy"} {
 		t.Run(mode, func(t *testing.T) {
 			st, web, profile := talkLab(t)
-			local, err := st.Create(factory.Item{Repo: "web", Num: 7, Title: "local", Cap: 10})
+			local, err := st.Create(factory.Item{Tier: factory.TierOwner, Repo: "web", Num: 7, Title: "local", Cap: 10})
 			if err != nil {
 				t.Fatal(err)
 			}

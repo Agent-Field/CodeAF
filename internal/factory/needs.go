@@ -161,7 +161,7 @@ func JobBudgetSteps() []float64 {
 // NextJobCap chooses the smallest standard budget above recorded spending,
 // then doubles the current cap until it covers that spending.
 func NextJobCap(it Item) float64 {
-	spent := JobSpent(it)
+	spent := JobLifetimeSpent(it)
 	steps := JobBudgetSteps()
 	for _, budget := range steps {
 		if budget > spent {
@@ -182,7 +182,7 @@ func NextJobCap(it Item) float64 {
 // reached it. It assigns the next ceiling, so a second caller that already
 // sees the raised cap leaves it alone.
 func ContinueJob(it *Item) bool {
-	if it == nil || it.Cap <= 0 || it.Stream == nil || it.Stream.Spent < it.Cap {
+	if it == nil || it.Cap <= 0 || JobLifetimeSpent(*it) < it.Cap {
 		return false
 	}
 	it.Cap = NextJobCap(*it)

@@ -53,14 +53,14 @@ func TestReviewStopAllowsImmediateRunAgain(t *testing.T) {
 	}
 	before, _ := f.store.Get(it.ID)
 	report := factory.RunReport{PR: &factory.PullRequest{Number: 7, URL: "https://github.com/acme/api/pull/7", State: factory.PROpen}, Publishing: &factory.Publishing{State: "opened", Attempt: 1}}
-	if err := f.desk.Apply(held.ID, held.Worker, false, func(it *factory.Item) error { return run.ApplyReport(it, report, f.now) }); err != nil {
+	if err := f.desk.Apply(held.ID, held.Worker, false, false, func(it *factory.Item) error { return run.ApplyReport(it, report, f.now) }); err != nil {
 		t.Fatalf("late PR receipt lost: %v", err)
 	}
 	saved, _ := f.store.Get(it.ID)
 	if saved.PullRequest == nil || saved.State != before.State || saved.Publishing != before.Publishing {
 		t.Fatalf("late PR took over new run: before=%s after=%+v", before.State, saved)
 	}
-	if err := f.desk.Apply(held.ID, held.Worker, true, func(it *factory.Item) error { it.State = factory.StateShipped; return nil }); err != nil {
+	if err := f.desk.Apply(held.ID, held.Worker, true, false, func(it *factory.Item) error { it.State = factory.StateShipped; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	saved, _ = f.store.Get(it.ID)

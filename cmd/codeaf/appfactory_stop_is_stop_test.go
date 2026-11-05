@@ -39,7 +39,7 @@ func TestFactoryStopIsStopQueuedManagerQuestion(t *testing.T) {
 			if err := floor.SetCheckout("acme/api", workspace); err != nil {
 				t.Fatal(err)
 			}
-			item, err := floor.Create(factory.Item{
+			item, err := floor.Create(factory.Item{Tier: factory.TierOwner,
 				Repo: "acme/api", Num: 128, Title: "Stop stays stopped", Kind: factory.KindIssue,
 				State: factory.StateNeedsYou, Starter: "owner", Autonomy: factory.AutonomyAuto, Cap: 10,
 				Question: "Which test command should I run?", QKind: "step",

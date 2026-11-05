@@ -169,16 +169,19 @@ func begun(s *factory.Stream) bool {
 // with once the job's budget is spent: the figure, the budget and the door,
 // in the shape of the conversation limit's own line. The manual quotes it
 // (internal/manual/chat/factory-stage-conversations.md).
-const ChatBudgetReached = "job budget reached · %s spent of %s · raise the job's budget to go on"
+const ChatBudgetReached = "job budget reached · job total %s of %s · raise the job's budget to go on"
 
 // ChatRefusal is why the job's own conversation may not start another turn,
 // "" while it may. A budget question does not exempt owned calls from this
 // limit; raising the cap through the job controls permits work again.
 func ChatRefusal(it factory.Item) string {
+	if it.RefusesWrite() {
+		return (WriteAccessRefusal{Step: "chat"}).Error()
+	}
 	if it.DoneHow == "closed_locally" {
 		return "job closed locally; Reopen to continue with its work and spending kept"
 	}
-	spent := factory.JobSpent(it)
+	spent := factory.JobLifetimeSpent(it)
 	if it.Cap <= 0 || spent < it.Cap {
 		return ""
 	}
@@ -188,13 +191,13 @@ func ChatRefusal(it factory.Item) string {
 // CapReached is whether the item has spent what its cap allows. No cap (0) is
 // never reached.
 func (m *Money) CapReached(it factory.Item) bool {
-	return it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
+	return it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap
 }
 
 // CapQuestion is the sentence the item waits on, and its QKind.
 func (m *Money) CapQuestion(it factory.Item) (q string, kind string) {
-	spent := factory.JobSpent(it)
-	q = "budget of " + dollars(it.Cap) + " reached · " + dollars(spent) + " spent · "
+	spent := factory.JobLifetimeSpent(it)
+	q = "budget of " + dollars(it.Cap) + " reached · job total " + dollars(spent) + " · "
 	return q + "raise it to " + dollars(factory.NextJobCap(it)) + ", or stop?", "cap"
 }
 

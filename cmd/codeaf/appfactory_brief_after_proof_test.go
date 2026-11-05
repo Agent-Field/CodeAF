@@ -361,7 +361,7 @@ func briefAfterProofSetup(t *testing.T, state factory.State) (*localSetup, *brie
 	st := s.start()
 	s.backend.briefs.stop()
 	s.backend.briefs = newBriefDebounce(5*time.Millisecond, s.backend.writeBriefLater)
-	it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: state, Autonomy: factory.AutonomyManual,
+	it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: state, Autonomy: factory.AutonomyManual,
 		Stages: []factory.Stage{{Name: "review", Kind: factory.StageChat, On: true}, {Name: "proof", Kind: factory.StageChat, Until: factory.UntilProven, On: true}},
 		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "proof", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true}}}},
 	})

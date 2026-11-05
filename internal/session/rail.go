@@ -119,7 +119,7 @@ func (a *Agent) railBlockLocked() error {
 		// on a guess.
 		daily, err := a.dailyCeiling()
 		if err != nil {
-			return spendUnverified{said: "daily limit could not be read · /budget day sets it"}
+			return spendUnverified{said: fmt.Sprintf("daily limit could not be read: %v · /budget day sets it", err)}
 		}
 		if daily > 0 {
 			spentToday, err := spentTodayOnLedgerChecked()

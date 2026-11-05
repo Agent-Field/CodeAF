@@ -24,14 +24,14 @@ func TestIssueOnlyUpgradeErasesStandalonePRJobsAndKeepsLinkedPRs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	issue, err := floor.Create(factory.Item{Kind: factory.KindIssue, Repo: "acme/api", Num: 59, Title: "keep issue", State: factory.StateShipped, Publish: "pr", PullRequest: &factory.PullRequest{Number: 65, State: factory.PROpen, URL: "https://github.com/acme/api/pull/65"}, FollowUp: &factory.PRFollowUp{Kind: "ci", State: "watching", Limit: 2}})
+	issue, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindIssue, Repo: "acme/api", Num: 59, Title: "keep issue", State: factory.StateShipped, Publish: "pr", PullRequest: &factory.PullRequest{Number: 65, State: factory.PROpen, URL: "https://github.com/acme/api/pull/65"}, FollowUp: &factory.PRFollowUp{Kind: "ci", State: "watching", Limit: 2}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := floor.ForgetPRJob(issue.ID); err == nil {
 		t.Fatal("cleanup accepted an issue job")
 	}
-	pr, err := floor.Create(factory.Item{Kind: factory.KindPR, Repo: "acme/api", Num: 65, Title: "erase PR job", State: factory.StateQueued, Assignee: "owner"})
+	pr, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 65, Title: "erase PR job", State: factory.StateQueued, Assignee: "owner"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestIssueOnlyUpgradeRemovesWorkForOrphanWorkerPRSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr, err := mirror.Create(factory.Item{Kind: factory.KindPR, Repo: "acme/api", Num: 81, Title: "old remote PR"})
+	pr, err := mirror.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 81, Title: "old remote PR"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,11 +178,11 @@ func TestAPRJobThatCannotBeForgottenIsKeptWholeAndTheRestGo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	held, err := floor.Create(factory.Item{Kind: factory.KindPR, Repo: "acme/api", Num: 70, Title: "held PR job"})
+	held, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 70, Title: "held PR job"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	free, err := floor.Create(factory.Item{Kind: factory.KindPR, Repo: "acme/api", Num: 71, Title: "free PR job"})
+	free, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 71, Title: "free PR job"})
 	if err != nil {
 		t.Fatal(err)
 	}

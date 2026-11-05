@@ -64,7 +64,7 @@ func TestRepoSetAgainstTheRealFactoryAsksBeforeStoppingWork(t *testing.T) {
 	if err := f.st.SetRepos([]string{"octo/hello"}); err != nil {
 		t.Fatal(err)
 	}
-	job, err := f.st.Create(factory.Item{Repo: "octo/hello", Num: 12, Title: "work", State: factory.StateRunning,
+	job, err := f.st.Create(factory.Item{Tier: factory.TierOwner, Repo: "octo/hello", Num: 12, Title: "work", State: factory.StateRunning,
 		Stream: &factory.Stream{Cur: 0, Phases: []factory.Phase{{Name: "write", State: factory.PhaseRunning}}}})
 	if err != nil {
 		t.Fatal(err)

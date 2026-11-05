@@ -95,7 +95,7 @@ func TestAStartDecidesTheJobsPipelineFileOnce(t *testing.T) {
 func TestBringBackForgetsTheDecidedPipelineFile(t *testing.T) {
 	f := newDecidedFactory(t)
 	saved := f.kept.Clone()
-	it := f.create(t, factory.Item{Num: 61, Origin: factory.OriginForge, State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam",
+	it := f.create(t, factory.Item{Tier: factory.TierOwner, Num: 61, Origin: factory.OriginForge, State: factory.StateDismissed, DoneHow: "dropped", DoneAt: now, Assignee: "sam",
 		PipelineCopy: saved, PipelineDecided: true})
 	f.stopCopy()
 	f.post(t, it, "restore", "", 200)

@@ -55,7 +55,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 	if rerun && s.Phases[index].State == factory.PhasePending && !failedClaim {
 		return StepControlRefusal("step has not run yet")
 	}
-	if rerun && it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
+	if rerun && it.Cap > 0 && factory.JobLifetimeSpent(*it) >= it.Cap {
 		return StepControlRefusal("job budget reached; raise Budget before trying again")
 	}
 	if rerun {
