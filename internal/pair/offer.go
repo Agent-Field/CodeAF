@@ -92,8 +92,10 @@ func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI, burn
 	// The relay's own reckoning of the lifetime, and not this device's clock.
 	ctx, stop := context.WithTimeout(ctx, made.ExpiresIn)
 	defer stop()
-	link := &boxLink{ctx: ctx, box: route.Box, plate: made.Nameplate, mine: pairbox.SideA, theirs: pairbox.SideB,
-		key: key, gone: map[stage]error{awaitStart: ErrDidNotFinish, awaitOffer: ErrDidNotFinish}, sendGone: ErrDidNotFinish}
+	// A mailbox that vanishes after the answer went out is not a pairing that
+	// finished: the joining device never said it kept the answer.
+	link := &boxLink{ctx: ctx, box: route.Box, plate: made.Nameplate, mine: pairbox.SideA, theirs: pairbox.SideB, key: key,
+		gone: map[stage]error{awaitStart: ErrDidNotFinish, awaitOffer: ErrDidNotFinish, awaitAck: ErrNotConfirmed}, sendGone: ErrDidNotFinish}
 	joiner, err := answer(link, chatScheme(made.Nameplate), code.secret())
 	if err != nil {
 		return "", made.Nameplate, phraseBox(err, route.URL)
@@ -121,6 +123,11 @@ func createApart(ctx context.Context, box pairbox.Box, key pairbox.Key, burned s
 
 // conclude puts the joining device to a person and sends the answer: the grant
 // for a yes, a refusal for a no or for silence.
+//
+// A YES FINISHES ONLY WHEN THE JOINING DEVICE SAYS IT KEPT THE GRANT. It says
+// so once it has decided to, so a device that refuses what it was sent (chats
+// of its own, say) leaves this one saying it was not confirmed, and naming the
+// device where a person can read why, instead of saying they are paired.
 func conclude(ctx context.Context, joiner *offered, grant Grant, ui OfferUI) (string, error) {
 	label := joinerLabel(joiner.Offer)
 	asked, stop := context.WithTimeout(ctx, ConfirmWithin)
@@ -134,6 +141,9 @@ func conclude(ctx context.Context, joiner *offered, grant Grant, ui OfferUI) (st
 		return "", err
 	}
 	if err := joiner.reply(reply); err != nil {
+		if errors.Is(err, ErrNotConfirmed) {
+			return "", NotConfirmedBy(label)
+		}
 		return "", phraseBox(err, "")
 	}
 	return label, nil

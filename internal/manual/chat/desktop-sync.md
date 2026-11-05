@@ -95,9 +95,14 @@ Cancel takes back the waiting code or ends the request. A wrong code shows the
 engine's sentence and does not add a computer.
 
 A computer with submitted chats and its own pairing keys refuses ordinary
-pairing and explains replacement. Confirm `--replace` to join the other set:
-local chats stay here but stop syncing, shared memories and settings clear,
-and local provider keys stay here. Use Continue here to move a shared chat (or, when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — a shared chat no computer holds advertises `can_open` and opens directly through `agents.open` with no Continue-here step; use **Move here** or **Continue here** when another computer still holds it). A failed
+pairing, in the app's words: `This computer has 3 chats of its own, so it can't
+join another computer's chats. Nothing was changed.` One already paired with
+other computers is refused before the other computer is asked: `This computer
+is already paired with <name>.` The computer that showed the code never says
+they are paired: it says `Pairing was not confirmed by <name>. Check that
+computer to see whether it joined.` In a terminal, `codeaf pair <code> --replace`
+joins the other set instead: local chats stay here but stop syncing, shared
+memories and settings clear, and local provider keys stay here. Use Continue here to move a shared chat (or, when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — a shared chat no computer holds advertises `can_open` and opens directly through `agents.open` with no Continue-here step; use **Move here** or **Continue here** when another computer still holds it). A failed
 upload stays saved locally and is retried while codeaf is open or on the next
 start. Sync status says `Sharing this computer's chats.` during the pass and
 `Some chats could not be shared yet. They are still saved here; codeaf will try

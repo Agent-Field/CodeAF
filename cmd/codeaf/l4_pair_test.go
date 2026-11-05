@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 )
@@ -38,6 +39,21 @@ func TestL4AlreadyPairedNamesDevices(t *testing.T) {
 		if err == nil || err.Error() != "this computer is already paired with box-c and laptop-a — codeaf devices lists them" {
 			t.Fatalf("%v", err)
 		}
+	}
+
+	// Once the identity was replaced by a rotation, the same computer may be
+	// following it to the new one, so it is not refused before the code. Its own
+	// chats are still refused by the join, unless the grant names this identity.
+	client, _, err := homeDirectory(r.homeA, pair.Mailbox{URL: r.url})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Rotate(context.Background(), directory.RotationReq{Op: directory.OpFreeze}); err != nil {
+		t.Fatal(err)
+	}
+	standing, err := joinStanding(context.Background(), r.homeA, pair.Mailbox{URL: r.url})
+	if err != nil || standing.refusal() != nil || standing.alone() {
+		t.Fatalf("a rotated identity's computer reads as %+v, %v", standing, err)
 	}
 }
 

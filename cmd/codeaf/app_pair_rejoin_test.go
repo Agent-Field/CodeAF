@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -18,7 +19,8 @@ import (
 
 // B1: a computer removed from your devices pairs back from the app, by code and
 // by link, with no --replace to know about. It keeps the identity and gets a new
-// device key; one that was never removed is told nothing changed, not "Paired".
+// device key; one that was never removed is told it is already paired before
+// the other computer is asked, and nothing changes.
 func TestB1AppRePairsARemovedComputer(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -36,6 +38,13 @@ func TestB1AppRePairsARemovedComputer(t *testing.T) {
 			}
 			if _, err := identity.Adopt(dirB, id, false); err != nil {
 				t.Fatal(err)
+			}
+			// The names are kept on disk too, so a running engine republishes
+			// them and not the host's name.
+			for dir, side := range map[string]string{dirA: "A", dirB: "B"} {
+				if _, err := devname.Set(dir, side); err != nil {
+					t.Fatal(err)
+				}
 			}
 			a, old := appDeviceSync(t, dirA), appDeviceSync(t, dirB)
 			for side, s := range map[string]*syncsetup.Sync{"A": a, "B": old} {
@@ -74,6 +83,23 @@ func TestB1AppRePairsARemovedComputer(t *testing.T) {
 				offer := machineCall[appwire.PairResult](t, wa, "pair.start", appwire.PairStartParams{Mode: "offer_code", Name: "A"}).Pairing
 				waiting := e2PairWait(t, wa, offer.ID, "waiting")
 				joinID = machineCall[appwire.PairResult](t, wb, "pair.start", appwire.PairStartParams{Mode: "use_code", Code: waiting.Code, Name: "B"}).Pairing.ID
+				if !tc.removed {
+					failed := e2PairWait(t, wb, joinID, "failed")
+					if failed.Error == nil || failed.Error.Code != appwire.CodeCannotJoin || failed.Error.Message != "This computer is already paired with A." || failed.Restart {
+						t.Fatalf("an unremoved computer must be told it is already paired: %+v %+v", failed, failed.Error)
+					}
+					if p := machineCall[appwire.PairGetResult](t, wa, "pair.get", appwire.PairGetParams{ID: offer.ID}).Pairing; p == nil || p.State != "waiting" {
+						t.Fatalf("A must not be asked about a computer already in its set: %+v", p)
+					}
+					machineCall[appwire.PairResult](t, wa, "pair.cancel", appwire.IDParams{ID: offer.ID})
+					if raw, err := os.ReadFile(kept); err != nil || !strings.Contains(string(raw), "keep me") {
+						t.Fatalf("a refused pairing lost a local chat: %s %v", raw, err)
+					}
+					if fresh := appDeviceSync(t, dirB); fresh.Identity.ID() != id.ID() || fresh.Device.ID() != old.Device.ID() {
+						t.Fatal("a refused pairing changed this computer's identity or device")
+					}
+					return
+				}
 				q := e2PairWait(t, wa, offer.ID, "question")
 				machineCall[appwire.PairResult](t, wa, "pair.answer", appwire.PairAnswerParams{ID: offer.ID, Question: q.Question.ID, Option: "y"})
 				e2PairWait(t, wa, offer.ID, "done")
@@ -87,12 +113,6 @@ func TestB1AppRePairsARemovedComputer(t *testing.T) {
 				t.Fatalf("re-pairing changed the identity: %s, want %s", fresh.Identity.ID(), id.ID())
 			}
 
-			if !tc.removed {
-				if fresh.Device.ID() != old.Device.ID() || done.Restart || !slices.Contains(done.Lines, appPairAlready) {
-					t.Fatalf("an unremoved computer must be told nothing changed: %+v", done)
-				}
-				return
-			}
 			if fresh.Device.ID() == old.Device.ID() {
 				t.Fatal("the removed computer kept its refused device key")
 			}

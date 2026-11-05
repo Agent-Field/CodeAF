@@ -265,6 +265,10 @@ func TestM1M4M8M9M10AppPair(t *testing.T) {
 	}
 }
 
+// bannedAppPairWords are terminal commands and engine words that app pairing
+// copy never uses. They are matched as whole words, so "Cancelled" is no cell.
+var bannedAppPairWords = regexp.MustCompile(`--replace|\b(codeaf pair|run codeaf|devices?|identity|cells?|lease|fence|ledger|vault)\b`)
+
 func TestAppPairCopyRetainedWordsM9(t *testing.T) {
 	for _, words := range []string{"shale ledger reef", "shale cello reef"} {
 		t.Run(words, func(t *testing.T) {
@@ -289,7 +293,7 @@ func TestAppPairCopyRetainedWordsM9(t *testing.T) {
 func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 	t.Helper()
 	inlineWords := regexp.MustCompile(`^(?:Waiting for approval on your other computer\. It should show|Pair only if your other computer shows the same (?:three words|check number)): (.+)\.$`)
-	allowed := regexp.MustCompile(`^(Paired with your other device\. Run codeaf to open your chats\.|Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
+	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.|This computer is already paired with .+\.|This computer has (local work|1 chat|[0-9]+ chats) of its own, so it can't join another computer's chats\. Nothing was changed\.|Pairing was not confirmed by .+\. Check that computer to see whether it joined\.)$`)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	for i, name := range rec.events {
@@ -301,6 +305,10 @@ func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 			t.Error("M8 app asked to replace chats")
 		}
 		visible := slices.Clone(p.Lines)
+		// A failure's sentence is app copy too: the app shows it as it is.
+		if p.Error != nil {
+			visible = append(visible, p.Error.Message)
+		}
 		if q := p.Question; q != nil {
 			visible = append(visible, q.Title, q.Detail)
 			for _, option := range q.Options {
@@ -318,15 +326,12 @@ func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 			// The three check words are drawn at random from a word list that holds
 			// "ledger" and "cello", so only the copy around them is held to this list.
 			// Finished events clear Words but retain the earlier lines.
-			copyOnly := strings.ReplaceAll(line, "Paired with your other device. Run codeaf to open your chats.", "")
+			copyOnly := line
 			if match := inlineWords.FindStringSubmatch(copyOnly); match != nil {
 				copyOnly = strings.Replace(copyOnly, match[1], "", 1)
 			}
-			copyOnly = strings.ToLower(copyOnly)
-			for _, banned := range []string{"codeaf pair", "--replace", "device", "identity", "cell", "lease", "fence", "ledger", "vault"} {
-				if strings.Contains(copyOnly, banned) {
-					t.Errorf("L3 terminal copy: %q", line)
-				}
+			if bannedAppPairWords.MatchString(strings.ToLower(copyOnly)) {
+				t.Errorf("L3 terminal copy: %q", line)
 			}
 		}
 	}
