@@ -24,6 +24,10 @@ type NewJob struct {
 	Pipeline  string             `json:"pipeline,omitempty"`
 	Issue     bool               `json:"issue,omitempty"`
 	Autostart bool               `json:"autostart,omitempty"`
+
+	Group     string   `json:"group,omitempty"`
+	Milestone string   `json:"milestone,omitempty"`
+	Budget    *float64 `json:"budget,omitempty"`
 }
 
 // JobAction carries the read a person acted on so mutations can reject stale pages.

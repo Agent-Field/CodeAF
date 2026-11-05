@@ -137,7 +137,7 @@ func outcomeTime(at, fallback time.Time) time.Time {
 }
 
 func newOutcome(it factory.Item, out Outcome) Event {
-	out.Job, out.Title = it.ID, it.Title
+	out.Job, out.Title, out.Group = it.ID, it.Title, it.Group
 	if len(out.Title) > 200 {
 		end := 200
 		for !utf8.RuneStart(out.Title[end]) {

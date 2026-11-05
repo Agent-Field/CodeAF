@@ -398,6 +398,11 @@ type Job struct {
 	WaitingOn []int     `json:"waiting_on,omitempty"`
 	Blocked   *JobBlock `json:"blocked,omitempty"`
 
+	// Group and Milestone are opaque labels supplied at creation.
+	Group     string `json:"group,omitempty"`
+	Milestone string `json:"milestone,omitempty"`
+	// Context lists attachment metadata; only worker admission includes its text.
+	Context []JobContext `json:"context,omitempty"`
 	// RoundCostTables advertises table support only on worker admission.
 	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
 	FromJob         int    `json:"from_job,omitempty"`
