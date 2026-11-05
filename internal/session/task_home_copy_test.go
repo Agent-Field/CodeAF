@@ -319,3 +319,23 @@ func TestStandingCopyOfHomeIsNotRefused(t *testing.T) {
 		t.Fatalf("a standing copy must not be refused here: %v", err)
 	}
 }
+
+// A place the person saved as in place is their own word, and a model naming it
+// does not turn it into a reference.
+func TestASavedInPlaceHomeStaysInPlaceWhenAModelNamesIt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	project := filepath.Join(home, "project")
+	writeFile(t, filepath.Join(project, "readme.txt"), "readme")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = project
+		config.Place = Place{Dir: t.TempDir(), Workspace: project}
+	})
+	agent.mu.Lock()
+	agent.places = []PlaceRef{{Path: canonicalPath(home), Mode: string(TaskModeInPlace), Arrival: PlaceSaid}}
+	agent.mu.Unlock()
+	stand := agent.resolveTaskGround(taskSpec{where: home, deliverable: "count.txt", acceptance: "count.txt holds the count"})
+	if stand.mode != TaskModeInPlace {
+		t.Fatalf("mode = %s, want the saved in place", stand.mode)
+	}
+}
