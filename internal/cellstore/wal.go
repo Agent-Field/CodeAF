@@ -20,7 +20,9 @@ import (
 // Intent is a call's promise to run (SCHEMAS.md 6): written before the call,
 // so process death leaves it behind. C28 groups power-loss durability separately.
 type Intent struct {
-	V          uint16 `json:"V"`
+	V uint16 `json:"V"`
+	// ID distinguishes identical calls started in the same millisecond; absent on older records.
+	ID         string `json:"id,omitempty"`
 	Tool       string `json:"tool"`
 	ArgsHash   string `json:"args_hash"`
 	Started    int64  `json:"started"`
@@ -34,7 +36,14 @@ type Intent struct {
 }
 
 // key is the join between an intent, its completion and its receipt row.
-func (i Intent) key() string { return joinKey(i.ArgsHash, i.Started) }
+func (i Intent) key() string { return callKey(i.ID, i.ArgsHash, i.Started) }
+
+func callKey(id, argsHash string, started int64) string {
+	if id != "" {
+		return "id:" + id
+	}
+	return joinKey(argsHash, started)
+}
 
 func joinKey(argsHash string, started int64) string {
 	return argsHash + "@" + strconv.FormatInt(started, 10)
@@ -121,7 +130,7 @@ func (w *WAL) Sealed(calls []Executed) error {
 	}
 	gone := map[string]bool{}
 	for _, e := range calls {
-		gone[joinKey(e.Call.ArgsHash, e.Call.Started)] = true
+		gone[callKey(e.Call.ID, e.Call.ArgsHash, e.Call.Started)] = true
 	}
 	var keep []record
 	for _, r := range recs {
