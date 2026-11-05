@@ -63,7 +63,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -680,7 +679,7 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	// from a pipe a grandchild may still hold open after its parent died.
 	var captured bytes.Buffer
 	res, err := r.runner(r.workspace).Exec(tickCtx, procexec.ExecRequest{
-		Argv: append([]string{shell}, shellArgs...), Env: os.Environ(),
+		Argv: append([]string{shell}, shellArgs...), Env: bare.StreamingEnv(),
 		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
 		Combined: true, Stream: true,
 	}, func(c procexec.Chunk) { captured.Write(c.Data) })
