@@ -64,7 +64,7 @@ func TestWaitsReadPersistedFields(t *testing.T) {
 	if !reflect.DeepEqual(it.WaitsOn, []int{3, 2, 1}) || !reflect.DeepEqual(it.WaitingOn, []int{2, 1}) {
 		t.Fatal("read changed the item's waits")
 	}
-	q := FromSnapshot(factory.Snapshot{Items: []factory.Item{it}})
+	q := FromSnapshot(factory.Snapshot{Items: []factory.Item{it}}, "")
 	if len(q.Jobs) != 1 || !reflect.DeepEqual(q.Jobs[0].WaitingOn, it.WaitingOn) {
 		t.Fatalf("snapshot = %+v", q.Jobs)
 	}

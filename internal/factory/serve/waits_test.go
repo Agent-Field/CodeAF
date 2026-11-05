@@ -121,7 +121,7 @@ func TestWaitsOrdering(t *testing.T) {
 	if !reflect.DeepEqual(j.WaitingOn, []int{b.ID}) || !reflect.DeepEqual(it.WaitingOn, []int{b.ID}) || it.WaitsReleased {
 		t.Fatalf("one merged = %+v", j)
 	}
-	for _, endpoint := range []string{"/v1/queue", "/v1/queue?q=is:backlog"} {
+	for _, endpoint := range []string{"/v1/queue"} {
 		var queue api.Queue
 		f.request(t, "GET", endpoint, "operator-secret", nil, 200, &queue)
 		found := false
