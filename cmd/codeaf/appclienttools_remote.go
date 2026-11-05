@@ -34,39 +34,18 @@ func (b *appBackend) clientToolRemoteAgent(a *appAgent) *remote.Agent {
 // The agent gate serializes snapshots with holds; the registry lock never spans a call.
 func (b *appBackend) setRemoteClientTools(a *appAgent, agent *remote.Agent, p appwire.ClientToolsSetParams) (appwire.ClientToolsSetResult, error) {
 	result := appwire.ClientToolsSetResult{Agent: p.Agent, Set: p.Set, Tools: []string{}}
-	held := b.clientToolBuiltinNames(a)
 	r := &b.clientTools
-	r.mu.Lock()
-	if r.closed {
-		r.mu.Unlock()
-		return result, appwire.Errorf(appwire.CodeClosed, "the app connection is closed")
-	}
-	state := r.agents[p.Agent]
-	for name := range state.builtins {
-		held[name] = true
-	}
-	if err := clientToolReplacementValid(p, state.sets, held); err != nil {
-		r.mu.Unlock()
+	state, err := r.prepareRemoteReplacement(p, b.clientToolBuiltinNames(a))
+	if err != nil {
 		return result, err
 	}
-	sets := make([]session.ClientToolSet, 0, len(state.sets)+1)
-	for _, set := range state.sets {
-		if set.ID != p.Set {
-			sets = append(sets, set)
-		}
+	defer r.finishPublication(p.Agent)
+	for _, tool := range p.Tools {
+		result.Tools = append(result.Tools, tool.Name)
 	}
-	if len(p.Tools) > 0 {
-		set := clientToolSnapshot(p)
-		sets = append(sets, set)
-		for _, tool := range set.Tools {
-			result.Tools = append(result.Tools, tool.Name)
-		}
-	}
-	sort.Slice(sets, func(i, j int) bool { return sets[i].ID < sets[j].ID })
-	r.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), clientToolRemoteWait)
 	defer cancel()
-	if _, err := agent.SetClientTools(ctx, sets); err != nil {
+	if _, err := agent.SetClientTools(ctx, state.sets); err != nil {
 		var refusal *remote.ClientToolsRefusal
 		if errors.As(err, &refusal) {
 			return result, appwire.Errorf(appwire.CodeBadParams, "%s", refusal.Reason)
@@ -76,16 +55,86 @@ func (b *appBackend) setRemoteClientTools(a *appAgent, agent *remote.Agent, p ap
 		}
 		return result, appwire.Errorf(appwire.CodeUnreachable, "%s", err)
 	}
+	return result, r.commitRemoteReplacement(p.Agent, state)
+}
+
+func (r *appClientTools) prepareRemoteReplacement(p appwire.ClientToolsSetParams, held map[string]bool) (clientToolAgentSets, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
-		return result, appwire.Errorf(appwire.CodeClosed, "the app connection is closed")
+		return clientToolAgentSets{}, appwire.Errorf(appwire.CodeClosed, "the app connection is closed")
+	}
+	state := r.agents[p.Agent]
+	for name := range state.builtins {
+		held[name] = true
+	}
+	if err := clientToolReplacementValid(p, state.sets, held); err != nil {
+		return clientToolAgentSets{}, err
+	}
+	sets := make([]session.ClientToolSet, 0, len(state.sets)+1)
+	for _, set := range state.sets {
+		if set.ID != p.Set {
+			sets = append(sets, set)
+		}
+	}
+	if len(p.Tools) > 0 {
+		sets = append(sets, clientToolSnapshot(p))
+	}
+	sort.Slice(sets, func(i, j int) bool { return sets[i].ID < sets[j].ID })
+	if r.publishing == nil {
+		r.publishing = make(map[string]chan struct{})
+	}
+	r.publishing[p.Agent] = make(chan struct{})
+	return clientToolAgentSets{version: state.version + 1, sets: sets}, nil
+}
+
+func (r *appClientTools) commitRemoteReplacement(agent string, state clientToolAgentSets) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return appwire.Errorf(appwire.CodeClosed, "the app connection is closed")
 	}
 	if r.agents == nil {
 		r.agents = make(map[string]clientToolAgentSets)
 	}
-	r.agents[p.Agent] = clientToolAgentSets{version: state.version + 1, sets: sets, builtins: r.agents[p.Agent].builtins}
-	return result, nil
+	state.builtins = r.agents[agent].builtins
+	r.agents[agent] = state
+	return nil
+}
+
+func (r *appClientTools) finishPublication(agent string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	close(r.publishing[agent])
+	delete(r.publishing, agent)
+}
+
+func (r *appClientTools) publication(agent string) <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.publishing[agent]
+}
+
+func (b *appBackend) callRemoteClientTool(ctx context.Context, door *appClientToolDoor, call session.ClientToolCall) (session.ClientToolAnswer, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(call.DeadlineMS)*time.Millisecond)
+	defer cancel()
+	// Acceptance can arrive before the setter commits the matching app registry.
+	// Waiting here must still end when the call loses its link or wait.
+	for {
+		published := b.clientTools.publication(door.agent)
+		if published == nil {
+			break
+		}
+		select {
+		case <-published:
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return clientToolTimeout(call), nil
+			}
+			return clientToolContextEnded(ctx, call.Name), nil
+		}
+	}
+	return door.CallClientTool(ctx, call)
 }
 
 func (b *appBackend) holdClientTools(a *appAgent, live *appLive) {
@@ -98,11 +147,7 @@ func (b *appBackend) holdClientTools(a *appAgent, live *appLive) {
 	}
 	door := &appClientToolDoor{backend: b, agent: a.view.ID}
 	agent.SetClientToolHandler(func(ctx context.Context, call session.ClientToolCall) (session.ClientToolAnswer, error) {
-		// A holder may call immediately after accepting a snapshot. Wait for
-		// that setter to publish the matching app registry before checking it.
-		a.gate.Lock()
-		a.gate.Unlock()
-		return door.CallClientTool(ctx, call)
+		return b.callRemoteClientTool(ctx, door, call)
 	})
 	release := live.conn.Release
 	live.conn.Release = func() {

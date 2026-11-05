@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"sync"
 	"time"
@@ -21,6 +20,8 @@ const (
 	MethodClientToolAnswer = "ClientTool.Answer"
 	clientToolCallKind     = "clientToolCall"
 	clientToolEndedKind    = "clientToolEnded"
+	clientToolOwnerMin     = 26
+	clientToolOwnerMax     = 256
 )
 
 // ErrClientToolsUnsupported means no forwarding capability was advertised.
@@ -50,6 +51,11 @@ type clientToolAnswerWire struct {
 	IsError bool   `json:"is_error"`
 }
 
+type clientToolSetsWire struct {
+	Owner string                  `json:"owner"`
+	Sets  []session.ClientToolSet `json:"sets"`
+}
+
 type clientToolEndedWire struct {
 	Call string `json:"call"`
 }
@@ -65,14 +71,21 @@ type clientToolWait struct {
 	answerBy time.Time
 	done     chan struct{}
 	answer   session.ClientToolAnswer
-	answered bool
+	sent     bool
+}
+
+type clientToolOwner struct {
+	token string
+	sets  []session.ClientToolSet
+	wake  chan struct{}
+	ended map[string]bool
 }
 
 // ClientToolHub owns one conversation's declarations and routes by connection.
 // Its zero value is ready to use; snapshots remain immutable after publication.
 type ClientToolHub struct {
 	mu       sync.Mutex
-	owners   map[*server][]session.ClientToolSet
+	owners   map[*server]*clientToolOwner
 	builtins map[string]bool
 	version  uint64
 	sets     []session.ClientToolSet
@@ -114,21 +127,27 @@ func cloneClientToolSets(sets []session.ClientToolSet) []session.ClientToolSet {
 	return copySets
 }
 
-func (h *ClientToolHub) replace(owner *server, sets []session.ClientToolSet) ([]string, error) {
+func (h *ClientToolHub) replace(owner *server, token string, sets []session.ClientToolSet) ([]string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if owner.clientToolsGone.Load() {
 		return nil, ErrClientToolDisconnected
 	}
+	if len(token) < clientToolOwnerMin || len(token) > clientToolOwnerMax {
+		return nil, fmt.Errorf("client tools need an owner token of %d–%d bytes", clientToolOwnerMin, clientToolOwnerMax)
+	}
+	if state := h.owners[owner]; state != nil && state.token != token {
+		return nil, errors.New("client tool owner token cannot change on a connection")
+	}
 	names := make(map[string]bool)
 	ids := make(map[string]bool)
 	setCount, toolCount := len(sets), 0
-	for other, attached := range h.owners {
-		if other == owner {
+	for other, state := range h.owners {
+		if other == owner || state.token == token {
 			continue
 		}
-		setCount += len(attached)
-		for _, set := range attached {
+		setCount += len(state.sets)
+		for _, set := range state.sets {
 			toolCount += len(set.Tools)
 			for _, tool := range set.Tools {
 				names[tool.Name] = true
@@ -160,21 +179,29 @@ func (h *ClientToolHub) replace(owner *server, sets []session.ClientToolSet) ([]
 		return nil, fmt.Errorf("an agent allows at most %d sets and %d client tools", session.ClientToolMaxSets, session.ClientToolMaxPerAgent)
 	}
 	if h.owners == nil {
-		h.owners = make(map[*server][]session.ClientToolSet)
+		h.owners = make(map[*server]*clientToolOwner)
 	}
-	if len(sets) == 0 {
-		delete(h.owners, owner)
-	} else {
-		h.owners[owner] = cloneClientToolSets(sets)
+	for other, state := range h.owners {
+		if other != owner && state.token == token {
+			other.clientToolsGone.Store(true)
+			h.dropLocked(other)
+		}
 	}
+	state := h.owners[owner]
+	if state == nil {
+		state = &clientToolOwner{token: token, wake: make(chan struct{}, 1), ended: make(map[string]bool)}
+		h.owners[owner] = state
+		guard.Go("remote/client-tools-sender", func() { h.sendCalls(owner, state) })
+	}
+	state.sets = cloneClientToolSets(sets)
 	h.snapshotLocked()
 	return attached, nil
 }
 
 func (h *ClientToolHub) snapshotLocked() {
 	var sets []session.ClientToolSet
-	for _, attached := range h.owners {
-		sets = append(sets, attached...)
+	for _, state := range h.owners {
+		sets = append(sets, state.sets...)
 	}
 	sort.Slice(sets, func(i, j int) bool {
 		if sets[i].ID != sets[j].ID {
@@ -209,7 +236,11 @@ func (h *ClientToolHub) settleLocked(id string, pending *clientToolWait, answer 
 		return false
 	}
 	delete(h.pending, id)
-	pending.answer, pending.answered = answer, answered
+	pending.answer = answer
+	if state := h.owners[pending.owner]; state != nil && pending.sent && !answered && !pending.owner.clientToolsGone.Load() {
+		state.ended[id] = true
+		h.wakeLocked(state)
+	}
 	close(pending.done)
 	return true
 }
@@ -217,8 +248,13 @@ func (h *ClientToolHub) settleLocked(id string, pending *clientToolWait, answer 
 func (h *ClientToolHub) drop(owner *server) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if _, ok := h.owners[owner]; ok {
+	h.dropLocked(owner)
+}
+
+func (h *ClientToolHub) dropLocked(owner *server) {
+	if state := h.owners[owner]; state != nil {
 		delete(h.owners, owner)
+		close(state.wake)
 		h.snapshotLocked()
 	}
 	for id, pending := range h.pending {
@@ -233,10 +269,29 @@ func (h *ClientToolHub) CallClientTool(ctx context.Context, call session.ClientT
 	if ctx.Err() != nil {
 		return clientToolWaitEnded(call, false), nil
 	}
+	id, pending := h.begin(ctx, call)
+	if pending == nil {
+		return session.ClientToolUnavailable(call.Name), nil
+	}
+	timer := time.NewTimer(time.Until(pending.answerBy))
+	defer timer.Stop()
+	timedOut := false
+	select {
+	case <-pending.done:
+		return pending.answer, nil
+	case <-timer.C:
+		timedOut = true
+	case <-ctx.Done():
+	}
+	return h.endWait(id, pending, timedOut), nil
+}
+
+func (h *ClientToolHub) begin(ctx context.Context, call session.ClientToolCall) (string, *clientToolWait) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	var owner *server
-	for candidate, sets := range h.owners {
-		for _, set := range sets {
+	for candidate, state := range h.owners {
+		for _, set := range state.sets {
 			if set.ID != call.Set {
 				continue
 			}
@@ -248,8 +303,7 @@ func (h *ClientToolHub) CallClientTool(ctx context.Context, call session.ClientT
 		}
 	}
 	if owner == nil || owner.clientToolsGone.Load() {
-		h.mu.Unlock()
-		return session.ClientToolUnavailable(call.Name), nil
+		return "", nil
 	}
 	h.sequence++
 	id := fmt.Sprintf("ct_remote_%x", h.sequence)
@@ -259,38 +313,77 @@ func (h *ClientToolHub) CallClientTool(ctx context.Context, call session.ClientT
 		h.pending = make(map[string]*clientToolWait)
 	}
 	h.pending[id] = pending
-	h.mu.Unlock()
-	guard.Go("remote/client-tool", func() {
-		select {
-		case <-pending.done:
-			return
-		default:
+	h.wakeLocked(h.owners[owner])
+	return id, pending
+}
+
+func (h *ClientToolHub) endWait(id string, pending *clientToolWait, timedOut bool) session.ClientToolAnswer {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.settleLocked(id, pending, clientToolWaitEnded(pending.call, timedOut), false)
+	return pending.answer
+}
+
+func (h *ClientToolHub) wakeLocked(state *clientToolOwner) {
+	select {
+	case state.wake <- struct{}{}:
+	default:
+	}
+}
+
+// Each connection has one sender. Calls waiting behind a blocked write live
+// only in pending, so their waits remove both their arguments and queued work.
+func (h *ClientToolHub) sendCalls(owner *server, state *clientToolOwner) {
+	for range state.wake {
+		for {
+			sent, err := h.sendNext(owner, state)
+			if err != nil {
+				owner.dropClientTools()
+				return
+			}
+			if !sent {
+				break
+			}
 		}
+	}
+}
+
+func (h *ClientToolHub) sendNext(owner *server, state *clientToolOwner) (bool, error) {
+	owner.write.Lock()
+	defer owner.write.Unlock()
+	// Check after taking the writer: another frame may have held it past the wait.
+	frame, ok := h.nextEmission(owner, state)
+	if !ok {
+		return false, nil
+	}
+	return true, owner.sendLocked(frame)
+}
+
+func (h *ClientToolHub) nextEmission(owner *server, state *clientToolOwner) (Frame, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.owners[owner] != state || owner.clientToolsGone.Load() {
+		return Frame{}, false
+	}
+	for id := range state.ended {
+		delete(state.ended, id)
+		return Frame{Kind: clientToolEndedKind, Payload: mustJSON(clientToolEndedWire{Call: id})}, true
+	}
+	for id, pending := range h.pending {
+		if pending.owner != owner || pending.sent {
+			continue
+		}
+		if pending.ctx.Err() != nil || !time.Now().Before(pending.answerBy) {
+			h.settleLocked(id, pending, clientToolWaitEnded(pending.call, pending.ctx.Err() == nil), false)
+			continue
+		}
+		pending.sent = true
+		call := pending.call
 		wire := clientToolCallWire{Call: id, Set: call.Set, Name: call.Name, TurnCall: call.TurnCall,
 			SourceMessage: call.SourceMessage, Args: call.Args, DeadlineMS: call.DeadlineMS}
-		if err := owner.send(Frame{Kind: clientToolCallKind, Payload: mustJSON(wire)}); err != nil {
-			owner.dropClientTools()
-			return
-		}
-		<-pending.done
-		if !pending.answered && !owner.clientToolsGone.Load() {
-			_ = owner.send(Frame{Kind: clientToolEndedKind, Payload: mustJSON(clientToolEndedWire{Call: id})})
-		}
-	})
-	timer := time.NewTimer(time.Until(pending.answerBy))
-	defer timer.Stop()
-	timedOut := false
-	select {
-	case <-pending.done:
-		return pending.answer, nil
-	case <-timer.C:
-		timedOut = true
-	case <-ctx.Done():
+		return Frame{Kind: clientToolCallKind, Payload: mustJSON(wire)}, true
 	}
-	h.mu.Lock()
-	h.settleLocked(id, pending, clientToolWaitEnded(call, timedOut), false)
-	h.mu.Unlock()
-	return pending.answer, nil
+	return Frame{}, false
 }
 
 func (h *ClientToolHub) answer(owner *server, wire clientToolAnswerWire) bool {
@@ -330,11 +423,11 @@ func (s *server) invokeClientTools(call Frame) (json.RawMessage, error) {
 	}
 	switch call.Method {
 	case MethodClientToolsSet:
-		sets, err := arg[[]session.ClientToolSet](call)
+		snapshot, err := arg[clientToolSetsWire](call)
 		if err != nil {
 			return nil, err
 		}
-		names, err := hub.replace(s, sets)
+		names, err := hub.replace(s, snapshot.Owner, snapshot.Sets)
 		return mustJSON(names), err
 	case MethodClientToolAnswer:
 		answer, err := arg[clientToolAnswerWire](call)
@@ -352,8 +445,11 @@ type clientToolIncoming struct {
 
 type clientToolLink struct {
 	setMu    sync.Mutex
+	owner    string
 	sets     []session.ClientToolSet
 	attached bool
+	welcome  Welcome
+
 	handler  func(context.Context, session.ClientToolCall) (session.ClientToolAnswer, error)
 	incoming map[string]*clientToolIncoming
 }
@@ -363,9 +459,7 @@ func (a *Agent) SupportsClientTools() bool {
 	if a == nil || a.c == nil {
 		return false
 	}
-	a.c.mu.Lock()
-	defer a.c.mu.Unlock()
-	return a.c.welcome.ClientTools
+	return a.c.Welcome().ClientTools
 }
 
 // SetClientTools atomically replaces this connection's entire snapshot.
@@ -377,9 +471,11 @@ func (a *Agent) SetClientTools(ctx context.Context, sets []session.ClientToolSet
 	c.clientTools.setMu.Lock()
 	defer c.clientTools.setMu.Unlock()
 	sets = cloneClientToolSets(sets)
-	payload, answered, err := c.clientToolRequest(ctx, MethodClientToolsSet, sets, nil)
+	welcome := c.Welcome()
+	payload, answered, err := c.callAnswered(ctx, MethodClientToolsSet,
+		clientToolSetsWire{Owner: c.clientTools.owner, Sets: sets}, callDeadline)
 	if err != nil {
-		if answered {
+		if answered && c.clientToolHolderAnswered() {
 			return nil, &ClientToolsRefusal{Reason: err.Error()}
 		}
 		return nil, err
@@ -388,10 +484,44 @@ func (a *Agent) SetClientTools(ctx context.Context, sets []session.ClientToolSet
 	if err := json.Unmarshal(payload, &names); err != nil {
 		return nil, err
 	}
-	c.mu.Lock()
-	c.clientTools.sets, c.clientTools.attached = sets, true
-	c.mu.Unlock()
+	if !c.rememberClientTools(sets, welcome) {
+		return nil, ErrClientToolDisconnected
+	}
 	return names, nil
+}
+
+func (c *Client) clientToolHolderAnswered() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.dead == nil && !c.reconnecting && !c.closing
+}
+
+// Durable transcript identity survives a holder restart. Without a transcript,
+// the live instance is the only conversation identity the welcome supplies.
+func clientToolConversationChanged(left, now Welcome) bool {
+	if left.SessionFile != "" {
+		return conversationSwitched(left.SessionFile, now.SessionFile)
+	}
+	return left.SessionInstance != "" && left.SessionInstance != now.SessionInstance
+}
+
+func (c *Client) rememberClientTools(sets []session.ClientToolSet, welcome Welcome) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if clientToolConversationChanged(welcome, c.welcome) {
+		c.forgetClientToolsLocked()
+		return false
+	}
+	c.clientTools.sets, c.clientTools.attached = sets, true
+	c.clientTools.welcome = Welcome{SessionFile: welcome.SessionFile, SessionInstance: welcome.SessionInstance}
+	return true
+}
+
+func (c *Client) forgetClientToolsLocked() {
+	c.clientTools.sets = nil
+	c.clientTools.attached = false
+	c.clientTools.welcome = Welcome{}
+	c.endClientToolCallsLocked()
 }
 
 // SetClientToolHandler replaces the one handler and cancels its previous calls.
@@ -402,9 +532,9 @@ func (a *Agent) SetClientToolHandler(handler func(context.Context, session.Clien
 	}
 	c := a.c
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.endClientToolCallsLocked()
 	c.clientTools.handler = handler
-	c.mu.Unlock()
 }
 
 func (c *Client) endClientToolCalls() {
@@ -420,16 +550,49 @@ func (c *Client) endClientToolCallsLocked() {
 	}
 }
 
+func (c *Client) endClientToolCall(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if incoming := c.clientTools.incoming[id]; incoming != nil {
+		incoming.cancel(context.Canceled)
+		delete(c.clientTools.incoming, id)
+	}
+}
+
+func (c *Client) beginClientToolCall(wire clientToolCallWire) (context.Context, *clientToolIncoming, func(context.Context, session.ClientToolCall) (session.ClientToolAnswer, error)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closing || c.dead != nil || c.reconnecting || c.clientTools.incoming[wire.Call] != nil {
+		return nil, nil, nil
+	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	incoming := &clientToolIncoming{cancel: cancel}
+	if c.clientTools.incoming == nil {
+		c.clientTools.incoming = make(map[string]*clientToolIncoming)
+	}
+	c.clientTools.incoming[wire.Call] = incoming
+	return ctx, incoming, c.clientTools.handler
+}
+
+func (c *Client) clientToolCallActive(id string, incoming *clientToolIncoming) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.clientTools.incoming[id] == incoming
+}
+
+func (c *Client) finishClientToolCall(id string, incoming *clientToolIncoming) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.clientTools.incoming[id] == incoming {
+		delete(c.clientTools.incoming, id)
+	}
+}
+
 func (c *Client) clientToolFrame(frame Frame) {
 	if frame.Kind == clientToolEndedKind {
 		var ended clientToolEndedWire
 		if json.Unmarshal(frame.Payload, &ended) == nil {
-			c.mu.Lock()
-			if incoming := c.clientTools.incoming[ended.Call]; incoming != nil {
-				incoming.cancel(context.Canceled)
-				delete(c.clientTools.incoming, ended.Call)
-			}
-			c.mu.Unlock()
+			c.endClientToolCall(ended.Call)
 		}
 		return
 	}
@@ -437,21 +600,13 @@ func (c *Client) clientToolFrame(frame Frame) {
 	if json.Unmarshal(frame.Payload, &wire) != nil || wire.Call == "" {
 		return
 	}
-	c.mu.Lock()
-	if c.closing || c.dead != nil || c.reconnecting || c.clientTools.incoming[wire.Call] != nil {
-		c.mu.Unlock()
+	ctx, incoming, handler := c.beginClientToolCall(wire)
+	if incoming == nil {
 		return
 	}
-	handler, conn := c.clientTools.handler, c.conn
-	ctx, cancel := context.WithCancelCause(context.Background())
-	incoming := &clientToolIncoming{cancel: cancel}
-	if c.clientTools.incoming == nil {
-		c.clientTools.incoming = make(map[string]*clientToolIncoming)
-	}
-	c.clientTools.incoming[wire.Call] = incoming
-	c.mu.Unlock()
 	guard.Go("remote/client-tool-handler", func() {
-		defer cancel(context.Canceled)
+		defer incoming.cancel(context.Canceled)
+		defer c.finishClientToolCall(wire.Call, incoming)
 		call := session.ClientToolCall{Set: wire.Set, Name: wire.Name, TurnCall: wire.TurnCall,
 			SourceMessage: wire.SourceMessage, Args: wire.Args, DeadlineMS: wire.DeadlineMS}
 		answer := session.ClientToolUnavailable(call.Name)
@@ -462,99 +617,37 @@ func (c *Client) clientToolFrame(frame Frame) {
 				answer = session.ClientToolAnswer{Text: err.Error(), IsError: true}
 			}
 		}
-		c.mu.Lock()
-		active := c.clientTools.incoming[wire.Call] == incoming
-		c.mu.Unlock()
-		if active && ctx.Err() == nil {
-			_, _, _ = c.clientToolRequest(ctx, MethodClientToolAnswer,
-				clientToolAnswerWire{Call: wire.Call, Text: answer.Text, IsError: answer.IsError}, conn)
+		if c.clientToolCallActive(wire.Call, incoming) && ctx.Err() == nil {
+			_, _ = c.call(ctx, MethodClientToolAnswer,
+				clientToolAnswerWire{Call: wire.Call, Text: answer.Text, IsError: answer.IsError})
 		}
-		c.mu.Lock()
-		if c.clientTools.incoming[wire.Call] == incoming {
-			delete(c.clientTools.incoming, wire.Call)
-		}
-		c.mu.Unlock()
 	})
 }
 
-// A pinned pipe prevents an answer to an old call from crossing a redial.
-// The writer runs separately so an unresponsive pipe cannot defeat the wait bound.
-func (c *Client) clientToolRequest(ctx context.Context, method string, args any, pinned io.ReadWriteCloser) (json.RawMessage, bool, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(ctx, callDeadline)
-	defer cancel()
-	if err := ctx.Err(); err != nil {
-		return nil, false, err
-	}
-	payload, err := json.Marshal(args)
-	if err != nil {
-		return nil, false, err
-	}
-	id := c.seq.Add(1)
-	waiting := make(chan result, 1)
-	writeFailed := make(chan error, 1)
+func (c *Client) replayClientToolSets() ([]session.ClientToolSet, bool) {
 	c.mu.Lock()
-	conn := c.conn
-	if pinned != nil {
-		conn = pinned
+	defer c.mu.Unlock()
+	if !c.clientTools.attached {
+		return nil, false
 	}
-	if conn == nil || c.dead != nil || c.closing || c.reconnecting {
-		c.mu.Unlock()
-		return nil, false, ErrClientToolDisconnected
+	if clientToolConversationChanged(c.clientTools.welcome, c.welcome) {
+		c.forgetClientToolsLocked()
+		return nil, false
 	}
-	if !c.welcome.ClientTools {
-		c.mu.Unlock()
-		return nil, false, ErrClientToolsUnsupported
-	}
-	c.calls[id] = waiting
-	c.mu.Unlock()
-	defer c.forget(id)
-	guard.Go("remote/client-tool-write", func() {
-		line, err := json.Marshal(Frame{Kind: "call", ID: id, Method: method, Payload: payload})
-		if err == nil {
-			c.writeMu.Lock()
-			if ctx.Err() != nil {
-				err = ctx.Err()
-			} else {
-				_, err = conn.Write(append(line, '\n'))
-				if err == nil {
-					err = flushFrame(conn)
-					c.made.Add(1)
-				}
-			}
-			c.writeMu.Unlock()
-		}
-		if err != nil {
-			writeFailed <- err
-		}
-	})
-	select {
-	case answer := <-waiting:
-		return answer.payload, answer.answered, answer.err
-	case err := <-writeFailed:
-		return nil, false, err
-	case <-ctx.Done():
-		return nil, false, ctx.Err()
-	}
+	return c.clientTools.sets, c.welcome.ClientTools
 }
 
 func (c *Client) resendClientTools() {
-	c.mu.Lock()
-	attached := c.clientTools.attached && c.welcome.ClientTools
-	c.mu.Unlock()
-	if !attached {
-		return
-	}
 	// The reader must resume before a synchronous snapshot can receive its reply.
 	guard.Go("remote/client-tools-reattach", func() {
 		c.clientTools.setMu.Lock()
 		defer c.clientTools.setMu.Unlock()
-		c.mu.Lock()
-		sets := c.clientTools.sets
-		c.mu.Unlock()
-		if _, _, err := c.clientToolRequest(context.Background(), MethodClientToolsSet, sets, nil); err != nil {
+		sets, attached := c.replayClientToolSets()
+		if !attached {
+			return
+		}
+		if _, err := c.call(context.Background(), MethodClientToolsSet,
+			clientToolSetsWire{Owner: c.clientTools.owner, Sets: sets}); err != nil {
 			c.note("client tools could not be reattached: " + err.Error())
 		}
 	})

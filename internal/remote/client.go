@@ -299,6 +299,8 @@ func newClient(host string, hello Hello) *Client {
 	}
 	hello.Encodings = []string{frameEncodingGzip}
 	return &Client{
+		clientTools: clientToolLink{owner: rand.Text()},
+
 		host:    strings.TrimSpace(host),
 		hello:   hello,
 		calls:   map[uint64]chan result{},

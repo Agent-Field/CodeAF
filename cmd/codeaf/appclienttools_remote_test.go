@@ -63,9 +63,11 @@ func clientToolRemoteBackendSupport(t *testing.T, endpoint string, forwards bool
 	b.locked(func() { a.live = nil })
 	rig := &clientToolRemoteRig{backend: b, door: door, emitter: emitter, hub: hub, held: held, agent: a, root: root, file: file}
 	t.Cleanup(func() {
-		a.gate.Lock()
-		b.release(a)
-		a.gate.Unlock()
+		func() {
+			a.gate.Lock()
+			defer a.gate.Unlock()
+			b.release(a)
+		}()
 		for _, loop := range rig.loops {
 			_ = loop.Close()
 		}
@@ -77,8 +79,13 @@ func clientToolRemoteBackendSupport(t *testing.T, endpoint string, forwards bool
 
 func (r *clientToolRemoteRig) hold(t *testing.T) *remote.Loop {
 	t.Helper()
-	loop, err := remote.LoopbackAttach(remote.Hello{Join: r.file}, remote.AttachOptions{
-		Open: func(remote.Hello) (*remote.Session, error) { return r.held, nil },
+	loop, err := remote.LoopbackAttach(remote.Hello{Session: r.file, Join: true}, remote.AttachOptions{
+		Open: func(hello remote.Hello) (*remote.Session, error) {
+			if !hello.Join || hello.Session != r.file {
+				t.Errorf("expected a join of %s, got %+v", r.file, hello)
+			}
+			return r.held, nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -86,8 +93,11 @@ func (r *clientToolRemoteRig) hold(t *testing.T) *remote.Loop {
 	r.loops = append(r.loops, loop)
 	conn := &appConn{Conv: loop.Client.Agent(), Transcript: r.file, Workspace: r.root, Release: func() { _ = loop.Client.Close() }}
 	r.agent.gate.Lock()
+	defer r.agent.gate.Unlock()
 	r.backend.hold(r.agent, conn, r.root)
-	r.agent.gate.Unlock()
+	if r.agent.live.conn.Assembled || r.agent.live.conn.Lent {
+		t.Fatal("fixture must hold a joined conversation")
+	}
 	return loop
 }
 
@@ -113,12 +123,15 @@ func TestClientToolsRemoteJoinedModelRoundTrip(t *testing.T) {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
-				mu.Lock()
-				first := len(request.Tools) > 0 && len(requests) == 0
-				if len(request.Tools) > 0 {
-					requests = append(requests, body)
-				}
-				mu.Unlock()
+				first := func() bool {
+					mu.Lock()
+					defer mu.Unlock()
+					first := len(request.Tools) > 0 && len(requests) == 0
+					if len(request.Tools) > 0 {
+						requests = append(requests, body)
+					}
+					return first
+				}()
 				w.Header().Set("Content-Type", "text/event-stream")
 				if first {
 					fmt.Fprint(w, "data: "+`{"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"provider-remote-1","type":"function","function":{"name":"app_note","arguments":"{}"}}]},"finish_reason":null}]}`+"\n\n")
@@ -203,9 +216,11 @@ func TestClientToolsRemoteJoinedModelRoundTrip(t *testing.T) {
 			if !found {
 				t.Fatalf("model did not receive %q: %s", want, requests[1])
 			}
-			rig.emitter.mu.Lock()
-			count := len(rig.emitter.calls)
-			rig.emitter.mu.Unlock()
+			count := func() int {
+				rig.emitter.mu.Lock()
+				defer rig.emitter.mu.Unlock()
+				return len(rig.emitter.calls)
+			}()
 			if count != 1 {
 				t.Fatalf("one model call emitted %d events", count)
 			}
@@ -228,15 +243,10 @@ func TestClientToolsRemoteAppDropSettlesPending(t *testing.T) {
 	if !got.IsError || !strings.HasPrefix(got.Text, "client_unavailable:") {
 		t.Fatalf("holder did not settle: %+v", got)
 	}
+	clientToolAwaitNoPending(t, rig, event.Call)
 	ack, err := rig.backend.ClientToolResult(appwire.ClientToolResultParams{Call: event.Call, Result: json.RawMessage(`true`)})
 	if err != nil || ack.Accepted {
 		t.Fatalf("late app answer: %+v %v", ack, err)
-	}
-	rig.backend.clientTools.mu.Lock()
-	_, pending := rig.backend.clientTools.pending[event.Call]
-	rig.backend.clientTools.mu.Unlock()
-	if pending {
-		t.Fatal("app retained a pending call after losing its link")
 	}
 }
 
@@ -267,9 +277,11 @@ func TestClientToolsRemoteBoundedResult(t *testing.T) {
 func TestClientToolsRemoteReholdPushesSets(t *testing.T) {
 	rig := clientToolRemoteBackend(t, "")
 	clientToolAttach(t, rig.backend, rig.door)
-	rig.agent.gate.Lock()
-	rig.backend.release(rig.agent)
-	rig.agent.gate.Unlock()
+	func() {
+		rig.agent.gate.Lock()
+		defer rig.agent.gate.Unlock()
+		rig.backend.release(rig.agent)
+	}()
 	_ = rig.loops[0].Close()
 	if _, sets := rig.hub.ClientToolSets(); len(sets) != 0 {
 		t.Fatal("old link left its sets attached")
@@ -332,26 +344,33 @@ func TestClientToolsRemoteAppTurnEnded(t *testing.T) {
 	if !got.IsError || !strings.Contains(got.Text, "the turn ended") {
 		t.Fatalf("holder answer: %+v", got)
 	}
+	clientToolAwaitNoPending(t, rig, event.Call)
+	ack, err := rig.backend.ClientToolResult(appwire.ClientToolResultParams{Call: event.Call, Result: json.RawMessage(`true`)})
+	if err != nil || ack.Accepted {
+		t.Fatalf("late result after holder cancellation: %+v %v", ack, err)
+	}
+}
+
+func clientToolAwaitNoPending(t *testing.T, rig *clientToolRemoteRig, id string) {
+	t.Helper()
 	timer := time.NewTimer(3 * time.Second)
 	defer timer.Stop()
 	tick := time.NewTicker(5 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		rig.backend.clientTools.mu.Lock()
-		pending := rig.backend.clientTools.pending[event.Call] != nil
-		rig.backend.clientTools.mu.Unlock()
+		pending := func() bool {
+			rig.backend.clientTools.mu.Lock()
+			defer rig.backend.clientTools.mu.Unlock()
+			return rig.backend.clientTools.pending[id] != nil
+		}()
 		if !pending {
 			break
 		}
 		select {
 		case <-tick.C:
 		case <-timer.C:
-			t.Fatal("holder end frame did not clear the app wait")
+			t.Fatal("ended link or call did not clear the app wait before a late result")
 		}
-	}
-	ack, err := rig.backend.ClientToolResult(appwire.ClientToolResultParams{Call: event.Call, Result: json.RawMessage(`true`)})
-	if err != nil || ack.Accepted {
-		t.Fatalf("late result after holder cancellation: %+v %v", ack, err)
 	}
 }
 
@@ -432,6 +451,95 @@ func TestClientToolsRemoteTransportFailureLeavesRegistry(t *testing.T) {
 	clientToolAwait(t, readRegistry)
 	if _, sets := door.ClientToolSets(); len(sets) != 0 {
 		t.Fatal("a failed transport committed the app snapshot")
+	}
+}
+
+// C1, C3: publication orders calls while cancellation and the call wait still apply.
+func TestClientToolsRemoteCallDuringPublication(t *testing.T) {
+	for _, outcome := range []string{"published", "disconnect", "timeout"} {
+		t.Run(outcome, func(t *testing.T) {
+			b, door, emitter := clientToolBackend(t)
+			surface, holder := remote.Pipe()
+			inFlight := make(chan struct{})
+			publish, stop, served := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			var finish sync.Once
+			go func() {
+				defer close(served)
+				defer holder.Close()
+				reader := json.NewDecoder(holder)
+				var hello, call remote.Frame
+				if reader.Decode(&hello) != nil {
+					return
+				}
+				payload, _ := json.Marshal(remote.Welcome{Version: remote.Version, ClientTools: true})
+				if json.NewEncoder(holder).Encode(remote.Frame{Kind: "welcome", Payload: payload}) != nil || reader.Decode(&call) != nil {
+					return
+				}
+				close(inFlight)
+				<-publish
+				_ = json.NewEncoder(holder).Encode(remote.Frame{Kind: "result", ID: call.ID, Payload: json.RawMessage(`["app_note"]`)})
+				<-stop
+			}()
+			client, err := remote.Dial(surface, "engine", remote.Hello{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				finish.Do(func() { close(publish) })
+				close(stop)
+				_ = client.Close()
+				clientToolAwait(t, served)
+			})
+			b.locked(func() { b.agents[door.agent].live.conn.Conv = client.Agent() })
+			emitter.answer = func(event appwire.AgentsToolCall) {
+				_, _ = b.ClientToolResult(appwire.ClientToolResultParams{Call: event.Call, Result: json.RawMessage(`true`)})
+			}
+			setter := make(chan error, 1)
+			go func() {
+				_, err := b.SetClientTools(clientToolParams(door.agent, "notes", "app_note"))
+				setter <- err
+			}()
+			clientToolAwait(t, inFlight)
+			ctx, cancel := context.WithCancelCause(context.Background())
+			defer cancel(context.Canceled)
+			answer := make(chan session.ClientToolAnswer, 1)
+			go func() {
+				got, _ := b.callRemoteClientTool(ctx, door, session.ClientToolCall{Set: "notes", Name: "app_note",
+					TurnCall: "during-publication", Args: json.RawMessage(`{}`), DeadlineMS: 1000})
+				answer <- got
+			}()
+			if outcome == "published" {
+				finish.Do(func() { close(publish) })
+				if err := clientToolAwait(t, setter); err != nil {
+					t.Fatal(err)
+				}
+				got := clientToolAwait(t, answer)
+				if got.IsError || got.Text != "true" {
+					t.Fatalf("call did not wait for registry publication: %+v", got)
+				}
+				return
+			}
+			if outcome == "disconnect" {
+				cancel(remote.ErrClientToolDisconnected)
+			}
+			got := clientToolAwait(t, answer)
+			want := "client_timeout:"
+			if outcome == "disconnect" {
+				want = "client_unavailable:"
+			}
+			if !got.IsError || !strings.HasPrefix(got.Text, want) {
+				t.Fatalf("call outlived cancellation while publication was in flight: %+v", got)
+			}
+			select {
+			case <-emitter.seen:
+				t.Fatal("unpublished call reached the app")
+			default:
+			}
+			finish.Do(func() { close(publish) })
+			if err := clientToolAwait(t, setter); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

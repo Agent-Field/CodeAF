@@ -77,13 +77,22 @@ a new engine sends plain JSON unless the surface offered gzip. This does not
 negotiate protocol semantics down — a version mismatch is still refused.
 
 Client tools use the same version-22 rule: `Welcome.clientTools` advertises
-`ClientTools.Set` (one connection's whole snapshot) and `ClientTool.Answer`.
+`ClientTools.Set` (`{owner, sets}`, one connection's whole snapshot) and
+`ClientTool.Answer`. Each client mints one random owner token with at least
+128 bits of entropy and carries it on every snapshot (26–256 bytes). A snapshot
+from a new connection with the same token moves its sets and ends the old
+owner's calls; a different token retains the ordinary collision checks. The old
+connection's later departure cannot remove the new owner's sets.
 Only a connection that attaches sets receives `clientToolCall` and
 `clientToolEnded` frames; neither frame requires a reply. Calls and answers stay
 with that connection, and leaving removes its sets and settles its waits.
 Watching connections cannot attach or answer tools. A roaming client resends
-its last acknowledged snapshot after redial; a holder without the flag receives
-none of these new calls.
+its last acknowledged snapshot after redial only onto the same conversation,
+using the welcome's transcript identity (or live instance when unnamed). A
+changed conversation forgets that snapshot. One sender per owner skips queued
+calls whose wait ended, so a stuck write blocks only that owner's sender.
+Client requests share the ordinary call/write path and its failure behavior.
+A holder without the flag receives none of these new calls.
 
 **Why the handshake happens before the TUI starts.** Everything that might ask
 the person a question happens on a plain terminal: ssh's passphrase prompt, its

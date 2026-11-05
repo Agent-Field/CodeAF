@@ -93,7 +93,11 @@ after reconnecting. Attachment does not open the conversation or start a turn.
 Children, workers and clarification conversations inherit neither tools nor
 instructions. Within the same app connection, every join or re-join pushes the
 conversation's current sets to its holder; a roaming link resends them after
-redial. A conversation returning to this engine uses the registry directly.
+redial only when the welcome identifies the same conversation. A changed
+conversation forgets the old snapshot and ends its calls. A returning owner's
+random token moves its sets to the replacement connection even while the old
+connection remains attached; other owners still face collision checks. A
+conversation returning to this engine uses the registry directly.
 If another computer holds the chat (`Location.Here == false`), attachment still
 validates and stores the sets without opening the conversation. They apply
 when this engine runs it again after "Continue here" or take, without a second

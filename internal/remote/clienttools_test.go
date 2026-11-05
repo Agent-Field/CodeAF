@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -135,26 +136,33 @@ func clientToolTestSignal(t *testing.T, signal <-chan struct{}) {
 }
 
 type clientToolRawSurface struct {
-	conn   net.Conn
-	frames chan Frame
-	errors chan error
-	next   uint64
+	conn       net.Conn
+	owner      string
+	frames     chan Frame
+	errors     chan error
+	next       uint64
+	callFrames atomic.Int32
 }
 
 func clientToolTestRaw(t *testing.T, held *Session, watch bool) *clientToolRawSurface {
+	t.Helper()
+	return clientToolTestRawOutput(t, held, watch, func(out io.Writer) io.Writer { return out })
+}
+
+func clientToolTestRawOutput(t *testing.T, held *Session, watch bool, wrap func(io.Writer) io.Writer) *clientToolRawSurface {
 	t.Helper()
 	surface, engine := net.Pipe()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		defer engine.Close()
-		_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return held, nil }})
+		_ = ServeAttach(engine, wrap(engine), AttachOptions{Open: func(Hello) (*Session, error) { return held, nil }})
 	}()
 	t.Cleanup(func() {
 		_ = surface.Close()
 		<-done
 	})
-	raw := &clientToolRawSurface{conn: surface, frames: make(chan Frame, 64), errors: make(chan error, 1)}
+	raw := &clientToolRawSurface{conn: surface, owner: newClientID(), frames: make(chan Frame, 64), errors: make(chan error, 1)}
 	go func() {
 		reader := json.NewDecoder(surface)
 		for {
@@ -162,6 +170,9 @@ func clientToolTestRaw(t *testing.T, held *Session, watch bool) *clientToolRawSu
 			if err := reader.Decode(&frame); err != nil {
 				raw.errors <- err
 				return
+			}
+			if frame.Kind == clientToolCallKind {
+				raw.callFrames.Add(1)
 			}
 			raw.frames <- frame
 		}
@@ -193,6 +204,9 @@ func (r *clientToolRawSurface) frame(t *testing.T, kind string) Frame {
 
 func (r *clientToolRawSurface) call(t *testing.T, method string, args any) Frame {
 	t.Helper()
+	if method == MethodClientToolsSet {
+		args = clientToolSetsWire{Owner: r.owner, Sets: args.([]session.ClientToolSet)}
+	}
 	r.next++
 	if err := json.NewEncoder(r.conn).Encode(Frame{Kind: "call", ID: r.next, Method: method, Payload: mustJSON(args)}); err != nil {
 		t.Fatal(err)
@@ -326,12 +340,14 @@ func TestClientToolsRemoteRedialRestoresSnapshot(t *testing.T) {
 	dialled := 0
 	client, err := Roam("engine", Hello{}, Roaming{Window: 3 * time.Second, Dial: func() (io.ReadWriteCloser, error) {
 		surface, pipe := Pipe()
-		mu.Lock()
-		dialled++
-		if first == nil {
-			first = surface
-		}
-		mu.Unlock()
+		func() {
+			mu.Lock()
+			defer mu.Unlock()
+			dialled++
+			if first == nil {
+				first = surface
+			}
+		}()
 		go func() {
 			defer pipe.Close()
 			_ = ServeAttach(pipe, pipe, AttachOptions{Open: func(Hello) (*Session, error) { return held, nil }})
@@ -346,16 +362,197 @@ func TestClientToolsRemoteRedialRestoresSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, _ := hub.ClientToolSets()
-	mu.Lock()
-	_ = first.Close()
-	mu.Unlock()
+	initial := func() io.ReadWriteCloser {
+		mu.Lock()
+		defer mu.Unlock()
+		return first
+	}()
+	_ = initial.Close()
 	waitFor(t, "client tool snapshot after redial", func() bool {
 		mu.Lock()
+		defer mu.Unlock()
 		redialled := dialled > 1
-		mu.Unlock()
 		next, sets := hub.ClientToolSets()
 		return redialled && next > version && len(sets) == 1 && sets[0].Tools[0].Name == "app_note"
 	})
+}
+
+// C3, C4, C5: a replay moves ownership before the half-open old link detaches.
+func TestClientToolsRemoteRedialMovesAttachedOwner(t *testing.T) {
+	hub := &ClientToolHub{}
+	held := NewSession(&Engine{Agent: &fakeAgent{}, ClientTools: hub, SessionFile: "/conversation.jsonl"}, true)
+	t.Cleanup(func() { _ = held.Close() })
+	var first net.Conn
+	var dialled atomic.Int32
+	served := make(chan struct{}, 8)
+	oldDetached := make(chan struct{})
+	client, err := Roam("engine", Hello{}, Roaming{Window: 3 * time.Second, Dial: func() (io.ReadWriteCloser, error) {
+		n := dialled.Add(1)
+		surface, pipe := net.Pipe()
+		if n == 1 {
+			first = surface
+		}
+		go func() {
+			defer func() { served <- struct{}{} }()
+			defer pipe.Close()
+			if n == 1 {
+				defer close(oldDetached)
+			}
+			_ = ServeAttach(pipe, pipe, AttachOptions{Open: func(Hello) (*Session, error) { return held, nil }})
+		}()
+		return surface, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = first.Close()
+		for range int(dialled.Load()) {
+			clientToolTestSignal(t, served)
+		}
+	})
+	set := clientToolTestSet("notes", "app_note")
+	set.DeadlineMS = 120000
+	if _, err := client.Agent().SetClientTools(context.Background(), []session.ClientToolSet{set}); err != nil {
+		t.Fatal(err)
+	}
+	version, _ := hub.ClientToolSets()
+	entered := make(chan struct{}, 1)
+	var calls atomic.Int32
+	client.Agent().SetClientToolHandler(func(ctx context.Context, _ session.ClientToolCall) (session.ClientToolAnswer, error) {
+		if calls.Add(1) == 1 {
+			entered <- struct{}{}
+			<-ctx.Done()
+			return session.ClientToolAnswer{}, ctx.Err()
+		}
+		return session.ClientToolAnswer{Text: "replacement connection"}, nil
+	})
+	pending := clientToolTestCall(hub, context.Background(), "app_note")
+	clientToolTestSignal(t, entered)
+	if err := first.SetReadDeadline(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "reader leaving the old connection", func() bool {
+		client.mu.Lock()
+		defer client.mu.Unlock()
+		return client.reconnecting
+	})
+	if err := first.SetReadDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	// Keep the old server attached and drain its room notices independently of
+	// the roaming reader, so its ordinary driver broadcast can finish as usual.
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		_, _ = io.Copy(io.Discard, first)
+	}()
+	waitFor(t, "replacement replay while old owner is attached", func() bool {
+		held.mu.Lock()
+		defer held.mu.Unlock()
+		next, sets := hub.ClientToolSets()
+		return dialled.Load() == 2 && len(held.surfaces) == 2 && next > version && len(sets) == 1
+	})
+	got := clientToolTestAnswer(t, pending)
+	if !got.IsError || got.Text != "client_unavailable: the app that provides app_note disconnected before answering; the outcome is unknown, so check before trying again." {
+		t.Fatalf("old owner's pending call: %+v", got)
+	}
+	_ = first.Close()
+	clientToolTestSignal(t, drained)
+	clientToolTestSignal(t, oldDetached)
+	if _, sets := hub.ClientToolSets(); len(sets) != 1 {
+		t.Fatal("old detach removed the replacement's tools")
+	}
+	got = clientToolTestAnswer(t, clientToolTestCall(hub, context.Background(), "app_note"))
+	if got.IsError || got.Text != "replacement connection" {
+		t.Fatalf("call after old detach: %+v", got)
+	}
+}
+
+// C4: a changed welcome forgets the snapshot instead of attaching it elsewhere.
+func TestClientToolsRemoteRedialConversationIdentity(t *testing.T) {
+	for _, files := range [][2]string{{"/a.jsonl", "/b.jsonl"}, {"", ""}, {"/a.jsonl", "/a.jsonl"}} {
+		t.Run(fmt.Sprintf("%s-to-%s", files[0], files[1]), func(t *testing.T) {
+			aHub, bHub := &ClientToolHub{}, &ClientToolHub{}
+			a := NewSession(&Engine{Agent: &fakeAgent{}, ClientTools: aHub, SessionFile: files[0]}, true)
+			b := NewSession(&Engine{Agent: &fakeAgent{}, ClientTools: bHub, SessionFile: files[1]}, true)
+			t.Cleanup(func() {
+				_ = a.Close()
+				_ = b.Close()
+			})
+			var first io.ReadWriteCloser
+			var dialled atomic.Int32
+			served := make(chan struct{}, 8)
+			client, err := Roam("engine", Hello{}, Roaming{Window: 3 * time.Second, Dial: func() (io.ReadWriteCloser, error) {
+				n := dialled.Add(1)
+				surface, pipe := Pipe()
+				held := b
+				if n == 1 {
+					first, held = surface, a
+				}
+				go func() {
+					defer func() { served <- struct{}{} }()
+					defer pipe.Close()
+					_ = ServeAttach(pipe, pipe, AttachOptions{Open: func(Hello) (*Session, error) { return held, nil }})
+				}()
+				return surface, nil
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				_ = client.Close()
+				_ = first.Close()
+				for range int(dialled.Load()) {
+					clientToolTestSignal(t, served)
+				}
+			})
+			set := clientToolTestSet("notes", "app_note")
+			set.DeadlineMS = 120000
+			if _, err := client.Agent().SetClientTools(context.Background(), []session.ClientToolSet{set}); err != nil {
+				t.Fatal(err)
+			}
+			callsBefore := client.CallsMade()
+			entered, canceled := make(chan struct{}), make(chan struct{})
+			client.Agent().SetClientToolHandler(func(ctx context.Context, _ session.ClientToolCall) (session.ClientToolAnswer, error) {
+				close(entered)
+				<-ctx.Done()
+				close(canceled)
+				return session.ClientToolAnswer{}, ctx.Err()
+			})
+			pending := clientToolTestCall(aHub, context.Background(), "app_note")
+			clientToolTestSignal(t, entered)
+			_ = first.Close()
+			clientToolTestSignal(t, canceled)
+			clientToolTestAnswer(t, pending)
+			wantReplay := files[0] != "" && files[0] == files[1]
+			waitFor(t, "client tool replay decision after changed welcome", func() bool {
+				client.mu.Lock()
+				defer client.mu.Unlock()
+				if client.reconnecting || client.welcome.SessionInstance != b.instance {
+					return false
+				}
+				_, sets := bHub.ClientToolSets()
+				if wantReplay {
+					return len(sets) == 1
+				}
+				return !client.clientTools.attached && len(client.clientTools.sets) == 0 && len(client.clientTools.incoming) == 0
+			})
+			if !wantReplay {
+				if client.CallsMade() != callsBefore {
+					t.Fatal("sent a tool snapshot to another conversation")
+				}
+				if _, sets := bHub.ClientToolSets(); len(sets) != 0 {
+					t.Fatal("old tools reached another conversation")
+				}
+				got := clientToolTestAnswer(t, clientToolTestCall(bHub, context.Background(), "app_note"))
+				if !got.IsError || !strings.HasPrefix(got.Text, "client_unavailable:") {
+					t.Fatalf("another conversation used the old tools: %+v", got)
+				}
+			}
+		})
+	}
 }
 
 // C1, C2, C9: the real holder refreshes its belt and instructions at model steps.
@@ -386,9 +583,11 @@ func TestClientToolsRemoteModelBoundary(t *testing.T) {
 		}
 		call := attached && len(got.Messages) > 0 && got.Messages[len(got.Messages)-1].Role == "user"
 		if len(got.Tools) > 0 {
-			mu.Lock()
-			requests = append(requests, got)
-			mu.Unlock()
+			func() {
+				mu.Lock()
+				defer mu.Unlock()
+				requests = append(requests, got)
+			}()
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		if call {
@@ -583,6 +782,80 @@ func TestClientToolsRemoteAnswerBypassesOrderedLane(t *testing.T) {
 	}
 }
 
+type clientToolStalledOutput struct {
+	io.Writer
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (w *clientToolStalledOutput) Write(data []byte) (int, error) {
+	var frame Frame
+	if json.Unmarshal(data, &frame) == nil && frame.Kind == clientToolCallKind {
+		w.once.Do(func() {
+			close(w.entered)
+			<-w.release
+		})
+	}
+	return w.Writer.Write(data)
+}
+
+// C3, C5: a stuck owner blocks one sender while queued calls expire and peers work.
+func TestClientToolsRemoteBlockedSenderDropsExpiredCalls(t *testing.T) {
+	hub := &ClientToolHub{}
+	held := NewSession(&Engine{Agent: &fakeAgent{}, ClientTools: hub}, true)
+	t.Cleanup(func() { _ = held.Close() })
+	stalled := &clientToolStalledOutput{entered: make(chan struct{}), release: make(chan struct{})}
+	var release sync.Once
+	owner := clientToolTestRawOutput(t, held, false, func(out io.Writer) io.Writer {
+		stalled.Writer = out
+		return stalled
+	})
+	t.Cleanup(func() { release.Do(func() { close(stalled.release) }) })
+	set := clientToolTestSet("notes", "app_note")
+	if reply := owner.call(t, MethodClientToolsSet, []session.ClientToolSet{set}); reply.Error != "" {
+		t.Fatal(reply.Error)
+	}
+	peer := clientToolTestPair(t, held)
+	if _, err := peer.Client.Agent().SetClientTools(context.Background(), []session.ClientToolSet{clientToolTestSet("notes", "app_other")}); err != nil {
+		t.Fatal(err)
+	}
+	peer.Client.Agent().SetClientToolHandler(func(context.Context, session.ClientToolCall) (session.ClientToolAnswer, error) {
+		return session.ClientToolAnswer{Text: "other owner still works"}, nil
+	})
+	first := clientToolTestCall(hub, context.Background(), "app_note")
+	clientToolTestSignal(t, stalled.entered)
+	var queued []<-chan session.ClientToolAnswer
+	for range 16 {
+		queued = append(queued, clientToolTestCall(hub, context.Background(), "app_note"))
+	}
+	if got := clientToolTestAnswer(t, clientToolTestCall(hub, context.Background(), "app_other")); got.IsError || got.Text != "other owner still works" {
+		t.Fatalf("blocked one owner stalled another: %+v", got)
+	}
+	for _, answer := range append(queued, first) {
+		got := clientToolTestAnswer(t, answer)
+		if !got.IsError || !strings.HasPrefix(got.Text, "client_timeout:") {
+			t.Fatalf("blocked send did not respect its wait: %+v", got)
+		}
+	}
+	func() {
+		hub.mu.Lock()
+		defer hub.mu.Unlock()
+		if len(hub.pending) != 0 {
+			t.Fatal("expired queued calls retained their arguments")
+		}
+	}()
+	release.Do(func() { close(stalled.release) })
+	owner.frame(t, clientToolCallKind)
+	owner.frame(t, clientToolEndedKind)
+	if reply := owner.call(t, MethodClientToolsSet, []session.ClientToolSet{set}); reply.Error != "" {
+		t.Fatal(reply.Error)
+	}
+	if got := owner.callFrames.Load(); got != 1 {
+		t.Fatalf("sent %d calls after a blocked writer resumed; queued expired calls must be skipped", got)
+	}
+}
+
 type clientToolStalledLink struct {
 	io.ReadWriteCloser
 	writes  int
@@ -595,50 +868,67 @@ func (p *clientToolStalledLink) Write(data []byte) (int, error) {
 	if p.writes == 2 {
 		close(p.entered)
 		<-p.release
+		return 0, io.ErrClosedPipe
 	}
 	return p.ReadWriteCloser.Write(data)
 }
 
-// C1: attachment respects cancellation even when the transport write is stuck.
-func TestClientToolsRemoteAttachmentWaitIsBounded(t *testing.T) {
-	hub := &ClientToolHub{}
-	held := NewSession(&Engine{Agent: &fakeAgent{}, ClientTools: hub}, true)
-	t.Cleanup(func() { _ = held.Close() })
-	surface, engine := Pipe()
-	served := make(chan struct{})
-	go func() {
-		defer close(served)
-		defer engine.Close()
-		_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return held, nil }})
-	}()
-	link := &clientToolStalledLink{ReadWriteCloser: surface, entered: make(chan struct{}), release: make(chan struct{})}
-	client, err := Dial(link, "engine", Hello{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = client.Close()
-		close(link.release)
-		<-served
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	failed := make(chan error, 1)
-	go func() {
-		_, err := client.Agent().SetClientTools(ctx, []session.ClientToolSet{clientToolTestSet("notes", "app_note")})
-		failed <- err
-	}()
-	clientToolTestSignal(t, link.entered)
-	cancel()
-	select {
-	case err := <-failed:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("attachment cancellation: %v", err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("attachment waited on a blocked writer after cancellation")
-	}
-	if _, sets := hub.ClientToolSets(); len(sets) != 0 {
-		t.Fatal("an unwritten attachment changed the holder")
+// C1: tool publication shares ordinary calls' writer ownership and write failures.
+func TestClientToolsRemoteAttachmentUsesCallPath(t *testing.T) {
+	for _, method := range []string{MethodModel, MethodClientToolsSet} {
+		t.Run(method, func(t *testing.T) {
+			hub := &ClientToolHub{}
+			held := NewSession(&Engine{Agent: &fakeAgent{}, ClientTools: hub}, true)
+			t.Cleanup(func() { _ = held.Close() })
+			surface, engine := Pipe()
+			served := make(chan struct{})
+			go func() {
+				defer close(served)
+				defer engine.Close()
+				_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return held, nil }})
+			}()
+			link := &clientToolStalledLink{ReadWriteCloser: surface, entered: make(chan struct{}), release: make(chan struct{})}
+			client, err := Dial(link, "engine", Hello{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var release sync.Once
+			t.Cleanup(func() {
+				release.Do(func() { close(link.release) })
+				_ = client.Close()
+				clientToolTestSignal(t, served)
+			})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			failed := make(chan error, 1)
+			go func() {
+				if method == MethodClientToolsSet {
+					_, err := client.Agent().SetClientTools(ctx, []session.ClientToolSet{clientToolTestSet("notes", "app_note")})
+					failed <- err
+					return
+				}
+				_, err := client.call(ctx, method, nil)
+				failed <- err
+			}()
+			clientToolTestSignal(t, link.entered)
+			cancel()
+			select {
+			case err := <-failed:
+				t.Fatalf("call abandoned its synchronous writer: %v", err)
+			default:
+			}
+			release.Do(func() { close(link.release) })
+			select {
+			case err := <-failed:
+				if err == nil || err.Error() != "the connection to engine is gone — run the same command to pick the conversation back up" {
+					t.Fatalf("ordinary write failure: %v", err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("call retained a writer after its transport write ended")
+			}
+			if _, sets := hub.ClientToolSets(); len(sets) != 0 {
+				t.Fatal("a failed write changed the holder")
+			}
+		})
 	}
 }

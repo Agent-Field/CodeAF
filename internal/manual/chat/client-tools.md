@@ -1,42 +1,36 @@
 # Client tools: tools an app adds to a conversation
 
-## Client tools: connection, limits and waiting
+## Client tools: connection, remote holders, limits and waiting
 
-An app connected through `codeaf app` can attach its own tools and instructions
-to one conversation. The model sees each tool's name, description and input
-schema, and codeaf sends its calls to that app for an answer. The app checks the
-arguments against its schema. Child tasks, workers and clarification
-conversations do not receive these tools or instructions.
+An app connected through `codeaf app` can attach tools and instructions to one
+conversation. The model sees their names, descriptions and schemas; the app
+checks arguments and answers calls. Child tasks, workers and clarification
+conversations do not receive them.
 
-Tools appear only while the app is connected. Attaching them does not open the
-conversation or start a turn. Changes take effect at the next model step.
-Each conversation can hold 4 sets, with 32 tools per set and 64 tools total.
-Replacing a set replaces all its tools and instructions; an empty set removes
-only that set. Tool names must be unique within the conversation and cannot
-reuse an engine tool's name.
+Attaching tools does not open the conversation or start a turn. Changes apply
+at the next model step. Each conversation allows 4 sets, 32 tools per set and
+64 tools total. Replacing a set replaces its tools and instructions; an empty set
+removes it. Tool names must be unique and cannot reuse engine tool names.
 
-A conversation held by a collection is kept even before its first message;
-it can be reopened by id after a restart.
+A collection keeps a conversation before its first message; reopen it by id
+after a restart.
 
 Set ids start with a lowercase letter, followed by lowercase letters, digits,
-underscores, dots or hyphens, up to 64 characters. Tool names follow the same
-rule without dots or hyphens. Descriptions take 1–2048 bytes; each input schema
-is a JSON object with `type: "object"`, up to 16 KiB. Instructions take up to
-4096 bytes per set. Each tool declares `read`, `edit` or `create`; reading-only
-contexts refuse edits and creations. The usual tool approval rules still apply.
+underscores, dots or hyphens, up to 64 characters. Tool names exclude dots and
+hyphens. Descriptions take 1–2048 bytes; schemas are JSON objects with
+`type: "object"`, up to 16 KiB. Instructions allow 4096 bytes per set. Tools
+declare `read`, `edit` or `create`; reading-only contexts refuse changes.
+The usual approval rules apply.
 
-The default wait is 30 seconds. An app can choose 1–120 seconds per set;
-120 seconds is the maximum. Stopping the turn ends the wait immediately.
-A timeout or a disconnect during a call leaves its outcome unknown. Check what
-the app did before trying again: codeaf does not retry that call automatically.
+The wait defaults to 30 seconds; apps can choose 1–120 seconds per set.
+120 seconds is the maximum. Stopping the turn ends the wait. Timeout or
+disconnect leaves the outcome unknown: check before trying again.
+codeaf does not retry calls automatically.
 Results are compact JSON, cut at 64 KiB with the dropped-byte count. Error
 answers take 1–4096 bytes.
 
-## Client tools on joined and remote-held conversations
-
-Joined conversations forward tools when their holder supports it, and reattach
-them after a link reconnects. Older holders refuse attachment. If another
-computer holds the chat, attachment stores the sets without opening it; they
-apply after "Continue here" or take brings it to this engine. Each connection
-owns its tools and calls. A lost link settles pending calls immediately when
-observed, or at the set's wait limit; later answers are not accepted.
+Joined holders forward tools when supported; older holders refuse attachment.
+Reconnect restores sets only to the same conversation. A chat held on another
+computer stores sets until "Continue here" or take. Each connection owns its
+tools and calls. Link loss ends calls when observed or at their wait limit;
+later answers are refused.

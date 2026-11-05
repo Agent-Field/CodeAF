@@ -53,6 +53,7 @@ type appClientTools struct {
 	closed     bool
 	senderWake chan struct{}
 	senderDone chan struct{}
+	publishing map[string]chan struct{}
 }
 
 type appClientToolDoor struct {
