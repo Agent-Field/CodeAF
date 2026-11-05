@@ -59,7 +59,8 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 		if r.Found {
 			bill(r.Billed)
 		} else {
-			a.recordUnbilledReceipt(r.Model)
+			r.Tag = string(lane.RoleMemory)
+			a.recordUnbilledReceipt(r)
 		}
 	})
 	return a.withReceiptTracking(provider.WithUnmeteredReceipts(ctx)), nil

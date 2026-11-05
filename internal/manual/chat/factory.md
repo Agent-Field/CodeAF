@@ -959,6 +959,20 @@ disabled. Older jobs show what their saved fields know. Earlier money recorded
 only in the ledger cannot be placed safely and is not added to a job.
 
 
+## Factory per-job model spending after taking a chat
+
+Taking a chat to another computer keeps each newly saved call's stated billing,
+billing basis, job, and missing-receipt flag. Factory spending by model and job
+can therefore include those imported calls on the receiving computer. A missing
+receipt with no token figures stays labeled unbilled and adds no measured model
+call or dollars. Call-only CSV exports leave these markers out.
+
+Taking a chat does not charge its calls again or change a job's saved run or
+lifetime spending. Receipts from older builds keep their dollars, but missing
+billing facts and job names stay unknown. Already imported rows are not enriched
+by a later take.
+
+
 ## Opening a job without touching it and sending its first message
 
 Opening an app job page shows the conversations already on the job. Viewing the

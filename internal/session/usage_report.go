@@ -223,7 +223,7 @@ func QueryUsageReport(path string, q UsageQuery, loc *time.Location, budget Usag
 			weight += cost
 		}
 		cell.Records++
-		cell.Calls += max(line.Calls, 1)
+		cell.Calls += line.modelCalls()
 		cell.Input += int64(line.Input)
 		cell.Output += int64(line.Output)
 		if line.USD > 0 {
