@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Read short office documents without discarding their text
-pr: 0
+pr: 2401
 surface: [chat, engine, docs]
 invalidates:
   - "Short office text previously triggered a fallback parser and could be lost when that parser failed. Complete short office text is now returned directly."
