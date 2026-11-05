@@ -76,12 +76,11 @@ func TestClosedSessionHasNoMemoryPassStillWritingTheStore(t *testing.T) {
 		{name: "a post-turn pass the grace ran out on", pastTheGrace: true},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
-			t.Setenv("CODEAF_HOME", t.TempDir())
+			// The spending ledger's writer lives as long as the process
+			// ([usageWriterFor]), so it is started out here: one started inside
+			// the bubble would be a goroutine the bubble is never rid of.
+			usageWriterFor(UsageLedgerPath())
 			synctest.Test(t, func(t *testing.T) {
-				// Ledger callbacks and their watcher channels share this bubble.
-				// Stop the private writer after the agent's cleanup closes it.
-				usageWriterFor(UsageLedgerPath())
-				t.Cleanup(func() { StopUsageWriter(UsageLedgerPath()) })
 				reflexes := newHeldReflex()
 				agent, brain := brainAgent(t, reflexes, func(config *Config) {
 					// Lane refreshes use process-global networking, outside this

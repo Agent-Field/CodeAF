@@ -49,9 +49,3 @@ now allows the resumed reply to finish when the delayed receipt crosses the cap;
 it asserts the completed answer, persisted notice and blocked next admission
 instead of expecting mid-reply cancellation. Receipt recovery remains bounded
 by 70 seconds; unavailable receipts can remain unpriced.
-
-Synctest memory fixtures now own and stop their ledger writers inside the
-fake-clock bubble. The shared-writer close fixture creates its agent outside
-the bubble and closes it inside, so ledger notifications cannot send to a
-channel owned by another scheduler. All existing memory, usage-drain and
-hard-cap assertions remain in place.

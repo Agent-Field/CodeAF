@@ -39,10 +39,8 @@ func (c *recoveringMemoryClient) CompleteWithMessages(ctx context.Context, messa
 }
 
 func TestMemoryRecoveryKeepsOriginalExchangeOnce(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	usageWriterFor(UsageLedgerPath())
 	synctest.Test(t, func(t *testing.T) {
-		usageWriterFor(UsageLedgerPath())
-		t.Cleanup(func() { StopUsageWriter(UsageLedgerPath()) })
 		client := &recoveringMemoryClient{recoverAt: time.Now().Add(2 * time.Second)}
 		agent, brain := brainAgent(t, client, nil)
 		agent.stopLaneBeat() // The process-wide lane queue is outside the fake-clock bubble.
@@ -72,10 +70,8 @@ func TestMemoryRecoveryKeepsOriginalExchangeOnce(t *testing.T) {
 }
 
 func TestMemoryRecoveryCancellationStopsBackoff(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	usageWriterFor(UsageLedgerPath())
 	synctest.Test(t, func(t *testing.T) {
-		usageWriterFor(UsageLedgerPath())
-		t.Cleanup(func() { StopUsageWriter(UsageLedgerPath()) })
 		client := &recoveringMemoryClient{alwaysFail: true}
 		agent, brain := brainAgent(t, client, nil)
 		agent.stopLaneBeat() // The process-wide lane queue is outside the fake-clock bubble.
@@ -109,10 +105,8 @@ func TestMemoryRecoveryCancellationStopsBackoff(t *testing.T) {
 }
 
 func TestMemoryRecoveryExhaustionOffersManualSave(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	usageWriterFor(UsageLedgerPath())
 	synctest.Test(t, func(t *testing.T) {
-		usageWriterFor(UsageLedgerPath())
-		t.Cleanup(func() { StopUsageWriter(UsageLedgerPath()) })
 		client := &recoveringMemoryClient{alwaysFail: true}
 		agent, brain := brainAgent(t, client, nil)
 		agent.stopLaneBeat()
@@ -164,10 +158,8 @@ func assertMemoryFailureJournal(t *testing.T, brain *store.Store, reason string)
 }
 
 func TestMemoryRecoveryPermanentFailureDoesNotRetry(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	usageWriterFor(UsageLedgerPath())
 	synctest.Test(t, func(t *testing.T) {
-		usageWriterFor(UsageLedgerPath())
-		t.Cleanup(func() { StopUsageWriter(UsageLedgerPath()) })
 		client := &recoveringMemoryClient{failure: errors.New("invalid credentials")}
 		agent, brain := brainAgent(t, client, nil)
 		agent.stopLaneBeat()
