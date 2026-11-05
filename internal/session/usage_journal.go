@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -21,14 +22,20 @@ import (
 const usagePendingSuffix = ".pending-v1.jsonl"
 const usageRetryCap = time.Second
 
-// A journal is opened under the ledger lock each time because compaction renames it.
+// Open the journal only after locking the current ledger generation.
+// No append descriptor survives a compaction rename.
 type usagePending struct {
 	mu       sync.Mutex
+	rows     uint64
+	syncing  bool
+	wake     chan struct{}
+	synced   chan struct{}
 	ready    bool
 	retrying bool
 	logged   map[string]bool
 	// appendFile is a filesystem seam for persistent disk failures.
 	appendFile func(*os.File, []byte) error
+	syncFile   func(*os.File) error
 }
 
 var usagePendingPaths sync.Map
@@ -114,17 +121,17 @@ func syncUsageDir(path string) error {
 	return f.Sync()
 }
 
-// withUsageLedger retries replacement before touching the sidecar of that generation.
-func withUsageLedger(path string, fn func(*os.File) error) error {
+// withUsageLedgerLock validates the ledger generation before touching its sidecar.
+func withUsageLedgerLock(path string, exclusive bool, fn func(*os.File) error) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	for {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0600)
+		f, err := openUsageCreated(path, os.O_APPEND|os.O_RDWR)
 		if err != nil {
 			return err
 		}
-		err = filelock.Lock(f, true, false)
+		err = filelock.Lock(f, exclusive, false)
 		if err != nil {
 			f.Close()
 			return err
@@ -195,59 +202,147 @@ func repairUsagePending(path string) ([]byte, error) {
 	return raw[:end], err
 }
 
-// Ordinary appends inspect only the final byte; startup reads the full backlog.
-func repairUsagePendingTail(path string) error {
-	f, err := os.Open(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
+// Creation and rename need directory durability; ordinary appends do not.
+func openUsageCreated(path string, flags int) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|flags, 0600)
+	if errors.Is(err, fs.ErrExist) {
+		return os.OpenFile(path, flags, 0600)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	info, err := f.Stat()
-	if err == nil && info.Size() > 0 {
-		var last [1]byte
-		_, err = f.ReadAt(last[:], info.Size()-1)
-		if err == nil && last[0] != '\n' {
-			f.Close()
-			_, err = repairUsagePending(path)
-			return err
-		}
+	if err = syncUsageDir(path); err != nil {
+		f.Close()
+		return nil, err
 	}
-	f.Close()
-	return err
+	return f, nil
 }
+
+const usageSyncInterval = 100 * time.Millisecond
+const usageSyncRows = 64
 
 func (p *usagePending) append(path string, row usageWrite) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return withUsageLedger(path, func(_ *os.File) error {
-		journal := path + usagePendingSuffix
-		if err := repairUsagePendingTail(journal); err != nil {
-			return err
-		}
-		f, err := os.OpenFile(journal, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	err := withUsageLedgerLock(path, false, func(_ *os.File) error {
+		f, err := openUsageCreated(path+usagePendingSuffix, os.O_APPEND|os.O_WRONLY)
 		if err != nil {
 			return err
 		}
 		if p.appendFile != nil {
 			err = p.appendFile(f, row.line)
 		} else {
-			_, err = f.Write(row.line)
-			if err == nil {
-				err = f.Sync()
+			var n int
+			n, err = f.Write(row.line)
+			if err == nil && n != len(row.line) {
+				err = io.ErrShortWrite
 			}
 		}
 		closeErr := f.Close()
 		if err == nil {
 			err = closeErr
 		}
-		if err != nil {
-			return err
-		}
-		// Syncing every time also covers a prior failed creation-directory sync.
-		return syncUsageDir(journal)
+		return err
 	})
+	if err != nil {
+		return err
+	}
+	p.rows++
+	if !p.syncing {
+		p.syncing = true
+		p.wake = make(chan struct{}, 1)
+		p.synced = make(chan struct{})
+		go p.syncBatches(path, p.wake, p.synced)
+	}
+	if p.rows >= usageSyncRows {
+		select {
+		case p.wake <- struct{}{}:
+		default:
+		}
+	}
+	return nil
+}
+
+// A clean close joins the final sync before replay can compact the journal.
+func (p *usagePending) finishSync() {
+	p.mu.Lock()
+	if !p.syncing {
+		p.mu.Unlock()
+		return
+	}
+	done := p.synced
+	select {
+	case p.wake <- struct{}{}:
+	default:
+	}
+	p.mu.Unlock()
+	<-done
+}
+
+func (p *usagePending) syncJournal(f *os.File) error {
+	if p.syncFile != nil {
+		return p.syncFile(f)
+	}
+	return f.Sync()
+}
+
+// Sync outside the admission mutex, so a slow disk never holds up an appender.
+// The shared ledger lock keeps the journal generation alive during the sync.
+func (p *usagePending) syncBatches(path string, wake <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
+	timer := time.NewTimer(usageSyncInterval)
+	defer timer.Stop()
+	for attempt := 0; ; {
+		if attempt > 0 {
+			<-timer.C
+		} else {
+			select {
+			case <-timer.C:
+			case <-wake:
+			}
+		}
+		p.mu.Lock()
+		rows := p.rows
+		select {
+		case <-wake:
+		default:
+		}
+		p.mu.Unlock()
+		started := time.Now()
+		err := withUsageLedgerLock(path, false, func(_ *os.File) error {
+			f, err := os.OpenFile(path+usagePendingSuffix, os.O_WRONLY, 0600)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			return p.syncJournal(f)
+		})
+		p.mu.Lock()
+		if err == nil {
+			p.rows -= rows
+		}
+		if p.rows == 0 {
+			p.syncing = false
+			p.mu.Unlock()
+			return
+		}
+		p.mu.Unlock()
+		delay := max(time.Duration(0), time.Until(started.Add(usageSyncInterval)))
+		if err != nil {
+			p.failed("journal-sync")
+			delay = usageRetryDelay(attempt)
+			attempt++
+		} else {
+			attempt = 0
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(delay)
+	}
 }
 
 func (p *usagePending) recover(path string) error {
@@ -257,7 +352,19 @@ func (p *usagePending) recover(path string) error {
 	} else if err != nil {
 		return err
 	}
-	return withUsageLedger(path, func(ledger *os.File) error {
+	return withUsageLedgerLock(path, true, func(ledger *os.File) error {
+		f, err := os.OpenFile(journal, os.O_WRONLY, 0600)
+		if err != nil {
+			return err
+		}
+		err = p.syncJournal(f)
+		closeErr := f.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
 		raw, err := repairUsagePending(journal)
 		if err != nil {
 			return err
@@ -291,9 +398,6 @@ func (p *usagePending) recover(path string) error {
 		}
 		// Even duplicate rows must be synced before their journal copies can be removed.
 		if err = ledger.Sync(); err != nil {
-			return err
-		}
-		if err = syncUsageDir(path); err != nil {
 			return err
 		}
 		return rewriteUsagePending(journal, keep.Bytes())

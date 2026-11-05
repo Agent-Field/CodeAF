@@ -12,6 +12,29 @@ import (
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
+// Independent appenders share the generation lock without waiting for one another.
+func TestRecordUsageSharesLedgerLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), UsageLedgerName)
+	prepareUsage(path)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if err = filelock.Lock(file, false, false); err != nil {
+		t.Fatal(err)
+	}
+	defer StopUsageWriter(path)
+	defer filelock.Unlock(file)
+	done := make(chan struct{})
+	go func() { RecordUsage(path, UsageLine{ID: "shared-lock", Input: 1}); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("RecordUsage blocked behind another shared lock")
+	}
+}
+
 // Journal handoff shares the ledger lock, so it must wait before claiming durability.
 func TestRecordingUsageWaitsForTheDurableJournal(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)

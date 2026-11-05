@@ -4613,8 +4613,12 @@ No warning appears on screen.
 codeaf saves each complete priced usage row in a pending journal before handing
 it to the background ledger writer. On the next start, missing charges are
 replayed once with their original amount, day and ownership. Already booked
-charges are not added again. This protects new charges whose journal write
-succeeded; it cannot recover facts that an older build never saved.
+charges are not added again. A successful journal write survives a process
+crash, including forced termination immediately after recording usage. Journal
+sync runs in background batches every 100 ms or 64 rows, whichever comes first.
+On power loss, up to the last 100 ms batch can be lost, as before. Clean close
+drains and syncs before compacting. These guarantees require successful disk
+operations; they cannot recover facts that an older build never saved.
 
 The sidecar is `usage.jsonl.pending-v1.jsonl`, beside `usage.jsonl` in your
 profile's `v3` directory. Startup and clean close compact booked rows out of it.

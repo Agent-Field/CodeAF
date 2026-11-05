@@ -664,7 +664,10 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 // backoff; close can reach its deadline while the journal keeps the durable copy.
 func (w *usageWriter) run(path string) {
 	defer close(w.stopped)
-	defer RecoverUsage(path)
+	defer func() {
+		pendingUsage(path).finishSync()
+		RecoverUsage(path)
+	}()
 	var identities usageIdentityCursor
 	write := func(rows []usageWrite) {
 		charges := 0
@@ -1049,7 +1052,7 @@ func detachUsageWriters() []*usageWriter {
 	return writers
 }
 
-// RecordUsage retains a complete row and syncs its journal before queueing ledger
+// RecordUsage writes a complete row to its journal before queueing ledger
 // projection. Disk errors are logged and retried without failing the caller's chat.
 // Calls with no money or tokens do not create ledger rows.
 func RecordUsage(path string, line UsageLine) {
