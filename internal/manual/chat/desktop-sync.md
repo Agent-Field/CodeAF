@@ -13,6 +13,9 @@ receipts remain readable and replaying one does not start its work again.
 Your unsent draft and staged attachments stay yours. Messages already queued
 stay in the queue; editing, reordering or removing them does not start a turn.
 You can still read the chat's history and files.
+The desktop can still send that computer a message for the chat while it is
+open or working there; it waits in the chat's queue on that computer. See
+"Send a message to a chat working on another computer".
 
 Sync news appears as visible notices in the chat: unsaved edits kept separately,
 full sync space, a removed device, identity changes, clock problems, slowing,
@@ -146,13 +149,45 @@ An already local chat that moved away keeps its place and becomes read-only.
 Continue here is available when the engine says it can move. Continuing here
 stops new work on the other computer. If another computer moved it after the
 preview was read, the engine says `another device continued this chat first`;
-refresh the row and choose again. There is no automatic retry. Unsent drafts
+refresh the row and choose again. Only a Continue here that waited for a turn retries itself. Unsent drafts
 and attachments remain yours. Changes arrive as engine events without desktop
 polling. An older chat that works in the home folder stays on that computer.
 
 Continue here requires the holder and ownership fence shown when you chose it.
 A changed fence, holder or saved turn needs a fresh choice.
 Completed turns are shared while the chat stays open, including after a move.
+
+## Send a message to a chat working on another computer — queued there, runs after the turn
+
+While a chat is open or working on another computer, the desktop composer
+writes to that computer instead of being read-only. The field says
+`Message <name>`, and where the model picker usually is, a chip beside Send
+says where it goes: `To <name> · after this turn` while a turn runs there,
+`To <name>` while the chat is only open. Rest on the chip or press it to see
+which computer it is (`<name> · your Linux computer`), what happens to a
+message, and `Continue here instead`. The chat does not move. The
+message goes into the chat's queue on that computer, so it runs when the
+current turn ends, or at once if nothing is running.
+
+The sent message shows in the chat with one dim line: `Sending to <name>`
+until that computer puts it in the queue, then `Delivered to <name>`. Once the
+chat comes here its transcript shows what ran, and those lines go.
+
+The chat is the address, not the computer: if the chat moves before the message
+is taken, whichever computer holds it then takes it, which can be this one.
+The text is sealed with your identity's key, so the relay cannot read it.
+
+Limits and refusals:
+
+- At most eight messages wait at once: `Eight messages are already waiting for the other computer. Send this one once it has taken them.`
+- A message is at most 2000 characters: `Messages to another computer are limited to 2000 characters.`
+- A sync service that does not carry messages says `This sync service can't carry a message to another computer yet. Bring the chat here to write to it.`
+- Only an app engine (the desktop app, or `codeaf app`) on the holding computer takes messages. A terminal chat there does not; the message waits.
+- A chat whose computer is offline stays read-only, and a handed-over chat's next message still moves it here.
+
+To bring the chat here instead, choose Continue here. While a turn runs there
+it waits (`Comes here when this turn ends.`, with Cancel), then moves, retrying
+once if that computer saved again first.
 
 ## Does an idle desktop chat keep its hold on the relay
 
@@ -240,3 +275,22 @@ If the last one is still there after about two minutes, the new one stops and th
 A removal check returns a local vault read error rather than stopping the
 background sync worker. Background sync can retry on a later round. This does
 not repair a damaged vault or change the saved keys shared between computers.
+
+## Sharing fails with durable object pack is missing
+
+If saving for sharing reports `durable object pack is missing`, codeaf records
+local diagnostic evidence before retrying capture once with a new capture plan.
+It never skips planning. A successful retry lets sharing continue; another
+failure keeps the original error and adds `capture evidence: <path>` to the
+error details and sharing log.
+
+The JSON bundle is beside that chat's local store state in `capture-evidence/`.
+It records the furrow binary path and reported version, the full original error,
+and store file names, sizes and modification times. It copies only the catalog,
+its SQLite sidecars and the durability-frontier metadata, encoded as base64.
+It never copies object or pack contents or reads files under `keys/` or
+`credentials/`. Metadata files over 256 KiB or beyond a combined 512 KiB budget are omitted
+with a note. The listing
+stops at 1024 entries. Each bundle is at most 1 MiB; only the newest three are kept.
+If evidence cannot be written, the log explains why and the retry still runs.
+This evidence does not establish why a pack was missing or repair the store.
