@@ -161,11 +161,8 @@ Completed turns are shared while the chat stays open, including after a move.
 
 While a chat is open or working on another computer, the desktop composer
 writes to that computer instead of being read-only. The field says
-`Message <name>`, and where the model picker usually is, a chip beside Send
-says where it goes: `To <name> · after this turn` while a turn runs there,
-`To <name>` while the chat is only open. Rest on the chip or press it to see
-which computer it is (`<name> · your Linux computer`), what happens to a
-message, and `Continue here instead`. The chat does not move. The
+`Message <name> · runs after this turn` while a turn runs there and
+`Message <name>` while the chat is only open. The chat does not move. The
 message goes into the chat's queue on that computer, so it runs when the
 current turn ends, or at once if nothing is running.
 
@@ -185,9 +182,10 @@ Limits and refusals:
 - Only an app engine (the desktop app, or `codeaf app`) on the holding computer takes messages. A terminal chat there does not; the message waits.
 - A chat whose computer is offline stays read-only, and a handed-over chat's next message still moves it here.
 
-To bring the chat here instead, choose Continue here. While a turn runs there
-it waits (`Comes here when this turn ends.`, with Cancel), then moves, retrying
-once if that computer saved again first.
+To bring the chat here instead, choose Continue here. While a turn runs there it
+waits: the line says `Comes here when this turn ends.` and the button becomes
+Cancel. When the turn ends the chat moves, and if that computer saved again
+first, the move retries once against the newer save.
 
 ## Does an idle desktop chat keep its hold on the relay
 
