@@ -425,9 +425,17 @@ func TestClosingAnAgentInsideASyncBubbleLeavesTheWriterAlone(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
 	usageWriterFor(path)
 	defer StopUsageWriter(path)
+	// The writer and its budget notification channel both belong to the outer
+	// scheduler. The helper would register cleanup outside the bubble; keep
+	// Close and its cleanup inside so a second Close uses the same scheduler.
+	agent, err := newAgent(Config{Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM", usageLedger: path}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent.stopLaneBeat() // The process-wide lane queue is outside the fake-clock bubble.
 	synctest.Test(t, func(t *testing.T) {
-		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.usageLedger = path })
-		agent.stopLaneBeat() // The process-wide lane queue is outside the fake-clock bubble.
+		t.Cleanup(agent.SettleWrites)
+		t.Cleanup(func() { _ = agent.Close() })
 		RecordUsage(path, UsageLine{ID: "in-bubble", Input: 1, USD: .001})
 		if err := agent.Close(); err != nil {
 			t.Fatal(err)
