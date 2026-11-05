@@ -860,6 +860,37 @@ Terminal factory sentences still read those words as chips. Existing jobs are
 not rewritten; this applies when a new job is created. Factories without the
 separate-title creation capability retain their existing creation behavior.
 
+## Job context attachments before the first run
+
+`factory.job_context_set` replaces the reference material attached to one job.
+Send `factory`, `job`, the `expect.version` from the job you read, and `context`.
+An empty list clears the attachments. Engines announce `factory.job_context`
+in hello and `job_context` in `factory.capabilities`. Job creation does not
+accept `context`; create the job in Backlog, attach context, then start it.
+
+Context can be changed in Backlog or while queued while the job has no run:
+before its first run, or after Bring back cleared its last one. Once a run has
+begun, the Factory refuses with "The job has started; its steps already read
+their context." A stale version changes nothing: read the job again.
+The same caller rule as model edits applies: in a team Factory the
+job's person may edit, or anyone when no person is assigned; solo allows it.
+
+Attach at most 20 items, each with a title, markdown and optional source label,
+path or URL. Titles are 1–200 characters after trimming, sources at most 500,
+and markdown must be non-empty. All markdown together is at most 100,000
+characters, separate from the job description's 20,000-character limit.
+Job and queue reads show only titles and sources.
+
+The first eligible conversation named `plan` reads the whole attachments as
+reference material; if no such plan runs, the first eligible conversation reads
+them. Disabled, excluded and skipped plans do not take context away from that
+conversation. Other steps receive none. Attachments do not override the job or
+step instructions and never enter a GitHub issue, pull request or comment.
+
+An older Factory without the context route answers `conflict` with reason
+`factory_too_old`; update it. A lost answer is `uncertain`: the engine sends the
+write once, so read the job before deciding what to do next.
+
 ## Job Brief inputs — later requests, answers and saved notes
 
 The Brief reads the issue plus your later requests from gate answers and saved

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -43,19 +42,18 @@ func createExtrasJob(t *testing.T, f *v2Jobs, path string, body api.NewJob) fact
 	return it
 }
 
-// E5/E6/E7: extras persist outside the description, read as metadata, and budget survives starts.
+// E5/E6: labels persist and budget survives starts.
 func TestNewJobExtrasPersistAndBudgetPrecedesStart(t *testing.T) {
 	for _, start := range []string{"", "now"} {
 		t.Run("start="+start, func(t *testing.T) {
 			f := newCreateExtrasJobs(t)
 			budget, assignee := 10.0, "sam"
-			text, markdown := strings.Repeat("d", 20000), strings.Repeat("é", 60000)
+			text := strings.Repeat("d", 20000)
 			it := createExtrasJob(t, f, "/v1/jobs", api.NewJob{
 				Repo: "acme/api", Title: "Fix", Text: text, Source: factory.AskApp, Start: start, Assignee: &assignee,
 				Group: " batch ", Milestone: " release ", Budget: &budget,
-				Context: []factory.JobContext{{Title: " reference ", Source: "guide", Markdown: markdown}},
 			})
-			if it.Group != "batch" || it.Milestone != "release" || it.Cap != 10 || it.Body != text || it.Ask.Text != text || len(it.Context) != 1 || it.Context[0].Title != "reference" || it.Context[0].Markdown != markdown {
+			if it.Group != "batch" || it.Milestone != "release" || it.Cap != 10 || it.Body != text || it.Ask.Text != text {
 				t.Fatal("created job lost extras or mixed them into the description")
 			}
 			events, err := f.rec.Since(context.Background(), time.Time{})
@@ -89,8 +87,8 @@ func TestNewJobExtrasPersistAndBudgetPrecedesStart(t *testing.T) {
 			for _, path := range []string{fmt.Sprintf("/v1/jobs/%d", it.ID), "/v1/queue"} {
 				w := verbRequest(f.h, http.MethodGet, path, "")
 				checkJSON(t, w, http.StatusOK)
-				if strings.Contains(w.Body.String(), "markdown") || !strings.Contains(w.Body.String(), `"context":[{"title":"reference","source":"guide"}]`) {
-					t.Fatalf("read did not return context metadata only: %s", path)
+				if strings.Contains(w.Body.String(), `"context"`) {
+					t.Fatalf("create unexpectedly stored context: %s", path)
 				}
 			}
 		})
@@ -132,7 +130,7 @@ func TestNewIssueJobExtrasAndReplay(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusCreated, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"number":42,"title":"Fix","html_url":"https://github.com/acme/api/issues/42"}`))}, nil
 	})}
 	reopenJobs(t, f)
-	body := `{"repo":"acme/api","title":"Fix","text":"description only","source":"app","group":"batch","milestone":"release","budget":10,"context":[{"title":"reference","source":"guide","markdown":"attached material"}]}`
+	body := `{"repo":"acme/api","title":"Fix","text":"description only","source":"app","group":"batch","milestone":"release","budget":10}`
 	first := keyedRequest(f.h, "/v1/issues", body, "k1")
 	second := keyedRequest(f.h, "/v1/issues", body, "k1")
 	checkJSON(t, first, http.StatusCreated)
@@ -145,7 +143,7 @@ func TestNewIssueJobExtrasAndReplay(t *testing.T) {
 		t.Fatalf("jobs=%d err=%v", len(items), err)
 	}
 	it := items[0]
-	if it.Num != 42 || it.Origin != factory.OriginForge || it.Group != "batch" || it.Cap != 10 || it.Context[0].Markdown != "attached material" {
+	if it.Num != 42 || it.Origin != factory.OriginForge || it.Group != "batch" || it.Cap != 10 {
 		t.Fatalf("issue job: %+v", it)
 	}
 	checkJSON(t, verbRequest(f.h, http.MethodPost, "/v1/jobs", body), http.StatusCreated)
@@ -174,7 +172,7 @@ func TestNewJobCreateKeyReplay(t *testing.T) {
 	}
 }
 
-// E12/E5/E6/E8: invalid extras are checked before any issue or job is made, on either route.
+// E12/E5/E6/E15: invalid extras and the removed context field have no effects on either create route.
 func TestNewJobInvalidExtrasHaveNoEffects(t *testing.T) {
 	f := newCreateExtrasJobs(t)
 	f.cfg.Mode = api.FactorySolo
@@ -204,25 +202,5 @@ func TestNewJobInvalidExtrasHaveNoEffects(t *testing.T) {
 	items, err := f.st.List()
 	if err != nil || len(items) != 0 || calls != 0 {
 		t.Fatalf("invalid extras: jobs=%d GitHub=%d err=%v", len(items), calls, err)
-	}
-}
-
-// E7/E9: only the worker admission codec carries full attachments to the runner.
-func TestNewJobContextWorkerAdmission(t *testing.T) {
-	f := newCreateExtrasJobs(t)
-	it := createExtrasJob(t, f, "/v1/jobs", api.NewJob{
-		Repo: "acme/api", Title: "Fix", Source: factory.AskApp,
-		Context: []factory.JobContext{{Title: "reference", Source: "guide", Markdown: "complete attachment"}},
-	})
-	raw, err := json.Marshal(api.WorkerJob(it))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wire api.Job
-	if err := json.Unmarshal(raw, &wire); err != nil {
-		t.Fatal(err)
-	}
-	if got := api.ToItem(wire); !reflect.DeepEqual(got.Context, it.Context) {
-		t.Fatal("worker lost the context needed for its plan brief")
 	}
 }

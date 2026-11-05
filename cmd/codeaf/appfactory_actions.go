@@ -144,7 +144,7 @@ func (h *appFactoryHub) sendWrite(ctx context.Context, client *http.Client, meth
 		return nil, appwire.Errorf(appwire.CodeUncertain, "the factory's answer is too large to read; read the job before trying again")
 	}
 	if reply.status < 200 || reply.status >= 300 {
-		return nil, factoryCreateFailure(req, reply)
+		return nil, factoryJobContextFailure(req, reply)
 	}
 	h.touch(id)
 	return data, nil

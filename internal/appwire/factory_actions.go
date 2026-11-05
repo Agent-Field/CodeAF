@@ -281,8 +281,6 @@ type FactoryJobCreateParams struct {
 	Milestone string `json:"milestone,omitempty"`
 	// Budget sets the job's initial cap to one of FactoryBudgetSteps.
 	Budget *float64 `json:"budget,omitempty"`
-	// Context attaches reference material outside the description's limit.
-	Context []FactoryJobContext `json:"context,omitempty"`
 	// Key is carried as Idempotency-Key on this create request alone.
 	Key string `json:"key,omitempty"`
 }

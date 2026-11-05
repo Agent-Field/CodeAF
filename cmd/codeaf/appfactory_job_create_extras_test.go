@@ -15,15 +15,18 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
-// E1: factory.capabilities announces all five supported create features.
+// E1: factory.capabilities announces create extras and the separate context write.
 func TestAppFactoryCreateCapabilities(t *testing.T) {
 	w := newFactoryWire(t, testFactoryHub(t))
 	var got map[string]any
 	w.must("factory.capabilities", map[string]any{}, &got)
-	for _, flag := range []string{"create_issue", "create_group", "create_budget", "create_context", "create_key"} {
+	for _, flag := range []string{"create_issue", "create_group", "create_budget", "job_context", "create_key"} {
 		if got[flag] != true {
 			t.Errorf("%s = %v", flag, got[flag])
 		}
+	}
+	if _, exists := got["create_context"]; exists {
+		t.Fatal("obsolete create_context capability")
 	}
 }
 
@@ -46,7 +49,6 @@ func TestAppFactoryCreateRoutesBodyAndKey(t *testing.T) {
 				if issue {
 					path, key = "/v1/issues", "k1"
 					want["issue"], want["group"], want["milestone"], want["budget"] = true, "batch", "release", float64(10)
-					want["context"] = []any{map[string]any{"title": "reference", "markdown": "attached text", "source": "guide"}}
 				}
 				var body map[string]any
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -62,7 +64,6 @@ func TestAppFactoryCreateRoutesBodyAndKey(t *testing.T) {
 			p := map[string]any{"factory": conn.ID, "repo": "o/r", "title": "Fix", "text": "body"}
 			if issue {
 				p["open_issue"], p["group"], p["milestone"], p["budget"], p["key"] = true, "batch", "release", 10, "k1"
-				p["context"] = []appwire.FactoryJobContext{{Title: "reference", Markdown: "attached text", Source: "guide"}}
 			}
 			var made appwire.FactoryJobActed
 			wire.must("factory.job_create", p, &made)
@@ -88,7 +89,7 @@ func TestAppFactoryCreateOlderFactoryRefusals(t *testing.T) {
 		{"GitHub sign-in", "Reconnect GitHub", appwire.CodeSignedOut, 401, true, false},
 		{"other validation", "invalid title", appwire.CodeBadParams, 422, false, false},
 	}
-	for _, field := range []string{"group", "milestone", "context", "budget", "issue"} {
+	for _, field := range []string{"group", "milestone", "budget", "issue"} {
 		cases = append(cases, struct {
 			name, words, code string
 			status            int
@@ -122,7 +123,7 @@ func TestAppFactoryCreateOlderFactoryRefusals(t *testing.T) {
 	}
 }
 
-// E5/E6/E8/E10: bad params are refused at the wire before the fake Factory sees a POST.
+// E5/E6/E10/E15: bad params and removed context send nothing to the fake Factory.
 func TestAppFactoryCreateInvalidExtrasSendNothing(t *testing.T) {
 	var posts atomic.Int64
 	stub := startStub(t, func(w http.ResponseWriter, r *http.Request) { posts.Add(1) })

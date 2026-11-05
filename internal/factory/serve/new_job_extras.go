@@ -19,7 +19,7 @@ func (h *Handler) checkNewJobExtras(w http.ResponseWriter, body *api.NewJob) boo
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return false
 	}
-	if body.Group != "" || body.Milestone != "" || body.Budget != nil || len(body.Context) > 0 {
+	if body.Group != "" || body.Milestone != "" || body.Budget != nil {
 		return h.requireVerb(w, h.config.Store != nil)
 	}
 	return true
@@ -35,39 +35,17 @@ func validateNewJobExtras(body *api.NewJob) error {
 	if body.Budget != nil && !slices.Contains(factory.JobBudgetSteps(), *body.Budget) {
 		return fmt.Errorf("budget must be one of %v US dollars", factory.JobBudgetSteps())
 	}
-	if len(body.Context) > factory.MaxJobContextItems {
-		return fmt.Errorf("context takes at most %d items", factory.MaxJobContextItems)
-	}
-	total := 0
-	for i := range body.Context {
-		c := &body.Context[i]
-		c.Title = strings.TrimSpace(c.Title)
-		if n := utf8.RuneCountInString(c.Title); n < 1 || n > factory.MaxJobContextTitle {
-			return fmt.Errorf("context title must be 1–%d characters after trimming", factory.MaxJobContextTitle)
-		}
-		if utf8.RuneCountInString(c.Source) > factory.MaxJobContextSource {
-			return fmt.Errorf("context source must be at most %d characters", factory.MaxJobContextSource)
-		}
-		if strings.TrimSpace(c.Markdown) == "" {
-			return fmt.Errorf("context markdown must be non-empty")
-		}
-		total += utf8.RuneCountInString(c.Markdown)
-	}
-	if total > factory.MaxJobContext {
-		return fmt.Errorf("context markdown must total at most %d characters", factory.MaxJobContext)
-	}
 	return nil
 }
 
 // stampNewJobExtras leaves the default create untouched and budgets before start.
 func (h *Handler) stampNewJobExtras(r *http.Request, id int, body api.NewJob) error {
-	if body.Group == "" && body.Milestone == "" && body.Budget == nil && len(body.Context) == 0 {
+	if body.Group == "" && body.Milestone == "" && body.Budget == nil {
 		return nil
 	}
 	stamp := func() error {
 		return h.config.Store.Update(id, func(it *factory.Item) error {
 			it.Group, it.Milestone = body.Group, body.Milestone
-			it.Context = slices.Clone(body.Context)
 			if body.Budget != nil {
 				it.Cap = *body.Budget
 			}

@@ -73,3 +73,58 @@ func TestJobContextBriefSkipsRuntimeSkippedConversations(t *testing.T) {
 		}
 	}
 }
+
+// E9/M1: disabled, excluded and skipped plans cannot consume another conversation's context.
+func TestJobContextBriefInactivePlan(t *testing.T) {
+	for _, mode := range []string{"disabled", "excluded", "skipped", "check"} {
+		for _, compiled := range []bool{false, true} {
+			if mode == "skipped" && !compiled {
+				continue
+			}
+			t.Run(mode+map[bool]string{false: "/stages", true: "/compiled"}[compiled], func(t *testing.T) {
+				plan := factory.Stage{Name: "plan", Kind: factory.StageChat, On: true}
+				switch mode {
+				case "disabled":
+					plan.On = false
+				case "excluded":
+					plan.When = "large"
+				case "check":
+					plan.Kind = factory.StageCheck
+				}
+				stages := []factory.Stage{plan, {Name: "write", Kind: factory.StageChat, On: true}, {Name: "review", Kind: factory.StageChat, On: true}}
+				it := factory.Item{Stages: stages, Context: []factory.JobContext{{Title: "reference", Markdown: "attached body"}}}
+				if compiled {
+					phases := []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseRunning}, {Name: "review", Kind: factory.StageChat, State: factory.PhasePending}}
+					if mode == "skipped" {
+						phases = append([]factory.Phase{{Name: "plan", Kind: factory.StageChat, State: factory.PhaseSkipped}}, phases...)
+					}
+					if mode == "check" {
+						phases = append([]factory.Phase{{Name: "plan", Kind: factory.StageCheck, State: factory.PhaseDone}}, phases...)
+					}
+					it.Stream = &factory.Stream{Phases: phases}
+				}
+				for i, s := range stages {
+					brief := stageBrief(Job{Item: it, Stage: s, Index: i})
+					if strings.Contains(brief, "attached body") != (s.Name == "write") {
+						t.Fatalf("%s consumed context incorrectly", s.Name)
+					}
+				}
+			})
+		}
+	}
+}
+
+// E9/M1: a compiled conversation plan wins even when it is not the first phase.
+func TestJobContextBriefCompiledPlan(t *testing.T) {
+	stages := []factory.Stage{{Name: "inspect", Kind: factory.StageChat, On: true}, {Name: "Plan", Kind: factory.StageChat, On: true}, {Name: "write", Kind: factory.StageChat, On: true}}
+	it := factory.Item{Stages: stages, Context: []factory.JobContext{{Title: "reference", Markdown: "attached body"}}, Stream: &factory.Stream{Phases: []factory.Phase{
+		{Name: "inspect", Kind: factory.StageChat, State: factory.PhaseDone},
+		{Name: "Plan", State: factory.PhaseRunning},
+		{Name: "write", Kind: factory.StageChat, State: factory.PhasePending},
+	}}}
+	for i, s := range stages {
+		if brief := stageBrief(Job{Item: it, Stage: s, Index: i}); strings.Contains(brief, "attached body") != (s.Name == "Plan") {
+			t.Fatalf("step %s context recipient is wrong", s.Name)
+		}
+	}
+}

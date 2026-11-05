@@ -2,6 +2,12 @@ package api
 
 import "github.com/Agent-Field/codeaf/internal/factory"
 
+// JobContextRequest replaces attachments before the job's first run; [] clears them.
+type JobContextRequest struct {
+	Context []factory.JobContext `json:"context"`
+	Expect  *Expect              `json:"expect"`
+}
+
 // JobContext names an attachment on a job read; only worker admission carries Markdown.
 type JobContext struct {
 	Title  string `json:"title"`

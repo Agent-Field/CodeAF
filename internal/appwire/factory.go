@@ -85,8 +85,8 @@ type FactoryCapabilities struct {
 	CreateGroup bool `json:"create_group"`
 	// CreateBudget carries a new job's explicit initial budget.
 	CreateBudget bool `json:"create_budget"`
-	// CreateContext carries attachments for the new job's plan step.
-	CreateContext bool `json:"create_context"`
+	// JobContext replaces context attachments before a job's first run.
+	JobContext bool `json:"job_context"`
 	// CreateKey carries the caller's create key as Idempotency-Key.
 	CreateKey bool `json:"create_key"`
 	// Contract is the factory API contract this engine speaks.
