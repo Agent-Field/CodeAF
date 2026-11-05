@@ -3,6 +3,7 @@ package cellstore
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,7 +70,7 @@ var _ executor.Executor = (*Recorder)(nil)
 // sealed ride the next seal; calls with an intent and no completion are kept
 // for Incomplete and are never run again here (L9).
 func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath string, opts Options) (*Recorder, error) {
-	wal, rec, err := OpenWAL(walPath)
+	wal, rec, err := openRecovery(c, walPath)
 	if err != nil {
 		return nil, fmt.Errorf("open call log: %w", err)
 	}
@@ -119,7 +120,7 @@ func (r *Recorder) Around(ctx context.Context, call executor.Call, effect execut
 	if err := r.enter(ctx); err != nil {
 		return err
 	}
-	intent := Intent{V: walV, Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(),
+	intent := Intent{V: walV, ID: rand.Text(), Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(),
 		SideEffect: string(effect), Brief: briefOf(call.Args)}
 	if err := r.wal.Begin(intent); err != nil {
 		return fmt.Errorf("log call intent: %w", err)
@@ -199,7 +200,7 @@ func (r *Recorder) tool() string {
 }
 
 func (r *Recorder) intent(req executor.ExecRequest) Intent {
-	return Intent{V: walV, Tool: r.tool(), ArgsHash: argsHash(req), Started: r.now().UnixMilli(),
+	return Intent{V: walV, ID: rand.Text(), Tool: r.tool(), ArgsHash: argsHash(req), Started: r.now().UnixMilli(),
 		SideEffect: string(executor.Classify(req.Net)), Brief: clip(strings.Join(req.Argv, " "))}
 }
 
@@ -365,7 +366,7 @@ func (r *Recorder) report(err error) {
 // external call (SCHEMAS.md ruling 3): a local one can be re-run.
 func executed(i Intent, res executor.ExecResult, callErr error, ended int64) Executed {
 	e := Executed{
-		Call: Call{Tool: i.Tool, ArgsHash: i.ArgsHash, Started: i.Started, Ended: ended, Exit: exitOf(res, callErr),
+		Call: Call{ID: i.ID, Tool: i.Tool, ArgsHash: i.ArgsHash, Started: i.Started, Ended: ended, Exit: exitOf(res, callErr),
 			StdoutHash: hashHex(res.Stdout), StderrHash: hashHex(res.Stderr), SideEffect: i.SideEffect},
 		Exact:    executor.SnapshotExact(res),
 		Services: serviceRecs(res.Services),

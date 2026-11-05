@@ -62,6 +62,8 @@ type Range struct {
 // Call is one tool call in a receipt. For a call whose SideEffect is external
 // the output also lives at BlobsDir/<hash> (SCHEMAS.md ruling 3).
 type Call struct {
+	// ID is the WAL call identity, absent on older receipts.
+	ID         string `json:"id,omitempty"`
 	Tool       string `json:"tool"`
 	ArgsHash   string `json:"args_hash"`
 	Started    int64  `json:"started"`
