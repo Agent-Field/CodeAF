@@ -697,15 +697,32 @@ type orchestratePlanner struct {
 	request string
 }
 
-// Plan is one call, salvaged, with the ONE repair turn this pipeline allows —
-// exactly the ladder a harness design is held to (harness_build.go), for
-// exactly its reason: a reply that is a good amendment wearing a code fence
-// costs nothing to fix, and re-asking costs the whole view again.
+// Plan salvages syntax before asking for a transcription repair. An opening
+// reply lost to truncation gets one fresh planning attempt with more output room;
+// an explicit complete empty plan keeps its own explanation.
 func (p *orchestratePlanner) Plan(ctx context.Context, view orchestrate.View) (orchestrate.Amendment, error) {
-	return p.think(ctx, []ai.Message{
+	messages := []ai.Message{
 		textMessage("system", orchestratePlannerBrief),
 		textMessage("user", renderOrchestrateView(view, p.request)),
-	})
+	}
+	opening := len(view.Results) == 0 && len(view.Frontier) == 0
+	amendment, response, err := p.think(ctx, messages, opening)
+	if !opening || !errors.Is(err, orchestrate.ErrPlannerReplyCutOff) {
+		return amendment, err
+	}
+	// The first call leaves output size to the provider. Recovery requests at
+	// least 8192 answer tokens, or twice the output it actually exhausted.
+	budget := 8192
+	if response != nil && response.Usage != nil {
+		budget = max(budget, 2*response.Usage.CompletionTokens)
+	}
+	messages = append(messages, textMessage("user",
+		"Your opening reply was cut off or lost its nodes. Answer again with one complete amendment. Preserve the work needed for the goal."))
+	amendment, _, err = p.think(ctx, messages, true, ai.WithMaxTokens(budget))
+	if err != nil || len(amendment.Add) == 0 {
+		return orchestrate.Amendment{}, orchestrate.ErrPlannerReplyCutOff
+	}
+	return amendment, err
 }
 
 // Repair is the second half of that bargain, and the half only the run can
@@ -713,43 +730,52 @@ func (p *orchestratePlanner) Plan(ctx context.Context, view orchestrate.View) (o
 // a running node, a need on an id nobody minted — is handed back with the
 // sentence that refused it.
 func (p *orchestratePlanner) Repair(ctx context.Context, view orchestrate.View, why string) (orchestrate.Amendment, error) {
-	return p.think(ctx, []ai.Message{
+	amendment, _, err := p.think(ctx, []ai.Message{
 		textMessage("system", orchestratePlannerBrief),
 		textMessage("user", renderOrchestrateView(view, p.request)),
 		textMessage("user", "Your last amendment was REFUSED: "+why+
 			"\n\nAnswer again with one amendment that does not do that. {} is a fine answer."),
-	})
+	}, false)
+	return amendment, err
 }
 
-func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message) (orchestrate.Amendment, error) {
-	raw, err := p.ask(ctx, messages)
+func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message, opening bool, options ...ai.Option) (orchestrate.Amendment, *ai.Response, error) {
+	response, err := p.ask(ctx, messages, options...)
 	if err != nil {
-		return orchestrate.Amendment{}, err
+		return orchestrate.Amendment{}, response, err
+	}
+	raw := response.Text()
+	if opening && (provider.FinishReason(response) == "length" || strings.TrimSpace(raw) == "") {
+		// Re-plan instead of asking a transcription repair to invent missing work.
+		return orchestrate.Amendment{}, response, orchestrate.ErrPlannerReplyCutOff
 	}
 	amendment, parseErr := orchestrate.ParseAmendment(raw)
 	if parseErr == nil {
-		return amendment, nil
+		return amendment, response, nil
 	}
-	// THE REPAIR TURN CARRIES NO BRIEF. It is a transcription job, and handing
-	// it the law that produced the first reply would invite it to reconsider
-	// the plan while it is meant to be fixing a delimiter.
+	// The repair turn carries no planning brief: it may fix syntax, but an
+	// opening repair that loses every node is not a successful transcription.
 	second, err := p.ask(ctx, []ai.Message{
 		textMessage("system", "You repair malformed JSON and do nothing else. You never change content, never add a field, never drop one, and never explain. Your whole reply is one JSON value."),
 		textMessage("user", "This was meant to be one JSON object:\n\n"+raw+
 			"\n\nIt did not parse. "+parseErr.Error()+
 			"\n\nReply with ONLY the corrected JSON — the same content, nothing added, nothing dropped, no prose, no code fence."),
-	})
+	}, options...)
 	if err != nil {
-		return orchestrate.Amendment{}, err
+		return orchestrate.Amendment{}, response, err
 	}
-	return orchestrate.ParseAmendment(second)
+	amendment, err = orchestrate.ParseAmendment(second.Text())
+	if opening && (provider.FinishReason(second) == "length" || err == nil && len(amendment.Add) == 0) {
+		return orchestrate.Amendment{}, second, orchestrate.ErrPlannerReplyCutOff
+	}
+	return amendment, second, err
 }
 
 // ask is one call, billed twice: to the person's session usage, because an
 // auxiliary call is not free (title.go, guardian.go), and to the run's tank,
 // because a planner that did not meter would be spending money the gauge never
 // sees.
-func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (string, error) {
+func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	ctx = p.call.context(ctx)
 	response, err := p.agent.completeWithModel(
 		// The plan a run is steered by: nobody reads it arriving, and it has to
@@ -757,16 +783,16 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
 		callPurpose(roles.RolePlanner),
 		messages,
-		p.call.model)
+		p.call.model, options...)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if response == nil {
-		return "", errors.New("the planner answered with nothing")
+		return nil, errors.New("the planner answered with nothing")
 	}
 	p.agent.addAuxiliaryUsageAs(response, p.call.model, 1, string(roles.RolePlanner))
 	p.orch.Charge(orchestrateCost(response, p.call.model))
-	return response.Text(), nil
+	return response, nil
 }
 
 // orchestrateCost is what one call spent: THE PROVIDER'S OWN FIGURE WHEN THERE

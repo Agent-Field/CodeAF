@@ -206,6 +206,11 @@ func (o *Orchestrator) Run(ctx context.Context) (Snapshot, error) {
 			o.finish("")
 			return o.Snapshot(), nil
 		}
+		if errors.Is(err, ErrPlannerReplyCutOff) {
+			o.note(err.Error())
+			o.finish("")
+			return o.Snapshot(), err
+		}
 		return o.Snapshot(), fmt.Errorf("orchestrate: the opening plan failed: %w", err)
 	}
 	o.absorb(work, thought{amendment: opening})
