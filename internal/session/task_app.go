@@ -423,8 +423,19 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 			return SteerReceipt{}, err
 		}
 	}
-	if err := a.checkAppTaskWork(intent); err != nil {
-		return SteerReceipt{}, err
+	// Answers, stopping, hiding and holding work remain available on a viewer.
+	switch intent.Action {
+	case "cancel", "stop", "hold", "typing", "decline", AppActionDismiss, AppActionRestore:
+	case "decide":
+		if intent.Verb == "not_right" || intent.Verb == "tell" {
+			if err := a.CheckWork(); err != nil {
+				return SteerReceipt{}, err
+			}
+		}
+	default:
+		if err := a.CheckWork(); err != nil {
+			return SteerReceipt{}, err
+		}
 	}
 	// DISMISS AND RESTORE ARE ONE GENERIC FACT FOR EVERY ROAD, so they are settled
 	// before the road is chosen (task_dismiss.go).
@@ -438,12 +449,6 @@ func (a *Agent) appTaskAct(intent AppTaskIntent) (SteerReceipt, error) {
 		// Past its proposal a task's model is RetargetTask's promise, not this card's.
 		return SteerReceipt{}, errors.New("that task must be a proposed task to change its model")
 	}
-	return a.appListedTaskAction(id, numeric, intent)
-}
-
-// appListedTaskAction checks the saved row before dispatching an action to
-// its run, plan or graph road, preserving the same stale-state refusal.
-func (a *Agent) appListedTaskAction(id uint64, numeric error, intent AppTaskIntent) (SteerReceipt, error) {
 	row, found, err := a.AppTask(intent.ID)
 	if err != nil {
 		return SteerReceipt{}, err
@@ -467,25 +472,6 @@ func (a *Agent) appListedTaskAction(id uint64, numeric error, intent AppTaskInte
 		return a.appTaskNote(node, intent)
 	}
 	return SteerReceipt{}, a.appGraphAction(node, intent, row)
-}
-
-// checkAppTaskWork keeps answers and controls available on a viewer while
-// refusing actions that would start or revise work.
-func (a *Agent) checkAppTaskWork(intent AppTaskIntent) error {
-	switch intent.Action {
-	case "cancel", "stop", "hold", "typing", "decline", AppActionDismiss, AppActionRestore:
-	case "decide":
-		if intent.Verb == "not_right" || intent.Verb == "tell" {
-			if err := a.CheckWork(); err != nil {
-				return err
-			}
-		}
-	default:
-		if err := a.CheckWork(); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // appWordAction is whether an action carries the person's words to the task:
