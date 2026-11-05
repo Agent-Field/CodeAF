@@ -79,6 +79,7 @@ func (a *Agent) startBudgetWatch() {
 			}
 		}()
 		seen := writes.Load()
+		dailyCap := a.dailyCeilingUSD()
 		for {
 			var ticks <-chan time.Time
 			if a.budgetWatchActive() {
@@ -100,6 +101,10 @@ func (a *Agent) startBudgetWatch() {
 			}
 			if n := writes.Load(); n != seen {
 				seen, ledgerChanged = n, true
+			}
+			// A profile edit can cross the cap without another usage receipt.
+			if cap := a.dailyCeilingUSD(); cap != dailyCap {
+				dailyCap, ledgerChanged = cap, true
 			}
 			a.mu.Lock()
 			stopped, epoch := a.workStopped, a.workEpoch

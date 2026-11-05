@@ -4,6 +4,7 @@ title: Let replying calls finish at the daily spending cap
 pr: 2364
 surface: [chat, engine, app, factory, docs]
 invalidates:
+  - "Lowering the saved daily cap below recorded spending previously left waiting calls running until another receipt arrived. Active watchers now detect the edit within 100 ms."
   - "A planner that finished without starting a worker could leave its chat without a daily-limit notice. Adaptive runs now check recorded spending at completion."
   - "The job-budget watcher previously kept its 100 ms clock running while idle. It now polls recorded daily and job spending only while capped work is moving, and every owned-work start wakes it."
   - "A recorded daily crossing could be discarded between a completed call and its tool starting, leaving the tool running until another ledger write. Tool starts and command reruns now wake a fresh recorded-spend check."
@@ -68,3 +69,12 @@ notice. Worker and planner admission refusals remain model-free; the shared
 stop path records the notice once and a raise accepts a fresh message. The live
 four-crew test now names chats missing notices and logs their transcript tails
 and orchestration snapshots on that wait's failure.
+
+A profile-only daily-cap decrease now triggers the active watcher's recorded-spend
+check within its existing 100 ms poll interval. The watcher remembers the last
+selected cap alongside the ledger counter, so unchanged polls do not reread
+the ledger and idle chats still hold no timer. Regression fixtures lower the
+saved profile cap while three crews run, measure provider admission timestamps,
+check cancellation and one-time reply accounting, persist one notice per owner,
+and resume after a raise. The idle fixture refuses the next message without
+provider admission or background budget checks.
