@@ -1,7 +1,7 @@
 // sweep.go is the idle reaper: one pass over the
 // session folders, once per launch, that expires droppings and removes litter.
 //
-// IT HAS EXACTLY THREE RULES, and the third one outranks the other two.
+// IT HAS THESE RULES, and the third one outranks the first two.
 //
 //  1. DROPPINGS EXPIRE. A file under a session's logs/ that nothing has touched
 //     for a week is a job log, a stub or a frame nobody is going to read. It is
@@ -20,6 +20,7 @@
 //     conversation in another window. A sweep that could delete a real
 //     transcript would make every one of them provisional, and the whole value
 //     of a journal a person can cat, grep and rsync is that it is not.
+//     The one exception is rule 5, and it never reaches a conversation.
 //
 //  4. AND HOME'S OWN LITTER GOES THE SAME WAY. An errand said at home lives in
 //     its own folder under v3/errands until it becomes something — `continue
@@ -32,7 +33,19 @@
 //     under v3/projects is outside its reach by construction: rule 4 walks the
 //     errands root and nothing else, and answers immediately on an empty one.
 //
-// The two removals are DIFFERENT ACTS and the third rule reads differently
+//  5. A COPY THAT NEVER FINISHED GOES. cell.CopyLegacy builds .moving/<hash> and
+//     stamps copy-ready only after its first seal, so a kill before that leaves a
+//     scratch folder Home hides, and a chat that is never copied again never
+//     replaces it. It is removed once untouched for a week, under its own copy
+//     lock, when it has no copy-ready and no turns or adopted record at all, and
+//     its original's transcript is still beside .moving. CopyLegacy replaces such
+//     a folder on a retry; this reads the same evidence more cautiously, because
+//     nothing here replaces what it removes. The folder goes and its lock file
+//     stays: a lockless .moving folder would list as a chat, and a launch may
+//     already hold the lock file open. sweep.log says so, since unlike the other rules this one removes a copy of a conversation.
+//     A finished copy is a live conversation and is never touched.
+//
+// Rules 1 and 2 are DIFFERENT ACTS and the third rule reads differently
 // against each. Rule 1 reaches into logs/ and nowhere else, so no expiry can
 // ever reach a transcript or a person's work/ whatever its age. Rule 2 removes a
 // whole folder — its work/ and its transcript with it — and is allowed to only
@@ -59,6 +72,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -110,7 +124,7 @@ func SweepHomeContext(ctx context.Context, errandsRoot string, held func(dir str
 	SweepErrandsContext(ctx, errandsRoot, now, held, note)
 }
 
-// SweepPlaces applies the three rules over one projects root.
+// SweepPlaces applies the session and unfinished-copy rules over one projects root.
 //
 // A root that is not there is not a failure — it is a machine that has not held
 // a conversation yet — and answers silently.
@@ -155,8 +169,9 @@ func SweepPlacesContext(ctx context.Context, root string, now time.Time, note fu
 			if !entry.IsDir() {
 				continue
 			}
-			if entry.Name() == ".moving" {
+			if entry.Name() == cell.MovingDir {
 				sweepMovingForks(ctx, filepath.Join(path, entry.Name()), now, note)
+				sweepUnfinishedCopies(ctx, path, sessions, now, note)
 				continue
 			}
 			sweepSession(ctx, filepath.Join(path, entry.Name()), now, note)
@@ -534,4 +549,56 @@ func newestUnder(dir string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return newest, true
+}
+
+// sweepUnfinishedCopies only reaps scratch destinations whose untouched original
+// still exists. CopyLegacy uses the same lock and history test before replacing one.
+func sweepUnfinishedCopies(ctx context.Context, bucket string, originals []os.DirEntry, now time.Time, note func(string)) {
+	for _, original := range originals {
+		if contextDone(ctx) {
+			return
+		}
+		if !original.IsDir() || original.Name() == cell.MovingDir {
+			continue
+		}
+		source := filepath.Join(bucket, original.Name())
+		info, err := os.Stat(filepath.Join(source, placeTranscript))
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		root := cell.CopyRoot(source)
+		info, err = os.Lstat(root)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		sweepUnfinishedCopy(ctx, root, now, note)
+	}
+}
+
+func sweepUnfinishedCopy(ctx context.Context, root string, now time.Time, note func(string)) {
+	lock, err := os.OpenFile(root+".lock", os.O_RDWR, 0)
+	if err != nil {
+		return
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, true); err != nil {
+		return
+	}
+	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(cell.CopyReadyPath))); !errors.Is(err, fs.ErrNotExist) {
+		return
+	}
+	if cell.MayHoldHistory(root) {
+		return
+	}
+	newest, ok := newestUnder(root)
+	if !ok || !newest.Before(now.Add(-sweepTTL)) || contextDone(ctx) {
+		return
+	}
+	if err := os.RemoveAll(root); err != nil {
+		note(fmt.Sprintf("sweep: could not remove unfinished copy %s: %v", root, err))
+		return
+	}
+	// The lock file stays. A launch may already hold it open, and a new file
+	// beside it would let a second launch copy the same chat at once.
+	note(fmt.Sprintf("sweep: removed unfinished copy %s", root))
 }

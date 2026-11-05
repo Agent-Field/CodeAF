@@ -478,6 +478,14 @@ reach that folder — which is the whole point of choosing it. What it does **no
 move this conversation: the directory it is anchored to, the `AGENTS.md` it reads, and its
 own status line stay exactly as they were.
 
+## A task on your home folder — it reads there and works in a folder of its own
+
+A task that would have copied your home folder, or a folder that holds it, now reads your files
+where they are and keeps what it makes in an empty folder of its own. Its report says where, and
+it asks you nothing. A folder inside home is copied as usual. Some tasks work differently: a home
+folder that is a git repository gets a worktree of what it tracks; a task in a chat opened at your
+home folder that names no other folder, or a place you saved as in place, runs there directly.
+
 ## Where edits go — the folder you are standing in, and the ones you chose
 
 Two rules, and they are the whole of it.
