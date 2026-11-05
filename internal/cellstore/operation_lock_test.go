@@ -132,3 +132,53 @@ func TestStoreOperationHelperProcess(t *testing.T) {
 		t.Fatalf("another process entered the held store: %v", err)
 	}
 }
+
+// A daemon that takes a request and never answers must not hold the store's
+// gate forever once its caller has gone: after the grace, the connection is
+// closed and the next save enters.
+func TestAHungDaemonReleasesTheStoreGateAfterTheGrace(t *testing.T) {
+	old := abandonedOperationGrace
+	abandonedOperationGrace = 100 * time.Millisecond
+	t.Cleanup(func() { abandonedOperationGrace = old })
+	socket := testSocket(t)
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	entered := make(chan struct{})
+	hang := make(chan struct{})
+	defer close(hang)
+	guard.Go("hung daemon gate fixture", func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		if _, err := bufio.NewReader(conn).ReadBytes('\n'); err != nil {
+			return
+		}
+		close(entered)
+		<-hang
+	})
+	target := Target{DataDir: t.TempDir()}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	guard.Go("cancel hung daemon fixture", func() { _, err := (Daemon{Socket: socket}).Do(ctx, target, sealOp{}); done <- err })
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("daemon did not receive the seal")
+	}
+	cancel()
+	if err := <-done; err == nil {
+		t.Fatal("a cancelled caller reported success")
+	}
+	ran := false
+	other := Spawn{Binary: "fixture", Run: func(context.Context, string, []string, ...string) ([]byte, error) { ran = true; return nil, nil }}
+	waiting, stop := context.WithTimeout(t.Context(), 5*time.Second)
+	defer stop()
+	if _, err := other.Do(waiting, target, capturePlanOp{}); err != nil || !ran {
+		t.Fatalf("the store stayed locked behind a hung daemon: ran=%v err=%v", ran, err)
+	}
+}
