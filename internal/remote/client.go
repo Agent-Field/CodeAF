@@ -989,6 +989,14 @@ func (c *Client) deliver(frame Frame) {
 	}
 	if frame.Error != "" {
 		var err error = errors.New(frame.Error)
+		// Resident context errors can arrive before the caller's own context
+		// ends. Restore their identity before applying typed refusals or saving errors.
+		switch frame.Error {
+		case context.DeadlineExceeded.Error():
+			err = context.DeadlineExceeded
+		case context.Canceled.Error():
+			err = context.Canceled
+		}
 		if frame.WorkRefusal != nil {
 			frame.WorkRefusal.Line = frame.Error
 			err = frame.WorkRefusal

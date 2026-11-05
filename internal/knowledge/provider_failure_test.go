@@ -21,7 +21,7 @@ func TestKnowledgeIncompleteResponseReportsStageAndRetainsSources(t *testing.T) 
 	original := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = original })
 	http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
-		raw := `{"model":"deepseek/deepseek-v4.1-flash","choices":[{"finish_reason":"length","message":{"content":"{\"claims\":["}}]}`
+		raw := `{"model":"` + knowledge.Model + `","choices":[{"finish_reason":"length","message":{"content":"{\"claims\":["}}]}`
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(bytes.NewBufferString(raw))}, nil
 	})
 	err := v.Flush(context.Background(), "fixture", true)
