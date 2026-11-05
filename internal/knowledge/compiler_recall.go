@@ -103,6 +103,10 @@ func (v *Vault) recallSaved(ctx context.Context, key, question, scope string, ex
 			}
 		}
 	}
+	for i := range answer.Citations {
+		citation := &answer.Citations[i]
+		citation.Quote = quoteMarkdown(citation.Quote, textValue(object(object(vault["sources"])[citation.Source])["text"]))
+	}
 	return answer, err
 }
 func recallCompilation(vault document, question, scope string, limit int, retrieval string, model compilerModel) (document, error) {

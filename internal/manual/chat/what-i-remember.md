@@ -715,3 +715,9 @@ keyboard focus. Open in chat goes to the saved source message. Paragraphs have
 no source gutter or clickable hover background. Unfinished guide edits stay
 available while navigating in this window; Save writes them to the shared
 knowledge vault. Unsaved text is not written to disk.
+
+## Rename a Library guide or collection
+
+In the desktop Library, choose Rename beside a guide or collection title. Enter saves; Escape cancels. Titles are one line, up to 200 Unicode characters. Renaming keeps the page id, links, sources and folder membership. A collection rename changes its displayed label, not the scope used for retrieval. Renaming alone does not turn learned text into a manual edit or pause future learning. Earlier titles remain aliases for wiki links. Conflicting title edits stay available for comparison before replacing the current title.
+
+Citation previews render only the quoted source text as Markdown, preserving the original source's line breaks when they can be matched. The surrounding source message is not sent with the preview. Library answers use numbered inline references; claim keys stay out of the reading surface.

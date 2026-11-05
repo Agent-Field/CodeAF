@@ -13,6 +13,7 @@ type KnowledgeHead struct {
 	UpdatedAt            string   `json:"updated_at,omitempty"`
 	ID                   string   `json:"id"`
 	Title                string   `json:"title"`
+	TitleEdited          bool     `json:"title_edited,omitempty"`
 	Folder               []string `json:"folder"`
 	Kind                 string   `json:"kind"`
 	Revision             string   `json:"revision"`
@@ -29,6 +30,7 @@ type KnowledgeBuild struct {
 	Problems int                  `json:"problems"`
 }
 type KnowledgeSnapshot struct {
+	CanRename  bool            `json:"can_rename"`
 	SavedChats *int            `json:"saved_chats,omitempty"`
 	Revision   string          `json:"revision"`
 	Enabled    bool            `json:"enabled"`
@@ -61,6 +63,11 @@ type KnowledgeMutation struct {
 	Revision string `json:"revision"`
 	Markdown string `json:"markdown"`
 }
+type KnowledgeRename struct {
+	ID       string `json:"id"`
+	Revision string `json:"revision"`
+	Title    string `json:"title"`
+}
 type KnowledgeSearchHit struct {
 	ID      string   `json:"id"`
 	Title   string   `json:"title"`
@@ -76,6 +83,7 @@ type KnowledgeLibrary interface {
 	KnowledgeSearch(string, int) ([]KnowledgeSearchHit, error)
 	KnowledgeRecall(string, string) (knowledge.Answer, error)
 	KnowledgeEdit(KnowledgeMutation) (KnowledgeRevision, error)
+	KnowledgeRename(KnowledgeRename) (KnowledgeRevision, error)
 	KnowledgeDelete(KnowledgeMutation) error
 	KnowledgeBuild() error
 	KnowledgeCapture(KnowledgeCapture) error
@@ -166,6 +174,16 @@ func init() {
 			return nil, Errorf(CodeBadParams, "A page revision is required")
 		}
 		r, e := l.KnowledgeEdit(p)
+		return &r, e
+	})
+	methods["knowledge.rename"] = libraryCall(func(l KnowledgeLibrary, p KnowledgeRename) (*KnowledgeRevision, error) {
+		if e := needID("knowledge.rename", p.ID); e != nil {
+			return nil, e
+		}
+		if p.Revision == "" {
+			return nil, Errorf(CodeBadParams, "A page revision is required")
+		}
+		r, e := l.KnowledgeRename(p)
 		return &r, e
 	})
 	methods["knowledge.delete"] = libraryCall(func(l KnowledgeLibrary, p KnowledgeMutation) (*Empty, error) {

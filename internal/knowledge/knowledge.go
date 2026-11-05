@@ -74,6 +74,7 @@ type Page struct {
 	Markdown             string       `json:"manual_markdown,omitempty"`
 	ID                   string       `json:"id"`
 	Title                string       `json:"title"`
+	TitleEdited          bool         `json:"title_edited,omitempty"`
 	Scope                string       `json:"scope"`
 	Kind                 string       `json:"kind"`
 	Folder               []string     `json:"folder"`

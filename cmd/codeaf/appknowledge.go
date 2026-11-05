@@ -24,6 +24,8 @@ func libraryError(err error) error {
 		return nil
 	case errors.Is(err, knowledge.ErrPageChanged):
 		return appwire.Errorf(appwire.CodeConflict, "Changed while you were editing. Your text is kept; reopen the page to review.")
+	case errors.Is(err, knowledge.ErrInvalidTitle):
+		return appwire.Errorf(appwire.CodeBadParams, "%s", err)
 	case errors.Is(err, os.ErrNotExist):
 		return appwire.Errorf(appwire.CodeNotFound, "This page left your Library")
 	case errors.Is(err, knowledge.ErrDisabled):
@@ -38,7 +40,7 @@ func (b *appBackend) KnowledgeSnapshot() (appwire.KnowledgeSnapshot, error) {
 	if err != nil {
 		return appwire.KnowledgeSnapshot{}, libraryError(err)
 	}
-	r := appwire.KnowledgeSnapshot{Revision: s.Revision, Enabled: s.Enabled, Pending: s.Pending, Model: s.Model, Pages: []appwire.KnowledgeHead{}, Build: appwire.KnowledgeBuild{Phase: s.Build.Phase, Chats: s.Build.Chats, Imported: s.Build.Imported, Sources: s.Build.Sources, Problems: s.Build.Problems}}
+	r := appwire.KnowledgeSnapshot{CanRename: true, Revision: s.Revision, Enabled: s.Enabled, Pending: s.Pending, Model: s.Model, Pages: []appwire.KnowledgeHead{}, Build: appwire.KnowledgeBuild{Phase: s.Build.Phase, Chats: s.Build.Chats, Imported: s.Build.Imported, Sources: s.Build.Sources, Problems: s.Build.Problems}}
 	if !s.Enabled {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		journals, e := session.KnowledgeHistory(session.PlacesRoot(), config.ProfilePath(b.profileDir, "")).Inventory(ctx)
@@ -54,7 +56,7 @@ func (b *appBackend) KnowledgeSnapshot() (appwire.KnowledgeSnapshot, error) {
 		}
 	}
 	for _, p := range s.Pages {
-		h := appwire.KnowledgeHead{ID: p.ID, Title: p.Title, Folder: append([]string{}, p.Folder...), Kind: p.Kind, Revision: p.Revision, HumanEdited: p.HumanEdited, NeedsEditorialUpdate: p.NeedsEditorialUpdate, Sections: []string{}}
+		h := appwire.KnowledgeHead{ID: p.ID, Title: p.Title, TitleEdited: p.TitleEdited, Folder: append([]string{}, p.Folder...), Kind: p.Kind, Revision: p.Revision, HumanEdited: p.HumanEdited, NeedsEditorialUpdate: p.NeedsEditorialUpdate, Sections: []string{}}
 		for _, e := range p.Evidence {
 			if at, err := time.Parse(time.RFC3339Nano, e.TS); err == nil {
 				previous, _ := time.Parse(time.RFC3339Nano, h.UpdatedAt)
@@ -139,6 +141,15 @@ func (b *appBackend) KnowledgeEdit(p appwire.KnowledgeMutation) (appwire.Knowled
 	page, e := v.Read(p.ID)
 	b.libraryChanged()
 	return appwire.KnowledgeRevision{Revision: page.Revision}, libraryError(e)
+}
+func (b *appBackend) KnowledgeRename(p appwire.KnowledgeRename) (appwire.KnowledgeRevision, error) {
+	v := b.library()
+	if err := v.RenamePage(p.ID, p.Revision, p.Title); err != nil {
+		return appwire.KnowledgeRevision{}, libraryError(err)
+	}
+	page, err := v.Read(p.ID)
+	b.libraryChanged()
+	return appwire.KnowledgeRevision{Revision: page.Revision}, libraryError(err)
 }
 func (b *appBackend) KnowledgeDelete(p appwire.KnowledgeMutation) error {
 	if e := b.library().DeletePage(p.ID, p.Revision); e != nil {

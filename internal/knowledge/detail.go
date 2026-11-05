@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"regexp"
+	"strings"
 )
 
 // ClaimDetail carries the claim's recorded origin, never an inference from its
@@ -146,7 +148,54 @@ func (v *Vault) ReadDetail(id string) (PageDetail, error) {
 			result.Sources[e.Source] = location
 		}
 	}
+	restorePageQuoteFormatting(&result, sources)
 	return result, nil
+}
+
+// Quote validation folds whitespace. Reading restores only the cited substring
+// from its original source, so Markdown keeps its lines without exposing the
+// surrounding conversation or changing the stored evidence.
+func quoteMarkdown(quote, source string) string {
+	if quote == "" || source == "" || strings.Contains(source, quote) {
+		return quote
+	}
+	words := strings.Fields(quote)
+	for i := range words {
+		words[i] = regexp.QuoteMeta(words[i])
+	}
+	pattern, err := regexp.Compile(strings.Join(words, `[[:space:]\p{Z}\x{85}]+`))
+	if err != nil {
+		return quote
+	}
+	if found := pattern.FindString(source); found != "" {
+		return found
+	}
+	return quote
+}
+
+func restorePageQuoteFormatting(page *PageDetail, sources document) {
+	cache := map[[2]string]string{}
+	restore := func(evidence []Evidence) {
+		for i := range evidence {
+			e := &evidence[i]
+			key := [2]string{e.Source, e.Quote}
+			formatted, found := cache[key]
+			if !found {
+				formatted = quoteMarkdown(e.Quote, textValue(object(sources[e.Source])["text"]))
+				cache[key] = formatted
+			}
+			e.Quote = formatted
+		}
+	}
+	restore(page.Evidence)
+	for i := range page.ClaimDetails {
+		restore(page.ClaimDetails[i].Evidence)
+	}
+	for i := range page.Sections {
+		for j := range page.Sections[i].Paragraphs {
+			restore(page.Sections[i].Paragraphs[j].Evidence)
+		}
+	}
 }
 
 // ConflictID survives reordering of the two accounts between publications.

@@ -42,6 +42,14 @@ func TestLibraryReadsTheTerminalVaultAndProtectsHumanEdits(t *testing.T) {
 	if e = b.KnowledgeDelete(appwire.KnowledgeMutation{ID: page.ID, Revision: page.Revision}); e == nil {
 		t.Fatal("stale delete removed current page")
 	}
+	renamed, e := b.KnowledgeRename(appwire.KnowledgeRename{ID: page.ID, Revision: updated.Revision, Title: "Connections"})
+	if e != nil || renamed.Revision == updated.Revision {
+		t.Fatalf("rename revision: %v", e)
+	}
+	terminal, e = v.Read(page.ID)
+	if e != nil || terminal.Title != "Connections" || knowledge.PageMarkdown(terminal) != "## Ports\n\nUse port 9443" {
+		t.Fatal("rename did not reach the shared vault or erased the body edit")
+	}
 	hits, e := b.KnowledgeSearch("9443", 10)
 	if e != nil || len(hits) != 1 || hits[0].ID != page.ID {
 		t.Fatalf("current human words not searchable: %v", e)

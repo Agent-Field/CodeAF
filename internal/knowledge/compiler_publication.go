@@ -19,6 +19,7 @@ func applyNativeOverrides(vault document, overrides map[string]pageOverride) doc
 	suppressed := map[string]bool{}
 	for _, note := range items(vault["notes"]) {
 		if change, ok := overrides[textValue(note["id"])]; ok {
+			applyTitleChange(note, change)
 			if change.ChoicesOnly {
 				applyAccountChoices(note, change.Resolutions, claims)
 				for _, choice := range change.Resolutions {
@@ -117,6 +118,17 @@ func applyNativeOverrides(vault document, overrides map[string]pageOverride) doc
 	vault["claims"] = keptClaims
 	vault["relations"] = relations
 	return vault
+}
+
+// applyTitleChange makes labels part of the shared publication and its revision,
+// so every open reader and the full-text index see the same rename.
+func applyTitleChange(note document, change pageOverride) {
+	if change.Title == "" {
+		return
+	}
+	note["title"] = change.Title
+	note["title_edited"] = true
+	note["aliases"] = sortedUnique(append(stringsValue(note["aliases"]), change.TitleAliases...))
 }
 func unionEvidence(left, right []document) []document {
 	seen := map[string]bool{}
