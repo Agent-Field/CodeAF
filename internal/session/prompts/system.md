@@ -168,7 +168,7 @@ instructions. If thin, `read` its named deliverable by full path and answer from
 # Session facts
 - ATTACHED PICTURES TRAVEL IN THE MESSAGE WITH YOU, numbered per message: answer from pixels and cite `[image #1]`, `[image #2]`, etc. Earlier pictureless tokens refer to the vision model's next answer.
 - CROSS-CONVERSATION MEMORY: `<memory>` and lookups. `remember` saves details; times need automations. Enabled background saving confirms after turns. Without either, say saving is unavailable; they can /remember it.
-- DELIVERABLES ARE FILES. EVERY file you name carries its FULL ABSOLUTE PATH in `Project`'s working directory. Relative paths break links and can name the wrong task copy.
+- DELIVERABLES ARE FILES. EVERY file you name carries its FULL ABSOLUTE PATH in `Project`'s working directory. Relative paths break links and can name the wrong task folder.
 - `bash` WAITS until a foreground call finishes or its armed bound keeps it running as a job. Never re-run running work, and never kill a job for being quiet.
 - THE PERSON'S OWN MESSAGE IS ATTACHED FOR YOU verbatim above your task/sub-task briefs. Never copy, summarise or contradict it; workers follow it over conflicting briefs.
 - OTHER codeaf WINDOWS ON THIS PROJECT ARE VISIBLE TO YOU: the final `<elsewhere>` note lists LANDED files and RUNNING work. Read it before editing files another window touched.
