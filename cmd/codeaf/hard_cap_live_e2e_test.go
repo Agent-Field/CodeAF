@@ -157,6 +157,30 @@ func TestLiveDayCapStopsFourCrews(t *testing.T) {
 			t.Fatal("150s limit: waiting for four crew admissions")
 		}
 	}
+	noticesComplete := false
+	defer func() {
+		if noticesComplete {
+			return
+		}
+		for i, a := range agents {
+			transcript := a.Transcript()
+			found := false
+			for _, entry := range transcript {
+				found = found || strings.Contains(entry.Text, "daily limit") && strings.Contains(entry.Text, "/budget day")
+			}
+			if !found {
+				t.Errorf("chat crew-%d lacks daily-limit notice (daily limit and /budget day)", i)
+			}
+			t.Logf("chat crew-%d last transcript lines:", i)
+			for _, entry := range transcript[max(0, len(transcript)-10):] {
+				lines := strings.Split(entry.Text, "\n")
+				t.Logf("crew-%d %s", i, strings.Join(lines[max(0, len(lines)-10):], "\n"))
+			}
+			snap, ok := a.OrchestrateSnapshot(runIDs[i])
+			t.Logf("crew-%d run=%s OrchestrateSnapshot found=%v state=%+v", i, runIDs[i], ok, snap)
+		}
+	}()
+
 	hardCapWait(t, ctx, "daily cap crossing and all four chat notices", func() bool {
 		trace.mu.Lock()
 		crossed := !trace.crossed.IsZero()
@@ -175,6 +199,7 @@ func TestLiveDayCapStopsFourCrews(t *testing.T) {
 		}
 		return true
 	})
+	noticesComplete = true
 	hardCapWait(t, ctx, "crew calls to stop", func() bool { trace.mu.Lock(); defer trace.mu.Unlock(); return trace.active == 0 })
 	trace.mu.Lock()
 	crossed, peak := trace.crossed, trace.peak

@@ -279,6 +279,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		a.orchestrations = make(map[string]*orchestration, 1)
 	}
 	a.orchestrations[id] = live
+	epoch := a.workEpoch
 	a.mu.Unlock()
 	a.wakeBudgetForWork()
 
@@ -292,6 +293,11 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	go func() {
 		defer a.orchestrateWorkers.Done()
 		snap, err := run.Run(runCtx)
+		// A planner can finish without starting a worker. Carry a recorded
+		// crossing home before the watcher sees an idle run and goes to sleep.
+		if why := a.dailyBudgetBlock(); IsDailyLimit(why) {
+			_ = a.stopWorkEpoch(epoch, why)
+		}
 		// The family settles before the write-up is announced: the roster is where
 		// somebody looks when the note lands, and a root still saying "running"
 		// beside a report of what the run came to is the roster disagreeing with

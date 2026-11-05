@@ -4423,6 +4423,13 @@ Task checks use the same selected daily limit and spending permission as the wor
 they check.
 
 
+## Why does a crew with no worker show the daily limit?
+
+An adaptive crew checks recorded daily spending when its run finishes. Its chat
+records the daily-limit notice once even if its planner finishes without starting
+a worker. Raise the limit with `/budget day 30`, then send a new message after the
+old work finishes stopping.
+
 ## How far can spending exceed the daily cap while replies finish?
 
 At a recorded daily-cap crossing, calls waiting for their first reply token are

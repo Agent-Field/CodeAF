@@ -4,6 +4,7 @@ title: Let replying calls finish at the daily spending cap
 pr: 2364
 surface: [chat, engine, app, factory, docs]
 invalidates:
+  - "A planner that finished without starting a worker could leave its chat without a daily-limit notice. Adaptive runs now check recorded spending at completion."
   - "The job-budget watcher previously kept its 100 ms clock running while idle. It now polls recorded daily and job spending only while capped work is moving, and every owned-work start wakes it."
   - "A recorded daily crossing could be discarded between a completed call and its tool starting, leaving the tool running until another ledger write. Tool starts and command reruns now wake a fresh recorded-spend check."
   - "Daily-cap crossings previously cut replies mid-stream. Calls already returning text, reasoning or tool fragments now finish and record their full usage."
@@ -59,3 +60,11 @@ now allows the resumed reply to finish when the delayed receipt crosses the cap;
 it asserts the completed answer, persisted notice and blocked next admission
 instead of expecting mid-reply cancellation. Receipt recovery remains bounded
 by 70 seconds; unavailable receipts can remain unpriced.
+
+Adaptive runs check recorded daily spending at completion with the admission
+epoch captured when the run was registered. A planner that finishes without
+starting a worker can no longer leave its idle chat without a daily-limit
+notice. Worker and planner admission refusals remain model-free; the shared
+stop path records the notice once and a raise accepts a fresh message. The live
+four-crew test now names chats missing notices and logs their transcript tails
+and orchestration snapshots on that wait's failure.
