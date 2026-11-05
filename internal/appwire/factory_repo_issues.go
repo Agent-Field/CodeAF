@@ -10,9 +10,6 @@ import (
 // FeatureFactoryRepoIssues announces a read of one repository's GitHub issues.
 const FeatureFactoryRepoIssues = "factory.repo_issues"
 
-// FactoryTooOld is the refusal reason when the connected Factory lacks a route.
-const FactoryTooOld = "factory_too_old"
-
 // FactoryRepoIssuesParams selects one bounded read, with no lower bound when
 // Since is absent. A nil Page defaults to 1; an explicit zero is invalid.
 type FactoryRepoIssuesParams struct {

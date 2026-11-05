@@ -72,7 +72,7 @@ func repoIssuesFailure(r appFactoryReply) error {
 	if routeMissing(err) {
 		var wire *appwire.Error
 		if errors.As(factoryTooOld(), &wire) {
-			wire.Detail = &appwire.FactoryRefusal{Reason: appwire.FactoryTooOld}
+			wire.Detail = &appwire.FactoryRefusal{Reason: appwire.FactoryReasonTooOld}
 			return wire
 		}
 	}

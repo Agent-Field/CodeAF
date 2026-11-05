@@ -134,7 +134,7 @@ func TestAppFactoryRepoIssuesPreservesRateLimitRetryAt(t *testing.T) {
 // C5, C7: A missing route is too old; a repository's 404 remains not_found.
 func TestAppFactoryRepoIssuesDistinguishesAnOlderFactoryFromAMissingRepository(t *testing.T) {
 	for _, tc := range []struct{ body, code, reason string }{
-		{`{"error":"factory endpoint not found"}`, appwire.CodeConflict, appwire.FactoryTooOld},
+		{`{"error":"factory endpoint not found"}`, appwire.CodeConflict, appwire.FactoryReasonTooOld},
 		{`{"error":"repository not found"}`, appwire.CodeNotFound, ""},
 	} {
 		t.Run(tc.code, func(t *testing.T) {
