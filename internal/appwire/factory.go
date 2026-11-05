@@ -179,6 +179,8 @@ type FactoryCapabilities struct {
 	// True only for an engine that implements [FactoryRepoFactsReader]; a
 	// factory older than the route answers not found.
 	RepoFacts bool `json:"repo_facts"`
+	// RepoIssues reads one repository's GitHub issues through its Factory.
+	RepoIssues bool `json:"repo_issues"`
 	// RepoRead: factory.repo_read is served (feature factory.repo_read). True
 	// only for an engine that implements [FactoryRepoReader]; whether the
 	// factory has a checkout of a repository is answered by the call.
