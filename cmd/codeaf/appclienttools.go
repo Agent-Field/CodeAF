@@ -14,7 +14,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -127,6 +126,9 @@ func (b *appBackend) SetClientTools(p appwire.ClientToolsSetParams) (appwire.Cli
 	if err := b.clientToolScope(a); err != nil {
 		return result, err
 	}
+	if agent := b.clientToolRemoteAgent(a); agent != nil {
+		return b.setRemoteClientTools(a, agent, p)
+	}
 	held := b.clientToolBuiltinNames(a)
 	r := &b.clientTools
 	r.mu.Lock()
@@ -163,15 +165,7 @@ func (b *appBackend) SetClientTools(p appwire.ClientToolsSetParams) (appwire.Cli
 }
 
 func (b *appBackend) clientToolScope(a *appAgent) error {
-	remoteHeld := false
-	b.locked(func() {
-		if a.live != nil {
-			_, remoteHeld = a.live.conn.Conv.(*remote.Agent)
-			remoteHeld = remoteHeld && !a.live.conn.Assembled && !a.live.conn.Lent
-		}
-		remoteHeld = remoteHeld || a.view.Location != nil && !a.view.Location.Here
-	})
-	if remoteHeld {
+	if agent := b.clientToolRemoteAgent(a); agent != nil && !agent.SupportsClientTools() {
 		return appwire.Errorf(appwire.CodeBadScope, "client tools need a conversation this engine runs")
 	}
 	return nil
@@ -273,7 +267,7 @@ func clientToolCallID(agent, provider string) string {
 
 func (d *appClientToolDoor) CallClientTool(ctx context.Context, call session.ClientToolCall) (session.ClientToolAnswer, error) {
 	if err := ctx.Err(); err != nil {
-		return clientToolTurnEnded(call.Name), nil
+		return clientToolContextEnded(ctx, call.Name), nil
 	}
 	var object map[string]json.RawMessage
 	if json.Unmarshal(call.Args, &object) != nil || object == nil {
@@ -404,7 +398,7 @@ func (r *appClientTools) wait(ctx context.Context, id string, pending *clientToo
 	case <-timer.C:
 		failed = clientToolTimeout(pending.call)
 	case <-ctx.Done():
-		failed = clientToolTurnEnded(pending.call.Name)
+		failed = clientToolContextEnded(ctx, pending.call.Name)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -469,7 +463,7 @@ func (b *appBackend) ClientToolResult(p appwire.ClientToolResultParams) (appwire
 		return appwire.ClientToolResultAck{}, nil
 	}
 	if pending.ctx.Err() != nil {
-		r.settleLocked(p.Call, pending, clientToolTurnEnded(pending.call.Name))
+		r.settleLocked(p.Call, pending, clientToolContextEnded(pending.ctx, pending.call.Name))
 		return appwire.ClientToolResultAck{}, nil
 	}
 	if !time.Now().Before(pending.answerBy) {

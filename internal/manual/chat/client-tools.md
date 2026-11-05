@@ -31,3 +31,12 @@ A timeout or a disconnect during a call leaves its outcome unknown. Check what
 the app did before trying again: codeaf does not retry that call automatically.
 Results are compact JSON, cut at 64 KiB with the dropped-byte count. Error
 answers take 1–4096 bytes.
+
+## Client tools on joined and remote-held conversations
+
+Joined conversations forward tools when their holder supports it, and reattach
+them after a link reconnects. Older holders refuse attachment. If another
+computer holds the chat, attachment stores the sets without opening it; they
+apply after "Continue here" or take brings it to this engine. Each connection
+owns its tools and calls. A lost link settles pending calls immediately when
+observed, or at the set's wait limit; later answers are not accepted.

@@ -1169,7 +1169,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// Harnesses and RunHarness, properties of the machine that the shared
 	// assembly fills for every door.
 	cfg, open := v3Shape(cfg, v3LanesOverWire())
-	open = appClientToolsOpener(open)
+	open, clientTools := appClientToolsEngineOpener(open)
 
 	// AND AUTOMATIONS ARE ON, which is the one capability on this list that a
 	// connection does not take away. The store arrives already filled, from the
@@ -1244,6 +1244,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		ClientTools: clientTools,
 		TeamsPaired: teamPaired,
 		SyncService: chatSyncService(),
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {

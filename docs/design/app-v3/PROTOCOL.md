@@ -85,11 +85,19 @@ decides which combinations are accepted.
 The optional features `agents.client_tools` and `agents.client_tools.source`
 appear together in `hello.features` exactly when the engine implements the
 client-tools interface. The latter guarantees message identity on calls whenever
-the running turn answers a message. Sets belong to this
+the running turn answers a message. `agents.client_tools.remote` additionally
+advertises forwarding through a joined conversation's remote connection when
+its holder supports it. Sets belong to this
 stdio connection and one conversation. They are memory-only: register again
 after reconnecting. Attachment does not open the conversation or start a turn.
 Children, workers and clarification conversations inherit neither tools nor
-instructions. Remote forwarding is unavailable.
+instructions. Within the same app connection, every join or re-join pushes the
+conversation's current sets to its holder; a roaming link resends them after
+redial. A conversation returning to this engine uses the registry directly.
+If another computer holds the chat (`Location.Here == false`), attachment still
+validates and stores the sets without opening the conversation. They apply
+when this engine runs it again after "Continue here" or take, without a second
+`agents.tools_set`.
 
 | method | params | result |
 |---|---|---|
@@ -117,8 +125,13 @@ Invalid fields, aggregate limits, duplicates and built-in tool names answer
 `bad_params`; a collision message names the tool. Collision checks include the
 live belt and all classified engine tools. A built-in arriving later wins and
 the colliding client tool leaves the belt. No model request has duplicate names.
-Unknown agents answer `not_found`. A remote-held conversation answers
-`bad_scope`: `client tools need a conversation this engine runs`.
+Unknown agents answer `not_found`. A joined holder without forwarding support
+answers `bad_scope`: `client tools need a conversation this engine runs`.
+Holder refusals answer `bad_params` with the holder's message; a failed or timed
+out link answers `unreachable`, leaving the app registry unchanged for retry.
+Different remote connections keep separate sets. The aggregate limits count
+all of them, tool-name collisions are refused atomically, and only the
+connection that owns a set can receive or answer its calls.
 Tools and instructions update at the next step boundary, with client tools at
 the tail after all built-ins.
 
@@ -157,7 +170,13 @@ A pending answer returns `accepted: true`; unknown, late or duplicate ids return
 Connection end (EOF, shutdown or context cancellation) disconnects the registry
 before conversations close: all sets are dropped and all pending calls settle
 immediately. These failures reach the model as error tool results, with no
-engine retry:
+engine retry.
+
+For forwarded calls, a disconnect observed by the holder immediately removes
+that connection's sets and settles its waits. A link loss the holder cannot
+observe ends at the set's `deadline_ms`. The app drops the pending entry when
+its link ends or the holder reports that the call ended; later results return
+`accepted: false`. Failure text is:
 
 - A stale call after removal or disconnection:
   `client_unavailable: the app that provides <name> is not connected; nothing was done.`
