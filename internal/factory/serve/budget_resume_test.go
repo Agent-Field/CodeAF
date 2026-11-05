@@ -29,6 +29,54 @@ func TestBudgetRaiseSignalsTheCapBeforeTheContinue(t *testing.T) {
 	}
 }
 
+// A parked worker can freeze another report before the person's raise and
+// deliver it afterward. Its usage still belongs to the job; its old cap does not.
+func TestBudgetRaiseKeepsLateCapReportFromReopeningQuestion(t *testing.T) {
+	for _, action := range []string{"answer", "raise_budget"} {
+		for _, lateCost := range []float64{.25, 4.25} {
+			t.Run(fmt.Sprintf("%s/late_cost=%g", action, lateCost), func(t *testing.T) {
+				f := workerSetupAs(t, "sam")
+				worker := f.attach(t, "sam")
+				job := f.add(t, "sam")
+				if err := f.st.Update(job.ID, func(it *factory.Item) error {
+					it.Cap, it.SpentBefore, it.Autonomy = 5, .5, factory.AutonomyAuto
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				pulled := f.pull(t, worker)
+				endpoint := "/v1/workers/leases/" + pulled.Lease.ID
+				question := &api.Question{Kind: "cap", Text: "budget of $5 reached", FromStep: "proof"}
+				f.request(t, "POST", endpoint+"/report", worker.Credential, api.WorkerReport{Cost: 5.25, Question: question}, 200, nil)
+				late := api.WorkerReport{Cost: lateCost, Question: question}
+				body := map[string]any{"budget": 10}
+				if action == "answer" {
+					body = map[string]any{"choice": factory.ChoiceContinue}
+				}
+				f.request(t, "POST", fmt.Sprintf("/v1/jobs/%d/%s", job.ID, action), "", body, 200, nil)
+				f.request(t, "POST", endpoint+"/report", worker.Credential, late, 200, nil)
+				var got api.Job
+				f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "", nil, 200, &got)
+				if got.Budget != 10 || got.LifetimeCost != 5.75+lateCost {
+					t.Fatalf("late report lost budget or usage: budget=%g lifetime=%g", got.Budget, got.LifetimeCost)
+				}
+				if lateCost == .25 {
+					if got.State != api.StateRunning || got.SpendingLimit != nil {
+						t.Fatalf("old report reopened answered cap: state=%s limit=%+v questions=%+v", got.State, got.SpendingLimit, got.Questions)
+					}
+					for _, q := range got.Questions {
+						if q.State == "open" {
+							t.Fatalf("old report reopened question: %+v", q)
+						}
+					}
+				} else if got.SpendingLimit == nil || got.SpendingLimit.Limit != 10 || got.SpendingLimit.Spent != 10 {
+					t.Fatalf("late spending bypassed raised cap: %+v", got)
+				}
+			})
+		}
+	}
+}
+
 func TestBudgetRaiseDoesNotClaimContinueWhenTheAnswerFails(t *testing.T) {
 	f := newV2Jobs(t)
 	job := f.create(t, factory.Item{State: factory.StateNeedsYou, Cap: 5, Autonomy: factory.AutonomyAuto, Assignee: "sam", QKind: "cap", Question: "Budget reached", Stream: &factory.Stream{Spent: 5}})

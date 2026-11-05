@@ -903,6 +903,14 @@ A budget choice remains valid while a running job reports spending or progress.
 If someone changed the budget after you read it, read the job again before
 choosing. Finished and dropped jobs refuse budget changes.
 
+## Budget raise and delayed worker reports
+
+After you raise a leased job's budget above its job total, the answered budget
+question stays closed while the worker reports older progress. This applies to
+Yes, Continue, and an explicit budget edit in Auto or Manual. Work resumes in
+the same conversation and round. Late charges still count toward the job total.
+If those charges reach the new budget, the job asks again at that budget.
+
 ## Why does Spending show Factory AI — the third part of today's money
 
 Today's figure on Spending counts every model call on this computer's ledger, and it moves as each one lands, not only when a chat turn ends.

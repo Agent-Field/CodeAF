@@ -7,6 +7,7 @@ invalidates:
   - "Job budget stops previously compared only the current run. They now compare all known saved spending on the job."
   - "Admission retry expiry previously returned withdrawn work to Backlog. It now holds the round while reporting catches up."
   - "Budget edits previously conflicted with worker progress. They now conflict only with intervening budget edits or an ended job."
+  - "A delayed worker cap question could reopen an answered question after a person's raise. Reports now check the current cap after recording their usage."
 ---
 
 The job budget uses SpentBefore plus the current run's spending. Start,
@@ -91,3 +92,9 @@ without consuming an attempt. The separate result-delivery recovery window and
 its retained-results block still apply; admission cannot bypass reconciliation.
 A work-loop proof covers answers before and after admission expiry, exact spend
 deltas, factory-side cap enforcement and joined reporter shutdown.
+
+A delayed report from a parked worker no longer reopens the old cap question
+after Yes, Continue or a budget edit raises the job's ceiling. The server records
+the report's usage before checking its question against the current budget.
+The answered question stays closed below that budget; late charges reaching it
+still hold the job. Work keeps its conversation, round and recorded spending.
