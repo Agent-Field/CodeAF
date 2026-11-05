@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Workers accept glob write scopes without allowing workspace escapes
-pr: 0
+pr: 2399
 surface: [engine]
 invalidates:
   - "Write scopes matched only exact paths or directory prefixes."
