@@ -1891,6 +1891,7 @@ Errors contain no source text or credentials. Stale mutations return `conflict`.
 | `knowledge.search` | `{query, limit?}` | full-text hits; no model call |
 | `knowledge.recall` | `{question, scope?}` | answer, abstain, citations |
 | `knowledge.edit` | `{id, revision, markdown}` | new revision |
+| `knowledge.rename` | `{id, revision, title}` | new revision; changes only the label, retaining page identity, scope, links and generated learning |
 | `knowledge.delete` | `{id, revision}` | `{}` |
 | `knowledge.build` | `{}` | starts the process-owned build with the profile knowledge model |
 
