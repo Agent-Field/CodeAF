@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstats"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -83,7 +84,7 @@ func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRi
 	bin := celltest.Engine(t)
 	clock := &driveClock{directorytest.NewFakeClock()}
 	clock.Advance(time.Since(clock.Now()))
-	storeDir := t.TempDir()
+	storeDir := cellstoretest.EngineDir(t)
 	svc := relayserve.New(relayserve.Config{Store: storeDir, Now: clock.Now, After: clock.After, Grace: directory.GraceBounds{Min: time.Second, Max: time.Hour, Default: 10 * time.Second}})
 	t.Cleanup(func() { _ = svc.Close() })
 	handler := svc.Handler
@@ -111,7 +112,6 @@ func newDriveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *driveRi
 	r.engine = cellstore.EngineFor(r.work)
 	r.engine.DataRoot, r.engine.Binary = t.TempDir(), bin
 	r.engine.Transport = cellstore.Spawn{Binary: bin}
-	t.Cleanup(cellstore.StopSpawned)
 	t.Cleanup(session.CloseUsage)
 	return r
 }

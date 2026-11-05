@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -21,7 +22,7 @@ import (
 func incomingModelConfig(t *testing.T) session.Config {
 	t.Helper()
 	celltest.RequireEngine(t)
-	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv(home.EnvVar, cellstoretest.EngineDir(t))
 	t.Setenv(config.ProfileDirEnv, "")
 	t.Setenv(syncsetup.URLVar, "off")
 	for _, name := range config.ProviderKeyEnvNamesAt(home.Dir()) {
@@ -47,7 +48,6 @@ func incomingModelConfig(t *testing.T) session.Config {
 	if _, err := engine.Seal(t.Context(), c, cellstore.TurnInfo{}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(cellstore.StopSpawned)
 	return session.Config{Workspace: work, Place: session.Place{Dir: c.Root, Workspace: work}, SessionFile: session.Place{Dir: c.Root}.Transcript(), Model: "ollama/llama3.2:latest", BaseURL: "http://127.0.0.1:1"}
 }
 
