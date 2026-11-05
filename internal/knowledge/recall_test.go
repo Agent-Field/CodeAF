@@ -3,6 +3,8 @@ package knowledge_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"strings"
 	"sync"
@@ -10,7 +12,8 @@ import (
 )
 
 func TestKnowledgeRecallUsesCurrentCitationsAndHumanEdits(t *testing.T) {
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
 	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +52,25 @@ func TestKnowledgeRecallUsesCurrentCitationsAndHumanEdits(t *testing.T) {
 	answer, err = v.Recall(context.Background(), "fixture", "What does Cedar queue?", "Cedar")
 	if err != nil || !strings.Contains(answer.Answer, "invoices") || len(answer.Citations) != 1 || !strings.HasPrefix(answer.Citations[0].Source, "human-edit:") {
 		t.Fatalf("human edit not authoritative as its own source: %+v %v", answer, err)
+	}
+
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	before, err := v.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err = v.RecallSaved(context.Background(), "fixture", "Which items does Cedar queue now?", "Cedar")
+	if err != nil || !strings.Contains(answer.Answer, "invoices") || len(answer.Citations) != 1 {
+		t.Fatalf("explicit question lost saved knowledge while learning was paused: %+v %v", answer, err)
+	}
+	after, err := v.Status()
+	if err != nil || after.Enabled || before.Revision != after.Revision {
+		t.Fatal("asking must not resume learning or change published knowledge")
+	}
+	if _, err := v.Recall(context.Background(), "fixture", "What does Cedar queue?", "Cedar"); !errors.Is(err, knowledge.ErrDisabled) {
+		t.Fatal("automatic recall must still honor paused learning")
 	}
 }
 

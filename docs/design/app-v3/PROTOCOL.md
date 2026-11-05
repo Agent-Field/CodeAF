@@ -1878,3 +1878,38 @@ An answer or withdrawal emits `plugins.needed_done`.
 
 The current account store holds one account per plugin, including Slack.
 It has no plugin call history; a Lately section remains absent.
+
+## Library
+
+Hello feature `knowledge` exposes the same opt-in profile vault as Memory → Knowledge.
+Errors contain no source text or credentials. Stale mutations return `conflict`.
+
+| method | params | result |
+|---|---|---|
+| `knowledge.snapshot` | `{}` | revision, enabled, build counters, pending, model, page heads |
+| `knowledge.read` | `{id}` | current Page including sections, evidence and links |
+| `knowledge.search` | `{query, limit?}` | full-text hits; no model call |
+| `knowledge.recall` | `{question, scope?}` | answer, abstain, citations |
+| `knowledge.edit` | `{id, revision, markdown}` | new revision |
+| `knowledge.rename` | `{id, revision, title}` | new revision; changes only the label, retaining page identity, scope, links and generated learning |
+| `knowledge.delete` | `{id, revision}` | `{}` |
+| `knowledge.build` | `{}` | starts the process-owned build with the profile knowledge model |
+
+| event | data |
+|---|---|
+| `knowledge.changed` | `{revision}`; refresh the snapshot |
+
+| method | params | result |
+|---|---|---|
+| `knowledge.settle` | `{id, revision, conflict, keep, note?}` | `{revision}`; keeps the chosen account and replacement history |
+| `knowledge.source` | `{id, source}` | `{chat, message}`; exact message locator, or `not_found` |
+
+| method | params | result |
+|---|---|---|
+| `knowledge.capture` | `{chat, message, text}` | admits a bounded passage from an actual saved agent reply; requires existing opt-in |
+
+Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes the same profile row the terminal uses. Clearing it restores the pinned default, `deepseek/deepseek-v4.1-flash-1017`. Building the Library never changes a saved model choice.
+
+`knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
+
+Library page detail includes `changes: [{before, after, reason}]` for automatic replacements; `claim_details` and `sources` retain the corresponding claims and chat locators.
