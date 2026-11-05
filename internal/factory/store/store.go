@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -55,6 +56,9 @@ var ErrNewer = errors.New("factory store: written by a newer codeaf")
 
 // Store is the factory's items under one root.
 type Store struct {
+	tierMu       sync.Mutex
+	tierResolver TierResolver
+	tierReads    map[int]*tierRead
 	root         string
 	outputPolicy func() (int, int)
 	observer     atomic.Pointer[func(before, after factory.Item)]
@@ -200,7 +204,13 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 
 // Get reads one item. A missing id is [ErrNotFound]; a document a newer build
 // wrote is [ErrNewer].
-func (st *Store) Get(id int) (factory.Item, error) {
+func (st *Store) Get(id int) (factory.Item, error) { return st.get(id, true) }
+
+// GetSaved reads the saved snapshot for lease bookkeeping without author lookup.
+// User reads and write admission use Get instead.
+func (st *Store) GetSaved(id int) (factory.Item, error) { return st.get(id, false) }
+
+func (st *Store) get(id int, hydrate bool) (factory.Item, error) {
 	if err := checkID(id); err != nil {
 		return factory.Item{}, ErrNotFound
 	}
@@ -217,13 +227,22 @@ func (st *Store) Get(id int) (factory.Item, error) {
 		return factory.Item{}, err
 	}
 	st.retainOutput(&d.Item)
+	if hydrate {
+		return st.readHydrated(d.Item)
+	}
 	return d.Item, nil
 }
 
 // List reads every item, newest first by Created. An unreadable or
 // newer-schema document is skipped rather than fatal: ONE DOCUMENT FROM THE
 // FUTURE, OR ONE TORN BY A FULL DISK, MUST NOT EMPTY THE WHOLE FLOOR.
-func (st *Store) List() ([]factory.Item, error) {
+func (st *Store) List() ([]factory.Item, error) { return st.list(true) }
+
+// ListSaved reads the saved snapshot for source reconciliation without looking up
+// author access. User reads and admission use List or Get instead.
+func (st *Store) ListSaved() ([]factory.Item, error) { return st.list(false) }
+
+func (st *Store) list(hydrate bool) ([]factory.Item, error) {
 	entries, err := os.ReadDir(st.root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -261,6 +280,13 @@ func (st *Store) List() ([]factory.Item, error) {
 			return nil, err
 		}
 		st.retainOutput(&d.Item)
+		if hydrate {
+			it, err := st.readHydrated(d.Item)
+			if err != nil {
+				return nil, err
+			}
+			d.Item = it
+		}
 		items = append(items, d.Item)
 	}
 	sort.SliceStable(items, func(a, b int) bool {
@@ -308,6 +334,9 @@ func (st *Store) Save(it factory.Item) error {
 		case errors.Is(err, ErrNotFound):
 		default:
 			return err
+		}
+		if isTierProjection(it.Failure) {
+			it.Failure = current.Item.Failure
 		}
 		st.retainOutput(&it)
 		data, err := marshalDoc(nextDoc(current, it, rev))
@@ -490,8 +519,13 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 			copy := *before.PublishStatus
 			before.PublishStatus = &copy
 		}
+		savedFailure := it.Failure
+		st.tierDetail(&it)
 		if err := change(&it); err != nil {
 			return err
+		}
+		if isTierProjection(it.Failure) {
+			it.Failure = savedFailure
 		}
 		if err := st.normalizeRepository(&it); err != nil {
 			return err

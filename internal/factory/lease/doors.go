@@ -66,6 +66,9 @@ func (d *Doors) update(id int, change func(doc *document, held *Lease, it *facto
 // document; a different revision is the store's StaleError and change never
 // runs. The lease file is persisted separately after the item write.
 func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
+	if _, err := d.desk.store.Get(id); err != nil {
+		return err
+	}
 	var refusal error
 	err := d.desk.change(func(doc *document, now time.Time) (bool, error) {
 		held := find(doc, id)

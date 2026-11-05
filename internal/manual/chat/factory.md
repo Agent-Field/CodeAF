@@ -332,6 +332,14 @@ Before proof starts, new work belongs before the earliest proof step, so proof c
 
 Jobs from someone without write access refuse every step that can write, including job chat, publishing and merging, whatever their names, at start and before every round. An outside job with no tier recorded is refused too. Approvals alone can run; preparing a commit requires write access. A refusal stops the job without running that step or spending on it. The reason stays on the job. A refused Start keeps its saved state and spending and adds no attempted round. Open the work yourself as a new job, or give the author write access.
 
+## author access unknown — old jobs with no tier, read permission, retries
+
+Reading an old outside job with no recorded author tier checks that author's permission on its repository using the factory's read credential. The result fills the saved tier without changing the job's age. A job with any recorded tier keeps it; normal source polling follows its existing refresh policy.
+
+A missing collaborator (HTTP 404) resolves as someone without write access. A forbidden lookup (HTTP 403), missing credential, timeout or connection failure leaves the tier blank and steps that can write remain refused. The job's failure detail shows `Author access unknown: <redacted reason>; retry after <time>`.
+
+After a failed lookup, the next read retries after 1, 2, 4, 8 and then 10 minutes. A later retry time requested by GitHub takes precedence. There is no retry timer. Retry state stays in memory and resets when the factory restarts; a successfully filled tier stays saved.
+
 ## when conditions — touches auth, has ui, unknown files, before write
 
 An added conversation, check or approval step may use `when: touches auth` or `when: has ui`. These conditions are decided when the step comes up, using the change's files once known, otherwise the pull request's known files, otherwise an explicitly set triage area. Without files or area the answer is not known yet: the step stays pending and runs if still unknown at its turn. A conditional step before write therefore runs when no files or area are known.
