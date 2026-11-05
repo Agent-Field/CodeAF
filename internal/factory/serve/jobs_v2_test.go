@@ -504,7 +504,7 @@ func TestV2BringBackDiscardsWhatCameBackFirst(t *testing.T) {
 // no drop left on it, a start works, and the poll treats it as any other item.
 func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 	f := newV2Jobs(t)
-	it := f.create(t, factory.Item{Num: 8, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	it := f.create(t, factory.Item{Tier: factory.TierOwner, Num: 8, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
 	if f.read(t, it).Can.Restore {
 		t.Fatal("a job that was never dropped offers Bring back")
 	}

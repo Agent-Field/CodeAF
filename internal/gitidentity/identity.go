@@ -18,6 +18,11 @@ const (
 	Email = "agentfield-bot@users.noreply.github.com"
 )
 
+// ConfigArgs supplies the identity for commits codeaf creates.
+func ConfigArgs() []string {
+	return []string{"-c", "user.name=" + Name, "-c", "user.email=" + Email}
+}
+
 // Environment makes Git attribute a model-written commit to the run even
 // when the repository carries the person's user.name and user.email.
 func Environment() []string {

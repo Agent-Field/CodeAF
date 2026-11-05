@@ -63,7 +63,7 @@ func CheckAutomaticApproval(it Item) error {
 	if !Automatic(it) {
 		return fmt.Errorf("Auto approval stopped: the job is no longer in Auto")
 	}
-	if it.Cap <= 0 || JobSpent(it) >= it.Cap {
+	if it.Cap <= 0 || JobLifetimeSpent(it) >= it.Cap {
 		return fmt.Errorf("Auto approval stopped: job budget reached")
 	}
 	return nil
@@ -78,7 +78,7 @@ func AutonomyBlockReason(it Item) string {
 	if it.Cap <= 0 {
 		return "A job budget is required. Set Budget before continuing."
 	}
-	if JobSpent(it) >= it.Cap {
+	if JobLifetimeSpent(it) >= it.Cap {
 		return "Job budget reached. Choose a higher Budget to continue."
 	}
 	if it.PublishError != "" {

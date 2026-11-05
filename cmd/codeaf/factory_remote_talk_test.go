@@ -15,7 +15,7 @@ import (
 
 func TestRemoteTalkDoesNotReuseIdenticalLocalJob(t *testing.T) {
 	floor, web, profile := talkLab(t)
-	local, err := floor.Create(factory.Item{Repo: "web", Num: 9, Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Kind: factory.KindIssue, State: factory.StateNew, Title: "same forge issue"})
+	local, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "web", Num: 9, Created: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Kind: factory.KindIssue, State: factory.StateNew, Title: "same forge issue"})
 	if err != nil {
 		t.Fatal(err)
 	}

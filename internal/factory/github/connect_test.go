@@ -4,10 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	codeafexec "github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
@@ -66,5 +68,21 @@ func TestAHangingGHNeverHoldsTheReadsThatAskForTheToken(t *testing.T) {
 	fakeGH(t, "echo gh-account")
 	if token, via := TokenAt(context.Background(), profile); token != "gh-account" || via != factory.ViaGH {
 		t.Fatalf("a gh that answers at once: %q via %q", token, via)
+	}
+}
+
+// The credential strip is for the shells an agent runs. The engine reads its own
+// process environment, so its GitHub calls and pushes keep the token it was given.
+func TestTheEngineKeepsItsTokenWhenAgentShellsLoseIt(t *testing.T) {
+	t.Setenv("GH_TOKEN", "the-engines-token")
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv(codeafexec.AllowProviderKeysInShell, "")
+	for _, entry := range codeafexec.JobShellEnv(nil) {
+		if strings.HasPrefix(entry, "GH_TOKEN=") {
+			t.Fatal("an agent's shell still inherits GH_TOKEN")
+		}
+	}
+	if token, via := TokenAt(context.Background(), t.TempDir()); token != "the-engines-token" || via == "" {
+		t.Fatalf("the engine's own read answered %q via %q", token, via)
 	}
 }

@@ -725,6 +725,9 @@ func (h *Handler) prioritize(w http.ResponseWriter, r *http.Request, it factory.
 }
 
 func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	if h.failed(w, run.CheckWriteAccess(it, "chat")) {
+		return
+	}
 	if words, ok := h.words(w, r, it, "reply"); ok {
 		if h.config.Store != nil {
 			if !h.workerReady(w) {

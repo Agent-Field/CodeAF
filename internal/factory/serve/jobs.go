@@ -791,12 +791,12 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 			if factory.JobState(*cur) == api.StateDone || cur.State == factory.StateDismissed {
 				return factory.EditRefusal{Cause: errors.New("finished or dropped jobs cannot change budget")}
 			}
-			if body.Budget <= cur.Cap && body.Budget < factory.JobSpent(*cur) {
-				budgetRefused = fmt.Errorf("already spent $%.2f; choose a budget at least that high", factory.JobSpent(*cur))
+			if body.Budget <= cur.Cap && body.Budget < factory.JobLifetimeSpent(*cur) {
+				budgetRefused = fmt.Errorf("job total $%.2f has reached budget $%.2f; choose a budget above the job total", factory.JobLifetimeSpent(*cur), cur.Cap)
 				return budgetRefused
 			}
 			cur.Cap = body.Budget
-			if cur.QKind == "cap" && !cur.Publishing && body.Budget <= factory.JobSpent(*cur) {
+			if cur.QKind == "cap" && !cur.Publishing && body.Budget <= factory.JobLifetimeSpent(*cur) {
 				cur.Question, _ = (*run.Money)(nil).CapQuestion(*cur)
 				if cur.Asking != nil {
 					cur.Asking.Question = cur.Question
@@ -854,9 +854,10 @@ func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
 // capResumes is a raise that answers the open cap question on Auto or Manual
 // when the new cap clears spend. Take over, publishing and other questions
 // keep their own decisions; a cap at or under spend keeps the cap question.
+// A person's Stop requires their explicit Start even after a raise.
 func capResumes(it factory.Item) bool {
 	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
-	return asksCap && it.Cap > factory.JobSpent(it) && !it.Manual && !it.Publishing
+	return asksCap && it.Cap > factory.JobLifetimeSpent(it) && !it.Manual && !it.Publishing && !factory.StoppedByPerson(it)
 }
 
 // jobModelMost is the longest model id a job keeps.

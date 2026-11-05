@@ -52,7 +52,7 @@ func TestAppFactoryJobPRReady(t *testing.T) {
 	f.github.mu.Unlock()
 	sent := func() int { mu.Lock(); defer mu.Unlock(); return calls }
 	draft := func() factory.Item {
-		return factory.Item{Repo: "acme/api", State: factory.StateLanded, Assignee: "alice", Publish: "pr", HeadCommit: actionHead,
+		return factory.Item{Tier: factory.TierOwner, Repo: "acme/api", State: factory.StateLanded, Assignee: "alice", Publish: "pr", HeadCommit: actionHead,
 			PullRequest: &factory.PullRequest{Number: 42, URL: "https://github.com/acme/api/pull/42", State: factory.PROpen, Draft: true, HeadSHA: actionHead, Mergeable: factory.MergeableYes, ChecksRead: true, ReviewsRead: true}}
 	}
 	canReady := func(j api.Job) bool {

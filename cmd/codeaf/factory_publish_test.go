@@ -109,7 +109,7 @@ func TestFactoryAssigneesRunnerPublishesTeamAndSolo(t *testing.T) {
 				if action == "review" {
 					kind = factory.KindPR
 				}
-				it, err := g.st.Create(factory.Item{Repo: "acme/api", Num: 12, Kind: kind, URL: "https://github.com/acme/api/pull/12", Title: "fix", Assignee: "assignee", State: factory.StateLanded, HeadCommit: head, WorktreeMachine: "assignee-laptop", Proof: []factory.Claim{{Text: "works", OK: true}}, Stream: &factory.Stream{}})
+				it, err := g.st.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 12, Kind: kind, URL: "https://github.com/acme/api/pull/12", Title: "fix", Assignee: "assignee", State: factory.StateLanded, HeadCommit: head, WorktreeMachine: "assignee-laptop", Proof: []factory.Claim{{Text: "works", OK: true}}, Stream: &factory.Stream{}})
 				if err != nil {
 					t.Fatal(err)
 				}

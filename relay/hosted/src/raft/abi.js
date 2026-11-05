@@ -1,3 +1,4 @@
+import { encodeCanonical } from './codec.js';
 import { wasiPreview1 } from './wasi.js';
 
 export const ABI_VERSION = 1;
@@ -135,6 +136,6 @@ export class HostCodec {
     const v = { state: r.blob(), digest: r.blob() }; r.end(); return v;
   }
   configuration(conf, entry) { const r = this.call(frame(20).blob(conf).blob(entry)); const next = r.blob(); r.end(); return next; }
-  genesis(data) {const r=this.call(frame(13).blob(data));const v={entry:r.blob(),hard:r.blob(),conf:r.blob()};r.end();return v;}
+  genesis(data,birth=null) {const w=frame(13).blob(data);if(birth)w.blob(new TextEncoder().encode(encodeCanonical(birth)));const r=this.call(w);const v={entry:r.blob(),hard:r.blob(),conf:r.blob()};r.end();return v;}
   snapshot(data) { const r = this.call(frame(9).blob(data)); const b = r.blob(); r.end(); return b; }
 }

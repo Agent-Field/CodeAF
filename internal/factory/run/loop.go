@@ -130,10 +130,11 @@ type loopCtl struct {
 	roundCancel context.CancelFunc
 	// opened is the chat the round now running opened, and carry the chat a
 	// pause cut short, which the next round continues rather than replaces.
-	opened   string
-	carry    string
-	benchNo  int
-	released bool
+	opened       string
+	carry        string
+	benchNo      int
+	released     bool
+	releasedDone chan struct{}
 	// finishing says the final proof write is in progress, under floorLoop.mu.
 	finishing bool
 }
@@ -194,6 +195,19 @@ func (r *Runner) Launch(id int) error {
 		}
 	}
 	if err := strangerWrites(it); err != nil {
+		if saveErr := st.Update(id, func(it *factory.Item) error {
+			if launchable(*it) == nil {
+				if refusal := strangerWrites(*it); refusal != nil {
+					var denied WriteAccessRefusal
+					if errors.As(refusal, &denied) {
+						factory.StampFailure(it, denied.Failure(*it, r.now()))
+					}
+				}
+			}
+			return nil
+		}); saveErr != nil {
+			return saveErr
+		}
 		return err
 	}
 	lp.mu.Lock()
@@ -259,19 +273,70 @@ func (r *Runner) Launch(id int) error {
 	return nil
 }
 
-// strangerWrites refuses a run that would write from a stranger's words.
-// A STRANGER'S WORDS ARE DRAFTED ON, NEVER WRITTEN FROM, without a person:
-// the write stage is the one that changes the repository.
-func strangerWrites(it factory.Item) error {
-	if it.Tier != factory.TierStranger {
-		return nil
+const refuseStrangerWrite = factory.WriteAccessRefusalWords
+
+// WriteAccessRefusal stops a stranger's job before a step that can write.
+type WriteAccessRefusal struct {
+	Step   string
+	before *factory.Phase
+}
+
+func (e WriteAccessRefusal) Error() string { return refuseStrangerWrite }
+
+// Failure keeps prior rounds without counting the refusal as an attempt.
+func (e WriteAccessRefusal) Failure(it factory.Item, at time.Time) factory.Failure {
+	attempts := 0
+	var phases []factory.Phase
+	if it.Stream != nil {
+		phases = it.Stream.Phases
 	}
-	for _, s := range it.Stages {
-		if s.On && s.Name == "write" && runsIn(it, s) {
-			return errors.New("a stranger's work does not run write in this factory")
+	if e.before != nil {
+		phases = []factory.Phase{*e.before}
+	}
+	for _, ph := range phases {
+		if ph.Name == e.Step {
+			attempts = ph.Round
+			// A pending phase can already name its next, untried round.
+			if ph.State == factory.PhasePending {
+				attempts = max(0, attempts-1)
+			}
+			if ph.Failure != nil && ph.Failure.Detail == e.Error() {
+				attempts = ph.Failure.Attempts
+			}
+			break
+		}
+	}
+	return factory.Failure{Step: e.Step, Code: factory.CodeToolError, Detail: e.Error(), Attempts: attempts, Machine: it.WorktreeMachine, Next: factory.FailureStopped, At: at}
+}
+
+func strangerStage(it factory.Item, st factory.Stage) error {
+	if st.CanWrite() {
+		return CheckWriteAccess(it, st.Name)
+	}
+	return nil
+}
+
+func strangerWrites(it factory.Item) error {
+	for _, st := range it.Stages {
+		if runsIn(it, st) {
+			if err := strangerStage(it, st); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func (lp *floorLoop) allowRound(c *loopCtl, st factory.Stage) bool {
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err == nil {
+		err = lp.r.allowWrite(c.ctx, it, st)
+	}
+	if err != nil {
+		lp.failStop(c, st.Name, err)
+		return false
+	}
+	return true
 }
 
 // launchable says whether an item may be launched from where it stands: new,
@@ -392,6 +457,9 @@ func (lp *floorLoop) release(c *loopCtl) {
 		return
 	}
 	c.released = true
+	if c.releasedDone != nil {
+		close(c.releasedDone)
+	}
 	if c.benchNo > 0 && lp.bench[c.benchNo] == c.id {
 		delete(lp.bench, c.benchNo)
 	}
@@ -898,6 +966,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	if st.Kind == factory.StageGate {
 		return lp.approve(c, i, name)
 	}
+	if !lp.allowRound(c, st) {
+		return false
+	}
 	if factory.AsksBeforeStep(it, i) {
 		return lp.askBeforeStep(c, i, name)
 	}
@@ -931,7 +1002,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		// WHAT THE PERSON TOLD THE MANAGER SINCE THE LAST ROUND IS THIS
 		// ROUND'S STEER, read at the boundary so the brief carries it.
 		lp.hear(c)
-		if c.ctx.Err() != nil {
+		if c.ctx.Err() != nil || !lp.allowRound(c, st) {
 			return false
 		}
 		kind, text := EventStarted, fmt.Sprintf("%s · round %d", name, round)
@@ -946,6 +1017,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		c.carry, c.opened = "", ""
 		lp.mu.Unlock()
 		var carried []string
+		var before factory.Phase
 		if err := lp.move(c, name, kind, text, func(it *factory.Item) error {
 			it.State = factory.StateRunning
 			if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running" || factory.IsCIRepairStage(st)) {
@@ -961,6 +1033,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// that round (a pause cut it): the step asks again if it must.
 			dropStaleAsk(it)
 			ph := &it.Stream.Phases[i]
+			before = *ph
 			setPhaseState(ph, factory.PhaseRunning, now)
 			ph.Round = round
 			ph.RoundLimit = limit
@@ -998,6 +1071,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			}
 			lp.tellStep(c.id, fmt.Sprintf(sayStarted, name), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressStarted})
 		}
+		if begin, ok := lp.r.stepBegins.Load(c.id); ok {
+			step := factory.StageReport{Name: name, State: factory.PhaseRunning, Round: round}
+			if err := begin.(func(context.Context, factory.StageReport) error)(c.ctx, step); err != nil {
+				lp.r.Withdraw(c.id)
+				return false
+			}
+		}
 		job := lp.job(c, st, index, i, round)
 		job.Resume, job.Opened, job.CarryOn = resume, lp.opened(c, i), carried
 		if job.Progress != nil {
@@ -1009,7 +1089,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if cached := cachedCheckoutRefusal(job); cached != nil {
 			res = *cached
 		} else {
-			res, again, err = lp.round(c, exec, job)
+			res, again, err = lp.round(c, exec, job, before)
 		}
 		if c.ctx.Err() != nil {
 			return false
@@ -1391,13 +1471,29 @@ func (lp *floorLoop) held(c *loopCtl) bool {
 	lp.mu.Lock()
 	paused := c.paused
 	lp.mu.Unlock()
+	if paused {
+		// Resume must see this drive draining before it can leave the pause lock.
+		c.cancel()
+	}
 	return !paused && c.ctx.Err() == nil
 }
 
 // round runs one round under its own ctx, which a pause cancels. again is a
 // round a pause cut short: the same round goes on when the item is run
 // again, in the same chat when it had one (c.carry).
-func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.StageResult, again bool, err error) {
+func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job, before factory.Phase) (res factory.StageResult, again bool, err error) {
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err == nil {
+		err = lp.r.allowWrite(c.ctx, it, job.Stage)
+	}
+	if err != nil {
+		var refused WriteAccessRefusal
+		if errors.As(err, &refused) {
+			refused.before = &before
+			err = refused
+		}
+		return res, false, err
+	}
 	rctx, cancel := context.WithCancel(c.ctx)
 	defer cancel()
 	c.pauseMu.Lock()
@@ -1438,8 +1534,8 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.Stag
 					cancel()
 					return
 				}
-				if it.Cap > 0 && factory.JobSpent(it) >= it.Cap {
-					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobSpent(it)), loopUSD(it.Cap))
+				if it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap {
+					budgetStop <- fmt.Sprintf(ChatBudgetReached, loopUSD(factory.JobLifetimeSpent(it)), loopUSD(it.Cap))
 					cancel()
 					return
 				}
@@ -1543,6 +1639,13 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	dir, dirErr := lp.jobDir(it)
 	if dirErr == nil {
 		it = lp.settleRules(c, it)
+	}
+	if dirErr == nil {
+		fresh, err := lp.r.opts.Store.Get(c.id)
+		dirErr = err
+		if dirErr == nil {
+			dirErr = lp.r.allowWrite(c.ctx, fresh, st)
+		}
 	}
 	if dirErr == nil && factory.IsCIRepairStage(st) {
 		dirErr = lp.reconcilePR(it, dir)
@@ -1658,12 +1761,17 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string, memoryBefore float
 	if err != nil {
 		return false
 	}
+	// The person's skipped-check decision permits this forge write without
+	// granting any model spending.
+	if factory.PublishedAnyway(it) && it.Stream.Phases[i].Kind == factory.StagePost {
+		return true
+	}
 	if memoryBefore >= 0 && it.Stream != nil {
 		stream := *it.Stream
 		stream.Spent -= max(0, it.MemorySpent-memoryBefore)
 		it.Stream = &stream
 	}
-	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
+	reached := it.Cap > 0 && factory.JobLifetimeSpent(it) >= it.Cap
 	q, kind := (*Money)(nil).CapQuestion(it)
 	if p := lp.r.opts.Pool; p != nil {
 		reached = p.CapReached(it)
@@ -1729,7 +1837,12 @@ func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 				}
 			}
 		}
-		factory.StampFailure(it, factory.NewFailure(step, code, detail, machine, factory.FailureStopped, attempts, now))
+		failure := factory.NewFailure(step, code, detail, machine, factory.FailureStopped, attempts, now)
+		var refused WriteAccessRefusal
+		if errors.As(err, &refused) {
+			failure = refused.Failure(*it, now)
+		}
+		factory.StampFailure(it, failure)
 		return nil
 	})
 	if lp.r.opts.Record != nil {
@@ -1888,7 +2001,19 @@ func (lp *floorLoop) land(c *loopCtl) {
 		}
 		// Commit before opening proof so approval names the work being shown.
 		if lp.r.opts.Workdir != nil {
+			if err := lp.r.allowWrite(c.ctx, it, factory.Stage{Name: "land", Kind: factory.StageCheck}); err != nil {
+				lp.failStop(c, "land", err)
+				return
+			}
 			if dir, err := lp.r.opts.Workdir(it); err == nil {
+				fresh, readErr := lp.r.opts.Store.Get(c.id)
+				if readErr == nil {
+					readErr = lp.r.allowWrite(c.ctx, fresh, factory.Stage{Name: "land", Kind: factory.StageCheck})
+				}
+				if readErr != nil {
+					lp.failStop(c, "land", readErr)
+					return
+				}
 				git := lp.r.opts.Git
 				if git == nil {
 					git = ExecGit{}
@@ -2199,6 +2324,22 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 	lp.mu.Lock()
 	paused := want(c.paused)
 	unchanged := paused == c.paused
+	if !paused && c.paused && c.ctx.Err() != nil {
+		if c.releasedDone == nil {
+			c.releasedDone = make(chan struct{})
+		}
+		done, released := c.releasedDone, c.released
+		lp.mu.Unlock()
+		c.pauseMu.Unlock()
+		if !released {
+			<-done
+		}
+		it, err := r.opts.Store.Get(c.id)
+		if err != nil {
+			return err
+		}
+		return r.revive(it)
+	}
 	lp.mu.Unlock()
 	if unchanged {
 		c.pauseMu.Unlock()
@@ -2758,6 +2899,10 @@ func (lp *floorLoop) reverifyRun(c *loopCtl) {
 			continue
 		}
 		st, index := lp.stageAt(it, i)
+		st.Kind = factory.StageCheck
+		if !lp.allowRound(c, st) {
+			return
+		}
 		exec := lp.r.opts.Exec[factory.StageCheck]
 		if exec == nil {
 			lp.say(c, "fail", fmt.Sprintf("codeaf cannot run a %s stage here", factory.StageCheck))
@@ -2770,6 +2915,9 @@ func (lp *floorLoop) reverifyRun(c *loopCtl) {
 			return
 		}
 		job := lp.job(c, st, index, i, ph.Round+1)
+		if !lp.allowRound(c, st) {
+			return
+		}
 		res, err := runIn(c.ctx, exec, job)
 		if c.ctx.Err() == nil && job.dirErr == nil {
 			lp.recordChange(c, job, res)

@@ -50,7 +50,7 @@ func TestFactoryStopAnyVersion(t *testing.T) {
 				if guarded {
 					params["expect"] = map[string]any{"version": before.Version}
 				}
-				if err := desk.Apply(held.ID, held.Worker, false, func(it *factory.Item) error { it.Stream.Spent = .25; return nil }); err != nil {
+				if err := desk.Apply(held.ID, held.Worker, false, false, func(it *factory.Item) error { it.Stream.Spent = .25; return nil }); err != nil {
 					t.Fatal(err)
 				}
 				var moved api.Job
@@ -64,7 +64,7 @@ func TestFactoryStopAnyVersion(t *testing.T) {
 					t.Fatalf("stop did not cut build: %+v", stopped.Current)
 				}
 				// A late worker cannot start Proof or publish after the person's Stop.
-				err = desk.Apply(held.ID, held.Worker, false, func(it *factory.Item) error {
+				err = desk.Apply(held.ID, held.Worker, false, false, func(it *factory.Item) error {
 					it.Stream.Cur = 1
 					it.Stream.Phases[1].State = factory.PhaseRunning
 					it.Publishing = true

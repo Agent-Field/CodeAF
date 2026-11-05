@@ -27,13 +27,13 @@ func TestAppFactoryCapQuestionHasOneAmount(t *testing.T) {
 		cap, spent, next float64
 		question         string
 	}{
-		{.01, .01, 5, "budget of $0.01 reached · $0.01 spent · raise it to $5, or stop?"},
-		{.01, 5.25, 10, "budget of $0.01 reached · $5.25 spent · raise it to $10, or stop?"},
-		{5, 10, 20, "budget of $5 reached · $10 spent · raise it to $20, or stop?"},
-		{10, 20, 30, "budget of $10 reached · $20 spent · raise it to $30, or stop?"},
-		{20, 30, 40, "budget of $20 reached · $30 spent · raise it to $40, or stop?"},
-		{30, 31, 60, "budget of $30 reached · $31 spent · raise it to $60, or stop?"},
-		{30, 125, 240, "budget of $30 reached · $125 spent · raise it to $240, or stop?"},
+		{.01, .01, 5, "budget of $0.01 reached · job total $0.01 · raise it to $5, or stop?"},
+		{.01, 5.25, 10, "budget of $0.01 reached · job total $5.25 · raise it to $10, or stop?"},
+		{5, 10, 20, "budget of $5 reached · job total $10 · raise it to $20, or stop?"},
+		{10, 20, 30, "budget of $10 reached · job total $20 · raise it to $30, or stop?"},
+		{20, 30, 40, "budget of $20 reached · job total $30 · raise it to $40, or stop?"},
+		{30, 31, 60, "budget of $30 reached · job total $31 · raise it to $60, or stop?"},
+		{30, 125, 240, "budget of $30 reached · job total $125 · raise it to $240, or stop?"},
 	} {
 		t.Run(fmt.Sprintf("cap=%g/spent=%g", tc.cap, tc.spent), func(t *testing.T) {
 			it := factory.Item{State: factory.StateNeedsYou, Starter: "alice", Cap: tc.cap, QKind: "cap", Stream: &factory.Stream{Spent: tc.spent}}

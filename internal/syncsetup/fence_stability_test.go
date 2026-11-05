@@ -14,7 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
-func TestFenceF1StartupRenewsExistingHold(t *testing.T) {
+func TestStartupAcquiresNewHold(t *testing.T) {
 	r := newDriveRig(t)
 	sealed, err := r.engine.Seal(t.Context(), r.cell, cellstore.TurnInfo{})
 	mustNil(t, err)
@@ -26,12 +26,12 @@ func TestFenceF1StartupRenewsExistingHold(t *testing.T) {
 	defer drive.Close(t.Context())
 	after, err := r.a.Dir.Cell(t.Context(), r.cell.ID)
 	mustNil(t, err)
-	if after.Cell.Lease.Fence != created.Cell.Lease.Fence {
-		t.Fatalf("F1 opening own live hold changed fence: %d -> %d", created.Cell.Lease.Fence, after.Cell.Lease.Fence)
+	if after.Cell.Lease.Fence != created.Cell.Lease.Fence+1 {
+		t.Fatalf("opening own live hold must acquire a new fence: %d -> %d", created.Cell.Lease.Fence, after.Cell.Lease.Fence)
 	}
 }
 
-func TestFenceF1IdleExpiredHoldRenewsWithoutAcquiring(t *testing.T) {
+func TestIdleExpiredHoldRequiresContinuation(t *testing.T) {
 	r := newDriveRig(t)
 	sealed, err := r.engine.Seal(t.Context(), r.cell, cellstore.TurnInfo{})
 	mustNil(t, err)
@@ -41,21 +41,23 @@ func TestFenceF1IdleExpiredHoldRenewsWithoutAcquiring(t *testing.T) {
 	drive, err := r.a.Drive(t.Context(), r.engine, r.cell, DriveOptions{})
 	mustNil(t, err)
 	defer drive.Close(t.Context())
+	// Freeze renewal traffic so only the ownership check can act on expiry.
+	drive.cancel()
+	<-drive.done
 	r.clock.Advance(directory.LeaseTTL + time.Second)
 	mustNil(t, drive.CheckLease(t.Context()))
-	if drive.Gate() != nil || !drive.HoldsLease(t.Context()) {
-		t.Fatal("F1 idle owner was retired instead of renewing its unchanged fence")
+	if drive.Gate() == nil || drive.HoldsLease(t.Context()) {
+		t.Fatal("expired idle owner still admits work")
 	}
 	view, err := r.a.Dir.Cell(t.Context(), r.cell.ID)
 	mustNil(t, err)
-	if view.Cell.Lease.Fence != created.Cell.Lease.Fence || view.Cell.Lease.Expires <= view.Now {
-		t.Fatalf("F1 idle renewal changed fence or stayed expired: %+v", view)
+	if view.Cell.Lease.Fence != created.Cell.Lease.Fence+1 {
+		t.Fatalf("expiry check changed the ownership fence: %+v", view)
 	}
 }
 
-// Restart retains a live lease; a clean quit intentionally releases it for
-// immediate continuation elsewhere and therefore needs a new lease on reopen.
-func TestFenceF1IdleWatchReconnectAndProcessResume(t *testing.T) {
+// Reopening acquires a new fence; watch reconnection alone does not.
+func TestIdleWatchReconnectAndProcessReacquisition(t *testing.T) {
 	connections := make(chan net.Conn, 16)
 	var acquires, releases atomic.Int32
 	r := newDriveRig(t, func(next http.Handler) http.Handler {
@@ -96,7 +98,7 @@ func TestFenceF1IdleWatchReconnectAndProcessResume(t *testing.T) {
 	mustNil(t, drive.CheckLease(t.Context()))
 	view, err := r.a.Dir.Cell(t.Context(), r.cell.ID)
 	mustNil(t, err)
-	if view.Cell.Lease.Fence != created.Cell.Lease.Fence || acquires.Load() != 0 || releases.Load() != 0 {
+	if view.Cell.Lease.Fence != created.Cell.Lease.Fence+1 || acquires.Load() != 1 || releases.Load() != 0 {
 		t.Fatalf("F1 reconnect changed hold: %+v; acquires=%d releases=%d", view.Cell.Lease, acquires.Load(), releases.Load())
 	}
 	// End the old process's loops without its clean-quit release.
@@ -107,7 +109,7 @@ func TestFenceF1IdleWatchReconnectAndProcessResume(t *testing.T) {
 	defer resumed.Close(t.Context())
 	view, err = r.a.Dir.Cell(t.Context(), r.cell.ID)
 	mustNil(t, err)
-	if view.Cell.Lease.Fence != created.Cell.Lease.Fence || acquires.Load() != 0 || releases.Load() != 0 {
+	if view.Cell.Lease.Fence != created.Cell.Lease.Fence+2 || acquires.Load() != 2 || releases.Load() != 0 {
 		t.Fatalf("F1 idle restart changed hold: %+v; acquires=%d releases=%d", view.Cell.Lease, acquires.Load(), releases.Load())
 	}
 }
@@ -137,15 +139,18 @@ func TestRelayOutageO4FailedIdleRenewalKeepsWorkLocal(t *testing.T) {
 	drive, err := r.a.Drive(t.Context(), r.engine, r.cell, DriveOptions{})
 	mustNil(t, err)
 	defer drive.Close(t.Context())
+	// Freeze renewal traffic so only the ownership check can act on expiry.
+	drive.cancel()
+	<-drive.done
 	r.clock.Advance(directory.LeaseTTL + time.Second)
 	wire.refuse.Store(true)
 	mustNil(t, drive.CheckLease(t.Context()))
-	if drive.Gate() != nil || !drive.HoldsLease(t.Context()) {
-		t.Fatal("O4 unreachable renewal retired an unchanged own hold")
+	if drive.Gate() == nil || drive.HoldsLease(t.Context()) {
+		t.Fatal("expired ownership still admits tools")
 	}
 	wire.refuse.Store(false)
-	if !drive.HoldsLease(t.Context()) || drive.Gate() != nil {
-		t.Fatal("F1 recovered idle owner could not renew its original fence")
+	if drive.HoldsLease(t.Context()) || drive.Gate() == nil {
+		t.Fatal("a recovered connection revived a retired owner")
 	}
 }
 

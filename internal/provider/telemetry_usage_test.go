@@ -80,6 +80,12 @@ func TestRecoveredReceiptAddsOnlyPreviouslyMissingTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := WithReconcile(context.Background(), func(answer Reconciled) { results <- answer })
+	ctx = WithBilling(ctx, func(Billed) {})
+	pending := 0
+	ctx = WithReceiptPending(ctx, func() func() {
+		pending++
+		return func() {}
+	})
 	// The real settle door queues recovery only for an absent usage block.
 	client.settle(ctx, client.config.Model, &ai.Response{ID: "generation-one"}, receiptTornReason, 1)
 	answer := receiptResult(t, results)
@@ -102,6 +108,9 @@ func TestRecoveredReceiptAddsOnlyPreviouslyMissingTokens(t *testing.T) {
 	// A stream that already supplied usage never enters recovery, including
 	// a partial receipt, so it cannot add its usage a second time here.
 	client.settle(ctx, client.config.Model, &ai.Response{ID: "generation-two", Usage: &ai.Usage{PromptTokens: 4, CompletionTokens: 1}}, receiptTornReason, 1)
+	if pending != 1 {
+		t.Fatalf("reported usage queued another receipt: %d total admissions", pending)
+	}
 	if rows := telemetry.SpoolContents(); len(rows) != 1 {
 		t.Fatalf("reported usage entered late recovery: %d rows", len(rows))
 	}

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -501,7 +502,7 @@ func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Leas
 func wireSignals(in []lease.Signal) []api.WorkerSignal {
 	out := make([]api.WorkerSignal, len(in))
 	for i, s := range in {
-		out[i] = api.WorkerSignal{PublishAnyway: s.PublishAnyway, Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
+		out[i] = api.WorkerSignal{Delivery: s.Delivery, PublishAnyway: s.PublishAnyway, Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
 	}
 	return out
 }
@@ -516,7 +517,16 @@ func (h *Handler) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	// THE HEARTBEAT IS THE SIGNAL CHANNEL: what a person asked of the job
 	// since the last beat rides back on the answer (lease/signals.go).
-	signals, err := h.workers.desk.DrainLive(held.ID, held.Worker)
+	var acknowledged [][]string
+	if raw := r.Header.Get(api.SignalAcksHeader); raw != "" {
+		var ids []string
+		if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+			h.fail(w, http.StatusBadRequest, "invalid signal acknowledgements")
+			return
+		}
+		acknowledged = [][]string{ids}
+	}
+	signals, err := h.workers.desk.DrainLive(held.ID, held.Worker, acknowledged...)
 	if h.workerError(w, err) {
 		return
 	}
@@ -550,7 +560,7 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, http.StatusBadRequest, "manager reply cannot change job steps")
 			return
 		}
-		h.applyWorker(w, r, false, func(it *factory.Item) error { return factory.MergeThread(it, report.Thread, report.Delivered) })
+		h.applyWorker(w, r, false, false, func(it *factory.Item) error { return factory.MergeThread(it, report.Thread, report.Delivered) })
 		return
 	}
 	headers := http.Header{}
@@ -560,7 +570,13 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_, digest, _ := retainedWorkerReport(api.WorkerRecovery{OriginalLease: r.PathValue("lease"), Body: raw.Bytes(), Headers: headers})
-	h.applyWorker(w, r, false, func(it *factory.Item) error {
+	capWait := report.Question != nil && report.QuestionKind == "cap"
+	for _, step := range report.Stages {
+		if step.State == factory.PhaseRunning {
+			capWait = false
+		}
+	}
+	h.applyWorker(w, r, false, capWait, func(it *factory.Item) error {
 		before := failureKey(it.Failure)
 		spentBefore := factory.JobSpent(*it)
 		if err := run.ApplyReport(it, report, h.workers.now()); err != nil {
@@ -618,7 +634,7 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if only {
-		h.applyWorker(w, r, true, func(*factory.Item) error { return nil })
+		h.applyWorker(w, r, true, false, func(*factory.Item) error { return nil })
 		return
 	}
 	state, ok := api.ToWorkerState(body)
@@ -634,7 +650,7 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		// A MERGE'S DONE IS NOT A PUBLISH. The job's pull request is already
 		// out; its report said what the merge did, and the job stays done or
 		// waits on the person whose merge failed.
-		h.applyWorker(w, r, true, func(it *factory.Item) error {
+		h.applyWorker(w, r, true, false, func(it *factory.Item) error {
 			it.State = factory.StateShipped
 			if m := it.Merging; m != nil && (m.State == factory.MergeQueued || m.State == factory.MergeMerging) {
 				cp := *m
@@ -645,7 +661,7 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	h.applyWorker(w, r, true, func(it *factory.Item) error {
+	h.applyWorker(w, r, true, false, func(it *factory.Item) error {
 		now := h.workers.now()
 		if state != factory.StateShipped {
 			if it.PublishStatus != nil && it.PublishStatus.State == "failed" {
@@ -702,11 +718,11 @@ func (h *Handler) approval(ctx context.Context, id int) string {
 	return trailer
 }
 
-func (h *Handler) applyWorker(w http.ResponseWriter, r *http.Request, complete bool, apply func(*factory.Item) error) {
+func (h *Handler) applyWorker(w http.ResponseWriter, r *http.Request, complete, capWait bool, apply func(*factory.Item) error) {
 	// Validation failures are distinct from storage failures, so a caller can
 	// correct its report without mistaking disk failure for bad input.
 	var invalid error
-	err := h.workers.desk.Apply(r.PathValue("lease"), requestWorker(r).ID, complete, func(it *factory.Item) error {
+	err := h.workers.desk.Apply(r.PathValue("lease"), requestWorker(r).ID, complete, capWait, func(it *factory.Item) error {
 		invalid = apply(it)
 		return invalid
 	})

@@ -84,7 +84,7 @@ source is refused, never enrolled as a fresh group.
 `RaftMemberDO.legacyImport(config, manifest, row, finish)` stages bounded rows
 and records `legacy-pending` before provisioning. Pending imports cannot
 initialize/load a core after eviction. Exact retries survive interruption;
-finish checks the complete digest, installs a three-voter genesis and portable
+finish checks the complete digest, installs its immutable genesis and portable
 checkpoint, then removes only redundant staging rows and clears the pending
 marker durably. The stored ceiling includes all grandfathered rows. One import
 request per member can run at once, preventing page buffers stacking in memory.
@@ -169,7 +169,9 @@ use ABI 29 and the same deterministic evaluation. Empty legacy frame plans are
 normalized before original-proof comparison, preserving replacement semantics.
 
 Public source serialization spans coordination, while external blob I/O leaves
-that queue and passes a new authority barrier afterward. Public watch sockets
+that queue. Blob requests authorize once, then recheck confirmed authority and
+its applied index after I/O; changed authority requires authorization again.
+Public watch sockets
 carry presence without the legacy socket-vouch promise; v1 clients keep ordinary
 beats. The hosted relay admits personal learners and serves their status, exchange
 and hibernating sockets. Joined computers can explicitly request leadership;
@@ -222,10 +224,85 @@ retirement deadlines are then rearmed independently. An alarm on a cold sleeping
 object reads socket attachments and that hint without constructing a tenant,
 loading member handles, acquiring a read barrier or reopening peer queues.
 Platform auto-response timestamps supply presence without data writes. Real
-application input still activates coordination and takes a fresh quorum barrier;
-a remembered leader never authorizes a reply. Watch hold renewals retain their
+application input still activates coordination. Mutations commit through Raft;
+reads use a fresh safe barrier or the router's confirmed read certificate below.
+A remembered leader alone never authorizes a reply. Watch hold renewals retain their
 committed path and shared renewal period.
 
+## Confirmed hosted reads
+
+The identity router can briefly reuse a safe ReadIndex result when at least two
+hosted voters in a stable three-voter configuration have identical clean durable
+tails: log tip, commit and applied index agree, as do term, leader and configuration.
+Those voters intersect every quorum, including the personal-leader topology.
+During singleton birth, the sole hosted voter supplies the same clean-tail fence;
+joint configurations require an ordinary safe barrier.
+No unseen append acknowledgment can commit a later record from these clean tails.
+Every subsequent commit therefore needs anchor traffic through this singleton router.
+
+The router invalidates the certificate before every member mutation, peer turn,
+snapshot operation and release of peer traffic. New member RPCs default to mutation;
+only named read methods bypass that fence. In-flight work prevents certification.
+Reads pin the selected member's activation and check the router generation before
+and after asynchronous reads. A generation change, recovery or ten-second expiry
+requires fresh confirmation. Failed confirmation never serves a stale certificate.
+Recent read activity renews confirmation during maintenance; idle groups still sleep.
+The shared Go core keeps ReadOnlySafe and its minority-read contract unchanged.
+
+When member traffic interrupts a cached read, the request restarts authorization
+and row selection with a fresh SafeReadIndex rather than recertifying another
+lease. This request pins the member activation and actual applied index across
+identity, device and listing pages, including a final view after storage sync.
+Changed applied state restarts the whole read; bounded retries still fail closed
+without a coherent confirmed view or quorum. Blob I/O stays outside retries, and
+its completion rechecks the applied index before deciding whether to authorize again.
+
+Directory reads do not propose AdvanceTime. Their observed wall-clock floor is
+durable in the router's local metadata and never moves backward after recovery;
+subsequent v1 mutation translation includes that floor. Directory GET signatures
+are checked against it too, so clock rollback cannot revive stale request proofs.
+Native API ingress still commits a synchronous device_seen clock witness before
+checking signed commands or worker reads, using the shape older native evaluators
+accept. This also records caller presence. Without this witness, a backdated
+command could enroll expired worker scope. Device presence from blob
+authorization and watch departure is advisory, coalesced for thirty seconds with
+at most 64 pending devices, and flushed one device per maintenance turn after
+critical work. Failed presence writes remain pending and do not skip other work.
+
+
+## New identities and background formation
+
+Only a newly provisioned identity with no legacy directory rows may begin with
+one hosted voter. Admission drains before this eligibility check and the freeze
+records the decision once. Existing and imported identities keep their three
+voters. The public legacy manifest and client snapshot schema do not change.
+
+A private birth record binds the cluster UUID, original manifest digest and
+initial voter to each member's immutable configuration. The first member imports
+and commits locally; the first public write does not create the other two actors.
+An interrupted publication reuses the same provenance. A published member that
+loses its store is never reconstructed from the frozen original.
+
+Maintenance adds the other anchors as learners before allocating their stores,
+catches them up, promotes both through explicit joint consensus, then leaves
+joint consensus. The existing membership registry is initialized only after the
+stable three-voter configuration commits. Machine coordination that needs that
+registry remains unavailable until then. Hold renewal, join delivery and advisory
+presence continue during formation, even when a new anchor is unavailable. An idle
+singleton can quiesce using its actual one-voter configuration while those
+anchors are unavailable. Learner admission refreshes the leader snapshot before
+catch-up, so a previously compacted snapshot cannot exclude the new learner.
+
+Recovery follows the actual durable ConfState. The birth record cannot reduce
+the quorum after joint consensus or three-voter formation. Older hosted code
+rejects the changed immutable member configuration instead of serving a different
+genesis. Private ABI extensions do not change released client messages.
+
+Committed application changes notify watchers and held store polls from applied
+state, including changes replicated from another leader. Revocation closes the
+device watch and rejects held polls before the next public request or sweep. A
+rejected upload retains its in-flight slot until its underlying storage work
+settles, so other devices’ Has requests and retirement still wait for that work.
 
 ## Personal leader departure and anchor restoration
 

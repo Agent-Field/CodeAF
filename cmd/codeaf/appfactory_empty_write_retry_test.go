@@ -135,8 +135,11 @@ func TestFactoryWriteUsesJobBaseAcrossAttempts(t *testing.T) {
 				if action == "resume after reported stop" {
 					wait("first attempt is reported before Stop", func(job api.Job) bool { return job.Steps[0].State == "running" && job.Steps[0].Round > 0 })
 				}
-				if action == "resume after stop" && read().Steps[0].Round != 0 {
-					t.Fatal("unreported worker sent its first round before Stop")
+				if action == "resume after stop" {
+					step := read().Steps[0]
+					if step.Round != 1 || step.Result != "" || step.Cost != 0 || step.Chat != "" {
+						t.Fatalf("step admission must not report the unfinished round before Stop: %+v", step)
+					}
 				}
 				t.Logf("before Stop: write=%s round=%d", read().Steps[0].State, read().Steps[0].Round)
 				act("factory.job_step_stop", map[string]any{"step": "write"})

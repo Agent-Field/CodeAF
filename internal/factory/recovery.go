@@ -51,7 +51,7 @@ func RecoveryBlockReason(it Item) string {
 		return "Publication may have started. Check its outcome before retrying publication."
 	case JobState(it) == "done" || it.Stream == nil:
 		return "This run has ended."
-	case it.Cap <= 0 || JobSpent(it) >= it.Cap:
+	case it.Cap <= 0 || JobLifetimeSpent(it) >= it.Cap:
 		return "Job budget reached. Raise Budget before trying again."
 	}
 	return ""
@@ -102,7 +102,7 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 				why = "The runner did not return within the automatic retry window. Try again when ready."
 			}
 			cp.State, cp.Reason = "exhausted", why
-			if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+			if it.Cap <= 0 || JobLifetimeSpent(*it) >= it.Cap {
 				cp.BlockedBy, cp.BlockedAt = "budget", now
 			}
 			it.Recovery, it.State = &cp, StateNeedsYou
@@ -132,7 +132,7 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 	cp.LastAt, cp.Reason = f.At, f.Detail
 	if why := RecoveryBlockReason(*it); why != "" {
 		cp.State, cp.Reason = "exhausted", why
-		if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+		if it.Cap <= 0 || JobLifetimeSpent(*it) >= it.Cap {
 			cp.BlockedBy, cp.BlockedAt = "budget", now
 		}
 	} else if cp.Attempts >= cp.Limit {

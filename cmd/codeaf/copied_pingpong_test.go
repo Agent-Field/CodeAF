@@ -29,6 +29,7 @@ type copiedPingPong struct {
 	initialRoot string
 	door        string
 	replies     []string
+	realBuckets bool
 }
 
 type copiedTakeResult struct {
@@ -174,13 +175,16 @@ func (h *copiedPingPong) takeB() (cell.Cell, error) {
 		}
 		return h.initialRoot
 	}
-	c := h.b.Continuer(h.eb, syncsetup.TakeOptions{DeviceName: "computer B", RootFor: rootFor, OnPhase: h.trace,
-		BucketFor: func(string) string { return filepath.Join(h.b.Home, "v3", "projects", "copy--project") }})
+	bucket := func(string) string { return filepath.Join(h.b.Home, "v3", "projects", "copy--project") }
+	if h.realBuckets {
+		bucket = takeCopyBucket
+	}
+	c := h.b.Continuer(h.eb, syncsetup.TakeOptions{DeviceName: "computer B", RootFor: rootFor, OnPhase: h.trace, BucketFor: bucket})
 	door := h.door
 	if h.copyRoot == "" {
 		door = "home"
 	}
-	got, err := h.surfaceTake(h.b, takeover{c}, rootFor(h.c.ID), door, "computer A")
+	got, err := h.surfaceTake(h.b, takeover{c: c}, rootFor(h.c.ID), door, "computer A")
 	if err != nil {
 		return cell.Cell{}, err
 	}
@@ -194,12 +198,49 @@ func (h *copiedPingPong) takeB() (cell.Cell, error) {
 func (h *copiedPingPong) takeA() cell.Cell {
 	h.t.Helper()
 	h.t.Setenv(home.EnvVar, h.a.Home)
-	c := h.a.Continuer(h.ea, syncsetup.TakeOptions{DeviceName: "computer A", RootFor: func(string) string { return h.c.Root }, OnPhase: h.trace})
-	got, err := h.surfaceTake(h.a, takeover{c}, h.c.Root, "home", "computer B")
+	options := syncsetup.TakeOptions{DeviceName: "computer A", RootFor: func(string) string { return h.c.Root }, OnPhase: h.trace}
+	if h.realBuckets {
+		options.BucketFor = takeCopyBucket
+	}
+	c := h.a.Continuer(h.ea, options)
+	got, err := h.surfaceTake(h.a, takeover{c: c}, h.c.Root, "home", "computer B")
 	if err != nil {
 		h.t.Fatal(err)
 	}
 	return got
+}
+
+func TestCopiedChatFromDeepWorkspaceMovesAndReturns(t *testing.T) {
+	rig := newHostedMoveRig(t)
+	rig.work = filepath.Join(t.TempDir(), strings.Repeat("nested-project/", 24), "worktree")
+	if err := os.MkdirAll(rig.work, 0700); err != nil {
+		t.Fatal(err)
+	}
+	rig.ea.Workspace = rig.work
+	rig.ea.DataRoot = filepath.Join(rig.a.Home, "v3", "stores")
+	rig.eb.DataRoot = filepath.Join(rig.b.Home, "v3", "stores")
+	if err := session.SaveMeta(rig.c.Root, session.Meta{ID: rig.c.ID, Workspace: rig.work}); err != nil {
+		t.Fatal(err)
+	}
+	machine, err := preflight.OpenMachine(rig.c.Root, rig.work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine.Observer().Refresh()
+	h := &copiedPingPong{hostedMoveRig: rig, initialRoot: filepath.Join(rig.b.Home, "v3", "projects", "copies", rig.c.ID), realBuckets: true, door: "home"}
+	for round := 1; round <= 3; round++ {
+		fromA := fmt.Sprintf("deep workspace A %d", round)
+		h.publishTurn(h.a, h.ea, h.c, h.work, "computer A", fromA)
+		b, err := h.takeB()
+		if err != nil {
+			t.Fatalf("B take %d: %v", round, err)
+		}
+		h.content(b, filepath.Join(b.Root, "work"), fromA)
+		fromB := fmt.Sprintf("deep workspace B %d", round)
+		h.publishTurn(h.b, h.eb, b, filepath.Join(b.Root, "work"), "computer B", fromB)
+		a := h.takeA()
+		h.content(a, h.work, fromB)
+	}
 }
 
 func (h *copiedPingPong) content(c cell.Cell, work, text string) {

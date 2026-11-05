@@ -28,7 +28,7 @@ func TestAppFactoryAutomaticApprovalActor(t *testing.T) {
 			if _, err := worker.Attach(ctx, api.WorkerAttach{Machine: "actor-fixture", Name: "fixture", Handle: "owner", Slots: 1}); err != nil {
 				t.Fatal(err)
 			}
-			it, err := s.backend.local.host.floor.Create(factory.Item{
+			it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner,
 				Repo: "acme/api", Num: 12, Kind: factory.KindIssue, Title: "Passing proof", State: factory.StateLanded,
 				Autonomy: mode, Starter: "owner", Cap: 10, WorktreeMachine: "actor-fixture", HeadCommit: actionHead,
 				Stages: []factory.Stage{{Name: factory.ApproveName, Kind: factory.StageGate, On: true}},

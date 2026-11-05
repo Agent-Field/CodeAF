@@ -16,7 +16,7 @@ func TestFactoryJobChatsDoesNotTouchJob(t *testing.T) {
 	}
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 71, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 71, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestFactoryJobSendTouchesJob(t *testing.T) {
 	}
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 72, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
+	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 72, Tier: factory.TierOwner, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestFactoryExistingJobSendTouchesJob(t *testing.T) {
 	s.start()
 	talk, id := jobConversation(t)
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 73, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew, Talk: talk})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 73, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew, Talk: talk})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestFactoryAutomaticBriefDoesNotTouchJob(t *testing.T) {
 	}
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 74, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew,
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 74, Kind: factory.KindIssue, Origin: factory.OriginForge, State: factory.StateNew,
 		Body: "The ledger total goes negative after two very large entries are added in one run."})
 	if err != nil {
 		t.Fatal(err)
