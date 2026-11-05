@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // ── WHERE AN ITEM'S WORK LIVES: A WORKTREE AND A BRANCH PER ITEM ───────────
@@ -56,7 +57,7 @@ type ExecGit struct {
 
 // Run runs `git -C dir args...`. A failure's error is gits last line.
 func (g ExecGit) Run(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.Command("git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	cmd.Env = append(gitEnv(g.Token), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))

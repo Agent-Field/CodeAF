@@ -95,6 +95,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -9789,7 +9790,7 @@ func gitContext(ctx context.Context, dir string, environment []string, args ...s
 	if strings.TrimSpace(dir) == "" {
 		return "", errors.New("git: no directory to run in")
 	}
-	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
+	command := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance(append([]string{"--no-optional-locks"}, args...)...)...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on
 	// a terminal it does not have.
