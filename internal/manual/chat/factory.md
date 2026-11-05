@@ -1,5 +1,50 @@
 # The factory
 
+## a job that waits on other jobs — waits on, blocked, ready
+
+A Backlog job can wait on up to 20 other jobs of the same factory. Set or
+replace its parents with `factory.waits_set` (`waits_on`); an empty list clears
+them. You can change waits only before the job has started or been released.
+Unknown or repeated ids, the job itself, cycles and parents that already ended
+without merging are refused without changing the job.
+
+The job read keeps `waits_on` as set. `waiting_on` lists the parents still
+unsatisfied at the factory's last check, in that order. A parent satisfies
+its children when its pull request merges, or it ships with nothing to merge.
+A failed parent or one that ends without merging adds `blocked`, naming the
+parent and why. Repairing the parent clears that block on the next check.
+A person's Stop on a parent is not a failure. The person's queue Hold (`held`)
+is separate.
+
+The factory checks on startup and after folder changes, at most once every
+two seconds, with a safety check every minute. After every parent satisfies
+it, the job is ready in Backlog and its activity records `waits over:` with
+the parents. This release never starts the job. Your Start works while it
+waits or is blocked; from then on those waits stay inert, including after Stop.
+
+The engine advertises `factory.waits_set`, `factory.features` and capability
+`waits_on`. `factory.features` reads the connected factory's own features;
+use waits only when that list also includes `waits_on`. Older factories that
+omit the list answer an empty list. An older factory refusing the waits route
+answers a conflict with reason `factory_too_old` and asks you to update it.
+
+## closed issues, comment receipts and parent visibility for waits
+
+A closed GitHub issue does not satisfy its children. A job that shipped with
+nothing to merge must have a saved comment receipt; choosing comment publication
+alone is not enough. Closing without a merge or that receipt blocks its children
+and refuses new waits on it.
+
+You can set waits only on parents whose repositories you can read. An unreadable
+parent gets the same refusal as an unknown job. A parent in another repository
+appears in the child's block and release activity as `job` and its number. Its
+block says only `failed` or `closed without merging`; its repository and failed
+step stay out of the child's text. Parents in the same repository keep their
+usual references and failed-step labels.
+
+Your Start retires waits immediately. They stay inert after Drop and Bring back,
+even when no factory check happened between those actions.
+
 ## factory repository list refresh, saved repositories and available_read_at
 
 The factory saves the last complete GitHub repository list across a restart.

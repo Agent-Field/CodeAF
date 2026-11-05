@@ -162,6 +162,8 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
+	waits waitsScheduler
+
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
@@ -220,6 +222,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h := &Handler{config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.seam = h.areas.remembering(seam)
+	h.seam = h.waitsLaunches(h.seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {
@@ -262,6 +265,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/audit", h.audit)
 	h.read("/v1/publish/codes", h.publishCodes)
 	h.verbs()
+	h.waitsRoutes()
 	h.scoutRoutes()
 	h.readRoutes()
 	h.workerRoutes()
@@ -290,6 +294,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	if root := strings.TrimSpace(h.eventRoot()); root != "" {
 		h.watch = watchRoot(root)
 	}
+	h.startWaits()
 	h.machineEvents()
 	return h
 }
@@ -304,6 +309,7 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.stopWaits()
 		h.reposRead.mu.Lock()
 		h.reposRead.closed = true
 		if h.reposRead.cancel != nil {
@@ -844,12 +850,15 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		// AccessCheckPost is optional and public: POST /v1/factory-access takes
 		// verb "check", so a client need not put a link's secret in a URL.
 		AccessCheckPost bool `json:"access_check_post"`
+
+		Features []string `json:"features"`
+
 		// GitHubLimited is the sentence an app shows while GitHub's rate
 		// limit is spent, and GitHubResumesAt is when it resets.
 		GitHubLimited   string     `json:"github_limited,omitempty"`
 		GitHubResumesAt *time.Time `json:"github_resumes_at,omitempty"`
 	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
-		h.accessMode(), h.pollingEvery(), h.servedBy(), true, limited, resumes})
+		h.accessMode(), h.pollingEvery(), h.servedBy(), true, []string{factory.BlockWaitsOn}, limited, resumes})
 }
 
 // githubLimited is the reason and reset time about carries while GitHub's

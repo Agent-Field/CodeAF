@@ -75,6 +75,10 @@ type FactoryCapabilities struct {
 	// JobEvents: factory.events_since is served and factory.event is pushed
 	// (feature factory.job_events); a factory older than the route answers supported false.
 	JobEvents bool `json:"job_events"`
+	// WaitsOn: factory.waits_set and factory.features are served; whether a
+	// connected factory takes waits is its own features answer.
+	WaitsOn bool `json:"waits_on"`
+
 	// Contract is the factory API contract this engine speaks.
 	Contract int `json:"contract"`
 	// Remote: attach to, read and sign in to a factory served elsewhere.

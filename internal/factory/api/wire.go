@@ -394,6 +394,10 @@ type JobReadSize struct {
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	WaitsOn   []int     `json:"waits_on,omitempty"`
+	WaitingOn []int     `json:"waiting_on,omitempty"`
+	Blocked   *JobBlock `json:"blocked,omitempty"`
+
 	// RoundCostTables advertises table support only on worker admission.
 	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
 	FromJob         int    `json:"from_job,omitempty"`
