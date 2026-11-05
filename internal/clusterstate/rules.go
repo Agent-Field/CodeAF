@@ -44,6 +44,7 @@ func Heartbeat(c Cell, device string, b Beat, now int64) (Cell, error) {
 	}
 	c.Lease.Expires = now + ttlMs
 	c.Lease.Pending = b.Pending
+	c.Lease.Working = b.Working
 	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
 	if b.Pending > 0 && b.UploadTotal > 0 {
 		c.Lease.UploadSent, c.Lease.UploadTotal = min(b.UploadSent, b.UploadTotal), b.UploadTotal
@@ -84,7 +85,7 @@ func ReleaseOf(c Cell, device string, fence uint64, at ...int64) (Cell, error) {
 	if err := holder(c, device, fence); err != nil {
 		return c, err
 	}
-	c.Lease.Expires, c.Lease.Pending = 0, 0
+	c.Lease.Expires, c.Lease.Pending, c.Lease.Working = 0, 0, false
 	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
 	if len(at) > 0 {
 		c.Lease.ReleasedAt = at[0]

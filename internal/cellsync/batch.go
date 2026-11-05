@@ -66,6 +66,8 @@ type Batcher struct {
 	beatSent  uint32     // the pending count the directory last heard, from a beat or a publish
 	upload    uploaded   // how far the upload of pending turns has got
 	beatUp    uploaded   // the upload progress the directory last heard
+	working   bool       // a turn is running here now
+	toldWork  bool       // the working flag the directory last heard from a beat
 	closing   bool       // The closing caller owns subsequent publishes and release.
 
 	refusedSince time.Time // when the present run of refusals began; zero while the relay is answering
@@ -78,6 +80,7 @@ type Batcher struct {
 	work  wakeup // tells the flush loop a turn was noted, so an upload can start at once
 	idle  wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
 	freed wakeup // ends a halt: something the relay refused for has changed
+	turns wakeup // a turn started or ended, so the directory hears it now and not at the next tick
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	backoff time.Duration
@@ -141,6 +144,20 @@ func (b *Batcher) Note(t cellstore.Turn) {
 // moment the person is likeliest to pick the chat up on another machine. It
 // never waits, so it is safe to call from the turn's own goroutine.
 func (b *Batcher) Idle() { b.idle.fire() }
+
+// Working says whether a turn is running here. The directory hears it with the
+// next beat, which goes at once when it changes, so another computer can say
+// the chat is working here rather than merely open. It never waits, so it is
+// safe to call from the turn's own goroutine.
+func (b *Batcher) Working(on bool) {
+	b.mu.Lock()
+	changed := b.working != on
+	b.working = on
+	b.mu.Unlock()
+	if changed {
+		b.turns.fire()
+	}
+}
 
 // Freed says something a refusal waited on has changed (space was freed on the
 // relay, say), so a halted chat tries again now instead of waiting for a
@@ -266,6 +283,10 @@ func (b *Batcher) beats(ctx context.Context) {
 			handled <- struct{}{}
 		case <-held.changes():
 			b.socketMoved(ctx, &held)
+		case <-b.turns.ch():
+			if !b.toldWorking() {
+				b.beat(ctx)
+			}
 		case <-ctx.Done():
 			return
 		}
@@ -301,7 +322,7 @@ func (b *Batcher) tick(ctx context.Context, held *holding) {
 	if b.takePublished() {
 		return
 	}
-	if !held.covers(b.view, b.toldPending) {
+	if !held.covers(b.view, b.toldPending) || !b.toldWorking() {
 		b.beat(ctx)
 	}
 }
@@ -321,6 +342,13 @@ func (b *Batcher) toldPending(n uint32) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.beatSent == n && b.beatUp == b.uploadFor(n)
+}
+
+// toldWorking says whether the directory last heard the working flag as it is now.
+func (b *Batcher) toldWorking() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.toldWork == b.working
 }
 
 func (b *Batcher) tell(n uint32) {
@@ -550,12 +578,15 @@ func (b *Batcher) beat(ctx context.Context) {
 		return
 	}
 	up := b.beatUpload(pending)
-	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total)})
+	b.mu.Lock()
+	working := b.working
+	b.mu.Unlock()
+	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total), Working: working})
 	b.renewalResult(d, err)
 	switch {
 	case err == nil:
 		b.mu.Lock()
-		b.beatSent, b.beatUp = pending, up
+		b.beatSent, b.beatUp, b.toldWork = pending, up, working
 		b.mu.Unlock()
 		b.recovered()
 	case errors.Is(err, directory.ErrFenceStale):

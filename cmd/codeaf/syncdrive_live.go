@@ -235,6 +235,13 @@ func (l *liveDrive) Gate() error {
 	return nil
 }
 
+// Working says whether a turn is running here, once a drive side exists.
+func (l *liveDrive) Working(on bool) {
+	if d := l.current(); d != nil {
+		d.Working(on)
+	}
+}
+
 // Idle uploads what is sealed, once a drive side exists.
 func (l *liveDrive) Idle() {
 	if d := l.current(); d != nil {

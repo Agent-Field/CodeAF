@@ -677,6 +677,14 @@ func (d *Drive) Gate() error {
 
 // Idle says the agent stopped to wait for the person: what is sealed and not yet
 // uploaded goes up now. A chat that only views has nothing to upload.
+// Working tells the directory, through the next beat, whether a turn is
+// running on this computer, so another one can say the chat is working here.
+func (d *Drive) Working(on bool) {
+	if d.batcher != nil {
+		d.batcher.Working(on)
+	}
+}
+
 func (d *Drive) Idle() {
 	if d.batcher != nil {
 		go func() {

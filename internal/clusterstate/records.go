@@ -62,6 +62,12 @@ type Lease struct {
 	// it; a publish, a release and an acquire clear it. Display only.
 	UploadSent  uint64 `json:"upload_sent,omitempty"`
 	UploadTotal uint64 `json:"upload_total,omitempty"`
+	// Working says the holder was in the middle of a turn at its last beat, so
+	// another computer can say the chat is working there and not merely open.
+	// A beat sets it either way; an acquire and a release clear it, and a
+	// publish keeps it, because a turn publishes as it goes. Display only: it
+	// is never a reason to refuse anything.
+	Working bool `json:"working,omitempty"`
 }
 
 // MaxFrameHints and FrameHintBudget bound optional warm-transfer metadata and
@@ -138,6 +144,9 @@ type Beat struct {
 	// got; both absent while nothing uploads.
 	UploadSent  uint64 `json:"upload_sent,omitempty"`
 	UploadTotal uint64 `json:"upload_total,omitempty"`
+	// Working says a turn is running on the holder. Sent only to a relay that
+	// answers Codeaf-Working-Beats: 1, because older relays decode strictly.
+	Working bool `json:"working,omitempty"`
 }
 
 // Publish moves a cell's durable head under a lease the caller holds.
