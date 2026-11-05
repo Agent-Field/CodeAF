@@ -37,9 +37,6 @@ func TestStatusLineCopy(t *testing.T) {
 			t.Errorf("%s: got %q, want %q", st, got, want)
 		}
 	}
-	if got, want := StatusLine(Row{Status: Running, Device: "host-a", Working: true}), "working on host-a"; got != want {
-		t.Errorf("a turn running there: got %q, want %q", got, want)
-	}
 }
 
 func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {

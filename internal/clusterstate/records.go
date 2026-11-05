@@ -46,24 +46,6 @@ type Device struct {
 	Platform string `json:"platform,omitempty"`  // darwin|linux|windows|ios|android|other
 	Created  int64  `json:"created,omitempty"`   // directory ms when the device joined
 	LastSeen int64  `json:"last_seen,omitempty"` // directory ms of the last watch socket close or hello
-
-	// Outbox is the messages this device wrote to chats another computer
-	// holds, until the holder says it took them; Took is the ids of other
-	// devices' messages this device put in a chat's queue here. A message's
-	// text is sealed under the metadata key, so the relay never reads it.
-	// Absent from older devices and from relays that do not advertise
-	// Codeaf-Chat-Notes.
-	Outbox []Note   `json:"outbox,omitempty"`
-	Took   []string `json:"took,omitempty"`
-}
-
-// Note is one message waiting in a device's outbox for whichever computer
-// holds Cell. Text is b64, sealed; At is the sender's clock in ms, for order.
-type Note struct {
-	ID   string `json:"id"`
-	Cell string `json:"cell"`
-	Text string `json:"text"`
-	At   int64  `json:"at"`
 }
 
 // Lease says who may write a cell. Only the directory clock sets Expires.
@@ -80,12 +62,6 @@ type Lease struct {
 	// it; a publish, a release and an acquire clear it. Display only.
 	UploadSent  uint64 `json:"upload_sent,omitempty"`
 	UploadTotal uint64 `json:"upload_total,omitempty"`
-	// Working says the holder was in the middle of a turn at its last beat, so
-	// another computer can say the chat is working there and not merely open.
-	// A beat sets it either way; an acquire and a release clear it, and a
-	// publish keeps it, because a turn publishes as it goes. Display only: it
-	// is never a reason to refuse anything.
-	Working bool `json:"working,omitempty"`
 }
 
 // MaxFrameHints and FrameHintBudget bound optional warm-transfer metadata and
@@ -162,9 +138,6 @@ type Beat struct {
 	// got; both absent while nothing uploads.
 	UploadSent  uint64 `json:"upload_sent,omitempty"`
 	UploadTotal uint64 `json:"upload_total,omitempty"`
-	// Working says a turn is running on the holder. Sent only to a relay that
-	// answers Codeaf-Working-Beats: 1, because older relays decode strictly.
-	Working bool `json:"working,omitempty"`
 }
 
 // Publish moves a cell's durable head under a lease the caller holds.

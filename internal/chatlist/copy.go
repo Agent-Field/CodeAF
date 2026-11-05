@@ -42,7 +42,6 @@ const (
 	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
 	heldOn         = "held on %s"
-	workingOn      = "working on %s"
 	deviceOff      = "%s offline"
 	branchLine     = "%s from %s: merge / discard"
 	branchKeep     = "%s from %s: discard"
@@ -156,9 +155,6 @@ func nameList(names []string) string {
 func StatusLine(r Row) string {
 	switch r.Status {
 	case Running:
-		if r.Working {
-			return fmt.Sprintf(workingOn, r.Device)
-		}
 		return fmt.Sprintf(heldOn, r.Device)
 	case Off:
 		return fmt.Sprintf(deviceOff, r.Device)

@@ -47,7 +47,6 @@ type appChats struct {
 	closed          bool
 	publicationDone chan struct{}
 	publicationWake chan struct{}
-	notes           appNotes
 }
 type appLocalChat struct {
 	agent    string
@@ -370,7 +369,7 @@ func (b *appBackend) publishLocalChats(s *syncsetup.Sync, now func() time.Time) 
 func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed dirwatch.Follower, emit bool) (appwire.ChatsResult, error) {
 	ctx, cancel := context.WithTimeout(parent, syncsetup.DeviceRequestWithin)
 	defer cancel()
-	rows, mail, version, err := s.RowsMailAt(ctx)
+	rows, version, err := s.RowsAt(ctx)
 	if err != nil {
 		return appwire.ChatsResult{}, appEngineError(err)
 	}
@@ -413,16 +412,11 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		takeable[r.Cell] = row.CanTake
 		appChatSharing(&row, r)
-		row.Working = !here && r.Working
-		row.Notes = b.appChatNotes(mail, r.Cell, here)
 		if row.Here {
 			row.Status = "here"
 		}
 		out = append(out, row)
 	}
-	// Messages waiting for chats held here go into their queues; the queue
-	// takes its own locks, so this runs apart from the list's.
-	go b.carryNotes(s, mail, local)
 	b.chats.markTaking(out, true)
 	cacheFacts := func() {
 		b.chats.mu.Lock()
