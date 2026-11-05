@@ -1358,7 +1358,11 @@ compacted away, codeaf loads the group again when needed.
 **Yes, with `share_deliverable`.** When a file is something you should get back — a
 chart a script rendered, a report, a PDF, a recording, a spreadsheet, an archive — the
 agent shares it, and it joins this conversation's deliverables marked **shared by** the
-agent. A file made with `write` or by a generator is recorded already and needs no share.
+agent. Files recorded by `write` or a generator need no share. Sharing an unchanged
+authored file reports that it is already among this conversation's deliverables,
+adds no record, emits no update and costs nothing. Other files in the same call
+are still shared. If a script or shell changed the bytes since the authored record,
+sharing records the new version; content hashes decide, not timestamps.
 
 - **Up to 8 files and 64 MiB in all per call**, any regular file kind. A picture, a sound
   or a video is also a media source you can preview; every other file keeps the type its
