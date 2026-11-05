@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Chat folder names sync through the hosted relay
-pr: 1
+pr: 2431
 surface: [remote]
 invalidates:
   - "Was true: the hosted relay did not advertise chat folders, so clients withheld folder names. Is true now: the hosted relay advertises and retains sealed folder names between paired computers."
