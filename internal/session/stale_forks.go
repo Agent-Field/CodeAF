@@ -8,12 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
-var furrowStagingName = regexp.MustCompile(`^\.([^/]+)\.furrow-fork-[0-9]+-[0-9]+$`)
+var furrowStagingName = regexp.MustCompile(`^\.([^/]+)\.furrow-fork-([0-9]+)-[0-9]+$`)
 var furrowForksName = regexp.MustCompile(`^([0-9]+)\.furrow-forks$`)
 
 func removeForkStaging(destination string) {
@@ -21,7 +23,7 @@ func removeForkStaging(destination string) {
 	entries, _ := os.ReadDir(parent)
 	for _, entry := range entries {
 		match := furrowStagingName.FindStringSubmatch(entry.Name())
-		if entry.IsDir() && len(match) == 2 && match[1] == filepath.Base(destination) {
+		if entry.IsDir() && len(match) == 3 && match[1] == filepath.Base(destination) {
 			_ = os.RemoveAll(filepath.Join(parent, entry.Name()))
 		}
 	}
@@ -79,7 +81,12 @@ func sweepAbandonedForks(ctx context.Context, dir string, now time.Time, note fu
 			continue
 		}
 		name := entry.Name()
-		if !furrowStagingName.MatchString(name) {
+		if staging := furrowStagingName.FindStringSubmatch(name); staging != nil {
+			// A fork still being written belongs to a live process.
+			if pid, err := strconv.Atoi(staging[2]); err != nil || processgroup.ProcessAlive(pid) {
+				continue
+			}
+		} else {
 			match := furrowForksName.FindStringSubmatch(name)
 			if len(match) != 2 {
 				continue

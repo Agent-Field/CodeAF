@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,17 +42,17 @@ func TestSweepAbandonedFurrowFolders(t *testing.T) {
 			}
 			trees := filepath.Join(dir, "trees")
 			old := now.Add(-8 * 24 * time.Hour)
-			removed := []string{".1.furrow-fork-123-0", ".task.name.furrow-fork-123-1", "2.furrow-forks"}
-			kept := []string{".1.furrow-fork-x-0", ".1.furrow-fork-1-0-extra", ".furrow-fork-1-0", "x.furrow-forks", "1.furrow-forks", "1", "notes", ".3.furrow-fork-1-0", ".4.furrow-fork-1-0", ".5.furrow-fork-1-0", "3.furrow-forks", "4.furrow-forks", "5.furrow-forks"}
+			removed := []string{".1.furrow-fork-999999999-0", ".task.name.furrow-fork-999999999-1", "2.furrow-forks"}
+			kept := []string{".1.furrow-fork-x-0", ".1.furrow-fork-1-0-extra", ".furrow-fork-1-0", "x.furrow-forks", "1.furrow-forks", "1", "notes", ".3.furrow-fork-999999999-0", ".4.furrow-fork-999999999-0", ".5.furrow-fork-999999999-0", "3.furrow-forks", "4.furrow-forks", "5.furrow-forks"}
 			for _, name := range append(append([]string{}, removed...), kept...) {
 				path := filepath.Join(trees, name)
 				writeFile(t, filepath.Join(path, "data"), "content")
 				stampTree(t, path, old)
 			}
-			stampTree(t, filepath.Join(trees, ".3.furrow-fork-1-0"), now.Add(-7*24*time.Hour))
-			stampTree(t, filepath.Join(trees, ".4.furrow-fork-1-0"), now.Add(-time.Hour))
-			writeFile(t, filepath.Join(trees, ".5.furrow-fork-1-0", "recent"), "new")
-			stampTree(t, filepath.Join(trees, ".5.furrow-fork-1-0", "recent"), now)
+			stampTree(t, filepath.Join(trees, ".3.furrow-fork-999999999-0"), now.Add(-7*24*time.Hour))
+			stampTree(t, filepath.Join(trees, ".4.furrow-fork-999999999-0"), now.Add(-time.Hour))
+			writeFile(t, filepath.Join(trees, ".5.furrow-fork-999999999-0", "recent"), "new")
+			stampTree(t, filepath.Join(trees, ".5.furrow-fork-999999999-0", "recent"), now)
 			stampTree(t, filepath.Join(trees, "3.furrow-forks"), now.Add(-7*24*time.Hour))
 			stampTree(t, filepath.Join(trees, "4.furrow-forks"), now.Add(-time.Hour))
 			writeFile(t, filepath.Join(trees, "5.furrow-forks", "recent"), "new")
@@ -59,7 +60,7 @@ func TestSweepAbandonedFurrowFolders(t *testing.T) {
 			outside := t.TempDir()
 			writeFile(t, filepath.Join(outside, "data"), "keep")
 			stampTree(t, outside, old)
-			link := filepath.Join(trees, ".6.furrow-fork-1-0")
+			link := filepath.Join(trees, ".6.furrow-fork-999999999-0")
 			if err := os.Symlink(outside, link); err != nil {
 				t.Fatal(err)
 			}
@@ -118,7 +119,7 @@ func TestSweepForkFoldersDoesNotFollowTreesSymlink(t *testing.T) {
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	dir := newSweptSession(t, root, "project", "session", Meta{ID: "session", Workspace: "/project", LastUserAt: now})
 	outside := t.TempDir()
-	stale := filepath.Join(outside, ".1.furrow-fork-1-0")
+	stale := filepath.Join(outside, ".1.furrow-fork-999999999-0")
 	writeFile(t, filepath.Join(stale, "data"), "keep")
 	stampTree(t, stale, now.Add(-8*24*time.Hour))
 	if err := os.Symlink(outside, filepath.Join(dir, "trees")); err != nil {
@@ -135,8 +136,8 @@ func TestSweepForkFoldersCancellationStopsAfterFirstRemoval(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	dir := newSweptSession(t, root, "project", "session", Meta{ID: "session", Workspace: "/project", LastUserAt: now})
-	first := filepath.Join(dir, "trees", ".1.furrow-fork-1-0")
-	second := filepath.Join(dir, "trees", ".2.furrow-fork-1-0")
+	first := filepath.Join(dir, "trees", ".1.furrow-fork-999999999-0")
+	second := filepath.Join(dir, "trees", ".2.furrow-fork-999999999-0")
 	for _, path := range []string{first, second} {
 		writeFile(t, filepath.Join(path, "data"), "keep until swept")
 		stampTree(t, path, now.Add(-8*24*time.Hour))
@@ -149,5 +150,29 @@ func TestSweepForkFoldersCancellationStopsAfterFirstRemoval(t *testing.T) {
 	}
 	if _, err := os.Stat(second); err != nil {
 		t.Fatalf("removal continued after cancellation: %v", err)
+	}
+}
+
+// A fork being written right now is in use, however old the files it copied
+// look. Its staging folder names the process writing it, and while that
+// process is alive the sweep leaves the folder alone.
+func TestSweepNeverTouchesAForkInUse(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	root := t.TempDir()
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	dir := newSweptSession(t, root, "project", "session", Meta{ID: "session", Workspace: "/project", LastUserAt: now})
+	trees := filepath.Join(dir, "trees")
+	old := now.Add(-30 * 24 * time.Hour)
+	writing := filepath.Join(trees, fmt.Sprintf(".1.furrow-fork-%d-0", os.Getpid()))
+	used := filepath.Join(trees, "2.furrow-forks")
+	for _, path := range []string{writing, used, filepath.Join(trees, "2")} {
+		writeFile(t, filepath.Join(path, "data"), "in use")
+		stampTree(t, path, old)
+	}
+	SweepPlaces(root, now, func(line string) { t.Errorf("swept a fork in use: %s", line) })
+	for _, path := range []string{writing, used} {
+		if _, err := os.Stat(filepath.Join(path, "data")); err != nil {
+			t.Fatalf("fork in use removed: %v", err)
+		}
 	}
 }
