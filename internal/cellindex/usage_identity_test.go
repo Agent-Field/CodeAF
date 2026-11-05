@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	storetest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -28,10 +29,11 @@ func TestUsageRebuildRecognizesSeededJournalIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, err := cellstore.NewRecorder(nil, cellstore.Engine{Binary: bin, DataRoot: t.TempDir()}, c, filepath.Join(t.TempDir(), "wal"), cellstore.Options{})
+	rec, err := cellstore.NewRecorder(nil, cellstore.Engine{Binary: bin, DataRoot: storetest.EngineDir(t)}, c, filepath.Join(t.TempDir(), "wal"), cellstore.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	cleanupRecorder(t, rec)
 	rec.NoteModelCall(executor.ModelCall{Model: "m", TokensIn: 100, TokensOut: 7, CostMicroUSD: 1234})
 	if err := rec.Around(context.Background(), executor.Call{Tool: "edit", Args: []byte(`{}`)}, executor.EffectLocal, cellstore.AgentRun, func() ([]byte, bool) { return nil, false }); err != nil {
 		t.Fatal(err)
