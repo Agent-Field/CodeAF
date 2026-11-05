@@ -1,6 +1,7 @@
 // Link pairing end to end (docs/ux-pairing-contract.md): create, read, approve, deny, presence,
 // and every limit the contract names. Runs against a relay started with a 3 s request time to live,
 // decided requests kept 1.5 s, 40 live requests, 6 creates an hour, 3 misses a minute (see e2e.sh).
+// The isolated capacity case uses production pending expiry to keep all forty requests live.
 // Each case that needs its own allowances comes from its own IP (X-Forwarded-For).
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
@@ -23,6 +24,7 @@ async function open(method, path, { ip = freshIp(), body } = {}) {
 async function member() {
   const identity = await newIdentity();
   const approver = await newDevice(identity);
+  assert.equal((await call(approver, 'GET', '/v1/dir/list', undefined, { base: BASE })).status, 200);
   const newcomer = async (platform) => {
     const device = await newDevice(identity);
     const pubkey = Buffer.from(device.cert.device, 'hex');
@@ -48,7 +50,8 @@ const asked = async (m, platform) => {
   return { n, ...made.json };
 };
 
-const limits = (await open('GET', '/v1/link/limits')).json;
+const selected = process.argv[2];
+const limits = selected === '--list' ? null : (await open('GET', '/v1/link/limits')).json;
 
 const tests = {
   async Limits() {
@@ -92,13 +95,15 @@ const tests = {
     const listed = (await call(m.approver, 'GET', '/v1/dir/list', undefined, { base: BASE })).json.devices[device];
     assert.deepEqual([listed.platform, listed.revoked, typeof listed.created], ['linux', false, 'number'], 'the key is linked to the identity');
     assert.equal((await approve(m, code, body)).status, 204, 'the same approve again is idempotent');
+    const changed = await approve(m, code, { ...body, grant: b64u(randomBytes(64)) });
+    assert.deepEqual([changed.status, answerOf(changed)], [409, 'already_decided'], 'a different grant cannot replace the committed decision');
     assert.equal(answerOf(await deny(m, code)), 'already_decided');
   },
 
   async ClientCannotSetCreatedOrLastSeen() {
     const m = await member();
     const { n, code, device } = await asked(m);
-    await approve(m, code, approveBody(n, { device: { device: { created: 5, last_seen: 5 } } }));
+    assert.equal((await approve(m, code, approveBody(n, { device: { created: 5, last_seen: 5 } }))).status, 204);
     const rec = (await call(m.approver, 'GET', '/v1/dir/list', undefined, { base: BASE })).json.devices[device];
     assert.ok(rec.created > 1_700_000_000_000 && rec.last_seen === undefined, JSON.stringify(rec));
   },
@@ -116,7 +121,8 @@ const tests = {
   async RaceHasOneWinner() {
     const m = await member();
     const { n, code } = await asked(m);
-    const [a1, d1, a2, d2] = await Promise.all([approve(m, code, approveBody(n)), deny(m, code), approve(m, code, approveBody(n)), deny(m, code)]);
+    const body = approveBody(n);
+    const [a1, d1, a2, d2] = await Promise.all([approve(m, code, body), deny(m, code), approve(m, code, body), deny(m, code)]);
     const state = (await read(code)).json.state;
     const [wins, loses] = state === 'approved' ? [[a1, a2], [d1, d2]] : [[d1, d2], [a1, a2]];
     assert.deepEqual([...wins, ...loses].map((a) => a.status), [204, 204, 409, 409], `the first decision (${state}) wins and the other is refused`);
@@ -149,6 +155,26 @@ const tests = {
     const again = await create(first.n.body);
     assert.equal(again.status, 201);
     assert.equal(answerOf(await approve(m, again.json.code, approveBody(first.n))), 'bad_request');
+  },
+
+  async InvalidApprovalDoesNotReserveTheRequest() {
+    const owner = await member(), other = await member();
+    for (const invalid of ['certificate', 'identity', 'grant', 'device']) {
+      const { n, code, device } = await asked(owner);
+      const cert = { ...n.device.cert, sig: '' };
+      cert.sig = Buffer.from(await crypto.subtle.sign('Ed25519', other.identity.pair.privateKey, new TextEncoder().encode('codeaf/device-cert/v1\n' + JSON.stringify(cert)))).toString('hex');
+      const body = approveBody({ ...n, cert: b64u(JSON.stringify(cert)) });
+      if (invalid === 'certificate') body.cert = 'invalid';
+      if (invalid === 'identity') body.cert = n.cert;
+      if (invalid === 'grant') body.grant = b64u(randomBytes(4097));
+      if (invalid === 'device') body.device = [];
+      const refused = await approve(other, code, body);
+      assert.deepEqual([refused.status, answerOf(refused)], invalid === 'grant' ? [413, 'too_big'] : [400, 'bad_request'], invalid);
+      assert.equal((await read(code)).json.state, 'pending', invalid);
+      const listed = (await call(other.approver, 'GET', '/v1/dir/list', undefined, { base: BASE })).json;
+      assert.equal(listed.devices[device], undefined, invalid);
+      assert.equal((await approve(owner, code, approveBody(n))).status, 204, `${invalid} did not reserve the request for another identity`);
+    }
   },
 
   async ExpiryIsGone() {
@@ -220,14 +246,19 @@ const tests = {
   },
 
   async RelayFull() {
-    await sleep(limits.ttl_ms + 300);
+    // The selected capacity case starts in a fresh namespace in e2e.sh.
+    if (!selected) await sleep(limits.ttl_ms + 300);
     const m = await member();
-    let ip = freshIp();
-    for (let i = 0; i < limits.max_live; i++) {
-      if (i % limits.pending_per_ip === 0) ip = freshIp();
-      assert.equal((await create((await m.newcomer()).body, ip)).status, 201, `request ${i}`);
-    }
-    const full = await create((await m.newcomer()).body, freshIp());
+    // Prepare keys first so the capacity check measures live request slots.
+    const requests = await Promise.all(Array.from({ length: limits.max_live + 1 }, () => m.newcomer()));
+    const ips = Array.from({ length: Math.ceil(limits.max_live / limits.pending_per_ip) }, () => freshIp());
+    const started = Date.now();
+    const made = await Promise.all(requests.slice(0, limits.max_live).map((n, i) => create(n.body, ips[Math.floor(i / limits.pending_per_ip)])));
+    for (const [i, answer] of made.entries()) assert.equal(answer.status, 201, `request ${i}`);
+    const full = await create(requests.at(-1).body, freshIp());
+    const finished = Date.now(), expires = made.map((answer) => answer.json.expires_at);
+    console.log('link live capacity', JSON.stringify({ live: expires.filter((at) => at > finished).length, span_ms: finished - started, earliest_expiry_ms: Math.min(...expires) - finished, status: full.status }));
+    assert.ok(expires.every((at) => at > finished), 'all requests remain live when capacity is checked');
     assert.deepEqual([full.status, full.json.err], [503, 'full']);
   },
 
@@ -253,8 +284,14 @@ const tests = {
   },
 };
 
-for (const [name, run] of Object.entries(tests)) {
-  await run();
-  console.log('link ok', name);
+if (selected === '--list') {
+  console.log(Object.keys(tests).join('\n'));
+} else {
+  const cases = Object.entries(tests).filter(([name]) => !selected || name === selected);
+  if (!cases.length) throw new Error(`unknown link case: ${selected}`);
+  for (const [name, run] of cases) {
+    await run();
+    console.log('link ok', name);
+  }
+  console.log('link: all pass');
 }
-console.log('link: all pass');

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -864,6 +865,7 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 		return nil, errors.New("GitHub is not connected")
 	}
 	count := repo.ReadCount
+	tiers := setupTiers{h: h, token: token, repo: repo.ID, seen: map[string]factory.Tier{}}
 	for page := max(1, cursor); page <= 1000; page++ {
 		var rows []struct {
 			Number  int             `json:"number"`
@@ -909,7 +911,7 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 			for _, label := range row.Labels {
 				labels = append(labels, label.Name)
 			}
-			item := factory.Item{Repo: repo.ID, Num: row.Number, Title: row.Title, Body: row.Body, URL: row.URL, Created: row.Created, Kind: factory.KindIssue, Origin: factory.OriginForge, Author: row.User.Login, Labels: labels, SetupHeld: true}
+			item := factory.Item{Repo: repo.ID, Num: row.Number, Title: row.Title, Body: row.Body, URL: row.URL, Created: row.Created, Kind: factory.KindIssue, Origin: factory.OriginForge, Author: row.User.Login, Tier: tiers.of(ctx, row.User.Login), Labels: labels, SetupHeld: true}
 			if row.Assignees != nil {
 				item.SourceAssignees = []string{}
 				for _, a := range *row.Assignees {
@@ -1036,4 +1038,50 @@ func (h *Handler) scheduleSetupDeadline(out setupState) {
 			h.startSetup(saved)
 		}
 	})
+}
+
+// setupTiers records, for each issue read in at setup, whether its author
+// may write to the repository, as the GitHub source does on every poll:
+// the signed-in person is the owner, write, maintain or admin access is a
+// collaborator, and anything else, or no answer, is a stranger.
+type setupTiers struct {
+	h     *Handler
+	token string
+	repo  string
+	me    *string
+	seen  map[string]factory.Tier
+}
+
+func (s *setupTiers) of(ctx context.Context, login string) factory.Tier {
+	if login == "" {
+		return factory.TierStranger
+	}
+	key := strings.ToLower(login)
+	if t, ok := s.seen[key]; ok {
+		return t
+	}
+	if s.me == nil {
+		var user struct {
+			Login string `json:"login"`
+		}
+		_, _ = s.h.setupJSON(ctx, "/user", s.token, &user)
+		s.me = &user.Login
+	}
+	t := factory.TierStranger
+	if *s.me != "" && strings.EqualFold(*s.me, login) {
+		t = factory.TierOwner
+	} else {
+		var p struct {
+			Permission string `json:"permission"`
+			RoleName   string `json:"role_name"`
+		}
+		if _, err := s.h.setupJSON(ctx, "/repos/"+s.repo+"/collaborators/"+url.PathEscape(login)+"/permission", s.token, &p); err == nil {
+			switch {
+			case p.RoleName == "maintain", p.Permission == "admin", p.Permission == "maintain", p.Permission == "write":
+				t = factory.TierCollab
+			}
+		}
+	}
+	s.seen[key] = t
+	return t
 }

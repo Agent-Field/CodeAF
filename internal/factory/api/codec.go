@@ -284,10 +284,7 @@ func spendingLimit(it factory.Item) *SpendingLimit {
 	if factory.NeedsKind(it) != factory.NeedsSpendingLimit {
 		return nil
 	}
-	spent := 0.0
-	if it.Stream != nil {
-		spent = it.Stream.Spent
-	}
+	spent := factory.JobLifetimeSpent(it)
 	return &SpendingLimit{Limit: it.Cap, Spent: spent, NextLimit: factory.NextJobCap(it), Currency: factory.CurrencyUSD}
 }
 
@@ -1020,9 +1017,7 @@ func questionKindIn(kind string) string {
 func annotateQuestion(q *Question, it factory.Item) {
 	if q.Kind == "cap" {
 		q.Limit = it.Cap
-		if it.Stream != nil {
-			q.Spent = it.Stream.Spent
-		}
+		q.Spent = factory.JobLifetimeSpent(it)
 		q.NextLimit = factory.NextJobCap(it)
 	}
 	if it.QKind == factory.QKindOutOfAttempts && len(q.Options) == 0 {

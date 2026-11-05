@@ -127,14 +127,18 @@ func (c *appChats) holderName(id string) string {
 	return "the other computer"
 }
 
+// moveFor answers the running move of a chat, or nil.
+func (c *appChats) moveFor(id string) *appMove {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.moves[id]
+}
+
 // CancelTake ends a move of the chat that runs or waits. The take cleans up
 // as it does after any failure: nothing is acquired before every byte is
 // here, and an acquired lease is handed back.
 func (b *appBackend) CancelTake(p appwire.TakeCancelParams) (appwire.TakeCancelResult, error) {
-	c := &b.chats
-	c.mu.Lock()
-	m := c.moves[p.Cell]
-	c.mu.Unlock()
+	m := b.chats.moveFor(p.Cell)
 	if m == nil {
 		return appwire.TakeCancelResult{}, nil
 	}

@@ -41,11 +41,11 @@ func TestTheFactoryOpensAtOnceWhatEverHousekeepingAndGitHubDo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	issue, err := floor.Create(factory.Item{Kind: factory.KindIssue, Repo: "acme/api", Num: 7, Title: "keep me", State: factory.StateNew})
+	issue, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindIssue, Repo: "acme/api", Num: 7, Title: "keep me", State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr, err := floor.Create(factory.Item{Kind: factory.KindPR, Repo: "acme/api", Num: 65, Title: "old PR job", State: factory.StateQueued})
+	pr, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindPR, Repo: "acme/api", Num: 65, Title: "old PR job", State: factory.StateQueued})
 	if err != nil {
 		t.Fatal(err)
 	}

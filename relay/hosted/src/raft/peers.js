@@ -27,7 +27,7 @@ export class PersonalPeers {
   this.host=host;this.generation=generation;this.scope=host.config('1').scope;this.view={};this.boxes=new Map();this.used=[0,0,0];this.progress=new Map();this.snapshots=new Map();this.acks=new Map();this.tail=Promise.resolve();this.pending=0;this.blocked=new Set();this.retryTargets=new Set();this.checkpoints=new Map();
   this.limits=peerLimits(host.runtime);
  }
- serial(fn){if(this.pending>=64)return Promise.reject(refused('busy'));this.pending++;const p=this.tail.then(fn);this.tail=p.catch(()=>{});return p.finally(()=>{this.pending--;this.host.signal?.();});}
+ serial(fn){if(this.pending>=64)return Promise.reject(refused('busy'));this.host.invalidateRead();this.pending++;const p=this.tail.then(fn);this.tail=p.catch(()=>{});return p.finally(()=>{this.pending--;this.host.signal?.();});}
  members(){return Object.entries(this.view).map(([node,p])=>({node,...p}));}
  // Public and peer turns publish in order, so a delayed member read cannot
  // restore an older transport authority after another turn has advanced it.
@@ -111,12 +111,15 @@ export class PersonalPeers {
   return messages;
  }
  wire(node,extra={}){
+  this.host.invalidateRead();
   const box=this.boxes.get(node),chunks=[...(box?.credits??[])].sort(([a],[b])=>BigInt(a)<BigInt(b)?-1:1).map(([node,sequence])=>({node,sequence}));
   const r=response(this.host.runtime.call(frame(38).u32(1).blob(enc.encode(JSON.stringify({...extra,chunks,generation:this.generation,messages:this.deliveries(node)}))).finish()));const raw=r.blob();r.end();return raw;
  }
- async recover(){
+ async recover(configuration=null){
   const from=this.host.leader();if(!from)return;
-  for(const [to,member]of Object.entries(this.view))if(!member.revoked&&!this.host.members.has(to)){
+  const conf=this.host.configuration(configuration??(await this.host.members.get(from).readEvidence()).conf);
+  const configured=new Set(['voters','outgoing','learners','learners_next'].flatMap(key=>conf[key]??[]).map(String));
+  for(const [to,member]of Object.entries(this.view))if(configured.has(to)&&!member.revoked&&!this.host.members.has(to)){
    await this.host.input(from,12,{peer:to,snapshot:true,success:false});
    await this.host.input(from,12,{peer:to,snapshot:false,success:false});
   }
@@ -214,7 +217,7 @@ export class PersonalPeers {
     this.validate(unb64(a.auth));const raw=this.wire(a.node),text=this.host.hash(raw);
     if(text===a.last)continue;
     const body=JSON.parse(dec.decode(raw));if(!body.messages.length&&!body.chunks?.length)continue;
-    ws.send(raw);const deadline=a.deadline??(body.messages.length?Date.now()+this.limits.Retention:null);ws.serializeAttachment({...a,last:text,deadline});if(deadline)await this.host.armAlarm(deadline);
+    this.host.invalidateRead();ws.send(raw);const deadline=a.deadline??(body.messages.length?Date.now()+this.limits.Retention:null);ws.serializeAttachment({...a,last:text,deadline});if(deadline)await this.host.armAlarm(deadline);
    }catch{this.close(ws);}
   }
  }
@@ -227,7 +230,7 @@ export class PersonalPeers {
   const deadline=initial&&JSON.parse(dec.decode(initial)).messages.length?Date.now()+this.limits.Retention:null;
   const {client,server}=acceptHibernatingSocket(this.host.ctx,['cluster-peer'],{clusterPeer:true,kind,node:req.node,generation:this.generation,auth:b64(raw),last:initial?this.host.hash(initial):null,deadline});
   if(deadline)await this.host.armAlarm(deadline);
-  if(initial)server.send(initial);
+  if(initial){this.host.invalidateRead();server.send(initial);}
   return new Response(null,{status:101,webSocket:client});
  }
  async frame(ws,raw){
@@ -235,7 +238,7 @@ export class PersonalPeers {
   try{
    this.validate(unb64(att.auth));if(att.kind==='forward'){this.host.forwarding.frame(ws,raw);return;}if(att.kind!=='peer'||!(raw instanceof ArrayBuffer))throw refused('invalid');
    const bytes=new Uint8Array(raw),next=JSON.parse(dec.decode(bytes));if(next.node!==att.node||next.generation!==att.generation)throw refused('unauthorized');
-   const result=await this.exchange(bytes);ws.send(result.raw);const deadline=JSON.parse(dec.decode(result.raw)).messages.length?Date.now()+this.limits.Retention:null;ws.serializeAttachment({...att,last:this.host.hash(result.raw),deadline});if(deadline)await this.host.armAlarm(deadline);
+   const result=await this.exchange(bytes);this.host.invalidateRead();ws.send(result.raw);const deadline=JSON.parse(dec.decode(result.raw)).messages.length?Date.now()+this.limits.Retention:null;ws.serializeAttachment({...att,last:this.host.hash(result.raw),deadline});if(deadline)await this.host.armAlarm(deadline);
   }catch{this.close(ws);}
  }
  async departed(ws){

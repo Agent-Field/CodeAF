@@ -332,6 +332,11 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 	if question == nil {
 		return nil
 	}
+	// Usage is already folded. A parked worker's older question cannot undo
+	// a person's raise while the authoritative job total is below its cap.
+	if kind == "cap" && it.Cap > 0 && factory.JobLifetimeSpent(*it) < it.Cap {
+		return nil
+	}
 	q := *question
 	if strings.TrimSpace(q.Question) == "" {
 		return fmt.Errorf("question requires text")

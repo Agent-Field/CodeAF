@@ -289,6 +289,9 @@ func (s *Sync) publishLocalChat(ctx context.Context, root, id string, earlier in
 	if err != nil {
 		return copyAttempt{}, err
 	}
+	if err := cellstore.Await(ctx, c); err != nil {
+		return copyAttempt{}, err
+	}
 	head, err := cellstore.Head(c)
 	if err != nil {
 		return copyAttempt{}, err

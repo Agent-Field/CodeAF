@@ -76,6 +76,7 @@ func TestLateOldRunUsageKeepsLifetimeWithoutChargingNewRun(t *testing.T) {
 	f.request(t, "POST", path, worker.Credential, body, 200, &out)
 	if err := f.st.Update(it.ID, func(it *factory.Item) error {
 		it.State = factory.StateNew
+		it.Tier = factory.TierOwner
 		return run.QueueItem(it, now.Add(time.Minute))
 	}); err != nil {
 		t.Fatal(err)

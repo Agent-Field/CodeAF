@@ -5,6 +5,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -23,6 +24,9 @@ func (b *appBackend) FactoryJobSend(ctx context.Context, p appwire.FactoryJobSen
 	}
 	if err := factory.RefuseDropped(it); err != nil {
 		return appwire.FactoryJobSent{}, appwire.Errorf(appwire.CodeNotFound, "%s", err)
+	}
+	if err := factoryrun.CheckWriteAccess(it, "chat"); err != nil {
+		return appwire.FactoryJobSent{}, appwire.Errorf(appwire.CodeConflict, "%s", err)
 	}
 	if host.seam.Talk == nil {
 		return appwire.FactoryJobSent{}, appwire.Errorf(appwire.CodeEngine, "this factory cannot make a job's conversation here")

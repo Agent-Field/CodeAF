@@ -9,7 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 )
 
-func TestReasoningRefusalS2(t *testing.T) {
+func TestOrdinaryReasoningRefusalIsNotRepairedS2(t *testing.T) {
 	for _, message := range []string{`\"llama3.2:latest\" does not support thinking`, `This model does not support reasoning`} {
 		t.Run(message, func(t *testing.T) {
 			quirksAt(t, "ollama/llama3.2:latest")
@@ -31,15 +31,15 @@ func TestReasoningRefusalS2(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err = client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+				if _, err = client.CompleteWithMessages(ctx, userMessages("hello")); err == nil {
 					t.Fatalf("S2 call %d: %v", i, err)
 				}
-				if got := recorded.count(); got != i+2 {
-					t.Fatalf("S2 sent %d requests, want %d", got, i+2)
+				if got := recorded.count(); got != i+1 {
+					t.Fatalf("S2 sent %d requests, want %d", got, i+1)
 				}
 			}
-			if recorded.body(0)["reasoning"] == nil || recorded.body(1)["reasoning"] != nil || recorded.body(2)["reasoning"] != nil {
-				t.Fatal("S2 must remove reasoning from repair and future clients")
+			if recorded.body(0)["reasoning"] == nil || recorded.body(1)["reasoning"] == nil {
+				t.Fatal("ordinary clients must keep their requested reasoning")
 			}
 		})
 	}
@@ -75,7 +75,7 @@ func TestReasoningRefusalIsPermanentS2(t *testing.T) {
 	if !errors.As(err, &failure) || !failure.ReasoningUnsupported || !failure.OurRequest() {
 		t.Fatalf("S2 refusal lost its permanent classification: %v", err)
 	}
-	if recorded.count() != 2 {
-		t.Fatalf("S2 sent %d requests, want one refusal and one repair", recorded.count())
+	if recorded.count() != 1 {
+		t.Fatalf("S2 sent %d requests, want one refusal without repair", recorded.count())
 	}
 }

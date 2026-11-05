@@ -557,6 +557,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 	// task node start no reading at all.
 	var team *sidecar[struct{}]
 	if a.config.teamProfile() != "" {
+		sharing := a.teamsSharing()
+		a.mu.Lock()
+		a.adoptTeamDigestSharingLocked(sharing)
+		a.mu.Unlock()
 		team = readBeside(ctx, func(read context.Context) struct{} {
 			a.refreshTeamDigest(read)
 			return struct{}{}
@@ -1497,13 +1501,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		if a.stageBatchFinal(calls, results) {
 			return true
 		}
-		// THE SEAL OF THE BATCH IS TAKEN HERE, AFTER THE RESULT LINES AND EACH
-		// CALL'S `took` LINE ARE WRITTEN, so a machine that picks the chat up from
-		// this seal finds every finished call's result beside its work and does
-		// not run the call again. The calls only recorded themselves (the WAL
-		// holds each), so a death before this line loses nothing the next start
-		// does not carry.
-		procexec.Settle(ctx, procexec.For(ctx))
+		// The batch can settle after its result lines and each call's `took`
+		// line are written, so a capture carries the results beside the work.
+		// A pipeline seat may keep a young batch in the WAL until a later step
+		// or the forced turn-end settle; a death still leaves its calls there
+		// for the next start to carry without running them again.
+		procexec.SettleStep(ctx, procexec.For(ctx))
 
 		// `post-feedback` (hooks.go): the step boundary, where the turn's ledger
 		// reads what the batch changed and the detector says whether the turn is
@@ -3228,6 +3231,7 @@ func backoffWait(ctx context.Context, delay time.Duration) error {
 // ── tools ───────────────────────────────────────────────────────────────────
 
 type toolResult struct {
+	err          error
 	text         string
 	isError      bool
 	interruption string
@@ -3692,6 +3696,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		if results[index].isError {
 			a.sendBeltStep(ctx, hub, Event{
 				Kind:   EventToolFailed,
+				Err:    results[index].err,
 				Tool:   call.Function.Name,
 				Hint:   clip(firstLine(results[index].text), hintLimit),
 				Args:   rendered[index],

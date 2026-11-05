@@ -37,7 +37,7 @@ func TestFactoryRoundOutcomesAfterCarryOn(t *testing.T) {
 				maker.Fail = errors.New("tool failed to start")
 			}
 			runner := factoryrun.New(factoryrun.Options{Store: floor, Exec: map[factory.StageKind]factoryrun.Executor{factory.StageChat: factoryrun.NewChatExecutor(maker)}})
-			item, err := floor.Create(factory.Item{Kind: factory.KindIssue, Repo: "acme/api", Num: 17, Title: "Keep the work", State: factory.StateNew, Cap: 10,
+			item, err := floor.Create(factory.Item{Tier: factory.TierOwner, Kind: factory.KindIssue, Repo: "acme/api", Num: 17, Title: "Keep the work", State: factory.StateNew, Cap: 10,
 				Stages: []factory.Stage{{Name: tc.step, Kind: factory.StageChat, On: true, Until: factory.UntilDone, Max: 2}}})
 			if err != nil {
 				t.Fatal(err)

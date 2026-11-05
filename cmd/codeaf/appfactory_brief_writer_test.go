@@ -51,7 +51,7 @@ func TestAppFactoryJobBriefWriteKeepsTheCheckedAnswer(t *testing.T) {
 		t.Fatalf("hello does not announce %s", appwire.FeatureFactoryJobBriefWriter)
 	}
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateRunning,
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateRunning,
 		Stream: &factory.Stream{Spent: 1, Phases: []factory.Phase{
 			{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}},
 		}}})
@@ -121,7 +121,7 @@ func TestAppFactoryJobBriefWriteBeforeWork(t *testing.T) {
 		defer door.mu.Unlock()
 		return len(door.asks)
 	}
-	thin, err := floor.Create(factory.Item{Repo: "acme/api", Num: 6, Title: "it doesn't work", Body: "It broke again.", Kind: factory.KindIssue, State: factory.StateNew})
+	thin, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 6, Title: "it doesn't work", Body: "It broke again.", Kind: factory.KindIssue, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestAppFactoryJobBriefWriteBeforeWork(t *testing.T) {
 	}
 
 	body := "When a worker restarts mid-send, the retry loop sends the message again although the first send landed."
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Retries double-send", Body: body, Kind: factory.KindIssue, State: factory.StateNew})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Retries double-send", Body: body, Kind: factory.KindIssue, State: factory.StateNew})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestBriefNewsTriggersTheJobsWrite(t *testing.T) {
 	s := newLocalSetup(t)
 	s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix", Kind: factory.KindIssue, State: factory.StateRunning, Talk: "/talk/job7.jsonl"})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Fix", Kind: factory.KindIssue, State: factory.StateRunning, Talk: "/talk/job7.jsonl"})
 	if err != nil {
 		t.Fatal(err)
 	}

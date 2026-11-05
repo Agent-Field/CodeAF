@@ -322,6 +322,9 @@ type appConn struct {
 	// Assembled says this process built the conversation itself, so the shared
 	// engine half must be closed when the app leaves.
 	Assembled bool
+	// OlderModels says a host from before the main/fallback pair holds this
+	// conversation, so its models cannot be set from here.
+	OlderModels bool
 	// Lent says this is a factory stage the factory owns, lent as a view
 	// (app_lend.go): its model, posture and budget are not the app's to set.
 	Lent bool
@@ -346,6 +349,11 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
 		if err == nil {
 			err = enableAppConversationModels(conn.Conv)
+			// AN OLDER HOST LOSES THE PAIR, NOT THE CONVERSATION: it stays
+			// open and readable, and the person is told ([appBackend.openingNotices]).
+			if appOlderHost(err) {
+				conn.OlderModels, err = true, nil
+			}
 		}
 		return conn, err
 	}

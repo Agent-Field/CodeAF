@@ -39,7 +39,7 @@ func TestL4LinkServiceMismatch(t *testing.T) {
 // L4-M12a through L4-M12c: both roads name the peer and end with the same
 // kept-chats sentence.
 func TestL4PairCompletionVoice(t *testing.T) {
-	if got := (Joined{With: "laptop-a"}).Sentence(); got != "Paired with laptop-a. Your chats are kept. Both computers' chats will appear as sharing finishes." {
+	if got := (Joined{With: "laptop-a"}).Sentence(); got != "Paired with laptop-a. Run codeaf to open your chats." {
 		t.Fatal(got)
 	}
 	if got := PairedChatsLine("desk-b"); got != "desk-b is now paired. Your chats can continue there." {

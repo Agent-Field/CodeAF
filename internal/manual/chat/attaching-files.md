@@ -1,6 +1,6 @@
 # Attaching files
 
-## Pasting a lot of text
+## How do I share a file with it — attach files or paste text
 
 A paste of **3 or more lines** becomes one compact `[paste 1 · 42 lines]` chip in the
 message box. One- and two-line pastes stay ordinary text. A paste made only of real file

@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -240,7 +241,11 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 				return false, err
 			}
 			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.TTL()), ThreadOnly: factory.StoppedByPerson(it) || it.State != factory.StateQueued || paused(it)}
-			return false, d.reserve(doc, worker, taken)
+			if err := d.reserve(doc, worker, &taken); errors.Is(err, ErrNoJob) {
+				continue
+			} else {
+				return false, err
+			}
 		}
 		if full {
 			return false, ErrWorkerBusy
@@ -257,13 +262,21 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 // may have changed it after List. THE LEASE IS DURABLE BEFORE RUNNING: a crash
 // between files leaves a reserved queued job that expiry can recover, never
 // running work without a lease that another worker could immediately take.
-func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
-	return d.store.Update(taken.Job, func(it *factory.Item) error {
+func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
+	blocked := false
+	err := d.store.Update(taken.Job, func(it *factory.Item) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
 		}
+		if holdAtJobBudget(it, d.now()) {
+			blocked = true
+			return nil
+		}
+		// A Stop may have landed after List. A pending reply may still borrow
+		// its manager, but only the locked job can authorize running steps.
+		taken.ThreadOnly = factory.StoppedByPerson(*it) || it.State != factory.StateQueued || paused(*it)
 		delete(doc.Withdrawn, worker.ID)
-		doc.Leases = append(doc.Leases, taken)
+		doc.Leases = append(doc.Leases, *taken)
 		if err := d.write(*doc); err != nil {
 			return err
 		}
@@ -282,6 +295,34 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 		}
 		return nil
 	})
+	if err == nil && blocked {
+		return ErrNoJob
+	}
+	return err
+}
+
+// holdAtJobBudget uses the server's saved total while its item lock is held.
+func holdAtJobBudget(it *factory.Item, now time.Time) bool {
+	if it.Cap <= 0 || factory.JobLifetimeSpent(*it) < it.Cap || approvedWriteOnly(*it) {
+		return false
+	}
+	// A stopped job keeps its Stop and waits on a person. It gets no cap question:
+	// a person starts it again, and is asked then.
+	if factory.StoppedByPerson(*it) {
+		it.State = factory.StateNeedsYou
+		it.OverLimit = false
+		return true
+	}
+	ask := factory.Asked{With: factory.AskedYou, At: now}
+	if it.QKind == "cap" && it.Asking != nil {
+		ask = *it.Asking
+	}
+	it.State = factory.StateNeedsYou
+	it.Question, it.QKind = (*run.Money)(nil).CapQuestion(*it)
+	ask.Question = it.Question
+	it.Asking = &ask
+	it.OverLimit = false
+	return true
 }
 
 // overLimit is a queued job a person said to start now, which may take a
@@ -582,4 +623,22 @@ func (d *Desk) HasLiveHold(id int) (bool, error) {
 		return nil
 	})
 	return held, err
+}
+
+// Approved forge writes spend no model budget. A running model or check phase
+// still needs budget even when publication consent or a merge remains on the job.
+func approvedWriteOnly(it factory.Item) bool {
+	anyway := factory.PublishedAnyway(it)
+	writing := it.Publishing || anyway || it.Merging != nil && (it.Merging.State == factory.MergeQueued || it.Merging.State == factory.MergeMerging)
+	if !writing {
+		return false
+	}
+	if it.Stream != nil {
+		for _, ph := range it.Stream.Phases {
+			if ph.State == factory.PhaseRunning && !(anyway && ph.Kind == factory.StagePost) {
+				return false
+			}
+		}
+	}
+	return true
 }

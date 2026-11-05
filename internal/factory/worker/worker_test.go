@@ -49,6 +49,14 @@ func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
 
 // newRigWith is newRig whose worker's runner options tune may change.
 func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options), identity ...string) rig {
+	return newRigWithReportEvery(t, keepLocal, tune, 20*time.Millisecond, identity...)
+}
+
+func newRigWithReportEvery(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options), reportEvery time.Duration, identity ...string) rig {
+	return newRigWithDelivery(t, keepLocal, tune, reportEvery, nil, nil, 2, identity...)
+}
+
+func newRigWithDelivery(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options), reportEvery time.Duration, intercept func(http.ResponseWriter, *http.Request) bool, clock func() time.Time, slots int, identity ...string) rig {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -69,6 +77,9 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 	handler := serve.New(seam, serve.Config{Address: "http://test", Store: st, Record: history, PullWait: 50 * time.Millisecond})
 	seen := &reportLog{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if intercept != nil && intercept(w, req) {
+			return
+		}
 		body := ""
 		if req.Method == http.MethodPost {
 			body = peek(req)
@@ -135,8 +146,9 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 					keepLocal(base, held)
 				}
 			},
-			Slots:       2,
-			ReportEvery: 20 * time.Millisecond,
+			Now:         clock,
+			Slots:       slots,
+			ReportEvery: reportEvery,
 			BeatEvery:   20 * time.Millisecond,
 		})
 	}()

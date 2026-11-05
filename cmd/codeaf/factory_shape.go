@@ -176,6 +176,9 @@ func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, d
 	if s == nil || s.open == nil {
 		return "", errors.New("no manager to ask")
 	}
+	if err := factoryrun.CheckWriteAccess(it, "chat"); err != nil {
+		return "", err
+	}
 	if door != nil && s.checkWork != nil {
 		if err := s.checkWork(it.ID); err != nil {
 			return "", err
@@ -290,6 +293,7 @@ func openManagerTurn(parent session.Config, workspace, profileDir string, it fac
 	cfg.AskConsent = false
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor, cfg.Stage = nil, nil, nil, nil, nil
 	cfg.FactoryRun = door
+	cfg.DropRefusedEffort = true
 	if cheap {
 		cfg.Effort = effort.Low
 	}
