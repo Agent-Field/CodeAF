@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Empty crew plans explain their ending and allow a fresh retry
-pr: 0
+pr: 2403
 surface: [engine, chat, app]
 invalidates:
   - "An empty opening plan was reported as done while its chat line claimed it stopped. It now ends as failed with the planner's reason, or The crew didn't plan any work for this goal., saved once as an assistant notice."
