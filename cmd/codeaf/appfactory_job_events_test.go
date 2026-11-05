@@ -428,3 +428,94 @@ func TestAppFactoryJobEventsQueryAndMapping(t *testing.T) {
 		t.Fatalf("reads: %d", calls.Load())
 	}
 }
+
+// E8: detach before lookup and during a credentialed poll end without backoff.
+func TestAppFactoryJobEventsDetachRequestOrders(t *testing.T) {
+	tests := []struct {
+		name         string
+		beforeLookup bool
+		signedOut    bool
+		polls        int64
+		retries      int64
+	}{
+		{name: "before lookup", beforeLookup: true},
+		{name: "outstanding long poll", polls: 1},
+		{name: "signed out while attached then detach", signedOut: true, polls: 2, retries: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			started := make(chan struct{}, 1)
+			release := make(chan struct{})
+			var polls, retries atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v1/job-events" || r.Header.Get("Authorization") != "Bearer outcome-test-token" {
+					t.Errorf("unexpected credentialed read: %s", r.URL.Path)
+				}
+				if r.URL.Query().Get("wait") == "15" {
+					n := polls.Add(1)
+					if tt.signedOut && n == 1 {
+						w.WriteHeader(http.StatusUnauthorized)
+						_, _ = w.Write([]byte(`{"error":"sign in","reason":"signed_out"}`))
+						return
+					}
+					select {
+					case started <- struct{}{}:
+					case <-r.Context().Done():
+						return
+					}
+					select {
+					case <-release:
+					case <-r.Context().Done():
+						return
+					}
+				}
+				_ = json.NewEncoder(w).Encode(api.JobEvents{Events: []api.JobEvent{}, Cursor: 0})
+			}))
+			t.Cleanup(server.Close)
+			h := testFactoryHub(t)
+			h.loaded = true
+			h.rows = []appFactoryRow{{ID: "f", URL: server.URL, Mode: api.FactoryTeam}}
+			h.sessions["f"] = appFactorySession{token: "outcome-test-token", expires: time.Now().Add(time.Hour)}
+			s := h.jobEventsState()
+			s.after = func(delay time.Duration) <-chan time.Time {
+				retries.Add(1)
+				if delay != 2*time.Second {
+					t.Errorf("retry delay %v, want 2 seconds", delay)
+				}
+				ready := make(chan time.Time, 1)
+				ready <- time.Now()
+				return ready
+			}
+			if tt.beforeLookup {
+				s.beforeRead = func(ctx context.Context) {
+					select {
+					case started <- struct{}{}:
+					case <-ctx.Done():
+						return
+					}
+					select {
+					case <-release:
+					case <-ctx.Done():
+					}
+				}
+			}
+			w := newFactoryWire(t, h)
+			var got appwire.FactoryEvents
+			w.must("factory.events_since", map[string]any{"factory": "f", "after": 0, "follow": true}, &got)
+			if !got.Supported {
+				t.Fatalf("initial read: %+v", got)
+			}
+			select {
+			case <-started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("follower did not reach the controlled request")
+			}
+			w.must("factory.detach", map[string]any{"factory": "f"}, nil)
+			close(release)
+			waitForNoJobFollowers(t, s)
+			if polls.Load() != tt.polls || retries.Load() != tt.retries {
+				t.Fatalf("polls %d, retries %d; want %d, %d", polls.Load(), retries.Load(), tt.polls, tt.retries)
+			}
+		})
+	}
+}

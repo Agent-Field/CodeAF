@@ -133,3 +133,120 @@ func TestOutcomeCreateIsSilentAndSaveSurvivesReopen(t *testing.T) {
 		t.Fatalf("reopened: %+v %v", got, err)
 	}
 }
+
+// E1: in-place nested edits retain the prior need, reason and wait timestamp.
+func TestStoredOutcomesFromInPlaceNestedUpdates(t *testing.T) {
+	at := time.Date(2026, 11, 1, 12, 3, 4, 567, time.FixedZone("offset", 3600))
+	later := at.Add(time.Minute)
+	tests := []struct {
+		name   string
+		setup  func(*factory.Item)
+		change func(*factory.Item)
+		reason string
+		since  time.Time
+	}{
+		{
+			name:   "current phase time",
+			setup:  func(*factory.Item) {},
+			change: func(it *factory.Item) { it.Stream.Phases[it.Stream.Cur].At = later },
+			reason: "approval_plan", since: later,
+		},
+		{
+			name:   "merge reason",
+			setup:  func(it *factory.Item) { it.Merging = &factory.MergeRun{State: factory.MergeQueued} },
+			change: func(it *factory.Item) { it.Merging.State = factory.MergeFailed },
+			reason: "merge_failed", since: at,
+		},
+		{
+			name: "follow-up enters needs-you",
+			setup: func(it *factory.Item) {
+				it.State = factory.StateShipped
+				it.PullRequest = &factory.PullRequest{State: factory.PROpen}
+				it.FollowUp = &factory.PRFollowUp{State: "watching"}
+			},
+			change: func(it *factory.Item) { it.FollowUp.State = "needs_you" },
+			reason: "approval_plan", since: at,
+		},
+		{
+			name: "explicit stop enters needs-you",
+			setup: func(it *factory.Item) {
+				it.State = factory.StateNew
+				stopped := false
+				it.PersonStopped = &stopped
+			},
+			change: func(it *factory.Item) { *it.PersonStopped = true },
+			reason: "approval_plan", since: at,
+		},
+		{
+			name: "phase stop enters needs-you",
+			setup: func(it *factory.Item) {
+				it.State, it.Stream.Ended = factory.StateNew, at
+				it.Stream.Phases[0].State = factory.PhaseFailed
+				it.Stream.Phases[0].Failure = &factory.Failure{Code: factory.CodeToolError}
+			},
+			change: func(it *factory.Item) { it.Stream.Phases[it.Stream.Cur].Failure.Code = factory.CodeStopped },
+			reason: "approval_plan", since: at,
+		},
+		{
+			name: "publish enters needs-you",
+			setup: func(it *factory.Item) {
+				it.State = factory.StateRunning
+				it.PublishStatus = &factory.Publishing{State: "pushing"}
+			},
+			change: func(it *factory.Item) { it.PublishStatus.State = "failed" },
+			reason: "publish_failed", since: at,
+		},
+		{
+			name:   "phase note is quiet",
+			setup:  func(*factory.Item) {},
+			change: func(it *factory.Item) { it.Stream.Phases[it.Stream.Cur].Note = "Plan clarified" },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			initial := factory.Item{
+				State: factory.StateNeedsYou, QKind: factory.QKindApprove, Title: "A nested edit",
+				Stream: &factory.Stream{Cur: 0, Phases: []factory.Phase{{Name: "plan", At: at}}},
+			}
+			tt.setup(&initial)
+			it, err := st.Create(initial)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.Update(it.ID, func(cur *factory.Item) error { tt.change(cur); return nil }); err != nil {
+				t.Fatal(err)
+			}
+			stored, err := st.Get(it.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			zero := int64(0)
+			got, err := live.ReadOutcomes(st.Root(), &zero, 100)
+			if err != nil || got.Reset || got.More {
+				t.Fatalf("outcomes: %+v %v", got, err)
+			}
+			if tt.reason == "" {
+				if len(got.Events) != 0 || got.Cursor != 0 || stored.Stream.Phases[0].Note != "Plan clarified" {
+					t.Fatalf("quiet nested edit: %+v, phase %+v", got, stored.Stream.Phases[0])
+				}
+				return
+			}
+			if len(got.Events) != 1 || got.Cursor != 1 {
+				t.Fatalf("outcomes: %+v", got)
+			}
+			e, j := got.Events[0], api.FromItem(stored)
+			if j.State != "needs_you" || j.NeedsYou == nil || !j.NeedsYou.Since.Equal(tt.since) || j.Reason != tt.reason {
+				t.Fatalf("stored job facts: %+v", j)
+			}
+			actual, _ := json.Marshal(e.At)
+			want, _ := json.Marshal(j.NeedsYou.Since)
+			if e.Kind != "needs_you" || e.Job != it.ID || e.Title != stored.Title || e.Need != j.NeedsYou.Kind || e.Reason != j.Reason || string(actual) != string(want) {
+				t.Fatalf("outcome %+v: at %s, want since %s", e, actual, want)
+			}
+		})
+	}
+}

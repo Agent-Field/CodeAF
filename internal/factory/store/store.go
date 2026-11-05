@@ -470,6 +470,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		}
 		it := current.Item
 		before := current.Item
+		outcomeBefore := live.OutcomeBasis(current.Item)
 		before.Stages = factory.CopyStages(it.Stages)
 		// In-place PR and failure edits must not rewrite the prior event facts.
 		if before.PullRequest != nil {
@@ -519,7 +520,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if err != nil {
 			return err
 		}
-		err = live.Commit(st.root, append(live.Changes(before, it, now), live.Outcomes(before, it, now)...), func() error {
+		err = live.Commit(st.root, append(live.Changes(before, it, now), live.Outcomes(outcomeBefore, it, now)...), func() error {
 			return writeAtomic(st.ItemPath(id), data)
 		})
 		was, after, wrote = before, it, err == nil

@@ -64,6 +64,8 @@ type appFactoryJobEvents struct {
 	wg        sync.WaitGroup
 	// after lets retry tests advance the backoff without waiting on a clock.
 	after func(time.Duration) <-chan time.Time
+	// beforeRead lets tests hold a follower before its credential lookup.
+	beforeRead func(context.Context)
 }
 
 type appFactoryJobFollower struct {
@@ -141,9 +143,12 @@ func (s *appFactoryJobEvents) run(b *appBackend, h *appFactoryHub, id string, f 
 	for s.ctx.Err() == nil {
 		cursor := s.cursor(f)
 		ctx, cancel := context.WithTimeout(s.ctx, appFactoryTimeout)
+		if s.beforeRead != nil {
+			s.beforeRead(ctx)
+		}
 		out, err := h.readJobEvents(ctx, appwire.FactoryEventsSinceParams{Factory: id, After: &cursor, Limit: appwire.DefaultFactoryEvents}, 15)
 		cancel()
-		if jobEventsEnded(s.ctx, out, err) {
+		if jobEventsEnded(s.ctx, out, err) || jobEventsDetached(h, id, err) {
 			return
 		}
 		if err != nil {
@@ -164,6 +169,16 @@ func jobEventsEnded(ctx context.Context, out appwire.FactoryEvents, err error) b
 	}
 	var wire *appwire.Error
 	return errors.As(err, &wire) && (wire.Code == appwire.CodeNotFound || wire.Code == appwire.CodeClosed)
+}
+
+func jobEventsDetached(h *appFactoryHub, id string, err error) bool {
+	var wire *appwire.Error
+	if !errors.As(err, &wire) || wire.Code != appwire.CodeSignedOut {
+		return false
+	}
+	// A detached poll can return signed_out after its credential was forgotten.
+	_, _, err = h.lookup(id)
+	return errors.As(err, &wire) && wire.Code == appwire.CodeNotFound
 }
 
 func (s *appFactoryJobEvents) retry(delay time.Duration) bool {
