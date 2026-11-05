@@ -764,7 +764,7 @@ func (r *Repo) gitBytes(args ...string) ([]byte, error) {
 	// one is about six milliseconds, and the surfaces that read the catalogue
 	// read it on a timer.
 	r.forks.Add(1)
-	command := exec.Command("git", gitpolicy.WithoutAutoMaintenance(args...)...)
+	command := exec.Command("git", gitpolicy.WithAttachedMaintenance(args...)...)
 	command.Dir = r.dir
 	command.Env = append(os.Environ(),
 		// The craft repository answers to the resident's configuration, not to

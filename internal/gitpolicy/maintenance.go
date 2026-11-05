@@ -11,3 +11,15 @@ func WithoutAutoMaintenance(args ...string) []string {
 	out = append(out, noAutoMaintenance...)
 	return append(out, args...)
 }
+
+var attachedMaintenance = []string{"-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false"}
+
+// WithAttachedMaintenance keeps git's automatic maintenance but makes it finish
+// inside the command. It is for a repository only codeaf commits to, such as the
+// craft history, where nobody else's git would ever clean up: maintenance still
+// runs, and no background git is left writing after the call returns.
+func WithAttachedMaintenance(args ...string) []string {
+	out := make([]string, 0, len(attachedMaintenance)+len(args))
+	out = append(out, attachedMaintenance...)
+	return append(out, args...)
+}
