@@ -8,3 +8,6 @@ func (it Item) RefusesWrite() bool {
 
 // WriteAccessRefusalWords is the reason shared by job controls and workers.
 const WriteAccessRefusalWords = "This job came from someone without write access to this repository, so it can't run a step that can change files or update the repository. No further steps were run. To do this work, open it yourself as a new job, or give the author write access."
+
+// AuthorAccessUnknownPrefix names a transient permission lookup failure.
+const AuthorAccessUnknownPrefix = "Author access unknown: "

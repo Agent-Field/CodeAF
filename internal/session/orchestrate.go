@@ -885,6 +885,8 @@ THE RULES:
   finding exists. Two nodes with no edge between them run at the same time, so
   every edge you add that was not necessary is time somebody waits for nothing.
 - WRITE_SCOPE IS THE PATHS A NODE MAY WRITE. Nodes that only read leave it out.
+  Use root-relative files, dirs or globs: * ? [...] per segment; no **, .. or
+  absolute paths. A matched directory covers its subtree.
   Two nodes that write the same path are serialized for you — you do not need
   an edge for that.
 - YOU MAY NOT CANCEL A RUNNING NODE. Cancel is for work that has not started.
@@ -1404,6 +1406,9 @@ func (g writeGuard) PreAction(_ context.Context, _ *episode, _ *eventHub, call a
 func orchestrateInScope(workspace string, scope []string, path string) bool {
 	relative, err := filepath.Rel(workspace, path)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return false
+	}
+	if err := checkMovedDestination(workspace, path); err != nil {
 		return false
 	}
 	return orchestrate.Covers(scopeAsGuarded(workspace, scope), filepath.ToSlash(relative))

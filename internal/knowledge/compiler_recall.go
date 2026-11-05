@@ -12,9 +12,7 @@ import (
 )
 
 type Citation struct {
-	Claim   string `json:"claim"`
-	Page    string `json:"page,omitempty"`
-	Section string `json:"section,omitempty"`
+	Claim string `json:"claim"`
 	Evidence
 }
 type Answer struct {
@@ -24,22 +22,12 @@ type Answer struct {
 	Claims    []string   `json:"claims"`
 }
 
-// Recall keeps automatic knowledge use behind the profile's learning choice.
+// Recall answers from the current publication, including explicit human edits.
 func (v *Vault) Recall(ctx context.Context, key, question, scope string) (Answer, error) {
-	if !v.Enabled() {
-		return Answer{}, ErrDisabled
-	}
-	return v.recallSaved(ctx, key, question, scope, false)
-}
-
-// RecallSaved answers an explicit question from published guides. Asking does
-// not enable capture, import chats or publish new knowledge while learning is paused.
-func (v *Vault) RecallSaved(ctx context.Context, key, question, scope string) (Answer, error) {
-	return v.recallSaved(ctx, key, question, scope, true)
-}
-
-func (v *Vault) recallSaved(ctx context.Context, key, question, scope string, explicitRead bool) (Answer, error) {
 	var answer Answer
+	if !v.Enabled() {
+		return answer, ErrDisabled
+	}
 	if err := ctx.Err(); err != nil {
 		return answer, err
 	}
@@ -48,20 +36,11 @@ func (v *Vault) recallSaved(ctx context.Context, key, question, scope string, ex
 		return answer, err
 	}
 	defer db.Close()
-	if _, err = db.Exec("BEGIN DEFERRED"); err != nil {
-		return answer, err
-	}
 	vault, err := stateDocument(db, "published")
 	if err != nil {
-		db.Exec("ROLLBACK")
 		return answer, err
 	}
-	pages, err := readPages(db)
-	db.Exec("ROLLBACK")
-	if err != nil {
-		return answer, err
-	}
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, explicitRead: explicitRead}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db}
 	result, err := recallCompilation(vault, question, scope, 16, "lexical", model)
 	if err != nil {
 		return answer, err
@@ -69,43 +48,6 @@ func (v *Vault) recallSaved(ctx context.Context, key, question, scope string, ex
 	raw, err := json.Marshal(result)
 	if err == nil {
 		err = json.Unmarshal(raw, &answer)
-	}
-	if err == nil && !answer.Abstain {
-		sort.SliceStable(pages, func(i, j int) bool { return pages[i].Kind == "subject" && pages[j].Kind != "subject" })
-		for i := range answer.Citations {
-			citation := &answer.Citations[i]
-			for _, p := range pages {
-				if p.HumanEdited && citation.Source == "human-edit:"+identity([]any{p.ID, p.Markdown}) {
-					citation.Page = p.ID
-					break
-				}
-				for _, section := range p.Sections {
-					for _, para := range section.Paragraphs {
-						matches := contains(para.Claims, citation.Claim)
-						for _, e := range para.Evidence {
-							if e.Source == citation.Source && e.Quote == citation.Quote {
-								matches = true
-							}
-						}
-						if matches {
-							citation.Page = p.ID
-							citation.Section = section.Heading
-							break
-						}
-					}
-					if citation.Page != "" {
-						break
-					}
-				}
-				if citation.Page != "" {
-					break
-				}
-			}
-		}
-	}
-	for i := range answer.Citations {
-		citation := &answer.Citations[i]
-		citation.Quote = quoteMarkdown(citation.Quote, textValue(object(object(vault["sources"])[citation.Source])["text"]))
 	}
 	return answer, err
 }

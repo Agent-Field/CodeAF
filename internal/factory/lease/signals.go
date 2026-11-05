@@ -98,7 +98,7 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 			}
 			return false, err
 		}
-		it, err := d.store.Get(held.Job)
+		it, err := d.store.GetSaved(held.Job)
 		if err != nil {
 			return false, err
 		}
@@ -260,7 +260,7 @@ func (d *Desk) keepPublish(doc *document, job int) error {
 // holder disconnects; normal completion consumes it permanently.
 func (d *Desk) restorePublish(doc *document, job int) error {
 	if held := find(doc, job); held != nil && held.Publish != "" {
-		it, err := d.store.Get(job)
+		it, err := d.store.GetSaved(job)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -269,7 +269,7 @@ func (d *Desk) restorePublish(doc *document, job int) error {
 		}
 	}
 	if held := find(doc, job); held != nil && held.Merge != "" {
-		it, err := d.store.Get(job)
+		it, err := d.store.GetSaved(job)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
