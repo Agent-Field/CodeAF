@@ -279,7 +279,9 @@ func TestClientToolsRemoteHolderValidationAndAggregateLimits(t *testing.T) {
 	ctx := context.Background()
 	for _, change := range []func(*session.ClientToolSet){
 		func(s *session.ClientToolSet) { s.ID = "Bad id" },
-		func(s *session.ClientToolSet) { s.Instructions = strings.Repeat("x", session.ClientToolInstructionsMax+1) },
+		func(s *session.ClientToolSet) {
+			s.Instructions = strings.Repeat("x", session.ClientToolInstructionsMax+1)
+		},
 		func(s *session.ClientToolSet) { s.DeadlineMS = 999 },
 		func(s *session.ClientToolSet) { s.DeadlineMS = 120001 },
 		func(s *session.ClientToolSet) { s.Tools[0].Name = "Bad-name" },
