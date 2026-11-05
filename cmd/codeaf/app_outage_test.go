@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -141,7 +142,7 @@ func outageHomes(t *testing.T, relayURL string) (string, string) {
 			t.Fatal(err)
 		}
 	}
-	t.Cleanup(cellstore.StopSpawned)
+	cellstoretest.EngineDir(t)
 	return a, b
 }
 

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -28,7 +28,7 @@ func TestC29MeasureCopyCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(cellstore.StopSpawned)
+	cellstoretest.EngineDir(t)
 	write := func(path string, raw []byte) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
