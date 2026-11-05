@@ -422,7 +422,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 	}
 	// Messages waiting for chats held here go into their queues; the queue
 	// takes its own locks, so this runs apart from the list's.
-	go b.carryNotes(s, mail, local)
+	guard.Go("app/carry-notes", func() { b.carryNotes(s, mail, local) })
 	b.chats.markTaking(out, true)
 	cacheFacts := func() {
 		b.chats.mu.Lock()
