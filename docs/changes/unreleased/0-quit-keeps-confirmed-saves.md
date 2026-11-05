@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Quit preserves confirmed saves after their engine owner stops
-pr: 0
+pr: 2394
 surface: [chat, engine]
 invalidates:
   - "Process exit previously retried even already durable engine routes; it now retries only outstanding engine debt."
