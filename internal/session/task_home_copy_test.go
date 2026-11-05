@@ -109,6 +109,11 @@ func TestTaskOnHomeNoticeNamesItsOwnFolderNotACopy(t *testing.T) {
 	if got, want := taskWhereNotice(place, home, 3, home, TaskModeReference), filepath.Join(place.Trees(), "3"); got != want {
 		t.Fatalf("notice = %q, want %q", got, want)
 	}
+	// A workspace above home, asked to work "in place", is read from the task's
+	// own folder too.
+	if got, want := taskWhereNotice(place, parent, 4, "in place", TaskModeReference), filepath.Join(place.Trees(), "4"); got != want {
+		t.Fatalf("in-place notice = %q, want %q", got, want)
+	}
 	if got := homeTaskRedirect(home); strings.Contains(got, "private copy") || !strings.Contains(got, "its own folder") {
 		t.Fatalf("redirect says %q", got)
 	}
@@ -117,15 +122,28 @@ func TestTaskOnHomeNoticeNamesItsOwnFolderNotACopy(t *testing.T) {
 // The whole road: a chat's task names the home folder as its place.
 // It stands in its own folder, is told so, and the home folder is untouched.
 func TestATaskNamingHomeStandsInItsOwnFolder(t *testing.T) {
+	taskNamingHomeStandsInItsOwnFolder(t, true)
+}
+
+// A chat that keeps no private copies takes a model's word for where a task
+// works, except that the home folder is read from the task's own folder.
+func TestATaskNamingHomeInAChatWithoutCopiesStandsInItsOwnFolder(t *testing.T) {
+	taskNamingHomeStandsInItsOwnFolder(t, false)
+}
+
+func taskNamingHomeStandsInItsOwnFolder(t *testing.T, owned bool) {
+	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	private := filepath.Join(home, ".Trash", "private.txt")
 	writeFile(t, private, "private")
 	project := filepath.Join(home, "project")
 	writeFile(t, filepath.Join(project, "readme.txt"), "readme")
-	place := Place{Dir: t.TempDir(), Workspace: project, Owned: true}
-	if err := SaveMeta(place.Dir, Meta{ID: place.ID(), WorkspacePolicy: DefaultWorkspacePolicy()}); err != nil {
-		t.Fatal(err)
+	place := Place{Dir: t.TempDir(), Workspace: project, Owned: owned}
+	if owned {
+		if err := SaveMeta(place.Dir, Meta{ID: place.ID(), WorkspacePolicy: DefaultWorkspacePolicy()}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Workspace = project
@@ -173,6 +191,17 @@ func TestATaskNamingHomeStandsInItsOwnFolder(t *testing.T) {
 // The default road: a run's worker is told the same thing, in the words every
 // task of the run reads.
 func TestARunOnHomeStandsInItsOwnFolderAndReportsWhere(t *testing.T) {
+	runOnHomeReportsWhere(t, "")
+}
+
+// A place the person saved as a mirror is still read, not copied, and its
+// worker is told so.
+func TestARunOnASavedMirrorOfHomeIsToldWhereOutputGoes(t *testing.T) {
+	runOnHomeReportsWhere(t, TaskModeMirror)
+}
+
+func runOnHomeReportsWhere(t *testing.T, saved TaskMode) {
+	t.Helper()
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -196,6 +225,11 @@ func TestARunOnHomeStandsInItsOwnFolderAndReportsWhere(t *testing.T) {
 		config.TaskMaxLoad = 0
 		config.TaskMinFreeMB = 0
 	})
+	if saved != "" {
+		agent.mu.Lock()
+		agent.places = []PlaceRef{{Path: canonicalPath(home), Mode: string(saved), Arrival: PlaceKept}}
+		agent.mu.Unlock()
+	}
 	arguments, _ := json.Marshal(taskArguments{
 		Title: "count words", Summary: "count the words in my notes",
 		Brief: "Read notes.txt and write count.txt", Deliverable: "count.txt",

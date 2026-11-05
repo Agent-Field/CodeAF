@@ -77,6 +77,15 @@ func ownershipPlainMode(dir string) TaskMode {
 	return TaskModeMirror
 }
 
+// preparedTaskMode is the mode a stand's tree is prepared in, read the same way
+// by preparation and by the words its run's workers are given.
+func preparedTaskMode(place Place, ground string, mode TaskMode) TaskMode {
+	if WorkspaceOwnershipEnabled(place) && mode == TaskModeFolder {
+		mode = ownershipPlainMode(ground)
+	}
+	return neverMirrorHome(ground, mode)
+}
+
 // neverMirrorHome is the same rule for a stand that already carries a mode: a
 // mirror of a folder holding the home folder reads it instead of copying it.
 func neverMirrorHome(ground string, mode TaskMode) TaskMode {
@@ -93,8 +102,9 @@ func homeTaskRedirect(dir string) string {
 
 // withHomeReadingNote is [taskCopy.ownFolderNote] for a run, whose workers learn
 // their folder as the assigned working directory and read the run's words.
-func withHomeReadingNote(brief string, stand taskStand) string {
-	if stand.mode != TaskModeReference || !HoldsHomeFolder(stand.dir) {
+func withHomeReadingNote(place Place, brief string, stand taskStand) string {
+	ground := canonicalPath(strings.TrimSpace(stand.dir))
+	if stand.workspaceSet != nil || preparedTaskMode(place, ground, stand.mode) != TaskModeReference || !HoldsHomeFolder(ground) {
 		return brief
 	}
 	return brief + "\n\n" + cleanFolder(stand.dir) + " is yours to read, not to change. Everything you make goes in your assigned working directory. In your report, say where in that folder the results are."

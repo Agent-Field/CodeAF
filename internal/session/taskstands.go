@@ -220,6 +220,9 @@ func (a *Agent) ordinaryTaskGround(spec taskSpec, workspace string) taskStand {
 			if err != nil {
 				return taskStand{refusal: "this task names a folder it cannot work in: " + where}
 			}
+			if HoldsHomeFolder(dir) {
+				return taskStand{dir: dir, mode: TaskModeReference, rung: taskGroundNamed, redirect: homeTaskRedirect(dir)}
+			}
 			return taskStand{dir: dir, mode: TaskModeInPlace, rung: taskGroundNamed}
 		}
 	}

@@ -484,8 +484,7 @@ A task that would have copied your home folder, or a folder that holds it, now r
 where they are and keeps what it makes in an empty folder of its own. Its report says where, and
 it asks you nothing. A folder inside home is copied as usual. Some tasks work differently: a home
 folder that is a git repository gets a worktree of what it tracks; a task in a chat opened at your
-home folder that names no other folder, or a task placed at your home folder by name in a chat
-that keeps no private copies, runs there directly.
+home folder that names no other folder, or a place you saved as in place, runs there directly.
 
 ## Where edits go — the folder you are standing in, and the ones you chose
 

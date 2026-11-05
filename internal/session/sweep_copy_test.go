@@ -2,9 +2,12 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,7 +28,7 @@ func unfinishedSweepCopy(t *testing.T, now time.Time) (string, string, string) {
 	return root, original, copy
 }
 
-func TestSweepReapsUnfinishedOlderChatCopyBeforeItsLock(t *testing.T) {
+func TestSweepReapsUnfinishedOlderChatCopyUnderItsLock(t *testing.T) {
 	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	root, original, copy := unfinishedSweepCopy(t, now)
 	observed := false
@@ -46,8 +49,8 @@ func TestSweepReapsUnfinishedOlderChatCopyBeforeItsLock(t *testing.T) {
 	if _, err := os.Stat(copy); !os.IsNotExist(err) {
 		t.Fatalf("unfinished older-chat copy survived: %v", err)
 	}
-	if _, err := os.Stat(copy + ".lock"); !os.IsNotExist(err) {
-		t.Fatalf("copy lock survived: %v", err)
+	if _, err := os.Stat(copy + ".lock"); err != nil {
+		t.Fatalf("copy lock must stay for a launch that has it open: %v", err)
 	}
 	if !observed {
 		t.Fatal("no removal notice")
@@ -178,6 +181,101 @@ func TestSweepHomeContextReapsOnlyRecognizedUnfinishedCopies(t *testing.T) {
 	for _, kept := range []string{unknown, unknown + ".lock", filepath.Join(filepath.Dir(copy), cell.CopyFolderReadme)} {
 		if _, err := os.Stat(kept); err != nil {
 			t.Fatalf("launch touched unrelated moving entry: %v", err)
+		}
+	}
+}
+
+// A launch may already hold the copy lock's file open when the sweep reaps the
+// copy. Removing that file would let a second launch lock a new one beside it.
+func TestSweepKeepsTheCopyLockItReaped(t *testing.T) {
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	root, _, copy := unfinishedSweepCopy(t, now)
+	opened, err := os.Open(copy + ".lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Close()
+	SweepPlaces(root, now, func(string) {})
+	if _, err := os.Stat(copy); !os.IsNotExist(err) {
+		t.Fatalf("unfinished copy survived: %v", err)
+	}
+	held, err := opened.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := os.Stat(copy + ".lock")
+	if err != nil || !os.SameFile(held, current) {
+		t.Fatalf("the sweep replaced or removed the lock a launch had open: %v", err)
+	}
+}
+
+// The sweep and launches run at once, many times. At most one launch may be
+// copying an older chat at any moment.
+func TestSweepAndLaunchesNeverCopyOneChatTwiceAtOnce(t *testing.T) {
+	now := time.Now().Add(30 * 24 * time.Hour)
+	rounds := 100
+	if testing.Short() {
+		rounds = 20
+	}
+	for round := 0; round < rounds; round++ {
+		root, original, _ := unfinishedSweepCopy(t, now)
+		var inside, worst, failures, reaped atomic.Int32
+		prepare := func(context.Context, cell.Cell) error {
+			n := inside.Add(1)
+			for {
+				w := worst.Load()
+				if n <= w || worst.CompareAndSwap(w, n) {
+					break
+				}
+			}
+			time.Sleep(200 * time.Microsecond)
+			inside.Add(-1)
+			// A launch that fails leaves an unfinished copy for the sweep to reap.
+			if failures.Add(1) < 10 {
+				return errors.New("launch interrupted")
+			}
+			return nil
+		}
+		var wg, sweeping sync.WaitGroup
+		start, launched := make(chan struct{}), make(chan struct{})
+		sweeping.Add(1)
+		go func() {
+			defer sweeping.Done()
+			<-start
+			for {
+				SweepPlaces(root, now, func(line string) {
+					if strings.HasPrefix(line, "sweep: removed") {
+						reaped.Add(1)
+					}
+				})
+				select {
+				case <-launched:
+					return
+				default:
+				}
+			}
+		}()
+		for launch := 0; launch < 4; launch++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				for try := 0; try < 200; try++ {
+					if _, err := cell.CopyLegacy(context.Background(), original, prepare); err == nil {
+						return
+					}
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+		close(launched)
+		sweeping.Wait()
+		if round == 0 {
+			t.Logf("round 0: %d reaps, %d failed launches", reaped.Load(), failures.Load())
+		}
+		if got := worst.Load(); got > 1 {
+			t.Fatalf("round %d: %d launches copied one chat at once", round, got)
 		}
 	}
 }

@@ -40,9 +40,9 @@
 //     lock, when it has no copy-ready and no turns or adopted record at all, and
 //     its original's transcript is still beside .moving. CopyLegacy replaces such
 //     a folder on a retry; this reads the same evidence more cautiously, because
-//     nothing here replaces what it removes. The folder goes before its lock,
-//     because Home lists a lockless .moving folder as a chat, and sweep.log says
-//     so, since unlike the other rules this one removes a copy of a conversation.
+//     nothing here replaces what it removes. The folder goes and its lock file
+//     stays: a lockless .moving folder would list as a chat, and a launch may
+//     already hold the lock file open. sweep.log says so, since unlike the other rules this one removes a copy of a conversation.
 //     A finished copy is a live conversation and is never touched.
 //
 // Rules 1 and 2 are DIFFERENT ACTS and the third rule reads differently
@@ -596,9 +596,7 @@ func sweepUnfinishedCopy(ctx context.Context, root string, now time.Time, note f
 		note(fmt.Sprintf("sweep: could not remove unfinished copy %s: %v", root, err))
 		return
 	}
-	// Home hides scratch copies by their lock, so the folder must disappear first.
+	// The lock file stays. A launch may already hold it open, and a new file
+	// beside it would let a second launch copy the same chat at once.
 	note(fmt.Sprintf("sweep: removed unfinished copy %s", root))
-	if err := os.Remove(root + ".lock"); err != nil {
-		note(fmt.Sprintf("sweep: could not remove copy lock %s: %v", root, err))
-	}
 }
