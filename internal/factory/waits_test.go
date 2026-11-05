@@ -8,8 +8,8 @@ import (
 
 // W1, W3, W4: parents satisfy in order, and a repaired parent waits again.
 func TestWaitsRules(t *testing.T) {
-	child := Item{ID: 3, State: StateNew, WaitsOn: []int{1, 2}}
-	parents := map[int]Item{1: {ID: 1, Repo: "owner/api", Num: 1107}, 2: {ID: 2}}
+	child := Item{ID: 3, Repo: "owner/api", State: StateNew, WaitsOn: []int{1, 2}}
+	parents := map[int]Item{1: {ID: 1, Repo: "owner/api", Num: 1107}, 2: {ID: 2, Repo: "owner/api"}}
 	if got := EvaluateWaits(child, parents); !reflect.DeepEqual(got.WaitingOn, []int{1, 2}) || got.Released || got.Blocked != nil {
 		t.Fatalf("waiting = %+v", got)
 	}
@@ -17,7 +17,7 @@ func TestWaitsRules(t *testing.T) {
 	if got := EvaluateWaits(child, parents); !reflect.DeepEqual(got.WaitingOn, []int{2}) {
 		t.Fatalf("one merged = %+v", got)
 	}
-	parents[2] = Item{ID: 2, State: StateShipped}
+	parents[2] = Item{ID: 2, Repo: "owner/api", State: StateShipped, CommentURL: "https://github.com/owner/api/issues/2#issuecomment-1"}
 	if got := EvaluateWaits(child, parents); !got.Released || len(got.WaitingOn) != 0 || got.Blocked != nil {
 		t.Fatalf("released = %+v", got)
 	}
@@ -44,7 +44,7 @@ func TestWaitsRules(t *testing.T) {
 			if got.Blocked == nil || got.Blocked.By != BlockWaitsOn || got.Blocked.Job != 1 || !strings.Contains(got.Blocked.Reason, "api#1107") || !strings.Contains(got.Blocked.Reason, tc.why) {
 				t.Fatalf("blocked = %+v", got.Blocked)
 			}
-			parents[1] = Item{ID: 1}
+			parents[1] = Item{ID: 1, Repo: "owner/api"}
 			if fixed := EvaluateWaits(child, parents); fixed.Blocked != nil || fixed.Released || !reflect.DeepEqual(fixed.WaitingOn, []int{1}) {
 				t.Fatalf("fixed = %+v", fixed)
 			}
