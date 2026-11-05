@@ -265,16 +265,33 @@ func TestM1M4M8M9M10AppPair(t *testing.T) {
 	}
 }
 
+// Final snapshots retain the waiting copy after clearing the active check
+// words, so those earlier words are still variable text rather than UI copy.
+func TestAppPairCopyAllowsEarlierCheckWordsInFinalLines(t *testing.T) {
+	rec := newAppRecorder()
+	const words = "banjo cello bobcat"
+	lines := []string{"Waiting for approval on your other computer. It should show: " + words + "."}
+	rec.Emit(appwire.EventPairChanged, appwire.PairResult{Pairing: appwire.Pairing{ID: "pair", State: "waiting", Words: words, Lines: lines}})
+	rec.Emit(appwire.EventPairChanged, appwire.PairResult{Pairing: appwire.Pairing{ID: "pair", State: "done", Lines: lines}})
+	assertAppPairCopyM9(t, rec)
+}
+
 func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 	t.Helper()
 	allowed := regexp.MustCompile(`^(Paired with your other device\. Run codeaf to open your chats\.|Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
+	// Completion clears Words while retaining the lines from earlier events.
+	// Every check value already shown remains variable text in those lines.
+	var checkWords []string
 	for i, name := range rec.events {
 		if name != appwire.EventPairChanged {
 			continue
 		}
 		p := rec.data[i].(appwire.PairResult).Pairing
+		if p.Words != "" {
+			checkWords = append(checkWords, p.Words)
+		}
 		if p.Question != nil && p.Question.Kind == "replace_own_chats" {
 			t.Error("M8 app asked to replace chats")
 		}
@@ -295,7 +312,11 @@ func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 
 			// The three check words are drawn at random from a word list that holds
 			// "ledger" and "cello", so only the copy around them is held to this list.
-			copyOnly := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(line, "Paired with your other device. Run codeaf to open your chats.", ""), p.Words, ""))
+			copyOnly := strings.ReplaceAll(line, "Paired with your other device. Run codeaf to open your chats.", "")
+			for _, words := range checkWords {
+				copyOnly = strings.ReplaceAll(copyOnly, words, "")
+			}
+			copyOnly = strings.ToLower(copyOnly)
 			for _, banned := range []string{"codeaf pair", "--replace", "device", "identity", "cell", "lease", "fence", "ledger", "vault"} {
 				if strings.Contains(copyOnly, banned) {
 					t.Errorf("L3 terminal copy: %q", line)
