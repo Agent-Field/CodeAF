@@ -170,21 +170,7 @@ func (a *Agent) parkOnOwedJob(ctx context.Context) {
 	if allowance <= 0 || jobs == nil || !(jobs.owedRunning() || jobs.stageRunning()) {
 		return
 	}
-	// THE PARK'S OWN BOUND, taken from the allowance rather than being it. A run
-	// given a sliver of wall still gets a bound shorter than the sliver; a bound
-	// that rounds to nothing falls back to the allowance so a wait is never made
-	// instantaneous by an arithmetic accident.
-	bound := allowance / jobParkBoundShare
-	if bound <= 0 {
-		bound = allowance
-	}
-	// IT IS THE RUN'S CLOCK ([Agent.taskClockTimer]), which is what lets a test
-	// drive the bound without a sleep standing in for causality.
-	var timer <-chan time.Time
-	stop := func() {}
-	if !a.config.mayStage() {
-		timer, stop = a.taskClockTimer(bound)
-	}
+	timer, stop := a.jobParkTimer(allowance)
 	// A stage has its runner's absolute wall. A shorter park handback would
 	// buy an unnecessary model request merely to learn that a check still runs.
 	defer stop()
@@ -236,4 +222,23 @@ func (a *Agent) releaseParkedOnJob() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.releaseTaskWaitLocked()
+}
+
+func (a *Agent) jobParkTimer(allowance time.Duration) (<-chan time.Time, func()) {
+	// THE PARK'S OWN BOUND, taken from the allowance rather than being it. A run
+	// given a sliver of wall still gets a bound shorter than the sliver; a bound
+	// that rounds to nothing falls back to the allowance so a wait is never made
+	// instantaneous by an arithmetic accident.
+	bound := allowance / jobParkBoundShare
+	if bound <= 0 {
+		bound = allowance
+	}
+	// IT IS THE RUN'S CLOCK ([Agent.taskClockTimer]), which is what lets a test
+	// drive the bound without a sleep standing in for causality.
+	var timer <-chan time.Time
+	stop := func() {}
+	if !a.config.mayStage() {
+		timer, stop = a.taskClockTimer(bound)
+	}
+	return timer, stop
 }

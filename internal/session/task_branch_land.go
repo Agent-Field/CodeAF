@@ -753,32 +753,11 @@ func landTaskCopies(ctx context.Context, root, branch, branchHead string) (strin
 			if head != branchHead {
 				return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" is not where the branch is")
 			}
-			if info, err := os.Stat(path); err != nil || !info.IsDir() {
-				bound = append(bound, path+"\x00missing")
-				continue
-			}
-			config, err := landConfig(ctx, path)
+			copy, err := landTaskCopy(ctx, path, branch, branchHead)
 			if err != nil {
 				return "", err
 			}
-			attributes := ""
-			if len(landFilterDrivers(config)) > 0 {
-				compared, err := landFilterPaths(ctx, path, branchHead, branchHead)
-				if err != nil {
-					return "", err
-				}
-				if attributes, err = landFilterAttributes(ctx, path, config, compared, ""); err != nil {
-					return "", err
-				}
-			}
-			paths, err := landStatus(ctx, path)
-			if err != nil {
-				return "", err
-			}
-			if len(paths) > 0 {
-				return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" has work that is not on the branch", paths...)
-			}
-			bound = append(bound, path+"\x00clean\x00"+config.digest+"\x00"+attributes)
+			bound = append(bound, copy)
 		}
 	}
 	return strings.Join(bound, "\x01"), nil
@@ -1191,3 +1170,32 @@ func nothingMoved(plan TaskBranchLandPlan, facts LandFacts) bool {
 }
 
 func isFalse(b *bool) bool { return b != nil && !*b }
+
+// landTaskCopy binds one existing copy to its configuration, attributes and clean state.
+func landTaskCopy(ctx context.Context, path, branch, branchHead string) (string, error) {
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		return path + "\x00missing", nil
+	}
+	config, err := landConfig(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	attributes := ""
+	if len(landFilterDrivers(config)) > 0 {
+		compared, err := landFilterPaths(ctx, path, branchHead, branchHead)
+		if err != nil {
+			return "", err
+		}
+		if attributes, err = landFilterAttributes(ctx, path, config, compared, ""); err != nil {
+			return "", err
+		}
+	}
+	paths, err := landStatus(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if len(paths) > 0 {
+		return "", refuseLand(LandTaskCopyDirty, "the task's own copy of "+branch+" has work that is not on the branch", paths...)
+	}
+	return path + "\x00clean\x00" + config.digest + "\x00" + attributes, nil
+}

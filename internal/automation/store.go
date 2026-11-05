@@ -160,6 +160,11 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	case app != 0 || version != 0:
 		return fmt.Errorf("automations: %s is not an automations database this build can read (application %d, version %d)", filepath.Join(s.root, DatabaseName), app, version)
 	}
+	return s.createSchema(ctx, tx)
+}
+
+// createSchema initializes an empty database within the caller's transaction.
+func (s *Store) createSchema(ctx context.Context, tx *sql.Tx) error {
 	var tables int
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil {
 		return fmt.Errorf("automations: %w", err)
@@ -167,7 +172,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	if tables != 0 {
 		return fmt.Errorf("automations: %s belongs to something else", filepath.Join(s.root, DatabaseName))
 	}
-	_, err = tx.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 CREATE TABLE counter (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL);
 INSERT INTO counter (id, seq) VALUES (1, 0);
 CREATE TABLE automations (

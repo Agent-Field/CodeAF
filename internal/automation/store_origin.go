@@ -273,53 +273,30 @@ func (s *Store) MadeInTeam(ctx context.Context, teamID, cursor string, limit int
 		return MadeInPage{}, err
 	}
 	defer rows.Close()
-	page := MadeInPage{Team: teamID}
-	answered, window, matched, stopped := false, 0, 0, false
+	return readMadeInPage(rows, teamID, after, rev, continuing, limit)
+}
+
+// madeInWalk keeps the covered prefix separate from rows read after a stop.
+type madeInWalk struct {
+	page            MadeInPage
+	window, matched int
+	stopped         bool
+}
+
+func readMadeInPage(rows *sql.Rows, teamID, after string, rev int64, continuing bool, limit int) (MadeInPage, error) {
+	w := madeInWalk{page: MadeInPage{Team: teamID}}
+	answered := false
 	for rows.Next() {
-		var revision, idlen, doclen, running, rank, hit, unknown, carry, next sql.NullInt64
-		var present bool
-		var id, projection, status sql.NullString
-		if err := rows.Scan(&revision, &present, &idlen, &doclen, &running, &id, &hit, &unknown, &rank, &carry, &projection, &status, &next); err != nil {
+		present, err := w.scanRow(rows, rev, continuing)
+		if err != nil {
 			return MadeInPage{}, err
 		}
 		answered = true
-		if !revision.Valid {
-			return MadeInPage{}, fmt.Errorf("%w: the walk revision is missing", ErrMadeInDamaged)
-		}
-		page.Revision = revision.Int64
-		if continuing && revision.Int64 != rev {
-			return MadeInPage{}, ErrMadeInStale
-		}
 		if !present {
-			// The anchor alone: nothing after the cursor.
 			break
 		}
-		window++
-		if stopped {
-			continue
-		}
-		matches := hit.Int64 == 1
-		if !id.Valid || running.Int64 > MadeInScanBytesMax || (matches && carry.Int64 != 1) {
-			// THE PAGE ENDS BEFORE THIS ROW, never past it and never by
-			// skipping it. Its id is named only when it can be read.
-			page.Stopped, stopped = true, true
-			if id.Valid {
-				page.StopID = id.String
-			}
-			continue
-		}
-		entry := MadeInEntry{ID: id.String, Size: doclen.Int64, Unknown: unknown.Int64 == 1}
-		if matches {
-			a, err := madeInRow(id.String, projection, status, next, teamID)
-			if err != nil {
-				return MadeInPage{}, err
-			}
-			entry.Row = &a
-			matched++
-		}
-		page.Entries = append(page.Entries, entry)
-		if matched == limit {
-			stopped = true
+		if w.matched == limit {
+			w.stopped = true
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -328,13 +305,59 @@ func (s *Store) MadeInTeam(ctx context.Context, teamID, cursor string, limit int
 	if !answered {
 		return MadeInPage{}, fmt.Errorf("%w: the walk revision is missing", ErrMadeInDamaged)
 	}
-	if len(page.Entries) == 0 && page.Stopped {
-		return MadeInPage{}, madeInTooLarge(page.StopID, after)
+	if len(w.page.Entries) == 0 && w.page.Stopped {
+		return MadeInPage{}, madeInTooLarge(w.page.StopID, after)
 	}
 	// The end is reached only when nothing stopped the page, the window held
 	// fewer rows than it could, and every row it held was covered.
-	page.End = !stopped && window < MadeInScanMax && len(page.Entries) == window
-	return page, nil
+	w.page.End = !w.stopped && w.window < MadeInScanMax && len(w.page.Entries) == w.window
+	return w.page, nil
+}
+
+// scanRow validates the snapshot even after the covered prefix has stopped.
+func (w *madeInWalk) scanRow(rows *sql.Rows, rev int64, continuing bool) (bool, error) {
+	var revision, idlen, doclen, running, rank, hit, unknown, carry, next sql.NullInt64
+	var present bool
+	var id, projection, status sql.NullString
+	if err := rows.Scan(&revision, &present, &idlen, &doclen, &running, &id, &hit, &unknown, &rank, &carry, &projection, &status, &next); err != nil {
+		return false, err
+	}
+	if !revision.Valid {
+		return false, fmt.Errorf("%w: the walk revision is missing", ErrMadeInDamaged)
+	}
+	w.page.Revision = revision.Int64
+	if continuing && revision.Int64 != rev {
+		return false, ErrMadeInStale
+	}
+	if !present {
+		// The anchor alone: nothing after the cursor.
+		return false, nil
+	}
+	w.window++
+	if w.stopped {
+		return true, nil
+	}
+	matches := hit.Int64 == 1
+	if !id.Valid || running.Int64 > MadeInScanBytesMax || (matches && carry.Int64 != 1) {
+		// THE PAGE ENDS BEFORE THIS ROW, never past it and never by
+		// skipping it. Its id is named only when it can be read.
+		w.page.Stopped, w.stopped = true, true
+		if id.Valid {
+			w.page.StopID = id.String
+		}
+		return true, nil
+	}
+	entry := MadeInEntry{ID: id.String, Size: doclen.Int64, Unknown: unknown.Int64 == 1}
+	if matches {
+		a, err := madeInRow(id.String, projection, status, next, w.page.Team)
+		if err != nil {
+			return false, err
+		}
+		entry.Row = &a
+		w.matched++
+	}
+	w.page.Entries = append(w.page.Entries, entry)
+	return true, nil
 }
 
 // madeInRow is a carried match as an automation, from its projection and the
