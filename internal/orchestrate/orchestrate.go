@@ -16,8 +16,8 @@ import (
 	"unicode"
 )
 
-// ErrPlannerReplyCutOff means the opening planner could not return a complete
-// plan even after recovery. It must not be presented as a deliberate empty plan.
+// ErrPlannerReplyCutOff means the planner could not return a complete
+// amendment. It must not be presented as a deliberate empty plan or no change.
 var ErrPlannerReplyCutOff = errors.New("the planner's reply was cut off")
 
 // NameWords is how many words a node's [Node.Title] may run to.

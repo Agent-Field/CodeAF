@@ -277,6 +277,155 @@ func TestARunPlansExecutesAndSynthesizes(t *testing.T) {
 	}
 }
 
+// amendmentReplier exposes the provider request without using a network.
+type amendmentReplier func([]ai.Message, ...ai.Option) (*ai.Response, error)
+
+func (r amendmentReplier) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	return r(messages, options...)
+}
+
+func TestLaterPlannerRejectsLostRepliesAndContinues(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw, finish, repair string
+		refused                   bool
+	}{
+		{"cut-off JSON", `{"cancel":[{"id":"n2"}`, "length", "{}", true},
+		{"cut-off complete JSON", `{"cancel":[{"id":"n2"}]}`, "length", "{}", true},
+		{"blank reply", "", "stop", "", true},
+		{"blank repair", `{"cancel":[`, "stop", "", true},
+		{"empty repair", `{"cancel":[`, "stop", "{}", true},
+		{"null repair", `{"cancel":[`, "stop", "null", true},
+		{"explicit no change", "{}", "stop", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			var calls atomic.Int32
+			refusalSeen := make(chan struct{})
+			var once sync.Once
+			fake := amendmentReplier(func(messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+				if isPlannerCall(messages) {
+					switch calls.Add(1) {
+					case 1:
+						return textResponse(`{"add":[{"id":"n1","goal":"read notes"},{"id":"n2","goal":"check notes","needs":["n1"]}]}`), nil
+					case 2:
+						response := textResponse(tc.raw)
+						response.Choices[0].FinishReason = tc.finish
+						return response, nil
+					default:
+						return textResponse(`{"done":{"brief":"report findings"}}`), nil
+					}
+				}
+				if strings.Contains(messageText(messages[0]), "You repair malformed JSON") {
+					return textResponse(tc.repair), nil
+				}
+				if strings.Contains(lastUserText(messages), "for:\ncheck notes") {
+					select {
+					case <-refusalSeen:
+					case <-time.After(5 * time.Second):
+						return nil, errors.New("refusal note did not arrive before the next node finished")
+					}
+				}
+				return textResponse("read the notes"), nil
+			})
+			agent, _ := newTestAgent(t, fake, func(config *Config) { config.AskConsent = true })
+			events, stop := agent.WatchOrchestrations()
+			defer stop()
+			// Release the second worker only after the refused amendment is visible.
+			// The explicit no-change case needs no refusal.
+			if !tc.refused {
+				once.Do(func() { close(refusalSeen) })
+			}
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				for {
+					select {
+					case event := <-events:
+						if event.Kind == EventOrchestrateNote && strings.Contains(event.Text, "planner") {
+							once.Do(func() { close(refusalSeen) })
+						}
+					case <-done:
+						return
+					}
+				}
+			}()
+			id, err := agent.RunOrchestrate(t.Context(), "read and check notes", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap := waitForRun(t, agent, id)
+			if err := agent.Close(); err != nil {
+				t.Fatal(err)
+			}
+			notes := strings.Join(snap.Notes, "\n")
+			if got := strings.Contains(notes, "the planner's reply was cut off"); got != tc.refused {
+				t.Errorf("refusal note = %t, want %t; Notes = %q", got, tc.refused, notes)
+			}
+			if len(snap.Nodes) != 2 {
+				t.Fatalf("plan changed: %+v", snap.Nodes)
+			}
+			for _, node := range snap.Nodes {
+				if node.State != orchestrate.Done {
+					t.Errorf("kept node did not finish: %+v", node)
+				}
+			}
+			if calls.Load() != 3 || snap.Answer == "" || snap.Stopped {
+				t.Errorf("run did not continue through the next planner round: calls=%d snapshot=%+v", calls.Load(), snap)
+			}
+		})
+	}
+}
+
+func TestPlannerRepairBudgetCoversOriginalCompletion(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		opening, retry bool
+	}{
+		{"opening", true, false},
+		{"later", false, false},
+		{"opening retry", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			var repairBudget, calls int
+			fake := amendmentReplier(func(messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+				if isPlannerCall(messages) {
+					calls++
+					response := textResponse(`{"add":[`)
+					response.Usage = &ai.Usage{CompletionTokens: 12000}
+					if tc.retry && calls == 1 {
+						response.Choices[0].FinishReason = "length"
+						response.Usage.CompletionTokens = 2048
+					}
+					return response, nil
+				}
+				request := &ai.Request{}
+				for _, option := range options {
+					if err := option(request); err != nil {
+						return nil, err
+					}
+				}
+				if request.MaxTokens != nil {
+					repairBudget = *request.MaxTokens
+				}
+				return textResponse(`{"add":[{"id":"n1","goal":"read notes"}]}`), nil
+			})
+			agent, _ := newTestAgent(t, fake, func(config *Config) { config.AskConsent = true })
+			planner := &orchestratePlanner{agent: agent, orch: orchestrate.New("goal", nil, nil, orchestrate.Options{})}
+			view := orchestrate.View{}
+			if !tc.opening {
+				view.Frontier = []orchestrate.NodeStatus{{Node: orchestrate.Node{ID: "existing"}}}
+			}
+			if _, err := planner.Plan(t.Context(), view); err != nil {
+				t.Fatal(err)
+			}
+			if repairBudget < 24000 {
+				t.Errorf("repair max_tokens = %d, want >= 24000 for 12000 completion tokens plus headroom", repairBudget)
+			}
+		})
+	}
+}
+
 // openingPlannerReplier keeps syntax repair separate from planning so a repair
 // that discards the nodes cannot masquerade as a successful opening.
 type openingPlannerReplier struct {

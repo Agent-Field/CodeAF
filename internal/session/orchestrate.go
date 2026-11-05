@@ -712,10 +712,7 @@ func (p *orchestratePlanner) Plan(ctx context.Context, view orchestrate.View) (o
 	}
 	// The first call leaves output size to the provider. Recovery requests at
 	// least 8192 answer tokens, or twice the output it actually exhausted.
-	budget := 8192
-	if response != nil && response.Usage != nil {
-		budget = max(budget, 2*response.Usage.CompletionTokens)
-	}
+	budget := plannerRecoveryBudget(response)
 	messages = append(messages, textMessage("user",
 		"Your opening reply was cut off or lost its nodes. Answer again with one complete amendment. Preserve the work needed for the goal."))
 	amendment, _, err = p.think(ctx, messages, true, ai.WithMaxTokens(budget))
@@ -745,30 +742,51 @@ func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message, o
 		return orchestrate.Amendment{}, response, err
 	}
 	raw := response.Text()
-	if opening && (provider.FinishReason(response) == "length" || strings.TrimSpace(raw) == "") {
-		// Re-plan instead of asking a transcription repair to invent missing work.
+	if provider.FinishReason(response) == "length" || strings.TrimSpace(raw) == "" {
+		// Incomplete content cannot be fixed by a syntax-only transcription.
 		return orchestrate.Amendment{}, response, orchestrate.ErrPlannerReplyCutOff
 	}
 	amendment, parseErr := orchestrate.ParseAmendment(raw)
 	if parseErr == nil {
 		return amendment, response, nil
 	}
-	// The repair turn carries no planning brief: it may fix syntax, but an
-	// opening repair that loses every node is not a successful transcription.
+	// Transcription needs room for both reasoning and the original content.
+	// Preserve any larger cap already requested by the opening retry.
+	request := &ai.Request{}
+	for _, option := range options {
+		if err := option(request); err != nil {
+			return orchestrate.Amendment{}, response, err
+		}
+	}
+	budget := plannerRecoveryBudget(response)
+	if request.MaxTokens != nil {
+		budget = max(budget, *request.MaxTokens)
+	}
+	repairOptions := append(append([]ai.Option{}, options...), ai.WithMaxTokens(budget))
 	second, err := p.ask(ctx, []ai.Message{
 		textMessage("system", "You repair malformed JSON and do nothing else. You never change content, never add a field, never drop one, and never explain. Your whole reply is one JSON value."),
 		textMessage("user", "This was meant to be one JSON object:\n\n"+raw+
 			"\n\nIt did not parse. "+parseErr.Error()+
 			"\n\nReply with ONLY the corrected JSON — the same content, nothing added, nothing dropped, no prose, no code fence."),
-	}, options...)
+	}, repairOptions...)
 	if err != nil {
 		return orchestrate.Amendment{}, response, err
 	}
 	amendment, err = orchestrate.ParseAmendment(second.Text())
-	if opening && (provider.FinishReason(second) == "length" || err == nil && len(amendment.Add) == 0) {
+	if provider.FinishReason(second) == "length" || err == nil && (amendment.Empty() || opening && len(amendment.Add) == 0) {
 		return orchestrate.Amendment{}, second, orchestrate.ErrPlannerReplyCutOff
 	}
 	return amendment, second, err
+}
+
+// plannerRecoveryBudget reuses the opening retry rule: at least 8192 tokens,
+// or twice the reported completion tokens to leave room for reasoning.
+func plannerRecoveryBudget(response *ai.Response) int {
+	budget := 8192
+	if response != nil && response.Usage != nil {
+		budget = max(budget, 2*response.Usage.CompletionTokens)
+	}
+	return budget
 }
 
 // ask is one call, billed twice: to the person's session usage, because an
