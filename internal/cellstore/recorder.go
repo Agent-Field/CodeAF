@@ -69,7 +69,7 @@ var _ executor.Executor = (*Recorder)(nil)
 // sealed ride the next seal; calls with an intent and no completion are kept
 // for Incomplete and are never run again here (L9).
 func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath string, opts Options) (*Recorder, error) {
-	wal, rec, err := OpenWAL(walPath)
+	wal, rec, err := openRecovery(c, walPath)
 	if err != nil {
 		return nil, fmt.Errorf("open call log: %w", err)
 	}
