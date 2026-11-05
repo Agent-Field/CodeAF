@@ -3,15 +3,18 @@ package session
 // read_document tests: the OCR rung, without a socket.
 //
 // The PDFs are the ones tools_pdf_test.go builds byte by byte, for the reason
-// that file opens with — a checked-in binary is a fixture nobody can review —
-// and the office and image files are deliberately NOT real documents: nothing
-// on this path parses them, the parser is scripted, and what the tests are
-// actually about is which rung was called with which media type.
+// that file opens with: a checked-in binary is a fixture nobody can review.
+// Most office and image fixtures are only format markers: the parser is
+// scripted to test rung selection. The short-office regression builds a DOCX
+// archive with real text to reproduce the live input.
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -638,5 +641,105 @@ func TestReadDocumentPagesOnAScanIsRefusedAndNamesTheWorkaround(t *testing.T) {
 	}
 	if after := len(parser.requests()); after != before {
 		t.Fatalf("the refused range reached a billed rung (%d calls before, %d after)", before, after)
+	}
+}
+
+func shortContactDOCX(t *testing.T) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	archive := zip.NewWriter(&data)
+	for name, body := range map[string]string{
+		"[Content_Types].xml": `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+		"_rels/.rels":         `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+		"word/document.xml":   `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Contact: Morgan Chen</w:t></w:r></w:p></w:body></w:document>`,
+	} {
+		file, err := archive.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return data.Bytes()
+}
+
+func TestReadDocumentAcceptsShortOfficeText(t *testing.T) {
+	parser := &scriptedParser{answers: map[provider.DocumentParseEngine]string{
+		provider.DocumentParseNative: "Contact: Morgan Chen",
+	}}
+	agent, workspace := newDocumentAgent(t, parser, nil, withEngine("auto"))
+	name := dropFile(t, workspace, "letter.docx", shortContactDOCX(t))
+	text, isError := documentTool(t, agent, map[string]any{"path": name})
+	if isError || !strings.Contains(text, "Contact: Morgan Chen") {
+		t.Fatalf("read_document = %q, error=%v", text, isError)
+	}
+	if calls := len(parser.requests()); calls != 1 {
+		t.Fatalf("short real text reached %d parsers, want native only", calls)
+	}
+}
+
+func TestReadDocumentOfficeBinaryNoiseFallsBackOrFails(t *testing.T) {
+	for index, noise := range []string{"\x00", "\xff\xfe", strings.Repeat("binary\x00", 20)} {
+		for _, fallback := range []bool{false, true} {
+			t.Run(fmt.Sprintf("noise=%d/fallback=%v", index, fallback), func(t *testing.T) {
+				next := noise
+				if fallback {
+					next = "Contact: Morgan Chen"
+				}
+				parser := &scriptedParser{answers: map[provider.DocumentParseEngine]string{
+					provider.DocumentParseNative:     noise,
+					provider.DocumentParseCloudflare: next,
+				}}
+				agent, workspace := newDocumentAgent(t, parser, nil, withEngine("auto"))
+				name := dropFile(t, workspace, "letter.docx", shortContactDOCX(t))
+				text, isError := documentTool(t, agent, map[string]any{"path": name})
+				if fallback {
+					if isError || !strings.Contains(text, "Contact: Morgan Chen") || !strings.Contains(text, "cloudflare-ai") {
+						t.Fatalf("fallback = %q, error=%v", text, isError)
+					}
+				} else if !isError || !strings.Contains(text, "no readable text") {
+					t.Fatalf("binary noise accepted: %q, error=%v", text, isError)
+				}
+				requests := parser.requests()
+				if len(requests) != 2 || requests[0].Engine != provider.DocumentParseNative || requests[1].Engine != provider.DocumentParseCloudflare {
+					t.Fatalf("rungs = %+v", requests)
+				}
+			})
+		}
+	}
+}
+
+func TestReadDocumentAllParsersFailPointsToRead(t *testing.T) {
+	parser := &scriptedParser{err: errors.New("document parser returned no file annotations")}
+	agent, workspace := newDocumentAgent(t, parser, nil, withEngine("auto"))
+	name := dropFile(t, workspace, "letter.docx", shortContactDOCX(t))
+	text, isError := documentTool(t, agent, map[string]any{"path": name})
+	if !isError {
+		t.Fatalf("failed parsers reported success: %q", text)
+	}
+	for _, want := range []string{"could not read letter.docx", "all document parsers failed", "native:", "cloudflare-ai:", "no file annotations", "try read"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("failure missing %q: %q", want, text)
+		}
+	}
+}
+
+func TestReadDocumentStillClimbsPastThinPDFText(t *testing.T) {
+	parser := &scriptedParser{answers: map[provider.DocumentParseEngine]string{
+		provider.DocumentParseNative:     "1",
+		provider.DocumentParseCloudflare: "The full scanned page has readable text beyond its page number.",
+	}}
+	agent, workspace := newDocumentAgent(t, parser, nil, withEngine("auto"))
+	name := dropFile(t, workspace, "scan.pdf", scannedPDF())
+	text, isError := documentTool(t, agent, map[string]any{"path": name})
+	if isError || !strings.Contains(text, "The full scanned page") {
+		t.Fatalf("PDF = %q, error=%v", text, isError)
+	}
+	if calls := len(parser.requests()); calls != 2 {
+		t.Fatalf("thin PDF reached %d rungs, want two", calls)
 	}
 }

@@ -176,12 +176,14 @@ const documentMaxBytes = 25 << 20
 // (exec runs pdfinfo; a conversation should not shell out to decide whether to
 // try the next rung).
 //
+// Office documents are exempt: even a one-line contact can be complete.
+//
 // IT DECIDES WHETHER TO CLIMB, NOT WHETHER TO ANSWER. A thin answer from a rung
 // with another rung beneath it is a reason to try the next one; the same thin
 // answer from the LAST rung is the answer, because a photographed receipt
 // really does extract to four words and "could not read it" would be a refusal
-// invented by a threshold. Emptiness is the only thing refused outright, and
-// the provider refuses most of that itself (provider/document.go returns an
+// invented by a threshold. Empty or binary output is refused at every rung.
+// The provider refuses most empty output itself (provider/document.go returns an
 // error for a parser that harvested no annotations at all).
 const documentMinimumRunes = 32
 
@@ -583,13 +585,14 @@ func ReadDocument(ctx context.Context, read DocumentRead) (DocumentAnswer, error
 			continue
 		}
 		text := strings.TrimSpace(response.Text)
-		if text == "" {
+		if text == "" || documentHasBinaryNoise(text) {
 			failures = append(failures, fmt.Sprintf("%s: no readable text", rung))
 			continue
 		}
-		// Thin, with somewhere left to climb: a page number is not the page.
+		// Short office documents can be complete; length alone is no reason to
+		// discard their text. PDFs still climb past page numbers and watermarks.
 		// See [documentMinimumRunes] for why the last rung is exempt.
-		if documentThin(text) && !last {
+		if entry.kind != documentOffice && documentThin(text) && !last {
 			failures = append(failures, fmt.Sprintf("%s: only %s", rung, oneLineReason(text)))
 			continue
 		}
@@ -607,7 +610,7 @@ func ReadDocument(ctx context.Context, read DocumentRead) (DocumentAnswer, error
 	// Every rung named, in the order they were tried, because "which one broke"
 	// is the whole difference between a model that retries forever and a person
 	// who knows whether to add credit, change document_engine, or scan again.
-	return DocumentAnswer{}, fmt.Errorf("could not read %s — %s", shown, strings.Join(failures, "; "))
+	return DocumentAnswer{}, fmt.Errorf("could not read %s — all document parsers failed; %s; try read for local text extraction", shown, strings.Join(failures, "; "))
 }
 
 // docKindName spells a document kind the way the road's ModelOf hook takes it.
@@ -764,6 +767,20 @@ func normalizeDocumentEngine(setting string) string {
 		return docEngineOCR
 	}
 	return value
+}
+
+// documentHasBinaryNoise rejects invalid UTF-8 and non-whitespace controls,
+// independently of length, so short office text remains readable.
+func documentHasBinaryNoise(text string) bool {
+	if !utf8.ValidString(text) {
+		return true
+	}
+	for _, character := range text {
+		if unicode.IsControl(character) && !unicode.IsSpace(character) {
+			return true
+		}
+	}
+	return false
 }
 
 // documentThin answers whether what came back is too little to be the document,
