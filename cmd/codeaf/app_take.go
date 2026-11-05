@@ -190,10 +190,6 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	}
 	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Title: meta.Title, Created: meta.Created, Model: meta.Model, ModelIdentity: meta.ModelIdentity})
 	a := b.agent(id)
-	users := 0
-	if !got.AlreadyHere {
-		users = appUserCount(transcript)
-	}
 	b.locked(func() {
 		a.transcript, a.windowMoved = transcript, false
 		if !got.AlreadyHere {
@@ -204,10 +200,12 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 			// It may also remember how many of the person's messages its own
 			// copy held, and what it sent at each place (N20-1). The next
 			// message is numbered from the chat that moved here, or it would
-			// take the id of one the other computer added; the old copy's
-			// places and last failure do not describe this conversation.
-			a.users, a.counted = users, true
-			a.marks, a.failed, a.failedShown = nil, "", nil
+			// take the id of one the other computer added: the open below
+			// counts them again, as a relaunch's would. The old copy's places
+			// and last failure do not describe this conversation.
+			a.users, a.counted, a.marks = 0, false, nil
+			a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
+			a.view.Retryable = false
 		}
 	})
 	location := &appwire.Location{Here: true, Cell: p.Cell, Seen: &appwire.Seen{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head}, Holder: &appwire.LocationHolder{ID: s.Device.ID(), Name: got.Device}}
