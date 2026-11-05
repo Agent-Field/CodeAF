@@ -224,6 +224,10 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 		"settings": true, "change_setting": true,
 		"automation": true, "automation_report": true,
 		"factory_add": true, "factory_recipe": true,
+		// Stage results and plan proposals stay in the runner's memory.
+		"stage_result": true, "plan_edit": true,
+		// Sharing reads source files and writes only codeaf's index and owned artifacts.
+		"share_deliverable": true,
 		"items": true, "revise_assignment": true, "divide_work": true,
 		"build_harness": true, "list_harnesses": true, "list_subharnesses": true,
 		"propose_subharness": true, "revise_design": true,
