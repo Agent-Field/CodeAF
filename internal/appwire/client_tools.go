@@ -9,6 +9,7 @@ import (
 
 const FeatureClientTools = "agents.client_tools"
 const FeatureClientToolsSource = "agents.client_tools.source"
+const FeatureClientToolsRemote = "agents.client_tools.remote"
 const EventAgentsToolCall = "agents.tool_call"
 
 // ClientTooler is optional because only a connected app can answer these tools.
@@ -132,7 +133,10 @@ func (p ClientToolResultParams) Validate() error {
 
 func withClientToolsFeature(hello Hello, engine Engine) Hello {
 	if _, ok := engine.(ClientTooler); ok {
-		return withFeature(withFeature(hello, FeatureClientTools), FeatureClientToolsSource)
+		hello = withFeature(withFeature(hello, FeatureClientTools), FeatureClientToolsSource)
+		if remote, ok := engine.(interface{ ClientToolsRemote() bool }); ok && remote.ClientToolsRemote() {
+			hello = withFeature(hello, FeatureClientToolsRemote)
+		}
 	}
 	return hello
 }
