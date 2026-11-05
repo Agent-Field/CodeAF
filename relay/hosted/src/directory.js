@@ -8,9 +8,6 @@ import { lifted } from './vouch.js';
 import { CLOSE_REVOKED, CLOSE_ROTATED, NOBODY } from './watch.js';
 
 const refuse = (code) => new RuleError(code);
-// A device record's outbox holds at most MaxNotes messages (internal/directory); took lists ids in flight from every sender.
-const MAX_NOTES = 8;
-const MAX_TOOK = 64;
 const present = (c) => {
   if (!c) throw refuse('not_found');
   return c;
@@ -134,8 +131,6 @@ export class Directory {
   // A device's record says whether it is revoked, and the device cannot change that: only revoke can.
   // The relay alone says when the device joined and when it was last seen (contract 4): a client's values are dropped.
   putDevice(id, device) {
-    // A device's outbox and took lists carry messages between its computers (Codeaf-Chat-Notes); both stay short.
-    if ((device.outbox?.length ?? 0) > MAX_NOTES || (device.took?.length ?? 0) > MAX_TOOK) throw refuse('bad_request');
     this.write('devices', id, this.#kept(id, { ...device, revoked: this.revoked(id) }));
   }
 

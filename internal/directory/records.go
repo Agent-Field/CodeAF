@@ -41,9 +41,6 @@ type IdentityRec = clusterstate.IdentityRec
 type Caps = clusterstate.Caps
 type Device = clusterstate.Device
 type Lease = clusterstate.Lease
-
-// Note is one sealed message in a device's outbox; see [clusterstate.Note].
-type Note = clusterstate.Note
 type FrameHint = clusterstate.FrameHint
 
 const MaxFrameHints = clusterstate.MaxFrameHints
