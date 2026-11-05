@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Explicit engine stop prevents deferred group commits from restarting its daemon
-pr: 0
+pr: 2394
 surface: [engine, build]
 invalidates:
   - "Previously, a deferred group commit could restart a daemon after StopSpawned returned. Now, explicit stop fences durability retries until a new owner deliberately reuses the engine."
