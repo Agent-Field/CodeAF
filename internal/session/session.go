@@ -2802,8 +2802,10 @@ type Agent struct {
 	crewDayHeld *SpendDay
 	// Clarification streams and their deferred history share the agent lock.
 	// questionParent is installed before a child becomes reachable.
-	questionParent     func(Event)
-	approvalParent     *Agent
+	questionParent func(Event)
+	approvalParent *Agent
+	// approvalReadParent shares only failed reads; the child keeps its own rules.
+	approvalReadParent *Agent
 	discussionEvents   []Event
 	discussionEventSeq uint64
 	discussionRecorded map[string]bool
