@@ -3421,6 +3421,12 @@ and timelines. Old temporary conversations still follow the usual seven-day
 retention policy. Previously orphaned timelines are not automatically purged:
 a missing directory alone does not prove that its history is disposable.
 
+Interrupted fork staging is removed when task setup falls back. At launch, closed
+conversations also lose abandoned fork staging and model-created fork folders
+untouched for more than seven days, including completed moving copies. A model
+fork folder stays while its source task directory exists. Each removal is logged;
+this folder cleanup does not purge orphaned Furrow timelines.
+
 ## Experimental compact task copies in an isolated profile
 
 Compact task storage is unfinished and off unless
