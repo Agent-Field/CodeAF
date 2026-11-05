@@ -19,8 +19,8 @@ func TestLibraryMethodsAreAbsentOnAnOlderEngine(t *testing.T) {
 
 func TestLibraryModelTravelsThroughTheExistingSettingsDoor(t *testing.T) {
 	e := &fakeEngine{}
-	_, err := methods["settings.set"].call(e, json.RawMessage(`{"knowledge_model":"deepseek/deepseek-v4.1-flash-1017"}`))
-	if err != nil || e.patch.KnowledgeModel == nil || *e.patch.KnowledgeModel != "deepseek/deepseek-v4.1-flash-1017" {
+	_, err := methods["settings.set"].call(e, json.RawMessage(`{"knowledge_model":"deepseek/deepseek-v4.1-flash"}`))
+	if err != nil || e.patch.KnowledgeModel == nil || *e.patch.KnowledgeModel != "deepseek/deepseek-v4.1-flash" {
 		t.Fatalf("knowledge model patch was lost: %v", err)
 	}
 	if _, err = methods["settings.set"].call(e, json.RawMessage(`{"knowledge_model":true}`)); codeOf(err) != CodeBadParams {

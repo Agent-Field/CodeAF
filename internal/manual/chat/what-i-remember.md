@@ -657,7 +657,7 @@ Memories use the local store on each computer. After pairing, an older conversat
 The desktop's Library reads the same opt-in, profile-wide knowledge vault as
 Memory → Knowledge in the terminal. Saved memory remains separate. Starting a
 Library build enables knowledge capture. The default knowledge model is
-DeepSeek v4.1 Flash 1017 (`deepseek/deepseek-v4.1-flash-1017`); a model chosen in
+DeepSeek v4.1 Flash (`deepseek/deepseek-v4.1-flash`); a model chosen in
 Settings is kept across builds and is shared with the terminal. Library does not
 change the model of an ordinary chat.
 
