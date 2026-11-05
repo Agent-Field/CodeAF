@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Skip unchanged authored files when sharing deliverables
-pr: 0
+pr: 2402
 surface: [engine, chat]
 invalidates:
   - "Sharing a file already recorded by write or edit created a second deliverable and emitted another update. Unchanged authored bytes now produce an already-recorded explanation without a new row, event or charge; other files in the call still share normally."
