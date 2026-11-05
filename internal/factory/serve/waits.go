@@ -34,7 +34,7 @@ func (h *Handler) scanWaits() error {
 	if st == nil {
 		return nil
 	}
-	items, err := st.List()
+	items, err := st.ListSaved()
 	if err != nil {
 		return err
 	}

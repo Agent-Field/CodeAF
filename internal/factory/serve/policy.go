@@ -109,7 +109,7 @@ func (h *Handler) groupPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) writePolicy(w http.ResponseWriter, p factory.GroupPolicy) {
-	jobs, err := h.config.Store.List()
+	jobs, err := h.config.Store.ListSaved()
 	if h.failed(w, err) {
 		return
 	}
@@ -117,7 +117,7 @@ func (h *Handler) writePolicy(w http.ResponseWriter, p factory.GroupPolicy) {
 }
 
 func (h *Handler) stopPolicyJobs(r *http.Request, group string) error {
-	jobs, err := h.config.Store.List()
+	jobs, err := h.config.Store.ListSaved()
 	if err != nil {
 		return err
 	}

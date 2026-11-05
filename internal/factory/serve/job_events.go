@@ -87,9 +87,21 @@ func (h *Handler) visibleJobEvents(r *http.Request, after *int64, limit int) (ap
 	got, err := live.ReadOutcomes(h.eventRoot(), after, limit)
 	out := api.JobEvents{Events: []api.JobEvent{}, Cursor: got.Cursor, Reset: got.Reset, More: got.More}
 	for _, e := range got.Events {
-		if h.viewerWantsLive(r, live.Event{Kind: live.OutcomeKind, Job: e.Job}) {
+		if h.jobEventVisible(r, e.Job) {
 			out.Events = append(out.Events, e)
 		}
 	}
 	return out, err
+}
+
+// Outcome cursors check repository visibility without hydrating author access.
+func (h *Handler) jobEventVisible(r *http.Request, id int) bool {
+	if h.config.Store == nil {
+		return h.viewerWantsLive(r, live.Event{Kind: live.OutcomeKind, Job: id})
+	}
+	if _, filter := h.repoAccess(r, nil); !filter {
+		return true
+	}
+	it, err := h.config.Store.GetSaved(id)
+	return err == nil && h.repoVisible(r, itemRepo(it))
 }

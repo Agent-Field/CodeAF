@@ -57,7 +57,7 @@ func (h *Handler) setWaits(w http.ResponseWriter, r *http.Request, it factory.It
 		return
 	}
 	defer unlock()
-	items, err := h.config.Store.List()
+	items, err := h.config.Store.ListSaved()
 	if h.failed(w, err) {
 		return
 	}

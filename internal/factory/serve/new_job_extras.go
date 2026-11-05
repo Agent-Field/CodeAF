@@ -29,7 +29,7 @@ func (h *Handler) checkNewJobExtras(w http.ResponseWriter, r *http.Request, body
 	if body.SplitFrom == nil {
 		return true
 	}
-	parent, err := h.config.Store.Get(*body.SplitFrom)
+	parent, err := h.config.Store.GetSaved(*body.SplitFrom)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		h.failed(w, err)
 		return false
