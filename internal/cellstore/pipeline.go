@@ -213,6 +213,7 @@ func (r *Recorder) takeRequest() {
 }
 
 func (r *Recorder) capture(ctx context.Context) {
+	ctx = context.WithValue(ctx, daemonOwnerKey{}, r.daemonGeneration)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.asyncMu.Lock()

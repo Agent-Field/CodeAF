@@ -36,7 +36,7 @@ func (d *Desk) UnassignPerson(handle string) error {
 		if err := d.write(*doc); err != nil {
 			return false, err
 		}
-		items, err := d.store.List()
+		items, err := d.store.ListSaved()
 		if err != nil {
 			return false, err
 		}

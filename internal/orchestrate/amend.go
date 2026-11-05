@@ -28,7 +28,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -245,6 +244,11 @@ func (o *Orchestrator) validate(amendment Amendment) error {
 		if strings.TrimSpace(node.Goal) == "" {
 			return fmt.Errorf("node %q has no goal: a node's brief is its whole world and it must stand on its own", id)
 		}
+		for _, scope := range node.WriteScope {
+			if err := ValidateScope(scope); err != nil {
+				return fmt.Errorf("node %q write_scope %q: %w", id, scope, err)
+			}
+		}
 		adding[id] = true
 	}
 	for _, node := range amendment.Add {
@@ -296,7 +300,7 @@ func (o *Orchestrator) repeatedLocked(node Node) *repeatedWork {
 			if other.State != Failed {
 				continue
 			}
-			if scopesCollide([]string{want}, other.WriteScope) {
+			if ScopesOverlap([]string{want}, other.WriteScope) {
 				tries++
 			}
 		}
@@ -493,7 +497,7 @@ func (o *Orchestrator) collisionsLocked(node Node) []string {
 		if other.State == Done || other.State == Failed {
 			continue
 		}
-		if !scopesCollide(node.WriteScope, other.WriteScope) {
+		if !ScopesOverlap(node.WriteScope, other.WriteScope) {
 			continue
 		}
 		if contains(node.Needs, other.ID) || contains(added, other.ID) {
@@ -502,43 +506,6 @@ func (o *Orchestrator) collisionsLocked(node Node) []string {
 		added = append(added, other.ID)
 	}
 	return added
-}
-
-// scopesCollide reports whether two write scopes overlap. A path contains
-// itself and everything under it, so "internal/session" collides with
-// "internal/session/orchestrate.go" — which is the case that matters, because
-// it is how a directory-wide node and a file-wide node end up interleaved.
-func scopesCollide(left, right []string) bool {
-	for _, one := range left {
-		for _, two := range right {
-			if pathCovers(one, two) || pathCovers(two, one) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Covers reports whether a write scope contains one path. It is exported for
-// the enforcement point: the scope is a claim about what a node may write, and
-// the code that refuses a write outside it must read the claim exactly as the
-// scheduler does when it decides two nodes collide.
-func Covers(scope []string, target string) bool {
-	for _, allowed := range scope {
-		if pathCovers(allowed, target) {
-			return true
-		}
-	}
-	return false
-}
-
-func pathCovers(parent, child string) bool {
-	parent = path.Clean(strings.TrimSpace(parent))
-	child = path.Clean(strings.TrimSpace(child))
-	if parent == "" || parent == "." || child == "" || child == "." {
-		return false
-	}
-	return parent == child || strings.HasPrefix(child, parent+"/")
 }
 
 func contains(list []string, want string) bool {
