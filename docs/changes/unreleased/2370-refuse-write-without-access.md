@@ -5,6 +5,7 @@ pr: 2370
 surface: [factory, engine, chat, docs]
 invalidates:
   - "Write permission was not checked consistently before work. Jobs now use one permission rule before writing steps, job chat, publishing and merging."
+  - "Issues read in during first-run setup recorded no write access, so a person starting their own imported issue before the first poll would be refused. Setup now records each author's access as it reads the issues."
   - "Positive source permissions stayed cached for the source's lifetime. They now expire after fifteen minutes."
 ---
 
