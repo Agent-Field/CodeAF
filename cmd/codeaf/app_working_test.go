@@ -21,6 +21,14 @@ import (
 // The provider holds the turn on a channel so both computers can read its
 // working state without depending on how long a model or command takes.
 func TestAppTakenChatAdvertisesWorkingDuringTurn(t *testing.T) {
+	appTakenChatWorking(t, false)
+}
+
+func TestAppNewerTurnKeepsWorkingWhilePreviousCaptureFinishes(t *testing.T) {
+	appTakenChatWorking(t, true)
+}
+
+func appTakenChatWorking(t *testing.T, overlap bool) {
 	celltest.RequireEngine(t)
 	_, workspace := wakeEnvironment(t, e2TempDir(t))
 	var hold atomic.Bool
@@ -65,7 +73,6 @@ func TestAppTakenChatAdvertisesWorkingDuringTurn(t *testing.T) {
 	defer resumeStartup()
 	_, _ = heldChatRelay(t, "fixture", func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 			if holdStartup.Load() && r.Method == http.MethodGet && r.URL.Path == "/v1/dir/list" && r.Header.Get(reqsign.HeaderCert) == taker.Load().(string) {
 				select {
 				case starting <- struct{}{}:
@@ -103,7 +110,15 @@ func TestAppTakenChatAdvertisesWorkingDuringTurn(t *testing.T) {
 	holdStartup.Store(true)
 	a = e2StartApp(t, dirA)
 	hold.Store(true)
-	machineCall[any](t, b.w, "agents.send", map[string]any{"id": taken.ID, "text": "held turn", "client_id": "held"})
+	turn := machineCall[struct {
+		Turn uint64 `json:"turn"`
+	}](t, b.w, "agents.send", map[string]any{"id": taken.ID, "text": "held turn", "client_id": "held"}).Turn
+	waitDone := func(turn uint64) {
+		b.wait(t, func(f e2Frame) bool {
+			var done appwire.TurnDone
+			return f.Event == appwire.EventTurnDone && json.Unmarshal(f.Data, &done) == nil && done.Turn == turn
+		})
+	}
 	select {
 	case <-entered:
 	case <-time.After(30 * time.Second):
@@ -114,6 +129,20 @@ func TestAppTakenChatAdvertisesWorkingDuringTurn(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("drive startup did not reach relay")
 	}
+	if overlap {
+		// The older turn ends while its capture is still waiting for startup.
+		// The next running turn must survive that older capture completing.
+		release <- struct{}{}
+		waitDone(turn)
+		turn = machineCall[struct {
+			Turn uint64 `json:"turn"`
+		}](t, b.w, "agents.send", map[string]any{"id": taken.ID, "text": "newer held turn", "client_id": "newer"}).Turn
+		select {
+		case <-entered:
+		case <-time.After(30 * time.Second):
+			t.Fatal("newer turn did not reach provider")
+		}
+	}
 	resumeStartup()
 	working := workingChatRow(t, a, row.Cell, func(r appwire.ChatRow) bool { return r.Working })
 	if working.Here {
@@ -121,7 +150,7 @@ func TestAppTakenChatAdvertisesWorkingDuringTurn(t *testing.T) {
 	}
 	holdPublish.Store(true)
 	release <- struct{}{}
-	b.wait(t, func(f e2Frame) bool { return f.Event == appwire.EventTurnDone })
+	waitDone(turn)
 	select {
 	case <-publishing:
 	case <-time.After(30 * time.Second):

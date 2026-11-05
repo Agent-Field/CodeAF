@@ -843,15 +843,8 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 	failed(watch, err)
 	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
 	if drive != nil {
-		// Settle schedules the final capture asynchronously. Its turn must be
-		// noted before the end beat can wait for that turn's publication.
-		watch.OnTurnEnd = func() {
-			ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
-			defer cancel()
-			failed(watch, cellstore.WaitCapture(ctx, c))
-			drive.Working(false)
-			drive.Idle()
-		}
+		// The turn can finish locally while its final capture is still running.
+		watch.OnTurnEnd = func() { drive.TurnEnded(c, watch.Report) }
 		watch.OnTurnStart = func() { drive.Working(true) }
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())

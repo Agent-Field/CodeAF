@@ -28,9 +28,10 @@ type liveDrive struct {
 
 	mu        sync.Mutex
 	drive     *syncsetup.Drive
-	working   bool // A turn may start before asynchronous startup finishes.
-	parked    bool // Startup awaits a journal owner.
-	waiting   bool // sync is on and only an identity, or the end of solo, is missing
+	working   bool   // A turn may start before asynchronous startup finishes.
+	turn      uint64 // A newer turn retires the previous capture waiter.
+	parked    bool   // Startup awaits a journal owner.
+	waiting   bool   // sync is on and only an identity, or the end of solo, is missing
 	ready     chan struct{}
 	attempted bool
 	closed    bool
@@ -244,10 +245,38 @@ func (l *liveDrive) Working(on bool) {
 	l.try()
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.turn++
 	l.working = on
 	if l.drive != nil {
 		l.drive.Working(on)
 	}
+}
+
+// TurnEnded waits off the turn goroutine so the final capture can include the
+// closing bookkeeping as before. A newer turn invalidates this notification:
+// an older capture must never clear the newer turn's working flag.
+func (l *liveDrive) TurnEnded(c cell.Cell, report func(error)) {
+	l.mu.Lock()
+	turn := l.turn
+	l.mu.Unlock()
+	guard.Go("chat sync turn end", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		if err := cellstore.WaitCapture(ctx, c); err != nil {
+			report(err)
+		}
+		l.mu.Lock()
+		if l.closed || l.turn != turn {
+			l.mu.Unlock()
+			return
+		}
+		l.working = false
+		if l.drive != nil {
+			l.drive.Working(false)
+		}
+		l.mu.Unlock()
+		l.Idle()
+	})
 }
 
 // Idle uploads what is sealed, once a drive side exists.
