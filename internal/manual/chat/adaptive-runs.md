@@ -360,6 +360,18 @@ To edit the goal, start a new run with the revised goal. There is no dedicated
 editor for an ended adaptive run; steering an ended run does not restart it.
 Other adaptive endings do not offer this retry control.
 
+## The opening planner reply was cut off or lost its work
+
+If the opening planner reply hits its output limit, is blank, or loses all its
+nodes during JSON repair, codeaf tries the opening plan once more with more
+output room. A cut-off reply is never handed to syntax repair as an empty plan.
+If recovery still cannot produce a plan, the crew ends as incomplete and the
+chat saves exactly: `the planner's reply was cut off`.
+
+This ending uses the same fresh-run retry control and ownership and budget
+checks described above. A complete, explicit empty plan still uses the
+planner's reason or `The crew didn't plan any work for this goal.`.
+
 ## A run's nodes on the roster
 
 A run registers itself with the same machinery tasks use, so the work shows up where you
