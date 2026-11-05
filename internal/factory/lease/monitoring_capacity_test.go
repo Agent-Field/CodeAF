@@ -42,14 +42,14 @@ func TestIdlePRMonitoringDoesNotBorrowExecutionSlotsAndFeedbackRequeuesOnce(t *t
 	if live, err := f.desk.Live(); err != nil || len(live) != 1 || live[0].Job != active.ID {
 		t.Fatal("queued feedback borrowed the occupied slot")
 	}
-	if err := f.desk.Apply(held.ID, w.ID, true, func(it *factory.Item) error { it.State = factory.StateShipped; return nil }); err != nil {
+	if err := f.desk.Apply(held.ID, w.ID, true, false, func(it *factory.Item) error { it.State = factory.StateShipped; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	repair, err := f.desk.Pull(w)
 	if err != nil || repair.Job != review.ID {
 		t.Fatalf("feedback did not acquire the released slot: job=%d err=%v", repair.Job, err)
 	}
-	if err := f.desk.Apply(repair.ID, w.ID, true, func(it *factory.Item) error {
+	if err := f.desk.Apply(repair.ID, w.ID, true, false, func(it *factory.Item) error {
 		it.State = factory.StateShipped
 		factory.WatchPublishedPR(it)
 		return nil

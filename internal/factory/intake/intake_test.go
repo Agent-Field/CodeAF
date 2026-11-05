@@ -146,7 +146,7 @@ func TestStoppedJobStaysStoppedUntilPersonRunsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(100, 0)
-	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue,
+	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue, Tier: factory.TierOwner,
 		State: factory.StateNew, Labels: []string{"agent-ready", "size:S"},
 		Triage: factory.Triage{TriagedAt: now, Size: "S"}})
 	if err != nil {

@@ -33,7 +33,7 @@ func TestStopPublishWorkerReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := factory.RunReport{PR: &factory.PullRequest{Number: 7, URL: "https://github.com/acme/api/pull/7", State: factory.PROpen}, Publishing: &factory.Publishing{State: "opened", Attempt: 1}}
-	if err := f.desk.Apply(held.ID, held.Worker, true, func(it *factory.Item) error { return run.ApplyReport(it, report, f.now) }); err != nil {
+	if err := f.desk.Apply(held.ID, held.Worker, true, false, func(it *factory.Item) error { return run.ApplyReport(it, report, f.now) }); err != nil {
 		t.Fatalf("in-flight PR receipt lost after floor Stop: %v", err)
 	}
 	saved, err := f.store.Get(it.ID)

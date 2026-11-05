@@ -190,6 +190,8 @@ On a machine with a factory set up, a conversation can hand work over. Every one
 - `factory_recipe` offers one line for a repository's recipe: a stage, a policy or a habit, saved to `.codeaf/factory.yaml` on your `bank it`.
 - `factory_item` offers a change to the one item a conversation is about: its stages, gate, budget or thinking, within the recipe's bounds.
 
+In a Git repository, banking a recipe commits the change as `codeaf <agentfield-bot@users.noreply.github.com>`; you do not need to configure a Git identity.
+
 Banking a recipe never writes into a folder held by a running program. A separate change worktree can still be written when it is outside that hold. If the change has to be saved in the held checkout, nothing is written: wait for that run to end, or stop it, then bank the line again. A Git error and your confirmation do not bypass this check.
 
 The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question, save an exact persisted step reply, or send a waiting plan back with your requested changes; send critical decisions to you). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
@@ -328,6 +330,8 @@ Proof is the step named proof, a send-back's prove step, or any step that runs u
 
 Before proof starts, new work belongs before the earliest proof step, so proof can see it. Adding work after proof, switching on work there, or changing its ask or thinking is refused. A person's approval gate may follow proof, provided it is added before proof starts; it does no work. Skipping unstarted work after proof is allowed within the recipe's existing bounds.
 
+Jobs from someone without write access refuse every step that can write, including job chat, publishing and merging, whatever their names, at start and before every round. An outside job with no tier recorded is refused too. Approvals alone can run; preparing a commit requires write access. A refusal stops the job without running that step or spending on it. The reason stays on the job. A refused Start keeps its saved state and spending and adds no attempted round. Open the work yourself as a new job, or give the author write access.
+
 ## when conditions — touches auth, has ui, unknown files, before write
 
 An added conversation, check or approval step may use `when: touches auth` or `when: has ui`. These conditions are decided when the step comes up, using the change's files once known, otherwise the pull request's known files, otherwise an explicitly set triage area. Without files or area the answer is not known yet: the step stays pending and runs if still unknown at its turn. A conditional step before write therefore runs when no files or area are known.
@@ -347,6 +351,8 @@ engine offers **Publish anyway**. For example:
 `Publishing waits: check inspect was skipped (when touches auth does not match the change files). Publish anyway, rerun from write after revising the change files to match, or stop the job.`
 
 Only a signed-in person allowed to publish this job can press Publish anyway.
+That approved publication can finish at the job's lifetime budget cap. Any
+model call still needs budget; Stop still prevents publication.
 Failed, pending or unmeasured checks prevent the offer and refuse the press.
 An ordinary approval, automatic answer, Auto mode or automatic budget increase
 cannot make this decision. Skipped checks remain unmeasured and supply no proof.
@@ -376,6 +382,8 @@ It is refused above three or below one (`a step gets 1 to 3 tries`), for a check
 
 ## remove or move a step of one job — delete a step, reorder, run it after, skip versus remove
 
+A proof step is named `proof`, starts with `prove` (such as `prove2` or `prove-it`), or runs until `proven`. Names are trimmed and matched without regard to case. The words `provenance`, `proved`, `prover` and `provers` alone do not make a step proof.
+
 Skipping a step leaves it in the job, switched off. Removing it takes it out of the job's steps altogether; moving it puts it after another step, or first. Both change this job only, never the repository's pipeline, and both go through the same edit and bounds as every other change: tell the job's manager (`remove pretest`, `run docs after write`), or use the step's menu on the job's tab.
 
 A step that has already run, is running, waits on you or failed is never removed or moved, and nothing is moved before one. Proof is never removed or moved (`you may not remove proof; proof vouches for the work before it`), nothing but your approval or a post is moved after proof, and a fixed step or a step a rule names stays (`review is fixed by the recipe`, `you may not move test; the policy names it`). Only you remove or move an approval (`only you may remove approve, where the run holds for you`) or a post (`only you may move pr, which posts outward`); the manager may move a conversation step across an approval. A post is never moved before the proof or approval it stood after (`you may not move pr before approve; nothing posts before what holds it`), and an approval is never moved after a post it stood before (`you may not move approve after pr; nothing posts before what holds it`). Under a recipe's `fixed` only you change the steps, and under `ask` the manager's change gets an approval after plan, as for any edit. A job keeps at least one step, and a step moved to where it already stands changes nothing.
@@ -394,6 +402,18 @@ A step is found by its name without regard to case, so `tidy`, `Tidy` and ` TIDY
 The `factory_item` card's thinking (`think strong`, `think cheap`, `default` for usual) sets how hard the job's conversation steps that have not begun will think, each step on its own. It goes through the same step edit as above, as you, so a recipe set to `fixed` does not stop a card that changes only the thinking (a card that also adds or skips a step is still refused whole there). A step that has already run, was rewound by a rerun, or is fixed by the recipe keeps its thinking, the rest still change, and the card names the steps that change rather than the first. A step that is switched off is changed too, so it thinks that way when it is switched on later; the card marks it, as `security(off) cheap → strong`. A conversation step placed after proof refuses the whole card, nothing saved. A landed job, or one whose proof has started, refuses the change with the sentences above, budget and note included. Asking for the thinking a job already has changes nothing and is never refused.
 
 After your yes, the answer names the thinking the item was saved with, step by step (`thinking write strong, test strong`; `default` resets the changed steps to usual), and the steps that did not take it: `left as they were: plan cheap`. A budget or note alone says nothing about thinking. If another field changes but no step needs the requested thinking, the answer says `thinking unchanged`. A later turn's opening note lists thinking per running step when they differ (`thinking plan cheap, write strong`), one word when they agree, and nothing when none was set. A level other than cheap, strong or default is refused before any card, as `Invalid arguments: effort is one of cheap, strong, default, or left out.`
+
+## models that refuse thinking or reasoning effort
+
+If a Factory model explicitly rejects its thinking setting, codeaf retries once
+without that setting. This covers stages and their helpers, personal messages to
+job managers, reopened completed stages and their earlier rounds, runner manager
+turns on an already-open conversation, brief writing, and the repository, pipeline
+and topic page AI, including Step AI and My pipeline AI. Switching models or
+connected accounts keeps recovery available. Recovery follows actual job ownership
+or a Factory call: an ordinary conversation that merely offers Factory tools still
+returns the model's refusal. An ordinary conversation borrowed for a Factory call
+retains its usual refusal on later ordinary turns and errands.
 
 ## which model a cheap or strong step runs on — small work, checks model, effort models
 
@@ -469,6 +489,26 @@ One check, in code, decides every merge; no model does, and no tool on any belt 
 
 **Auto-merge** is off unless the repository's `.codeaf/factory.yaml` says `merge: {auto: on}` (`method: merge`, `squash` or `rebase`; omitted lets the repository's settings choose). A personal `~/.codeaf/factory.yaml` may only turn it off. The setting is fixed on a job when its proof is approved. An auto-merge also needs every claim proven and at least one passing check, and until then it waits quietly. A merge that failed is the person's to look at, says why, and is never tried again on its own.
 
+## a runner missed my choice — lost heartbeat replies, repeated signals
+
+A current factory keeps a choice sent to a current runner until that runner
+has received and handled it. Losing a heartbeat reply delays the choice until
+the next heartbeat; receiving it twice does not apply it twice during that run.
+A failed effect stays pending for the next heartbeat. A choice that no longer
+makes sense for an ended job, or an answer to a replaced question, is acknowledged
+as moot. Missing local data alone never counts as success. Confirmed delivery
+IDs leave the runner’s acknowledgement list; receipts are sent in bounded batches.
+This includes answers, steering words, manager replies, budget and model choices,
+autonomy changes, and pauses. Their order stays the same. Rechecks, publish
+and merge continue to wait for the runner that pulls that work; a live heartbeat does
+not start them. Stop clears pending choices, and choices from an ended run
+are not applied to a later run.
+
+This delivery protection needs a current factory and runner. Older runners
+keep their existing delivery behavior; current runners can still work with
+older factories. A runner process that disappears needs the existing job
+recovery flow rather than an automatic replay of its old choices.
+
 ## pause a running job — Pause, Hold, Resume, paused step, keep the conversation
 
 **Pause** (the app wire's Hold action) cuts the running step's current model
@@ -481,7 +521,9 @@ continues the job. Repeated spending reports count once and cannot lower a round
 **Resume** continues the step and round where they paused, in the same
 conversation when it can be reopened. It takes a free Jobs at once slot, or
 waits in the ordinary queue until a slot is available. No model round starts
-while it waits. Completed steps are kept and are not run again. The activity
+while it waits. If the paused run is still saving spending receipts, Resume
+waits for those receipts before continuing. Completed steps are kept and are
+not run again. The activity
 says `paused`, then `resumed`; both actions record who made them. If a heartbeat
 reply is lost, the factory repeats its current hold on later heartbeats. Resume
 supersedes an older hold still waiting to be collected.
@@ -683,6 +725,9 @@ budget question and puts the job back in the queue.
 
 Raising Budget does not answer another open question or undo Stop spending after
 this step. A raise that does not clear recorded spend keeps the budget question.
+A stopped job saves the new budget successfully and stays stopped, including
+when a pending manager reply raised a budget question. A person presses Start
+to run it again.
 
 ## budget recovery and external PR commits
 
@@ -721,6 +766,21 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 ## runner recovery window — running time versus waiting for reconnect
 
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
+
+## Step admission retry window — waiting for the factory report
+
+A worker waits for the factory to accept a step's start before running it.
+If that report cannot be confirmed, the unspent step retries after one second,
+keeping its round and attempt. After two minutes, the worker holds that round
+while it flushes pending reports; it does not return the job to Backlog.
+Heartbeats continue renewing the lease and delivering your actions.
+Once reporting catches up, the worker automatically resumes the same round.
+The factory checks the job total again before accepting another step. At the
+cap, it asks the usual budget question and no next executor starts.
+
+Pending result delivery has its own two-minute window. If those results remain
+unconfirmed, the existing results-not-saved recovery block retains them for
+reconciliation. Admission recovery does not bypass that block or a person's Stop.
 
 ## Unread repository rules — file and line before plan approval
 
@@ -810,24 +870,50 @@ hold back an automatic write sooner. A requested retry still bypasses this guard
 
 ## budget reached — yes, raise the cap, next budget and stop
 
-When a job reaches its budget, the question names its current budget, what it
-spent, and the next absolute budget: `budget of $0.01 reached · $0.01 spent ·
+When a job reaches its budget across all its runs, the question names its
+current budget, job total, and next absolute budget: `budget of $0.01 reached · job total $0.01 ·
 raise it to $5, or stop?`. Yes or continue raises the cap to that $5 total;
 the desktop's raise button at $5 does the same. It does not add $5 to the cap.
 
+The factory checks its own saved job total before granting a worker lease and
+when a worker reports a step beginning. At or above the cap, it holds the job
+with this budget question. Current workers wait for that step report to be
+accepted before starting paid work, including spending not yet reported by the
+previous round. A running worker whose next report reaches the cap loses its
+lease and stops, including older workers. Already incurred charges remain
+recorded. Workers already reporting a budget question keep their parked lease
+so a raise can continue them. Approved publication and merge writes can finish
+at the cap because they make no model calls; a new paid pipeline step still
+requires budget. Stop remains available during publication and merge.
+
 The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
-spending. If a round spent $5.25, the next budget is $10 even when the old cap
+spending. If the job has spent $5.25, the next budget is $10 even when the old cap
 was $0.01. Once spending reaches $30, double the current cap, repeatedly if
 needed, until it is above spend. A $30 cap with $31 spent offers $60.
 Saved questions on older jobs can keep their old words, but yes now
 uses this same rule.
 
 The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
-Other amounts are refused. Stop keeps the recorded spend and work.
+Other amounts are refused. A raise in Auto or Manual must exceed the job total
+to resume work. A budget at or below that total keeps work held and names the
+total and budget in the question or refusal. No automatic decision raises it;
+your yes or continue chooses the next budget. Stop keeps recorded spend and work.
 
 A budget choice remains valid while a running job reports spending or progress.
 If someone changed the budget after you read it, read the job again before
 choosing. Finished and dropped jobs refuse budget changes.
+
+A budget choice remains valid while a running job reports spending or progress.
+If someone changed the budget after you read it, read the job again before
+choosing. Finished and dropped jobs refuse budget changes.
+
+## Budget raise and delayed worker reports
+
+After you raise a leased job's budget above its job total, the answered budget
+question stays closed while the worker reports older progress. This applies to
+Yes, Continue, and an explicit budget edit in Auto or Manual. Work resumes in
+the same conversation and round. Late charges still count toward the job total.
+If those charges reach the new budget, the job asks again at that budget.
 
 ## Why does Spending show Factory AI — the third part of today's money
 
@@ -849,8 +935,16 @@ person; older receipts without those identities cannot accept late usage.
 
 The job wire keeps `cost` as the current run's cost and adds optional
 `lifetime_cost` for all known spending on the job. Queue jobs carry the same
-field. Step costs stay unchanged. Budgets still use only the current run;
-this remains deliberate pending the owner's ruling on lifetime budgets.
+field. The job budget compares `lifetime_cost` with the cap, including earlier
+runs. For example, $5.25 on the first run plus $1 on a rerun reaches $6.25 of
+a $6 budget. Start, Carry on, Rerun, Start over and Bring back cannot reset
+this limit: work waits for you to raise the budget above the job total.
+A job already at its cap asks before its first step spends anything.
+Step costs and attempt limits stay unchanged. A pipeline's `default_budget`
+supplies this same job budget; `start.max_cost` still governs intake.
+Model selection, including Pareto routing, does not raise the budget.
+
+## Spending by repository and model uses saved job totals
 
 Spending by repository and model places the whole known lifetime on one day:
 the latest run's start day, or the job's creation day when no start remains.

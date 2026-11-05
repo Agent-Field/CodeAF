@@ -80,17 +80,14 @@ func (g *v3ApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
 	case session.PostureDeny:
 		mode, guardian = string(approval.ActionDeny), false
 	}
-	if mode == "" && g.headless {
-		var err error
-		mode, err = config.HeadlessToolApprovalModeAt(g.workspace, g.profileDir)
-		if err != nil {
-			return nil, false, err
-		}
-	}
-	rows, err := v3ApprovalRowsAt(g.workspace, g.profileDir, mode)
+	rows, err := v3ApprovalRowsAt(g.workspace, g.profileDir, mode, g.headless)
 	if err != nil {
 		return nil, false, err
 	}
+	if rows.profileReadError != "" {
+		guardian = false
+	}
+
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.policy != nil && g.rows == rows {

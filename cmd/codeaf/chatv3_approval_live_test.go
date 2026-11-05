@@ -37,11 +37,23 @@ func TestApprovalGateRejectsUnreadableProfiles(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if policy, _, err := gate.Build(posture); err == nil || policy != nil {
-					t.Fatalf("%s profile produced policy %+v, error %v; want a failed build", broken, policy, err)
+				policy, _, err := gate.Build(posture)
+				if broken == "malformed" {
+					if err == nil || policy != nil {
+						t.Fatalf("%s profile produced policy %+v, error %v; want a failed build", broken, policy, err)
+					}
+				} else {
+					if err != nil || policy == nil {
+						t.Fatalf("unreadable profile must keep interactive startup available: %v", err)
+					}
+					for _, tool := range []string{"write", "read", "manual", "use_service", "unknown"} {
+						if got := policy.Check(tool, nil); got.Action != approval.ActionPrompt {
+							t.Errorf("%s = %s; want prompt", tool, got.Action)
+						}
+					}
 				}
 				if first.Check("write", json.RawMessage(`{"path":"example.go"}`)).Action != approval.ActionDeny {
-					t.Fatal("failed rebuild changed the previous policy")
+					t.Fatal("rebuild changed the immutable previous policy")
 				}
 			})
 		}

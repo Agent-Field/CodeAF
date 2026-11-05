@@ -52,7 +52,7 @@ func workerSetupAs(t *testing.T, login string) *workerFixture {
 	seam := factory.Seam{Load: func() (factory.Snapshot, error) {
 		items, err := st.List()
 		return factory.Snapshot{Items: items}, err
-	}, Answer: lease.NewDoors(desk).Answer}
+	}, Answer: lease.NewDoors(desk).Answer, Stop: lease.NewDoors(desk).Stop}
 	if login != "" {
 		seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
 			return factory.GitHubLink{Login: login}, nil

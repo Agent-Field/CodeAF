@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -1972,6 +1973,10 @@ const AllowProviderKeysInShell = "CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL"
 // reads it without exporting it — so stripping the environment is the whole
 // fix; there is nothing there to leave behind.
 //
+// AND WHAT APPLIES TO A PROVIDER KEY APPLIES TO EVERY OTHER CREDENTIAL. The same
+// opt-in keeps them, for a machine whose only GitHub login is GH_TOKEN and whose
+// agent shells have to use it.
+//
 // A NIL SLICE IS THE PARENT'S ENVIRONMENT. runShell and the background-job
 // registry leave cmd.Env unset on the benchmarked bare path, which inherits
 // everything; the caller must now hand a real, stripped environment, so a nil
@@ -1984,8 +1989,30 @@ func JobShellEnv(environment []string) []string {
 	environment = replaceEnv(environment, "TMUX_TMPDIR", jobTmuxDir())
 	if env.Get(AllowProviderKeysInShell) == "" {
 		environment = withoutEnv(environment, config.ProviderKeyEnvNames()...)
+		environment = withoutSecretEnv(environment)
 	}
 	return environment
+}
+
+// withoutSecretEnv drops what is named like a credential, by the same reading the
+// credential floor uses (internal/approval's SecretEnvName).
+//
+// THE ENGINE KEEPS ITS OWN COPY. It reads GH_TOKEN and its siblings from its own
+// process and hands a token to one git call at a time, so its GitHub calls, pushes
+// and publishing are unaffected. A shell's `gh` signs in from its own store, and
+// ssh reaches its agent through SSH_AUTH_SOCK, which is not named like a secret.
+//
+// A SECRET THE PERSON PUT IN THE VAULT STILL ARRIVES. The executor adds those
+// after this ([executor.Local]), because keeping one there is a person saying this
+// project's commands may have it.
+func withoutSecretEnv(environment []string) []string {
+	kept := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		if name, _, _ := strings.Cut(entry, "="); !approval.SecretEnvName(name) {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }
 
 // withoutEnv drops the named variables from an environment slice. It is

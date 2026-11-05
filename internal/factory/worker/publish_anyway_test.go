@@ -13,6 +13,14 @@ import (
 )
 
 func TestPublishAnywayPersonDecisionReachesHeldWorker(t *testing.T) {
+	publishAnywayHeldWorker(t, false)
+}
+
+func TestPublishAnywayAtLifetimeCapReachesHeldWorker(t *testing.T) {
+	publishAnywayHeldWorker(t, true)
+}
+
+func publishAnywayHeldWorker(t *testing.T, atCap bool) {
 	checkout := t.TempDir()
 	git(t, "", "init", "-q", "-b", "main", checkout)
 	if err := os.WriteFile(filepath.Join(checkout, "README.md"), []byte("initial\n"), 0600); err != nil {
@@ -40,13 +48,43 @@ func TestPublishAnywayPersonDecisionReachesHeldWorker(t *testing.T) {
 	if !factory.OffersPublishAnyway(waiting) {
 		t.Fatalf("worker did not offer choice: %+v", waiting)
 	}
-	if err := g.st.Update(id, func(it *factory.Item) error { return factory.DecidePublishAnyway(it, "me", time.Now()) }); err != nil {
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		if atCap {
+			it.Cap, it.SpentBefore = 1, 1
+		}
+		return factory.DecidePublishAnyway(it, "me", time.Now())
+	}); err != nil {
 		t.Fatal(err)
+	}
+	if atCap {
+		if err := g.mirror.Update(id, func(it *factory.Item) error { it.Cap, it.SpentBefore = 1, 1; return nil }); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := g.doors.Answer(id, true, factory.ChoiceTryOnceMore); err != nil {
 		t.Fatal(err)
 	}
-	g.waitFor(t, id, factory.StateLanded)
+	if atCap {
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			cur, err := g.st.Get(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cur.QKind == "cap" {
+				t.Fatal("approved publication became a budget question")
+			}
+			if cur.State == factory.StateLanded {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("approved publication did not finish")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	} else {
+		g.waitFor(t, id, factory.StateLanded)
+	}
 	writes := src.writes()
 	if len(writes) != 1 || !strings.Contains(writes[0].Body, "Published anyway by @me") {
 		t.Fatalf("held worker lost person decision: %+v", writes)

@@ -171,7 +171,7 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 	if it.Origin == "" {
 		it.Origin = factory.OriginChat
 	}
-	if it.Tier == "" {
+	if it.Tier == "" && !it.RefusesWrite() {
 		it.Tier = factory.TierOwner
 	}
 	if it.Kind == "" {

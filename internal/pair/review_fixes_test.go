@@ -13,9 +13,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
-// M1/M5: a writer opened before pairing must keep both saved keys when it
-// overlaps the staged switch, and must remain usable after the switch.
-func TestR1_1SavedKeyWriterOverlapsSwitch(t *testing.T) {
+// A writer opened before confirmed replacement remains usable after the
+// switch. Old keys are cleared; writes admitted after the switch survive.
+func TestSavedKeyWriterOverlapsConfirmedReplacement(t *testing.T) {
 	home := t.TempDir()
 	v, err := keys.Open(home)
 	if err != nil {
@@ -29,7 +29,7 @@ func TestR1_1SavedKeyWriterOverlapsSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	written := make(chan error, 1)
-	j := Joining{Home: home, After: func(step string) error {
+	j := Joining{Home: home, Replace: true, After: func(step string) error {
 		if step == "staged" {
 			go func() { written <- v.Put("during", keys.Entry{Name: "DURING", Value: "kept"}) }()
 			select {
@@ -53,7 +53,10 @@ func TestR1_1SavedKeyWriterOverlapsSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"before", "during", "after"} {
+	if _, err := again.Get("before"); err == nil {
+		t.Fatal("replacement retained the old saved key")
+	}
+	for _, id := range []string{"during", "after"} {
 		if got, err := again.Get(id); err != nil || got.Value != "kept" {
 			t.Errorf("saved key %s after switch = %+v, %v", id, got, err)
 		}

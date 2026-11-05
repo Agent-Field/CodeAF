@@ -30,7 +30,7 @@ func TestAppFactoryBudgetProgress(t *testing.T) {
 			}
 			var before api.Job
 			s.must("factory.job", map[string]any{"factory": status.Factory, "job": job.ID}, &before)
-			if err := desk.Apply(held.ID, held.Worker, false, func(it *factory.Item) error {
+			if err := desk.Apply(held.ID, held.Worker, false, false, func(it *factory.Item) error {
 				it.Stream.Spent = .25
 				return nil
 			}); err != nil {

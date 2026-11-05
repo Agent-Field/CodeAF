@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
 // Renew uses the hold's identity rather than the job number so a delayed
@@ -28,8 +29,11 @@ func (d *Desk) Renew(id, worker string) (Lease, error) {
 // Apply keeps ownership and the item's write in one lease critical section.
 // Expiry cannot reassign the job between the holder check and its report.
 // A completed job is written before release so a crash cannot offer it twice.
-func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item) error) error {
-	return d.change(func(doc *document, now time.Time) (bool, error) {
+// capWait acknowledges a worker already parked on its reported budget question;
+// it never admits a running step and retains the existing continue signal path.
+func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*factory.Item) error) error {
+	blocked := false
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
 			for i, receipt := range doc.Receipts {
@@ -81,6 +85,9 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 			if err := change(it); err != nil {
 				return err
 			}
+			if !complete && holdAtJobBudget(it, now) {
+				blocked = !capWait
+			}
 			if complete && !held.ThreadOnly {
 				it.Publishing = false
 				if it.State == factory.StateShipped && it.PullRequest == nil && it.CommentURL != "" {
@@ -92,11 +99,19 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 		}); err != nil {
 			return false, err
 		}
+		if blocked {
+			withdraw(doc, *held)
+			return true, nil
+		}
 		if !complete {
 			return false, nil
 		}
 		return true, d.keepPublish(doc, held.Job)
 	})
+	if err == nil && blocked {
+		return ErrWithdrawn
+	}
+	return err
 }
 
 // ThreadOnly checks the same lease identity as Apply before selecting the
@@ -134,7 +149,8 @@ func identified(doc *document, id, worker string) (*Lease, error) {
 // CheckPublish reads the current job under its row lock and the worker's lease.
 // A worker must check again at each push and immediately before its PR request.
 func (d *Desk) CheckPublish(id, worker string) error {
-	return d.change(func(doc *document, _ time.Time) (bool, error) {
+	var refusal error
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
 			return false, err
@@ -143,9 +159,14 @@ func (d *Desk) CheckPublish(id, worker string) error {
 			if err := factory.CheckPersonStop(*it); err != nil {
 				return err
 			}
+			refusal = run.RefuseWrite(it, "write", now)
 			return nil
 		})
 	})
+	if err != nil {
+		return err
+	}
+	return refusal
 }
 
 func receiptIdentity(doc *document, id, worker string, now time.Time) (*Lease, error) {

@@ -177,24 +177,6 @@ func TestPolicyShapes(t *testing.T) {
 	}
 }
 
-func TestPolicyAllowsStage(t *testing.T) {
-	pol := []string{"A stranger's PR never runs write."}
-	st := item()
-	st.Tier = factory.TierStranger
-	if ok, why := PolicyAllowsStage(pol, st, factory.Stage{Name: "write"}); ok || why != pol[0] {
-		t.Fatal(ok, why)
-	}
-	if ok, _ := PolicyAllowsStage(pol, st, factory.Stage{Name: "test"}); !ok {
-		t.Fatal("test refused")
-	}
-	if ok, _ := PolicyAllowsStage(pol, item(), factory.Stage{Name: "write"}); !ok {
-		t.Fatal("owner refused")
-	}
-	if ok, _ := PolicyAllowsStage(nil, st, factory.Stage{Name: "write"}); !ok {
-		t.Fatal("no policy refused")
-	}
-}
-
 func TestUnknownPolicy(t *testing.T) {
 	got := UnknownPolicy([]string{"never close an issue", "keep it kind", "", "Tests pass before anything posts."})
 	if len(got) != 1 || got[0] != "keep it kind" {

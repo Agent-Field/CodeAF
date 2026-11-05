@@ -32,6 +32,9 @@ type pendingPublication struct {
 	size int64
 	// logged is the last outcome written to the log for this chat.
 	logged string
+	// sent is the frame bytes earlier attempts put to the relay: an attempt
+	// resumes where the last stopped, so the record's size adds them.
+	sent int64
 }
 
 // SharingRetryMax bounds retry pauses for unfinished pairing publication.
@@ -217,7 +220,7 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		}
 		began := time.Now()
 		offered = true
-		attempt, err := s.publishLocalChat(ctx, pending.root, id)
+		attempt, err := s.publishLocalChat(ctx, pending.root, id, pending.sent)
 		if errors.Is(err, errNoChatHead) {
 			continue
 		}
@@ -240,6 +243,7 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 			continue
 		}
 		pending.err = err
+		pending.sent += attempt.sent
 		if pending.backoff == 0 {
 			pending.backoff = DefaultInterval
 		} else {
@@ -280,9 +284,12 @@ type copyAttempt struct {
 	listed bool
 }
 
-func (s *Sync) publishLocalChat(ctx context.Context, root, id string) (copyAttempt, error) {
+func (s *Sync) publishLocalChat(ctx context.Context, root, id string, earlier int64) (copyAttempt, error) {
 	c, err := cell.OpenAt(root, id)
 	if err != nil {
+		return copyAttempt{}, err
+	}
+	if err := cellstore.Await(ctx, c); err != nil {
 		return copyAttempt{}, err
 	}
 	head, err := cellstore.Head(c)
@@ -303,7 +310,7 @@ func (s *Sync) publishLocalChat(ctx context.Context, root, id string) (copyAttem
 	}
 	idle, watch, stop := progressContext(ctx, PublishIdleWithin)
 	defer stop()
-	attempt, err := s.publishCopy(idle, e, c, devname.Name(s.Home), meta.Title, watch)
+	attempt, err := s.publishCopy(idle, e, c, devname.Name(s.Home), meta.Title, watch, earlier)
 	if err != nil && context.Cause(idle) == errPublishStalled && ctx.Err() == nil {
 		err = fmt.Errorf("%w: %w", errPublishStalled, err)
 	}
@@ -373,13 +380,14 @@ func (p progressStore) Has(ctx context.Context, rids []string) ([]bool, error) {
 // chat. The foreground may have opened it while it was copied; only Create's
 // atomic absence check can decide who first publishes it (C29.2/C31.3).
 func (s *Sync) PublishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell, name, title string) error {
-	_, err := s.publishCopy(ctx, e, c, name, title, nil)
+	_, err := s.publishCopy(ctx, e, c, name, title, nil, 0)
 	return err
 }
 
 // publishCopy is PublishCopy that times each request to the relay with watch
 // and reports what it sent.
-func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell, name, title string, watch *watchdog) (copyAttempt, error) {
+// earlier is the frame bytes earlier attempts already put for this chat.
+func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell, name, title string, watch *watchdog, earlier int64) (copyAttempt, error) {
 	var attempt copyAttempt
 	if Quiet(s.Home) {
 		return attempt, ErrQuiet
@@ -416,6 +424,9 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 		return attempt, err
 	}
 	info := s.publishInfo(c, title)
+	// What a computer without the chat copies: every frame this chat's
+	// attempts put, which is its whole upload (the record has no plan here).
+	info.Size = uint64(max(earlier+attempt.sent, 0))
 	// Serialize Create and its release with foreground opening on this home.
 	// A foreground resume deliberately keeps its existing fence.
 	lock, err := s.lockChat(c.ID, ".publication")
@@ -424,7 +435,7 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	}
 	defer lock.Close()
 	answered = watch.asking(0)
-	view, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Head: head.Turn.ID, SavedAt: head.Turn.SealedAtMs, Class: info.Class, Title: info.Title, Size: info.Size, Keys: info.Keys})
+	view, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Head: head.Turn.ID, SavedAt: head.Turn.SealedAtMs, Class: info.Class, Title: info.Title, Folder: info.Folder, Size: info.Size, Keys: info.Keys})
 	answered()
 	if errors.Is(err, directory.ErrExists) {
 		return attempt, nil

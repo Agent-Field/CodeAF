@@ -196,7 +196,7 @@ func (a *app) teamsMemberGo(id, key string) tea.Cmd {
 // teamsResumeBehind opens one member's conversation behind the one in front,
 // off the loop, and holds it as a tab of its own.
 func (a *app) teamsResumeBehind(m teamMember) tea.Cmd {
-	if cmd, remote := a.teamsRemoteGo(m, func() tea.Cmd { return a.teamsResumeBehind(m) }); remote {
+	if cmd, remote := a.teamsRemoteGo(m); remote {
 		return cmd
 	}
 	name := m.Word

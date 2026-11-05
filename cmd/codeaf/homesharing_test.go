@@ -290,8 +290,8 @@ func TestTheKeysLineGoesWhenTheKeysAreShared(t *testing.T) {
 	}
 	t.Setenv("CODEAF_HOME", rig.homeB)
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	keptKey(t, rig.homeB)
 	r1PairHomes(t, rig)
+	keptKey(t, rig.homeB)
 	refused.Store(r1SavedChat(t, rig.homeB, "a chat the relay refuses").ID)
 	vaultDown.Store(true)
 	b := &appBackend{left: make(chan struct{}), emit: newAppRecorder()}
@@ -358,8 +358,8 @@ func TestBetweenChatsTheKeysAndTheCountMoveOn(t *testing.T) {
 	}
 	t.Setenv("CODEAF_HOME", rig.homeB)
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	keptKey(t, rig.homeB)
 	r1PairHomes(t, rig)
+	keptKey(t, rig.homeB)
 	id, err := identity.Load(rig.homeB)
 	if err != nil {
 		t.Fatal(err)

@@ -46,9 +46,9 @@ func TestAppSearchJobs(t *testing.T) {
 		s.backend.factories.resume = func(context.Context) { resumes.Add(1) }
 		var jobs []factory.Item
 		for _, it := range []factory.Item{
-			{Repo: "acme/api", Num: 12, Kind: factory.KindIssue, Title: "Repair Webhook delivery", Ask: &factory.JobAsk{Text: "Handle the kumquat header"}, State: factory.StateNew},
-			{Repo: "acme/api", Num: 13, Kind: factory.KindIssue, Title: "Webhook retries", State: factory.StateNew},
-			{Repo: "acme/api", Num: 14, Kind: factory.KindIssue, Title: "Webhook abandoned", State: factory.StateShipped, DoneHow: "dropped", DoneAt: time.Now()},
+			{Tier: factory.TierOwner, Repo: "acme/api", Num: 12, Kind: factory.KindIssue, Title: "Repair Webhook delivery", Ask: &factory.JobAsk{Text: "Handle the kumquat header"}, State: factory.StateNew},
+			{Tier: factory.TierOwner, Repo: "acme/api", Num: 13, Kind: factory.KindIssue, Title: "Webhook retries", State: factory.StateNew},
+			{Tier: factory.TierOwner, Repo: "acme/api", Num: 14, Kind: factory.KindIssue, Title: "Webhook abandoned", State: factory.StateShipped, DoneHow: "dropped", DoneAt: time.Now()},
 		} {
 			kept, err := s.backend.local.host.floor.Create(it)
 			if err != nil {

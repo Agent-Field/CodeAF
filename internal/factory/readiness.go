@@ -54,7 +54,7 @@ func ReadinessGate(it Item) error {
 			return fmt.Errorf("check %s has not passed", r.Name)
 		}
 	}
-	if it.Cap <= 0 || JobSpent(it) >= it.Cap {
+	if it.Cap <= 0 || JobLifetimeSpent(it) >= it.Cap {
 		return fmt.Errorf("job budget reached or unavailable")
 	}
 	return nil

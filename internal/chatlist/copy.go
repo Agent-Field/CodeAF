@@ -50,6 +50,7 @@ const (
 	lastHeldHere   = "this chat was last held here"
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
+	keptTurns      = "kept %s from %s as a separate chat"
 	supersededLine = "%s continued this chat; this window now only shows it"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
@@ -294,6 +295,11 @@ func KeptEdits(n uint32, device string) string {
 	return fmt.Sprintf(keptEdits, turns(n), device)
 }
 
+// KeptTurns names only the saved turns when unsaved calls remain on this device.
+func KeptTurns(n uint32, device string) string {
+	return fmt.Sprintf(keptTurns, turns(n), device)
+}
+
 // CopiesCame is said after a takeover brought the working copies of tasks that
 // had not landed, named by task. It says nothing when none came (the emptiness
 // law), so the caller can join it to other sentences without a test.
@@ -415,3 +421,35 @@ const (
 	// earlierRemoved is Removed as engines before --replace wrote it into notices.
 	earlierRemoved = removedChatStart + "run codeaf pair to bring it back"
 )
+
+// BigMoveBytes is the size of chat folder over which moving it asks first: a
+// copy that large takes minutes, so the person decides before it starts.
+const BigMoveBytes = 100 << 20
+
+// MoveSize reads a move's size the way the warning says it: "1.4 GB", "412 MB".
+func MoveSize(bytes uint64) string {
+	if bytes >= 1<<30 {
+		return fmt.Sprintf("%.1f GB", float64(bytes)/(1<<30))
+	}
+	return fmt.Sprintf("%d MB", (bytes+(1<<19))>>20)
+}
+
+// BigMoveLine is the warning before a big move, "" for a chat small enough to
+// move without one, or one this computer already holds (r.Mine).
+func BigMoveLine(r Row) string {
+	if r.Mine || r.Size <= BigMoveBytes {
+		return ""
+	}
+	where := "a folder"
+	if r.Folder != "" {
+		where = "the " + r.Folder + " folder"
+	}
+	return fmt.Sprintf("this chat works in %s on %s; moving it copies that folder too: %s, which can take several minutes", where, nonempty(r.Device), MoveSize(r.Size))
+}
+
+func nonempty(device string) string {
+	if device == "" {
+		return "the other computer"
+	}
+	return device
+}

@@ -17,7 +17,7 @@ func TestFactoryLifetimeCostKeepsSavedSpendWithoutLedgerRecovery(t *testing.T) {
 	s := newLocalSetup(t)
 	st := s.start()
 	floor := s.backend.local.host.floor
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Keep lifetime", Kind: factory.KindIssue, State: factory.StateNew, Stream: &factory.Stream{Spent: .030189}})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Keep lifetime", Kind: factory.KindIssue, State: factory.StateNew, Stream: &factory.Stream{Spent: .030189}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestFactoryLifetimeLedgerRequiresUnambiguousJob(t *testing.T) {
 			s := newLocalSetup(t)
 			st := s.start()
 			floor := s.backend.local.host.floor
-			item := factory.Item{Repo: "acme/api", Num: 7, Title: "Known money", Kind: factory.KindIssue, State: factory.StateNew, SpentBefore: .1, Stream: &factory.Stream{Spent: .03}}
+			item := factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Known money", Kind: factory.KindIssue, State: factory.StateNew, SpentBefore: .1, Stream: &factory.Stream{Spent: .03}}
 			if mode == "copy without source" {
 				item.FromJob = 999
 			}

@@ -745,6 +745,11 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	if err := factoryCallRefusal(ctx); err != nil {
 		return nil, model, err
 	}
+	// Job ownership also covers personal manager turns and reopened stages.
+	// Keep recovery on the call so shared clients retain ordinary refusals.
+	if a.jobBudgetOf() != nil {
+		ctx = provider.WithRefusedEffortRecovery(ctx)
+	}
 	if purpose == purposeTurn {
 		messages = a.jobAutonomyMessages(messages)
 	}
@@ -883,6 +888,9 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 		configured.Model = c.workerWireModel
 	}
 	configured.Timeout = timeout
+	// Factory stages, their children and manager turns keep local effort repair.
+	// Merely offering Factory tools does not opt an ordinary conversation in.
+	configured.DropRefusedEffort = c.DropRefusedEffort || c.Stage != nil || c.JobBudget != nil
 	// The catalog gate on optional knobs, and the two answers about the model's
 	// reasoning profile and list price, are seams the surface resolves. A caller
 	// that hands over none of them keeps today's behaviour exactly — knobs travel

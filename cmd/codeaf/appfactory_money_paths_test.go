@@ -99,7 +99,7 @@ func TestAppFactoryCompletedHedgeLoserMoney(t *testing.T) {
 		agent := moneyAgent(t, s, ask, server.URL)
 		return &appConn{Conv: &moneyDoor{Agent: agent, barrier: barrier}, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
 	}
-	it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Hedge accounting", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1})
+	it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Hedge accounting", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

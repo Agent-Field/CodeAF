@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
@@ -221,7 +222,7 @@ func checkEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
-		if strings.HasSuffix(name, "_API_KEY") || strings.HasSuffix(name, "_TOKEN") {
+		if approval.SecretEnvName(name) {
 			continue
 		}
 		out = append(out, kv)
