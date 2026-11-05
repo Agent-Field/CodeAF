@@ -205,14 +205,17 @@ func (a *Agent) stopKnowledge() {
 			a.cancelJobKnowledge()
 		}
 	}
-	timer := time.NewTimer(closeGrace)
-	defer timer.Stop()
 	for _, j := range workers {
-		select {
-		case <-j.done:
-		case <-timer.C:
-			log.Printf("knowledge: capture shutdown deadline; journal recovery will retry")
-			return
+		// Cancellation bounds further scanning, but a database operation already
+		// in progress must finish before the profile can be removed.
+		<-j.done
+		j.mu.Lock()
+		work := j.compile
+		j.mu.Unlock()
+		// An active job owns compilation across stage closes. Once cancelled,
+		// its remaining local writes must finish before close returns.
+		if work != nil && (a.config.JobContext == nil || a.config.JobContext.Err() != nil) {
+			<-work.done
 		}
 	}
 }

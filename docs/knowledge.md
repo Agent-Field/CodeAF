@@ -66,7 +66,12 @@ lifetime on termination. Owner admission is checked before requests and retries;
 Pause and Stop cancel the active call, and no new call starts for a paused or
 ended job. Quit drops compilation, retaining source journals and checkpoints for
 the next finished owned turn. The process worker never takes over owned sources.
-A standalone owned conversation cancels its compilation on Close.
+A standalone owned conversation cancels and joins its compilation on Close.
+After a job is cancelled, closing its stage conversation joins that compiler too.
+Closing an active job's stage does not join or cancel the job-owned compiler.
+Session close also joins current and retired journal scanners, including their
+final local copy. These joins have no deadline for a database operation already
+in progress; a stalled filesystem can delay close.
 
 One compilation can need several dependent requests: extraction and discovery
 already require two for a small new concept; guide writing and evidence review
