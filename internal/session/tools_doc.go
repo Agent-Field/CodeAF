@@ -182,7 +182,8 @@ const documentMaxBytes = 25 << 20
 // with another rung beneath it is a reason to try the next one; the same thin
 // answer from the LAST rung is the answer, because a photographed receipt
 // really does extract to four words and "could not read it" would be a refusal
-// invented by a threshold. Empty or binary output is refused at every rung.
+// invented by a threshold. Empty output is refused at every rung, and binary
+// noise from an office parser too.
 // The provider refuses most empty output itself (provider/document.go returns an
 // error for a parser that harvested no annotations at all).
 const documentMinimumRunes = 32
@@ -585,7 +586,9 @@ func ReadDocument(ctx context.Context, read DocumentRead) (DocumentAnswer, error
 			continue
 		}
 		text := strings.TrimSpace(response.Text)
-		if text == "" || documentHasBinaryNoise(text) {
+		// Binary noise only gates office text, which is now exempt from the length
+		// check; PDF and image rungs keep their earlier behaviour.
+		if text == "" || (entry.kind == documentOffice && documentHasBinaryNoise(text)) {
 			failures = append(failures, fmt.Sprintf("%s: no readable text", rung))
 			continue
 		}
