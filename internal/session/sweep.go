@@ -155,6 +155,10 @@ func SweepPlacesContext(ctx context.Context, root string, now time.Time, note fu
 			if !entry.IsDir() {
 				continue
 			}
+			if entry.Name() == ".moving" {
+				sweepMovingForks(ctx, filepath.Join(path, entry.Name()), now, note)
+				continue
+			}
 			sweepSession(ctx, filepath.Join(path, entry.Name()), now, note)
 		}
 	}
@@ -168,6 +172,7 @@ func sweepSession(ctx context.Context, dir string, now time.Time, note func(stri
 		// Somebody is talking to it. Not its logs, not its folder, nothing.
 		return
 	}
+	sweepAbandonedForks(ctx, dir, now, note)
 	sweepLogs(ctx, dir, now, note)
 	meta, err := LoadMeta(dir)
 	if err != nil {
