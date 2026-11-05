@@ -344,11 +344,16 @@ func (b *Batcher) toldPending(n uint32) bool {
 	return b.beatSent == n && b.beatUp == b.uploadFor(n)
 }
 
-// toldWorking says whether the directory last heard the working flag as it is now.
+// toldWorking says whether the directory has heard all it should of the working
+// flag. A turn starting is told at once. A turn ending is told only once its
+// last turns are published: ANOTHER COMPUTER READS "NOT WORKING" AS "TAKE IT
+// NOW", and a take that names the save point before the turn's own publish is
+// refused as superseded the moment that publish lands. Until then the flag
+// stays on, and the publish that ends pending wakes the beat that clears it.
 func (b *Batcher) toldWorking() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.toldWork == b.working
+	return b.toldWork == b.working || !b.working && len(b.noted) > 0
 }
 
 func (b *Batcher) tell(n uint32) {
@@ -564,6 +569,7 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	b.tell(0) // a publish always carries the newest turn, so nothing is pending
 	b.recovered()
 	turns := b.durable(head)
+	b.turns.fire() // a turn's end waits for this publish before it is told
 	b.emit(Flush{Head: head, Turns: turns, Frames: len(ex.Frames), Objects: ex.Objects, Bytes: ex.Bytes})
 	return nil
 }
