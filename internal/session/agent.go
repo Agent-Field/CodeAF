@@ -118,6 +118,7 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	child.approvalReadParent = a
 	child.managedClient = managed
 	child.clientAccount = account
 	child.clientPool = pool
@@ -2975,6 +2976,12 @@ func (a *Agent) Close() (saveErr error) {
 	// IT IS SAFE HERE AND ONLY HERE: `a.mu` was released above, and everything
 	// this waits on takes that lock.
 	a.SettleWrites()
+	// THE SPENDING ROWS GO LAST AND ONCE, after the close's own rows, and only
+	// here: a close is not on a person's input path, and a stalled ledger costs
+	// it one [usageFlushLimit].
+	if a.config.usageLedger != "" {
+		drainUsage(a.config.usageLedger)
+	}
 
 	a.mu.Lock()
 	deleting, deletionGrace := a.deleting, a.deletionGrace

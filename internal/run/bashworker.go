@@ -58,9 +58,10 @@ import (
 // CODEAF_TASK_BELT names the older belt, so on that road not one byte of any
 // prompt, belt or landing changes — nothing constructs this worker.
 type BashWorker struct {
-	store     *plandb.Store
-	workspace string
-	model     string
+	profileDir string
+	store      *plandb.Store
+	workspace  string
+	model      string
 	// always is the memory section over this place — every line kept for the
 	// person, this machine and this project — rendered by the door
 	// ([session.MemoryWorld]) and closed on by the worker's brief. It is the
@@ -177,6 +178,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	}
 	agent, err := session.NewBeltWorker(session.Config{
 		Effort:           w.taskEffort,
+		ApprovalGate:     session.BeltWorkerApprovalGate(w.profileDir),
 		Workspace:        w.workspace,
 		WorkspaceURI:     w.workspaceURI,
 		WorkspaceSet:     w.workspaceSet.Clone(),
