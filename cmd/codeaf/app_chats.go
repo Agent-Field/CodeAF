@@ -412,6 +412,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		takeable[r.Cell] = row.CanTake
 		appChatSharing(&row, r)
+		row.Working = !here && r.Working
 		if row.Here {
 			row.Status = "here"
 		}
