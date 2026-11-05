@@ -343,6 +343,23 @@ do is change what a node already running was asked for.
 When no page is open, the planner's notes land in the conversation as dim lines beginning
 `run · `.
 
+## The crew planned no work — reason, retry, or edit the goal
+
+If the opening plan creates no nodes, the run ends as **incomplete**, with the
+planner's reason. If the planner gave no reason, the conversation says exactly:
+`The crew didn't plan any work for this goal.` The line is saved in the chat.
+This ending does not mean you ended the run yourself, and it does not claim success.
+
+For this ending only, the task's retry control starts a **fresh run** through the
+usual ownership and budget checks. The old run stays readable; its notes, nodes,
+and answer are not carried into the new plan. Retry is available while the
+original run is still held by this session. Reopened historical rows have no
+saved restart instructions.
+
+To edit the goal, start a new run with the revised goal. There is no dedicated
+editor for an ended adaptive run; steering an ended run does not restart it.
+Other adaptive endings do not offer this retry control.
+
 ## A run's nodes on the roster
 
 A run registers itself with the same machinery tasks use, so the work shows up where you
