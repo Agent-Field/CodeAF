@@ -279,7 +279,8 @@ func (b *appBackend) findCrewOwner(id string) (*appAgent, error) {
 	}
 	// A conversation already held, or being opened, is not opened again: the
 	// open holds the agent's gate for as long as it takes, and a caller that
-	// only reads or stops answers from what is there instead of queueing.
+	// only reads or stops answers from what is there instead of queueing. A
+	// stop-all alone waits, within its bound ([appBackend.liveOnceOpened]).
 	// At quit nothing is opened again either, and the gates are the wrap-up's.
 	// A member the person closed is answered from what is there too: opening
 	// it would take it out of Closed.

@@ -337,10 +337,21 @@ A change to any of them changes this section in the same commit.
 | --- | --- | --- |
 | `appwire.ProcessStopAllCeiling` | 10 s | The ONE deadline of a `processes.stop_all`, from the moment it is asked. Jobs and services run at once beneath it, and both are joined before the answer. |
 | `session.ProcessStopAllWait` | 5 s (2 × 2 s grace + 1 s) | The shared deadline of every job a stop-all signals. They are stopped concurrently, never 4 s each in turn. |
+| `appStopAllOpenWait` | 5 s (the ceiling less the jobs' wait) | How long a stop-all waits for a cold kept owner or an open under way before its jobs' side answers `remaining_unknown`. Services do not wait. |
 | `session.ProcessStopAllMax` | 256 | Running jobs one stop-all signals. More are counted in `unenumerated` and left running. |
 | `session.ProcessStopAllScan` | 4096 | Registry entries and live marks one stop-all examines. A scan cut short answers `remaining_unknown`. |
 | `appwire.ProcessStopAllIDs` | 256 | Each id list in a receipt. A cut list answers `remaining_unknown` and keeps its counts whole. |
 | `service.LogCapBytes` | 2 MiB | A service's live log, cut back only while a codeaf runs. It is stated as `cap_bytes`. |
+
+Stop-all looks up the record without opening before admission. Its jobs side
+opens a cold owner only when a crew keeps it, it is not held or closing, and the
+person has not closed or archived it. Non-kept conversations stay cold.
+An open has one completion channel from admission through initialization and
+publication, shared by all stop-all attempts. Timed-out attempts leave no waiter
+goroutine on the gate; retries join the same open instead of starting another
+opener. A timeout makes no job call and reports zero jobs stopped,
+`remaining_unknown` and `partial`, even if an owner was published before the open
+finished. Services start independently of this wait.
 
 The services of a stop-all are the agent's own (`StopOwnerWait`). They are bounded by the supervisor's 64-service store, and they wait out each service's 5 s stop grace under the 10 s ceiling. `processes.actions` and `processes.log_target` share `processes.page`'s 4-read admission and its 2 s deadline.
 
