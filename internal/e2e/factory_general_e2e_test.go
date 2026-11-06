@@ -412,10 +412,10 @@ func (w *fleWorld) bySourceRef(ref string) []factory.Item {
 
 // daySpend is the factory's whole spend today, by model, as the wire reads it.
 func (w *fleWorld) daySpend() float64 {
-	raw, err := w.eng.call("factory.spend_by_model", map[string]any{"factory": w.factory, "from": "", "to": ""}, time.Minute)
+	today := time.Now().Format("2006-01-02")
+	raw, err := w.eng.call("factory.spend_by_model", map[string]any{"factory": w.factory, "from": today, "to": today}, time.Minute)
 	if err != nil {
 		w.t.Logf("spend_by_model: %v", err)
-		return 0
 	}
 	var s struct {
 		Models []struct {
@@ -1071,10 +1071,18 @@ func (w *fleWorld) scenarioJira(t *testing.T) {
 		return slices.ContainsFunc(comments, func(c string) bool { return strings.Contains(c, prURL) })
 	})
 	t.Logf("%s comments: %q", key, comments)
-	fleEventually(t, "job "+strconv.Itoa(it.ID)+" to count its steps done", 2*time.Minute, 5*time.Second, func() bool {
+	// The quick steps are all done. Once the job ships, the factory adds its
+	// followpr step (it waits on the pull request's checks and reviews), so
+	// the count reads 3 of 4 while the pull request is followed.
+	fleEventually(t, "job "+strconv.Itoa(it.ID)+" to count its three steps done", 2*time.Minute, 5*time.Second, func() bool {
 		j = w.job(it.ID)
-		return j.StepsDone == j.StepsTotal
+		return j.StepsDone == len(fleQuick)
 	})
+	for _, s := range j.Steps {
+		if slices.Contains(fleQuick, s.Name) && s.State != "done" && s.State != "passed" {
+			t.Errorf("job %d step %s is %s after the pull request, want done", it.ID, s.Name, s.State)
+		}
+	}
 	models := j.stepModels(t, fleModel)
 	t.Logf("job %d steps_done %d/%d, %v", it.ID, j.StepsDone, j.StepsTotal, models)
 	cost = max(w.daySpend()-spend0, w.job(it.ID).spent())
@@ -1121,7 +1129,7 @@ func (w *fleWorld) scenarioChats(t *testing.T) {
 	}
 	j := w.job(w.jiraJob)
 	for _, s := range j.Steps {
-		if s.State == "done" || s.State == "running" || s.InRun {
+		if s.State == "done" || s.State == "passed" || s.State == "running" {
 			if _, ok := agents[s.Name]; !ok {
 				t.Errorf("step %s ran (state %s) but factory.job_chats has no agent for it", s.Name, s.State)
 			}
