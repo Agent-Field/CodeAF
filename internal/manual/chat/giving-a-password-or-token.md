@@ -40,6 +40,11 @@ If a command prints the value anyway, codeaf takes it out of the output before t
 reads it: the chat sees `[redacted]` where the value was. That holds after a restart for
 every secret still inside its 24 hours.
 
+**Only the whole value is caught.** A command that prints PART of it — the first eight
+characters, the last four — is not, so the chat is told never to print any part of a
+secret and to check one by using it. The character count on the card is the
+confirmation that it arrived.
+
 ## When a secret cannot be asked for
 
 `request_secret` exists only where somebody can answer it. A run with nobody at the

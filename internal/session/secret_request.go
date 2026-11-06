@@ -185,8 +185,9 @@ func secretAnswerText(q Question, answer Answer) string {
 	case answer.Kept != nil:
 		k := answer.Kept
 		return fmt.Sprintf("saved · %s · %s · %s · %d characters, readable until %s.\n"+
-			"Use it only inside a command, as \"$(cat %s)\". Never print, echo or log it, never copy it into the workspace, a commit or a message, and never ask for it in chat. "+
-			"A command's output that contains it comes back to you as [redacted].",
+			"Use it only inside a command, as \"$(cat %s)\". Never print, echo or log any part of it — not a prefix, a suffix or a fingerprint — never copy it into the workspace, a commit or a message, and never ask for it in chat. "+
+			"To check it, use it (call the service it is for); the character count above is all the confirmation the person needs. "+
+			"A command's output that contains the whole value comes back to you as [redacted].",
 			askQuestionWord(q), head, k.File, k.Characters, k.Until.Local().Format("Mon 15:04 MST"), k.File)
 	default:
 		return fmt.Sprintf("declined · %s · %s · they chose not to give it. Carry on without it, and ask again only if they bring it up.",
