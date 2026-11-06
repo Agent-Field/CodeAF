@@ -184,6 +184,9 @@ func stageResultItem(r StepResult) factory.StageResult {
 // only the lease holder may read (serve's withholdChats).
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
+	for i := range j.Context {
+		j.Context[i].Markdown = it.Context[i].Markdown
+	}
 	j.RoundCostTables = true
 	// The runner runs the file the job carries, so it is sent whole here.
 	j.PipelineCopy = it.PipelineCopy.Clone()

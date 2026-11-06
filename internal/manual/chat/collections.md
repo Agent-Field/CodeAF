@@ -3,7 +3,7 @@
 ## How do I group chats in logical folders
 
 `codeaf collections` is a local command for organizing references to conversations,
-tasks and files. A collection is a logical folder with a stable ID
+tasks, Factory jobs and files. A collection is a logical folder with a stable ID
 and name. Several collections can reference the same record. Collections can
 contain other collections, including one child shared by several parents;
 circular membership is refused. Renaming a collection preserves its ID.
@@ -71,7 +71,8 @@ belong to collections.
 ## Adding, removing and finding a chat or work reference
 
 Use `codeaf collections add <collection-id> <kind> <record-id>`.
-The kinds are `collection`, `conversation`, `task`, `process`, `crew` and `artifact`. There is no kind
+The kinds are `collection`, `conversation`, `task`, `process`, `crew`,
+`factory_job` and `artifact`. There is no kind
 for an automation. `standing` named a standing item, which codeaf no longer has: a
 row that already holds one can still be found and removed, and adding a new one is
 refused with `standing items are gone, so a collection cannot gain one`.
@@ -100,6 +101,19 @@ something that was never there is not an error. Automatic organization,
 inherited instructions and communication between conversations are not
 implemented by these commands.
 
+## Adding, finding and removing a Factory job
+
+Use `codeaf collections add <collection-id> factory_job <job-number> --factory
+<factory-id>`. The job number must be a positive decimal without a sign or leading
+zeroes. The factory ID is required: the same number in two factories names two
+different jobs. Use the same `--factory` with `find` and `remove`. Other kinds
+refuse a factory ID. `show` prints `factory_job  <job-number>  factory <factory-id>`;
+`--json` includes the `factory` field.
+
+A collection can reference a job alongside any other records, and several
+collections can hold the same job. These commands retain references without
+asking the Factory whether the job is available and never start a job.
+
 ## Deleting or duplicating a collection
 
 `codeaf collections delete <collection-id>` deletes the collection, its
@@ -108,3 +122,13 @@ memberships, and every membership naming it in another collection, answering
 referenced is deleted, moved or stopped. `codeaf collections duplicate
 <collection-id> <name>` makes a new collection holding the same references, in
 the same order; the new name follows the same uniqueness rule as `create`.
+
+
+## Collections database versions and older engines
+
+Opening and reading a collections database never migrate it. The first successful
+write upgrades supported versions 1–6 to schema 7; a failed write leaves the file
+unchanged. Existing collections and references survive the upgrade, including
+Factory job references. Older engines that do not support schema 7 refuse the
+database with `unsupported collections database`. Collections are unavailable
+in those engines; the data remains intact. Use a compatible engine to read it.

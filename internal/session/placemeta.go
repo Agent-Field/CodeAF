@@ -336,9 +336,12 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	if meta.Created.IsZero() {
 		meta.Created = time.Now()
 	}
-	if model := strings.TrimSpace(a.model); model != "" {
+	if model := strings.TrimSpace(a.configuredModelLocked()); model != "" {
 		meta.Model = model
 		meta.ModelProvider = a.config.serviceFor(model).Source.ID
+		if a.modelForNowProvider != "" {
+			meta.ModelProvider = a.modelForNowProvider
+		}
 	}
 	// The rung is written whatever it is, absence included, because absence is
 	// a value a person can choose their way back to: a session dialled to max
@@ -515,12 +518,12 @@ func isAnswer(message ai.Message) bool {
 // journal written before this field existed.
 //
 // IT FOLDS NOTHING AND READS NOTHING EXTRA. The resume already replayed the
-// file and already summed its usage lines ([sessionFile.RestoredUsage], which
-// is what the agent's live counters are restored from — agent.go), so this
-// takes that sum and writes it once. A session with nothing restored, or one
-// whose meta already carries a figure, writes nothing at all: the stamp above
-// keeps it true from here on, and a rewrite per open would be a file touched by
-// every window that merely looked.
+// file and already summed its usage lines and late-receipt call lines
+// ([sessionFile.RestoredUsage], which is what the agent's live counters are
+// restored from — agent.go), so this takes that sum and writes it once. A
+// session with nothing restored, or one whose meta already carries a figure,
+// writes nothing at all: the stamp above keeps it true from here on, and a
+// rewrite per open would be a file touched by every window that merely looked.
 func (a *Agent) stampRestoredSpend(restored Usage) {
 	a.spendStampMu.Lock()
 	defer a.spendStampMu.Unlock()

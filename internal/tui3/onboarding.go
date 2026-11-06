@@ -591,7 +591,7 @@ func (a *app) commitSetupControls() bool {
 func (a *app) takeSetupModel(id string) {
 	s := &a.setup
 	id = strings.TrimSpace(id)
-	if id == "" || id == a.model {
+	if id == "" || id == a.model && id == a.configuredModel() {
 		return
 	}
 	row, ok := a.registry().Row(config.ModelSettingKey(talkSlot))

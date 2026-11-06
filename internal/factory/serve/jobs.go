@@ -25,6 +25,7 @@ import (
 // jobVerbs keeps canvas actions additive to the existing /v1 doors.
 func (h *Handler) jobVerbs() {
 	stored := h.config.Store != nil
+	h.postJob("context", stored, h.onlyOwner(h.setJobContext))
 	h.postJob("publish_anyway", stored && h.seam.Answer != nil, h.publishAnyway)
 	h.postJob("start_now", h.seam.Launch != nil, h.guardedStart())
 	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
@@ -254,6 +255,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					if cur.State != factory.StateQueued {
 						return fmt.Errorf("%s is no longer queued", cur.Ref())
 					}
+					factory.ClearPolicyRun(cur)
 					cur.OverLimit = true
 					if cur.Stream != nil {
 						cur.Stream.Paused = false

@@ -827,7 +827,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// THE SLOT IS TAKEN BEFORE THE QUESTION and handed back by everything that
 	// is not an admission, so a batch of proposals cannot walk through the fan
 	// cap together ([TaskGraph.claimChild]).
-	if refusal := graph.claimChild(spec.parent); refusal != "" {
+	if refusal := graph.claimChild(spec.parent, spec.title); refusal != "" {
 		return bare.Settled(refusal, true)
 	}
 	id := graph.reserve()
@@ -843,7 +843,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	if err != nil {
 		// The session closed under the question. Nothing was asked and nothing
 		// admitted, so the proposal simply never became one.
-		graph.releaseChild(spec.parent)
+		graph.releaseChild(spec.parent, spec.title)
 		return bare.Settled(taskNeverAnswered, true)
 	}
 	return &stagedProposal{agent: a, graph: graph, id: id, spec: spec, stand: stand, elsewhere: elsewhere, wait: wait}
@@ -871,7 +871,7 @@ type stagedProposal struct {
 // other ending of [stagedProposal.Commit], and exactly one of the two runs.
 func (p *stagedProposal) Withdraw() {
 	p.wait.withdraw()
-	p.graph.releaseChild(p.spec.parent)
+	p.graph.releaseChild(p.spec.parent, p.spec.title)
 }
 
 // Commit reads what the wait came to and admits on it. It runs once the message
@@ -885,7 +885,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	admitted := false
 	defer func() {
 		if !admitted {
-			graph.releaseChild(spec.parent)
+			graph.releaseChild(spec.parent, spec.title)
 		}
 	}()
 	answer, err := p.wait.answer()
@@ -957,6 +957,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// is not there at all (no engine linked, no place for a store) leaves this
 	// door for the older one ([Agent.commitProposalToRun]).
 	ctx = withCrewWish(ctx, a.proposalCrewWish(p.id, crewWish{effort: spec.crewEffort, worker: namedModel(spec)}))
+	ctx = withSilentTaskStart(ctx, p.wait.silent)
 	// THE BLOCK THE ROW WILL BE BORN IN is the one captured when the card was raised,
 	// whichever road publishes its first row (task_source.go).
 	a.expectRunSource(p.id, spec.source)
@@ -969,15 +970,26 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
 }
 
-// proposalBrief is what a proposal committed to a run hands its work: the
-// composed brief every task gets, or, for a program that reads its brief as
-// words, the words alone, the way a typed `/<name>` hands them
-// ([delegate.Delegate.Words]).
+// proposalBrief hands a proposed run only its assignment. The proposing
+// conversation must put all needed context into the work order itself.
 func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 	if via != nil && via.Words {
 		return programWords(spec.brief, *via)
 	}
-	return composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	var parts []string
+	if strings.TrimSpace(spec.title) != "" {
+		parts = append(parts, spec.title)
+	}
+	if strings.TrimSpace(spec.brief) != "" {
+		parts = append(parts, briefWorkHeading+"\n\n"+strings.TrimSpace(spec.brief))
+	}
+	if strings.TrimSpace(spec.deliverable) != "" {
+		parts = append(parts, briefMakeHeading+"\n\n"+spec.deliverable)
+	}
+	if strings.TrimSpace(spec.acceptance) != "" {
+		parts = append(parts, briefDoneHeading+"\n\n"+spec.acceptance)
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // commitProposalToRun is the run road of an approved proposal: an approved
@@ -1565,6 +1577,8 @@ type taskWait struct {
 	// settled carries what the wait came to, once; a withdrawn wait sends
 	// nothing on it.
 	settled chan taskSettled
+	// silent is written before the expiry answer is sent and read after it.
+	silent bool
 	// withdrawn is closed by [taskWait.withdraw] and finished by
 	// [taskWait.run] as it returns.
 	withdrawn    chan struct{}
@@ -1612,6 +1626,7 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 			// Silence is a yes, and it is a yes with no redirect: the person said
 			// nothing, so nothing is appended to the brief.
 			silent := TaskAnswer{Approved: true}
+			w.silent = true
 			w.decided(silent)
 			// AND THE QUESTION CLOSES SAYING THE WORK STARTED, before the turn is
 			// handed the yes. The card above already says so, but on the task

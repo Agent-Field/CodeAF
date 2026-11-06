@@ -199,6 +199,12 @@ func TroubleWords(err error) string {
 			return "token refused"
 		case http.StatusNotFound:
 			return "repository not found"
+		case http.StatusTooManyRequests:
+			return "rate limited"
+		case http.StatusForbidden:
+			if apiErr.RetryAfter > 0 {
+				return "rate limited"
+			}
 		}
 	}
 	return "not reachable"

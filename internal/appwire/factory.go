@@ -72,6 +72,28 @@ const factoryCallBudget = 25 * time.Second
 // FactoryCapabilities is what this engine can do about a factory, stated
 // plainly so an unsupported verb is absent from the screen and not broken.
 type FactoryCapabilities struct {
+	// GroupPolicy: factory.policy_get and factory.policy_set are served; whether
+	// a connected factory keeps policies is its own features answer.
+	GroupPolicy bool `json:"group_policy"`
+	// JobEvents: factory.events_since is served and factory.event is pushed
+	// (feature factory.job_events); a factory older than the route answers supported false.
+	JobEvents bool `json:"job_events"`
+	// WaitsOn: factory.waits_set and factory.features are served; whether a
+	// connected factory takes waits is its own features answer.
+	WaitsOn bool `json:"waits_on"`
+
+	// CreateIssue carries the create request's explicit GitHub issue choice.
+	CreateIssue bool `json:"create_issue"`
+	// CreateGroup carries group and milestone labels on a new job.
+	CreateGroup bool `json:"create_group"`
+	// CreateBudget carries a new job's explicit initial budget.
+	CreateBudget bool `json:"create_budget"`
+	// JobContext replaces context attachments before a job's first run.
+	JobContext bool `json:"job_context"`
+	// CreateKey carries the caller's create key as Idempotency-Key.
+	CreateKey bool `json:"create_key"`
+	// CreateSplitFrom carries the job a new job was split from.
+	CreateSplitFrom bool `json:"create_split_from"`
 	// Contract is the factory API contract this engine speaks.
 	Contract int `json:"contract"`
 	// Remote: attach to, read and sign in to a factory served elsewhere.
@@ -162,6 +184,8 @@ type FactoryCapabilities struct {
 	// True only for an engine that implements [FactoryRepoFactsReader]; a
 	// factory older than the route answers not found.
 	RepoFacts bool `json:"repo_facts"`
+	// RepoIssues reads one repository's GitHub issues through its Factory.
+	RepoIssues bool `json:"repo_issues"`
 	// RepoRead: factory.repo_read is served (feature factory.repo_read). True
 	// only for an engine that implements [FactoryRepoReader]; whether the
 	// factory has a checkout of a repository is answered by the call.

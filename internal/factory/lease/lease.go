@@ -111,6 +111,8 @@ type Desk struct {
 	record *record.Record
 	// persist is the atomic lease-file writer; nil uses writeAtomic.
 	persist func(string, []byte) error
+
+	policySpend policySpendCache
 }
 
 // Open holds no handles. Reading is deferred to each operation so a desk
@@ -267,6 +269,10 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 	err := d.store.Update(taken.Job, func(it *factory.Item) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
+		}
+		if d.holdAtPolicy(it, d.now()) {
+			blocked = true
+			return nil
 		}
 		if holdAtJobBudget(it, d.now()) {
 			blocked = true

@@ -136,18 +136,14 @@ func (s *Store) ListPage(ctx context.Context, holds *Ref, after string, limit in
 		}
 		from = c.S
 	}
-	version, err := s.readyForRead(ctx)
-	if err != nil {
-		return Page{}, storeError(err)
-	}
-	if version == 0 {
-		return Page{Collections: make([]Summary, 0)}, nil
-	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, version, err := s.beginRead(ctx)
 	if err != nil {
 		return Page{}, storeError(err)
 	}
 	defer tx.Rollback()
+	if version == 0 {
+		return Page{Collections: make([]Summary, 0)}, nil
+	}
 	var page Page
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM collections").Scan(&page.Total); err != nil {
 		return Page{}, storeError(err)
@@ -183,18 +179,14 @@ func (s *Store) List(ctx context.Context, holds *Ref) ([]Summary, error) {
 
 // Describe is one collection as List says it.
 func (s *Store) Describe(ctx context.Context, id string) (Summary, error) {
-	version, err := s.readyForRead(ctx)
-	if err != nil {
-		return Summary{}, storeError(err)
-	}
-	if version == 0 {
-		return Summary{}, storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, version, err := s.beginRead(ctx)
 	if err != nil {
 		return Summary{}, storeError(err)
 	}
 	defer tx.Rollback()
+	if version == 0 {
+		return Summary{}, storeError(ErrNotFound)
+	}
 	out, err := summaries(ctx, tx, version, nil, id, 0, 1)
 	if err != nil {
 		return Summary{}, storeError(err)
@@ -212,8 +204,8 @@ func summaries(ctx context.Context, tx *sql.Tx, version int, holds *Ref, only st
 	held := "0"
 	args := []any{}
 	if holds != nil {
-		held = "EXISTS(SELECT 1 FROM memberships h WHERE h.collection_id=c.id AND h.kind=? AND h.ref_id=? AND h.session_id=?)"
-		args = append(args, holds.Kind, holds.ID, holds.SessionID)
+		held = "EXISTS(SELECT 1 FROM memberships h WHERE h.collection_id=c.id AND h.kind=? AND h.ref_id=? AND h.session_id=? AND " + factoryColumn(version) + "=?)"
+		args = append(args, holds.Kind, holds.ID, holds.SessionID, holds.Factory)
 	}
 	var where []string
 	if only != "" {
@@ -320,18 +312,14 @@ func (s *Store) Tree(ctx context.Context, id string, depth, limit int, after str
 		}
 		start = &levelAfter{added: c.A, seq: c.S}
 	}
-	version, err := s.readyForRead(ctx)
-	if err != nil {
-		return Tree{}, storeError(err)
-	}
-	if version == 0 {
-		return Tree{}, storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, version, err := s.beginRead(ctx)
 	if err != nil {
 		return Tree{}, storeError(err)
 	}
 	defer tx.Rollback()
+	if version == 0 {
+		return Tree{}, storeError(ErrNotFound)
+	}
 	top, err := summaries(ctx, tx, version, nil, id, 0, 1)
 	if err != nil {
 		return Tree{}, storeError(err)
@@ -415,14 +403,14 @@ func levelOf(ctx context.Context, tx *sql.Tx, version int, id string, limit int,
 	// A schema-1 file knows no moments, so its order is insertion alone; a
 	// constant in ORDER BY would be read as a column number.
 	order := "m.seq DESC"
-	if version >= schemaVersion {
+	if version >= 2 {
 		order = "m.added_at DESC, m.seq DESC"
 	}
 	args = append(args, limit+1)
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT m.seq,m.kind,m.ref_id,m.session_id,%s,coalesce(c.name,''),c.id IS NOT NULL,
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT m.seq,m.kind,m.ref_id,m.session_id,%s,%s,coalesce(c.name,''),c.id IS NOT NULL,
  CASE WHEN m.kind='collection' THEN (SELECT count(*) FROM memberships x WHERE x.collection_id=m.ref_id) ELSE 0 END
 FROM memberships m LEFT JOIN collections c ON m.kind='collection' AND c.id=m.ref_id
-WHERE m.collection_id=?%s ORDER BY %s LIMIT ?`, added, from, order), args...)
+WHERE m.collection_id=?%s ORDER BY %s LIMIT ?`, added, factoryColumn(version), from, order), args...)
 	if err != nil {
 		return nil, false, err
 	}
@@ -434,7 +422,7 @@ WHERE m.collection_id=?%s ORDER BY %s LIMIT ?`, added, from, order), args...)
 			break
 		}
 		var n Node
-		if err := rows.Scan(&n.seq, &n.Kind, &n.ID, &n.SessionID, &n.AddedAt, &n.Name, &n.Found, &n.Count); err != nil {
+		if err := rows.Scan(&n.seq, &n.Kind, &n.ID, &n.SessionID, &n.AddedAt, &n.Factory, &n.Name, &n.Found, &n.Count); err != nil {
 			return nil, false, err
 		}
 		nodes = append(nodes, n)
@@ -467,18 +455,14 @@ type Expansion struct {
 // always say what it is not showing.
 func (s *Store) Expand(ctx context.Context, id string, depth int) (Expansion, error) {
 	depth = max(1, min(depth, ExpandDepthMax))
-	version, err := s.readyForRead(ctx)
-	if err != nil {
-		return Expansion{}, storeError(err)
-	}
-	if version == 0 {
-		return Expansion{}, storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, version, err := s.beginRead(ctx)
 	if err != nil {
 		return Expansion{}, storeError(err)
 	}
 	defer tx.Rollback()
+	if version == 0 {
+		return Expansion{}, storeError(ErrNotFound)
+	}
 	top, err := summaries(ctx, tx, version, nil, id, 0, 1)
 	if err != nil {
 		return Expansion{}, storeError(err)

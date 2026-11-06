@@ -75,10 +75,145 @@ decides which combinations are accepted.
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
 | `agents.set_models` | `{fallback, id, main}` | `agentResult` |
+| `agents.set_scope` | `{id, scope}` | `AgentScope` |
 | `agents.since` | `{after, id}` | `Since` |
 | `agents.steer` | `in.sayTo` | `Empty` |
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
+
+## Conversation work scope
+
+`agents.set_scope {id, scope}` answers `{id, scope}` with the stored word.
+`project` is the default: the conversation is told about other conversations'
+landed and running work in its folder, as today. `conversation` means it is told
+only about its own work: its turns receive no other-conversation `<elsewhere>`
+block, and its `tasks` tool lists and addresses only its own tasks. Neither the
+other-window running section nor the wider `scope: "everywhere"` section is
+added. Task nodes keep their existing scope.
+
+The choice is stored with the conversation and survives restarts. It takes
+effect from the conversation's next turn; a live tasks call also reads the
+stored choice. Setting it never opens, warms or interrupts the conversation,
+never moves its folder, and never changes its transcript, title, model or tasks.
+The write-safety checks still warn before its own work writes over files other
+conversations are writing. The person's task list is unchanged.
+
+Engines that serve this method announce `agents.scope` in `hello.features`.
+A missing id or a scope other than `project` or `conversation` is `bad_params`;
+an engine without the door answers `unknown_method`. An unknown conversation is
+`not_found`; a lent conversation or one without a local folder is `conflict`.
+No `agent.changed` event is emitted, because the Agent view carries no scope.
+
+## Client tools
+
+The optional features `agents.client_tools` and `agents.client_tools.source`
+appear together in `hello.features` exactly when the engine implements the
+client-tools interface. The latter guarantees message identity on calls whenever
+the running turn answers a message. `agents.client_tools.remote` additionally
+advertises forwarding through a joined conversation's remote connection when
+its holder supports it. Sets belong to this
+stdio connection and one conversation. They are memory-only: register again
+after reconnecting. Attachment does not open the conversation or start a turn.
+Children, workers and clarification conversations inherit neither tools nor
+instructions. Within the same app connection, every join or re-join pushes the
+conversation's current sets to its holder; a roaming link resends them after
+redial only when the welcome identifies the same conversation. A changed
+conversation forgets the old snapshot and ends its calls. A returning owner's
+random token moves its sets to the replacement connection even while the old
+connection remains attached; other owners still face collision checks. A
+conversation returning to this engine uses the registry directly.
+If another computer holds the chat (`Location.Here == false`), attachment still
+validates and stores the sets without opening the conversation. They apply
+when this engine runs it again after "Continue here" or take, without a second
+`agents.tools_set`.
+
+| method | params | result |
+|---|---|---|
+| `agents.tools_set` | `{agent, set, instructions?, deadline_ms?, tools?: [{name, description, input_schema, category}]}` | `{agent, set, tools: [name, ...]}` |
+| `agents.tool_result` | `{call, result: <any JSON>}` or `{call, error: <text>}` | `{accepted: true}` or `{accepted: false}` |
+
+`agents.tools_set` replaces that `agent` + `set` whole; other sets remain.
+Omitted `tools` or `tools: []` removes only that set and returns `tools: []`.
+An agent holds at most 4 sets, 32 tools per set and 64 tools total. All validation
+is atomic: a refusal leaves every set unchanged.
+
+- `set` matches `^[a-z][a-z0-9_.-]{0,63}$`.
+- `name` matches `^[a-z][a-z0-9_]{0,63}$`, unique within and across the agent's sets.
+- `description` is 1–2048 bytes. `input_schema` is a JSON object whose `type`
+  is `"object"`, at most 16 KiB. Schema validation of call arguments is the app's job.
+- `category` is `read`, `edit` or `create` and supplies this conversation's tool
+  category. Reading-only contexts refuse edits and creations. Ordinary tool
+  approval rules apply; attachment is not approval.
+- `instructions` is at most 4096 bytes per set and may be empty. It appears in a
+  section headed `Tools from the app: <set>`. A caller-supplied system page is
+  preserved and receives no section. Ordinary conversations gain no text.
+- `deadline_ms` is 0 (the default 30000) or 1000–120000.
+
+Invalid fields, aggregate limits, duplicates and built-in tool names answer
+`bad_params`; a collision message names the tool. Collision checks include the
+live belt and all classified engine tools. A built-in arriving later wins and
+the colliding client tool leaves the belt. No model request has duplicate names.
+Unknown agents answer `not_found`. A joined holder without forwarding support
+answers `bad_scope`: `client tools need a conversation this engine runs`.
+Holder refusals answer `bad_params` with the holder's message; a failed or timed
+out link answers `unreachable`, leaving the app registry unchanged for retry.
+Different remote connections keep separate sets. The aggregate limits count
+all of them, tool-name collisions are refused atomically, and only the
+connection that owns a set can receive or answer its calls.
+Tools and instructions update at the next step boundary, with client tools at
+the tail after all built-ins.
+
+| event | data |
+|---|---|
+| `agents.tool_call` | `{agent, turn, call, turn_call, source_message_id?, set, name, args: <JSON object>, deadline_ms}` |
+
+`source_message_id` names the message the running turn answers: the same string
+as `Entry.message_id` on that message's chat entry in `agents.read` (and in
+`entry.added` when present). It is captured when the turn starts, never changed
+by a mid-turn steer or note, and survives journal restarts and call replays.
+It is absent when no message can be named exactly. A stopped answer reuses its
+recorded message id. Turns the engine starts itself, including ordinary session
+wakes, mixed batches and a carry-on after a quit or close, carry none.
+With `agents.client_tools.source` advertised,
+an absent field means no such message, rather than an older engine.
+
+One model call emits exactly one `agents.tool_call`. `turn` is the engine's
+process-local conversation counter, which resets after restart;
+`turn_call` matches `turn.tool.call`. `call` is unique
+among pending calls and deterministic for the agent + provider call id. Without
+a provider id the engine mints a fresh id. A concurrent redispatch joins the
+pending wait and emits no second event. A settled redispatch returns the saved
+answer without an event for 10 minutes, subject to a maximum of 1024 saved
+answers per connection. Non-object model arguments become an invalid-arguments
+error result without an event.
+
+`agents.tool_result` requires exactly one of `result` and `error`. `result`
+accepts any JSON, including `null`, and reaches the model as compact JSON text,
+cut at 64 KiB with a plain dropped-byte marker. `error` must be a nonempty string
+of at most 4096 bytes and becomes an error tool result:
+`<set> could not do <name>: <text>`. Invalid answers are `bad_params`.
+A pending answer returns `accepted: true`; unknown, late or duplicate ids return
+`accepted: false` without an error or any other effect.
+
+Connection end (EOF, shutdown or context cancellation) disconnects the registry
+before conversations close: all sets are dropped and all pending calls settle
+immediately. These failures reach the model as error tool results, with no
+engine retry.
+
+For forwarded calls, a disconnect observed by the holder immediately removes
+that connection's sets and settles its waits. A link loss the holder cannot
+observe ends at the set's `deadline_ms`. The app drops the pending entry when
+its link ends or the holder reports that the call ended; later results return
+`accepted: false`. Failure text is:
+
+- A stale call after removal or disconnection:
+  `client_unavailable: the app that provides <name> is not connected; nothing was done.`
+- Disconnection during a call:
+  `client_unavailable: the app that provides <name> disconnected before answering; the outcome is unknown, so check before trying again.`
+- Deadline:
+  `client_timeout: the app that provides <name> did not answer within <n>s; the outcome is unknown, so check before trying again.`
+- Turn cancellation: the turn ended before the app answered. The pending entry
+  is dropped immediately and later answers return `accepted: false`.
 
 ## asks methods
 
@@ -157,6 +292,21 @@ keeps the value in a private file the agent's commands read (the model's own
 | `collections.relink` | `{from, id, to}` | `CollectionRelinkResult` |
 | `collections.remove` | `{id, refs}` | `CollectionRemoveResult` |
 | `collections.rename` | `in.collectionNameParams` | `CollectionResult` |
+
+Collection refs include `factory_job`, with a canonical positive decimal job `id`
+and a required `factory` field. The pair addresses the same job as `factory.job`.
+Other ref kinds have no `factory`. Several collections can reference the same job.
+Engines whose collections hold `factory_job` refs announce
+`collections.factory_job` in `hello.features`. A client requires it before it
+relies on adding a job: an engine that announces only `collections` may refuse
+the kind with `bad_params`.
+Factory job targets carry the recorded title, state word and repository; an
+unavailable Factory produces an `unknown` target and status. A missing job
+produces a `deleted` target. Resolution uses one bounded batch across nested
+collections: each distinct job is asked once, with a three-second deadline,
+up to eight concurrent Factory queue reads and 20 missing-job fallbacks. Queue
+reads, including unavailable results, share a ten-second cache of at most
+32 factories. A failed queue read never triggers per-job fallbacks.
 
 ## competence methods
 
@@ -255,6 +405,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
+| `factory.job_context_set` | `in.FactoryJobContextSetParams` | `FactoryJobActed` |
 | `factory.job_create` | `in.FactoryJobCreateParams` | `FactoryJobActed` |
 | `factory.job_dismiss` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_drop` | `in.FactoryJobDropParams` | `FactoryJobActed` |
@@ -310,6 +461,11 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
 | `factory.repo_facts` | `in.FactoryRepoFactsParams` | `FactoryRepoFacts` |
+| `factory.waits_set` | `in.FactoryWaitsSetParams` | `FactoryWaitsSet` |
+| `factory.features` | `in.FactoryFeaturesParams` | `FactoryFeatures` |
+| `factory.repo_issues` | `in.FactoryRepoIssuesParams` | `FactoryRepoIssues` |
+| `factory.policy_get` | `in.FactoryPolicyGetParams` | `FactoryPolicy` |
+| `factory.policy_set` | `in.FactoryPolicySetParams` | `FactoryPolicy` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
@@ -339,6 +495,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.sign_in_start` | `in.FactorySignInStartParams` | `FactorySignIn` |
 | `factory.sign_out` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.spend_by_model` | `in.FactorySpendByModelParams` | `FactorySpendByModel` |
+| `factory.events_since` | `in.FactoryEventsSinceParams` | `FactoryEvents` |
 | `factory.usage_by_model` | `in.FactoryUsageParams` | `FactoryUsage` |
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
@@ -371,6 +528,49 @@ terminal chips or changes budget, approval steps, rounds, effort or security.
 The job title alone supplies the draft PR title. Existing jobs are not rewritten.
 The method, reply, `factory.job_actions` hello feature and error codes are unchanged.
 Factories without the separate-title capability retain their prior behavior.
+
+`factory.job_create` also accepts these optional fields. Engine capabilities are
+`create_issue`, `create_group` (group and milestone), `create_budget`,
+`create_key`, `create_split_from` and `job_context` (the separate attachment write
+below). Each is true when the engine carries that feature end to end; an older
+engine omits it or answers false. These flags describe the engine; the attached
+Factory may still be older than a feature.
+
+| Parameter | Rule |
+| --- | --- |
+| `open_issue` | Boolean, default false. True sends `POST /v1/issues`: open one GitHub issue using only `title` and `text`, then create the job tied to its number. False sends `POST /v1/jobs` and opens no issue. |
+| `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Empty means none. |
+| `budget` | Initial job budget in USD: one of the standard steps, 5, 10, 20 or 30. Recorded as a budget action before starting; a start now or later keeps it instead of taking the pipeline default. |
+| `key` | A create key of 1–128 characters from `[A-Za-z0-9._:-]`, sent only as the create request's `Idempotency-Key` header. `key: ""` is the same as no key (`omitempty`): no header is sent. |
+| `split_from` | Integer at least 1, naming a job held by the same Factory that the caller can see. Stores the job this new job was split from. An explicit zero or negative number is `bad_params` before sending. |
+
+The Factory stores group and milestone outside the description.
+`factory.job`, queue rows and `current` carry the labels when present.
+Those reads also carry `split_from` when supplied, omitted otherwise. The parent
+job stays unchanged. The new job's own activity adds one line, `split from #N`.
+Split lineage leaves normal pipeline stamping, step briefs and run-as-new
+cleanup behavior in effect; it is stored separately from `from_job`.
+
+A missing or hidden `split_from` parent is the same Factory 422 refusal, mapped
+to `bad_params`, before any job or GitHub issue is made, including with
+`open_issue: true`.
+
+Bad extras answer `bad_params`, naming the field and limit, before anything is
+sent. The Factory also validates extras before opening an issue or making a job.
+A Factory's 422 strict-decoder refusal of `group`, `milestone`, `budget`,
+`issue` or `split_from`, or a 404/405 on the issue create route, answers `conflict`
+with `detail.reason: "factory_too_old"` and the existing update instruction:
+"This factory doesn't support that yet; nothing was changed. Update the factory
+to use it." No fallback request is sent. A 501 stays `engine` with "this factory
+does not provide that action"; GitHub and sign-in refusals retain their existing
+mapping. A timeout or 5xx stays `uncertain`.
+
+The reply is unchanged: `FactoryJobActed` with `action: "create"`, `job` and
+optional `current`. A Factory that keeps keys replays the first response for
+the same caller, route and key for 24 hours, so resending a create with the same
+key after an uncertain response is safe. A different key creates a separate job.
+With none of the new fields, the route, body and absent idempotency header are
+unchanged.
 
 
 An engine whose hello carries `factory.stop_any_version` accepts
@@ -460,6 +660,45 @@ On the worker HTTP interface, a revoked lease still returns HTTP 409. Retry or
 manual takeover adds `X-Codeaf-Lease-Withdrawn: 1`, so the worker cancels its old
 execution without reporting a person's Stop. The latest withdrawn lease is
 retained per worker until that worker pulls again.
+
+An engine whose hello carries `factory.job_events` and whose capabilities
+answer `job_events: true` serves `factory.events_since
+{factory, after?, limit?, follow?}`. `factory` is required; `after`, when
+present, is an integer at least zero. An absent cursor requests an initial
+reset; zero requests the beginning. `limit` is 1–500, or 0/omitted for 100.
+Invalid parameters answer `bad_params`. An engine without the Factory outcome
+reader answers `unknown_method` and does not announce the feature.
+
+The result is `{factory, supported, events, cursor, reset, more}`. `events`
+is always an array, in increasing `seq` order, and includes only jobs the
+caller may see; the cursor also advances past hidden outcomes. The cursor
+belongs to the Factory and survives an engine restart. `more: true` asks for
+another read after `cursor`. With no further outcomes, `cursor` is the latest
+position. Other Factory errors retain their usual codes. A Factory older
+than `GET /v1/job-events` answers `supported: false` with an empty event array
+and no error; following does not start for that answer.
+
+Each event is `{factory, seq, kind, job, at, title?, group?, how?, reason?,
+need?, code?, step?, pr_number?, pr_url?}`. `kind` is `finished`, `merged`,
+`failed` or `needs_you`. `how` describes a non-merge finish; merged outcomes
+carry the PR number and URL; failures carry code and step; needs-you outcomes
+carry need and reason. Titles are limited to 200 bytes at a rune boundary.
+The Factory records outcomes at job updates even with no app connected and
+keeps the newest 2,000 independently of its live notifications.
+
+`reset: true` means read the Factory's current state once, then continue from
+the returned cursor. A reset has no events. It occurs on an initial read,
+an expired or replaced cursor, or a gap caused by an older writer. Cursor
+zero on an empty record is caught up and does not reset repeatedly.
+
+`follow: true` starts one follower per attached Factory. A later outcome is
+pushed as `factory.event` with the same `FactoryEvent` shape and sequence.
+The push is a prompt copy: the app can always read again from its own cursor.
+Repeated follow calls raise the follower's cursor without duplicating it.
+A follower takes reset cursors silently; the app's own read observes resets.
+Closing the engine or detaching the Factory ends following. The Factory HTTP
+read takes `after`, `limit` and optional `wait` seconds (0–15, default 0),
+returning on an outcome or reset when a watch is available.
 
 An engine whose hello carries `factory.spend_by_model` (and capabilities
 `spend_by_model: true`) serves `factory.spend_by_model {factory, from, to}`:
@@ -568,6 +807,40 @@ last `months` calendar months (1 to 12, default 3) by the rule of
 `factory.job_area`, and jobs stuck on one step for a day or more. At most 20
 areas and 20 stuck steps are answered, busiest first (at most 97 facts);
 `truncated` counts the rest. A repository the caller cannot read is not found.
+
+An engine whose hello carries `factory.repo_issues` and whose capabilities
+answer `repo_issues: true` serves `factory.repo_issues {factory, repo, since?,
+page?}`. `repo` is `owner/name`, `since` is RFC 3339 (absent means no lower
+bound), and `page` is 1–10, default 1. It reads only `GET
+/v1/repos/{owner}/{repo}/issues?since=&page=` through the caller's Factory
+connection. The route accepts only those two query keys, once each, and uses
+the caller's GitHub sign-in, or a solo Factory's own profile.
+
+The result is `{factory, repo, issues, rows, newest?}`. `issues` contains at
+most 50 entries, oldest update first, in every state: `{id, number, title,
+body, url, state, created_at, updated_at, body_cut?}`. `id` is GitHub's int64
+issue identity, `url` is its HTML URL, and `state` is `open` or `closed`.
+`body` is cut at 8,192 bytes on a rune boundary; `body_cut: true` marks a
+cut. Pull requests are excluded from `issues`, but `rows` counts all rows
+GitHub returned (0–50) and `newest` is their latest `updated_at`, including
+pull requests. An empty result has `issues: []`, `rows: 0` and no `newest`.
+
+Invalid params are `bad_params` before any request. A repository the caller
+cannot see, or GitHub's repository 404, is `not_found`. A spent GitHub rate
+limit on the visibility check or issues request is `busy` with
+`detail.retry_at` in RFC 3339, using GitHub's reset time when supplied,
+otherwise its `retry-after` hint.
+Every GitHub HTTP 429 is a rate limit, even without headers; a 403 is a
+rate limit only with `X-RateLimit-Remaining: 0` or `Retry-After`.
+A rate-limited visibility check is not cached as a repository denial;
+the next read checks GitHub again. Without a usable reset or retry hint,
+`detail.retry_at` is one minute after the Factory's clock.
+Sign-in failures retain `signed_out` or `github_expired`. A Factory missing
+the route is `conflict` with `detail.reason: "factory_too_old"`; its own
+"repository not found" remains `not_found`. An engine without the reader
+answers `unknown_method`.
+The route itself stores nothing and appends no activity; the Factory's
+ordinary per-request housekeeping runs as it does for every authenticated request.
 
 An engine whose hello carries the feature `factory.pipeline_pr_update` (and
 capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,
@@ -835,6 +1108,36 @@ with wire code `conflict`, typed outcome `refused`, and the message
 "this job has no GitHub issue to comment on". It makes no GitHub call.
 The existing `factory.remote` and `factory.issue_comment` hello features
 continue to apply; no method, parameter or reply field is added.
+
+## factory.job_context_set
+
+Hello feature `factory.job_context` and capability `job_context` announce this
+write. `factory.job_create` refuses `context` as an unknown field.
+
+| Parameter | Rule |
+| --- | --- |
+| `factory`, `job` | One attached Factory and a positive job number. |
+| `expect` | Required `expect.version` from the job read; stale versions answer `stale` without changing attachments. |
+| `context` | Required list of at most 20 `{title, markdown, source?}` attachments. Title is 1–200 characters after trimming; markdown is non-empty; source is at most 500 characters. Total markdown is at most 100,000 characters, separate from the 20,000-character `text` limit. `[]` clears attachments. |
+
+The engine sends one `POST /v1/jobs/{id}/context` with `{context, expect}`.
+The job must be in Backlog or queued with no run (no stream): before its first
+run, or after Bring back cleared its last one, so its next run reads it. Caller rules
+match model edits: solo callers, the job's person, or anyone when no person is
+assigned. A begun job answers `conflict`: "The job has started; its steps
+already read their context." Malformed attachments answer `bad_params` before
+transport. The Factory validates again and records one activity per replacement.
+
+Job, queue and `current` reads list `context: [{title, source?}]` only.
+Worker admission carries full markdown. A non-skipped conversation `plan`,
+otherwise the first non-skipped conversation, receives every attachment whole
+after notes as reference material. Without a stream only eligible stages count.
+Other steps receive none; attachments never enter a GitHub issue, PR or comment.
+
+Reply: `FactoryJobActed` with `action: "context_set"`, `job`, optional `current`.
+The mux's 404/405 (including "factory endpoint not found") means `conflict` with
+`detail.reason: "factory_too_old"`; JSON "job not found" stays `not_found`.
+A lost answer or 5xx is `uncertain`. The engine never re-sends the write.
 
 ## files methods
 
@@ -1290,6 +1593,7 @@ this optional field; older engines provide no Library breakdown.
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
 | `factory.sessions_changed` | `Empty` |
+| `factory.event` | `FactoryEvent` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |
 | `inbox.counts` | `InboxCounts` |
@@ -1324,6 +1628,11 @@ this optional field; older engines provide no Library breakdown.
 | `turn.thinking` | `TurnThinking` |
 | `turn.thinking_done` | `TurnThinkingDone` |
 | `turn.tool` | `TurnTool` |
+
+`turn.tool` optionally carries `spent_usd`, the conversation's live spend when
+the step was said (the same meter as `agents.budget.get`'s `engine.spent_usd`,
+which can be ahead of the saved `Agent.spent_usd`); zero or unknown readings and
+history rows omit it, and absence means the engine did not say.
 
 ## Slash catalogue commands and forms
 

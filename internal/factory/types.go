@@ -509,6 +509,19 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	PolicyRun string `json:",omitempty"`
+
+	WaitsOn       []int     `json:",omitempty"`
+	WaitingOn     []int     `json:",omitempty"`
+	WaitsReleased bool      `json:",omitempty"`
+	Blocked       *JobBlock `json:",omitempty"`
+
+	// Group is the opaque label supplied when the job was made.
+	Group string `json:",omitempty"`
+	// Milestone is the milestone label supplied when the job was made.
+	Milestone string `json:",omitempty"`
+	// Context holds the person's reference attachments outside the description.
+	Context []JobContext `json:",omitempty"`
 	// PublishAnyway preserves the person decision without changing measured proof.
 	PublishAnyway *Approval `json:",omitempty"`
 	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.
@@ -520,6 +533,8 @@ type Item struct {
 
 	// FromJob is the ended job whose request this person started afresh.
 	FromJob int `json:",omitempty"`
+	// SplitFrom is the job this job was split from, independent of run-as-new.
+	SplitFrom int `json:",omitempty"`
 	// SourceIssue is a reference only; it never gives this job a forge identity.
 	SourceIssue string `json:",omitempty"`
 

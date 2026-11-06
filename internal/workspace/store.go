@@ -20,13 +20,10 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-// schemaVersion is the schema this build writes. Schema 2 added when a
-// collection was made and when each membership was added, the crew and
-// process kinds, and deletes that cascade. legacySchemaVersion is the one
-// older schema this build still reads as it is and migrates on its first
-// write; anything else claiming to be ours is refused, never misread.
+// schemaVersion is the schema this build writes. Earlier schemas remain
+// readable without migration; the first successful write upgrades them.
 const (
-	schemaVersion       = 2
+	schemaVersion       = 7
 	legacySchemaVersion = 1
 )
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
@@ -40,19 +37,17 @@ const busyTimeout = 10 * time.Second
 type schemaState uint8
 
 const (
-	schemaBlank schemaState = iota
-	schemaReady
-	schemaLegacy
-	schemaRefused
+	schemaBlank   schemaState = 0
+	schemaLegacy  schemaState = 1
+	schemaTwo     schemaState = 2
+	schemaReady   schemaState = schemaVersion
+	schemaRefused schemaState = schemaVersion + 1
 )
 
-// version is the schema a state reads through: 0 for a blank file.
+// version is the schema a state reads through: 0 for a blank or refused file.
 func (s schemaState) version() int {
-	switch s {
-	case schemaReady:
-		return schemaVersion
-	case schemaLegacy:
-		return legacySchemaVersion
+	if s < schemaRefused {
+		return int(s)
 	}
 	return 0
 }
@@ -66,8 +61,8 @@ func (s schemaState) version() int {
 // lock to do it — which is what put a plain read behind whichever peer happened
 // to be adding a membership. `version` is that question already answered (0
 // while the file is blank), and `schemaMu` keeps two goroutines on one handle
-// from both answering it. The same law covers migration: a schema-1 file is
-// read as it stands and rebuilt only by the first write.
+// from both answering it. The same law covers migration: older supported files
+// are read as they stand and upgraded only by the first write.
 type Store struct {
 	db       *sql.DB
 	schemaMu sync.Mutex
@@ -161,7 +156,7 @@ func (s *Store) snapshotSchema(ctx context.Context) (schemaState, error) {
 }
 
 // inspectSchema decides whether the database on the other end of q is ours and
-// built (at this schema or the legacy one), ours and still blank, or somebody
+// built at a supported schema, ours and still blank, or somebody
 // else's. It only ever reads; the caller decides what view it reads through.
 func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	if err := ctx.Err(); err != nil {
@@ -174,17 +169,18 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	if err := q.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return schemaBlank, err
 	}
-	if app == applicationID && (version == schemaVersion || version == legacySchemaVersion) {
-		state := schemaReady
+	if app == applicationID && version >= legacySchemaVersion && version <= schemaVersion {
+		state := schemaState(version)
 		collections := "SELECT seq,id,name,created_at FROM collections LIMIT 0"
 		memberships := "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at FROM memberships LIMIT 0"
+		if version >= 3 {
+			memberships = "SELECT seq,collection_id,kind,ref_id,session_id,target_collection,added_at,factory FROM memberships LIMIT 0"
+		}
 		if version == legacySchemaVersion {
-			state = schemaLegacy
 			collections = "SELECT seq,id,name FROM collections LIMIT 0"
 			memberships = "SELECT seq,collection_id,kind,ref_id,session_id,target_collection FROM memberships LIMIT 0"
 		}
-		// Preparing the actual reads catches missing tables before reporting a
-		// successful open. We never recreate a damaged initialized schema.
+		// Only the generic tables define a supported file's readable shape.
 		if _, err := q.ExecContext(ctx, collections); err != nil {
 			return state, err
 		}
@@ -205,7 +201,7 @@ func inspectSchema(ctx context.Context, q schemaQuerier) (schemaState, error) {
 	return schemaBlank, nil
 }
 
-// schemaTables is schema 2's two tables under the names given, so the same
+// schemaTables builds the collection tables under the names given, so the same
 // words build a fresh store and the copies a migration fills.
 //
 // EVERY DELETE CASCADES: a deleted collection takes its own memberships and
@@ -222,25 +218,27 @@ CREATE TABLE %[1]s (
 CREATE TABLE %[2]s (
  seq INTEGER PRIMARY KEY AUTOINCREMENT,
  collection_id TEXT NOT NULL REFERENCES %[1]s(id) ON DELETE CASCADE,
- kind TEXT NOT NULL CHECK(kind IN ('collection','conversation','task','standing','artifact','crew','process')),
+ kind TEXT NOT NULL CHECK(kind IN ('collection','conversation','task','standing','artifact','crew','process','factory_job')),
  ref_id TEXT NOT NULL,
  session_id TEXT NOT NULL,
  target_collection TEXT REFERENCES %[1]s(id) ON DELETE CASCADE,
  added_at INTEGER NOT NULL DEFAULT 0,
+ factory TEXT NOT NULL DEFAULT '',
+ CHECK ((kind='factory_job' AND length(factory)>0) OR (kind!='factory_job' AND factory='')),
  CHECK ((kind='collection' AND target_collection IS NOT NULL AND target_collection=ref_id)
      OR (kind!='collection' AND target_collection IS NULL)),
- UNIQUE(collection_id,kind,ref_id,session_id)
+ UNIQUE(collection_id,kind,ref_id,session_id,factory)
 );
 `, collections, memberships)
 }
 
 const schemaIndexes = `
-CREATE INDEX memberships_reference ON memberships(kind,ref_id,session_id);
+CREATE INDEX memberships_reference ON memberships(kind,ref_id,session_id,factory);
 CREATE INDEX memberships_target ON memberships(target_collection);
 `
 
-// migrateLegacy rebuilds a schema-1 file as schema 2 inside the caller's
-// immediate transaction: either every row arrives in the new tables, in the
+// migrateLegacy rebuilds a schema-1 or schema-2 file in the current generic
+// shape inside the caller's immediate transaction: every row arrives in the
 // same order under the same sequence numbers, or the file is left exactly as
 // it was. A row from schema 1 says nothing of when it was made, so its
 // created_at and added_at are 0, which every reader takes as unknown.
@@ -248,68 +246,116 @@ CREATE INDEX memberships_target ON memberships(target_collection);
 // THE TABLES ARE COPIED, NOT ALTERED, because SQLite cannot change a CHECK or
 // a foreign key in place. The old memberships go first so dropping the old
 // collections deletes nothing anything still points at, and renaming the copy
-// carries the foreign keys that name it along.
-func migrateLegacy(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, schemaTables("collections_v2", "memberships_v2")+`
-INSERT INTO collections_v2(seq,id,name,created_at) SELECT seq,id,name,0 FROM collections ORDER BY seq;
-INSERT INTO memberships_v2(seq,collection_id,kind,ref_id,session_id,target_collection,added_at)
- SELECT seq,collection_id,kind,ref_id,session_id,target_collection,0 FROM memberships ORDER BY seq;
+// carries the foreign keys that name it along. Sequence high-water marks also
+// survive deleted rows so migration cannot reuse a sequence named by an older
+// page cursor.
+func migrateLegacy(ctx context.Context, tx *sql.Tx, version int) error {
+	created, added := "0", "0"
+	if version >= 2 {
+		created, added = "created_at", "added_at"
+	}
+	_, err := tx.ExecContext(ctx, schemaTables("collections_v3", "memberships_v3")+fmt.Sprintf(`
+INSERT INTO collections_v3(seq,id,name,created_at) SELECT seq,id,name,%s FROM collections ORDER BY seq;
+INSERT INTO memberships_v3(seq,collection_id,kind,ref_id,session_id,target_collection,added_at)
+ SELECT seq,collection_id,kind,ref_id,session_id,target_collection,%s FROM memberships ORDER BY seq;
+UPDATE sqlite_sequence SET seq=max(seq,coalesce((SELECT seq FROM sqlite_sequence WHERE name='collections'),0))
+ WHERE name='collections_v3';
+INSERT INTO sqlite_sequence(name,seq) SELECT 'collections_v3',seq FROM sqlite_sequence
+ WHERE name='collections' AND NOT EXISTS(SELECT 1 FROM sqlite_sequence WHERE name='collections_v3');
+UPDATE sqlite_sequence SET seq=max(seq,coalesce((SELECT seq FROM sqlite_sequence WHERE name='memberships'),0))
+ WHERE name='memberships_v3';
+INSERT INTO sqlite_sequence(name,seq) SELECT 'memberships_v3',seq FROM sqlite_sequence
+ WHERE name='memberships' AND NOT EXISTS(SELECT 1 FROM sqlite_sequence WHERE name='memberships_v3');
 DROP TABLE memberships;
 DROP TABLE collections;
-ALTER TABLE collections_v2 RENAME TO collections;
-ALTER TABLE memberships_v2 RENAME TO memberships;
-`+schemaIndexes)
+ALTER TABLE collections_v3 RENAME TO collections;
+ALTER TABLE memberships_v3 RENAME TO memberships;
+`, created, added)+schemaIndexes)
 	return err
 }
 
-// ensureSchema serializes initialization on one handle and then takes SQLite's
-// immediate transaction so separate processes also agree which one builds it,
-// or which one migrates a schema-1 file to this one.
-func (s *Store) ensureSchema(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return storeError(err)
-	}
-	s.schemaMu.Lock()
-	defer s.schemaMu.Unlock()
-	if s.version == schemaVersion {
-		return nil
+// beginWrite ensures schema and data changes share one immediate transaction.
+// A failed first write rolls back the migration as well as the requested change.
+func (s *Store) beginWrite(ctx context.Context, create bool) (*sql.Tx, error) {
+	if !create {
+		version, err := s.readyForRead(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if version == 0 {
+			return nil, ErrNotFound
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return storeError(err)
+		return nil, storeError(err)
+	}
+	state, err := inspectSchema(ctx, tx)
+	if err == nil {
+		switch {
+		case state == schemaReady:
+			// A current file needs no DDL.
+		case state == schemaLegacy || state == schemaTwo:
+			err = migrateLegacy(ctx, tx, state.version())
+		case state >= 3 && state < schemaReady:
+			_, err = tx.ExecContext(ctx, schemaSevenCleanup)
+		case state == schemaBlank:
+			if !create {
+				err = ErrNotFound
+			} else {
+				_, err = tx.ExecContext(ctx, schemaTables("collections", "memberships")+schemaIndexes)
+			}
+		}
+	}
+	if err == nil && state != schemaReady {
+		_, err = tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion))
+	}
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, storeError(err)
+	}
+	return tx, nil
+}
+
+// ensureSchema is used by bulk fixtures that initialize without adding rows.
+func (s *Store) ensureSchema(ctx context.Context) error {
+	tx, err := s.beginWrite(ctx, true)
+	if err != nil {
+		return err
 	}
 	defer tx.Rollback()
+	return storeError(tx.Commit())
+}
+
+// Read runs fn against a consistent read-only snapshot. Version 0 means blank.
+// Reads never initialize or migrate the database.
+func (s *Store) Read(ctx context.Context, fn func(tx *sql.Tx, version int) error) error {
+	tx, version, err := s.beginRead(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return storeError(fn(tx, version))
+}
+
+// beginRead keeps the schema decision and projected rows in one snapshot. A
+// peer may migrate between separate transactions, adding fields an old projection
+// cannot supply (notably factory on a new job ref).
+func (s *Store) beginRead(ctx context.Context) (*sql.Tx, int, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, storeError(err)
+	}
 	state, err := inspectSchema(ctx, tx)
 	if err != nil {
-		return storeError(err)
+		_ = tx.Rollback()
+		return nil, 0, storeError(err)
 	}
-	switch state {
-	case schemaReady:
-		if err := tx.Commit(); err != nil {
-			return storeError(err)
-		}
-		s.version = schemaVersion
-		return nil
-	case schemaLegacy:
-		err = migrateLegacy(ctx, tx)
-	default:
-		_, err = tx.ExecContext(ctx, schemaTables("collections", "memberships")+schemaIndexes)
-	}
-	if err != nil {
-		return storeError(err)
-	}
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)); err != nil {
-		return storeError(err)
-	}
-	if err := tx.Commit(); err != nil {
-		return storeError(err)
-	}
-	s.version = schemaVersion
-	return nil
+	return tx, state.version(), nil
 }
 
 // readyForRead answers the schema a read goes through, and 0 for a blank
-// file. A handle that saw a blank or a schema-1 file looks again, because
+// file. A handle that saw a blank or an older schema looks again, because
 // another process may have initialized or migrated it since. The look is
 // still only plain reads.
 func (s *Store) readyForRead(ctx context.Context) (int, error) {
@@ -329,26 +375,10 @@ func (s *Store) readyForRead(ctx context.Context) (int, error) {
 	return s.version, nil
 }
 
-// readyForWrite is readyForRead for a change to a collection that must
-// already exist: false on a blank file, which such a change cannot find
-// anything in and must leave blank, and a schema-1 file migrated first.
-func (s *Store) readyForWrite(ctx context.Context) (bool, error) {
-	version, err := s.readyForRead(ctx)
-	if err != nil || version == 0 {
-		return false, err
-	}
-	if version != schemaVersion {
-		if err := s.ensureSchema(ctx); err != nil {
-			return false, err
-		}
-	}
-	return true, nil
-}
-
 // columns are the expressions a read uses for created_at and added_at: the
 // columns themselves at schema 2, and the unknown 0 on a schema-1 file.
 func columns(version int) (created, added string) {
-	if version >= schemaVersion {
+	if version >= 2 {
 		return "c.created_at", "m.added_at"
 	}
 	return "0", "0"
@@ -409,10 +439,7 @@ func (s *Store) Create(ctx context.Context, name string) (Collection, error) {
 	if err != nil {
 		return Collection{}, storeError(err)
 	}
-	if err := s.ensureSchema(ctx); err != nil {
-		return Collection{}, storeError(err)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx, true)
 	if err != nil {
 		return Collection{}, storeError(err)
 	}
@@ -434,14 +461,7 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 	if err := ValidateName(name); err != nil {
 		return storeError(err)
 	}
-	ready, err := s.readyForWrite(ctx)
-	if err != nil {
-		return storeError(err)
-	}
-	if !ready {
-		return storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx, false)
 	if err != nil {
 		return storeError(err)
 	}
@@ -463,14 +483,7 @@ func (s *Store) Rename(ctx context.Context, id, name string) error {
 // first, because each of them changed too. The records any of it referenced
 // are untouched.
 func (s *Store) Delete(ctx context.Context, id string) ([]string, error) {
-	ready, err := s.readyForWrite(ctx)
-	if err != nil {
-		return nil, storeError(err)
-	}
-	if !ready {
-		return nil, storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx, false)
 	if err != nil {
 		return nil, storeError(err)
 	}
@@ -511,18 +524,11 @@ func (s *Store) Duplicate(ctx context.Context, id, name string) (Collection, err
 	if err := ValidateName(name); err != nil {
 		return Collection{}, storeError(err)
 	}
-	ready, err := s.readyForWrite(ctx)
-	if err != nil {
-		return Collection{}, storeError(err)
-	}
-	if !ready {
-		return Collection{}, storeError(ErrNotFound)
-	}
 	copyID, err := newID()
 	if err != nil {
 		return Collection{}, storeError(err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx, false)
 	if err != nil {
 		return Collection{}, storeError(err)
 	}
@@ -536,8 +542,8 @@ func (s *Store) Duplicate(ctx context.Context, id, name string) (Collection, err
 	if _, err := tx.ExecContext(ctx, "INSERT INTO collections(id,name,created_at) VALUES (?,?,?)", copyID, name, s.millis()); err != nil {
 		return Collection{}, storeError(err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection,added_at)
- SELECT ?,kind,ref_id,session_id,target_collection,added_at FROM memberships WHERE collection_id=? ORDER BY seq`, copyID, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection,added_at,factory)
+ SELECT ?,kind,ref_id,session_id,target_collection,added_at,factory FROM memberships WHERE collection_id=? ORDER BY seq`, copyID, id); err != nil {
 		return Collection{}, storeError(err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -547,20 +553,23 @@ func (s *Store) Duplicate(ctx context.Context, id, name string) (Collection, err
 }
 
 func (s *Store) Collections(ctx context.Context) ([]Collection, error) {
-	version, err := s.readyForRead(ctx)
+	out := make([]Collection, 0)
+	err := s.Read(ctx, func(tx *sql.Tx, version int) error {
+		if version == 0 {
+			return nil
+		}
+		rows, err := tx.QueryContext(ctx, "SELECT c.id,c.name FROM collections c ORDER BY seq")
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		out, err = readCollections(rows)
+		return err
+	})
 	if err != nil {
-		return nil, storeError(err)
+		return nil, err
 	}
-	if version == 0 {
-		return make([]Collection, 0), nil
-	}
-	rows, err := s.db.QueryContext(ctx, "SELECT id,name FROM collections ORDER BY seq")
-	if err != nil {
-		return nil, storeError(err)
-	}
-	defer rows.Close()
-	result, err := readCollections(rows)
-	return result, storeError(err)
+	return out, nil
 }
 
 func readCollections(rows *sql.Rows) ([]Collection, error) {
@@ -610,14 +619,7 @@ func (s *Store) AddRefs(ctx context.Context, id string, refs []Addition) ([]Memb
 			return nil, nil, storeError(fmt.Errorf("%w: added_at cannot be negative", ErrInvalid))
 		}
 	}
-	ready, err := s.readyForWrite(ctx)
-	if err != nil {
-		return nil, nil, storeError(err)
-	}
-	if !ready {
-		return nil, nil, storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx, false)
 	if err != nil {
 		return nil, nil, storeError(err)
 	}
@@ -625,6 +627,7 @@ func (s *Store) AddRefs(ctx context.Context, id string, refs []Addition) ([]Memb
 	if err := requireCollection(ctx, tx, id); err != nil {
 		return nil, nil, storeError(err)
 	}
+
 	now := s.millis()
 	added, already := make([]Member, 0, len(refs)), make([]Ref, 0)
 	for _, ref := range refs {
@@ -639,8 +642,8 @@ func (s *Store) AddRefs(ctx context.Context, id string, refs []Addition) ([]Memb
 		if at == 0 {
 			at = now
 		}
-		result, err := tx.ExecContext(ctx, `INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection,added_at)
- VALUES (?,?,?,?,?,?) ON CONFLICT(collection_id,kind,ref_id,session_id) DO NOTHING`, id, ref.Kind, ref.ID, ref.SessionID, target, at)
+		result, err := tx.ExecContext(ctx, `INSERT INTO memberships(collection_id,kind,ref_id,session_id,target_collection,added_at,factory)
+ VALUES (?,?,?,?,?,?,?) ON CONFLICT(collection_id,kind,ref_id,session_id,factory) DO NOTHING`, id, ref.Kind, ref.ID, ref.SessionID, target, at, ref.Factory)
 		if err != nil {
 			return nil, nil, storeError(err)
 		}
@@ -701,14 +704,7 @@ func (s *Store) Relink(ctx context.Context, id string, from, to Ref) (Member, bo
 	if err := to.Validate(); err != nil {
 		return Member{}, false, storeError(err)
 	}
-	ready, err := s.readyForWrite(ctx)
-	if err != nil {
-		return Member{}, false, storeError(err)
-	}
-	if !ready {
-		return Member{}, false, storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx, false)
 	if err != nil {
 		return Member{}, false, storeError(err)
 	}
@@ -717,8 +713,8 @@ func (s *Store) Relink(ctx context.Context, id string, from, to Ref) (Member, bo
 		return Member{}, false, storeError(err)
 	}
 	membership := func(ref Ref) (seq, at int64, err error) {
-		err = tx.QueryRowContext(ctx, "SELECT seq,added_at FROM memberships WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=?",
-			id, ref.Kind, ref.ID, ref.SessionID).Scan(&seq, &at)
+		err = tx.QueryRowContext(ctx, "SELECT seq,added_at FROM memberships WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=? AND factory=?",
+			id, ref.Kind, ref.ID, ref.SessionID, ref.Factory).Scan(&seq, &at)
 		return seq, at, err
 	}
 	seq, at, err := membership(from)
@@ -749,8 +745,8 @@ func (s *Store) Relink(ctx context.Context, id string, from, to Ref) (Member, bo
 		}
 		target = to.ID
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE memberships SET kind=?,ref_id=?,session_id=?,target_collection=? WHERE seq=?",
-		to.Kind, to.ID, to.SessionID, target, seq); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE memberships SET kind=?,ref_id=?,session_id=?,target_collection=?,factory=? WHERE seq=?",
+		to.Kind, to.ID, to.SessionID, target, to.Factory, seq); err != nil {
 		return Member{}, false, storeError(err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -774,14 +770,7 @@ func (s *Store) RemoveRefs(ctx context.Context, id string, refs []Ref) ([]Member
 			return nil, storeError(err)
 		}
 	}
-	ready, err := s.readyForWrite(ctx)
-	if err != nil {
-		return nil, storeError(err)
-	}
-	if !ready {
-		return nil, storeError(ErrNotFound)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginWrite(ctx, false)
 	if err != nil {
 		return nil, storeError(err)
 	}
@@ -792,8 +781,8 @@ func (s *Store) RemoveRefs(ctx context.Context, id string, refs []Ref) ([]Member
 	removed := make([]Member, 0, len(refs))
 	for _, ref := range refs {
 		var at int64
-		err := tx.QueryRowContext(ctx, "DELETE FROM memberships WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=? RETURNING added_at",
-			id, ref.Kind, ref.ID, ref.SessionID).Scan(&at)
+		err := tx.QueryRowContext(ctx, "DELETE FROM memberships WHERE collection_id=? AND kind=? AND ref_id=? AND session_id=? AND factory=? RETURNING added_at",
+			id, ref.Kind, ref.ID, ref.SessionID, ref.Factory).Scan(&at)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
@@ -809,55 +798,56 @@ func (s *Store) RemoveRefs(ctx context.Context, id string, refs []Ref) ([]Member
 }
 
 func (s *Store) Members(ctx context.Context, id string) ([]Ref, error) {
-	version, err := s.readyForRead(ctx)
-	if err != nil {
-		return nil, storeError(err)
-	}
-	if version == 0 {
-		return nil, storeError(ErrNotFound)
-	}
-	var exists bool
-	if err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM collections WHERE id=?)", id).Scan(&exists); err != nil {
-		return nil, storeError(err)
-	}
-	if !exists {
-		return nil, storeError(ErrNotFound)
-	}
-	rows, err := s.db.QueryContext(ctx, "SELECT kind,ref_id,session_id FROM memberships WHERE collection_id=? ORDER BY seq", id)
-	if err != nil {
-		return nil, storeError(err)
-	}
-	defer rows.Close()
-	result := make([]Ref, 0)
-	for rows.Next() {
-		var ref Ref
-		if err := rows.Scan(&ref.Kind, &ref.ID, &ref.SessionID); err != nil {
-			return nil, storeError(err)
+	out := make([]Ref, 0)
+	err := s.Read(ctx, func(tx *sql.Tx, version int) error {
+		if version == 0 {
+			return ErrNotFound
 		}
-		result = append(result, ref)
+		if err := requireCollection(ctx, tx, id); err != nil {
+			return err
+		}
+		rows, err := tx.QueryContext(ctx, "SELECT kind,ref_id,session_id,"+factoryColumn(version)+" FROM memberships WHERE collection_id=? ORDER BY seq", id)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var ref Ref
+			if err := rows.Scan(&ref.Kind, &ref.ID, &ref.SessionID, &ref.Factory); err != nil {
+				return err
+			}
+			out = append(out, ref)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
 	}
-	return result, storeError(rows.Err())
+	return out, nil
 }
 
 func (s *Store) CollectionsFor(ctx context.Context, ref Ref) ([]Collection, error) {
 	if err := ref.Validate(); err != nil {
 		return nil, storeError(err)
 	}
-	version, err := s.readyForRead(ctx)
+	out := make([]Collection, 0)
+	err := s.Read(ctx, func(tx *sql.Tx, version int) error {
+		if version == 0 {
+			return nil
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT c.id,c.name FROM collections c JOIN memberships m ON m.collection_id=c.id
+ WHERE m.kind=? AND m.ref_id=? AND m.session_id=? AND `+factoryColumn(version)+`=? ORDER BY c.seq`, ref.Kind, ref.ID, ref.SessionID, ref.Factory)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		out, err = readCollections(rows)
+		return err
+	})
 	if err != nil {
-		return nil, storeError(err)
+		return nil, err
 	}
-	if version == 0 {
-		return make([]Collection, 0), nil
-	}
-	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.name FROM collections c JOIN memberships m ON m.collection_id=c.id
- WHERE m.kind=? AND m.ref_id=? AND m.session_id=? ORDER BY c.seq`, ref.Kind, ref.ID, ref.SessionID)
-	if err != nil {
-		return nil, storeError(err)
-	}
-	defer rows.Close()
-	result, err := readCollections(rows)
-	return result, storeError(err)
+	return out, nil
 }
 
 // storeError replaces SQLite's lock account with the stable sentence exposed by
@@ -941,4 +931,11 @@ func pathReason(err error) error {
 		return failure.Err
 	}
 	return err
+}
+
+func factoryColumn(version int) string {
+	if version >= 3 {
+		return "factory"
+	}
+	return "''"
 }

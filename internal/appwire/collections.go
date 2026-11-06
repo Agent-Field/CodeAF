@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // WAVE 9: COLLECTIONS (PROTOCOL.md, V75). A collection is a hand-picked list
@@ -31,6 +32,7 @@ const (
 	RefArtifact     = "artifact"
 	RefCrew         = "crew"
 	RefProcess      = "process"
+	RefFactoryJob   = "factory_job"
 	RefStanding     = "standing"
 )
 
@@ -60,9 +62,10 @@ const (
 // Ref is one reference: a task and a process carry their agent as SessionID,
 // and an artifact is a clean absolute path.
 type Ref struct {
-	Kind      string `json:"kind" enum:"collection,conversation,task,artifact,crew,process,standing"`
+	Kind      string `json:"kind" enum:"collection,conversation,task,artifact,crew,process,standing,factory_job"`
 	ID        string `json:"id"`
 	SessionID string `json:"session_id,omitempty"`
+	Factory   string `json:"factory,omitempty"`
 }
 
 // Member is a reference as a collection holds it, with when it was added;
@@ -252,6 +255,9 @@ func plainText(s string, limit int) bool {
 // CheckRef refuses a malformed reference as bad_params. adding refuses the
 // legacy standing kind, which can be found and removed and never added.
 func CheckRef(r Ref, adding bool) error {
+	if r.Kind != RefFactoryJob && r.Factory != "" {
+		return Errorf(CodeBadParams, "only a factory_job reference has a factory")
+	}
 	if !plainText(r.ID, collectionIDMax) {
 		return Errorf(CodeBadParams, "a reference needs an id without surrounding space or control characters")
 	}
@@ -263,6 +269,11 @@ func CheckRef(r Ref, adding bool) error {
 		return Errorf(CodeBadParams, "only a task or a process reference has a session_id")
 	}
 	switch r.Kind {
+	case RefFactoryJob:
+		n, err := strconv.ParseUint(r.ID, 10, 63)
+		if err != nil || n == 0 || strconv.FormatUint(n, 10) != r.ID || (!plainText(r.Factory, collectionIDMax) || !utf8.ValidString(r.Factory)) {
+			return Errorf(CodeBadParams, "a factory_job needs a factory and a positive canonical job number")
+		}
 	case RefCollection, RefConversation, RefCrew, RefProcess:
 	case RefTask:
 		n, err := strconv.ParseUint(r.ID, 10, 64)

@@ -203,6 +203,7 @@ func runApp(args []string) error {
 	// ONE SUPERVISOR FOR EVERY CONVERSATION THE APP BUILDS (appservices.go).
 	services := openAppServices()
 	appServiceDoor.Store(services)
+	appClientToolsBackend.Store(backend)
 	backend.attachServices(services)
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
@@ -561,6 +562,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	clientTools    appClientTools
 	libraryWatch   sync.Once
 	libraryInboxMu sync.Mutex
 	pluginPauses   map[string]appPluginPause
@@ -763,6 +765,7 @@ type appBackend struct {
 	collections       *workspace.Store
 	collectionsClosed bool
 	collectionsPath   string
+	collectionFactory collectionFactory
 	// services is the app's one supervisor of kept-running processes
 	// (appservices.go); nil is the capability absent.
 	services *appServices
@@ -1276,10 +1279,12 @@ func appRowOnDisk(id string) (session.SessionRow, bool) {
 		// A folder minted and never spoken in is still a conversation the app
 		// may have created; its meta names the workspace.
 		meta, err := session.LoadMeta(dir)
-		if err != nil || strings.TrimSpace(meta.ID) == "" {
+		if err != nil || meta.ID != id {
 			continue
 		}
-		return session.SessionRow{ID: id, AgentDID: meta.AgentDID(), Dir: dir, Transcript: transcript, Title: meta.Title, Workspace: meta.Workspace, Created: meta.Created}, true
+		return session.SessionRow{ID: id, AgentDID: meta.AgentDID(), Dir: dir, Transcript: transcript,
+			Title: meta.Title, Workspace: meta.Workspace, Owned: meta.Owned, Model: meta.Model,
+			Archived: meta.Archived, Spend: meta.SpentUSD, At: meta.Created, Created: meta.Created}, true
 	}
 	return session.SessionRow{}, false
 }
@@ -1934,6 +1939,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	if door, ok := conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
 		state := door.ModelIdentity()
 		modelIdentity = &state
+		if state.Selected != "" {
+			model = state.Selected
+		}
 	}
 	effort := conn.Conv.ReasoningFor(model)
 	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {
@@ -1987,6 +1995,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		a.crewHeld = a.crewHeld || crewHeld
 		view = a.view
 	})
+	b.holdClientTools(a, live)
 	startTitles()
 	b.flushSync(a)
 	b.locked(func() { view = a.view })
@@ -2918,7 +2927,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			b.stepMoved(a, live, title)
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
-			live.box.Event(appwire.EventTurnTool, row)
+			live.sayTool(row)
 		case session.EventToolOutput:
 			b.callOutput(a, id, live, event)
 		case session.EventToolFinished:
@@ -2937,7 +2946,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			if title == "" {
 				title = redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, ""))
 			}
-			live.box.Event(appwire.EventTurnTool, b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
+			live.sayTool(b.callEnded(a, id, turn, event, title, summary, appDetail(summary), succeeded))
 			b.noteContext(a, live)
 			// THE SEVENTEENTH PROCESS is refused by the engine, and the turn
 			// says so once at its end.
@@ -4572,6 +4581,8 @@ func (b *appBackend) Close() error {
 	if b.leaving != nil {
 		b.leaving()
 	}
+	b.clientTools.disconnect()
+	appClientToolsBackend.CompareAndSwap(b, nil)
 	already := false
 	var crews *appCrewRun
 	var agents []*appAgent

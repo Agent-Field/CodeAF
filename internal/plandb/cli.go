@@ -234,6 +234,11 @@ func cliRefusal(p *cliParsed) (string, bool) {
 // says where a run's store was, and only the root says which run it is.
 const RunEnv = "PLANDB_RUN"
 
+// TaskEnv names the store task whose run worker is creating work.
+const TaskEnv = "PLANDB_TASK"
+
+func cliRunBound() bool { return os.Getenv(RunEnv) != "" }
+
 // cliStore opens the run's store without being told where it is: --db, then
 // PLANDB_DB, then the first ancestor holding plandb.db or
 // .codeaf/plandb.db. One store per file; --project is accepted and checked
@@ -417,9 +422,8 @@ func cliDispatch(st *Store, p *cliParsed) error {
 	}
 }
 
-// cliAdd creates one task. Absent --parent the task lands under the run's
-// root — the caller's running task is the runtime's business, and the
-// doctrine teaches --parent explicitly for decomposition.
+// cliAdd defaults to the worker's own task when bound to one; other callers
+// keep the run root as their default parent.
 func cliAdd(st *Store, p *cliParsed) error {
 	if len(p.pos) < 2 {
 		return errors.New(`add needs a title — plandb add "title" --description "the work order"`)
@@ -446,6 +450,8 @@ func cliAdd(st *Store, p *cliParsed) error {
 			return err
 		}
 		spec.ParentID = up.ID
+	} else if cliRunBound() {
+		spec.ParentID = cliWorkerTask()
 	}
 	for _, dep := range p.lists["dep"] {
 		word, kind, err := cliDepArg(dep)
@@ -471,7 +477,7 @@ func cliAdd(st *Store, p *cliParsed) error {
 	if err := cliPlaceholderChecks(st, spec.Checks, spec.Title, spec.Description, "Nothing was added."); err != nil {
 		return err
 	}
-	created, err := st.AddMany([]TaskSpec{spec})
+	created, err := cliAddMany(st, []TaskSpec{spec})
 	if err != nil {
 		return err
 	}
@@ -521,7 +527,7 @@ func cliSplit(st *Store, p *cliParsed) error {
 	if err != nil {
 		return err
 	}
-	created, err := st.AddMany(specs)
+	created, err := cliAddMany(st, specs)
 	if err != nil {
 		return err
 	}
@@ -952,6 +958,9 @@ func cliInsert(st *Store, p *cliParsed) error {
 	if err != nil {
 		return err
 	}
+	if err := cliWorkerParent(up.ParentID); err != nil {
+		return err
+	}
 	var before *Task
 	if word := p.vals["before"]; word != "" {
 		down, err := cliResolve(st, word)
@@ -960,7 +969,7 @@ func cliInsert(st *Store, p *cliParsed) error {
 		}
 		before = down
 	}
-	created, err := st.AddMany([]TaskSpec{{
+	created, err := cliAddMany(st, []TaskSpec{{
 		ID: st.NextID(), Title: p.vals["title"], Description: p.vals["description"],
 		ParentID: up.ParentID,
 	}})
@@ -1013,6 +1022,9 @@ func cliPivot(st *Store, p *cliParsed) error {
 	if err != nil {
 		return err
 	}
+	if err := cliWorkerParent(parent.ID); err != nil {
+		return err
+	}
 	if parent.ID == st.RootID() {
 		return errors.New("the root task is the run itself — pivot one of its children instead")
 	}
@@ -1032,7 +1044,7 @@ func cliPivot(st *Store, p *cliParsed) error {
 	// The whole subtree, read before the new children go in, so what
 	// --keep-done spared can be told apart from the replacements and reported.
 	standing := cliSubtreeAll(st, parent.ID)
-	created, err := st.AddMany(specs)
+	created, err := cliAddMany(st, specs)
 	if err != nil {
 		return err
 	}

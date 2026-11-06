@@ -2,9 +2,10 @@
 
 ## Pull request checks
 
-`PR gate` (`ci.yml`) runs on pull requests into `dev`, `app/v3` and
-`santos/dev2`, and pushes to `dev` and `santos/dev2`. The required `check`
-status combines the light gate and successful touched-package checks.
+`PR gate` (`ci.yml`) runs on pull requests into `dev`, `app/v3`,
+`santos/dev2` and `workstreams/main`, and pushes to `dev`, `santos/dev2` and
+`workstreams/main`. The required `check` status combines the light gate and
+successful touched-package checks.
 Pull requests compare against their exact base SHA, so an `app/v3` PR selects
 packages and attributes failures against `app/v3`, rather than `dev`.
 

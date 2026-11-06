@@ -10,12 +10,12 @@ package main
 //
 // RESOLUTION ASKS EACH OWNER ONCE PER CALL, NEVER ONCE PER MEMBER. A call
 // takes one agents listing (every state, closed and archived included), one
-// crews listing, one task list and one process list per distinct agent, and
-// one look for a git work tree per directory; a collection of a thousand
-// files in one repository costs one walk up to its .git. No transcript is
-// read to resolve anything, and a member whose owner cannot be asked is
-// "unknown", which says nothing about the member itself, with a reason that
-// names the owner and why it could not be asked.
+// folder lookup per unlisted conversation id, one crews listing, one task list
+// and one process list per distinct listed agent, and one look for a git work
+// tree per directory; a collection of a thousand files in one repository costs
+// one walk up to its .git. No transcript is read to resolve anything. A member
+// whose owner cannot be asked is "unknown", which says nothing about the member
+// itself, with a reason naming the owner and why it could not be asked.
 
 import (
 	"bufio"
@@ -34,6 +34,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/workspace"
 )
 
@@ -123,11 +124,11 @@ func (b *appBackend) collectionChanged(id string, deleted bool) {
 }
 
 func appStoreRef(r appwire.Ref) workspace.Ref {
-	return workspace.Ref{Kind: workspace.Kind(r.Kind), ID: r.ID, SessionID: r.SessionID}
+	return workspace.Ref{Kind: workspace.Kind(r.Kind), ID: r.ID, SessionID: r.SessionID, Factory: r.Factory}
 }
 
 func appWireRef(r workspace.Ref) appwire.Ref {
-	return appwire.Ref{Kind: string(r.Kind), ID: r.ID, SessionID: r.SessionID}
+	return appwire.Ref{Kind: string(r.Kind), ID: r.ID, SessionID: r.SessionID, Factory: r.Factory}
 }
 
 // appMoment is a stored moment on the wire: absent when unknown.
@@ -308,6 +309,7 @@ func (b *appBackend) OpenCollection(id string, depth, limit int, after string) (
 		return appwire.CollectionOpenResult{}, appCollectionError(err)
 	}
 	r := newCollectionResolver(b)
+	r.prepareFactoryTree(tree.Level)
 	var nodes func(level workspace.Level) []appwire.Node
 	nodes = func(level workspace.Level) []appwire.Node {
 		out := make([]appwire.Node, 0, len(level.Members))
@@ -359,6 +361,7 @@ func (b *appBackend) ExpandCollection(id string, depth, limit int) (appwire.Coll
 		Missing: e.Deleted, Unread: e.Unread, Collections: e.Collections, More: e.More,
 	}
 	r := newCollectionResolver(b)
+	r.prepareFactoryRefs(e.Refs)
 	for _, m := range e.Refs {
 		target := r.target(m.Ref)
 		switch target.State {
@@ -490,18 +493,20 @@ func appUnaskedReason(owner string, err error) string {
 type collectionResolver struct {
 	b *appBackend
 
-	agentsRead bool
-	agents     map[string]appwire.Agent
-	agentsErr  error
+	agentsRead  bool
+	agents      map[string]appwire.Agent
+	agentsErr   error
+	savedAgents map[string]appwire.Agent
 
 	crewsRead bool
 	crews     []appwire.Crew
 	crewByID  map[string]int
 	crewsErr  error
 
-	tasks map[string]appOwned[appwire.Task]
-	procs map[string]appOwned[appwire.Process]
-	git   map[string]*appGitTree
+	tasks          map[string]appOwned[appwire.Task]
+	procs          map[string]appOwned[appwire.Process]
+	git            map[string]*appGitTree
+	factoryTargets map[workspace.Ref]appwire.Target
 }
 
 // appOwned is one agent's tasks or processes by wire id, or why they could
@@ -517,8 +522,13 @@ func newCollectionResolver(b *appBackend) *collectionResolver {
 
 func (r *collectionResolver) target(ref workspace.Ref) appwire.Target {
 	switch ref.Kind {
+	case workspace.FactoryJobKind:
+		if _, ok := r.factoryTargets[ref]; !ok {
+			r.prepareFactoryRefs([]workspace.Member{{Ref: ref}})
+		}
+		return r.factoryTargets[ref]
 	case workspace.ConversationKind:
-		a, not := r.agent(ref.ID)
+		a, not := r.conversation(ref.ID)
 		if not != nil {
 			return *not
 		}
@@ -573,8 +583,8 @@ func (r *collectionResolver) target(ref workspace.Ref) appwire.Target {
 	return appwire.Target{State: appwire.TargetDeleted}
 }
 
-// agent is one agent off the one listing, or the target a member of it is
-// when there is no such agent (deleted) or no listing (unknown, and why).
+// agent is one agent off the listing, or the target a member
+// of it is when there is no such agent (deleted) or no listing (unknown, and why).
 func (r *collectionResolver) agent(id string) (appwire.Agent, *appwire.Target) {
 	if !r.agentsRead {
 		r.agentsRead = true
@@ -589,9 +599,38 @@ func (r *collectionResolver) agent(id string) (appwire.Agent, *appwire.Target) {
 		t := appUnknown("the conversation list", r.agentsErr)
 		return appwire.Agent{}, &t
 	}
-	a, ok := r.agents[id]
-	if !ok {
+	a := r.agents[id]
+	if a.ID == "" {
 		return appwire.Agent{}, &appwire.Target{State: appwire.TargetDeleted}
+	}
+	return a, nil
+}
+
+// conversation also checks saved folders for explicitly referenced agents.
+// Its cache stays separate so child references still require a listed owner.
+func (r *collectionResolver) conversation(id string) (appwire.Agent, *appwire.Target) {
+	a, not := r.agent(id)
+	if not == nil || not.State != appwire.TargetDeleted {
+		return a, not
+	}
+	if r.savedAgents == nil {
+		r.savedAgents = map[string]appwire.Agent{}
+	}
+	a, ok := r.savedAgents[id]
+	if !ok {
+		// Named blanks stay out of agents.list but can still be held by a
+		// collection. Cache misses too, since several members can name one agent.
+		if row, found := appRowOnDisk(id); found && !row.DeletionPending {
+			// Permanent deletion retains metadata, but its lifetime marker
+			// prevents the saved folder from becoming a live target again.
+			if _, err := os.Stat(filepath.Join(row.Dir, teams.ConversationDeletedFile)); errors.Is(err, fs.ErrNotExist) {
+				a = appRowView(row)
+			}
+		}
+		r.savedAgents[id] = a
+	}
+	if a.ID == "" {
+		return appwire.Agent{}, not
 	}
 	return a, nil
 }

@@ -1,5 +1,50 @@
 # The factory
 
+## a job that waits on other jobs — waits on, blocked, ready
+
+A Backlog job can wait on up to 20 other jobs of the same factory. Set or
+replace its parents with `factory.waits_set` (`waits_on`); an empty list clears
+them. You can change waits only before the job has started or been released.
+Unknown or repeated ids, the job itself, cycles and parents that already ended
+without merging are refused without changing the job.
+
+The job read keeps `waits_on` as set. `waiting_on` lists the parents still
+unsatisfied at the factory's last check, in that order. A parent satisfies
+its children when its pull request merges, or it ships with nothing to merge.
+A failed parent or one that ends without merging adds `blocked`, naming the
+parent and why. Repairing the parent clears that block on the next check.
+A person's Stop on a parent is not a failure. The person's queue Hold (`held`)
+is separate.
+
+The factory checks on startup and after folder changes, at most once every
+two seconds, with a safety check every minute. After every parent satisfies
+it, the job is ready in Backlog and its activity records `waits over:` with
+the parents. This release never starts the job. Your Start works while it
+waits or is blocked; from then on those waits stay inert, including after Stop.
+
+The engine advertises `factory.waits_set`, `factory.features` and capability
+`waits_on`. `factory.features` reads the connected factory's own features;
+use waits only when that list also includes `waits_on`. Older factories that
+omit the list answer an empty list. An older factory refusing the waits route
+answers a conflict with reason `factory_too_old` and asks you to update it.
+
+## closed issues, comment receipts and parent visibility for waits
+
+A closed GitHub issue does not satisfy its children. A job that shipped with
+nothing to merge must have a saved comment receipt; choosing comment publication
+alone is not enough. Closing without a merge or that receipt blocks its children
+and refuses new waits on it.
+
+You can set waits only on parents whose repositories you can read. An unreadable
+parent gets the same refusal as an unknown job. A parent in another repository
+appears in the child's block and release activity as `job` and its number. Its
+block says only `failed` or `closed without merging`; its repository and failed
+step stay out of the child's text. Parents in the same repository keep their
+usual references and failed-step labels.
+
+Your Start retires waits immediately. They stay inert after Drop and Bring back,
+even when no factory check happened between those actions.
+
 ## factory repository list refresh, saved repositories and available_read_at
 
 The factory saves the last complete GitHub repository list across a restart.
@@ -824,6 +869,87 @@ request takes its title from the job title alone.
 Terminal factory sentences still read those words as chips. Existing jobs are
 not rewritten; this applies when a new job is created. Factories without the
 separate-title creation capability retain their existing creation behavior.
+
+## Creating a job with an issue, group, milestone, budget and retry key
+
+`factory.job_create` accepts these optional fields alongside the job's title
+and details:
+
+| Field | Bounds and default |
+| --- | --- |
+| `open_issue` | Boolean, default false: create a job without opening an issue. True opens one GitHub issue using only the title and details, then ties the job to its number. |
+| `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Omitted or empty means none; labels stay outside the description and appear on job and queue reads. |
+| `budget` | Initial USD limit: 5, 10, 20 or 30. Recorded before starting and kept on an immediate or later start. Omission keeps the usual pipeline/Factory default ($5 when neither sets one). |
+| `key` | Retry key: 1–128 characters from `[A-Za-z0-9._:-]`, sent as the create's `Idempotency-Key` header. Omitted or empty (`key: ""`) means no key and no header. |
+
+`factory.capabilities` flags are `create_issue`, `create_group` (both labels),
+`create_budget` and `create_key`. True means the engine supports the choice;
+an older engine omits the flag or reports false. The attached Factory can
+still be older. A 422 refusing unknown `group`, `milestone`, `budget` or HTTP
+`issue`, or a 404/405 on `/v1/issues`, answers `conflict` with
+`detail.reason: "factory_too_old"`:
+"This factory doesn't support that yet; nothing was changed. Update the factory
+to use it." No fallback create is sent. Invalid fields answer `bad_params`
+before a write.
+
+The Factory replays the first response for the same caller, route and key for
+24 hours. After an `uncertain` create, resend the same key within that window;
+a different key creates a separate job. Without a key there is no replay
+protection. Context is a separate `factory.job_context_set` write after
+creation; it is not a create field.
+
+## Split a failed job into smaller jobs — split_from lineage
+
+When creating smaller jobs from a failed job, `factory.job_create` accepts
+optional `split_from`: an integer job number of at least 1 on the same Factory.
+Engines that carry it announce `create_split_from: true` in
+`factory.capabilities`.
+
+Each new job remembers that number. Its job read, queue row and create reply's
+`current` carry `split_from`; a job created without it omits the field. The new
+job's own activity adds one line such as `split from #80`. The parent job stays
+unchanged. The smaller job follows the normal creation, pipeline and start
+rules; its steps read its own brief and details.
+
+An explicit zero or negative number answers `bad_params` before the engine
+sends anything. The Factory also requires the parent to exist and be visible
+to the caller. A missing or hidden parent answers `bad_params` before any job
+or GitHub issue is made, including when `open_issue: true` was requested.
+
+An older Factory that refuses the `split_from` field answers `conflict` with
+`detail.reason: "factory_too_old"`; update that Factory. Nothing is made, and
+the engine sends no fallback create.
+
+## Job context attachments before the first run
+
+`factory.job_context_set` replaces the reference material attached to one job.
+Send `factory`, `job`, the `expect.version` from the job you read, and `context`.
+An empty list clears the attachments. Engines announce `factory.job_context`
+in hello and `job_context` in `factory.capabilities`. Job creation does not
+accept `context`; create the job in Backlog, attach context, then start it.
+
+Context can be changed in Backlog or while queued while the job has no run:
+before its first run, or after Bring back cleared its last one. Once a run has
+begun, the Factory refuses with "The job has started; its steps already read
+their context." A stale version changes nothing: read the job again.
+The same caller rule as model edits applies: in a team Factory the
+job's person may edit, or anyone when no person is assigned; solo allows it.
+
+Attach at most 20 items, each with a title, markdown and optional source label,
+path or URL. Titles are 1–200 characters after trimming, sources at most 500,
+and markdown must be non-empty. All markdown together is at most 100,000
+characters, separate from the job description's 20,000-character limit.
+Job and queue reads show only titles and sources.
+
+The first eligible conversation named `plan` reads the whole attachments as
+reference material; if no such plan runs, the first eligible conversation reads
+them. Disabled, excluded and skipped plans do not take context away from that
+conversation. Other steps receive none. Attachments do not override the job or
+step instructions and never enter a GitHub issue, pull request or comment.
+
+An older Factory without the context route answers `conflict` with reason
+`factory_too_old`; update it. A lost answer is `uncertain`: the engine sends the
+write once, so read the job before deciding what to do next.
 
 ## Job Brief inputs — later requests, answers and saved notes
 

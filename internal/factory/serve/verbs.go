@@ -299,6 +299,9 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 // through the answer door: the runner holding it carries on, and the answer
 // is recorded. A cap no runner waits on any more goes back to the queue.
 func (h *Handler) continueCap(r *http.Request, it factory.Item, words string) error {
+	if handled, err := h.continuePolicy(r, it, words); handled {
+		return err
+	}
 	if h.seam.Answer != nil {
 		err := h.recordAnswer(r, it, true, words)
 		if err == nil || !strings.Contains(err.Error(), "is not waiting on you") {
@@ -755,6 +758,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
+	if !h.checkNewJobExtras(w, r, &body) {
+		return
+	}
 	if strings.TrimSpace(body.Repo) == "" || strings.TrimSpace(body.Title) == "" {
 		h.fail(w, http.StatusUnprocessableEntity, "new job requires repo and title")
 		return
@@ -801,6 +807,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !visible {
+		if h.githubVisibilityLimited(w, r) {
+			return
+		}
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return
 	}
@@ -889,6 +898,9 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, h.stampAsk(r, id, body)) {
 		return
 	}
+	if h.failed(w, h.stampNewJobExtras(r, id, body)) {
+		return
+	}
 	if selected != nil && h.failed(w, h.config.Store.Update(id, func(it *factory.Item) error {
 		it.Stages = factory.CopyStages(selected)
 		if decided {
@@ -917,7 +929,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // stampAsk records the app's ask on a job this factory's store holds.
-// The body carries the person's words, never a cap.
+// The initial budget and attachments are stamped separately after these words.
 func (h *Handler) stampAsk(r *http.Request, id int, body api.NewJob) error {
 	if h.config.Store == nil {
 		return nil

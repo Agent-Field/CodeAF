@@ -110,6 +110,8 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
+	"JobContext.Markdown": "attachment text is private to worker admission; ordinary job and queue reads carry only title and source",
+
 	"Item.GitHubIssueID": "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
 	"Item.SourceClosed":  "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
 	"Item.PersonTouched": "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",
@@ -150,7 +152,8 @@ func FromItem(it factory.Item) Job {
 		factory.MarkPersonStopped(&it)
 	}
 	j := Job{
-		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
+		Group: it.Group, Milestone: it.Milestone, Context: mapList(it.Context, fromJobContext),
+		FromJob: it.FromJob, SplitFrom: it.SplitFrom, SourceIssue: it.SourceIssue,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
@@ -218,6 +221,8 @@ func FromItem(it factory.Item) Job {
 	}
 
 	j.FollowPR = factory.IsIssueJob(it) && it.DoneHow != "dropped" && it.DoneHow != "closed_locally"
+	waitsFromItem(&j, it)
+	policyFromItem(&j, it)
 
 	return j
 }
@@ -481,7 +486,8 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
-		FromJob: j.FromJob, SourceIssue: j.SourceIssue,
+		Group: j.Group, Milestone: j.Milestone, Context: mapList(j.Context, toJobContext),
+		FromJob: j.FromJob, SplitFrom: j.SplitFrom, SourceIssue: j.SourceIssue,
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
 		Owners: append([]string(nil), j.Owners...),

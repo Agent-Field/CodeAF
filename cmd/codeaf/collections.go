@@ -22,8 +22,8 @@ const collectionsUsage = collectionsSummary + `
   codeaf collections show <collection-id>
   codeaf collections add|remove <collection-id> <kind> <record-id>
   codeaf collections find <kind> <record-id>
-      kinds: collection, conversation, task, process, crew, artifact (a file path)
-      tasks and processes need --session <conversation-id>; all accept --db and --json
+      kinds: collection, conversation, task, process, crew, factory_job, artifact (a file path)
+      factory_job needs --factory <factory-id>; tasks and processes need --session <conversation-id>; all accept --db and --json
       organize references without moving files or starting work`
 
 func runCollections(args []string) error { return runCollectionsTo(args, os.Stdout) }
@@ -32,6 +32,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	flags := commandFlags("collections")
 	database := flags.String("db", home.Join("v3", "collections.db"), "collection database path; separate from learned memory")
 	sessionID := flags.String("session", "", "owning conversation id for a task reference")
+	factoryID := flags.String("factory", "", "owning factory id for a factory_job reference")
 	asJSON := flags.Bool("json", false, "print structured records")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
@@ -63,7 +64,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	}
 	var ref workspace.Ref
 	if verb == "add" || verb == "remove" || verb == "find" {
-		ref = workspace.Ref{Kind: workspace.Kind(rest[len(rest)-2]), ID: rest[len(rest)-1], SessionID: *sessionID}
+		ref = workspace.Ref{Kind: workspace.Kind(rest[len(rest)-2]), ID: rest[len(rest)-1], SessionID: *sessionID, Factory: *factoryID}
 		if ref.Kind == workspace.ArtifactKind {
 			if ref.ID == "" {
 				return fmt.Errorf("%w: an artifact reference needs a file path", workspace.ErrInvalid)
@@ -86,6 +87,8 @@ func runCollectionsTo(args []string, output io.Writer) error {
 		if verb == "add" && ref.Kind == workspace.StandingKind {
 			return fmt.Errorf("%w: standing items are gone, so a collection cannot gain one", workspace.ErrInvalid)
 		}
+	} else if *factoryID != "" {
+		return fmt.Errorf("%w: --factory belongs to a factory_job reference in add, remove or find", workspace.ErrInvalid)
 	} else if *sessionID != "" {
 		return fmt.Errorf("%w: --session belongs to a task or process reference in add, remove or find", workspace.ErrInvalid)
 	}
@@ -205,6 +208,8 @@ func writeCollectionRef(output io.Writer, ref workspace.Ref) error {
 	var err error
 	if ref.Kind == workspace.TaskKind || ref.Kind == workspace.ProcessKind {
 		_, err = fmt.Fprintf(output, "%s  %s  conversation %s\n", ref.Kind, ref.ID, ref.SessionID)
+	} else if ref.Kind == workspace.FactoryJobKind {
+		_, err = fmt.Fprintf(output, "%s  %s  factory %s\n", ref.Kind, ref.ID, ref.Factory)
 	} else {
 		_, err = fmt.Fprintf(output, "%s  %s\n", ref.Kind, ref.ID)
 	}

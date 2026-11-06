@@ -220,6 +220,9 @@ A provider answering the current turn cannot be cut:
 the disconnected sentence first and then says
 `this conversation was on deepseek-direct/deepseek-v4-pro · it is now on ~deepseek/deepseek-v4-flash-latest`, or, when nothing can replace it,
 `this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a provider or pick a model`.
+The replacement is for this run only; it leaves the saved model and profile model
+settings unchanged. The configured model returns when it is available again.
+Choosing the replacement yourself saves it, even if it is already running.
 
 OpenRouter uses the same two-Enter confirmation. A saved profile key is cleared from the
 profile and the running session; its models disappear, while Ollama and other connected
@@ -306,7 +309,9 @@ empty key box keeps the saved key. A changed name is a rename: every model id al
 name is re-spelled with the new one, the conversation's own pick first (a turn still
 answering is waited out), and with it the stored ones: reasoning levels, the
 worker, checker and planner pins, role pins, the fallback chain and the capability slots. A rename changes a label and nothing
-else; it does not move the conversation onto a different model. `ctrl+r` on the row
+else; it carries saved and temporary selections separately, keeping a temporary
+replacement unsaved. A deferred rename stays with its conversation; a later
+explicit model or main/fallback choice supersedes it. `ctrl+r` on the row
 reconnects with the saved details. The `+ add a provider` row checks the address and asks for a name,
 requesting a key only when the server requires authentication, so the tab never sends you to `/connect` to add one.
 The `active provider` row reads
