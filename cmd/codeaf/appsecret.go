@@ -28,5 +28,5 @@ func (b *appBackend) AnswerAskSecret(agent, id, secret string) error {
 	if !takesSecret {
 		return appwire.Errorf(appwire.CodeBadParams, "the ask %s does not take a secret", id)
 	}
-	return b.answerAskScope(agent, id, "", secret, "")
+	return b.answerAskThrough(agent, id, "", secret, "", true)
 }

@@ -58,6 +58,11 @@ func TestAppAnswerSecretOnlyAnswersASecretAsk(t *testing.T) {
 	if _, err := b.AnswerInbox(appInboxID(agent.ID, "ask:5"), "", "tok-123456", "", ""); wireCodeOf(t, err) != appwire.CodeBadParams {
 		t.Fatalf("the Inbox took a secret's value: %v", err)
 	}
+	// Nor does asks.answer: a client's wire trace knows a credential by the
+	// method that carries it, and this one is not that method.
+	if err := b.AnswerAsk(agent.ID, "ask:5", "", "tok-123456"); wireCodeOf(t, err) != appwire.CodeBadParams {
+		t.Fatalf("asks.answer took a secret's value: %v", err)
+	}
 	if err := b.AnswerAskSecret(agent.ID, "ask:5", "tok-123456"); err != nil {
 		t.Fatalf("AnswerAskSecret: %v", err)
 	}
