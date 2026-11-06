@@ -500,8 +500,24 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 	if strings.TrimSpace(status) == "" {
 		return nil
 	}
-	if _, err := git.Run(dir, "add", "-A"); err != nil {
+	// A COPY OF THE REPOSITORY LEFT IN THE CHECKOUT IS NEVER PUBLISHED
+	// (scratch.go): it is left out of what is staged, and one a step already
+	// committed is taken out of the commit's tree, so the pull request holds
+	// the change alone. The folder stays on disk.
+	copies, err := checkoutCopies(git, dir, it.ChangeBase)
+	if err != nil {
+		return fmt.Errorf("could not read %s's worktree: %w", it.Ref(), err)
+	}
+	if _, err := git.Run(dir, append([]string{"add", "-A", "--"}, excludeCopies(copies)...)...); err != nil {
 		return fmt.Errorf("could not stage %s's work: %w", it.Ref(), err)
+	}
+	for _, top := range copies {
+		if _, err := git.Run(dir, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", top); err != nil {
+			return fmt.Errorf("could not leave %s out of %s's work: %w", top, it.Ref(), err)
+		}
+	}
+	if staged, err := git.Run(dir, "diff", "--cached", "--name-only"); err == nil && strings.TrimSpace(staged) == "" {
+		return nil
 	}
 	title := strings.TrimSpace(it.Title)
 	if title == "" {

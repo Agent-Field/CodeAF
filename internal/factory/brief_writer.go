@@ -462,7 +462,7 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 	); fault != "" {
 		return BriefVersion{}, nil, fault
 	}
-	done, total := briefProgress(it)
+	done, total := StepCount(it)
 	v := BriefVersion{
 		Issue: it.Title, StepsDone: done, StepsTotal: total, Verdict: d.Verdict, VerdictEvidence: d.VerdictEvidence,
 		Facts: BriefFacts(it), Blocks: []BriefBlock{},

@@ -252,20 +252,6 @@ func (m stageMaker) stageConfig(spec factoryrun.ConversationSpec, bucket, where 
 	return v3PointAt(parent, place)
 }
 
-// stageOpenModel is the model a step opens on: THE STEP'S OR JOB'S OWN, WHEN A
-// PERSON CHOSE ONE, over everything; else the factory's default model; else
-// the launch's. A launch on one model for every task keeps that model rather
-// than the factory's default, which nobody picked for this job.
-func stageOpenModel(cfg session.Config, spec factoryrun.ConversationSpec) string {
-	if model := strings.TrimSpace(spec.Model); model != "" {
-		return model
-	}
-	if model := strings.TrimSpace(spec.FactoryModel); model != "" && !cfg.OneModel {
-		return model
-	}
-	return cfg.Model
-}
-
 // factoryPostureEnv pins the posture a stage conversation runs at, in the
 // words `/approvals` takes. Unset, or a word that is not a posture, is
 // [session.PostureAllow].

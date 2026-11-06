@@ -19,7 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -67,11 +66,7 @@ func Ref(source, id string) string { return source + ":" + id }
 // Split is the inverse of [Ref] for a job the inbox filed: its source and its
 // key on that source. ok is false for every other job, a GitHub issue and a
 // job typed on the floor among them.
-func Split(it factory.Item) (source, id string, ok bool) {
-	source = string(it.Origin)
-	id, ok = strings.CutPrefix(it.SourceRef, source+":")
-	return source, id, ok && source != "" && id != ""
-}
+func Split(it factory.Item) (source, id string, ok bool) { return factory.SourceKey(it) }
 
 // Option adjusts how [Add] files a job.
 type Option func(*options)

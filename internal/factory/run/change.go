@@ -152,8 +152,22 @@ func readChange(dir, base string) (*factory.Change, error) {
 		}
 		files[path] = f
 	}
+	// A COPY OF THE REPOSITORY LEFT IN THE CHECKOUT IS NOT THE CHANGE
+	// (scratch.go): its files are not counted, judged or shown.
+	var added []string
+	for path, f := range files {
+		if f.Status == "added" {
+			added = append(added, path)
+		}
+	}
+	copies := repoCopies(added, trackedAt(git, dir, base))
+	for path := range files {
+		if inCopy(path, copies) {
+			delete(files, path)
+		}
+	}
 	change := &factory.Change{Branch: strings.TrimSpace(branch)}
-	if patch, e := git.Run(dir, "diff", "--no-ext-diff", "--no-renames", "--no-color", base, "--"); e == nil {
+	if patch, e := git.Run(dir, append([]string{"diff", "--no-ext-diff", "--no-renames", "--no-color", base, "--"}, excludeCopies(copies)...)...); e == nil {
 		if len(patch) > 512000 {
 			patch = patch[:512000]
 			change.PatchTruncated = true

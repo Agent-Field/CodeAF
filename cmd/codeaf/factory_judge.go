@@ -37,7 +37,7 @@ func factoryJudge(st *store.Store, load func() (config.Config, error)) route.Jud
 		DefaultModel: func() string {
 			// A launch or a profile on ONE MODEL FOR EVERY TASK keeps that
 			// model rather than the factory's default, which nobody picked
-			// for it ([stageOpenModel] reads it the same way); the read's
+			// for it ([factory.StepModel] reads it the same way); the read's
 			// road then answers with the pin.
 			if st == nil || factoryWorkerParent().OneModel {
 				return ""

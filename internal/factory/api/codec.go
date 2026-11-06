@@ -141,6 +141,7 @@ var Lost = map[string]string{
 	"Item.BriefWriting":   "crosses as the brief's status (job.brief.status and the brief route's failure); the writer's own record otherwise",
 	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
 	"Item.CommentsSeen":   "the service's own record of which comments the job's manager has considered; only the service that reads GitHub uses it, and readers see comment_reads",
+	"Item.Judged":         "only the deciding rule's answer crosses, as route.answer; the other rules' answers, and every answer's key and time, are the service's own record of what it already asked",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
 }
 
@@ -212,6 +213,7 @@ func FromItem(it factory.Item) Job {
 	j.Failure = failureOf(it)
 	j.Ask = jobAsk(it)
 	j.PublishError = it.PublishError
+	jobFacts(&j, it)
 	PresentJob(&j)
 	if it.State == factory.StateLanded {
 		j.PublishPreview = factory.PublishBody(it, "")
@@ -494,7 +496,7 @@ func ToItem(j Job) factory.Item {
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
 		Assignee: d.Assignee, Starter: d.Starter, Taker: d.Taker,
 		SourceAssignees: slices.Clone(d.Assignees),
-		Tier:            factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), Synced: d.Synced, Changed: d.ChangedAt,
+		Tier:            factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), SourceRef: d.SourceRef, Synced: d.Synced, Changed: d.ChangedAt,
 		Triage: toTriage(d.Triage), Cap: d.Cap,
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
 		Marked: d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
@@ -515,6 +517,7 @@ func ToItem(j Job) factory.Item {
 	it.StartRules = cloneStartRules(j.StartRules)
 	it.RuleHold = j.RuleHold
 	it.RuleChecks = toRuleChecks(j.RuleChecks)
+	itemFacts(j, &it)
 	it.PublishError = j.PublishError
 	if a := j.Ask; a != nil && a.Issue == nil {
 		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source, FromRef: a.FromRef}
@@ -795,6 +798,7 @@ func toClaim(c Claim) factory.Claim {
 
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
+		SourceRef:   it.SourceRef,
 		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped,
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
