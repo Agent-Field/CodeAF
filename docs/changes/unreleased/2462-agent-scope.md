@@ -1,7 +1,7 @@
 ---
 kind: added
 title: A conversation can be told only about its own work (agents.set_scope)
-pr: 0
+pr: 2462
 surface: [app, engine]
 invalidates:
   - "Was true: every conversation in a folder was told about the other conversations' landed and running work there, and its tasks tool listed them. Is true now: a client can set a conversation's saved scope to conversation so its turns and tasks tool show only its own work; project remains the default and restores the earlier behavior."
