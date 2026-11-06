@@ -25,7 +25,8 @@ package main
 // idle conversations stay as indexed records, crew members included. Viewing,
 // sending or waking opens one through the same per-agent gate. Listing agents,
 // tasks and crews reads the disk. A conversation left alone for [appAgentIdle]
-// without an open view is let go and rebuilt transparently on demand.
+// without an open view is let go and rebuilt transparently on demand. Open
+// views keep theirs only for the [appViewHolds] most recently used.
 
 import (
 	"cmp"
@@ -75,11 +76,20 @@ import (
 // appAgentIdle is how long a conversation the app holds may sit with no turn
 // running, no question waiting and no open view before it is let go. Its
 // journal stays on disk, its state still reads idle, and the next send opens
-// it again. An explicitly open view keeps the conversation and its hold.
+// it again. An explicitly open view keeps the conversation and its hold while
+// it is among the [appViewHolds] most recently used.
 const appAgentIdle = 10 * time.Minute
 
 // appSweepEvery is how often the idle rule above is asked.
 const appSweepEvery = 30 * time.Second
+
+// appViewHolds is how many open views keep their idle conversation held: the
+// most recently used ones. A window opens every chat it shows and never says
+// when it stops showing one, so without a bound each chat shown in a session
+// kept its journal, presence watch and timers until the app quit (#2471). An
+// older idle view is let go like a background chat; its next read or send
+// opens it again.
+const appViewHolds = 3
 
 // appCrewPoll is how often the teams file is looked at for crew.changed, once
 // the app has asked for the crews at all. It is one stat when nothing moved.
@@ -779,7 +789,8 @@ type appAgent struct {
 	localNotices map[string]bool
 	windowMoved  bool
 	// viewOpen preserves the person's open view through idle sweeps. Retiring
-	// it would let its next read immediately take back the released hold.
+	// it would let its next read immediately take back the released hold, so
+	// only views beyond the [appViewHolds] most recently used are let go.
 	viewOpen bool
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
@@ -4743,7 +4754,8 @@ func (b *appBackend) sweep() {
 }
 
 // sweepOnce is one look at the idle rule. A conversation is kept while a turn
-// runs, a question waits for the person or a view stays open, whatever the clock says.
+// runs or a question waits for the person, whatever the clock says, and so is
+// an open view among the [appViewHolds] most recently used.
 func (b *appBackend) sweepOnce() {
 	var syncing bool
 	b.locked(func() { syncing = b.drives != nil })
@@ -4751,22 +4763,39 @@ func (b *appBackend) sweepOnce() {
 		_, _ = b.SyncStatus()
 	}
 	now := b.now()
-	var idle []*appAgent
+	type candidate struct {
+		agent *appAgent
+		view  bool
+	}
+	var idle []candidate
 	b.locked(func() {
+		var views []*appAgent
 		for _, a := range b.agents {
-			if live := a.live; live != nil && !a.viewOpen && !live.running && now.Sub(live.lastUse) >= appAgentIdle {
-				idle = append(idle, a)
+			live := a.live
+			switch {
+			case live == nil:
+			case a.viewOpen:
+				views = append(views, a)
+			case !live.running && now.Sub(live.lastUse) >= appAgentIdle:
+				idle = append(idle, candidate{agent: a})
+			}
+		}
+		sort.Slice(views, func(i, j int) bool { return views[i].live.lastUse.After(views[j].live.lastUse) })
+		for _, a := range views[min(len(views), appViewHolds):] {
+			if !a.live.running && now.Sub(a.live.lastUse) >= appAgentIdle {
+				idle = append(idle, candidate{agent: a, view: true})
 			}
 		}
 	})
-	for _, a := range idle {
-		b.sweepAgent(a, now)
+	for _, c := range idle {
+		b.sweepAgent(c.agent, now, c.view)
 	}
 }
 
 // sweepAgent lets one idle conversation go, unless something took its gate or
-// woke it since the look.
-func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
+// woke it since the look. A view is let go only when view says it fell outside
+// the most recently used holds.
+func (b *appBackend) sweepAgent(a *appAgent, now time.Time, view bool) {
 	if !a.gate.TryLock() {
 		return
 	}
@@ -4775,7 +4804,7 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 	keep := true
 	b.locked(func() {
 		live = a.live
-		keep = live == nil || a.viewOpen || live.running || now.Sub(live.lastUse) < appAgentIdle
+		keep = live == nil || (a.viewOpen && !view) || live.running || now.Sub(live.lastUse) < appAgentIdle
 	})
 	// A member of an open crew stays held while the crew is open.
 	if !keep && !b.liveNeedsYou(live) && !b.crewKeeps(a.view.ID) && !b.serviceKeeps(a.view.ID) {
