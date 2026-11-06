@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -17,25 +18,26 @@ import (
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
-// L-LOOP C1a, C1b: the real conversation proposal door hands the run one job.
+// L-LOOP2 C1a: a countdown proposal carries only its own assignment.
 func TestProposedRunWorkersReadTheirOwnWorkBeforeTheConversationAsk(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
-	double := newBeltRunDouble("green was created")
+	double := newBeltRunDouble("red was created")
 	registerBeltRunEngine(t, double)
 	completer := &routedCompleter{parent: []step{
-		proposeCall("Create green.txt", "Create green.txt with the word green"),
+		proposeCall("Create red.txt", "Create red.txt with the word red"),
 		finalText("handed off"),
 	}}
 	agent, _ := newTestAgent(t, completer, func(c *Config) {
 		c.Workspace = newTestRepo(t)
 		c.Place = Place{Dir: t.TempDir()}
 		c.ProfileDir = t.TempDir()
+		c.SessionFile = filepath.Join(t.TempDir(), "conversation.jsonl")
 		c.AskConsent = false
 		c.TaskAutoApproveSeconds = 0
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	const ask = "call propose_task three times: Create red.txt, Create green.txt, Create blue.txt"
+	const ask = "call propose_task three times: Create red.txt, Create green.txt, Create blue.txt — propose them, don't do them"
 	events, err := agent.Submit(ctx, ask)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +53,7 @@ func TestProposedRunWorkersReadTheirOwnWorkBeforeTheConversationAsk(t *testing.T
 	spec := double.spec
 	double.mu.Unlock()
 	root := spec.Store.Task(spec.Store.RootID())
-	if root == nil || root.Title != "Create green.txt" {
+	if root == nil || root.Title != "Create red.txt" {
 		t.Fatalf("the proposed work was not the run's root: %+v", root)
 	}
 	if spec.CostUSD != config.CrewTaskCapDefault {
@@ -59,39 +61,32 @@ func TestProposedRunWorkersReadTheirOwnWorkBeforeTheConversationAsk(t *testing.T
 	}
 	assertWorkerDocument := func(doc, work string) {
 		t.Helper()
-		workAt, askAt := strings.Index(doc, work), strings.Index(doc, ask)
-		if workAt < 0 || askAt < 0 || askAt <= workAt || strings.Contains(doc, briefAskRule) {
-			t.Fatalf("worker read the conversation's handoff as its own job:\n%s", doc)
+		for _, forbidden := range []string{"propose_task", "Create green.txt", "Create blue.txt", "three times", agent.config.SessionFile} {
+			if forbidden != "" && strings.Contains(doc, forbidden) {
+				t.Errorf("worker document contains conversation context %q:\n%s", forbidden, doc)
+			}
 		}
-		for _, want := range []string{
-			"the message the conversation was answering when it proposed this task",
-			"It was addressed to the conversation",
-			"anything it asks about proposing, starting or handing out tasks is the conversation's and already done, not yours to do again",
-			"This task is the work above",
-			"The person's words still govern THIS task",
-			"where the work above reads differently from them about this task, theirs win",
-			"Say any conflict in your report rather than widening the work",
-		} {
+		for _, want := range []string{"Create red.txt", "Create red.txt with the word red", work} {
 			if !strings.Contains(doc, want) {
-				t.Errorf("worker document no longer says %q:\n%s", want, doc)
+				t.Errorf("worker document is missing its assignment %q:\n%s", want, doc)
 			}
 		}
 	}
 	for _, doc := range []string{spec.Brief, root.Description, BeltWorkerBrief(spec.Store, root, true, false, "", "")} {
-		assertWorkerDocument(doc, "Create green.txt with the word green")
+		assertWorkerDocument(doc, "Create red.txt with the word red")
 	}
-	if !strings.HasPrefix(root.Description, briefWorkHeading+"\n\n") {
-		t.Fatalf("proposal does not open on its work:\n%s", root.Description)
-	}
-	children, err := spec.Store.AddMany([]plandb.TaskSpec{{ID: "part", Title: "Write green bytes", Description: "Write green into green.txt"}})
+	children, err := spec.Store.AddMany([]plandb.TaskSpec{{ID: "part", Title: "Write red bytes", Description: "Write red into red.txt"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	childDoc := BeltWorkerBrief(spec.Store, children[0], false, false, "", "")
-	assertWorkerDocument(childDoc, "Write green into green.txt")
+	assertWorkerDocument(childDoc, "Write red into red.txt")
+	if !strings.Contains(strings.SplitN(childDoc, "THE WORK", 2)[0], "Write red bytes") {
+		t.Fatalf("worker opening omits its task title:\n%s", childDoc)
+	}
 }
 
-// L-LOOP C1c: a person-authored whole-job brief keeps its exact earlier bytes.
+// L-LOOP2 C1b, C6: a person-authored whole-job brief keeps its exact earlier bytes.
 func TestPersonAuthoredWholeBriefKeepsItsExactDocument(t *testing.T) {
 	const work = "Create green.txt"
 	const want = "WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS\nThis is the message this work came out of. Where anything below reads differently from it, their words are what was asked for.\n\nCreate green.txt"
