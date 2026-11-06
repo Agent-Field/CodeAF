@@ -336,9 +336,12 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	if meta.Created.IsZero() {
 		meta.Created = time.Now()
 	}
-	if model := strings.TrimSpace(a.model); model != "" {
+	if model := strings.TrimSpace(a.configuredModelLocked()); model != "" {
 		meta.Model = model
 		meta.ModelProvider = a.config.serviceFor(model).Source.ID
+		if a.modelForNowProvider != "" {
+			meta.ModelProvider = a.modelForNowProvider
+		}
 	}
 	// The rung is written whatever it is, absence included, because absence is
 	// a value a person can choose their way back to: a session dialled to max

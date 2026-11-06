@@ -37,11 +37,29 @@ func (a *app) isAvailableModel(id string) bool {
 
 // ensureAvailableModel reconciles a local conversation with its picker catalog.
 // A launch preference is not evidence of availability. An automatic choice uses
-// the ordinary model-change road without saving a preference the person did not
+// the off-loop run-only door without saving a preference the person did not
 // choose. With no rows, only the display is cleared: the engine has no unset-model
-// door, and the send gates below keep that old launch preference from being used.
+// door, and the empty-catalog checks keep that old preference from being used.
 func (a *app) ensureAvailableModel() bool {
-	if !a.requireListedModel || a.agent == nil {
+	if rename := a.deferredModelRename; rename != nil {
+		// Relabel only at the owning conversation's turn/replay boundary.
+		if a.state != stateWorking && !a.hostReplayLoading {
+			a.deferredModelRename = nil
+			a.applyModelRename(rename)
+		}
+	}
+	if a.agent == nil {
+		return true
+	}
+	pending := pendingModelSelection(a.agent)
+	if pending != nil {
+		// Returning before the ask completes still shows the chosen model.
+		a.model = pending.model
+		if pending.window > 0 {
+			a.ctxWindow = pending.window
+		}
+	}
+	if !a.requireListedModel {
 		return true
 	}
 	// An answering request keeps its model until it settles. The turn-end path
@@ -49,22 +67,21 @@ func (a *app) ensureAvailableModel() bool {
 	if a.state == stateWorking {
 		return a.model != ""
 	}
-	preferred := a.model
-	if preferred == "" {
-		preferred = a.agent.Model()
+	// A later explicit pick or relabel owns its place on the line. Automatic
+	// selections may follow a newer catalog while an earlier ask is unfinished.
+	if pending != nil && !pending.temporary {
+		return a.model != ""
 	}
+	preferred := a.configuredModel()
 	model, ok := availableConversationModel(preferred, a.modelList())
 	if !ok {
 		a.model, a.ctxWindow = "", 0
 		a.hudStale = true
 		return false
 	}
-	if model.ID != a.model {
-		wasSwitching := a.creditSwitching
-		a.creditSwitching = true
-		a.switchModel(model.ID, model.ContextLength)
-		a.creditSwitching = wasSwitching
+	if model.ID != a.model || (pending == nil && model.ID != a.agent.Model()) {
+		a.useModelForNow(model.ID, model.ContextLength)
 		a.hudStale = true
 	}
-	return true
+	return a.model == model.ID
 }

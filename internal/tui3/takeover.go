@@ -665,8 +665,11 @@ func (a *app) resumeStoppedTurn() tea.Cmd {
 	if !ok || a.stream != nil {
 		return nil
 	}
-	gen, ctx := a.gen, a.ctx
+	gen, ctx, agent := a.gen, a.ctx, a.agent
 	return func() tea.Msg {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil
+		}
 		events, resumed := door.ResumeStoppedTurn(ctx)
 		if !resumed {
 			return nil

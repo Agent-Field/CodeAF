@@ -93,12 +93,17 @@ func (a *Agent) setConversationModels(pair ConversationModels, mainNotice string
 		return nil, errors.New("this conversation was launched with one-model; a fallback is unavailable")
 	}
 	hadPair := a.conversationModels != nil
-	previous := ConversationModels{Main: a.model}
+	previous := ConversationModels{Main: a.configuredModelLocked()}
 	if a.conversationModels != nil {
 		previous = *a.conversationModels
 	}
 	active := a.modelIdentity.Active != ""
 	a.conversationModels = &pair
+	// The pair is the next request's selection, including when its main did
+	// not change. A queued temporary main must not outlive this explicit pick.
+	a.spokenModel = ""
+	a.modelForNowConfigured = ""
+	a.modelForNowProvider = ""
 	a.model = pair.Main
 	if a.clientPool != nil {
 		a.clientPool.setSeat(pair.Main)

@@ -950,7 +950,7 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 					a.deferredModelServiceModel = ""
 				}
 				preferred := connected.Source.PreferredModel(connected.Door, listedModelIDs(a.sourceModels[msg.service]))
-				if next := connected.Qualify(preferred); next != "" && next != strings.TrimSpace(a.model) {
+				if next := connected.Qualify(preferred); next != "" && (next != strings.TrimSpace(a.model) || next != a.configuredModel()) {
 					if a.state == stateWorking {
 						a.deferredModelServiceModel = next
 					} else {
@@ -1011,6 +1011,9 @@ func (a *app) reprefixRenamedModel(oldWritten, newWritten string) string {
 	}
 	if modelUsesService(a.deferredModelServiceModel, oldWritten) {
 		a.deferredModelServiceModel = config.ReprefixModelID(a.deferredModelServiceModel, oldWritten, newWritten)
+	}
+	if a.reprefixTemporaryModel(oldWritten, newWritten) {
+		return ""
 	}
 	if !modelUsesService(a.model, oldWritten) {
 		return ""
@@ -1112,7 +1115,7 @@ func listedModelIDs(models []Model) []string {
 // automatic moves cannot drift into two accounts of what happened.
 func (a *app) moveConversationToConnectedModel(next string) {
 	next = strings.TrimSpace(next)
-	if next == "" || next == strings.TrimSpace(a.model) {
+	if next == "" || next == strings.TrimSpace(a.model) && next == a.configuredModel() {
 		return
 	}
 	was := a.model
@@ -1127,6 +1130,10 @@ func (a *app) moveConversationToConnectedModel(next string) {
 // answering turn has settled. Clearing it first makes the second settle event
 // free and prevents a failed later path from replaying an old connection.
 func (a *app) applyDeferredModelServiceMove() {
+	if rename := a.deferredModelRename; rename != nil {
+		a.deferredModelRename = nil
+		a.applyModelRename(rename)
+	}
 	next := a.deferredModelServiceModel
 	a.deferredModelServiceModel = ""
 	was := a.model
@@ -1172,7 +1179,7 @@ func (a *app) moveConversationOrDefer(id, written string) {
 	// Routing folds case, so an id differing from the running model only in
 	// case is the same pick — the deferred guard above already compares with
 	// EqualFold, and the idle road does too.
-	if !strings.EqualFold(id, strings.TrimSpace(a.model)) {
+	if !strings.EqualFold(id, strings.TrimSpace(a.model)) || !strings.EqualFold(id, a.configuredModel()) {
 		a.moveConversationToConnectedModel(id)
 	}
 }
@@ -1303,7 +1310,7 @@ func (a *app) disconnectModelService(id string) {
 	if !conversationUsed {
 		// The disconnect acknowledgement is the whole answer.
 	} else if next, ok := a.reachableModelAfterDisconnect(); ok {
-		a.switchModel(next, 0)
+		a.useModelForNow(next, 0)
 		a.modelServiceFollowup(serviceMovedWord(was, next))
 	} else {
 		a.modelServiceFollowup(serviceStrandedWord(was))

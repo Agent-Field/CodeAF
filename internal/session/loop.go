@@ -1926,7 +1926,7 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reached *reachedThePerson, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
 	// The current provider call is never cancelled by a selection. Every later
 	// outbound attempt observes the newly acknowledged pair.
-	if pair, ok := a.ConversationModelPair(); ok {
+	if pair, ok := a.requestModelPair(); ok {
 		a.mu.Lock()
 		a.fallbackNoticeOwed = true
 		a.mu.Unlock()
@@ -2093,7 +2093,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// a request boundary: no cancellation and no stale retry chain.
 		{
 			before, paired := requestConversationModels(ctx)
-			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+			if latest, ok := a.requestModelPair(); ok && (!paired || latest != before) {
 				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
 				if latest.Main != before.Main || model == before.Fallback {
 					takeTheModel(latest.Main, true)
@@ -2333,7 +2333,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// unasked in the same session, and that is the road this is.
 		{
 			before, paired := requestConversationModels(ctx)
-			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+			if latest, ok := a.requestModelPair(); ok && (!paired || latest != before) {
 				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
 				if latest.Main != before.Main {
 					takeTheModel(latest.Main, true)

@@ -3161,6 +3161,9 @@ type Agent struct {
 	// the one call that must always be answerable.
 	mu    sync.Mutex
 	model string
+	// modelForNowConfigured retains the saved choice while model serves this run.
+	modelForNowConfigured string
+	modelForNowProvider   string
 	// reasoning is how hard each model is asked to think, by model id, and it
 	// is a MAP rather than a field for the reason agent.go's block states: the
 	// level is a choice about a model, and a /model switch must not carry one
