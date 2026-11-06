@@ -184,8 +184,9 @@ func stage(cur *factory.Item, f pipeline.File, r *routing) error {
 //
 // A PERSON'S PRIORITY MARK WINS over a rule's, as it wins over a label
 // ([factory.PriorityFor]); the priority a source sent does not, because the
-// rule is the factory's own decision about where that source's work stands. A pipeline the file does not list is
-// refused, and nothing about the job is changed by a refused rule.
+// rule is the factory's own decision about where that source's work stands.
+// A pipeline the file does not list is refused, and nothing about the job is
+// changed by a refused rule.
 func applyRoute(cur *factory.Item, rule route.Rule, f pipeline.File) error {
 	var steps []factory.Stage
 	if rule.Then.Pipeline != "" {
