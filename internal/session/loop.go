@@ -1003,7 +1003,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// asked here only for the sentence it carries ([Agent.markSettleBound]).
 		if count, tripped := a.settleBoundTripped(ctx, &turn, settleCalls); tripped {
 			a.markSettleBound(count)
-			a.sealTurn(turn, started, model)
+			// Keep the step spend without duration or ordinary turn-ending acts;
+			// abandonment can displace this turn while the bound is marked.
+			turn.Duration = 0
+			a.file.appendUsage(turn, model, false, "")
 			return false
 		}
 
@@ -1479,8 +1482,8 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// The local tally holds conversation steps only; on-clock errands already
 		// wrote their own auxiliary usage lines. Bank moved the live meter and
 		// machine ledger, so this writes only the journal seal, with no duration
-		// or ordinary turn-ending acts. Other exits keep their ordinary seals;
-		// this return cannot reach one of them. Cleanup already knows to leave
+		// or ordinary turn-ending acts. Each exit keeps its own seal;
+		// this return cannot reach another ending. Cleanup already knows to leave
 		// the displaced turn alone (agent.go's turnSeq).
 		if abandoned(ctx) {
 			turn.Duration = 0
@@ -1503,7 +1506,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		}
 
 		if a.stageBatchFinal(calls, results) {
-			a.sealTurn(turn, started, model)
+			// Keep the step spend without duration or ordinary turn-ending acts;
+			// abandonment can displace this turn after the batch check above.
+			turn.Duration = 0
+			a.file.appendUsage(turn, model, false, "")
 			return true
 		}
 		// The batch can settle after its result lines and each call's `took`
@@ -1821,9 +1827,9 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 // and writes the turn down.
 //
 // Ordinary endings write their cost here: the loop above, the harness turn,
-// the orchestrated turn and the image turn. The abandoned tool-batch exit
-// writes only its step seal, because the session already let go of that turn
-// and must not repeat the turn-ending acts below.
+// the orchestrated turn and the image turn. The abandoned tool-batch, settle-bound
+// and final stage-report exits write only their step seals, without duration or
+// ordinary turn-ending acts that could affect a replacement turn after abandonment.
 //
 // AND IT IS NOT WHERE THE MACHINE'S LEDGER IS WRITTEN, which is the whole of
 // issue #269. A seal is the shape of a TURN — its duration, its place in the

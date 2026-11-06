@@ -189,13 +189,17 @@ func TestAnAbandonedTurnsDigestAgreesWithReplay(t *testing.T) {
 			}
 			collect(t, events)
 			waitAbandonSpendExit(t, path, seals)
+			live := agent.Usage()
+			if err := agent.Close(); err != nil {
+				t.Fatalf("close before reopen: %v", err)
+			}
 			file, _, err := openSessionFile(path, agent.config.Workspace, "test/model", "")
 			if err != nil {
 				t.Fatalf("reopen: %v", err)
 			}
 			t.Cleanup(func() { _ = file.Close() })
 			assertAbandonSpendMeter(t, file.RestoredUsage(), want)
-			assertAbandonSpendMeter(t, file.RestoredUsage(), agent.Usage())
+			assertAbandonSpendMeter(t, file.RestoredUsage(), live)
 			digest, err := ReadDigest(path)
 			if err != nil {
 				t.Fatalf("digest: %v", err)
@@ -333,7 +337,7 @@ func TestAnAbandonedTurnEndingOrdinarilySealsOnlyOnce(t *testing.T) {
 }
 
 // Contract A3, exit audit: the settle bound and final-report returns must seal
-// their paid steps once; neither return passes through another ending.
+// their paid steps once, without duration or ordinary turn-ending acts.
 func TestOtherTurnEndingsSealTheirStepSpend(t *testing.T) {
 	for _, ending := range []string{"settle bound", "final report"} {
 		t.Run(ending, func(t *testing.T) {
@@ -360,15 +364,19 @@ func TestOtherTurnEndingsSealTheirStepSpend(t *testing.T) {
 			}
 			collect(t, events)
 			seals := turnUsageLines(t, path)
-			if len(seals) != 1 || seals[0].CostUSD != .25 || seals[0].Calls != 1 {
-				t.Fatalf("%s seals = %+v, want one .25 seal", ending, seals)
+			if len(seals) != 1 || seals[0].CostUSD != .25 || seals[0].Calls != 1 || seals[0].DurationMS != 0 {
+				t.Fatalf("%s seals = %+v, want one .25 seal with no duration", ending, seals)
 			}
 			replayed, err := replaySessionFile(path)
 			if err != nil {
 				t.Fatalf("%s replay: %v", ending, err)
 			}
 			assertAbandonSpendMeter(t, replayed.usage, Usage{CostUSD: .25, Input: 20, Output: 7, Calls: 1, Turns: 1})
-			assertAbandonSpendMeter(t, replayed.usage, agent.Usage())
+			live := agent.Usage()
+			assertAbandonSpendMeter(t, replayed.usage, live)
+			if live.Duration != 0 {
+				t.Fatalf("%s added live duration: %v", ending, live.Duration)
+			}
 		})
 	}
 }
