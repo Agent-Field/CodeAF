@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -77,8 +76,8 @@ func appPairError(err error) *appwire.PairError {
 
 // appPairPairedWith refuses a computer whose chats already sync with others.
 // Joining would set those chats aside, so the app offers no way to replace them.
-func appPairPairedWith(names []string) string {
-	return "This computer is already paired with " + strings.Join(names, " and ") + "."
+func appPairPairedWith(paired pairedWithError) string {
+	return "This computer is already paired with " + paired.list("another computer") + "."
 }
 
 // appPairOwnChats refuses a computer with chats of its own, counted where the
@@ -107,7 +106,7 @@ func appPairFailure(err error) string {
 	label, unconfirmed := pair.UnconfirmedBy(err)
 	switch {
 	case errors.As(err, &paired):
-		return appPairPairedWith(paired.names)
+		return appPairPairedWith(paired)
 	case errors.Is(err, pair.ErrDifferentChats):
 		return appPairOwnChats(pair.OwnChats(err))
 	case unconfirmed:

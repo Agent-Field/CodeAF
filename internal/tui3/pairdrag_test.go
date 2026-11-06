@@ -8,6 +8,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -176,5 +177,40 @@ func TestPairReplacementFailureStillNamesPreservedTeamsFile(t *testing.T) {
 	line := joinedLine(pair.Joined{TeamsAside: "/fixture/teams.json.unreadable-123"}, fmt.Errorf("saving the relay failed"))
 	if !strings.Contains(line, "saving the relay failed") || !strings.Contains(line, "This computer's teams were set aside to /fixture/teams.json.unreadable-123.") {
 		t.Fatal("failed pairing hid recovery receipt", line)
+	}
+}
+
+// refusingPairing is a door that refuses the join itself before anything is
+// asked, as the real door does for a computer paired with other computers.
+type refusingPairing struct {
+	*fakePairing
+	refusal error
+}
+
+func (d refusingPairing) BeforeJoin(context.Context, string, bool) error { return d.refusal }
+
+// A COMPUTER THAT CANNOT JOIN IS NEVER ASKED TO REPLACE ITS CHATS. The door's
+// refusal is the panel's last line, and the replacing errand never runs.
+func TestPairReplaceRefusedByTheDoorAsksNothing(t *testing.T) {
+	var joins int
+	door := refusingPairing{
+		fakePairing: &fakePairing{hasChats: true, replace: func(context.Context, string, pair.JoinUI) (pair.Joined, error) {
+			joins++
+			return pair.Joined{}, nil
+		}},
+		refusal: errors.New("this computer is already paired with box-c — codeaf devices lists them"),
+	}
+	a := pairApp(t, door, 80)
+	r := newPairRig(t, a)
+	r.slash("/pair 71-869-571 --replace")
+	r.until("the ending", func() bool { return a.pair.done || a.pair.ask != nil })
+	if a.pair.ask != nil {
+		t.Fatal("a computer the door refused was asked to replace its chats")
+	}
+	if got := strings.Join(strings.Fields(plain(frame(a))), " "); !strings.Contains(got, "already paired with box-c") {
+		t.Fatalf("the refusal is not on the panel:\n%s", got)
+	}
+	if joins != 0 {
+		t.Fatal("the replacing errand ran for a refused computer")
 	}
 }

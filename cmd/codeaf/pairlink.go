@@ -120,14 +120,21 @@ func (s inviteScreen) Invited(in pair.Invite) { s.say(pair.InviteLines(in)) }
 
 // askToJoin is the new device: a link on screen until a device that is in says yes.
 func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) error {
+	// A computer whose chats sync elsewhere is refused before it is asked to
+	// replace anything.
+	home := d.joining(replace).Home
+	standing, err := joinStanding(ctx, home, d.standingRoute(home, relay))
+	if err != nil {
+		return err
+	}
+	if err := standing.refusal(); err != nil {
+		return err
+	}
 	if !d.confirmReplacement(ctx, replace) {
 		return nil
 	}
 	route, err := d.mailbox(relay)
 	if err != nil {
-		return err
-	}
-	if err := d.pairingStatus(ctx, route, replace); err != nil {
 		return err
 	}
 	joining := d.linking(route, replace)

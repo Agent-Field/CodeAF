@@ -278,7 +278,9 @@ func offerDevbox(ctx context.Context, door pairDoor, name string, ready func(dev
 	ui := devboxOfferUI{name: name, offer: devbox.Offer{Via: route.URL}, ready: ready, cancel: cancel}
 	label, err := pair.Offer(ctx, route, grant, &ui)
 	if err != nil {
-		if errors.Is(err, pair.ErrDidNotFinish) || errors.Is(err, context.DeadlineExceeded) {
+		// A box whose word that it kept the identity never came may still have
+		// joined, so the flow probes it rather than give up on it.
+		if errors.Is(err, pair.ErrDidNotFinish) || errors.Is(err, pair.ErrNotConfirmed) || errors.Is(err, context.DeadlineExceeded) {
 			return devbox.ErrJoinInterrupted
 		}
 		return err

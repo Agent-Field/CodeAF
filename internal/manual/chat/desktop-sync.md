@@ -97,12 +97,15 @@ engine's sentence and does not add a computer.
 A computer with submitted chats and its own pairing keys refuses ordinary
 pairing, in the app's words: `This computer has 3 chats of its own, so it can't
 join another computer's chats. Nothing was changed.` One already paired with
-other computers is refused before the other computer is asked: `This computer
-is already paired with <name>.` The computer that showed the code never says
-they are paired: it says `Pairing was not confirmed by <name>. Check that
-computer to see whether it joined.` In a terminal, `codeaf pair <code> --replace`
-joins the other set instead: local chats stay here but stop syncing, shared
-memories and settings clear, and local provider keys stay here. Use Continue here to move a shared chat. A failed
+other computers is refused too: `This computer is already paired with <name>.`
+Both refusals usually come before the other computer is asked, and its code
+keeps waiting. When the refusal only comes after you chose Pair there, or the
+other computer's confirmation is lost, the computer that showed the code does
+not say they are paired: it says `Pairing was not confirmed by <name>. Check
+that computer to see whether it joined.` For chats of its own (not for a
+computer paired elsewhere), `codeaf pair <code> --replace` in a terminal joins
+the other set instead: local chats stay here but stop syncing, shared memories
+and settings clear, and local provider keys stay here. Use Continue here to move a shared chat. A failed
 upload stays saved locally and is retried while codeaf is open or on the next
 start. Sync status says `Sharing this computer's chats.` during the pass and
 `Some chats could not be shared yet. They are still saved here; codeaf will try

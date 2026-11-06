@@ -5,10 +5,9 @@ package syncsetup
 // device record goes through this gate to the sync service until a pairing
 // shares the identity (a person approved a device and this machine sent it the
 // identity, or this machine took another's), or the machine already has a
-// fleet. Showing a code is not sharing: its mailbox, and the device record the
-// terminal and chat doors write before they show one, use clients of their
-// own, and a code taken back, run out, declined or used up by a wrong code
-// leaves the machine quiet. The identity says so itself (identity.Solo);
+// fleet. Showing a code is not sharing: its mailbox uses a client of its own,
+// the device record goes out only once a person says yes, and a code taken
+// back, run out, declined or used up by a wrong code leaves the machine quiet. The identity says so itself (identity.Solo);
 // whatever starts a fleet ends it.
 //
 // ONE GATE, AT THE WIRE. Every client built here sends through [quietWire],

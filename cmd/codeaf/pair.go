@@ -215,7 +215,8 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 		return err
 	}
 	if d.ownRecord != nil {
-		if err := d.ownRecord(ctx, route); err != nil {
+		record := func(ctx context.Context) error { return d.ownRecord(ctx, route) }
+		if grant, err = recordWithGrant(ctx, d.joining(false).Home, grant, record); err != nil {
 			return err
 		}
 	}
@@ -234,15 +235,10 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	if _, err := pair.ReadJoinCode(typed); err != nil {
 		return err
 	}
-	if !d.confirmReplacement(ctx, replace) {
-		return nil
-	}
-	route, err := d.mailbox(relay)
-	if err != nil {
-		return err
-	}
+	// A computer whose chats sync elsewhere is refused before it is asked to
+	// replace anything.
 	joining := d.joining(replace)
-	standing, err := joinStanding(ctx, joining.Home, route)
+	standing, err := joinStanding(ctx, joining.Home, d.standingRoute(joining.Home, relay))
 	if err != nil {
 		return err
 	}
@@ -250,6 +246,13 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 		return err
 	}
 	joining.Alone = standing.alone()
+	if !d.confirmReplacement(ctx, replace) {
+		return nil
+	}
+	route, err := d.mailbox(relay)
+	if err != nil {
+		return err
+	}
 	if d.name != "" {
 		joining.Label = d.name
 	}
@@ -280,7 +283,12 @@ func joinedSentence(joined pair.Joined) string { return joined.Sentence() }
 
 // endedByPerson turns the end a person chose with ctrl+c into a clean exit that
 // says nothing was paired, and leaves every other failure as the sentence it already is.
+// A ctrl+c after the answer went out is not that end: the other device may hold
+// the chats, so its not-confirmed sentence stands.
 func (d pairDoor) endedByPerson(ctx context.Context, err error) error {
+	if errors.Is(err, pair.ErrNotConfirmed) {
+		return err
+	}
 	if errors.Is(ctx.Err(), context.Canceled) {
 		// The terminal echoes ^C on the prompt's own line, so start a fresh one.
 		fmt.Fprintln(d.term.out)

@@ -278,7 +278,7 @@ func TestM1M4M8M9M10AppPair(t *testing.T) {
 
 // bannedAppPairWords are terminal commands and engine words that app pairing
 // copy never uses. They are matched as whole words, so "Cancelled" is no cell.
-var bannedAppPairWords = regexp.MustCompile(`--replace|\b(codeaf pair|run codeaf|devices?|identity|cells?|lease|fence|ledger|vault)\b`)
+var bannedAppPairWords = regexp.MustCompile(`--replace|\b(codeaf pair|run codeaf|devices?|identit(y|ies)|cells?|leases?|fences?|ledgers?|vaults?)\b`)
 
 func TestAppPairCopyRetainedWordsM9(t *testing.T) {
 	for _, words := range []string{"shale ledger reef", "shale cello reef"} {

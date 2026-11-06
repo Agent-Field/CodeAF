@@ -265,6 +265,10 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 		// These events precede done: a desktop may immediately restart on done.
 		o.announceSync()
 		o.finish("done", "", nil, restart)
+	case errors.Is(err, pair.ErrNotConfirmed):
+		// A cancel after the answer went out lands here too: the other
+		// computer may hold the chats, so this is never "Nothing was paired".
+		o.finish("failed", "", appPairError(err), false)
 	case o.ctx.Err() != nil || errors.Is(err, context.Canceled):
 		o.finish("cancelled", appPairCancelled, nil, false)
 	case errors.Is(err, pair.ErrRefused):
@@ -331,7 +335,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		// asked to approve, as the terminal does. A directory that cannot be read
 		// leaves refusals to after the approval, where the other computer still
 		// never says it paired one that refused.
-		standing, _ := joinStanding(o.ctx, dir, route)
+		standing, _ := joinStanding(o.ctx, dir, func() (pair.Mailbox, error) { return route, nil })
 		if err := standing.refusal(); err != nil {
 			return err, false
 		}
@@ -350,7 +354,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return nil, !joined.Already
 	case "request_link":
 		joining := linkJoining(dir)(route, false)
-		standing, _ := joinStanding(o.ctx, dir, route)
+		standing, _ := joinStanding(o.ctx, dir, func() (pair.Mailbox, error) { return route, nil })
 		if err := standing.refusal(); err != nil {
 			return err, false
 		}

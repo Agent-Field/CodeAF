@@ -395,6 +395,54 @@ func (b devboxInterruptedMailbox) Poll(context.Context, string, pairbox.Side, in
 	return pairbox.Batch{}, b.err
 }
 
+// R3.3: a box that kept the identity but whose word was lost may have joined, so
+// the offer ends as an interrupted join, which the flow answers with a probe,
+// and not as a failure that tells a person to remove a working box.
+func TestDevboxR33LostWordIsAnInterruptedJoin(t *testing.T) {
+	laptopHome := t.TempDir()
+	t.Setenv("CODEAF_HOME", laptopHome)
+	id, err := identity.Ensure(laptopHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box := &devboxLostWordMailbox{Box: pairbox.NewMemory(pairbox.DefaultLimits, nil)}
+	route := pair.Mailbox{URL: "https://relay.example", Host: "relay.example", Box: box}
+	door := pairDoor{term: newTerminal(strings.NewReader(""), io.Discard), mailbox: func(string) (pair.Mailbox, error) { return route, nil }, grant: func(pair.Mailbox) (pair.Grant, error) { return pair.Grant{Identity: id, SyncURL: route.URL}, nil }}
+	// The offer's own deadline ends the wait for the word, well inside ackWithin.
+	ctx, stop := context.WithTimeout(context.Background(), 4*time.Second)
+	defer stop()
+	codes := make(chan string, 1)
+	ended := make(chan error, 1)
+	go func() { ended <- offerDevbox(ctx, door, "build-box", func(o devbox.Offer) { codes <- o.Code }) }()
+	var code string
+	select {
+	case code = <-codes:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the laptop showed no code")
+	}
+	joining := pair.Joining{Home: t.TempDir(), Label: "build-box"}
+	if _, err := pair.Join(context.Background(), route, joining, code, joinScreen{newTerminal(strings.NewReader(""), io.Discard)}); err != nil {
+		t.Fatalf("the box was told %v", err)
+	}
+	if err := <-ended; !errors.Is(err, devbox.ErrJoinInterrupted) {
+		t.Fatalf("a lost word ended the offer with %v, want an interrupted join the flow probes", err)
+	}
+}
+
+// devboxLostWordMailbox loses the joining side's third message: its word that it
+// kept the answer.
+type devboxLostWordMailbox struct {
+	pairbox.Box
+	sideB atomic.Int32
+}
+
+func (b *devboxLostWordMailbox) Post(ctx context.Context, plate string, side pairbox.Side, key pairbox.Key, msg []byte) (int, error) {
+	if side == pairbox.SideB && b.sideB.Add(1) == 3 {
+		return 0, nil
+	}
+	return b.Box.Post(ctx, plate, side, key, msg)
+}
+
 // R5.8: root help preserves section separators and the two-line command shape within existing caps.
 func TestDevboxR58RootHelpKeepsSeparatorsAndDescription(t *testing.T) {
 	out, _ := captureUsage(t)

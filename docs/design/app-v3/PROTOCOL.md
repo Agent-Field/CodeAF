@@ -1408,7 +1408,7 @@ is `cannot_join`, because a new code or link would end the same way. The engine
 no longer asks `replace_own_chats` (the kind stays for older engines). The
 computer that showed the code finishes `done` only once the joining computer
 says it kept what it was sent; without that word it fails, with a message that
-names the other computer. While `offer_code` shows a code, a computer that has
+names the other computer, including when the person cancels after answering yes. While `offer_code` shows a code, a computer that has
 never paired keeps Sync and Devices in mode `quiet`: they turn `on` only when a
 person answers yes and its identity is sent, and stay `on` after that even if
 the pairing then fails (both are emitted again before that failure). A code that
