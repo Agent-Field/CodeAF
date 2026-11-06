@@ -343,6 +343,9 @@ three answers does. An automation running is no reason to ask: closing codeaf pa
 and a run it cut off runs again when a window is next open (*Automations*).
 The session cancels its routing-cache refresh and waits for that refresh's remaining
 local writes before shutdown completes.
+The process also waits up to about 50 milliseconds for its lane-note writer
+and final flush. If that deadline passes, it prints
+`codeaf: lane saving timed out; quitting without waiting further` and exits.
 
 On the switcher card, `ctrl+w` closes a selected background tab while keeping
 its work running, and that row drops behind the fold. For the current conversation it uses the same close card when
