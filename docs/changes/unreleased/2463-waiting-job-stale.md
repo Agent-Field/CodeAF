@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: Waiting job controls tolerate brief bookkeeping
+title: Acting on a waiting job no longer fails with 'job moved on' when nothing changed
 pr: 2463
 surface: [engine, factory]
 invalidates:
