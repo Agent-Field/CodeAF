@@ -13,6 +13,13 @@ const RepoOffRefusal = "is off · turn it on in Repos to run its jobs."
 // arrive before anyone has said where it is done.
 const NoRepoRefusal = "say which repository the work is on"
 
+// NamesNoRepo says the job names no repository at all, the one case
+// [NoRepoRefusal] is for. IT IS NOT [RepoOf] == "": a job typed on a floor with
+// no GitHub names a bare repository ("api") with no owner, which RepoOf
+// answers "" for because no watched list could hold it, and that job is
+// still launched on its own checkout as it always was.
+func NamesNoRepo(it Item) bool { return strings.TrimSpace(it.Repo) == "" }
+
 // RepoOffWords is the refusal for a job of repo, which is off.
 func RepoOffWords(repo string) string { return repo + " " + RepoOffRefusal }
 

@@ -244,7 +244,7 @@ func update(st *store.Store, old factory.Item, e Entry, now time.Time, o options
 		if sourcePriority(*it) {
 			it.Priority = priorityOf(e)
 		}
-		if factory.RepoOf(*it) == "" && e.Repo != "" {
+		if factory.NamesNoRepo(*it) && e.Repo != "" {
 			it.Repo, it.Places = e.Repo, []string{e.Repo}
 			// A job that never ran takes the repository's steps with it; one
 			// that ran keeps the steps it ran.
@@ -268,7 +268,7 @@ func changed(it factory.Item, e Entry) bool {
 	if (e.URL != "" && it.URL != e.URL) || (e.Author != "" && it.Author != e.Author) {
 		return true
 	}
-	if factory.RepoOf(it) == "" && e.Repo != "" {
+	if factory.NamesNoRepo(it) && e.Repo != "" {
 		return true
 	}
 	if sourcePriority(it) {

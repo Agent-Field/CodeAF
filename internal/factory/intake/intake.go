@@ -157,7 +157,7 @@ func (in *Intake) admit(ctx context.Context, it factory.Item, rules []route.Rule
 	switch {
 	case routed == nil && len(it.Labels) == 0:
 		return nil, false, nil
-	case factory.RepoOf(target) == "":
+	case factory.NamesNoRepo(target):
 		return nil, false, nil
 	case sw.OffJob(target):
 		return nil, false, nil
