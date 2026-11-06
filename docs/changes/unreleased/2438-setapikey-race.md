@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Keep provider keys consistent when opening conversations
-pr: 0
+pr: 2438
 surface: [app, chat, engine]
 invalidates: []
 ---
