@@ -116,6 +116,12 @@ func (d *Doors) Launch(id int) error {
 	if err := factory.CheckPersonStop(it); err != nil {
 		return err
 	}
+	// A JOB WITH NO REPOSITORY WAITS FOR ONE: work filed from outside
+	// (internal/factory/inbox) may arrive before a rule or a person says where
+	// it is done, and a run with nowhere to check out would fail on a worker.
+	if factory.RepoOf(it) == "" {
+		return errors.New(factory.NoRepoRefusal)
+	}
 	if run.StoredPaused(it) {
 		return d.Hold(id, false)
 	}

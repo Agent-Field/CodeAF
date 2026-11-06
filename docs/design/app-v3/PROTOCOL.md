@@ -242,6 +242,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
+| `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -383,6 +384,15 @@ finished or publishing jobs. Ended jobs retain their existing `stale` or
 `conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
 and errors retain their existing codes, including `bad_params` for malformed
 requests. Other job actions retain their guards except Pause and Resume, described below.
+
+`factory.intake` in hello features says the engine serves `factory.intake_add`:
+outside work filed as a job, the same door as the factory's `POST /api/intake`.
+Its params are `{factory, source, external_id, title, body?, url?, author?,
+labels?, priority?, repo?}`; `source` is a lowercase name (`jira`,
+`inbox:ops`) and `priority` is `p0`..`p3`. The pair `(source, external_id)` is
+the identity: a second call updates the job it made and answers `created:
+false`. The reply is `{id, created}`. A malformed entry is `bad_params` with
+the inbox's own sentence.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take

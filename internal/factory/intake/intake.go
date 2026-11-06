@@ -101,6 +101,12 @@ func (in *Intake) Once(ctx context.Context) error {
 		if factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
 			continue
 		}
+		// A JOB WITH NO REPOSITORY HAS NO RULES TO READ and could not be
+		// launched ([factory.NoRepoRefusal]): outside work waits in Backlog
+		// until a routing rule or a person names one.
+		if factory.RepoOf(it) == "" {
+			continue
+		}
 		if err := in.decide(ctx, it, book); err != nil {
 			errs = append(errs, err)
 		}

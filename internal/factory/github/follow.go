@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -395,7 +396,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			}
 			applied = true
 			return nil
-		}); err != nil || !applied || rec == nil {
+		}); err != nil || !applied {
 			continue
 		}
 		kind := ""
@@ -415,8 +416,16 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		handle := ""
 		if kind == record.PRMerged {
 			handle = next.MergedBy
+			// A MERGE A PERSON MADE ON GITHUB is seen here and nowhere else;
+			// one the factory made arrives in the worker's report and is told
+			// there ([inbox.Mark.Moments]), so this job was not yet merged.
+			if it.SourceRef != "" {
+				inbox.Notify(ctx, st, it.ID, inbox.Merged(next.URL))
+			}
 		}
-		_, _ = rec.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: handle, Detail: "pr · " + next.URL})
+		if rec != nil {
+			_, _ = rec.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: handle, Detail: "pr · " + next.URL})
+		}
 	}
 	return nil
 }

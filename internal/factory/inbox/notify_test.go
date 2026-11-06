@@ -1,0 +1,108 @@
+package inbox
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
+
+type fakeReplier struct {
+	mu   sync.Mutex
+	got  []string
+	err  error
+	seen []Event
+}
+
+func (r *fakeReplier) Reply(_ context.Context, id string, ev Event) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.got = append(r.got, id)
+	r.seen = append(r.seen, ev)
+	return r.err
+}
+
+func TestNotifyAnswersTheJobsOwnSource(t *testing.T) {
+	st := openStore(t)
+	e := entry()
+	e.Source, e.ExternalID = "inbox:ops", "ticket:7"
+	res, err := Add(context.Background(), st, e, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops, other := &fakeReplier{}, &fakeReplier{}
+	RegisterReplier("inbox:ops", ops)
+	RegisterReplier("inbox", other)
+	defer RegisterReplier("inbox:ops", nil)
+	defer RegisterReplier("inbox", nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // a request that ended does not cut the answer short
+	Notify(ctx, st, res.ID, Opened("https://github.com/acme/web/pull/3"))
+	replies.Wait()
+	if len(ops.got) != 1 || ops.got[0] != "ticket:7" || ops.seen[0].JobID != res.ID || ops.seen[0].Kind != EventPROpened || len(other.got) != 0 {
+		t.Fatalf("ops %v %+v, other %v", ops.got, ops.seen, other.got)
+	}
+}
+
+func TestNotifyNeverFailsAndSkipsJobsWithNoSource(t *testing.T) {
+	st := openStore(t)
+	floor, err := st.Add(context.Background(), factory.Item{Title: "typed", Repo: "acme/web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeReplier{err: errors.New("token=sk-secret refused")}
+	RegisterReplier("chat", r)
+	RegisterReplier("inbox:ops", r)
+	defer RegisterReplier("chat", nil)
+	defer RegisterReplier("inbox:ops", nil)
+	var logged []string
+	logf = func(format string, args ...any) { logged = append(logged, format) }
+	defer func() { logf = defaultLogf }()
+
+	Notify(context.Background(), st, floor, Merged("u"))
+	Notify(context.Background(), st, 999, Merged("u"))
+	replies.Wait()
+	if len(r.got) != 0 {
+		t.Fatalf("a job with no source was answered: %v", r.got)
+	}
+	res, _ := Add(context.Background(), st, entry(), at)
+	Notify(context.Background(), st, res.ID, Merged("u"))
+	replies.Wait()
+	if len(r.got) != 1 || len(logged) != 1 || !strings.Contains(logged[0], "failed") {
+		t.Fatalf("replies %v, logged %v", r.got, logged)
+	}
+}
+
+func TestMomentsAreTheThreeChangesOfAnInboxJob(t *testing.T) {
+	job := factory.Item{SourceRef: "inbox:ops:A1", Origin: "inbox:ops", State: factory.StateRunning}
+	mark := MarkOf(job)
+	if got := mark.Moments(job); len(got) != 0 {
+		t.Fatalf("no change = %+v", got)
+	}
+	opened := job
+	opened.PullRequest = &factory.PullRequest{URL: "https://x/pull/1", State: factory.PROpen}
+	if got := mark.Moments(opened); len(got) != 1 || got[0].Kind != EventPROpened || got[0].URL != "https://x/pull/1" {
+		t.Fatalf("opened = %+v", got)
+	}
+	// A pull request changed in place still shows as merged.
+	mark = MarkOf(opened)
+	opened.PullRequest.State = factory.PRMerged
+	if got := mark.Moments(opened); len(got) != 1 || got[0].Kind != EventMerged {
+		t.Fatalf("merged = %+v", got)
+	}
+	stuck := job
+	stuck.State, stuck.Question = factory.StateNeedsYou, "Approval needed: plan"
+	if got := MarkOf(job).Moments(stuck); len(got) != 1 || got[0].Kind != EventStuck || !strings.Contains(got[0].Text, "Approval needed: plan") {
+		t.Fatalf("stuck = %+v", got)
+	}
+	// A job the inbox did not file has none.
+	forge := opened
+	forge.SourceRef = ""
+	if got := MarkOf(factory.Item{}).Moments(forge); len(got) != 0 {
+		t.Fatalf("forge job moments = %+v", got)
+	}
+}

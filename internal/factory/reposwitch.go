@@ -8,6 +8,11 @@ import "strings"
 // rerun, the publish and the merge all say the same words.
 const RepoOffRefusal = "is off · turn it on in Repos to run its jobs."
 
+// NoRepoRefusal is what a job that names no repository is refused with, at
+// the floor's new-job door and at the launch: work filed from outside may
+// arrive before anyone has said where it is done.
+const NoRepoRefusal = "say which repository the work is on"
+
 // RepoOffWords is the refusal for a job of repo, which is off.
 func RepoOffWords(repo string) string { return repo + " " + RepoOffRefusal }
 
