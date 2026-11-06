@@ -85,10 +85,20 @@ decides which combinations are accepted.
 | method | params | result |
 |---|---|---|
 | `asks.answer` | `{agent, batch_item, id, later, option, scope, text, why, you_decide}` | `Empty` |
+| `asks.answer_secret` | `{agent, id, secret}` | `Empty` |
 | `asks.defer` | `in.askAt` | `AskResult` |
 | `asks.hold` | `{agent, id}` | `Empty` |
 | `asks.list` | `in.AgentParams` | `AsksResult` |
 | `asks.shown` | `in.askAt` | `AskResult` |
+
+An ask whose answer is a credential carries `secret: {placeholder?, keeps_for_s?}`.
+The app draws one masked box, never shows the value back, and sends it with
+`asks.answer_secret`, a method of its own so a wire trace drops `secret` by name.
+`bad_params` refuses an ask without `secret` and an empty value; to say no, answer
+the ask's Decline option with `asks.answer`, which refuses any `text` on a
+secret ask (`bad_params`) and so never carries the value. `keeps_for_s` is how long the engine
+keeps the value in a private file the agent's commands read (the model's own
+`request_secret`); absent, the value goes to its lane (a connection's key).
 
 ## attachments methods
 
