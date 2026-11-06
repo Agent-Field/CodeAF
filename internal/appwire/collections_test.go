@@ -106,12 +106,12 @@ func features(hello map[string]any) []any {
 // engine without collections answers its methods unknown_method.
 func TestCollectionsFeatureFollowsTheEngine(t *testing.T) {
 	w, _ := startCollectorWire(t)
-	if got := features(w.next()); len(got) != 3 || got[0] != "x" || got[1] != FeatureAgentEffortRungs || got[2] != FeatureCollections {
+	if got := features(w.next()); len(got) != 4 || got[0] != "x" || got[1] != FeatureAgentEffortRungs || got[2] != FeatureCollections || got[3] != FeatureCollectionsFactoryJob {
 		t.Fatalf("features = %v", got)
 	}
 	plain := startWire(t, &fakeEngine{})
 	for _, f := range features(plain.next()) {
-		if f == FeatureCollections {
+		if f == FeatureCollections || f == FeatureCollectionsFactoryJob {
 			t.Fatal("an engine without collections claims them")
 		}
 	}

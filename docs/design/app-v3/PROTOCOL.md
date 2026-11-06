@@ -296,6 +296,10 @@ keeps the value in a private file the agent's commands read (the model's own
 Collection refs include `factory_job`, with a canonical positive decimal job `id`
 and a required `factory` field. The pair addresses the same job as `factory.job`.
 Other ref kinds have no `factory`. Several collections can reference the same job.
+Engines whose collections hold `factory_job` refs announce
+`collections.factory_job` in `hello.features`. A client requires it before it
+relies on adding a job: an engine that announces only `collections` may refuse
+the kind with `bad_params`.
 Factory job targets carry the recorded title, state word and repository; an
 unavailable Factory produces an `unknown` target and status. A missing job
 produces a `deleted` target. Resolution uses one bounded batch across nested
