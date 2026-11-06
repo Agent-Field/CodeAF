@@ -14,3 +14,9 @@ typed tasks keep their existing join authority. Task-cap call refusals stop the 
 as a dollar-limit ending, while a checker's own ceiling remains local to its check. The
 report names the configured task limit and `/crew` when that ceiling binds. Delegated
 programs retain their own ceilings.
+
+Continuing an interrupted run subtracts its persisted spend from the task allowance
+and retains the configured-limit explanation. Only checks seated by the review round
+are exempt from the task count; a worker's `--role check` tasks still count. Existing
+cost and elapsed limits retain completed-work precedence; only a typed task-wide
+spend refusal suppresses completion.

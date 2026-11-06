@@ -2325,6 +2325,8 @@ $100.00 default.
 Spending tab's `per task` row and set with `/crew cap task <$>`. On the run road this is
 one ceiling for the whole tree, including planning and checks. The smaller of that limit
 and the conversation's remaining allowance wins, even when no crew was routed.
+Continuing interrupted work keeps what the same tree already spent: only the unspent
+part of its per-task limit remains available.
 A routed crew refuses a call that would cross its per-task limit. Reaching the run's
 ceiling ends workers in flight and starts no more. When the per-task limit binds, the
 report says `this task reached its $5 limit · raise it in /crew` (with your configured

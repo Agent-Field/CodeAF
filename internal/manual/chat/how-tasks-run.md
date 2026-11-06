@@ -3065,8 +3065,9 @@ message. See the next section.
 ## Task tree limits, duplicate tasks and proposals that auto-start
 
 A run worker can hand out work at most two levels below its run's root task. A run can
-hold at most 20 counted tasks: the root, review checks and cancelled tasks do not consume
-those slots. These are runaway stops, not a target for how much work to hand out.
+hold at most 20 counted tasks: the root, checks seated by the review round and cancelled
+tasks do not consume those slots. A task a worker creates with `--role check` still
+counts. These are runaway stops, not a target for how much work to hand out.
 
 A worker's `plandb add`, `split`, `task insert` or `task pivot` also refuses a title already
 used anywhere in that run, including its own task and the root. Titles are compared in
