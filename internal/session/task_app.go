@@ -22,6 +22,7 @@ type AppTaskView struct {
 	Retryable bool
 
 	ID, Parent, Title, Brief, State, Model, Origin, Result string
+	Group                                                  string
 	Waits                                                  []string
 	Deadline                                               time.Time
 	Held                                                   bool
@@ -264,6 +265,7 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 	out = a.appGraphTasks(out, cap, graphIDs)
 	// Both projections share the plan gate and each trajectory for this listing.
 	rows := a.appRunRows()
+	aliases := appRunPlanAliases(rows)
 	stores, plan, closeStores := a.openPlanReadHandles()
 	defer closeStores()
 	read := &planTaskRead{stores: stores, plan: plan}
@@ -273,11 +275,17 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 			continue
 		}
 		graphIDs[id] = true
+		graphIDs[planStoreID(appRunRowKey(row))] = true
 		out = append(out, a.appRunViewIn(row, cap, read))
 	}
-	for _, row := range a.planTasksIn(read) {
+	plans := a.planTasksIn(read)
+	groups := appPlanGroups(rows, plans)
+	for _, row := range plans {
 		if graphIDs[row.ID] {
 			continue
+		}
+		if parent := aliases[row.Parent]; parent != "" {
+			row.Parent = parent
 		}
 		state := row.StateWord()
 		if state == "queued" {
@@ -289,7 +297,7 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 		if state == "incomplete" {
 			state = "failed"
 		}
-		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: state == "failed" && a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
+		out = append(out, AppTaskView{Source: cloneSource(row.Source), Dismissed: state == "failed" && a.tasker().isDismissed(row.ID), ID: row.ID, Parent: row.Parent, Group: groups[row.ID], Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
 	}
 	out = append(out, a.appProposalViews(cap)...)
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })

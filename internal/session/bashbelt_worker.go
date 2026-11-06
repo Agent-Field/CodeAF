@@ -133,7 +133,7 @@ func NewBeltWorker(config Config, completer Completer, task *plandb.Task, storeP
 	// back — and a shim that never landed is a seat that cannot run, because
 	// every `plandb` its worker runs would resolve to whatever shares the
 	// machine's PATH and write a plan this run would never read.
-	plan := &planState{path: storePath, root: rootID}
+	plan := &planState{path: storePath, root: rootID, task: task.ID}
 	if err := plan.armShim(); err != nil {
 		_ = agent.Close()
 		return nil, fmt.Errorf("arm the plandb shim: %w", err)
@@ -224,6 +224,10 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		strings.Join(task.Deliverables, "\n"),
 		task.Acceptance,
 		"", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	if task.Title != "" {
+		identity, rest, _ := strings.Cut(doc, "\n")
+		doc = identity + "\n" + task.Title + "\n" + rest
+	}
 	// The runtime's directory is authority, while the work order may still
 	// quote the source checkout. Preserve those words and explain their scope
 	// before the worker sees them, as the checker already does for its probes.

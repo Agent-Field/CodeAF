@@ -243,6 +243,9 @@ func (a *Agent) endedBeltRow(id uint64, why string) (string, bool, error) {
 			if kept.State == TaskRunning {
 				return a.stopUndrivenRow(id, kept.Parent, why)
 			}
+			if a.stopUndrivenRunWork(kept, why) {
+				return a.stopUndrivenRow(id, kept.Parent, why)
+			}
 			return taskStopName(id, kept.Title) + " has already finished; there is nothing to stop", true, nil
 		}
 	}
@@ -256,10 +259,9 @@ func (a *Agent) endedBeltRow(id uint64, why string) (string, bool, error) {
 const runRowUndrivenWord = "nothing is driving this task any more, so no worker can read a message; stop it to clear the row"
 
 // stopUndrivenRow settles a run row nothing drives: a row the rail draws
-// running whose run is gone, or whose task the run's plan does not hold. THERE
-// IS NO WORK TO CUT, so the stop is the row's ending and nothing else, written
-// where every run row's ending is written ([Agent.publishRunRow]) so the rail
-// and the conversation read back tomorrow agree that it stopped.
+// running whose run is gone, or whose task the run's plan does not hold. It
+// clears any lingering work in that root's store, then publishes the row's
+// ending where every run row's ending is kept ([Agent.publishRunRow]).
 func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, error) {
 	g := a.graph()
 	notice := TaskNotice{ID: id, Parent: parent}
@@ -268,6 +270,7 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 			notice = kept
 		}
 	}
+	a.stopUndrivenRunWork(notice, why)
 	notice.State, notice.Stopped = TaskFailed, true
 	notice.Report = stopBecause(taskStoppedWord, why) + " · nothing was driving it any more"
 	notice.EndedAt = a.taskClockNow()
@@ -277,6 +280,23 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 		a.emitTaskUpdate(notice)
 	}
 	return "stopped " + stopBecause(taskStopName(id, notice.Title), why) + " — nothing was driving it any more", true, nil
+}
+
+// stopUndrivenRunWork clears a retained root's lingering workers as well as
+// its stale notice. Fully ended runs and individual joined rows stay as they are.
+func (a *Agent) stopUndrivenRunWork(row TaskNotice, why string) bool {
+	stopped := false
+	_ = a.planSteer(planStoreID(appRunRowKey(row)), func(store *plandb.Store, task *plandb.Task) error {
+		if !planStopOpenWork(store, task, []bool{true}) {
+			return nil
+		}
+		if err := store.StopRoot(stopBecause(taskStoppedWord, why)); err != nil {
+			return err
+		}
+		stopped = true
+		return nil
+	}, true)
+	return stopped
 }
 
 // sayToRunRowFrom is a message to a row a run owns, and it reports whether the
