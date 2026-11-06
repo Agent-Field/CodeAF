@@ -14,6 +14,12 @@ type seatScope struct {
 	scope string
 }
 
+// spendReservation keeps the task and ceiling holds separate from the day
+// hold returned by before, since each tally can reserve a different estimate.
+type spendReservation struct {
+	task, ceiling float64
+}
+
 // ceilingTally separates a run task's ceiling from the persisted seat aggregate.
 // Calls without a scope retain the single-task crew's existing seat tally.
 func (g *SpendGuard) ceilingTally(ctx context.Context, seat crewroute.Seat) *SpendTask {

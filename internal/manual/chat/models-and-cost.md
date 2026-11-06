@@ -817,8 +817,9 @@ unchecked rather than on a bill ten times its estimate.
 Only the checker's own calls count toward that ceiling, whatever model the worker or
 planner runs, including a crew whose three seats use one model. The ceiling follows
 the checker when it moves to another model.
-Each check in a run starts with its own checker ceiling. Every check's spend still
-counts toward the whole run's per-task limit and the day's limits.
+Each check in a run starts with its own checker ceiling. An earlier check's actual
+cost does not raise the estimate held against a later check's ceiling. Every check's
+spend still counts toward the whole run's per-task limit and the day's limits.
 
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.
