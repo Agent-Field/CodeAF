@@ -1,6 +1,6 @@
 // Package judge is the model-backed [route.Judge]: it asks a cheap model one
 // rule's yes/no question ([route.Match.Ask]) about one item, and reads the
-// answer strictly into a [route.Verdict].
+// answer strictly into a [route.Answer].
 //
 // IT HOLDS NO MODEL CLIENT, as internal/factory/triage and scout hold none.
 // The caller hands it a [Call] that sends one request and answers the text
@@ -11,7 +11,7 @@
 //
 // A FAILURE IS NEVER A YES. Every way the judge can fail — no model, a refused
 // call, a timeout, a reply that is not exactly {"yes":bool,"why":"…"} — is an
-// error and a zero Verdict, and the intake reads an error as no.
+// error and a zero Answer, and the intake reads an error as no.
 //
 // docs/design/factory-general/DESIGN.md §1b is the contract this fills.
 package judge
@@ -140,19 +140,19 @@ func (j *judge) Model(ctx context.Context) (string, error) {
 	return "", ErrNoModel
 }
 
-// Judge asks ask about it. The verdict carries the model that answered and
-// Key = route.VerdictKey(ask, it), so a later edit of the item's words makes
+// Judge asks ask about it. The answer carries the model that answered and
+// Key = route.AnswerKey(ask, it), so a later edit of the item's words makes
 // it stale.
-func (j *judge) Judge(ctx context.Context, ask string, it factory.Item) (route.Verdict, error) {
+func (j *judge) Judge(ctx context.Context, ask string, it factory.Item) (route.Answer, error) {
 	if strings.TrimSpace(ask) == "" {
-		return route.Verdict{}, ErrNoQuestion
+		return route.Answer{}, ErrNoQuestion
 	}
 	if j.opts.Call == nil {
-		return route.Verdict{}, ErrNoModel
+		return route.Answer{}, ErrNoModel
 	}
 	model, err := j.Model(ctx)
 	if err != nil {
-		return route.Verdict{}, err
+		return route.Answer{}, err
 	}
 	req := Request{Model: model, System: System, User: User(ask, it)}
 	var reply Reply
@@ -163,22 +163,22 @@ func (j *judge) Judge(ctx context.Context, ask string, it factory.Item) (route.V
 		}
 		select {
 		case <-ctx.Done():
-			return route.Verdict{}, ctx.Err()
+			return route.Answer{}, ctx.Err()
 		case <-j.opts.After(RetryAfter):
 		}
 	}
 	if err != nil {
-		return route.Verdict{}, err
+		return route.Answer{}, err
 	}
 	yes, why, err := Parse(reply.Text)
 	if err != nil {
-		return route.Verdict{}, err
+		return route.Answer{}, err
 	}
 	served := strings.TrimSpace(reply.Model)
 	if served == "" {
 		served = model
 	}
-	return route.Verdict{Yes: yes, Why: why, Model: served, Key: route.VerdictKey(ask, it)}, nil
+	return route.Answer{Yes: yes, Why: why, Model: served, Key: route.AnswerKey(ask, it)}, nil
 }
 
 // attempt is one call under the attempt timeout, its cost told to Spent.

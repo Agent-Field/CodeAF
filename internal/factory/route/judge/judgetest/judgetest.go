@@ -27,8 +27,8 @@ type Asked struct {
 }
 
 // Judge is the fake. Answer is consulted first; else Answers by the question's
-// exact words; else Err; else [ErrUnanswered]. The verdict it returns carries
-// [Model] and route.VerdictKey(ask, it), as the real judge's does.
+// exact words; else Err; else [ErrUnanswered]. The answer it returns carries
+// [Model] and route.AnswerKey(ask, it), as the real judge's does.
 type Judge struct {
 	// Answer decides any question by code, when a test needs the item.
 	Answer func(ask string, it factory.Item) (yes bool, why string, err error)
@@ -42,7 +42,7 @@ type Judge struct {
 }
 
 // Judge answers one question.
-func (f *Judge) Judge(_ context.Context, ask string, it factory.Item) (route.Verdict, error) {
+func (f *Judge) Judge(_ context.Context, ask string, it factory.Item) (route.Answer, error) {
 	f.mu.Lock()
 	f.asked = append(f.asked, Asked{Ask: ask, Item: it})
 	f.mu.Unlock()
@@ -62,7 +62,7 @@ func (f *Judge) Judge(_ context.Context, ask string, it factory.Item) (route.Ver
 		err = ErrUnanswered
 	}
 	if err != nil {
-		return route.Verdict{}, err
+		return route.Answer{}, err
 	}
 	if why == "" {
 		why = "The fake judge said so."
@@ -70,7 +70,7 @@ func (f *Judge) Judge(_ context.Context, ask string, it factory.Item) (route.Ver
 			why = "The fake judge said no."
 		}
 	}
-	return route.Verdict{Yes: yes, Why: why, Model: Model, Key: route.VerdictKey(ask, it)}, nil
+	return route.Answer{Yes: yes, Why: why, Model: Model, Key: route.AnswerKey(ask, it)}, nil
 }
 
 // Asked is every question asked so far, oldest first.

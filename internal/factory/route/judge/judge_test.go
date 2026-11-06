@@ -127,9 +127,9 @@ func TestAVerdictCarriesTheModelAndTheKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := route.Verdict{Yes: true, Why: "A clear Safari crash with steps.", Model: "served/model", Key: route.VerdictKey(smallBug, bug)}
+	want := route.Answer{Yes: true, Why: "A clear Safari crash with steps.", Model: "served/model", Key: route.AnswerKey(smallBug, bug)}
 	if v != want {
-		t.Fatalf("verdict = %+v; want %+v", v, want)
+		t.Fatalf("answer = %+v; want %+v", v, want)
 	}
 }
 
@@ -163,7 +163,7 @@ func TestTheModelIsTheRulesThenTheFactorysThenTheReads(t *testing.T) {
 			continue
 		}
 		if r.sent[0].Model != c.want || v.Model != c.want {
-			t.Errorf("%s: asked %q, verdict says %q; want %q", c.name, r.sent[0].Model, v.Model, c.want)
+			t.Errorf("%s: asked %q, answer says %q; want %q", c.name, r.sent[0].Model, v.Model, c.want)
 		}
 	}
 }
@@ -247,7 +247,7 @@ func TestATransientFailureIsRetriedOnce(t *testing.T) {
 	}}
 	v, err := r.judge(Options{After: pauses}).Judge(context.Background(), smallBug, bug)
 	if err != nil || !v.Yes {
-		t.Fatalf("verdict %+v, %v; want a yes after one retry", v, err)
+		t.Fatalf("answer %+v, %v; want a yes after one retry", v, err)
 	}
 	if len(r.sent) != 2 {
 		t.Fatalf("%d attempts; want 2", len(r.sent))
@@ -263,7 +263,7 @@ func TestARefusalAndAGarbledAnswerAreNotRetried(t *testing.T) {
 		r := &recorder{script: []func(context.Context) (Reply, error){step, answers(`{"yes":true,"why":"x"}`, 0)}}
 		v, err := r.judge(Options{After: pauses}).Judge(context.Background(), smallBug, bug)
 		if err == nil || v.Yes {
-			t.Fatalf("verdict %+v, %v; want an error and no yes", v, err)
+			t.Fatalf("answer %+v, %v; want an error and no yes", v, err)
 		}
 		if len(r.sent) != 1 {
 			t.Fatalf("%d attempts; want 1", len(r.sent))

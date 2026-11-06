@@ -27,9 +27,9 @@ import (
 	"time"
 )
 
-// RouteVerdict is a routing rule's AI answer about one item, kept on the item
-// (internal/factory/route.Verdict is the same shape; route converts).
-type RouteVerdict struct {
+// RouteAnswer is a routing rule's AI answer about one item, kept on the item
+// (internal/factory/route.Answer is the same shape; route converts).
+type RouteAnswer struct {
 	Yes   bool      `json:"yes"`
 	Why   string    `json:"why"`
 	Model string    `json:"model,omitempty"`

@@ -64,35 +64,35 @@ type Rule struct {
 	Then Action `json:"then" yaml:"then"`
 }
 
-// Verdict is a model's answer to one rule's [Match.Ask] about one item.
-type Verdict struct {
+// Answer is a model's answer to one rule's [Match.Ask] about one item.
+type Answer struct {
 	Yes   bool   `json:"yes"`
 	Why   string `json:"why"`             // one sentence, shown to the person
 	Model string `json:"model,omitempty"` // what answered
-	// Key is [VerdictKey] of the question and the item's words when asked; a
-	// verdict whose key no longer matches is stale and is asked again.
+	// Key is [AnswerKey] of the question and the item's words when asked; a
+	// answer whose key no longer matches is stale and is asked again.
 	Key string `json:"key"`
 }
 
-// Verdicts looks up the verdict already held for rule name on this item.
-type Verdicts func(rule string) (Verdict, bool)
+// Answers looks up the answer already held for rule name on this item.
+type Answers func(rule string) (Answer, bool)
 
 // Outcome is what Decide found.
 type Outcome struct {
 	Rule    Rule
 	Matched bool
 	// Pending names the rule whose question must be judged before the list
-	// can be read past it. The caller asks the [Judge], stores the verdict and
+	// can be read past it. The caller asks the [Judge], stores the answer and
 	// calls Decide again; nothing is started while a question is pending.
 	Pending string
-	Verdict *Verdict // the verdict that decided a rule with Ask
+	Answer  *Answer // the answer that decided a rule with Ask
 }
 
 // Decide reads rules top to bottom for it: the first rule whose fields all
 // hold, and whose question (if any) was answered yes, decides. A rule whose
-// fields hold but whose question has no fresh verdict stops the reading with
+// fields hold but whose question has no fresh answer stops the reading with
 // Pending. PURE: no I/O, no clock, no model — the intake owns those.
-func Decide(rules []Rule, it factory.Item, have Verdicts) Outcome {
+func Decide(rules []Rule, it factory.Item, have Answers) Outcome {
 	for _, r := range rules {
 		if !Matches(r.When, it) {
 			continue
@@ -100,15 +100,15 @@ func Decide(rules []Rule, it factory.Item, have Verdicts) Outcome {
 		if r.When.Ask == "" {
 			return Outcome{Rule: r, Matched: true}
 		}
-		v, ok := Verdict{}, false
+		v, ok := Answer{}, false
 		if have != nil {
 			v, ok = have(r.Name)
 		}
-		if !ok || v.Key != VerdictKey(r.When.Ask, it) {
+		if !ok || v.Key != AnswerKey(r.When.Ask, it) {
 			return Outcome{Pending: r.Name}
 		}
 		if v.Yes {
-			return Outcome{Rule: r, Matched: true, Verdict: &v}
+			return Outcome{Rule: r, Matched: true, Answer: &v}
 		}
 	}
 	return Outcome{}
@@ -122,10 +122,10 @@ func Matches(m Match, it factory.Item) bool {
 	return false
 }
 
-// VerdictKey ties a verdict to the question and to the item's own words
+// AnswerKey ties a answer to the question and to the item's own words
 // (title, body, labels), so an edited ticket is judged again. The routing
 // lane fills this in (a short stable hash).
-func VerdictKey(ask string, it factory.Item) string {
+func AnswerKey(ask string, it factory.Item) string {
 	_, _ = ask, it
 	return ""
 }
@@ -138,5 +138,5 @@ func VerdictKey(ask string, it factory.Item) string {
 // Tier is stranger, a yes on a rule with Ask may at most hold the job to ask
 // first — the intake enforces this, whatever the rule's Start says.
 type Judge interface {
-	Judge(ctx context.Context, ask string, it factory.Item) (Verdict, error)
+	Judge(ctx context.Context, ask string, it factory.Item) (Answer, error)
 }
