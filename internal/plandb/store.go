@@ -595,7 +595,7 @@ func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 		if parent == nil {
 			return fmt.Errorf("parent %q does not exist", spec.ParentID)
 		}
-		check := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
+		check := &Task{TaskSpec: spec, Status: StatusPending, ReviewCheck: true, CreatedAt: now, UpdatedAt: now}
 		next.Tasks[spec.ID] = check
 		next.Order = append(next.Order, spec.ID)
 		for ancestor := parent; ancestor != nil; ancestor = next.Tasks[ancestor.ParentID] {

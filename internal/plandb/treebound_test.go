@@ -102,11 +102,14 @@ func TestRunWorkerTreeBoundsRefuseWholeBatches(t *testing.T) {
 	}
 }
 
-// L-LOOP C3c and C2: root/check/cancelled rows do not consume work slots;
+// L-LOOP C3c and C2: root/review/cancelled rows do not consume work slots;
 // cancelled titles can be reused, but the root's title still cannot.
 func TestTreeGrowthExclusions(t *testing.T) {
 	h, s := treeBoundStore(t)
-	treeBoundAdd(t, s, TaskSpec{ID: "cancelled", Title: "Reusable"}, TaskSpec{ID: "check", Title: "Review", Role: RoleCheck})
+	treeBoundAdd(t, s, TaskSpec{ID: "cancelled", Title: "Reusable"})
+	if _, err := s.AddReviewCheck(TaskSpec{ID: "check", Title: "Review", Role: RoleCheck}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.Cancel("cancelled", "no longer needed"); err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +120,22 @@ func TestTreeGrowthExclusions(t *testing.T) {
 	h.cliAdd("Reusable", "replacement")
 	if refusal := s.GrowthRefusal(s.RootID(), []string{"demo"}); !strings.Contains(refusal, "already has a task named") {
 		t.Fatalf("root title was excluded: %s", refusal)
+	}
+}
+
+// L-LOOP C3a, C3c: choosing the check seat cannot evade a worker's count.
+func TestRunWorkerCreatedChecksConsumeTreeSlots(t *testing.T) {
+	h, s := treeBoundStore(t)
+	t.Setenv(RunEnv, s.RootID())
+	for i := 0; i < TreeTaskLimit; i++ {
+		h.cliAdd(fmt.Sprintf("Inspect part %d", i), fmt.Sprintf("check%d", i), "--role", "check", "--parent", s.RootID())
+	}
+	before := s.Tasks()
+	if code := h.run("--db", h.db, "add", "Inspect one more part", "--role", "check", "--parent", s.RootID()); code == 0 || !strings.Contains(h.errb.String(), "20 tasks") {
+		t.Fatalf("worker-created checks escaped the count: exit %d, %s", code, h.errb)
+	}
+	if !reflect.DeepEqual(before, s.Tasks()) {
+		t.Fatal("refused check changed the plan")
 	}
 }
 

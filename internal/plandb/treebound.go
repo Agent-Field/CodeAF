@@ -75,7 +75,7 @@ func growthRefusal(plan state, parentID string, titles []string) string {
 			continue
 		}
 		named[normalizedTitle(task.Title)] = task
-		if id != plan.RootID && task.Role != RoleCheck {
+		if id != plan.RootID && (task.Role != RoleCheck || !task.ReviewCheck) {
 			count++
 		}
 	}

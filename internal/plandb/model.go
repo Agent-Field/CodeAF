@@ -128,6 +128,9 @@ type Task struct {
 	TaskSpec
 	Status    Status `json:"status"`
 	Composite bool   `json:"composite"`
+	// ReviewCheck is set only by AddReviewCheck, so choosing the check role
+	// through a worker's CLI cannot exempt its task from the growth count.
+	ReviewCheck bool `json:"review_check,omitempty"`
 	// Paused is the status-independent hold on a task and everything under it.
 	// A paused task keeps the status it had — ready stays ready — and leaves
 	// the ready frontier whole while the flag is set; Resume clears it. It is
