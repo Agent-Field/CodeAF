@@ -549,7 +549,19 @@ func newFLEWorld(t *testing.T) *fleWorld {
 	}
 	bin := binary(t)
 
-	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	// FLE2E_HOME keeps the run's home after the test (for reopening a job
+	// on the desktop); by default it is a throwaway.
+	base := t.TempDir()
+	if keep := strings.TrimSpace(os.Getenv("FLE2E_HOME")); keep != "" {
+		if entries, err := os.ReadDir(keep); err == nil && len(entries) > 0 {
+			t.Fatalf("FLE2E_HOME %s is not empty", keep)
+		}
+		if err := os.MkdirAll(keep, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		base = keep
+	}
+	tmp, err := filepath.EvalSymlinks(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -770,7 +782,22 @@ func (w *fleWorld) cleanup() {
 		t.Logf("FLE2E_KEEP=1: leaving the engine, the jobs and the GitHub work in place")
 		return
 	}
+	keepJob := os.Getenv("FLE2E_KEEP_JOB") == "1"
+	keptPR := ""
+	if keepJob && w.jiraJob != 0 {
+		if raw, err := w.eng.call("factory.job", map[string]any{"factory": w.factory, "job": w.jiraJob}, time.Minute); err == nil {
+			var j fleJob
+			_ = json.Unmarshal(raw, &j)
+			if j.PR != nil {
+				keptPR = strconv.Itoa(j.PR.Number)
+			}
+		}
+		t.Logf("FLE2E_KEEP_JOB=1: keeping job %d and its pull request #%s open in %s", w.jiraJob, keptPR, w.home)
+	}
 	for id := range w.started {
+		if keepJob && id == w.jiraJob {
+			continue
+		}
 		w.stopQuiet(id)
 	}
 	if w.factory != "" {
@@ -790,7 +817,7 @@ func (w *fleWorld) cleanup() {
 		}
 		_ = json.Unmarshal([]byte(out), &prs)
 		for _, pr := range prs {
-			if !strings.Contains(pr.Title, flePrefix) {
+			if !strings.Contains(pr.Title, flePrefix) || (keptPR != "" && strconv.Itoa(pr.Number) == keptPR) {
 				continue
 			}
 			o, err := w.gh("pr", "close", strconv.Itoa(pr.Number), "-R", fleRepo, "--comment", fleClose, "--delete-branch")
@@ -811,9 +838,13 @@ func (w *fleWorld) cleanup() {
 			t.Logf("closed issue #%d: %v %s", is.Number, err, o)
 		}
 	}
+	keptBranch := ""
+	if keptPR != "" {
+		keptBranch, _ = w.gh("pr", "view", keptPR, "-R", fleRepo, "--json", "headRefName", "-q", ".headRefName")
+	}
 	if out, err := w.gh("api", "repos/"+fleRepo+"/branches", "--paginate", "-q", ".[].name"); err == nil {
 		for _, b := range strings.Fields(out) {
-			if w.branchesBefore[b] || !strings.Contains(strings.ToLower(b), strings.ToLower(flePrefix)) {
+			if b == keptBranch || w.branchesBefore[b] || !strings.Contains(strings.ToLower(b), strings.ToLower(flePrefix)) {
 				continue
 			}
 			o, err := w.gh("api", "-X", "DELETE", "repos/"+fleRepo+"/git/refs/heads/"+b)
@@ -995,10 +1026,7 @@ func (w *fleWorld) scenarioJira(t *testing.T) {
 	t.Logf("job %d routed by %q: state %s, steps %v, runs_on %s, models %v", it.ID, it.Route, j.State, j.stepNames(), j.RunsOn, j.stepModels(t, fleModel))
 
 	// The quick pipeline runs to a pull request on factory-demo. START: AUTO
-	// MUST START IT. A held start is a product failure and is recorded as
-	// one; the test then approves the start over the wire so the rest of the
-	// chain (quick steps, pull request, the Jira comment) is still proven.
-	approved, held := false, false
+	// STARTS IT, with no approval: a held start fails with its reasons.
 	fleEventually(t, "job "+strconv.Itoa(it.ID)+" to open a pull request", 30*time.Minute, 10*time.Second, func() bool {
 		j = w.job(it.ID)
 		if j.PR != nil && j.PR.URL != "" {
@@ -1008,16 +1036,8 @@ func (w *fleWorld) scenarioJira(t *testing.T) {
 		if factory.StoppedByPerson(cur) || (j.State == "done" && j.PR == nil) {
 			t.Fatalf("job %d ended without a pull request: state %s reason %q steps %+v", it.ID, j.State, j.Reason, j.Steps)
 		}
-		if j.State == "needs_you" && j.Reason == "approval_start" && !approved {
-			if !held {
-				held = true
-				t.Errorf("job %d: the rule says start: auto, but its start is held: %q. "+
-					"Cause: factory.pipeline_copy_set stores the copy re-encoded (internal/factory/serve/pipeline_pr.go pipelineFileFor → pipeline.Encode), "+
-					"which writes max_cost and size.issue out explicitly, so an unsized job with no cost history asks first", it.ID, j.AutonomyWhy)
-			}
-			_, err := w.eng.call("factory.job_approve", map[string]any{"factory": w.factory, "job": it.ID, "expect": map[string]any{"version": j.Version}}, time.Minute)
-			approved = err == nil
-			t.Logf("approved job %d's start over the wire: %v", it.ID, err)
+		if j.State == "needs_you" && j.Reason == "approval_start" {
+			t.Fatalf("job %d: the rule says start: auto, but its start is held: %q (asked first %q)", it.ID, j.AutonomyWhy, w.item(it.ID).AskedFirstReason)
 		} else if j.State == "needs_you" {
 			t.Logf("job %d needs you: %s %q", it.ID, j.Reason, j.AutonomyWhy)
 		}
@@ -1093,6 +1113,11 @@ func (w *fleWorld) scenarioChats(t *testing.T) {
 			agents[s.Step] = s.Agent
 			ran = append(ran, s.Step)
 		}
+		for _, r := range s.Rounds {
+			if r.Agent != "" && r.Agent != s.Agent {
+				agents[fmt.Sprintf("%s-round%d", s.Step, r.Round)] = r.Agent
+			}
+		}
 	}
 	j := w.job(w.jiraJob)
 	for _, s := range j.Steps {
@@ -1118,11 +1143,25 @@ func (w *fleWorld) scenarioChats(t *testing.T) {
 		}
 		var e struct {
 			Entries []struct {
-				Kind   string `json:"kind"`
-				Author string `json:"author"`
+				Kind   string    `json:"kind"`
+				Author string    `json:"author"`
+				At     time.Time `json:"at"`
+				Text   string    `json:"text"`
 			} `json:"entries"`
 		}
 		_ = json.Unmarshal(raw, &e)
+		var doc strings.Builder
+		fmt.Fprintf(&doc, "job %d · %s · agent %s · %d entries\n\n", w.jiraJob, who, id, len(e.Entries))
+		for _, en := range e.Entries {
+			fmt.Fprintf(&doc, "── %s · %s · %s\n%s\n\n", en.At.Format(time.RFC3339), en.Author, en.Kind, strings.TrimSpace(en.Text))
+		}
+		chatDir := filepath.Join(w.logDir, "chats")
+		if err := os.MkdirAll(chatDir, 0o755); err == nil {
+			name := fmt.Sprintf("job%d-%s-%s.txt", w.jiraJob, who, id)
+			if err := os.WriteFile(filepath.Join(chatDir, name), []byte(doc.String()), 0o644); err != nil {
+				t.Errorf("save %s: %v", name, err)
+			}
+		}
 		counts[who] = len(e.Entries)
 		if len(e.Entries) == 0 {
 			t.Errorf("agents.entries for %s (%s) is empty", who, id)
