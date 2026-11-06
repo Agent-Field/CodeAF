@@ -3796,7 +3796,7 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 
 // THE CHAT MANUAL SPEAKS THE PERSON'S WORDS AND NOT THE HARNESS'S.
 //
-// `auditor`, `answer`, `verified` and `refuted` are the machinery's own
+// `auditor`, `verdict`, `verified` and `refuted` are the machinery's own
 // vocabulary, and internal/session bans them from every string a person or the
 // chat model reads (task_audit.go's vocabulary law, held there by
 // `assertPlainWords`). The manual is read by both — the chat answers "why did it
@@ -3814,7 +3814,7 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 // called. Those are addresses too, and the four here are the ones that describe
 // WORK — which is what the law is about.
 func TestNoChatPageSpeaksTheHarnessesOwnVocabulary(t *testing.T) {
-	banned := regexp.MustCompile(`(?i)\b(auditors?|answers?|verified|refuted)\b`)
+	banned := regexp.MustCompile(`(?i)\b(auditors?|verdicts?|verified|refuted)\b`)
 	// Everything inside backticks is a handle somebody types or reads back.
 	handles := regexp.MustCompile("`[^`]*`")
 	for _, section := range Chat().Sections() {

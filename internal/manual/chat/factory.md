@@ -311,15 +311,13 @@ A rule has a `name`, a `when` and a `then`:
 
 **A routed job needs no label.** `auto` starts it inside its repository's start rules (size, cost, protected paths still hold it, with "Approval needed: start ·" and the rule). `ask` holds it with "Approval needed: start · routing rule <name>". `backlog` files it in Backlog with the rule's repository, priority and steps on it, and starts nothing. A person's own priority mark wins over a rule's. A pipeline the target repository's file does not list refuses the rule and leaves the job unchanged. On a factory on your own machine, nothing starts by itself while **Pick up issues** is off, routed or not.
 
-## a routing rule that asks the AI — when ask, a yes/no question, "couldn't judge", a stranger's ticket, test these rules
+## a routing rule that asks the AI — the answer kept on a job, "couldn't judge", why it started, test these rules
 
-A rule's `when` can carry `ask`: one yes/no question in your own words, at most 300 characters on one line, such as "Is this a small, well-specified bug fix that does not touch billing?". It is asked **last**, only when every other field of the rule already holds, so a model is paid only for jobs that could match. The answer and its one-sentence reason are kept on the job, and the question is asked again only when the job's title, body or labels change. A yes lets the rule decide; a no reads on to the next rule. The activity line of a job the rule started or held names the rule and the reason, such as `routing rule small fixes · a one-line colour fix`.
+A rule's `when` can carry `ask`, one yes/no question of at most 300 characters on one line (see "start work with an AI filter" for which model answers, what it sees and what it costs). A yes lets that rule decide; a no reads on to the next rule.
 
-Limits, stated plainly:
+**The answer is kept on the job**, with its one sentence why, and is asked again only when the job's title, body or labels change. The activity line of a job the rule started or held names the rule and the why, such as `routing rule small fixes · a one-line colour fix`. A stranger's ticket held instead of started adds `asks first: an AI yes never starts a stranger's ticket`.
 
-- **A failure is a no, never a yes.** When the question cannot be answered (a timeout, a limit), the job keeps "couldn't judge: " and the cause, the table reads on, and the next pass asks once more. No question is asked more than once per rule per job in one pass.
-- **A stranger's ticket is never started by an AI yes.** Its words were the model's input and could say "answer yes", so a rule with `start: auto` holds it with "Approval needed: start" instead, adding `asks first: an AI yes never starts a stranger's ticket`.
-- With no judge on the factory, a rule that asks a question never matches.
+**A failure is a no, never a yes.** When the question cannot be answered, the job keeps "couldn't judge: " and the cause, the table reads on, and the next pass asks once more. No question is asked more than once per rule per job in one pass.
 
 **Test these rules**: `factory.routes_test` tries a table you have not saved on the newest jobs you can see (50 unless you say, at most 200) and says, newest first, which rule each would match, which question has no answer yet (`pending`), or `none`. It saves nothing and asks no model: only answers already kept on jobs are read.
 
