@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -158,10 +159,17 @@ func (w *SealWatch) Waiting() {
 	}
 }
 
+// liveTurns counts this process's watches with a turn running. The desktop
+// app keeps its saving helpers warm only while one is (daemon_app.go).
+var liveTurns atomic.Int64
+
 // TurnStarted is the session's word that a turn began: the turn writes the
 // record itself and every call seals it, so no tail seal is owed.
 func (w *SealWatch) TurnStarted() {
 	w.mu.Lock()
+	if !w.started || w.idle {
+		liveTurns.Add(1)
+	}
 	w.started = true
 	w.idle = false
 	w.stopTail()
@@ -214,6 +222,9 @@ func (w *SealWatch) sealTail() {
 // forwards, so a watch without a listener costs nothing.
 func (w *SealWatch) TurnEnded() {
 	w.mu.Lock()
+	if w.started && !w.idle {
+		liveTurns.Add(-1)
+	}
 	w.started = true
 	w.idle = true
 	w.requireTranscript()

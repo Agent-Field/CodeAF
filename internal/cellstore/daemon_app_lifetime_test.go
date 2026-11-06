@@ -132,9 +132,12 @@ func TestDesktopSavingHelperLifetime(t *testing.T) {
 			client := startIdleClient(t, socket, binary, true)
 			pid := client.command(t, "health")
 			assertIdleFlag(t, pid, "1")
+			if got := client.command(t, "turn"); got != "turn" {
+				t.Fatal(got)
+			}
 			time.Sleep(70 * time.Second)
 			if got := client.command(t, "health"); got != pid {
-				t.Fatalf("quiet app restarted helper: pid %s became %s", pid, got)
+				t.Fatalf("app with a running turn restarted helper: pid %s became %s", pid, got)
 			}
 			if killed {
 				if err := client.cmd.Process.Kill(); err != nil {
@@ -144,25 +147,53 @@ func TestDesktopSavingHelperLifetime(t *testing.T) {
 				t.Fatal(got)
 			}
 			stopped := time.Now()
-			deadline := stopped.Add(75 * time.Second)
-			for {
-				args, err := os.ReadFile("/proc/" + pid + "/cmdline")
-				if os.IsNotExist(err) || (err == nil && len(args) == 0) {
-					break
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				if time.Now().After(deadline) {
-					t.Fatal("helper outlived touching by 75 seconds without Stop")
-				}
-				time.Sleep(time.Second)
-			}
-			if time.Since(stopped) < 45*time.Second {
-				t.Fatal("helper closed before its idle limit")
-			}
-			t.Logf("same pid %s survived quiet app; idle exit after %.1fs without Stop", pid, time.Since(stopped).Seconds())
+			awaitHelperExit(t, pid, stopped)
+			t.Logf("same pid %s survived a running turn; idle exit after %.1fs without Stop", pid, time.Since(stopped).Seconds())
 		})
+	}
+}
+
+// An app with no saving work stops touching its helper, so the helper exits
+// on its own idle limit; the next request starts a new one.
+func TestDesktopIdleAppLetsHelperExit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("real one-minute idle exit")
+	}
+	binary := pinnedIdleBinary(t)
+	socket := idleSocket(t)
+	client := startIdleClient(t, socket, binary, true)
+	pid := client.command(t, "health")
+	assertIdleFlag(t, pid, "1")
+	quiet := time.Now()
+	awaitHelperExit(t, pid, quiet)
+	t.Logf("idle app's helper %s exited after %.1fs", pid, time.Since(quiet).Seconds())
+	next := client.command(t, "health")
+	if next == pid {
+		t.Fatalf("helper %s answered after it exited", pid)
+	}
+	assertIdleFlag(t, next, "1")
+}
+
+// awaitHelperExit waits for pid to exit by its own one-minute idle limit,
+// measured from the last request at from.
+func awaitHelperExit(t *testing.T, pid string, from time.Time) {
+	t.Helper()
+	deadline := from.Add(75 * time.Second)
+	for {
+		args, err := os.ReadFile("/proc/" + pid + "/cmdline")
+		if os.IsNotExist(err) || (err == nil && len(args) == 0) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("helper outlived touching by 75 seconds without Stop")
+		}
+		time.Sleep(time.Second)
+	}
+	if time.Since(from) < 45*time.Second {
+		t.Fatal("helper closed before its idle limit")
 	}
 }
 
@@ -173,6 +204,11 @@ func TestDesktopTouchNeverStartsHelper(t *testing.T) {
 	binary := pinnedIdleBinary(t)
 	socket := idleSocket(t)
 	client := startIdleClient(t, socket, binary, true)
+	// A running turn makes every tick touch, so only dial-only touching keeps
+	// the absent and the killed helper from starting.
+	if got := client.command(t, "turn"); got != "turn" {
+		t.Fatal(got)
+	}
 	time.Sleep(25 * time.Second)
 	if _, err := os.Stat(socket); !os.IsNotExist(err) {
 		t.Fatalf("touch started absent helper: %v", err)
