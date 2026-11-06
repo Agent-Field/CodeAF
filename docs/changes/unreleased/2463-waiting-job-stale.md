@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Waiting job controls tolerate brief bookkeeping
-pr: 0
+pr: 2463
 surface: [engine, factory]
 invalidates:
   - "Was true: brief-writing bookkeeping or an unchanged worker report could make an action on a waiting job stale. Now those writes alone do not invalidate job control decisions; other doors retain strict version checks."
