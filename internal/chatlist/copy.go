@@ -2,6 +2,7 @@ package chatlist
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -308,7 +309,7 @@ func CopiesCame(names []string) string {
 func RelayFull(limitBytes int64) string {
 	size := ""
 	if limitBytes > 0 {
-		size = " (" + bytesSize(limitBytes) + ")"
+		size = " (" + BytesSize(limitBytes) + ")"
 	}
 	return fmt.Sprintf(relayFull, size)
 }
@@ -342,14 +343,18 @@ func waitWords(wait time.Duration) string {
 // ceilUnits is wait in whole units of unit, rounded up.
 func ceilUnits(wait, unit time.Duration) int { return int((wait + unit - 1) / unit) }
 
-// bytesSize spells a byte count in the largest binary unit it reaches, without
-// trailing zeros: 5 GiB, 1.5 GiB, 512 MiB.
-func bytesSize(n int64) string {
-	const mib, gib = 1 << 20, 1 << 30
-	if n >= gib {
-		return fmt.Sprintf("%g GiB", float64(n)/gib)
+// BytesSize keeps usage and refusal amounts in the same binary units, rounded
+// to one decimal place so a stored total does not expose a long fraction.
+func BytesSize(n int64) string {
+	for _, unit := range []struct {
+		bytes int64
+		name  string
+	}{{1 << 40, "TiB"}, {1 << 30, "GiB"}, {1 << 20, "MiB"}, {1 << 10, "KiB"}} {
+		if n >= unit.bytes {
+			return fmt.Sprintf("%g %s", math.Round(float64(n)/float64(unit.bytes)*10)/10, unit.name)
+		}
 	}
-	return fmt.Sprintf("%g MiB", float64(n)/mib)
+	return fmt.Sprintf("%d B", n)
 }
 
 // Superseded is said to a driver whose lease another device took over.
