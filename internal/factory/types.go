@@ -573,6 +573,14 @@ type Item struct {
 	Author  string
 	Tier    Tier
 	Origin  Origin
+	// SourceRef is the item's own key on a source that is not the forge it is
+	// published to, such as `jira:ENG-142` or `inbox:sentry/8812`. It is how a
+	// second delivery of the same outside item finds the job it already made,
+	// and empty for an item the forge itself reported (docs/design/factory-general).
+	SourceRef string `json:",omitempty"`
+	// Route is the name of the routing rule that decided this item's repository,
+	// pipeline, priority and start ([route.Rule]), empty when none matched.
+	Route   string `json:",omitempty"`
 	Synced  bool
 	Created time.Time
 	Changed time.Time
