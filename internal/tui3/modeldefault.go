@@ -49,10 +49,7 @@ func (a *app) ensureAvailableModel() bool {
 	if a.state == stateWorking {
 		return a.model != ""
 	}
-	preferred := a.model
-	if preferred == "" {
-		preferred = a.agent.Model()
-	}
+	preferred := a.configuredModel()
 	model, ok := availableConversationModel(preferred, a.modelList())
 	if !ok {
 		a.model, a.ctxWindow = "", 0
@@ -60,11 +57,8 @@ func (a *app) ensureAvailableModel() bool {
 		return false
 	}
 	if model.ID != a.model {
-		wasSwitching := a.creditSwitching
-		a.creditSwitching = true
-		a.switchModel(model.ID, model.ContextLength)
-		a.creditSwitching = wasSwitching
+		a.useModelForNow(model.ID, model.ContextLength)
 		a.hudStale = true
 	}
-	return true
+	return a.model == model.ID
 }

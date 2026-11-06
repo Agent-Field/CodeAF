@@ -167,9 +167,7 @@ func (a *app) refreshCreditWarnings() {
 		(a.model == config.DefaultModel || a.model == config.FreeChatModel) &&
 		a.freshAndEmpty() && config.ChatModelAt(a.profileDir) == "" &&
 		(!a.requireListedModel || a.isAvailableModel(want)) {
-		a.creditSwitching = true
-		a.switchModel(want, 0)
-		a.creditSwitching = false
+		a.useModelForNow(want, 0)
 	}
 	a.chatCreditWarning, a.homeCreditWarning = "", ""
 	if a.readCredits == nil {

@@ -3106,7 +3106,13 @@ func (a *app) windowFor(id string) int {
 // fires at a fraction of it, so a session that switched to a 1M model without
 // saying so would keep compacting as if it were on the 128k one it started on.
 func (a *app) switchModel(id string, window int) {
-	a.agent.SetModel(id)
+	if door, ok := a.agent.(interface{ UseModelForNow(string) error }); a.creditSwitching && ok {
+		if err := door.UseModelForNow(id); err != nil {
+			return
+		}
+	} else {
+		a.agent.SetModel(id)
+	}
 	a.model = a.agent.Model()
 	if a.model == "" {
 		a.model = id
@@ -3207,7 +3213,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			// one of them asked for that model on that machine, and pinning a
 			// lane under a model they are not talking to would be a setting
 			// that took effect the next time they happened to switch.
-			if chosen.ID != a.model {
+			if chosen.ID != a.model || chosen.ID != a.configuredModel() {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
 			a.applyLaneChoice(chosen.ID, row, a.pick.lanes)

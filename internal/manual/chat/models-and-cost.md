@@ -121,7 +121,11 @@ On a local launch, the opening model comes from the same available chat list as
 is kept only if that model is listed. Otherwise codeaf selects the first available
 chat model in provider order. With only Ollama connected, that is an installed Ollama
 model. With several providers, the default still belongs to their combined list.
-Automatic replacements do not overwrite your saved preference.
+Availability replacements apply only to this run. They do not overwrite the
+conversation's saved model, main/fallback pair or profile model settings. When
+the configured model is listed again, codeaf returns to it automatically.
+Choosing a model yourself, including the replacement already running, saves that
+choice as usual.
 
 While every catalog is cold or empty, no default model is displayed and a message
 stays in the draft. The picker opens with:

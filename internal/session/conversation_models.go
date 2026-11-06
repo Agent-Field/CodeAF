@@ -93,12 +93,14 @@ func (a *Agent) setConversationModels(pair ConversationModels, mainNotice string
 		return nil, errors.New("this conversation was launched with one-model; a fallback is unavailable")
 	}
 	hadPair := a.conversationModels != nil
-	previous := ConversationModels{Main: a.model}
+	previous := ConversationModels{Main: a.configuredModelLocked()}
 	if a.conversationModels != nil {
 		previous = *a.conversationModels
 	}
 	active := a.modelIdentity.Active != ""
 	a.conversationModels = &pair
+	a.modelForNowConfigured = ""
+	a.modelForNowProvider = ""
 	a.model = pair.Main
 	if a.clientPool != nil {
 		a.clientPool.setSeat(pair.Main)
