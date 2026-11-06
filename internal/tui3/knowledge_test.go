@@ -16,21 +16,46 @@ import (
 )
 
 func TestMemoryOffersKnowledgeWithoutStartingCapture(t *testing.T) {
-	a := placeApp(t)
-	drive(t, a, key(placeChord(pageMemory)))
-	if got := placeFrameText(a); !strings.Contains(got, "alt+u") {
-		t.Fatal("Memory must show how to open Knowledge")
-	}
-	drive(t, a, key("alt+u"))
-	got := placeFrameText(a)
-	for _, want := range []string{"Knowledge", "Build knowledge base", "saved chats"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("Knowledge screen missing %q: %s", want, got)
+	for _, savedOff := range []bool{false, true} {
+		name := "default-on"
+		if savedOff {
+			name = "saved-off"
 		}
-	}
-	drive(t, a, key("esc"))
-	if got := placeFrameText(a); strings.Contains(got, "Build knowledge base") {
-		t.Fatal("escape should return to Saved memory")
+		t.Run(name, func(t *testing.T) {
+			a := placeApp(t)
+			profile := t.TempDir()
+			if savedOff {
+				if err := config.WriteMemoryEnabled(profile, false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			v := knowledge.Open(profile)
+			a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
+			drive(t, a, key(placeChord(pageMemory)))
+			if got := placeFrameText(a); !strings.Contains(got, "alt+u") {
+				t.Fatal("Memory must show how to open Knowledge")
+			}
+			drive(t, a, key("alt+u"))
+			got := placeFrameText(a)
+			wants := []string{"Knowledge", "Knowledge will populate as you chat.", "New completed chats will appear here after a background update."}
+			if savedOff {
+				wants = []string{"Knowledge", "Build knowledge base", "saved chats"}
+			} else if strings.Contains(got, "Build knowledge base") {
+				t.Fatal("default-on profile offered an opt-in build: " + got)
+			}
+			for _, want := range wants {
+				if !strings.Contains(got, want) {
+					t.Errorf("Knowledge screen missing %q: %s", want, got)
+				}
+			}
+			drive(t, a, key("esc"))
+			if got := placeFrameText(a); strings.Contains(got, "Build knowledge base") {
+				t.Fatal("escape should return to Saved memory")
+			}
+			if v.Enabled() == savedOff {
+				t.Fatal("navigation changed the learning preference")
+			}
+		})
 	}
 }
 
@@ -173,7 +198,11 @@ func TestKnowledgeReopeningUsesTheCurrentConversationProject(t *testing.T) {
 	a := knowledgeArticleApp(t)
 	placeFrameText(a)
 	drive(t, a, key(placeChord(pageHome)))
-	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: knowledge.Open(t.TempDir())}
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: knowledge.Open(profile)}
 	drive(t, a, key(placeChord(pageMemory)))
 	got := placeFrameText(a)
 	if strings.Contains(got, "[[SQLite]]") || !strings.Contains(got, "Build knowledge base") {
@@ -324,7 +353,11 @@ func TestKnowledgeHoverRepaintsVisibleControls(t *testing.T) {
 			a := knowledgeArticleApp(t)
 			if name == "build" {
 				a = placeApp(t)
-				a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: knowledge.Open(t.TempDir())}
+				profile := t.TempDir()
+				if err := config.WriteMemoryEnabled(profile, false); err != nil {
+					t.Fatal(err)
+				}
+				a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: knowledge.Open(profile)}
 				drive(t, a, key(placeChord(pageMemory)), key("alt+u"))
 			}
 			a.pal = newPalette(tokens.TrueColor, false)

@@ -5,12 +5,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
 func TestKnowledgeBuildActionDoesNotHoldNavigation(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(profile)
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	drive(t, a, key(placeChord(pageMemory)), key("alt+u"))
 	if got := placeFrameText(a); !strings.Contains(got, "Build knowledge base") {
@@ -69,7 +74,11 @@ func TestKnowledgeRefreshShowsCompletedBackgroundPages(t *testing.T) {
 
 func TestKnowledgeLocalEngineReadsInjectedProfileVault(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(profile)
 	// The local engine adapter has no file-backed Knowledge method; the local
 	// application door supplies the engine's resolved profile explicitly.
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: nil}

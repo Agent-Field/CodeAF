@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // A job's journal, whose saved events the pass marks as the job's.
@@ -35,6 +37,9 @@ func jobTag(t *testing.T, v *Vault) string {
 // Memory off means none of this work: on a 270 MB database it cost 70% of a CPU with Memory off.
 func TestMemoryOffLeavesJobEventsAloneAndMemoryOnMarksThem(t *testing.T) {
 	v := Open(t.TempDir())
+	if err := config.WriteMemoryEnabled(v.profile, false); err != nil {
+		t.Fatal(err)
+	}
 	db, err := v.database()
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +86,9 @@ func sessionIndexExists(t *testing.T, v *Vault) bool {
 // wait for the build, and with Memory off nobody needs it. The marking then seeks by session.
 func TestMemoryOnBuildsTheSessionIndexOnThePassAndTheMarkingUsesIt(t *testing.T) {
 	v := Open(t.TempDir())
+	if err := config.WriteMemoryEnabled(v.profile, false); err != nil {
+		t.Fatal(err)
+	}
 	last := ""
 	if err := v.runPass(context.Background(), jobHistory{}, func() string { return "" }, &last); err != nil {
 		t.Fatal(err)
