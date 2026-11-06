@@ -184,7 +184,13 @@ func TestNodeTreeSpendStopsEveryNodeAndNamesTheBindingLimit(t *testing.T) {
 				a.usage.CostUSD = .25
 			}
 			g := a.graph()
-			g.report = nil
+			// Deliver child reports so the root can finish folding its parts.
+			// Root reports stay quiet to keep conversation wakes off the script.
+			g.report = func(node *TaskNode) {
+				if node.parent != 0 {
+					a.reportTaskNode(node)
+				}
+			}
 			g.store = newTaskStore(filepath.Join(t.TempDir(), "tasks.json"))
 			root := nodeTreeQuick(t, a, 0, "Whole assignment")
 			nodeTreeAwait(t, rootEntered)
@@ -393,7 +399,7 @@ func TestNodeTreeUsesThePlanStoresWorkIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer store.Close()
-			if _, err := store.AddManyBounded([]plandb.TaskSpec{{Title: title}}); err == nil || !strings.Contains(err.Error(), "already has a task named") {
+			if _, err := store.AddManyBounded([]plandb.TaskSpec{{ID: "variant", Title: title}}); err == nil || !strings.Contains(err.Error(), "already has a task named") {
 				t.Fatalf("plan admission changed its work identity: %v", err)
 			}
 			n := newNest(t, nil, nil)
