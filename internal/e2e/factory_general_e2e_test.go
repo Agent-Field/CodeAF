@@ -246,6 +246,10 @@ type fleWorld struct {
 	// branchesBefore are factory-demo's branches before the run, so cleanup
 	// deletes only an FLE2E branch this run pushed.
 	branchesBefore map[string]bool
+	// openBefore are the FLE2E pull requests and issues already open when
+	// the run began (a job kept from an earlier run for the desk): cleanup
+	// closes only what this run opened.
+	openBefore map[string]bool
 	// jiraJob is scenario 1's job, which scenario 6 reads.
 	jiraJob int
 }
@@ -629,6 +633,20 @@ func newFLEWorld(t *testing.T) *fleWorld {
 		t.Fatalf("cannot read %s with the token: %v %s", fleRepo, err, out)
 	}
 
+	w.openBefore = map[string]bool{}
+	for _, kind := range []string{"pr", "issue"} {
+		out, err := w.gh(kind, "list", "-R", fleRepo, "--state", "open", "--search", flePrefix+" in:title", "--json", "number", "-q", ".[].number", "--limit", "100")
+		if err != nil {
+			t.Fatalf("list open %s %ss: %v %s", flePrefix, kind, err, out)
+		}
+		for _, n := range strings.Fields(out) {
+			w.openBefore[kind+"#"+n] = true
+		}
+	}
+	if len(w.openBefore) > 0 {
+		t.Logf("left alone by cleanup, open before this run: %v", w.openBefore)
+	}
+
 	w.jira = jirastub.New(fleJiraEmail, fleJiraToken)
 	t.Cleanup(w.jira.Close)
 
@@ -817,7 +835,7 @@ func (w *fleWorld) cleanup() {
 		}
 		_ = json.Unmarshal([]byte(out), &prs)
 		for _, pr := range prs {
-			if !strings.Contains(pr.Title, flePrefix) || (keptPR != "" && strconv.Itoa(pr.Number) == keptPR) {
+			if !strings.Contains(pr.Title, flePrefix) || (keptPR != "" && strconv.Itoa(pr.Number) == keptPR) || w.openBefore["pr#"+strconv.Itoa(pr.Number)] {
 				continue
 			}
 			o, err := w.gh("pr", "close", strconv.Itoa(pr.Number), "-R", fleRepo, "--comment", fleClose, "--delete-branch")
@@ -831,7 +849,7 @@ func (w *fleWorld) cleanup() {
 		}
 		_ = json.Unmarshal([]byte(out), &issues)
 		for _, is := range issues {
-			if !strings.Contains(is.Title, flePrefix) {
+			if !strings.Contains(is.Title, flePrefix) || w.openBefore["issue#"+strconv.Itoa(is.Number)] {
 				continue
 			}
 			o, err := w.gh("issue", "close", strconv.Itoa(is.Number), "-R", fleRepo, "--comment", fleClose)
