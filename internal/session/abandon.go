@@ -37,9 +37,10 @@ import (
 //
 // THE LINE IS THE ACCEPTANCE AND NOT THE DECORATION. A turn that is let go of
 // while it may still be spending is a turn nobody could otherwise account for:
-// the seal that carries a turn's cost is written when a turn ENDS, and the whole
-// definition of an abandoned turn is that nobody waited for its end. The money
-// itself already reaches the machine's ledger per call rather than per turn
+// the abandoned line records the last-known spend while nobody waits for the end.
+// The displaced loop still writes its conversation-step usage seal on exit;
+// errands already have their own seals. This line remains evidence only. The
+// money itself reaches the machine's ledger per call rather than per turn
 // (usage_ledger.go, issue #269), so the bill is not lost — what was lost was any
 // record that a turn had been let go of at all.
 //
@@ -272,8 +273,8 @@ const toolAbandonedWord = "the person stopped this turn and it was not waited fo
 
 // abandoned reports that the turn this context belongs to has been let go of.
 //
-// IT IS A NON-BLOCKING READ and it is the answer to "may I still write?". A turn
-// that has been abandoned must not touch the session's transcript again: the
+// IT IS A NON-BLOCKING READ and it answers "may I still write messages?". A turn
+// that has been abandoned must not append to the session's messages again: the
 // session has moved on and a.messages belongs to whatever turn the person
 // started next, so an append from here is one conversation growing another's
 // rows. False is the ordinary answer and false is what every context with no

@@ -1003,6 +1003,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// asked here only for the sentence it carries ([Agent.markSettleBound]).
 		if count, tripped := a.settleBoundTripped(ctx, &turn, settleCalls); tripped {
 			a.markSettleBound(count)
+			// Keep the step spend without duration or ordinary turn-ending acts;
+			// abandonment can displace this turn while the bound is marked.
+			turn.Duration = 0
+			a.file.appendUsage(turn, model, false, "")
 			return false
 		}
 
@@ -1467,20 +1471,23 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// the fold, the readings that ride beside it — and the law says it is
 		// milliseconds.
 		pace.resultsIn(time.Now())
-		// AND A TURN THIS SESSION HAS ALREADY LET GO OF STOPS HERE, WRITING
-		// NOTHING. [waitBatch] is the one wait in this loop that can return with
-		// its work still running, and everything below this line writes: the tool
-		// messages go into a.messages, which by now belongs to whatever turn the
-		// person started after they stopped this one. A left-behind turn appending
+		// AND A TURN THIS SESSION HAS ALREADY LET GO OF STOPS HERE, KEEPING ONLY
+		// ITS STEP SPEND. [waitBatch] can return with its work still running,
+		// and everything below this line writes: the tool messages go into
+		// a.messages, which belongs to the turn the person started next.
+		// A left-behind turn appending
 		// its results there would be another conversation's transcript growing
 		// tool rows nobody asked for.
 		//
-		// It is read here and nowhere else because this is the only boundary an
-		// abandoned turn can reach — the batch above is what it was parked in, and
-		// its own cleanup already knows to do nothing (agent.go's turnSeq). The
-		// read is non-blocking and costs an ordinary turn one closed-channel test
-		// per tool round.
+		// The local tally holds conversation steps only; on-clock errands already
+		// wrote their own auxiliary usage lines. Bank moved the live meter and
+		// machine ledger, so this writes only the journal seal, with no duration
+		// or ordinary turn-ending acts. Each exit keeps its own seal;
+		// this return cannot reach another ending. Cleanup already knows to leave
+		// the displaced turn alone (agent.go's turnSeq).
 		if abandoned(ctx) {
+			turn.Duration = 0
+			a.file.appendUsage(turn, model, false, "")
 			return false
 		}
 		if severed != nil {
@@ -1499,6 +1506,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		}
 
 		if a.stageBatchFinal(calls, results) {
+			// Keep the step spend without duration or ordinary turn-ending acts;
+			// abandonment can displace this turn after the batch check above.
+			turn.Duration = 0
+			a.file.appendUsage(turn, model, false, "")
 			return true
 		}
 		// The batch can settle after its result lines and each call's `took`
@@ -1815,11 +1826,10 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 // sealTurn stamps the turn's wall duration, folds it into the session total,
 // and writes the turn down.
 //
-// THIS IS THE ONE PLACE A TURN'S COST REACHES THE JOURNAL, and it is here
-// because every turn shape in the package ends through it: the loop above, the
-// harness turn, the orchestrated turn and the image turn, on the answering path
-// and on both failing ones. A write anywhere else would be a turn shape that
-// silently kept no record.
+// Ordinary endings write their cost here: the loop above, the harness turn,
+// the orchestrated turn and the image turn. The abandoned tool-batch, settle-bound
+// and final stage-report exits write only their step seals, without duration or
+// ordinary turn-ending acts that could affect a replacement turn after abandonment.
 //
 // AND IT IS NOT WHERE THE MACHINE'S LEDGER IS WRITTEN, which is the whole of
 // issue #269. A seal is the shape of a TURN — its duration, its place in the
@@ -1842,7 +1852,7 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	a.mu.Unlock()
 	a.file.appendUsage(turn, model, false, "")
 	// AND THE SESSION'S RUNNING TOTAL IS STAMPED BESIDE IT, for the reason this
-	// function is the one place the journal is written: what a conversation has
+	// function owns ordinary turn endings: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
 	// holds, and a surface listing every session on disk cannot open every
 	// transcript to find it (placemeta.go's [Agent.stampSpend]). A turn that
@@ -4528,11 +4538,11 @@ func (a *Agent) bank(call bankedCall) {
 	// rather than the one the seat was built on: a fallback mid-run is a
 	// different model doing the work (competence.go).
 	a.answered.add(call.model, call.used)
-	// AND THE RUNNING TURN'S OWN SHARE MOVES ON THE SAME CALL, for this door's
-	// own reason: an abandoned turn never writes the seal that would carry its
-	// cost, so the only honest figure to journal it with is the one accumulated
-	// here (abandon.go's [Agent.Abandon]). It is reset when a turn opens and is
-	// meaningless outside one, which is why it is not exported.
+	// The running turn's last-known spend includes on-clock errands as well as
+	// conversation steps. Abandon records it as evidence only; the loop's local
+	// step tally supplies the seal, and errands write their own auxiliary seals.
+	// It is reset when a turn opens and is meaningless outside one, which is why
+	// it is not exported.
 	if !call.late {
 		a.turnSpend.Input += call.used.Input
 		a.turnSpend.Output += call.used.Output
