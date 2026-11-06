@@ -6,6 +6,6 @@ surface: [app]
 invalidates: []
 ---
 
-A client checks `collections.factory_job` in `hello.features` before it adds a
-`factory_job` ref to a collection. An engine that announces only `collections`
-refuses that kind with `bad_params`.
+A client requires `collections.factory_job` in `hello.features` before it relies
+on adding a `factory_job` ref to a collection. An engine that announces only
+`collections` may refuse that kind with `bad_params`.
