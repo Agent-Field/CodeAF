@@ -591,6 +591,18 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 	mine := a.sessionID()
 	a.mu.Unlock()
 
+	// A conversation scoped to its own work drops an earlier block too, so the
+	// next reading follows the stored choice without advancing the told stamp.
+	if a.ownWorkOnly() {
+		a.mu.Lock()
+		if !a.closed {
+			a.elsewhereTold = nil
+			a.elsewhereText = ""
+		}
+		a.mu.Unlock()
+		return
+	}
+
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	now := time.Now()
 	since := LastTold(dir)

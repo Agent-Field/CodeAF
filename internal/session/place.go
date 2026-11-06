@@ -296,6 +296,9 @@ type Meta struct {
 	// a gate a person opened from inside a conversation must be open when they
 	// come back to it.
 	Approval string `json:"approval,omitempty"`
+	// Scope is conversation when the model is told only about its own work.
+	// Absence keeps the project's reading of other conversations' work.
+	Scope string `json:"scope,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on
