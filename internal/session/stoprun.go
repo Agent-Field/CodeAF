@@ -243,7 +243,11 @@ func (a *Agent) endedBeltRow(id uint64, why string) (string, bool, error) {
 			if kept.State == TaskRunning {
 				return a.stopUndrivenRow(id, kept.Parent, why)
 			}
-			if a.stopUndrivenRunWork(kept, why) {
+			stopped, err := a.stopUndrivenRunWork(kept, why)
+			if err != nil {
+				return "", true, err
+			}
+			if stopped {
 				return a.stopUndrivenRow(id, kept.Parent, why)
 			}
 			return taskStopName(id, kept.Title) + " has already finished; there is nothing to stop", true, nil
@@ -270,7 +274,9 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 			notice = kept
 		}
 	}
-	a.stopUndrivenRunWork(notice, why)
+	if _, err := a.stopUndrivenRunWork(notice, why); err != nil {
+		return "", true, err
+	}
 	notice.State, notice.Stopped = TaskFailed, true
 	notice.Report = stopBecause(taskStoppedWord, why) + " · nothing was driving it any more"
 	notice.EndedAt = a.taskClockNow()
@@ -284,9 +290,11 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 
 // stopUndrivenRunWork clears a retained root's lingering workers as well as
 // its stale notice. Fully ended runs and individual joined rows stay as they are.
-func (a *Agent) stopUndrivenRunWork(row TaskNotice, why string) bool {
+func (a *Agent) stopUndrivenRunWork(row TaskNotice, why string) (bool, error) {
 	stopped := false
-	_ = a.planSteer(planStoreID(appRunRowKey(row)), func(store *plandb.Store, task *plandb.Task) error {
+	matched := false
+	err := a.planSteer(planStoreID(appRunRowKey(row)), func(store *plandb.Store, task *plandb.Task) error {
+		matched = true
 		if !planStopOpenWork(store, task, []bool{true}) {
 			return nil
 		}
@@ -296,7 +304,12 @@ func (a *Agent) stopUndrivenRunWork(row TaskNotice, why string) bool {
 		stopped = true
 		return nil
 	}, true)
-	return stopped
+	if !matched {
+		// A stale notice can outlive its store; only an attempted store write
+		// can fail this cleanup and prevent the stop receipt.
+		return false, nil
+	}
+	return stopped, err
 }
 
 // sayToRunRowFrom is a message to a row a run owns, and it reports whether the

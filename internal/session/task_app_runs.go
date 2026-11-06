@@ -155,6 +155,13 @@ func (a *Agent) appRunDetail(view *AppTaskView, key string, read *planTaskRead) 
 			continue
 		}
 		appRunStoreEnding(view, store, task)
+		if view.State == "running" && task.Status == plandb.StatusReady {
+			row := PlanTaskRow{Status: string(task.Status)}
+			a.markPlanMachineHold(&row, store.Path(), task.ID == store.RootID())
+			if row.Undriven {
+				view.State = "waiting"
+			}
+		}
 		dir := filepath.Dir(store.Path())
 		trajectory := read.trajectory(planTrajectoryPath(dir, key), true)
 		steps, reads := trajectory.app, trajectory.reads

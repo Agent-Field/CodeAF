@@ -97,7 +97,7 @@ func TestPlanStopEndsOpenWorkBelowAnAlreadyEndedRoot(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, task := range store.Tasks() {
-				if !terminalStoreStatus(task.Status) || task.ClaimedBy != "" || task.Owner != "" {
+				if !terminalStoreStatus(task.Status) || task.ID != store.RootID() && (task.ClaimedBy != "" || task.Owner != "") {
 					t.Fatalf("stop left open work: %+v", task)
 				}
 			}

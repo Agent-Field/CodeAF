@@ -88,6 +88,9 @@ func (a *Agent) planSteer(id string, write func(*plandb.Store, *plandb.Task) err
 			if task.Chat != plan.chat {
 				return errPlanOtherChat
 			}
+			if planStopOpenWork(store, task, stopRoot) {
+				return write(store, task)
+			}
 			return errPlanEndedRun
 		}
 	}
