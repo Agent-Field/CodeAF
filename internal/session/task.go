@@ -827,7 +827,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// THE SLOT IS TAKEN BEFORE THE QUESTION and handed back by everything that
 	// is not an admission, so a batch of proposals cannot walk through the fan
 	// cap together ([TaskGraph.claimChild]).
-	if refusal := graph.claimChild(spec.parent); refusal != "" {
+	if refusal := graph.claimChild(spec.parent, spec.title); refusal != "" {
 		return bare.Settled(refusal, true)
 	}
 	id := graph.reserve()
@@ -843,7 +843,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	if err != nil {
 		// The session closed under the question. Nothing was asked and nothing
 		// admitted, so the proposal simply never became one.
-		graph.releaseChild(spec.parent)
+		graph.releaseChild(spec.parent, spec.title)
 		return bare.Settled(taskNeverAnswered, true)
 	}
 	return &stagedProposal{agent: a, graph: graph, id: id, spec: spec, stand: stand, elsewhere: elsewhere, wait: wait}
@@ -871,7 +871,7 @@ type stagedProposal struct {
 // other ending of [stagedProposal.Commit], and exactly one of the two runs.
 func (p *stagedProposal) Withdraw() {
 	p.wait.withdraw()
-	p.graph.releaseChild(p.spec.parent)
+	p.graph.releaseChild(p.spec.parent, p.spec.title)
 }
 
 // Commit reads what the wait came to and admits on it. It runs once the message
@@ -885,7 +885,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	admitted := false
 	defer func() {
 		if !admitted {
-			graph.releaseChild(spec.parent)
+			graph.releaseChild(spec.parent, spec.title)
 		}
 	}()
 	answer, err := p.wait.answer()

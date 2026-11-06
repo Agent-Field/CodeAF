@@ -513,7 +513,7 @@ func (g *TaskGraph) planPulse() {
 		if parent == nil || parent.state == TaskQueued || parent.depth+1 > taskDepthLimit {
 			continue
 		}
-		if refused := g.claimChild(parent.nodeID); refused != "" {
+		if refused := g.claimChild(parent.nodeID, task.Title); refused != "" {
 			continue
 		}
 		spec := taskSpec{
