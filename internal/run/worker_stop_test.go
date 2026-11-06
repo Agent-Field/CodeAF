@@ -2,9 +2,11 @@ package run
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // L-LOOP2 C8a: a root worker returning after the stop cannot reopen its done
@@ -40,5 +42,32 @@ func TestDrainedWorkerReleasesItsClaimWithoutDiscardingRetainedWork(t *testing.T
 	supervisor.drain()
 	if task := store.Task("part"); task.Status != plandb.StatusReady || task.ClaimedBy != "" || task.Owner != "" || task.Result != "" || supervisor.spent != .01 {
 		t.Fatalf("drain kept a running claim or discarded retained work: %+v spent=%v", task, supervisor.spent)
+	}
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", filepath.Join(t.TempDir(), "stub-codeaf"))
+	agent, err := session.NewBeltWorker(session.Config{Workspace: t.TempDir(), Model: "test/model"}, &crewCallProbe{}, store.Task("part"), store.Path(), store.RootID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	page, ok := agent.PlanTaskPage("t-part")
+	if !ok || page.Row.Status != "ready" || page.Row.StateWord() != "queued" {
+		t.Fatalf("drained task's page still reads running: %+v, found=%v", page.Row, ok)
+	}
+	views, err := agent.AppTasks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, view := range views {
+		if view.ID == "t-part" {
+			found = true
+			if view.State != "waiting" {
+				t.Fatalf("drained task's app row reads %s, want waiting", view.State)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("drained task disappeared from the app listing")
 	}
 }

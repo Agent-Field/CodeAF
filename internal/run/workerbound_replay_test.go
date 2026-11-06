@@ -48,7 +48,7 @@ func TestWorkerFirstStepCannotRecreateSiblingTasksAtTheRunRoot(t *testing.T) {
 			}
 			for _, child := range store.Tasks() {
 				if child.ParentID == task.ID && child.Status != plandb.StatusDone && child.Status != plandb.StatusFailed && child.Status != plandb.StatusCancelled {
-					return toolReply(bashArguments(t, "plandb wait --agent "+task.ID)), nil
+					return toolReply(bashArguments(t, "plandb wait "+task.ID+" --agent "+task.ID)), nil
 				}
 			}
 			return toolReply(finishCommand(task.ID, "finished my own work")), nil
