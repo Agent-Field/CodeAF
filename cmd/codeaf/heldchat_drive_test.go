@@ -44,7 +44,7 @@ func (s heldChatSender) RoundTrip(r *http.Request) (*http.Response, error) {
 
 // heldChatRelay counts every P2 cell write, including creation and heartbeats.
 // Call startP2 after P1's clients have captured their own transport.
-func heldChatRelay(t *testing.T, id string) (*syncsetup.Sync, *atomic.Int64, func()) {
+func heldChatRelay(t *testing.T, id string, wrappers ...func(http.Handler) http.Handler) (*syncsetup.Sync, *atomic.Int64, func()) {
 	t.Helper()
 	original := http.DefaultTransport
 	http.DefaultTransport = heldChatSender{next: original, sender: "P1"}
@@ -52,12 +52,16 @@ func heldChatRelay(t *testing.T, id string) (*syncsetup.Sync, *atomic.Int64, fun
 	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	writes := &atomic.Int64{}
 	path := "/v1/dir/cells/" + id
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Codeaf-Test-Sender") == "P2" && r.Method != http.MethodGet && (r.URL.Path == path || strings.HasPrefix(r.URL.Path, path+"/")) {
 			writes.Add(1)
 		}
 		service.Handler.ServeHTTP(w, r)
 	}))
+	for _, wrap := range wrappers {
+		handler = wrap(handler)
+	}
+	server := httptest.NewServer(handler)
 	t.Cleanup(func() { server.Close(); _ = service.Close() })
 	t.Setenv(syncsetup.URLVar, server.URL)
 	t.Setenv(syncsetup.IntervalVar, "3600000")
