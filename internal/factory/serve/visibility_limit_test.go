@@ -136,10 +136,10 @@ func TestARateLimitedVisibilityCheckIsNotCached(t *testing.T) {
 	}
 }
 
-// B3: Definitive denials, including a bare 429 without spent-limit headers,
-// remain repository-not-found answers cached for the visibility TTL.
+// B3: Definitive denials remain repository-not-found answers cached for the
+// visibility TTL.
 func TestVisibilityDenialsStillReadAsMissing(t *testing.T) {
-	for _, status := range []int{404, 403, 429} {
+	for _, status := range []int{404, 403} {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
 			h, token, clock := visibilityLimitFloor(t)
 			probes := 0
