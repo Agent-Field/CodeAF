@@ -97,6 +97,11 @@ func Validate(e Entry) (Entry, error) {
 	if e.Labels, err = labels(e.Labels); err != nil {
 		return e, err
 	}
+	switch e.Trust = factory.Tier(strings.ToLower(strings.TrimSpace(string(e.Trust)))); e.Trust {
+	case "", factory.TierOwner, factory.TierCollab, factory.TierStranger:
+	default:
+		return e, errors.New("trust must be owner, collaborator or stranger")
+	}
 	return e, nil
 }
 

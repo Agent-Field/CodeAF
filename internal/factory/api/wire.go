@@ -468,10 +468,13 @@ type Job struct {
 	// repository on its forge ([factory.RepoURL]), read off an address the
 	// forge gave rather than guessed from the name. Route is the routing rule
 	// that decided the job and, when that rule asked the AI, its answer.
+	// RouteDeclined is every other rule whose AI question was answered no,
+	// with why: what a job no rule started says instead of nothing.
 	// Hello word `factory.job_source`.
-	Source  *factory.JobSourceFacts `json:"source,omitempty"`
-	RepoURL string                  `json:"repo_url,omitempty"`
-	Route   *JobRoute               `json:"route,omitempty"`
+	Source        *factory.JobSourceFacts `json:"source,omitempty"`
+	RepoURL       string                  `json:"repo_url,omitempty"`
+	Route         *JobRoute               `json:"route,omitempty"`
+	RouteDeclined []RouteDeclined         `json:"route_declined,omitempty"`
 	// StepsDone of StepsTotal is how far the job is ([factory.StepCount]): THE
 	// ONE STEP COUNT, which the Brief's own steps_done and steps_total read
 	// too. A skipped step counts for neither. Hello word `factory.job_steps`.

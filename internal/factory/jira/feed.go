@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 )
 
@@ -177,6 +178,7 @@ func EntryOf(site string, is Issue) inbox.Entry {
 		Body:       PlainText(is.Fields.Description),
 		Author:     author(is.Fields.Reporter),
 		Labels:     labels,
+		Trust:      trust(is.Fields.Reporter),
 	}
 	if is.Fields.Priority != nil {
 		e.Priority = Priority(is.Fields.Priority.Name)
@@ -193,6 +195,20 @@ func ProjectOf(key string) string {
 		return key[:i]
 	}
 	return key
+}
+
+// trust is how far a reporter's words are trusted. A JIRA REPORTER IS NEVER
+// THE OPERATOR, so the best a ticket gets is collaborator: it runs, but an
+// AI yes still answers for its words. A service-desk customer is a stranger,
+// someone outside the team who typed into a portal: their ticket never starts
+// on an AI yes and its job never writes. A ticket whose reporter is hidden
+// from this account is a collaborator's, the same as one with a seat, because
+// a hidden field is the project's scheme and not a sign of who wrote it.
+func trust(u *User) factory.Tier {
+	if u != nil && strings.EqualFold(strings.TrimSpace(u.AccountType), "customer") {
+		return factory.TierStranger
+	}
+	return factory.TierCollab
 }
 
 // author is how a reporter is named: "Ada Lovelace <ada@example.com>", or

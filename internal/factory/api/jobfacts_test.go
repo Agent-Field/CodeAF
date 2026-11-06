@@ -79,3 +79,25 @@ func TestRunsOnSaysTheOneResolutionOnReadsOnly(t *testing.T) {
 		}
 	}
 }
+
+// A NO IS SAID TOO: every rule the AI declined, other than the deciding one,
+// crosses as route_declined in rule order, so a job no rule started says why;
+// a yes that did not decide stays the service's own.
+func TestAJobSaysWhichRulesTheAIDeclined(t *testing.T) {
+	it := factory.Item{ID: 9, Route: "docs", Judged: map[string]factory.RouteAnswer{
+		"zeta": {Why: "not a bug", Model: "v/cheap"}, "alpha": {Why: "too large"}, "docs": {Yes: true, Why: "a typo"}, "beta": {Yes: true, Why: "kept"},
+	}}
+	j := FromItem(it)
+	want := []RouteDeclined{{Rule: "alpha", Why: "too large"}, {Rule: "zeta", Why: "not a bug", Model: "v/cheap"}}
+	if len(j.RouteDeclined) != 2 || j.RouteDeclined[0] != want[0] || j.RouteDeclined[1] != want[1] {
+		t.Fatalf("route_declined = %+v", j.RouteDeclined)
+	}
+	back := ToItem(j)
+	if a, ok := back.Judged["zeta"]; !ok || a.Yes || a.Why != "not a bug" || !back.Judged["docs"].Yes {
+		t.Fatalf("read back judged = %+v", back.Judged)
+	}
+	raw, _ := json.Marshal(FromItem(factory.Item{ID: 1, Judged: map[string]factory.RouteAnswer{"r": {Yes: true}}}))
+	if strings.Contains(string(raw), "route_declined") {
+		t.Fatalf("a yes crossed as declined: %s", raw)
+	}
+}

@@ -1,6 +1,9 @@
 package api
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
@@ -21,6 +24,28 @@ type RouteAnswer struct {
 	Model string `json:"model,omitempty"`
 }
 
+// RouteDeclined is one routing rule whose question the AI answered no about
+// this item, with its one sentence of why. It is how a job that no rule
+// started says so: the rule read on past it, and this is the reason.
+type RouteDeclined struct {
+	Rule  string `json:"rule"`
+	Why   string `json:"why"`
+	Model string `json:"model,omitempty"`
+}
+
+// declined is every no kept on it except under the rule that decided it, in
+// rule-name order so two reads of one job agree.
+func declined(it factory.Item) []RouteDeclined {
+	var out []RouteDeclined
+	for rule, a := range it.Judged {
+		if !a.Yes && rule != it.Route {
+			out = append(out, RouteDeclined{Rule: rule, Why: a.Why, Model: a.Model})
+		}
+	}
+	slices.SortFunc(out, func(a, b RouteDeclined) int { return strings.Compare(a.Rule, b.Rule) })
+	return out
+}
+
 // jobFacts sets the facts a job's page says about where it came from, why it
 // started and how far it is. EACH IS COMPUTED ONCE, in internal/factory, and
 // only carried here; a surface reads them and never derives them again.
@@ -35,6 +60,7 @@ func jobFacts(j *Job, it factory.Item) {
 			j.Route.Answer = &RouteAnswer{Yes: a.Yes, Why: a.Why, Model: a.Model}
 		}
 	}
+	j.RouteDeclined = declined(it)
 	j.StepsDone, j.StepsTotal = factory.StepCount(it)
 }
 
@@ -47,6 +73,12 @@ func itemFacts(j Job, it *factory.Item) {
 		if a := r.Answer; a != nil {
 			it.Judged = map[string]factory.RouteAnswer{r.Rule: {Yes: a.Yes, Why: a.Why, Model: a.Model}}
 		}
+	}
+	for _, d := range j.RouteDeclined {
+		if it.Judged == nil {
+			it.Judged = map[string]factory.RouteAnswer{}
+		}
+		it.Judged[d.Rule] = factory.RouteAnswer{Why: d.Why, Model: d.Model}
 	}
 }
 

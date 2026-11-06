@@ -394,8 +394,10 @@ requests. Other job actions retain their guards except Pause and Resume, describ
 `factory.intake` in hello features says the engine serves `factory.intake_add`:
 outside work filed as a job, the same door as the factory's `POST /api/intake`.
 Its params are `{factory, source, external_id, title, body?, url?, author?,
-labels?, priority?, repo?}`; `source` is a lowercase name (`jira`,
-`inbox:ops`) and `priority` is `p0`..`p3`. The pair `(source, external_id)` is
+labels?, priority?, repo?, trust?}`; `source` is a lowercase name (`jira`,
+`inbox:ops`), `priority` is `p0`..`p3`, and `trust` is `owner` (the default),
+`collaborator` or `stranger`, the job's tier; a repeat may lower it, never
+raise it. The pair `(source, external_id)` is
 the identity: a second call updates the job it made and answers `created:
 false`. The reply is `{id, created}`. A malformed entry is `bad_params` with
 the inbox's own sentence.
@@ -715,6 +717,9 @@ them, which reads as unknown.
   - `route: {rule, answer?: {yes, why, model?}}`: the routing rule that decided
     the job, and the AI's answer when that rule asked one. Absent when no rule
     matched.
+  - `route_declined: [{rule, why, model?}]`: every other rule whose AI question
+    was answered no about this job, in rule-name order. A job no rule started
+    says why with it. Absent when there is none.
 - `factory.job_steps`: `steps_done` and `steps_total`, always present, THE ONE
   STEP COUNT. The run's steps, then switched-on steps it has not reached; a
   skipped step counts for neither side. The Brief's `steps_done`/`steps_total`

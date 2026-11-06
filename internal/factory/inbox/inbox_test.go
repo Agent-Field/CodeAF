@@ -314,3 +314,36 @@ func TestBackoffDoublesToTenMinutes(t *testing.T) {
 		t.Fatal("backoff")
 	}
 }
+
+// A SENDER'S TRUST IS THE JOB'S TIER, empty being owner; a later delivery may
+// lower it, never raise it, and a word that is not a tier is refused.
+func TestTrustIsTheTierAndOnlyEverLowers(t *testing.T) {
+	st := openStore(t)
+	e := entry()
+	e.Trust = factory.TierCollab
+	res, err := Add(context.Background(), st, e, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := st.Get(res.ID); it.Tier != factory.TierCollab || it.RefusesWrite() {
+		t.Fatalf("collaborator entry: tier %q refuses write %v", it.Tier, it.RefusesWrite())
+	}
+	e.Trust = factory.TierOwner
+	if _, err := Add(context.Background(), st, e, at.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := st.Get(res.ID); it.Tier != factory.TierCollab {
+		t.Fatalf("a delivery raised the tier to %q", it.Tier)
+	}
+	e.Trust = factory.TierStranger
+	if _, err := Add(context.Background(), st, e, at.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := st.Get(res.ID); it.Tier != factory.TierStranger || !it.RefusesWrite() {
+		t.Fatalf("a stranger delivery left tier %q refuses write %v", it.Tier, it.RefusesWrite())
+	}
+	e.Trust = "admin"
+	if _, err := Add(context.Background(), st, e, at); err == nil || !strings.Contains(err.Error(), "trust must be") {
+		t.Fatalf("Add(trust admin) = %v", err)
+	}
+}
