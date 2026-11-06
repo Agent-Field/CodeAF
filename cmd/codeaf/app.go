@@ -2046,6 +2046,15 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	ask.Subject = appAskSubject(agent, q.Subject)
+	if q.SecretAnswer() {
+		ask.Secret = &appwire.AskSecret{Placeholder: strings.TrimSpace(q.Input.Prompt)}
+		// Only the model's own question keeps what was typed in a file
+		// (session's secret_request.go); every other secret box hands it to its
+		// lane.
+		if q.Kind == session.QuestionAsk {
+			ask.Secret.KeepsForS = int(session.SecretKeepFor / time.Second)
+		}
+	}
 	return ask
 }
 

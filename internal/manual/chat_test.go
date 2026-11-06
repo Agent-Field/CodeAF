@@ -33,6 +33,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"where is the token I pasted kept and for how long", "giving-a-password-or-token"},
+		{"can the model see my password", "giving-a-password-or-token"},
 		{"can I send a message to the chat running on my other computer", "desktop-sync"},
 		{"queue a message for my other computer while its turn is working", "desktop-sync"},
 		// C9: Windows shell questions must reach the self-contained Git Bash section.

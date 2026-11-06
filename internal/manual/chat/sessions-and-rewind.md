@@ -840,6 +840,11 @@ there without a single character of the secret surviving.
 a credential already has it in its own environment — that is what `TOKEN=$(gh auth token)`
 does — so nothing on the belt is worse off for this.
 
+**A credential you hand over goes through a masked box, not a message.** When the chat
+needs a token or password from you it asks with `request_secret`; the value goes to a
+private file its commands read, and the conversation only ever holds the path. The page
+on giving a password, token or API key has the whole of it.
+
 **Inside a task the read itself is refused.** A token never has to be shown to be spent, and
 a task runs unattended in a copy of its own and holds no login of yours, so `gh
 auth token` is answered there with `gh auth token is not yours to run` before the command
