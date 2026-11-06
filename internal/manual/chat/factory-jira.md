@@ -83,7 +83,7 @@ Jira's priority becomes the factory's, which orders the queue:
 | Low | p3 |
 | Lowest | none |
 
-Any other priority name (a site's own scheme) is no priority.
+Any other priority name (a site's own scheme) is no priority. A routing rule that names a `priority` replaces Jira's on the jobs it routes; a priority a person set on the job stays.
 
 ## Jira comment with the PR link — what codeaf writes back on the ticket
 
