@@ -8,8 +8,8 @@ invalidates:
   - "Was true: a keyed Factory request replayed its first answer for 24 hours even when that answer was a server error. Is true now: 5xx and 429 answers are not replayed, so a retry with the same key runs again."
 ---
 
-A spent GitHub rate limit on the repository visibility check (403 with no
-remaining quota or a Retry-After, or 429) now answers HTTP 429 with
+A spent GitHub rate limit on the repository visibility check (403 or 429
+with `X-RateLimit-Remaining: 0` or a `Retry-After`) now answers HTTP 429 with
 `retry_at` on the repository routes, in the issues read's existing shape, and is
 never cached as a denial. Job lookups behind visibility still answer a hidden job
 the same as a missing one. A source poll that fails on a spent limit says
