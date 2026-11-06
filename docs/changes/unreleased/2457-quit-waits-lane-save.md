@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Quitting waits briefly for lane notes to finish saving
-pr: 0
+pr: 2457
 surface: [engine]
 invalidates: []
 ---
