@@ -359,6 +359,18 @@ const (
 	ClosedByStopped   = "stopped"
 )
 
+// AskSecret is the masked box of an ask whose answer is a credential.
+//
+// KeepsForS is how many seconds the engine keeps what was typed in a private
+// file the agent's commands can read, and 0 where the value goes somewhere
+// else (a connection's key goes to that connection). It is the engine's own
+// figure, so the line the app draws under the box can never promise a day the
+// engine does not keep.
+type AskSecret struct {
+	Placeholder string `json:"placeholder,omitempty"`
+	KeepsForS   int    `json:"keeps_for_s,omitempty"`
+}
+
 // Ask is one thing an agent is waiting on the person for: a tool call waiting
 // to be allowed, or a question the agent put. Options are the engine's own
 // choices, keyed by the id an answer names.
@@ -402,8 +414,12 @@ type Ask struct {
 	// as waiting. An empty HoldingUp never says false: a parked reply waits
 	// on no task.
 	Blocking *bool `json:"blocking,omitempty"`
-	SayWhy   bool  `json:"say_why,omitempty"`
-	Later    bool  `json:"later,omitempty"`
+	// Secret says the answer is a CREDENTIAL: the app draws one masked box and
+	// sends what was typed as the answer's text, and never shows it back. Nil
+	// on every other ask.
+	Secret *AskSecret `json:"secret,omitempty"`
+	SayWhy bool       `json:"say_why,omitempty"`
+	Later  bool       `json:"later,omitempty"`
 	// Path is the crews a crew's decision climbed through to the person,
 	// "Backend → Release → you".
 	Path []string `json:"path,omitempty"`

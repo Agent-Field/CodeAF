@@ -90,6 +90,8 @@ func (b UsageReportBudget) bounded() UsageReportBudget {
 // UsageReportCell is everything the ledger wrote for one day, model and
 // subject, added up.
 type UsageReportCell struct {
+	// LibraryActivity is learning, answers, or unspecified for older memory rows.
+	LibraryActivity string
 	// Day is the stored local calendar day, "2006-01-02".
 	Day string
 	// Model is the provider's model id, and empty where nobody said.
@@ -119,7 +121,7 @@ func (c UsageReportCell) Priced() bool { return c.Records > c.Unpriced }
 // every cell that makes them up.
 type UsageReport struct {
 	Totals UsageLedgerTotals
-	// Cells are sorted by day, model, kind, subject, then root.
+	// Cells are sorted by day, model, kind, subject, root, owner and Library activity.
 	Cells []UsageReportCell
 	// Models are the distinct named models in the cells, sorted.
 	Models []string
@@ -130,7 +132,7 @@ type UsageReport struct {
 	Stats UsageScanStats
 }
 
-type usageReportKey struct{ day, model, kind, subject, root, session, agent string }
+type usageReportKey struct{ day, model, kind, subject, root, session, agent, library string }
 
 // checkReportRange refuses a query that is not a bounded range.
 func (q UsageQuery) checkReportRange() error {
@@ -208,17 +210,17 @@ func QueryUsageReport(path string, q UsageQuery, loc *time.Location, budget Usag
 				session = strings.TrimSpace(line.Session)
 			}
 		}
-		key := usageReportKey{day: day, model: strings.TrimSpace(line.Model), kind: kind, subject: subject, root: root, session: session, agent: UsageOwner(line)}
+		key := usageReportKey{day: day, model: strings.TrimSpace(line.Model), kind: kind, subject: subject, root: root, session: session, agent: UsageOwner(line), library: libraryActivityOf(line)}
 		cell := cells[key]
 		if cell == nil {
-			cost := int64(usageReportCellBytes + len(key.day) + len(key.model) + len(key.kind) + len(key.subject) + len(key.root) + len(key.session) + len(key.agent))
+			cost := int64(usageReportCellBytes + len(key.day) + len(key.model) + len(key.kind) + len(key.subject) + len(key.root) + len(key.session) + len(key.agent) + len(key.library))
 			if len(cells) >= budget.MaxCells || weight+cost > budget.MaxBytes {
 				return fmt.Errorf("%w (more than %d groups or %d estimated bytes)", ErrUsageReportTooLarge, budget.MaxCells, budget.MaxBytes)
 			}
 			// Only now are the strings copied, so a line's large id is never
 			// retained by a map it was refused from.
-			key = usageReportKey{strings.Clone(key.day), strings.Clone(key.model), key.kind, strings.Clone(key.subject), strings.Clone(key.root), strings.Clone(key.session), strings.Clone(key.agent)}
-			cell = &UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session, Agent: key.agent}
+			key = usageReportKey{strings.Clone(key.day), strings.Clone(key.model), key.kind, strings.Clone(key.subject), strings.Clone(key.root), strings.Clone(key.session), strings.Clone(key.agent), key.library}
+			cell = &UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session, Agent: key.agent, LibraryActivity: key.library}
 			cells[key] = cell
 			weight += cost
 		}
@@ -252,8 +254,20 @@ func QueryUsageReport(path string, q UsageQuery, loc *time.Location, budget Usag
 	}
 	slices.SortFunc(report.Cells, func(a, b UsageReportCell) int {
 		return cmp.Or(strings.Compare(a.Day, b.Day), strings.Compare(a.Model, b.Model), strings.Compare(a.Kind, b.Kind),
-			strings.Compare(a.Subject, b.Subject), strings.Compare(a.Root, b.Root), strings.Compare(a.Session, b.Session), strings.Compare(a.Agent, b.Agent))
+			strings.Compare(a.Subject, b.Subject), strings.Compare(a.Root, b.Root), strings.Compare(a.Session, b.Session), strings.Compare(a.Agent, b.Agent), strings.Compare(a.LibraryActivity, b.LibraryActivity))
 	})
 	slices.Sort(report.Models)
 	return report, nil
+}
+
+func libraryActivityOf(line UsageLine) string {
+	if line.Role != "memory" {
+		return ""
+	}
+	switch line.LibraryActivity {
+	case "learning", "answers":
+		return line.LibraryActivity
+	default:
+		return "unspecified"
+	}
 }

@@ -1956,7 +1956,7 @@ Settings now groups controls by what you want to change:
 
 General holds appearance, input and updates. Models holds model selection and
 advanced routing/context controls. Memory holds `learn from chats and jobs` —
-automatic memory learning, off by default, with its extra model-call cost — and a link to
+automatic memory learning, on by default unless saved off, with its extra model-call cost — and a link to
 the Memories tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.

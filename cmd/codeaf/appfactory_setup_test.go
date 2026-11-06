@@ -116,6 +116,8 @@ func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 			t.Error("factory usage writer did not stop before home cleanup")
 		}
 	})
+	// Errand catalog reads can start the shared process and its profile writers.
+	freshEngineProcess(t)
 	return appHome, userHome, decoy
 }
 

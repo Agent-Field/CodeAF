@@ -132,7 +132,10 @@ computer's name. An online dot appears only when the engine knows its presence.
 Finished movable chats saved before pairing are shared after pairing and when
 the paired app engine starts. This does not open the chat or start a new turn.
 An open, idle chat says `open on <name>`; this describes where it is open and
-does not mean a reply is running. Closing a chat does not make its computer
+does not mean a reply is running. While a reply runs, the engine advertises
+`working: true`, including for a chat just continued
+onto that computer. It clears the working flag after the reply finishes and its
+last saved turn reaches the relay. Closing a chat does not make its computer
 offline. `<name> offline` appears only when that computer is known to be offline;
 unknown presence has no online dot or offline claim. The saved time is the time
 of the newest shared saved turn, shown in your local time, rather than the time

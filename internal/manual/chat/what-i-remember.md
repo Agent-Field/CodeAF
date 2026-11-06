@@ -244,7 +244,7 @@ earlier build may not know its conversation, and then the card simply says less.
 
 ## How does something get remembered without me asking? Noticing
 
-With **learn from chats and jobs** on (off by default), after each turn
+With **learn from chats and jobs** on (the default unless saved off), after each turn
 **you typed**, one small call reads what you said and the answer
 and may keep **one** line: a preference, a standing rule, a correction, a
 decision, or a lasting fact. It is shown what is already kept, so it does not
@@ -347,8 +347,8 @@ not require re-adding it.
 ## How do I turn memory off? Stop learning from chats and jobs
 
 `/settings` → Memory → **learn from chats and jobs** controls automatic memory
-model calls. It is off by default. On learns from chats and jobs at extra cost
-on your key; the row explains an example cost. Off applies from the next memory
+model calls. It is on by default unless you saved off. On learns from chats and
+jobs at extra cost on your key; Spending shows actual recorded costs. Off applies from the next memory
 step without restarting. A call already in flight finishes and is billed.
 
 Saved knowledge remains readable at no cost. Kept lines still ride in prompts,

@@ -196,10 +196,20 @@ its link ends or the holder reports that the call ended; later results return
 | method | params | result |
 |---|---|---|
 | `asks.answer` | `{agent, batch_item, id, later, option, scope, text, why, you_decide}` | `Empty` |
+| `asks.answer_secret` | `{agent, id, secret}` | `Empty` |
 | `asks.defer` | `in.askAt` | `AskResult` |
 | `asks.hold` | `{agent, id}` | `Empty` |
 | `asks.list` | `in.AgentParams` | `AsksResult` |
 | `asks.shown` | `in.askAt` | `AskResult` |
+
+An ask whose answer is a credential carries `secret: {placeholder?, keeps_for_s?}`.
+The app draws one masked box, never shows the value back, and sends it with
+`asks.answer_secret`, a method of its own so a wire trace drops `secret` by name.
+`bad_params` refuses an ask without `secret` and an empty value; to say no, answer
+the ask's Decline option with `asks.answer`, which refuses any `text` on a
+secret ask (`bad_params`) and so never carries the value. `keeps_for_s` is how long the engine
+keeps the value in a private file the agent's commands read (the model's own
+`request_secret`); absent, the value goes to its lane (a connection's key).
 
 ## attachments methods
 
@@ -1473,6 +1483,14 @@ role pins and checked as the other pins are.
 | `spend.ledger.export` | `in.SpendLedgerExportParams` | `SpendLedgerExportResult` |
 | `spend.report` | `in.SpendReportParams` | `SpendReportResult` |
 | `spend.today` | `{}` | `SpendResult` |
+
+`spend.report` cells may carry `library_activity`: `learning`, `answers`, or
+`unspecified` for historical memory calls whose activity was not recorded.
+Non-Library calls omit it. These cells are parts of the existing totals, never
+additional charges. The report retains the same date, model and owner filters,
+recorded model names, and unknown-price semantics. Older clients can ignore
+this optional field; older engines provide no Library breakdown.
+
 
 ## sync methods
 

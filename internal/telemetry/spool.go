@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
@@ -48,8 +49,14 @@ const persistSizeLimit = 1 << 20
 // spoolMu guards shared spool filenames: appends, ownership transfers and
 // returning unsent lines. A flush reads and sends its privately owned sending
 // file without this lock, so provider receipt appends never wait for network
-// work. The sending-file protocol keeps separate processes apart.
+// work. A directory file lock coordinates these changes across processes.
 var spoolMu sync.Mutex
+
+// spoolPending joins accepted asynchronous appends before tests inspect disk.
+var spoolPending sync.WaitGroup
+
+// spoolAfterOpen is a test scheduling seam; production leaves it nil.
+var spoolAfterOpen func()
 
 // spoolPath is the JSON-lines file events wait in.
 //
@@ -84,7 +91,11 @@ func Spool(event Event) {
 	if err != nil {
 		return
 	}
-	guard.Go("telemetry.spool", func() { _ = persist(line) })
+	spoolPending.Add(1)
+	guard.Go("telemetry.spool", func() {
+		defer spoolPending.Done()
+		_ = persist(line)
+	})
 }
 
 // SpoolSync appends one event and waits for the append, for tests and for a
@@ -108,15 +119,18 @@ func SpoolSync(event Event) error {
 // seven-day drop belong to Flush, which owns the file while it sends. The one
 // rewrite persist may do is the size guard, and only past one megabyte.
 func persist(line []byte) error {
-	spoolMu.Lock()
-	defer spoolMu.Unlock()
-	if err := ensureDir(); err != nil {
+	unlock, err := lockSpool()
+	if err != nil {
 		return err
 	}
+	defer unlock()
 	path := spoolPath()
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
+	}
+	if spoolAfterOpen != nil {
+		spoolAfterOpen()
 	}
 	_, writeErr := file.Write(append(line, '\n'))
 	syncErr := file.Sync()
@@ -131,7 +145,10 @@ func persist(line []byte) error {
 		return closeErr
 	}
 	info, err := os.Stat(path)
-	if err != nil || info.Size() <= persistSizeLimit {
+	if err != nil {
+		return err
+	}
+	if info.Size() <= persistSizeLimit {
 		return nil
 	}
 	lines, err := readSpoolLines(path)
@@ -169,24 +186,23 @@ func Flush(ctx context.Context) error {
 	if !hasDeadline {
 		deadline = time.Now().Add(time.Second)
 	}
-	spoolMu.Lock()
+	unlock, err := lockSpool()
+	if err != nil {
+		return nil
+	}
 	adoptStaleSendingFiles()
 	path := spoolPath()
 	if !fileExists(path) {
-		spoolMu.Unlock()
-		// An empty spool is a no-op: no rename, so no sending file is left
-		// behind for a later flush to adopt.
+		unlock()
 		return nil
 	}
 	sending := sendingPath()
 	if err := os.Rename(path, sending); err != nil {
-		spoolMu.Unlock()
+		unlock()
 		return nil
 	}
-	// The renamed file belongs exclusively to this flush. Release the
-	// shared append lock before parsing or sending so a completed model call
-	// never waits behind network delivery.
-	spoolMu.Unlock()
+	// Release both locks before reading or sending the privately owned file.
+	unlock()
 	entries, err := readSpoolLines(sending)
 	if err != nil {
 		// The lines are safe where they are; a flush ten minutes on adopts
@@ -244,18 +260,42 @@ func Flush(ctx context.Context) error {
 			kept = append(kept, entry)
 		}
 	}
-	if len(kept) > 0 {
-		spoolMu.Lock()
-		appendErr := appendLines(spoolPath(), kept)
-		spoolMu.Unlock()
-		if appendErr != nil {
-			// The unsent lines are still in the sending file; leave it for a
-			// later flush to adopt rather than dropping them.
-			return nil
-		}
+	unlock, err = lockSpool()
+	if err != nil {
+		return nil
+	}
+	defer unlock()
+	if err := appendLines(spoolPath(), kept); err != nil {
+		// Leave the sending file for a later flush to adopt.
+		return nil
 	}
 	_ = os.Remove(sending)
 	return nil
+}
+
+// lockSpool holds shared spool filenames stable across goroutines and processes.
+// Lock order is always spoolMu, then the directory file lock; release in reverse.
+func lockSpool() (func(), error) {
+	spoolMu.Lock()
+	if err := ensureDir(); err != nil {
+		spoolMu.Unlock()
+		return nil, err
+	}
+	file, err := os.OpenFile(telemetryFile("spool.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		spoolMu.Unlock()
+		return nil, err
+	}
+	if err := filelock.Lock(file, true, false); err != nil {
+		file.Close()
+		spoolMu.Unlock()
+		return nil, err
+	}
+	return func() {
+		_ = filelock.Unlock(file)
+		_ = file.Close()
+		spoolMu.Unlock()
+	}, nil
 }
 
 // sendingPath names the file this process flushes from: unique per process,
@@ -291,6 +331,7 @@ func appendLines(path string, entries []spoolEntry) error {
 // older than ten minutes — the sending file of a process that died mid-flush
 // — and removes it. Ten minutes is far past any flush's one-second budget, so
 // a live flush's file is never adopted out from under it.
+// The caller holds both spool locks through adoption and removal.
 func adoptStaleSendingFiles() {
 	matches, err := filepath.Glob(filepath.Join(telemetryDir(), sendingGlob))
 	if err != nil {

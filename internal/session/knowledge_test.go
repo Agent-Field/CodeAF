@@ -19,6 +19,9 @@ import (
 // turns only after creation. No live model is needed for local capture.
 func TestKnowledgeCapturesSavedTurnsOnlyAfterOptIn(t *testing.T) {
 	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
 	journal := filepath.Join(t.TempDir(), "chat.jsonl")
 	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("Before creation"), nil },
@@ -68,6 +71,9 @@ func TestKnowledgeUsesDefaultProfileForPersistedChats(t *testing.T) {
 	})
 	if agent.Knowledge() == nil {
 		t.Fatal("default-profile conversation cannot open a knowledge base")
+	}
+	if !agent.Knowledge().Enabled() {
+		t.Fatal("default-profile conversation must start with learning enabled")
 	}
 }
 

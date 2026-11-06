@@ -58,6 +58,7 @@ type SpendReportParams struct {
 // subject. day is the day the ledger stored on the line. root is present only
 // on a task cell, because a task id alone repeats in every conversation.
 type SpendReportCell struct {
+	LibraryActivity string   `json:"library_activity,omitempty" enum:"learning,answers,unspecified"`
 	Day             string   `json:"day"`
 	Model           string   `json:"model,omitempty"`
 	Kind            string   `json:"kind,omitempty" enum:"agent,task,automation"`
@@ -108,7 +109,7 @@ type SpendReportLimits struct {
 }
 
 // SpendReportResult is spend.report's answer. cells are sorted by day, model,
-// kind, subject, root. models are the distinct named models in the cells.
+// kind, subject, root, owner and Library activity. models are the distinct named models in the cells.
 type SpendReportResult struct {
 	From        string            `json:"from"`
 	To          string            `json:"to"`

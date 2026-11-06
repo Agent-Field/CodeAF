@@ -325,13 +325,8 @@ jobs:
           mkdir -p "$TMPDIR"
           # -p 2 permits concurrent compilation/testing in rest on the public
           # 4-vCPU / 16-GB runner, leaving headroom for the linker. tui3 and
-          # session use four shards; codeaf runs its suite without sharding.
-          # CODEAF'S ONE TEST BINARY GETS 25 MINUTES, AND ONLY IT. Sharding cmd/codeaf
-          # was tried and its sharded runs failed (#1734), and its serial suite measured
-          # 1065 s (17.8 min) on this runner on 2026-11-03, over the Makefile's 15m, so
-          # every test after the cut went unchecked. The other legs pass no --timeout and
-          # keep the Makefile's 15m. Drop this once the suite is back under 15 minutes.
-          ./scripts/touched-verdict.sh run --base "$BASE" --shards 4 ${{ matrix.leg == 'codeaf' && '--timeout 25m' || '' }} --report "$TMPDIR/$LEG.json" $PACKAGES
+          # session and codeaf use four shards.
+          ./scripts/touched-verdict.sh run --base "$BASE" --shards 4 --report "$TMPDIR/$LEG.json" $PACKAGES
       - uses: actions/upload-artifact@v4
         if: always()
         with:

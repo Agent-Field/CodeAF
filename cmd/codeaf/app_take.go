@@ -145,6 +145,9 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 		}
 		b.locked(func() { existing = b.agents[local.agent] })
 	}
+	// Another computer held it, so what moves here is a conversation this
+	// computer has not seen; a lapsed lease of its own moves nothing.
+	moved := view.Cell.Lease.Device != s.Device.ID()
 	if existing != nil {
 		releaseForTake := func() error {
 			existing.gate.Lock()
@@ -156,7 +159,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 			if busy {
 				return appwire.Errorf(appwire.CodeBusy, "Finish this chat's work before continuing it here.")
 			}
-			if view.Cell.Lease.Device != s.Device.ID() {
+			if moved {
 				b.release(existing)
 			}
 			return nil
@@ -190,15 +193,7 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	}
 	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Title: meta.Title, Created: meta.Created, Model: meta.Model, ModelIdentity: meta.ModelIdentity})
 	a := b.agent(id)
-	b.locked(func() {
-		a.transcript, a.windowMoved = transcript, false
-		if !got.AlreadyHere {
-			// Installation replaced the saved conversation. A resting local
-			// agent may still remember the model from before another computer
-			// continued it; only the newly installed model belongs to this take.
-			a.view.Model, a.view.ModelIdentity = meta.Model, meta.ModelIdentity
-		}
-	})
+	b.installTaken(a, transcript, meta, !got.AlreadyHere, moved)
 	location := &appwire.Location{Here: true, Cell: p.Cell, Seen: &appwire.Seen{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head}, Holder: &appwire.LocationHolder{ID: s.Device.ID(), Name: got.Device}}
 	if service, ok := s.Dir.(interface{ HeadTakes() bool }); ok && !service.HeadTakes() {
 		location.Seen.Head = ""
@@ -234,4 +229,42 @@ func (b *appBackend) TakeAgent(p appwire.TakeParams) (agent appwire.Agent, err e
 	// A newer cached version skips the reading's own taking.
 	b.publishTaking()
 	return agent, nil
+}
+
+// installTaken points the agent at the chat a take installed. installed: the
+// take replaced the saved conversation; moved: another computer held it.
+// Under the agent's gate, as releaseForTake: a send waits for the reset
+// rather than numbering a message from the old copy's count meanwhile.
+func (b *appBackend) installTaken(a *appAgent, transcript string, meta session.Meta, installed, moved bool) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	users := 0
+	if installed && moved {
+		users = appUserCount(transcript)
+	}
+	b.locked(func() {
+		a.transcript, a.windowMoved = transcript, false
+		if installed {
+			// Installation replaced the saved conversation. A resting local
+			// agent may still remember the model from before another computer
+			// continued it; only the newly installed model belongs to this take.
+			a.view.Model, a.view.ModelIdentity = meta.Model, meta.ModelIdentity
+		}
+		if installed && moved {
+			// It may also remember how many of the person's messages its own
+			// copy held, and what it sent at each place (N20-1). The next
+			// message is numbered from the chat that moved here, or it would
+			// take the id of one the other computer added: the open after the
+			// take counts them, as a relaunch's would, and a conversation an
+			// open held meanwhile is counted here. The old copy's places and
+			// last failure do not describe this conversation.
+			a.users, a.counted = 0, false
+			if a.live != nil {
+				a.users, a.counted = users, true
+			}
+			a.marks = nil
+			a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
+			a.view.Retryable = false
+		}
+	})
 }

@@ -405,6 +405,13 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 			return time.Time{}, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", ask)
 		}
 		q := asks[at]
+		// A CREDENTIAL IS NEVER HELD HERE. The Inbox keeps an answer's words for
+		// its hold and shows them back, and a masked box exists only in the
+		// chat, so a secret ask is answered there (asks.answer_secret); its
+		// Decline may still be pressed from here.
+		if q.Secret != nil && words != "" {
+			return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "the ask %s takes a secret; type it into the chat's masked box, not here", ask)
+		}
 		switch q.Subkind {
 		case appwire.SubkindCrewProposal:
 			err = appValidateProposalAnswer(option)
