@@ -19,7 +19,7 @@ func TestTroubleWordsNameASpentRateLimit(t *testing.T) {
 		{403, time.Minute, "rate limited"},
 		{429, time.Minute, "rate limited"},
 		{403, 0, "not reachable"},
-		{429, 0, "not reachable"},
+		{429, 0, "rate limited"},
 		{500, time.Minute, "not reachable"},
 		{401, 0, "token refused"},
 		{401, time.Minute, "token refused"},

@@ -802,6 +802,8 @@ cannot see, or GitHub's repository 404, is `not_found`. A spent GitHub rate
 limit on the visibility check or issues request is `busy` with
 `detail.retry_at` in RFC 3339, using GitHub's reset time when supplied,
 otherwise its `retry-after` hint.
+Every GitHub HTTP 429 is a rate limit, even without headers; a 403 is a
+rate limit only with `X-RateLimit-Remaining: 0` or `Retry-After`.
 A rate-limited visibility check is not cached as a repository denial;
 the next read checks GitHub again. Without a usable reset or retry hint,
 `detail.retry_at` is one minute after the Factory's clock.

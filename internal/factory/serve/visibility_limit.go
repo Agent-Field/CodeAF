@@ -30,7 +30,7 @@ func (h *Handler) githubVisibilityStatus(r *http.Request, endpoint, token string
 }
 
 func githubLimitSpent(status int, header http.Header) bool {
-	return (status == http.StatusForbidden || status == http.StatusTooManyRequests) &&
+	return status == http.StatusTooManyRequests || status == http.StatusForbidden &&
 		(header.Get("X-RateLimit-Remaining") == "0" || header.Get("Retry-After") != "")
 }
 
