@@ -10,7 +10,7 @@ import (
 // SetAgentScope writes the conversation's stored scope without opening it.
 // A held conversation reads the word beside its next task-index reading.
 func (b *appBackend) SetAgentScope(id, scope string) (appwire.AgentScope, error) {
-	if scope != session.ScopeProject && scope != session.ScopeConversation {
+	if scope != session.WorkScopeProject && scope != session.WorkScopeConversation {
 		return appwire.AgentScope{}, appwire.Errorf(appwire.CodeBadParams, "scope is project or conversation")
 	}
 	var a *appAgent

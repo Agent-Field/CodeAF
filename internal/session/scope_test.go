@@ -45,7 +45,7 @@ func scopeRig(t *testing.T) (*Agent, string) {
 // L-FIX9-cross A1
 func TestConversationScopeLeavesOtherWorkOutOfTurnContext(t *testing.T) {
 	agent, dir := scopeRig(t)
-	if changed, err := SetConversationScope(dir, ScopeConversation); err != nil || !changed {
+	if changed, err := SetConversationScope(dir, WorkScopeConversation); err != nil || !changed {
 		t.Fatalf("set scope = %v, %v", changed, err)
 	}
 	agent.refreshElsewhere(context.Background())
@@ -64,7 +64,7 @@ func TestConversationScopeLeavesOtherWorkOutOfTurnContext(t *testing.T) {
 // L-FIX9-cross A2
 func TestConversationScopeTasksReachOnlyItsOwnRows(t *testing.T) {
 	agent, dir := scopeRig(t)
-	if _, err := SetConversationScope(dir, ScopeConversation); err != nil {
+	if _, err := SetConversationScope(dir, WorkScopeConversation); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range []string{`{}`, `{"scope":"everywhere"}`, `{"query":"nil-map"}`} {
@@ -105,11 +105,11 @@ func TestProjectScopeKeepsOtherWorkVisible(t *testing.T) {
 		t.Run(map[bool]string{false: "absent", true: "restored"}[reset], func(t *testing.T) {
 			agent, dir := scopeRig(t)
 			if reset {
-				if _, err := SetConversationScope(dir, ScopeConversation); err != nil {
+				if _, err := SetConversationScope(dir, WorkScopeConversation); err != nil {
 					t.Fatal(err)
 				}
 				agent.refreshElsewhere(context.Background())
-				if _, err := SetConversationScope(dir, ScopeProject); err != nil {
+				if _, err := SetConversationScope(dir, WorkScopeProject); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -144,7 +144,7 @@ func TestConversationScopeClearsAnEarlierBlockOnTheNextReading(t *testing.T) {
 		t.Fatal("the fixture never delivered other work")
 	}
 	was := LastTold(dir)
-	if _, err := SetConversationScope(dir, ScopeConversation); err != nil {
+	if _, err := SetConversationScope(dir, WorkScopeConversation); err != nil {
 		t.Fatal(err)
 	}
 	agent.refreshElsewhere(context.Background())
@@ -161,6 +161,8 @@ func TestConversationScopeClearsAnEarlierBlockOnTheNextReading(t *testing.T) {
 }
 
 // L-FIX9-cross A6
+// LoadMeta reports the same facts except scope and the build stamped on every
+// metadata write; the write applies the usual metadata normalisation.
 func TestConversationScopeChangesOnlyItsStoredWord(t *testing.T) {
 	dir := t.TempDir()
 	meta := Meta{
@@ -179,18 +181,14 @@ func TestConversationScopeChangesOnlyItsStoredWord(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := scopeMetaFields(t, dir)
-	for _, word := range []string{ScopeConversation, ScopeProject} {
+	for _, word := range []string{WorkScopeConversation, WorkScopeProject} {
 		changed, err := SetConversationScope(dir, word)
 		if err != nil || !changed || ConversationScopeAt(dir) != word {
 			t.Fatalf("set %q = %v, %v; stored %q", word, changed, err, ConversationScopeAt(dir))
 		}
 		after := scopeMetaFields(t, dir)
-		if word == ScopeConversation {
-			if string(after["scope"]) != `"conversation"` {
-				t.Fatalf("scope = %s", after["scope"])
-			}
-		} else if _, present := after["scope"]; present {
-			t.Fatal("project must be stored as absence")
+		if string(after["scope"]) != strconv.Quote(word) {
+			t.Fatalf("scope = %s, want %q", after["scope"], word)
 		}
 		delete(after, "scope")
 		if !reflect.DeepEqual(before, after) {
@@ -218,6 +216,33 @@ func TestConversationScopeChangesOnlyItsStoredWord(t *testing.T) {
 		if err != nil || !os.SameFile(was, now) || !was.ModTime().Equal(now.ModTime()) {
 			t.Fatalf("repeat %q rewrote meta.json: %v", word, err)
 		}
+	}
+}
+
+// L-FIX9-cross A6
+func TestProjectScopeLeavesAbsentScopeUnwritten(t *testing.T) {
+	dir := t.TempDir()
+	if err := SaveMeta(dir, Meta{ID: "mine"}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, placeMeta)
+	old := time.Unix(1234567890, 0)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := SetConversationScope(dir, WorkScopeProject); err != nil || changed {
+		t.Fatalf("set absent project = %v, %v", changed, err)
+	}
+	after, err := os.Stat(path)
+	if err != nil || !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatalf("default project rewrote meta.json: %v", err)
+	}
+	if _, present := scopeMetaFields(t, dir)["scope"]; present {
+		t.Fatal("default project wrote a scope")
 	}
 }
 
@@ -250,7 +275,7 @@ func TestConversationScopeRefusesUnknownWordsAndMissingConversations(t *testing.
 		t.Fatal("an unknown word changed metadata")
 	}
 	for _, dir := range []string{"", "  ", t.TempDir(), filepath.Join(t.TempDir(), "absent")} {
-		if changed, err := SetConversationScope(dir, ScopeConversation); err == nil || changed {
+		if changed, err := SetConversationScope(dir, WorkScopeConversation); err == nil || changed {
 			t.Fatalf("no conversation at %q = %v, %v", dir, changed, err)
 		}
 		if dir != "" && dir != "  " {
@@ -263,14 +288,14 @@ func TestConversationScopeRefusesUnknownWordsAndMissingConversations(t *testing.
 
 // L-FIX9-cross A3
 func TestConversationScopeDefaultsQuietlyToProject(t *testing.T) {
-	for _, stored := range []string{"", "project", "Conversation", "elsewhere", ScopeConversation} {
+	for _, stored := range []string{"", "project", "Conversation", "elsewhere", WorkScopeConversation} {
 		dir := t.TempDir()
 		if err := SaveMeta(dir, Meta{ID: "mine", Scope: stored}); err != nil {
 			t.Fatal(err)
 		}
-		want := ScopeProject
-		if stored == ScopeConversation {
-			want = ScopeConversation
+		want := WorkScopeProject
+		if stored == WorkScopeConversation {
+			want = WorkScopeConversation
 		}
 		if got := ConversationScopeAt(dir); got != want {
 			t.Fatalf("stored %q reads %q, want %q", stored, got, want)
@@ -283,7 +308,7 @@ func TestConversationScopeDefaultsQuietlyToProject(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if got := ConversationScopeAt(dir); got != ScopeProject {
+		if got := ConversationScopeAt(dir); got != WorkScopeProject {
 			t.Fatalf("unreadable identity %q reads %q", raw, got)
 		}
 	}
@@ -291,10 +316,10 @@ func TestConversationScopeDefaultsQuietlyToProject(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, placeMeta), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if got := ConversationScopeAt(dir); got != ScopeProject {
+	if got := ConversationScopeAt(dir); got != WorkScopeProject {
 		t.Fatalf("failed metadata read = %q", got)
 	}
-	if got := ConversationScopeAt(""); got != ScopeProject {
+	if got := ConversationScopeAt(""); got != WorkScopeProject {
 		t.Fatalf("no folder = %q", got)
 	}
 }
@@ -303,7 +328,7 @@ func TestConversationScopeDefaultsQuietlyToProject(t *testing.T) {
 func TestConversationScopeSurvivesReloadAndLaterMetadataStamps(t *testing.T) {
 	agent, dir := scopeRig(t)
 	stale := agent.metaSnapshot()
-	if _, err := SetConversationScope(dir, ScopeConversation); err != nil {
+	if _, err := SetConversationScope(dir, WorkScopeConversation); err != nil {
 		t.Fatal(err)
 	}
 	place := t.TempDir()
@@ -341,7 +366,7 @@ func TestConversationScopeSurvivesReloadAndLaterMetadataStamps(t *testing.T) {
 		stamp.write()
 		agent.SettleWrites()
 		meta, err := LoadMeta(dir)
-		if err != nil || meta.Scope != ScopeConversation || ConversationScopeAt(dir) != ScopeConversation {
+		if err != nil || meta.Scope != WorkScopeConversation || ConversationScopeAt(dir) != WorkScopeConversation {
 			t.Fatalf("%s lost scope: %+v, %v", stamp.name, meta, err)
 		}
 	}
@@ -358,8 +383,33 @@ func TestConversationScopeSurvivesReloadAndLaterMetadataStamps(t *testing.T) {
 		c.SessionFile = c.Place.Transcript()
 	})
 	reopened.refreshElsewhere(context.Background())
-	if strings.Contains(volatileNote(reopened), "<elsewhere>") || ConversationScopeAt(dir) != ScopeConversation {
+	if strings.Contains(volatileNote(reopened), "<elsewhere>") || ConversationScopeAt(dir) != WorkScopeConversation {
 		t.Fatal("a reopened conversation forgot its scope")
+	}
+}
+
+// L-FIX9-cross A4
+func TestConversationScopeSurvivesStaleWholeMetadataSaves(t *testing.T) {
+	dir := t.TempDir()
+	if err := SaveMeta(dir, Meta{ID: "mine"}); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := LoadMeta(dir)
+	if err != nil || stale.Scope != "" {
+		t.Fatalf("initial metadata = %+v, %v", stale, err)
+	}
+	stale.Title = "Parser repairs"
+	for _, word := range []string{WorkScopeConversation, WorkScopeProject} {
+		if changed, err := SetConversationScope(dir, word); err != nil || !changed {
+			t.Fatalf("set %q = %v, %v", word, changed, err)
+		}
+		if err := SaveMeta(dir, stale); err != nil {
+			t.Fatal(err)
+		}
+		meta, err := LoadMeta(dir)
+		if err != nil || meta.Scope != word || ConversationScopeAt(dir) != word || meta.Title != stale.Title {
+			t.Fatalf("stale save after %q = %+v, %v", word, meta, err)
+		}
 	}
 }
 
@@ -376,7 +426,7 @@ func TestConversationScopeKeepsItsLiveGraphWhileFilteringTheMergedIndex(t *testi
 	number := strconv.FormatUint(id, 10)
 	appendTaskIndex(agent.config.taskIndexFile(),
 		deltaLandedRow(number, "theirs", "An unrelated newer task", time.Now()))
-	if _, err := SetConversationScope(dir, ScopeConversation); err != nil {
+	if _, err := SetConversationScope(dir, WorkScopeConversation); err != nil {
 		t.Fatal(err)
 	}
 	text, isError := runTool(t, agent, "tasks", `{}`)
@@ -404,7 +454,7 @@ func TestConversationScopeLeavesATaskNodesChildrenVisible(t *testing.T) {
 		c.Place = owner.config.Place
 		c.InTask, c.taskID, c.tasker = true, parent, graph
 	})
-	for _, scope := range []string{ScopeProject, ScopeConversation} {
+	for _, scope := range []string{WorkScopeProject, WorkScopeConversation} {
 		if _, err := SetConversationScope(dir, scope); err != nil {
 			t.Fatal(err)
 		}
@@ -433,7 +483,7 @@ func TestConversationScopeStaysInMetaBesideSealedConversationSettings(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scope := range []string{ScopeConversation, ScopeProject} {
+	for _, scope := range []string{WorkScopeConversation, WorkScopeProject} {
 		if _, err := SetConversationScope(dir, scope); err != nil {
 			t.Fatal(err)
 		}

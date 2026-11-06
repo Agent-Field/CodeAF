@@ -31,7 +31,7 @@ func TestAppScopeWritesAClosedConversationWithoutOpeningIt(t *testing.T) {
 	if !slices.Contains(w.hello, appwire.FeatureAgentScope) {
 		t.Fatal("the backend does not announce agents.scope")
 	}
-	for _, word := range []string{session.ScopeConversation, session.ScopeProject} {
+	for _, word := range []string{session.WorkScopeConversation, session.WorkScopeProject} {
 		raw, failure := w.call("agents.set_scope", map[string]string{"id": d.id, "scope": word})
 		if failure != nil {
 			t.Fatal(failure)
@@ -65,7 +65,7 @@ func TestAppScopeWritesAClosedConversationWithoutOpeningIt(t *testing.T) {
 func TestAppScopeRefusesAnUnknownAgent(t *testing.T) {
 	d := newUnreadDisk(t)
 	w := newActionWire(t, d.backend)
-	if _, err := w.call("agents.set_scope", map[string]string{"id": "no-such-agent", "scope": session.ScopeConversation}); err == nil || err.Code != appwire.CodeNotFound {
+	if _, err := w.call("agents.set_scope", map[string]string{"id": "no-such-agent", "scope": session.WorkScopeConversation}); err == nil || err.Code != appwire.CodeNotFound {
 		t.Fatalf("unknown agent = %v", err)
 	}
 }
@@ -83,7 +83,7 @@ func TestAppScopeRefusesALentConversationBeforeWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = backend.SetAgentScope(agent.ID, session.ScopeConversation)
+	_, err = backend.SetAgentScope(agent.ID, session.WorkScopeConversation)
 	failure, ok := err.(*appwire.Error)
 	want := errLentStage("scope").(*appwire.Error)
 	if !ok || !reflect.DeepEqual(failure, want) {
@@ -107,8 +107,8 @@ func TestAppScopeLeavesAHeldConversationAndItsUseTimeAlone(t *testing.T) {
 	var used time.Time
 	var view appwire.Agent
 	backend.locked(func() { before, used, view = a.live, a.live.lastUse, a.view })
-	result, err := backend.SetAgentScope(agent.ID, session.ScopeConversation)
-	if err != nil || result.Scope != session.ScopeConversation || session.ConversationScopeAt(dir) != session.ScopeConversation {
+	result, err := backend.SetAgentScope(agent.ID, session.WorkScopeConversation)
+	if err != nil || result.Scope != session.WorkScopeConversation || session.ConversationScopeAt(dir) != session.WorkScopeConversation {
 		t.Fatalf("held scope = %+v, %v", result, err)
 	}
 	backend.locked(func() {
@@ -141,7 +141,7 @@ func TestAppScopeRequiresALocalConversationFolder(t *testing.T) {
 				transcript = filepath.Join(dir, "transcript.jsonl")
 			}
 			d.backend.locked(func() { a.transcript = transcript })
-			_, err = d.backend.SetAgentScope(d.id, session.ScopeConversation)
+			_, err = d.backend.SetAgentScope(d.id, session.WorkScopeConversation)
 			failure, ok := err.(*appwire.Error)
 			if !ok || failure.Code != appwire.CodeConflict || failure.Message != "this conversation has no local folder on this computer" {
 				t.Fatalf("%s = %v", where, err)
