@@ -428,6 +428,27 @@ func (w *fleWorld) daySpend() float64 {
 	for _, m := range s.Models {
 		total += m.CostUSD
 	}
+	// spend_by_model folds job steps only; the judge's and the arrival
+	// read's calls are booked on the engine's usage ledger. The larger of
+	// the two is what this run spent.
+	return max(total, w.ledgerSpend())
+}
+
+// ledgerSpend is every model call the engine booked on its usage ledger.
+func (w *fleWorld) ledgerSpend() float64 {
+	raw, err := os.ReadFile(filepath.Join(w.home, "v3", "usage.jsonl"))
+	if err != nil {
+		return 0
+	}
+	var total float64
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		var l struct {
+			USD float64 `json:"usd"`
+		}
+		if json.Unmarshal(line, &l) == nil {
+			total += l.USD
+		}
+	}
 	return total
 }
 
@@ -685,8 +706,24 @@ func (w *fleWorld) setup() {
 	w.must("factory.rules_set", map[string]any{"factory": w.factory, "rules": []string{}, "ask_first": []string{}, "never": []string{}, "start_on_its_own": true, "start_labels": []string{"agent-ready"}})
 	w.setRoutes([]any{})
 
-	// The factory's own copy of factory-demo's file: the repository's start:
-	// section exactly, and a quick pipeline beside the built-in issue one.
+	var st struct {
+		Connected bool   `json:"connected"`
+		Account   string `json:"account"`
+		Site      string `json:"site"`
+	}
+	w.decode("factory.jira_connect", map[string]any{"factory": w.factory, "site": w.jira.URL, "email": fleJiraEmail, "token": fleJiraToken, "jql": "project = FL"}, &st)
+	if !st.Connected || st.Account != "Stub Person" {
+		t.Fatalf("factory.jira_connect answered %+v, want connected as Stub Person", st)
+	}
+	t.Logf("setup done in %s: factory %s, Jira at %s", time.Since(began).Round(time.Second), w.factory, st.Site)
+}
+
+// setQuickCopy saves the factory's own copy of factory-demo's file: the
+// repository's start: section exactly, and a quick pipeline beside the
+// built-in issue one. Only scenario 1 runs on it, and it is cleared when that
+// scenario ends, so every other scenario runs on main's own file.
+func (w *fleWorld) setQuickCopy() {
+	t := w.t
 	start, err := w.gh("api", "repos/"+fleRepo+"/contents/.codeaf/factory.yaml", "-H", "Accept: application/vnd.github.raw")
 	if err != nil || !strings.Contains(start, "start:") {
 		t.Fatalf("read factory-demo's factory.yaml: %v %s", err, start)
@@ -713,16 +750,18 @@ func (w *fleWorld) setup() {
 		t.Logf("home holds %v", names)
 	}
 
-	var st struct {
-		Connected bool   `json:"connected"`
-		Account   string `json:"account"`
-		Site      string `json:"site"`
+}
+
+func (w *fleWorld) clearQuickCopy() {
+	if w.copyVersion == 0 {
+		return
 	}
-	w.decode("factory.jira_connect", map[string]any{"factory": w.factory, "site": w.jira.URL, "email": fleJiraEmail, "token": fleJiraToken, "jql": "project = FL"}, &st)
-	if !st.Connected || st.Account != "Stub Person" {
-		t.Fatalf("factory.jira_connect answered %+v, want connected as Stub Person", st)
+	if _, err := w.eng.call("factory.pipeline_copy_clear", map[string]any{"factory": w.factory, "repo": fleRepo, "expect": map[string]any{"version": w.copyVersion}}, time.Minute); err != nil {
+		w.t.Logf("clear the factory copy: %v", err)
+		return
 	}
-	t.Logf("setup done in %s: factory %s, Jira at %s", time.Since(began).Round(time.Second), w.factory, st.Site)
+	w.t.Logf("cleared the factory copy of %s", fleRepo)
+	w.copyVersion = 0
 }
 
 func (w *fleWorld) cleanup() {
@@ -736,13 +775,7 @@ func (w *fleWorld) cleanup() {
 	}
 	if w.factory != "" {
 		_, _ = w.eng.call("factory.routes_set", map[string]any{"factory": w.factory, "rules": []any{}}, time.Minute)
-		if w.copyVersion > 0 {
-			if _, err := w.eng.call("factory.pipeline_copy_clear", map[string]any{"factory": w.factory, "repo": fleRepo, "expect": map[string]any{"version": w.copyVersion}}, time.Minute); err != nil {
-				t.Logf("clear the factory copy: %v", err)
-			} else {
-				t.Logf("cleared the factory copy of %s", fleRepo)
-			}
-		}
+		w.clearQuickCopy()
 		_, _ = w.eng.call("factory.jira_disconnect", map[string]any{"factory": w.factory}, time.Minute)
 	}
 	w.eng.close()
@@ -895,6 +928,8 @@ func (w *fleWorld) scenarioJira(t *testing.T) {
 	defer func() { fleResult(t, "1 jira → rule → PR → comment", began, cost, evidence) }()
 
 	const rule = "Small Jira bugs"
+	w.setQuickCopy()
+	defer w.clearQuickCopy()
 	w.setRoutes([]map[string]any{{
 		"name": rule,
 		"when": map[string]any{"sources": []string{"jira"}, "labels": []string{"jira-project:FL"}},
