@@ -504,7 +504,7 @@ name the connected machine, and say to change the crew there:
 The connection's welcome says whether the connected engine has its memory store open,
 and the memory commands use that engine's store. `/remember` and the Memories tab write there;
 `/memories` and `/memory <query>` read there. The far machine's
-`learn from chats and jobs` row controls automatic learning and defaults off.
+`learn from chats and jobs` row controls automatic learning and defaults on unless saved off.
 Saved lines remain readable and `/remember` still works while off. A store that
 would not open says:
 `memory is unavailable on this machine · the store could not be opened`.

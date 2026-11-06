@@ -18,6 +18,9 @@ import (
 func TestCaptureConsentSharesConcurrentReadsAndOwnWrites(t *testing.T) {
 	profile := t.TempDir()
 	v := Open(profile)
+	if err := config.WriteMemoryEnabled(v.profile, false); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	previous := consentNow
 	consentNow = func() time.Time { return now }
@@ -66,6 +69,9 @@ func TestCaptureConsentSharesConcurrentReadsAndOwnWrites(t *testing.T) {
 
 func TestCaptureConsentRechecksExternalWritesAndKeepsFreshReaders(t *testing.T) {
 	v := Open(t.TempDir())
+	if err := config.WriteMemoryEnabled(v.profile, false); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	previous := consentNow
 	consentNow = func() time.Time { return now }
@@ -166,12 +172,15 @@ func (consentEmptyHistory) Read(context.Context, Journal, JournalCursor) (Journa
 
 func TestCaptureConsentStaysOffWithEmptyHistory(t *testing.T) {
 	v := Open(t.TempDir())
+	if err := config.WriteMemoryEnabled(v.profile, false); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	previous := consentNow
 	consentNow = func() time.Time { return now }
 	t.Cleanup(func() { consentNow = previous })
 	if enabled, _ := v.CaptureConsent(); enabled {
-		t.Fatal("fresh profile already enabled")
+		t.Fatal("saved-off profile already enabled")
 	}
 	lastInventory := ""
 	if err := v.runPass(context.Background(), consentEmptyHistory{}, func() string { return "" }, &lastInventory); err != nil {
@@ -185,6 +194,9 @@ func TestCaptureConsentStaysOffWithEmptyHistory(t *testing.T) {
 
 func TestConfirmConsentReadsNowAndSharesTheAnswer(t *testing.T) {
 	v := Open(t.TempDir())
+	if err := config.WriteMemoryEnabled(v.profile, false); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	previous := consentNow
 	consentNow = func() time.Time { return now }
@@ -197,7 +209,7 @@ func TestConfirmConsentReadsNowAndSharesTheAnswer(t *testing.T) {
 		}
 	}))
 	if enabled, _ := v.CaptureConsent(); enabled {
-		t.Fatal("fresh profile already enabled")
+		t.Fatal("saved-off profile already enabled")
 	}
 	if err := config.WriteMemoryEnabled(v.profile, true); err != nil {
 		t.Fatal(err)
@@ -222,5 +234,41 @@ func TestConfirmConsentReadsNowAndSharesTheAnswer(t *testing.T) {
 	}
 	if got := opens.Load() - before; got != 1 {
 		t.Fatalf("confirmation and the next shared read opened the database %d times; want 1", got)
+	}
+}
+
+func TestCaptureConsentDefaultsOnAndChecksLiveSettings(t *testing.T) {
+	v := Open(t.TempDir())
+	epoch := time.Unix(0, 0).UTC()
+	if enabled, since := v.CaptureConsent(); !enabled || !since.Equal(epoch) {
+		t.Fatalf("default consent = (%v, %v); want (true, epoch)", enabled, since)
+	}
+	// A cached successful database read must not hide a changed learning choice.
+	for _, want := range []bool{false, true, false} {
+		if err := config.WriteMemoryEnabled(v.profile, want); err != nil {
+			t.Fatal(err)
+		}
+		enabled, since := Open(v.profile).CaptureConsent()
+		if enabled != want || (want && !since.Equal(epoch)) || (!want && !since.IsZero()) {
+			t.Fatalf("saved %v: consent = (%v, %v)", want, enabled, since)
+		}
+	}
+	for _, raw := range []string{`{"memory.enabled":"invalid"}`, `{`} {
+		if err := os.WriteFile(config.BudgetConfigPath(v.profile), []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if enabled, since := v.CaptureConsent(); enabled || !since.IsZero() {
+			t.Fatalf("invalid settings returned consent: (%v, %v)", enabled, since)
+		}
+	}
+	path := config.BudgetConfigPath(v.profile)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if enabled, since := v.CaptureConsent(); enabled || !since.IsZero() {
+		t.Fatalf("unreadable settings returned consent: (%v, %v)", enabled, since)
 	}
 }

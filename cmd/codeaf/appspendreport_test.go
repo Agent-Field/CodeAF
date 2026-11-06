@@ -211,3 +211,29 @@ func TestSpendTodayNamesFactoryAI(t *testing.T) {
 		t.Fatalf("spend.today = %+v", spend)
 	}
 }
+
+func TestAppSpendReportCarriesLibraryCostsInsideTheExistingTotal(t *testing.T) {
+	zone := time.FixedZone("EDT", -4*3600)
+	at := time.Date(2026, 10, 15, 12, 0, 0, 0, zone)
+	ledgerAt(t, zone, []session.UsageLine{
+		{At: at, Day: "2026-10-15", Model: "m/flash", Role: "memory", LibraryActivity: "learning", Calls: 1, USD: 2},
+		{At: at, Day: "2026-10-15", Model: "m/flash", Role: "memory", LibraryActivity: "answers", Calls: 1, USD: 3},
+		{At: at, Day: "2026-10-15", Model: "m/flash", Calls: 1, USD: 1},
+	}, "")
+	report, err := (&appBackend{}).SpendReport(appwire.SpendReportAsk{Filter: appwire.SpendLedgerFilter{From: "2026-10-15", To: "2026-10-15"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Totals.CostUSD == nil || *report.Totals.CostUSD != 6 {
+		t.Fatalf("total=%+v, want 6", report.Totals)
+	}
+	amounts := map[string]float64{}
+	for _, cell := range report.Cells {
+		if cell.CostUSD != nil {
+			amounts[cell.LibraryActivity] += *cell.CostUSD
+		}
+	}
+	if amounts["learning"] != 2 || amounts["answers"] != 3 || amounts[""] != 1 {
+		t.Fatalf("activities=%v", amounts)
+	}
+}

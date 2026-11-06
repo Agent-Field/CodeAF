@@ -61,7 +61,7 @@ func (v *Vault) recallSaved(ctx context.Context, key, question, scope string, ex
 	if err != nil {
 		return answer, err
 	}
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, explicitRead: explicitRead}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, explicitRead: explicitRead, calls: v.calls}
 	result, err := recallCompilation(vault, question, scope, 16, "lexical", model)
 	if err != nil {
 		return answer, err

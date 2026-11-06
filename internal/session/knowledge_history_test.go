@@ -271,6 +271,9 @@ func runKnowledgeWorker(t *testing.T, v *knowledge.Vault, root string) (context.
 func TestKnowledgeInitialBuildImportsAllProjectsAndAutopopulates(t *testing.T) {
 	root := t.TempDir()
 	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
 	v := knowledge.Open(profile)
 	writeKnowledgeChat(t, root, "project-a", "chat-a", knowledgeMessage("Cedar queues jobs."), map[string]any{"type": "message", "role": "user", "content": "Harness-only note", "note": true, "timestamp": "2026-10-25T12:00:00Z"}, map[string]any{"type": "compaction", "window": 2}, knowledgeMessage("Synthetic summary"), knowledgeMessage("Synthetic replay"))
 	path := writeKnowledgeChat(t, root, "project-b", "chat-b", knowledgeMessage("Cedar retries failed work."))
