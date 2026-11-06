@@ -470,7 +470,8 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			}
 			continue
 		}
-		held, err := crew.guard.before(ctx, current, messages, options)
+		var reservation spendReservation
+		held, err := crew.guard.before(ctx, current, messages, options, &reservation)
 		if err != nil {
 			// THE CALL THAT WOULD CROSS THE LINE IS NOT MADE, and the line
 			// says which line it met — never "/redo stronger".
@@ -491,7 +492,7 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 		callCtx = withDispatchObserver(callCtx, sent.tell)
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
 		failedAt := time.Now()
-		crew.guard.after(ctx, current, response, held)
+		crew.guard.after(ctx, current, response, held, &reservation)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current, seat)
 			return response, nil
