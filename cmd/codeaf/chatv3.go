@@ -884,7 +884,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// resolved once, at the door (chatv3_process.go). Everything below this line
 	// is a function of the DIRECTORY this conversation is about, which is the
 	// whole of what makes a launch different from the process it runs in.
-	settings := proc.Settings
+	settings := proc.launchSettings()
 	chosen := v3TalkModel(opts.Model, settings)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
 	// this is: `codeaf` typed in repo/cmd/ is a conversation about the
@@ -988,7 +988,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 // resumes the person's newest conversation in a project, and an automation
 // that did that would be writing into somebody's chat.
 func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place session.Place, transcript string, taskLanded func(session.TaskLanding)) (session.Config, *catalog.Catalog, v3Subharness, error) {
-	settings := proc.Settings
+	settings := proc.launchSettings()
 	chosen := v3TalkModel(opts.Model, settings)
 	// The model catalog and the sub-harness registry, borrowed from the process
 	// rather than opened here (chatv3_process.go states why each must be one).
