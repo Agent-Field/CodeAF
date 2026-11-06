@@ -963,7 +963,7 @@ func (w *fleWorld) scenarioJira(t *testing.T) {
 	// MUST START IT. A held start is a product failure and is recorded as
 	// one; the test then approves the start over the wire so the rest of the
 	// chain (quick steps, pull request, the Jira comment) is still proven.
-	approved := false
+	approved, held := false, false
 	fleEventually(t, "job "+strconv.Itoa(it.ID)+" to open a pull request", 30*time.Minute, 10*time.Second, func() bool {
 		j = w.job(it.ID)
 		if j.PR != nil && j.PR.URL != "" {
@@ -974,10 +974,13 @@ func (w *fleWorld) scenarioJira(t *testing.T) {
 			t.Fatalf("job %d ended without a pull request: state %s reason %q steps %+v", it.ID, j.State, j.Reason, j.Steps)
 		}
 		if j.State == "needs_you" && j.Reason == "approval_start" && !approved {
-			t.Errorf("job %d: the rule says start: auto, but its start is held: %q. "+
-				"Cause: factory.pipeline_copy_set stores the copy re-encoded (internal/factory/serve/pipeline_pr.go pipelineFileFor → pipeline.Encode), "+
-				"which writes max_cost and size.issue out explicitly, so an unsized job with no cost history asks first", it.ID, j.AutonomyWhy)
-			_, err := w.eng.call("factory.job_start", map[string]any{"factory": w.factory, "job": it.ID, "expect": map[string]any{"version": j.Version}}, time.Minute)
+			if !held {
+				held = true
+				t.Errorf("job %d: the rule says start: auto, but its start is held: %q. "+
+					"Cause: factory.pipeline_copy_set stores the copy re-encoded (internal/factory/serve/pipeline_pr.go pipelineFileFor → pipeline.Encode), "+
+					"which writes max_cost and size.issue out explicitly, so an unsized job with no cost history asks first", it.ID, j.AutonomyWhy)
+			}
+			_, err := w.eng.call("factory.job_approve", map[string]any{"factory": w.factory, "job": it.ID, "expect": map[string]any{"version": j.Version}}, time.Minute)
 			approved = err == nil
 			t.Logf("approved job %d's start over the wire: %v", it.ID, err)
 		} else if j.State == "needs_you" {
