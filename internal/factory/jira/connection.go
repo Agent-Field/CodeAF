@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // ── HOW A FACTORY IS CONNECTED TO JIRA ──────────────────────────────────────
@@ -29,12 +30,9 @@ import (
 // while both halves are there, and NOTHING READS JIRA WHILE IT IS NOT: no
 // feed, no loop, no comment.
 
-// settingsFile and healthFile live in the floor's folder. Neither is a
-// number, so the store never reads either as a job.
-const (
-	settingsFile = "jira.json"
-	healthFile   = "jira-status.json"
-)
+// settingsFile lives in the floor's folder. It is not a number, so the store
+// never reads it as a job.
+const settingsFile = "jira.json"
 
 // ErrNotKept is what a connect or disconnect is (errors.Is) when Jira said
 // yes but this machine could not keep or forget the answer.
@@ -55,10 +53,12 @@ type Settings struct {
 	Account string `json:"account,omitempty"`
 }
 
-// Health is what the last reads said.
+// Health is what the last reads said. It is read from the poll's own record
+// of the source (store.SourceMeta, written by inbox.PollOnce), never kept a
+// second time here, so the two can never disagree.
 type Health struct {
-	LastRead  time.Time `json:"last_read,omitzero"`
-	LastError string    `json:"last_error,omitempty"`
+	LastRead  time.Time
+	LastError string
 }
 
 // Status is a connection as a person reads it. It never carries the token.
@@ -68,11 +68,12 @@ type Status struct {
 	Health
 }
 
-// Connection is one factory's Jira connection: Root is the floor's folder,
-// Profile the profile the token is kept in. HTTP is the transport every
-// client it makes uses; nil is http.DefaultClient.
+// Connection is one factory's Jira connection: Store is the floor (its
+// folder keeps the settings, its source record the health), Profile the
+// profile the token is kept in. HTTP is the transport every client it makes
+// uses; nil is http.DefaultClient.
 type Connection struct {
-	Root    string
+	Store   *store.Store
 	Profile string
 	HTTP    *http.Client
 
@@ -116,11 +117,11 @@ func (c *Connection) Connect(ctx context.Context, site, email, token, jql string
 	if err := keepToken(c.Profile, token); err != nil {
 		return Status{}, fmt.Errorf("%w: the token was not kept", ErrNotKept)
 	}
-	if err := writePrivate(filepath.Join(c.Root, settingsFile), kept); err != nil {
+	if err := writePrivate(c.path(), kept); err != nil {
 		_ = forgetToken(c.Profile)
 		return Status{}, ErrNotKept
 	}
-	_ = os.Remove(filepath.Join(c.Root, healthFile))
+	c.forgetHealth()
 	return Status{Connected: true, Settings: kept}, nil
 }
 
@@ -130,11 +131,10 @@ func (c *Connection) Disconnect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	tokenErr := forgetToken(c.Profile)
-	for _, name := range []string{settingsFile, healthFile} {
-		if err := os.Remove(filepath.Join(c.Root, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("%w: its settings were not forgotten", ErrNotKept)
-		}
+	if err := os.Remove(c.path()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: its settings were not forgotten", ErrNotKept)
 	}
+	c.forgetHealth()
 	if tokenErr != nil {
 		return fmt.Errorf("%w: the token was not forgotten", ErrNotKept)
 	}
@@ -149,8 +149,8 @@ func (c *Connection) Status() Status {
 	if !ok {
 		return Status{}
 	}
-	var health Health
-	_ = readJSON(filepath.Join(c.Root, healthFile), &health)
+	meta, _ := c.Store.SourceMeta(Source)
+	health := Health{LastRead: meta.Polled, LastError: meta.Trouble}
 	return Status{Connected: config.JiraTokenAt(c.Profile) != "", Settings: settings, Health: health}
 }
 
@@ -161,7 +161,7 @@ func (c *Connection) Feed() (*Feed, bool) {
 	if !ok {
 		return nil, false
 	}
-	return &Feed{Client: client, JQL: settings.JQL, Zone: zoneOf(settings.Zone), Observe: c.observe}, true
+	return &Feed{Client: client, JQL: settings.JQL, Zone: zoneOf(settings.Zone)}, true
 }
 
 // Replier answers through whatever connection is kept when a job's moment
@@ -197,30 +197,17 @@ func (c *Connection) client() (*Client, Settings, bool) {
 // settings reads jira.json; the caller holds mu.
 func (c *Connection) settings() (Settings, bool) {
 	var s Settings
-	if strings.TrimSpace(c.Root) == "" || readJSON(filepath.Join(c.Root, settingsFile), &s) != nil {
+	if c.Store == nil || readJSON(c.path(), &s) != nil {
 		return Settings{}, false
 	}
 	return s, s.Site != "" && s.Email != "" && s.JQL != ""
 }
 
-// observe records one read's outcome: a good read moves last_read and clears
-// the error; a failed one keeps last_read and says why.
-func (c *Connection) observe(err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, ok := c.settings(); !ok {
-		return // disconnected while the read was out: record nothing
-	}
-	path := filepath.Join(c.Root, healthFile)
-	var h Health
-	_ = readJSON(path, &h)
-	if err == nil {
-		h = Health{LastRead: time.Now().UTC()}
-	} else {
-		h.LastError = err.Error()
-	}
-	_ = writePrivate(path, h)
-}
+func (c *Connection) path() string { return filepath.Join(c.Store.Root(), settingsFile) }
+
+// forgetHealth clears the poll's record of the source, so a new connection
+// never shows the last one's read or error.
+func (c *Connection) forgetHealth() { _ = c.Store.SetSourceMeta(Source, store.SourceMeta{}) }
 
 // NormalizeSite is a site's base URL, scheme and host only: acme.atlassian.net
 // and https://acme.atlassian.net/jira/your-work both read as

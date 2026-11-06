@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/jira/jirastub"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -78,8 +78,9 @@ func TestJiraConnectsThroughTheWireAgainstTheStub(t *testing.T) {
 }
 
 // The Jira poll starts with the read loops only while connected, starts
-// again on a connect and stops on a disconnect; and, once the inbox is
-// built, a ticket in the stub becomes a job within one poll.
+// again on a connect and stops on a disconnect; a ticket in the stub becomes a
+// job within one poll, and the ticket hears about the job's pull request only
+// while the factory is connected.
 func TestTheJiraPollFollowsTheConnection(t *testing.T) {
 	s := newLocalSetup(t)
 	stub := jirastub.New(jiraStubEmail, jiraStubToken)
@@ -122,21 +123,22 @@ func TestTheJiraPollFollowsTheConnection(t *testing.T) {
 		t.Fatalf("a second connect did not restart the poll: %d", polls())
 	}
 
-	if _, err := inbox.Add(context.Background(), mustStore(t), inbox.Entry{Source: "probe", ExternalID: "1", Title: "x"}, time.Now()); errors.Is(err, inbox.ErrNotBuilt) {
-		t.Log("inbox.Poll and inbox.Add are still the contract's stubs on this base; the ticket-to-job half is skipped")
-	} else {
-		deadline := time.Now().Add(5 * time.Second)
-		for !floorHasJob(host.floor, "jira", key) {
-			if time.Now().After(deadline) {
-				t.Fatalf("ticket %s never became a job", key)
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-		select {
-		case <-afters:
-		case <-time.After(5 * time.Second):
-			t.Fatal("the poll never ran the intake")
-		}
+	// Within one poll the ticket is a job, and the intake ran after it. Jira's
+	// Highest is p0 on the entry, which the floor keeps as urgent.
+	job := waitForJiraJob(t, host.floor, key)
+	select {
+	case <-afters:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the poll never ran the intake")
+	}
+	if job.Title != "Make the button blue" || job.Priority == nil || job.Priority.Value != "urgent" {
+		t.Fatalf("the job: %q %+v", job.Title, job.Priority)
+	}
+	// Connected, the job's pull request is answered on the ticket.
+	pr := "https://github.com/o/r/pull/7"
+	inbox.Notify(context.Background(), host.floor, job.ID, inbox.Event{Kind: inbox.EventPROpened, JobID: job.ID, URL: pr})
+	if got := commentsWithin(stub, key, 1, 5*time.Second); len(got) != 1 || got[0] != "codeaf opened a pull request: "+pr {
+		t.Fatalf("comments while connected: %q", got)
 	}
 
 	s.must("factory.jira_disconnect", map[string]any{"factory": appLocalID}, nil)
@@ -146,27 +148,42 @@ func TestTheJiraPollFollowsTheConnection(t *testing.T) {
 	if !stopped || polls() != 2 {
 		t.Fatalf("a disconnect left a poll running (started %d)", polls())
 	}
+	// Disconnected, nothing answers on Jira any more.
+	inbox.Notify(context.Background(), host.floor, job.ID, inbox.Event{Kind: inbox.EventMerged, JobID: job.ID, URL: pr})
+	// Notify answers in the background; a disconnected factory has no
+	// answerer, so a short wait for a second comment finds none.
+	if got := commentsWithin(stub, key, 2, 300*time.Millisecond); len(got) != 1 {
+		t.Fatalf("a disconnected factory commented: %q", got)
+	}
 }
 
-func mustStore(t *testing.T) *store.Store {
-	t.Helper()
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return st
-}
-
-// floorHasJob says some job on st came from (source, id).
-func floorHasJob(st *store.Store, source, id string) bool {
-	items, err := st.List()
-	if err != nil {
-		return false
-	}
-	for _, it := range items {
-		if strings.Contains(it.SourceRef, source) && strings.Contains(it.SourceRef, id) {
-			return true
+// commentsWithin is the comments on key once there are want of them, or
+// what there is when wait runs out.
+func commentsWithin(stub *jirastub.Server, key string, want int, wait time.Duration) []string {
+	deadline := time.Now().Add(wait)
+	for {
+		got := stub.Comments(key)
+		if len(got) >= want || time.Now().After(deadline) {
+			return got
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	return false
+}
+
+// waitForJiraJob is the job ticket key made on st, once the poll filed it.
+func waitForJiraJob(t *testing.T, st *store.Store, key string) factory.Item {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		items, _ := st.List()
+		for _, it := range items {
+			if it.SourceRef == inbox.Ref("jira", key) {
+				return it
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ticket %s never became a job", key)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

@@ -296,6 +296,11 @@ func (c *Client) do(ctx context.Context, op, method, path string, q url.Values, 
 	}
 	resp, err := httpc.Do(req)
 	if err != nil {
+		// A read the caller called off is not Jira's failure: it is said as
+		// the cancellation it is, and only a deadline reads as Jira's silence.
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return ctx.Err()
+		}
 		if ctx.Err() != nil {
 			return &unreachable{"Jira did not answer in time"}
 		}

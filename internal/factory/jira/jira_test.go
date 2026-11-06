@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/jira"
 	"github.com/Agent-Field/codeaf/internal/factory/jira/jirastub"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 const (
@@ -192,8 +193,8 @@ func TestFeedReadsEveryPage(t *testing.T) {
 }
 
 // A query with no conditions is refused before any call; a failed read keeps
-// the cursor; Observe hears every outcome.
-func TestFeedRefusalsAndObserve(t *testing.T) {
+// the cursor.
+func TestFeedRefusals(t *testing.T) {
 	if _, err := jira.Query("ORDER BY created", ""); err == nil {
 		t.Fatal("an unbounded query was accepted")
 	}
@@ -201,18 +202,11 @@ func TestFeedRefusalsAndObserve(t *testing.T) {
 		t.Fatal("an unreadable cursor was accepted")
 	}
 	s := stub(t)
-	var heard []error
-	f := &jira.Feed{Client: clientOf(s), JQL: "project = FL", Observe: func(err error) { heard = append(heard, err) }}
+	f := &jira.Feed{Client: clientOf(s), JQL: "project = FL"}
 	s.FailNextSearch(http.StatusServiceUnavailable)
 	_, next, err := f.Fetch(context.Background(), "2026-01-01 00:00")
 	if err == nil || next != "2026-01-01 00:00" {
 		t.Fatalf("a failed read: %q %v", next, err)
-	}
-	if _, _, err := f.Fetch(context.Background(), ""); err != nil {
-		t.Fatal(err)
-	}
-	if len(heard) != 2 || heard[0] == nil || heard[1] != nil {
-		t.Fatalf("observed %v", heard)
 	}
 }
 
@@ -247,7 +241,11 @@ func TestReplierCommentsEachMoment(t *testing.T) {
 func TestConnectionConnectsStatusesAndDisconnects(t *testing.T) {
 	s := stub(t)
 	ctx := context.Background()
-	c := &jira.Connection{Root: t.TempDir(), Profile: t.TempDir()}
+	floor, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &jira.Connection{Store: floor, Profile: t.TempDir()}
 	if _, ok := c.Feed(); ok || c.Status().Connected {
 		t.Fatal("a fresh factory is connected")
 	}
@@ -257,7 +255,7 @@ func TestConnectionConnectsStatusesAndDisconnects(t *testing.T) {
 	if _, err := c.Connect(ctx, s.URL, stubEmail, stubToken, "project ~ FL"); err == nil {
 		t.Fatal("a JQL Jira refuses connected")
 	}
-	if _, err := os.Stat(filepath.Join(c.Root, "jira.json")); !os.IsNotExist(err) || config.JiraTokenAt(c.Profile) != "" {
+	if _, err := os.Stat(filepath.Join(floor.Root(), "jira.json")); !os.IsNotExist(err) || config.JiraTokenAt(c.Profile) != "" {
 		t.Fatal("a refused connect kept something")
 	}
 	st, err := c.Connect(ctx, s.URL+"/jira/your-work", stubEmail, stubToken, "project = FL")
@@ -267,7 +265,7 @@ func TestConnectionConnectsStatusesAndDisconnects(t *testing.T) {
 	if config.JiraTokenAt(c.Profile) != stubToken {
 		t.Fatal("the token was not kept in the profile")
 	}
-	kept, _ := os.ReadFile(filepath.Join(c.Root, "jira.json"))
+	kept, _ := os.ReadFile(filepath.Join(floor.Root(), "jira.json"))
 	if strings.Contains(string(kept), stubToken) {
 		t.Fatal("the token is in the factory's folder")
 	}
@@ -276,14 +274,22 @@ func TestConnectionConnectsStatusesAndDisconnects(t *testing.T) {
 	if !ok {
 		t.Fatal("no feed while connected")
 	}
-	if _, _, err := f.Fetch(ctx, ""); err != nil {
-		t.Fatal(err)
+	// One pass of the inbox's own poll files the ticket once, however often
+	// it is read, and the status reads the poll's record of it.
+	for range 2 {
+		if _, err := inbox.PollOnce(ctx, f, floor, "", time.Now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, _ := floor.List()
+	if len(items) != 1 || items[0].SourceRef != inbox.Ref("jira", key) || items[0].Title != "x" {
+		t.Fatalf("jobs after two reads: %+v", items)
 	}
 	if st := c.Status(); st.LastRead.IsZero() || st.LastError != "" {
 		t.Fatalf("after a read: %+v", st)
 	}
 	s.FailNextSearch(http.StatusInternalServerError)
-	_, _, _ = f.Fetch(ctx, "")
+	_, _ = inbox.PollOnce(ctx, f, floor, "", time.Now)
 	if st := c.Status(); st.LastRead.IsZero() || !strings.Contains(st.LastError, "500") {
 		t.Fatalf("after a failed read: %+v", st)
 	}
@@ -293,7 +299,10 @@ func TestConnectionConnectsStatusesAndDisconnects(t *testing.T) {
 	if err := c.Disconnect(); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := c.Feed(); ok || c.Status().Connected || config.JiraTokenAt(c.Profile) != "" {
+	if st := c.Status(); st.Connected || st.LastError != "" || !st.LastRead.IsZero() || config.JiraTokenAt(c.Profile) != "" {
+		t.Fatalf("after a disconnect: %+v", st)
+	}
+	if _, ok := c.Feed(); ok {
 		t.Fatal("still connected after a disconnect")
 	}
 	if err := c.Replier().Reply(ctx, key, inbox.Event{Kind: inbox.EventMerged, URL: "https://x.test/2"}); err == nil {

@@ -15,6 +15,10 @@ package main
 //   - again from the start whenever the person connects or disconnects, so a
 //     new JQL or a forgotten token takes effect without a relaunch.
 //
+// The Jira answerer (inbox.RegisterReplier) follows the connection alone,
+// not the loops: registered from the host's mount while connected, swapped
+// out on a disconnect.
+//
 // Wave 1 connects only the factory on this machine: an attached factory keeps
 // its own connections on the machine that serves it.
 
@@ -26,6 +30,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/jira"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -51,7 +56,7 @@ type appJiraLoop struct {
 // jiraConnection is the host's connection over its floor and profile.
 func (h *appFactoryHost) jiraConnection() *jira.Connection {
 	h.jira.once.Do(func() {
-		h.jira.conn = &jira.Connection{Root: h.floor.Root(), Profile: h.profile, HTTP: h.jira.http}
+		h.jira.conn = &jira.Connection{Store: h.floor, Profile: h.profile, HTTP: h.jira.http}
 	})
 	return h.jira.conn
 }
@@ -77,15 +82,14 @@ func (h *appFactoryHost) restartJiraLocked() {
 		h.jira.stop()
 		h.jira.stop = nil
 	}
+	h.syncJiraReplier()
 	if !h.loopsOn || h.loopsClosed || h.ctx.Err() != nil || h.jira.after == nil {
 		return
 	}
-	conn := h.jiraConnection()
-	feed, ok := conn.Feed()
+	feed, ok := h.jiraConnection().Feed()
 	if !ok {
 		return
 	}
-	inbox.RegisterReplier(jira.Source, conn.Replier())
 	every := h.jira.every
 	if every <= 0 {
 		every = factoryPollEvery
@@ -97,7 +101,38 @@ func (h *appFactoryHost) restartJiraLocked() {
 	h.loops.Add(1)
 	guard.Go("app/factory jira poll", func() {
 		defer h.loops.Done()
-		inbox.Poll(ctx, feed, h.floor, every, after)
+		inbox.Poll(ctx, feed, h.floor, every, after, h.jiraRecipe())
+	})
+}
+
+// syncJiraReplier makes the answerer for Jira jobs match the connection:
+// registered while connected, so a job's pull request is commented on the
+// ticket whether or not the factory is reading Jira by itself, and
+// unregistered once disconnected, so nothing answers for a site the person
+// let go. It takes no lock of the host's, because the host's mount calls it
+// under its own.
+func (h *appFactoryHost) syncJiraReplier() {
+	conn := h.jiraConnection()
+	if _, ok := conn.Feed(); ok {
+		inbox.RegisterReplier(jira.Source, conn.Replier())
+		return
+	}
+	inbox.RegisterReplier(jira.Source, nil)
+}
+
+// jiraRecipe gives a ticket filed on a known repository that repository's
+// steps, read through the floor's door exactly as POST /api/intake does
+// (internal/factory/serve's intake). The door is looked up when a ticket
+// arrives, never when the loop starts, because the loop can start while the
+// host's mount holds the lock the door sits behind.
+func (h *appFactoryHost) jiraRecipe() inbox.Option {
+	return inbox.WithRecipe(func(repo string) (factory.Recipe, error) {
+		seam := h.currentSeam()
+		if seam.RecipeAt == nil {
+			return factory.Recipe{}, errors.New("this factory reads no recipes")
+		}
+		recipe, _, _, err := seam.RecipeAt(repo)
+		return recipe, err
 	})
 }
 

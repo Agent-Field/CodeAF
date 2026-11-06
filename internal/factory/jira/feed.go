@@ -64,10 +64,6 @@ type Feed struct {
 	// earlier, because a JQL date read in a zone behind UTC would otherwise
 	// skip the hours between them.
 	Zone *time.Location
-	// Observe, when set, hears the outcome of every Fetch (nil for a good
-	// read), so a connection can say when it last read and what went wrong.
-	// It is told, never asked: it cannot change what Fetch returns.
-	Observe func(err error)
 }
 
 var _ inbox.Feed = (*Feed)(nil)
@@ -80,14 +76,6 @@ func (f *Feed) Name() string { return Source }
 // next cursor: the newest change seen less [CursorOverlap], never earlier
 // than cursor itself.
 func (f *Feed) Fetch(ctx context.Context, cursor string) ([]inbox.Entry, string, error) {
-	entries, next, err := f.fetch(ctx, cursor)
-	if f.Observe != nil {
-		f.Observe(err)
-	}
-	return entries, next, err
-}
-
-func (f *Feed) fetch(ctx context.Context, cursor string) ([]inbox.Entry, string, error) {
 	if f.Client == nil {
 		return nil, cursor, errors.New("Jira is not connected")
 	}
