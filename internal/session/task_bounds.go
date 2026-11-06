@@ -32,17 +32,19 @@ func (a *Agent) taskRunCost(run *beltRun, cost float64) float64 {
 		return cost
 	}
 	taskCap, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
-	if cost <= 0 || taskCap < cost {
-		return taskCap
+	spent := 0.0
+	if run.store != nil {
+		spent = storeSpent(run.store)
+	}
+	left := runCostLeft(taskCap, spent)
+	// Every dispatch passes here, including continuation. The ending names
+	// the configured cap, while the engine receives only its unspent allowance.
+	run.costCeiling = taskCap
+	run.conversationCostLimit = cost > 0 && cost <= left
+	if cost <= 0 || left < cost {
+		return left
 	}
 	return cost
-}
-
-func (a *Agent) holdTaskCeiling(run *beltRun, spec RunSpec) {
-	taskCap, _ := config.CrewTaskSpendCap(a.config.ProfileDir)
-	run.costCeiling = spec.CostUSD
-	left := runCostLeft(a.railCap(0), a.Usage().CostUSD)
-	run.conversationCostLimit = left > 0 && left <= taskCap
 }
 
 func (run *beltRun) taskLimitWords(summary RunSummary) string {

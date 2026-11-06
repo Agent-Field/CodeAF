@@ -57,11 +57,28 @@ func TestProposedRunWorkersReadTheirOwnWorkBeforeTheConversationAsk(t *testing.T
 	if spec.CostUSD != config.CrewTaskCapDefault {
 		t.Fatalf("proposal's RunSpec has no per-task ceiling: %v", spec.CostUSD)
 	}
-	for _, doc := range []string{spec.Brief, root.Description, BeltWorkerBrief(spec.Store, root, true, false, "", "")} {
-		workAt, askAt := strings.Index(doc, "Create green.txt with the word green"), strings.Index(doc, ask)
-		if workAt < 0 || askAt <= workAt || !strings.Contains(doc, briefProposedRule) || strings.Contains(doc, briefAskRule) {
+	assertWorkerDocument := func(doc, work string) {
+		t.Helper()
+		workAt, askAt := strings.Index(doc, work), strings.Index(doc, ask)
+		if workAt < 0 || askAt < 0 || askAt <= workAt || strings.Contains(doc, briefAskRule) {
 			t.Fatalf("worker read the conversation's handoff as its own job:\n%s", doc)
 		}
+		for _, want := range []string{
+			"the message the conversation was answering when it proposed this task",
+			"It was addressed to the conversation",
+			"anything it asks about proposing, starting or handing out tasks is the conversation's and already done, not yours to do again",
+			"This task is the work above",
+			"The person's words still govern THIS task",
+			"where the work above reads differently from them about this task, theirs win",
+			"Say any conflict in your report rather than widening the work",
+		} {
+			if !strings.Contains(doc, want) {
+				t.Errorf("worker document no longer says %q:\n%s", want, doc)
+			}
+		}
+	}
+	for _, doc := range []string{spec.Brief, root.Description, BeltWorkerBrief(spec.Store, root, true, false, "", "")} {
+		assertWorkerDocument(doc, "Create green.txt with the word green")
 	}
 	if !strings.HasPrefix(root.Description, briefWorkHeading+"\n\n") {
 		t.Fatalf("proposal does not open on its work:\n%s", root.Description)
@@ -71,9 +88,7 @@ func TestProposedRunWorkersReadTheirOwnWorkBeforeTheConversationAsk(t *testing.T
 		t.Fatal(err)
 	}
 	childDoc := BeltWorkerBrief(spec.Store, children[0], false, false, "", "")
-	if strings.Contains(childDoc, briefAskRule) || strings.Index(childDoc, "Write green into green.txt") >= strings.Index(childDoc, ask) {
-		t.Fatalf("child inherited the whole-job rule:\n%s", childDoc)
-	}
+	assertWorkerDocument(childDoc, "Write green into green.txt")
 }
 
 // L-LOOP C1c: a person-authored whole-job brief keeps its exact earlier bytes.
