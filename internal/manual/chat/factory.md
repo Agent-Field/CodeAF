@@ -80,7 +80,7 @@ Work from outside GitHub becomes a factory job through one inbox. Three ways in,
 
 `source` is a lowercase name such as `jira` or `inbox:ops`; `github`, `terminal` and `chat` are the factory's own and are refused. `priority` is `p0` (urgent) to `p3` (low). Limits: title 200 characters on one line, body 32000, id 200, at most 30 labels of 100, a request at most 64 KiB (larger is refused as too large).
 
-## outside work as a job — the same id twice, no repository yet, answering back
+## outside work as a job — the same id or the same ticket sent twice, no repository yet, answering back
 
 The pair source and id is the job's identity: sending the same pair again updates that job's title, body, labels, address and priority and never makes a second one. What a person set stays — its state, steps, budget, assignee, a priority they chose, a repository they picked. A dismissed job whose words changed comes back to Backlog. Its activity starts `arrived from inbox:ops · <url>`, and a change reads `changed on inbox:ops`.
 

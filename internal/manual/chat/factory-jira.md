@@ -30,8 +30,8 @@ Once connected, the factory reads Jira every minute, beside its GitHub read
 and whenever it is reading GitHub by itself. Each ticket the query finds becomes one job, the same
 way a labelled GitHub issue does: the ticket's summary is the title, its
 description is the body (as plain text), its reporter is the author, and its
-link is kept on the job. A ticket that changes again later updates the job it
-already made; it never makes a second one.
+link is kept on the job. Editing the issue in Jira later edits that job (the
+rules for outside work are on the factory's own page).
 
 Jira is POLLED, not pushed: codeaf does not register a webhook, so a new
 ticket arrives within about a minute, not instantly. Each read asks only for
