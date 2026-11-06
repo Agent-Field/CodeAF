@@ -543,7 +543,7 @@ func TestSweepHomeContextCancelledBeforeStartTouchesNothing(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	SweepHomeContext(ctx, errandsRoot, nil, func(line string) { t.Fatalf("cancelled sweep said %q", line) })
+	SweepHomeContext(ctx, errandsRoot, nil, nil, func(line string) { t.Fatalf("cancelled sweep said %q", line) })
 
 	for _, kept := range []string{place, staleLog, exchange} {
 		if _, err := os.Stat(kept); err != nil {
@@ -564,7 +564,7 @@ func TestSweepPlacesContextCancellationStopsLaterDestructiveOperations(t *testin
 	first, firstTree := newSweptUniverseSession(t, root, "1111111111111111", repo, now)
 	second, secondTree := newSweptUniverseSession(t, root, "2222222222222222", repo, now)
 	ctx, cancel := context.WithCancel(context.Background())
-	SweepPlacesContext(ctx, root, now, func(line string) {
+	SweepPlacesContext(ctx, root, now, nil, func(line string) {
 		if strings.Contains(line, firstTree.universe) {
 			cancel()
 		}
