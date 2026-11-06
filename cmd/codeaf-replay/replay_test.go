@@ -268,6 +268,11 @@ var derivedTags = map[string]func(yield func(tag, where string)){
 	"factoryScoutName": func(yield func(tag, where string)) {
 		yield("factory scout", "cmd/codeaf/factory_scout.go, a look closer's turns")
 	},
+	// cmd/codeaf/factory_judge.go tags an AI filter's one question with the
+	// constant that names it on the spend ledger.
+	"factoryJudgeName": func(yield func(tag, where string)) {
+		yield("factory filter", "cmd/codeaf/factory_judge.go, an AI filter's question")
+	},
 	// internal/session/clientdoor.go is the ONE place that package writes a tag
 	// now, and what it writes is whatever purpose its caller handed it. It
 	// enumerates nothing on its own: the words come from the door's own call

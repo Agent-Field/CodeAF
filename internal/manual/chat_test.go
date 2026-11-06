@@ -3542,6 +3542,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did Auto stop at the plan saying a rule asks first", "factory"},
 		{"stop the plan from changing the pipeline steps", "factory"},
 		{"make the factory start issues by itself", "factory"},
+		{"can an AI filter decide which tickets the factory starts", "factory"},
+		{"what does the factory filter charge on spending", "factory"},
 		{"what does pick up issues do", "factory"},
 		{"does dropping a factory job delete its branch", "factory"},
 		{"drop a factory job that has uncommitted changes", "factory"},
