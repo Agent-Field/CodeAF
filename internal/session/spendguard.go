@@ -346,7 +346,11 @@ func (g *SpendGuard) seatTally(seat crewroute.Seat) *SpendTask {
 
 // ErrSpendStopped is a call the guard did not make. Its text is the one
 // sentence that says which line it met.
-type ErrSpendStopped struct{ Action string }
+type ErrSpendStopped struct {
+	Action string
+	// TaskLimit ends the whole task tree; a seat's own ceiling ends its check.
+	TaskLimit bool
+}
 
 func (e ErrSpendStopped) Error() string { return e.Action }
 
@@ -434,7 +438,7 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 			}
 		}
 		if g.TaskCap > 0 && g.tally().Total() >= g.TaskCap {
-			return 0, ErrSpendStopped{Action: g.TaskAction}
+			return 0, ErrSpendStopped{Action: g.TaskAction, TaskLimit: true}
 		}
 		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.seatTally(seat).Total() >= g.SeatCeilings[seat] {
 			ceiling := g.SeatCeilings[seat]
@@ -460,7 +464,7 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		if ceiling > 0 {
 			g.seatTally(seat).settle(est, 0)
 		}
-		return 0, ErrSpendStopped{Action: g.TaskAction}
+		return 0, ErrSpendStopped{Action: g.TaskAction, TaskLimit: true}
 	}
 	held, fits, readErr := day.holdChecked(model, est, capUSD)
 	if !fits {

@@ -957,6 +957,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// is not there at all (no engine linked, no place for a store) leaves this
 	// door for the older one ([Agent.commitProposalToRun]).
 	ctx = withCrewWish(ctx, a.proposalCrewWish(p.id, crewWish{effort: spec.crewEffort, worker: namedModel(spec)}))
+	ctx = withSilentTaskStart(ctx, p.wait.silent)
 	// THE BLOCK THE ROW WILL BE BORN IN is the one captured when the card was raised,
 	// whichever road publishes its first row (task_source.go).
 	a.expectRunSource(p.id, spec.source)
@@ -977,7 +978,7 @@ func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 	if via != nil && via.Words {
 		return programWords(spec.brief, *via)
 	}
-	return composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	return composeBrief(briefProposed, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
 }
 
 // commitProposalToRun is the run road of an approved proposal: an approved
@@ -1565,6 +1566,8 @@ type taskWait struct {
 	// settled carries what the wait came to, once; a withdrawn wait sends
 	// nothing on it.
 	settled chan taskSettled
+	// silent is written before the expiry answer is sent and read after it.
+	silent bool
 	// withdrawn is closed by [taskWait.withdraw] and finished by
 	// [taskWait.run] as it returns.
 	withdrawn    chan struct{}
@@ -1612,6 +1615,7 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 			// Silence is a yes, and it is a yes with no redirect: the person said
 			// nothing, so nothing is appended to the brief.
 			silent := TaskAnswer{Approved: true}
+			w.silent = true
 			w.decided(silent)
 			// AND THE QUESTION CLOSES SAYING THE WORK STARTED, before the turn is
 			// handed the yes. The card above already says so, but on the task

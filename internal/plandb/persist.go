@@ -117,7 +117,8 @@ var schemaStatements = []string{
 		seen_at               TEXT    NOT NULL DEFAULT '',
 		waiting               INTEGER NOT NULL DEFAULT 0,
 		waited_at             TEXT    NOT NULL DEFAULT '',
-		verdict_basis         TEXT    NOT NULL DEFAULT 'null'
+		verdict_basis         TEXT    NOT NULL DEFAULT 'null',
+		review_check          INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE TABLE IF NOT EXISTS deps (
 		downstream TEXT    NOT NULL,
@@ -169,6 +170,7 @@ var schemaStatements = []string{
 		waiting               INTEGER NOT NULL DEFAULT 0,
 		waited_at             TEXT    NOT NULL DEFAULT '',
 		verdict_basis         TEXT    NOT NULL DEFAULT 'null',
+		review_check          INTEGER NOT NULL DEFAULT 0,
 		archived_at           TEXT    NOT NULL
 	)`,
 	`CREATE TABLE IF NOT EXISTS notes (
@@ -398,6 +400,9 @@ func migrateColumns(tx *sql.Tx) error {
 		if err := ensureColumn(tx, table, "verdict_basis", "TEXT", "'null'"); err != nil {
 			return err
 		}
+		if err := ensureColumn(tx, table, "review_check", "INTEGER", "0"); err != nil {
+			return err
+		}
 	}
 	// A SPEND ROW SAYS WHETHER ITS MODEL ANSWERED. Rows written before the
 	// column, and every row [Store.AddSpend] writes, name the model a seat was
@@ -563,7 +568,7 @@ const taskColumns = `id, title, description, question, kind, parent_id, priority
 	parallel, isolation, role, agent, acceptance, checks, capabilities, resources, context_inputs,
 	deliverables, evidence_requirements, status, composite, claimed_by, result, err,
 	artifacts, evidence, created_at, updated_at, completed_at, project, chat, paused, owner, seen_at,
-	waiting, waited_at, verdict_basis, model`
+	waiting, waited_at, verdict_basis, model, review_check`
 
 // rowQuerier is the read half both the database handle and a transaction
 // carry, so the archive reader can share the task scan with the loader
@@ -584,7 +589,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		createdAt, updatedAt, completedAt                            string
 		effect, parallel, isolation                                  string
 		seenAt, waitedAt                                             string
-		waiting                                                      int
+		waiting, reviewCheck                                         int
 		basis                                                        string
 	)
 	dest := []any{
@@ -593,7 +598,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 		&checks, &capabilities, &resources, &contextInputs, &deliverables, &evidenceRequirements,
 		&task.Status, &composite, &task.ClaimedBy, &task.Result, &task.Error,
 		&artifacts, &evidence, &createdAt, &updatedAt, &completedAt, &task.Project, &task.Chat, &paused,
-		&task.Owner, &seenAt, &waiting, &waitedAt, &basis, &task.Model,
+		&task.Owner, &seenAt, &waiting, &waitedAt, &basis, &task.Model, &reviewCheck,
 	}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -604,6 +609,7 @@ func scanTask(row *sql.Rows, extra ...any) (*Task, error) {
 	task.Composite = composite != 0
 	task.Paused = paused != 0
 	task.Waiting = waiting != 0
+	task.ReviewCheck = reviewCheck != 0
 	if err := decodeJSON(checks, &task.Checks); err != nil {
 		return nil, err
 	}
@@ -700,7 +706,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 		id, ord, title, description, question, kind, parent_id, priority, effect, parallel, isolation,
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
-		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at, archived_at, model, review_check) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -744,7 +750,7 @@ func insertArchived(tx *sql.Tx, tasks []*Task, now time.Time) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat,
-			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), formatTime(now), task.Model); err != nil {
+			boolInt(task.Paused), task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), formatTime(now), task.Model, boolInt(task.ReviewCheck)); err != nil {
 			return err
 		}
 	}
@@ -869,7 +875,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 		role, agent, acceptance, checks, capabilities, resources, context_inputs, deliverables,
 		evidence_requirements, status, composite, claimed_by, result, err, artifacts, evidence,
 		created_at, updated_at, completed_at, project, chat, paused, owner, seen_at, waiting, waited_at,
-		verdict_basis, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		verdict_basis, model, review_check) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -918,7 +924,7 @@ func saveTasks(tx *sql.Tx, value state) error {
 			evidenceRequirements, string(task.Status), boolInt(task.Composite), task.ClaimedBy,
 			task.Result, task.Error, artifacts, evidence, formatTime(task.CreatedAt),
 			formatTime(task.UpdatedAt), formatTime(task.CompletedAt), task.Project, task.Chat, boolInt(task.Paused),
-			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), basis, task.Model); err != nil {
+			task.Owner, formatTime(task.SeenAt), boolInt(task.Waiting), formatTime(task.WaitedAt), basis, task.Model, boolInt(task.ReviewCheck)); err != nil {
 			return err
 		}
 	}
