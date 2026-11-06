@@ -119,7 +119,8 @@ func relayTeamsRigSharing(t *testing.T, share bool) relayTeamsRig {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	// pair.Offer's CLI normally ends solo; the fixture uses the same explicit door.
+	// Every real door ends solo in the grant's BeforeSend, on the yes; this rig's
+	// grant has none, so it ends solo itself once the pairing is done.
 	if err := identity.EndSolo(aHome); err != nil {
 		t.Fatal(err)
 	}

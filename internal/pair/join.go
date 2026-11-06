@@ -40,8 +40,10 @@ type Joining struct {
 	Revoked bool
 	// Alone says no other device that is still in holds this computer's
 	// identity, which the caller learned from the directory. Such an identity
-	// is solo in all but its marker (showing a code once ends the marker), so
-	// its own work refuses before a code is used, as a solo one's does.
+	// is solo in all but its marker, so its own work refuses before a code is
+	// used, as a solo one's does. It lost the marker when its identity was
+	// sent and not kept, when every computer it shared with was removed, or
+	// when an earlier build ended it just for showing a code.
 	Alone bool
 	// ProfileDir names the preferences being joined, when outside Home.
 	ProfileDir string

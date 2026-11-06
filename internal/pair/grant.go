@@ -36,6 +36,16 @@ type Grant struct {
 	// computer still on one of them may follow it without being told to replace
 	// its chats. Empty for an identity that was never rotated.
 	Replaces []string
+	// BeforeSend runs once a person has approved the joining device and just
+	// before the grant leaves in the answer, at most once per offer. Its error
+	// stops the answer: the joining device is told no instead. It never
+	// travels, and nil does nothing.
+	//
+	// THE COMPUTER THAT SHOWS A CODE STOPS BEING SOLO HERE, AND NOT BEFORE. The
+	// identity leaves this computer only in the answer, so a code that is taken
+	// back, runs out, is declined or is used up by a wrong code shares nothing,
+	// and a grant built from this computer's own identity sets this to end solo.
+	BeforeSend func() error `json:"-"`
 }
 
 // grantDocument is the grant as it travels.

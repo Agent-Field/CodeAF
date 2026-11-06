@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -155,11 +156,12 @@ func TestSayRefusalOnlyForRefusals(t *testing.T) {
 	}
 }
 
-// A chat that opened before this computer had an identity starts to sync the
-// moment /pair makes one, with no restart: the next call's seal is published and
+// A chat that opened before this computer had an identity stays quiet while
+// /pair shows a code, and starts to sync the moment a person approves the
+// device that typed it, with no restart: the next call's seal is published and
 // closing the chat gives the lease back, exactly as for a chat that was paired
 // from the start.
-func TestDriveSideStartsWhenAPairingMakesTheIdentity(t *testing.T) {
+func TestDriveSideStartsWhenAShownCodeIsApproved(t *testing.T) {
 	cfg, c := spokenDoorChat(t)
 	srv := httptest.NewServer(relayserve.New(relayserve.Config{Store: t.TempDir()}).Handler)
 	t.Cleanup(srv.Close)
@@ -170,7 +172,17 @@ func TestDriveSideStartsWhenAPairingMakesTheIdentity(t *testing.T) {
 	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := identity.Ensure(home.Dir()); err != nil { // what /pair does in the running chat
+	grant, err := pairGrantAt(home.Dir(), pair.Mailbox{URL: srv.URL}) // what /pair does to show a code
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	if d := syncDrives.drive[c.ID]; d == nil || d.started() != nil {
+		t.Fatal("a computer showing a code must hold a waiting drive side, not a running one")
+	}
+	if err := grant.BeforeSend(); err != nil { // what the yes does, before the identity is sent
 		t.Fatal(err)
 	}
 	if err := toolCallOn(t, seated.Seat, cfg.Place.Workspace); err != nil {

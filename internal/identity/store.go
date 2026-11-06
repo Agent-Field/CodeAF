@@ -63,8 +63,9 @@ func Ensure(home string) (Identity, error) {
 }
 
 // EnsureSolo is Ensure for a computer that needs an identity for itself (a
-// vault key, a first launch) and has not been asked to share it: an identity
-// it makes is solo (solo.go). One that already exists is left as it is.
+// vault key, a first launch, a pairing code to show) and has not shared it
+// yet: an identity it makes is solo (solo.go). One that already exists is left
+// as it is.
 func EnsureSolo(home string) (id Identity, err error) {
 	defer func() { err = homeWriteError(home, err) }()
 	if err := checkHome(home); err != nil {

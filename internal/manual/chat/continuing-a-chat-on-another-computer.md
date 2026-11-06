@@ -341,7 +341,7 @@ a chat this computer has never held brings its saved contents in parallel, even 
 
 ## Does first start send anything — local identity before pairing
 
-The first start may create a local identity for this computer. That file sends nothing: there is no sync traffic or network use until you pair or offer a pairing code. Reading the add-device instructions leaves it quiet. Offering a pairing code or running `codeaf pair` contacts the sync service for that pairing. `CODEAF_SYNC_URL=off` blocks sync traffic even after pairing.
+The first start may create a local identity for this computer. That file sends nothing: there is no sync traffic or network use until you pair or offer a pairing code. Reading the add-device instructions leaves it quiet. Offering a pairing code or running `codeaf pair` contacts the sync service for that pairing only: chats start syncing once you approve the other computer, and a code that is taken back, runs out, is answered no or is used up by a wrong code leaves this computer quiet. `CODEAF_SYNC_URL=off` blocks sync traffic even after pairing.
 
 ## What survives a crash or power loss — durability, killed process, lost call records
 

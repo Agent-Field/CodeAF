@@ -251,10 +251,11 @@ and `/pair <code>` alike, even with `--replace`, and the code stays unused:
 this computer is already paired with laptop-a — codeaf devices lists them
 ```
 
-A computer that showed a code once but never paired is no longer solo. When no
-other computer holds its chats, its own chats are refused before approval too,
-with the counted sentence above. A removed computer is not refused here: it can
-pair back.
+A computer that only showed a code is still solo: its chats are its own, and
+they are refused before approval with the counted sentence above. So is one
+whose chats no other computer holds any more: you said yes but the other
+computer refused, or an earlier codeaf counted showing a code as pairing. A
+removed computer is not refused here: it can pair back.
 
 ## Interrupted explicit replacement — clean slate and saved keys
 
@@ -378,13 +379,13 @@ Keep the file and the passphrase safe. Anybody who has both has your chats.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-On a new home, no device record reaches the relay, and no relay request, connection or chat upload is sent, until this home completes a pairing or starts offering a pairing code. Showing a code needs the relay even if nobody joins. A new device's `codeaf pair` also contacts the relay to offer its link; its chats start syncing only after approval. Opening or closing `+ Add another device` with `alt+d`, reading its instructions, listing `/devices` or `codeaf devices`, and ordinary local chats leave a new home **quiet**.
+On a new home, no device record reaches the relay, and no relay request, connection or chat upload is sent, until this home completes a pairing or starts offering a pairing code. Showing a code needs the relay even if nobody joins: `/pair` and `codeaf pair --code` also put this computer's device record there before the code appears. The home still syncs nothing until you approve the other computer and its chats are sent to it; a code you take back, that runs out, that you answer `n` to or that a wrong code uses up leaves it **quiet**. A new device's `codeaf pair` also contacts the relay to offer its link; its chats start syncing only after approval. Opening or closing `+ Add another device` with `alt+d`, reading its instructions, listing `/devices` or `codeaf devices`, and ordinary local chats leave a new home **quiet**.
 
 An identity made by an older build without the quiet marker keeps its earlier sync behavior. That local identity does not say whether it was paired, so codeaf preserves existing pairings rather than silently stopping them. Set `CODEAF_SYNC_URL=off` to stop relay requests on that home too.
 
 If something reaches for the relay while quiet, it gets the word `sync is waiting until another machine is added`. That is not a fault.
 
-The first-run line about the hosted relay is said once, when chats are first copied, after pairing or offering a code. `CODEAF_SYNC_URL=off` keeps even a paired machine from contacting a relay, including pairing with `--via`.
+The first-run line about the hosted relay is said once, when chats are first copied after a pairing is approved; showing a code copies nothing. `CODEAF_SYNC_URL=off` keeps even a paired machine from contacting a relay, including pairing with `--via`.
 
 ## Where are my chats stored — where your chats are stored, the hosted relay, turning it off, self-host your own relay, is my code private
 
