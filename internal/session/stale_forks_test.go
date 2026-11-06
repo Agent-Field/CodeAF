@@ -144,7 +144,7 @@ func TestSweepForkFoldersCancellationStopsAfterFirstRemoval(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	SweepPlacesContext(ctx, root, now, func(string) { cancel() })
+	SweepPlacesContext(ctx, root, now, nil, func(string) { cancel() })
 	if _, err := os.Stat(first); !os.IsNotExist(err) {
 		t.Fatalf("first removal did not happen: %v", err)
 	}
