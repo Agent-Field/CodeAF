@@ -3571,6 +3571,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"factory start refused, not checked out, connect GitHub so the factory can clone it", "factory"},
 		// WHAT A STEP FOUND REACHES THE STEPS AFTER IT: the plan whole, the
 		// files it names, every claim so far.
+		// JIRA TICKETS ARE WORK: connected with an API token and a JQL, polled,
+		// matched to a repository through the jira-project label, answered with
+		// a comment carrying the pull request's link.
+		{"how do I connect Jira to the factory", "factory-jira"},
+		{"can Jira tickets become factory jobs", "factory-jira"},
+		{"which Jira tickets does the factory pick up", "factory-jira"},
+		{"what JQL should I write for the factory", "factory-jira"},
+		{"will codeaf comment on the Jira ticket with the PR link", "factory-jira"},
+		{"how do I disconnect Jira", "factory-jira"},
+		{"does the Jira connection use webhooks", "factory-jira"},
+		{"send one Jira project to one repository", "factory-jira"},
+		{"what does Jira priority Highest become in the factory", "factory-jira"},
+		{"does codeaf work with Jira Server or Data Center", "factory-jira"},
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 	}

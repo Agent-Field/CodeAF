@@ -261,6 +261,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryRepoCheckoutFeature(hello, engine)
 	hello = withFactoryJobAreaFeature(hello, engine)
 	hello = withFactoryRenameFeature(hello, engine)
+	hello = withFactoryJiraFeature(hello, engine)
 	hello = withFactoryRefreshFeature(hello, engine)
 	hello = withFactoryLocalFeature(hello, engine)
 	hello = withFactorySetupContinueFeature(hello, engine)

@@ -295,6 +295,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.local_run` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_start` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_status` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
+| `factory.jira_connect` | `in.FactoryJiraConnectParams` | `FactoryJiraStatus` |
+| `factory.jira_disconnect` | `in.FactoryRef` | `FactoryJiraStatus` |
+| `factory.jira_status` | `in.FactoryRef` | `FactoryJiraStatus` |
 | `factory.me` | `in.FactoryRef` | `FactoryMe` |
 | `factory.people` | `in.FactoryRef` | `People` |
 | `factory.pipeline` | `in.FactoryRepoParams` | `FactoryPipeline` |
