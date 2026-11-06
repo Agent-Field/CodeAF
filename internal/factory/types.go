@@ -27,6 +27,16 @@ import (
 	"time"
 )
 
+// RouteVerdict is a routing rule's AI answer about one item, kept on the item
+// (internal/factory/route.Verdict is the same shape; route converts).
+type RouteVerdict struct {
+	Yes   bool      `json:"yes"`
+	Why   string    `json:"why"`
+	Model string    `json:"model,omitempty"`
+	Key   string    `json:"key"`
+	At    time.Time `json:"at"`
+}
+
 // Kind is what a floor item is. It is a string and open: an issue, a pull
 // request, a red CI run, a chore, a standing order's firing, work a chat split
 // off. A new kind needs no edit here.

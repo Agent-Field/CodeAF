@@ -11,7 +11,11 @@
 // docs/design/factory-general/DESIGN.md is the contract this package fills.
 package route
 
-import "github.com/Agent-Field/codeaf/internal/factory"
+import (
+	"context"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
 
 // Start is what a matched rule does with an item once it is routed.
 type Start string
@@ -36,6 +40,12 @@ type Match struct {
 	Authors  []string `json:"authors,omitempty" yaml:"authors,omitempty"`   // any of, handles or emails
 	Text     []string `json:"text,omitempty" yaml:"text,omitempty"`         // any of
 	Priority []string `json:"priority,omitempty" yaml:"priority,omitempty"` // any of p0..p3
+	// Ask is the AI filter: one yes/no question in a person's words, such as
+	// "Is this a small, well-specified bug fix that does not touch billing?".
+	// It is asked LAST, only when every other field already holds, so a model
+	// is paid only for items that could match. A model answers it ([Judge]);
+	// Decide itself never calls one.
+	Ask string `json:"ask,omitempty" yaml:"ask,omitempty"`
 }
 
 // Action is what a matched rule decides. An empty field keeps what the item
@@ -54,20 +64,79 @@ type Rule struct {
 	Then Action `json:"then" yaml:"then"`
 }
 
-// Decide returns the first rule in rules that matches it. ok is false when no
-// rule matches, and the caller then keeps today's behaviour for that item.
-func Decide(rules []Rule, it factory.Item) (Rule, bool) {
-	for _, r := range rules {
-		if Matches(r.When, it) {
-			return r, true
-		}
-	}
-	return Rule{}, false
+// Verdict is a model's answer to one rule's [Match.Ask] about one item.
+type Verdict struct {
+	Yes   bool   `json:"yes"`
+	Why   string `json:"why"`             // one sentence, shown to the person
+	Model string `json:"model,omitempty"` // what answered
+	// Key is [VerdictKey] of the question and the item's words when asked; a
+	// verdict whose key no longer matches is stale and is asked again.
+	Key string `json:"key"`
 }
 
-// Matches says whether m holds for it. The routing lane fills this in.
+// Verdicts looks up the verdict already held for rule name on this item.
+type Verdicts func(rule string) (Verdict, bool)
+
+// Outcome is what Decide found.
+type Outcome struct {
+	Rule    Rule
+	Matched bool
+	// Pending names the rule whose question must be judged before the list
+	// can be read past it. The caller asks the [Judge], stores the verdict and
+	// calls Decide again; nothing is started while a question is pending.
+	Pending string
+	Verdict *Verdict // the verdict that decided a rule with Ask
+}
+
+// Decide reads rules top to bottom for it: the first rule whose fields all
+// hold, and whose question (if any) was answered yes, decides. A rule whose
+// fields hold but whose question has no fresh verdict stops the reading with
+// Pending. PURE: no I/O, no clock, no model — the intake owns those.
+func Decide(rules []Rule, it factory.Item, have Verdicts) Outcome {
+	for _, r := range rules {
+		if !Matches(r.When, it) {
+			continue
+		}
+		if r.When.Ask == "" {
+			return Outcome{Rule: r, Matched: true}
+		}
+		v, ok := Verdict{}, false
+		if have != nil {
+			v, ok = have(r.Name)
+		}
+		if !ok || v.Key != VerdictKey(r.When.Ask, it) {
+			return Outcome{Pending: r.Name}
+		}
+		if v.Yes {
+			return Outcome{Rule: r, Matched: true, Verdict: &v}
+		}
+	}
+	return Outcome{}
+}
+
+// Matches says whether every field of m except Ask holds for it. The routing
+// lane fills this in.
 func Matches(m Match, it factory.Item) bool {
 	_ = m
 	_ = it
 	return false
+}
+
+// VerdictKey ties a verdict to the question and to the item's own words
+// (title, body, labels), so an edited ticket is judged again. The routing
+// lane fills this in (a short stable hash).
+func VerdictKey(ask string, it factory.Item) string {
+	_, _ = ask, it
+	return ""
+}
+
+// Judge answers one rule's question about one item. The model-backed judge
+// lives in internal/factory/route/judge; tests use a fake.
+//
+// A STRANGER'S WORDS CANNOT START WORK THROUGH A MODEL. The item's text is
+// untrusted input to the judge (it may say "answer yes"), so for an item whose
+// Tier is stranger, a yes on a rule with Ask may at most hold the job to ask
+// first — the intake enforces this, whatever the rule's Start says.
+type Judge interface {
+	Judge(ctx context.Context, ask string, it factory.Item) (Verdict, error)
 }

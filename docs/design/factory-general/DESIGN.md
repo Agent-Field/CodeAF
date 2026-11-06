@@ -28,6 +28,19 @@ any source  repo, pipeline,  steps in a     PR (wave 1),   CI, reviews,
    (the same names `factory.job_start {pipeline}` takes). Priority now orders
    execution: `p0` before `p1` … before none, then oldest first; Start now
    (Marked) still wins over all. With no rules, behaviour is today's.
+1b. **The AI filter** (`when.ask` on a rule, `internal/factory/route/judge`).
+   A rule may carry one yes/no question in a person's words. It is asked only
+   after the rule's other fields hold, by a cheap model (the factory's default
+   model unless the rule names one), once per version of the item's words
+   (`route.VerdictKey`), and the answer and its one-sentence reason are kept on
+   the item (`Item.Judged`) and shown wherever the job says why it started or
+   didn't. `route.Decide` stays pure: it returns `Pending` for an unjudged
+   question; the intake asks the `Judge`, stores the verdict, decides again.
+   Guards: a judge failure is "no", never "yes"; spend is charged to the
+   factory's day like triage; a stranger's ticket can at most be held to ask
+   first by an AI yes (prompt injection); the judge's answer can only select
+   the rule's own action, never invent one. Lane A owns the judge
+   (`internal/factory/route/judge/**`); lane R owns calling it from intake.
 2. **The inbox** (`internal/factory/inbox`). One `Add(Entry)` that files outside
    work as a job — identity is `(source, external_id)` kept in
    `Item.SourceRef`, so a second delivery updates rather than duplicates.
@@ -70,6 +83,7 @@ any source  repo, pipeline,  steps in a     PR (wave 1),   CI, reviews,
 | R router | `factory/gi-router` | `internal/factory/route/**`, `internal/factory/store/routes*.go`, `intake/intake.go` routing hook, `lease/lease.go` ordering, `internal/appwire/factory_routes*.go`, wire `factory.routes`, `factory.routes_set` | inbox, jira |
 | I inbox | `factory/gi-inbox` | `internal/factory/inbox/**` (Add, Poll, Notify, the replier registry, and calling Notify from the publish/merge path), `internal/appwire/factory_intake*.go`, `factory.intake_add`, CLI `codeaf factory add`, `POST /api/intake` in `internal/factory/serve` | route, lease, jira |
 | J jira | `factory/gi-jira` | `internal/factory/jira/**` (a `Feed` + `Replier`, incl. `jirastub`), `internal/appwire/factory_jira*.go`, `factory.jira_connect`/`factory.jira_status`/`factory.jira_disconnect`, the Jira poll loop next to the GitHub one in `cmd/codeaf/app_factory.go`, PR-link write-back | route, lease; calls `inbox.Add` only |
+| A judge | `factory/gi-judge` | `internal/factory/route/judge/**`: the model-backed `route.Judge` (prompt, strict JSON answer, timeout, spend, model choice, fake for tests) | intake, route.go |
 | E e2e | integration branch | `internal/e2e/factory_general_e2e_test.go`, the live mac-studio run | — |
 
 Shared, already on the integration branch: `route` types, `inbox.Entry/Add`
