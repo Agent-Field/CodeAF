@@ -10,12 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
 
 // factoryAddUsage is the one-line shape `codeaf factory add` is refused with.
-const factoryAddUsage = "use codeaf factory add --source NAME --id ID --title TEXT [--body TEXT|-] [--repo owner/name] [--label L]... [--priority p0..p3] [--url URL] [--factory URL --token T]"
+const factoryAddUsage = "use codeaf factory add --source NAME --id ID --title TEXT [--body TEXT|-] [--repo owner/name] [--label L]... [--priority p0..p3] [--trust owner|collaborator|stranger] [--url URL] [--factory URL --token T]"
 
 // labelFlags is --label, given once per label.
 type labelFlags []string
@@ -41,11 +42,13 @@ func runFactoryAdd(args []string, stdin io.Reader, out io.Writer) error {
 	flags.Var(&labels, "label", "a label, once per label")
 	flags.StringVar(&e.Priority, "priority", "", "p0 (urgent) to p3 (low)")
 	flags.StringVar(&e.URL, "url", "", "the work's address on its own system")
+	trust := flags.String("trust", "", "how far the author is trusted: owner (the default), collaborator or stranger")
 	address := flags.String("factory", "", "the factory's address, such as https://factory.example.com")
 	token := flags.String("token", "", "that factory's access token (codeaf factory token prints it)")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
+	e.Trust = factory.Tier(*trust)
 	if flags.NArg() != 0 {
 		return wrongCall(factoryAddUsage)
 	}

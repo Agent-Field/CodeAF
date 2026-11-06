@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/jira"
 	"github.com/Agent-Field/codeaf/internal/factory/jira/jirastub"
@@ -149,7 +150,7 @@ func TestFeedMapsTicketsAndMovesTheCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := inbox.Entry{Source: "jira", ExternalID: key, URL: s.URL + "/browse/" + key, Title: "Fix the login", Body: "It fails.\n\nOn Safari.", Author: "Grace Hopper <grace@example.com>", Labels: []string{"bug", "jira-project:FL"}, Priority: "p1"}
+	want := inbox.Entry{Source: "jira", ExternalID: key, URL: s.URL + "/browse/" + key, Title: "Fix the login", Body: "It fails.\n\nOn Safari.", Author: "Grace Hopper <grace@example.com>", Labels: []string{"bug", "jira-project:FL"}, Priority: "p1", Trust: factory.TierCollab}
 	if len(entries) != 1 || !equalEntry(entries[0], want) {
 		t.Fatalf("entries %+v", entries)
 	}
@@ -374,5 +375,33 @@ func TestAJiraJobIsMatchedBySourceAndProjectLabel(t *testing.T) {
 	}
 	if route.Matches(route.Match{Sources: []string{"github"}}, job) {
 		t.Fatal("a GitHub rule matched a Jira job")
+	}
+}
+
+// A JIRA REPORTER IS NEVER THE OPERATOR: a person with a seat, or a reporter
+// the account cannot see, is a collaborator; a service-desk customer is a
+// stranger, whose ticket no AI yes starts and whose job never writes.
+func TestAReporterIsTrustedAsACollaboratorAndACustomerIsAStranger(t *testing.T) {
+	site := "https://acme.atlassian.net"
+	for _, c := range []struct {
+		name     string
+		reporter *jira.User
+		want     factory.Tier
+	}{
+		{"seat", &jira.User{DisplayName: "Ada", AccountType: "atlassian"}, factory.TierCollab},
+		{"app", &jira.User{DisplayName: "Automation", AccountType: "app"}, factory.TierCollab},
+		{"hidden", nil, factory.TierCollab},
+		{"customer", &jira.User{DisplayName: "Pat", AccountType: "Customer"}, factory.TierStranger},
+	} {
+		e := jira.EntryOf(site, jira.Issue{Key: "FL-1", Fields: jira.IssueFields{Summary: "x", Reporter: c.reporter}})
+		if e.Trust != c.want {
+			t.Errorf("%s: trust %q, want %q", c.name, e.Trust, c.want)
+		}
+	}
+	s := stub(t)
+	s.CreateIssue(jirastub.Issue{Project: "FL", Summary: "from the portal", Reporter: "Pat", ReporterType: "customer"})
+	entries, _, err := (&jira.Feed{Client: clientOf(s), JQL: "project = FL"}).Fetch(context.Background(), "")
+	if err != nil || len(entries) != 1 || entries[0].Trust != factory.TierStranger {
+		t.Fatalf("stub customer: %+v, %v", entries, err)
 	}
 }

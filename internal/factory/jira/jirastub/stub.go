@@ -46,7 +46,10 @@ type Issue struct {
 	Priority      string // Highest, High, Medium, Low, Lowest or ""
 	Reporter      string // display name
 	ReporterEmail string
-	Status        string // "" is "To Do"
+	// ReporterType is the reporter's accountType: "" is "atlassian", a
+	// person with a seat; "customer" is a service-desk customer.
+	ReporterType string
+	Status       string // "" is "To Do"
 }
 
 // Server is the fake. URL is its site, the value a connection's site is
@@ -281,7 +284,11 @@ func issueOf(st stored) jira.Issue {
 		f.Priority = &jira.Named{Name: st.issue.Priority}
 	}
 	if st.issue.Reporter != "" || st.issue.ReporterEmail != "" {
-		f.Reporter = &jira.User{DisplayName: st.issue.Reporter, EmailAddress: st.issue.ReporterEmail}
+		kind := st.issue.ReporterType
+		if kind == "" {
+			kind = "atlassian"
+		}
+		f.Reporter = &jira.User{DisplayName: st.issue.Reporter, EmailAddress: st.issue.ReporterEmail, AccountType: kind}
 	}
 	f.Status = &jira.Named{Name: statusOf(st.issue)}
 	return jira.Issue{ID: st.key, Key: st.key, Fields: f}

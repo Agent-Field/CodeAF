@@ -70,15 +70,26 @@ from its brief and checkout. Commenting on such a job's GitHub issue is
 refused with "this job has no GitHub issue to comment on"; nothing is posted.
 Existing saved jobs keep their identity and work, without a migration.
 
+## who outside work is trusted as — trust, owner, collaborator, stranger, a Jira customer
+
+Every job from outside GitHub carries a trust, the same three a GitHub author has: `owner`, `collaborator` or `stranger`. It is set by whoever sends the work:
+
+- `codeaf factory add --trust`, `"trust"` in `POST /api/intake` and in `factory.intake_add`. Left out, it is `owner`, because only the operator holds the key to those doors. A script relaying other people's words (a webhook from a form, a support inbox) should send `collaborator` or `stranger`.
+- Jira sets it itself: a reporter with a seat on the site, an automation, or a reporter this account cannot see is a `collaborator`; a service-desk customer who raised the ticket from a portal is a `stranger`.
+
+What it changes: a stranger's job never runs a step that can change files ("This job came from someone without write access to this repository, …"), and a routing rule's AI yes can at most hold a stranger's job at "Approval needed: start". A collaborator's job runs like an owner's.
+
+A later delivery can LOWER the trust, never raise it: a ticket handed to a stranger stops writing at once, while trusting someone more is done on the job, not by the outside system. Any other word is refused with "trust must be owner, collaborator or stranger".
+
 ## send work to the factory from Jira, a script or a webhook — codeaf factory add, POST /api/intake
 
 Work from outside GitHub becomes a factory job through one inbox. Three ways in, all the same:
 
-- `codeaf factory add --source NAME --id ID --title TEXT [--body TEXT|-] [--repo owner/name] [--label L]... [--priority p0..p3] [--url URL] [--factory URL --token T]`. `--body -` reads the details from standard input; `--label` is given once per label. Without `--factory` it posts to the factory this machine is attached to, else the one it serves. It prints `filed job 12 from inbox:ops:A1`, or `updated job 12 …` for a repeat.
-- `POST /api/intake` on the factory's address, with `Authorization: Bearer <access token>` (what `codeaf factory token` prints) or the operator's own session. The body is JSON: `{"source":"inbox:ops","external_id":"A1","title":"…","body":"…","url":"…","author":"…","labels":["bug"],"priority":"p1","repo":"owner/name"}`. It answers `{"id":12,"created":true}` (201), or `created:false` (200) for a repeat. This is what a Jira automation, Zapier or any webhook calls. A teammate's sign-in is refused with "only the operator can do this".
+- `codeaf factory add --source NAME --id ID --title TEXT [--body TEXT|-] [--repo owner/name] [--label L]... [--priority p0..p3] [--trust owner|collaborator|stranger] [--url URL] [--factory URL --token T]`. `--body -` reads the details from standard input; `--label` is given once per label. Without `--factory` it posts to the factory this machine is attached to, else the one it serves. It prints `filed job 12 from inbox:ops:A1`, or `updated job 12 …` for a repeat.
+- `POST /api/intake` on the factory's address, with `Authorization: Bearer <access token>` (what `codeaf factory token` prints) or the operator's own session. The body is JSON: `{"source":"inbox:ops","external_id":"A1","title":"…","body":"…","url":"…","author":"…","labels":["bug"],"priority":"p1","repo":"owner/name","trust":"collaborator"}`. It answers `{"id":12,"created":true}` (201), or `created:false` (200) for a repeat. This is what a Jira automation, Zapier or any webhook calls. A teammate's sign-in is refused with "only the operator can do this".
 - The desktop's `factory.intake_add`, the same entry plus `factory`.
 
-`source` is a lowercase name such as `jira` or `inbox:ops`; `github`, `terminal` and `chat` are the factory's own and are refused. `priority` is `p0` (urgent) to `p3` (low). Limits: title 200 characters on one line, body 32000, id 200, at most 30 labels of 100, a request at most 64 KiB (larger is refused as too large).
+`source` is a lowercase name such as `jira` or `inbox:ops`; `github`, `terminal` and `chat` are the factory's own and are refused. `trust` is optional (see "who outside work is trusted as"). `priority` is `p0` (urgent) to `p3` (low). Limits: title 200 characters on one line, body 32000, id 200, at most 30 labels of 100, a request at most 64 KiB (larger is refused as too large).
 
 ## outside work as a job — the same id or the same ticket sent twice, no repository yet, answering back
 
@@ -316,6 +327,8 @@ A rule has a `name`, a `when` and a `then`:
 A rule's `when` can carry `ask`, one yes/no question of at most 300 characters on one line (see "start work with an AI filter" for which model answers, what it sees and what it costs). A yes lets that rule decide; a no reads on to the next rule.
 
 **The answer is kept on the job**, with its one sentence why, and is asked again only when the job's title, body or labels change. The activity line of a job the rule started or held names the rule and the why, such as `routing rule small fixes · a one-line colour fix`. A stranger's ticket held instead of started adds `asks first: an AI yes never starts a stranger's ticket`.
+
+**A no is kept and shown too.** A job no rule started still lists each rule whose question was answered no, with its why (`route_declined` on the job for the desktop), so "why didn't this start?" has an answer and is not just an empty routing line.
 
 **A failure is a no, never a yes.** When the question cannot be answered, the job keeps "couldn't judge: " and the cause, the table reads on, and the next pass asks once more. No question is asked more than once per rule per job in one pass.
 

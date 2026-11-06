@@ -58,6 +58,10 @@ type User struct {
 	AccountID    string `json:"accountId,omitempty"`
 	DisplayName  string `json:"displayName,omitempty"`
 	EmailAddress string `json:"emailAddress,omitempty"`
+	// AccountType is "atlassian" for a person with a seat on the site, "app"
+	// for an integration, and "customer" for a service-desk customer who
+	// raised the ticket from a portal and has no seat at all.
+	AccountType string `json:"accountType,omitempty"`
 	// TimeZone is the account's zone, such as America/Toronto. JQL reads a
 	// date literal in it, so the feed writes its cursor in it.
 	TimeZone string `json:"timeZone,omitempty"`

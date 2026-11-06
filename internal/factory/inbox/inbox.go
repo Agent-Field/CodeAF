@@ -44,7 +44,29 @@ type Entry struct {
 	// leaves it to the routing rules; with neither, the job waits in Backlog
 	// asking which repository.
 	Repo string `json:"repo,omitempty"`
+	// Trust is how far the sender vouches for the author's words: owner,
+	// collaborator or stranger ([factory.Tier]). Empty is owner, because every
+	// door but a connector is one the operator holds the key to. A CONNECTOR
+	// ALWAYS SAYS: a Jira reporter is never the operator, and a stranger is
+	// the one tier an AI yes can never start and whose job never writes.
+	Trust factory.Tier `json:"trust,omitempty"`
 }
+
+// tier is the [factory.Item.Tier] a first delivery of e files its job with.
+func (e Entry) tier() factory.Tier {
+	if e.Trust == "" {
+		return factory.TierOwner
+	}
+	return e.Trust
+}
+
+// lowers says whether a later delivery's trust is below the job's. A
+// delivery may LOWER a job's tier, never raise it: a ticket handed to a
+// stranger reporter stops writing at once, while trusting someone more is a
+// person's act on the job, not a field an outside system can send.
+func lowers(have, sent factory.Tier) bool { return trustRank[sent] < trustRank[have] }
+
+var trustRank = map[factory.Tier]int{factory.TierStranger: 0, factory.TierCollab: 1, factory.TierOwner: 2}
 
 // Result says what Add did.
 type Result struct {
@@ -166,7 +188,7 @@ func newItem(e Entry, now time.Time, o options) factory.Item {
 		Author:    e.Author,
 		URL:       e.URL,
 		Labels:    slices.Clone(e.Labels),
-		Tier:      factory.TierOwner,
+		Tier:      e.tier(),
 		Autonomy:  factory.AutonomyAuto,
 		Priority:  priorityOf(e),
 		Created:   now,
@@ -233,6 +255,9 @@ func update(st *store.Store, old factory.Item, e Entry, now time.Time, o options
 		if e.Author != "" {
 			it.Author = e.Author
 		}
+		if lowers(it.Tier, e.tier()) {
+			it.Tier = e.tier()
+		}
 		if it.Ask != nil && it.Ask.Source == e.Source {
 			it.Ask.Text = askText(e)
 		}
@@ -257,7 +282,7 @@ func update(st *store.Store, old factory.Item, e Entry, now time.Time, o options
 
 // changed says whether e says anything the job does not already hold.
 func changed(it factory.Item, e Entry) bool {
-	if it.Title != e.Title || it.Body != e.Body || !sameLabels(it.Labels, e.Labels) {
+	if it.Title != e.Title || it.Body != e.Body || !sameLabels(it.Labels, e.Labels) || lowers(it.Tier, e.tier()) {
 		return true
 	}
 	if (e.URL != "" && it.URL != e.URL) || (e.Author != "" && it.Author != e.Author) {
