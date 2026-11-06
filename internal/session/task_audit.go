@@ -3227,7 +3227,6 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		// usage row's task ([Config.checksNode]) — while taskID above stays 0,
 		// because the auditor is not the node it reads.
 		checksNode: node.id,
-		nodeTree:   node.graph.spendTree(node),
 		// The auditor is the node too, as far as anybody watching is concerned:
 		// it runs on the node's clock, in the node's worktree, and a card whose
 		// audit is parked on a provider's pacing is a card whose task is not

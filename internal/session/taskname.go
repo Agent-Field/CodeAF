@@ -186,7 +186,7 @@ func (g *TaskGraph) nameNode(node *TaskNode) {
 		if subject == "" {
 			return
 		}
-		if name := home.taskName(withNodeTree(context.Background(), node), subject); name != "" {
+		if name := home.taskName(context.Background(), subject); name != "" {
 			g.rename(node, name)
 		}
 	}()

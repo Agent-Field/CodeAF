@@ -92,10 +92,6 @@ func New(config Config) (*Agent, error) {
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	config.ClientTools = nil
 	config.System = clientToolsWithoutSections(config.System)
-	// A helper built inside a task spends from that task's tree too.
-	if config.nodeTree == nil {
-		config.nodeTree = a.config.nodeTree
-	}
 	if pair, ok := a.ConversationModelPair(); ok && config.ConversationModels == nil {
 		pair.Main = config.Model
 		if config.OneModel || pair.Fallback == pair.Main {

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -125,29 +126,52 @@ func TestNodeTreeReservesPendingProposalTitles(t *testing.T) {
 	other.Withdraw()
 }
 
-// C4: several nodes exhaust one ceiling, cut an in-flight call, fail queued work and prevent further admission.
+// C3, C4: real runners refuse each tree member's next request at the binding limit; other trees still finish.
 func TestNodeTreeSpendStopsEveryNodeAndNamesTheBindingLimit(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "node")
+	useTaskUsageHome(t)
 	for _, conversation := range []bool{false, true} {
 		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
-			entered := make(chan struct{})
+			rootEntered, childEntered := make(chan struct{}), make(chan struct{})
+			rootHold, releaseRoot := context.WithCancel(t.Context())
+			defer releaseRoot()
+			childHold, releaseChild := context.WithCancel(t.Context())
+			defer releaseChild()
 			completer := &scriptedCompleter{steps: []step{
-				func(context.Context, []ai.Message) (*ai.Response, error) { return pricedResponse("first", .4), nil },
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					return nodeTreeReadResponse("root-read", .5), nil
+				},
 				func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-					close(entered)
-					<-ctx.Done()
-					return nil, ctx.Err()
+					close(rootEntered)
+					select {
+					case <-rootHold.Done():
+						return nodeTreeReadResponse("root-read-again", 0), nil
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				},
+				func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+					close(childEntered)
+					select {
+					case <-childHold.Done():
+						cost := 1.0
+						if conversation {
+							cost = .5
+						}
+						return nodeTreeReadResponse("part-read", cost), nil
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
 				},
 				func(context.Context, []ai.Message) (*ai.Response, error) {
-					cost := 1.1
-					if conversation {
-						cost = .6
-					}
-					return pricedResponse("last", cost), nil
+					return pricedResponse("another tree finished", .125), nil
 				},
 			}}
 			a, _ := newTestAgent(t, completer, func(c *Config) {
 				c.ProfileDir = t.TempDir()
+				writeFile(t, filepath.Join(c.Workspace, "rules.txt"), "Read the rules.\n")
+				c.TaskParallel = 2
+				c.TaskAudit = false
 				c.Interactive = true
 				if conversation {
 					c.Budget = Budget{USD: 1.25}
@@ -161,153 +185,201 @@ func TestNodeTreeSpendStopsEveryNodeAndNamesTheBindingLimit(t *testing.T) {
 			}
 			g := a.graph()
 			g.report = nil
-			g.run = func(*TaskNode) {}
-			g.limit = 3
-			rootID := g.reserve()
-			g.admit(rootID, taskSpec{title: "Whole assignment", named: true, depth: 1, model: "test/model"})
-			root := g.node(rootID)
-			workers := make([]*Agent, 0, 3)
-			nodes := []*TaskNode{root}
-			for i := 0; i < 3; i++ {
-				title := fmt.Sprintf("Part %d", i)
-				if refusal := g.claimChild(rootID, title); refusal != "" {
-					t.Fatal(refusal)
-				}
-				id := g.reserve()
-				g.admit(id, taskSpec{title: title, named: true, parent: rootID, depth: 2, model: "test/model"})
-				nodes = append(nodes, g.node(id))
+			g.store = newTaskStore(filepath.Join(t.TempDir(), "tasks.json"))
+			root := nodeTreeQuick(t, a, 0, "Whole assignment")
+			nodeTreeAwait(t, rootEntered)
+			part := nodeTreeQuick(t, a, root.id, "Read the rules")
+			nodeTreeAwait(t, childEntered)
+			queued := nodeTreeQuick(t, a, root.id, "Read the examples")
+			if queued.stateNow() != TaskQueued {
+				t.Fatal("third node did not queue behind the two live workers")
 			}
-			for _, node := range nodes[:3] {
-				worker, err := a.newTaskAgent(t.Context(), t.TempDir(), node, "")
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { _ = worker.Close() })
-				workers = append(workers, worker)
+			releaseChild()
+			waitDoneNode(t, part)
+			waitDoneNode(t, queued)
+			if queued.notice().StartedAt.IsZero() {
+				t.Fatal("queued node did not reach its first request boundary")
 			}
-			if _, err := workers[0].completeWithModel(t.Context(), purposeTurn, nil, "test/model"); err != nil {
-				t.Fatal(err)
-			}
-			// Keep this node owned until its provider observes cancellation.
-			if !nodes[1].claimRun() {
-				t.Fatal("in-flight node was not running")
-			}
-			ended := make(chan error, 1)
-			go func() {
-				_, err := workers[1].completeWithModel(t.Context(), purposeTurn, nil, "test/model")
-				ended <- err
-			}()
+			// Reaching the limit leaves the already admitted provider call alone.
 			select {
-			case <-entered:
-			case <-time.After(5 * time.Second):
-				t.Fatal("scripted call never entered")
+			case <-root.done:
+				t.Fatal("the tree limit cancelled a request in flight")
+			default:
 			}
-			if _, err := workers[2].completeWithModel(t.Context(), purposeTask, nil, "test/model"); err != nil {
-				t.Fatal(err)
+			if queued.spend() != 0 || completer.requests() != 3 {
+				t.Fatalf("queued node bought a request: spend=%v, calls=%d", queued.spend(), completer.requests())
 			}
-			select {
-			case err := <-ended:
-				if err == nil {
-					t.Fatal("in-flight call was not cancelled")
-				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("tree ceiling left a call in flight")
+			otherID := g.reserve()
+			g.admit(otherID, taskSpec{title: "Whole assignment", named: true, brief: "Read the rules", acceptance: "The rules are read", depth: 1, model: "test/model"})
+			other := g.node(otherID)
+			waitDoneNode(t, other)
+			if row := other.notice(); row.State != TaskDone || !strings.Contains(row.Report, "another tree finished") || row.CostUSD != .125 {
+				t.Fatalf("another tree inherited the exhausted allowance: %+v", row)
 			}
-			g.complete(nodes[1], TaskFailed)
+			releaseRoot()
+			waitDoneNode(t, root)
 			want := config.CrewTaskCapAction(1.5)
 			if conversation {
-				want = "conversation"
+				want = "the conversation reached its $1.25 limit · raise the per conversation limit in /settings"
 			}
-			for _, node := range nodes {
-				row := node.notice()
-				if row.State != TaskFailed || row.Ending != TaskEndingCostLimit || !strings.Contains(row.Report, want) || conversation && strings.Contains(row.Report, "raise it in /crew") {
-					t.Fatalf("tree limit ending is wrong: %+v", row)
-				}
-				if conversation && (!strings.Contains(row.Report, "$1.25") || !strings.Contains(row.Report, "/settings")) {
-					t.Fatalf("conversation limit lost its amount or raise action: %+v", row)
+			for _, node := range []*TaskNode{root, part, queued} {
+				nodeTreeCostEnding(t, node, want)
+				if conversation && strings.Contains(node.notice().Report, "/crew") {
+					t.Fatalf("conversation limit was described as the task cap: %+v", node.notice())
 				}
 			}
-			if refusal := g.claimChild(rootID, "Another part"); !strings.Contains(refusal, want) {
-				t.Fatalf("spent tree admitted another node: %s", refusal)
+			if calls := completer.requests(); calls != 4 {
+				t.Fatalf("exhausted tree reached the provider again: calls=%d, want 4 including the other tree", calls)
 			}
-			completer.mu.Lock()
-			calls := len(completer.seen)
-			completer.mu.Unlock()
-			if calls != 3 || !nodes[3].started.IsZero() {
-				t.Fatalf("queued work reached the provider: calls=%d, queued started=%v", calls, nodes[3].started)
+			g.checkpoint()
+			document := readCheckpoint(t, g.store.path)
+			recovered := newTaskGraph()
+			recovered.rehydrate(document, a.config.Workspace, TaskSettleAsk)
+			for _, node := range []*TaskNode{root, part, queued} {
+				record := recordOf(t, document, node.id)
+				if record.Ending != TaskEndingCostLimit || recovered.node(node.id).stoppedByPerson() {
+					t.Fatalf("cost ending became a person's stop after restore: %+v", record)
+				}
 			}
 		})
 	}
 }
 
-// C5: one node below the ceiling runs through the real quick-task runner and finishes normally.
+// C5: an ordinary node below the ceiling runs through the real runner and finishes normally.
 func TestNodeTreeUnderTheCeilingFinishesNormally(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "node")
+	useTaskUsageHome(t)
 	a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
 		return pricedResponse("finished", .25), nil
-	}}}, func(c *Config) { c.ProfileDir = t.TempDir() })
+	}}}, func(c *Config) {
+		c.ProfileDir = t.TempDir()
+		c.TaskAudit = false
+	})
 	g := a.graph()
 	g.report = nil
-	id, _, refusal := a.admitQuick(quickAsk{line: "Read the law"})
-	if refusal.said != "" {
-		t.Fatal(refusal.said)
-	}
+	id := g.reserve()
+	g.admit(id, taskSpec{title: "Read the law", named: true, brief: "Read the law", acceptance: "The law is read", depth: 1, model: "test/model"})
 	node := g.node(id)
 	waitDoneNode(t, node)
-	if row := node.notice(); row.State != TaskDone || row.Report != "finished" || row.CostUSD != .25 || row.Ending == TaskEndingCostLimit {
+	if row := node.notice(); row.State != TaskDone || !strings.Contains(row.Report, "finished") || row.CostUSD != .25 || row.Ending == TaskEndingCostLimit {
 		t.Fatalf("under-ceiling node changed: %+v", row)
 	}
 }
 
-// C4: a restored root keeps exactly the shared spend, including child work already folded into its bill.
+// C4: recovery retains a conversation-bound ceiling and a paid live worker's bill before any owner fold.
 func TestNodeTreeCheckpointKeepsTheUnspentAllowance(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "node")
+	useTaskUsageHome(t)
 	profile := t.TempDir()
-	if err := config.SetCrewTaskCap(profile, "1"); err != nil {
+	if err := config.SetCrewTaskCap(profile, "5"); err != nil {
 		t.Fatal(err)
 	}
-	a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
-		return pricedResponse("partly done", .75), nil
-	}}}, func(c *Config) { c.ProfileDir = profile })
+	entered := make(chan struct{})
+	hold, release := context.WithCancel(t.Context())
+	defer release()
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return nodeTreeReadResponse("before-recovery", .75), nil
+		},
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(entered)
+			select {
+			case <-hold.Done():
+				return pricedResponse("finished after the snapshot", 0), nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+	}}
+	options := func(c *Config) {
+		c.ProfileDir = profile
+		writeFile(t, filepath.Join(c.Workspace, "rules.txt"), "Read the rules.\n")
+		c.Interactive = true
+		c.Budget = Budget{USD: 1.25}
+		c.TaskAudit = false
+	}
+	a, _ := newTestAgent(t, completer, options)
+	a.usage.CostUSD = .25
 	g := a.graph()
-	g.run, g.report = func(*TaskNode) {}, nil
+	g.report = nil
 	checkpoint := filepath.Join(t.TempDir(), "tasks.json")
 	g.store = newTaskStore(checkpoint)
 	id := g.reserve()
 	g.admit(id, taskSpec{title: "Read the law", named: true, brief: "Read the law", acceptance: "The law is read", depth: 1, model: "test/model"})
-	worker, err := a.newTaskAgent(t.Context(), t.TempDir(), g.node(id), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = worker.Close() })
-	if _, err := worker.completeWithModel(t.Context(), purposeTurn, nil, "test/model"); err != nil {
-		t.Fatal(err)
+	root := g.node(id)
+	nodeTreeAwait(t, entered)
+	g.checkpoint()
+	// Atomic control writes must retain the same unfolded bill as ordinary saves.
+	for _, action := range []string{"pause", "resume"} {
+		if err := a.AppTaskAction(AppTaskIntent{ID: fmt.Sprint(id), Action: action}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	document := readCheckpoint(t, checkpoint)
-	if saved := recordOf(t, document, id).TreeSpend; saved == nil || saved.Spent != .75 {
-		t.Fatalf("checkpoint lost the tree's live spend: %+v", saved)
+	record := recordOf(t, document, id)
+	if record.TreeLimit == nil || record.TreeLimit.CeilingUSD != 1 || !record.TreeLimit.Conversation || record.TreeLimit.ConversationCapUSD != 1.25 || record.CostUSD != .75 {
+		t.Fatalf("checkpoint lost the admitted ceiling or live bill: %+v", record)
 	}
-	// A parent's historic bill can already contain its finished child's bill.
-	document.Nodes[0].State, document.Nodes[0].CostUSD = TaskQueued, .75
-	document.Nodes = append(document.Nodes, taskRecord{ID: id + 1, Parent: id, Depth: 2, Title: "Finished part", Brief: "Read the rules", Acceptance: "The rules are read", State: TaskDone, CostUSD: .25})
-	document.Seq = id + 1
-	b, _ := newTestAgent(t, &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
-		return pricedResponse("the remaining work", .25), nil
-	}}}, func(c *Config) { c.ProfileDir = profile })
-	restored := b.graph()
-	restored.run, restored.report = func(*TaskNode) {}, nil
-	restored.rehydrate(document, b.config.Workspace, TaskSettleAsk)
-	restored.runFrontier()
-	resumed, err := b.newTaskAgent(t.Context(), t.TempDir(), restored.node(id), "")
-	if err != nil {
+	g.mu.Lock()
+	folded := root.cost
+	g.mu.Unlock()
+	if folded != 0 || a.Usage().CostUSD != .25 {
+		t.Fatalf("snapshot was taken after folding: node=%v, conversation=%v", folded, a.Usage().CostUSD)
+	}
+	// Changed settings and the owner's still-unfolded books cannot grant a new ceiling.
+	if err := config.SetCrewTaskCap(profile, "10"); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = resumed.Close() })
-	if _, err := resumed.completeWithModel(t.Context(), purposeTurn, nil, "test/model"); err != nil {
-		t.Fatalf("the actual remaining allowance was lost: %v", err)
+	resumedCalls := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return nodeTreeReadResponse("after-recovery", .25), nil
+		},
+	}}
+	b, _ := newTestAgent(t, resumedCalls, options)
+	b.usage.CostUSD = .25
+	restored := b.graph()
+	restored.report = nil
+	restored.rehydrate(document, b.config.Workspace, TaskSettleAsk)
+	restored.runFrontier()
+	resumed := restored.node(id)
+	waitDoneNode(t, resumed)
+	nodeTreeCostEnding(t, resumed, "the conversation reached its $1.25 limit · raise the per conversation limit in /settings")
+	if resumed.spend() != 1 || resumedCalls.requests() != 1 {
+		t.Fatalf("restored tree replenished its allowance: spend=%v, requests=%d", resumed.spend(), resumedCalls.requests())
 	}
-	if row := restored.node(id).notice(); row.Ending != TaskEndingCostLimit || !strings.Contains(row.Report, config.CrewTaskCapAction(1)) {
-		t.Fatalf("resumed work received a fresh tree allowance: %+v", row)
+	release()
+	waitDoneNode(t, root)
+}
+
+// C4: a checkpoint without the additive ceiling fact retains the existing task-cap remainder.
+func TestNodeTreeCheckpointWithoutLimitComputesItAtRestore(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "node")
+	useTaskUsageHome(t)
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return nodeTreeReadResponse("remaining-work", .25), nil
+		},
+	}}
+	a, _ := newTestAgent(t, completer, func(c *Config) {
+		c.ProfileDir = t.TempDir()
+		writeFile(t, filepath.Join(c.Workspace, "rules.txt"), "Read the rules.\n")
+		c.TaskAudit = false
+	})
+	if err := config.SetCrewTaskCap(a.config.ProfileDir, "1"); err != nil {
+		t.Fatal(err)
+	}
+	g := a.graph()
+	g.report = nil
+	g.rehydrate(taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: 1, Nodes: []taskRecord{{
+		ID: 1, Title: "Read the law", Brief: "Read the law", Acceptance: "The law is read",
+		State: TaskQueued, Depth: 1, Model: "test/model", CostUSD: .75,
+	}}}, a.config.Workspace, TaskSettleAsk)
+	g.runFrontier()
+	root := g.node(1)
+	waitDoneNode(t, root)
+	nodeTreeCostEnding(t, root, config.CrewTaskCapAction(1))
+	if root.spend() != 1 || completer.requests() != 1 {
+		t.Fatalf("old checkpoint lost its remaining allowance: spend=%v, requests=%d", root.spend(), completer.requests())
 	}
 }
 
@@ -333,93 +405,10 @@ func TestNodeTreeUsesThePlanStoresWorkIdentity(t *testing.T) {
 	}
 }
 
-// C3, C4: workers, repairs, checks and owner helpers share one tree's money; another tree remains live.
-func TestNodeTreeCountsEveryCallAndKeepsOtherTreesIndependent(t *testing.T) {
+// C4: a queued worker in an already exhausted conversation is refused at its first request without spending.
+func TestNodeTreeWithNoConversationAllowanceSpendsNothing(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "node")
-	completer := &scriptedCompleter{}
-	for i := 0; i < 7; i++ {
-		completer.steps = append(completer.steps, func(context.Context, []ai.Message) (*ai.Response, error) {
-			return pricedResponse("a paid answer", .125), nil
-		})
-	}
-	a, _ := newTestAgent(t, completer, func(c *Config) { c.ProfileDir = t.TempDir() })
-	if err := config.SetCrewTaskCap(a.config.ProfileDir, "0.75"); err != nil {
-		t.Fatal(err)
-	}
-	g := a.graph()
-	g.run, g.report = func(*TaskNode) {}, nil
-	rootID := g.reserve()
-	g.admit(rootID, taskSpec{title: "Read the law", named: true, depth: 1, model: "test/model"})
-	otherID := g.reserve()
-	g.admit(otherID, taskSpec{title: "Read the law", named: true, depth: 1, model: "test/model"})
-	childID := g.reserve()
-	g.admit(childID, taskSpec{title: "Read the rules", named: true, parent: rootID, depth: 2, model: "test/model"})
-	root := g.node(rootID)
-	builds := []func() (*Agent, error){
-		func() (*Agent, error) { return a.newTaskAgent(t.Context(), t.TempDir(), root, "") },
-		func() (*Agent, error) {
-			return a.newTaskAgentOn(t.Context(), t.TempDir(), root, "-repair", "test/model", true)
-		},
-		func() (*Agent, error) {
-			return a.newAuditAgent(t.TempDir(), root, plainDoor(auditReadCommands), "test/model")
-		},
-		func() (*Agent, error) { return a.newTaskAgent(t.Context(), t.TempDir(), g.node(childID), "") },
-	}
-	var rootWorker *Agent
-	for _, build := range builds {
-		worker, err := build()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = worker.Close() })
-		if rootWorker == nil {
-			rootWorker = worker
-		}
-		if _, err := worker.completeWithModel(t.Context(), purposeTurn, nil, "test/model"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	helper, err := rootWorker.newChildAgent(Config{Workspace: t.TempDir(), Model: "test/model", System: "SYSTEM", InTask: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = helper.Close() })
-	if _, err := helper.completeWithModel(t.Context(), purposeTurn, nil, "test/model"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.completeWithModel(withNodeTree(t.Context(), root), purposeTask, nil, "test/model"); err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []uint64{rootID, childID} {
-		if row := g.node(id).notice(); row.State != TaskFailed || row.Ending != TaskEndingCostLimit {
-			t.Fatalf("a paid role escaped the tree tally: %+v", row)
-		}
-	}
-	other := g.node(otherID)
-	if other.stateNow() != TaskRunning {
-		t.Fatal("one tree's limit stopped a separate assignment")
-	}
-	worker, err := a.newTaskAgent(t.Context(), t.TempDir(), other, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = worker.Close() })
-	if _, err := worker.completeWithModel(t.Context(), purposeTurn, nil, "test/model"); err != nil {
-		t.Fatalf("another tree lost its own allowance: %v", err)
-	}
-	other.finish("finished", nil, "", "")
-	g.complete(other, TaskDone)
-	if other.stateNow() != TaskDone {
-		t.Fatal("another tree could not finish")
-	}
-	if got := completer.requests(); got != 7 {
-		t.Fatalf("paid calls = %d, want 7", got)
-	}
-}
-
-// C4: an already spent conversation allowance starts no node, even with an unpriced completer.
-func TestNodeTreeWithNoConversationAllowanceNeverStarts(t *testing.T) {
-	t.Setenv("CODEAF_TASK_BELT", "node")
+	useTaskUsageHome(t)
 	completer := &scriptedCompleter{}
 	a, _ := newTestAgent(t, completer, func(c *Config) {
 		c.ProfileDir = t.TempDir()
@@ -428,11 +417,127 @@ func TestNodeTreeWithNoConversationAllowanceNeverStarts(t *testing.T) {
 	})
 	a.usage.CostUSD = 1
 	g := a.graph()
-	g.run, g.report = func(*TaskNode) { t.Error("a node without any allowance started") }, nil
+	g.report = nil
+	root := nodeTreeQuick(t, a, 0, "Read the law")
+	waitDoneNode(t, root)
+	nodeTreeCostEnding(t, root, "the conversation reached its $1 limit · raise the per conversation limit in /settings")
+	if root.spend() != 0 || completer.requests() != 0 {
+		t.Fatalf("an exhausted conversation reached the provider: spend=%v, calls=%d", root.spend(), completer.requests())
+	}
+}
+
+// C4: a reached ceiling refuses the next request even while checkpoint writes are blocked.
+func TestNodeTreeLimitRefusesBeforeCheckpointWrites(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "node")
+	useTaskUsageHome(t)
+	entered := make(chan struct{})
+	hold, release := context.WithCancel(t.Context())
+	defer release()
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(entered)
+			select {
+			case <-hold.Done():
+				return nodeTreeReadResponse("last-read", .5), nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+	}}
+	a, _ := newTestAgent(t, completer, func(c *Config) {
+		c.ProfileDir = t.TempDir()
+		writeFile(t, filepath.Join(c.Workspace, "rules.txt"), "Read the rules.\n")
+		c.Interactive = true
+		c.Budget = Budget{USD: .5}
+	})
+	if err := config.SetCrewTaskCap(a.config.ProfileDir, "1.5"); err != nil {
+		t.Fatal(err)
+	}
+	g := a.graph()
+	g.report = nil
+	g.store = newTaskStore(filepath.Join(t.TempDir(), "tasks.json"))
+	root := nodeTreeQuick(t, a, 0, "Read the law")
+	nodeTreeAwait(t, entered)
+	events, leave, err := a.WatchTaskRoom(root.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leave()
+	g.store.mu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			g.store.mu.Unlock()
+		}
+	}()
+	release()
+	action := "the conversation reached its $0.50 limit · raise the per conversation limit in /settings"
+	deadline := time.After(5 * time.Second)
+	refused := false
+	for !refused {
+		select {
+		case event, open := <-events:
+			if !open {
+				t.Fatal("worker ended before publishing its refusal")
+			}
+			if event.Kind == EventError {
+				var stopped ErrSpendStopped
+				if !errors.As(event.Err, &stopped) || stopped.Action != action {
+					t.Fatalf("wrong request refusal: %v", event.Err)
+				}
+				refused = true
+			}
+		case <-deadline:
+			t.Fatal("the spend boundary waited for checkpoint I/O")
+		}
+	}
+	if root.endingSet() != TaskEndingCostLimit || completer.requests() != 1 {
+		t.Fatalf("blocked checkpoint postponed the limit: ending=%q, calls=%d", root.endingSet(), completer.requests())
+	}
+	g.store.mu.Unlock()
+	locked = false
+	waitDoneNode(t, root)
+	nodeTreeCostEnding(t, root, action)
+}
+
+func nodeTreeReadResponse(id string, cost float64) *ai.Response {
+	response := toolResponse(id, "read", `{"path":"rules.txt"}`)
+	response.Usage.Cost = &cost
+	return response
+}
+
+func nodeTreeAwait(t *testing.T, entered <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scripted worker did not reach its request")
+	}
+}
+
+func nodeTreeQuick(t *testing.T, a *Agent, parent uint64, title string) *TaskNode {
+	t.Helper()
+	spec, refusal := a.newQuickSpec(quickAsk{line: title})
+	if refusal != "" {
+		t.Fatal(refusal)
+	}
+	g := a.graph()
+	spec.parent = parent
+	if parent != 0 {
+		spec.depth = g.node(parent).depth + 1
+	}
+	if refusal := g.claimChild(parent, title); refusal != "" {
+		t.Fatal(refusal)
+	}
 	id := g.reserve()
-	g.admit(id, taskSpec{title: "Read the law", named: true, brief: "Read the law", acceptance: "The law is read", depth: 1})
-	row := g.node(id).notice()
-	if row.State != TaskFailed || row.Ending != TaskEndingCostLimit || !row.StartedAt.IsZero() || !strings.Contains(row.Report, "conversation") || !strings.Contains(row.Report, "$1") || completer.requests() != 0 {
-		t.Fatalf("an exhausted conversation allowance reached a worker: %+v, calls=%d", row, completer.requests())
+	g.admit(id, spec)
+	return g.node(id)
+}
+
+func nodeTreeCostEnding(t *testing.T, node *TaskNode, action string) {
+	t.Helper()
+	row := node.notice()
+	if row.State != TaskFailed || row.Ending != TaskEndingCostLimit || row.Stopped || !strings.Contains(row.Report, action) {
+		t.Fatalf("wrong cost-limit ending, want %q: %+v", action, row)
 	}
 }

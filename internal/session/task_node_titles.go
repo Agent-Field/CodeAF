@@ -24,9 +24,6 @@ func (g *TaskGraph) nodeGrowthRefusalLocked(parent uint64, titles []string) stri
 		return ""
 	}
 	root := g.nodeRootLocked(parent)
-	if tree := g.nodeTrees[root]; tree != nil && tree.stopped {
-		return tree.guard.TaskAction
-	}
 	named := g.nodeTreeTitlesLocked(root)
 	batch := make(map[string]bool, len(titles))
 	for _, title := range titles {

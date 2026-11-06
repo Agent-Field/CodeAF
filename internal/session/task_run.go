@@ -353,8 +353,8 @@ type TaskNode struct {
 	admit sync.Mutex
 
 	spec taskSpec
-	// The root retains its shared spend across a checkpoint restore.
-	savedTreeSpend *nodeTreeSpendRecord
+	// Only the root holds the tree's fixed admission ceiling.
+	treeLimit *nodeTreeLimit
 	// kind is what sort of node this is ([TaskKind]), settled at admission from
 	// the spec and never touched again. It is a FIELD rather than a question put
 	// to the spec because a node restored from a checkpoint has no spec worth
@@ -1140,8 +1140,6 @@ type TaskGraph struct {
 	claims map[uint64]int
 	// Pending titles stay reserved until their own proposal lands or withdraws.
 	childTitles map[uint64][]string
-	// Each older-road root owns one allowance shared by all its descendants.
-	nodeTrees map[uint64]*nodeTreeSpend
 
 	// run executes one node to completion and calls [TaskGraph.complete] when
 	// it lands. It is a field rather than a method so the graph can be exercised
@@ -1480,7 +1478,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// goes back (see [TaskGraph.claimChild]).
 	g.releaseChildLocked(spec.parent, spec.title)
 	g.mu.Unlock()
-	g.spendTree(node)
+	g.setNodeTreeLimit(node)
 
 	// ADMISSION IS A TRANSITION, and it is checkpointed before the frontier turns
 	// rather than after: a process killed between these two lines still resumes
@@ -1619,7 +1617,7 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 // call when nothing can move: the cost of a pass with nothing to do is one lock
 // and a walk of the order slice.
 func (g *TaskGraph) runFrontier() {
-	g.prepareNodeTrees()
+	g.prepareNodeTreeLimits()
 	// The machine is READ before the lock and at most once a pass: a handful of
 	// small file reads behind a one-second cache, and the graph's lock is held
 	// by everything that announces a node — no reading of /proc belongs under
@@ -1649,7 +1647,7 @@ func (g *TaskGraph) runFrontier() {
 		if !queuedWithMemoryContext(node, orders) {
 			continue
 		}
-		ready, blocked := g.nodeReadinessLocked(node)
+		ready, blocked := g.readinessLocked(node)
 		if blocked != "" {
 			node.setStateLocked(TaskFailed)
 			node.ended = time.Now()
@@ -2187,7 +2185,6 @@ func shareReports(reports []string, pot int) []string {
 // state transition and the slot being handed back.
 func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.mu.Lock()
-	state = g.nodeTreeLandingLocked(node, state)
 	node.setStateLocked(state)
 	node.app.Version++
 	node.ended = time.Now()
@@ -5270,7 +5267,6 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	// whether or not this line has been reached yet. Time is checked only
 	// between completed turns below.
 	ctx, cancel := node.runContext()
-	ctx = withNodeTree(ctx, node)
 
 	// AND THE NODE IS TAKEN UP HERE, OR NOT RUN AT ALL. Close and a person's stop
 	// both land in the window between the admission and this line, and the whole
@@ -7985,7 +7981,6 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		quickItems:  node.quickDoor(),
 		taskControl: node,
 		taskCapUSD:  taskCapUSD,
-		nodeTree:    node.graph.spendTree(node),
 		// AND THE DESIGN THREAD'S ONE EXTRA HAND, wired here for roomThread's
 		// reason: a belt is assembled once, when the agent is constructed
 		// (agent.go), so a door handed over after this call would be a verb the

@@ -2543,8 +2543,6 @@ type Config struct {
 	taskControl *TaskNode
 	// The saved per-task cap applies across this node's worker and repair rounds.
 	taskCapUSD float64
-	// Workers, repairs and checks on the older road share their root's guard.
-	nodeTree *nodeTreeSpend
 
 	// fixesDir is the project bucket the error→fix sidecar keeps its file in
 	// (fixstore.go), and it is set only when this agent is a NODE. A node's

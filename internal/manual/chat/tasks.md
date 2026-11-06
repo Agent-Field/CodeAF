@@ -2327,8 +2327,10 @@ one ceiling for the whole tree, including planning and checks. The smaller of th
 and the conversation's remaining allowance wins, even when no crew was routed.
 Continuing interrupted work keeps what the same tree already spent: only the unspent
 part of its per-task limit remains available.
-A routed crew refuses a call that would cross its per-task limit. Reaching the tree's
-ceiling ends workers in flight and starts no more. When the per-task limit binds, the
+A routed crew refuses a call that would cross its per-task limit. Reaching the run's
+ceiling ends workers in flight and starts no more.
+On the node belt, the saved ceiling survives restarts; reaching it refuses each worker's next request, queued workers spend nothing, and in-flight calls finish without cancellation.
+When the per-task limit binds, the
 report says `this task reached its $5 limit · raise it in /crew` (with your configured
 amount). Raise it with `/crew cap task <$>`, then rerun the remaining work with `/task`.
 When the conversation's smaller limit binds, the report names that amount and `/settings`.
