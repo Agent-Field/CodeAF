@@ -727,6 +727,9 @@ func (h *Handler) splitRepo(w http.ResponseWriter, r *http.Request) (owner, repo
 		return "", "", false
 	}
 	if !visible {
+		if h.githubVisibilityLimited(w, r) {
+			return "", "", false
+		}
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return "", "", false
 	}
