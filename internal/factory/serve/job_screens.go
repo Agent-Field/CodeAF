@@ -316,7 +316,7 @@ func (h *Handler) searchIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.repoVisible(r, repo) {
-		if !h.authFailed(w, r) {
+		if !h.authFailed(w, r) && !h.githubVisibilityLimited(w, r) {
 			h.fail(w, 404, "repository not found")
 		}
 		return
