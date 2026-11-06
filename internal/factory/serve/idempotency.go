@@ -113,8 +113,9 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 // This bridge still has a handler-commit/response-cache crash gap; only an
 // acknowledgment committed with the job itself can close it.
 func cacheWorkerResponse(r *http.Request, row replay) bool {
-	// Replaying a try-again answer for a day defeats the retry it asks for.
-	if row.Status >= 500 || row.Status == http.StatusTooManyRequests {
+	// Replaying a try-again answer (5xx, 408, 429) for a day defeats the retry
+	// it asks for, on every keyed route and not only a worker's.
+	if api.WorkerResendable(row.Status) {
 		return false
 	}
 	if api.ReportCommittedNothing(row.Status) &&
