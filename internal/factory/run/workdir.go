@@ -612,6 +612,10 @@ func (w *Workdirs) Discard(it factory.Item, checkout string) error {
 			return fmt.Errorf("could not delete the folder of %s: %s", it.Ref(), lastLine(err.Error()))
 		}
 	}
+	// The scratch folder beside it goes with it (scratch.go).
+	if scratch := ScratchDir(dir); scratch != "" {
+		_ = os.RemoveAll(scratch)
+	}
 	if it.Kind == factory.KindPR {
 		return nil
 	}

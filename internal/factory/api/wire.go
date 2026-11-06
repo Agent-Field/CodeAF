@@ -455,7 +455,28 @@ type Job struct {
 	// FactoryModel is the factory's default model the job was last queued
 	// under (factory.Spending), which a step that names no model, on a job
 	// that names none, runs on; absent when the factory sets none.
-	FactoryModel  string            `json:"factory_model,omitempty"`
+	FactoryModel string `json:"factory_model,omitempty"`
+	// RunsOn is THE model the job's current or next conversation step runs on,
+	// and the rung that named it ([factory.StepModel], the same resolution the
+	// runner opens the step on). Absent when this factory cannot know it: no
+	// pick of the job's and no default here, its runner elsewhere. A step
+	// carries its own as step.runs_on. Hello word `factory.job_runs_on`.
+	RunsOn *factory.ModelChoice `json:"runs_on,omitempty"`
+	// Source is where the job came from ([factory.JobSource]): github with
+	// `owner/repo#N` and the issue's address, a connector's or a trigger's
+	// name with the job's key there. RepoURL is the address of the job's
+	// repository on its forge ([factory.RepoURL]), read off an address the
+	// forge gave rather than guessed from the name. Route is the routing rule
+	// that decided the job and, when that rule asked the AI, its answer.
+	// Hello word `factory.job_source`.
+	Source  *factory.JobSourceFacts `json:"source,omitempty"`
+	RepoURL string                  `json:"repo_url,omitempty"`
+	Route   *JobRoute               `json:"route,omitempty"`
+	// StepsDone of StepsTotal is how far the job is ([factory.StepCount]): THE
+	// ONE STEP COUNT, which the Brief's own steps_done and steps_total read
+	// too. A skipped step counts for neither. Hello word `factory.job_steps`.
+	StepsDone     int               `json:"steps_done"`
+	StepsTotal    int               `json:"steps_total"`
 	Reason        string            `json:"reason,omitempty"`
 	DoneHow       string            `json:"done_how,omitempty"`
 	DoneAt        time.Time         `json:"done_at"`
@@ -741,6 +762,9 @@ type NeedsYouGroup struct {
 // draw (DESIGN-BRIEF §5: triage, tier, origin, labels, checks, comments,
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
+	// SourceRef is the job's identity on a source outside the forge
+	// ([factory.Item.SourceRef]), as kept; a page reads job.source instead.
+	SourceRef string `json:"source_ref,omitempty"`
 	// EngineState preserves old documents without adding a sixth public state.
 	EngineState   string               `json:"engine_state,omitempty"`
 	Priority      *factory.JobPriority `json:"priority,omitempty"`
@@ -848,11 +872,17 @@ type Step struct {
 	// own in rounds.
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	// Model is the model the step's conversation ran on, once it ran.
-	Model      string `json:"model,omitempty"`
-	Handle     string `json:"handle,omitempty"` // desk
-	RunKind    string `json:"run_kind,omitempty"`
-	InPipeline bool   `json:"in_pipeline"`
-	InRun      bool   `json:"in_run"`
+	Model string `json:"model,omitempty"`
+	// RunsOn is the model a conversation step that has not finished runs on
+	// next, and the rung that named it ([factory.StepModel]); absent on a
+	// finished, skipped or non-conversation step, and where this factory
+	// cannot know it. ONLY A READER'S JOB CARRIES IT: a worker's report never
+	// does, so an older factory never meets it.
+	RunsOn     *factory.ModelChoice `json:"runs_on,omitempty"`
+	Handle     string               `json:"handle,omitempty"` // desk
+	RunKind    string               `json:"run_kind,omitempty"`
+	InPipeline bool                 `json:"in_pipeline"`
+	InRun      bool                 `json:"in_run"`
 	// Report is the step's whole last report (done, findings, claims, notes,
 	// output, exit), in the words a worker reports one with. ONLY THE WORKER'S
 	// PULL CARRIES IT ([WorkerJob]): the runner that takes a job on hands the

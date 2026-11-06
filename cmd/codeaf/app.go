@@ -3655,6 +3655,7 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	if err != nil {
 		return nil, false, appEntriesBusy(err)
 	}
+	appMarkStepBrief(page, transcript)
 	return page, more, nil
 }
 
@@ -4007,6 +4008,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		if entry.Kind == appwire.EntryUser && item.Person != nil {
 			entry.From = item.Person.From
 		}
+		entry.Author = appEntryAuthor(entry, item)
 		entries = append(entries, entry)
 		from = append(from, i)
 	}

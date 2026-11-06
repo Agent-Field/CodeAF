@@ -694,6 +694,45 @@ first two segments (`"internal/factory/"`), and a file directly inside one is
 the container (`"internal/"`). Every response that carries the job says the
 same area. It is absent when the job changed no file or only files at the root.
 
+### Factory job facts (`factory.job_source`, `factory.job_steps`, `factory.job_runs_on`)
+
+Each fact below is computed once in the engine (`internal/factory`) and sent on
+every job of `factory.queue` and on `factory.job`; a client draws it and never
+derives it again. All are additive; an engine without the word sends none of
+them, which reads as unknown.
+
+- `factory.job_source`:
+  - `source: {name, ref?, url?}` on every job that says where it came from.
+    `name` is `github`, a connector (`jira`), a trigger (`inbox:ops`), or
+    `terminal`/`chat` for a typed job. `ref` is the job's key there in the
+    source's spelling (`owner/repo#147`, `ENG-142`, `A1`); `url` is its address
+    there when the source sent one.
+  - `repo_url`: the repository's address, read off an address the forge gave
+    for it (the job's pull request, then its GitHub issue) so a non-github.com
+    host is kept; `https://github.com/<owner>/<name>` only when neither exists;
+    absent when the job names no `owner/name`. Clients stop building it from
+    `repo`.
+  - `route: {rule, answer?: {yes, why, model?}}`: the routing rule that decided
+    the job, and the AI's answer when that rule asked one. Absent when no rule
+    matched.
+- `factory.job_steps`: `steps_done` and `steps_total`, always present, THE ONE
+  STEP COUNT. The run's steps, then switched-on steps it has not reached; a
+  skipped step counts for neither side. The Brief's `steps_done`/`steps_total`
+  read the same function, and `step.index`/`step.count` stay the run's
+  position, never an "N of M".
+- `factory.job_runs_on`: `runs_on: {model, from}` on a read job (its current
+  conversation step's model, else its next one's, else its default) and on each
+  conversation step that has not finished. It is the resolution the runner
+  opens the step on. `from` names the rung: `step` (a person's pick for the
+  step), `job` (for the job), `one_model` (the runner runs every task on one
+  model), `effort` (the model the step's effort word runs on), `factory` (the
+  factory's default), `worker` (the person's worker model on the runner) or
+  `runner` (the runner's launch model). Absent where this factory cannot know
+  it (no pick, no default, its runner elsewhere). `model` keeps meaning the
+  person's pick for the job, `factory_model` the default it was queued under,
+  and `step.model` the model a step ran on; a worker's report never carries
+  `runs_on`.
+
 An engine whose hello carries the feature `factory.estimate` reads an issue
 with a complexity rubric and measures cost from its own finished jobs; a model
 never writes a price. A job's `triage.rubric` is `{scope, clarity, coupling,
@@ -1305,6 +1344,30 @@ this optional field; older engines provide no Library breakdown.
 | method | params | result |
 |---|---|---|
 | `work.graph` | `in.GraphRequest` | `GraphResult` |
+
+## Transcript entry author (`agents.entry_author`)
+
+An engine whose hello carries `agents.entry_author` sends `author` on the
+entries it reads from a conversation's transcript (`agents.entries` and
+`entry.added`):
+
+- `person`: a person's message;
+- `engine`: codeaf's own words. These are a factory step's opening
+  instructions (the step conversation's first message), a `[carry on]` nudge
+  in the person's seat (such as a step's reminder to call `stage_result`), the
+  factory runner's progress lines, and the session's quiet notes and
+  compaction summaries;
+- `agent`: the model's answers, updates and tool calls, and a crew's delivery.
+
+A user entry the engine wrote keeps kind `user`, because it is what the model
+reads in the person's seat; `author` says it is not the person's, so a client
+folds it without reading its words. Absent on entries built outside the
+transcript and from an older engine.
+
+`agents.suggest_reply` never offers a draft addressed to the model. A draft
+that names a tool of the conversation's belt (an underscored name such as
+`stage_result`) or opens with `[carry on]` is dropped where drafts are made,
+and the reply is empty.
 
 ## Events
 

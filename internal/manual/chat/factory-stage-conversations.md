@@ -422,7 +422,14 @@ from the job's budget like the job's steps: everything done for the job spends f
 
 ## Which model and branch does a factory step use?
 
-A step opens on the model selected for its job. A finished step's chat shows
+A step opens on the first that is set: a pick for that step on this job, a pick
+for the whole job, one model for every task (Task models or `--one-model`), the
+step's effort word (`cheap`: small work, `strong`: checks), the factory's
+default (Spending › Default model), your worker seat (Settings › Models ›
+worker), then the runner's own. With no factory default, steps run on your
+worker seat, never on a built-in default. The job page shows the choice and
+which rung made it, for the next step and each step still to run (`runs_on`).
+A finished step's chat shows
 the model recorded for that step when it is reopened, rather than the current
 profile default. New branches made by the app use the job person's GitHub
 login as their namespace; existing jobs keep their recorded branches.

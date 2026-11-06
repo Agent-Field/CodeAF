@@ -63,6 +63,11 @@ type Config struct {
 	// for the queue's `model`. Nil when this factory does not know it: a
 	// runner elsewhere decides with its own settings.
 	DefaultModel func() string
+	// RunnerModels answers what this factory's own runner knows about models
+	// (its effort models, its person's worker model, its launch model, whether
+	// it runs every task on one), for each read job's and step's runs_on
+	// ([factory.StepModel]). Nil when this factory's runners are elsewhere.
+	RunnerModels func() factory.RunnerModels
 	// ProfileDir resolves the solo factory's existing GitHub connection for setup reads.
 	ProfileDir string
 	// OperatorLogin names a solo host; team identity comes from the persisted claim.
@@ -514,6 +519,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			h.soloJob(&q.Jobs[i], s.Items[i], handle)
 		}
 	}
+	h.modelsIn(q.Jobs, issues)
 	h.judgeProtected(r.Context(), s.Items, q.Jobs)
 	q.Reason = reason
 	if reason != "" {
@@ -563,6 +569,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	h.modelsIn(jobs, []factory.Item{it})
 	if h.config.CodeOwners != nil && len(itemFiles(it)) > 0 {
 		rules, err := h.config.CodeOwners(r.Context(), itemRepo(it))
 		if err == nil {

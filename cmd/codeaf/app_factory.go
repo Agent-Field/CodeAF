@@ -28,7 +28,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
-	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
@@ -176,7 +175,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	seam = rememberGitHub(h.ctx, h.floor.Root(), h.chore, seam)
 	h.seam = seam
 	h.syncJiraReplier()
-	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
+	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, RunnerModels: h.runnerModelsOrNone, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
@@ -696,19 +695,36 @@ func (h *appFactoryHost) needs() string {
 }
 
 // defaultModel is the model this machine's runner opens a step on when the job
-// names none: the factory's default model, else the parent every stage opens
-// from, settled on the saved Task models policy, exactly as the stage maker
+// names none and the step says no effort: [factory.StepModel] over the
+// factory's default and this runner's models, exactly as the stage maker
 // reads it.
 func (h *appFactoryHost) defaultModel() string {
-	source, _, ok := h.parentSource()
+	runner, ok := h.runnerModels()
 	if !ok {
 		return ""
 	}
-	// The factory's own default stands in for the launch's, as it does when a
-	// step opens ([stageOpenModel]); a spending file that cannot be read says
-	// nothing here, and the start that reads it refuses.
+	// A spending file that cannot be read says nothing here, and the start
+	// that reads it refuses.
 	spending, _ := h.floor.Spending()
-	return strings.TrimSpace(stageOpenModel(source.Config(), factoryrun.ConversationSpec{FactoryModel: spending.DefaultModel}))
+	return factory.StepModel(factory.Stage{}, factory.Item{}, factory.ModelDefaults{Factory: spending.DefaultModel, Runner: runner}).Model
+}
+
+// runnerModels is what this machine's runner knows about models, read from the
+// parent every stage opens from, settled on the saved Task models policy; ok
+// is false when the worker cannot build one.
+func (h *appFactoryHost) runnerModels() (factory.RunnerModels, bool) {
+	source, _, ok := h.parentSource()
+	if !ok {
+		return factory.RunnerModels{}, false
+	}
+	return factoryRunnerModels(h.profile, source.Config()), true
+}
+
+// runnerModelsOrNone is [appFactoryHost.runnerModels] for the factory's reads:
+// none when the worker cannot build a parent.
+func (h *appFactoryHost) runnerModelsOrNone() factory.RunnerModels {
+	r, _ := h.runnerModels()
+	return r
 }
 
 // Power uses the elected runner's saved registration, so a second process
