@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: A routing rule's priority replaces the one Jira or an inbox entry sent, and the general factory has a live end-to-end suite
+title: A routing rule's priority replaces the one Jira or an inbox entry sent
 pr: 2482
 surface: [factory, engine]
 invalidates:
