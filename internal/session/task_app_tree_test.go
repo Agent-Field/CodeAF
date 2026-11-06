@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -122,7 +123,7 @@ func TestPlanStopEndsOpenWorkBelowAnAlreadyEndedRoot(t *testing.T) {
 func TestRunWorkerShellBindsItsOwnTask(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv(planCLIBinEnv, filepath.Join(t.TempDir(), "stub-codeaf"))
-	agent := newRunBeltWorker(t, 0)
+	agent := newRunBeltWorker(t, effort.None)
 	prefix := agent.graph().planBashPrefix()
 	for _, binding := range []string{plandb.RunEnv + "=", plandb.TaskEnv + "="} {
 		if !strings.Contains(prefix, binding+quoteShWord(planRootID)) {
