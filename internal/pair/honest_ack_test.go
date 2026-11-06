@@ -243,3 +243,24 @@ func TestAloneRefusesBeforeTheCode(t *testing.T) {
 		})
 	}
 }
+
+// A PERSON WHO STOPS AFTER THE ANSWER WENT OUT IS NOT TOLD NOTHING WAS PAIRED.
+// The joining computer may already hold the chats (here it kept them and its
+// word was lost), so the computer that showed the code says the pairing was not
+// confirmed and names where to look.
+func TestCancelAfterTheAnswerIsNotConfirmed(t *testing.T) {
+	r, hostile := hostileRig(t)
+	hostile.on(5, swallow)
+	sent := hostile.reachedMessage(4)
+	a := newScreen()
+	offer := startOffer(t, r, bounded(t, time.Minute), Grant{Identity: r.a}, a)
+	code := a.nextCode(t)
+	go func() {
+		<-sent
+		offer.stop()
+	}()
+	if _, err := Join(bounded(t, 20*time.Second), r.route, joiningAt(r.homeB), code.Shown(), newScreen()); err != nil {
+		t.Fatalf("B was told %v", err)
+	}
+	wantNotConfirmed(t, offer.wait(t), "laptop")
+}

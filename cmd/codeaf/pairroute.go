@@ -6,6 +6,7 @@ package main
 // take them from here, so the two doors cannot disagree about where a code goes.
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -132,4 +133,35 @@ func pairingRelay(dir string) syncsetup.Relay {
 		}
 	}
 	return selected
+}
+
+// recordWithinBeforeSend bounds the device record a solo computer writes just
+// before its identity leaves; the other computer is waiting for the answer.
+const recordWithinBeforeSend = 10 * time.Second
+
+// recordWithGrant puts this computer's own device record where the other
+// computer will look for it once it has joined, so it can name this one.
+//
+// A COMPUTER THAT ALREADY SYNCS WRITES IT BEFORE THE CODE IS SHOWN, as it always
+// has, and a refusal stops the code. A SOLO ONE WRITES NOTHING TO THE DIRECTORY
+// UNTIL A PERSON SAYS YES: the record goes out in the grant's BeforeSend, after
+// solo ends and before the identity leaves, and as best effort, because the
+// door writes it again once the pairing has finished.
+func recordWithGrant(ctx context.Context, home string, grant pair.Grant, record func(context.Context) error) (pair.Grant, error) {
+	if !identity.Solo(home) {
+		return grant, record(ctx)
+	}
+	before := grant.BeforeSend
+	grant.BeforeSend = func() error {
+		if before != nil {
+			if err := before(); err != nil {
+				return err
+			}
+		}
+		recordCtx, stop := context.WithTimeout(ctx, recordWithinBeforeSend)
+		defer stop()
+		_ = record(recordCtx)
+		return nil
+	}
+	return grant, nil
 }

@@ -263,3 +263,30 @@ func TestAppPairDeclinedCodeStaysSolo(t *testing.T) {
 		t.Fatal("a declined code ended A's solo state")
 	}
 }
+
+// CANCEL AFTER YES IS NOT "NOTHING WAS PAIRED". Once A answered, its identity has
+// gone out; a person who cancels while A waits for B's word is told the pairing
+// was not confirmed and to check B, which may hold the chats.
+func TestAppPairCancelAfterYesIsNotConfirmed(t *testing.T) {
+	celltest.Available(t)
+	relay := e2Relay(t)
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	// B refuses only after the exchange, so A is left waiting for its word.
+	dirs, syncs := pairedHomes(t, "B", "C")
+	if err := syncs[1].Dir.Revoke(context.Background(), syncs[0].Device.ID()); err != nil {
+		t.Fatal(err)
+	}
+	chatOfItsOwn(t, dirs[0])
+	_, recA, wa := appDeviceBackend(t, t.TempDir())
+	_, _, wb := appDeviceBackend(t, dirs[0])
+	defer assertAppPairCopyM9(t, recA)
+
+	offer, join := offerAndUse(t, wa, wb)
+	q := e2PairWait(t, wa, offer, "question")
+	machineCall[appwire.PairResult](t, wa, "pair.answer", appwire.PairAnswerParams{ID: offer, Question: q.Question.ID, Option: "y"})
+	e2PairWait(t, wb, join, "failed")
+	got := machineCall[appwire.PairResult](t, wa, "pair.cancel", appwire.IDParams{ID: offer}).Pairing
+	if got.State != "failed" || got.Error == nil || !strings.HasPrefix(got.Error.Message, "Pairing was not confirmed by B") || slices.Contains(got.Lines, appPairCancelled) {
+		t.Fatalf("a cancel after yes ended with %+v", got)
+	}
+}

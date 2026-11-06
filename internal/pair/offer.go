@@ -161,7 +161,10 @@ func conclude(ctx context.Context, joiner *offered, grant Grant, ui OfferUI) (st
 		}
 	}
 	if err := joiner.reply(reply); err != nil {
-		if errors.Is(err, ErrNotConfirmed) {
+		// Once the answer may have gone out, every ending without the joining
+		// device's word is not confirmed, a person's stop included: the grant
+		// may be there, so this computer never says nothing was paired.
+		if errors.Is(err, ErrNotConfirmed) || errors.Is(err, context.Canceled) {
 			return "", NotConfirmedBy(label)
 		}
 		return "", phraseBox(err, "")
