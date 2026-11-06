@@ -234,6 +234,8 @@ func cliRefusal(p *cliParsed) (string, bool) {
 // says where a run's store was, and only the root says which run it is.
 const RunEnv = "PLANDB_RUN"
 
+func cliRunBound() bool { return os.Getenv(RunEnv) != "" }
+
 // cliStore opens the run's store without being told where it is: --db, then
 // PLANDB_DB, then the first ancestor holding plandb.db or
 // .codeaf/plandb.db. One store per file; --project is accepted and checked
@@ -471,7 +473,7 @@ func cliAdd(st *Store, p *cliParsed) error {
 	if err := cliPlaceholderChecks(st, spec.Checks, spec.Title, spec.Description, "Nothing was added."); err != nil {
 		return err
 	}
-	created, err := st.AddMany([]TaskSpec{spec})
+	created, err := cliAddMany(st, []TaskSpec{spec})
 	if err != nil {
 		return err
 	}
@@ -521,7 +523,7 @@ func cliSplit(st *Store, p *cliParsed) error {
 	if err != nil {
 		return err
 	}
-	created, err := st.AddMany(specs)
+	created, err := cliAddMany(st, specs)
 	if err != nil {
 		return err
 	}
@@ -960,7 +962,7 @@ func cliInsert(st *Store, p *cliParsed) error {
 		}
 		before = down
 	}
-	created, err := st.AddMany([]TaskSpec{{
+	created, err := cliAddMany(st, []TaskSpec{{
 		ID: st.NextID(), Title: p.vals["title"], Description: p.vals["description"],
 		ParentID: up.ParentID,
 	}})
@@ -1032,7 +1034,7 @@ func cliPivot(st *Store, p *cliParsed) error {
 	// The whole subtree, read before the new children go in, so what
 	// --keep-done spared can be told apart from the replacements and reported.
 	standing := cliSubtreeAll(st, parent.ID)
-	created, err := st.AddMany(specs)
+	created, err := cliAddMany(st, specs)
 	if err != nil {
 		return err
 	}

@@ -245,6 +245,10 @@ func (s *Store) RootID() string {
 // CLI mints short random ones — `t-` + six base-36 characters — and honours
 // `--as` names. Both roads end here.
 func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
+	return s.addMany(specs, false)
+}
+
+func (s *Store) addMany(specs []TaskSpec, bounded bool) ([]*Task, error) {
 	if len(specs) == 0 {
 		return nil, errors.New("tasks must not be empty")
 	}
@@ -276,6 +280,11 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 				return fmt.Errorf("duplicate task id %q", specs[i].ID)
 			}
 			batch[specs[i].ID] = true
+		}
+		if bounded {
+			if err := boundedGrowthRefusal(*next, s.rdb, specs); err != nil {
+				return err
+			}
 		}
 		for _, spec := range specs {
 			if next.Tasks[spec.ParentID] == nil && !batch[spec.ParentID] {
