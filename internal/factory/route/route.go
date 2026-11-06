@@ -13,6 +13,12 @@ package route
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -114,20 +120,92 @@ func Decide(rules []Rule, it factory.Item, have Answers) Outcome {
 	return Outcome{}
 }
 
-// Matches says whether every field of m except Ask holds for it. The routing
-// lane fills this in.
+// Matches says whether every field of m except Ask holds for it. It is PURE
+// — no store, no clock, no network, no model — so the same rules and the same
+// item always give the same answer, and a test is a table.
+//
+// A SOURCE matches the item's Origin or SourceRef, whole or up to a ':' or
+// '/': "github" holds for a forge issue, "jira" for Origin `jira`, and both
+// "inbox" and "inbox:ops" for an inbox job (Origin `inbox:ops`). A REPO is compared as
+// [factory.RepoOf] spells it, a LABEL and an AUTHOR without regard to case
+// (an author's leading @ dropped), TEXT as a case-insensitive substring of
+// the title or the body, and a PRIORITY as the p0..p3 spelling of
+// [factory.PriorityFor].
 func Matches(m Match, it factory.Item) bool {
-	_ = m
-	_ = it
-	return false
+	return anyOf(m.Sources, func(s string) bool { return sourceIs(it, s) }) &&
+		anyOf(m.Repos, func(r string) bool { return strings.EqualFold(r, factory.RepoOf(it)) }) &&
+		anyOf(m.Labels, func(l string) bool {
+			return slices.ContainsFunc(it.Labels, func(have string) bool { return strings.EqualFold(strings.TrimSpace(have), l) })
+		}) &&
+		anyOf(m.Authors, func(a string) bool { return factory.NormalizeHandle(a) == factory.NormalizeHandle(it.Author) }) &&
+		anyOf(m.Text, func(t string) bool { return containsFold(it.Title, t) || containsFold(it.Body, t) }) &&
+		anyOf(m.Priority, func(p string) bool { return p == priorityOf(it) })
 }
 
-// AnswerKey ties a answer to the question and to the item's own words
-// (title, body, labels), so an edited ticket is judged again. The routing
-// lane fills this in (a short stable hash).
-func AnswerKey(ask string, it factory.Item) string {
-	_, _ = ask, it
+// anyOf is the one shape of every list field: empty holds, else any one entry.
+func anyOf(want []string, holds func(string) bool) bool {
+	return len(want) == 0 || slices.ContainsFunc(want, holds)
+}
+
+// sourceIs says whether source names where it came from: its Origin or its
+// SourceRef, either whole or up to a ':' or '/', without regard to case. An
+// inbox job has Origin `inbox:ops` and SourceRef `inbox:ops:A1`, so "inbox"
+// and "inbox:ops" both hold for it and "inbox:op" does not.
+func sourceIs(it factory.Item, source string) bool {
+	return namesFront(string(it.Origin), source) || namesFront(it.SourceRef, source)
+}
+
+func namesFront(have, source string) bool {
+	rest, ok := strings.CutPrefix(strings.ToLower(have), strings.ToLower(source))
+	return ok && source != "" && (rest == "" || rest[0] == ':' || rest[0] == '/')
+}
+
+func containsFold(s, sub string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
+}
+
+// priorityOf is the item's priority as a rule spells it, "" for none.
+func priorityOf(it factory.Item) string {
+	if p := factory.PriorityFor(it); p != nil {
+		return factory.PriorityShort(p.Value)
+	}
 	return ""
+}
+
+// AnswerKey ties an answer to the question and to the item's own words, so
+// an edited ticket is judged again and an unchanged one never is. It is the
+// first 16 hex digits of a SHA-256 over the question, the title, the body and
+// the labels sorted without regard to case, each part length-prefixed so no
+// two different sets of words can run together into the same input.
+func AnswerKey(ask string, it factory.Item) string {
+	labels := make([]string, 0, len(it.Labels))
+	for _, l := range it.Labels {
+		labels = append(labels, strings.ToLower(strings.TrimSpace(l)))
+	}
+	sort.Strings(labels)
+	h := sha256.New()
+	for _, part := range append([]string{strings.TrimSpace(ask), it.Title, it.Body}, labels...) {
+		fmt.Fprintf(h, "%d:%s;", len(part), part)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// HeldAnswers reads the answers kept on it ([factory.Item.Judged]) as
+// Decide looks them up.
+func HeldAnswers(it factory.Item) Answers {
+	return func(rule string) (Answer, bool) {
+		v, ok := it.Judged[rule]
+		return Answer{Yes: v.Yes, Why: v.Why, Model: v.Model, Key: v.Key}, ok
+	}
+}
+
+// RepoFor is the repository the action sends it to: the action's own when it
+// names one, else the one it already has.
+func (a Action) RepoFor(it factory.Item) string {
+	if a.Repo != "" {
+		return a.Repo
+	}
+	return it.Repo
 }
 
 // Judge answers one rule's question about one item. The model-backed judge

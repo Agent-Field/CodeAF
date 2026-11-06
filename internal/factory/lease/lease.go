@@ -195,7 +195,25 @@ func (d *Desk) Release(id int, handle string) error {
 	})
 }
 
-// Pull takes the oldest eligible queued item. One worker holds one job; an
+// runsBefore is THE QUEUE'S ORDER: whether a runs before b. A job a person
+// said to start now (Marked) runs before every other; then priority, p0
+// before p1 before p2 before p3 before a job with none ([factory.PriorityRank]:
+// a person's mark, a routing rule's, or a p0..p3 / priority:* label); then
+// the oldest, and the lower number between two made in the same instant.
+func runsBefore(a, b factory.Item) bool {
+	if a.Marked != b.Marked {
+		return a.Marked
+	}
+	if pa, pb := factory.PriorityRank(a), factory.PriorityRank(b); pa != pb {
+		return pa < pb
+	}
+	if a.Created.Equal(b.Created) {
+		return a.ID < b.ID
+	}
+	return a.Created.Before(b.Created)
+}
+
+// Pull takes the first eligible queued item in [runsBefore]'s order. One worker holds one job; an
 // opt-in applies only to unassigned work in that exact repository. A computer
 // already running its Jobs at once takes only a job a person said to start now
 // ([factory.Item.OverLimit]), and never any other.
@@ -221,17 +239,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 		if err != nil {
 			return false, err
 		}
-		sort.Slice(items, func(i, j int) bool {
-			if items[i].Marked != items[j].Marked {
-				return items[i].Marked
-			}
-			// Priority is a view mark. Execution remains oldest first unless a
-			// person explicitly moved queued work to the top (Marked above).
-			if items[i].Created.Equal(items[j].Created) {
-				return items[i].ID < items[j].ID
-			}
-			return items[i].Created.Before(items[j].Created)
-		})
+		sort.Slice(items, func(i, j int) bool { return runsBefore(items[i], items[j]) })
 		for _, it := range items {
 			if !eligible(it, worker) || find(doc, it.ID) != nil || full && !overLimit(it) {
 				continue

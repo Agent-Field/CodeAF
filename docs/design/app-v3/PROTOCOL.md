@@ -317,6 +317,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.rules` | `in.FactoryRef` | `FactoryRules` |
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
+| `factory.routes` | `in.FactoryRef` | `FactoryRoutes` |
+| `factory.routes_set` | `in.FactoryRoutesSetParams` | `FactoryRoutes` |
+| `factory.routes_test` | `in.FactoryRoutesTestParams` | `FactoryRoutesTried` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
 | `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
@@ -565,6 +568,28 @@ one repository, so there is one pair per factory. Both fields are absent when
 the rules were never written, and when the factory last wrote them with a build
 that did not record the change. A write sent with the factory's script
 credential records the factory's operator.
+
+An engine whose hello carries the feature `factory.routes` serves
+`factory.routes {factory}` and `factory.routes_set {factory, rules, expect?}`:
+the factory's routing table, an ordered list where the first rule that
+matches an arriving item decides it. A rule is
+`{"name": "...", "when": {sources?, repos?, labels?, authors?, text?,
+priority?}, "then": {repo?, pipeline?, priority?, start}}`; every `when` list
+matches when any entry does and an absent one matches anything; `start` is
+`auto`, `ask` or `backlog`; priorities are `p0`..`p3`; repositories are
+`owner/name`. The reply is `{"factory": "...", "rules": [...], "changed_by"?,
+"changed_at"?}`, `rules` always present (`[]` for none). `rules_set` replaces
+the whole table; an omitted `rules` is `bad_params`, a bad rule is
+`bad_params` naming it, only the operator may write (`forbidden`), and an
+`expect` that is not what the factory keeps is `stale` with nothing written.
+A rule's `when` may also carry `ask`, one yes/no question of at most 300
+characters for the factory's judge; a rule with a question matches only on a
+yes kept on the job. `factory.routes_test {factory, rules, limit?}` tries a
+table (need not be the kept one) on the newest `limit` jobs the caller may see
+(default 50, at most 200) and answers `{"factory": "...", "jobs": [{job, ref,
+title, outcome, rule?, why?}]}`, newest first, where `outcome` is `matched`,
+`pending` (a question with no answer kept yet) or `none`. It writes nothing
+and asks no model.
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts

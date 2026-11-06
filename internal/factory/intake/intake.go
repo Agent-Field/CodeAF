@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/estimate"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
@@ -42,6 +43,11 @@ type Options struct {
 	// look changed. A failed look (a limit, no answer) never stops the start.
 	// Nil starts on the arrival read alone.
 	Scout func(ctx context.Context, id int) error
+	// Judge answers a routing rule's question ([route.Match.Ask]) about one
+	// job, at most once per rule per job per pass, and only when every other
+	// field of the rule already holds. Nil is no judge: a rule that asks a
+	// question then never matches, and nothing is paid.
+	Judge route.Judge
 }
 
 type Intake struct {
@@ -93,25 +99,72 @@ func (in *Intake) Once(ctx context.Context) error {
 	// The ledger is read once a pass, from the same list: what jobs like
 	// each one cost is measured from the floor's finished jobs.
 	book := estimate.Open(items)
+	// THE ROUTING TABLE IS READ ONCE A PASS, and an unreadable one stops the
+	// pass rather than reading as no rules ([store.Store.Routes]).
+	rules, err := in.st.Routes()
+	if err != nil {
+		return err
+	}
 	var errs []error
 	for _, it := range items {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" || sw.OffJob(it) {
+		routed, ok, err := in.admit(ctx, it, rules, sw)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if !ok {
 			continue
 		}
-		// A JOB WITH NO REPOSITORY HAS NO RULES TO READ and could not be
-		// launched ([factory.NoRepoRefusal]): outside work waits in Backlog
-		// until a routing rule or a person names one.
-		if factory.RepoOf(it) == "" {
-			continue
-		}
-		if err := in.decide(ctx, it, book); err != nil {
+		if err := in.decide(ctx, it, book, routed); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// admit is THE ORDERED FILTER of one pass: whether intake works on it now,
+// and its routing decision when it does. The order is the law, because each
+// step answers a question the next one needs:
+//
+//  1. its own state: a job a person stopped, one done, a non-issue, a
+//     first-run import held for its person, one not new, or one already
+//     waiting on an ask-first hold is passed by, and costs nothing more;
+//  2. ROUTING, before anything that reads its labels or its repository: an
+//     inbox or Jira job arrives with neither, and a rule is what gives it a
+//     repository and admits it without a label;
+//  3. today's label skip, for a job NO rule matched only: unlabelled work a
+//     person filed waits for a person, exactly as before routing existed;
+//  4. a repository, as routed: none has no rules to read and could not be
+//     launched ([factory.NoRepoRefusal]), so it waits in Backlog;
+//  5. that repository's switch ([factory.RepoSwitch]): one that is off is
+//     passed by, its rules unread;
+//  6. a job its rule already filed in Backlog is left there, so a pass does
+//     not read its file again for nothing.
+//
+// A routing error (a judge that cannot be kept) is answered with false, and
+// the pass goes on to the next job.
+func (in *Intake) admit(ctx context.Context, it factory.Item, rules []route.Rule, sw factory.RepoSwitch) (*routing, bool, error) {
+	if factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || it.AskedFirstReason != "" {
+		return nil, false, nil
+	}
+	routed, err := in.routeFor(ctx, rules, it)
+	if err != nil {
+		return nil, false, err
+	}
+	target := routedTo(it, routed)
+	switch {
+	case routed == nil && len(it.Labels) == 0:
+		return nil, false, nil
+	case factory.RepoOf(target) == "":
+		return nil, false, nil
+	case sw.OffJob(target):
+		return nil, false, nil
+	case routed != nil && routed.rule.Then.Start == route.StartBacklog && it.Route == routed.rule.Name:
+		return nil, false, nil
+	}
+	return routed, true, nil
 }
 
 // load is the file job it is decided under: its own ([Options.LoadJob]),
@@ -131,23 +184,26 @@ func Cost(book estimate.Book, it factory.Item) pipeline.Measured {
 	return pipeline.Measured{USD: r.USDHi, Known: ok}
 }
 
-func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Book) error {
-	f, err := in.load(it)
+// decide starts, holds or leaves one job. routed is its routing decision,
+// nil when no rule matched; everything that changes goes through the routing
+// seam (route.go).
+func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Book, routed *routing) error {
+	f, err := in.load(routedTo(it, routed))
 	if err != nil {
 		return err
 	}
-	decision := f.DecideJob(it, Job(it).Paths, Cost(book, it))
+	decision := startDecision(f, it, Cost(book, it), routed)
 	if (decision.Start || decision.Ask) && factory.ClosedForAutomation(ctx, in.st.Root(), it, in.opts.Standing) {
 		return nil
 	}
 	if decision.Start {
 		if looked, ok := in.lookFirst(ctx, it); ok {
 			it = looked
-			decision = f.DecideJob(it, Job(it).Paths, Cost(book, it))
+			decision = startDecision(f, it, Cost(book, it), routed)
 		}
 	}
 	if !decision.Start && !decision.Ask {
-		return nil
+		return in.file(ctx, it, f, routed)
 	}
 	// ONLY A JOB THE RULES START IS THE OWNER'S. One they hold waits for
 	// whoever approves it: owning it would shut out a teammate who could
@@ -161,14 +217,16 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 			cur.Starter = owner
 		}
 	}
-	kind, reason := record.AutoStarted, "inside start rules"
+	kind, reason := record.AutoStarted, startReason(routed)
 	if decision.Ask {
 		kind, reason = record.AskedFirst, strings.Join(decision.Reasons, "; ")
 		err = in.st.Update(it.ID, func(cur *factory.Item) error {
 			if err := in.canStart(ctx, *cur); err != nil {
 				return err
 			}
-			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			if err := stage(cur, f, routed); err != nil {
+				return err
+			}
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
 			cur.DecidePipeline(f.Copy, time.Now())
 			if cur.Cap <= 0 {
@@ -187,7 +245,9 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 			if err := in.canStart(ctx, *cur); err != nil {
 				return err
 			}
-			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			if err := stage(cur, f, routed); err != nil {
+				return err
+			}
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
 			// THE JOB'S FILE IS DECIDED WITH ITS STEPS: the launch just below
 			// reads this one, not a copy saved in between.
@@ -218,6 +278,26 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 }
 
 var errMoved = errors.New("intake: job already moved")
+
+// file keeps a routed job that starts nothing where it is, in Backlog, with
+// its rule's decision written on it ([applyRoute]) so the board shows the
+// repository, priority and steps the rule chose. An unrouted job is left
+// untouched, as before.
+func (in *Intake) file(ctx context.Context, it factory.Item, f pipeline.File, routed *routing) error {
+	if routed == nil {
+		return nil
+	}
+	err := in.st.Update(it.ID, func(cur *factory.Item) error {
+		if err := in.canStart(ctx, *cur); err != nil {
+			return err
+		}
+		return stage(cur, f, routed)
+	})
+	if errors.Is(err, errMoved) {
+		return nil
+	}
+	return err
+}
 
 // lookFirst looks at a job closer before an automatic start and answers the
 // job as the look left it; false when there is no scout, the job already has

@@ -846,7 +846,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 			recipe = f.Recipe()
 			copied, decided = f.Copy, true
 		}
-		selected = pipelineStages(recipe, body.Pipeline)
+		selected = recipe.Named(body.Pipeline)
 		if len(selected) == 0 {
 			h.fail(w, 422, "pipeline not found")
 			return
