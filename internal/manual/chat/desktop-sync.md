@@ -194,13 +194,10 @@ once if that computer saved again first.
 
 ## Does an idle desktop chat keep its hold on the relay
 
-A chat opened for viewing keeps its conversation and relay hold, including while
-its tab is hidden, as long as it is one of the three most recently used open
-chats. Heartbeats renew the same hold without releasing it or moving its fence.
-Reading the chat does not cause ownership changes or repeat unchanged chat rows.
-An older open chat left idle for ten minutes is let go like a background chat,
-which frees its files and timers; using it again opens it through the normal
-ownership check. Closing a chat lets it go at once.
+A chat opened for viewing keeps its conversation and relay hold until it is
+explicitly closed, including while its tab is hidden. Heartbeats renew the same
+hold without releasing it or moving its fence. Reading the chat does not cause
+ownership changes or repeat unchanged chat rows.
 
 A conversation opened only for background work is let go after ten idle minutes;
 the sweep checks every 30 seconds. It stays released until work needs it again.
