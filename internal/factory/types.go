@@ -184,6 +184,17 @@ func (r Recipe) For(k Kind) []Stage {
 	return r.Stages
 }
 
+// Named is the steps the pipeline called name runs, as a person picks it on
+// start (factory.job_start {pipeline}) or a routing rule names it: the issue
+// pipeline as the runner reads it (its fallback included), any other only
+// when the file lists it, and nil when it does not.
+func (r Recipe) Named(name string) []Stage {
+	if name == string(KindIssue) {
+		return r.For(KindIssue)
+	}
+	return r.ByKind[Kind(name)]
+}
+
 // Triage is the cheap read made on arrival (internal/factory/triage): dim
 // facts a person reads. Intake uses size, cost and the explicitly judged
 // ask-first sentences only when the repository opts into automatic starts.
@@ -590,7 +601,11 @@ type Item struct {
 	SourceRef string `json:",omitempty"`
 	// Route is the name of the routing rule that decided this item's repository,
 	// pipeline, priority and start ([route.Rule]), empty when none matched.
-	Route   string `json:",omitempty"`
+	Route string `json:",omitempty"`
+	// Judged is each routing rule's AI answer about this item, by rule name
+	// ([route.Answer]), kept so a question is asked once per version of the
+	// item's words. nil is never judged.
+	Judged  map[string]RouteAnswer `json:",omitempty"`
 	Synced  bool
 	Created time.Time
 	Changed time.Time

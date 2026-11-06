@@ -3541,6 +3541,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"make the factory ask before it touches auth", "factory"},
 		{"why did Auto stop at the plan saying a rule asks first", "factory"},
 		{"stop the plan from changing the pipeline steps", "factory"},
+		{"send Jira tickets to a repository with a routing rule", "factory"},
+		{"route inbox work to a pipeline and start it by itself", "factory"},
+		{"does priority change which factory job runs next", "factory"},
+		{"why did a newer p0 job run before the older ones", "factory"},
+		{"who can change the routing rules", "factory"},
+		{"can a routing rule ask the AI whether a ticket is a small bug fix", "factory"},
+		{"what does couldn't judge mean on a job", "factory"},
+		{"test these rules before saving them", "factory"},
 		{"make the factory start issues by itself", "factory"},
 		{"can an AI filter decide which tickets the factory starts", "factory"},
 		{"what does the factory filter charge on spending", "factory"},
@@ -3788,7 +3796,7 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 
 // THE CHAT MANUAL SPEAKS THE PERSON'S WORDS AND NOT THE HARNESS'S.
 //
-// `auditor`, `verdict`, `verified` and `refuted` are the machinery's own
+// `auditor`, `answer`, `verified` and `refuted` are the machinery's own
 // vocabulary, and internal/session bans them from every string a person or the
 // chat model reads (task_audit.go's vocabulary law, held there by
 // `assertPlainWords`). The manual is read by both — the chat answers "why did it
@@ -3806,7 +3814,7 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 // called. Those are addresses too, and the four here are the ones that describe
 // WORK — which is what the law is about.
 func TestNoChatPageSpeaksTheHarnessesOwnVocabulary(t *testing.T) {
-	banned := regexp.MustCompile(`(?i)\b(auditors?|verdicts?|verified|refuted)\b`)
+	banned := regexp.MustCompile(`(?i)\b(auditors?|answers?|verified|refuted)\b`)
 	// Everything inside backticks is a handle somebody types or reads back.
 	handles := regexp.MustCompile("`[^`]*`")
 	for _, section := range Chat().Sections() {

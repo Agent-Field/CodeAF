@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"sync"
@@ -510,14 +511,27 @@ func TestReleaseClearsOnlyThePersonsTake(t *testing.T) {
 	}
 }
 
-func TestPriorityMarksDoNotReorderExecution(t *testing.T) {
+// PRIORITY ORDERS EXECUTION. With Jobs at once 1 and two older p2 jobs
+// queued, a newer p0 job runs next; a job a person said to start now still
+// runs before it, and the two p2 jobs then run oldest first, whether p2
+// came from a label or a mark.
+func TestPriorityOrdersExecutionAtOneJobAtOnce(t *testing.T) {
 	f := setup(t)
-	first := f.add(t, factory.Item{Assignee: "sam", Priority: &factory.JobPriority{Value: "low", SetBy: "sam"}})
+	older := f.add(t, factory.Item{Assignee: "sam", Labels: []string{"p2"}})
 	f.now = f.now.Add(time.Second)
-	f.add(t, factory.Item{Assignee: "sam", Priority: &factory.JobPriority{Value: "urgent", SetBy: "sam"}, Labels: []string{"priority:urgent"}})
-	held, err := f.desk.Pull(worker("laptop", "sam"))
-	if err != nil || held.Job != first.ID {
-		t.Fatalf("priority is a view mark, oldest job must run first: got %+v, %v; want %d", held, err, first.ID)
+	newer := f.add(t, factory.Item{Assignee: "sam", Priority: &factory.JobPriority{Value: "medium"}})
+	f.now = f.now.Add(time.Second)
+	urgent := f.add(t, factory.Item{Assignee: "sam", Priority: &factory.JobPriority{Value: "urgent", SetBy: "sam"}})
+	f.now = f.now.Add(time.Second)
+	marked := f.add(t, factory.Item{Assignee: "sam", Marked: true})
+	// Each pull is one computer running one job at once: the job it takes is
+	// the head of the queue, and the next computer takes the one after it.
+	for i, want := range []int{marked.ID, urgent.ID, older.ID, newer.ID} {
+		w := lease.Worker{ID: fmt.Sprintf("w%d", i), Machine: fmt.Sprintf("mac-%d", i), Handle: "sam", Slots: 1}
+		held, err := f.desk.Pull(w)
+		if err != nil || held.Job != want {
+			t.Fatalf("pull %d: got %+v, %v; want job %d", i+1, held, err, want)
+		}
 	}
 }
 

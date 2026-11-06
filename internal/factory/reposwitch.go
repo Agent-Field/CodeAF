@@ -103,3 +103,18 @@ func UnderWay(it Item) bool {
 	}
 	return false
 }
+
+// RepoName says whether s is `owner/name`: two non-empty parts, no spaces,
+// nothing that could walk out of an API path.
+func RepoName(s string) bool {
+	owner, name, ok := strings.Cut(strings.TrimSpace(s), "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return false
+	}
+	for _, part := range []string{owner, name} {
+		if part == "." || part == ".." || strings.ContainsAny(part, " \t\n?#%\\") {
+			return false
+		}
+	}
+	return true
+}

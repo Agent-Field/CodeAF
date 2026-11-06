@@ -67,13 +67,20 @@ func JobKey(it Item) string {
 	return fmt.Sprintf("%s#%d", repo, number)
 }
 
-func ValidPriority(value string) bool {
-	return slices.Contains([]string{"urgent", "high", "medium", "low"}, value)
+func ValidPriority(value string) bool { return PriorityShort(value) != "" }
+
+// priorityLevels is THE ONE TABLE of priority spellings, most urgent first:
+// the value a person's mark keeps, the priority:* label and the p0..p3 short
+// form. A level's position is its place in the queue ([PriorityRank]).
+var priorityLevels = []struct{ value, label, short string }{
+	{"urgent", "priority:urgent", "p0"}, {"high", "priority:high", "p1"},
+	{"medium", "priority:medium", "p2"}, {"low", "priority:low", "p3"},
 }
 
 // PriorityFor never consults AI ranking: a person's persisted mark wins over
 // priority:* and p0..p3 issue labels. A "bug" label is a type, not a priority,
-// so it yields no mark: priority is only ever something a person chose.
+// so it yields no mark: priority is only ever something a person chose, or a
+// routing rule the operator wrote chose for them.
 func PriorityFor(it Item) *JobPriority {
 	if it.Priority != nil {
 		p := *it.Priority
@@ -83,15 +90,47 @@ func PriorityFor(it Item) *JobPriority {
 	for _, label := range it.Labels {
 		labels[strings.ToLower(strings.TrimSpace(label))] = true
 	}
-	for _, p := range []struct{ value, label, short string }{
-		{"urgent", "priority:urgent", "p0"}, {"high", "priority:high", "p1"},
-		{"medium", "priority:medium", "p2"}, {"low", "priority:low", "p3"},
-	} {
+	for _, p := range priorityLevels {
 		if labels[p.label] || labels[p.short] {
 			return &JobPriority{Value: p.value}
 		}
 	}
 	return nil
+}
+
+// PriorityShort is the p0..p3 spelling of a priority value, "" for none.
+func PriorityShort(value string) string {
+	for _, p := range priorityLevels {
+		if p.value == value {
+			return p.short
+		}
+	}
+	return ""
+}
+
+// PriorityFromShort is the value a p0..p3 spelling names, false for anything
+// else.
+func PriorityFromShort(short string) (string, bool) {
+	for _, p := range priorityLevels {
+		if p.short == short {
+			return p.value, true
+		}
+	}
+	return "", false
+}
+
+// PriorityRank is the job's place in the queue by priority alone: 0 for urgent
+// (p0) through 3 for low (p3), and 4 for a job with no priority, which runs
+// after every job that has one.
+func PriorityRank(it Item) int {
+	if p := PriorityFor(it); p != nil {
+		for i, level := range priorityLevels {
+			if level.value == p.Value {
+				return i
+			}
+		}
+	}
+	return len(priorityLevels)
 }
 
 // JobSize comes only from the issue's explicit size labels: "size:m" or
@@ -404,23 +443,6 @@ func Overlaps(a, b Item) bool {
 		}
 	}
 	return false
-}
-
-// PriorityRank orders the four choices and puts an unset default last.
-func PriorityRank(it Item) int {
-	if p := PriorityFor(it); p != nil {
-		switch p.Value {
-		case "urgent":
-			return 0
-		case "high":
-			return 1
-		case "medium":
-			return 2
-		case "low":
-			return 3
-		}
-	}
-	return 4
 }
 
 // CanRunAsNew says the work has ended, so a person may start its request anew.

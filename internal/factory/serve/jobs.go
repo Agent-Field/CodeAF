@@ -116,16 +116,6 @@ func (h *Handler) pickRefused(w http.ResponseWriter, it factory.Item, pick strin
 	return true
 }
 
-// pipelineStages is the steps one kind's pipeline runs: the issue pipeline as
-// the runner reads it (its fallback included), any other kind only when the
-// file lists it.
-func pipelineStages(recipe factory.Recipe, kind string) []factory.Stage {
-	if kind == string(factory.KindIssue) {
-		return recipe.For(factory.KindIssue)
-	}
-	return recipe.ByKind[factory.Kind(kind)]
-}
-
 // startRefused answers every refusal a start makes before it writes, and true
 // when it refused.
 func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
@@ -204,7 +194,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 				h.fail(w, 503, "The repository's pipeline file could not be read, so this job cannot start on a picked pipeline yet.")
 				return false
 			}
-			if picked = pipelineStages(file.Recipe(), pick); len(picked) == 0 {
+			if picked = file.Recipe().Named(pick); len(picked) == 0 {
 				h.fail(w, 422, "pipeline not found")
 				return false
 			}

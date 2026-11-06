@@ -118,7 +118,7 @@ Lowering the limit lets admitted jobs finish and withholds new jobs until there
 is room. Raising it admits queued work up to the new limit. There are no CPU or
 memory limits per job: the computer's own system shares them.
 
-Jobs over the limit wait in the queue, oldest first. When the owner's eligible
+Jobs over the limit wait in the queue in priority order, then oldest first (see "priority orders the queue"). When the owner's eligible
 computers are full, queued jobs say **Waiting for capacity** and show the
 number of occupied execution slots and the configured limit. The notice points
 to Settings → Factory → Your computers and offers **Change jobs at once**. An
@@ -299,6 +299,43 @@ The job keeps what each check found: on its Steps panel, **Before it starts** an
 ## pick up issues — labelled work starts by itself, its labels, who owns those jobs
 
 **Pick up issues** is the factory's switch for starting new issues by itself. It is not a job's Auto: Auto lets one running job pass its routine approvals, while Pick up issues lets the factory start jobs nobody started. It is off until you turn it on, from the yellow switch on the factory's Jobs tab; Labels beside it lists the labels it picks up. While it is on, the factory starts an issue by itself when it carries one of those labels, or its repository's own `start.labels`, and clears every rule (size, cost, ask first, never). An issue a rule flags waits with "Approval needed: start ·" and the rule. A job started this way belongs to the factory's owner (its operator) unless the issue is assigned to someone, so Auto can carry it and its approvals come to the owner. While it is off, a factory on your own machine starts nothing a person did not start; a team server always runs its repositories' own start labels, and adds the factory's only while it is on. Turning it off stops the next start at once.
+
+## routing rules — send Jira tickets and inbox work to a repository, a pipeline, a priority, start by itself, ask first or Backlog
+
+The factory keeps one **routing table**: an ordered list of rules, read for every new job from every source (a GitHub issue, a Jira ticket, an `inbox:<name>` trigger). **The first rule that matches decides**; there is no scoring and no merging of two rules. With no rules, jobs behave exactly as before: labels decide.
+
+A rule has a `name`, a `when` and a `then`:
+
+- `when`: `sources` (`github`, `jira`, `inbox`, or one inbox such as `inbox:ops`), `repos` (`owner/name`), `labels`, `authors` (handles or emails), `text` (words in the title or body, any case) `priority` (`p0`..`p3`), and `ask`, a yes/no question for the AI (see "a routing rule that asks the AI"). Every list you fill must hold, and a list holds when any one entry does; an empty list matches anything.
+- `then`: `repo` (`owner/name` the job is worked on), `pipeline` (a pipeline named in that repository's `factory.yaml`, the same names Start's pipeline pick takes; not `pr` or `ci`), `priority` (`p0`..`p3`), and `start`, which is required: `auto`, `ask` or `backlog`.
+
+**A routed job needs no label.** `auto` starts it inside its repository's start rules (size, cost, protected paths still hold it, with "Approval needed: start ·" and the rule). `ask` holds it with "Approval needed: start · routing rule <name>". `backlog` files it in Backlog with the rule's repository, priority and steps on it, and starts nothing. A person's own priority mark wins over a rule's. A pipeline the target repository's file does not list refuses the rule and leaves the job unchanged. On a factory on your own machine, nothing starts by itself while **Pick up issues** is off, routed or not.
+
+## a routing rule that asks the AI — when ask, a yes/no question, "couldn't judge", a stranger's ticket, test these rules
+
+A rule's `when` can carry `ask`: one yes/no question in your own words, at most 300 characters on one line, such as "Is this a small, well-specified bug fix that does not touch billing?". It is asked **last**, only when every other field of the rule already holds, so a model is paid only for jobs that could match. The answer and its one-sentence reason are kept on the job, and the question is asked again only when the job's title, body or labels change. A yes lets the rule decide; a no reads on to the next rule. The activity line of a job the rule started or held names the rule and the reason, such as `routing rule small fixes · a one-line colour fix`.
+
+Limits, stated plainly:
+
+- **A failure is a no, never a yes.** When the question cannot be answered (a timeout, a limit), the job keeps "couldn't judge: " and the cause, the table reads on, and the next pass asks once more. No question is asked more than once per rule per job in one pass.
+- **A stranger's ticket is never started by an AI yes.** Its words were the model's input and could say "answer yes", so a rule with `start: auto` holds it with "Approval needed: start" instead, adding `asks first: an AI yes never starts a stranger's ticket`.
+- With no judge on the factory, a rule that asks a question never matches.
+
+**Test these rules**: `factory.routes_test` tries a table you have not saved on the newest jobs you can see (50 unless you say, at most 200) and says, newest first, which rule each would match, which question has no answer yet (`pending`), or `none`. It saves nothing and asks no model: only answers already kept on jobs are read.
+
+## who can change the routing rules — operator only, a bad rule, no routing screen yet
+
+The routing table (see "routing rules") is kept by the factory itself, on a team the shared server, and only its operator can change it; everyone signed in can read it. A bad rule (no name, two rules with one name, a start that is not auto, ask or backlog, a priority outside p0..p3, a repository that is not `owner/name`) refuses the whole table, and nothing is saved. A change sent after someone else changed the table is refused the same way: read it again, then make the change. There is no screen for the table in the app yet: it is read and written over the app protocol, `factory.routes` and `factory.routes_set`.
+
+## priority orders the queue — which job runs next, p0 before p1, urgent first, priority labels, why a newer job ran first
+
+Priority is not only a mark on the board: **it decides which queued job a computer takes next.** The order is:
+
+1. a job a person said to **Start now**, before every other;
+2. then priority: `p0` (urgent) before `p1` (high) before `p2` (medium) before `p3` (low), and every job with a priority before one with none;
+3. then the oldest first, and the lower job number between two made in the same moment.
+
+A job's priority is a person's mark when it has one, else the one a routing rule gave it, else its `p0`..`p3` or `priority:urgent` / `priority:high` / `priority:medium` / `priority:low` label. A `bug` label is a type, not a priority. So with Jobs at once set to 1 and two older `p2` jobs waiting, a new `p0` job runs next. A job already running is never stopped to make room.
 
 ## let the plan reshape the steps — adapt, ask, fixed, a pipeline tailored to each job
 
