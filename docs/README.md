@@ -35,6 +35,9 @@ A contract describes an interface that other code relies on. Design rationale
 explains a decision and may include proposals or earlier revisions. Check scope
 and implementation before treating design prose as a current feature list.
 
+The [removed-computer quit progress proposal](design/app-v3/removed-computer-quit-progress.md)
+describes a presentation change awaiting implementation and review.
+
 ## Contributing
 
 | Need | Read |
