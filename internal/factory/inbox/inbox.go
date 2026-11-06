@@ -51,3 +51,56 @@ func Add(ctx context.Context, st *store.Store, e Entry, now time.Time) (Result, 
 	_, _, _, _ = ctx, st, e, now
 	return Result{}, ErrNotBuilt
 }
+
+// Feed is a connector that pulls outside work: Jira, Linear, a mail folder.
+// A feed only translates; it never decides policy (that is internal/factory/route)
+// and never writes the store (that is [Add]). [Poll] drives every feed the
+// same way, so a new connector is one small type and no new loop.
+type Feed interface {
+	// Name is the source every entry it returns carries, such as "jira".
+	Name() string
+	// Fetch returns what changed since cursor and the next cursor. A feed that
+	// cannot say "since" returns everything and the same cursor; [Add] makes
+	// the repeat harmless.
+	Fetch(ctx context.Context, cursor string) (entries []Entry, next string, err error)
+}
+
+// Replier is a feed that can answer back on its own system: a comment with
+// the pull request's link, a note that the work merged. It is optional; a feed
+// that only reads is simply not a Replier.
+type Replier interface {
+	Reply(ctx context.Context, externalID string, ev Event) error
+}
+
+// EventKind is a moment in a job's life worth telling the source about.
+type EventKind string
+
+const (
+	EventPROpened EventKind = "pr_opened"
+	EventMerged   EventKind = "merged"
+	EventStuck    EventKind = "stuck" // the job stopped and needs a person
+)
+
+// Event is one such moment, already in a person's words.
+type Event struct {
+	Kind  EventKind `json:"kind"`
+	JobID int       `json:"job_id"`
+	URL   string    `json:"url,omitempty"` // the pull request
+	Text  string    `json:"text"`
+}
+
+// Poll runs f every interval until ctx ends, filing each entry through [Add]
+// and calling after (intake) once a pass. The inbox lane fills this in.
+func Poll(ctx context.Context, f Feed, st *store.Store, every time.Duration, after func(context.Context) error) {
+	_, _, _, _, _ = ctx, f, st, every, after
+}
+
+// Notify tells the job's source about ev when that source registered a
+// [Replier]. The inbox lane fills this in and calls it where a job opens its
+// pull request and where it merges; it never fails the job.
+func Notify(ctx context.Context, st *store.Store, jobID int, ev Event) {
+	_, _, _, _ = ctx, st, jobID, ev
+}
+
+// RegisterReplier makes r the answerer for every job whose source is name.
+func RegisterReplier(name string, r Replier) { _, _ = name, r }

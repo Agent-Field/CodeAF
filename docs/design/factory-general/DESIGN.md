@@ -47,13 +47,29 @@ any source  repo, pipeline,  steps in a     PR (wave 1),   CI, reviews,
    the GitHub one, never in a config file in the clear. `jirastub` is an
    in-process fake of exactly the endpoints used, for tests and e2e.
 
+## The abstractions (the shape every later source follows)
+
+- `route` is a PURE function of (rules, item) → decision. No I/O, no store; the
+  intake applies the decision. A person can read the rule list and say which
+  line moved a ticket.
+- `inbox.Add` is the ONLY door that turns outside work into a job. The wire,
+  the CLI, `POST /api/intake` and every connector call it; dedup lives there once.
+- `inbox.Feed` is a connector: it TRANSLATES only (fetch → `[]Entry`). It never
+  touches the store and never decides policy. `inbox.Poll` is the one loop that
+  drives every feed. A new connector (Linear, Sentry, mail) is one type.
+- `inbox.Replier` is the optional write-back half of a connector. `inbox.Notify`
+  is called by the job lifecycle (PR opened, merged, stuck) and dispatches by
+  source; the lifecycle never learns a vendor.
+- The GitHub poller is left as is in wave 1. Moving it onto `Feed` is a later
+  refactor, not a reason to touch it now.
+
 ## Ownership (so lanes do not collide)
 
 | Lane | Branch | Owns | Must not edit |
 |---|---|---|---|
 | R router | `factory/gi-router` | `internal/factory/route/**`, `internal/factory/store/routes*.go`, `intake/intake.go` routing hook, `lease/lease.go` ordering, `internal/appwire/factory_routes*.go`, wire `factory.routes`, `factory.routes_set` | inbox, jira |
-| I inbox | `factory/gi-inbox` | `internal/factory/inbox/**`, `internal/appwire/factory_intake*.go`, `factory.intake_add`, CLI `codeaf factory add`, `POST /api/intake` in `internal/factory/serve` | route, lease, jira |
-| J jira | `factory/gi-jira` | `internal/factory/jira/**` (incl. `jirastub`), `internal/appwire/factory_jira*.go`, `factory.jira_connect`/`factory.jira_status`/`factory.jira_disconnect`, the Jira poll loop next to the GitHub one in `cmd/codeaf/app_factory.go`, PR-link write-back | route, lease; calls `inbox.Add` only |
+| I inbox | `factory/gi-inbox` | `internal/factory/inbox/**` (Add, Poll, Notify, the replier registry, and calling Notify from the publish/merge path), `internal/appwire/factory_intake*.go`, `factory.intake_add`, CLI `codeaf factory add`, `POST /api/intake` in `internal/factory/serve` | route, lease, jira |
+| J jira | `factory/gi-jira` | `internal/factory/jira/**` (a `Feed` + `Replier`, incl. `jirastub`), `internal/appwire/factory_jira*.go`, `factory.jira_connect`/`factory.jira_status`/`factory.jira_disconnect`, the Jira poll loop next to the GitHub one in `cmd/codeaf/app_factory.go`, PR-link write-back | route, lease; calls `inbox.Add` only |
 | E e2e | integration branch | `internal/e2e/factory_general_e2e_test.go`, the live mac-studio run | — |
 
 Shared, already on the integration branch: `route` types, `inbox.Entry/Add`
