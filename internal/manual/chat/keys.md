@@ -51,6 +51,8 @@ already explains that the chat stays on this computer until you pair it again.
 
 ## Quitting while the sync service is slow — waiting for a final save
 
+A removed computer quits quietly; it no longer says it is saving to your other devices.
+
 The screen closes after at most one second while a slow close finishes. The
 launcher keeps its connection open for the final publish and release before it exits.
 A successful quit with nothing waiting stays quiet. While a sync save waits, the restored terminal says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without that confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
