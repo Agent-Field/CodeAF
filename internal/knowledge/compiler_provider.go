@@ -31,6 +31,8 @@ var compilerPrompts = func() map[string]string {
 }()
 
 type compilerModel struct {
+	// Explicit reads may answer a question while capture is paused, never compile new knowledge.
+	explicitRead     bool
 	ctx              context.Context
 	root, key, model string
 	db               *sql.DB
@@ -38,6 +40,9 @@ type compilerModel struct {
 }
 
 func (m compilerModel) call(role string, payload document) (document, error) {
+	if m.explicitRead && role != "query" && role != "recall" {
+		return nil, ErrDisabled
+	}
 	prompt, ok := compilerPrompts[role]
 	if !ok {
 		return nil, fmt.Errorf("unknown knowledge role %q", role)
@@ -54,7 +59,7 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, err := m.callContext(m.ctx)
+	ctx, err := m.callContext(withLibraryActivity(m.ctx, role))
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +192,7 @@ func (m compilerModel) callContext(ctx context.Context) (context.Context, error)
 	// wrote it. Its answer is a document, never a reply, so the chat's stream
 	// must not hear it.
 	ctx = provider.WithoutStream(ctx)
-	if !config.MemoryEnabledAt(filepath.Dir(m.root)) {
+	if !m.explicitRead && !config.MemoryEnabledAt(filepath.Dir(m.root)) {
 		return nil, ErrDisabled
 	}
 	if m.calls != nil {

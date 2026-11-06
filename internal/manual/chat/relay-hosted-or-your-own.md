@@ -85,3 +85,12 @@ A timeout says `the sync service at http://127.0.0.1:8901 did not answer in time
 ## A chat keeps working when the sync service is down
 
 A sync outage says `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back`, once per outage. Local saves and rewind keep working. A local save by itself does not prove that syncing recovered. After an actual successful sync call, the chat can say `syncing again`; a sustained renewal outage keeps its existing `this chat is syncing again` recovery line.
+
+## Do chat folder names sync through the hosted relay
+
+The hosted relay and your own current codeaf relay both carry a chat's folder
+name between paired computers. The name is sealed before upload; the relay
+stores opaque text and cannot read it. An older relay that does not advertise
+folder support receives no folder name. Updating that relay enables folder
+sync on the next successful capability check. A publish with no folder name
+keeps the name already stored, as does releasing the chat.

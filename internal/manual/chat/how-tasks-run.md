@@ -3521,3 +3521,16 @@ each task's own name as `worker`, so it can release whatever that task held
 once the task ends.
 
 The DID is a name, not a credential: no key is kept and nothing is signed with it.
+
+## Git automatic maintenance and repository growth
+
+codeaf's own git commits, merges and fetches in tasks and Factory do not start
+Git's automatic maintenance. This also applies to linked task worktrees that
+share the real repository's objects. Maintenance cannot keep changing the object
+store in the background after those operations finish.
+
+These settings apply only to git commands codeaf starts. Your repository's git
+configuration stays unchanged, and your own git commands still run automatic
+maintenance as usual. codeaf does not schedule or explicitly run garbage
+collection or maintenance. Its private copies can therefore retain loose objects
+until the copies are removed.

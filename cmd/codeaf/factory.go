@@ -406,6 +406,10 @@ func factoryGitHub(ctx context.Context, st *store.Store, token func(context.Cont
 // factoryPoll is the one GitHub poll this process runs, started at most once.
 var factoryPoll sync.Once
 
+// factoryPollStop cancels and joins the poll before a test replaces its home.
+// Production keeps the once and its worker for the whole process.
+var factoryPollStop func()
+
 // factoryBusyClear is this process's one clearing of stale in-flight marks.
 var factoryBusyClear sync.Once
 
@@ -469,8 +473,11 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 	factoryBusyClear.Do(func() { _ = st.ClearBusy() })
 	startFactoryTriage(context.Background(), st)
 	factoryPoll.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		factoryPollStop = func() { cancel(); <-done }
 		guard.Go("factory/github-poll", func() {
-			ctx := context.Background()
+			defer close(done)
 			token := func(ctx context.Context) string {
 				t, _ := factorygithub.TokenAt(ctx, profileDir)
 				return t

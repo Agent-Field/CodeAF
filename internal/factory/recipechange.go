@@ -27,6 +27,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/githubcalls"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // The four answers, and the one for a line the file already had.
@@ -48,7 +49,7 @@ var (
 )
 
 func gitRun(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance(args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true")
 	var out, errb bytes.Buffer

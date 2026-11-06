@@ -683,8 +683,8 @@ and completed publications are saved together. Opening another window does not
 start a duplicate compiler for the same profile.
 
 If there is no chat history, the reader says **Knowledge will populate as you
-chat.** Automatic learning is off by default. Turn **learn from chats and jobs**
-on in Settings or use **Build knowledge base** to populate it from saved chats. A profile has one knowledge base; changing project does not change vaults.
+chat.** Automatic learning is on by default unless you saved off. Use
+**Build knowledge base** to populate it from saved chats; this also saves on. A profile has one knowledge base; changing project does not change vaults.
 
 ## Reading knowledge pages, links and sources
 

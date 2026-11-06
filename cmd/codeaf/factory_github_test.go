@@ -81,6 +81,7 @@ func TestFactorySeamNamesGitHubOnlyWhileItPolls(t *testing.T) {
 
 // startFactoryPoll over no store starts nothing and does not spend the once.
 func TestFactoryPollOverNoStoreStartsNothing(t *testing.T) {
+	freshEngineFactoryStore(t)
 	startFactoryPoll(nil, "")
 	ran := false
 	factoryPoll.Do(func() { ran = true })

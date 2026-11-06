@@ -342,6 +342,7 @@ func (b *appBackend) inboxCounts() {
 // ListInbox answers one of the Inbox's lists, newest first, narrowed by a
 // query over its words and where it comes from.
 func (b *appBackend) ListInbox(list, query string) ([]appwire.InboxItem, appwire.InboxCounts, error) {
+	b.syncLibraryInbox()
 	in := b.inbox
 	query = strings.ToLower(query)
 	matches := func(item appwire.InboxItem) bool {
@@ -404,6 +405,13 @@ func (b *appBackend) AnswerInbox(id, option, text, why, scope string) (time.Time
 			return time.Time{}, appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", ask)
 		}
 		q := asks[at]
+		// A CREDENTIAL IS NEVER HELD HERE. The Inbox keeps an answer's words for
+		// its hold and shows them back, and a masked box exists only in the
+		// chat, so a secret ask is answered there (asks.answer_secret); its
+		// Decline may still be pressed from here.
+		if q.Secret != nil && words != "" {
+			return time.Time{}, appwire.Errorf(appwire.CodeBadParams, "the ask %s takes a secret; type it into the chat's masked box, not here", ask)
+		}
 		switch q.Subkind {
 		case appwire.SubkindCrewProposal:
 			err = appValidateProposalAnswer(option)
@@ -511,6 +519,9 @@ func (b *appBackend) UndoInbox(id string) error {
 // LaterInbox puts an item aside, or brings it back to waiting; the dock reads
 // the same mark.
 func (b *appBackend) LaterInbox(id string, later bool) error {
+	if strings.HasPrefix(id, "library:") {
+		return b.laterLibraryInbox(id, later)
+	}
 	agent, askID, ok := appInboxSplit(id)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "%s is not an Inbox item", id)

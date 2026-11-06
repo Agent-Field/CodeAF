@@ -212,6 +212,12 @@ func (a *Agent) belt() []bare.Tool {
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
 	tools = append(tools, a.askTool())
+	// request_secret, only where a person can answer: headless, a credential
+	// question has nobody to type into it, and a verb that can only ever come
+	// back "nobody to ask" is a verb this belt does not carry.
+	if a.config.mayRequestSecret() {
+		tools = append(tools, a.requestSecretTool())
+	}
 	// watch, on the predicate the prompt's own `watch` sentence is composed
 	// from (beltfacts.go): a node has no conversation for a delta to arrive in.
 	if a.config.mayWatch() {

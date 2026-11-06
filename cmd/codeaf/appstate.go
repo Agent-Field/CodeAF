@@ -53,7 +53,9 @@ type appRaise struct {
 // appStateFile is the app's file. A nil figure is one nobody set, which reads
 // as its default; a day cap of zero is one the person turned off.
 type appStateFile struct {
-	Setup *appwire.Setup `json:"setup,omitempty"`
+	// LibraryLater keeps a deferred knowledge question in Later across restarts.
+	LibraryLater map[string]bool `json:"library_later,omitempty"`
+	Setup        *appwire.Setup  `json:"setup,omitempty"`
 	// SetupSteps is how many steps the kept setup's step is counted in. A
 	// file kept before setup became three steps has none, and its step is
 	// counted in four ([appSetupStepFromFour]).
@@ -206,6 +208,10 @@ func (s *appState) write(fn func(*appStateFile) error) error {
 // clone is a copy that shares nothing with the file it came from.
 func (f appStateFile) clone() appStateFile {
 	out := f
+	out.LibraryLater = make(map[string]bool, len(f.LibraryLater))
+	for id, later := range f.LibraryLater {
+		out.LibraryLater[id] = later
+	}
 	if f.Setup != nil {
 		setup := *f.Setup
 		out.Setup = &setup

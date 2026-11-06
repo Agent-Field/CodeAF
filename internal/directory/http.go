@@ -60,6 +60,9 @@ func (h *HTTP) Cell(ctx context.Context, id string) (v CellView, err error) {
 }
 
 func (h *HTTP) PutDevice(ctx context.Context, id string, d Device) error {
+	if !h.Notes() {
+		d.Outbox, d.Took = nil, nil
+	}
 	return h.do(ctx, http.MethodPut, dirBase+"/devices/"+url.PathEscape(id), d, nil)
 }
 
@@ -139,6 +142,27 @@ const UploadProgressHeader = "Codeaf-Upload-Progress"
 
 var uploadProgressServices sync.Map
 
+// WorkingBeatsHeader advertises a beat's optional working flag, which the
+// record keeps on its lease. Clients send it only to a relay that says so.
+const WorkingBeatsHeader = "Codeaf-Working-Beats"
+
+var workingServices sync.Map
+
+// ChatNotesHeader advertises a device record's optional outbox and took
+// lists, which carry a message from one computer to the chat another holds.
+// Older relays strictly decode signed bodies, so a device record carries them
+// only to a relay that says so.
+const ChatNotesHeader = "Codeaf-Chat-Notes"
+
+var noteServices sync.Map
+
+// Notes reports whether this relay keeps a device record's outbox and took
+// lists, as its last answer said; false until it has answered once.
+func (h *HTTP) Notes() bool {
+	known, _ := noteServices.Load(h.serviceKey())
+	return known == true
+}
+
 // ChatFoldersHeader advertises a record's optional sealed folder name. Older
 // relays strictly decode signed bodies, so clients omit the field without it.
 const ChatFoldersHeader = "Codeaf-Chat-Folders"
@@ -184,6 +208,9 @@ func (h *HTTP) Heartbeat(ctx context.Context, id string, b Beat) (v CellView, er
 	// Ordinary reads teach the capability; a beat never probes for it.
 	if known, _ := uploadProgressServices.Load(h.serviceKey()); known != true {
 		b.UploadSent, b.UploadTotal = 0, 0
+	}
+	if known, _ := workingServices.Load(h.serviceKey()); known != true {
+		b.Working = false
 	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "heartbeat"), b, &v)
 }
@@ -249,9 +276,12 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 		return nil, fmt.Errorf("%w: %w", ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusInternalServerError {
+	// Open pairing routes share this transport but carry no directory capabilities.
+	if strings.HasPrefix(path, dirBase+"/") && resp.StatusCode < http.StatusInternalServerError {
 		savedTimeServices.Store(h.serviceKey(), resp.Header.Get(SavedTurnTimeHeader) == "1")
 		uploadProgressServices.Store(h.serviceKey(), resp.Header.Get(UploadProgressHeader) == "1")
+		workingServices.Store(h.serviceKey(), resp.Header.Get(WorkingBeatsHeader) == "1")
+		noteServices.Store(h.serviceKey(), resp.Header.Get(ChatNotesHeader) == "1")
 		chatFolderServices.Store(h.serviceKey(), resp.Header.Get(ChatFoldersHeader) == "1")
 	}
 	if resp.StatusCode >= 300 {

@@ -13,6 +13,9 @@ receipts remain readable and replaying one does not start its work again.
 Your unsent draft and staged attachments stay yours. Messages already queued
 stay in the queue; editing, reordering or removing them does not start a turn.
 You can still read the chat's history and files.
+The desktop can still send that computer a message for the chat while it is
+open or working there; it waits in the chat's queue on that computer. See
+"Send a message to a chat working on another computer".
 
 Sync news appears as visible notices in the chat: unsaved edits kept separately,
 full sync space, a removed device, identity changes, clock problems, slowing,
@@ -134,7 +137,10 @@ computer's name. An online dot appears only when the engine knows its presence.
 Finished movable chats saved before pairing are shared after pairing and when
 the paired app engine starts. This does not open the chat or start a new turn.
 An open, idle chat says `open on <name>`; this describes where it is open and
-does not mean a reply is running. Closing a chat does not make its computer
+does not mean a reply is running. While a reply runs, the engine advertises
+`working: true`, including for a chat just continued
+onto that computer. It clears the working flag after the reply finishes and its
+last saved turn reaches the relay. Closing a chat does not make its computer
 offline. `<name> offline` appears only when that computer is known to be offline;
 unknown presence has no online dot or offline claim. The saved time is the time
 of the newest shared saved turn, shown in your local time, rather than the time
@@ -151,13 +157,45 @@ An already local chat that moved away keeps its place and becomes read-only.
 Continue here is available when the engine says it can move. Continuing here
 stops new work on the other computer. If another computer moved it after the
 preview was read, the engine says `another device continued this chat first`;
-refresh the row and choose again. There is no automatic retry. Unsent drafts
+refresh the row and choose again. Only a Continue here that waited for a turn retries itself. Unsent drafts
 and attachments remain yours. Changes arrive as engine events without desktop
 polling. An older chat that works in the home folder stays on that computer.
 
 Continue here requires the holder and ownership fence shown when you chose it.
 A changed fence, holder or saved turn needs a fresh choice.
 Completed turns are shared while the chat stays open, including after a move.
+
+## Send a message to a chat working on another computer — queued there, runs after the turn
+
+While a chat is open or working on another computer, the desktop composer
+writes to that computer instead of being read-only. The field says
+`Message <name>`, and where the model picker usually is, a chip beside Send
+says where it goes: `To <name> · after this turn` while a turn runs there,
+`To <name>` while the chat is only open. Rest on the chip or press it to see
+which computer it is (`<name> · your Linux computer`), what happens to a
+message, and `Continue here instead`. The chat does not move. The
+message goes into the chat's queue on that computer, so it runs when the
+current turn ends, or at once if nothing is running.
+
+The sent message shows in the chat with one dim line: `Sending to <name>`
+until that computer puts it in the queue, then `Delivered to <name>`. Once the
+chat comes here its transcript shows what ran, and those lines go.
+
+The chat is the address, not the computer: if the chat moves before the message
+is taken, whichever computer holds it then takes it, which can be this one.
+The text is sealed with your identity's key, so the relay cannot read it.
+
+Limits and refusals:
+
+- At most eight messages wait at once: `Eight messages are already waiting for the other computer. Send this one once it has taken them.`
+- A message is at most 2000 characters: `Messages to another computer are limited to 2000 characters.`
+- A sync service that does not carry messages says `This sync service can't carry a message to another computer yet. Bring the chat here to write to it.`
+- Only an app engine (the desktop app, or `codeaf app`) on the holding computer takes messages. A terminal chat there does not; the message waits.
+- A chat whose computer is offline stays read-only, and a handed-over chat's next message still moves it here.
+
+To bring the chat here instead, choose Continue here. While a turn runs there
+it waits (`Comes here when this turn ends.`, with Cancel), then moves, retrying
+once if that computer saved again first.
 
 ## Does an idle desktop chat keep its hold on the relay
 

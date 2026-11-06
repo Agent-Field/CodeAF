@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // Where a recipe was read from, the words [RecipeSource] answers.
@@ -125,7 +127,7 @@ func recipeGit(dir string, args ...string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), recipeGitWait)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	for _, kv := range os.Environ() {
 		if strings.HasPrefix(kv, "GIT_DIR=") || strings.HasPrefix(kv, "GIT_WORK_TREE=") || strings.HasPrefix(kv, "GIT_INDEX_FILE=") {
 			continue
