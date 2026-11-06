@@ -327,7 +327,7 @@ The routing table (see "routing rules") is kept by the factory itself, on a team
 
 ## priority orders the queue — which job runs next, p0 before p1, urgent first, priority labels, why a newer job ran first
 
-Priority is not only a mark on the board: **it decides which queued job a computer takes next.** The order is:
+Priority is not only a mark on the job: **it decides which queued job a computer takes next.** The order is:
 
 1. a job a person said to **Start now**, before every other;
 2. then priority: `p0` (urgent) before `p1` (high) before `p2` (medium) before `p3` (low), and every job with a priority before one with none;
