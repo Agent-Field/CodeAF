@@ -1,42 +1,15 @@
 package serve_test
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
-	"os"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
-
-func TestSplitFromValidationDoesNotHydrateParent(t *testing.T) {
-	f := newCreateExtrasJobs(t)
-	parent := f.create(t, factory.Item{Kind: factory.KindIssue, State: factory.StateNew, Num: 7, Author: "author"})
-	before, err := os.ReadFile(f.st.ItemPath(parent.ID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var lookups atomic.Int32
-	f.st.SetTierResolver(func(context.Context, factory.Item) (factory.Tier, time.Time, error) {
-		lookups.Add(1)
-		return factory.TierCollab, time.Time{}, nil
-	})
-	child := createExtrasJob(t, f, "/v1/jobs", api.NewJob{Repo: "acme/api", Title: "Smaller fix", Source: factory.AskApp, SplitFrom: &parent.ID})
-	after, err := os.ReadFile(f.st.ItemPath(parent.ID))
-	if err != nil || !bytes.Equal(before, after) || lookups.Load() != 0 || child.SplitFrom != parent.ID {
-		t.Fatalf("split changed its parent: lookups=%d split_from=%d err=%v", lookups.Load(), child.SplitFrom, err)
-	}
-	if read, err := f.st.Get(parent.ID); err != nil || read.Tier != factory.TierCollab || lookups.Load() != 1 {
-		t.Fatalf("user read did not hydrate: tier=%q lookups=%d err=%v", read.Tier, lookups.Load(), err)
-	}
-}
 
 func TestNewJobExtrasKeepTierRefusalAndOutcome(t *testing.T) {
 	f := newCreateExtrasJobs(t)

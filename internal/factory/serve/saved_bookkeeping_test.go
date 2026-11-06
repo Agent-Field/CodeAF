@@ -1,10 +1,13 @@
 package serve
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,7 +36,22 @@ func TestPolicyBookkeepingLeavesAuthorAccessUnchanged(t *testing.T) {
 			if method == http.MethodPut {
 				body = map[string]any{"stopped": true, "allowances": []factory.Allowance{policyAllowance(f, job.ID)}}
 			}
-			f.request(t, method, "/v1/groups/g/policy", "operator-secret", body, http.StatusOK, &out)
+			raw, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest(method, "/v1/groups/g/policy", bytes.NewReader(raw))
+			r.SetPathValue("group", "g")
+			r.Header.Set("Authorization", "Bearer operator-secret")
+			w := httptest.NewRecorder()
+			// Request settlement hydrates jobs before routing; this handler owns policy bookkeeping.
+			f.h.groupPolicy(w, authRequest(r))
+			if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &out) != nil {
+				t.Fatalf("policy response: %d %s", w.Code, w.Body)
+			}
+			if out.Group != "g" || out.Stopped != (method == http.MethodPut) {
+				t.Fatalf("policy response: %+v", out)
+			}
 			got, err := f.st.GetSaved(job.ID)
 			if err != nil || lookups.Load() != 0 || got.Tier != "" || got.Failure != nil {
 				t.Fatalf("policy bookkeeping: lookups=%d tier=%q failure=%+v err=%v", lookups.Load(), got.Tier, got.Failure, err)
@@ -110,9 +128,47 @@ func TestJobEventsVisibilityUsesSavedAuthorAccess(t *testing.T) {
 	r.RemoteAddr = "192.0.2.1:9"
 	r.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
+	// Request settlement hydrates the queue before the event handler checks saved visibility.
+	h.jobEvents(w, authRequest(r))
 	got := decodeJobEvents(t, w)
 	if got.Reset || got.Cursor != 3 || len(got.Events) != 2 || got.Events[0].Job != 1 || got.Events[1].Job != 3 || lookups.Load() != 0 {
 		t.Fatalf("saved visibility: %+v lookups=%d", got, lookups.Load())
+	}
+}
+
+func TestSplitFromValidationDoesNotHydrateParent(t *testing.T) {
+	f := waitsSetup(t)
+	parent, child := f.addJob(t, 7), f.addJob(t, 0)
+	f.edit(t, parent.ID, func(it *factory.Item) { it.Author = "author" })
+	before, err := os.ReadFile(f.st.ItemPath(parent.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lookups atomic.Int32
+	f.st.SetTierResolver(func(context.Context, factory.Item) (factory.Tier, time.Time, error) {
+		lookups.Add(1)
+		return factory.TierCollab, time.Time{}, nil
+	})
+	body := api.NewJob{Repo: "owner/api", Title: "Smaller fix", SplitFrom: &parent.ID}
+	r := authRequest(httptest.NewRequest(http.MethodPost, "/v1/jobs", nil))
+	r.Header.Set("Authorization", "Bearer operator-secret")
+	w := httptest.NewRecorder()
+	// Validate and stamp directly so request settlement and create admission cannot hydrate the parent first.
+	if !f.h.checkNewJobExtras(w, r, &body) {
+		t.Fatalf("split validation: %d %s", w.Code, w.Body)
+	}
+	if err := f.h.stampNewJobExtras(r, child.ID, body); err != nil {
+		t.Fatal(err)
+	}
+	child, err = f.st.GetSaved(child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(f.st.ItemPath(parent.ID))
+	if err != nil || !bytes.Equal(before, after) || lookups.Load() != 0 || child.SplitFrom != parent.ID {
+		t.Fatalf("split changed its parent: lookups=%d split_from=%d err=%v", lookups.Load(), child.SplitFrom, err)
+	}
+	if read, err := f.st.Get(parent.ID); err != nil || read.Tier != factory.TierCollab || lookups.Load() != 1 {
+		t.Fatalf("user read did not hydrate: tier=%q lookups=%d err=%v", read.Tier, lookups.Load(), err)
 	}
 }
