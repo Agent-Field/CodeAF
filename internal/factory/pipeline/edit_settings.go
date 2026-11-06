@@ -203,10 +203,10 @@ func (st *editState) settings(i int, op EditOp) *EditError {
 		st.out.Steps[op.Name] = step
 	case OpSetStart:
 		if op.MaxSize != nil {
-			st.out.Start.MaxSize = *op.MaxSize
+			st.out.Start.MaxSize, st.out.set.maxSize = *op.MaxSize, true
 		}
 		if op.MaxCost != nil {
-			st.out.Start.MaxCost = *op.MaxCost
+			st.out.Start.MaxCost, st.out.set.maxCost = *op.MaxCost, true
 		}
 	}
 	return nil

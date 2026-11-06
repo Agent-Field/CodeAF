@@ -49,20 +49,64 @@ func Encode(f File) ([]byte, error) {
 		}
 		steps[name] = step{strings.TrimSpace(s.Label), prompt, s.Kind, s.When, s.Effort, s.Fanout, s.Until, s.Max, s.Who}
 	}
+	// A KEY THE FILE NEVER SAID IS NEVER WRITTEN, the same law as merge
+	// below. Writing a default spells it out, and a spelled-out key READS
+	// DIFFERENTLY: an explicit max_cost asks first on every job with no cost
+	// history, an explicit size.issue asks for size labels, and an explicit
+	// default_budget or max_cost is no longer the factory's spending to set.
+	// A factory copy saved through Encode sat every routed job at "Approval
+	// needed: start" that way. A key is written when it was in the file or
+	// its value is not the default (a File built in code carries no
+	// presence).
 	var start any
 	var size any
 	if f.Source != SourceMarkdown {
-		start = struct {
-			Labels   []string `yaml:"labels"`
-			MaxSize  string   `yaml:"max_size"`
-			MaxCost  float64  `yaml:"max_cost"`
-			Never    []string `yaml:"never"`
-			AskFirst []string `yaml:"ask_first"`
-		}{f.Start.Labels, f.Start.MaxSize, f.Start.MaxCost, f.Start.Never, f.Start.AskFirst}
-		size = struct {
-			PRLines [2]int `yaml:"pr_lines"`
-			Issue   string `yaml:"issue"`
-		}{f.Size.PRLines, f.Size.Issue}
+		type startKey struct {
+			Labels   *[]string `yaml:"labels,omitempty"`
+			MaxSize  string    `yaml:"max_size,omitempty"`
+			MaxCost  *float64  `yaml:"max_cost,omitempty"`
+			Never    *[]string `yaml:"never,omitempty"`
+			AskFirst *[]string `yaml:"ask_first,omitempty"`
+		}
+		var k startKey
+		if f.set.labels || len(f.Start.Labels) > 0 {
+			k.Labels = listKey(f.Start.Labels)
+		}
+		if f.set.maxSize || normOr(f.Start.MaxSize, DefaultMaxSize) != DefaultMaxSize {
+			k.MaxSize = f.Start.MaxSize
+		}
+		if f.set.maxCost || f.Start.MaxCost != DefaultMaxCost {
+			v := f.Start.MaxCost
+			k.MaxCost = &v
+		}
+		if f.set.never || len(f.Start.Never) > 0 {
+			k.Never = listKey(f.Start.Never)
+		}
+		if f.set.askFirst || len(f.Start.AskFirst) > 0 {
+			k.AskFirst = listKey(f.Start.AskFirst)
+		}
+		if k.Labels != nil || k.MaxSize != "" || k.MaxCost != nil || k.Never != nil || k.AskFirst != nil {
+			start = k
+		}
+		type sizeKey struct {
+			PRLines *[2]int `yaml:"pr_lines,omitempty"`
+			Issue   string  `yaml:"issue,omitempty"`
+		}
+		var z sizeKey
+		if f.set.prLines || f.Size.PRLines != [2]int{DefaultPRSmall, DefaultPRMedium} {
+			v := f.Size.PRLines
+			z.PRLines = &v
+		}
+		if f.set.issue || !strings.EqualFold(strings.TrimSpace(f.Size.Issue), DefaultIssueMode) {
+			z.Issue = f.Size.Issue
+		}
+		if z.PRLines != nil || z.Issue != "" {
+			size = z
+		}
+	}
+	budget := 0.0
+	if f.set.defaultBudget || f.DefaultBudget != factory.DefaultJobBudget {
+		budget = f.DefaultBudget
 	}
 	// A FILE THAT SAYS NOTHING ABOUT MERGING IS WRITTEN WITHOUT THE KEY, so
 	// saving a pipeline never adds a line its author did not write.
@@ -89,7 +133,16 @@ func Encode(f File) ([]byte, error) {
 		Rules         []string  `yaml:"rules"`
 		Adapt         any       `yaml:"adapt,omitempty"`
 		Merge         *mergeKey `yaml:"merge,omitempty"`
-	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, adaptKey(f), merge})
+	}{budget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, adaptKey(f), merge})
+}
+
+// listKey is a list key to write: a pointer, because omitempty drops an
+// empty slice and a file that said `never: []` must still say it.
+func listKey(s []string) *[]string {
+	if s == nil {
+		s = []string{}
+	}
+	return &s
 }
 
 // adaptKey is `adapt:` as the file writes it: one word, a map of one word per
