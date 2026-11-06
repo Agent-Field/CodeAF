@@ -132,6 +132,7 @@ func resolvedTempDir(t *testing.T) string {
 // booted an engine first, with that test's model endpoint and profile.
 func freshEngineProcess(t *testing.T) {
 	t.Helper()
+	freshEngineFactoryStore(t)
 	reset := func() {
 		closeEngineProcess()
 		engineProcess.mu.Lock()

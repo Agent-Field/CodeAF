@@ -33,6 +33,10 @@ var factoryTriageEvery = 2 * time.Second
 // once.
 var factoryTriage sync.Once
 
+// factoryTriageStop cancels and joins the worker before a test replaces its home.
+// The caller's context still owns the worker in production.
+var factoryTriageStop func()
+
 // startFactoryTriage starts this process's cheap read of new items over st,
 // beside the GitHub poll and under the same rule: ONLY THE PROCESS THAT OPENED
 // THE FLOOR FOR A PERSON'S WINDOW ([startFactoryPoll] calls it) OR A FACTORY
@@ -55,7 +59,13 @@ func startFactoryTriage(ctx context.Context, st *store.Store, newIntake ...func(
 		build = newIntake[0]
 	}
 	factoryTriage.Do(func() {
-		guard.Go("factory/triage", func() { runFactoryTriage(ctx, st, build) })
+		ctx, cancel := context.WithCancel(ctx)
+		done := make(chan struct{})
+		factoryTriageStop = func() { cancel(); <-done }
+		guard.Go("factory/triage", func() {
+			defer close(done)
+			runFactoryTriage(ctx, st, build)
+		})
 	})
 }
 
