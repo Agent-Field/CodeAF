@@ -123,26 +123,58 @@ type SearchPage struct {
 	IsLast        bool    `json:"isLast"`
 }
 
+// Reason is what a failed answer means, decided ONCE, where the answer
+// arrives ([reasonOf]), and carried on the [Error] as a fact. Nothing else in
+// codeaf reads a Jira status to decide what to do; it reads this.
+type Reason int
+
+const (
+	ReasonOther       Reason = iota // any other failure
+	ReasonCredentials               // the email and API token were refused
+	ReasonForbidden                 // the account may not do this
+	ReasonMissing                   // no such ticket, account or endpoint
+	ReasonRefused                   // Jira refused the request itself (a bad JQL)
+	ReasonSlowDown                  // Jira asked for fewer calls
+)
+
+// reasonOf is THE ONE PLACE a Jira status becomes a reason.
+func reasonOf(status int) Reason {
+	switch status {
+	case http.StatusUnauthorized:
+		return ReasonCredentials
+	case http.StatusForbidden:
+		return ReasonForbidden
+	case http.StatusNotFound:
+		return ReasonMissing
+	case http.StatusBadRequest:
+		return ReasonRefused
+	case http.StatusTooManyRequests:
+		return ReasonSlowDown
+	}
+	return ReasonOther
+}
+
 // Error is a call Jira answered with a failure. Its text is in a person's
 // words and carries Jira's own messages, never the request's credentials.
 type Error struct {
 	Status   int
+	Reason   Reason
 	Op       string // "search", "comment", "myself"
 	Messages []string
 }
 
 func (e *Error) Error() string {
 	var lead string
-	switch e.Status {
-	case http.StatusUnauthorized:
+	switch e.Reason {
+	case ReasonCredentials:
 		lead = "Jira did not accept that email and API token"
-	case http.StatusForbidden:
+	case ReasonForbidden:
 		lead = "this Jira account is not allowed to " + verb(e.Op)
-	case http.StatusNotFound:
+	case ReasonMissing:
 		lead = "Jira has no such " + noun(e.Op)
-	case http.StatusBadRequest:
+	case ReasonRefused:
 		lead = "Jira refused the " + noun(e.Op)
-	case http.StatusTooManyRequests:
+	case ReasonSlowDown:
 		lead = "Jira asked codeaf to slow down"
 	default:
 		lead = fmt.Sprintf("Jira answered %d to the %s", e.Status, noun(e.Op))
@@ -186,7 +218,7 @@ func (e *unreachable) Is(target error) bool { return target == ErrUnreachable }
 // IsAuth says err is Jira refusing the credentials themselves.
 func IsAuth(err error) bool {
 	var e *Error
-	return errors.As(err, &e) && e.Status == http.StatusUnauthorized
+	return errors.As(err, &e) && e.Reason == ReasonCredentials
 }
 
 // reKey is a ticket's key: a project key, a dash and a number. A key that is
@@ -276,7 +308,7 @@ func (c *Client) do(ctx context.Context, op, method, path string, q url.Values, 
 		return fmt.Errorf("Jira's answer was cut off: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return &Error{Status: resp.StatusCode, Op: op, Messages: jiraMessages(raw)}
+		return &Error{Status: resp.StatusCode, Reason: reasonOf(resp.StatusCode), Op: op, Messages: jiraMessages(raw)}
 	}
 	if out == nil {
 		return nil
