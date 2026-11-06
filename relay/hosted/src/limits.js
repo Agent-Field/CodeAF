@@ -116,6 +116,20 @@ export class Quota {
     return { ...row, frames: row.day === Math.floor(now / DAY_MS) ? row.frames : 0 };
   }
 
+  /** snapshot reads held totals without rolling the stored day or listing the bucket. */
+  snapshot(now) {
+    const used = this.today(now);
+    const answer = { stored_bytes: used.bytes, stored_objects: used.objects, frames_today: used.frames };
+    for (const [field, limit] of [
+      ['limit_bytes', this.limits.storeBytes],
+      ['limit_objects', this.limits.storeObjects],
+      ['limit_frames_per_day', this.limits.framesPerDay],
+    ]) {
+      if (Number.isFinite(limit)) answer[field] = limit;
+    }
+    return answer;
+  }
+
   /** admit throws full when storing `frame` ({size, objects}) would pass a stored ceiling, naming the byte ceiling when that is the one. */
   admit(frame, now) {
     const used = this.today(now);

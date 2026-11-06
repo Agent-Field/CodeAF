@@ -100,11 +100,17 @@ func LimitOf(err error) int64 {
 
 // statsBody is the answer to GET /v1/store/stats.
 type statsBody struct {
-	Puts     int64 `json:"puts"`
-	Gets     int64 `json:"gets"`
-	Has      int64 `json:"has"`
-	BytesIn  int64 `json:"bytes_in"`
-	BytesOut int64 `json:"bytes_out"`
+	Puts              int64  `json:"puts"`
+	Gets              int64  `json:"gets"`
+	Has               int64  `json:"has"`
+	BytesIn           int64  `json:"bytes_in"`
+	BytesOut          int64  `json:"bytes_out"`
+	StoredBytes       *int64 `json:"stored_bytes,omitempty"`
+	StoredObjects     *int64 `json:"stored_objects,omitempty"`
+	FramesToday       *int64 `json:"frames_today,omitempty"`
+	LimitBytes        *int64 `json:"limit_bytes,omitempty"`
+	LimitObjects      *int64 `json:"limit_objects,omitempty"`
+	LimitFramesPerDay *int64 `json:"limit_frames_per_day,omitempty"`
 }
 
 type putAnswer struct {

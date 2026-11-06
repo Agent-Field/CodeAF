@@ -129,16 +129,19 @@ func (c *HTTP) Has(ctx context.Context, rids []string) ([]bool, error) {
 	return out.Have, nil
 }
 
-// Stats asks the server for its own count of this identity's requests.
+// Stats asks the server for this identity's request counts and any stored totals it reports.
 func (c *HTTP) Stats(ctx context.Context) (Counts, error) {
 	var out statsBody
 	err := c.doJSON(ctx, http.MethodGet, pathStats, nil, &out)
 	return Counts(out), err
 }
 
-// Counts is the server's tally for one identity since it started.
+// Counts holds request counters and optional stored totals for one identity.
+// Nil totals distinguish an older or self-hosted relay from a reported zero.
 type Counts struct {
-	Puts, Gets, Has, BytesIn, BytesOut int64
+	Puts, Gets, Has, BytesIn, BytesOut          int64
+	StoredBytes, StoredObjects, FramesToday     *int64
+	LimitBytes, LimitObjects, LimitFramesPerDay *int64
 }
 
 func (c *HTTP) doJSON(ctx context.Context, method, path string, body []byte, into any) error {
