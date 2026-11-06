@@ -3106,6 +3106,7 @@ func (a *app) windowFor(id string) int {
 // fires at a fraction of it, so a session that switched to a 1M model without
 // saying so would keep compacting as if it were on the 128k one it started on.
 func (a *app) switchModel(id string, window int) {
+	a.deferredModelRename = nil
 	if a.modelChange != nil {
 		a.queueModelChange(id, window, false, a.creditSwitching, nil)
 		return

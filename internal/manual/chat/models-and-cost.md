@@ -133,6 +133,8 @@ stays in the draft. The picker opens with:
 When a provider's list arrives, codeaf selects an available model. Press Enter again
 to send the draft after the model selection succeeds. A failed selection
 reports `could not change model · <reason>` and leaves the draft unsent.
+Waiting messages keep their text and attachments until selection succeeds, then
+send once in their own conversation.
 Refreshing a list or removing a connection also replaces a model
 that is no longer listed; existing requests finish on the model they started with.
 

@@ -41,6 +41,15 @@ func (a *app) isAvailableModel(id string) bool {
 // choose. With no rows, only the display is cleared: the engine has no unset-model
 // door, and the send gates below keep that old launch preference from being used.
 func (a *app) ensureAvailableModel() bool {
+	if rename := a.deferredModelRename; rename != nil {
+		// A held rename waits for its owner's turn/replay boundary before
+		// touching the saved selection. Hidden parked sends remain held too.
+		if a.state == stateWorking || a.hostReplayLoading {
+			return false
+		}
+		a.deferredModelRename = nil
+		a.applyModelRename(rename)
+	}
 	if a.modelChangePending() {
 		if retry := a.modelChange.retry; retry != nil {
 			retry()

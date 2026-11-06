@@ -63,6 +63,10 @@ type aside struct {
 	// surface yet. It follows the sidecar so returning mid-send cannot send the
 	// same message again when the stream closes.
 	parkSending bool
+	// Model acknowledgments and deferred relabels belong to this conversation;
+	// its waiting messages cannot pass them while another chat is in front.
+	modelChange         *modelChange
+	deferredModelRename *modelRename
 	// parkNotes are receipts from held sends and memory commands. They land in
 	// this conversation when it comes forward rather than in whichever unrelated
 	// conversation happened to be on screen at the time.
@@ -276,17 +280,19 @@ func (a *app) detachConversation() *aside {
 		// A conversation can be put down while a task's page is in front, and the
 		// box then holds that page's steering line — which is not this
 		// conversation's unsent message and must not come back as one.
-		draft:         a.mainDraftText(),
-		parks:         a.parks,
-		parkSending:   a.parkSending,
-		chips:         main.chips,
-		pastes:        main.pastes,
-		sends:         main.sends,
-		offset:        a.offset,
-		stick:         a.stick,
-		since:         a.now(),
-		title:         a.title,
-		openingPrompt: a.openingPrompt,
+		draft:               a.mainDraftText(),
+		parks:               a.parks,
+		parkSending:         a.parkSending,
+		modelChange:         a.modelChange,
+		deferredModelRename: a.deferredModelRename,
+		chips:               main.chips,
+		pastes:              main.pastes,
+		sends:               main.sends,
+		offset:              a.offset,
+		stick:               a.stick,
+		since:               a.now(),
+		title:               a.title,
+		openingPrompt:       a.openingPrompt,
 	}
 	// A SHARED HANDLE CANNOT KEEP A WAITING TURN. Its engine interrupts and
 	// closes the old conversation during the swap, so the only honest fallback
@@ -463,6 +469,8 @@ func (a *app) clearConversation() {
 	a.forgetComposers()
 	a.parks = nil
 	a.parkSending = false
+	a.modelChange = nil
+	a.deferredModelRename = nil
 	a.touch()
 }
 
@@ -532,6 +540,15 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	}
 	was := a.agent
 	a.takeUp(conv, true)
+	a.modelChange = nil
+	a.deferredModelRename = nil
+	if side != nil {
+		a.modelChange, side.modelChange = side.modelChange, nil
+		a.deferredModelRename, side.deferredModelRename = side.deferredModelRename, nil
+		if a.modelChange != nil {
+			a.modelChange.front = a.frontGen
+		}
+	}
 	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);
 	// the new lane below replays its own.
 	if a.agent != was {
@@ -550,7 +567,6 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	a.resetMeters()
 	if agent != nil {
 		a.model = agent.Model()
-		a.ensureAvailableModel()
 		a.title = strings.TrimSpace(agent.Title())
 		// A cached earned name survives an agent whose snapshot is still arriving.
 		if a.title == "" && side != nil {
@@ -671,6 +687,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))
 	}
+	a.ensureAvailableModel()
 	// THE IN-FLIGHT TURN'S STREAM IS PUMPED LAST, so the replay above has
 	// already put the person's own message on the screen: the journal holds it
 	// from the moment it was submitted, and the events this stream carries

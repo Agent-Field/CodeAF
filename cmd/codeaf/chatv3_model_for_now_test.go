@@ -14,7 +14,7 @@ import (
 // temporary model as a saved choice before catalog reconciliation can restore it.
 func TestLinkedLocalSourceRefreshKeepsRunOnlyModelTemporary(t *testing.T) {
 	dir, profile := t.TempDir(), t.TempDir()
-	agent, err := session.New(session.Config{Workspace: t.TempDir(), Place: session.Place{Dir: dir}, Model: "vendor/configured", APIKey: "fixture"})
+	agent, err := session.New(session.Config{Workspace: t.TempDir(), Place: session.Place{Dir: dir}, Model: "vendor/configured", APIKey: "fixture", BaseURL: "http://127.0.0.1:1/v1"})
 	if err != nil {
 		t.Fatal(err)
 	}

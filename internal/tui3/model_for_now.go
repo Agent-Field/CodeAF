@@ -7,6 +7,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+const modelChangeRefusedWord = "could not change model · "
+
 // modelChange belongs to the conversation that queued it. Its acknowledgment
 // may arrive after a later pick or after the surface has switched chats.
 type modelChange struct {
@@ -78,17 +80,31 @@ func (a *app) queueModelChange(id string, window int, temporary, quiet bool, ren
 		if err == nil && save != nil && remember != "" {
 			_ = save(remember)
 		}
-		return func(here bool) tea.Cmd {
+		return func(bool) tea.Cmd {
 			if a.modelChange != change {
+				// A switched conversation keeps its gate in the sidecar. Its
+				// reply may release only that conversation's waiting message.
+				for key, held := range a.behind {
+					if held.side == nil || held.side.modelChange != change {
+						continue
+					}
+					if err != nil {
+						change.retry = func() { a.queueModelChange(id, window, temporary, quiet, rename) }
+						held.side.parkNotes = append(held.side.parkNotes, modelChangeRefusedWord+err.Error())
+						return nil
+					}
+					held.side.modelChange = nil
+					return a.checkBehindParked(key, agent)
+				}
 				return nil
 			}
-			if !here {
+			if a.agent != agent {
 				a.modelChange = nil
 				return nil
 			}
 			if err != nil {
 				change.retry = func() { a.queueModelChange(id, window, temporary, quiet, rename) }
-				a.note("could not change model · " + err.Error())
+				a.note(modelChangeRefusedWord + err.Error())
 				return nil
 			}
 			a.modelChange = nil
@@ -105,7 +121,7 @@ func (a *app) queueModelChange(id string, window int, temporary, quiet bool, ren
 			}
 			a.hudStale = true
 			a.touch()
-			return a.takeModelCommands()
+			return tea.Batch(a.takeModelCommands(), a.sendParked())
 		}
 	})
 	a.modelCommands = append(a.modelCommands, cmd)

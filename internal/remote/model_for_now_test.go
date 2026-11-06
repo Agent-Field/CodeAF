@@ -10,7 +10,7 @@ import (
 // C1, C4, C5: the linked-local wire distinguishes temporary and explicit picks.
 func TestRunOnlyModelCrossesTheWireWithoutReplacingTheSavedPair(t *testing.T) {
 	dir := t.TempDir()
-	a, err := session.New(session.Config{Workspace: t.TempDir(), Place: session.Place{Dir: dir}, Model: "vendor/configured", APIKey: "fixture",
+	a, err := session.New(session.Config{Workspace: t.TempDir(), Place: session.Place{Dir: dir}, Model: "vendor/configured", APIKey: "fixture", BaseURL: "http://127.0.0.1:1/v1",
 		ConversationModels: &session.ConversationModels{Main: "vendor/configured", Fallback: "vendor/backup"},
 	})
 	if err != nil {

@@ -310,7 +310,8 @@ name is re-spelled with the new one, the conversation's own pick first (a turn s
 answering is waited out), and with it the stored ones: reasoning levels, the
 worker, checker and planner pins, role pins, the fallback chain and the capability slots. A rename changes a label and nothing
 else; it carries saved and temporary selections separately, keeping a temporary
-replacement unsaved. `ctrl+r` on the row
+replacement unsaved. A deferred rename stays with its conversation; a later
+explicit model or main/fallback choice supersedes it. `ctrl+r` on the row
 reconnects with the saved details. The `+ add a provider` row checks the address and asks for a name,
 requesting a key only when the server requires authentication, so the tab never sends you to `/connect` to add one.
 The `active provider` row reads
