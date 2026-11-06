@@ -70,6 +70,24 @@ from its brief and checkout. Commenting on such a job's GitHub issue is
 refused with "this job has no GitHub issue to comment on"; nothing is posted.
 Existing saved jobs keep their identity and work, without a migration.
 
+## send work to the factory from Jira, a script or a webhook — codeaf factory add, POST /api/intake
+
+Work from outside GitHub becomes a factory job through one inbox. Three ways in, all the same:
+
+- `codeaf factory add --source NAME --id ID --title TEXT [--body TEXT|-] [--repo owner/name] [--label L]... [--priority p0..p3] [--url URL] [--factory URL --token T]`. `--body -` reads the details from standard input; `--label` is given once per label. Without `--factory` it posts to the factory this machine is attached to, else the one it serves. It prints `filed job 12 from inbox:ops:A1`, or `updated job 12 …` for a repeat.
+- `POST /api/intake` on the factory's address, with `Authorization: Bearer <access token>` (what `codeaf factory token` prints) or the operator's own session. The body is JSON: `{"source":"inbox:ops","external_id":"A1","title":"…","body":"…","url":"…","author":"…","labels":["bug"],"priority":"p1","repo":"owner/name"}`. It answers `{"id":12,"created":true}` (201), or `created:false` (200) for a repeat. This is what a Jira automation, Zapier or any webhook calls. A teammate's sign-in is refused with "only the operator can do this".
+- The desktop's `factory.intake_add`, the same entry plus `factory`.
+
+`source` is a lowercase name such as `jira` or `inbox:ops`; `github`, `terminal` and `chat` are the factory's own and are refused. `priority` is `p0` (urgent) to `p3` (low). Limits: title 200 characters on one line, body 32000, id 200, at most 30 labels of 100, a request at most 64 KiB (larger is refused as too large).
+
+## outside work as a job — the same id twice, no repository yet, answering back
+
+The pair source and id is the job's identity: sending the same pair again updates that job's title, body, labels, address and priority and never makes a second one. What a person set stays — its state, steps, budget, assignee, a priority they chose, a repository they picked. A dismissed job whose words changed comes back to Backlog. Its activity starts `arrived from inbox:ops · <url>`, and a change reads `changed on inbox:ops`.
+
+Such a job is like `job 21`: it has no GitHub issue, so nothing is commented or closed on GitHub, and its pull request says no `Closes #`. Sent without `--repo` it is filed anyway and waits in Backlog (`waiting for a repository`); starting it is refused with "say which repository the work is on" until a rule or a person gives it one, and a later send that names a repository gives it that one.
+
+A connector that can answer back on its own system is told when the job opens its pull request, when it merges, and when it stops and needs a person. A failed answer is logged and never stops the job.
+
 ## finding jobs with desktop search and ⌘K
 
 Desktop search can find jobs in connected factories before you open their jobs

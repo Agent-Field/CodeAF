@@ -646,7 +646,7 @@ Housekeeping — changes state on disk or on the network
       list your devices and the ones that can use this machine
   codeaf devices revoke <name> [--all] | rename <name>
       remove one (cannot undo what a device holds), or name this one
-  codeaf factory [serve|name|steps|convert|token|revoke|revoke-sessions]
+  codeaf factory [serve|add|name|steps|convert|token|revoke|revoke-sessions]
   codeaf attach <url> | codeaf detach | codeaf runner join <link>
       a team factory: host it (` + factoryDefaultListen + `), use it, or run its jobs here
   codeaf notebook [--db path]

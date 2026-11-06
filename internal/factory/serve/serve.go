@@ -272,6 +272,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/spend/repos", h.spendRepos)
 	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
+	h.intakeRoutes()
 	h.jobScreens()
 	h.scheduleJobTimer()
 	if config.Store != nil {

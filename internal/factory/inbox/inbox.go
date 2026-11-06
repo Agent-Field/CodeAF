@@ -1,9 +1,13 @@
 // Package inbox is the factory's generic intake: work that arrives from any
-// outside system — a Jira ticket, a Sentry alert, a form, a script, a person's
+// outside system — a ticket tracker, an alert, a form, a script, a person's
 // `codeaf factory add` — becomes one job, the same way a GitHub issue does.
-// A connector (internal/factory/jira) and the trigger doors (the wire, the
-// command line, the factory's HTTP endpoint) all come through [Add], so
-// deduplication and routing are written once.
+// Every connector ([Feed], driven by [Poll]) and every trigger door (the wire,
+// the command line, the factory's HTTP endpoint) comes through [Add], so
+// checking, deduplication and filing are written once.
+//
+// THIS PACKAGE NAMES NO VENDOR. A connector lives in its own package, says
+// its own name through [Feed.Name], and answers back through a [Replier] it
+// registers; nothing here knows which systems exist.
 //
 // docs/design/factory-general/DESIGN.md is the contract this package fills.
 package inbox
@@ -11,9 +15,16 @@ package inbox
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // Entry is one piece of outside work, in the source's own words.
@@ -42,65 +53,270 @@ type Result struct {
 	Created bool `json:"created"`
 }
 
-// ErrNotBuilt is the stub's answer until the inbox lane lands.
-var ErrNotBuilt = errors.New("the inbox is not built yet")
+// SetBySource is the [factory.JobPriority.SetBy] of a priority the outside
+// system sent. A priority with any other SetBy is a person's, and a later
+// delivery never overwrites it.
+const SetBySource = "source"
 
-// Add files e on the floor, or updates the job it already made. The inbox
-// lane fills this in.
-func Add(ctx context.Context, st *store.Store, e Entry, now time.Time) (Result, error) {
-	_, _, _, _ = ctx, st, e, now
-	return Result{}, ErrNotBuilt
+// Ref is the [factory.Item.SourceRef] an entry from source with id is kept
+// under: `<source>:<id>`. The source part is also the item's Origin, which is
+// how the two halves are told apart again when the source name itself holds
+// a colon (`inbox:ops:A1`).
+func Ref(source, id string) string { return source + ":" + id }
+
+// Split is the inverse of [Ref] for a job the inbox filed: its source and its
+// key on that source. ok is false for every other job, a GitHub issue and a
+// job typed on the floor among them.
+func Split(it factory.Item) (source, id string, ok bool) {
+	source = string(it.Origin)
+	id, ok = strings.CutPrefix(it.SourceRef, source+":")
+	return source, id, ok && source != "" && id != ""
 }
 
-// Feed is a connector that pulls outside work: Jira, Linear, a mail folder.
-// A feed only translates; it never decides policy (that is internal/factory/route)
-// and never writes the store (that is [Add]). [Poll] drives every feed the
-// same way, so a new connector is one small type and no new loop.
-type Feed interface {
-	// Name is the source every entry it returns carries, such as "jira".
-	Name() string
-	// Fetch returns what changed since cursor and the next cursor. A feed that
-	// cannot say "since" returns everything and the same cursor; [Add] makes
-	// the repeat harmless.
-	Fetch(ctx context.Context, cursor string) (entries []Entry, next string, err error)
+// Option adjusts how [Add] files a job.
+type Option func(*options)
+
+type options struct {
+	recipe func(repo string) (factory.Recipe, error)
 }
 
-// Replier is a feed that can answer back on its own system: a comment with
-// the pull request's link, a note that the work merged. It is optional; a feed
-// that only reads is simply not a Replier.
-type Replier interface {
-	Reply(ctx context.Context, externalID string, ev Event) error
+// WithRecipe says where a repository's recipe is read, so a job filed on a
+// known repository starts with that repository's steps, as one typed on the
+// floor does. Without it, or when the read fails, the job takes the default
+// steps, which its first start replaces with the file it is decided on.
+func WithRecipe(read func(repo string) (factory.Recipe, error)) Option {
+	return func(o *options) { o.recipe = read }
 }
 
-// EventKind is a moment in a job's life worth telling the source about.
-type EventKind string
-
-const (
-	EventPROpened EventKind = "pr_opened"
-	EventMerged   EventKind = "merged"
-	EventStuck    EventKind = "stuck" // the job stopped and needs a person
-)
-
-// Event is one such moment, already in a person's words.
-type Event struct {
-	Kind  EventKind `json:"kind"`
-	JobID int       `json:"job_id"`
-	URL   string    `json:"url,omitempty"` // the pull request
-	Text  string    `json:"text"`
+func (o options) stagesFor(repo string) []factory.Stage {
+	if repo != "" && o.recipe != nil {
+		if r, err := o.recipe(repo); err == nil {
+			if stages := r.For(factory.KindIssue); len(stages) > 0 {
+				return factory.CopyStages(stages)
+			}
+		}
+	}
+	return factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))
 }
 
-// Poll runs f every interval until ctx ends, filing each entry through [Add]
-// and calling after (intake) once a pass. The inbox lane fills this in.
-func Poll(ctx context.Context, f Feed, st *store.Store, every time.Duration, after func(context.Context) error) {
-	_, _, _, _, _ = ctx, f, st, every, after
+// Add files e on the floor, or updates the job it already made.
+//
+// THE IDENTITY IS (Source, ExternalID), kept as the job's SourceRef ([Ref]).
+// A new pair makes a job in Backlog: an issue, Origin the source, Num 0, the
+// owner's tier (every door into Add is authenticated as the factory's), and
+// the repository's steps when Repo is given. A pair already on the floor has
+// its outside words brought up to date the way the GitHub poll brings an
+// issue's (github.Merge): title, body, labels, address, and a priority only
+// while the source is the one that set it. EVERYTHING A PERSON SET IS KEPT —
+// state, steps, assignee, budget, a priority they chose, a repository they
+// picked. A dismissed job whose words changed comes back as new, because
+// dismissing hides a job until it changes.
+//
+// NUM STAYS 0, NEVER A SYNTHETIC NUMBER. Every GitHub-only side effect (the
+// issue comment, `Closes #N` in the pull request, close on merge, the
+// standing recheck) is guarded by `Origin == github && Num > 0`, the same
+// guard a job typed on the floor passes by; a made-up number would satisfy
+// half of it and one day the other half. The job's own ID names it.
+//
+// A JOB WITH NO REPOSITORY IS STILL FILED, waiting in Backlog for one; the
+// launch refuses it until a rule or a person gives it one.
+func Add(ctx context.Context, st *store.Store, e Entry, now time.Time, opts ...Option) (Result, error) {
+	if st == nil {
+		return Result{}, errors.New("the factory keeps no store here")
+	}
+	e, err := Validate(e)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	// ONE ADD AT A TIME PER FLOOR, across processes: the look-up and the
+	// create are one critical section, or two deliveries of one ticket racing
+	// each other would both find nothing and both make a job.
+	release, err := lockInbox(st)
+	if err != nil {
+		return Result{}, err
+	}
+	defer release()
+	ref := Ref(e.Source, e.ExternalID)
+	have, err := st.ListSaved()
+	if err != nil {
+		return Result{}, err
+	}
+	for _, old := range have {
+		if old.SourceRef == ref {
+			return Result{ID: old.ID}, update(st, old, e, now, o)
+		}
+	}
+	id, err := st.Add(ctx, newItem(e, now, o))
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{ID: id, Created: true}, nil
 }
 
-// Notify tells the job's source about ev when that source registered a
-// [Replier]. The inbox lane fills this in and calls it where a job opens its
-// pull request and where it merges; it never fails the job.
-func Notify(ctx context.Context, st *store.Store, jobID int, ev Event) {
-	_, _, _, _ = ctx, st, jobID, ev
+// newItem is the job a first delivery of e makes.
+func newItem(e Entry, now time.Time, o options) factory.Item {
+	it := factory.Item{
+		Kind:      factory.KindIssue,
+		Origin:    factory.Origin(e.Source),
+		SourceRef: Ref(e.Source, e.ExternalID),
+		Title:     e.Title,
+		Body:      e.Body,
+		Author:    e.Author,
+		URL:       e.URL,
+		Labels:    slices.Clone(e.Labels),
+		Tier:      factory.TierOwner,
+		Autonomy:  factory.AutonomyAuto,
+		Priority:  priorityOf(e),
+		Created:   now,
+		Changed:   now,
+		Ask:       &factory.JobAsk{Text: askText(e), At: now, Source: e.Source},
+		Triage:    factory.Triage{Type: factory.GuessType(e.Title)},
+		Stages:    o.stagesFor(e.Repo),
+	}
+	if e.Repo != "" {
+		it.Repo, it.Places = e.Repo, []string{e.Repo}
+	}
+	it.Note(now, arrived(e))
+	if e.Repo == "" {
+		it.Note(now, WaitingWords)
+	}
+	return it
 }
 
-// RegisterReplier makes r the answerer for every job whose source is name.
-func RegisterReplier(name string, r Replier) { _, _ = name, r }
+// WaitingWords is the activity line of a job filed with no repository.
+const WaitingWords = "waiting for a repository"
+
+// arrived is the first activity line: `arrived from <source>`, and the
+// address on the source when it sent one.
+func arrived(e Entry) string {
+	if e.URL == "" {
+		return "arrived from " + e.Source
+	}
+	return "arrived from " + e.Source + " · " + e.URL
+}
+
+// askText is what the pull request quotes as the request ([factory.AskText]).
+func askText(e Entry) string {
+	if e.Body != "" {
+		return e.Body
+	}
+	return e.Title
+}
+
+// update brings an existing job's outside words up to date. A delivery that
+// changes nothing writes nothing, so a feed that cannot say "since" and
+// hands back every ticket each pass leaves the floor untouched.
+func update(st *store.Store, old factory.Item, e Entry, now time.Time, o options) error {
+	if !changed(old, e) {
+		return nil
+	}
+	return st.Update(old.ID, func(it *factory.Item) error {
+		words := it.Title != e.Title || it.Body != e.Body
+		labels := !sameLabels(it.Labels, e.Labels)
+		if words {
+			factory.ClearRead(&it.Triage)
+			it.Triage.Type = factory.GuessType(e.Title)
+		}
+		if words || labels {
+			it.Note(now, "changed on "+e.Source)
+		}
+		if labels {
+			factory.ReaskStart(it)
+		}
+		it.Title, it.Body = e.Title, e.Body
+		it.Labels = slices.Clone(e.Labels)
+		if e.URL != "" {
+			it.URL = e.URL
+		}
+		if e.Author != "" {
+			it.Author = e.Author
+		}
+		if it.Ask != nil && it.Ask.Source == e.Source {
+			it.Ask.Text = askText(e)
+		}
+		if sourcePriority(*it) {
+			it.Priority = priorityOf(e)
+		}
+		if factory.RepoOf(*it) == "" && e.Repo != "" {
+			it.Repo, it.Places = e.Repo, []string{e.Repo}
+			// A job that never ran takes the repository's steps with it; one
+			// that ran keeps the steps it ran.
+			if it.Stream == nil && len(it.Adapted) == 0 && !it.PipelineIsDecided() {
+				it.Stages = o.stagesFor(e.Repo)
+			}
+		}
+		it.DismissedBy = nil
+		if it.State == factory.StateDismissed && it.DoneHow != "dropped" {
+			it.State = factory.StateNew
+		}
+		return nil
+	})
+}
+
+// changed says whether e says anything the job does not already hold.
+func changed(it factory.Item, e Entry) bool {
+	if it.Title != e.Title || it.Body != e.Body || !sameLabels(it.Labels, e.Labels) {
+		return true
+	}
+	if (e.URL != "" && it.URL != e.URL) || (e.Author != "" && it.Author != e.Author) {
+		return true
+	}
+	if factory.RepoOf(it) == "" && e.Repo != "" {
+		return true
+	}
+	if sourcePriority(it) {
+		want := priorityOf(e)
+		if (want == nil) != (it.Priority == nil) || (want != nil && want.Value != it.Priority.Value) {
+			return true
+		}
+	}
+	return false
+}
+
+// sourcePriority says the job's priority is the source's to change: it has
+// none, or the source is who set it.
+func sourcePriority(it factory.Item) bool {
+	return it.Priority == nil || it.Priority.SetBy == SetBySource
+}
+
+// priorityOf is e's priority as the floor keeps one ([factory.ValidPriority]),
+// nil when it sent none.
+func priorityOf(e Entry) *factory.JobPriority {
+	if word := priorityWords[e.Priority]; word != "" {
+		return &factory.JobPriority{Value: word, SetBy: SetBySource}
+	}
+	return nil
+}
+
+func sameLabels(a, b []string) bool {
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
+}
+
+// lockInbox holds <root>/inbox.lock until release.
+func lockInbox(st *store.Store) (release func(), err error) {
+	if err := os.MkdirAll(st.Root(), 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(st.Root(), "inbox.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := filelock.Lock(f, true, false); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("the inbox is busy: %w", err)
+	}
+	return func() {
+		_ = filelock.Unlock(f)
+		_ = f.Close()
+	}, nil
+}
