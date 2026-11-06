@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -86,6 +87,25 @@ func pairStates(rec *appRecorder, id string) []string {
 	return states
 }
 
+// syncModeBefore is the sync mode the app was last told before the operation id
+// reached state, or "" when it was told none.
+func syncModeBefore(rec *appRecorder, id, state string) string {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	mode := ""
+	for i, name := range rec.events {
+		switch name {
+		case appwire.EventSyncChanged:
+			mode = rec.data[i].(appwire.SyncChanged).Sync.Mode
+		case appwire.EventPairChanged:
+			if p := rec.data[i].(appwire.PairResult).Pairing; p.ID == id && p.State == state {
+				return mode
+			}
+		}
+	}
+	return ""
+}
+
 // wantCannotJoin is B's refusal: failed, with the app's sentence and the code
 // that tells the app a new code would not help.
 func wantCannotJoin(t *testing.T, failed appwire.Pairing, message string) {
@@ -96,15 +116,18 @@ func wantCannotJoin(t *testing.T, failed appwire.Pairing, message string) {
 }
 
 // A COMPUTER WITH ITS OWN IDENTITY AND A CHAT, AND NO OTHER COMPUTER IN THAT
-// IDENTITY, IS REFUSED BEFORE THE OTHER COMPUTER IS ASKED. It once showed a code,
-// so it is not solo; the directory says nothing else holds its chats.
+// IDENTITY, IS REFUSED BEFORE THE OTHER COMPUTER IS ASKED. It is not solo (an
+// older build ended the marker when it showed a code, or the computers it shared
+// with were removed); the directory says nothing else holds its chats. The
+// computer that showed the code shared nothing, so it is still solo.
 func TestAppPairOwnChatsRefusedBeforeApproval(t *testing.T) {
 	celltest.Available(t)
 	relay := e2Relay(t)
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	dirs, _ := pairedHomes(t, "B")
 	chatOfItsOwn(t, dirs[0])
-	_, recA, wa := appDeviceBackend(t, t.TempDir())
+	dirA := t.TempDir()
+	_, recA, wa := appDeviceBackend(t, dirA)
 	_, recB, wb := appDeviceBackend(t, dirs[0])
 	defer assertAppPairCopyM9(t, recA)
 	defer assertAppPairCopyM9(t, recB)
@@ -119,6 +142,9 @@ func TestAppPairOwnChatsRefusedBeforeApproval(t *testing.T) {
 		t.Fatalf("A lists %+v", got.Devices)
 	}
 	machineCall[appwire.PairResult](t, wa, "pair.cancel", appwire.IDParams{ID: offer})
+	if !identity.Solo(dirA) || !syncsetup.Quiet(dirA) {
+		t.Fatal("A's code shared nothing, yet A is no longer solo")
+	}
 }
 
 // A COMPUTER THAT IS PAIRED WITH OTHERS IS REFUSED BEFORE THE OTHER COMPUTER IS
@@ -129,7 +155,8 @@ func TestAppPairActivelyPairedRefusedBeforeApproval(t *testing.T) {
 	relay := e2Relay(t)
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	dirs, _ := pairedHomes(t, "B", "C")
-	_, recA, wa := appDeviceBackend(t, t.TempDir())
+	dirA := t.TempDir()
+	_, recA, wa := appDeviceBackend(t, dirA)
 	_, recB, wb := appDeviceBackend(t, dirs[0])
 	defer assertAppPairCopyM9(t, recA)
 	defer assertAppPairCopyM9(t, recB)
@@ -141,6 +168,9 @@ func TestAppPairActivelyPairedRefusedBeforeApproval(t *testing.T) {
 		t.Fatalf("A was asked to approve a computer that is paired elsewhere: %v", states)
 	}
 	machineCall[appwire.PairResult](t, wa, "pair.cancel", appwire.IDParams{ID: offer})
+	if !identity.Solo(dirA) {
+		t.Fatal("A's code shared nothing, yet A is no longer solo")
+	}
 
 	// A link is refused the same way, before anything is shown to approve.
 	link := machineCall[appwire.PairResult](t, wb, "pair.start", appwire.PairStartParams{Mode: "request_link", Name: "B"}).Pairing.ID
@@ -164,7 +194,8 @@ func TestAppPairLateRefusalIsNotConfirmed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, recA, wa := appDeviceBackend(t, t.TempDir())
+	dirA := t.TempDir()
+	_, recA, wa := appDeviceBackend(t, dirA)
 	_, recB, wb := appDeviceBackend(t, dirs[0])
 	defer assertAppPairCopyM9(t, recA)
 	defer assertAppPairCopyM9(t, recB)
@@ -180,10 +211,55 @@ func TestAppPairLateRefusalIsNotConfirmed(t *testing.T) {
 	if states := pairStates(recA, offer); strings.Contains(strings.Join(states, " "), "done") {
 		t.Fatalf("A reached done for a computer that refused: %v", states)
 	}
+	// A's identity left in the answer, so A syncs from now on: its app hears so,
+	// and A puts its own record in its directory, where a computer that did keep
+	// the identity (one whose word was lost) can find it.
+	if identity.Solo(dirA) {
+		t.Fatal("A's identity was sent, yet A still says it is solo")
+	}
+	if mode := syncModeBefore(recA, offer, "failed"); mode != appwire.SyncOn {
+		t.Fatalf("A's app last heard sync %q before the failure, want %q", mode, appwire.SyncOn)
+	}
+	ownA, err := identity.Device(dirA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directoryA := appDeviceSync(t, dirA)
+	appSyncWait(t, "A's own record after its identity left", func() bool {
+		listing, err := directoryA.Dir.List(context.Background())
+		_, listed := listing.Devices[ownA.ID()]
+		return err == nil && listed
+	})
 	if now, err := identity.Load(dirs[0]); err != nil || now.ID() != held.ID() {
 		t.Fatalf("B's identity changed (%v)", err)
 	}
 	if got := appDeviceList(t, wa); len(got.Devices) != 1 {
 		t.Fatalf("A lists %+v", got.Devices)
+	}
+}
+
+// A NO SHARES NOTHING. The computer that showed the code and declined stays solo
+// and quiet, and the one that typed it is told it was declined.
+func TestAppPairDeclinedCodeStaysSolo(t *testing.T) {
+	celltest.Available(t)
+	relay := e2Relay(t)
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	dirA := t.TempDir()
+	_, recA, wa := appDeviceBackend(t, dirA)
+	_, recB, wb := appDeviceBackend(t, t.TempDir())
+	defer assertAppPairCopyM9(t, recA)
+	defer assertAppPairCopyM9(t, recB)
+
+	offer, join := offerAndUse(t, wa, wb)
+	q := e2PairWait(t, wa, offer, "question")
+	machineCall[appwire.PairResult](t, wa, "pair.answer", appwire.PairAnswerParams{ID: offer, Question: q.Question.ID, Option: "n"})
+	for side, w := range map[string]*actionWire{"A": wa, "B": wb} {
+		id := map[string]string{"A": offer, "B": join}[side]
+		if p := e2PairWait(t, w, id, "cancelled"); !slices.Contains(p.Lines, appPairDeclined) {
+			t.Fatalf("%s ended with %+v, want declined", side, p)
+		}
+	}
+	if !identity.Solo(dirA) || !syncsetup.Quiet(dirA) {
+		t.Fatal("a declined code ended A's solo state")
 	}
 }

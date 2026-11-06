@@ -29,8 +29,9 @@ func ownChat(t *testing.T, home, name string) {
 	}
 }
 
-// homeOfItsOwn is a joining computer whose identity is not solo (it once showed
-// a code) and that holds a chat: the computer the approver used to hear was paired.
+// homeOfItsOwn is a joining computer whose identity is not solo (an older build
+// ended the marker when it showed a code, or the computers it shared with were
+// removed) and that holds a chat: the computer the approver used to hear was paired.
 func homeOfItsOwn(t *testing.T, r *chatRig) {
 	t.Helper()
 	if _, err := identity.Ensure(r.homeB); err != nil {

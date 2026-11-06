@@ -251,17 +251,19 @@ func (o *appPairOperation) finish(state, line string, failure *appwire.PairError
 }
 func (o *appPairOperation) run(p appwire.PairStartParams) {
 	err, restart := o.perform(p)
+	if err != nil && p.Mode == "offer_code" && !identity.Solo(o.backend.relayHome()) {
+		// The identity left after a yes even though the pairing did not finish
+		// here (not confirmed, a lost answer, a cancel while it was being
+		// read), so this computer syncs from now on, and says so.
+		o.announceSync()
+	}
 	switch {
 	case err == nil:
-		o.backend.devices.wakePublication()
-		o.backend.chats.wakePublication()
 		if !restart {
 			guard.Go("app/paired-chats", func() { _, _ = o.backend.ListChats() })
 		}
 		// These events precede done: a desktop may immediately restart on done.
-		o.backend.publishDevices()
-		sync, _ := o.backend.SyncStatus()
-		o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})
+		o.announceSync()
 		o.finish("done", "", nil, restart)
 	case o.ctx.Err() != nil || errors.Is(err, context.Canceled):
 		o.finish("cancelled", appPairCancelled, nil, false)
@@ -271,6 +273,16 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 		// The failure sentence is the error alone; repeating it as a line showed it twice.
 		o.finish("failed", "", appPairError(err), false)
 	}
+}
+
+// announceSync wakes this computer's device and chat publication and tells the
+// app its devices and sync now, because the pairing changed whether it syncs.
+func (o *appPairOperation) announceSync() {
+	o.backend.devices.wakePublication()
+	o.backend.chats.wakePublication()
+	o.backend.publishDevices()
+	sync, _ := o.backend.SyncStatus()
+	o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})
 }
 func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 	dir := o.backend.relayHome()

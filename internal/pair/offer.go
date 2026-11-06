@@ -42,7 +42,8 @@ var offering atomic.Bool
 
 // Offer shares a grant with the next device that types the code, and answers
 // when a pairing has finished, been refused, or run out of time. A wrong code
-// is not an ending: it burns the code and the loop offers another.
+// is not an ending: it burns the code and the loop offers another. Nothing of
+// the grant leaves, and its BeforeSend does not run, until a person approves.
 //
 // It returns the name the joining device gave itself when it was let in.
 func Offer(ctx context.Context, route Mailbox, grant Grant, ui OfferUI) (string, error) {
@@ -128,6 +129,11 @@ func createApart(ctx context.Context, box pairbox.Box, key pairbox.Key, burned s
 // so once it has decided to, so a device that refuses what it was sent (chats
 // of its own, say) leaves this one saying it was not confirmed, and naming the
 // device where a person can read why, instead of saying they are paired.
+//
+// The grant's BeforeSend runs between the yes and the answer: after a pairing
+// that a cancel or the code's end overtook has stopped, so neither ends solo
+// with nothing sent, and before the identity leaves, so it never leaves a
+// computer that still says it is solo.
 func conclude(ctx context.Context, joiner *offered, grant Grant, ui OfferUI) (string, error) {
 	label := joinerLabel(joiner.Offer)
 	asked, stop := context.WithTimeout(ctx, ConfirmWithin)
@@ -139,6 +145,20 @@ func conclude(ctx context.Context, joiner *offered, grant Grant, ui OfferUI) (st
 	reply, err := grant.verdictOf()
 	if err != nil {
 		return "", err
+	}
+	// A yes that arrives after a person stopped the pairing, or after the code
+	// ran out, is not one to act on.
+	if err := ctx.Err(); err != nil {
+		return "", phraseBox(err, "")
+	}
+	if grant.BeforeSend != nil {
+		if err := grant.BeforeSend(); err != nil {
+			// The person said yes, but this computer cannot send what it
+			// promised: the joining device hears no, and this one says why,
+			// in its own words rather than as a refusal.
+			_ = joiner.reply(sayVerdict("refused"))
+			return "", err
+		}
 	}
 	if err := joiner.reply(reply); err != nil {
 		if errors.Is(err, ErrNotConfirmed) {
