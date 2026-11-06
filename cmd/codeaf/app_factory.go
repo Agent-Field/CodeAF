@@ -93,6 +93,8 @@ type appFactoryHost struct {
 	githubHTTP *http.Client
 	rules      func(ctx context.Context, repo, dir string) (pipeline.File, error)
 	seamHook   func(factory.Seam) factory.Seam
+	// jira is the Jira poll beside the GitHub one (app_factory_jira.go).
+	jira appJiraLoop
 }
 
 func newAppFactoryHost(ctx context.Context, root, address, token string, credentials factorySessions) (*appFactoryHost, error) {
@@ -173,6 +175,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	}
 	seam = rememberGitHub(h.ctx, h.floor.Root(), h.chore, seam)
 	h.seam = seam
+	h.syncJiraReplier()
 	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
@@ -282,6 +285,7 @@ func (h *appFactoryHost) readLoops() {
 		return
 	}
 	h.loopsOn = true
+	h.startJiraLocked(h.intakeFor(h.floor).Once)
 	h.loops.Add(2)
 	guard.Go("app/factory triage", func() { defer h.loops.Done(); runFactoryTriage(h.ctx, h.floor, h.intakeFor) })
 	guard.Go("app/factory poll", func() {
@@ -313,6 +317,7 @@ func (h *appFactoryHost) pollLoop() {
 		return
 	}
 	h.loopsOn = true
+	h.startJiraLocked(h.startOnItsOwn)
 	h.loops.Add(1)
 	guard.Go("app/factory poll", func() {
 		defer h.loops.Done()

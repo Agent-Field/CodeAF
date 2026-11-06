@@ -80,7 +80,7 @@ Work from outside GitHub becomes a factory job through one inbox. Three ways in,
 
 `source` is a lowercase name such as `jira` or `inbox:ops`; `github`, `terminal` and `chat` are the factory's own and are refused. `priority` is `p0` (urgent) to `p3` (low). Limits: title 200 characters on one line, body 32000, id 200, at most 30 labels of 100, a request at most 64 KiB (larger is refused as too large).
 
-## outside work as a job — the same id twice, no repository yet, answering back
+## outside work as a job — the same id or the same ticket sent twice, no repository yet, answering back
 
 The pair source and id is the job's identity: sending the same pair again updates that job's title, body, labels, address and priority and never makes a second one. What a person set stays — its state, steps, budget, assignee, a priority they chose, a repository they picked. A dismissed job whose words changed comes back to Backlog. Its activity starts `arrived from inbox:ops · <url>`, and a change reads `changed on inbox:ops`.
 
@@ -327,7 +327,7 @@ The routing table (see "routing rules") is kept by the factory itself, on a team
 
 ## priority orders the queue — which job runs next, p0 before p1, urgent first, priority labels, why a newer job ran first
 
-Priority is not only a mark on the board: **it decides which queued job a computer takes next.** The order is:
+Priority is not only a mark on the job: **it decides which queued job a computer takes next.** The order is:
 
 1. a job a person said to **Start now**, before every other;
 2. then priority: `p0` (urgent) before `p1` (high) before `p2` (medium) before `p3` (low), and every job with a priority before one with none;
