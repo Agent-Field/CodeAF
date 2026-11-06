@@ -188,12 +188,11 @@ func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		if model == "" {
 			return seatlessWorker{tier: tier}
 		}
-		// EVERY CALL IS MARKED WITH THE SEAT THE TASK SITS, because this is the
-		// one place that knows it: the spend guard holds the checker to its own
-		// ceiling by seat, and a crew whose seats share one model would give it
-		// nothing else to tell a check's call from a worker's.
+		// Every call carries its seat and task id so a shared guard gives each
+		// check its own ceiling, including when seats share a model or a task
+		// is seated again after a wake.
 		seat, _ := config.CrewTierSeat(tier)
-		return workerFor(model, session.SeatCompleter(seat, completerFor(model)))
+		return workerFor(model, session.SeatCompleterFor(seat, task.ID, completerFor(model)))
 	}
 }
 

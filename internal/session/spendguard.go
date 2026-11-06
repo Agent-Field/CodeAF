@@ -210,7 +210,8 @@ type SpendGuard struct {
 	// refuses every call that might be paid — never a default, never none.
 	// It must not take locks of its own that a guarded call can hold.
 	DayLimit func() (usd float64, action string, err error)
-	// SeatCeilings are a seat's own spend ceiling on this task, and
+	// SeatCeilings are a seat's own spend ceiling on each marked task scope
+	// (the whole crew when no scope is marked), and
 	// CeilingAction the sentence (with the ceiling's dollars) a call it stops
 	// ends on.
 	SeatCeilings  map[crewroute.Seat]float64
@@ -228,6 +229,8 @@ type SpendGuard struct {
 	mu         sync.Mutex
 	modelSpent map[string]float64
 	seatSpent  map[crewroute.Seat]*SpendTask
+	// Scoped tallies enforce ceilings; records and receipts keep seatSpent.
+	scopedSpent map[seatScope]*SpendTask
 	// bookMu is held across one call's task and role booking, and by a
 	// checkpoint reading them, so the two always agree.
 	bookMu sync.Mutex
@@ -440,7 +443,7 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		if g.TaskCap > 0 && g.tally().Total() >= g.TaskCap {
 			return 0, ErrSpendStopped{Action: g.TaskAction, TaskLimit: true}
 		}
-		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.seatTally(seat).Total() >= g.SeatCeilings[seat] {
+		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.ceilingTally(ctx, seat).Total() >= g.SeatCeilings[seat] {
 			ceiling := g.SeatCeilings[seat]
 			return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 		}
@@ -456,13 +459,13 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 	}
 	seat := crewSeatOf(ctx)
 	ceiling := g.SeatCeilings[seat]
-	if ceiling > 0 && !g.seatTally(seat).hold(est, ceiling) {
+	if ceiling > 0 && !g.ceilingTally(ctx, seat).hold(est, ceiling) {
 		return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 	}
 	task := g.tally()
 	if !task.hold(est, g.TaskCap) {
 		if ceiling > 0 {
-			g.seatTally(seat).settle(est, 0)
+			g.ceilingTally(ctx, seat).settle(est, 0)
 		}
 		return 0, ErrSpendStopped{Action: g.TaskAction, TaskLimit: true}
 	}
@@ -470,7 +473,7 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 	if !fits {
 		task.settle(est, 0)
 		if ceiling > 0 {
-			g.seatTally(seat).settle(est, 0)
+			g.ceilingTally(ctx, seat).settle(est, 0)
 		}
 		if readErr != nil {
 			return 0, ErrSpendStopped{Action: spendAccountingUnread}
@@ -519,10 +522,6 @@ func (g *SpendGuard) after(ctx context.Context, model string, response *ai.Respo
 	// decides what a call may hold beforehand, never whether what it cost is
 	// counted against the role that made it.
 	seat := crewSeatOf(ctx)
-	seatHeld := 0.0
-	if g.SeatCeilings[seat] > 0 {
-		seatHeld = held
-	}
 	// WHAT A CALL COST IS KNOWN ONLY WHEN SOMEBODY SAID IT: the provider's own
 	// cost (0 included), or this route's published price with the usage it
 	// reported. A route priced at nothing is known free with or without usage.
@@ -548,14 +547,25 @@ func (g *SpendGuard) after(ctx context.Context, model string, response *ai.Respo
 	g.dayTally().settle(model, held, usd)
 	// The seat's tally is fetched before bookMu: a checkpoint takes g.mu and
 	// then bookMu, so this side never takes them the other way round.
-	var role *SpendTask
+	var role, ceiling *SpendTask
 	if seat != "" {
 		role = g.seatTally(seat)
+		if g.SeatCeilings[seat] > 0 {
+			ceiling = g.ceilingTally(ctx, seat)
+		}
 	}
 	g.bookMu.Lock()
 	task.book(held, usd, known)
 	if role != nil {
+		// A scoped call holds its own ceiling, never the seat aggregate.
+		seatHeld := 0.0
+		if ceiling == role {
+			seatHeld = held
+		}
 		role.book(seatHeld, usd, known)
+	}
+	if ceiling != nil && ceiling != role {
+		ceiling.book(held, usd, known)
 	}
 	g.bookMu.Unlock()
 	if usd <= 0 {
