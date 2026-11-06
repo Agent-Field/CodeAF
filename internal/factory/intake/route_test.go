@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -350,5 +351,51 @@ func TestAnUnroutedInboxJobWaits(t *testing.T) {
 	got, _ := r.st.Get(job.ID)
 	if len(r.loaded) != 0 || len(r.started) != 0 || got.Route != "" || got.State != factory.StateNew {
 		t.Fatalf("loaded %v started %v job %+v", r.loaded, r.started, got)
+	}
+}
+
+// A RULE'S PRIORITY WINS OVER THE ONE THE SOURCE SENT. Jira's Medium arrives
+// on the job as p2 marked set by the source ([inbox.SetBySource]), which is
+// not a person's mark; a rule that says p0 is the factory deciding, so the job
+// runs at p0. Only a person's own mark keeps its priority (the next test).
+// Found end to end: a Jira ticket on "Small Jira bugs" (p1) stayed at Medium.
+func TestARulesPriorityWinsOverTheSources(t *testing.T) {
+	r, job := routedFloor(t, []route.Rule{jiraRule(route.StartAuto)})
+	if err := r.st.Update(job.ID, func(cur *factory.Item) error {
+		cur.Priority = &factory.JobPriority{Value: "medium", SetBy: inbox.SetBySource}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Priority == nil || got.Priority.Value != "urgent" {
+		t.Fatalf("routed job's priority is %+v, want the rule's p0 (urgent) over the source's medium", got.Priority)
+	}
+}
+
+// A PERSON'S PRIORITY MARK STILL WINS over a rule's.
+func TestAPersonsPriorityWinsOverARules(t *testing.T) {
+	r, job := routedFloor(t, []route.Rule{jiraRule(route.StartAuto)})
+	if err := r.st.Update(job.ID, func(cur *factory.Item) error {
+		cur.Priority = &factory.JobPriority{Value: "low", SetBy: "ann"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Priority == nil || got.Priority.Value != "low" || got.Priority.SetBy != "ann" {
+		t.Fatalf("routed job's priority is %+v, want ann's low kept", got.Priority)
 	}
 }

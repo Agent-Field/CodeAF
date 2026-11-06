@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/route"
 )
@@ -182,8 +183,9 @@ func stage(cur *factory.Item, f pipeline.File, r *routing) error {
 // the steps of the pipeline it names. An empty field keeps what cur has.
 //
 // A PERSON'S PRIORITY MARK WINS over a rule's, as it wins over a label
-// ([factory.PriorityFor]). A pipeline the file does not list is refused, and
-// nothing about the job is changed by a refused rule.
+// ([factory.PriorityFor]); the priority a source sent does not, because the
+// rule is the factory's own decision about where that source's work stands. A pipeline the file does not list is
+// refused, and nothing about the job is changed by a refused rule.
 func applyRoute(cur *factory.Item, rule route.Rule, f pipeline.File) error {
 	var steps []factory.Stage
 	if rule.Then.Pipeline != "" {
@@ -193,7 +195,9 @@ func applyRoute(cur *factory.Item, rule route.Rule, f pipeline.File) error {
 	}
 	cur.Route = rule.Name
 	cur.Repo = rule.Then.RepoFor(*cur)
-	if value, ok := factory.PriorityFromShort(rule.Then.Priority); ok && cur.Priority == nil {
+	// The source's own priority is not a person's mark (inbox.SetBySource):
+	// the rule's word replaces it, as it would replace none.
+	if value, ok := factory.PriorityFromShort(rule.Then.Priority); ok && (cur.Priority == nil || cur.Priority.SetBy == inbox.SetBySource) {
 		cur.Priority = &factory.JobPriority{Value: value}
 	}
 	if steps != nil {
