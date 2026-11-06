@@ -1,8 +1,8 @@
 # Removed-computer quit progress
 
-Proposal for the terminal chat surface. It proposes a quit presentation change
-that requires review before implementation. Existing contracts still govern
-saving, ownership, and stored history.
+Implemented for the terminal chat surface. Quit progress reads the current
+pairing’s confirmed removal before each sentence. Saving, ownership, and stored
+history retain their existing contracts.
 
 ## Problem
 
@@ -47,24 +47,15 @@ returns reproduces the incorrect lines without requiring stale publication debt.
 This proves that pending publication is unnecessary for the presentation defect.
 It does not prove which delay caused the original load-sensitive failure.
 
-## Proposed change
+## Implemented change
 
-Treat eligibility to share as an input to quit progress, separate from the
-local durability receipt. For a local chat whose current pairing is confirmed
-removed, suppress the cross-device progress sentences while retaining every
-existing local save, close reply, flush, and error check.
+`syncsetup.ConfirmedRemoved` reads the current pairing through the same removal
+state used by the drive and wire gate. Read failures do not confirm removal;
+a replacement pairing uses its own removal state.
 
-Start with the smallest local seam: have the local service presentation decision
-account for the current pairing's confirmed removal. A read failure must not
-silently imply removal. Keep an explicitly supplied remote engine's service
-independent of this terminal's pairing. Resolve removal against the current
-pairing so adding this computer again restores ordinary progress.
-
-If removal during an already-running quit must also be covered, recheck sharing
-eligibility before each progress sentence. Do not clear pending turns, forge a
-local receipt, bypass a worker join, or shorten a durability fence to silence
-the output. Whether delayed local-only saving needs its own progress sentence
-must be settled against the existing quiet-removal contract before implementation.
+Local quit progress rechecks that decision before each sentence. An explicitly
+remote host keeps its engine's service independent of the terminal's pairing.
+All local saves, close replies, flushes, receipts and waits remain intact.
 
 ## Acceptance
 
