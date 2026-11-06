@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -36,6 +37,9 @@ type tailPublishGate struct {
 	costRelease   chan struct{}
 	costRequested chan struct{}
 	costOnce      atomic.Bool
+	stallPublish  bool
+	finishReply   chan struct{}
+	closed        chan struct{}
 }
 
 func (g *tailPublishGate) wrap(next http.Handler) http.Handler {
@@ -55,6 +59,11 @@ func (g *tailPublishGate) wrap(next http.Handler) http.Handler {
 		}
 		if reply.Code == http.StatusOK && g.armed.CompareAndSwap(true, false) {
 			close(g.committed)
+			if g.stallPublish {
+				<-r.Context().Done()
+				g.canceled.Add(1)
+				return
+			}
 			select {
 			case <-g.reply:
 			case <-r.Context().Done():
@@ -152,7 +161,7 @@ func newHostedTailChat(t *testing.T, g *tailPublishGate) *hostedTailChat {
 	t.Cleanup(model.Close)
 	chat := &hostedTailChat{hostedMoveRig: h, closing: make(chan struct{})}
 	done := make(chan error, 1)
-	go func() {
+	guard.Go("test/hosted-tail-engine", func() {
 		done <- enginehost.Run(h.work, enginehost.Options{Boot: func(remote.Hello) (*remote.Engine, error) {
 			cfg := v3Seated(session.Config{Workspace: h.work, Place: session.Place{Dir: h.c.Root, Workspace: h.work}, SessionFile: session.Place{Dir: h.c.Root}.Transcript(), Model: "stub/chat", APIKey: "stub", BaseURL: model.URL})
 			chat.mu.Lock()
@@ -167,15 +176,21 @@ func newHostedTailChat(t *testing.T, g *tailPublishGate) *hostedTailChat {
 			chat.mu.Unlock()
 			return &remote.Engine{Agent: agent, Workspace: h.work, SessionFile: agent.SessionPath(), Place: cfg.Place, ReleaseOnLeave: func(remote.WrappedAgent) bool { return true }, FinishSaving: func(remote.WrappedAgent) error {
 				chat.closeOnce.Do(func() { close(chat.closing) })
-				return syncDrives.closeCell(h.c.ID)
+				err := syncDrives.closeCell(h.c.ID)
+				if g.finishReply != nil {
+					close(g.closed)
+					<-g.finishReply
+				}
+				return err
 			}}, nil
 		}})
-	}()
+	})
 	t.Cleanup(func() { _ = enginehost.Retire(h.work, true); <-done })
 	chat.connect()
 	ledger := session.UsageLedgerPath()
 	t.Cleanup(func() {
 		releaseTailGate(g.reply)
+		releaseTailGate(g.finishReply)
 		releaseTailGate(g.titleRelease)
 		releaseTailGate(g.costRelease)
 		chat.mu.Lock()
@@ -271,9 +286,9 @@ func (h *hostedTailChat) quitAfter(g *tailPublishGate, delay time.Duration) stri
 	finished := make(chan error, 1)
 	ctx, cancel := context.WithTimeout(h.t.Context(), cellstore.SealWithin)
 	defer cancel()
-	go func() {
+	guard.Go("test/hosted-tail-surface", func() {
 		finished <- runSurface(ctx, tui3.Options{Agent: h.client.Agent(), Workspace: h.work, SessionFile: session.Place{Dir: h.c.Root}.Transcript()})
-	}()
+	})
 	<-screen.ready
 	if _, err := io.WriteString(typed, "/quit\r"); err != nil {
 		h.t.Fatal(err)
@@ -283,8 +298,16 @@ func (h *hostedTailChat) quitAfter(g *tailPublishGate, delay time.Duration) stri
 	case <-ctx.Done():
 		h.t.Fatal("quit did not reach its final save")
 	}
-	// The committed response arrives while quit is joining the writer.
+	if g.closed != nil {
+		select {
+		case <-g.closed:
+		case <-ctx.Done():
+			h.t.Fatal("hosted local close did not finish")
+		}
+	}
+	// Hold the hosted reply after local close, across both progress timers.
 	time.Sleep(delay)
+	releaseTailGate(g.finishReply)
 	releaseTailGate(g.reply)
 	if err := <-finished; err != nil {
 		h.t.Fatal(err)
@@ -589,10 +612,48 @@ func TestL4HostedLocalSaveRetriesUploadOnNextStartWhileStillHolding(t *testing.T
 // Contract 4b requires a removed computer to finish its local save quietly without a relay save.
 // L4-H4b leaves a completed local quit quiet when removal has disabled uploads.
 func TestL4HostedRemovedComputerQuitsQuietlyAndKeepsLocalHistory(t *testing.T) {
+	checkRemovedHostedQuit(t, false)
+}
+
+func TestHostedQuitRemovedComputerStalledCloseStaysQuiet(t *testing.T) {
+	checkRemovedHostedQuit(t, true)
+}
+
+func TestHostedQuitPairedComputerStalledCloseShowsProgress(t *testing.T) {
+	g := &tailPublishGate{committed: make(chan struct{}), reply: make(chan struct{}), finishReply: make(chan struct{}), closed: make(chan struct{})}
+	h := newHostedTailChat(t, g)
+	h.say("Keep this answer on my paired computers.")
+	h.wait("shared answer", h.saved)
+	output := h.quitAfter(g, 5*time.Second)
+	for _, line := range []string{quitSavingWord, quitStillSavingWord} {
+		if !strings.Contains(output, line+"\n") {
+			t.Errorf("paired quit missing %q in %q", line, output)
+		}
+	}
+	if !h.saved() {
+		t.Error("paired quit lost its saved head")
+	}
+}
+
+func checkRemovedHostedQuit(t *testing.T, stalled bool) {
+	t.Helper()
 	g := &tailPublishGate{committed: make(chan struct{}), reply: make(chan struct{})}
+	if stalled {
+		g.stallPublish = true
+		g.finishReply, g.closed = make(chan struct{}), make(chan struct{})
+	}
 	h := newHostedTailChat(t, g)
 	h.say("Keep this answer on this computer.")
 	h.wait("shared answer", h.saved)
+	if stalled {
+		g.armed.Store(true)
+		h.say("Keep this pending publication local if this computer is removed.")
+		select {
+		case <-g.committed:
+		case <-time.After(cellstore.SealWithin):
+			t.Fatal("publish did not reach the stalled relay")
+		}
+	}
 	if err := h.b.Dir.Revoke(t.Context(), h.a.Device.ID()); err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +663,11 @@ func TestL4HostedRemovedComputerQuitsQuietlyAndKeepsLocalHistory(t *testing.T) {
 	h.mu.Lock()
 	h.requests = nil
 	h.mu.Unlock()
-	if output := h.quit(g); output != "" {
+	delay := time.Duration(0)
+	if stalled {
+		delay = 5 * time.Second
+	}
+	if output := h.quitAfter(g, delay); output != "" {
 		t.Errorf("locally saved quit printed %q", output)
 	}
 	raw, err := os.ReadFile(session.Place{Dir: h.c.Root}.Transcript())

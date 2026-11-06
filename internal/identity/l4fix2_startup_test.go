@@ -36,6 +36,10 @@ func startupFile(t *testing.T, home, name, text string) {
 func firstStart(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
+	// This fixture tests joinability, not learning.
+	if err := config.WriteMemoryEnabled(home, false); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := identity.EnsureSolo(home); err != nil {
 		t.Fatal(err)
 	}
@@ -78,8 +82,7 @@ func firstStart(t *testing.T) string {
 			<-done
 			t.Fatal(err)
 		}
-		// Memory is off on a first start, so its worker records an empty inventory
-		// as unbuilt and stays that way.
+		// With learning pinned off, the empty inventory stays unbuilt.
 		if snapshot.Build.Phase == knowledge.BuildUnbuilt {
 			break
 		}

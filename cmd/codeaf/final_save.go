@@ -29,16 +29,17 @@ const quitSavedHereWord = "saved here; it reaches your other devices when the sy
 // finalSaving keeps one failure until cleanup has returned the terminal.
 var finalSaving struct {
 	sync.Mutex
-	failure       error
-	surface       bool
-	finishing     bool
-	address       string
-	durable       []func() bool
-	compatibility []func() bool
-	reporting     bool
-	reportDone    chan struct{}
-	reportOK      bool
-	interrupted   chan struct{}
+	failure         error
+	surface         bool
+	finishing       bool
+	address         string
+	progressAllowed func() bool
+	durable         []func() bool
+	compatibility   []func() bool
+	reporting       bool
+	reportDone      chan struct{}
+	reportOK        bool
+	interrupted     chan struct{}
 	// pending keeps closing replies alive until the launcher can safely shut their links.
 	pending []<-chan struct{}
 	// forced bypasses cleanup after a second interrupt has restored the screen.
@@ -53,6 +54,7 @@ func armFinalSaving() chan struct{} {
 	finalSaving.surface = true
 	finalSaving.finishing = false
 	finalSaving.address = ""
+	finalSaving.progressAllowed = nil
 	finalSaving.durable = nil
 	finalSaving.compatibility = nil
 	finalSaving.reporting = false
@@ -282,10 +284,11 @@ func finalSaveWords(err error, finishing bool, address string) (string, bool) {
 
 // quitProgress has an injected clock because the three-second line is a UI contract.
 type quitProgress struct {
-	after func(time.Duration) <-chan time.Time
-	say   func(string)
-	stop  <-chan struct{}
-	safe  func() bool
+	after   func(time.Duration) <-chan time.Time
+	say     func(string)
+	stop    <-chan struct{}
+	safe    func() bool
+	allowed func() bool
 }
 
 func (q quitProgress) run() {
@@ -294,11 +297,17 @@ func (q quitProgress) run() {
 		return
 	case <-q.after(150 * time.Millisecond):
 	}
-	q.say(quitSavingWord)
+	if q.allowed == nil || q.allowed() {
+		q.say(quitSavingWord)
+	}
 	select {
 	case <-q.stop:
 		return
 	case <-q.after(3 * time.Second):
+		if q.allowed != nil && !q.allowed() {
+			<-q.stop
+			return
+		}
 		if q.safe != nil && !q.safe() {
 			q.say(quitStillLocalWord)
 		} else {
@@ -317,7 +326,7 @@ var finalProgress struct {
 // startFinalSaveProgress runs only after the alternate screen has been restored.
 // It covers all cleanup, including a closing link and the last local flush.
 func startFinalSaveProgress() {
-	address, checks, legacy := finalProgressState()
+	address, checks, legacy, allowed := finalProgressState()
 	if address == "" || strings.EqualFold(address, "off") {
 		return
 	}
@@ -355,7 +364,7 @@ func startFinalSaveProgress() {
 		if legacy {
 			return
 		}
-		q := quitProgress{safe: func() bool { return allLocalDurable(checks) }, after: time.After, say: func(line string) { fmt.Fprintln(os.Stdout, line) }, stop: stop}
+		q := quitProgress{allowed: allowed, safe: func() bool { return allLocalDurable(checks) }, after: time.After, say: func(line string) { fmt.Fprintln(os.Stdout, line) }, stop: stop}
 		q.run()
 	})
 }
@@ -448,10 +457,10 @@ func takeFinalReport() (err error, surface, finishing bool, address string, chec
 	finalSaving.address, finalSaving.durable, finalSaving.compatibility = "", nil, nil
 	return
 }
-func finalProgressState() (address string, checks []func() bool, legacy bool) {
+func finalProgressState() (address string, checks []func() bool, legacy bool, allowed func() bool) {
 	finalSaving.Lock()
 	defer finalSaving.Unlock()
-	return finalSaving.address, append([]func() bool(nil), finalSaving.durable...), legacySavingLocked()
+	return finalSaving.address, append([]func() bool(nil), finalSaving.durable...), legacySavingLocked(), finalSaving.progressAllowed
 }
 func takeFinalProgress() chan struct{} {
 	finalProgress.Lock()
@@ -463,8 +472,9 @@ func takeFinalProgress() chan struct{} {
 	}
 	return done
 }
-func setFinalSyncService(address string) {
+func setFinalSyncService(address string, allowed func() bool) {
 	finalSaving.Lock()
 	defer finalSaving.Unlock()
 	finalSaving.address = address
+	finalSaving.progressAllowed = allowed
 }
