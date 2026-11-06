@@ -619,6 +619,11 @@ func (s *Supervisor) drain() {
 		ret := <-s.finished
 		s.inFlight--
 		s.returned()
+		// Work kept for a later run has no worker now. Release only this
+		// supervisor's remaining claim so it reads queued, not running.
+		if task := s.store.Task(ret.task.ID); task != nil && task.ClaimedBy == ret.task.ID && task.Owner == s.Owner {
+			_, _ = s.store.Release(task.ID, ret.task.ID)
+		}
 		// THE ENDING IS DROPPED, BUT THE FACT OF WHO IT CUT IS NOT: a worker
 		// that came home with the run's own ending as its error was taken down
 		// by that ending, and the run records it where it knows ([Summary.Cut]).
