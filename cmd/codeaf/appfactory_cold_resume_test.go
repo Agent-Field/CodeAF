@@ -31,8 +31,6 @@ func TestColdResumeServesAfterTheAppOpensAConversationFirst(t *testing.T) {
 	freshEngineProcess(t)
 	// This process-wide state belongs to the test that opened it.
 	resetFactoryEngineState := func() {
-		engineFactoryStore.once = sync.Once{}
-		engineFactoryStore.store = nil
 		setFactoryProcess(func() {
 			factoryProcess.once = sync.Once{}
 			factoryProcess.stop = nil
