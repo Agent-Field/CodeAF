@@ -128,9 +128,8 @@ type v3Process struct {
 	// project is still a conversation this door opened from here.
 	LaunchDir string
 
-	// mu guards everything below: the lazily opened history file and the list of
-	// agents this process has built. Both are touched from the surface's
-	// goroutine and from the door's defer, which are not the same one.
+	// mu guards Settings.APIKey, Settings.Sources and everything below.
+	// Provider handoffs, launches and process cleanup run on different goroutines.
 	mu            sync.Mutex
 	recall        *history.Store
 	agents        []*session.Agent
@@ -568,6 +567,14 @@ func (p *v3Process) sourceSeeds() (profileDir, key, base string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.ProfileDir, p.Settings.APIKey, p.Settings.BaseURL
+}
+
+// launchSettings copies the profile while provider handoffs hold the same lock.
+// Model source sets replace their backing slice, so the copy keeps its sources.
+func (p *v3Process) launchSettings() config.Config {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.Settings
 }
 
 func (p *v3Process) currentAccount() (string, modelsource.Set) {
