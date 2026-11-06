@@ -113,13 +113,13 @@ func growthRefusal(plan state, parentID string, titles []string) string {
 // AddManyBounded applies GrowthRefusal inside the same write transaction as
 // AddMany. Separate workers cannot race a read of the last available slot.
 func (s *Store) AddManyBounded(specs []TaskSpec) ([]*Task, error) {
-	return s.addMany(specs, true, "")
+	return s.addMany(specs, true, "", false)
 }
 
 // AddManyForWorker enforces ownership and the worker's allowance in the same
 // transaction as the tree bounds and the new rows, including their author.
 func (s *Store) AddManyForWorker(workerTask string, specs []TaskSpec) ([]*Task, error) {
-	return s.addMany(specs, true, workerTask)
+	return s.addMany(specs, true, workerTask, false)
 }
 
 func boundedGrowthRefusal(plan state, q rowQuerier, specs []TaskSpec, workerTask string) error {

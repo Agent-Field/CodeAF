@@ -254,10 +254,16 @@ func (s *Store) Stopped() bool {
 // CLI mints short random ones — `t-` + six base-36 characters — and honours
 // `--as` names. Both roads end here.
 func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
-	return s.addMany(specs, false, "")
+	return s.addMany(specs, false, "", false)
 }
 
-func (s *Store) addMany(specs []TaskSpec, bounded bool, workerTask string) ([]*Task, error) {
+// AddJoinedMany admits independent assignments through the engine's join door.
+// Silent joins keep the ordinary tree bounds; person-approved joins may exceed them.
+func (s *Store) AddJoinedMany(specs []TaskSpec, bounded bool) ([]*Task, error) {
+	return s.addMany(specs, bounded, "", true)
+}
+
+func (s *Store) addMany(specs []TaskSpec, bounded bool, workerTask string, joined bool) ([]*Task, error) {
 	if len(specs) == 0 {
 		return nil, errors.New("tasks must not be empty")
 	}
@@ -313,6 +319,7 @@ func (s *Store) addMany(specs []TaskSpec, bounded bool, workerTask string) ([]*T
 		}
 		for _, spec := range specs {
 			task := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now, AddedByTask: workerTask}
+			task.JoinedAssignment = joined
 			next.Tasks[spec.ID] = task
 			next.Order = append(next.Order, spec.ID)
 		}
