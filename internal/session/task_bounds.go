@@ -20,10 +20,7 @@ func silentTaskStart(ctx context.Context) bool {
 }
 
 func addJoinedTasks(ctx context.Context, store *plandb.Store, specs []plandb.TaskSpec) ([]*plandb.Task, error) {
-	if silentTaskStart(ctx) {
-		return store.AddManyBounded(specs)
-	}
-	return store.AddMany(specs)
+	return store.AddJoinedMany(specs, silentTaskStart(ctx))
 }
 
 // taskRunCost bounds the whole tree even when no crew is routed for it.
