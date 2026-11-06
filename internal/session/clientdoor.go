@@ -841,6 +841,9 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		ctx = provider.WithServedModel(ctx, a.servedModel)
 		defer func() { a.endModelRequest(actual) }()
 	}
+	if tree := a.nodeTreeForCall(ctx); tree != nil {
+		client = nodeTreeCompleter{tree: tree, model: called, next: client}
+	}
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), materializeImageRefs(messages), append(options, ai.WithModel(wire))...)
 	if response != nil && response.Model != "" {
 		actual = response.Model

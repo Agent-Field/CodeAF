@@ -431,11 +431,12 @@ type taskRecord struct {
 	// carried a bill, which resumes as zero — the same thing an unpriced model
 	// leaves behind, and the same thing every surface here already draws as
 	// nothing rather than as "$0.00".
-	CostUSD    float64 `json:"costUsd,omitempty"`
-	Input      int     `json:"input,omitempty"`
-	Output     int     `json:"output,omitempty"`
-	CacheRead  int     `json:"cacheRead,omitempty"`
-	CacheWrite int     `json:"cacheWrite,omitempty"`
+	CostUSD    float64              `json:"costUsd,omitempty"`
+	TreeSpend  *nodeTreeSpendRecord `json:"tree_spend,omitempty"`
+	Input      int                  `json:"input,omitempty"`
+	Output     int                  `json:"output,omitempty"`
+	CacheRead  int                  `json:"cacheRead,omitempty"`
+	CacheWrite int                  `json:"cacheWrite,omitempty"`
 
 	// Noted says this node's completion note has been handed to the steering
 	// lane. It is what stops a resumed session re-announcing work the transcript
@@ -1444,6 +1445,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		StartedAt:      n.started,
 		EndedAt:        n.ended,
 		CostUSD:        n.cost,
+		TreeSpend:      n.graph.nodeSpendRecordLocked(n),
 		Input:          n.input,
 		Output:         n.output,
 		CacheRead:      n.cacheRead,
@@ -2386,6 +2388,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		started:        record.StartedAt,
 		ended:          record.EndedAt,
 		cost:           record.CostUSD,
+		savedTreeSpend: record.TreeSpend,
 		input:          record.Input,
 		output:         record.Output,
 		cacheRead:      record.CacheRead,

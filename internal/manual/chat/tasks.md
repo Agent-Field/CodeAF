@@ -2322,15 +2322,16 @@ you set it — and under the day's limit above it. An adaptive run they start op
 $100.00 default.
 
 **An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
-Spending tab's `per task` row and set with `/crew cap task <$>`. On the run road this is
+Spending tab's `per task` row and set with `/crew cap task <$>`. On both task roads this is
 one ceiling for the whole tree, including planning and checks. The smaller of that limit
 and the conversation's remaining allowance wins, even when no crew was routed.
 Continuing interrupted work keeps what the same tree already spent: only the unspent
 part of its per-task limit remains available.
-A routed crew refuses a call that would cross its per-task limit. Reaching the run's
+A routed crew refuses a call that would cross its per-task limit. Reaching the tree's
 ceiling ends workers in flight and starts no more. When the per-task limit binds, the
 report says `this task reached its $5 limit · raise it in /crew` (with your configured
 amount). Raise it with `/crew cap task <$>`, then rerun the remaining work with `/task`.
+When the conversation's smaller limit binds, the report names that amount and `/settings`.
 Continuing a run is for interrupted work; a settled dollar-limit ending needs a rerun.
 **senior-dev, sec and review have their own dollar and time ceilings for each run**,
 separate from that `per task` row; see each program's page for its defaults and how to
@@ -4306,6 +4307,22 @@ splits.
 
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
+
+## Duplicate task titles on the node belt
+
+With `CODEAF_TASK_BELT=node`, `legacy` or `off`, a worker cannot add the same work
+twice anywhere in its task tree. Letter case is ignored; runs of punctuation or
+whitespace fold to one space:
+`Read: the LAW!` and `read-the law` name the same work. Ancestors, siblings, cousins and
+finished tasks all count; a cancelled task's title may be reused. A division naming
+the same work twice is refused whole, before any part starts. Quick tasks use the same
+check. Separate conversation tasks have separate trees; a person's typed task stays
+exempt.
+
+The refusal says `no: this run already has a task named "Read: the LAW!" (7), so nothing
+was added.` It tells the worker to do that work in its own hands, or name different
+work for what is different. The shared tree money limit is described above under
+*A task started from the composer carries a cap*.
 
 ## How the bash belt run splits work instead of nesting node tasks
 

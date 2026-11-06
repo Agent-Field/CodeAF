@@ -24,6 +24,9 @@ func normalizedTitle(title string) string {
 	}), " ")
 }
 
+// NormalizedTitle is the work identity shared by both task admission roads.
+func NormalizedTitle(title string) string { return normalizedTitle(title) }
+
 // GrowthRefusal answers why worker-created tasks cannot join this run, or
 // nothing when they fit. Internal review and person-approved writes bypass it.
 func (s *Store) GrowthRefusal(parentID string, titles []string) string {

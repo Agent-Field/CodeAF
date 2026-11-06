@@ -33,15 +33,22 @@ func (a *Agent) taskRunCost(run *beltRun, cost float64) float64 {
 	if run.store != nil {
 		spent = storeSpent(run.store)
 	}
-	left := runCostLeft(taskCap, spent)
 	// Every dispatch passes here, including continuation. The ending names
 	// the configured cap, while the engine receives only its unspent allowance.
 	run.costCeiling = taskCap
-	run.conversationCostLimit = cost > 0 && cost <= left
+	allowance, conversation := taskTreeCost(taskCap, spent, cost)
+	run.conversationCostLimit = conversation
+	return allowance
+}
+
+// taskTreeCost chooses the same remaining allowance for either task road.
+func taskTreeCost(taskCap, spent, cost float64) (float64, bool) {
+	left := runCostLeft(taskCap, spent)
+	conversation := cost > 0 && cost <= left
 	if cost <= 0 || left < cost {
-		return left
+		return left, conversation
 	}
-	return cost
+	return cost, conversation
 }
 
 func (run *beltRun) taskLimitWords(summary RunSummary) string {
