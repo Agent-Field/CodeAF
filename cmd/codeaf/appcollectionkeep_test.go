@@ -372,6 +372,9 @@ func TestCollectionHeldConversationSurvivesBackgroundSweep(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			root, bucket := collectionKeepEnvironment(t)
+			// The sweep reads the automation store; this home's store is closed (after the
+			// sweep stops) before the home is removed, and the previous one comes back.
+			freshAutomationsStore(t)
 			held := writeV3Session(t, bucket, "collection-held", "", time.Time{})
 			unheld := writeV3Session(t, bucket, "unheld", "", time.Time{})
 			old := time.Now().Add(-8 * 24 * time.Hour)
