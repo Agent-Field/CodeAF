@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/jira"
 	"github.com/Agent-Field/codeaf/internal/factory/jira/jirastub"
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -343,5 +344,35 @@ func TestAnUnknownZoneWidensTheCursor(t *testing.T) {
 	_, next, err := (&jira.Feed{Client: clientOf(s), JQL: "project = FL"}).Fetch(context.Background(), "")
 	if err != nil || next != "2026-11-06 01:29" {
 		t.Fatalf("%q %v", next, err)
+	}
+}
+
+// THE ROUTING SEAM: a ticket filed through the inbox is a job a rule naming
+// source jira and its project's label matches, and one naming another
+// project does not. The connector picks no repository; the rule does.
+func TestAJiraJobIsMatchedBySourceAndProjectLabel(t *testing.T) {
+	s := stub(t)
+	key := s.CreateIssue(jirastub.Issue{Project: "FL", Summary: "x", Priority: "High"})
+	floor, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &jira.Feed{Client: clientOf(s), JQL: "project = FL"}
+	if _, err := inbox.PollOnce(context.Background(), f, floor, "", time.Now); err != nil {
+		t.Fatal(err)
+	}
+	items, _ := floor.List()
+	if len(items) != 1 || items[0].SourceRef != inbox.Ref("jira", key) {
+		t.Fatalf("jobs %+v", items)
+	}
+	job := items[0]
+	if !route.Matches(route.Match{Sources: []string{"jira"}, Labels: []string{"jira-project:FL"}}, job) {
+		t.Fatalf("the FL rule does not match the job (origin %q, labels %v)", job.Origin, job.Labels)
+	}
+	if route.Matches(route.Match{Sources: []string{"jira"}, Labels: []string{"jira-project:OPS"}}, job) {
+		t.Fatal("another project's rule matched")
+	}
+	if route.Matches(route.Match{Sources: []string{"github"}}, job) {
+		t.Fatal("a GitHub rule matched a Jira job")
 	}
 }
