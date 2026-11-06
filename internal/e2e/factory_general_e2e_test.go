@@ -503,7 +503,7 @@ func fleResult(t *testing.T, name string, began time.Time, cost float64, evidenc
 	if t.Failed() {
 		verdict = "fail"
 	}
-	t.Logf("FLE2E RESULT scenario=%q verdict=%s cost=$%.4f wall=%s evidence=%s", name, verdict, cost, time.Since(began).Round(time.Second), evidence)
+	t.Logf("FLE2E RESULT scenario=%q verdict=%s cost=$%.6f wall=%s evidence=%s", name, verdict, cost, time.Since(began).Round(time.Second), evidence)
 }
 
 // gh runs the GitHub CLI with the run's token.
