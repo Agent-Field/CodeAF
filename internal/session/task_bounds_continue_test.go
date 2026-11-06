@@ -93,8 +93,18 @@ func TestContinuedRunKeepsItsSpentTreeAllowanceAndConfiguredLimitWords(t *testin
 					t.Errorf("continued allowance = %v, want %v", got, tc.want)
 				}
 			}()
+			// Only the run's own worker call counts here: the landing's one
+			// summary refresh afterwards is the conversation's, not the tree's.
 			completer.mu.Lock()
-			calls := len(completer.seen)
+			calls := 0
+			for _, seen := range completer.seen {
+				for _, message := range seen {
+					if strings.Contains(messageText(message), "run the brief") {
+						calls++
+						break
+					}
+				}
+			}
 			completer.mu.Unlock()
 			if calls != tc.calls {
 				t.Errorf("continued model calls = %d, want %d", calls, tc.calls)
