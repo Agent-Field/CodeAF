@@ -9,5 +9,5 @@ invalidates:
 
 The abandoned line stays evidence and is never billed; errands on the turn's clock
 keep their own usage lines. A settle turn stopping at its bound and a final stage
-report now seal their steps like every other turn ending. Transcripts written
+report now write the same step seal, without duration. Transcripts written
 before this change cannot recover an abandoned turn's missing steps.
