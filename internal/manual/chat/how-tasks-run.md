@@ -3102,10 +3102,11 @@ earlier call evidence and pointer to the original journal line are not included.
 applies whether the countdown starts the proposal or you approve it yourself. The
 proposing model must make the assignment self-contained.
 
-Every worker opens on its own task id and title. A child reads the run's assignment
-later as context; that assignment contains no copied conversation message. A task you
-typed yourself, such as `/task`, keeps its existing brief. The older session-tree road
-keeps its existing conversation context and journal pointers.
+Every worker opens on its own task id and title. A child reads its assignment's ask
+later as context. A proposal joined into an existing run keeps its own assignment
+for its workers and checks; they do not inherit the other task's root description.
+A task you typed yourself, such as `/task`, keeps its existing brief. The older
+session-tree road keeps its existing conversation context and journal pointers.
 
 ## What the task actually reads — does it see what I said?
 

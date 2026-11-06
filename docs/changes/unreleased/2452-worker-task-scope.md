@@ -17,3 +17,8 @@ road retain their existing documents.
 
 App lists inherit recorded run groups and reflect stopped store states while worker
 returns settle. A stop preserves earlier completed results and clears open holds.
+Joined assignments and their descendants inherit their own ask. Woken workers distinguish
+their own dispatched children from other work they must not redo. Setting a store aside
+ends lingering open descendants even below a completed root; stopping an older retained
+run can repair its children without touching the newer run. Released ready work reads
+queued once its supervisor is gone, while a live run keeps its existing display.
