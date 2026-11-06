@@ -1,6 +1,6 @@
 ---
 kind: added
-title: Work from outside GitHub becomes a factory job through codeaf factory add, POST /api/intake or factory.intake_add
+title: Outside work becomes a factory job through codeaf factory add or POST /api/intake
 pr: 2477
 surface: [factory, app, engine]
 invalidates:
