@@ -351,3 +351,25 @@ func TestReportRecordedAgentFilterIncludesChatAndOwnedTaskCharges(t *testing.T) 
 		t.Fatal("owner filter does not fence cursors")
 	}
 }
+
+func TestReportSeparatesLibraryActivityWithoutCountingItTwice(t *testing.T) {
+	chat := reportLine(15, 12, "m/flash", 1)
+	learning := reportLine(15, 12, "m/flash", 2)
+	learning.Role, learning.LibraryActivity = "memory", "learning"
+	answer := reportLine(15, 12, "m/flash", 3)
+	answer.Role, answer.LibraryActivity = "memory", "answers"
+	older := reportLine(15, 12, "m/flash", 4)
+	older.Role = "memory"
+	path := writeLedger(t, []UsageLine{chat, learning, answer, older}, nil, "")
+	report, err := QueryUsageReport(path, reportQuery(t, "2026-10-15", "2026-10-15"), reportZone, UsageReportBudget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	costs := map[string]float64{}
+	for _, cell := range report.Cells {
+		costs[cell.LibraryActivity] += cell.USD
+	}
+	if report.Totals.USD != 10 || costs[""] != 1 || costs["learning"] != 2 || costs["answers"] != 3 || costs["unspecified"] != 4 {
+		t.Fatalf("total=%v activity=%v; want total 10, chat 1, learning 2, answers 3, unspecified 4", report.Totals.USD, costs)
+	}
+}

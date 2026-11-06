@@ -250,7 +250,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		return ActionTransfer
 
 	// Saying something to a person.
-	case "slack_send", "gmail_send", "speak", "ask",
+	case "slack_send", "gmail_send", "speak", "ask", RequestSecretToolName,
 		// A line into a team's traffic, from its manager or one of its members,
 		// a packet sent up, and a closing report to the person.
 		"team_send", "team_post", "team_escalate", "team_close_report", "team_raise",

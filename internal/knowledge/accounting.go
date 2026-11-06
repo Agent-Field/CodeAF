@@ -33,9 +33,11 @@ func memoryBilling(ctx context.Context) context.Context {
 	base := ctx
 	ctx = provider.WithBilling(ctx, func(b provider.Billed) { record(base, b) })
 	ctx = provider.WithReconcile(ctx, func(r provider.Reconciled) {
-		if r.Found {
-			record(base, r.Billed)
+		billed := r.Billed
+		if billed.GenerationID == "" {
+			billed.GenerationID = r.Ref
 		}
+		record(base, billed)
 	})
 	return provider.WithUnmeteredReceipts(ctx)
 }
@@ -54,4 +56,21 @@ type ownerSessionsKey struct{}
 // Citation identities and the initiating call's billing session remain unchanged.
 func WithOwnerSessions(ctx context.Context, sessions []string) context.Context {
 	return context.WithValue(ctx, ownerSessionsKey{}, append([]string(nil), sessions...))
+}
+
+// LibraryActivity reports the recorded purpose of a knowledge request for spending.
+// It changes attribution only; compiler roles and quality checks stay unchanged.
+func LibraryActivity(ctx context.Context) string {
+	activity, _ := ctx.Value(libraryActivityKey{}).(string)
+	return activity
+}
+
+type libraryActivityKey struct{}
+
+func withLibraryActivity(ctx context.Context, role string) context.Context {
+	activity := "learning"
+	if role == "query" || role == "recall" {
+		activity = "answers"
+	}
+	return context.WithValue(ctx, libraryActivityKey{}, activity)
 }

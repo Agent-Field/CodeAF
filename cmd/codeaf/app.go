@@ -2046,6 +2046,15 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	ask.Subject = appAskSubject(agent, q.Subject)
+	if q.SecretAnswer() {
+		ask.Secret = &appwire.AskSecret{Placeholder: strings.TrimSpace(q.Input.Prompt)}
+		// Only the model's own question keeps what was typed in a file
+		// (session's secret_request.go); every other secret box hands it to its
+		// lane.
+		if q.Kind == session.QuestionAsk {
+			ask.Secret.KeepsForS = int(session.SecretKeepFor / time.Second)
+		}
+	}
 	return ask
 }
 
@@ -3429,6 +3438,18 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 
 // answerAskScope validates the chosen rule before writing or resolving anything.
 func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error {
+	return b.answerAskThrough(id, askID, option, text, scope, false)
+}
+
+// answerAskThrough is answerAskScope told which door the words came by.
+//
+// A SECRET ASK'S WORDS COME ONLY BY asks.answer_secret. The engine would keep
+// them out of the conversation whichever door they took, but a client's trace
+// of this wire drops a credential by the METHOD that carries it, so words sent
+// to a secret ask by asks.answer are a key in plain text in that trace (the
+// app's UI2_WIRE_LOG). Refused here, every ordinary door refuses them at once:
+// asks.answer, its scoped and batched forms, and anything added beside them.
+func (b *appBackend) answerAskThrough(id, askID, option, text, scope string, secretDoor bool) error {
 	b.resetCloseResumes(id)
 	if handled, err := b.answerOrderAsk(askID, option); handled {
 		return err
@@ -3460,6 +3481,10 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 			return
 		}
 		q = b.connectedPluginQuestion(q)
+		if q.SecretAnswer() && !secretDoor && strings.TrimSpace(text) != "" {
+			refused = appwire.Errorf(appwire.CodeBadParams, "the ask %s takes a secret; send it by %s, never as an answer's text", askID, appwire.MethodAnswerSecret)
+			return
+		}
 		key, refused = appValidateQuestionAnswer(askID, q, option, text, scope)
 		if refused != nil {
 			return

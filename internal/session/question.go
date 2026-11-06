@@ -985,9 +985,13 @@ func (q Question) Check(records []DecisionRecord) error {
 // another, and a record keyed on the head alone would answer for every file a
 // session ever touched. A question with no subject at all matches only records
 // that had none either.
+//
+// AND A CREDENTIAL IS NEVER DECIDED. Asking for a token again is asking for a
+// new one — the first expired, or was wrong — and the record of the first
+// answer carries no value that could stand in for it (secret_request.go).
 func decidedAlready(records []DecisionRecord, q Question) (DecisionRecord, bool) {
 	head := questionFold(q.Head)
-	if head == "" {
+	if head == "" || q.SecretAnswer() {
 		return DecisionRecord{}, false
 	}
 	for at := len(records) - 1; at >= 0; at-- {
