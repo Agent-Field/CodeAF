@@ -82,6 +82,9 @@ var capabilityGroups = []capabilityGroup{{
 	name:    questionsGroup,
 	members: []string{"ask"},
 }, {
+	name:    secretsGroup,
+	members: []string{RequestSecretToolName},
+}, {
 	name:    "media",
 	members: []string{"generate_image", "speak", "generate_music", "generate_video", "edit_video"},
 	// THE PROMPT IS THE QUALITY, and this is where that law now lives. It was

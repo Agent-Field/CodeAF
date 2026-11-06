@@ -141,8 +141,10 @@ SHARDS ?= $(shell count=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null ||
 # (scripts/one-suite.sh says why): each heavy package holds it for its whole
 # sharded run, and a `./...` run holds it for the rest of the tree as well, so
 # two sessions' tree runs still cannot stack. Focused and lighter runs stay
-# independent.
-HEAVY_PKGS := internal/tui3 internal/session
+# independent. cmd/codeaf joined them on 2026-11-05: run whole, it passed the
+# fifteen-minute package ceiling on the four-vCPU runner once pull requests into
+# app/v3 began running the gate (#2432 timed out at 900s), so it is sharded too.
+HEAVY_PKGS := internal/tui3 internal/session cmd/codeaf
 LOCKED_PKGS := ./... $(addprefix ./,$(HEAVY_PKGS)) $(addsuffix /,$(addprefix ./,$(HEAVY_PKGS)))
 FRESH_FLAG := $(if $(filter $(LOCKED_PKGS),$(PKGS)),-count=1)
 SUITE_LOCK := ./scripts/one-suite.sh

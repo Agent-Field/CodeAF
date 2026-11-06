@@ -2817,12 +2817,22 @@ func (a *app) recordQuestion(q questionShown, answer session.Answer) {
 		was = prior.Labels
 		delete(a.priorAnswers, q.token())
 	}
+	change := answer.Words()
+	if q.question.SecretAnswer() {
+		// A CREDENTIAL IS NEVER DRAWN BACK, not in the box and not in the
+		// receipt the answer leaves: the row says something was given and
+		// never what.
+		change = ""
+		if len(labels) == 0 {
+			labels = []string{questionSecretGiven}
+		}
+	}
 	record := session.DecisionRecord{
 		Was: was,
 		ID:  q.question.ID, Ref: q.question.Ref,
 		Kind: q.question.Kind, Ask: q.question.Ask,
 		Head: strings.TrimSpace(q.question.Head), Subject: q.question.Subject,
-		Picked: answer.Keys(), Labels: labels, Change: answer.Words(),
+		Picked: answer.Keys(), Labels: labels, Change: change,
 		By: answer.DecidedBy, Stakes: q.question.Stakes, Scope: answer.Scope,
 		At: answer.At,
 	}
@@ -2832,6 +2842,9 @@ func (a *app) recordQuestion(q questionShown, answer session.Answer) {
 		entries:  len(a.entries),
 	})
 }
+
+// questionSecretGiven is what a secret question's receipt says was answered.
+const questionSecretGiven = "given, kept out of chat"
 
 // countQuestionYes counts one answer towards the third same-shaped yes that
 // offers a rule. Only an answer that GRANTED something counts: a person who

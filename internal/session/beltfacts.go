@@ -94,6 +94,11 @@ func (c Config) mayWatch() bool {
 // agent, so the belt and the page cannot disagree about the verb).
 func (c Config) mayAsk() bool { return !c.readingTask() && !c.mayBashBelt() }
 
+// mayRequestSecret says whether `request_secret` belongs on this belt: where
+// `ask` does, and only when somebody is there to type into its box
+// (secret_request.go).
+func (c Config) mayRequestSecret() bool { return c.mayAsk() && c.Interactive }
+
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,
 // and in a node only when it was handed the conversation's graph and is not

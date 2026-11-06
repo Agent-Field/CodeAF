@@ -56,3 +56,26 @@ func TestHTTPBeatWorkingOnlyWhereAdvertised(t *testing.T) {
 		t.Fatalf("a relay that advertises working beats kept %+v, %v", got.Cell.Lease, err)
 	}
 }
+
+// Pairing routes share the service address but do not advertise directory
+// capabilities, so their replies cannot withdraw a learned working flag.
+func TestHTTPWorkingCapabilitySurvivesLinkLimits(t *testing.T) {
+	clock := directorytest.NewFakeClock()
+	mux := http.NewServeMux()
+	mux.Handle("/v1/dir/", directory.Handler(fakeAuth, newNamespaces(clock).open))
+	mux.HandleFunc("/v1/link/limits", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{}`)) })
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := directory.NewHTTP(server.URL, fakeSign("id_one", devA), server.Client())
+	v, err := client.Create(t.Context(), cellX, directory.CellInit{Head: head1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := directory.NewLinkHTTP(server.URL, server.Client()).Limits(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.Heartbeat(t.Context(), cellX, directory.Beat{Fence: v.Cell.Lease.Fence, Working: true})
+	if err != nil || !got.Cell.Lease.Working {
+		t.Fatalf("after link limits working = %v, %v; want true", got.Cell.Lease.Working, err)
+	}
+}

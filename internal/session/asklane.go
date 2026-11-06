@@ -98,6 +98,9 @@ func answerNote(text string) userMessage {
 // for now" is what it MEANS, and a provisional decision the model reads as a
 // settled one is a model that never mentions it again.
 func askAnswerText(q Question, answer Answer, theirs map[string]string, prior *Answer) string {
+	if q.SecretAnswer() {
+		return secretAnswerText(q, answer)
+	}
 	return askAnswerLead(q, answer, prior) + "\n" + answerJSON(askInTheirKeys(answer, q, theirs))
 }
 
