@@ -186,9 +186,12 @@ type Supervisor struct {
 	// elapsed signal in Run, the spend counters in countLiveSpend and
 	// settleSpend), so the ending can name the limit that caused it rather
 	// than the one sentence both share.
-	limitHit       Limit
-	dispatchedRoot bool
-	cancels        map[string]context.CancelFunc
+	limitHit Limit
+	// taskSpendStopped preserves a task-wide pre-call refusal over tree
+	// completion without changing existing cost or elapsed-limit precedence.
+	taskSpendStopped bool
+	dispatchedRoot   bool
+	cancels          map[string]context.CancelFunc
 	// cut is every task whose worker came home with the run's own ending as its
 	// error (a context the run ended: its elapsed wall, its spend ceiling, or a
 	// person's stop), by store id. It is the typed fact that says which rows the
@@ -295,6 +298,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.rootFailed = false
 	s.rootCut = false
 	s.limitHit = ""
+	s.taskSpendStopped = false
 	s.cut = make(map[string]bool)
 	s.dispatchedRoot = false
 	s.inFlight = 0
@@ -417,7 +421,7 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	// process's own touch and is left alone.
 	s.touchClaims()
 	s.releaseStale()
-	if terminalStatus(root.Status) && s.limitHit == "" {
+	if terminalStatus(root.Status) && !s.taskSpendStopped {
 		// A ROOT WORKER CAN WRITE DONE BEFORE ITS GOROUTINE RETURNS. Its return
 		// is what seats the review, so do not accept the stored ending first.
 		// Other in-flight workers may be remnants of an already completed tree;
@@ -832,8 +836,11 @@ func (s *Supervisor) absorbQueued() {
 // terminal, and the run would wait on it forever.
 func (s *Supervisor) absorb(ret workerReturn) {
 	var stopped session.ErrSpendStopped
-	if errors.As(ret.err, &stopped) && stopped.TaskLimit && s.limitHit == "" {
-		s.limitHit = LimitCost
+	if errors.As(ret.err, &stopped) && stopped.TaskLimit {
+		s.taskSpendStopped = true
+		if s.limitHit == "" {
+			s.limitHit = LimitCost
+		}
 		for _, cancel := range s.cancels {
 			cancel()
 		}
@@ -1255,7 +1262,7 @@ func descriptionWithChecks(base string, checks []string) string {
 // reported. A root whose own worker failed stays open — the run cannot
 // complete itself, and a later pass may pick it up.
 func (s *Supervisor) completeTree() {
-	if s.rootFailed || s.limitHit != "" {
+	if s.rootFailed || s.taskSpendStopped {
 		return
 	}
 	// THE ROOT IS NOT COMPLETED WHILE A WAKE IS STILL OWED IT: its children

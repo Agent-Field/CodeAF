@@ -188,3 +188,45 @@ func TestSingleTaskUnderTreeCeilingStillRunsAndChecks(t *testing.T) {
 		t.Fatalf("ordinary task changed: %s %+v checks=%d context=%v", outcome, summary, checks.Load(), ctx.Err())
 	}
 }
+
+// L-LOOP C6: a final successful receipt retains the existing completion
+// precedence even when that receipt reaches the ordinary cost limit.
+func TestFinishedChildlessRunAtCostLimitStillEndsDone(t *testing.T) {
+	store := boundedRunStore(t, "Single task")
+	factory := func(plandb.Task) Worker {
+		return workerFunc(func(context.Context, plandb.Task) (Report, error) {
+			return Report{Result: "finished", USD: 1}, nil
+		})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	outcome, summary := Start(ctx, Spec{Store: store, Workspace: t.TempDir(), Slots: 1, Factory: factory, Limits: Limits{CostUSD: 1}})
+	if outcome != OutcomeDone || summary.Result != "finished" || summary.USD != 1 || summary.Limit != LimitCost || store.Task(store.RootID()).Status != plandb.StatusDone || ctx.Err() != nil {
+		t.Fatalf("finished work lost to its final receipt: %s %+v root=%+v context=%v", outcome, summary, store.Task(store.RootID()), ctx.Err())
+	}
+}
+
+// L-LOOP C6: the original pass accepts a completed root after the elapsed
+// signal drains a successful worker return. Drive that ordering explicitly.
+func TestCompletedRootStillWinsOverTheElapsedSignal(t *testing.T) {
+	store := boundedRunStore(t, "Single task")
+	elapsed := make(chan time.Time)
+	factory := func(plandb.Task) Worker {
+		return workerFunc(func(ctx context.Context, _ plandb.Task) (Report, error) {
+			if err := store.CompleteRoot("finished"); err != nil {
+				return Report{}, err
+			}
+			close(elapsed)
+			<-ctx.Done()
+			return Report{Result: "finished"}, nil
+		})
+	}
+	supervisor := NewSupervisor(store, t.TempDir(), 1, Limits{Elapsed: time.Hour}, factory)
+	supervisor.after = func(time.Duration) <-chan time.Time { return elapsed }
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	outcome := supervisor.Run(ctx)
+	if outcome != OutcomeDone || supervisor.limitHit != LimitTime || supervisor.rootResult != "finished" || store.Task(store.RootID()).Status != plandb.StatusDone || ctx.Err() != nil {
+		t.Fatalf("completed root lost to elapsed signal: %s limit=%s result=%q root=%+v context=%v", outcome, supervisor.limitHit, supervisor.rootResult, store.Task(store.RootID()), ctx.Err())
+	}
+}
