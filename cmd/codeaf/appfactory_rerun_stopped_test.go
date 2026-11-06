@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -13,18 +12,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
-
-// freshEngineFactoryStore keeps an in-process engine's factory store, opened
-// once per process, from outliving the temporary home of the test that opened it.
-func freshEngineFactoryStore(t *testing.T) {
-	t.Helper()
-	reset := func() {
-		engineFactoryStore.once = sync.Once{}
-		engineFactoryStore.store = nil
-	}
-	reset()
-	t.Cleanup(reset)
-}
 
 // Retry and giving back replace execution; only an explicit Stop is a stop.
 // The real solo worker runs a failing command and reports into the manager
