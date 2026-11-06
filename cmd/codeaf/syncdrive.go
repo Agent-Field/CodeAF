@@ -303,10 +303,10 @@ func (b *driveBook) takeCell(id string) *liveDrive {
 	return d
 }
 
-// chatSyncService keeps sync presentation quiet before pairing and after removal.
+// chatSyncService keeps sync presentation quiet until this computer has paired.
 // A remote chat can still supply its own engine's service explicitly.
 func chatSyncService() string {
-	if syncsetup.Quiet(home.Dir()) || syncsetup.ConfirmedRemoved(home.Dir()) {
+	if syncsetup.Quiet(home.Dir()) {
 		return ""
 	}
 	return syncsetup.Resolve(home.Dir()).URL

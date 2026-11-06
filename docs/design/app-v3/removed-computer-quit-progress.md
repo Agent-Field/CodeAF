@@ -55,6 +55,8 @@ a replacement pairing uses its own removal state.
 
 Local quit progress rechecks that decision before each sentence. An explicitly
 remote host keeps its engine's service independent of the terminal's pairing.
+`chatSyncService` is unchanged, so the devices card and outage notices keep
+their address; only quit progress consults removal.
 All local saves, close replies, flushes, receipts and waits remain intact.
 
 ## Acceptance
