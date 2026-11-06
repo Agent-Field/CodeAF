@@ -147,16 +147,29 @@ func TestLibraryUnresolvedReceiptRetainsActivityAndOwner(t *testing.T) {
 			if err := v.StartBuild(); err != nil {
 				t.Fatal(err)
 			}
-			if err := v.Capture(knowledge.Source{ID: "s", Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Cedar queues jobs."}); err != nil {
+			sourceSession := "chat"
+			if err := v.Capture(knowledge.Source{ID: "s", Session: sourceSession, Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Cedar queues jobs."}); err != nil {
 				t.Fatal(err)
 			}
 			original := http.DefaultTransport
 			t.Cleanup(func() { http.DefaultTransport = original })
+			requests := 0
 			http.DefaultTransport = libraryAccountingTransport(func(*http.Request) (*http.Response, error) {
+				requests++
 				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"model":"deepseek/deepseek-v4.1-flash-1017","choices":[{"finish_reason":"length","message":{"content":"{"}}]}`))}, nil
 			})
-			if err := v.Flush(context.Background(), "fixture", true); err == nil {
-				t.Fatal("expected incomplete reply")
+			if err := v.Flush(knowledge.WithOwnerSessions(context.Background(), []string{sourceSession}), "fixture", true); err == nil {
+				status, _ := v.Status()
+				t.Fatalf("expected incomplete reply; requests=%d pending=%d", requests, status.Pending)
+			} else if !strings.Contains(err.Error(), "length") {
+				t.Fatalf("unexpected failure: %v", err)
+			}
+			if owned {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := agent.WaitReceipts(ctx); err != nil {
+					t.Fatal(err)
+				}
 			}
 			FlushUsage()
 			lines, err := ReadUsage(ledger, time.Time{})

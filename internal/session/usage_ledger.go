@@ -1291,7 +1291,7 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // the ledger at all.
 func (a *Agent) recordUsageLine(call bankedCall) error {
 	used := call.used
-	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
+	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 && !call.unpriced {
 		return nil
 	}
 	path := a.config.usageLedger
