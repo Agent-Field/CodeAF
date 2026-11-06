@@ -2,7 +2,7 @@
 kind: fixed
 title: Typing into your own idle chat no longer says it's available to continue here
 pr: 2469
-surface: [app, sync]
+surface: [app, remote]
 invalidates: []
 ---
 
