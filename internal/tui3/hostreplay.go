@@ -79,13 +79,15 @@ func (a *app) finishHostedReplay() tea.Cmd {
 		}
 	}
 	if !a.hostReplayLoading {
-		a.ensureAvailableModel()
+		if a.deferredModelRename != nil {
+			a.ensureAvailableModel()
+		}
 		deferred := a.hostDeferred
 		a.hostDeferred = nil
 		for _, start := range deferred {
 			cmds = append(cmds, start())
 		}
-		cmds = append(cmds, a.startFollow(), a.sendParked())
+		cmds = append(cmds, a.startFollow())
 	}
 	return tea.Batch(cmds...)
 }

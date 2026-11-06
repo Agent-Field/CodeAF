@@ -39,29 +39,37 @@ func (a *app) isAvailableModel(id string) bool {
 // A launch preference is not evidence of availability. An automatic choice uses
 // the off-loop run-only door without saving a preference the person did not
 // choose. With no rows, only the display is cleared: the engine has no unset-model
-// door, and the send gates below keep that old launch preference from being used.
+// door, and the empty-catalog checks keep that old preference from being used.
 func (a *app) ensureAvailableModel() bool {
 	if rename := a.deferredModelRename; rename != nil {
-		// A held rename waits for its owner's turn/replay boundary before
-		// touching the saved selection. Hidden parked sends remain held too.
-		if a.state == stateWorking || a.hostReplayLoading {
-			return false
+		// Relabel only at the owning conversation's turn/replay boundary.
+		if a.state != stateWorking && !a.hostReplayLoading {
+			a.deferredModelRename = nil
+			a.applyModelRename(rename)
 		}
-		a.deferredModelRename = nil
-		a.applyModelRename(rename)
 	}
-	if a.modelChangePending() {
-		if retry := a.modelChange.retry; retry != nil {
-			retry()
+	if a.agent == nil {
+		return true
+	}
+	pending := pendingModelSelection(a.agent)
+	if pending != nil {
+		// Returning before the ask completes still shows the chosen model.
+		a.model = pending.model
+		if pending.window > 0 {
+			a.ctxWindow = pending.window
 		}
-		return false
 	}
-	if !a.requireListedModel || a.agent == nil {
+	if !a.requireListedModel {
 		return true
 	}
 	// An answering request keeps its model until it settles. The turn-end path
 	// reconciles the next request after the catalog notification has landed.
 	if a.state == stateWorking {
+		return a.model != ""
+	}
+	// A later explicit pick or relabel owns its place on the line. Automatic
+	// selections may follow a newer catalog while an earlier ask is unfinished.
+	if pending != nil && !pending.temporary {
 		return a.model != ""
 	}
 	preferred := a.configuredModel()
@@ -71,10 +79,9 @@ func (a *app) ensureAvailableModel() bool {
 		a.hudStale = true
 		return false
 	}
-	if model.ID != a.model {
+	if model.ID != a.model || (pending == nil && model.ID != a.agent.Model()) {
 		a.useModelForNow(model.ID, model.ContextLength)
 		a.hudStale = true
-		return false
 	}
 	return a.model == model.ID
 }

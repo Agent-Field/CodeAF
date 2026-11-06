@@ -826,9 +826,6 @@ func (a *app) sendBehindParked(key string, held *kept) tea.Cmd {
 	if held == nil || held.side == nil || held.side.parkSending || len(held.side.parks) == 0 {
 		return nil
 	}
-	if held.side.modelChange != nil || held.side.deferredModelRename != nil {
-		return nil
-	}
 	held.side.parkSending = true
 	held.side.parks[0].sending = true
 	p := held.side.parks[0]

@@ -8,7 +8,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-func deferredRenameApp(t *testing.T, paired bool) (*app, *pairedModelForNowAgent) {
+type replayRenameAgent struct{ *pairedModelForNowAgent }
+
+func (a *replayRenameAgent) AttachReplay() ([]session.DisplayEntry, <-chan session.Event, func()) {
+	return nil, nil, func() {}
+}
+
+func deferredRenameApp(t *testing.T, paired bool, hosted ...bool) (*app, *pairedModelForNowAgent) {
 	t.Helper()
 	dir := t.TempDir()
 	customs := connectionWriteSources(t, dir, "mybox")
@@ -19,6 +25,9 @@ func deferredRenameApp(t *testing.T, paired bool) (*app, *pairedModelForNowAgent
 	if paired {
 		agent.pair = session.ConversationModels{Main: "mybox/chosen", Fallback: "mybox/backup"}
 		door = agent
+	}
+	if len(hosted) > 0 && hosted[0] {
+		door = &replayRenameAgent{agent}
 	}
 	a := modelServiceTestAppWithAgent(t, dir, agent.configured,
 		modelsource.NewSet(append([]modelsource.Connected{connectionDefaultService()}, customs...)...),
@@ -53,9 +62,6 @@ func TestDeferredRenameStaysWithItsConversationAcrossASwitch(t *testing.T) {
 			a, original := deferredRenameApp(t, paired)
 			a.park("waiting for the renamed conversation", nil)
 			conv, side := a.front(), a.detachConversation()
-			if a.sendBehindParked("owner", &kept{conv: conv, side: side}) != nil || len(side.parks) != 1 {
-				t.Fatal("the hidden parked send bypassed its deferred rename")
-			}
 			other := &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/other"}, configured: "vendor/other"}
 			spend(t, a, a.attachConversation(Conversation{Agent: other}, nil))
 			a.switchModel("vendor/other", 0)
@@ -70,6 +76,7 @@ func TestDeferredRenameStaysWithItsConversationAcrossASwitch(t *testing.T) {
 			a.detachConversation()
 			spend(t, a, a.attachConversation(conv, side))
 			acknowledgeModelChanges(t, a)
+			spend(t, a, a.sendParked())
 			if original.ConfiguredModel() != "lab/chosen" || original.Model() != "vendor/replacement" || other.ConfiguredModel() != "vendor/other" || config.ChatModelAt(a.profileDir) == "vendor/replacement" {
 				t.Fatal("the owning conversation lost its rename or saved its replacement")
 			}
@@ -81,6 +88,24 @@ func TestDeferredRenameStaysWithItsConversationAcrossASwitch(t *testing.T) {
 			}
 			original.finish()
 		})
+	}
+}
+
+// C1, C2, C5: the owning chat's hosted replay boundary applies its deferred
+// rename even when no send is waiting; the other chat remains untouched.
+func TestDeferredRenameAppliesAtItsOwningReplayBoundary(t *testing.T) {
+	a, original := deferredRenameApp(t, true, true)
+	conv, side := a.front(), a.detachConversation()
+	other := &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/other"}, configured: "vendor/other"}
+	spend(t, a, a.attachConversation(Conversation{Agent: other}, nil))
+	a.detachConversation()
+	spend(t, a, a.attachConversation(conv, side))
+	acknowledgeModelChanges(t, a)
+	if original.ConfiguredModel() != "lab/chosen" || original.Model() != "vendor/replacement" || original.pair != (session.ConversationModels{Main: "lab/chosen", Fallback: "lab/backup"}) || a.deferredModelRename != nil {
+		t.Fatal("the owning replay did not apply its deferred rename")
+	}
+	if other.ConfiguredModel() != "vendor/other" || config.ChatModelAt(a.profileDir) == "vendor/replacement" || len(original.sent) != 0 || len(other.sent) != 0 {
+		t.Fatal("the replay rename changed another chat, saved the replacement or invented a send")
 	}
 }
 

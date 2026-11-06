@@ -117,13 +117,8 @@ func (a *app) sendParked() tea.Cmd {
 	// A pending take-back can leave the surface between pumps while the
 	// session's next turn is already running. Its queue settles first; parked
 	// words must not open a second turn in that gap.
-	if a.state == stateWorking || a.stream != nil || len(a.follows) > 0 || a.parkSending || len(a.parks) == 0 || a.hostReplayLoading || a.hostReplayWaiting {
+	if a.stream != nil || len(a.follows) > 0 || a.parkSending || len(a.parks) == 0 {
 		return nil
-	}
-	// Keep the whole message until the model door acknowledges the next
-	// request's selection, including pictures that use a separate submit door.
-	if !a.ensureAvailableModel() {
-		return a.takeModelCommands()
 	}
 	next := a.parks[0]
 	a.parks = a.parks[1:]

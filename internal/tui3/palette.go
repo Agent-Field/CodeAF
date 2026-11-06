@@ -3107,19 +3107,28 @@ func (a *app) windowFor(id string) int {
 // saying so would keep compacting as if it were on the 128k one it started on.
 func (a *app) switchModel(id string, window int) {
 	a.deferredModelRename = nil
-	if a.modelChange != nil {
-		a.queueModelChange(id, window, false, a.creditSwitching, nil)
-		return
+	if a.pendingModelSelection != nil {
+		select {
+		case <-a.pendingModelSelection:
+		default:
+			a.queueModelChange(id, window, false, a.creditSwitching, nil)
+			return
+		}
 	}
 	a.agent.SetModel(id)
 	a.modelSwitched(id, window, true)
 }
 
 func (a *app) modelSwitched(id string, window int, remember bool) {
-	a.model = a.agent.Model()
-	if a.model == "" {
-		a.model = id
+	if model := a.agent.Model(); model != "" {
+		id = model
 	}
+	a.displayModelSwitched(id, window, remember)
+}
+
+// Queued selections paint on the gesture, before the engine acknowledges them.
+func (a *app) displayModelSwitched(id string, window int, remember bool) {
+	a.model = id
 	// The new model's dial is learned HERE rather than left to the frame clock,
 	// so the status row names it on the very frame the switch lands on
 	// (reasoninglevel.go states the three moments that are seeded and why).

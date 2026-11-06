@@ -77,6 +77,9 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 			}
 		}
 		if err == nil {
+			err = waitModelSelection(context.Background(), conv.Agent)
+		}
+		if err == nil {
 			events, err = conv.Agent.Submit(context.Background(), request.Brief)
 		}
 		if err != nil && conv.Agent != nil {

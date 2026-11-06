@@ -1968,8 +1968,10 @@ type app struct {
 	// just replaced, so the one pending id lands at the turn boundary.
 	deferredModelServiceModel string
 	deferredModelRename       *modelRename
-	modelChange               *modelChange
-	modelCommands             []tea.Cmd
+	// A later explicit choice keeps its wire and preference-write order even
+	// across a chat switch. Sends wait by agent inside their commands instead.
+	pendingModelSelection <-chan struct{}
+	modelCommands         []tea.Cmd
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -7475,7 +7477,12 @@ func (a *app) submitShown(text, shown string, plain []segment) tea.Cmd {
 // counts as an accepted turn, and keeps the update-loop door budget from growing
 // merely because a conversation can now send while it is behind the screen.
 func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan session.Event, error) {
-	return func() (<-chan session.Event, error) { return agent.Submit(ctx, text) }
+	return func() (<-chan session.Event, error) {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil, err
+		}
+		return agent.Submit(ctx, text)
+	}
 }
 
 // submitting is that body with the CALL left to the caller: everything a
@@ -7497,9 +7504,6 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 // shown, so the transcript leaves them plain (entry.plainTags).
 func (a *app) submittingShown(text, shown string, plain []segment, start func() (<-chan session.Event, error)) tea.Cmd {
 	if !a.ensureAvailableModel() {
-		if a.modelChangePending() {
-			return a.takeModelCommands()
-		}
 		a.note(noAvailableModelWord)
 		return nil
 	}
@@ -7550,7 +7554,11 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	a.startClock()
 	a.follow()
 	a.touch()
+	ctx, agent := a.ctx, a.agent
 	return tea.Batch(func() tea.Msg {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return submittedMsg{err: err, echo: mark, call: call}
+		}
 		ch, err := start()
 		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
 	}, a.wake())

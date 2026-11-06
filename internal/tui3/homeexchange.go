@@ -1287,6 +1287,9 @@ func errandSend(ex *homeExchange, text string) tea.Cmd {
 	chips := ex.chips
 	ex.chips = nil
 	return func() tea.Msg {
+		if err := waitModelSelection(errandContext(), ex.agent); err != nil {
+			return errandStartedMsg{ex: ex, err: err}
+		}
 		if len(chips) == 0 {
 			ch, err := ex.agent.Submit(errandContext(), text)
 			return errandStartedMsg{ex: ex, ch: ch, err: err}

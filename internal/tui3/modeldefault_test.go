@@ -144,10 +144,10 @@ func TestAnAvailableOpeningModelIsTheModelSentToItsRealProvider(t *testing.T) {
 		Models:           func() []Model { return []Model{{ID: config.DefaultModel}} },
 		ModelsForService: func(modelsource.Connected) []Model { return []Model{{ID: "actually-listed"}} },
 	})
-	acknowledgeModelChanges(t, a)
 	if a.model != "deepseek-direct/actually-listed" {
 		t.Fatalf("default = %q", a.model)
 	}
+	acknowledgeModelChanges(t, a)
 	drainModelServiceTurn(t, agent, "answer on the available default")
 	requests := completionRequests(server)
 	if len(requests) != 1 || completionModel(t, requests[0]) != "actually-listed" {

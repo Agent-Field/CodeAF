@@ -9,13 +9,6 @@ import (
 
 const modelChangeRefusedWord = "could not change model · "
 
-// modelChange belongs to the conversation that queued it. Its acknowledgment
-// may arrive after a later pick or after the surface has switched chats.
-type modelChange struct {
-	front int
-	retry func()
-}
-
 // configuredModel keeps reconciliation anchored to the person's saved choice.
 // Agents predating the run-only door keep the existing live-model behavior.
 func (a *app) configuredModel() string {
@@ -32,19 +25,15 @@ func (a *app) useModelForNow(id string, window int) {
 	a.queueModelChange(id, window, true, true, nil)
 }
 
-func (a *app) modelChangePending() bool {
-	return a.modelChange != nil && a.modelChange.front == a.frontGen
-}
-
 func (a *app) takeModelCommands() tea.Cmd {
 	cmds := a.modelCommands
 	a.modelCommands = nil
 	return tea.Batch(cmds...)
 }
 
-// Temporary picks and any explicit picks behind them share the ordered door
-// line. The surface only adopts the last acknowledged selection, and sends
-// cannot pass its gate while that selection is pending.
+// Temporary picks and explicit picks behind them share the ordered door line.
+// The display changes immediately; send commands wait for the agent's token,
+// which completes with the ask rather than its later UI acknowledgment.
 func (a *app) queueModelChange(id string, window int, temporary, quiet bool, rename *modelRename) {
 	agent := a.agent
 	save := a.saveModel
@@ -55,9 +44,17 @@ func (a *app) queueModelChange(id string, window int, temporary, quiet bool, ren
 	if rename != nil {
 		remember = rename.save
 	}
-	change := &modelChange{front: a.frontGen}
-	a.modelChange = change
+	if window <= 0 {
+		window = a.windowFor(id)
+	}
+	selected := &modelSelection{done: make(chan struct{}), model: id, window: window, temporary: temporary && rename == nil}
+	modelSelections.Store(agent, selected)
+	a.pendingModelSelection = selected.done
 	cmd := a.offLoop(func() func(bool) tea.Cmd {
+		defer func() {
+			modelSelections.CompareAndDelete(agent, selected)
+			close(selected.done)
+		}()
 		var err error
 		if rename != nil {
 			if door, ok := agent.(interface {
@@ -75,54 +72,28 @@ func (a *app) queueModelChange(id string, window int, temporary, quiet bool, ren
 				agent.SetModel(id)
 			}
 		}
-		// Durable choices keep their order even if the window leaves before
-		// the reply. Only display work depends on still being in front.
+		// Durable choices keep their order even after leaving the conversation.
 		if err == nil && save != nil && remember != "" {
 			_ = save(remember)
 		}
-		return func(bool) tea.Cmd {
-			if a.modelChange != change {
-				// A switched conversation keeps its gate in the sidecar. Its
-				// reply may release only that conversation's waiting message.
-				for key, held := range a.behind {
-					if held.side == nil || held.side.modelChange != change {
-						continue
-					}
-					if err != nil {
-						change.retry = func() { a.queueModelChange(id, window, temporary, quiet, rename) }
-						held.side.parkNotes = append(held.side.parkNotes, modelChangeRefusedWord+err.Error())
-						return nil
-					}
-					held.side.modelChange = nil
-					return a.checkBehindParked(key, agent)
-				}
-				return nil
-			}
-			if a.agent != agent {
-				a.modelChange = nil
-				return nil
-			}
-			if err != nil {
-				change.retry = func() { a.queueModelChange(id, window, temporary, quiet, rename) }
+		return func(here bool) tea.Cmd {
+			if err != nil && here && a.agent == agent {
 				a.note(modelChangeRefusedWord + err.Error())
-				return nil
 			}
-			a.modelChange = nil
-			wasSwitching := a.creditSwitching
-			a.creditSwitching = quiet
-			a.modelSwitched(id, window, false)
-			a.creditSwitching = wasSwitching
-			a.ensureAvailableModel()
-			if a.connPanel.open {
-				a.connPanel.adopt(a.connectionRows())
-			}
-			if a.at(pageSettings) {
-				a.sheet.build()
-			}
-			a.hudStale = true
-			a.touch()
-			return tea.Batch(a.takeModelCommands(), a.sendParked())
+			return nil
 		}
 	})
 	a.modelCommands = append(a.modelCommands, cmd)
+	wasSwitching := a.creditSwitching
+	a.creditSwitching = quiet
+	a.displayModelSwitched(id, window, false)
+	a.creditSwitching = wasSwitching
+	if a.connPanel.open {
+		a.connPanel.adopt(a.connectionRows())
+	}
+	if a.at(pageSettings) {
+		a.sheet.build()
+	}
+	a.hudStale = true
+	a.touch()
 }

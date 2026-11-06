@@ -63,9 +63,7 @@ type aside struct {
 	// surface yet. It follows the sidecar so returning mid-send cannot send the
 	// same message again when the stream closes.
 	parkSending bool
-	// Model acknowledgments and deferred relabels belong to this conversation;
-	// its waiting messages cannot pass them while another chat is in front.
-	modelChange         *modelChange
+	// A deferred relabel belongs to this conversation across chat switches.
 	deferredModelRename *modelRename
 	// parkNotes are receipts from held sends and memory commands. They land in
 	// this conversation when it comes forward rather than in whichever unrelated
@@ -283,7 +281,6 @@ func (a *app) detachConversation() *aside {
 		draft:               a.mainDraftText(),
 		parks:               a.parks,
 		parkSending:         a.parkSending,
-		modelChange:         a.modelChange,
 		deferredModelRename: a.deferredModelRename,
 		chips:               main.chips,
 		pastes:              main.pastes,
@@ -469,7 +466,6 @@ func (a *app) clearConversation() {
 	a.forgetComposers()
 	a.parks = nil
 	a.parkSending = false
-	a.modelChange = nil
 	a.deferredModelRename = nil
 	a.touch()
 }
@@ -540,14 +536,9 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	}
 	was := a.agent
 	a.takeUp(conv, true)
-	a.modelChange = nil
 	a.deferredModelRename = nil
 	if side != nil {
-		a.modelChange, side.modelChange = side.modelChange, nil
 		a.deferredModelRename, side.deferredModelRename = side.deferredModelRename, nil
-		if a.modelChange != nil {
-			a.modelChange.front = a.frontGen
-		}
 	}
 	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);
 	// the new lane below replays its own.

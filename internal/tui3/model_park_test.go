@@ -2,16 +2,13 @@ package tui3
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -20,207 +17,186 @@ import (
 type parkedModelAgent struct{ *heldModelAgent }
 
 func (a *parkedModelAgent) SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error) {
+	a.atSubmit <- a.Model()
 	a.submitted = append(a.submitted, a.Model())
 	return a.fakeAgent.SubmitImage(ctx, text, images)
 }
 
-// C1, C2, C4: stream closure holds parked words, paste bodies and attachments
-// through catalog recovery/removal and a pending/refused model acknowledgment.
-func TestParkedMessageWaitsForTheAcknowledgedModelAtStreamClose(t *testing.T) {
-	for _, recovery := range []bool{true, false} {
-		for _, attachment := range []string{"text", "file", "picture"} {
-			for _, refused := range []bool{false, true} {
-				name := map[bool]string{true: "recovery", false: "removal"}[recovery] + "/" + attachment + "/" + map[bool]string{false: "accepted", true: "refused"}[refused]
-				t.Run(name, func(t *testing.T) {
-					live, want := "vendor/configured", "vendor/replacement"
-					if recovery {
-						live, want = want, live
-					}
-					agent := &parkedModelAgent{&heldModelAgent{
-						modelForNowAgent: &modelForNowAgent{fakeAgent: &fakeAgent{model: live}, configured: "vendor/configured"},
-						entered:          make(chan struct{}), release: make(chan struct{}),
-					}}
-					defer agent.finish()
-					if refused {
-						agent.err = errors.New("connection unavailable")
-					}
-					rows := []Model{{ID: live}}
-					dir := t.TempDir()
-					if err := config.WriteChatModel(dir, "vendor/configured"); err != nil {
-						t.Fatal(err)
-					}
-					a := newApp(t.Context(), Options{Agent: agent, ProfileDir: dir, RequireListedModel: true,
-						Sources: modelsource.NewSet(testDefaultService("key")), Models: func() []Model { return rows },
-						SaveModel: func(id string) error { return config.WriteChatModel(dir, id) },
-					})
-					spend(t, a, a.submit("first message"))
-					a.pastes = []pasteChip{{n: 1, text: "the complete pasted document"}}
-					if attachment != "text" {
-						path := filepath.Join(t.TempDir(), "attachment")
-						if err := os.WriteFile(path, []byte("attachment bytes"), 0600); err != nil {
-							t.Fatal(err)
-						}
-						a.chips = []chip{{path: path, file: attachment == "file"}}
-					}
-					a.park("waiting "+pasteToken(1, 1), []segment{{from: 0, to: 7}})
-					waiting := a.parks[0]
-					// A newer draft's tray must survive the older parked send too.
-					a.chips = []chip{{path: "draft attachment", file: true}}
-					draftChips := append([]chip(nil), a.chips...)
-					rows = []Model{{ID: want}}
-					a.serviceModelsLanded(modelsource.DefaultID, config.DefaultBaseURL)
-					agent.finish()
-					_, cmd := a.Update(streamClosedMsg{gen: a.gen})
-					select {
-					case <-agent.entered:
-					case <-time.After(time.Second):
-						close(agent.release)
-						t.Fatal("the turn-end model door never started")
-					}
-					// The direct attachment door must preserve the newer tray at
-					// the same gate, even when called outside the parked road.
-					if attachment != "text" {
-						cmd = tea.Batch(cmd, a.submitImagesShown("draft", "draft", nil))
-					}
-					if len(agent.sent) != 1 || len(agent.imageText) != 0 || !reflect.DeepEqual(a.parks, []parked{waiting}) || !reflect.DeepEqual(a.chips, draftChips) {
-						close(agent.release)
-						t.Fatalf("pending selection spent a parked message: sent=%q parks=%+v tray=%+v", agent.sent, a.parks, a.chips)
-					}
-					close(agent.release)
-					spend(t, a, cmd)
-					if refused {
-						if len(agent.sent) != 1 || len(agent.imageText) != 0 || !reflect.DeepEqual(a.parks, []parked{waiting}) || !a.modelChangePending() {
-							t.Fatal("refused selection spent the parked words or attachments")
-						}
-						if got := lastNote(t, a); got != "could not change model · connection unavailable" {
-							t.Fatalf("refusal=%q", got)
-						}
-						agent.err = nil
-						if a.ensureAvailableModel() {
-							t.Fatal("retry opened the gate before acknowledgment")
-						}
-						acknowledgeModelChanges(t, a)
-					}
-					if len(agent.sent) != 2 || !strings.Contains(agent.sent[1], waiting.spoken()) || len(agent.submitted) != 2 || agent.submitted[1] != want || len(a.parks) != 0 {
-						t.Fatalf("acknowledged send=%q models=%q parks=%+v", agent.sent, agent.submitted, a.parks)
-					}
-					if attachment == "picture" && (len(agent.images) != 1 || len(agent.images[0]) != 1 || string(agent.images[0][0].Bytes) != "attachment bytes") {
-						t.Fatalf("parked picture=%+v", agent.images)
-					}
-					if attachment == "file" && !strings.Contains(agent.sent[1], waiting.chips[0].path) {
-						t.Fatal("parked file did not travel with its words")
-					}
-					if !reflect.DeepEqual(a.chips, draftChips) || agent.ConfiguredModel() != "vendor/configured" || config.ChatModelAt(dir) != "vendor/configured" {
-						t.Fatal("parked send spent the draft tray or saved the replacement")
-					}
-					acknowledgeModelChanges(t, a)
-					if len(agent.sent) != 2 {
-						t.Fatal("the acknowledgment sent the parked message twice")
-					}
-				})
-			}
-		}
-	}
-}
-
-type parkedSwitchModelAgent struct{ *parkedModelAgent }
-
-func (a *parkedSwitchModelAgent) Attach() (<-chan session.Event, bool, func()) {
-	return nil, false, func() {}
-}
-
-// C1, C4, C5: a model acknowledgment after a real detach/attach releases only
-// its owner's parked send; a refusal keeps that owner's complete queue held.
-func TestParkedModelAcknowledgmentBelongsToTheConversationThatQueuedIt(t *testing.T) {
-	for _, refused := range []bool{false, true} {
-		t.Run(map[bool]string{false: "accepted", true: "refused"}[refused], func(t *testing.T) {
-			agent := &parkedSwitchModelAgent{&parkedModelAgent{&heldModelAgent{
-				modelForNowAgent: &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/replacement"}, configured: "vendor/configured"},
-				entered:          make(chan struct{}), release: make(chan struct{}),
-			}}}
-			defer agent.finish()
-			if refused {
-				agent.err = errors.New("connection unavailable")
-			}
-			rows := []Model{{ID: "vendor/replacement"}, {ID: "vendor/other"}}
-			a := newApp(t.Context(), Options{Agent: agent, ProfileDir: t.TempDir(), RequireListedModel: true,
-				Sources: modelsource.NewSet(testDefaultService("key")), Models: func() []Model { return rows },
-			})
-			a.file = filepath.Join(t.TempDir(), "held.jsonl")
-			spend(t, a, a.submit("first message"))
-			a.park("the owning conversation's message", nil)
-			rows = append(rows, Model{ID: "vendor/configured"})
-			agent.finish()
-			_, pending := a.Update(streamClosedMsg{gen: a.gen})
-			select {
-			case <-agent.entered:
-			case <-time.After(time.Second):
-				close(agent.release)
-				t.Fatal("the model door never started")
-			}
-			conv, side := a.front(), a.detachConversation()
-			stowed := a.stow(conv, side)
-			key := a.convKey(conv.SessionFile)
-			held := a.behind[key]
-			t.Cleanup(held.watch.stop)
-			front := &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/other"}, configured: "vendor/other"}
-			attached := a.attachConversation(Conversation{Agent: front, SessionFile: filepath.Join(t.TempDir(), "front.jsonl")}, nil)
-			a.parks = []parked{{text: "the front conversation's message"}}
-			if a.sendBehindParked(key, held) != nil || len(side.parks) != 1 || len(agent.sent) != 1 {
-				close(agent.release)
-				t.Fatal("switching chats bypassed the pending model acknowledgment")
-			}
-			close(agent.release)
-			spend(t, a, tea.Batch(pending, stowed, attached))
-			if len(front.sent) != 0 || len(a.parks) != 1 || front.ConfiguredModel() != "vendor/other" {
-				t.Fatal("the old acknowledgment released or changed the front conversation")
-			}
-			if refused {
-				if len(agent.sent) != 1 || len(side.parks) != 1 || a.sendBehindParked(key, held) != nil {
-					t.Fatal("refusal released the hidden conversation's queue")
+// C1, C2, C4: parked text, paste bodies and attachments submit exactly once after
+// the model door, without UI acknowledgment or loss of a newer draft tray.
+func TestParkedMessageFollowsItsOrderedModelAtStreamClose(t *testing.T) {
+	for _, attachment := range []string{"text", "file", "picture"} {
+		t.Run(attachment, func(t *testing.T) {
+			a, base, unblock := modelOrderingApp(t, false)
+			agent := &parkedModelAgent{base}
+			a.agent = agent
+			a.state = stateWorking
+			a.pastes = []pasteChip{{n: 1, text: "the complete pasted document"}}
+			if attachment != "text" {
+				path := filepath.Join(t.TempDir(), "attachment")
+				if err := os.WriteFile(path, []byte("attachment bytes"), 0600); err != nil {
+					t.Fatal(err)
 				}
-				agent.err = nil
-				held.watch.stop()
-				delete(a.behind, key)
-				a.detachConversation()
-				spend(t, a, a.attachConversation(conv, side))
-				acknowledgeModelChanges(t, a)
+				a.chips = []chip{{path: path, file: attachment == "file"}}
 			}
-			if len(agent.sent) != 2 || agent.sent[1] != "the owning conversation's message" || len(agent.submitted) != 2 || agent.submitted[1] != "vendor/configured" {
-				t.Fatalf("owning send=%q models=%q", agent.sent, agent.submitted)
+			a.park("waiting "+pasteToken(1, 1), []segment{{from: 0, to: 7}})
+			waiting := a.parks[0]
+			a.chips = []chip{{path: "draft attachment", file: true}}
+			draft := append([]chip(nil), a.chips...)
+			_, cmd := a.Update(streamClosedMsg{gen: a.gen})
+			done := beginOrderedSend(t, base, cmd)
+			if len(a.parks) != 0 || !reflect.DeepEqual(a.chips, draft) {
+				t.Fatal("surface held the parked message or spent the newer tray")
+			}
+			unblock()
+			finishOrderedSend(t, a, done)
+			if len(agent.sent) != 1 || !strings.Contains(agent.sent[0], waiting.spoken()) || len(agent.submitted) != 1 || agent.submitted[0] != "vendor/replacement" {
+				t.Fatalf("sent=%q models=%q", agent.sent, agent.submitted)
+			}
+			if attachment == "picture" && (len(agent.images) != 1 || len(agent.images[0]) != 1 || string(agent.images[0][0].Bytes) != "attachment bytes") {
+				t.Fatalf("picture=%+v", agent.images)
+			}
+			if attachment == "file" && !strings.Contains(agent.sent[0], waiting.chips[0].path) {
+				t.Fatal("file path was lost")
+			}
+			acknowledgeModelChanges(t, a)
+			if len(agent.sent) != 1 || agent.ConfiguredModel() != "vendor/configured" {
+				t.Fatal("acknowledgment repeated the send or saved the replacement")
 			}
 		})
 	}
 }
 
-// C1, C4: coming back before the original reply keeps its model gate and
-// resumes the parked send once, despite the intervening front generations.
-func TestReturningBeforeModelAcknowledgmentResumesTheParkedSend(t *testing.T) {
-	agent := &parkedModelAgent{&heldModelAgent{
-		modelForNowAgent: &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/replacement"}, configured: "vendor/configured"},
-		entered:          make(chan struct{}), release: make(chan struct{}),
-	}}
-	defer agent.finish()
-	rows := []Model{{ID: "vendor/replacement"}, {ID: "vendor/other"}}
-	a := newApp(t.Context(), Options{Agent: agent, ProfileDir: t.TempDir(), RequireListedModel: true,
-		Sources: modelsource.NewSet(testDefaultService("key")), Models: func() []Model { return rows },
-	})
-	spend(t, a, a.submit("first message"))
-	a.park("the returning conversation's message", nil)
-	rows = append(rows, Model{ID: "vendor/configured"})
-	agent.finish()
-	_, pending := a.Update(streamClosedMsg{gen: a.gen})
+type replayModelAgent struct{ *heldModelAgent }
+
+func (a *replayModelAgent) AttachReplay() ([]session.DisplayEntry, <-chan session.Event, func()) {
+	return nil, nil, func() {}
+}
+
+// C1, C4: a replay-deferred draft survives a catalog change before the replay
+// fold and sends once after the switch, including a refused switch.
+func TestReplayDeferredSendFollowsItsOrderedModel(t *testing.T) {
+	for _, refused := range []bool{false, true} {
+		t.Run(map[bool]string{false: "accepted", true: "refused"}[refused], func(t *testing.T) {
+			a, base, unblock := modelOrderingApp(t, refused)
+			a.agent = &replayModelAgent{base}
+			base.fakeAgent.model, a.model = "vendor/replacement", "vendor/replacement"
+			answer := a.refreshHostedReplay()()
+			a.input.insert("keep the replay-deferred words")
+			if cmd := a.enterLine(); cmd != nil || len(a.hostDeferred) != 1 || a.input.String() != "" {
+				t.Fatal("send was not deferred at the replay boundary")
+			}
+			a.models = func() []Model { return []Model{{ID: "vendor/configured"}} }
+			a.serviceModelsLanded(modelsource.DefaultID, config.DefaultBaseURL)
+			_, cmd := a.Update(answer)
+			done := beginOrderedSend(t, base, cmd)
+			if len(a.hostDeferred) != 0 {
+				t.Fatal("replay kept a second copy of its send")
+			}
+			unblock()
+			finishOrderedSend(t, a, done)
+			want := "vendor/configured"
+			if refused {
+				want = "vendor/replacement"
+			}
+			if len(base.sent) != 1 || base.sent[0] != "keep the replay-deferred words" || base.submitted[0] != want {
+				t.Fatalf("sent=%q models=%q", base.sent, base.submitted)
+			}
+			acknowledgeModelChanges(t, a)
+			if len(base.sent) != 1 {
+				t.Fatal("replay acknowledgment repeated the send")
+			}
+		})
+	}
+}
+
+type parkedSwitchModelAgent struct{ *heldModelAgent }
+
+func (a *parkedSwitchModelAgent) Attach() (<-chan session.Event, bool, func()) {
+	return nil, false, func() {}
+}
+
+// C1, C4, C5: a held chat's pending switch precedes its parked send and never
+// changes the unrelated front chat; the keeper consumes the message once.
+func TestHeldSendFollowsItsOwnOrderedModel(t *testing.T) {
+	a, base, unblock := modelOrderingApp(t, false)
+	agent := &parkedSwitchModelAgent{base}
+	a.agent = agent
+	a.file = filepath.Join(t.TempDir(), "held.jsonl")
+	a.parks = []parked{{text: "the held conversation's message"}}
+	a.ensureAvailableModel()
 	conv, side := a.front(), a.detachConversation()
-	away := a.attachConversation(Conversation{Agent: &fakeAgent{model: "vendor/other"}}, nil)
+	stowed := a.stow(conv, side)
+	key := a.convKey(conv.SessionFile)
+	held := a.behind[key]
+	t.Cleanup(held.watch.stop)
+	front := &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/chosen"}, configured: "vendor/chosen"}
+	attached := a.attachConversation(Conversation{Agent: front, SessionFile: filepath.Join(t.TempDir(), "front.jsonl")}, nil)
+	done := beginOrderedSend(t, base, tea.Batch(a.sendBehindParked(key, held), stowed, attached))
+	unblock()
+	finishOrderedSend(t, a, done)
+	acknowledgeModelChanges(t, a)
+	if len(base.sent) != 1 || base.sent[0] != "the held conversation's message" || base.submitted[0] != "vendor/replacement" || len(side.parks) != 0 {
+		t.Fatalf("held send=%q models=%q parks=%+v", base.sent, base.submitted, side.parks)
+	}
+	if len(front.sent) != 0 || front.Model() != "vendor/chosen" || a.model != "vendor/chosen" {
+		t.Fatal("held selection affected the front chat")
+	}
+}
+
+// C1, C4, C5: returning before the model ask completes restores its immediate
+// display and sends once through the same agent token, across front generations.
+func TestReturningBeforeModelSelectionKeepsTheOrderedSend(t *testing.T) {
+	a, base, unblock := modelOrderingApp(t, false)
+	a.ensureAvailableModel()
+	conv, side := a.front(), a.detachConversation()
+	away := a.attachConversation(Conversation{Agent: &fakeAgent{model: "vendor/chosen"}}, nil)
 	a.detachConversation()
 	back := a.attachConversation(conv, side)
-	if !a.modelChangePending() || len(a.parks) != 1 || len(agent.sent) != 1 {
-		close(agent.release)
-		t.Fatal("returning lost the pending model gate or its waiting message")
+	if a.model != "vendor/replacement" {
+		t.Fatal("returning lost the pending model display")
 	}
-	close(agent.release)
-	spend(t, a, tea.Batch(pending, away, back))
-	if a.modelChangePending() || len(agent.sent) != 2 || agent.sent[1] != "the returning conversation's message" || len(agent.submitted) != 2 || agent.submitted[1] != "vendor/configured" || len(a.parks) != 0 {
-		t.Fatalf("returning acknowledgment: sent=%q models=%q parks=%+v", agent.sent, agent.submitted, a.parks)
+	done := beginOrderedSend(t, base, tea.Batch(away, back, a.submit("send after returning")))
+	unblock()
+	finishOrderedSend(t, a, done)
+	acknowledgeModelChanges(t, a)
+	if len(base.sent) != 1 || base.submitted[0] != "vendor/replacement" {
+		t.Fatal("returning repeated or bypassed the ordered send")
+	}
+}
+
+// C4, C6: catalog recovery does not reconcile a hidden chat; its next front
+// attach restores the configured model before that chat's subsequent request.
+func TestHiddenChatReconcilesAvailabilityOnlyWhenItReturns(t *testing.T) {
+	a, base, unblock := modelOrderingApp(t, false)
+	agent := &parkedSwitchModelAgent{base}
+	a.agent = agent
+	a.file = filepath.Join(t.TempDir(), "held.jsonl")
+	a.ensureAvailableModel()
+	unblock()
+	acknowledgeModelChanges(t, a)
+	conv, side := a.front(), a.detachConversation()
+	stowed := a.stow(conv, side)
+	key := a.convKey(conv.SessionFile)
+	held := a.behind[key]
+	t.Cleanup(held.watch.stop)
+	front := &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/chosen"}, configured: "vendor/chosen"}
+	spend(t, a, tea.Batch(stowed, a.attachConversation(Conversation{Agent: front}, nil)))
+	a.models = func() []Model { return []Model{{ID: "vendor/configured"}, {ID: "vendor/chosen"}} }
+	a.serviceModelsLanded(modelsource.DefaultID, config.DefaultBaseURL)
+	held.side.parks = []parked{{text: "send while hidden"}}
+	spend(t, a, a.checkBehindParked(key, agent))
+	if len(base.sent) != 1 || base.submitted[0] != "vendor/replacement" || len(base.temporary) != 1 {
+		t.Fatal("hidden catalog arrival reconciled the held conversation")
+	}
+	base.finish()
+	held.watch.stop()
+	delete(a.behind, key)
+	a.detachConversation()
+	spend(t, a, a.attachConversation(conv, side))
+	acknowledgeModelChanges(t, a)
+	spend(t, a, a.submit("send after returning"))
+	if len(base.sent) != 2 || base.submitted[1] != "vendor/configured" || base.ConfiguredModel() != "vendor/configured" {
+		t.Fatalf("returning send=%q models=%q", base.sent, base.submitted)
 	}
 }
