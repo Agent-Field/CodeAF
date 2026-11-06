@@ -63,6 +63,11 @@ is kept; a design task can discard its unsaved page, and the confirmation says
 which consequence applies. Runs and background jobs use their own existing
 stop confirmations. The header and controls stop the work on the open page.
 
+Stopping a run ends every still-open task in its store, including workers mid-step and
+open children whose root already finished. Earlier completed results keep their endings.
+Task lists reflect the store's stop while the last workers return, so those parts no
+longer read as running.
+
 ## Asking the chat to stop a task — can I tell the chat to stop a task, I asked it to stop task 2 and it kept going, the model said it stopped but the task is still running, cancel task 2
 
 **Yes, and it is a real stop.** Say "stop task 2", "cancel task 2" or "drop task 2" in the

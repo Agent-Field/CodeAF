@@ -88,6 +88,14 @@ in its own words — and new work never runs inside it. A task handed off in the
 seconds while a run is finishing (its work landing, its summary being written) waits
 until that run is over and then starts its own: it never joins a run on its way out.
 
+## Run subtasks in app task lists
+
+App task lists keep each run's internal tasks under their actual parent. A direct child
+names the run's listed task id; deeper children name their parent's listed id. The
+`parent` field lets a client build that tree instead of counting every internal part as
+another top-level conversation task. When a recorded group is known, the parts carry the
+same group as their run.
+
 ## When does a task run's work come home, including commits its workers made
 
 When a `/task` run on the worker harness ends, any uncommitted work in its copy is committed.
