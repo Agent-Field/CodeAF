@@ -1575,6 +1575,9 @@ func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 	// The surface can open while catalogs warm, but a guessed launch model
 	// must never receive the message in the meantime.
 	if !strings.HasPrefix(line, "/") && (line != "" || held) && !a.ensureAvailableModel() {
+		if a.modelChangePending() {
+			return a.takeModelCommands()
+		}
 		a.note(noAvailableModelWord)
 		a.openPicker()
 		return nil

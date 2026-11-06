@@ -26,7 +26,12 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 		return nil
 	}
 	start := a.start
-	return a.besideLine(func() func(bool) tea.Cmd {
+	listed := a.requireListedModel
+	var models []Model
+	if listed {
+		models = a.modelList()
+	}
+	return a.offLoop(func() func(bool) tea.Cmd {
 		claimer, ok := owner.(interface{ ClaimChatStart(string) (bool, error) })
 		if !ok {
 			return func(bool) tea.Cmd { a.note("could not start chat · launch ownership unavailable"); return nil }
@@ -44,6 +49,9 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 			err = fmt.Errorf("the new conversation has no agent")
 		}
 		if err == nil {
+			// The request carries the parent's saved choice. Availability is
+			// reconciled for this child before its first request, without saving
+			// a temporary replacement inherited from the parent.
 			conv.Agent.SetModel(request.Model)
 			if request.Approval != "" {
 				if setter, ok := conv.Agent.(interface{ SetApprovalPosture(string) error }); ok {
@@ -51,6 +59,21 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 				} else {
 					err = fmt.Errorf("the new conversation cannot inherit approvals")
 				}
+			}
+		}
+		if err == nil && listed {
+			model, available := availableConversationModel(request.Model, models)
+			if !available {
+				err = fmt.Errorf("%s", noAvailableModelWord)
+			} else if model.ID != request.Model {
+				if door, ok := conv.Agent.(interface{ UseModelForNow(string) error }); ok {
+					err = door.UseModelForNow(model.ID)
+				} else {
+					conv.Agent.SetModel(model.ID)
+				}
+			}
+			if err == nil && model.ContextLength > 0 {
+				conv.Agent.SetContextWindow(model.ContextLength)
 			}
 		}
 		if err == nil {

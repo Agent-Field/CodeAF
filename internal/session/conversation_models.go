@@ -99,6 +99,9 @@ func (a *Agent) setConversationModels(pair ConversationModels, mainNotice string
 	}
 	active := a.modelIdentity.Active != ""
 	a.conversationModels = &pair
+	// The pair is the next request's selection, including when its main did
+	// not change. A queued temporary main must not outlive this explicit pick.
+	a.spokenModel = ""
 	a.modelForNowConfigured = ""
 	a.modelForNowProvider = ""
 	a.model = pair.Main

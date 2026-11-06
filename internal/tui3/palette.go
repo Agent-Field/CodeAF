@@ -3106,13 +3106,15 @@ func (a *app) windowFor(id string) int {
 // fires at a fraction of it, so a session that switched to a 1M model without
 // saying so would keep compacting as if it were on the 128k one it started on.
 func (a *app) switchModel(id string, window int) {
-	if door, ok := a.agent.(interface{ UseModelForNow(string) error }); a.creditSwitching && ok {
-		if err := door.UseModelForNow(id); err != nil {
-			return
-		}
-	} else {
-		a.agent.SetModel(id)
+	if a.modelChange != nil {
+		a.queueModelChange(id, window, false, a.creditSwitching, nil)
+		return
 	}
+	a.agent.SetModel(id)
+	a.modelSwitched(id, window, true)
+}
+
+func (a *app) modelSwitched(id string, window int, remember bool) {
 	a.model = a.agent.Model()
 	if a.model == "" {
 		a.model = id
@@ -3131,7 +3133,9 @@ func (a *app) switchModel(id string, window int) {
 		// this number (see [app.ctxPercent]).
 		a.ctxWindow = window
 	}
-	a.rememberModel(a.model)
+	if remember {
+		a.rememberModel(a.model)
+	}
 	a.refreshCreditWarnings()
 	if a.chatCreditWarning != "" {
 		a.askCredits(credits.PaidSwitch)

@@ -1012,6 +1012,9 @@ func (a *app) reprefixRenamedModel(oldWritten, newWritten string) string {
 	if modelUsesService(a.deferredModelServiceModel, oldWritten) {
 		a.deferredModelServiceModel = config.ReprefixModelID(a.deferredModelServiceModel, oldWritten, newWritten)
 	}
+	if a.reprefixTemporaryModel(oldWritten, newWritten) {
+		return ""
+	}
 	if !modelUsesService(a.model, oldWritten) {
 		return ""
 	}
@@ -1127,6 +1130,10 @@ func (a *app) moveConversationToConnectedModel(next string) {
 // answering turn has settled. Clearing it first makes the second settle event
 // free and prevents a failed later path from replaying an old connection.
 func (a *app) applyDeferredModelServiceMove() {
+	if rename := a.deferredModelRename; rename != nil {
+		a.deferredModelRename = nil
+		a.applyModelRename(rename)
+	}
 	next := a.deferredModelServiceModel
 	a.deferredModelServiceModel = ""
 	was := a.model

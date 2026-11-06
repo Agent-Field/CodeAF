@@ -1967,6 +1967,9 @@ type app struct {
 	// MID-SENTENCE, and dropping the move would leave them on the service they
 	// just replaced, so the one pending id lands at the turn boundary.
 	deferredModelServiceModel string
+	deferredModelRename       *modelRename
+	modelChange               *modelChange
+	modelCommands             []tea.Cmd
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -3636,7 +3639,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
+	standing := []tea.Cmd{a.takeModelCommands(), a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
@@ -3831,7 +3834,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if summary := a.refreshRunSummary(); summary != nil {
 		cmd = tea.Batch(cmd, summary)
 	}
-	return model, cmd
+	return model, tea.Batch(cmd, a.takeModelCommands())
 }
 
 // route is the message switch: every message this surface handles, handled once.
@@ -7494,6 +7497,9 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 // shown, so the transcript leaves them plain (entry.plainTags).
 func (a *app) submittingShown(text, shown string, plain []segment, start func() (<-chan session.Event, error)) tea.Cmd {
 	if !a.ensureAvailableModel() {
+		if a.modelChangePending() {
+			return a.takeModelCommands()
+		}
 		a.note(noAvailableModelWord)
 		return nil
 	}

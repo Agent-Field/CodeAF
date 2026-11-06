@@ -37,10 +37,16 @@ func (a *app) isAvailableModel(id string) bool {
 
 // ensureAvailableModel reconciles a local conversation with its picker catalog.
 // A launch preference is not evidence of availability. An automatic choice uses
-// the ordinary model-change road without saving a preference the person did not
+// the off-loop run-only door without saving a preference the person did not
 // choose. With no rows, only the display is cleared: the engine has no unset-model
 // door, and the send gates below keep that old launch preference from being used.
 func (a *app) ensureAvailableModel() bool {
+	if a.modelChangePending() {
+		if retry := a.modelChange.retry; retry != nil {
+			retry()
+		}
+		return false
+	}
 	if !a.requireListedModel || a.agent == nil {
 		return true
 	}
@@ -59,6 +65,7 @@ func (a *app) ensureAvailableModel() bool {
 	if model.ID != a.model {
 		a.useModelForNow(model.ID, model.ContextLength)
 		a.hudStale = true
+		return false
 	}
 	return a.model == model.ID
 }

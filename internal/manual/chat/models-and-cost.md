@@ -131,7 +131,9 @@ While every catalog is cold or empty, no default model is displayed and a messag
 stays in the draft. The picker opens with:
 `no available model · connect a provider or refresh /model`.
 When a provider's list arrives, codeaf selects an available model. Press Enter again
-to send the draft. Refreshing a list or removing a connection also replaces a model
+to send the draft after the model selection succeeds. A failed selection
+reports `could not change model · <reason>` and leaves the draft unsent.
+Refreshing a list or removing a connection also replaces a model
 that is no longer listed; existing requests finish on the model they started with.
 
 Remote sessions keep the engine's opening model; this laptop's catalog does not

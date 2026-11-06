@@ -17,6 +17,7 @@ type modelForNowAgent struct {
 	*fakeAgent
 	configured string
 	temporary  []string
+	submitted  []string
 }
 
 func (a *modelForNowAgent) ConfiguredModel() string { return a.configured }
@@ -28,6 +29,16 @@ func (a *modelForNowAgent) UseModelForNow(model string) error {
 func (a *modelForNowAgent) SetModel(model string) {
 	a.configured = model
 	a.fakeAgent.SetModel(model)
+}
+
+func (a *modelForNowAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
+	a.submitted = append(a.submitted, a.Model())
+	return a.fakeAgent.Submit(ctx, text)
+}
+
+func acknowledgeModelChanges(t *testing.T, a *app) {
+	t.Helper()
+	spend(t, a, a.takeModelCommands())
 }
 
 // C2, C4, C5: availability reconciles to the saved model without profile writes.
@@ -53,6 +64,7 @@ func TestListedModelReplacementKeepsProfileAndReturnsToConfiguredModel(t *testin
 	a := newApp(t.Context(), Options{Agent: agent, ProfileDir: dir, Sources: modelsource.NewSet(testDefaultService("key")), RequireListedModel: true,
 		Models: func() []Model { return rows }, SaveModel: func(id string) error { return config.WriteChatModel(dir, id) },
 	})
+	acknowledgeModelChanges(t, a)
 	if a.model != "vendor/replacement" || agent.Model() != a.model || agent.ConfiguredModel() != "vendor/configured" || agent.window != 32768 {
 		t.Fatalf("replacement=%q/%q configured=%q window=%d", a.model, agent.Model(), agent.ConfiguredModel(), agent.window)
 	}
@@ -63,6 +75,7 @@ func TestListedModelReplacementKeepsProfileAndReturnsToConfiguredModel(t *testin
 		t.Fatal("catalog recovery changed an answering request")
 	}
 	a.settle()
+	acknowledgeModelChanges(t, a)
 	if a.model != "vendor/configured" || agent.Model() != a.model || agent.window != 65536 {
 		t.Fatalf("recovered=%q/%q window=%d", a.model, agent.Model(), agent.window)
 	}
@@ -73,6 +86,7 @@ func TestListedModelReplacementKeepsProfileAndReturnsToConfiguredModel(t *testin
 	rows = rows[:1]
 	a.serviceModelsLanded(modelsource.DefaultID, config.DefaultBaseURL)
 	a.slash("/model vendor/replacement")
+	acknowledgeModelChanges(t, a)
 	if agent.ConfiguredModel() != "vendor/replacement" || config.ChatModelAt(dir) != "vendor/replacement" || a.modelWord() != "vendor/replacement" {
 		t.Fatal("confirming the fallback did not save the explicit choice and HUD")
 	}
@@ -97,9 +111,11 @@ func TestCatalogRecoveryUsesConfiguredModelOnTheNextRequest(t *testing.T) {
 	a := newApp(t.Context(), Options{Agent: agent, ProfileDir: t.TempDir(), Sources: sources, RequireListedModel: true,
 		ModelsForService: func(modelsource.Connected) []Model { return rows },
 	})
+	acknowledgeModelChanges(t, a)
 	drainModelServiceTurn(t, agent, "use the available model")
 	rows = append(rows, Model{ID: "configured"})
 	a.serviceModelsLanded(service.Source.ID, service.Address)
+	acknowledgeModelChanges(t, a)
 	drainModelServiceTurn(t, agent, "use the recovered model")
 	requests := completionRequests(server)
 	if len(requests) != 2 || completionModel(t, requests[0]) != "replacement" || completionModel(t, requests[1]) != "configured" {
@@ -113,6 +129,7 @@ func TestSetupCanExplicitlyChooseTheRunOnlyModel(t *testing.T) {
 	agent := &modelForNowAgent{fakeAgent: &fakeAgent{model: "vendor/configured"}, configured: "vendor/configured"}
 	a := newApp(t.Context(), Options{Agent: agent, ProfileDir: dir, SaveModel: func(id string) error { return config.WriteChatModel(dir, id) }})
 	a.useModelForNow("vendor/replacement", 0)
+	acknowledgeModelChanges(t, a)
 	if config.ChatModelAt(dir) != "" {
 		t.Fatal("an automatic setup model was saved")
 	}
@@ -122,19 +139,37 @@ func TestSetupCanExplicitlyChooseTheRunOnlyModel(t *testing.T) {
 	}
 }
 
-// C2: automatic credit defaults change this run, without changing its choice.
-func TestCreditDefaultUsesTheRunOnlyDoor(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
-	agent := &modelForNowAgent{fakeAgent: &fakeAgent{model: config.DefaultModel}, configured: config.DefaultModel}
-	a := newApp(t.Context(), Options{Agent: agent, ProfileDir: t.TempDir(), ImplicitTalk: true})
-	if err := config.SetCrewFreeRoutes(a.profileDir, true); err != nil {
-		t.Fatal(err)
-	}
-	seedLowCredits(t, a)
-	a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{Known: true, Low: true}, nil }
-	a.refreshCreditWarnings()
-	if agent.Model() != config.FreeChatModel || agent.ConfiguredModel() != config.DefaultModel || config.ChatModelAt(a.profileDir) != "" || len(agent.temporary) == 0 {
-		t.Fatalf("credit default=%q configured=%q", agent.Model(), agent.ConfiguredModel())
+// C6: an untouched implicit credit default follows the ordinary saved model
+// road, and availability reconciliation preserves it at the submission gate.
+func TestCreditDefaultSurvivesListedModelSubmission(t *testing.T) {
+	for _, low := range []bool{true, false} {
+		t.Run(map[bool]string{true: "low", false: "recovered"}[low], func(t *testing.T) {
+			t.Setenv("CODEAF_HOME", t.TempDir())
+			initial, want := config.DefaultModel, config.FreeChatModel
+			if !low {
+				initial, want = want, initial
+			}
+			agent := &modelForNowAgent{fakeAgent: &fakeAgent{model: initial}, configured: initial}
+			a := newApp(t.Context(), Options{Agent: agent, ProfileDir: t.TempDir(), ImplicitTalk: true, RequireListedModel: true,
+				Sources: modelsource.NewSet(testDefaultService("credit-test-key")),
+				Models:  func() []Model { return []Model{{ID: config.DefaultModel}, {ID: config.FreeChatModel}} },
+			})
+			if err := config.SetCrewFreeRoutes(a.profileDir, true); err != nil {
+				t.Fatal(err)
+			}
+			seedLowCredits(t, a)
+			reading := credits.Reading{Known: true, Low: low}
+			if err := config.WriteCreditsReading(a.profileDir, "credit-test-key", reading); err != nil {
+				t.Fatal(err)
+			}
+			a.readCredits = func(context.Context) (credits.Reading, error) { return reading, nil }
+			a.refreshCreditWarnings()
+			a.input.insert("answer on the credit default")
+			spend(t, a, a.enterLine())
+			if len(agent.submitted) != 1 || agent.submitted[0] != want || agent.ConfiguredModel() != want || config.ChatModelAt(a.profileDir) != "" || len(agent.temporary) != 0 {
+				t.Fatalf("submitted=%v configured=%q temporary=%v", agent.submitted, agent.ConfiguredModel(), agent.temporary)
+			}
+		})
 	}
 }
 
@@ -178,7 +213,10 @@ func TestServiceConnectionPersistsIdleAndDeferredMoves(t *testing.T) {
 						t.Fatal(err)
 					}
 					if testCase.running {
+						a.requireListedModel = false
 						a.useModelForNow(want, 0)
+						acknowledgeModelChanges(t, a)
+						a.requireListedModel = true
 					}
 					temporary := len(agent.temporary)
 					opening := a.model
@@ -226,6 +264,7 @@ func TestDisconnectMoveStaysTemporaryUntilExplicitlyChosen(t *testing.T) {
 			a.agent = agent
 			a.requireListedModel = true
 			a.disconnectModelService("z-ai")
+			acknowledgeModelChanges(t, a)
 			if a.model != fallback || agent.Model() != fallback || agent.ConfiguredModel() != configured || config.ChatModelAt(dir) != configured || len(agent.temporary) == 0 {
 				t.Fatal("disconnect did not keep its replacement temporary")
 			}

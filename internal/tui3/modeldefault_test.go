@@ -43,6 +43,7 @@ func TestTheOpeningModelAlwaysBelongsToItsAvailablePicker(t *testing.T) {
 				ModelsForService: func(modelsource.Connected) []Model { return test.installed },
 				SaveModel:        func(id string) error { saved = id; return nil },
 			})
+			acknowledgeModelChanges(t, a)
 			if a.model != test.want {
 				t.Fatalf("opening model = %q, want %q", a.model, test.want)
 			}
@@ -67,6 +68,7 @@ func TestAColdCatalogHoldsTheDraftThenSuppliesTheEngineDefault(t *testing.T) {
 	}
 	rows = []Model{{ID: "vendor/real", ContextLength: 32768}}
 	a.serviceModelsLanded(modelsource.DefaultID, config.DefaultBaseURL)
+	acknowledgeModelChanges(t, a)
 	if a.model != "vendor/real" || agent.Model() != a.model || agent.window != 32768 || a.input.String() != "keep this draft" {
 		t.Fatalf("landed default = %q/%q window=%d draft=%q", a.model, agent.Model(), agent.window, a.input.String())
 	}
@@ -88,6 +90,7 @@ func TestRemovingTheDefaultModelChoosesAnotherListedModel(t *testing.T) {
 	a := newApp(t.Context(), Options{Agent: agent, ProfileDir: t.TempDir(), Sources: modelsource.NewSet(testDefaultService("key")), RequireListedModel: true, Models: func() []Model { return rows }})
 	rows = []Model{{ID: "vendor/replacement"}}
 	a.serviceModelsLanded(modelsource.DefaultID, config.DefaultBaseURL)
+	acknowledgeModelChanges(t, a)
 	if a.model != "vendor/replacement" || agent.Model() != a.model {
 		t.Fatalf("replacement = %q/%q", a.model, agent.Model())
 	}
@@ -141,6 +144,7 @@ func TestAnAvailableOpeningModelIsTheModelSentToItsRealProvider(t *testing.T) {
 		Models:           func() []Model { return []Model{{ID: config.DefaultModel}} },
 		ModelsForService: func(modelsource.Connected) []Model { return []Model{{ID: "actually-listed"}} },
 	})
+	acknowledgeModelChanges(t, a)
 	if a.model != "deepseek-direct/actually-listed" {
 		t.Fatalf("default = %q", a.model)
 	}
@@ -163,6 +167,7 @@ func TestARefreshDefersDefaultReplacementUntilTheAnswerSettles(t *testing.T) {
 		t.Fatal("the catalog change interrupted an answering request")
 	}
 	a.settle()
+	acknowledgeModelChanges(t, a)
 	if a.model != "vendor/replacement" || agent.Model() != a.model {
 		t.Fatalf("settled default = %q/%q", a.model, agent.Model())
 	}

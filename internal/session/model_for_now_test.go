@@ -1,11 +1,78 @@
 package session
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
+
+// C5: an explicit single or pair pick supersedes a queued temporary model
+// before the next tool step, without cutting the request already on that pick.
+func TestExplicitChoiceSupersedesQueuedRunOnlyModel(t *testing.T) {
+	for _, paired := range []bool{false, true} {
+		t.Run(map[bool]string{false: "single", true: "pair"}[paired], func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			entered, release := make(chan struct{}), make(chan struct{})
+			cut := make(chan struct{}, 1)
+			c := chained(nil,
+				func(callCtx context.Context, _ []ai.Message) (*ai.Response, error) {
+					close(entered)
+					select {
+					case <-release:
+						if callCtx.Err() != nil {
+							cut <- struct{}{}
+						}
+						return toolResponse("read", "read_file", `{"path":"README.md"}`), nil
+					case <-callCtx.Done():
+						cut <- struct{}{}
+						return nil, context.Cause(callCtx)
+					}
+				},
+				func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
+			)
+			a, _ := newTestAgent(t, c, func(cfg *Config) {
+				if paired {
+					cfg.ConversationModels = &ConversationModels{Main: cfg.Model, Fallback: "chosen/backup"}
+				}
+			})
+			stream, err := a.Submit(ctx, "read README")
+			if err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-entered:
+			case <-ctx.Done():
+				t.Fatal("first request did not start")
+			}
+			if err := a.UseModelForNow("available/model"); err != nil {
+				t.Fatal(err)
+			}
+			if paired {
+				_, err = a.SetConversationModels(ConversationModels{Main: "test/model", Fallback: "chosen/backup"})
+			} else {
+				a.SetModel("test/model")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			close(release)
+			if events := collect(t, stream); len(textsOfKind(events, EventError)) != 0 {
+				t.Fatalf("turn failed: %v", textsOfKind(events, EventError))
+			}
+			if len(cut) != 0 {
+				t.Fatal("confirming the active model cut its in-flight request")
+			}
+			if c.requests() != 2 || c.model(0) != "test/model" || c.model(1) != "test/model" || a.ConfiguredModel() != "test/model" {
+				t.Fatalf("requests=%d models=%q/%q configured=%q", c.requests(), c.model(0), c.model(1), a.ConfiguredModel())
+			}
+		})
+	}
+}
 
 // C1, C3, C4: a run-only model serves requests without replacing saved choices.
 func TestRunOnlyModelSurvivesSavingAsTheConfiguredChoice(t *testing.T) {
