@@ -101,13 +101,14 @@ func programUnattended(program *delegate.Delegate) delegate.Ceilings {
 // holdProgramCeilings writes onto the run which ceilings it starts under and
 // whether the conversation's own limit, rather than the program's unattended
 // one, is the one that will stop it — the words its ending is told in. A run
-// of no program keeps none.
+// of no program holds its per-task ceiling instead.
 //
 // A PROGRAM WITH NO CEILINGS OF ITS OWN IS STOPPED BY THE CONVERSATION'S, and
 // its ending says so. Skipping it left the run holding no ceiling and no
 // word for whose it was, and its ending named "the run's $0.00 limit".
 func (a *Agent) holdProgramCeilings(run *beltRun, spec RunSpec) {
 	if run.delegate == nil {
+		a.holdTaskCeiling(run, spec)
 		return
 	}
 	own := programUnattended(run.delegate)
@@ -960,11 +961,11 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 		}
 		over := live.over
 		if !live.ending && !live.closing && !live.stopped {
-			if refusal := taskRunJoinRefusal(ctx, stand, via, live); refusal != nil {
+			if refusal := taskRunJoinRefusal(ctx, stand, via, live, title); refusal != nil {
 				a.beltMu.Unlock()
 				return nil, refusal
 			}
-			_, err := live.store.AddMany([]plandb.TaskSpec{{
+			_, err := addJoinedTasks(ctx, live.store, []plandb.TaskSpec{{
 				ID: storeID, ParentID: live.root, Title: title, Description: brief, Dependencies: dependencies, Model: crewWishOf(ctx).worker,
 			}})
 			if err == nil {
@@ -1125,7 +1126,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 			wallLeft = time.Nanosecond
 		}
 	}
-	cost := runCostLeft(a.railCap(0), a.Usage().CostUSD)
+	cost := a.taskRunCost(run, runCostLeft(a.railCap(0), a.Usage().CostUSD))
 	if !programUnattended(run.delegate).IsZero() {
 		ceilings := a.programCeilings(run.delegate, a.Usage().CostUSD)
 		cost, wallLeft = ceilings.CostUSD, ceilings.Elapsed()
@@ -2123,7 +2124,7 @@ func (a *Agent) completeBeltRun(ctx context.Context, engine RunEngine, run *belt
 		}
 		cancelRefresh()
 	}
-	note := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
+	note := run.outcomeNote(summary, landing, a.beltRunSpan(run))
 	if run.delegate != nil {
 		note = programPageNote(programName(run.delegate), landing)
 	}
@@ -2351,7 +2352,7 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 var beltLandingAdmissionWaits func()
 
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
-	line := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
+	line := run.outcomeNote(summary, landing, a.beltRunSpan(run))
 	if a.beltRunQuiet(run) {
 		a.recordQuietBeltLanding(run, summary, line, landing)
 		return
@@ -2628,6 +2629,7 @@ func cancelledByRunEnding(store *plandb.Store, id uint64) bool {
 // two different endings.
 func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLanding) TaskNotice {
 	state, report := beltRunResultWords(summary, landing)
+	report = withReport(report, run.taskLimitWords(summary))
 	if run.remoteEngine != nil && summary.NeedsDecision {
 		state = TaskUnverified
 	}
@@ -2941,7 +2943,7 @@ func beltRunResultWords(summary RunSummary, landing RunLanding) (TaskState, stri
 }
 
 // A remote instruction is frozen, and a program or a different ground cannot join it.
-func taskRunJoinRefusal(ctx context.Context, stand taskStand, via *delegate.Delegate, live *beltRun) error {
+func taskRunJoinRefusal(ctx context.Context, stand taskStand, via *delegate.Delegate, live *beltRun, title string) error {
 	if live.remoteEngine != nil || taskPlacementOf(ctx).computer != nil {
 		return errRemotePlacementBusy
 	}
@@ -2950,6 +2952,11 @@ func taskRunJoinRefusal(ctx context.Context, stand taskStand, via *delegate.Dele
 	}
 	if !stand.sharesWorkspace(live) {
 		return standsElsewhereError{underway: live.ground, asked: canonicalPath(stand.dir)}
+	}
+	if silentTaskStart(ctx) {
+		if refusal := live.store.GrowthRefusal(live.root, []string{title}); refusal != "" {
+			return errors.New(refusal)
+		}
 	}
 	return nil
 }
