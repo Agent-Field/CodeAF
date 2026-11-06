@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Removed computers keep quit progress quiet
-pr: 0
+pr: 2448
 surface: [chat]
 invalidates:
   - "A removed computer could claim it was saving to other devices while a hosted close reply was delayed. Quit progress now checks the current pairing's confirmed removal before each sentence."
