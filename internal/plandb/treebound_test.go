@@ -12,6 +12,7 @@ import (
 func treeBoundStore(t *testing.T) (*cliHarness, *Store) {
 	t.Helper()
 	t.Setenv(RunEnv, "")
+	t.Setenv(TaskEnv, "")
 	h := cliNewHarness(t)
 	h.cliInitFresh()
 	s, err := Open(h.db, "", "", "", "")

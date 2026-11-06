@@ -1658,7 +1658,7 @@ func setAsideRunStore(path string) error {
 		return err
 	}
 	_, _ = endOrphanedProgramRun(existing)
-	if root := existing.Task(existing.RootID()); root != nil && !terminalStoreStatus(root.Status) {
+	if root := existing.Task(existing.RootID()); root != nil {
 		if err := existing.EndRoot(taskWordInterrupted); err != nil {
 			_ = existing.Close()
 			return err
