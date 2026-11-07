@@ -940,9 +940,9 @@ problem instead. Retry the same `question_id` and answer to confirm/redeliver it
 a newer question stays intact and never receives the old answer. Readiness
 completion also preserves a critical decision arriving during its final checks.
 
-## Request changes to a waiting plan through its manager
+## Ask for changes to a waiting plan through its manager — send the plan back with your words
 
-When you ask for changes at a plan approval gate, the manager reads saved status
+When you press **Ask for changes…** at a plan approval gate (or tell the manager to), the manager reads saved status
 and sends the plan back with your words. The finished step before the gate runs
 again in a new round, with your words in its brief. Approval is requested again
 after that step finishes. This does not approve the plan or publish anything.

@@ -3662,6 +3662,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"disconnect AgentField", "factory-agentfield"},
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
+		{"ask the manager for changes to a waiting plan", "factory-stage-conversations"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
