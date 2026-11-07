@@ -74,7 +74,7 @@ func TestStartNowRefusesAPipelineItCannotRunBeforeWriting(t *testing.T) {
 		}
 	}
 	// A job that has run keeps the steps it ran.
-	ran := f.create(t, factory.Item{State: factory.StateNew, Stream: &factory.Stream{}})
+	ran := f.create(t, factory.Item{State: factory.StateNew, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", Round: 1, State: factory.PhaseDone}}}})
 	f.post(t, ran, "start_now", `{"pipeline":"docs"}`, 409)
 	// Only start_now names a pipeline.
 	other := f.create(t, factory.Item{State: factory.StateNew})

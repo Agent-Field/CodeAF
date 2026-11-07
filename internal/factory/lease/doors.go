@@ -120,7 +120,7 @@ func (d *Doors) Launch(id int) error {
 	// (internal/factory/inbox) may arrive before a rule or a person says where
 	// it is done, and a run with nowhere to check out would fail on a worker.
 	if factory.NamesNoRepo(it) {
-		return errors.New(factory.NoRepoRefusal)
+		return factory.ErrNoRepo
 	}
 	if run.StoredPaused(it) {
 		return d.Hold(id, false)

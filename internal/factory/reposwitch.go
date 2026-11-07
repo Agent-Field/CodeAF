@@ -1,6 +1,9 @@
 package factory
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // RepoOffRefusal ends the sentence every door that would work on a job of a
 // repository that is off is refused with, after the repository's name
@@ -12,6 +15,19 @@ const RepoOffRefusal = "is off · turn it on in Repos to run its jobs."
 // the floor's new-job door and at the launch: work filed from outside may
 // arrive before anyone has said where it is done.
 const NoRepoRefusal = "say which repository the work is on"
+
+// ErrNoRepo is [NoRepoRefusal] as an error: A REFUSAL, NOT A FAILURE. Every
+// door answers it as a conflict in those exact words, never as an error that
+// may have half-happened, because nothing was written.
+var ErrNoRepo = errors.New(NoRepoRefusal)
+
+// NoRepoTitle and NoRepoDetail are what a job that names no repository says
+// while it waits in Backlog ([NamesNoRepo]): the words the job's read carries
+// so a surface can show why it is not starting.
+const (
+	NoRepoTitle  = "Waiting for a repository"
+	NoRepoDetail = "Say which repository the work is on, or add a routing rule that sends it to one."
+)
 
 // NamesNoRepo says the job names no repository at all, the one case
 // [NoRepoRefusal] is for. IT IS NOT [RepoOf] == "": a job typed on a floor with

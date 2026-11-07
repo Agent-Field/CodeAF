@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -522,5 +523,44 @@ func TestTheTerminalTriageReadsNothingWhileTheReadOnArrivalIsOff(t *testing.T) {
 	time.Sleep(10 * factoryTriageEvery)
 	if items := readLoopsItems(t, floor); len(items) != 1 || items[0].Triage.Read != "" || !items[0].Triage.TriagedAt.IsZero() {
 		t.Fatalf("an item was read with the read on arrival off: %+v", items[0].Triage)
+	}
+}
+
+// PICK UP ISSUES OFF STILL ROUTES. The switch governs the label rule alone:
+// with it off, an inbox job a routing rule sends to acme/api with start: auto
+// is routed and started, while the labelled issue no rule matched waits for
+// a person. Turning the switch off used to skip the router entirely, so the
+// routed job sat unrouted with nothing to say why.
+func TestPickUpIssuesOffStillRunsTheRoutingRules(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	world.startRule(t)
+	world.file(4)
+	s := readLoopsSetup(t, world, readLoopsPin)
+	if st := watchAndStart(t, s); !st.Runner {
+		t.Fatalf("start: %+v", st)
+	}
+	floor := s.backend.local.host.floor
+	if _, err := floor.SetRoutes([]route.Rule{{Name: "ops", When: route.Match{Sources: []string{"inbox"}}, Then: route.Action{Repo: "acme/api", Start: route.StartAuto}}}, factory.RulesChange{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}}); err != nil {
+		t.Fatal(err)
+	}
+	ops, err := floor.Create(factory.Item{Tier: factory.TierOwner, Origin: "inbox:ops", SourceRef: "inbox:ops:A1", Title: "Rotate the key", Kind: factory.KindIssue, State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the routed job started", func() bool { return world.launches.Load() == 1 })
+	settle()
+	if n := world.launches.Load(); n != 1 {
+		t.Fatalf("%d launches; want the routed job alone", n)
+	}
+	got, err := floor.Get(ops.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Route != "ops" || got.Repo != "acme/api" || got.State == factory.StateNew {
+		t.Fatalf("routed job: route %q repo %q state %s", got.Route, got.Repo, got.State)
 	}
 }

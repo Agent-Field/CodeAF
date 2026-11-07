@@ -2,7 +2,9 @@ package intake
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -137,9 +139,42 @@ func guard(out route.Outcome, it factory.Item) *routing {
 // repository's switch and file for.
 func routedTo(it factory.Item, r *routing) factory.Item {
 	if r != nil {
-		it.Repo = r.rule.Then.RepoFor(it)
+		it.Repo = repoFor(r.rule, it)
 	}
 	return it
+}
+
+// repoFor is the repository rule sends it to: A PERSON'S REPOSITORY WINS
+// ([factory.Item.RepoSetBy]), else the rule's when it names one, else the
+// one it already has.
+func repoFor(rule route.Rule, it factory.Item) string {
+	repo, _ := route.PipelineFor(rule, it)
+	return repo
+}
+
+// refusedBy is why rule cannot be applied to it under f, the file of the
+// repository it sends it to, "" when it can: a pipeline that file does not
+// list. It is the activity row's sentence, and the one `factory.routes_test`
+// answers for the same rule ([route.PipelineRefusal]).
+func refusedBy(rule route.Rule, it factory.Item, f pipeline.File) string {
+	if rule.Then.Pipeline == "" || len(f.Recipe().Named(rule.Then.Pipeline)) > 0 {
+		return ""
+	}
+	return route.PipelineRefusal(rule.Name, it.Repo, rule.Then.Pipeline)
+}
+
+// replacedWords is the activity sentence of a job rule r now routes in place
+// of the rule that routed it before, with the steps it has now.
+func replacedWords(it factory.Item, r *routing, staged []factory.Stage) string {
+	names := make([]string, 0, len(staged))
+	for _, st := range staged {
+		names = append(names, st.Name)
+	}
+	out := r.reason() + " · in place of routing rule " + it.Route
+	if len(names) > 0 {
+		out += " · steps " + strings.Join(names, ", ")
+	}
+	return out
 }
 
 // startDecision is the start decision for it under f. Unrouted, it is the
@@ -191,11 +226,13 @@ func applyRoute(cur *factory.Item, rule route.Rule, f pipeline.File) error {
 	var steps []factory.Stage
 	if rule.Then.Pipeline != "" {
 		if steps = f.Recipe().Named(rule.Then.Pipeline); len(steps) == 0 {
-			return fmt.Errorf("routing rule %q: %s has no pipeline %q in its file", rule.Name, rule.Then.RepoFor(*cur), rule.Then.Pipeline)
+			return errors.New(route.PipelineRefusal(rule.Name, repoFor(rule, *cur), rule.Then.Pipeline))
 		}
 	}
-	cur.Route = rule.Name
-	cur.Repo = rule.Then.RepoFor(*cur)
+	cur.Route, cur.RouteRefused = rule.Name, ""
+	if repo := repoFor(rule, *cur); repo != cur.Repo {
+		cur.Repo, cur.Places = repo, []string{repo}
+	}
 	// The source's own priority is not a person's mark (inbox.SetBySource):
 	// the rule's word replaces it, as it would replace none.
 	if value, ok := factory.PriorityFromShort(rule.Then.Priority); ok && (cur.Priority == nil || cur.Priority.SetBy == inbox.SetBySource) {
