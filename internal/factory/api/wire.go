@@ -490,10 +490,14 @@ type Job struct {
 	// StepsDone of StepsTotal is how far the job is ([factory.StepCount]): THE
 	// ONE STEP COUNT, which the Brief's own steps_done and steps_total read
 	// too. A skipped step counts for neither. Hello word `factory.job_steps`.
-	StepsDone     int               `json:"steps_done"`
-	StepsTotal    int               `json:"steps_total"`
-	Reason        string            `json:"reason,omitempty"`
-	DoneHow       string            `json:"done_how,omitempty"`
+	StepsDone  int    `json:"steps_done"`
+	StepsTotal int    `json:"steps_total"`
+	Reason     string `json:"reason,omitempty"`
+	DoneHow    string `json:"done_how,omitempty"`
+	// Rejection is the person's no that ended the job at an approval, with
+	// their words; absent on every other ending. The job is then done and
+	// closed here (done_how closed_locally).
+	Rejection     *Rejection        `json:"rejection,omitempty"`
 	DoneAt        time.Time         `json:"done_at"`
 	Dismissed     bool              `json:"dismissed"`
 	DismissedBy   []string          `json:"dismissed_by,omitempty"`
@@ -671,15 +675,19 @@ type SpendingLimit struct {
 // question, and the app shows it as a failure. attempts is how many tries
 // the step had made. machine is the one that was holding the work.
 type Failure struct {
-	Rounds   int       `json:"rounds,omitempty"`
-	Runner   string    `json:"runner,omitempty"`
-	Step     string    `json:"step,omitempty"`
-	Code     string    `json:"code"`
-	Detail   string    `json:"detail,omitempty"`
-	Attempts int       `json:"attempts,omitempty"`
-	Machine  string    `json:"machine,omitempty"`
-	Next     string    `json:"next"`
-	At       time.Time `json:"at"`
+	Rounds   int    `json:"rounds,omitempty"`
+	Runner   string `json:"runner,omitempty"`
+	Step     string `json:"step,omitempty"`
+	Code     string `json:"code"`
+	Detail   string `json:"detail,omitempty"`
+	Attempts int    `json:"attempts,omitempty"`
+	Machine  string `json:"machine,omitempty"`
+	Next     string `json:"next"`
+	// Summary is the failure in one line (at most 90 characters), for the
+	// headline; detail stays whole. Absent until the step or the job's
+	// manager gave one.
+	Summary string    `json:"summary,omitempty"`
+	At      time.Time `json:"at"`
 }
 
 // RoundLine is one finished try of a loop step. started_at is when the try
@@ -740,6 +748,10 @@ type Can struct {
 	// serves the route. A factory from before the route never sends it, which
 	// reads as false: no plan revision is offered.
 	RejectPlan bool `json:"reject_plan"`
+	// Reject is POST /v1/jobs/{id}/reject for this caller right now: the job
+	// waits on an approval the caller may answer, and a no ends the job with
+	// the caller's words ([factory.WaitsOnApproval]).
+	Reject bool `json:"reject"`
 	// Merge is the merge gate passing for the caller now: Merge would go.
 	Merge bool `json:"merge"`
 	// PRReady lets the job's person mark its open draft ready for review.
@@ -794,6 +806,7 @@ type JobDesk struct {
 	DoneHow       string               `json:"done_how,omitempty"`
 	Approval      *factory.Approval    `json:"approval,omitempty"`
 	PersonStopped *bool                `json:"person_stopped,omitempty"`
+	Rejection     *factory.Rejection   `json:"rejection,omitempty"`
 	StopUndo      *factory.StopUndo    `json:"stop_undo,omitempty"`
 
 	ChangeBase      string    `json:"change_base,omitempty"`
@@ -1308,6 +1321,22 @@ type Approve struct {
 	Words  string  `json:"words,omitempty"`
 	Commit string  `json:"commit"`
 	Edited bool    `json:"edited,omitempty"`
+	Expect *Expect `json:"expect,omitempty"`
+}
+
+// Rejection is a job's ending by a person's rejection on the wire.
+type Rejection struct {
+	By    string    `json:"by,omitempty"`
+	Words string    `json:"words,omitempty"`
+	At    time.Time `json:"at"`
+}
+
+// Reject is the body of POST /v1/jobs/{id}/reject: the person's rejection of
+// what the job waits on them to approve. The job ends, closed as rejected,
+// with Words on it. Words may be empty and are at most [MaxRejectPlanWords]
+// characters.
+type Reject struct {
+	Words  string  `json:"words,omitempty"`
 	Expect *Expect `json:"expect,omitempty"`
 }
 

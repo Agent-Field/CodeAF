@@ -162,7 +162,7 @@ func FromItem(it factory.Item) Job {
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
 		Runner: it.WorktreeMachine, JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
-		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
+		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt, Rejection: wireRejection(it.Rejection),
 		PublishAnyway: it.PublishAnyway, DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApprovalSummary(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo: it.Person(), Assignee: it.Person(),
@@ -305,14 +305,14 @@ func failureOf(it factory.Item) *Failure {
 }
 
 func failureWire(f factory.Failure) *Failure {
-	return &Failure{Rounds: f.Attempts, Runner: f.Machine, Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+	return &Failure{Rounds: f.Attempts, Runner: f.Machine, Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At, Summary: f.Summary}
 }
 
 func failureItem(f *Failure) *factory.Failure {
 	if f == nil {
 		return nil
 	}
-	return &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+	return &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At, Summary: f.Summary}
 }
 
 // CanFor is MayAct in the wire's field names.
@@ -363,6 +363,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
 		RejectPlan:  answer && planSendsBack(it),
+		Reject:      (answer || approve) && factory.WaitsOnApproval(it),
 		PRReady:     owner && factory.NormalizeHandle(caller) != "" && factory.OffersMarkReady(it),
 		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
 		Restore:     owner && factory.JobDoneHow(it) == "dropped",
@@ -384,6 +385,15 @@ func AsOperator(can *Can, it factory.Item, caller string) {
 		can.Answer = true
 		can.RejectPlan = planSendsBack(it)
 	}
+	can.Reject = can.Reject || (can.Approve || can.Answer) && factory.WaitsOnApproval(it)
+}
+
+// wireRejection is a stored rejection on the wire, nil for none.
+func wireRejection(r *factory.Rejection) *Rejection {
+	if r == nil {
+		return nil
+	}
+	return &Rejection{By: r.By, Words: r.Words, At: r.At}
 }
 
 // heldInQueue is a queued job its person keeps from starting ([run.HoldQueued]).
@@ -497,7 +507,7 @@ func ToItem(j Job) factory.Item {
 		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
-		PublishAnyway: j.PublishAnyway, Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo, PersonStopped: d.PersonStopped,
+		PublishAnyway: j.PublishAnyway, Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo, PersonStopped: d.PersonStopped, Rejection: d.Rejection,
 		DismissedBy: j.DismissedBy, DoneAt: j.DoneAt,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
@@ -812,7 +822,7 @@ func toClaim(c Claim) factory.Claim {
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
 		SourceRef:   it.SourceRef,
-		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped,
+		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped, Rejection: it.Rejection,
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
@@ -985,7 +995,7 @@ func questions(it factory.Item) []Question {
 	}
 	if a := it.Asking; a != nil {
 		at := a.At
-		q := Question{Text: a.Question, State: "open", Kind: QuestionAsked, FromStep: a.Stage,
+		q := Question{Text: a.Question, State: "open", Kind: QuestionAsked, FromStep: a.Stage, Person: a.Person,
 			With: a.With, Options: append([]string(nil), a.Options...), Pick: a.Pick, Why: a.Why, At: &at}
 		// A reported ask holds the same words in Question and Asking. Keep
 		// its gate kind and its answer details together on one wire entry.
@@ -1057,7 +1067,7 @@ func unquestions(it *factory.Item, qs []Question) {
 				continue
 			}
 		}
-		a := &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, With: q.With, Why: q.Why}
+		a := &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, With: q.With, Why: q.Why, Person: q.Person}
 		if q.At != nil {
 			a.At = *q.At
 		}

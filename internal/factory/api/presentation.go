@@ -17,6 +17,8 @@ const WaitingForComputer = "waiting_for_computer"
 func PresentJob(j *Job) {
 	p := StatePresentation{Kind: j.State}
 	switch {
+	case j.DoneHow == "closed_locally" && j.Rejection != nil:
+		p.Kind, p.Title, p.Detail = "done", "Rejected", factory.RejectedWords(j.Rejection.Words)+". Reopen or Run as new to try again."
 	case j.DoneHow == "closed_locally":
 		p.Kind, p.Title, p.Detail = "done", "Closed", "Closed locally; work and spending kept. Reopen to continue."
 	case j.Recovery != nil && (j.Recovery.State == "waiting" || j.Recovery.State == "queued"):

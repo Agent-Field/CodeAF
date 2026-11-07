@@ -108,13 +108,18 @@ type SourceRef struct {
 // when the step itself errored. Attempts is how many tries that step had
 // already made. Machine is the one that was holding the work.
 type Failure struct {
-	Step     string    `json:",omitempty"`
-	Code     string    `json:",omitempty"`
-	Detail   string    `json:",omitempty"`
-	Attempts int       `json:",omitempty"`
-	Machine  string    `json:",omitempty"`
-	Next     string    `json:",omitempty"`
-	At       time.Time `json:",omitempty"`
+	Step     string `json:",omitempty"`
+	Code     string `json:",omitempty"`
+	Detail   string `json:",omitempty"`
+	Attempts int    `json:",omitempty"`
+	Machine  string `json:",omitempty"`
+	Next     string `json:",omitempty"`
+	// Summary is the failure in one line a person reads first, at most
+	// [FailureSummaryMost] characters: the step's own when it gave one
+	// ([StageResult.Summary]), else one the job's manager wrote from Detail
+	// ([FailureSummary]). "" until either exists; Detail stays whole.
+	Summary string    `json:",omitempty"`
+	At      time.Time `json:",omitempty"`
 }
 
 // RoundLine is one finished try of a loop step. The step keeps one line per

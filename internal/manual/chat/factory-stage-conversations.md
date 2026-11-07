@@ -1137,3 +1137,19 @@ Attempt exhaustion alone never opens Merge or acknowledges a requested change.
 When the refusal concerns local checkout changes, Try again first rereads the
 checkout without calling a model. An unchanged checkout remains refused without
 spending; restoring the clean published checkout permits a fresh assessment.
+
+## a step's question — the manager answered for you, override it, Manual sends every question to you, only a person can answer
+
+When a step asks a question, the job's manager is given it first and answers from the issue, the pipeline and the steps. Its answer goes back to the step at once, and the job keeps a record of it: the question, the step that asked and `Manager answered for you` with the answer. The record is in the job's questions beside your own answers (`with: manager`), and the job's Brief can say the manager decided it. The manager's answer is never counted as one of your requests. To override it, send the step that asked a message with your answer while it runs; once the step has ended, your message reaches the next step.
+
+The manager is skipped, and the question comes straight to you in Needs you, in two cases:
+
+- the job is in **Manual**: every step question comes to you, with `Manual: every step question comes to you`;
+- the step marked the question as one only a person can answer (the `ask` tool's `judgement` kind), in every mode, with `the step said only a person can answer this`.
+
+A question the manager sends on comes to you the same way, with the manager's reason. The step waits until you answer.
+
+## a message to a step that is ending — is it lost?
+
+No. A message sent while a step runs is kept on the job's notes as well as handed to the step. If the step ends before it reads it, every later step's brief carries it, so it reaches the run either way. A message sent once the job is no longer running is refused in words: `#12 is not running`.
+

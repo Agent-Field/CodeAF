@@ -420,6 +420,9 @@ type StageResult struct {
 	// one, from its brief, its last message and its change. It is judged like
 	// any other, and [RoundSummary] says whose words it is.
 	Inferred bool `json:",omitempty"`
+	// Summary is the step's own one-line account of how it ended, for a
+	// failure's headline ([Failure.Summary]); "" when it gave none.
+	Summary string `json:",omitempty"`
 }
 
 // Met says whether a round's result meets the stage's until. An empty until

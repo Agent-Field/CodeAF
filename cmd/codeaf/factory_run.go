@@ -262,6 +262,7 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 	// it none.
 	if turns != nil {
 		opts.Inbox = turns.Inbox
+		opts.FailureSummary = turns.FailureSummary
 	}
 	return factoryrun.New(opts)
 }

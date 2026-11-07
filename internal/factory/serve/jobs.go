@@ -30,6 +30,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
+	h.postJob("reject", stored && h.workers != nil, h.rejectJob)
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
 	h.postJob("restore", stored, h.guarded("restore", h.onlyOwner(h.restoreJob)))
 	h.postJob("dismiss", stored, h.dismissJob)
