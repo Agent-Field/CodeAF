@@ -70,6 +70,49 @@ type Options struct {
 	Stderr io.Writer
 	// Env is added to the inherited environment.
 	Env []string
+	// Tools, when set, are tools this client serves to Claude Code inside the
+	// session, beside its own (see [ToolServer]).
+	Tools *ToolServer
+}
+
+// ToolServer is a set of tools codeaf serves to Claude Code in-process, over
+// the same control channel as everything else: Claude Code's SDK MCP servers.
+//
+// IT IS HOW CLAUDE CODE REACHES CODEAF'S OWN VERBS. The CLI is told of a
+// server of type `sdk` and, instead of starting a process, sends each MCP
+// message to this client as an `mcp_message` control request; the reply goes
+// back as that request's answer. So propose_task, the team tools and the
+// manual are tools Claude Code can call by name (`mcp__<Name>__<tool>`)
+// while it keeps its own Bash, Read and Edit.
+type ToolServer struct {
+	// Name is the server's name; Claude Code sees its tools as mcp__Name__tool.
+	Name string
+	// List answers which tools there are.
+	List func() []Tool
+	// Call runs one call and may block for as long as the tool takes; Claude
+	// Code waits on it.
+	Call func(ctx context.Context, call ToolCall) ToolResult
+}
+
+// Tool is one tool a [ToolServer] serves.
+type Tool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"inputSchema"`
+}
+
+// ToolCall is Claude Code calling a served tool.
+type ToolCall struct {
+	Name      string
+	Arguments json.RawMessage
+	// ToolUseID is Claude Code's own id for the call.
+	ToolUseID string
+}
+
+// ToolResult is what a served tool answered.
+type ToolResult struct {
+	Text    string
+	IsError bool
 }
 
 // PermissionRequest is Claude Code asking whether a tool may run.
@@ -146,7 +189,11 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	go s.read(stdout)
 	initCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	if _, err := s.control(initCtx, map[string]any{"subtype": "initialize"}); err != nil {
+	initialize := map[string]any{"subtype": "initialize"}
+	if opts.Tools != nil {
+		initialize["sdkMcpServers"] = []string{opts.Tools.Name}
+	}
+	if _, err := s.control(initCtx, initialize); err != nil {
 		s.kill()
 		return nil, fmt.Errorf("Claude Code did not answer its handshake: %w", err)
 	}
@@ -182,17 +229,36 @@ func Args(opts Options) []string {
 	if opts.MaxBudgetUSD > 0 {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", opts.MaxBudgetUSD))
 	}
+	if opts.Tools != nil {
+		config, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{opts.Tools.Name: map[string]any{"type": "sdk", "name": opts.Tools.Name}}})
+		args = append(args, "--mcp-config", string(config))
+	}
 	return args
 }
 
 // Send writes one person's message. It may be sent while a turn is running;
 // Claude Code takes it in at its next chance.
-func (s *Session) Send(text string) error {
+func (s *Session) Send(text string) error { return s.SendWith(text, nil) }
+
+// Image is a picture sent with a message, as Claude's own content block takes
+// one: its media type and its bytes in base64.
+type Image struct {
+	MediaType string
+	Data      string
+}
+
+// SendWith is [Session.Send] with pictures, which go before the words.
+func (s *Session) SendWith(text string, images []Image) error {
+	content := make([]map[string]any, 0, len(images)+1)
+	for _, image := range images {
+		content = append(content, map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": image.MediaType, "data": image.Data}})
+	}
+	content = append(content, map[string]any{"type": "text", "text": text})
 	return s.write(map[string]any{
 		"type":               "user",
 		"session_id":         "",
 		"parent_tool_use_id": nil,
-		"message":            map[string]any{"role": "user", "content": []map[string]any{{"type": "text", "text": text}}},
+		"message":            map[string]any{"role": "user", "content": content},
 	})
 }
 
@@ -347,6 +413,10 @@ func (s *Session) answer(id string, raw json.RawMessage) {
 		Subtype string `json:"subtype"`
 	}
 	_ = json.Unmarshal(raw, &head)
+	if head.Subtype == "mcp_message" && s.opts.Tools != nil {
+		s.serveTool(id, raw)
+		return
+	}
 	if head.Subtype != "can_use_tool" {
 		_ = s.write(map[string]any{"type": "control_response", "response": map[string]any{
 			"subtype": "error", "request_id": id, "error": "codeaf does not serve " + head.Subtype,
@@ -401,4 +471,61 @@ func Text(ev Event) string {
 		}
 	}
 	return b.String()
+}
+
+// serveTool answers one MCP message for the [ToolServer]: the handshake, the
+// list, a call. Notifications carry no id and are acknowledged empty.
+func (s *Session) serveTool(id string, raw json.RawMessage) {
+	var req struct {
+		Message struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		} `json:"message"`
+	}
+	_ = json.Unmarshal(raw, &req)
+	msg := req.Message
+	var result any = map[string]any{}
+	switch msg.Method {
+	case "initialize":
+		var params struct {
+			ProtocolVersion string `json:"protocolVersion"`
+		}
+		_ = json.Unmarshal(msg.Params, &params)
+		if params.ProtocolVersion == "" {
+			params.ProtocolVersion = "2024-11-05"
+		}
+		result = map[string]any{"protocolVersion": params.ProtocolVersion, "capabilities": map[string]any{"tools": map[string]any{}},
+			"serverInfo": map[string]any{"name": s.opts.Tools.Name, "version": "1"}}
+	case "tools/list":
+		tools := []Tool{}
+		if s.opts.Tools.List != nil {
+			tools = append(tools, s.opts.Tools.List()...)
+		}
+		result = map[string]any{"tools": tools}
+	case "tools/call":
+		var params struct {
+			Name      string          `json:"name"`
+			Arguments json.RawMessage `json:"arguments"`
+			Meta      struct {
+				ToolUseID string `json:"claudecode/toolUseId"`
+			} `json:"_meta"`
+		}
+		_ = json.Unmarshal(msg.Params, &params)
+		if len(params.Arguments) == 0 {
+			params.Arguments = json.RawMessage("{}")
+		}
+		answer := ToolResult{Text: "codeaf serves no tool calls here", IsError: true}
+		if s.opts.Tools.Call != nil {
+			answer = s.opts.Tools.Call(context.Background(), ToolCall{Name: params.Name, Arguments: params.Arguments, ToolUseID: params.Meta.ToolUseID})
+		}
+		result = map[string]any{"content": []any{map[string]any{"type": "text", "text": answer.Text}}, "isError": answer.IsError}
+	}
+	reply := map[string]any{"jsonrpc": "2.0", "result": result}
+	if len(msg.ID) > 0 {
+		reply["id"] = msg.ID
+	}
+	_ = s.write(map[string]any{"type": "control_response", "response": map[string]any{
+		"subtype": "success", "request_id": id, "response": map[string]any{"mcp_response": reply},
+	}})
 }

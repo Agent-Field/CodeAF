@@ -78,15 +78,9 @@ func TestACatalogSpellingOfClaudeIsReadAsItsFamily(t *testing.T) {
 }
 
 func TestATurnBackOnClaudeCodeCarriesWhatAnotherModelSaid(t *testing.T) {
-	msg := func(role, text string) struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
-	} {
+	msg := func(role, text string) chatMessage {
 		raw, _ := json.Marshal(text)
-		return struct {
-			Role    string          `json:"role"`
-			Content json.RawMessage `json:"content"`
-		}{role, raw}
+		return chatMessage{Role: role, Content: raw}
 	}
 	chat := chatRequest{}
 	chat.Messages = append(chat.Messages, msg("system", "rules"), msg("user", "one"), msg("assistant", "claude answered"), msg("user", "two"), msg("assistant", "another model answered"), msg("user", "three"))
@@ -98,5 +92,21 @@ func TestATurnBackOnClaudeCodeCarriesWhatAnotherModelSaid(t *testing.T) {
 	}
 	if got := turnPrompt(chat, 0); strings.Contains(got, "rules") || !strings.Contains(got, "User: one") {
 		t.Fatalf("a fresh session: %q", got)
+	}
+}
+
+func TestThePictureOnTheNewestMessageGoesToClaudeCode(t *testing.T) {
+	var chat chatRequest
+	_ = json.Unmarshal([]byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"what is this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}},{"type":"image_url","image_url":{"url":"https://example.com/x.png"}}]}]}`), &chat)
+	images := newestImages(chat)
+	if len(images) != 1 || images[0].MediaType != "image/png" || images[0].Data != "AAAA" {
+		t.Fatalf("images = %+v", images)
+	}
+}
+
+func TestCodeafToolsClaudeCodeHasItsOwnOfAreNotServedTwice(t *testing.T) {
+	belt := beltOf(json.RawMessage(`[{"type":"function","function":{"name":"bash","parameters":{"type":"object"}}},{"type":"function","function":{"name":"propose_task","description":"d","parameters":{"type":"object"}}},{"type":"function","function":{"name":"manual"}}]`))
+	if len(belt) != 2 || belt[0].Name != "propose_task" || belt[1].Name != "manual" || string(belt[1].InputSchema) == "" {
+		t.Fatalf("belt = %+v", belt)
 	}
 }

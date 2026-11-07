@@ -14,9 +14,17 @@ A conversation or crew member on a Claude Code model is a live Claude Code sessi
 
 Edits are accepted without asking. Pushing, opening or merging a pull request, releases and publishing are refused even when your own Claude Code hooks would allow them.
 
-## What Claude Code cannot do in a conversation — codeaf tools, propose_task, team tools, pictures
+## What Claude Code can do in a conversation — codeaf tools, propose_task, team tools, manual, pictures
 
-In that seat Claude Code uses its own tools, not codeaf's: it cannot call `propose_task`, the team tools, `manual`, codeaf's memory or skills, and it reads Claude Code's own settings, hooks and MCP servers instead. Pictures attached to a message are not passed to it; only the words are. A crew member on Claude Code still reports finished to its crew like any member.
+It keeps its own tools (Bash, Read, Edit, search) and is also handed codeaf's, as `mcp__codeaf__propose_task`, `mcp__codeaf__manual`, the team tools and the rest of the conversation's belt, less the ones it has its own of (`bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`, `web_fetch`, `web_search`, `view_image`). A call to one of them runs in codeaf exactly as any model's would, with its own row on the page, and Claude Code waits for the result. So it can propose a task, start or message crew members, and read this manual. Pictures attached to your message are passed to it.
+
+## What Claude Code cannot do in a conversation — approvals, effort, new tools mid-session
+
+- **It does not ask before editing.** Edits and commands are accepted; only pushing, pull requests, releases and publishing are refused.
+- **The effort setting does not reach it.** Claude Code thinks as its own settings say.
+- **Its tool list is fixed when its session starts.** A codeaf tool that becomes available later in the conversation reaches it after codeaf restarts or the conversation moves off Claude Code and back.
+- **Its own tool calls are not codeaf rows.** codeaf shows them as `▸ Bash …` lines and keeps only its answer, so another model the conversation moves to sees its words, not its edits (the files are on disk).
+- It reads Claude Code's own settings, hooks, skills and MCP servers from your machine, not codeaf's skills or memory.
 
 ## Talking to Claude Code mid-turn — send a message while it works
 

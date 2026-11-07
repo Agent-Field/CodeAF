@@ -60,7 +60,25 @@ var outwardRules = []string{
 
 // seated is the prompt added to Claude Code's own when it is a conversation.
 const seated = "You are seated in codeaf as this conversation's agent. Work in the folder with your own tools. " +
+	"codeaf's own tools are yours too, named mcp__codeaf__*: propose_task for work that should run as its own task, " +
+	"the team tools to work with your crew, manual for anything about codeaf itself. " +
 	"Pushing, publishing and opening pull requests are the person's to do: say what to run instead."
+
+// native are codeaf tools Claude Code already has its own of, so they are not
+// served to it twice: it reads, edits, searches and runs commands its own way.
+var native = map[string]bool{
+	"bash": true, "read": true, "write": true, "edit": true, "grep": true, "find": true, "ls": true,
+	"glob": true, "web_fetch": true, "web_search": true, "view_image": true,
+}
+
+// pendingCall is one call Claude Code made to a codeaf tool, waiting for
+// codeaf's turn loop to run it and send the result back in its next request.
+type pendingCall struct {
+	id     string
+	name   string
+	args   json.RawMessage
+	result chan claudeagent.ToolResult
+}
 
 // live is one conversation's Claude Code session.
 type live struct {
@@ -82,6 +100,64 @@ type live struct {
 	// none does.
 	adoptable bool
 	letGo     *time.Timer
+	// belt is codeaf's tools as this conversation's latest request carried
+	// them, less the ones Claude Code has natively.
+	belt []claudeagent.Tool
+	// calls are Claude Code's calls to codeaf tools as they arrive; awaiting
+	// are the ones handed to codeaf and not yet answered.
+	calls    chan *pendingCall
+	awaiting map[string]*pendingCall
+}
+
+// tools is the served list.
+func (l *live) tools() []claudeagent.Tool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]claudeagent.Tool(nil), l.belt...)
+}
+
+// call hands one call to the running turn and waits for codeaf's answer.
+func (l *live) call(ctx context.Context, call claudeagent.ToolCall) claudeagent.ToolResult {
+	id := call.ToolUseID
+	if id == "" {
+		id = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	pc := &pendingCall{id: "call_" + id, name: call.Name, args: call.Arguments, result: make(chan claudeagent.ToolResult, 1)}
+	select {
+	case l.calls <- pc:
+	case <-l.session.Done():
+		return claudeagent.ToolResult{Text: "the session ended", IsError: true}
+	}
+	select {
+	case answer := <-pc.result:
+		return answer
+	case <-l.session.Done():
+		return claudeagent.ToolResult{Text: "the session ended", IsError: true}
+	}
+}
+
+// beltOf reads the request's tools into the served list.
+func beltOf(raw json.RawMessage) []claudeagent.Tool {
+	var tools []struct {
+		Function struct {
+			Name        string          `json:"name"`
+			Description string          `json:"description"`
+			Parameters  json.RawMessage `json:"parameters"`
+		} `json:"function"`
+	}
+	_ = json.Unmarshal(raw, &tools)
+	out := make([]claudeagent.Tool, 0, len(tools))
+	for _, t := range tools {
+		if t.Function.Name == "" || native[t.Function.Name] {
+			continue
+		}
+		schema := t.Function.Parameters
+		if len(schema) == 0 || string(schema) == "null" {
+			schema = json.RawMessage(`{"type":"object","properties":{}}`)
+		}
+		out = append(out, claudeagent.Tool{Name: t.Function.Name, Description: t.Function.Description, InputSchema: schema})
+	}
+	return out
 }
 
 var (
@@ -93,7 +169,7 @@ func liveKey(dir, conversation string) string { return dir + "\x00" + conversati
 
 // liveFor answers the session for this conversation, starting one when there
 // is none or the last one has ended.
-func liveFor(ctx context.Context, dir, conversation, model, kept string) (*live, error) {
+func liveFor(ctx context.Context, dir, conversation, model, kept string, belt []claudeagent.Tool) (*live, error) {
 	livesMu.Lock()
 	defer livesMu.Unlock()
 	key := liveKey(dir, conversation)
@@ -113,10 +189,14 @@ func liveFor(ctx context.Context, dir, conversation, model, kept string) (*live,
 	if err != nil {
 		return nil, err
 	}
-	l := &live{model: model, kept: kept}
+	l := &live{model: model, kept: kept, belt: belt, calls: make(chan *pendingCall, 64), awaiting: map[string]*pendingCall{}}
 	options := claudeagent.Options{
 		Binary: binary, Dir: dir, Model: model, PermissionMode: "acceptEdits",
 		AppendSystemPrompt: seated, Disallowed: outwardRules, Stderr: os.Stderr,
+		Tools: &claudeagent.ToolServer{Name: "codeaf", List: l.tools, Call: l.call},
+		// A codeaf tool may wait on the person (a proposed task, a question),
+		// so Claude Code is told to wait as long as an hour for one.
+		Env: []string{"MCP_TOOL_TIMEOUT=3600000"},
 		OnEvent: func(ev claudeagent.Event) {
 			l.mu.Lock()
 			sink := l.sink
@@ -165,12 +245,17 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 		return jsonResponse(request, http.StatusServiceUnavailable, errorBody("this conversation has no folder for Claude Code to work in"))
 	}
 	model := model(chat.Model)
-	l, err := liveFor(request.Context(), dir, conversation, model, t.kept)
+	belt := beltOf(chat.Tools)
+	l, err := liveFor(request.Context(), dir, conversation, model, t.kept, belt)
 	if err != nil {
 		return jsonResponse(request, http.StatusServiceUnavailable, errorBody(err.Error()))
 	}
 	l.turn.Lock()
 	l.mu.Lock()
+	l.belt = belt
+	if len(l.awaiting) > 0 {
+		return l.resume(request, chat, model)
+	}
 	events, adopted := l.sink, l.adoptable
 	// A TURN THAT IS ADOPTED HAS SEEN EVERYTHING BUT THE CORRECTION, so only
 	// the newest words go in; a fresh session is given the whole history.
@@ -196,13 +281,62 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 		l.sink = events
 	}
 	l.mu.Unlock()
-	if err := l.session.Send(prompt); err != nil {
+	if err := l.session.SendWith(prompt, newestImages(chat)); err != nil {
 		l.release()
 		return jsonResponse(request, http.StatusServiceUnavailable, errorBody("Claude Code would not take the message: "+err.Error()))
 	}
 	l.turns++
 	reader, writer := io.Pipe()
 	go l.stream(request.Context(), writer, events, model, adopted)
+	return &http.Response{
+		StatusCode: http.StatusOK, Status: "200 OK", Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
+		Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: reader, ContentLength: -1, Request: request,
+	}, nil
+}
+
+// resume continues a turn that handed codeaf tool calls out: the results in
+// this request answer them, and Claude Code carries on where it waited. Words
+// the person added after the results go in as a correction. Runs with l.turn
+// and l.mu held.
+func (l *live) resume(request *http.Request, chat chatRequest, model string) (*http.Response, error) {
+	lastAssistant := -1
+	for i := len(chat.Messages) - 1; i >= 0; i-- {
+		if chat.Messages[i].Role == "assistant" {
+			lastAssistant = i
+			break
+		}
+	}
+	var words []string
+	for _, m := range chat.Messages[lastAssistant+1:] {
+		switch m.Role {
+		case "tool":
+			if pc := l.awaiting[m.ToolCallID]; pc != nil {
+				pc.result <- claudeagent.ToolResult{Text: contentText(m.Content)}
+				delete(l.awaiting, m.ToolCallID)
+			}
+		case "user":
+			if text := strings.TrimSpace(contentText(m.Content)); text != "" {
+				words = append(words, text)
+			}
+		}
+	}
+	// A CALL CODEAF NEVER ANSWERED IS ANSWERED HERE, so Claude Code is not
+	// left waiting on a tool the person stopped.
+	for id, pc := range l.awaiting {
+		pc.result <- claudeagent.ToolResult{Text: "codeaf did not run this call", IsError: true}
+		delete(l.awaiting, id)
+	}
+	events := l.sink
+	l.seen = len(chat.Messages) + 1
+	l.mu.Unlock()
+	if len(words) > 0 {
+		if err := l.session.Send(strings.Join(words, "\n\n")); err != nil {
+			l.release()
+			return jsonResponse(request, http.StatusServiceUnavailable, errorBody("Claude Code would not take the message: "+err.Error()))
+		}
+	}
+	reader, writer := io.Pipe()
+	go l.stream(request.Context(), writer, events, model, len(words) > 0)
 	return &http.Response{
 		StatusCode: http.StatusOK, Status: "200 OK", Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
 		Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: reader, ContentLength: -1, Request: request,
@@ -303,6 +437,35 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 		case <-settled:
 			answer(last)
 			return
+		case pc := <-l.calls:
+			// CLAUDE CODE CALLED A CODEAF TOOL: the call goes back to codeaf's
+			// turn loop as the model's tool call, which runs it as it runs any
+			// model's, and the turn waits in Claude Code for the result.
+			// Calls made together are handed out together.
+			batch := []*pendingCall{pc}
+			for gathering := time.After(300 * time.Millisecond); gathering != nil; {
+				select {
+				case more := <-l.calls:
+					batch = append(batch, more)
+				case <-gathering:
+					gathering = nil
+				}
+			}
+			calls := make([]any, 0, len(batch))
+			l.mu.Lock()
+			for i, call := range batch {
+				l.awaiting[call.id] = call
+				calls = append(calls, map[string]any{"index": i, "id": call.id, "type": "function",
+					"function": map[string]any{"name": call.name, "arguments": string(call.args)}})
+			}
+			l.mu.Unlock()
+			write(map[string]any{"role": "assistant", "tool_calls": calls}, "", nil)
+			write(map[string]any{}, "tool_calls", nil)
+			_, _ = io.WriteString(w, "data: [DONE]\n\n")
+			_ = w.Close()
+			parked = true
+			l.turn.Unlock()
+			return
 		case <-l.session.Done():
 			finish("Claude Code ended before it answered.", nil)
 			return
@@ -327,6 +490,10 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 						// arrives once, as the reply.
 						held = strings.TrimSpace(b.Text)
 					case "tool_use":
+						if strings.HasPrefix(b.Name, "mcp__codeaf__") {
+							// codeaf draws its own tool's row when the call reaches it.
+							continue
+						}
 						if held != "" {
 							if !think(held + "\n") {
 								return
@@ -353,6 +520,34 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 			}
 		}
 	}
+}
+
+// newestImages are the pictures attached to the person's newest message, as
+// codeaf sends them: data URLs in image_url parts. A picture held anywhere
+// else (a URL Claude Code would have to fetch) is left out.
+func newestImages(chat chatRequest) []claudeagent.Image {
+	for i := len(chat.Messages) - 1; i >= 0; i-- {
+		if chat.Messages[i].Role != "user" {
+			continue
+		}
+		var parts []struct {
+			Type     string `json:"type"`
+			ImageURL struct {
+				URL string `json:"url"`
+			} `json:"image_url"`
+		}
+		_ = json.Unmarshal(chat.Messages[i].Content, &parts)
+		var images []claudeagent.Image
+		for _, part := range parts {
+			head, data, ok := strings.Cut(part.ImageURL.URL, ";base64,")
+			if part.Type != "image_url" || !ok || !strings.HasPrefix(head, "data:image/") {
+				continue
+			}
+			images = append(images, claudeagent.Image{MediaType: strings.TrimPrefix(head, "data:"), Data: data})
+		}
+		return images
+	}
+	return nil
 }
 
 // keptSession is what a conversation keeps of its Claude Code session.

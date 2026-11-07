@@ -99,10 +99,13 @@ type chatRequest struct {
 	Stream         bool            `json:"stream"`
 	Tools          json.RawMessage `json:"tools"`
 	PromptCacheKey string          `json:"prompt_cache_key"`
-	Messages       []struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
-	} `json:"messages"`
+	Messages       []chatMessage   `json:"messages"`
+}
+
+type chatMessage struct {
+	Role       string          `json:"role"`
+	Content    json.RawMessage `json:"content"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
 }
 
 func (t transport) complete(request *http.Request) (*http.Response, error) {
