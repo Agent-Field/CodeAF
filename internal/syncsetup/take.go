@@ -119,7 +119,7 @@ func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	return handoff.Taker{
 		OnPhase: c.opt.OnPhase,
 		Dir:     s.Dir,
-		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox},
+		Fetch:   &cellsync.Fetcher{Engine: engine, Store: sc.Store, Dir: s.Dir, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)},
 		Local:   engineLocal{eng: c.eng, ctx: ctx},
 		Branch:  c.branch(brancher),
 		RootFor: c.opt.RootFor,

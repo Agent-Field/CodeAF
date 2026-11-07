@@ -216,6 +216,10 @@ func appMoveEnding(err, cause error, holder string) (appwire.ChatMoveEnded, erro
 		return ended, wire
 	case errors.Is(err, blobstore.ErrNotFound):
 		ended.Line = "Couldn't move it: part of this chat's folder is missing from sync. " + still
+	case errors.Is(err, blobstore.ErrAnswered):
+		// Sync was reached and failed the request: trying again does not help
+		// until it is fixed, so it is not told as a connection problem.
+		ended.Line = "Couldn't move it: sync answered with an error. " + still
 	case errors.Is(err, blobstore.ErrUnreachable) || errors.Is(err, directory.ErrUnreachable):
 		ended.Line = "Couldn't move it: sync could not be reached. " + still
 	case w != nil && w.Code != appwire.CodeEngine:

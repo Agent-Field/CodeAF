@@ -72,6 +72,11 @@ var (
 	ErrFull        = errors.New("blobstore: full")        // quota or disk; retry later
 	ErrTooMany     = errors.New("blobstore: too many rids")
 	ErrDamaged     = errors.New("blobstore: stored data is damaged")
+	// ErrAnswered is a server that was reached and failed the request
+	// without naming a refusal (a 500 from an uncaught error, say). It also
+	// matches ErrUnreachable, so callers that degrade on a broken server
+	// still do; only words for a person tell the two apart.
+	ErrAnswered = errors.New("blobstore: the server answered with an error")
 )
 
 // ValidRID reports whether s is 64 lowercase hex characters.
