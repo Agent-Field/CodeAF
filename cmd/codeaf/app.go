@@ -1073,6 +1073,11 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	}
 	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
+	// A CREDENTIAL A DOOR GAVE THIS LAUNCH IS HANDED TO THE APP TO KEEP
+	// (config.AppCredentials.Keep), and comes back with keys.set at the next.
+	keys.OnKept(func(provider, key string) {
+		b.emit.Emit(appwire.EventCredentialChanged, appwire.CredentialChanged{Provider: provider, Kept: key != "", Key: key})
+	})
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()

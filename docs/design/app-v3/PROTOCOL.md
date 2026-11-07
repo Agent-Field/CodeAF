@@ -1119,6 +1119,16 @@ one filesystem call per disk; it starts nothing. hello says `health.check`.
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
 
+A credential a door gives an app-run engine (a pasted GitHub token through
+`factory.setup_connect`, a Jira token, an AgentField key and node secret through
+`factory.agentfield_connect`) is held in memory and sent to the app once as
+`credential.changed {provider, kept: true, key}`; a door that takes one away sends
+`{provider, kept: false}`. The app keeps the key in its secure store under
+`provider`, takes it out of the event before any window, log or trace sees it,
+and hands it back at the next launch with `keys.set {provider, key}`, which holds
+it without sending `credential.changed` again. `keys.set` takes `github`, `jira`,
+`agentfield` and `agentfield-node` this way, beside the model providers.
+
 ## manual methods
 
 | method | params | result |
@@ -1536,6 +1546,7 @@ and the reply is empty.
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
 | `compaction.ended` | `CompactionEnded` |
+| `credential.changed` | `CredentialChanged` |
 | `crew.changed` | `CrewChanged` |
 | `crew.log` | `CrewLogEvent` |
 | `crew.proposal.delta` | `CrewProposalDelta` |

@@ -132,3 +132,41 @@ func TestAppKeepsAConnectionWithoutItsKey(t *testing.T) {
 		t.Fatalf("an app key reached the profile: %s", raw)
 	}
 }
+
+// A CREDENTIAL GIVEN THROUGH A DOOR IS HANDED TO THE APP TO KEEP, and one
+// the app handed back is not echoed to it: Keep and Forget tell the app's
+// listener, Set and Remove (the launch's hand-back) do not. Every credential
+// a door keeps is one the hand-back takes again (AppKept).
+func TestACredentialGivenThroughADoorIsHandedToTheAppToKeep(t *testing.T) {
+	creds := NewAppCredentials()
+	creds.Keep(AppAgentFieldProvider, "af-before-anyone-listens")
+	var heard []string
+	creds.OnKept(func(provider, key string) { heard = append(heard, provider+"="+key) })
+	creds.Set("openrouter", "sk-or-handed-back")
+	creds.Remove("openrouter")
+	if len(heard) != 0 {
+		t.Fatalf("a hand-back was echoed to the app: %v", heard)
+	}
+	creds.Keep(AppAgentFieldProvider, " af-key-from-a-door ")
+	creds.Forget(AppAgentFieldNodeProvider)
+	if strings.Join(heard, ",") != "agentfield=af-key-from-a-door,agentfield-node=" {
+		t.Fatalf("the app heard %v", heard)
+	}
+	if key, ok := creds.Key(AppAgentFieldProvider); !ok || key != "af-key-from-a-door" {
+		t.Fatalf("a kept key reads %q %v", key, ok)
+	}
+	if key, ok := creds.Key(AppAgentFieldNodeProvider); !ok || key != "" {
+		t.Fatalf("a forgotten key reads %q %v", key, ok)
+	}
+	if redact.Secrets("x af-key-from-a-door y") == "x af-key-from-a-door y" {
+		t.Fatal("a kept key is not redacted")
+	}
+	for _, provider := range []string{"github", AppJiraProvider, AppAgentFieldProvider, AppAgentFieldNodeProvider} {
+		if !AppKept(provider) {
+			t.Errorf("%s is kept through a door but the hand-back refuses it", provider)
+		}
+	}
+	if AppKept("openrouter") {
+		t.Fatal("a model provider is handed back as a door's credential")
+	}
+}
