@@ -629,12 +629,19 @@ func (n *Node) report(ctx context.Context, c *Client, id string, u ExecutionUpda
 		ok, err := ls.call(ctx, frame{T: t, Exec: id}, u)
 		if err == nil {
 			if ok.Code >= 200 && ok.Code < 300 {
+				if u.Status != ExecRunning {
+					log.Printf("agentfield: execution %s told %s up the link", id, u.Status)
+				}
 				return nil
 			}
 			return &Error{Code: ok.Code, Refusal: refusalOf(ok.Code), Op: "execution", Message: answerMessage([]byte(ok.Error))}
 		}
 	}
-	return c.Report(ctx, id, u)
+	err := c.Report(ctx, id, u)
+	if err == nil && u.Status != ExecRunning {
+		log.Printf("agentfield: execution %s told %s over HTTP", id, u.Status)
+	}
+	return err
 }
 
 // seenSet is a bounded set of delivery keys, oldest forgotten first.
