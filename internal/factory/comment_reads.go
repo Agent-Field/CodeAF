@@ -110,19 +110,24 @@ func readComment(it *Item, c Comment, now time.Time) {
 			// The ask is a manager line, never the job's needs-you question:
 			// that question belongs to the run's own state machine, which a
 			// GitHub read must not change under a running step.
-			_ = MergeThread(it, []Message{{ID: "comment_" + c.ID, At: now, From: "manager", Text: commentAsk(c)}}, nil)
+			_ = MergeThread(it, []Message{{ID: "comment_" + c.ID, At: now, From: "manager", Text: commentAsk(*it, c)}}, nil)
 		}
 		return
 	}
 }
 
-// commentAsk is the manager's question about one comment.
-func commentAsk(c Comment) string {
+// commentAsk is the manager's question about one comment. A job with no
+// GitHub issue (one filed from outside) was sent a message, not commented on.
+func commentAsk(it Item, c Comment) string {
 	quote := strings.Join(strings.Fields(c.Body), " ")
 	if r := []rune(quote); len(r) > commentQuoteMost {
 		quote = strings.TrimSpace(string(r[:commentQuoteMost])) + " …"
 	}
-	return "@" + c.Author + " commented on the issue: “" + quote + "”. I don't change the plan from a comment on my own. Should the plan change for it? Reply here with what to do."
+	where := "commented on the issue"
+	if it.Origin != OriginForge || it.Num <= 0 {
+		where = "sent a message about this job"
+	}
+	return "@" + c.Author + " " + where + ": “" + quote + "”. I don't change the plan from a comment on my own. Should the plan change for it? Reply here with what to do."
 }
 
 func seenComment(it Item, id string) bool {

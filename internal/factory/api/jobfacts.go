@@ -3,6 +3,7 @@ package api
 import (
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -117,4 +118,37 @@ func ModelsIn(j *Job, it factory.Item, d factory.ModelDefaults) {
 			s.RunsOn = &c
 		}
 	}
+}
+
+// IntakeStatus is how far a job filed from outside is, for the tool that
+// filed it: GET /api/intake/{source}/{id} and AgentField's `status`. Route,
+// PRURL and Question are absent when there is none.
+type IntakeStatus struct {
+	Job        int       `json:"job"`
+	State      string    `json:"state"`
+	StepsDone  int       `json:"steps_done"`
+	StepsTotal int       `json:"steps_total"`
+	Route      string    `json:"route,omitempty"`
+	PRURL      string    `json:"pr_url,omitempty"`
+	Question   string    `json:"question,omitempty"`
+	Updated    time.Time `json:"updated"`
+}
+
+// IntakeStatusOf is it's [IntakeStatus]. IT IS READ OFF THE JOB AS THE JOB
+// WIRE SAYS IT ([FromItem], whose facts are [jobFacts]'), never worked out a
+// second time, so a source and the queue can never disagree about a job.
+// Question is the open question's words when the job waits on one.
+func IntakeStatusOf(it factory.Item) IntakeStatus {
+	j := FromItem(it)
+	out := IntakeStatus{Job: j.ID, State: j.State, StepsDone: j.StepsDone, StepsTotal: j.StepsTotal, Updated: it.Changed}
+	if j.Route != nil {
+		out.Route = j.Route.Rule
+	}
+	if j.PR != nil {
+		out.PRURL = j.PR.URL
+	}
+	if n := j.NeedsYou; n != nil && n.Question != nil && n.Question.Answered == nil {
+		out.Question = n.Question.Text
+	}
+	return out
 }

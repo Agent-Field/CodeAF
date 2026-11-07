@@ -1,6 +1,6 @@
 ---
 kind: added
-pr: 0
+pr: 2487
 title: The factory registers as an AgentField node, and AgentField's triggers are its intake
 surface: [engine, app, factory, docs]
 invalidates:

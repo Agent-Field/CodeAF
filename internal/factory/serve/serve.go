@@ -171,6 +171,9 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
+	// triggers is the floor's signed webhooks and their outbox, nil without
+	// a store. intake.go owns it.
+	triggers    *triggerState
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
@@ -362,6 +365,9 @@ func (h *Handler) Close() {
 	}
 	if h != nil && h.watch != nil {
 		h.watch.stop()
+	}
+	if h != nil {
+		h.closeTriggers()
 	}
 }
 

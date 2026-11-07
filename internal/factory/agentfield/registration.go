@@ -79,7 +79,8 @@ const messageInput = `{
     "source": {"type": "string", "description": "the job's source, such as agentfield:linear"},
     "id": {"type": "string", "description": "the job's id on that source"},
     "job": {"type": "integer"},
-    "text": {"type": "string", "maxLength": 32000}
+    "text": {"type": "string", "minLength": 1, "maxLength": 8000},
+    "author": {"type": "string", "description": "who said it on the source's side; the source itself when left out"}
   },
   "required": ["text"]
 }`
@@ -88,7 +89,9 @@ const messageOutput = `{
   "type": "object",
   "properties": {
     "job": {"type": "integer"},
-    "delivered": {"type": "string", "enum": ["manager", "context"]}
+    "accepted": {"type": "boolean"},
+    "outcome": {"type": "string"},
+    "line": {"type": "string", "description": "what the job's manager made of the message, as the job's comments show it"}
   }
 }`
 
@@ -106,14 +109,13 @@ const statusOutput = `{
   "type": "object",
   "properties": {
     "job": {"type": "integer"},
-    "title": {"type": "string"},
     "state": {"type": "string"},
-    "repo": {"type": "string"},
-    "route": {"type": "string"},
-    "pr_url": {"type": "string"},
     "steps_done": {"type": "integer"},
     "steps_total": {"type": "integer"},
-    "question": {"type": "string"}
+    "route": {"type": "string"},
+    "pr_url": {"type": "string"},
+    "question": {"type": "string"},
+    "updated": {"type": "string", "format": "date-time"}
   }
 }`
 
@@ -123,7 +125,7 @@ func Reasoners() []Reasoner {
 	yes, no := "true", "false"
 	return []Reasoner{
 		{ID: ReasonerIntake, Description: "File work from a trigger or any caller as a codeaf factory job; reports the job's progress and its pull request as this execution's result.", InputSchema: json.RawMessage(intakeInput), OutputSchema: json.RawMessage(intakeOutput), Tags: []string{"codeaf", "factory", "intake"}, AcceptsWebhook: &yes},
-		{ID: ReasonerMessage, Description: "Send a message to a factory job's manager, held to the job's trust.", InputSchema: json.RawMessage(messageInput), OutputSchema: json.RawMessage(messageOutput), Tags: []string{"codeaf", "factory"}, AcceptsWebhook: &no},
+		{ID: ReasonerMessage, Description: "Say more about a factory job, read as a comment on it and held to the job's trust.", InputSchema: json.RawMessage(messageInput), OutputSchema: json.RawMessage(messageOutput), Tags: []string{"codeaf", "factory"}, AcceptsWebhook: &no},
 		{ID: ReasonerStatus, Description: "Read a factory job's state, steps and pull request.", InputSchema: json.RawMessage(statusInput), OutputSchema: json.RawMessage(statusOutput), Tags: []string{"codeaf", "factory"}, AcceptsWebhook: &no},
 	}
 }

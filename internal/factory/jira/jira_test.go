@@ -213,7 +213,8 @@ func TestFeedRefusals(t *testing.T) {
 }
 
 // The replier comments the pull request's link when it opens and merges, the
-// job's words when it is stuck, and nothing for a moment with nothing to say.
+// job's words when it is stuck or asks, and nothing for a moment with nothing
+// to say or one it does not comment (filed, started, done, a message).
 func TestReplierCommentsEachMoment(t *testing.T) {
 	s := stub(t)
 	key := s.CreateIssue(jirastub.Issue{Project: "FL", Summary: "x"})
@@ -224,14 +225,19 @@ func TestReplierCommentsEachMoment(t *testing.T) {
 		{Kind: inbox.EventPROpened, JobID: 1, URL: url},
 		{Kind: inbox.EventMerged, JobID: 1, URL: url},
 		{Kind: inbox.EventStuck, JobID: 1, Text: "The checks failed twice; it needs a person."},
+		{Kind: inbox.EventQuestion, JobID: 1, Text: "Which database should it use?"},
 		{Kind: inbox.EventPROpened, JobID: 1},
+		{Kind: inbox.EventFiled, JobID: 1, Text: "filed"},
+		{Kind: inbox.EventStarted, JobID: 1, Text: "started"},
+		{Kind: inbox.EventDone, JobID: 1, Text: "done"},
+		{Kind: inbox.EventMessage, JobID: 1, Text: "read"},
 		{Kind: "unknown", JobID: 1, URL: url},
 	} {
 		if err := r.Reply(ctx, key, ev); err != nil {
 			t.Fatal(err)
 		}
 	}
-	want := []string{"codeaf opened a pull request: " + url, "Merged: " + url, "The checks failed twice; it needs a person."}
+	want := []string{"codeaf opened a pull request: " + url, "Merged: " + url, "The checks failed twice; it needs a person.", "Which database should it use?"}
 	if got := s.Comments(key); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("comments %q", got)
 	}

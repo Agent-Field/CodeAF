@@ -3592,6 +3592,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"send one Jira project to one repository", "factory-jira"},
 		{"what does Jira priority Highest become in the factory", "factory-jira"},
 		{"does codeaf work with Jira Server or Data Center", "factory-jira"},
+		// THE TRIGGER API: plain HTTP or AgentField, a message from outside read
+		// as a comment, the status of a job, and signed webhooks per source.
+		{"how do I connect my own tool to the factory", "factory-trigger-api"},
+		{"is there an SDK for the factory", "factory-trigger-api"},
+		{"send a comment to a job from outside", "factory-trigger-api"},
+		{"how does my tool add more details to a factory job it filed", "factory-trigger-api"},
+		{"check the status of a factory job from my script", "factory-trigger-api"},
+		{"set a webhook for a source", "factory-trigger-api"},
+		{"which webhook events does the factory send", "factory-trigger-api"},
+		{"how do I verify the factory webhook signature", "factory-trigger-api"},
+		{"what happens if my webhook endpoint is down", "factory-trigger-api"},
+		{"can I give a tool a token that only files its own tickets", "factory-trigger-api"},
 		// THE FACTORY IS AN AGENTFIELD NODE: AgentField's triggers are its
 		// intake, translated per source, completed with the pull request.
 		{"how do I connect AgentField to the factory", "factory-agentfield"},

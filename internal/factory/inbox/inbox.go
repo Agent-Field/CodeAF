@@ -174,6 +174,9 @@ func Add(ctx context.Context, st *store.Store, e Entry, now time.Time, opts ...O
 	if err != nil {
 		return Result{}, err
 	}
+	// The source hears that its work is a job once the job is kept, never
+	// before, and never on an update: a second delivery files nothing new.
+	Notify(ctx, st, id, Filed(e.Title))
 	return Result{ID: id, Created: true}, nil
 }
 

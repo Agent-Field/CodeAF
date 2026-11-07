@@ -31,11 +31,14 @@ The node registers three reasoners, each with a JSON Schema:
 
 - `intake` (takes webhook triggers): a trigger's event, or an entry from any
   caller, becomes a job (see the sections below).
-- `message`: `{source, id, text}` or `{job, text}` reaches that job's manager
-  the way a person's message does. A stranger's job gets the text on its
-  activity as context only.
-- `status`: `{source, id}` or `{job}` answers the job's state, steps done and
-  total, route, repository, pull request link and open question.
+- `message`: `{source, id, text, author?}` or `{job, text}` says more about a
+  job filed from outside, exactly as the Trigger API's messages do: the words
+  become a comment on the job, a stranger's job (or a connection trusted no
+  further) reads them as context only, and it answers `{job, accepted,
+  outcome, line}`.
+- `status`: `{source, id}` or `{job}` answers what `GET
+  /api/intake/{source}/{id}` does: `{job, state, steps_done, steps_total,
+  route?, pr_url?, question?, updated}`.
 
 The node also answers `/health`, `/status` and `/discover`. Every restart of
 the factory registers again as a new instance, and the node renews its lease
@@ -137,8 +140,12 @@ it answers 202 and reports on that execution until the job settles:
 - when it stops and needs a person (a step failed, someone stopped it, its
   publish failed): failed, with the job's own words.
 
-An event that files nothing completes its execution at once with the reason
-as the result.
+Each change is reported as it happens, from the same moments a webhook and
+Jira hear. An execution not told anything for three minutes is told again,
+so a long job is never taken for stale, and a job that ended with nothing to
+announce it (a person dropped it) completes its execution within those three
+minutes. An event that files nothing completes its execution at once with
+the reason as the result.
 
 ## why didn't my AgentField trigger make a job
 

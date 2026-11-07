@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -31,19 +30,23 @@ import (
 //     a restarted factory from a running one — and keeps the lease renewed
 //     (PATCH /api/v1/nodes/:id/status), registering again when the control
 //     plane has forgotten it;
-//   - reports the job behind every open execution (sink.go): progress while
-//     it runs, completion when it opens its pull request, ends, or stops.
+//   - reports the job behind every open execution (sink.go): it is a sink
+//     on the factory's event bus ([inbox.RegisterSink]), so each of the
+//     job's moments reaches its execution as it happens, and a quiet
+//     execution is told again with the lease so it never looks stale.
 //
 // NOT CONNECTED, NOTHING RUNS: no listener, no registration, no lease. A
 // disconnect tells the control plane the node is offline on its way out.
 
-// reportEvery is how often the open executions are looked at.
-var reportEvery = 20 * time.Second
-
-// keepAlive is how long a running execution goes untold before it is told
-// again, well inside the control plane's stale-execution window (ten minutes
-// in its shipped config), so a long job is never reaped as stale.
+// keepAlive is how long an open execution goes untold before the lease's
+// renewal tells it again, well inside the control plane's stale-execution
+// window (ten minutes in its shipped config), so a long job is never reaped
+// as stale. It also catches a job that ended with no moment on the bus (a
+// person dropped it): its execution completes within keepAlive.
 const keepAlive = 3 * time.Minute
+
+// SinkName is the node's name on the event bus.
+const SinkName = "agentfield"
 
 // ErrNotConnected is a start with nothing kept.
 var ErrNotConnected = errors.New("this factory is not connected to AgentField")
@@ -85,9 +88,6 @@ type Node struct {
 	// Nudge asks the factory's own GitHub read to read now. nil makes a
 	// github event a no-op.
 	Nudge func()
-	// Send hands text to job's manager conversation, the way a person's
-	// message reaches it. nil keeps a message on the job's activity only.
-	Send func(ctx context.Context, job int, text string) error
 	// Version is the node contract the node registers as ([NodeVersion]).
 	Version string
 	// Build is the codeaf build, kept in the registration's metadata.
@@ -98,7 +98,6 @@ type Node struct {
 	mu       sync.Mutex
 	health   Health
 	running  *running
-	sources  map[string]bool
 	x        executions
 	xOnce    sync.Once
 	reportMu sync.Mutex
@@ -167,7 +166,7 @@ func (n *Node) Start(ctx context.Context) error {
 	n.running = r
 	n.health = Health{Listening: listener.Addr().String()}
 	n.mu.Unlock()
-	n.registerReplier(s)
+	inbox.RegisterSink(SinkName, sink{n})
 	guard.Go("factory/agentfield listen", func() { _ = r.server.Serve(listener) })
 	guard.Go("factory/agentfield lease", func() {
 		defer close(r.done)
@@ -187,6 +186,7 @@ func (n *Node) Stop() {
 	if r == nil {
 		return
 	}
+	inbox.RegisterSink(SinkName, nil)
 	r.cancel()
 	<-r.done
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -196,15 +196,14 @@ func (n *Node) Stop() {
 	_ = r.server.Close()
 }
 
-// keep registers, renews the lease, and reports the open executions, until
-// ctx ends.
+// keep registers and renews the lease until ctx ends. Each renewal tells
+// the executions that have gone quiet for [keepAlive] where their job stands;
+// every other report is a moment on the bus (sink.go).
 func (n *Node) keep(ctx context.Context, r *running, secret string) {
 	registered := false
 	wait := time.Duration(0)
 	failed := 0
 	nextLease := time.Time{}
-	reports := time.NewTicker(reportEvery)
-	defer reports.Stop()
 	for {
 		if !registered {
 			if err := n.register(ctx, r, secret); err != nil {
@@ -226,6 +225,7 @@ func (n *Node) keep(ctx context.Context, r *running, secret string) {
 				n.health.LeaseUntil = n.now().Add(time.Duration(lease.Seconds) * time.Second)
 				n.health.LastError, n.health.LastErrorAt = "", time.Time{}
 				n.mu.Unlock()
+				n.retellQuiet(ctx, r.client)
 			case RefusedAs(err, RefusedMissing):
 				// THE CONTROL PLANE FORGOT THE NODE (it restarted on a fresh
 				// database, or someone deleted it): register again at once.
@@ -238,15 +238,13 @@ func (n *Node) keep(ctx context.Context, r *running, secret string) {
 		}
 		if wait == 0 {
 			wait = time.Until(nextLease)
-			if wait <= 0 || wait > reportEvery {
-				wait = reportEvery
+			if wait <= 0 {
+				wait = time.Second
 			}
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-reports.C:
-			n.reportAll(ctx, r.client)
 		case <-time.After(wait):
 		}
 		wait = 0
@@ -320,43 +318,6 @@ func newInstance() (string, error) {
 	return host + "-" + hex.EncodeToString(raw), nil
 }
 
-// registerReplier makes the node the answerer for every source its entries
-// can carry, so the factory's lifecycle moments ([inbox.Notify]) reach it.
-func (n *Node) registerReplier(s Settings) {
-	for _, src := range []string{"linear", "sentry", "slack", "generic_bearer", "generic_hmac", "cron", ExecuteSource} {
-		n.answerFor(SourceName(src))
-	}
-}
-
-// answerFor registers the node as source's answerer once per process.
-func (n *Node) answerFor(source string) {
-	n.mu.Lock()
-	if n.sources == nil {
-		n.sources = map[string]bool{}
-	}
-	seen := n.sources[source]
-	n.sources[source] = true
-	n.mu.Unlock()
-	if !seen {
-		inbox.RegisterReplier(source, replier{n})
-	}
-}
-
-// Forget takes the node's answerers away again (a disconnect).
-func (n *Node) Forget() {
-	n.mu.Lock()
-	sources := n.sources
-	n.sources = nil
-	n.mu.Unlock()
-	for source := range sources {
-		inbox.RegisterReplier(source, nil)
-	}
-}
-
-// itemTier is the job's tier, owner when it never said.
-func itemTier(it factory.Item) factory.Tier {
-	if it.Tier == "" {
-		return factory.TierOwner
-	}
-	return it.Tier
-}
+// Forget takes the node off the event bus (a disconnect). [Node.Stop] does
+// it too; Forget is for a node that is not running.
+func (n *Node) Forget() { inbox.RegisterSink(SinkName, nil) }
