@@ -40,6 +40,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("nudge", stored, h.nudgeJob)
 	h.postJob("follow", stored, h.followJob)
 	h.postJob("priority", stored, h.setPriority)
+	h.postJob(SetRepoVerb, stored, h.setRepo)
 	h.postJob("stop-after-step", stored, h.onlyOwner(h.stopAfterStep))
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
@@ -76,8 +77,10 @@ func (h *Handler) startJob(w http.ResponseWriter, r *http.Request, it factory.It
 // A PICKED PIPELINE IS ONE THE REPOSITORY'S FILE LISTS, read from the file the
 // start decides on the job ([Handler.jobPipeline]), and it replaces the steps
 // of a job that never ran in the start's one write. pr and ci are not an
-// issue job's to run, as at creation. A job that ran, or waits in the queue
-// already, keeps its steps. Every refusal comes before any write.
+// issue job's to run, as at creation. A JOB QUEUED AND NOT YET TAKEN HAS NOT
+// RUN ([run.Ran]): its pick replaces its steps and lays its run out again on
+// them, and Start now lets it take a slot as it always does. Only a job that
+// ran keeps its steps. Every refusal comes before any write.
 func (h *Handler) guardedStart() jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
 		var body struct {
@@ -106,10 +109,8 @@ func (h *Handler) pickRefused(w http.ResponseWriter, it factory.Item, pick strin
 		h.fail(w, 422, "pipeline must be a pipeline name of the repository's file")
 	case pick == string(factory.KindPR) || pick == string(factory.KindCI):
 		h.fail(w, 422, "factory jobs support the issue pipeline only")
-	case it.Stream != nil || len(it.Adapted) > 0:
+	case run.Ran(it):
 		h.refuse(w, 409, "This job has already run, so it keeps its steps.", "conflict", "", nil, factory.JobState(it))
-	case it.State == factory.StateQueued:
-		h.refuse(w, 409, "This job is already in the queue, so its steps are decided.", "conflict", "", nil, factory.JobState(it))
 	default:
 		return !h.requireVerb(w, h.config.Pipeline != nil && h.config.Store != nil)
 	}
@@ -119,6 +120,13 @@ func (h *Handler) pickRefused(w http.ResponseWriter, it factory.Item, pick strin
 // startRefused answers every refusal a start makes before it writes, and true
 // when it refused.
 func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	// A JOB WITH NO REPOSITORY IS REFUSED IN SO MANY WORDS, before anything
+	// reads a checkout for it: a definite conflict, which the app shows as
+	// the factory said it, never a failure that may have half-happened.
+	if factory.NamesNoRepo(it) {
+		h.refuse(w, 409, factory.NoRepoRefusal, "conflict", "", nil, factory.JobState(it))
+		return true
+	}
 	if it.QKind == factory.QKindAskFirst {
 		h.refuse(w, 409, "Approval needed: start", "conflict", "", nil, factory.JobState(it))
 		return true
@@ -174,7 +182,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		var rules *factory.StartRules
 		var file *pipeline.File
 		var fileErr error
-		if h.config.Pipeline != nil && !queued {
+		if h.config.Pipeline != nil && (!queued || pick != "") {
 			f, err := h.jobPipeline(r.Context(), cur, "")
 			if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 				h.fail(w, 503, "The factory's own rules could not be read, so this job cannot start yet. Try again in a moment.")
@@ -224,15 +232,17 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					also(cur)
 				}
 				if picked != nil {
-					if cur.Stream != nil || len(cur.Adapted) > 0 {
+					if run.Ran(*cur) {
 						return fmt.Errorf("%s has already run, so it keeps its steps", cur.Ref())
 					}
 					cur.Stages = factory.CopyStages(picked)
+					// A queued job's run was laid out on its old steps.
+					run.RelayTail(cur)
 				}
 				if file != nil {
 					cur.DecidePipeline(file.Copy, h.clock())
 				}
-				if rules != nil {
+				if rules != nil && !queued {
 					// A person's start judges nothing: what the factory's own
 					// start found under older rules no longer speaks for it.
 					cur.StartRules, cur.RuleHold = rules, ""

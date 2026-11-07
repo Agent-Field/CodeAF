@@ -48,6 +48,14 @@ type Options struct {
 	// field of the rule already holds. Nil is no judge: a rule that asks a
 	// question then never matches, and nothing is paid.
 	Judge route.Judge
+	// LabelStarts says whether a job NO ROUTING RULE MATCHED may be started
+	// or held by its labels this pass: the factory's Pick up issues switch on
+	// a factory on a person's own machine. IT GOVERNS THE LABEL RULE ONLY.
+	// The routing table is read for every new job whatever it says, so a
+	// rule's repository, pipeline, priority and start (auto, ask or backlog)
+	// apply with the switch off. Nil is on, which is what a team server and
+	// the command line have always done.
+	LabelStarts func() bool
 }
 
 type Intake struct {
@@ -134,13 +142,19 @@ func (in *Intake) Once(ctx context.Context) error {
 //  2. ROUTING, before anything that reads its labels or its repository: an
 //     inbox or Jira job arrives with neither, and a rule is what gives it a
 //     repository and admits it without a label;
-//  3. today's label skip, for a job NO rule matched only: unlabelled work a
-//     person filed waits for a person, exactly as before routing existed;
-//  4. a repository, as routed: none has no rules to read and could not be
-//     launched ([factory.NoRepoRefusal]), so it waits in Backlog;
-//  5. that repository's switch ([factory.RepoSwitch]): one that is off is
+//  3. A JOB A RULE ALREADY ROUTED KEEPS ITS ROUTE when no rule matches it
+//     now (its ticket was edited, the rule was changed): its repository,
+//     priority and steps stay as that rule left them, and only a DIFFERENT
+//     rule that matches moves it;
+//  4. today's label skip, for a job NO rule matched only: unlabelled work a
+//     person filed waits for a person, exactly as before routing existed, and
+//     so does labelled work while [Options.LabelStarts] is off;
+//  5. a repository, as routed: none has no rules to read and could not be
+//     launched ([factory.NoRepoRefusal]), so it waits in Backlog, which its
+//     read says (`Waiting for a repository`);
+//  6. that repository's switch ([factory.RepoSwitch]): one that is off is
 //     passed by, its rules unread;
-//  6. a job its rule already filed in Backlog is left there, so a pass does
+//  7. a job its rule already filed in Backlog is left there, so a pass does
 //     not read its file again for nothing.
 //
 // A routing error (a judge that cannot be kept) is answered with false, and
@@ -155,7 +169,9 @@ func (in *Intake) admit(ctx context.Context, it factory.Item, rules []route.Rule
 	}
 	target := routedTo(it, routed)
 	switch {
-	case routed == nil && len(it.Labels) == 0:
+	case routed == nil && it.Route != "":
+		return nil, false, nil
+	case routed == nil && (len(it.Labels) == 0 || !in.labelsStart()):
 		return nil, false, nil
 	case factory.NamesNoRepo(target):
 		return nil, false, nil
@@ -165,6 +181,20 @@ func (in *Intake) admit(ctx context.Context, it factory.Item, rules []route.Rule
 		return nil, false, nil
 	}
 	return routed, true, nil
+}
+
+// labelsStart is [Options.LabelStarts], on when it is not set.
+func (in *Intake) labelsStart() bool {
+	return in.opts.LabelStarts == nil || in.opts.LabelStarts()
+}
+
+// LabelsGated is in with [Options.LabelStarts] set to on: the same intake,
+// whose label rule is governed by on, and whose routing table is read for
+// every new job either way.
+func (in *Intake) LabelsGated(on func() bool) *Intake {
+	cp := *in
+	cp.opts.LabelStarts = on
+	return &cp
 }
 
 // load is the file job it is decided under: its own ([Options.LoadJob]),
@@ -192,6 +222,14 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 	if err != nil {
 		return err
 	}
+	// A RULE THE TARGET'S FILE CANNOT HONOUR IS REFUSED ON THE JOB, NOT ON
+	// THE PASS: the job stays as it is, unrouted, one activity row says why,
+	// and every other job (and every source's poll) goes on as before.
+	if routed != nil {
+		if why := refusedBy(routed.rule, routedTo(it, routed), f); why != "" {
+			return in.refuse(ctx, it, why)
+		}
+	}
 	decision := startDecision(f, it, Cost(book, it), routed)
 	if (decision.Start || decision.Ask) && factory.ClosedForAutomation(ctx, in.st.Root(), it, in.opts.Standing) {
 		return nil
@@ -218,6 +256,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 		}
 	}
 	kind, reason := record.AutoStarted, startReason(routed)
+	var staged []factory.Stage
 	if decision.Ask {
 		kind, reason = record.AskedFirst, strings.Join(decision.Reasons, "; ")
 		err = in.st.Update(it.ID, func(cur *factory.Item) error {
@@ -227,6 +266,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 			if err := stage(cur, f, routed); err != nil {
 				return err
 			}
+			staged = cur.Stages
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
 			cur.DecidePipeline(f.Copy, time.Now())
 			if cur.Cap <= 0 {
@@ -248,6 +288,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 			if err := stage(cur, f, routed); err != nil {
 				return err
 			}
+			staged = cur.Stages
 			cur.StartRules, cur.RuleHold = pipeline.StartRulesOf(f), ""
 			// THE JOB'S FILE IS DECIDED WITH ITS STEPS: the launch just below
 			// reads this one, not a copy saved in between.
@@ -260,7 +301,11 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 			return nil
 		})
 		if err == nil {
-			err = in.opts.Launch(it.ID)
+			// The replacement is said before the launch, which may refuse:
+			// the steps changed either way.
+			if err = in.noteReplaced(ctx, it, routed, staged); err == nil {
+				err = in.opts.Launch(it.ID)
+			}
 		}
 	}
 	if errors.Is(err, errMoved) {
@@ -268,6 +313,11 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 	}
 	if err != nil {
 		return err
+	}
+	if decision.Ask {
+		if err := in.noteReplaced(ctx, it, routed, staged); err != nil {
+			return err
+		}
 	}
 	handle := it.Person()
 	if handle == "" {
@@ -277,25 +327,81 @@ func (in *Intake) decide(ctx context.Context, it factory.Item, book estimate.Boo
 	return err
 }
 
+// noteReplaced writes the activity row of a job a DIFFERENT rule now routes
+// than the one that routed it before: which rule, in place of which, and the
+// steps it now has, so a pipeline that changed under a person is never
+// changed silently. A job routed for the first time writes nothing here.
+func (in *Intake) noteReplaced(ctx context.Context, it factory.Item, r *routing, staged []factory.Stage) error {
+	if r == nil || it.Route == "" || it.Route == r.rule.Name {
+		return nil
+	}
+	_, err := in.opts.Record.Append(ctx, record.Event{Kind: record.Routed, Job: it.ID, Detail: replacedWords(it, r, staged)})
+	return err
+}
+
+// refuse keeps a matched rule that cannot be applied off the job: nothing of
+// the job changes but [factory.Item.RouteRefused], and the activity row
+// saying why is written when the sentence is new, so a pass that finds the
+// same refusal again writes nothing.
+func (in *Intake) refuse(ctx context.Context, it factory.Item, why string) error {
+	fresh := false
+	err := in.st.Update(it.ID, func(cur *factory.Item) error {
+		if err := in.canStart(ctx, *cur); err != nil {
+			return err
+		}
+		if cur.RouteRefused == why {
+			return errMoved
+		}
+		cur.RouteRefused, fresh = why, true
+		return nil
+	})
+	if errors.Is(err, errMoved) {
+		return nil
+	}
+	if err != nil || !fresh {
+		return err
+	}
+	_, err = in.opts.Record.Append(ctx, record.Event{Kind: record.Routed, Job: it.ID, Detail: why})
+	return err
+}
+
 var errMoved = errors.New("intake: job already moved")
 
 // file keeps a routed job that starts nothing where it is, in Backlog, with
 // its rule's decision written on it ([applyRoute]) so the board shows the
 // repository, priority and steps the rule chose. An unrouted job is left
 // untouched, as before.
+//
+// A JOB A RULE FILES IN BACKLOG SAYS SO IN ITS ACTIVITY, once, when the rule
+// first files it: `routing rule <name> · Backlog`, and, when it takes the
+// place of the rule that routed it before, which one and the steps it has
+// now.
 func (in *Intake) file(ctx context.Context, it factory.Item, f pipeline.File, routed *routing) error {
 	if routed == nil {
 		return nil
 	}
+	var staged []factory.Stage
 	err := in.st.Update(it.ID, func(cur *factory.Item) error {
 		if err := in.canStart(ctx, *cur); err != nil {
 			return err
 		}
-		return stage(cur, f, routed)
+		if err := stage(cur, f, routed); err != nil {
+			return err
+		}
+		staged = cur.Stages
+		return nil
 	})
 	if errors.Is(err, errMoved) {
 		return nil
 	}
+	if err != nil || it.Route == routed.rule.Name {
+		return err
+	}
+	detail := routed.reason() + " · Backlog"
+	if it.Route != "" {
+		detail = replacedWords(it, routed, staged) + " · Backlog"
+	}
+	_, err = in.opts.Record.Append(ctx, record.Event{Kind: record.Routed, Job: it.ID, Detail: detail})
 	return err
 }
 

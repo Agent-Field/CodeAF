@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -81,6 +82,10 @@ type appFactoryHost struct {
 	loopMu               sync.Mutex
 	loopsOn, loopsClosed bool
 	loops                sync.WaitGroup
+	// afterRead is the intake pass the running read loops run after each
+	// poll, nil while none run; a person's door that wants a job routed now
+	// ([appFactoryHost.routeNow]) runs the same one.
+	afterRead func(context.Context) error
 	// pollSource replaces the GitHub source of the poll; tests only, because
 	// the forge client has no transport seam.
 	pollSource func(ctx context.Context) *factorygithub.Source
@@ -94,6 +99,8 @@ type appFactoryHost struct {
 	seamHook   func(factory.Seam) factory.Seam
 	// jira is the Jira poll beside the GitHub one (app_factory_jira.go).
 	jira appJiraLoop
+	// agentfield is the factory's AgentField node (app_factory_agentfield.go).
+	agentfield appAgentField
 }
 
 func newAppFactoryHost(ctx context.Context, root, address, token string, credentials factorySessions) (*appFactoryHost, error) {
@@ -121,6 +128,7 @@ func (h *appFactoryHost) close() {
 	// because letting go of the floor while a loop could still write to it
 	// would break the no-write-after-close law.
 	h.stopLoops()
+	h.stopAgentField()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.handler != nil {
@@ -177,6 +185,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	h.syncJiraReplier()
 	handler := serve.New(seam, serve.Config{ProfileDir: h.profile, DefaultModel: h.defaultModel, RunnerModels: h.runnerModelsOrNone, GitHubToken: func(ctx context.Context) string { token, _ := factorygithub.TokenAt(ctx, h.profile); return token }, GitHubHTTPClient: h.githubHTTP, Mode: api.FactorySolo, ServedBy: "app", Address: h.address, AccessToken: h.token, Name: appLocalName, Store: h.floor, Root: h.floor.Root(), Record: history, PollingEvery: factoryPollEvery,
 		Scout: factoryScoutLook(h.floor, config.Load), Read: factoryClickRead(h.floor, config.Load),
+		Route: h.routeNow,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
@@ -213,6 +222,9 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	h.handler, h.release = handler, release
 	h.closeDiscovery = closeDiscovery
 	h.tidy(trace)
+	// A factory that starts connected to AgentField registers again, as a new
+	// instance, whether or not its read loops run.
+	h.startAgentField()
 	if h.quiet {
 		return handler, nil
 	}
@@ -284,7 +296,8 @@ func (h *appFactoryHost) readLoops() {
 		return
 	}
 	h.loopsOn = true
-	h.startJiraLocked(h.intakeFor(h.floor).Once)
+	h.afterRead = h.intakeFor(h.floor).Once
+	h.startJiraLocked(h.afterRead)
 	h.loops.Add(2)
 	guard.Go("app/factory triage", func() { defer h.loops.Done(); runFactoryTriage(h.ctx, h.floor, h.intakeFor) })
 	guard.Go("app/factory poll", func() {
@@ -297,18 +310,19 @@ func (h *appFactoryHost) readLoops() {
 			source = waitForFactoryGitHub(h.ctx, h.floor, token, factoryWatchEvery)
 		}
 		if source != nil {
-			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil, h.intakeFor(h.floor).Once)
+			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, factoryPollLog, h.intakeFor(h.floor).Once)
 		}
 	})
 }
 
 // pollLoop starts the GitHub poll, for this Mac's own factory: issues filed
 // after setup reach Backlog. No triage reads what it brought, so it asks no
-// model. Start rules ride on it ONLY WHILE THE PERSON HAS TURNED "START ON ITS
-// OWN" ON in the factory's own rules ([appFactoryHost.startOnItsOwn]): then an
-// issue that carries a start label and clears every rule starts by itself, and
-// one a rule flags waits for the person. Off, it starts no job. It shares
-// [readLoops]' once-per-host guard, and closing the host stops it.
+// model. Every pass runs the routing table over new jobs, and the label rule
+// rides on it ONLY WHILE THE PERSON HAS TURNED "PICK UP ISSUES" ON in the
+// factory's own rules ([appFactoryHost.routeAndPickUp]): then an issue that
+// carries a start label and clears every rule starts by itself, and one a
+// rule flags waits for the person. It shares [readLoops]' once-per-host
+// guard, and closing the host stops it.
 func (h *appFactoryHost) pollLoop() {
 	h.loopMu.Lock()
 	defer h.loopMu.Unlock()
@@ -316,7 +330,8 @@ func (h *appFactoryHost) pollLoop() {
 		return
 	}
 	h.loopsOn = true
-	h.startJiraLocked(h.startOnItsOwn)
+	h.afterRead = h.routeAndPickUp
+	h.startJiraLocked(h.routeAndPickUp)
 	h.loops.Add(1)
 	guard.Go("app/factory poll", func() {
 		defer h.loops.Done()
@@ -328,22 +343,61 @@ func (h *appFactoryHost) pollLoop() {
 			source = waitForFactoryGitHub(h.ctx, h.floor, token, factoryWatchEvery)
 		}
 		if source != nil {
-			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil, h.startOnItsOwn)
+			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, factoryPollLog, h.routeAndPickUp)
 		}
 	})
 }
 
-// startOnItsOwn runs the factory's start rules after a poll, and only while
-// the person's "Start on its own" is on. The setting is read again every time,
-// so turning it off stops the next start without a restart, and a rules file
-// that cannot be read starts nothing.
-func (h *appFactoryHost) startOnItsOwn(ctx context.Context) error {
+// routeAndPickUp is the intake pass after a poll. THE ROUTING TABLE IS READ
+// FOR EVERY NEW JOB WHATEVER "PICK UP ISSUES" SAYS, so a rule's repository,
+// pipeline, priority and start (auto, ask or backlog) always apply. The
+// switch governs the label rule alone ([intake.Options.LabelStarts]): a job
+// no rule matched starts or is held by its start labels only while it is on.
+// The setting is read again every pass, so turning it off stops the next
+// label start without a restart, and a rules file that cannot be read starts
+// nothing by its labels.
+//
+// GITHUB BEHAVES EXACTLY AS IT DID BEFORE ROUTING WHEN THERE ARE NO RULES:
+// with the switch off and an empty table, no pass runs at all, so nothing is
+// read from GitHub or written on a job that the switch used to leave alone.
+// A table that cannot be read runs the pass, whose own read refuses it.
+func (h *appFactoryHost) routeAndPickUp(ctx context.Context) error {
+	if !h.picksUpIssues() {
+		if rules, err := h.floor.Routes(); err == nil && len(rules) == 0 {
+			return nil
+		}
+	}
+	return h.intakeFor(h.floor).LabelsGated(h.picksUpIssues).Once(ctx)
+}
+
+// picksUpIssues is the factory's Pick up issues switch as it reads now; off
+// when its rules cannot be read.
+func (h *appFactoryHost) picksUpIssues() bool {
 	house, err := h.floor.HouseRules()
-	if err != nil || !house.StartOnItsOwn {
+	return err == nil && house.StartOnItsOwn
+}
+
+// routeNow runs the intake pass the running read loops run, at once, for a
+// person's door that just gave a job what routing needs (its repository). A
+// host whose loops are not running routes nothing: its jobs start nowhere.
+func (h *appFactoryHost) routeNow(ctx context.Context) error {
+	after := h.readAfter()
+	if after == nil {
 		return nil
 	}
-	return h.intakeFor(h.floor).Once(ctx)
+	return after(ctx)
 }
+
+// readAfter is [appFactoryHost.afterRead] under the loops' lock.
+func (h *appFactoryHost) readAfter() func(context.Context) error {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	return h.afterRead
+}
+
+// factoryPollLog is where a failed GitHub poll says why: the process's log,
+// as the Jira feed's does, with secrets already taken out by the poll.
+func factoryPollLog(line string) { log.Print(line) }
 
 // intakeFor is the intake over st: the factory's own, or the test seam.
 func (h *appFactoryHost) intakeFor(st *store.Store) *intake.Intake {

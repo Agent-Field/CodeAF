@@ -277,6 +277,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
+| `factory.job_set_repo` | `in.FactoryJobSetRepoParams` | `FactoryJobActed` |
 | `factory.job_start` | `in.FactoryJobStartParams` | `FactoryJobActed` |
 | `factory.job_step_edit` | `in.FactoryJobStepEditParams` | `FactoryJobStepEdited` |
 | `factory.job_step_edits_read` | `in.FactoryJobStepEditsParams` | `FactoryJobStepEdits` |
@@ -295,6 +296,12 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.local_run` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_start` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_status` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
+| `factory.agentfield_connect` | `in.FactoryAgentFieldConnectParams` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_disconnect` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_sources` | `in.FactoryRef` | `FactoryAgentFieldSources` |
+| `factory.agentfield_status` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_trigger_add` | `in.FactoryAgentFieldTriggerAddParams` | `FactoryAgentFieldTrigger` |
+| `factory.agentfield_triggers` | `in.FactoryRef` | `FactoryAgentFieldTriggers` |
 | `factory.jira_connect` | `in.FactoryJiraConnectParams` | `FactoryJiraStatus` |
 | `factory.jira_disconnect` | `in.FactoryRef` | `FactoryJiraStatus` |
 | `factory.jira_status` | `in.FactoryRef` | `FactoryJiraStatus` |
@@ -404,6 +411,41 @@ raise it. The pair `(source, external_id)` is
 the identity: a second call updates the job it made and answers `created:
 false`. The reply is `{id, created}`. A malformed entry is `bad_params` with
 the inbox's own sentence.
+
+`factory.agentfield` in hello features says the engine serves the six
+`factory.agentfield_*` methods, which make this machine's factory a node on an
+AgentField control plane so AgentField's triggers are its intake
+(internal/factory/agentfield).
+`factory.agentfield_connect {factory, url, api_key?, base_url, node_id?,
+listen?, trust?}` checks `url` and `api_key` against the control plane's
+`GET /api/v1/sources`, binds the node's listener on `listen` (default:
+`base_url`'s port, on 127.0.0.1 when `base_url` is loopback, else 0.0.0.0),
+registers node `node_id` (default `codeaf-factory`) with reasoners `intake`
+(accepts webhooks), `message` and `status`, and answers `FactoryAgentFieldStatus`
+once the control plane took the registration; a connect that fails any of
+those keeps nothing (`bad_params` for a refused key or registration,
+`unreachable` for a control plane that does not answer). `trust` is the
+ceiling for every entry the node files: `owner`, `collaborator` (default) or
+`stranger`. The registered `base_url` carries a 64-hex address secret
+(`<base_url>/n/<secret>`), the node answers nothing outside it, and neither the
+key nor the secret is ever in a reply. `factory.agentfield_status {factory}`
+answers `{factory, connected, url?, node_id?, base_url?, listen?, trust?,
+key_kept?, listening?, registered_at?, lease_seconds?, lease_until?,
+last_event?, last_event_source?, last_event_what?, last_error?,
+last_error_at?, executions?}`. `factory.agentfield_disconnect {factory}` tells
+the control plane the node is offline, stops the listener and forgets the
+settings, the key and the secret; jobs already filed stay.
+`factory.agentfield_triggers {factory}` is `GET /api/v1/triggers` for this node:
+`{factory, node_id, triggers: [{id, source, reasoner, event_types?, enabled,
+managed_by?, secret_env_var?, ingest_url, events_24h?, failed_24h?,
+last_event_at?}]}`, `ingest_url` being the control plane's `/sources/<id>`.
+`factory.agentfield_sources {factory}` is the control plane's catalog,
+`{factory, sources: [{name, kind, secret_required, config_schema?}]}`.
+`factory.agentfield_trigger_add {factory, source, config?, secret_env_var?,
+event_types?}` is `POST /api/v1/triggers` targeting `<node_id>.intake` and
+answers the trigger. Every method but connect is `conflict` on a factory that
+is not connected, and every method is `not_found` for a factory other than
+this machine's.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
@@ -595,9 +637,34 @@ characters for the factory's judge; a rule with a question matches only on a
 yes kept on the job. `factory.routes_test {factory, rules, limit?}` tries a
 table (need not be the kept one) on the newest `limit` jobs the caller may see
 (default 50, at most 200) and answers `{"factory": "...", "jobs": [{job, ref,
-title, outcome, rule?, why?}]}`, newest first, where `outcome` is `matched`,
-`pending` (a question with no answer kept yet) or `none`. It writes nothing
-and asks no model.
+title, outcome, rule?, why?, reason?}]}`, newest first, where `outcome` is
+`matched`, `pending` (a question with no answer kept yet), `refused` (the rule
+matched, and the repository it sends the job to lists no pipeline of the name
+it gives; `reason` is `routing rule <name>: <repo> has no pipeline <p>`) or
+`none`. It writes nothing and asks no model. `factory.routes_set` refuses, as
+`bad_params` in that same sentence, a rule that names both a repository and a
+pipeline that repository's file (or the factory's copy of it) does not list,
+when the file can be read; one whose file cannot be read now is kept. A rule
+refused while routing never fails the factory's pass: the job stays unrouted
+and its activity gets one `routed` row in that sentence.
+
+`factory.job_set_repo` in hello features says the engine serves
+`factory.job_set_repo {factory, job, repo, expect?}`: giving a job that never
+ran its repository (`owner/name`), the way out of Backlog for outside work
+that arrived with none. The factory sets the job's repository and places,
+stamps that repository's steps, keeps that a person chose it (a routing rule's
+repository never moves it again), clears the rule that routed it and routes it
+again at once. It replies `FactoryJobActed` with `action: "set_repo"`. Only
+the operator or the job's person may (`forbidden`); a job that has started is
+`conflict` "This job has already started, so it keeps its repository.", and a
+GitHub issue's job is `conflict` too. A Backlog job with no repository reads
+`state_presentation {kind: "backlog", title: "Waiting for a repository",
+detail: "Say which repository the work is on, or add a routing rule that sends
+it to one."}`, and `factory.job_start` on it is `conflict` "say which
+repository the work is on". `factory.job_start {pipeline}` is taken by a job
+queued and not yet taken: its steps are replaced and its run laid out again
+on them; only a job that ran is `conflict` "This job has already run, so it
+keeps its steps."
 
 An engine whose hello carries the feature `factory.library` serves the
 factory's PIPELINE LIBRARY: named pipelines and the step definitions they use,

@@ -621,7 +621,7 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 func localJob(repo, title, text string, now time.Time, recipe Recipe) (Item, error) {
 	repo, title = strings.TrimSpace(repo), strings.TrimSpace(title)
 	if repo == "" {
-		return Item{}, errors.New(NoRepoRefusal)
+		return Item{}, ErrNoRepo
 	}
 	if title == "" {
 		return Item{}, errors.New("say what the work is, not only how")

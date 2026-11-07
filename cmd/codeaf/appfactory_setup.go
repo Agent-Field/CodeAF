@@ -325,9 +325,10 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 		done := make(chan struct{})
 		l.runner, l.runnerDone = true, done
 		// THE HOST SERVES THIS FACTORY (checked above), so its GitHub poll may
-		// start; the host starts it once. No triage runs beside it, and its
-		// start rules run only while the person's "Start on its own" is on
-		// (appFactoryHost.startOnItsOwn): off, nothing here starts a job.
+		// start; the host starts it once. No triage runs beside it. Its
+		// routing table is read for every new job, and its label rule runs
+		// only while the person's "Pick up issues" is on
+		// (appFactoryHost.routeAndPickUp): off, no label starts a job here.
 		host.pollLoop()
 		guard.Go("app/factory local runner", func() { defer close(done); host.workers() })
 	}
@@ -390,6 +391,12 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
 	floor.ObserveWrites(b.briefJobChanged)
+	// AN AGENTFIELD MESSAGE REACHES A JOB'S MANAGER THE WAY A PERSON'S DOES,
+	// through factory.job_send's own path on this machine's factory.
+	host.agentfield.send = func(ctx context.Context, job int, text string) error {
+		_, err := b.FactoryJobSend(ctx, appwire.FactoryJobSendParams{Factory: b.localFactoryID(), Job: job, Text: text})
+		return err
+	}
 	mount, err := host.mountSolo(ctx)
 	if err != nil {
 		listener.Close()
