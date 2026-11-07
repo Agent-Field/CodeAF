@@ -22,7 +22,15 @@ func parkOnAgentFieldPause(t *testing.T, f *v2Jobs) (factory.Item, *lease.Desk, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.st.Update(it.ID, func(cur *factory.Item) error {
+	it = waitOnRunPause(t, f, it.ID)
+	return it, desk, held
+}
+
+// waitOnRunPause leaves job id waiting in Needs you on its AgentField run's
+// plan, as the runner's report leaves it.
+func waitOnRunPause(t *testing.T, f *v2Jobs, id int) factory.Item {
+	t.Helper()
+	if err := f.st.Update(id, func(cur *factory.Item) error {
 		cur.State, cur.QKind, cur.Question = factory.StateNeedsYou, factory.QKindAgentField, "Approve the plan?"
 		cur.Stream = &factory.Stream{}
 		cur.Stages = []factory.Stage{{Name: "build", Kind: factory.StageAgentField, Target: "planner.build", On: true}}
@@ -32,11 +40,11 @@ func parkOnAgentFieldPause(t *testing.T, f *v2Jobs) (factory.Item, *lease.Desk, 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	it, err = f.st.Get(it.ID)
+	it, err := f.st.Get(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return it, desk, held
+	return it
 }
 
 // ANY FACTORY TAKES AN ANSWER TO AN AGENTFIELD RUN'S PAUSE. A team factory —
@@ -104,38 +112,63 @@ func TestAnyFactoryTakesAnAnswerToARunsPauseAndSignalsItsRunner(t *testing.T) {
 	f.post(t, it, "approve", `{}`, 409)
 }
 
-// A REJECT ENDS THE JOB AFTER THE RUNNER CARRIED IT. A stop lets go of the
-// runner's lease and every signal it has not collected, so the job stops as
-// the person's Stop only once its runner acknowledges carrying the reject to
-// the control plane; until then the runner still holds the job.
-func TestAnyFactorysRejectStopsTheJobOnceItsRunnerCarriedIt(t *testing.T) {
+// A REJECT ENDS THE JOB, REJECTED, AFTER THE RUNNER CARRIED IT. Either door
+// a desk has for a no — factory.job_reject (POST reject) and Ask for
+// changes' sibling Reject (POST reject_plan) — is carried to the control plane
+// by the runner holding the job. A stop lets go of the runner's lease and
+// every signal it has not collected, so the job ends only once that runner
+// acknowledges carrying it; then it is done as rejected with the person's
+// words, never "Stopped by you" with a Carry on.
+func TestAnyFactorysRejectEndsTheJobRejectedOnceItsRunnerCarriedIt(t *testing.T) {
+	for _, verb := range []string{"reject", "reject_plan"} {
+		t.Run(verb, func(t *testing.T) {
+			f := newV2Jobs(t)
+			it, desk, held := parkOnAgentFieldPause(t, f)
+			if j := f.read(t, it); !j.Can.Reject {
+				t.Fatalf("a job waiting on its run's approval does not offer Reject: %+v", j.Can)
+			}
+			f.post(t, it, verb, `{"words":"not this plan"}`, 200)
+			signals, err := desk.DrainLive(held.ID, held.Worker, []string{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var reject *lease.Signal
+			for i := range signals {
+				if signals[i].Verb == lease.SignalAgentField && signals[i].Decision == "rejected" {
+					reject = &signals[i]
+				}
+			}
+			if reject == nil || reject.Delivery == "" || reject.Words != "not this plan" {
+				t.Fatalf("the runner was not handed the reject with its words: %+v", signals)
+			}
+			if got, _ := f.st.Get(it.ID); factory.JobState(got) == "done" || factory.StoppedByPerson(got) {
+				t.Fatal("the job ended before its runner carried the reject")
+			}
+			if _, err := desk.DrainLive(held.ID, held.Worker, []string{reject.Delivery}); err != nil {
+				t.Fatal(err)
+			}
+			got, _ := f.st.Get(it.ID)
+			if factory.JobState(got) != "done" || got.Rejection == nil || got.Rejection.Words != "not this plan" {
+				t.Fatalf("a rejected run's job did not end rejected with the words: state %s, rejection %+v", factory.JobState(got), got.Rejection)
+			}
+			if j := f.read(t, got); j.Can.Reject || j.Can.Resume || j.Can.Approve {
+				t.Fatalf("a rejected job still offers an answer or a carry-on: %+v", j.Can)
+			}
+			if again, err := desk.DrainLive(held.ID, held.Worker, []string{reject.Delivery}); err == nil && !(len(again) == 1 && again[0].Verb == lease.SignalStop) {
+				t.Fatalf("the runner still holds a rejected job: %+v", again)
+			}
+		})
+	}
+}
+
+// A REJECT OF A RUN NO RUNNER HOLDS ENDS THE JOB AT ONCE, rejected with the
+// person's words: nothing could carry it until a runner came back.
+func TestARejectOfAnUnheldRunEndsTheJobRejected(t *testing.T) {
 	f := newV2Jobs(t)
-	it, desk, held := parkOnAgentFieldPause(t, f)
-	f.post(t, it, "reject_plan", `{}`, 200)
-	signals, err := desk.DrainLive(held.ID, held.Worker, []string{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var reject *lease.Signal
-	for i := range signals {
-		if signals[i].Verb == lease.SignalAgentField && signals[i].Decision == "rejected" {
-			reject = &signals[i]
-		}
-	}
-	if reject == nil || reject.Delivery == "" {
-		t.Fatalf("the runner was not handed the reject: %+v", signals)
-	}
-	if got, _ := f.st.Get(it.ID); factory.StoppedByPerson(got) {
-		t.Fatal("the job stopped before its runner carried the reject")
-	}
-	if _, err := desk.DrainLive(held.ID, held.Worker, []string{reject.Delivery}); err != nil {
-		t.Fatal(err)
-	}
+	it := waitOnRunPause(t, f, f.create(t, factory.Item{State: factory.StateQueued, Assignee: "sam"}).ID)
+	f.post(t, it, "reject", `{"words":"wrong repo"}`, 200)
 	got, _ := f.st.Get(it.ID)
-	if !factory.StoppedByPerson(got) {
-		t.Fatalf("a rejected run's job was not stopped as the person's Stop: state %s", got.State)
-	}
-	if again, err := desk.DrainLive(held.ID, held.Worker, []string{reject.Delivery}); err == nil && !(len(again) == 1 && again[0].Verb == lease.SignalStop) {
-		t.Fatalf("the runner still holds a stopped job: %+v", again)
+	if factory.JobState(got) != "done" || got.Rejection == nil || got.Rejection.Words != "wrong repo" {
+		t.Fatalf("an unheld rejected run's job did not end rejected: state %s, rejection %+v", factory.JobState(got), got.Rejection)
 	}
 }

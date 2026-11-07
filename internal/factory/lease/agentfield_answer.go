@@ -1,6 +1,7 @@
 package lease
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -56,8 +57,7 @@ func (d *Doors) AnswerAgentField(id int, request string, decision factory.AgentF
 		run.SyncAgentFieldWait(it, now)
 		if held == nil {
 			if decision.Decision == factory.AgentFieldRejected {
-				by := decision.By
-				return stopLocked(history, doc, nil, id, it, now, &by, true)
+				return endRejectedLocked(history, doc, nil, id, it, now, decision.By, decision.Words)
 			}
 			return true, nil
 		}
@@ -82,20 +82,44 @@ func agentFieldRuns(it *factory.Item) []*factory.AgentFieldRun {
 	return out
 }
 
-// stopAfterReject ends a held job whose runner has just acknowledged carrying
-// a person's Reject of its run's pause ([Doors.AnswerAgentField]), as that
-// person's Stop. Callers hold the desk's lock.
-func (d *Desk) stopAfterReject(doc *document, held *Lease, by string) error {
+// endRejectedAfterCarried ends a held job whose runner has just acknowledged
+// carrying a person's Reject of its run's pause ([Doors.AnswerAgentField]):
+// done, rejected with their words. Callers hold the desk's lock.
+func (d *Desk) endRejectedAfterCarried(doc *document, held *Lease, by, words string) error {
 	history, err := record.Open(d.store, record.Options{Now: d.now})
 	if err != nil {
 		return err
 	}
 	job := held.Job
 	return d.store.Update(job, func(it *factory.Item) error {
-		if factory.StoppedByPerson(*it) {
+		if it.Rejection != nil {
 			return nil
 		}
-		_, err := stopLocked(history, doc, held, job, it, d.now(), &by, true)
+		_, err := endRejectedLocked(history, doc, held, job, it, d.now(), by, words)
 		return err
 	})
+}
+
+// endRejectedLocked is a rejection's write, under the desk's lock and the
+// item's: the run stops, the job ends rejected with the person's words
+// ([factory.Item.EndRejected]), and the runner holding it lets go. A REJECTED
+// JOB IS DONE, never "Stopped by you" offering to carry on: the person's no
+// is a decision ([Doors.Reject] is the same write for a job's own approval).
+func endRejectedLocked(history *record.Record, doc *document, held *Lease, id int, it *factory.Item, now time.Time, by, words string) (bool, error) {
+	if factory.UnderWay(*it) {
+		if err := run.StopItem(it, now); err != nil {
+			return false, err
+		}
+	}
+	it.EndRejected(by, words, now)
+	if _, err := history.Append(context.Background(), record.Event{Kind: record.ClosedLocally, Job: id, Handle: by, Detail: factory.RejectedWords(words)}); err != nil {
+		return false, err
+	}
+	_, pendingSignals := doc.Signals[id]
+	delete(doc.Signals, id)
+	if held == nil {
+		return pendingSignals, nil
+	}
+	release(doc, id)
+	return true, nil
 }

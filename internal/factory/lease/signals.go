@@ -127,12 +127,12 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 		var kept []Signal
 		holdSent := false
 		stopped := factory.StoppedByPerson(it)
-		var rejectedBy *string
+		var rejected *Signal
 		for _, s := range doc.Signals[held.Job] {
 			if received(s.Delivery) {
 				if s.Verb == SignalAgentField && s.Decision == factory.AgentFieldRejected {
-					by := s.By
-					rejectedBy = &by
+					s := s
+					rejected = &s
 				}
 				continue
 			}
@@ -167,10 +167,11 @@ func (d *Desk) drain(id, worker string, publishing bool, acknowledged ...[]strin
 		if !stopped && !reliable && !publishing && !holdSent && run.StoredPaused(it) {
 			out = append(out, Signal{Verb: SignalHold, Yes: true})
 		}
-		if rejectedBy != nil {
-			// THE RUNNER CARRIED THE PERSON'S REJECT: now the job ends as
-			// their Stop, and the runner learns it on its next beat.
-			return true, d.stopAfterReject(doc, held, *rejectedBy)
+		if rejected != nil {
+			// THE RUNNER CARRIED THE PERSON'S REJECT: now the job ends
+			// rejected with their words, and the runner learns it on its
+			// next beat.
+			return true, d.endRejectedAfterCarried(doc, held, rejected.By, rejected.Words)
 		}
 		if len(out) == 0 && len(doc.Signals[held.Job]) == len(kept) {
 			return false, nil

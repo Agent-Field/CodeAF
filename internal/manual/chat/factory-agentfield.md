@@ -399,7 +399,9 @@ asks about, readable in full. Three answers:
   ask again. The new round shows the new plan, the plan before it, and the
   words you sent. It needs words: "say what to change: Ask for changes sends
   your words to the run".
-- **Reject** — the run stops and so does the job.
+- **Reject** — the run stops and the job ends **Rejected**, with your words if
+  you gave any (at most 4000 characters). It is done: it offers Reopen or Run as
+  new, never Carry on, and it leaves Needs you.
 
 Only the job's person answers; the manager never does. Anyone else is refused
 with "only @<person> can answer this". The answer goes to the control plane,
@@ -421,14 +423,15 @@ Reject are that factory's own job answers.
   holds the AgentField key and is the run's owner there, so the control plane
   still lets only that node answer the run. Your handle goes with it as
   `answered_by`; your words go to the reasoner as they are.
-- A Reject stops the job once the runner has passed it on.
+- A Reject ends the job, rejected with your words, once the runner has passed
+  it on.
 - An answer survives a restart of the factory, the runner or the desk: the
   runner that takes the job again sends any answer the control plane has not
   had yet.
 - If the control plane refuses the answer, the question comes back and the job
   says "the AgentField control plane did not take the answer: …".
-- A Reject given while no runner holds the job stops the job at once, and the
-  control plane's pause then runs out on its own.
+- A Reject given while no runner holds the job ends it rejected at once, and
+  the control plane's pause then runs out on its own.
 
 ## a question from an AgentField step — the harness step asks, the manager or you answer
 

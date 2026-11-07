@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
@@ -30,7 +31,10 @@ func (h *Handler) jobVerbs() {
 	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
-	h.postJob("reject", stored && h.workers != nil, h.rejectJob)
+	// factory.job_reject on a job whose AgentField run paused is the run's
+	// Reject: the runner that owns the run carries it, then the job ends
+	// rejected (agentFieldAnswer, lease.Doors.AnswerAgentField).
+	h.postJob("reject", true, h.agentFieldAnswer(agentfield.DecisionRejected, h.rejectJob, stored && h.workers != nil))
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
 	h.postJob("restore", stored, h.guarded("restore", h.onlyOwner(h.restoreJob)))
 	h.postJob("dismiss", stored, h.dismissJob)

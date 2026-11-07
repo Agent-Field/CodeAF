@@ -75,7 +75,9 @@ func WaitsOnApproval(it Item) bool {
 	if it.State != StateNeedsYou || JobState(it) != "needs_you" {
 		return false
 	}
-	if it.QKind == QKindApprove || it.QKind == QKindAskFirst {
+	// A RUN THAT PAUSED FOR A PERSON ELSEWHERE IS AN APPROVAL like any other:
+	// its no ends the job as rejected, whatever the run's step is called.
+	if it.QKind == QKindApprove || it.QKind == QKindAskFirst || AgentFieldPause(it) {
 		return true
 	}
 	return it.Approval != nil && it.Approval.State == "waiting"

@@ -17,7 +17,8 @@ import (
 // whose AgentField run waits for approval is answered with the job verbs the
 // desk already has — Ask for changes with words, Approve, Reject — and each
 // is carried to the control plane as approval-response, the question comes
-// down at once, and Reject stops the job. Ask for changes without words is
+// down at once, and Reject — either door, factory.job_reject or
+// factory.job_reject_plan — ends the job rejected with the person's words. Ask for changes without words is
 // refused before anything is sent.
 func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 	s := newLocalSetup(t)
@@ -58,6 +59,7 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 	var lastCan struct {
 		RequestChanges bool `json:"request_changes"`
 		RejectPlan     bool `json:"reject_plan"`
+		Reject         bool `json:"reject"`
 	}
 	version := func(job int) int {
 		var read struct {
@@ -68,6 +70,7 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 			Can struct {
 				RequestChanges bool `json:"request_changes"`
 				RejectPlan     bool `json:"reject_plan"`
+				Reject         bool `json:"reject"`
 			} `json:"can"`
 		}
 		_ = json.Unmarshal(afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job}), &read)
@@ -95,8 +98,8 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 	a := park("a")
 	// ALL THREE ANSWERS ARE OFFERED on the job the desk reads: a desk leaves
 	// a verb off when can says no, so a missing reject_plan hides Reject.
-	if version(a); !lastCan.RequestChanges || !lastCan.RejectPlan {
-		t.Fatalf("a run's pause offers can = %+v, want request_changes and reject_plan", lastCan)
+	if version(a); !lastCan.RequestChanges || !lastCan.RejectPlan || !lastCan.Reject {
+		t.Fatalf("a run's pause offers can = %+v, want request_changes, reject_plan and reject", lastCan)
 	}
 	if code, _ := answer("factory.job_request_changes", a, nil); code != appwire.CodeBadParams {
 		t.Fatalf("Ask for changes with no words = %q", code)
@@ -114,14 +117,21 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 		t.Fatalf("Approve: %s %s", code, msg)
 	}
 
-	c := park("c")
-	if code, msg := answer("factory.job_reject_plan", c, nil); code != "" {
-		t.Fatalf("Reject: %s %s", code, msg)
+	// A REJECT ENDS THE JOB REJECTED, through either door: done, with the
+	// person's words, never "Stopped by you" offering to carry on.
+	rejected := func(method, round, words string) {
+		t.Helper()
+		job := park(round)
+		if code, msg := answer(method, job, map[string]any{"words": words}); code != "" {
+			t.Fatalf("%s: %s %s", method, code, msg)
+		}
+		eventually(t, "the rejected job ends rejected", func() bool {
+			it, _ := host.floor.Get(job)
+			return factory.JobState(it) == "done" && it.Rejection != nil && it.Rejection.Words == words
+		})
 	}
-	eventually(t, "the rejected job stops", func() bool {
-		it, _ := host.floor.Get(c)
-		return it.State != factory.StateNeedsYou && it.State != factory.StateRunning
-	})
+	rejected("factory.job_reject_plan", "c", "not this plan")
+	rejected("factory.job_reject", "f", "wrong repo")
 
 	// A step's question is answered with factory.job_answer: the option and
 	// the person's words reach the factory's answer door as one answer.
@@ -156,7 +166,7 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 	cp.mu.Lock()
 	resolved := strings.Join(cp.resolved, "\n")
 	cp.mu.Unlock()
-	if resolved != "exec-a: request_changes: use sqlite\nexec-b: approved: \nexec-c: rejected: " {
+	if resolved != "exec-a: request_changes: use sqlite\nexec-b: approved: \nexec-c: rejected: not this plan\nexec-f: rejected: wrong repo" {
 		t.Fatalf("the control plane was answered:\n%s", resolved)
 	}
 }

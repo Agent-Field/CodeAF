@@ -12,6 +12,7 @@ import (
 	"context"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -21,5 +22,10 @@ var _ appwire.FactoryRejecter = (*appBackend)(nil)
 const factoryVerbReject = "reject"
 
 func (b *appBackend) FactoryJobReject(ctx context.Context, p appwire.FactoryJobRejectParams) (appwire.FactoryJobActed, error) {
+	// A run's pause on this machine's factory is told to the control plane
+	// first, then ends here through the same door ([appBackend.answerAgentField]).
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActReject, agentfield.DecisionRejected, p.Words, p.Expect); handled {
+		return out, err
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActReject, p.Job, factoryVerbReject, api.Reject{Words: p.Words, Expect: p.Expect})
 }

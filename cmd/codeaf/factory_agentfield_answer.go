@@ -21,9 +21,13 @@ package main
 // control plane as the run's owner (internal/factory/serve/agentfield_answer.go,
 // afRemote.Answer).
 //
-// A Reject also stops the job, the way the person's Stop does: the reasoner
-// sees "rejected" and its run is cancelled, and the job reads "Stopped by
-// you" rather than a failure.
+// A REJECT ENDS THE JOB, REJECTED WITH THE PERSON'S WORDS (factory.job_reject
+// or factory.job_reject_plan, either door): the control plane hears it here at
+// once, then the factory's own reject door ends the job as every factory does
+// — done, never "Stopped by you" with a Carry on. That door goes through the
+// runner holding the job when one does (lease.Doors.AnswerAgentField), which
+// finds the answer already given and only acknowledges it, so the job ends
+// once its runner has let go of the run.
 //
 // A step's question (needs_you.question.kind step) answered with Approve and
 // words is the factory's own answer door, yes with those words.
@@ -111,6 +115,12 @@ func (b *appBackend) answerAgentField(ctx context.Context, id string, job int, a
 		})
 		return appwire.FactoryJobActed{}, true, appwire.Errorf(appwire.CodeConflict, "%s", afAnswerElsewhere)
 	}
+	if decision == agentfield.DecisionRejected {
+		// The pause stays up for the factory's reject door to answer: it
+		// takes the question down, keeps the decision and ends the job.
+		acted, err := b.jobWrite(ctx, id, action, job, factoryVerbReject, api.Reject{Words: words, Expect: expect})
+		return acted, true, err
+	}
 	now := time.Now()
 	by := factory.NormalizeHandle(it.Person())
 	_ = host.floor.Update(job, func(it *factory.Item) error {
@@ -126,13 +136,6 @@ func (b *appBackend) answerAgentField(ctx context.Context, id string, job int, a
 		factoryrun.SyncAgentFieldWait(it, now)
 		return nil
 	})
-	if decision == agentfield.DecisionRejected {
-		// A REJECT ENDS THE JOB AS THE PERSON'S STOP DOES. The control plane
-		// has already cancelled the run; the job's own Stop says so here.
-		if _, err := b.jobWrite(ctx, id, appwire.JobActStop, job, factoryVerbStop, guardBody{}); err != nil {
-			return appwire.FactoryJobActed{}, true, err
-		}
-	}
 	return b.factoryHub().acted(ctx, id, action, job, appFactoryAnswer{ID: job}), true, nil
 }
 
