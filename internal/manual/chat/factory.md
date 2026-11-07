@@ -230,7 +230,29 @@ In a Git repository, banking a recipe commits the change as `codeaf <agentfield-
 
 Banking a recipe never writes into a folder held by a running program. A separate change worktree can still be written when it is outside that hold. If the change has to be saved in the held checkout, nothing is written: wait for that run to end, or stop it, then bank the line again. A Git error and your confirmation do not bypass this check.
 
-The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question, save an exact persisted step reply, or send a waiting plan back with your requested changes; send critical decisions to you). The foreman conversation has `factory_floor` (read the whole floor and select items for you to run). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
+The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question, save an exact persisted step reply, or send a waiting plan back with your requested changes; send critical decisions to you; and, when you ask, press the job page's Merge, Mark ready or publication approval). The factory's own manager, opened from the app, has `factory_floor` (see the factory's own manager). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
+
+## what a job's manager knows — "nothing waiting", Auto gates, step count, can't read the pull request
+
+A job's manager answers job facts from `factory_status`, the job as the factory saved it, and nothing else. The status carries what the job page shows:
+
+- the job's autonomy: in **Auto** routine approve steps and publication pass by themselves, so the manager never says a gate holds the run; in **Manual** they wait for you. Merge stays your decision in both.
+- `Steps: N of M done`, the one count the rail, the header and the queue all show, and the current step said as running, waiting, queued to carry on or stopped.
+- the pull request the factory opened: its number, link, draft or ready, the change (files, +/−), checks and review state, as the factory last read them. The manager's shell has no GitHub token by design; it answers from these facts instead of saying it cannot read the pull request.
+- what waits on you after the pull request: `Mark pull request #N ready for review?`, `Merge pull request #N?`, `Approve publishing this job's checked work?`, or why Merge is not offered yet.
+
+Say "merge it", "mark it ready" or "approve it" in the manager's chat and it presses that decision for you, as you, through the job page's own door; a decision that is not offered is refused with the page's reason. A terminal chat has no signed-in factory connection to press with and says so; press it on the job page.
+
+## the factory's own manager — what's running, start the oldest p1, what did we ship today, the foreman
+
+Each factory has one manager of its own beside the jobs' managers: the foreman. The app opens it with `factory.foreman_open`; the first open makes the conversation and every later one opens the same. It reads only the jobs of the factory home it belongs to, through `factory_floor`:
+
+- `running`: jobs running or queued to run, each with its step and `steps N of M done`.
+- `queue`: jobs not started yet, most urgent first (p0 before p1), then oldest.
+- `waiting`: jobs that need you. `shipped`: jobs shipped today, with their pull requests and changes, to sum up what shipped.
+- `all`, `oldest`, `cheapest`, `risky`, or one job in full with `item`.
+
+When you ask ("start the oldest p1", "make #12 urgent"), it starts that one job or sets its priority (p0 to p3) through the job page's own Start and priority, as you. It never stops, ships, merges or posts, and it can select jobs as a proposal you take or leave.
 
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 
@@ -594,7 +616,9 @@ A job's assignee can mark its open draft pull request ready from the job,
 using their own GitHub sign-in. A job with no assignee follows the same person
 rule as Merge. The PR immediately reads ready after GitHub confirms it; there
 is no wait for the next poll. This is an explicit human decision, with no
-model review, automatic retry or Undo window.
+model review, automatic retry or Undo window. You can also tell the job's
+manager "mark it ready" in its chat; it presses the same Mark ready as you
+(`factory_answer` with `action=mark_ready`), only when you ask.
 
 A PR that is already ready, closed, or missing cannot be marked ready. If the
 job changed since you read it, read it again first. If the outcome is uncertain,
@@ -606,7 +630,7 @@ It does not merge the PR or enable auto-merge.
 
 A job whose pull request is open has **Merge**. Only its assignee may press it, and pressing waits five seconds with **Undo** before anything is sent. Then the runner that holds the assignee's GitHub account reads the pull request again and merges it, handing GitHub the exact commit, so a branch that moved is refused. The job is done when the pull request reads merged.
 
-One check, in code, decides every merge; no model does, and no tool on any belt merges. It refuses, in these words, when:
+One check, in code, decides every merge; no model does. A job's manager presses Merge only when you ask it to in its chat ("merge it"), with `factory_answer` and `action=merge`: the same press as the button, as you, with the same five-second Undo, and refused in the same words. It never merges on its own judgment, in Auto or Manual. The check refuses, in these words, when:
 
 - the pull request has commits you did not approve (a push after the proof was approved needs the proof approved again);
 - the pull request is a draft, or has conflicts, or GitHub has not said whether it can merge yet;

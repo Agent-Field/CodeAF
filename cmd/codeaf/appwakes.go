@@ -142,16 +142,22 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 	if known {
 		b.locked(func() { live.msgBase, live.noteBase = 0, 0 })
 	}
-	if !known {
-		b.locked(func() {
-			if live.lastN == n && (live.lastMsgs > 0 || live.lastNotices > 0) {
-				live.msgBase, live.noteBase, known = live.lastMsgs, live.lastNotices, true
-			}
-		})
-	}
+	// THE TRANSCRIPT IS READ EVEN WHEN THE LAST TURN'S COUNT IS KNOWN. A
+	// factory job's progress lines ("stopped", "write started") are written
+	// between turns, under the same person's message, and take answer ids of
+	// their own; the last turn's count knows nothing of them. Starting from it
+	// alone gave the woken turn's answer the id a progress line already had
+	// (both `a2.1` live, the answer `a2.3` once read back), and the desk's
+	// upsert dropped the answer. The next free id is the larger of the two.
 	if !known {
 		msgs := appAnswersUnder(id, transcript, n)
-		b.locked(func() { live.msgBase, live.noteBase = msgs, 0 })
+		b.locked(func() {
+			notes := 0
+			if live.lastN == n {
+				msgs, notes = max(msgs, live.lastMsgs), live.lastNotices
+			}
+			live.msgBase, live.noteBase = msgs, notes
+		})
 	}
 	if b.crewPaused(id) {
 		// The person paused this member: the turn ends before it does anything,
@@ -185,8 +191,10 @@ func appAnswersUnder(agent, transcript string, n int) int {
 	prefix := strings.TrimSuffix(appAnswerEntryID(n, 0), "0")
 	answers := 0
 	for _, entry := range appEntriesOf(agent, items, time.Time{}, nil) {
-		if strings.HasPrefix(entry.ID, prefix) {
-			answers++
+		// The next free id is one past the highest taken, never a count: an
+		// answer read back hidden (an old runner's steer echo) keeps its id.
+		if strings.HasPrefix(entry.ID, prefix) && entry.Msg != nil {
+			answers = max(answers, *entry.Msg+1)
 		}
 	}
 	return answers

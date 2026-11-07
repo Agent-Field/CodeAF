@@ -1027,6 +1027,10 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	}
 
 	cfg := session.Config{
+		// The page names codeaf's own data folder when CODEAF_HOME moved it
+		// ([session.Config.StateHome]), so a model that read `~/.codeaf` in the
+		// manual does not go looking in the person's default home instead.
+		StateHome:      v3StateHome(),
 		TeamComputers:  teamComputers,
 		TeamsPaired:    teamPaired,
 		Workspace:      workspace,
@@ -3110,4 +3114,13 @@ func v3RecentSessions(bucket string) []tui3.Session {
 		})
 	}
 	return rows
+}
+
+// v3StateHome is codeaf's own data folder when CODEAF_HOME names one other than
+// the person's default, and "" otherwise.
+func v3StateHome() string {
+	if strings.TrimSpace(env.Get(home.EnvVar)) == "" {
+		return ""
+	}
+	return home.Dir()
 }

@@ -332,7 +332,10 @@ waits on it and no card stands between the press and the plan.
 
 To change the steps, tell the manager in the item's chat. Its `factory_run` changes them at
 once before a run, and only the steps not yet started during one (see change one job's steps,
-on the factory page). What it set is one line, the same one the Adapted row of the item page
+on the factory page). AN EDIT DURING A RUN KEEPS THE JOB RUNNING: the runner hands the job back
+and takes it up again at the step it was on, with the finished steps kept and the work so far
+in its checkout, then runs the edited steps after it. It never goes back to Backlog and never
+starts again from plan. What it set is one line, the same one the Adapted row of the item page
 shows, one clause for each change and the reason last:
 `manager set review: thorough on security, code and architecture · added arch after review ·
 skipped neaten · why: touches the call row`. It also removes a step from the job (`removed

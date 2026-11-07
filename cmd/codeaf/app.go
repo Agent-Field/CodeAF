@@ -204,6 +204,9 @@ func runApp(args []string) error {
 	services := openAppServices()
 	appServiceDoor.Store(services)
 	backend.attachServices(services)
+	// And the press a job's manager makes Merge and Mark ready through, the
+	// job page's own (factory_manager_press.go).
+	defer installAppLocalPress(backend)()
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
 	// standing orders runs while it is open (apporders.go).
