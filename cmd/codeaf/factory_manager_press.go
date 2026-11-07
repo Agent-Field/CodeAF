@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -57,11 +58,12 @@ func (d seamRunDoor) DecidePR(ctx context.Context, conversation, action, _ strin
 	if err != nil {
 		return "", err
 	}
-	return pressPRDecision(ctx, appLocalPress.Load(), it, action)
+	return pressPRDecision(ctx, appLocalPress.Load(), it, action, func() (factory.Item, error) { return d.managed(conversation) })
 }
 
 // pressPRDecision checks the decision against the job as saved and presses it.
-func pressPRDecision(ctx context.Context, press *localJobPress, it factory.Item, action string) (string, error) {
+// reread reads the job again after a press that changes what the page offers.
+func pressPRDecision(ctx context.Context, press *localJobPress, it factory.Item, action string, reread func() (factory.Item, error)) (string, error) {
 	pr := it.PullRequest
 	if pr == nil {
 		pr = &factory.PullRequest{}
@@ -76,7 +78,7 @@ func pressPRDecision(ctx context.Context, press *localJobPress, it factory.Item,
 			return "", errors.New("Nothing changed: no publication waits on an approval")
 		}
 	case session.ActionMerge:
-		if v := factory.MergeGate(it, factory.MergeAsk{By: "person"}); !v.OK {
+		if v := factory.MergeOffered(it); !v.OK {
 			return "", errors.New("Nothing changed: merge is not offered: " + v.Why)
 		}
 	default:
@@ -108,7 +110,19 @@ func pressPRDecision(ctx context.Context, press *localJobPress, it factory.Item,
 		return fmt.Sprintf("Publication approved, as the person. It waits out its Undo window (%s) on the job page, then the factory publishes the checked work. This confirms the approval, not the publication; read factory_status for the outcome.", factory.ApprovalUndo), nil
 	}
 	if action == session.ActionMarkReady {
-		return fmt.Sprintf("Pull request #%d is marked ready for review. Reviewers are notified; nothing was pushed or merged.", pr.Number), nil
+		line := fmt.Sprintf("Pull request #%d is marked ready for review. Reviewers are notified; nothing was pushed or merged.", pr.Number)
+		// WHAT THE PAGE OFFERS NOW, read from the job as the press left it.
+		// The live walk's manager marked #177 ready and then said merge was
+		// not offered, repeating the draft-era status, while the page offered
+		// Merge. The reply carries the fresh merge gate, so it cannot.
+		if reread != nil {
+			if now, err := reread(); err == nil {
+				if words := factory.PRDecisionWords(now); len(words) > 0 {
+					line += " Now on the job page: " + strings.Join(words, " ")
+				}
+			}
+		}
+		return line, nil
 	}
 	return fmt.Sprintf("Merge pressed for pull request #%d, as the person. It waits out its Undo window (%s) on the job page, then the factory checks the gate again and merges the approved commit. This confirms the press, not the merge; read factory_status for the outcome.", pr.Number, factory.MergeUndo), nil
 }

@@ -89,12 +89,12 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
 			if ph.State == PhaseDone {
-				done = append(done, ph.Name)
+				done = append(done, StepWords(it, ph.Name))
 			}
 		}
 		if it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 			current = &it.Stream.Phases[it.Stream.Cur]
-			step = current.Name
+			step = StepWords(it, current.Name)
 		}
 	}
 	if len(done) > 0 {

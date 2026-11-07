@@ -103,6 +103,15 @@ type Follower interface {
 	Follow(ctx context.Context, it Item) (PullRequest, error)
 }
 
+// MergeOffered is the merge gate as the job page reads it for the person
+// looking at it: the Merge card is offered when it passes, and its Why is
+// what the page says otherwise. EVERY READER OF "IS MERGE OFFERED?" ASKS HERE
+// (the job page's merge block, the manager's status, the manager's press), so
+// the manager can never say merge is not offered while the page offers it.
+func MergeOffered(it Item) MergeVerdict {
+	return MergeGate(it, MergeAsk{By: "you"})
+}
+
 // MergeGate decides whether the job's pull request may be merged now. It reads
 // only the job; the caller is responsible for the facts being fresh enough
 // for the moment it asks.

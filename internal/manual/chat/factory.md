@@ -237,9 +237,9 @@ The conversation that manages an item also has `factory_run` (shape its run), `f
 A job's manager answers job facts from `factory_status`, the job as the factory saved it, and nothing else. The status carries what the job page shows:
 
 - the job's autonomy: in **Auto** routine approve steps and publication pass by themselves, so the manager never says a gate holds the run; in **Manual** they wait for you. Merge stays your decision in both.
-- `Steps: N of M done`, the one count the rail, the header and the queue all show, and the current step said as running, waiting, queued to carry on or stopped.
+- `Steps: N of M done`, the one count the rail, the header and the queue all show, and the current step said as running, waiting, queued to carry on or stopped. Steps are named as the page names them: a step's label when it has one, and **Follow PR** for the factory's follow step, never a stored key like `followpr`.
 - the pull request the factory opened: its number, link, draft or ready, the change (files, +/−), checks and review state, as the factory last read them. The manager's shell has no GitHub token by design; it answers from these facts instead of saying it cannot read the pull request.
-- what waits on you after the pull request: `Mark pull request #N ready for review?`, `Merge pull request #N?`, `Approve publishing this job's checked work?`, or why Merge is not offered yet.
+- what waits on you after the pull request: `Mark pull request #N ready for review?`, `Merge pull request #N?`, `Approve publishing this job's checked work?`, or why Merge is not offered yet. Whether Merge is offered comes from the same merge check the job page's Merge card reads, so the two always agree. After "mark it ready" the manager's answer says what the page offers now, read again after the press.
 
 Say "merge it", "mark it ready" or "approve it" in the manager's chat and it presses that decision for you, as you, through the job page's own door; a decision that is not offered is refused with the page's reason. A terminal chat has no signed-in factory connection to press with and says so; press it on the job page.
 

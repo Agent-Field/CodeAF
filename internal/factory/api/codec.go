@@ -420,7 +420,7 @@ func jobMerge(it factory.Item) *JobMerge {
 	if m := it.Merging; m == nil || m.State == factory.MergeFailed {
 		// Blocked is the gate's answer for a person: the same rule the Merge
 		// verb applies, so a disabled button and a refused verb agree.
-		if v := factory.MergeGate(it, factory.MergeAsk{By: "you"}); !v.OK {
+		if v := factory.MergeOffered(it); !v.OK {
 			out.Blocked = v.Why
 		}
 	}
