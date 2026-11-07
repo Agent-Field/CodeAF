@@ -1517,6 +1517,7 @@ and the reply is empty.
 | `deliverable.changed` | `DeliverableChanged` |
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
+| `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.sessions_changed` | `Empty` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |

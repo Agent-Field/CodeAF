@@ -201,7 +201,10 @@ func FromItem(it factory.Item) Job {
 	j.Cost = factory.JobSpent(it)
 	j.LifetimeCost = factory.JobLifetimeSpent(it)
 	j.Scout = fromScout(it)
-	if st := it.Stream; st != nil {
+	// A JOB AN AGENTFIELD RUN HAS NOT REACHED YET HAS NO STEP: its steps are
+	// the run's calls, and the stream it was started with still holds the
+	// stock pipeline (plan · write · …), which it will never run.
+	if st := it.Stream; st != nil && !factory.RunOnPending(it) {
 		j.Step = &StepAt{Index: st.Cur, Count: len(st.Phases)}
 		if st.Cur >= 0 && st.Cur < len(st.Phases) {
 			j.Step.Name = st.Phases[st.Cur].Name
@@ -755,12 +758,12 @@ func toRecipe(p Pipeline) factory.Recipe {
 }
 
 func fromStage(s factory.Stage) StepDef {
-	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Parent: s.Parent, Group: s.Group, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
+	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Parent: s.Parent, Group: s.Group, GroupLabel: s.GroupLabel, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
 		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
 }
 
 func toStage(d StepDef) factory.Stage {
-	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Parent: d.Parent, Group: d.Group, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
+	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Parent: d.Parent, Group: d.Group, GroupLabel: d.GroupLabel, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
 		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
 }
 
@@ -1066,7 +1069,9 @@ func steps(it factory.Item) []Step {
 	}
 	stages := it.Stages
 	if factory.RunOnPending(it) {
-		stages = nil // the run has not said what its steps are yet
+		// The run has not said what its steps are yet: neither the stock
+		// stages nor a stream started with them are its steps.
+		stages, phases = nil, nil
 	}
 	out := make([]Step, 0, len(stages)+len(phases))
 	j := 0

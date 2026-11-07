@@ -231,10 +231,16 @@ func (n *Node) afterFiling(job int) {
 	if r != nil {
 		ctx = r.ctx
 	}
+	if n.Filed != nil {
+		n.Filed(job)
+	}
 	guard.Go("factory/agentfield after intake", func() {
 		if n.After != nil && ctx.Err() == nil {
 			if err := n.After(ctx); err != nil {
 				n.trouble("the intake pass after job " + strconv.Itoa(job) + ": " + err.Error())
+			}
+			if n.Filed != nil {
+				n.Filed(job)
 			}
 		}
 		if r != nil && ctx.Err() == nil {

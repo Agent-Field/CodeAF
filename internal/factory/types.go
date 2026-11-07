@@ -121,13 +121,16 @@ type Stage struct {
 	// (AgentFieldRun): Parent is the name of the step that called it, ""
 	// for a top-level step, and steps sharing a Group ran at the same time.
 	// Both are "" on every step this factory runs itself.
-	Parent string    `json:",omitempty"`
-	Group  string    `json:",omitempty"`
-	Name   string    // plan · write · test · review · neaten · security · proof
-	Kind   StageKind // chat unless said otherwise
-	Ask    string    // the sentence as typed; the brief is compiled from it
-	When   string    // "" or always · thin · large · touches auth · has ui
-	Effort string    // "" (the knee) · cheap · strong — the crew's one word
+	Parent string `json:",omitempty"`
+	Group  string `json:",omitempty"`
+	// GroupLabel names a group of steps that ran at once in a person's words:
+	// the words its members' labels share ("Investigate"), "" when none.
+	GroupLabel string    `json:",omitempty"`
+	Name       string    // plan · write · test · review · neaten · security · proof
+	Kind       StageKind // chat unless said otherwise
+	Ask        string    // the sentence as typed; the brief is compiled from it
+	When       string    // "" or always · thin · large · touches auth · has ui
+	Effort     string    // "" (the knee) · cheap · strong — the crew's one word
 	// Model is the model a person picked for this stage on this job, "" for
 	// the job's own (Item.Model) or the factory's default. Only a
 	// conversation stage carries one; a check and an approval run no model.

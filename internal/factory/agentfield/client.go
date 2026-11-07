@@ -414,12 +414,17 @@ type TreeNode struct {
 	Children          []TreeNode `json:"children"`
 }
 
-// RunURL is the run's page on the control plane's own UI.
+// RunURL is the run's page on the control plane's own UI (its execution
+// page: the UI's /executions/<id> only redirects to the run list). IT IS
+// SENT ONLY WHEN THE CONTROL PLANE IS HTTPS: the app opens a source's link
+// only over https, so a plain-http page would be a chip nobody can click —
+// none at all is the honest answer.
 func (c *Client) RunURL(run string) string {
-	if strings.TrimSpace(c.URL) == "" || strings.TrimSpace(run) == "" {
+	base, err := url.Parse(strings.TrimSpace(c.URL))
+	if err != nil || base.Scheme != "https" || base.Host == "" || strings.TrimSpace(run) == "" {
 		return ""
 	}
-	return strings.TrimRight(c.URL, "/") + "/ui/runs/" + url.PathEscape(run)
+	return strings.TrimRight(base.String(), "/") + "/ui/runs/" + url.PathEscape(run)
 }
 
 // NodeHost is the machine a node says it runs on: the "host" its SDK put in

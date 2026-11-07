@@ -391,6 +391,9 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
 	floor.ObserveWrites(b.briefJobChanged)
+	host.jobFiled = func(job int) {
+		b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: job})
+	}
 	mount, err := host.mountSolo(ctx)
 	if err != nil {
 		listener.Close()

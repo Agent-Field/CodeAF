@@ -101,6 +101,9 @@ type appFactoryHost struct {
 	jira appJiraLoop
 	// agentfield is the factory's AgentField node (app_factory_agentfield.go).
 	agentfield appAgentField
+	// jobFiled is told a job an AgentField trigger filed; the app's own
+	// local host emits factory.jobs_changed with it. nil tells nobody.
+	jobFiled func(job int)
 }
 
 func newAppFactoryHost(ctx context.Context, root, address, token string, credentials factorySessions) (*appFactoryHost, error) {

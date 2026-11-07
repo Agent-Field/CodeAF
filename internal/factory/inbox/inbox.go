@@ -174,7 +174,14 @@ func Add(ctx context.Context, st *store.Store, e Entry, now time.Time, opts ...O
 			return Result{ID: old.ID}, update(st, old, e, now, o)
 		}
 	}
-	id, err := st.Add(ctx, newItem(e, now, o))
+	it := newItem(e, now, o)
+	// A JOB AN AGENTFIELD RUN CARRIES HAS NO REPOSITORY, so no repository's
+	// file gives it a budget: it gets the factory's own default, exactly the
+	// figure a native job falls back to, and Start has a ceiling to show.
+	if it.RunOn != "" && it.Cap <= 0 {
+		it.Cap = factoryDefaultBudget(st)
+	}
+	id, err := st.Add(ctx, it)
 	if err != nil {
 		return Result{}, err
 	}
@@ -211,10 +218,20 @@ func newItem(e Entry, now time.Time, o options) factory.Item {
 		it.RunOn = run
 	}
 	it.Note(now, arrived(e))
-	if e.Repo == "" {
+	// A job an AgentField run carries never waits for a repository.
+	if e.Repo == "" && it.RunOn == "" {
 		it.Note(now, WaitingWords)
 	}
 	return it
+}
+
+// factoryDefaultBudget is the budget a job gets when nothing names one: the
+// factory's own Spending default when it set one, else the built-in.
+func factoryDefaultBudget(st *store.Store) float64 {
+	if sp, err := st.Spending(); err == nil && sp.DefaultBudgetUSD != nil && *sp.DefaultBudgetUSD > 0 {
+		return *sp.DefaultBudgetUSD
+	}
+	return factory.DefaultJobBudget
 }
 
 // WaitingWords is the activity line of a job filed with no repository.
@@ -223,6 +240,12 @@ const WaitingWords = "waiting for a repository"
 // arrived is the first activity line: `arrived from <source>`, and the
 // address on the source when it sent one.
 func arrived(e Entry) string {
+	// An AgentField run's job says where it came from the way its source chip
+	// does: "AgentField · support", never the trigger's code name.
+	if run := strings.TrimSpace(e.RunOn); run != "" {
+		node, _, _ := strings.Cut(run, ".")
+		return "arrived from AgentField · " + node
+	}
 	if e.URL == "" {
 		return "arrived from " + e.Source
 	}

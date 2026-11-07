@@ -262,12 +262,17 @@ func TestAnEventsLabelsAndTagsAreItsLabels(t *testing.T) {
 
 // The run's page on the control plane's own UI.
 func TestARunsPageIsOnTheControlPlanesUI(t *testing.T) {
-	c := &Client{URL: "http://cp:18741/"}
-	if got := c.RunURL("run_20261107_1"); got != "http://cp:18741/ui/runs/run_20261107_1" {
+	c := &Client{URL: "https://cp.example:18741/"}
+	if got := c.RunURL("run_20261107_1"); got != "https://cp.example:18741/ui/runs/run_20261107_1" {
 		t.Fatalf("RunURL is %q", got)
 	}
 	if (&Client{}).RunURL("run_1") != "" || c.RunURL("") != "" {
 		t.Fatal("a client with no address, or no run, names a page")
+	}
+	// The app opens a source's link only over https: a plain-http control
+	// plane gets no link rather than a chip nobody can click.
+	if got := (&Client{URL: "http://100.64.233.75:18741"}).RunURL("run_1"); got != "" {
+		t.Fatalf("an http control plane names a page: %q", got)
 	}
 }
 

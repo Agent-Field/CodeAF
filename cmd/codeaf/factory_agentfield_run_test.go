@@ -59,7 +59,7 @@ func (f *afFakeCP) Dispatch(_ context.Context, target string, input any, owner s
 }
 
 // RunURL is the run's page, as the real client names it.
-func (f *afFakeCP) RunURL(run string) string { return "http://cp.test/ui/runs/" + run }
+func (f *afFakeCP) RunURL(run string) string { return "https://cp.test/ui/runs/" + run }
 
 func (f *afFakeCP) NodeHost(_ context.Context, node string) string {
 	if node == "support" {
@@ -396,7 +396,7 @@ func TestAnOfflineFactoryGetsEveryLineOnceAndThePipeEmpties(t *testing.T) {
 
 // THE RAIL IS THE TREE. Every execution is one step of the job, each after
 // the step that called it; a reasoner called more than once gets a unique
-// name with the reasoner as its label; siblings that ran at once share a
+// name with the reasoner, in words, as its label; siblings that ran at once share a
 // group; and factory.agentfield_run folds them back into the tree.
 func TestAnAgentFieldRunFoldsIntoStepsAndBack(t *testing.T) {
 	root := afNode("exec-root", "research", "running", "2026-11-07T12:00:00Z", "",
@@ -410,15 +410,15 @@ func TestAnAgentFieldRunFoldsIntoStepsAndBack(t *testing.T) {
 	steps := afFlatten(root)
 	var got []string
 	for _, s := range steps {
-		got = append(got, s.name+"|"+s.label+"|"+s.parent+"|"+s.group)
+		got = append(got, s.name+"|"+s.label+"|"+s.parent+"|"+s.group+"|"+s.groupLabel)
 	}
 	want := []string{
-		"plan|||",
-		"investigate1|investigate||investigate1",
-		"searchdocs|search_docs|investigate1|",
-		"investigate2|investigate||investigate1",
-		"investigate3|investigate||investigate1",
-		"synthesize|||",
+		"plan|Plan|||",
+		"investigate1|Investigate||investigate1|Investigate",
+		"searchdocs|Search docs|investigate1||",
+		"investigate2|Investigate||investigate1|Investigate",
+		"investigate3|Investigate||investigate1|Investigate",
+		"synthesize|Synthesize|||",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("the run flattened to\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -449,7 +449,7 @@ func TestAnAgentFieldRunFoldsIntoStepsAndBack(t *testing.T) {
 		t.Fatalf("the tree's top level is %v", top)
 	}
 	inv := tree.Steps[1]
-	if len(inv.Children) != 1 || inv.Children[0].Name != "searchdocs" || inv.Children[0].Label != "search_docs" || inv.Group != "investigate1" || inv.Label != "investigate" {
+	if len(inv.Children) != 1 || inv.Children[0].Name != "searchdocs" || inv.Children[0].Label != "Search docs" || inv.Group != "investigate1" || inv.Label != "Investigate" {
 		t.Fatalf("investigate1 is %+v", inv)
 	}
 	// A plain step has no chat, so no agent and no steer.
@@ -457,7 +457,7 @@ func TestAnAgentFieldRunFoldsIntoStepsAndBack(t *testing.T) {
 		t.Fatalf("a plain step has a chat: %+v", tree.Steps[0])
 	}
 	raw, _ := json.Marshal(tree.Steps[0])
-	for _, absent := range []string{`"agent"`, `"steerable"`, `"group"`, `"label"`, `"execution_id"`} {
+	for _, absent := range []string{`"agent"`, `"steerable"`, `"group"`, `"execution_id"`} {
 		if strings.Contains(string(raw), absent) {
 			t.Fatalf("an unknown field is on the wire (the emptiness law): %s", raw)
 		}
@@ -533,7 +533,7 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 				t.Fatalf("the job does not carry its run: %+v %+v", job.AgentField, job.Stream)
 			}
 			// The run's page is the job's source link.
-			if src, _ := factory.JobSource(job); job.AgentField.URL != "http://cp.test/ui/runs/run-1" || src.URL != job.AgentField.URL {
+			if src, _ := factory.JobSource(job); job.AgentField.URL != "https://cp.test/ui/runs/run-1" || src.URL != job.AgentField.URL {
 				t.Fatalf("the job's run page is %q, its source %+v", job.AgentField.URL, src)
 			}
 			// A stopped run is read to its end: the lines the node relays after
@@ -726,7 +726,8 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 	var read struct {
 		Steps []struct {
 			Name, State, Parent, Group, Label, Kind string
-			InRun                                   bool `json:"in_run"`
+			GroupLabel                              string `json:"group_label"`
+			InRun                                   bool   `json:"in_run"`
 		}
 		StepsDone  int    `json:"steps_done"`
 		StepsTotal int    `json:"steps_total"`
@@ -736,15 +737,18 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 	_ = json.Unmarshal(raw, &read)
 	var steps []string
 	for _, x := range read.Steps {
-		steps = append(steps, x.Name+"/"+x.Kind+"/"+x.State+"/"+x.Parent+"/"+x.Group+"/"+x.Label)
+		steps = append(steps, x.Name+"/"+x.Kind+"/"+x.State+"/"+x.Parent+"/"+x.Group+"/"+x.GroupLabel+"/"+x.Label)
 	}
+	// THE NAME IS THE KEY, THE LABEL IS A PERSON'S WORDS: search_docs reads
+	// "Search docs", and a group that ran at once is called by what its
+	// members share ("Lookup").
 	want := []string{
-		"lookup1/check/done//lookup1/lookup",
-		"lookup2/check/done//lookup1/lookup",
-		"plan/check/done///",
-		"investigate/chat/running///",
-		"searchdocs/check/done/investigate//search_docs",
-		"verify/chat/running/investigate//",
+		"lookup1/check/done//lookup1/Lookup/Lookup",
+		"lookup2/check/done//lookup1/Lookup/Lookup",
+		"plan/check/done////Plan",
+		"investigate/chat/running////Investigate",
+		"searchdocs/check/done/investigate///Search docs",
+		"verify/chat/running/investigate///Verify",
 	}
 	if strings.Join(steps, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("factory.job's steps are\n%s\nwant\n%s\n(%s)", strings.Join(steps, "\n"), strings.Join(want, "\n"), raw)
@@ -790,6 +794,15 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 		_ = json.Unmarshal(afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job}), &j)
 		return j.State == "done"
 	})
+	// A FINISHED RUN_ON JOB SAYS WHEN IT ENDED, as a native job does: the
+	// run's own end.
+	var finished struct {
+		DoneAt time.Time `json:"done_at"`
+	}
+	_ = json.Unmarshal(afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job}), &finished)
+	if finished.DoneAt.IsZero() {
+		t.Fatal("the finished job has no done_at")
+	}
 	msg := s.mustFail("agents.send", map[string]any{"id": chats.Steps[0].Agent, "text": "one more thing"}, appwire.CodeConflict)
 	if !strings.Contains(msg, afSteerEnded) {
 		t.Fatalf("a send to the ended step said %q", msg)
@@ -983,5 +996,27 @@ func TestAStepsSchemaRetryIsReadToItsOwnEnd(t *testing.T) {
 	}
 	if headers != 1 || !bytes.Equal(kept[len(kept)-1], answer) || !bytes.Contains(bytes.Join(kept, nil), retry) {
 		t.Fatalf("the record is\n%s", bytes.Join(kept, []byte("\n")))
+	}
+}
+
+func TestARunsStepNamesReadAsWords(t *testing.T) {
+	for in, want := range map[string]string{
+		"investigate_ncruces": "Investigate ncruces",
+		"draft_reply":         "Draft reply",
+		"draftReply":          "Draft reply",
+		"search-docs":         "Search docs",
+		"plan":                "Plan",
+		"handle_ticket.v2":    "Handle ticket v2",
+		"__":                  "__",
+	} {
+		if got := afLabel(in); got != want {
+			t.Errorf("afLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := afSharedWords([]string{"Investigate ncruces", "Investigate mattn", "Investigate modernc"}); got != "Investigate" {
+		t.Errorf("shared %q", got)
+	}
+	if got := afSharedWords([]string{"Lint", "Test"}); got != "" {
+		t.Errorf("unrelated steps share %q", got)
 	}
 }

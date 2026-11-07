@@ -138,6 +138,7 @@ type world struct {
 	base   string // the node's listener
 	nudges int
 	ahead  time.Duration // how far the node's clock runs ahead of now
+	filed  []int         // every job the node said it filed
 	mu     sync.Mutex
 }
 
@@ -161,6 +162,7 @@ func newWorld(t *testing.T, trust factory.Tier) *world {
 	}
 	w.node = &Node{Conn: conn, Store: floor, Version: NodeVersion, Build: "test",
 		Nudge: func() { w.mu.Lock(); w.nudges++; w.mu.Unlock() },
+		Filed: func(job int) { w.mu.Lock(); w.filed = append(w.filed, job); w.mu.Unlock() },
 		Clock: func() time.Time { w.mu.Lock(); defer w.mu.Unlock(); return time.Now().Add(w.ahead) }}
 	if err := w.node.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -431,6 +433,23 @@ func TestTheIntakeAnswers202AndThePullRequestCompletesTheExecution(t *testing.T)
 	eventually(t, "the repeat's completion", func() bool {
 		r := w.plane.reportsFor("exec-2")
 		return len(r) > 0 && r[len(r)-1].Status == ExecSucceeded
+	})
+}
+
+// A job a trigger files is told at once, so the desk's Backlog reads it then
+// rather than on its next slow refresh (factory.jobs_changed in the app).
+func TestAFiledJobIsToldAtOnce(t *testing.T) {
+	w := newWorld(t, factory.TierOwner)
+	entry := map[string]any{"title": "AFNODE: add Len", "body": "In ledger.go add Len.", "repo": "santoshkumarradha/factory-demo"}
+	code, out := w.post("/reasoners/intake", map[string]string{"X-Execution-ID": "exec-1"}, dispatch("generic_bearer", entry, "idem-1"))
+	if code != http.StatusAccepted || out["created"] != true {
+		t.Fatalf("intake: %d %v", code, out)
+	}
+	job := int(out["job"].(float64))
+	eventually(t, "the job told as filed", func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return len(w.filed) > 0 && w.filed[0] == job
 	})
 }
 

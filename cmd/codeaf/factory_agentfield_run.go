@@ -292,7 +292,7 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 			if chats[n.ExecutionID] != "" {
 				kind = factory.StageChat
 			}
-			stages = append(stages, factory.Stage{Name: step.name, Label: step.label, Parent: step.parent, Group: step.group, Kind: kind, On: true})
+			stages = append(stages, factory.Stage{Name: step.name, Label: step.label, Parent: step.parent, Group: step.group, GroupLabel: step.groupLabel, Kind: kind, On: true})
 			p := factory.Phase{Name: step.name, Kind: kind, State: afPhaseState(n.Status), Chat: chats[n.ExecutionID]}
 			p.Started = afTime(n.StartedAt)
 			if n.CompletedAt != nil {
@@ -339,17 +339,22 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 type afStep struct {
 	node   agentfield.TreeNode
 	name   string // unique in the job
-	label  string // the reasoner, when name had to differ from it
+	label  string // the reasoner in a person's words: "Investigate ncruces"
 	parent string // the calling step's name; "" at the top
 	group  string // shared by siblings that ran at the same time
+	// groupLabel is what a group of steps that ran at once is called: the
+	// words its members' labels share ("Investigate"), "" when they share none.
+	groupLabel string
 }
 
 // afFlatten is every execution under root, each after the step that called
 // it, siblings in the order they began. A STEP'S NAME IS ITS IDENTITY AND IS
 // ONE WORD (factory.StageWord: 2 to 12 letters and digits), so it is the
 // reasoner's letters — search_docs is searchdocs — numbered when the reasoner
-// is called more than once in the run (investigate1, investigate2, …), and
-// the reasoner's own spelling is its label whenever the two differ.
+// is called more than once in the run (investigate1, investigate2, …). ITS
+// LABEL IS THE REASONER IN A PERSON'S WORDS (afLabel): every place a person
+// reads the step — the rail, the chat, the activity — reads the label, so
+// it is never a code name like investigate_ncruces.
 func afFlatten(root agentfield.TreeNode) []afStep {
 	count := map[string]int{}
 	var tally func(n agentfield.TreeNode)
@@ -382,10 +387,7 @@ func afFlatten(root agentfield.TreeNode) []afStep {
 				seen[reasoner]++
 				n = seen[reasoner]
 			}
-			step := afStep{node: c, name: afStepWord(reasoner, n, taken), parent: parent}
-			if step.name != reasoner {
-				step.label = reasoner
-			}
+			step := afStep{node: c, name: afStepWord(reasoner, n, taken), parent: parent, label: afLabel(reasoner)}
 			named[i] = step
 		}
 		afGroup(named)
@@ -450,12 +452,72 @@ func afGroup(steps []afStep) {
 			j++
 		}
 		if j-i > 1 {
+			labels := make([]string, 0, j-i)
 			for k := i; k < j; k++ {
-				steps[k].group = steps[i].name
+				labels = append(labels, steps[k].label)
+			}
+			shared := afSharedWords(labels)
+			for k := i; k < j; k++ {
+				steps[k].group, steps[k].groupLabel = steps[i].name, shared
 			}
 		}
 		i = j
 	}
+}
+
+// afLabel is a reasoner's name as a person reads it: its words split on
+// underscores, dashes, dots and case changes, the first capitalised and the
+// rest as written — investigate_ncruces is "Investigate ncruces",
+// draftReply is "Draft reply". A name with no letters is left as it is.
+func afLabel(reasoner string) string {
+	var words []string
+	var cur []rune
+	flush := func() {
+		if len(cur) > 0 {
+			words = append(words, string(cur))
+			cur = cur[:0]
+		}
+	}
+	prev := rune(0)
+	for _, r := range strings.TrimSpace(reasoner) {
+		switch {
+		case r == '_' || r == '-' || r == '.' || unicode.IsSpace(r):
+			flush()
+		case unicode.IsUpper(r) && unicode.IsLower(prev):
+			flush()
+			cur = append(cur, unicode.ToLower(r))
+		default:
+			cur = append(cur, r)
+		}
+		prev = r
+	}
+	flush()
+	if len(words) == 0 {
+		return strings.TrimSpace(reasoner)
+	}
+	first := []rune(words[0])
+	first[0] = unicode.ToUpper(first[0])
+	words[0] = string(first)
+	return strings.Join(words, " ")
+}
+
+// afSharedWords is the leading words every label shares: "Investigate" for
+// "Investigate ncruces", "Investigate mattn" and "Investigate modernc"; the
+// whole label when they are all the same; "" when the first words differ.
+func afSharedWords(labels []string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	shared := strings.Fields(labels[0])
+	for _, l := range labels[1:] {
+		w := strings.Fields(l)
+		n := 0
+		for n < len(shared) && n < len(w) && w[n] == shared[n] {
+			n++
+		}
+		shared = shared[:n]
+	}
+	return strings.Join(shared, " ")
 }
 
 // afEnd is when n ended, zero while it runs.

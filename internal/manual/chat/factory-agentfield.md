@@ -204,15 +204,14 @@ page and step rail, Start and Stop.
   the run's, and the run has not said what they are yet.
 - **Start** dispatches the reasoner with `{"job", "title", "body", "event"}`.
   The node needs no inbound port; the factory only calls the control plane.
-- **Its steps are the run's executions**, named by reasoner, in the order
-  they began: `triage`, `investigate`, `draftreply`. A step name is one word,
-  so `draft_reply` reads `draftreply` with `draft_reply` as its label, and a
-  reasoner called more than once is `investigate1`, `investigate2`. A nested
-  call (`searchdocs` inside `investigate`) carries its parent and folds into
-  it, so it is not counted as a step of its own (`3 / 3`, not `4 / 4`);
-  calls that ran at once share a group, drawn as one row. A call that runs
-  the codeaf harness is a conversation step with its own chat; any other
-  call is the reasoner's plain code and reads as a command step, with no
+- **Its steps are the run's executions**, in the order they began. A
+  step's name is one word from its reasoner (`draft_reply` is `draftreply`;
+  a second call is `investigate2`) and its label is the reasoner in words
+  (`Draft reply`, `Investigate ncruces`). A nested call carries its parent
+  and is not counted as a step of its own (`3 / 3`, not `4 / 4`). Calls
+  that ran at once share a group, drawn as one row, whose `group_label` is
+  the words they share (`Investigate`). A harness call is a conversation
+  step with its own chat; any other call reads as a command step, with no
   chat. No step names a model: the node chooses its own.
 - **It ends with the run**: done when the reasoner succeeded, Needs you with
   the run's own words ("the AgentField run failed: …") when it failed.
@@ -227,6 +226,26 @@ page and step rail, Start and Stop.
 The node's developer writes nothing for any of this: a reasoner that calls
 `a.Harness(...)` on the codeaf provider is watched and steerable by itself.
 
+## an AgentField job's budget, status and finish time — why Start is not greyed out
+
+A `run_on` job is filed with the factory's default spending cap, the one a
+native job gets: the cap set in the factory's spending settings, else $5.00.
+So Start is open the moment it arrives. Its model calls are paid on the
+node, so the cap is only what the job page shows beside it.
+
+- **Arriving**, its activity reads "arrived from AgentField · <node>", and
+  it never says it is waiting for a repository: it needs none.
+- **Started but not yet running** (dispatched, the run has not reported),
+  it shows no step at all, never the factory's own pipeline (`plan`).
+- **Running**, its step is the run's own current step.
+- **Ended**, `done_at` is when the run ended on AgentField (else when this
+  factory saw it end), so it sorts and reads like any finished job.
+
+A job a trigger files is announced on the app's wire as
+`factory.jobs_changed {factory, job}`, once when it is filed and once after
+the intake pass, so a Backlog on screen can read it again at once instead of
+on its next refresh.
+
 ## where did this job come from, and where does it run — the AgentField node, its machine, reasoner, trigger and labels
 
 A job an AgentField reasoner runs (`run_on`) says where it came from on its
@@ -234,7 +253,8 @@ ordinary read, with nothing for the node's developer to write:
 
 - **source** is `agentfield`, its reference the reasoner that runs it
   (`support.triage`), and its link the run's page on the control plane's UI
-  (`/ui/runs/<run>`).
+  (`/ui/runs/<run>`) — only when the control plane is on `https`. A plain
+  `http` control plane gives no link, because the app opens only `https`.
 - **origin** names the node, the reasoner and the trigger that filed it (the
   trigger's source, such as `generic-bearer`; a direct execute names none). A
   job this factory runs itself has no origin, even when a trigger filed it.

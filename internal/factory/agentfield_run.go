@@ -53,6 +53,15 @@ func AgentFieldRunner(it Item) string {
 	return node
 }
 
+// RunOnEnded is when a RunOn job's run ended: the run's own end when it
+// reported one, else now.
+func RunOnEnded(it Item, now time.Time) time.Time {
+	if it.AgentField != nil && !it.AgentField.Ended.IsZero() {
+		return it.AgentField.Ended
+	}
+	return now
+}
+
 // RunOnPending says the job is run by an AgentField reasoner ([Item.RunOn])
 // whose run has not begun. ITS STEPS ARE THE RUN'S, NOT THE FACTORY'S: until
 // the run reports its tree there is no step to show, so the default pipeline

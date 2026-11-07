@@ -58,6 +58,11 @@ func (h *appFactoryHost) agentFieldNode() *agentfield.Node {
 			Options: func() []inbox.Option { return []inbox.Option{h.jiraRecipe()} },
 			Nudge:   func() { factorygithub.Nudge(h.floor) },
 			Cancel:  h.agentFieldCancel,
+			Filed: func(job int) {
+				if h.jobFiled != nil {
+					h.jobFiled(job)
+				}
+			},
 			Version: agentfield.NodeVersion,
 			Build:   buildinfo.String(),
 		}

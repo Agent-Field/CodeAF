@@ -16,10 +16,10 @@ func TestAnAgentFieldJobSaysWhereItCameFrom(t *testing.T) {
 		labels = append(labels, fmt.Sprintf("extra%02d", i))
 	}
 	it := Item{RunOn: "support.triage", Origin: "agentfield:generic-bearer", SourceRef: "agentfield:generic-bearer:T-1",
-		AgentField: &AgentFieldRun{RunID: "run_1", URL: "http://cp:8080/ui/runs/run_1"}, Labels: labels}
+		AgentField: &AgentFieldRun{RunID: "run_1", URL: "https://cp:8080/ui/runs/run_1"}, Labels: labels}
 
 	src, ok := JobSource(it)
-	if !ok || src != (JobSourceFacts{Name: "agentfield", Ref: "support.triage", URL: "http://cp:8080/ui/runs/run_1"}) {
+	if !ok || src != (JobSourceFacts{Name: "agentfield", Ref: "support.triage", URL: "https://cp:8080/ui/runs/run_1"}) {
 		t.Fatalf("source is %+v", src)
 	}
 	o, ok := JobOriginOf(it)

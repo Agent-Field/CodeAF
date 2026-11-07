@@ -338,10 +338,13 @@ type StepDef struct {
 	// Both are absent on every step a factory runs itself.
 	Parent string `json:"parent,omitempty"`
 	Group  string `json:"group,omitempty"`
-	Name   string `json:"name"`
-	Kind   string `json:"kind,omitempty"`
-	Ask    string `json:"ask,omitempty"`
-	Until  string `json:"until,omitempty"`
+	// GroupLabel is what the group this step ran at once with is called, in a
+	// person's words ("Investigate"); absent when its members share no words.
+	GroupLabel string `json:"group_label,omitempty"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind,omitempty"`
+	Ask        string `json:"ask,omitempty"`
+	Until      string `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
 	UntilSentence string `json:"until_sentence,omitempty"`

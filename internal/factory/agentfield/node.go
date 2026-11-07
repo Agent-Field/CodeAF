@@ -104,6 +104,10 @@ type Node struct {
 	// plane cancels the execution behind it. nil leaves the job running and
 	// only closes the execution here.
 	Cancel func(ctx context.Context, job int) error
+	// Filed is told the job an entry filed, once on filing and once after
+	// the intake pass, so a page showing the queue reads it again now. nil
+	// tells nobody.
+	Filed func(job int)
 	// Version is the node contract the node registers as ([NodeVersion]).
 	Version string
 	// Build is the codeaf build, kept in the registration's metadata.

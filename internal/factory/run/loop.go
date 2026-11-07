@@ -3078,6 +3078,7 @@ func (lp *floorLoop) driveRemote(c *loopCtl) {
 		if it.Stream != nil {
 			it.Stream.Ended = now
 		}
+		it.DoneAt = factory.RunOnEnded(*it, now)
 		loopSay(it, now, "said", "the AgentField run finished")
 		return nil
 	})

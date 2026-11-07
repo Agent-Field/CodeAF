@@ -55,7 +55,7 @@ func TestARunOnJobReadsAsBacklogWithNoStepsUntilItsRunBegins(t *testing.T) {
 func TestAnAgentFieldJobsReadCarriesItsSourceOriginAndLabels(t *testing.T) {
 	it := factory.Item{Num: 9, Kind: factory.KindIssue, Title: "refund failed", State: factory.StateNew,
 		RunOn: "support.triage", Origin: "agentfield:generic-bearer", SourceRef: "agentfield:generic-bearer:T-9",
-		AgentField: &factory.AgentFieldRun{RunID: "run_9", URL: "http://cp/ui/runs/run_9"}, Labels: []string{"Billing"}}
+		AgentField: &factory.AgentFieldRun{RunID: "run_9", URL: "https://cp/ui/runs/run_9"}, Labels: []string{"Billing"}}
 	raw, err := json.Marshal(FromItem(it))
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestAnAgentFieldJobsReadCarriesItsSourceOriginAndLabels(t *testing.T) {
 		Labels []string                `json:"labels"`
 	}
 	_ = json.Unmarshal(raw, &read)
-	if read.Source == nil || *read.Source != (factory.JobSourceFacts{Name: "agentfield", Ref: "support.triage", URL: "http://cp/ui/runs/run_9"}) {
+	if read.Source == nil || *read.Source != (factory.JobSourceFacts{Name: "agentfield", Ref: "support.triage", URL: "https://cp/ui/runs/run_9"}) {
 		t.Fatalf("source %+v", read.Source)
 	}
 	if read.Origin == nil || *read.Origin != (factory.JobOrigin{Node: "support", Reasoner: "triage", Trigger: "generic-bearer"}) {
@@ -109,5 +109,41 @@ func TestAnAgentFieldJobRunsOnItsNodeNotThisMachine(t *testing.T) {
 	}
 	if got := runner(factory.Item{Num: 10, Kind: factory.KindIssue, State: factory.StateNew, WorktreeMachine: "mac-studio"}); got != "mac-studio" {
 		t.Fatalf("a native job's runner moved: %q", got)
+	}
+}
+
+// A SOURCE LINK THE APP CANNOT OPEN IS NOT SENT. The app opens a source's
+// link over https only; a run an older build recorded with an http page
+// reads with no link rather than a chip nobody can click.
+func TestAnAgentFieldJobSendsNoLinkItCannotOpen(t *testing.T) {
+	it := factory.Item{Num: 9, Kind: factory.KindIssue, State: factory.StateNew, RunOn: "support.triage",
+		AgentField: &factory.AgentFieldRun{RunID: "run_9", URL: "http://100.64.233.75:18741/ui/runs/run_9"}}
+	raw, _ := json.Marshal(FromItem(it))
+	var read struct {
+		Source *factory.JobSourceFacts `json:"source"`
+	}
+	_ = json.Unmarshal(raw, &read)
+	if read.Source == nil || read.Source.URL != "" || read.Source.Name != "agentfield" {
+		t.Fatalf("source %+v", read.Source)
+	}
+}
+
+// A STARTED AGENTFIELD JOB WEARS NONE OF THE STOCK PIPELINE. Between Start and
+// the run's first report its stream still holds the default plan · write · …
+// it was queued with; the job reads no step and no steps, never "plan".
+func TestAStartedAgentFieldJobShowsNoStockStep(t *testing.T) {
+	it := factory.Item{Num: 9, Kind: factory.KindIssue, State: factory.StateQueued, RunOn: "support.handle_ticket",
+		Stages: factory.DefaultRecipe().ByKind[factory.KindIssue],
+		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhasePending}, {Name: "write", State: factory.PhasePending}}}}
+	j := FromItem(it)
+	if j.Step != nil || len(j.Steps) != 0 {
+		t.Fatalf("step %+v steps %d", j.Step, len(j.Steps))
+	}
+	it.AgentField = &factory.AgentFieldRun{RunID: "r"}
+	it.Stages, it.Stream.Phases = []factory.Stage{{Name: "triage", Label: "Triage", Kind: factory.StageCheck, On: true}}, []factory.Phase{{Name: "triage", State: factory.PhaseRunning}}
+	it.State = factory.StateRunning
+	j = FromItem(it)
+	if j.Step == nil || j.Step.Name != "triage" || j.Step.Label != "Triage" {
+		t.Fatalf("once the run reports, step %+v", j.Step)
 	}
 }

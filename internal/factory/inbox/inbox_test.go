@@ -347,3 +347,48 @@ func TestTrustIsTheTierAndOnlyEverLowers(t *testing.T) {
 		t.Fatalf("Add(trust admin) = %v", err)
 	}
 }
+
+// AN AGENTFIELD JOB ARRIVES READY TO START. It has no repository, so no
+// repository's file budgets it: it gets the factory's default, the figure a
+// native job falls back to. Its first activity line names AgentField and the
+// node, the way its source chip does, and it never waits for a repository.
+func TestAnAgentFieldJobArrivesWithABudgetAndSaysWhereFrom(t *testing.T) {
+	st := openStore(t)
+	af := Entry{Source: "agentfield:generic-bearer", ExternalID: "T-1", Title: "Ledger total wrong", RunOn: "support.handle_ticket"}
+	res, err := Add(context.Background(), st, af, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it, _ := st.Get(res.ID)
+	if it.Cap != factory.DefaultJobBudget {
+		t.Fatalf("cap %v; want the built-in default %v", it.Cap, factory.DefaultJobBudget)
+	}
+	var said []string
+	for _, e := range it.Activity {
+		said = append(said, e.What)
+	}
+	if len(said) != 1 || said[0] != "arrived from AgentField · support" {
+		t.Fatalf("activity %q", said)
+	}
+
+	// The factory's own default stands when it set one.
+	twelve := 12.0
+	if _, err := st.ChangeSpending(func(s *factory.Spending) error { s.DefaultBudgetUSD = &twelve; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	af.ExternalID = "T-2"
+	res, err = Add(context.Background(), st, af, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := st.Get(res.ID); it.Cap != 12 {
+		t.Fatalf("cap %v; want the factory's default 12", it.Cap)
+	}
+
+	// A job outside work files with no repository still waits for one.
+	plain := Entry{Source: "inbox:ops", ExternalID: "B1", Title: "No repo yet"}
+	res, _ = Add(context.Background(), st, plain, at)
+	if it, _ := st.Get(res.ID); it.Cap != 0 || len(it.Activity) != 2 || it.Activity[1].What != WaitingWords {
+		t.Fatalf("a native repoless job changed: cap %v activity %+v", it.Cap, it.Activity)
+	}
+}

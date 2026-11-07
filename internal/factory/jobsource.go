@@ -37,8 +37,10 @@ func JobSource(it Item) (JobSourceFacts, bool) {
 	// is in [JobOriginOf].
 	if it.RunOn != "" {
 		src := JobSourceFacts{Name: AgentFieldSource, Ref: strings.TrimSpace(it.RunOn)}
-		if it.AgentField != nil {
-			src.URL = it.AgentField.URL
+		// Only a page the app can open: it opens a source's link over https
+		// only, and a run recorded by an older build may hold an http one.
+		if it.AgentField != nil && strings.HasPrefix(strings.TrimSpace(it.AgentField.URL), "https://") {
+			src.URL = strings.TrimSpace(it.AgentField.URL)
 		}
 		return src, true
 	}
