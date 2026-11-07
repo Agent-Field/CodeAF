@@ -211,6 +211,9 @@ page and step rail, Start and Stop.
 - **It ends with the run**: done when the reasoner succeeded, Needs you with
   the run's own words ("the AgentField run failed: …") when it failed.
   **Stop** cancels the whole run tree on AgentField.
+- It needs no repository and no model key on this machine — the work and
+  its model calls happen on the node — and it has no proof to approve: a run
+  that succeeded is done.
 - A factory that is not connected refuses the job: "this job runs on
   AgentField and this factory is not connected to AgentField".
 

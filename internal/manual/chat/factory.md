@@ -734,7 +734,7 @@ The factory checks GitHub about once a minute: lists nominate issues for a direc
 
 ## a job refused for a missing key — no key, which has no key, add a key for its service
 
-On a factory on your own machine, a person's Start, Run, Start now or Run again is refused before anything is written when the job's own choice (or the default, when the job names none) is on a service with no key: "This job can't start: its model, …, is on …, which has no key." Only that choice counts: a call on a service with no key is reported, never moved to a fallback, so a fallback with a key would not be asked. Add a key for that service in Settings, or choose another for the job. A team server never checks, since it holds none of its people's keys, and neither does a profile set to one model for every task, which checks that model itself.
+On a factory on your own machine, a person's Start, Run, Start now or Run again is refused before anything is written when the job's own choice (or the default, when the job names none) is on a service with no key: "This job can't start: its model, …, is on …, which has no key." Only that choice counts: a call on a service with no key is reported, never moved to a fallback, so a fallback with a key would not be asked. Add a key for that service in Settings, or choose another for the job. A team server never checks, since it holds none of its people's keys, and neither does a profile set to one model for every task, which checks that model itself, nor a job run by an AgentField reasoner, which calls no model here.
 
 ## a job's repository isn't checked out — clone, cloning, private repository, Start refused, not checked out on this machine
 

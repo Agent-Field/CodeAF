@@ -20,8 +20,8 @@ type AgentFieldRun struct {
 	// ExecutionID is the run's root execution; RunID its workflow.
 	ExecutionID string    `json:"execution_id,omitempty"`
 	RunID       string    `json:"run_id,omitempty"`
-	Began       time.Time `json:"began,omitempty"`
-	Ended       time.Time `json:"ended,omitempty"`
+	Began       time.Time `json:"began,omitzero"`
+	Ended       time.Time `json:"ended,omitzero"`
 	// Status is the root execution's last known status, in AgentField's words.
 	Status string `json:"status,omitempty"`
 	Error  string `json:"error,omitempty"`

@@ -34,7 +34,13 @@ const (
 // no GitHub names a bare repository ("api") with no owner, which RepoOf
 // answers "" for because no watched list could hold it, and that job is
 // still launched on its own checkout as it always was.
-func NamesNoRepo(it Item) bool { return strings.TrimSpace(it.Repo) == "" }
+//
+// A JOB RUN BY AN AGENTFIELD REASONER ([Item.RunOn]) NEEDS NO REPOSITORY: the
+// reasoner does its work on its own node, so nothing is checked out here and
+// the job starts without one.
+func NamesNoRepo(it Item) bool {
+	return strings.TrimSpace(it.Repo) == "" && strings.TrimSpace(it.RunOn) == ""
+}
 
 // RepoOffWords is the refusal for a job of repo, which is off.
 func RepoOffWords(repo string) string { return repo + " " + RepoOffRefusal }

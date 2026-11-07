@@ -232,3 +232,15 @@ func TestTrustIsCappedByTheCeiling(t *testing.T) {
 		}
 	}
 }
+
+// AN EVENT THAT NAMES A REASONER FILES A JOB THAT REASONER RUNS: run_on
+// survives the translation and the inbox's own check.
+func TestAnEventWithRunOnFilesARunOnJob(t *testing.T) {
+	out, err := Translate(Meta{Source: "generic_bearer", EventID: "ev1"}, json.RawMessage(`{"title":"ledger total wrong","body":"refund -500 printed 0.-50","run_on":"workaf-support.handle_ticket"}`), factory.TierCollab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.File == nil || out.File.RunOn != "workaf-support.handle_ticket" || out.File.Title != "ledger total wrong" {
+		t.Fatalf("filed %+v", out.File)
+	}
+}

@@ -672,12 +672,18 @@ func firstNonEmpty(v ...string) string {
 
 // agentFieldConn is the host's control plane client now, and its node id.
 func (h *appFactoryHost) agentFieldConn() (afClient, string, bool) {
+	if afTestConn != nil {
+		return afTestConn()
+	}
 	client, settings, ok := h.agentFieldNode().Conn.Client()
 	if !ok || client == nil {
 		return nil, "", false
 	}
 	return client, settings.NodeID, true
 }
+
+// afTestConn replaces the control plane in tests.
+var afTestConn func() (afClient, string, bool)
 
 // afTellNews tells a held step chat that its transcript grew, through the
 // same stage news a native step's events tell: a boundary, so the chat reads

@@ -286,7 +286,12 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 	if change == nil || len(change.Stages) == 0 {
 		return nil
 	}
+	// A JOB AN AGENTFIELD REASONER RUNS has the run's calls for steps and no
+	// approve gate of this factory's: what it was filed with is replaced.
 	for _, st := range it.Stages {
+		if strings.TrimSpace(it.RunOn) != "" {
+			break
+		}
 		if !st.On || !factory.IsApprove(st) {
 			continue
 		}
@@ -650,6 +655,17 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 	case "", factory.StateLanded:
 		landItem(it, now)
 	case factory.StateShipped:
+		// A JOB AN AGENTFIELD REASONER RAN IS DONE WHEN ITS RUN SUCCEEDED: it
+		// has no change here for a person to approve, so there is no proof
+		// to wait on.
+		if strings.TrimSpace(it.RunOn) != "" {
+			it.State = factory.StateShipped
+			it.Question, it.QKind = "", ""
+			it.Asking = nil
+			it.Stream.Ended = now
+			it.Stream.Paused = false
+			return nil
+		}
 		if it.FollowUp != nil && it.FollowUp.State == "healthy" && it.FollowUp.Readiness != nil && it.FollowUp.Readiness.State == "checked" && !ExternalPRHeadChecked(*it) {
 			return fmt.Errorf("checked PR snapshot changed before completion")
 		}

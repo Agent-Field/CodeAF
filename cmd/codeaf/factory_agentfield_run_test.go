@@ -596,3 +596,121 @@ func TestTheFactoryRunnerHandsARunOnJobToItsRun(t *testing.T) {
 		t.Fatalf("the job's steps are %+v", it.Stream.Phases)
 	}
 }
+
+// THE REAL DOORS, END TO END: on a real local factory behind the real wire,
+// a job filed with run_on and no repository is started by factory.job_start,
+// leased to this machine's runner, run on AgentField, carries the run's steps
+// on factory.job and the harness step's chat on factory.job_chats, answers
+// factory.agentfield_run, takes a send to that chat as a steer, and is done
+// when the run is.
+func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
+	prev := afRemoteEvery
+	afRemoteEvery = 20 * time.Millisecond
+	t.Cleanup(func() { afRemoteEvery = prev })
+	s := newLocalSetup(t)
+	// A runner with no model key takes no job at all (it attaches needing a
+	// provider), so the test's runner has one. The run_on job never uses it.
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
+	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
+		afNode("e-t", "triage", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"),
+		afNode("e-i", "investigate", "running", "2026-11-07T12:00:03Z", "",
+			afNode("e-s", "search_docs", "succeeded", "2026-11-07T12:00:04Z", "2026-11-07T12:00:05Z")))}
+	cp.relayLines("e-i", [][]byte{
+		[]byte(`{"type":"session","version":1,"id":"nodefolder","cwd":"/node","model":"m","timestamp":"2026-11-07T12:00:03Z"}`),
+		[]byte(`{"type":"message","role":"user","content":"why is the total wrong?","timestamp":"2026-11-07T12:00:03Z"}`),
+		[]byte(`{"type":"message","role":"assistant","content":"Looking at the ledger.","timestamp":"2026-11-07T12:00:04Z"}`),
+	}, false)
+	afTestConn = func() (afClient, string, bool) { return cp, "codeaf-factory", true }
+	t.Cleanup(func() { afTestConn = nil })
+
+	// A held chat needs a conversation behind it; the steer never reaches it.
+	s.backend.open = func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: &fakeConversation{}, Transcript: ask.Transcript, Workspace: ask.Workspace, Assembled: true, Release: func() {}}, nil
+	}
+	st := s.start()
+	eventually(t, "the runner holds the worker lock", func() bool { return runnerHeld(s) })
+	s.setup("factory.setup_connect", map[string]any{"source": "token", "token": setupSecret})
+	s.setup("factory.setup_select", map[string]any{"repos": []string{"acme/api"}})
+	s.until("checkouts", func(v appwire.FactorySetupView) bool { return v.State == "checkouts" })
+	s.setup("factory.setup_skip", map[string]any{"repo": "acme/api"})
+	s.setup("factory.setup_done", map[string]any{})
+	s.must("factory.local_run", map[string]any{"caller": "w1"}, &appwire.FactoryLocalStatus{})
+
+	s.backend.local.mu.Lock()
+	host := s.backend.local.host
+	s.backend.local.mu.Unlock()
+	job, err := host.floor.Add(context.Background(), factory.Item{Title: "ledger total wrong", Body: "refund -500 printed 0.-50", Tier: factory.TierOwner, RunOn: "workaf-support.handle_ticket"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read0 struct{ Version int }
+	_ = json.Unmarshal(afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job}), &read0)
+	s.must("factory.job_start", map[string]any{"factory": st.Factory, "job": job, "expect": map[string]any{"version": read0.Version}}, nil)
+
+	var chats appwire.FactoryJobChats
+	defer func() {
+		if t.Failed() {
+			t.Logf("job at failure: %s", afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job}))
+		}
+	}()
+	eventually(t, "the harness step has a chat", func() bool {
+		chats = appwire.FactoryJobChats{}
+		raw := afCall(s, "factory.job_chats", map[string]any{"factory": st.Factory, "job": job})
+		_ = json.Unmarshal(raw, &chats)
+		return len(chats.Steps) == 1 && chats.Steps[0].Step == "investigate"
+	})
+	var read struct {
+		Steps []struct {
+			Name, State, Parent, Label string
+			InRun                      bool `json:"in_run"`
+		}
+	}
+	raw := afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job})
+	_ = json.Unmarshal(raw, &read)
+	var steps []string
+	for _, x := range read.Steps {
+		steps = append(steps, x.Name+"/"+x.State+"/"+x.Parent+"/"+x.Label)
+	}
+	if strings.Join(steps, ",") != "triage/done//,investigate/running//,searchdocs/done/investigate/search_docs" {
+		t.Fatalf("factory.job's steps are %v (%s)", steps, raw)
+	}
+
+	var tree appwire.FactoryAgentFieldRun
+	_ = json.Unmarshal(afCall(s, "factory.agentfield_run", map[string]any{"factory": st.Factory, "job": job}), &tree)
+	if len(tree.Steps) != 2 || tree.Steps[1].Agent != chats.Steps[0].Agent || !tree.Steps[1].Steerable || len(tree.Steps[1].Children) != 1 {
+		t.Fatalf("factory.agentfield_run is %+v", tree)
+	}
+
+	// The step chat's ordinary send is the steer.
+	s.must("agents.send", map[string]any{"id": chats.Steps[0].Agent, "text": "check negative amounts too"}, nil)
+	cp.mu.Lock()
+	steers := append([]string(nil), cp.steers...)
+	cp.mu.Unlock()
+	if len(steers) != 1 || steers[0] != "e-i: check negative amounts too" {
+		t.Fatalf("the send reached the run as %v", steers)
+	}
+
+	cp.mu.Lock()
+	end := "2026-11-07T12:00:09Z"
+	cp.tree.Status, cp.tree.Children[1].Status, cp.tree.Children[1].CompletedAt = "succeeded", "succeeded", &end
+	cp.held["e-i"] = append(cp.held["e-i"], agentfield.RelayEntry{Seq: 5, Kind: "ended", Data: json.RawMessage(`{}`)})
+	cp.mu.Unlock()
+	eventually(t, "the job is done", func() bool {
+		var j struct{ State string }
+		_ = json.Unmarshal(afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job}), &j)
+		return j.State == "done"
+	})
+	msg := s.mustFail("agents.send", map[string]any{"id": chats.Steps[0].Agent, "text": "one more thing"}, appwire.CodeConflict)
+	if !strings.Contains(msg, afSteerEnded) {
+		t.Fatalf("a send to the ended step said %q", msg)
+	}
+}
+
+func afCall(s *localSetup, method string, params any) json.RawMessage {
+	s.t.Helper()
+	raw, code, msg := s.call(method, params)
+	if code != "" {
+		s.t.Fatalf("%s: %s %s", method, code, msg)
+	}
+	return raw
+}
