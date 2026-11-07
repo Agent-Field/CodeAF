@@ -30,3 +30,12 @@ type AgentFieldRun struct {
 	// kept, whether it is steerable now. It lives with the conversation,
 	// because the conversation is what this factory keeps.
 }
+
+// RunOnPending says the job is run by an AgentField reasoner ([Item.RunOn])
+// whose run has not begun. ITS STEPS ARE THE RUN'S, NOT THE FACTORY'S: until
+// the run reports its tree there is no step to show, so the default pipeline
+// the job was filed with is neither drawn nor counted — a rail that showed
+// plan, approve and write for a job that will never run them would be a lie.
+func RunOnPending(it Item) bool {
+	return it.RunOn != "" && it.AgentField == nil
+}

@@ -27,7 +27,11 @@ func StepCount(it Item) (done, total int) {
 			}
 		}
 	}
-	for _, s := range it.Stages {
+	stages := it.Stages
+	if RunOnPending(it) {
+		stages = nil
+	}
+	for _, s := range stages {
 		if s.On && !inRun[s.Name] {
 			total++
 		}

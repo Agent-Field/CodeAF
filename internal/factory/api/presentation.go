@@ -70,9 +70,11 @@ func PresentJob(j *Job) {
 		p.Title, p.Detail = "Needs you", j.Reason
 	case j.State == StateDone:
 		p.Title = "Done"
-	case j.State == StateBacklog && strings.TrimSpace(j.Repo) == "":
+	case j.State == StateBacklog && strings.TrimSpace(j.Repo) == "" && strings.TrimSpace(j.RunOn) == "":
 		// Outside work no rule or person has given a repository yet: the
 		// launch refuses it ([factory.NoRepoRefusal]), so its read says why.
+		// A job an AgentField reasoner runs (run_on) needs none, so it waits
+		// as ordinary backlog.
 		p.Title, p.Detail = factory.NoRepoTitle, factory.NoRepoDetail
 	case j.State == StateBacklog:
 		p.Title = "Backlog"

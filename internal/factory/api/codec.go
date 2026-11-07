@@ -1064,10 +1064,14 @@ func steps(it factory.Item) []Step {
 	if it.Stream != nil {
 		phases = it.Stream.Phases
 	}
-	out := make([]Step, 0, len(it.Stages)+len(phases))
+	stages := it.Stages
+	if factory.RunOnPending(it) {
+		stages = nil // the run has not said what its steps are yet
+	}
+	out := make([]Step, 0, len(stages)+len(phases))
 	j := 0
-	for i, st := range it.Stages {
-		for j < len(phases) && phases[j].Name != st.Name && factory.StageIndex(it.Stages[i:], phases[j].Name) < 0 {
+	for i, st := range stages {
+		for j < len(phases) && phases[j].Name != st.Name && factory.StageIndex(stages[i:], phases[j].Name) < 0 {
 			out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
 			j++
 		}
