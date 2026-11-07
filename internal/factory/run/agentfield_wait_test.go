@@ -31,6 +31,15 @@ func TestAJobShadowsItsAgentFieldRunsPause(t *testing.T) {
 	if !SyncAgentFieldWait(&it, now.Add(time.Second)) || it.State != factory.StateRunning || it.Question != "" || it.QKind != "" {
 		t.Fatalf("an answered pause stayed: %s %q %q", it.State, it.QKind, it.Question)
 	}
+	// THE ANSWER IS THE RUN'S RECORDED DECISION, NEVER A LOG LINE: who
+	// answered, how and with what words are in agentfield.decisions[], and a
+	// reader draws them from there. Taking the question down writes nothing
+	// to the job's log that a reader would have to match.
+	for _, l := range it.Stream.Log {
+		if l.Tone != "ask" {
+			t.Fatalf("taking an answered pause down wrote a log line: %+v", l)
+		}
+	}
 	// A wait never takes a job that has ended back to Needs you.
 	it.State = factory.StateShipped
 	it.AgentFieldSteps["build"].Waiting = &factory.AgentFieldWait{Execution: "exec-root", Question: "again?"}

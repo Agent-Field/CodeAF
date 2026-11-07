@@ -40,8 +40,9 @@ func SyncAgentFieldWait(it *factory.Item, now time.Time) bool {
 		if it.State == factory.StateNeedsYou {
 			it.State = factory.StateRunning
 		}
-		ensureStream(it, now)
-		loopSay(it, now, "said", "the AgentField run's approval was answered")
+		// NO LOG LINE SAYS IT WAS ANSWERED: the answer is the run's recorded
+		// decision (agentfield.decisions[]: decision, words, by, at), and a
+		// reader draws it from there rather than from words in the log.
 		return true
 	}
 	return false
