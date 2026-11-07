@@ -197,7 +197,9 @@ func (a *Agent) askInbox(ctx context.Context, q Question) (string, bool, error) 
 // stageAsked is q as the runner keeps it: the question in one line, its
 // answers by their labels, and the asker's pick by its label with its reason.
 func stageAsked(q Question) factory.Asked {
-	out := factory.Asked{Question: strings.Join(strings.Fields(q.Head), " ")}
+	// A JUDGEMENT IS A PERSON'S ([AskJudgement]): the step's question is
+	// marked so, and the factory never lets its manager answer it.
+	out := factory.Asked{Question: strings.Join(strings.Fields(q.Head), " "), Person: q.Ask == AskJudgement}
 	if reason := strings.Join(strings.Fields(q.Reason), " "); reason != "" && out.Question != "" {
 		out.Question += " (" + reason + ")"
 	}

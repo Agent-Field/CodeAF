@@ -274,11 +274,13 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 		return nil
 	}
 	if prev < 0 {
-		// Take down the question before stopping, as the warm runner does.
+		// Nothing to send back to: the no is a rejection that ends the job, as
+		// the warm runner's is. Take down the question before stopping.
 		if err := AnswerHeld(it, false, now); err != nil {
 			return err
 		}
 		stopStored(it, now)
+		it.EndRejected("", words, now)
 		return nil
 	}
 	words = strings.TrimSpace(words)

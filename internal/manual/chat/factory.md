@@ -704,7 +704,7 @@ no running slot.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
-**Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Resume only continues a paused job; after Stop it refuses with `is not paused`. Carry on reruns the stopped step. Reading the chat does not start work; you can still ask the manager questions without starting the job. Stop also withdraws proof awaiting sign-off and draft-PR maintenance. An already stopped or closed job refuses with `#12 is not running`.
+**Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Resume only continues a paused job; after Stop it refuses with `is not paused`. Carry on reruns the stopped step. Reading the chat does not start work; you can still ask the manager questions without starting the job. Stop also withdraws proof awaiting sign-off and draft-PR maintenance. An already stopped or closed job refuses with `#12 is not running`. A stopped job asks nothing of you, so it is not in Needs you and not in its count: it waits in Backlog with `Stopped by you` on it until you carry on, run it again or close it.
 
 **Undo**, for five seconds after your own Stop, puts the run back exactly as it stood: the same step, its conversation, what it spent and the question it was asking.
 
@@ -713,6 +713,18 @@ no running slot.
 A job owned by this factory has one manager, however many asks race to open it. A remote job running here may still get separate managers from its Talk door and its runner; those opens are not deduplicated. Every conversation owned by a job, including an extra manager left by an earlier build, spends from that job’s budget. Its model calls appear on the job and count toward its cap, wherever its working folder is. Reopening a conversation does not charge its saved calls again.
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
+
+## reject an approval — end a job with your words, Reject versus Ask for changes, rejected jobs
+
+**Reject** answers a job that waits on your approval (a plan, an approve step, a start that asked first, or a step whose run paused for an approval) with a no that ends the job. Your words are kept on it. The job is done and closed here, its work and spending kept and nothing on GitHub changed. The run's waiting step is closed, so it no longer reads waiting. It leaves Needs you and its count, and no routing rule or label ever starts it again. Its page says `Rejected` with `Rejected · <your words>`, and **Reopen** or **Run as new** are the ways back. It never offers to carry on.
+
+**Ask for changes** is different: it sends a plan back to be planned again with your words, and the job keeps going. A plain no to an approval that has no finished step before it to send back to is a Reject too.
+
+Reject refuses a job that waits on no approval with `is not waiting on an approval · Stop or Close end it instead`. Only someone who may answer the approval may reject it. The app's method is `factory.job_reject` (`POST /v1/jobs/{id}/reject`), and a job offers it as `can.reject`.
+
+## a failed job never starts again by itself — failed step, start: auto, labels, Try again
+
+A job whose run failed or was stopped is never started again by a routing rule's `start: auto`, by a start label, or by the factory starting up. A rule starts only a job that has never run. A failed job waits in Needs you with the failure on it until a person presses **Try again** or **Run again**, or takes it over. This holds for every kind of step and every rule. What the failed step reported before it failed, such as its output, its files or a link it gave, stays on that step beside the failure.
 
 ## Stop after the job moves on or starts publishing
 

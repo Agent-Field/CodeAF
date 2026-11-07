@@ -46,7 +46,7 @@ func TestJobScreensAStoppedJobSaysSoUntilUndoOrStart(t *testing.T) {
 	it := f.create(t, factory.Item{State: factory.StateRunning, Assignee: "sam", Stages: stages, Stream: recordedRun()})
 	f.post(t, it, "stop", "{}", 200)
 	j := f.read(t, it)
-	if j.State != "needs_you" || j.Failure == nil || j.Failure.Code != factory.CodeStopped || j.Failure.Next != factory.FailureStopped || j.Failure.Step != "write" || j.Failure.Detail != "Stopped by you" {
+	if j.State != "backlog" || j.Failure == nil || j.Failure.Code != factory.CodeStopped || j.Failure.Next != factory.FailureStopped || j.Failure.Step != "write" || j.Failure.Detail != "Stopped by you" {
 		t.Fatalf("the stopped job does not say so: %s %+v", j.State, j.Failure)
 	}
 	if j.StatePresentation.Kind != "failed" || j.StatePresentation.Title != "Step stopped" || j.Cost != 1.25 {
@@ -109,7 +109,7 @@ func TestJobScreensStopRerunKeepsEarlierWorkAndRevokesLease(t *testing.T) {
 		t.Fatal("old lease still accepts a heartbeat")
 	}
 	j := f.read(t, it)
-	if j.State != "needs_you" || j.StatePresentation.Title != "Step stopped" || !j.Controls.RerunStep || j.Controls.StopStep || j.Cost != 1.25 {
+	if j.State != "backlog" || j.StatePresentation.Title != "Step stopped" || !j.Controls.RerunStep || j.Controls.StopStep || j.Cost != 1.25 {
 		t.Fatalf("stop: %+v", j)
 	}
 	f.post(t, it, "steps/proof/rerun", "{}", 409)

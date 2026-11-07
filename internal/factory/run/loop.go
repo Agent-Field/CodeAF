@@ -95,9 +95,13 @@ type floorLoop struct {
 
 // loopCtl is one item's controls, reached by the doors.
 type loopCtl struct {
-	id              int
-	ctx             context.Context
-	cancel          context.CancelFunc
+	id     int
+	ctx    context.Context
+	cancel context.CancelFunc
+	// cause cancels ctx with why; a person's Stop cancels it with
+	// [factory.ErrPersonStopped] first ([StoppedHere]), and every other end
+	// (a withdrawn lease, the engine closing) with none.
+	cause           context.CancelCauseFunc
 	spending        sync.WaitGroup
 	steer           chan string
 	modelSelections chan ModelSelection
@@ -215,8 +219,8 @@ func (r *Runner) Launch(id int) error {
 		lp.mu.Unlock()
 		return AlreadyRunning(it.Ref())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
@@ -817,7 +821,10 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 		lp.addNote(c.id, a.words)
 		return lp.finish(c, i, name, "")
 	case prev < 0:
-		lp.stop(c)
+		// NOTHING TO SEND BACK TO: the no is a rejection, and it ends the job
+		// ([factory.Item.EndRejected]) rather than leaving it stopped with a
+		// carry-on that would only ask the same question again.
+		lp.reject(c, a.words)
 		return false
 	}
 	return lp.back(c, i, prev, a.words)
@@ -1111,7 +1118,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			continue
 		}
 		if err != nil {
-			// A step that errored is a failure, not a question. The job stops.
+			// A step that errored is a failure, not a question. The job stops,
+			// AND WHAT THE STEP REPORTED BEFORE IT FAILED STAYS ON IT: its
+			// output, files, claims and notes are the person's to read beside
+			// the failure (a link the step reported among them).
+			lp.keepFailedResult(c, i, res)
 			lp.failStop(c, name, err)
 			return false
 		}
@@ -1866,6 +1877,24 @@ func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 	lp.stop(c)
 }
 
+// keepFailedResult writes a failed round's result onto its step when the
+// step reported anything before it failed, so the failure never takes the
+// step's outputs with it. A round that reported nothing leaves the step's
+// earlier result as it was.
+func (lp *floorLoop) keepFailedResult(c *loopCtl, i int, res factory.StageResult) {
+	if strings.TrimSpace(res.Output) == "" && len(res.Files) == 0 && len(res.Claims) == 0 && len(res.Notes) == 0 && len(res.PublishSummary) == 0 {
+		return
+	}
+	kept := res
+	kept.Done = false
+	_ = lp.write(c, func(it *factory.Item) error {
+		if it.Stream != nil && i >= 0 && i < len(it.Stream.Phases) {
+			it.Stream.Phases[i].Result = &kept
+		}
+		return nil
+	})
+}
+
 // fold writes what a round said onto the item: its result for the stages
 // after it, its notes, its claims, its conversation, the first line of what
 // it put out, and a plan's edit through Adapt. An edit applied under the
@@ -2106,6 +2135,9 @@ func clean(it factory.Item) bool {
 func (lp *floorLoop) stop(c *loopCtl) {
 	c.wmu.Lock()
 	first := c.ctx.Err() == nil
+	if c.cause != nil {
+		c.cause(factory.ErrPersonStopped)
+	}
 	c.cancel()
 	if first {
 		now := lp.r.now()
@@ -2191,6 +2223,33 @@ func (r *Runner) Stop(id int) error {
 // already carried, a runner that went offline mid-step among them, is replaced
 // by the stop, the newer fact.
 func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
+
+// StoppedHere says a step's ctx ended because the job was stopped here: a
+// person's Stop, a rejection, a failed step stopping its run. Any other end
+// (the engine closing, a lease withdrawn) is not one.
+//
+// WORK THAT RUNS ELSEWHERE IS CANCELLED ONLY BY A STOP. An executor whose step
+// runs on another machine reads this when its ctx ends: a stop cancels the
+// remote work, and anything else lets go of it, so quitting this engine never
+// cancels a run that does not run here. The next engine start follows it
+// again.
+func StoppedHere(ctx context.Context) bool {
+	return errors.Is(context.Cause(ctx), factory.ErrPersonStopped)
+}
+
+// reject is a person's no that ends the job: the run stops as [floorLoop.stop]
+// stops it, and the job is then closed as rejected with their words, so it
+// leaves Needs you and no rule starts it again.
+func (lp *floorLoop) reject(c *loopCtl, words string) {
+	lp.stop(c)
+	now := lp.r.now()
+	_ = lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
+		if it.DoneHow == "" {
+			it.EndRejected("", words, now)
+		}
+		return nil
+	})
+}
 
 // endRun is the one write every stop makes, with a run to cancel or without:
 // the job is new again and the stream ends with its branch kept. why is the
@@ -2447,8 +2506,8 @@ func (r *Runner) revive(it factory.Item) error {
 		lp.mu.Unlock()
 		return AlreadyRunning(it.Ref())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	if i := nextPhase(it.Stream.Phases); i >= 0 && it.Stream.Phases[i].State == factory.PhaseRunning {
 		c.carry = strings.TrimSpace(it.Stream.Phases[i].Chat)
 	}
@@ -2804,8 +2863,8 @@ func (r *Runner) SendBack(id int, words string) error {
 		lp.release(previous)
 		previous.wmu.Unlock()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
@@ -2905,8 +2964,8 @@ func (r *Runner) Reverify(id int) error {
 		lp.release(previous)
 		previous.wmu.Unlock()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()

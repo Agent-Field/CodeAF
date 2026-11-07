@@ -238,7 +238,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.Log = append(out.Log, factory.LogLine{At: l.At, Tone: l.Tone, Text: l.Text})
 	}
 	if q := r.Question; q != nil {
-		out.Question = &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, Why: q.Why}
+		out.Question = &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, Why: q.Why, Person: q.Person}
 		if q.At != nil {
 			out.Question.At = *q.At
 		}

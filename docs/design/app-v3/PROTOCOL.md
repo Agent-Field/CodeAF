@@ -264,6 +264,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_pr_ready` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
+| `factory.job_reject` | `in.FactoryJobRejectParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
 | `factory.job_reopen` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_request_changes` | `in.FactoryJobChangesParams` | `FactoryJobActed` |
