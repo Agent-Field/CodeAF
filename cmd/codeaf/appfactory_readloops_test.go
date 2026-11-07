@@ -43,10 +43,12 @@ type readLoopsWorld struct {
 	ghCalls  atomic.Int64
 	asked    atomic.Int64
 	sources  atomic.Int64
-	mu       sync.Mutex
-	rules    pipeline.File
-	issues   []int
-	models   []string
+	// passes counts the intake passes that ran (each starts with Refresh).
+	passes atomic.Int64
+	mu     sync.Mutex
+	rules  pipeline.File
+	issues []int
+	models []string
 }
 
 func newReadLoopsWorld(t *testing.T) *readLoopsWorld {
@@ -134,7 +136,7 @@ func (w *readLoopsWorld) intake(st *store.Store) *intake.Intake {
 	history, _ := record.Open(st, record.Options{})
 	return intake.New(st, intake.Options{
 		Record:  history,
-		Refresh: func(context.Context) error { return nil },
+		Refresh: func(context.Context) error { w.passes.Add(1); return nil },
 		Load: func(string) (pipeline.File, error) {
 			w.mu.Lock()
 			defer w.mu.Unlock()
@@ -562,5 +564,46 @@ func TestPickUpIssuesOffStillRunsTheRoutingRules(t *testing.T) {
 	}
 	if got.Route != "ops" || got.Repo != "acme/api" || got.State == factory.StateNew {
 		t.Fatalf("routed job: route %q repo %q state %s", got.Route, got.Repo, got.State)
+	}
+}
+
+// WITH NO ROUTING RULES, PICK UP ISSUES OFF IS EXACTLY WHAT IT WAS: no intake
+// pass runs at all, so a labelled GitHub issue that a start rule would let
+// through is neither started, held, read again nor written on. The first
+// routing rule is what makes the pass run with the switch off.
+func TestPickUpIssuesOffWithNoRulesRunsNoPassAsBefore(t *testing.T) {
+	quickReads(t)
+	world := newReadLoopsWorld(t)
+	world.startRule(t)
+	world.file(4)
+	s := readLoopsSetup(t, world, readLoopsPin)
+	if st := watchAndStart(t, s); !st.Runner {
+		t.Fatalf("start: %+v", st)
+	}
+	floor := s.backend.local.host.floor
+	ready, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 3, Title: "Ready", Kind: factory.KindIssue, State: factory.StateNew, Labels: []string{"agent-ready", "size:S"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the poll has run", func() bool { return len(readLoopsItems(t, floor)) >= 2 })
+	settle()
+	if n, p := world.launches.Load(), world.passes.Load(); n != 0 || p != 0 {
+		t.Fatalf("with no rules and Pick up issues off: %d launches, %d intake passes; want none of either", n, p)
+	}
+	got, err := floor.Get(ready.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != factory.StateNew || got.Route != "" || got.QKind != "" || got.StartRules != nil || len(got.Stages) != len(ready.Stages) {
+		t.Fatalf("the labelled issue was worked on: state %s route %q ask %q", got.State, got.Route, got.QKind)
+	}
+	if _, err := floor.SetRoutes([]route.Rule{{Name: "ops", When: route.Match{Sources: []string{"inbox"}}, Then: route.Action{Repo: "acme/api", Start: route.StartBacklog}}}, factory.RulesChange{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	factorygithub.Nudge(floor)
+	eventually(t, "a pass runs once there is a rule", func() bool { return world.passes.Load() > 0 })
+	settle()
+	if world.launches.Load() != 0 {
+		t.Fatal("a rule for inbox work started the labelled GitHub issue")
 	}
 }

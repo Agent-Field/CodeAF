@@ -350,7 +350,17 @@ func (h *appFactoryHost) pollLoop() {
 // The setting is read again every pass, so turning it off stops the next
 // label start without a restart, and a rules file that cannot be read starts
 // nothing by its labels.
+//
+// GITHUB BEHAVES EXACTLY AS IT DID BEFORE ROUTING WHEN THERE ARE NO RULES:
+// with the switch off and an empty table, no pass runs at all, so nothing is
+// read from GitHub or written on a job that the switch used to leave alone.
+// A table that cannot be read runs the pass, whose own read refuses it.
 func (h *appFactoryHost) routeAndPickUp(ctx context.Context) error {
+	if !h.picksUpIssues() {
+		if rules, err := h.floor.Routes(); err == nil && len(rules) == 0 {
+			return nil
+		}
+	}
 	return h.intakeFor(h.floor).LabelsGated(h.picksUpIssues).Once(ctx)
 }
 
