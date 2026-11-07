@@ -288,8 +288,10 @@ func TestTheForemanReadsRunningQueueAndShippedAndStartsByRef(t *testing.T) {
 		PullRequest: &factory.PullRequest{Number: 161, URL: "https://github.com/acme/api/pull/161", State: factory.PRMerged}, Change: &factory.Change{Stat: &factory.ChangeStat{Files: 3, Added: 83, Removed: 1}}},
 		factory.Item{ID: 9, Num: 12, Repo: "acme/api", Kind: factory.KindIssue, Title: "old shipped", State: factory.StateShipped, DoneAt: now.Add(-48 * time.Hour)})
 	door.snap.Items[2].Priority = &factory.JobPriority{Value: "high"}
+	door.snap.Items = append(door.snap.Items, factory.Item{ID: 10, Num: 13, Repo: "acme/api", Kind: factory.KindIssue, Title: "following its PR", State: factory.StateShipped,
+		PullRequest: &factory.PullRequest{Number: 165, State: factory.PROpen, Draft: true}})
 	text, _ := floorCall(t, door, `{"ask":"running"}`)
-	if !strings.Contains(text, "#9 cache warmup") || !strings.Contains(text, "steps 1 of 3 done, on write") || strings.Contains(text, "#1 ") {
+	if !strings.Contains(text, "#9 cache warmup") || !strings.Contains(text, "steps 1 of 3 done, on write") || strings.Contains(text, "#1 ") || !strings.Contains(text, "#13 following its PR") {
 		t.Errorf("running:\n%s", text)
 	}
 	text, _ = floorCall(t, door, `{"ask":"queue"}`)

@@ -314,7 +314,7 @@ func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
 	}
 	var open []factory.Item
 	for _, it := range snap.Items {
-		if it.State != factory.StateDismissed && it.State != factory.StateShipped {
+		if it.State != factory.StateDismissed && (it.State != factory.StateShipped || floorFollowing(it)) {
 			open = append(open, it)
 		}
 	}
@@ -339,9 +339,9 @@ func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
 	switch ask {
 	case floorAskRunning:
 		rows = floorKeep(open, func(it factory.Item) bool {
-			return it.State == factory.StateRunning || it.State == factory.StateQueued || it.State == factory.StateLanded
+			return it.State == factory.StateRunning || it.State == factory.StateQueued || it.State == factory.StateLanded || floorFollowing(it)
 		})
-		head = "running or queued to run"
+		head = "running, queued to run, or following an open pull request"
 	case floorAskQueue:
 		rows = floorKeep(open, func(it factory.Item) bool { return it.State == factory.StateNew })
 		sort.SliceStable(rows, func(i, j int) bool {
@@ -645,4 +645,13 @@ func floorShippedToday(snap factory.Snapshot, now time.Time) string {
 		}
 	}
 	return b.String()
+}
+
+// floorFollowing says a published job is still at work on its open pull
+// request: the factory follows it (checks, reviews, readiness) and it still
+// waits on Mark ready or Merge. The live audit's foreman called such a job's
+// factory idle, because a published job read as finished.
+func floorFollowing(it factory.Item) bool {
+	pr := it.PullRequest
+	return pr != nil && pr.Number > 0 && pr.State == factory.PROpen && it.DoneHow == ""
 }
