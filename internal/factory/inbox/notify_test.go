@@ -60,8 +60,10 @@ func TestNotifyNeverFailsAndSkipsJobsWithNoSource(t *testing.T) {
 	RegisterReplier("inbox:ops", r)
 	defer RegisterReplier("chat", nil)
 	defer RegisterReplier("inbox:ops", nil)
+	// Deliveries run on their own goroutines, so the log is guarded.
+	var logMu sync.Mutex
 	var logged []string
-	logf = func(format string, args ...any) { logged = append(logged, format) }
+	logf = func(format string, args ...any) { logMu.Lock(); logged = append(logged, format); logMu.Unlock() }
 	defer func() { logf = defaultLogf }()
 
 	Notify(context.Background(), st, floor, Merged("u"))

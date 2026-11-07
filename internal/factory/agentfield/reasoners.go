@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
+	"github.com/Agent-Field/codeaf/internal/factory/trigger"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
@@ -166,7 +168,6 @@ func (n *Node) intake(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": msg})
 		return
 	}
-	n.answerFor(t.File.Source)
 	what := "updated job"
 	if res.Created {
 		what = "filed job"
@@ -232,39 +233,14 @@ func (n *Node) nudge(repo string) map[string]any {
 	return map[string]any{"filed": false, "reason": reason}
 }
 
-// jobRef is the message and status reasoners' way of naming a job.
+// jobRef is the message and status reasoners' way of naming a job: by the
+// (source, id) it was filed under, or by its number.
 type jobRef struct {
 	Source string `json:"source"`
 	ID     string `json:"id"`
 	Job    int    `json:"job"`
 	Text   string `json:"text"`
-}
-
-// find is the job ref names: by number, or by the (source, id) it was filed
-// under.
-func (n *Node) find(ref jobRef) (factory.Item, error) {
-	if ref.Job > 0 {
-		it, err := n.Store.Get(ref.Job)
-		if err != nil {
-			return factory.Item{}, errors.New("there is no job " + strconv.Itoa(ref.Job))
-		}
-		return it, nil
-	}
-	source, id := strings.TrimSpace(ref.Source), strings.TrimSpace(ref.ID)
-	if source == "" || id == "" {
-		return factory.Item{}, errors.New("name the job: {source, id} as it was filed, or {job}")
-	}
-	want := inbox.Ref(source, id)
-	items, err := n.Store.ListSaved()
-	if err != nil {
-		return factory.Item{}, err
-	}
-	for _, it := range items {
-		if it.SourceRef == want {
-			return n.Store.Get(it.ID)
-		}
-	}
-	return factory.Item{}, errors.New("no job was filed from " + source + " as " + id)
+	Author string `json:"author"`
 }
 
 func (n *Node) readRef(w http.ResponseWriter, r *http.Request) (jobRef, bool) {
@@ -277,62 +253,88 @@ func (n *Node) readRef(w http.ResponseWriter, r *http.Request) (jobRef, bool) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": "the call is a JSON object: {source, id} or {job}"})
 		return jobRef{}, false
 	}
+	ref.Source, ref.ID = strings.TrimSpace(ref.Source), strings.TrimSpace(ref.ID)
+	if ref.Job <= 0 && (ref.Source == "" || ref.ID == "") {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": "name the job: {source, id} as it was filed, or {job}"})
+		return jobRef{}, false
+	}
 	return ref, true
 }
 
-// message is the Trigger API's message: text reaches the job's manager the
-// way a person's message does, HELD TO THE JOB'S TRUST — a stranger's job,
-// or a control plane trusted no further than a stranger, gets the text on its
-// activity as context and nothing reaches the manager.
+// filedAs is the (source, id) ref names: its own, or the one its job was
+// filed under. A job the inbox did not file is [inbox.ErrNoJob].
+func (n *Node) filedAs(ref jobRef) (string, string, error) {
+	if ref.Job <= 0 {
+		return ref.Source, ref.ID, nil
+	}
+	it, err := n.Store.GetSaved(ref.Job)
+	if err != nil {
+		return "", "", inbox.ErrNoJob
+	}
+	source, id, ok := inbox.Split(it)
+	if !ok {
+		return "", "", inbox.ErrNoJob
+	}
+	return source, id, nil
+}
+
+// message is the Trigger API's message door ([trigger.Message]): the words
+// are a comment on the job, read the way every comment is, HELD TO THE LOWER
+// of the job's trust and the control plane's.
 func (n *Node) message(w http.ResponseWriter, r *http.Request) {
 	ref, ok := n.readRef(w, r)
 	if !ok {
 		return
 	}
-	text := strings.TrimSpace(ref.Text)
-	if text == "" || len(text) > inbox.MaxBody {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": "text is required, at most 32000 characters"})
-		return
-	}
-	it, err := n.find(ref)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
-		return
-	}
-	s, _, _, _ := n.Conn.Kept()
-	tier := capTrust(itemTier(it), s.Trust)
-	delivered := "context"
-	if tier != factory.TierStranger && n.Send != nil {
-		if err := n.Send(r.Context(), it.ID, text); err != nil {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": redact.Secrets(err.Error())})
+	source, id, err := n.filedAs(ref)
+	if err == nil {
+		s, _, _, _ := n.Conn.Kept()
+		var got trigger.Accepted
+		got, err = trigger.Message(r.Context(), n.Store, trigger.Said{Source: source, ID: id, Author: ref.Author, Text: ref.Text, Trust: capTrust("", s.Trust)}, n.now())
+		if err == nil {
+			n.heard(SourceName(ExecuteSource), "a message for job "+strconv.Itoa(got.Job)+": "+got.Line)
+			writeJSON(w, http.StatusOK, got)
 			return
 		}
-		delivered = "manager"
 	}
-	_ = n.Store.Update(it.ID, func(item *factory.Item) error {
-		item.Note(n.now(), "message from AgentField: "+oneLine(text, 160))
-		return nil
-	})
-	n.heard(SourceName(ExecuteSource), "a message for job "+strconv.Itoa(it.ID)+" ("+delivered+")")
-	writeJSON(w, http.StatusOK, map[string]any{"job": it.ID, "delivered": delivered})
+	writeDoorError(w, err)
 }
 
-// status is the Trigger API's status facts.
+// status is the Trigger API's status door ([trigger.Status]).
 func (n *Node) status(w http.ResponseWriter, r *http.Request) {
 	ref, ok := n.readRef(w, r)
 	if !ok {
 		return
 	}
-	it, err := n.find(ref)
+	var got api.IntakeStatus
+	var err error
+	if ref.Job > 0 {
+		got, err = trigger.StatusOfJob(n.Store, ref.Job)
+	} else {
+		got, err = trigger.Status(n.Store, ref.Source, ref.ID)
+	}
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+		writeDoorError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, Facts(it))
+	writeJSON(w, http.StatusOK, got)
 }
 
-// Facts are what the status reasoner and every execution result say about a
-// job.
+// writeDoorError answers a door's refusal: 404 for a job never filed, 422 for
+// words it cannot take, 500 for anything else.
+func writeDoorError(w http.ResponseWriter, err error) {
+	var refused inbox.Refused
+	switch {
+	case errors.Is(err, inbox.ErrNoJob):
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+	case errors.As(err, &refused):
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": refused.Words})
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": redact.Secrets(err.Error())})
+	}
+}
+
+// Facts are what every execution result says about a job.
 func Facts(it factory.Item) map[string]any {
 	done, total := factory.StepCount(it)
 	out := map[string]any{"job": it.ID, "title": it.Title, "state": factory.JobState(it), "steps_done": done, "steps_total": total}

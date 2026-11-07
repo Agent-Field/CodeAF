@@ -130,10 +130,11 @@ Rules for the contract:
   ships no SDK: AgentField's SDKs are the SDK (below).
 - ONE EVENT BUS OUT: `inbox.Notify` hands every moment to the source's
   `inbox.Replier` and to each `inbox.RegisterSink` (`webhook` is
-  `trigger.WebhookSink`; `agentfield` is the AgentField lane's). The message
-  and status doors are `trigger.Message`, `trigger.Status` and
-  `trigger.StatusOfJob`, which the HTTP routes and AgentField's reasoners
-  both call.
+  `trigger.WebhookSink`; `agentfield` is the node itself, which reports each
+  moment to the job's open executions and retells a quiet one with its lease,
+  with no polling tick). The message and status doors are `trigger.Message`,
+  `trigger.Status` and `trigger.StatusOfJob`, which the HTTP routes and
+  AgentField's `message` and `status` reasoners both call.
 - GITHUB STAYS AS IT WORKS TODAY in wave 2: labels plus Pick up issues,
   `factory.yaml` start rules, the e2e scenario 5 green. Moving the GitHub
   poller onto this contract is a later refactor with its own proof.

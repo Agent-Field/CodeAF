@@ -120,7 +120,7 @@ type world struct {
 	node   *Node
 	base   string // the registered base_url, secret included
 	nudges int
-	sent   []string
+	ahead  time.Duration // how far the node's clock runs ahead of now
 	mu     sync.Mutex
 }
 
@@ -128,9 +128,6 @@ type world struct {
 // against a fake control plane.
 func newWorld(t *testing.T, trust factory.Tier) *world {
 	t.Helper()
-	old := reportEvery
-	reportEvery = 20 * time.Millisecond
-	t.Cleanup(func() { reportEvery = old })
 	w := &world{t: t, plane: newFakePlane(t, "af-key-1")}
 	floor, err := store.Open(t.TempDir())
 	if err != nil {
@@ -147,12 +144,7 @@ func newWorld(t *testing.T, trust factory.Tier) *world {
 	}
 	w.node = &Node{Conn: conn, Store: floor, Version: NodeVersion, Build: "test",
 		Nudge: func() { w.mu.Lock(); w.nudges++; w.mu.Unlock() },
-		Send: func(_ context.Context, job int, text string) error {
-			w.mu.Lock()
-			w.sent = append(w.sent, text)
-			w.mu.Unlock()
-			return nil
-		}}
+		Clock: func() time.Time { w.mu.Lock(); defer w.mu.Unlock(); return time.Now().Add(w.ahead) }}
 	if err := w.node.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -396,6 +388,8 @@ func TestAStoppedJobFailsItsExecutionWithTheJobsWords(t *testing.T) {
 		it.Failure = &factory.Failure{Step: "test", Detail: "go test failed twice"}
 		return nil
 	})
+	// The bus carries the moment, as the lifecycle sends it.
+	inbox.Notify(context.Background(), w.floor, job, inbox.Stuck(""))
 	eventually(t, "the failure", func() bool {
 		r := w.plane.reportsFor("exec-s")
 		return len(r) > 0 && r[len(r)-1].Status == ExecFailed
@@ -418,26 +412,43 @@ func TestARefusedEntryAnswers422(t *testing.T) {
 	}
 }
 
+// The message and status reasoners are the Trigger API's own doors
+// (trigger.Message, trigger.Status): a message is a comment on the job, held
+// to the lower of its trust and the control plane's, and the status is the
+// job wire's facts.
 func TestMessageAndStatusReasoners(t *testing.T) {
 	w := newWorld(t, "")
 	_, out := w.post("/reasoners/intake", nil, `{"title":"Fix it","external_id":"x-1"}`)
 	job := int(out["job"].(float64))
 	code, st := w.post("/reasoners/status", nil, `{"source":"agentfield:execute","id":"x-1"}`)
-	if code != 200 || int(st["job"].(float64)) != job || st["state"] == nil || st["source"] != "agentfield:execute" {
+	if code != 200 || int(st["job"].(float64)) != job || st["state"] == nil || st["steps_total"] == nil || st["updated"] == nil {
 		t.Fatalf("status: %d %v", code, st)
 	}
-	code, msg := w.post("/reasoners/message", nil, `{"job":`+itoaT(job)+`,"text":"use a table test"}`)
-	if code != 200 || msg["delivered"] != "manager" || len(w.sent) != 1 {
-		t.Fatalf("message: %d %v sent=%v", code, msg, w.sent)
+	if code, byNumber := w.post("/reasoners/status", nil, `{"job":`+itoaT(job)+`}`); code != 200 || byNumber["state"] != st["state"] {
+		t.Fatalf("status by number: %d %v", code, byNumber)
 	}
-	// A stranger's job reads the message as context; nothing reaches the manager.
+	code, msg := w.post("/reasoners/message", nil, `{"job":`+itoaT(job)+`,"text":"use a table test","author":"dana"}`)
+	if code != 200 || msg["accepted"] != true || int(msg["job"].(float64)) != job || msg["outcome"] == "" || msg["line"] == "" {
+		t.Fatalf("message: %d %v", code, msg)
+	}
+	it, _ := w.floor.Get(job)
+	if len(it.Comments) != 1 || it.Comments[0].Body != "use a table test" || it.Comments[0].Author != "dana" {
+		t.Fatalf("the message is not a comment on the job: %+v", it.Comments)
+	}
+	// A stranger's job reads the message as context only.
 	_ = w.floor.Update(job, func(it *factory.Item) error { it.Tier = factory.TierStranger; return nil })
 	code, msg = w.post("/reasoners/message", nil, `{"source":"agentfield:execute","id":"x-1","text":"rm -rf"}`)
-	if code != 200 || msg["delivered"] != "context" || len(w.sent) != 1 {
-		t.Fatalf("a stranger's message: %d %v sent=%v", code, msg, w.sent)
+	if code != 200 || msg["outcome"] != string(factory.CommentContext) {
+		t.Fatalf("a stranger's message: %d %v", code, msg)
+	}
+	if code, _ := w.post("/reasoners/message", nil, `{"job":`+itoaT(job)+`,"text":""}`); code != 422 {
+		t.Fatalf("an empty message answered %d", code)
 	}
 	if code, _ := w.post("/reasoners/status", nil, `{"source":"agentfield:execute","id":"nope"}`); code != 404 {
 		t.Fatalf("status of no job answered %d", code)
+	}
+	if code, _ := w.post("/reasoners/message", nil, `{"job":999,"text":"hi"}`); code != 404 {
+		t.Fatalf("a message for no job answered %d", code)
 	}
 }
 
@@ -484,3 +495,32 @@ func TestTheClientRefusesAWrongKeyInWords(t *testing.T) {
 }
 
 func itoaT(n int) string { b, _ := json.Marshal(n); return string(b) }
+
+// A job that ends with no moment on the bus (a person dropped it) still
+// completes its execution: the lease's renewal tells an execution quiet for
+// keepAlive where its job stands.
+func TestAQuietExecutionIsToldAgainWithTheLease(t *testing.T) {
+	w := newWorld(t, factory.TierOwner)
+	code, out := w.post("/reasoners/intake", map[string]string{"X-Execution-ID": "exec-q"}, dispatch("generic_bearer", map[string]any{"title": "Fix it"}, "idem-q"))
+	if code != http.StatusAccepted {
+		t.Fatalf("intake: %d %v", code, out)
+	}
+	job := int(out["job"].(float64))
+	eventually(t, "a running report", func() bool { return len(w.plane.reportsFor("exec-q")) > 0 })
+	_ = w.floor.Update(job, func(it *factory.Item) error { it.State = factory.StateDismissed; return nil })
+	w.node.mu.Lock()
+	client := w.node.running.client
+	w.node.mu.Unlock()
+	w.node.retellQuiet(context.Background(), client)
+	if n := len(w.plane.reportsFor("exec-q")); n != 1 {
+		t.Fatalf("an execution told %d times inside keepAlive", n)
+	}
+	w.mu.Lock()
+	w.ahead = keepAlive
+	w.mu.Unlock()
+	w.node.retellQuiet(context.Background(), client)
+	r := w.plane.reportsFor("exec-q")
+	if last := r[len(r)-1]; last.Status != ExecSucceeded || len(w.node.Open()) != 0 {
+		t.Fatalf("after keepAlive: %+v, open %v", last, w.node.Open())
+	}
+}

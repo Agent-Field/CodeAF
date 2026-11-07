@@ -41,9 +41,6 @@ import (
 type appAgentField struct {
 	once sync.Once
 	node *agentfield.Node
-	// send hands a message to a job's manager; set by the engine that made
-	// the host, nil leaves a message on the job's activity only.
-	send func(ctx context.Context, job int, text string) error
 	// http replaces the transport; tests only.
 	http *http.Client
 }
@@ -58,12 +55,6 @@ func (h *appFactoryHost) agentFieldNode() *agentfield.Node {
 			After:   h.agentFieldAfter,
 			Options: func() []inbox.Option { return []inbox.Option{h.jiraRecipe()} },
 			Nudge:   func() { factorygithub.Nudge(h.floor) },
-			Send: func(ctx context.Context, job int, text string) error {
-				if h.agentfield.send == nil {
-					return errors.New("this factory cannot reach a job's manager here")
-				}
-				return h.agentfield.send(ctx, job, text)
-			},
 			Version: agentfield.NodeVersion,
 			Build:   buildinfo.String(),
 		}

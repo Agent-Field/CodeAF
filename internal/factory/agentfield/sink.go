@@ -13,21 +13,12 @@ import (
 // ── THE AGENTFIELD SINK: A JOB'S MOMENTS AS EXECUTION STATUS ────────────────
 //
 // The design's "one event bus out": the lifecycle's moments reach every sink
-// the same way, and a job never learns which. This sink is two halves over
-// one rule ([Update]):
-//
-//   - [replier] is an [inbox.Replier], registered for every agentfield:*
-//     source, so the moments the bus carries today — the pull request opened,
-//     merged, the job stopped for a person — reach the control plane the
-//     moment the worker reports them;
-//   - [Node.reportAll] reads every open execution's job on a short tick, for
-//     the moments the bus does not carry yet (the job started, asked a
-//     question, ended with no pull request) and to keep a long job's
-//     execution from looking stale.
-//
-// THE ADAPTER IS THIN ON PURPOSE. Lane gi-trigger-api is adding started,
-// question and done to the bus with a sink registration of its own; when it
-// lands, the tick's moment reading is the part that goes, and [Update] stays.
+// the same way, and a job never learns which. This node is one sink
+// ([inbox.RegisterSink] under [SinkName]) beside the source's own replier
+// and the signed webhook: each moment — filed, started, a question, the pull
+// request opened, merged, stuck, done, a message read — tells the job's open
+// executions where it stands now, and [Node.retellQuiet] on the lease's
+// renewal tells an execution that has gone quiet for [keepAlive] again.
 //
 // Whatever reports, the same rule decides, from the job as it is now:
 //
@@ -41,8 +32,8 @@ import (
 //   - otherwise → running, with progress as the share of steps done and the
 //     job's question in the result while it waits on one.
 //
-// Each execution is told each distinct state once ([Execution.Said]); a
-// running one is told again after [keepAlive].
+// Each execution is told each distinct state once ([Execution.Said]); an
+// open one is told again after [keepAlive].
 
 // Update is what an execution waiting on it is told now, a fingerprint of
 // it, and whether it completes the execution.
@@ -87,26 +78,28 @@ func stuckWords(it factory.Item) string {
 	return "codeaf stopped on this and needs a person"
 }
 
-// replier is the node as the inbox's answerer.
-type replier struct{ n *Node }
+// sink is the node on the event bus.
+type sink struct{ n *Node }
 
-func (r replier) Reply(ctx context.Context, _ string, ev inbox.Event) error {
-	n := r.n
+func (s sink) Send(ctx context.Context, m inbox.Moment) error {
+	n := s.n
 	n.mu.Lock()
 	run := n.running
 	n.mu.Unlock()
 	if run == nil {
 		return nil
 	}
-	n.reportJob(ctx, run.client, ev.JobID)
+	n.reportJob(ctx, run.client, m.JobID)
 	return nil
 }
 
-// reportAll tells every open execution where its job stands.
-func (n *Node) reportAll(ctx context.Context, c *Client) {
+// retellQuiet tells every open execution untold for [keepAlive] where its
+// job stands.
+func (n *Node) retellQuiet(ctx context.Context, c *Client) {
 	seen := map[int]bool{}
+	now := n.now()
 	for _, e := range n.table().open() {
-		if !seen[e.Job] {
+		if !seen[e.Job] && now.Sub(e.SaidAt) >= keepAlive {
 			seen[e.Job] = true
 			n.reportJob(ctx, c, e.Job)
 		}
@@ -114,7 +107,8 @@ func (n *Node) reportAll(ctx context.Context, c *Client) {
 }
 
 // reportJob tells job's open executions where it stands. One report runs at a
-// time, so the tick and the bus never tell one moment twice.
+// time, so two moments, or a moment and the lease's retelling, never tell one
+// state twice.
 func (n *Node) reportJob(ctx context.Context, c *Client, job int) {
 	n.reportMu.Lock()
 	defer n.reportMu.Unlock()
