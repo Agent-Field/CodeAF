@@ -3,6 +3,7 @@ package serve_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
@@ -170,5 +171,92 @@ func TestARejectOfAnUnheldRunEndsTheJobRejected(t *testing.T) {
 	got, _ := f.st.Get(it.ID)
 	if factory.JobState(got) != "done" || got.Rejection == nil || got.Rejection.Words != "wrong repo" {
 		t.Fatalf("an unheld rejected run's job did not end rejected: state %s, rejection %+v", factory.JobState(got), got.Rejection)
+	}
+}
+
+// reportRunCancelled is the runner's report of a run the control plane
+// cancelled on a person's Reject, before the runner acknowledged carrying it:
+// its record ended `cancelled: approval_rejected: <words>`, and its step
+// failed with the run's own words, as job 72 of the 2026-11-07 live run read.
+func reportRunCancelled(t *testing.T, desk *lease.Desk, held lease.Lease, words string) error {
+	t.Helper()
+	return desk.Apply(held.ID, held.Worker, false, false, func(it *factory.Item) error {
+		run := it.AgentFieldSteps["build"]
+		reason := "approval_rejected: " + words
+		run.Status, run.Error, run.Ended, run.Waiting = "cancelled", reason, time.Now(), nil
+		run.Asks = []factory.AgentFieldAsk{{RequestID: "plan-r1", Execution: "exec-plan", Body: "# Plan"}}
+		it.State = factory.StateNew
+		factory.StampFailure(it, factory.NewFailure("build", factory.CodeToolError, "the AgentField run cancelled: "+reason, "server", factory.FailureStopped, 1, time.Now()))
+		return nil
+	})
+}
+
+// A REJECT ENDS THE JOB REJECTED WHICHEVER SIDE WINS THE RACE. The control
+// plane cancels a rejected run at once, so the runner's reading of that
+// cancel can reach the factory before the runner acknowledges carrying the
+// Reject. That report used to land as a failed step (`tool_error`, "Step
+// failed · Try again") and the acknowledgement never came, because the
+// failure let go of the lease. The job now ends Rejected with the person's
+// words either way, keyed on the decision the factory recorded.
+func TestARejectedRunsCancelReportEndsTheJobRejectedNotFailed(t *testing.T) {
+	f := newV2Jobs(t)
+	it, desk, held := parkOnAgentFieldPause(t, f)
+	f.post(t, it, "reject", `{"words":"not now, out of scope"}`, 200)
+	if err := reportRunCancelled(t, desk, held, "not now, out of scope"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := f.st.Get(it.ID)
+	if factory.JobState(got) != "done" || got.Rejection == nil || got.Rejection.Words != "not now, out of scope" || got.Rejection.By != "sam" {
+		t.Fatalf("the cancel report did not end the job rejected: state %s, rejection %+v, failure %+v", factory.JobState(got), got.Rejection, got.Failure)
+	}
+	if got.Failure != nil {
+		t.Fatalf("a rejected job still carries the cancel as a failed step: %+v", got.Failure)
+	}
+	j := f.read(t, got)
+	if j.StatePresentation.Title != "Rejected" || j.Can.RunAgain || j.Can.Resume || !j.Can.Reopen || !j.Can.RunAsNew {
+		t.Fatalf("a rejected job reads %+v and offers %+v", j.StatePresentation, j.Can)
+	}
+	// The runner's acknowledgement, arriving after, changes nothing.
+	if again, err := desk.DrainLive(held.ID, held.Worker, []string{held.ID + "/x"}); err == nil && !(len(again) == 1 && again[0].Verb == lease.SignalStop) {
+		t.Fatalf("the runner still holds a rejected job: %+v", again)
+	}
+	if after, _ := f.st.Get(it.ID); after.Rejection == nil || after.Rejection.Words != "not now, out of scope" {
+		t.Fatalf("the late acknowledgement undid the rejection: %+v", after.Rejection)
+	}
+}
+
+// A RUN REJECTED ON THE CONTROL PLANE'S OWN PAGE ENDS ITS JOB REJECTED TOO:
+// this factory recorded no decision, and the control plane's cancel reason
+// `approval_rejected: <words>` is the person's no with their words.
+func TestARunRejectedElsewhereEndsTheJobRejectedWithTheCancelWords(t *testing.T) {
+	f := newV2Jobs(t)
+	it, desk, held := parkOnAgentFieldPause(t, f)
+	if err := reportRunCancelled(t, desk, held, "wrong approach"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := f.st.Get(it.ID)
+	if factory.JobState(got) != "done" || got.Rejection == nil || got.Rejection.Words != "wrong approach" {
+		t.Fatalf("a run rejected on the control plane did not end its job rejected: state %s, rejection %+v, failure %+v", factory.JobState(got), got.Rejection, got.Failure)
+	}
+}
+
+// A RUN THAT FAILED ON ITS OWN IS STILL A FAILED STEP, never a rejection:
+// only the person's recorded no or the control plane's reject reason ends a
+// job rejected.
+func TestARunThatFailedOnItsOwnIsNotARejection(t *testing.T) {
+	f := newV2Jobs(t)
+	it, desk, held := parkOnAgentFieldPause(t, f)
+	if err := desk.Apply(held.ID, held.Worker, false, false, func(it *factory.Item) error {
+		run := it.AgentFieldSteps["build"]
+		run.Status, run.Error, run.Ended, run.Waiting = "failed", "node crashed", time.Now(), nil
+		it.State = factory.StateNew
+		factory.StampFailure(it, factory.NewFailure("build", factory.CodeToolError, "the AgentField run failed: node crashed", "server", factory.FailureStopped, 1, time.Now()))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := f.st.Get(it.ID)
+	if got.Rejection != nil || got.Failure == nil || got.Failure.Code != factory.CodeToolError {
+		t.Fatalf("a run's own failure was read as a rejection: rejection %+v failure %+v", got.Rejection, got.Failure)
 	}
 }

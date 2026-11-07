@@ -517,6 +517,16 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 		if it.Publishing {
 			step = "publishing"
 		}
+		// RE-ATTACHING TO A LIVE REMOTE RUN IS NOT A RETRY. A step whose
+		// AgentField run goes on at the control plane never ran here, so a
+		// runner that went away (an engine restart, a lid closed) interrupted
+		// nothing: the job waits for a runner again exactly as when one lets
+		// go, and the runner that takes it follows the same run. No failure
+		// is stamped, so no automatic retry is spent and the step keeps its
+		// round.
+		if !it.Publishing && factory.AgentFieldRunLive(*it, step) {
+			return nil
+		}
 		it.State = factory.StateNeedsYou
 		it.QKind = factory.NeedsRunnerOffline
 		it.Question = "Runner went offline mid-step"

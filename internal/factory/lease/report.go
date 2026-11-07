@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -97,9 +98,29 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 			}
 			return false, err
 		}
+		rejected := false
 		if err := d.store.Update(held.Job, func(it *factory.Item) error {
 			if err := observed(it, change); err != nil {
 				return err
+			}
+			// A RUN THAT ENDED ON THE PERSON'S NO ENDS ITS JOB REJECTED, here
+			// as when the runner acknowledges carrying the Reject: the
+			// control plane cancels a rejected run at once, and the runner's
+			// reading of that cancel may arrive first. It is the person's
+			// decision, never the failed step the cancel reads as.
+			if it.Rejection == nil && it.State != factory.StateShipped {
+				if no, ok := factory.AgentFieldRejectedEnd(*it); ok {
+					history, err := record.Open(d.store, record.Options{Now: d.now})
+					if err != nil {
+						return err
+					}
+					if f := it.Failure; f != nil && f.Code != factory.CodeStopped {
+						it.Failure = nil
+					}
+					rejected = true
+					_, err = endRejectedLocked(history, doc, held, held.Job, it, now, no.By, no.Words)
+					return err
+				}
 			}
 			if !complete && holdAtJobBudget(it, now) {
 				blocked = !capWait
@@ -119,6 +140,9 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 			return nil
 		}); err != nil {
 			return false, err
+		}
+		if rejected {
+			return true, nil
 		}
 		if blocked {
 			withdraw(doc, *held)

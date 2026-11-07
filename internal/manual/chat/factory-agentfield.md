@@ -404,13 +404,30 @@ asks about, readable in full. Three answers:
   your words to the run".
 - **Reject** — the run stops and the job ends **Rejected**, with your words if
   you gave any (at most 4000 characters). It is done: it offers Reopen or Run as
-  new, never Carry on, and it leaves Needs you.
+  new, never Carry on, and it leaves Needs you. The control plane cancels a
+  rejected run at once, and the job still ends Rejected, never "Step failed" or
+  Try again, whichever reaches the factory first. A no given on the control
+  plane's own page ends it Rejected too, with the words its cancel carries
+  (`approval_rejected: <words>`). A run that failed on its own is still a
+  failed step.
 
 Only the job's person answers; the manager never does. Anyone else is refused
 with "only @<person> can answer this". The answer goes to the control plane,
 which keeps the one approval: if it was answered first somewhere else (hax, the
 control plane's page) the job's question comes down by itself, and a late
 answer says "this was already answered somewhere else, and that answer stands".
+
+## restart while an AgentField step runs — the run goes on, not a retry, no "interrupted" round
+
+Restarting codeaf, or its runner going away, while an agentfield step's run is
+still going on the control plane interrupts nothing: the run keeps going there.
+The job waits for its runner again ("Waiting to start"), and the runner that
+takes it follows that same run. There is no second run, no "interrupted"
+round, no "trying <step> again", and no automatic retry is spent, however many
+times it restarts. Only a person's Stop cancels the run.
+
+A run that had already ended when the runner went away is an ordinary
+interrupted step: it is retried automatically, at most 3 times.
 
 ## answer an AgentField approval from another computer — a team factory, a server, a desk attached to a remote factory
 
