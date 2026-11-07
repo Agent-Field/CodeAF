@@ -30,7 +30,7 @@ list back.
 
 The search runs in two passes so it stays cheap at 80 issues and at 5,000.
 
-1. A quick read: the AI reads the issues 40 at a time, with each one's title,
+1. A quick read: the AI reads the issues 20 at a time, with each one's title,
    labels, area and the start of its description, and keeps any that might be
    about your question. It keeps generously, because an issue it leaves out is
    lost while an extra one is removed by the check.

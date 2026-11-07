@@ -64,7 +64,7 @@ func items(n int, every int, word string) []factory.Item {
 	return out
 }
 
-// Eighty items: two screen reads, the judge asked only about what the screen
+// Eighty items: four screen reads, the judge asked only about what the screen
 // kept, a match only on the judge's yes, and every step told as progress.
 func TestASearchScreensInBatchesThenJudgesTheShortlist(t *testing.T) {
 	f := &fake{word: "ledger"}
@@ -73,8 +73,8 @@ func TestASearchScreensInBatchesThenJudgesTheShortlist(t *testing.T) {
 	if got.Phase != PhaseDone || got.Total != 80 || got.Read != 80 {
 		t.Fatalf("status %+v", got)
 	}
-	if f.screens.Load() != 2 {
-		t.Fatalf("80 items took %d screen reads, want 2", f.screens.Load())
+	if f.screens.Load() != 4 {
+		t.Fatalf("80 items took %d screen reads, want 4", f.screens.Load())
 	}
 	// Every tenth title and every tenth body says ledger: 16 kept, 8 match.
 	if got.Related != 16 || f.judges.Load() != 16 || len(got.Matches) != 8 {
@@ -83,7 +83,7 @@ func TestASearchScreensInBatchesThenJudgesTheShortlist(t *testing.T) {
 	if got.Matches[0].Job != 1 || got.Matches[0].Why == "" || got.Model == "" {
 		t.Fatalf("first match %+v model %q", got.Matches[0], got.Model)
 	}
-	if want := 2*0.001 + 16*0.0001; abs(got.USD-want) > 1e-9 {
+	if want := 4*0.001 + 16*0.0001; abs(got.USD-want) > 1e-9 {
 		t.Fatalf("cost %v, want %v", got.USD, want)
 	}
 	if len(told) < 4 || told[0].Phase != PhaseScreening || told[len(told)-1].Phase != PhaseDone {
@@ -141,12 +141,12 @@ func TestMatchesArriveWhileTheRestIsStillRead(t *testing.T) {
 	}
 }
 
-// Five thousand items cost a bounded number of calls: 125 reads, and the
+// Five thousand items cost a bounded number of calls: 250 reads, and the
 // judge never more than JudgeMost, the rest said as Over.
 func TestASearchOfFiveThousandIsBounded(t *testing.T) {
 	f := &fake{word: "auth"}
 	got := Run(context.Background(), Options{Question: "auth", Items: items(5000, 10, "auth"), Model: "m", Call: f.call})
-	if f.screens.Load() != 125 || f.judges.Load() != JudgeMost {
+	if f.screens.Load() != 250 || f.judges.Load() != JudgeMost {
 		t.Fatalf("%d reads and %d questions", f.screens.Load(), f.judges.Load())
 	}
 	if got.Over != 1000-JudgeMost || got.Phase != PhaseDone {
@@ -191,14 +191,14 @@ func TestASearchAgainReusesItsAnswersAndAsksOnlyWhatChanged(t *testing.T) {
 func TestAnUnreadableScreenFallsToTheJudge(t *testing.T) {
 	f := &fake{word: "ledger", badJSON: true}
 	got := Run(context.Background(), Options{Question: "ledger", Items: items(30, 10, "ledger"), Model: "m", Call: f.call})
-	if got.Failed != 1 || got.Related != 30 || len(got.Matches) != 3 || got.Phase != PhaseDone {
+	if got.Failed != 2 || got.Related != 30 || len(got.Matches) != 3 || got.Phase != PhaseDone {
 		t.Fatalf("status %+v", got)
 	}
 }
 
 func TestTheEstimateCountsReadsAndAPrice(t *testing.T) {
 	e := EstimateFor("ledger", items(80, 10, "ledger"), nil, &Price{In: 0.1, Out: 0.4})
-	if e.Items != 80 || e.Reads != 2 || e.JudgeMost != 60 || e.Typical == nil || e.Most == nil || *e.Typical >= *e.Most || *e.Most > 0.02 {
+	if e.Items != 80 || e.Reads != 4 || e.JudgeMost != 60 || e.Typical == nil || e.Most == nil || *e.Typical >= *e.Most || *e.Most > 0.02 {
 		t.Fatalf("estimate %+v", e)
 	}
 	if e := EstimateFor("ledger", items(3, 10, "ledger"), nil, nil); e.Typical != nil || e.Reads != 1 {

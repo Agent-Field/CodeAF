@@ -57,8 +57,12 @@ import (
 // The bounds of one search. ONE SOURCE OF TRUTH: the estimate, the wire's
 // refusals and the manual page all read these.
 const (
-	// ScreenBatch is how many items one screen read carries.
-	ScreenBatch = 40
+	// ScreenBatch is how many items one screen read carries. TWENTY, NOT
+	// MORE: progress moves when a read returns, and a cheap model thinks for
+	// ten to twenty seconds over forty items, so at forty a search of 61
+	// issues sat at "Reading 61 issues…" with an empty bar and then jumped.
+	// Twenty keeps each read short and the bar moving in steps a person sees.
+	ScreenBatch = 20
 	// SnippetMost is how much of an item's body the screen reads, in runes.
 	SnippetMost = 280
 	// JudgeMost is the most items the judge is asked about in one search.
