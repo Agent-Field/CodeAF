@@ -264,6 +264,21 @@ func NewFence(opts FenceOptions) (*Fence, error) {
 			f.Writable = append(f.Writable, c)
 		}
 	}
+	// CARGO KEEPS THE PERSON'S HOME, because codeaf's shell finds cargo itself
+	// through $CARGO_HOME/bin (internal/shell's cargo.go): pointing it into the
+	// job would lose a rustup install. Only its download caches are written;
+	// its bin stays read-only, so `cargo install` is refused like any install.
+	cargo := strings.TrimSpace(os.Getenv("CARGO_HOME"))
+	if cargo == "" && home != "" {
+		cargo = filepath.Join(home, ".cargo")
+	}
+	if cargo != "" {
+		for _, sub := range []string{"registry", "git"} {
+			if c, err := canonicalPath(filepath.Join(cargo, sub)); err == nil {
+				f.Writable = append(f.Writable, c)
+			}
+		}
+	}
 
 	var hidden []string
 	if home != "" {
@@ -462,7 +477,7 @@ func fenceEnv(f *Fence, home string) []string {
 		"GOCACHE=" + c("go-build"), "GOPATH=" + c("gopath"), "GOMODCACHE=" + c("gopath/pkg/mod"),
 		"npm_config_cache=" + c("npm"), "npm_config_store_dir=" + c("pnpm-store"),
 		"YARN_CACHE_FOLDER=" + c("yarn"), "PIP_CACHE_DIR=" + c("pip"), "UV_CACHE_DIR=" + c("uv"),
-		"CARGO_HOME=" + c("cargo"), "GRADLE_USER_HOME=" + c("gradle"),
+		"GRADLE_USER_HOME=" + c("gradle"),
 		"BUN_INSTALL_CACHE_DIR=" + c("bun"), "DENO_DIR=" + c("deno"),
 		"CODEAF_FENCED=1",
 	}

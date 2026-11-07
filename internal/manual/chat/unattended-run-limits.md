@@ -55,7 +55,7 @@ A relative path is ignored. The setting is read when the run starts. A run canno
 
 ## Its own temp and cache folders — GOCACHE, GOPATH, npm cache, pip cache, TMPDIR
 
-Each checkout gets a folder of its own under codeaf's folder, `jail/<id>/`, holding `tmp/` and `cache/`. A command's `TMPDIR`, `TMP` and `TEMP` point at `tmp/`. These point into `cache/`: `GOCACHE`, `GOPATH`, `GOMODCACHE`, `XDG_CACHE_HOME`, `npm_config_cache`, the pnpm store, `YARN_CACHE_FOLDER`, `PIP_CACHE_DIR`, `UV_CACHE_DIR`, `CARGO_HOME`, `GRADLE_USER_HOME`, `BUN_INSTALL_CACHE_DIR` and `DENO_DIR`. So `go build`, `go test`, `npm install` and `npm test` work inside the checkout without writing your own caches.
+Each checkout gets a folder of its own under codeaf's folder, `jail/<id>/`, holding `tmp/` and `cache/`. A command's `TMPDIR`, `TMP` and `TEMP` point at `tmp/`. These point into `cache/`: `GOCACHE`, `GOPATH`, `GOMODCACHE`, `XDG_CACHE_HOME`, `npm_config_cache`, the pnpm store, `YARN_CACHE_FOLDER`, `PIP_CACHE_DIR`, `UV_CACHE_DIR`, `GRADLE_USER_HOME`, `BUN_INSTALL_CACHE_DIR` and `DENO_DIR`. Cargo keeps your own `CARGO_HOME`, so your Rust install is found; only its `registry` and `git` download folders may be written, and `cargo install` is refused. So `go build`, `go test`, `npm install` and `npm test` work inside the checkout without writing your own caches.
 
 Go modules already on this computer are read from your own module cache first, so a job does not download them again. A job folder unused for fourteen days is removed. A command can tell it is limited by `CODEAF_FENCED=1`.
 
