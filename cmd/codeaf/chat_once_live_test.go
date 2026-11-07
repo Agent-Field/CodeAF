@@ -14,9 +14,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
+
+// A QUESTION ONLY A PERSON CAN ANSWER SAYS SO ON --events: the node's line
+// carries the step's mark, and the factory that reads it back keeps it, so a
+// question asked on another machine is as much the person's as one asked here.
+func TestChatOnceMarksAPersonOnlyQuestionOnEvents(t *testing.T) {
+	for _, person := range []bool{true, false} {
+		events := filepath.Join(t.TempDir(), "events.jsonl")
+		asker := newOnceAsker(events)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, _ = asker.Ask(ctx, factory.Asked{Question: "Ship it today?", Options: []string{"yes", "no"}, Person: person})
+		raw, err := os.ReadFile(events)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, _, _ := bytes.Cut(raw, []byte("\n"))
+		q, ok := afAskLineOf(first)
+		if !ok || q.Question != "Ship it today?" || q.Person != person {
+			t.Fatalf("person=%t: the line %s read back as %+v", person, first, q)
+		}
+	}
+}
 
 // A NOTE THAT LANDS AS THE RUN ENDS IS READ, NEVER LOST: the steer file is
 // read once more after the last turn, and a note waiting there gets the one

@@ -446,6 +446,11 @@ its options and the step's own pick. Your answer goes back to the step, which
 reads "the person answered: …" and carries on. When the run ends first, the
 question comes down.
 
+A question the step marks as one only a person can answer (the `ask` tool's
+judgement kind) skips the manager and comes straight to you, saying "the step
+said only a person can answer this", exactly as one asked on this machine. So
+does every question of a job in Manual.
+
 ## what the AgentField node cannot do
 
 - Only the factory on this machine connects; a team factory (`codeaf factory

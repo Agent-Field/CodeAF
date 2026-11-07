@@ -1471,6 +1471,8 @@ type afHarnessAsk struct {
 	Question string   `json:"question,omitempty"`
 	Options  []string `json:"options,omitempty"`
 	Pick     string   `json:"pick,omitempty"`
+	// Person is the step's mark that only a person can answer it.
+	Person bool `json:"person,omitempty"`
 }
 
 // afAskLineOf reads a relayed line that is a question or its taking down.
@@ -1484,7 +1486,7 @@ func afAskLineOf(data []byte) (afHarnessAsk, bool) {
 	}
 	switch line.Type {
 	case "ask":
-		return afHarnessAsk{ID: line.ID, Question: line.Question, Options: line.Options, Pick: line.Pick}, true
+		return afHarnessAsk{ID: line.ID, Question: line.Question, Options: line.Options, Pick: line.Pick, Person: line.Person}, true
 	case "ask_done":
 		return afHarnessAsk{ID: line.ID, Done: true}, true
 	}
@@ -1543,7 +1545,7 @@ func (r *afRemote) raiseAsks(client afClient, job int, exec string, pending []af
 		q := q
 		guard.Go("agentfield/ask", func() {
 			defer r.forgetAsk(key)
-			said, err := place.ask(ctx, factory.Asked{Question: q.Question, Options: q.Options, Pick: q.Pick})
+			said, err := place.ask(ctx, factory.Asked{Question: q.Question, Options: q.Options, Pick: q.Pick, Person: q.Person})
 			if err != nil {
 				return
 			}

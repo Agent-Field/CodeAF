@@ -251,7 +251,7 @@ func TestAHarnessStepsQuestionIsAnsweredOverSteer(t *testing.T) {
 	cp.relayLines("e-code", [][]byte{
 		[]byte(`{"type":"session","version":1,"id":"nodecoder","cwd":"/node","model":"m","timestamp":"2026-11-07T12:00:01Z"}`),
 		[]byte(`{"type":"message","role":"user","content":"add Len","timestamp":"2026-11-07T12:00:01Z"}`),
-		[]byte(`{"type":"ask","id":"ask-1","question":"Which storage shape?","options":["sqlite","jsonl"],"pick":"sqlite","timestamp":"2026-11-07T12:00:02Z"}`),
+		[]byte(`{"type":"ask","id":"ask-1","question":"Which storage shape?","options":["sqlite","jsonl"],"pick":"sqlite","person":true,"timestamp":"2026-11-07T12:00:02Z"}`),
 	}, false)
 	// The node closes the step's record once the run is cancelled.
 	cp.afterCancel = func() {
@@ -272,7 +272,10 @@ func TestAHarnessStepsQuestionIsAnsweredOverSteer(t *testing.T) {
 	t.Cleanup(func() { cancel(); <-stepped })
 	select {
 	case q := <-asked:
-		if q.Question != "Which storage shape?" || strings.Join(q.Options, ",") != "sqlite,jsonl" || q.Pick != "sqlite" {
+		// THE STEP'S MARK GOES WITH ITS QUESTION: one the step said only a
+		// person can answer reaches the job as one, so its manager never
+		// answers it (factory.PersonFirst).
+		if q.Question != "Which storage shape?" || strings.Join(q.Options, ",") != "sqlite,jsonl" || q.Pick != "sqlite" || !q.Person {
 			t.Fatalf("asked %+v", q)
 		}
 	case <-time.After(5 * time.Second):

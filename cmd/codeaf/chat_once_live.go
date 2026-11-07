@@ -266,12 +266,16 @@ type onceAnswer struct {
 // onceAskLine is the question's line on --events, and the line that takes it
 // down (Type ask_done, with only its ID).
 type onceAskLine struct {
-	Type      string   `json:"type"`
-	ID        string   `json:"id"`
-	Question  string   `json:"question,omitempty"`
-	Options   []string `json:"options,omitempty"`
-	Pick      string   `json:"pick,omitempty"`
-	Timestamp string   `json:"timestamp"`
+	Type     string   `json:"type"`
+	ID       string   `json:"id"`
+	Question string   `json:"question,omitempty"`
+	Options  []string `json:"options,omitempty"`
+	Pick     string   `json:"pick,omitempty"`
+	// Person is the step's mark that only a person can answer the question
+	// ([factory.Asked.Person]): the factory then never gives it to the
+	// job's manager.
+	Person    bool   `json:"person,omitempty"`
+	Timestamp string `json:"timestamp"`
 }
 
 func newOnceAsker(events string) *onceAsker {
@@ -286,7 +290,7 @@ func (o *onceAsker) Ask(ctx context.Context, q factory.Asked) (string, error) {
 		o.close(id)
 		_ = o.write(onceAskLine{Type: "ask_done", ID: id})
 	}()
-	if err := o.write(onceAskLine{Type: "ask", ID: id, Question: q.Question, Options: q.Options, Pick: q.Pick}); err != nil {
+	if err := o.write(onceAskLine{Type: "ask", ID: id, Question: q.Question, Options: q.Options, Pick: q.Pick, Person: q.Person}); err != nil {
 		// Nobody can be told, so nobody is asked: `ask` goes its own way.
 		return "", err
 	}
