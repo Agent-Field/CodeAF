@@ -616,6 +616,8 @@ type appBackend struct {
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
+	// setupGitHub is the first run's browser sign-ins (appfactory_setup_github.go).
+	setupGitHub appSetupGitHub
 	// startedAt is when this backend was made, and lastResume what its start
 	// carried on after the last quit, nil for nothing (apphealth.go). Both
 	// are guarded by mu.

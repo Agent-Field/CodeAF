@@ -270,6 +270,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryRefreshFeature(hello, engine)
 	hello = withFactoryLocalFeature(hello, engine)
 	hello = withFactorySetupContinueFeature(hello, engine)
+	hello = withFactorySetupGitHubFeature(hello, engine)
 	hello = withFactorySetupFolderCheckFeature(hello, engine)
 	hello = withOrdersMadeFeature(hello, engine)
 	hello = withFactoryAdminFeature(hello, engine)
