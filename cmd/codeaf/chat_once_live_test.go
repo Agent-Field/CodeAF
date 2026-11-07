@@ -75,11 +75,9 @@ func TestChatOnceTakesAMidRunNoteAndStreamsItsRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stop := make(chan struct{})
-	tail := copyTail(file, eventsPath, stop)
 	reply, stderr := &lockedWriter{}, &lockedWriter{}
 	var steers sync.WaitGroup
-	steerTail(agent, steerPath, reply, stderr, &steers, stop)
+	finishSteer, finishEvents := startOnceLive(agent, file, onceLive{events: eventsPath, steer: steerPath}, reply, stderr, &steers)
 	events, err := agent.Submit(context.Background(), "why was order 1182 charged twice?")
 	if err != nil {
 		t.Fatal(err)
@@ -87,12 +85,20 @@ func TestChatOnceTakesAMidRunNoteAndStreamsItsRecord(t *testing.T) {
 	if err := drainOnceEvents(events, reply, stderr); err != nil {
 		t.Fatal(err)
 	}
-	steers.Wait()
-	close(stop)
-	<-tail
+	finishSteer()
 	if err := agent.Close(); err != nil {
 		t.Fatal(err)
 	}
+	// A line the close writes after the answer — the live run's helper usage
+	// row did exactly this — still reaches the watcher.
+	late := `{"type":"usage","usage":{"model":"openai/gpt-4.1-mini","aux":true,"role":"reflex"}}` + "\n"
+	if f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0o600); err != nil {
+		t.Fatal(err)
+	} else {
+		_, _ = f.WriteString(late)
+		_ = f.Close()
+	}
+	finishEvents()
 
 	if !strings.Contains(reply.String(), "no amount is negative") {
 		t.Fatalf("the note did not change the answer:\nreply: %s\nstderr: %s", reply.String(), stderr.String())

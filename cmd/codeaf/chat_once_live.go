@@ -130,6 +130,33 @@ func steerTail(agent *session.Agent, path string, sink io.Writer, stderr io.Writ
 	}()
 }
 
+// startOnceLive starts --events' copy and --steer's reader for one run.
+// finishSteer waits out notes in flight and stops reading new ones; it is
+// called while the agent is still open. finishEvents makes the last copy and
+// is called only AFTER the agent and the usage ledger are closed, because
+// closing still writes lines to the record. Either is a no-op for a flag the
+// run did not pass.
+func startOnceLive(agent *session.Agent, record string, live onceLive, reply, stderr io.Writer, steers *sync.WaitGroup) (finishSteer, finishEvents func()) {
+	finishSteer, finishEvents = func() {}, func() {}
+	if live.events != "" {
+		stop := make(chan struct{})
+		tailed := copyTail(record, live.events, stop)
+		finishEvents = func() {
+			close(stop)
+			<-tailed
+		}
+	}
+	if live.steer != "" {
+		stop := make(chan struct{})
+		steerTail(agent, live.steer, reply, stderr, steers, stop)
+		finishSteer = func() {
+			steers.Wait()
+			close(stop)
+		}
+	}
+	return finishSteer, finishEvents
+}
+
 // lockedWriter is a reply buffer two drains may write at once.
 type lockedWriter struct {
 	mu  sync.Mutex

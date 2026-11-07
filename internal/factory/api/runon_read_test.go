@@ -24,10 +24,13 @@ func TestARunOnJobReadsAsBacklogWithNoStepsUntilItsRunBegins(t *testing.T) {
 	}
 
 	it.AgentField = &factory.AgentFieldRun{ExecutionID: "exec_1", Status: "running"}
-	it.Stages = []factory.Stage{{Name: "triage", Kind: factory.StageChat, On: true}, {Name: "investigate", Kind: factory.StageChat, On: true}}
+	it.Stages = []factory.Stage{{Name: "triage", Kind: factory.StageChat, On: true}, {Name: "investigate", Kind: factory.StageChat, On: true},
+		{Name: "searchdocs", Kind: factory.StageChat, On: true, Parent: "investigate"}}
 	j = FromItem(it)
-	if len(j.Steps) != 2 || j.Steps[0].Name != "triage" || j.StepsTotal != 2 {
-		t.Fatalf("once the run began the job reads %d steps (%d counted), want the run's two", len(j.Steps), j.StepsTotal)
+	// The nested call is on the job, naming its parent, so the rail can fold
+	// it; it is not counted as a step of its own.
+	if len(j.Steps) != 3 || j.Steps[0].Name != "triage" || j.Steps[2].Parent != "investigate" || j.StepsTotal != 2 {
+		t.Fatalf("once the run began the job reads %d steps (%d counted), want the run's three with two counted", len(j.Steps), j.StepsTotal)
 	}
 
 	plain := factory.Item{Num: 8, Kind: factory.KindIssue, State: factory.StateNew}

@@ -2944,6 +2944,18 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		return reported(err)
 	}
 	agent.SetReasoning(level)
+	// --events' LAST COPY WAITS FOR THE RECORD TO BE CLOSED. Closing the
+	// agent and the usage ledger still writes lines — a background helper's
+	// usage row lands a moment after the answer — and a copy that stopped
+	// before them would leave the watcher's conversation one line short of
+	// this one. Defers run last-in-first-out, so this one, registered before
+	// both closes, runs after them.
+	var finishEvents func()
+	defer func() {
+		if finishEvents != nil {
+			finishEvents()
+		}
+	}()
 	defer session.CloseUsage()
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
@@ -2993,24 +3005,9 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		}()
 	}
 	var steers sync.WaitGroup
-	if live.events != "" || live.steer != "" {
-		stop := make(chan struct{})
-		var tailed <-chan struct{}
-		if live.events != "" {
-			tailed = copyTail(cfg.SessionFile, live.events, stop)
-		}
-		if live.steer != "" {
-			steerTail(agent, live.steer, reply, os.Stderr, &steers, stop)
-		}
-		// Notes in flight are waited out, then the record's last lines copied.
-		defer func() {
-			steers.Wait()
-			close(stop)
-			if tailed != nil {
-				<-tailed
-			}
-		}()
-	}
+	finishSteer, finishCopy := startOnceLive(agent, cfg.SessionFile, live, reply, os.Stderr, &steers)
+	finishEvents = finishCopy
+	defer finishSteer()
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
