@@ -130,11 +130,7 @@ const (
 
 	EventSettingsChanged = "settings.changed"
 	EventProviderChanged = "provider.changed"
-	// EventCredentialChanged hands the app a credential a door gave the
-	// engine, to keep in its secure store and hand back with keys.set at
-	// the next launch ([CredentialChanged]).
-	EventCredentialChanged = "credential.changed"
-	EventModelsChanged     = "models.changed"
+	EventModelsChanged   = "models.changed"
 )
 
 // Error is a refusal the app can read: a code from the closed set above and a
@@ -1068,19 +1064,6 @@ type (
 	ProviderChanged struct {
 		Provider Provider `json:"provider"`
 		Key      string   `json:"key,omitempty"`
-	}
-
-	// CredentialChanged is a credential a door gave the engine (a pasted
-	// GitHub token, a Jira token, an AgentField key or node secret) or took
-	// away. Kept with Key: the app keeps Key under Provider and hands it
-	// back with keys.set at the next launch. Kept false: the app removes
-	// what it kept under Provider. THE KEY IS FOR THE APP'S SECURE STORE
-	// ONLY: the app takes it out of the event before any window, log or
-	// trace sees it.
-	CredentialChanged struct {
-		Provider string `json:"provider"`
-		Kept     bool   `json:"kept"`
-		Key      string `json:"key,omitempty"`
 	}
 )
 
