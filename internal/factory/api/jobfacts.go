@@ -121,7 +121,7 @@ func ModelsIn(j *Job, it factory.Item, d factory.ModelDefaults) {
 }
 
 // IntakeStatus is how far a job filed from outside is, for the tool that
-// filed it: GET /api/intake/{source}/{id} and AgentField's `status`. Route,
+// filed it: AgentField's `status`. Route,
 // PRURL and Question are absent when there is none.
 type IntakeStatus struct {
 	Job        int       `json:"job"`

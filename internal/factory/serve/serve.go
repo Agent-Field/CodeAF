@@ -171,9 +171,6 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
-	// triggers is the floor's signed webhooks and their outbox, nil without
-	// a store. intake.go owns it.
-	triggers    *triggerState
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
@@ -284,7 +281,6 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/spend/repos", h.spendRepos)
 	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
-	h.intakeRoutes()
 	h.jobScreens()
 	h.scheduleJobTimer()
 	if config.Store != nil {
@@ -365,9 +361,6 @@ func (h *Handler) Close() {
 	}
 	if h != nil && h.watch != nil {
 		h.watch.stop()
-	}
-	if h != nil {
-		h.closeTriggers()
 	}
 }
 

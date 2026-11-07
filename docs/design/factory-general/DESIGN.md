@@ -229,6 +229,15 @@ This supersedes the per-source webhook and `POST /api/intake` rows of the
 Trigger API table above; `inbox.Add`, the event bus and the local doors (the
 desk, `codeaf factory add` on the factory's own machine) remain.
 
+As landed (factory/gi-close-doors): every `/api/intake` route, `/v1/webhooks`,
+the webhook sink and its outbox, and `codeaf factory webhook` are gone.
+`codeaf factory add` is gone too, because it could only post to
+`/api/intake`: a store write from a second process would have skipped the
+host's recipe and its sinks. The desk's `factory.intake_add` now calls
+`inbox.Add` in the app's own process, on the factory it hosts, and refuses any
+other. `trigger.Message` and `trigger.Status` stay as Go functions the
+AgentField reasoners call.
+
 ## Later waves (not now)
 
 Workspace and deliverable interfaces (a non-git workspace, a non-PR output),

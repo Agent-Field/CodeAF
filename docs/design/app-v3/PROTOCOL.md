@@ -403,7 +403,11 @@ and errors retain their existing codes, including `bad_params` for malformed
 requests. Other job actions retain their guards except Pause and Resume, described below.
 
 `factory.intake` in hello features says the engine serves `factory.intake_add`:
-outside work filed as a job, the same door as the factory's `POST /api/intake`.
+outside work filed as a job through `inbox.Add` in the engine's own process, on
+the factory this engine serves; the factory has no HTTP intake, and another
+factory is `not_found` ("work is filed on the machine that runs the factory; on
+another machine, connect GitHub or Jira there or send it through AgentField").
+Work for a repository that is off is `conflict` with the factory's repo-off words.
 Its params are `{factory, source, external_id, title, body?, url?, author?,
 labels?, priority?, repo?, trust?}`; `source` is a lowercase name (`jira`,
 `inbox:ops`), `priority` is `p0`..`p3`, and `trust` is `owner` (the default),

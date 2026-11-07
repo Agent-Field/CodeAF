@@ -1,9 +1,10 @@
 // Package inbox is the factory's generic intake: work that arrives from any
-// outside system — a ticket tracker, an alert, a form, a script, a person's
-// `codeaf factory add` — becomes one job, the same way a GitHub issue does.
-// Every connector ([Feed], driven by [Poll]) and every trigger door (the wire,
-// the command line, the factory's HTTP endpoint) comes through [Add], so
-// checking, deduplication and filing are written once.
+// outside system — a ticket tracker, an AgentField trigger, a person at the
+// desk — becomes one job, the same way a GitHub issue does. Every connector
+// ([Feed], driven by [Poll]) and every door (the desk's wire, the AgentField
+// node) comes through [Add], so checking, deduplication and filing are
+// written once. THE FACTORY HAS NO OPEN HTTP INTAKE: programmatic work enters
+// through AgentField, never a route a script can post to.
 //
 // THIS PACKAGE NAMES NO VENDOR. A connector lives in its own package, says
 // its own name through [Feed.Name], and answers back through a [Replier] it

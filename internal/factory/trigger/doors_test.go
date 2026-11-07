@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
+
+var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 
 // The doors AgentField's reasoners call directly: a message reaches the job
 // as a comment the manager reads, and the status is the job wire's facts,
