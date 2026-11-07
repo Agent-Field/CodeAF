@@ -206,13 +206,23 @@ func (w *fleWorld) entries(agent string) []auda2Entry {
 }
 
 // awaitAnswer waits for the model's answer after since: model-authored
-// answer entries that then stop changing for twenty seconds.
+// answer entries that then stop changing for twenty seconds. A manager may
+// answer with a question card instead ("may I mark it ready for review
+// now?"), which waits for a person and writes no answer entry; the audit is
+// that person, so it takes the card's suggested choice, as the desk's one
+// press would, and keeps waiting for what the manager does with it. A choice
+// that merges is never taken.
 func (w *fleWorld) awaitAnswer(t *testing.T, agent string, since time.Time, within time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(within)
 	last, stable := "", time.Time{}
+	var cards []string
+	answered := map[string]bool{}
 	for time.Now().Before(deadline) {
-		var said []string
+		if card := w.answerOpenAsk(t, agent, answered); card != "" {
+			cards = append(cards, card)
+		}
+		said := append([]string(nil), cards...)
 		for _, e := range w.entries(agent) {
 			if e.Kind == "answer" && e.Author != "engine" && e.At.After(since) && strings.TrimSpace(e.Text) != "" {
 				said = append(said, strings.TrimSpace(e.Text))
@@ -229,6 +239,44 @@ func (w *fleWorld) awaitAnswer(t *testing.T, agent string, since time.Time, with
 	}
 	t.Errorf("no settled answer from %s within %s (last: %q)", agent, within, last)
 	return last
+}
+
+// answerOpenAsk takes the suggested choice of one open question card agent
+// raised, once per card, and answers what it asked and chose; "" when there
+// is none to take.
+func (w *fleWorld) answerOpenAsk(t *testing.T, agent string, answered map[string]bool) string {
+	raw, err := w.eng.call("asks.list", map[string]any{"agent": agent}, 10*time.Second)
+	if err != nil {
+		return ""
+	}
+	var list struct {
+		Asks []struct {
+			ID      string `json:"id"`
+			Kind    string `json:"kind"`
+			Title   string `json:"title"`
+			Choices []struct {
+				ID        string `json:"id"`
+				Label     string `json:"label"`
+				Suggested bool   `json:"suggested"`
+			} `json:"choices"`
+		} `json:"asks"`
+	}
+	_ = json.Unmarshal(raw, &list)
+	for _, a := range list.Asks {
+		if a.Kind != "question" || answered[a.ID] {
+			continue
+		}
+		for _, c := range a.Choices {
+			if !c.Suggested || strings.Contains(strings.ToLower(c.Label), "merge") {
+				continue
+			}
+			answered[a.ID] = true
+			_, err := w.eng.call("asks.answer", map[string]any{"agent": agent, "id": a.ID, "option": c.ID}, 30*time.Second)
+			t.Logf("the manager asked %q; the audit chose %q (%v)", a.Title, c.Label, err)
+			return fmt.Sprintf("asked: %s → %s", a.Title, c.Label)
+		}
+	}
+	return ""
 }
 
 // undoAnyMerge watches the job while the manager answers "merge it?" and
