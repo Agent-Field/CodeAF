@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +111,36 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 		it, _ := host.floor.Get(c)
 		return it.State != factory.StateNeedsYou && it.State != factory.StateRunning
 	})
+
+	// A step's question is answered with factory.job_answer: the option and
+	// the person's words reach the factory's answer door as one answer.
+	d, err := host.floor.Add(context.Background(), factory.Item{Title: "Add Len", Tier: factory.TierOwner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = host.floor.Update(d, func(it *factory.Item) error {
+		it.State, it.QKind, it.Question = factory.StateNeedsYou, "step", "Which storage shape?"
+		it.Asking = &factory.Asked{Stage: "build", Question: "Which storage shape?", Options: []string{"sqlite", "jsonl"}, Pick: "sqlite", With: factory.AskedYou, At: time.Now()}
+		return nil
+	})
+	if code, msg := answer("factory.job_answer", d, map[string]any{"question_id": "q" + strconv.Itoa(d), "option": "jsonl", "words": "it is append-only"}); code != "" {
+		t.Fatalf("job_answer: %s %s", code, msg)
+	}
+	answered, _ := host.floor.Get(d)
+	if answered.State == factory.StateNeedsYou {
+		t.Fatalf("the step's question is still waiting: %+v", answered.Asking)
+	}
+	if !strings.Contains(strings.Join(answered.Notes, "\n")+fmt.Sprint(answered.Stream), "jsonl: it is append-only") {
+		t.Fatalf("the answer did not reach the job: notes %q", answered.Notes)
+	}
+	// An approval is never answered there.
+	e := park("e")
+	if code, _ := answer("factory.job_answer", e, map[string]any{"question_id": "q" + strconv.Itoa(e) + ":swe-plan-e", "option": "Approve"}); code != appwire.CodeBadParams {
+		t.Fatalf("job_answer on an approval = %q", code)
+	}
+	if code, _ := answer("factory.job_answer", d, map[string]any{"question_id": "q1"}); code != appwire.CodeBadParams {
+		t.Fatalf("an answer with neither option nor words = %q", code)
+	}
 
 	cp.mu.Lock()
 	resolved := strings.Join(cp.resolved, "\n")

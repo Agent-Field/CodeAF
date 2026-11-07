@@ -291,3 +291,17 @@ func TestFannedOutCallsAreNamedByTheirSubject(t *testing.T) {
 		t.Fatalf("inputs read: %v", cp.inputReads)
 	}
 }
+
+// THE INPUT TAKES THE TYPES THE REASONER'S SCHEMA NAMES: a numeric field gets
+// a number even from words ("{issue_number} in words"), a string field a
+// string even from a number, and a field the schema does not name is as sent.
+func TestAnAgentFieldInputFollowsTheReasonersSchema(t *testing.T) {
+	cp := &afFakeCP{} // swe-planner.build_issue: title string, issue_number integer
+	got := afTypedInput(context.Background(), cp, "swe-planner.build_issue", map[string]any{"title": 7, "issue_number": "12", "extra": "12"})
+	if got["title"] != "7" || got["issue_number"] != 12 || got["extra"] != "12" {
+		t.Fatalf("typed = %#v", got)
+	}
+	if got := afTypedInput(context.Background(), cp, "other.reasoner", map[string]any{"issue_number": "12"}); got["issue_number"] != "12" {
+		t.Fatalf("a reasoner the control plane does not list was retyped: %#v", got)
+	}
+}

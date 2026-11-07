@@ -268,6 +268,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
 | `factory.job_reopen` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_request_changes` | `in.FactoryJobChangesParams` | `FactoryJobActed` |
+| `factory.job_answer` | `in.FactoryJobAnswerParams` | `FactoryJobActed` |
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_publish_anyway` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -483,7 +484,14 @@ stands: the job's question comes down, and a late answer is `conflict` with
 (`chat --once --events --steer`) waits for an answer. The factory puts the
 question to the job's manager and then to the person as an ordinary step
 question (`needs_you.question.kind: "step"`, with `options`, `pick` and `why`),
-which `factory.job_approve {words}` answers with those words.
+answered with `factory.job_answer {factory, job, question_id, option?, words?,
+expect: {version, state}}` (hello feature `factory.job_answer`): `question_id`
+is `needs_you.question.id`, `option` one of its `options` by label, `words` the
+person's own; at least one, and with both the step reads `<option>: <words>`.
+It is `FactoryJobActed` with action `answer`. A changed question or a moved job
+is refused as the factory's answer door refuses it, and an
+`agentfield_approval` question is `bad_params` (answer it with the three verbs
+above). This answers any step's question, a native step's too.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take

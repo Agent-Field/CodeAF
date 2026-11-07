@@ -47,6 +47,7 @@ const (
 	afAnswerNeedsWords   = "say what to change: Ask for changes sends your words to the run"
 	afAnswerGone         = "the run is no longer waiting for this answer"
 	afAnswerElsewhere    = "this was already answered somewhere else, and that answer stands"
+	afAnswerIsApproval   = "this is the AgentField run's approval: answer it with Approve, Ask for changes or Reject"
 )
 
 // localWaiting is the job on this machine's factory and the run pause it
@@ -222,4 +223,29 @@ func afSchemaFields(schema json.RawMessage) []appwire.FactoryAgentFieldInput {
 		out = append(out, appwire.FactoryAgentFieldInput{Name: k, Required: slices.Contains(s.Required, k), Type: typ})
 	}
 	return out
+}
+
+// FactoryJobAnswer is factory.job_answer: the person's answer to a step's
+// question — the option they chose, their words, or both — through the
+// factory's own answer door, which refuses an answer to a question that has
+// changed (question_id) or a job that moved on (expect). A run's approval is
+// not a step's question and is refused here with the verbs that answer it.
+func (b *appBackend) FactoryJobAnswer(ctx context.Context, p appwire.FactoryJobAnswerParams) (appwire.FactoryJobActed, error) {
+	if _, it, _, _ := b.localWaiting(p.Factory, p.Job); it.QKind == factory.QKindAgentField {
+		return appwire.FactoryJobActed{}, appwire.Errorf(appwire.CodeBadParams, "%s", afAnswerIsApproval)
+	}
+	answer := p.Option
+	switch {
+	case answer == "":
+		answer = p.Words
+	case p.Words != "":
+		answer += ": " + p.Words
+	}
+	yes := true
+	return b.jobWrite(ctx, p.Factory, appwire.JobActAnswer, p.Job, "answer", struct {
+		Yes        *bool       `json:"yes"`
+		Words      string      `json:"words"`
+		QuestionID string      `json:"question_id"`
+		Expect     *api.Expect `json:"expect,omitempty"`
+	}{&yes, answer, p.QuestionID, p.Expect})
 }

@@ -261,7 +261,7 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	defer r.dropAsks(it.ID)
 	run := place.recorded(it)
 	if run == nil || run.ExecutionID == "" || !run.Ended.IsZero() {
-		fresh, err := r.dispatch(ctx, client, node, target, factory.AgentFieldInput(it, st))
+		fresh, err := r.dispatch(ctx, client, node, target, afTypedInput(ctx, client, target, factory.AgentFieldInput(it, st)))
 		if err != nil {
 			return factory.StageResult{}, err
 		}
@@ -1655,4 +1655,52 @@ func afSubjectLabel(base, subject string) string {
 		return base + " " + subject
 	}
 	return base + " · " + subject
+}
+
+// afTypedInput is input with each value in the type the reasoner's input
+// schema names for its field, when the control plane lists that schema: a
+// number field gets a number ("12" is 12) and a string field a string (12 is
+// "12"). A field the schema does not type, or a value that is not that type in
+// any spelling, is sent as it is, and so is all of it when the schema cannot
+// be read: the reasoner then says what it refuses.
+func afTypedInput(ctx context.Context, client afClient, target string, input map[string]any) map[string]any {
+	lister, ok := client.(interface {
+		Nodes(context.Context) ([]agentfield.NodeReasoners, error)
+	})
+	if !ok {
+		return input
+	}
+	nodes, err := lister.Nodes(ctx)
+	if err != nil {
+		return input
+	}
+	node, reasoner, _ := strings.Cut(target, ".")
+	types := map[string]string{}
+	for _, n := range nodes {
+		if n.ID != node {
+			continue
+		}
+		for _, r := range n.Reasoners {
+			if r.ID == reasoner {
+				for _, f := range afSchemaFields(r.InputSchema) {
+					types[f.Name] = f.Type
+				}
+			}
+		}
+	}
+	for k, v := range input {
+		switch types[k] {
+		case "integer", "number":
+			if s, ok := v.(string); ok {
+				if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+					input[k] = n
+				}
+			}
+		case "string":
+			if n, ok := v.(int); ok {
+				input[k] = strconv.Itoa(n)
+			}
+		}
+	}
+	return input
 }

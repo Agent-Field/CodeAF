@@ -246,6 +246,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryJobChatsFeature(hello, engine)
 	hello = withFactoryAgentFieldRunFeature(hello, engine)
 	hello = withFactoryAgentFieldReasonersFeature(hello, engine)
+	hello = withFactoryJobAnswerFeature(hello, engine)
 	hello = withFactoryJobProtectedFeature(hello, engine)
 	hello = withFactoryEffortModelsFeature(hello, engine)
 	hello = withFactoryUsageFeature(hello, engine)
