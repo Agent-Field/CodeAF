@@ -142,6 +142,8 @@ var Lost = map[string]string{
 	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
 	"Item.CommentsSeen":   "the service's own record of which comments the job's manager has considered; only the service that reads GitHub uses it, and readers see comment_reads",
 	"Item.Judged":         "the deciding rule's answer crosses as route.answer and every other rule's no as route_declined; other rules' yeses, and every answer's key and time, are the service's own record of what it already asked",
+	"Item.RouteRefused":   "the service's own mark that a refused routing rule's activity row was written once; the row itself is the record a surface reads",
+	"Item.RepoSetBy":      "who gave the job its repository is the service's own routing input, read where the intake runs; the repository itself crosses as repo",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
 }
 

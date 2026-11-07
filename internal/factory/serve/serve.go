@@ -98,6 +98,10 @@ type Config struct {
 	PersonKnown func(string) (factory.GitHubPerson, bool)
 	// CodeOwners reads a watched repository's cached default-branch ownership.
 	CodeOwners func(context.Context, string) ([]factory.CodeOwner, error)
+	// Route runs the factory's routing over its new jobs now (the intake
+	// pass), so a job a person just gave a repository is routed without
+	// waiting for the next poll. Nil leaves it to that poll, which is nudged.
+	Route func(context.Context) error
 	// Pipeline reads the same repository rules as intake, including personal limits.
 	Pipeline func(context.Context, string, string) (pipeline.File, error)
 	// JobPipeline reads the pipeline one job is bounded by, with the same

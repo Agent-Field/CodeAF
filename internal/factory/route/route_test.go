@@ -221,3 +221,20 @@ func TestCleanRefuses(t *testing.T) {
 		}
 	}
 }
+
+// A PREVIEW SAYS A MATCHED RULE IS REFUSED when the file of the repository it
+// sends the job to is known to list no pipeline of the rule's name, and
+// matched when that file cannot be read.
+func TestPreviewSaysARuleWhosePipelineIsMissingIsRefused(t *testing.T) {
+	rules := []route.Rule{{Name: "docs", When: route.Match{Labels: []string{"docs"}}, Then: route.Action{Repo: "acme/api", Pipeline: "nope", Start: route.StartAuto}}}
+	items := []factory.Item{{ID: 1, Repo: "acme/web", Num: 1, Kind: factory.KindIssue, Labels: []string{"docs"}}}
+	known := func(repo, name string) (bool, bool) { return repo == "acme/api" && name == "docs", true }
+	got := route.PreviewListed(rules, items, 0, known)
+	if len(got) != 1 || got[0].Outcome != route.TriedRefused || got[0].Rule != "docs" || got[0].Reason != "routing rule docs: acme/api has no pipeline nope" {
+		t.Fatalf("preview %+v", got)
+	}
+	unknown := func(string, string) (bool, bool) { return false, false }
+	if got := route.PreviewListed(rules, items, 0, unknown); got[0].Outcome != route.TriedMatched {
+		t.Fatalf("an unreadable file refused the rule: %+v", got)
+	}
+}

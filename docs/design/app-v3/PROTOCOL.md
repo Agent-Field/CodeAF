@@ -277,6 +277,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
+| `factory.job_set_repo` | `in.FactoryJobSetRepoParams` | `FactoryJobActed` |
 | `factory.job_start` | `in.FactoryJobStartParams` | `FactoryJobActed` |
 | `factory.job_step_edit` | `in.FactoryJobStepEditParams` | `FactoryJobStepEdited` |
 | `factory.job_step_edits_read` | `in.FactoryJobStepEditsParams` | `FactoryJobStepEdits` |
@@ -592,9 +593,34 @@ characters for the factory's judge; a rule with a question matches only on a
 yes kept on the job. `factory.routes_test {factory, rules, limit?}` tries a
 table (need not be the kept one) on the newest `limit` jobs the caller may see
 (default 50, at most 200) and answers `{"factory": "...", "jobs": [{job, ref,
-title, outcome, rule?, why?}]}`, newest first, where `outcome` is `matched`,
-`pending` (a question with no answer kept yet) or `none`. It writes nothing
-and asks no model.
+title, outcome, rule?, why?, reason?}]}`, newest first, where `outcome` is
+`matched`, `pending` (a question with no answer kept yet), `refused` (the rule
+matched, and the repository it sends the job to lists no pipeline of the name
+it gives; `reason` is `routing rule <name>: <repo> has no pipeline <p>`) or
+`none`. It writes nothing and asks no model. `factory.routes_set` refuses, as
+`bad_params` in that same sentence, a rule that names both a repository and a
+pipeline that repository's file (or the factory's copy of it) does not list,
+when the file can be read; one whose file cannot be read now is kept. A rule
+refused while routing never fails the factory's pass: the job stays unrouted
+and its activity gets one `routed` row in that sentence.
+
+`factory.job_set_repo` in hello features says the engine serves
+`factory.job_set_repo {factory, job, repo, expect?}`: giving a job that never
+ran its repository (`owner/name`), the way out of Backlog for outside work
+that arrived with none. The factory sets the job's repository and places,
+stamps that repository's steps, keeps that a person chose it (a routing rule's
+repository never moves it again), clears the rule that routed it and routes it
+again at once. It replies `FactoryJobActed` with `action: "set_repo"`. Only
+the operator or the job's person may (`forbidden`); a job that has started is
+`conflict` "This job has already started, so it keeps its repository.", and a
+GitHub issue's job is `conflict` too. A Backlog job with no repository reads
+`state_presentation {kind: "backlog", title: "Waiting for a repository",
+detail: "Say which repository the work is on, or add a routing rule that sends
+it to one."}`, and `factory.job_start` on it is `conflict` "say which
+repository the work is on". `factory.job_start {pipeline}` is taken by a job
+queued and not yet taken: its steps are replaced and its run laid out again
+on them; only a job that ran is `conflict` "This job has already run, so it
+keeps its steps."
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts

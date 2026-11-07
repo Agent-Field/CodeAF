@@ -75,6 +75,15 @@ func AutonomyBlockReason(it Item) string {
 	if !Automatic(it) || (it.State != StateNeedsYou && it.State != StateLanded) {
 		return ""
 	}
+	// A ROUTING RULE'S START HOLD IS NOT AUTO STOPPING: nothing ran, so there
+	// is nothing Auto stopped. The job's own question ("Approval needed:
+	// start · routing rule …") is the whole of what it waits on, and a
+	// surface that prefixes this reason with "Auto stopped" would say
+	// something that did not happen. A hold the start labels and factory.yaml
+	// made (a GitHub issue no rule routed) reads exactly as it always has.
+	if it.QKind == QKindAskFirst && it.Route != "" {
+		return ""
+	}
 	if it.Cap <= 0 {
 		return "A job budget is required. Set Budget before continuing."
 	}
