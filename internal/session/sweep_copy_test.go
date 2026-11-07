@@ -174,7 +174,7 @@ func TestSweepHomeContextReapsOnlyRecognizedUnfinishedCopies(t *testing.T) {
 	writeFile(t, unknown+".lock", "")
 	writeFile(t, filepath.Join(filepath.Dir(copy), cell.CopyFolderReadme), "keep this note")
 	stampTree(t, unknown, now.Add(-8*24*time.Hour))
-	SweepHomeContext(context.Background(), "", nil, nil)
+	SweepHomeContext(context.Background(), "", nil, nil, nil)
 	if _, err := os.Stat(copy); !os.IsNotExist(err) {
 		t.Fatalf("launch left scratch copy: %v", err)
 	}

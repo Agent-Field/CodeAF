@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -177,19 +179,38 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Naming a vague opener may finish after its turn and publish another head.
+	// Give this idle-release fixture its name before the turn starts.
+	if _, err := a.Rename(agent.ID, "Idle release fixture"); err != nil {
+		t.Fatal(err)
+	}
 	turn, err := a.Send(agent.ID, "! echo before-idle", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	appTurnDoneFor(t, rec, turn)
 	own := appSyncOwn(t)
-	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head != "" })
 	appSyncWait(t, "I1 idle turn settled", func() bool {
 		var idle bool
 		a.locked(func() { idle = a.agents[agent.ID].live != nil && !a.agents[agent.ID].live.running })
 		return idle
 	})
 	var transcript string
+	a.locked(func() { transcript = a.agents[agent.ID].transcript })
+	chat, err := cell.OpenAt(session.DirOf(transcript), agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A completed turn can still be saving. Baseline the peer only after that
+	// capture is finished and its exact head has reached the directory.
+	if err := cellstore.WaitCapture(t.Context(), chat); err != nil {
+		t.Fatal(err)
+	}
+	head, err := cellstore.Head(chat)
+	if err != nil || head == nil {
+		t.Fatalf("idle setup head = %v, %v", head, err)
+	}
+	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head == head.Turn.ID })
 	if leftover {
 		// Model the old engine's mismatch after its final checkpoint: the
 		// stopped job is in tasks.json, but its process file still says running.

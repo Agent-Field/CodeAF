@@ -1581,17 +1581,25 @@ func TestQuittingFilesEveryOpenExchange(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	first := askedHere(t, lab, a, "remind me at 6 to leave")
+	firstAgent := lab.agent
+	// Each exchange owns an agent; quit closes them concurrently.
+	lab.agent = &errandAgent{fakeAgent: fakeAgent{model: "m"}}
 	askedHere(t, lab, a, "tell me when CI goes red")
 
 	a.errandEvent(first, session.Event{Kind: session.EventAutomationUpdate,
 		Automation: &session.AutomationNotice{Update: "saved", Automation: automation.Automation{ID: "cccc000000000009", Title: "leave"}}})
 
+	var closed <-chan struct{}
+	a.closingStarted = func(done <-chan struct{}) { closed = done }
 	spend(t, a, a.quit())
+	<-closed
 	if len(a.exchanges) != 0 {
 		t.Fatalf("quitting left %d exchanges open", len(a.exchanges))
 	}
-	if lab.agent.closes < 2 {
-		t.Fatalf("quitting closed %d of two errand agents", lab.agent.closes)
+	for i, agent := range []*errandAgent{firstAgent, lab.agent} {
+		if agent.closes != 1 {
+			t.Fatalf("quitting closed errand agent %d %d times, want once", i+1, agent.closes)
+		}
 	}
 	for _, dir := range lab.dirs {
 		if _, err := os.Stat(filepath.Join(dir, "transcript.jsonl")); err != nil {

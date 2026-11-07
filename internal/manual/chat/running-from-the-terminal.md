@@ -2061,10 +2061,13 @@ processes; finished logs remain available on demand without an ended count.
 
 ## Desktop app quit and saving helpers
 
-Saving helpers started by the desktop app use a one-minute idle limit. While
-the app's engine is alive, it sends a light health request about every 20 seconds
-to the helpers it started, so a quiet app keeps the same saving helper ready.
-These requests never start or restart a helper, and failures are ignored.
+Saving helpers started by the desktop app use a one-minute idle limit. While a
+reply is running or a save is still in progress, the app's engine sends a light
+health request about every 20 seconds to the helpers it started, so they stay
+ready. An idle app sends none: its saving helper exits after about one minute
+and stops using the processor, and the next save starts it again, which can add
+a short delay to that save. These requests never start or restart a helper, and
+failures are ignored.
 
 After the engine quits or is killed, the requests stop. Its saving helpers exit
 by themselves after about one minute without activity. Quit sends no shutdown

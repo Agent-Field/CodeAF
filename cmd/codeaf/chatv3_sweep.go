@@ -42,7 +42,7 @@ const sweepLogName = "sweep.log"
 // directory to walk so that the rule can be pointed at a temp directory and
 // proved. [v3ErrandsRoot] is the one answer to where that is, and
 // [errandHeldByAutomation] keeps the errands an automation was saved from.
-var sweepHome func(context.Context, string, func(string) bool, func(string)) = session.SweepHomeContext
+var sweepHome func(context.Context, string, func(string) bool, func(string) bool, func(string)) = session.SweepHomeContext
 
 func (p *v3Process) startPlaceSweep() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -51,7 +51,7 @@ func (p *v3Process) startPlaceSweep() {
 	p.sweepDone = done
 	guard.Go("chatv3/sweep-home", func() {
 		defer close(done)
-		sweepHome(ctx, v3ErrandsRoot(), errandHeldByAutomation(), func(line string) {
+		sweepHome(ctx, v3ErrandsRoot(), errandHeldByAutomation(), collectionKeepsConversation, func(line string) {
 			if ctx.Err() == nil {
 				noteSweep(line)
 			}

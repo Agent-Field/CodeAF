@@ -1279,10 +1279,12 @@ func appRowOnDisk(id string) (session.SessionRow, bool) {
 		// A folder minted and never spoken in is still a conversation the app
 		// may have created; its meta names the workspace.
 		meta, err := session.LoadMeta(dir)
-		if err != nil || strings.TrimSpace(meta.ID) == "" {
+		if err != nil || meta.ID != id {
 			continue
 		}
-		return session.SessionRow{ID: id, AgentDID: meta.AgentDID(), Dir: dir, Transcript: transcript, Title: meta.Title, Workspace: meta.Workspace, Created: meta.Created}, true
+		return session.SessionRow{ID: id, AgentDID: meta.AgentDID(), Dir: dir, Transcript: transcript,
+			Title: meta.Title, Workspace: meta.Workspace, Owned: meta.Owned, Model: meta.Model,
+			Archived: meta.Archived, Spend: meta.SpentUSD, At: meta.Created, Created: meta.Created}, true
 	}
 	return session.SessionRow{}, false
 }

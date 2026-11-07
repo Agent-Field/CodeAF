@@ -327,6 +327,19 @@ var tuiWords = map[string]tuiWord{
 		pkg:    tui3Pkg,
 		why:    "the tail on any row — an errand or another window's conversation — that is stopped on a person",
 	},
+	"conversationOpeningPage": {
+		screen: "opening conversation",
+		why: "the placeholder page a first message once waited on (conversation_open.go's conversationOpeningWord); " +
+			"the chat-start suite asserts the first message never lands on it",
+	},
+	"conversationOpeningState": {
+		screen: "opening chat",
+		why:    "the state the ordinary chat wears under a first message while its engine is still opening",
+	},
+	"chatTurnWorkingWord": {
+		screen: "working",
+		why:    "the state the ordinary chat wears once the first message's turn is in flight",
+	},
 	"homeAskWorkingWord": {
 		screen: "working",
 		why:    "the tail an errand's row wears while its turn is in flight",
