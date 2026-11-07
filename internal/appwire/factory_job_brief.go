@@ -56,8 +56,11 @@ type FactoryJobBrief struct {
 	Brief            factory.BriefVersion `json:"brief"`
 	VerdictBehind    bool                 `json:"verdict_behind"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
-	// ReadPrice is what one read of the issue before work typically costs on
-	// this factory, while a write now would be one and once one has run.
+	// ReadDue says a write now would be a paid read of the issue before work:
+	// the job has not worked and its issue is not too thin to read.
+	ReadDue bool `json:"read_due,omitempty"`
+	// ReadPrice is what one such read typically costs on this factory, while
+	// ReadDue and once one has run.
 	ReadPrice float64 `json:"read_price,omitempty"`
 }
 

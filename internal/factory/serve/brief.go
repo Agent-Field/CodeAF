@@ -32,6 +32,7 @@ func (h *Handler) readJobBrief(w http.ResponseWriter, r *http.Request) {
 	// The price is read from every job only while it is worth quoting: a job
 	// whose next write is a paid read of its issue.
 	if factory.BriefReadable(it) && out.Status != factory.BriefGenerating {
+		out.ReadDue = true
 		if items, err := h.config.Store.List(); err == nil {
 			out.ReadPrice = factory.FirstReadPrice(items)
 		}

@@ -165,8 +165,8 @@ func TestJobBriefQuotesTheReadPriceBeforeWork(t *testing.T) {
 	f := newV2Jobs(t)
 	body := "When a worker restarts mid-send, the retry loop sends the message again although the first send landed."
 	fresh := f.create(t, factory.Item{State: factory.StateQueued, Assignee: "sam", Title: "Retries double-send", Body: body})
-	if b := f.brief(t, fresh, "", 200); b.ReadPrice != 0 {
-		t.Fatalf("a factory with no read quoted %v", b.ReadPrice)
+	if b := f.brief(t, fresh, "", 200); !b.ReadDue || b.ReadPrice != 0 {
+		t.Fatalf("a factory with no read: due %v, quoted %v", b.ReadDue, b.ReadPrice)
 	}
 	for _, cost := range []float64{0.006, 0.002, 0.004} {
 		read := factory.Item{State: factory.StateQueued, Assignee: "sam", Title: "Another", Body: body}
@@ -181,8 +181,8 @@ func TestJobBriefQuotesTheReadPriceBeforeWork(t *testing.T) {
 		{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Result: &factory.StageResult{Done: true}},
 	}}})
 	for _, it := range []factory.Item{thin, worked} {
-		if b := f.brief(t, it, "", 200); b.ReadPrice != 0 {
-			t.Errorf("job %d is not a paid read before work, quoted %v", it.ID, b.ReadPrice)
+		if b := f.brief(t, it, "", 200); b.ReadDue || b.ReadPrice != 0 {
+			t.Errorf("job %d is not a paid read before work: due %v, quoted %v", it.ID, b.ReadDue, b.ReadPrice)
 		}
 	}
 }
