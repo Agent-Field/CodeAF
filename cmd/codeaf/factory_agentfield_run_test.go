@@ -40,6 +40,9 @@ type afFakeCP struct {
 	cancelled  []string
 	steers     []string
 	steerErr   error
+	// afterCancel runs once CancelTree has marked the run cancelled: a line
+	// the node relays after the person's stop.
+	afterCancel func()
 }
 
 func (f *afFakeCP) Dispatch(_ context.Context, target string, input any, owner string) (agentfield.Dispatched, error) {
@@ -108,8 +111,19 @@ func (f *afFakeCP) Steer(_ context.Context, exec, message string) error {
 
 func (f *afFakeCP) CancelTree(_ context.Context, run string) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.cancelled = append(f.cancelled, run)
+	// The control plane marks the run and every running execution in it.
+	f.tree.Status = "cancelled"
+	for i := range f.tree.Children {
+		if f.tree.Children[i].Status == "running" {
+			f.tree.Children[i].Status = "cancelled"
+		}
+	}
+	after := f.afterCancel
+	f.mu.Unlock()
+	if after != nil {
+		after()
+	}
 	return nil
 }
 
@@ -469,6 +483,9 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 			go func() { done <- r.Run(ctx, it.ID) }()
 			time.Sleep(50 * time.Millisecond)
 			if tc.cancel {
+				cp.afterCancel = func() {
+					cp.relayLines("e-t", [][]byte{[]byte(`{"type":"message","role":"assistant","content":"stopping","timestamp":"2026-11-07T12:00:03Z"}`)}, true)
+				}
 				cancel()
 			} else {
 				cp.mu.Lock()
@@ -498,6 +515,17 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 			job, _ := st.Get(it.ID)
 			if job.AgentField == nil || job.AgentField.ExecutionID != "exec-root" || len(job.Stream.Phases) != 1 || job.Stream.Phases[0].Name != "triage" {
 				t.Fatalf("the job does not carry its run: %+v %+v", job.AgentField, job.Stream)
+			}
+			// A stopped run is read to its end: the lines the node relays after
+			// the stop are kept and acked, so the control plane holds nothing,
+			// and the job records the run as cancelled.
+			if tc.cancel {
+				if n := len(cp.held["e-t"]); n != 0 {
+					t.Fatalf("the control plane still holds %d entries after the stop", n)
+				}
+				if job.AgentField.Status != "cancelled" {
+					t.Fatalf("the stopped job records its run as %q", job.AgentField.Status)
+				}
 			}
 		})
 	}

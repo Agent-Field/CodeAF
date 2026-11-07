@@ -55,6 +55,11 @@ import (
 )
 
 // afRemoteEvery is how often a running AgentField job is read.
+// afStopDrain is how long a stopped run is read for after its cancel: long
+// enough for the node to relay a step's last lines and the control plane to
+// mark the tree, short enough that a stop never hangs on a node that is gone.
+const afStopDrain = 15 * time.Second
+
 var afRemoteEvery = 500 * time.Millisecond
 
 // afClient is the part of the control plane client a remote run uses.
@@ -155,8 +160,24 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 		select {
 		case <-ctx.Done():
 			// THE PERSON'S STOP STOPS THE WHOLE RUN, not only this reading.
-			cancelCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			cancelCtx, cancel := context.WithTimeout(context.Background(), afStopDrain)
 			_ = client.CancelTree(cancelCtx, run.RunID)
+			// AND THE RUN IS STILL READ TO ITS END. A step's last lines reach
+			// the control plane after the stop, and the control plane holds
+			// them until this factory acks them: a reader that went home at
+			// the stop would leave them there for good, and the job would go
+			// on saying its run is running.
+			for cancelCtx.Err() == nil {
+				if tree, _, err := client.Tree(cancelCtx, run.RunID); err == nil {
+					if ended, _ := r.sync(cancelCtx, client, job, tree); ended {
+						break
+					}
+				}
+				select {
+				case <-cancelCtx.Done():
+				case <-time.After(afRemoteEvery):
+				}
+			}
 			cancel()
 			return ctx.Err()
 		case <-tick.C:
