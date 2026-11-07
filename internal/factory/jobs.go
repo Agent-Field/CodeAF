@@ -391,10 +391,11 @@ func JobApproval(it Item) *Approval {
 	}
 	// A plan approval that settled before the question now asked is the old
 	// consent for an old question; the new ask needs its own approval.
-	settledBefore := kind == "plan" && it.Approval != nil && it.Approval.Kind == "plan" && it.Approval.State == "approved" && it.Asking != nil && it.Asking.At.After(it.Approval.At)
-	// An approval recorded on a step hold before the hold had its own kind
-	// was written as a plan approval; it is still that hold's.
-	sameKind := it.Approval != nil && (it.Approval.Kind == kind || kind == "step" && it.Approval.Kind == "plan")
+	settledBefore := (kind == "plan" || kind == "step") && it.Approval != nil && it.Approval.Kind == kind && it.Approval.State == "approved" && it.Asking != nil && it.Asking.At.After(it.Approval.At)
+	// An approval still open on a step hold from before the hold had its own
+	// kind was written as a plan approval; it is still that hold's. A SETTLED
+	// plan approval is an earlier gate's consent and never answers this hold.
+	sameKind := it.Approval != nil && (it.Approval.Kind == kind || kind == "step" && it.Approval.Kind == "plan" && it.Approval.State != "approved")
 	if it.Approval != nil && !settledBefore && (kind == "" || sameKind) {
 		a := *it.Approval
 		return &a
