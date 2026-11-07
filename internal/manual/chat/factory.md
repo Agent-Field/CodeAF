@@ -74,23 +74,25 @@ Existing saved jobs keep their identity and work, without a migration.
 
 Every job from outside GitHub carries a trust, the same three a GitHub author has: `owner`, `collaborator` or `stranger`. It is set by whoever sends the work:
 
-- `codeaf factory add --trust`, `"trust"` in `POST /api/intake` and in `factory.intake_add`. Left out, it is `owner`, because only the operator holds the key to those doors. A script relaying other people's words (a webhook from a form, a support inbox) should send `collaborator` or `stranger`.
+- `"trust"` in the desktop's `factory.intake_add`. Left out, it is `owner`, because only the person at the factory's own machine files work there. Work relaying other people's words should be sent as `collaborator` or `stranger`.
+- AgentField work is held to the connection's trust ceiling, `collaborator` by default (see "AgentField and the factory", `factory-agentfield`).
 - Jira sets it itself: a reporter with a seat on the site, an automation, or a reporter this account cannot see is a `collaborator`; a service-desk customer who raised the ticket from a portal is a `stranger`.
 
 What it changes: a stranger's job never runs a step that can change files ("This job came from someone without write access to this repository, …"), and a routing rule's AI yes can at most hold a stranger's job at "Approval needed: start". A collaborator's job runs like an owner's.
 
 A later delivery can LOWER the trust, never raise it: a ticket handed to a stranger stops writing at once, while trusting someone more is done on the job, not by the outside system. Any other word is refused with "trust must be owner, collaborator or stranger".
 
-## send work to the factory from Jira, a script or a webhook — codeaf factory add, POST /api/intake
+## send work to the factory from Jira, a script or a webhook — built-in connectors in the app, custom triggers through AgentField
 
-Work from outside GitHub becomes a factory job through one inbox. Three ways in, all the same:
+Work from outside GitHub becomes a factory job through one inbox, and nobody writes code to send it:
 
-- `codeaf factory add --source NAME --id ID --title TEXT [--body TEXT|-] [--repo owner/name] [--label L]... [--priority p0..p3] [--trust owner|collaborator|stranger] [--url URL] [--factory URL --token T]`. `--body -` reads the details from standard input; `--label` is given once per label. Without `--factory` it posts to the factory this machine is attached to, else the one it serves. It prints `filed job 12 from inbox:ops:A1`, or `updated job 12 …` for a repeat.
-- `POST /api/intake` on the factory's address, with `Authorization: Bearer <access token>` (what `codeaf factory token` prints) or the operator's own session. The body is JSON: `{"source":"inbox:ops","external_id":"A1","title":"…","body":"…","url":"…","author":"…","labels":["bug"],"priority":"p1","repo":"owner/name","trust":"collaborator"}`. It answers `{"id":12,"created":true}` (201), or `created:false` (200) for a repeat. This is what a Jira automation, Zapier or any webhook calls. A teammate's sign-in is refused with "only the operator can do this".
-- The desktop's `factory.intake_add`, the same entry plus `factory`.
-- Your own tool, over this same HTTP API (and its messages, status and webhooks) or through AgentField. See the page "The factory's Trigger API".
+- **Built-in connectors**, set up in the app with clicks: GitHub, and Jira (see "connect Jira").
+- **The desktop**, one piece of work at a time: `factory.intake_add {factory, source, external_id, title, body?, url?, author?, labels?, priority?, repo?, trust?}`, answered `{"id":12,"created":true}`, or `created:false` for a repeat. Only the factory on this machine takes it; any other is refused with "work is filed on the machine that runs the factory; on another machine, connect GitHub or Jira there or send it through AgentField".
+- **Anything programmatic** — a custom trigger, a script, a form, a Zapier zap, a webhook, another agent — comes through AgentField: connect the factory to an AgentField control plane and aim a trigger at it. See "AgentField and the factory" (`factory-agentfield`).
 
-`source` is a lowercase name such as `jira` or `inbox:ops`; `github`, `terminal` and `chat` are the factory's own and are refused. `trust` is optional (see "who outside work is trusted as"). `priority` is `p0` (urgent) to `p3` (low). Limits: title 200 characters on one line, body 32000, id 200, at most 30 labels of 100, a request at most 64 KiB (larger is refused as too large).
+There is no open HTTP intake. The factory serves no `POST /api/intake`, no messages or status route under it, and sends no webhooks of its own. `codeaf factory add` and `codeaf factory webhook` were removed; typing either answers "codeaf factory add and codeaf factory webhook were removed: file work in the desktop app, connect GitHub or Jira there, or send custom triggers through AgentField".
+
+`source` is a lowercase name such as `jira` or `inbox:ops`; `github`, `terminal` and `chat` are the factory's own and are refused. `trust` is optional (see "who outside work is trusted as"). `priority` is `p0` (urgent) to `p3` (low). Limits: title 200 characters on one line, body 32000, id 200, at most 30 labels of 100, details at most 64 KiB in all.
 
 ## outside work as a job — the same id or the same ticket sent twice, no repository yet, answering back
 
@@ -102,7 +104,7 @@ Such a job is like `job 21`: it has no GitHub issue, so nothing is commented or 
 
 A job that never ran can be given its repository with `factory.job_set_repo {factory, job, repo, expect?}` (`repo` is `owner/name`). The job takes that repository, its steps, and is routed again at once, so a routing rule that matches it there decides its pipeline, priority and start. The repository a person sets wins over a rule's `repo`. Only the operator or the job's person may set it. A job that has started is refused with "This job has already started, so it keeps its repository.", and a GitHub issue's job always stays on its issue's repository. The app has no menu item for it yet: it is the app protocol's verb.
 
-A connector that can answer back on its own system is told when the job opens its pull request, when it merges, and when it stops and needs a person (Jira comments on the ticket for each). A source with a webhook (`codeaf factory webhook add SOURCE URL`) is also told when the job is filed, starts, asks a question and finishes, as signed webhooks; the page "The factory's Trigger API" has them. A failed answer is logged and never stops the job.
+A connector that can answer back on its own system is told when the job opens its pull request, when it merges, and when it stops and needs a person (Jira comments on the ticket for each). Work that came through AgentField hears every moment on its AgentField execution instead (see "AgentField and the factory", `factory-agentfield`). A failed answer is logged and never stops the job.
 
 ## finding jobs with desktop search and ⌘K
 
@@ -724,7 +726,7 @@ The job's manager reads every new comment on the issue once the factory's next G
 - on a job with a run under way: "asked you in the manager chat whether the plan should change", and the manager conversation quotes the comment and asks. Reply there with what to do;
 - on a job that has not started, or has finished: nothing changes, and the line says why.
 
-The manager never changes the plan from a comment on its own yet, even one that only narrows the work. A job filed from outside GitHub has no issue to comment on; its tool says more with `POST /api/intake/{source}/{id}/messages`, read the same way (the page "The factory's Trigger API").
+The manager never changes the plan from a comment on its own yet, even one that only narrows the work. A job filed from outside GitHub has no issue to comment on; its tool says more through AgentField's `message`, read the same way (see "AgentField and the factory", `factory-agentfield`).
 
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 

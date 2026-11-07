@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
-// A message sent from outside (POST /api/intake/{source}/{id}/messages) is in
+// A message sent from outside (AgentField's `message`, [inbox.Message]) is in
 // the next step's brief exactly as a comment on an issue is.
 func TestAMessageFromOutsideIsInTheNextStepsBrief(t *testing.T) {
 	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)

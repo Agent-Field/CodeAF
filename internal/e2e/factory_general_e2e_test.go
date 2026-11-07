@@ -40,14 +40,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -901,52 +897,6 @@ func (w *fleWorld) intakeAdd(e map[string]any) (id int, created bool) {
 	return out.ID, out.Created
 }
 
-// factoryTarget is the running factory's address and access token, read the
-// way `codeaf factory add` finds a desktop's factory itself: the runner
-// socket's solo answer under the factory store's root.
-func (w *fleWorld) factoryTarget() (url, token string) {
-	w.t.Helper()
-	sum := sha256.Sum256([]byte(filepath.Clean(w.floor.Root())))
-	sock := filepath.Join("/tmp", "codeaf-runners-"+strconv.Itoa(os.Getuid()), hex.EncodeToString(sum[:16])+".sock.solo")
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", sock)
-	}}}
-	resp, err := client.Get("http://solo/solo")
-	if err != nil {
-		w.t.Fatalf("read the factory's address from %s: %v", sock, err)
-	}
-	defer resp.Body.Close()
-	var d struct {
-		URL   string `json:"url"`
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil || d.URL == "" || d.Token == "" {
-		w.t.Fatalf("the factory's solo answer named no address or token: %v", err)
-	}
-	return strings.Replace(d.URL, "0.0.0.0", "127.0.0.1", 1), d.Token
-}
-
-// cliAdd runs `codeaf factory add` against the running factory.
-func (w *fleWorld) cliAdd(args ...string) string {
-	w.t.Helper()
-	url, token := w.factoryTarget()
-	cmd := guardedCommand(w.t, context.Background(), w.home, append(slices.Clone(w.env), "CODEAF_HOME="+w.home), w.bin, append([]string{"factory", "add"}, append(args, "--factory", url, "--token", token)...)...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		w.t.Fatalf("codeaf factory add %v: %v\n%s", args, err, out)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-var fleFiled = func(out string) (verb string, id int, ok bool) {
-	f := strings.Fields(out)
-	if len(f) < 5 || f[1] != "job" || f[3] != "from" {
-		return "", 0, false
-	}
-	n, err := strconv.Atoi(f[2])
-	return f[0], n, err == nil
-}
-
 // ── THE SCENARIOS ───────────────────────────────────────────────────────────
 
 func TestFactoryGeneralE2E(t *testing.T) {
@@ -1382,14 +1332,12 @@ func (w *fleWorld) scenarioPriority(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	older2 := add("b", "add a doc comment above the Ledger type's entries field", "p2")
 	time.Sleep(2 * time.Second)
-	// The p0 comes through the CLI, as acceptance 2 says it.
-	out := w.cliAdd("--source", "inbox:fle2e-prio", "--id", "p0-"+stamp, "--repo", fleRepo, "--priority", "p0",
-		"--title", flePrefix+": add a doc comment above the New function's return", "--body", "In ledger.go, add one line to New's doc comment. Change nothing else.")
-	verb, urgent, ok := fleFiled(out)
-	if !ok || verb != "filed" {
-		t.Fatalf("codeaf factory add printed %q, want \"filed job N from inbox:fle2e-prio:p0-…\"", out)
+	// The p0 is the newest of the three, so only its priority can put it first.
+	urgent, created := w.intakeAdd(map[string]any{"source": "inbox:fle2e-prio", "external_id": "p0-" + stamp, "repo": fleRepo, "priority": "p0",
+		"title": flePrefix + ": add a doc comment above the New function's return", "body": "In ledger.go, add one line to New's doc comment. Change nothing else."})
+	if !created {
+		t.Fatalf("factory.intake_add answered {id:%d created:false} for a new p0, want a new job", urgent)
 	}
-	w.started[urgent] = true
 	queued := []int{older1, older2, urgent}
 	fleEventually(t, "all three to be queued behind the blocker", 4*time.Minute, 2*time.Second, func() bool {
 		for _, id := range queued {
@@ -1426,10 +1374,10 @@ func (w *fleWorld) scenarioPriority(t *testing.T) {
 		w.stop(id)
 	}
 	cost = w.daySpend() - spend0
-	evidence = fmt.Sprintf("slots=1 blocker=%d p2=%d,%d p0=%d (CLI: %q) first-to-run=%d", blocker, older1, older2, urgent, out, first)
+	evidence = fmt.Sprintf("slots=1 blocker=%d p2=%d,%d p0=%d first-to-run=%d", blocker, older1, older2, urgent, first)
 }
 
-// 4. Dedup: the same (source, id) through the CLI twice and the wire once is
+// 4. Dedup: the same (source, id) through factory.intake_add three times is
 // one job, with the last title.
 func (w *fleWorld) scenarioDedup(t *testing.T) {
 	defer w.with(t)()
@@ -1439,19 +1387,19 @@ func (w *fleWorld) scenarioDedup(t *testing.T) {
 	w.setRoutes([]any{})
 	id := "D-" + strconv.FormatInt(time.Now().Unix(), 36)
 	ref := "inbox:fle2e-dedup:" + id
-	out1 := w.cliAdd("--source", "inbox:fle2e-dedup", "--id", id, "--title", flePrefix+" dedup first")
-	out2 := w.cliAdd("--source", "inbox:fle2e-dedup", "--id", id, "--title", flePrefix+" dedup second")
+	n1, created1 := w.intakeAdd(map[string]any{"source": "inbox:fle2e-dedup", "external_id": id, "title": flePrefix + " dedup first"})
+	n2, created2 := w.intakeAdd(map[string]any{"source": "inbox:fle2e-dedup", "external_id": id, "title": flePrefix + " dedup second"})
 	n3, created3 := w.intakeAdd(map[string]any{"source": "inbox:fle2e-dedup", "external_id": id, "title": flePrefix + " dedup third"})
-	v1, n1, ok1 := fleFiled(out1)
-	v2, n2, ok2 := fleFiled(out2)
-	if !ok1 || v1 != "filed" || out1 != fmt.Sprintf("filed job %d from %s", n1, ref) {
-		t.Errorf("first add printed %q, want \"filed job N from %s\"", out1, ref)
+	if !created1 {
+		t.Errorf("first factory.intake_add answered {id:%d created:false}, want a new job", n1)
 	}
-	if !ok2 || v2 != "updated" || n2 != n1 || out2 != fmt.Sprintf("updated job %d from %s", n1, ref) {
-		t.Errorf("second add printed %q, want \"updated job %d from %s\"", out2, n1, ref)
-	}
-	if created3 || n3 != n1 {
-		t.Errorf("factory.intake_add answered {id:%d created:%v}, want {id:%d created:false}", n3, created3, n1)
+	for i, got := range []struct {
+		n       int
+		created bool
+	}{{n2, created2}, {n3, created3}} {
+		if got.created || got.n != n1 {
+			t.Errorf("factory.intake_add %d answered {id:%d created:%v}, want {id:%d created:false}", i+2, got.n, got.created, n1)
+		}
 	}
 	found := w.bySourceRef(ref)
 	if len(found) != 1 {
@@ -1466,7 +1414,7 @@ func (w *fleWorld) scenarioDedup(t *testing.T) {
 	if j := w.job(n1); j.Source == nil || j.Source.Name != "inbox:fle2e-dedup" || j.Source.Ref != id {
 		t.Errorf("factory.job %d source %+v, want {name: inbox:fle2e-dedup, ref: %s}", n1, j.Source, id)
 	}
-	evidence = fmt.Sprintf("job %d: %q · %q · intake_add{created:%v}; one job with SourceRef %s, title %q", n1, out1, out2, created3, ref, found[0].Title)
+	evidence = fmt.Sprintf("job %d: intake_add{created:%v,%v,%v}; one job with SourceRef %s, title %q", n1, created1, created2, created3, ref, found[0].Title)
 }
 
 // 5. No regression: with no rules, an agent-ready GitHub issue starts on the
