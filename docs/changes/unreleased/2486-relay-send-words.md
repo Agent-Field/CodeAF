@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: A message to another computer says why it did not go: relay unreachable, or outbox full
+title: A message to another computer says why it did not go when the relay or the outbox refuses it
 pr: 2486
 surface: [app, engine, docs]
 invalidates:
