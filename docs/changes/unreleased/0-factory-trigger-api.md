@@ -1,6 +1,6 @@
 ---
 kind: added
-title: The factory's Trigger API — messages and status for outside work, one event bus with signed webhooks per source
+title: Trigger API — messages and status for outside work, one event bus, signed webhooks per source
 pr: 0
 surface: [factory, docs]
 invalidates:
