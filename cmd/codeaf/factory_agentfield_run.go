@@ -492,9 +492,15 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 		return m
 	}
 	if len(entries) == 0 {
+		// A conversation is read to its end: closed (its last harness run
+		// said "ended") and the execution over. The node flushes a step's
+		// relay before it reports the execution done, so nothing follows.
+		if m != nil && m.state.Closed && afEnded(step.node.Status) {
+			r.markDrained(exec)
+			return m
+		}
 		// A step that ended a while ago with nothing left to read is not read
-		// again: a plain step never has lines, and a harness step's last
-		// lines reach the control plane before its execution ends.
+		// again: a plain step never has lines.
 		if end := afEnd(step.node); afEnded(step.node.Status) && (m == nil || !m.state.Steerable) && !end.IsZero() && r.clock().Sub(end) > afDrainAfter {
 			r.markDrained(exec)
 		}
@@ -507,7 +513,14 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 	slices.SortStableFunc(entries, func(a, b agentfield.RelayEntry) int { return cmp.Compare(a.Seq, b.Seq) })
 	through := after
 	var lines [][]byte
-	started, closed := false, false
+	// ONE STEP CAN HOLD SEVERAL HARNESS RUNS. Each codeaf process sends
+	// "started" … "ended", and the harness's schema retry starts a second one
+	// in the same execution, so one batch can carry the first run's "ended"
+	// and the retry's "started". The LAST control entry, in seq order, is
+	// where the step stands; "ended" alone never closes the record while the
+	// execution is still running (the live run stranded a retry's 33 entries
+	// that way).
+	started, last := false, ""
 	for _, e := range entries {
 		if e.Seq <= through {
 			continue // already kept: never twice
@@ -515,11 +528,11 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 		through = e.Seq
 		switch e.Kind {
 		case "started":
-			started = true
+			started, last = true, "started"
 		case "line":
 			lines = append(lines, append([]byte(nil), e.Data...))
 		case "ended":
-			closed = true
+			last = "ended"
 		}
 		// "person" is the node saying a steer arrived; the record's own steer
 		// line follows when codeaf reads it, so it is not written twice.
@@ -536,12 +549,14 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 	if err := m.append(lines, r.workspace); err != nil {
 		return m // unkept and unacked: the next reading asks from after again
 	}
-	if started {
-		m.state.Steerable = true
-	}
-	if closed {
-		m.state.Steerable = false
-		defer r.markDrained(exec)
+	switch last {
+	case "started":
+		m.state.Steerable, m.state.Closed = true, false
+	case "ended":
+		m.state.Steerable, m.state.Closed = false, true
+		if afEnded(step.node.Status) {
+			defer r.markDrained(exec)
+		}
 	}
 	m.state.Acked = through
 	if err := m.save(); err != nil {
@@ -573,6 +588,9 @@ type afRelayState struct {
 	// Steerable is true from the run's "started" to its "ended": a codeaf
 	// harness run working now.
 	Steerable bool `json:"steerable"`
+	// Closed is true when the last harness run's "ended" is kept: the record
+	// is complete unless the execution starts another run (a schema retry).
+	Closed bool `json:"closed,omitempty"`
 }
 
 func afReadRelay(file string) (afRelayState, bool) {

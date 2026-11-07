@@ -922,3 +922,66 @@ func TestARunThatEndedIsReadToItsLastLine(t *testing.T) {
 		t.Fatalf("the last line was not kept: %s", bytes.Join(kept, []byte("\n")))
 	}
 }
+
+// A STEP CAN HOLD TWO HARNESS RUNS. The harness's schema retry starts a second
+// codeaf in the same execution: the first run's "ended" and the retry's
+// "started" arrive in one batch, and the retry brings its own session header.
+// The live run closed the record on that first "ended" and stranded the
+// retry's 33 entries. The record stays open while the execution runs, keeps
+// one header, and is read to the retry's own end.
+func TestAStepsSchemaRetryIsReadToItsOwnEnd(t *testing.T) {
+	appDayProfile(t)
+	prev := afRemoteEvery
+	afRemoteEvery = 10 * time.Millisecond
+	t.Cleanup(func() { afRemoteEvery = prev })
+	st, it := afJob(t)
+	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
+		afNode("e-i", "investigate", "running", "2026-11-07T12:00:01Z", ""))}
+	header := []byte(`{"type":"session","version":1,"id":"node-run-1","cwd":"/node/clone","timestamp":"2026-11-07T12:00:01Z"}`)
+	first := []byte(`{"type":"message","role":"user","content":"investigate","timestamp":"2026-11-07T12:00:01Z"}`)
+	cp.relayLines("e-i", [][]byte{header, first}, true) // seqs 1..4, "ended" at 4
+	retryHeader := []byte(`{"type":"session","version":1,"id":"node-run-2","cwd":"/node/clone","timestamp":"2026-11-07T12:00:05Z"}`)
+	retry := []byte(`{"type":"message","role":"user","content":"PREVIOUS ATTEMPT FAILED","timestamp":"2026-11-07T12:00:05Z"}`)
+	cp.mu.Lock()
+	cp.held["e-i"] = append(cp.held["e-i"],
+		agentfield.RelayEntry{Seq: 5, Kind: "started", Data: json.RawMessage(`{"harness":"codeaf","steerable":true}`)},
+		agentfield.RelayEntry{Seq: 6, Kind: "line", Data: retryHeader},
+		agentfield.RelayEntry{Seq: 7, Kind: "line", Data: retry})
+	cp.mu.Unlock()
+	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	done := make(chan error, 1)
+	go func() { done <- r.Run(context.Background(), it.ID) }()
+	time.Sleep(80 * time.Millisecond)
+	if r.drained("e-i") {
+		t.Fatal("the record closed on the first run's end while the step still runs")
+	}
+	answer := []byte(`{"type":"message","role":"assistant","content":"the fix","timestamp":"2026-11-07T12:00:08Z"}`)
+	end := "2026-11-07T12:00:09Z"
+	cp.mu.Lock()
+	cp.held["e-i"] = append(cp.held["e-i"], agentfield.RelayEntry{Seq: 8, Kind: "line", Data: answer}, agentfield.RelayEntry{Seq: 9, Kind: "ended", Data: json.RawMessage(`{}`)})
+	cp.tree = afNode("exec-root", "handle_ticket", "succeeded", "2026-11-07T12:00:00Z", end,
+		afNode("e-i", "investigate", "succeeded", "2026-11-07T12:00:01Z", end))
+	cp.mu.Unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run was never read to its end")
+	}
+	if n := cp.heldCount("e-i"); n != 0 {
+		t.Fatalf("the control plane still holds %d entries", n)
+	}
+	got, _ := st.Get(it.ID)
+	kept := afRecordLines(t, got.Stream.Phases[0].Chat)
+	headers := 0
+	for _, l := range kept {
+		if bytes.Contains(l, []byte(`"type":"session"`)) {
+			headers++
+		}
+	}
+	if headers != 1 || !bytes.Equal(kept[len(kept)-1], answer) || !bytes.Contains(bytes.Join(kept, nil), retry) {
+		t.Fatalf("the record is\n%s", bytes.Join(kept, []byte("\n")))
+	}
+}
