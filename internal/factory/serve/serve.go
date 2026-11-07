@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"net"
 	"net/http"
 	"net/netip"
@@ -46,6 +47,10 @@ type JobFolders interface {
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// PassJudge answers the condition of a `manager when …` approve step for
+	// Auto ([factory.PassOf]): the factory's AI filter, on its default model.
+	// Nil leaves every such approval to a person, with the reason said.
+	PassJudge route.Judge
 	// Scout is Look closer on this factory (scout.Door.Look): nil when the
 	// factory has no model to look with, and the route then says so.
 	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
@@ -197,6 +202,10 @@ type Handler struct {
 	jobsTimer  *time.Timer
 	jobsClosed bool
 	jobsBusy   sync.WaitGroup
+	// judging holds the manager-when approvals being judged now, by job and
+	// key, so one approval is never judged twice at once.
+	judgingMu sync.Mutex
+	judging   map[int]string
 
 	seam    factory.Seam
 	areas   repoAreas

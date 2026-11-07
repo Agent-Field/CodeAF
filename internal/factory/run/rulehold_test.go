@@ -59,7 +59,7 @@ func TestAPlanTouchingAGuardedPathHoldsItsApproval(t *testing.T) {
 	if why := factory.AutonomyBlockReason(it); !strings.Contains(why, "A protected path: auth/") {
 		t.Fatalf("Auto would pass it: %q", why)
 	}
-	if logHas(it, "Auto requested routine approval to continue after plan.") {
+	if logHas(it, "The manager may pass this approval to continue after plan.") {
 		t.Fatalf("a held approval was called routine: %+v", it.Stream.Log)
 	}
 	if err := g.r.Answer(id, true, ""); err != nil {

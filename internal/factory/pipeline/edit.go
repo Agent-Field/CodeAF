@@ -146,6 +146,10 @@ type EditOp struct {
 	// Who belongs to set_approver, with Name, and to an add_step of kind
 	// gate: who the added person waits on.
 	Who *string
+	// Pass belongs to set_pass, with Name, and to an add_step of kind gate:
+	// who may pass the person step ([factory.PassWord]). A gate added with no
+	// pass says person ([factory.PassForNewApprove]).
+	Pass *string
 	// To belongs to rename_step, with Name: the step's new name; and to
 	// rename_pipeline, with Name: the pipeline's new name.
 	To string
@@ -165,7 +169,9 @@ type StepView struct {
 	Name  string
 	Gate  bool
 	// Who is who a person step waits on; "" the job's person.
-	Who    string
+	Who string
+	// Pass is who may pass a person step ([factory.PassWord]); "" as before.
+	Pass   string
 	Prompt string
 	Kind   string
 	When   string
@@ -399,10 +405,10 @@ func lockedStep(f File, name string) bool {
 
 func stepView(f File, name string) StepView {
 	if factory.ApproveWord(name) {
-		return StepView{Name: name, Label: f.Steps[name].Label, Gate: true, Locked: true, InFile: true, Who: f.Steps[name].Who}
+		return StepView{Name: name, Label: f.Steps[name].Label, Gate: true, Locked: true, InFile: true, Who: f.Steps[name].Who, Pass: f.Steps[name].Pass}
 	}
 	s := f.Steps[name]
-	return StepView{Name: name, Label: s.Label, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who,
+	return StepView{Name: name, Label: s.Label, Prompt: s.Prompt, Kind: s.Kind, When: s.When, Effort: s.Effort, Fanout: s.Fanout, Who: s.Who, Pass: s.Pass,
 		Until: s.Until, Max: s.Max, Locked: lockedStep(f, name),
 		InFile: s.Label != "" || s.wrotePrompt || s.wroteUntil || s.wroteMax || s.Kind != "" || s.When != "" || s.Effort != "" || s.Fanout != ""}
 }
@@ -581,7 +587,7 @@ func (st *editState) apply(i int, op EditOp) *EditError {
 		return st.setStep(i, op)
 	case OpSetList:
 		return st.setList(i, op)
-	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
+	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover, OpSetPass:
 		return st.settings(i, op)
 	case OpRenameStep:
 		return st.rename(i, op)
@@ -747,8 +753,8 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no list and no lines", op.Op)
 	}
 	if pipelineOp(op.Op) {
-		if settingFieldsNamed(op) || op.Who != nil {
-			return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size, max_cost or who", op.Op)
+		if settingFieldsNamed(op) || op.Who != nil || op.Pass != nil {
+			return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size, max_cost, who or pass", op.Op)
 		}
 		return checkPipelineOp(i, op)
 	}
@@ -762,7 +768,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size, max_cost or who", op.Op)
 	}
 	switch op.Op {
-	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover:
+	case OpSetAdapt, OpSetFixed, OpSetStart, OpSetApprover, OpSetPass:
 		return checkSettings(i, op)
 	case OpSetList:
 		return checkSetList(i, op)
@@ -775,7 +781,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 			return op, refuseEdit(EditBadOp, i, "%s takes no pipeline and no position", op.Op)
 		}
 	default:
-		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start, set_approver, rename_step, add_pipeline, remove_pipeline and rename_pipeline")
+		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start, set_approver, set_pass, rename_step, add_pipeline, remove_pipeline and rename_pipeline")
 	}
 	if op.Op == OpSetBudget {
 		return checkSetBudget(i, op)

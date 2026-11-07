@@ -43,7 +43,10 @@ const (
 	OpSetFixed    = "set_fixed"
 	OpSetStart    = "set_start"
 	OpSetApprover = "set_approver"
-	ListLabels    = "labels"
+	// OpSetPass sets who may pass a person step: person, manager, or
+	// `manager when <condition>` ([factory.PassWord]).
+	OpSetPass  = "set_pass"
+	ListLabels = "labels"
 )
 
 // The settings a preview reports, in order.
@@ -55,9 +58,12 @@ const (
 	// SettingApprovers is every person step that names who it waits on, as
 	// "approve: @sam", joined ", ".
 	SettingApprovers = "approvers"
+	// SettingPass is every person step that says who may pass it, as
+	// "approve: person", joined ", ".
+	SettingPass = "pass"
 )
 
-var settingNames = []string{SettingAdapt, SettingFixed, SettingMaxSize, SettingMaxCost, SettingApprovers}
+var settingNames = []string{SettingAdapt, SettingFixed, SettingMaxSize, SettingMaxCost, SettingApprovers, SettingPass}
 
 // SettingChange is one setting an edit changed, before and after, in the words
 // the file reads: adapt's word, the required steps joined ", ", the size letter
@@ -70,14 +76,15 @@ type SettingChange struct {
 
 // settingsOp says whether verb is one of the three settings edits.
 func settingsOp(verb string) bool {
-	return verb == OpSetAdapt || verb == OpSetFixed || verb == OpSetStart || verb == OpSetApprover
+	return verb == OpSetAdapt || verb == OpSetFixed || verb == OpSetStart || verb == OpSetApprover || verb == OpSetPass
 }
 
 // settingFieldsNamed says whether an edit names a field only a settings edit
 // takes. Who is add_step's too, for the gate it adds ([checkGateWords]).
 func settingFieldsNamed(op EditOp) bool {
 	who := op.Who != nil && op.Op != OpAddStep
-	return op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || who
+	pass := op.Pass != nil && op.Op != OpAddStep
+	return op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || who || pass
 }
 
 // checkSettings bounds a settings edit without the file.
@@ -119,8 +126,23 @@ func checkSettings(i int, op EditOp) (EditOp, *EditError) {
 		if op.Name == "proof" && !*op.Fixed {
 			return op, refuseEdit(EditLocked, i, "proof is always required")
 		}
+	case OpSetPass:
+		if op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || op.Who != nil {
+			return op, refuseEdit(EditBadOp, i, "set_pass takes only a step name and pass")
+		}
+		if !stepNamed(op.Name) {
+			return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
+		}
+		if op.Pass == nil {
+			return op, refuseEdit(EditBadValue, i, "set_pass needs pass: person, manager, or manager when <condition>")
+		}
+		w, ok := factory.PassWord(*op.Pass)
+		if !ok || w == "" {
+			return op, refuseEdit(EditBadValue, i, "pass is person, manager, or manager when <a condition of at most %d characters>", factory.PassWhenMost)
+		}
+		op.Pass = &w
 	case OpSetApprover:
-		if op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil {
+		if op.Adapt != nil || op.Fixed != nil || op.MaxSize != nil || op.MaxCost != nil || op.Pass != nil {
 			return op, refuseEdit(EditBadOp, i, "set_approver takes only a step name and who")
 		}
 		if !stepNamed(op.Name) {
@@ -135,7 +157,7 @@ func checkSettings(i int, op EditOp) (EditOp, *EditError) {
 		}
 		op.Who = &w
 	case OpSetStart:
-		if op.Name != "" || op.Adapt != nil || op.Fixed != nil || op.Who != nil {
+		if op.Name != "" || op.Adapt != nil || op.Fixed != nil || op.Who != nil || op.Pass != nil {
 			return op, refuseEdit(EditBadOp, i, "set_start takes only max_size and max_cost")
 		}
 		if op.MaxSize == nil && op.MaxCost == nil {
@@ -201,6 +223,22 @@ func (st *editState) settings(i int, op EditOp) *EditError {
 		}
 		step.Who = *op.Who
 		st.out.Steps[op.Name] = step
+	case OpSetPass:
+		// ONLY A PERSON IS PASSED: approve, or a step of kind gate, that a
+		// pipeline runs. A FIXED ONE IS A PERSON'S whatever it says, so the
+		// edit is refused rather than written and ignored.
+		step := st.out.Steps[op.Name]
+		if !factory.ApproveWord(op.Name) && step.Kind != string(factory.StageGate) {
+			return refuseEdit(EditBadValue, i, "%s is not a person; only approve or a gate is passed by someone", op.Name)
+		}
+		if !st.inPipeline[op.Name] && !st.added[op.Name] {
+			return refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
+		}
+		if listed(st.out.Fixed, op.Name) && *op.Pass != factory.PassPerson {
+			return refuseEdit(EditLocked, i, "%s is fixed by the repository; only a person passes it", op.Name)
+		}
+		step.Pass = *op.Pass
+		st.out.Steps[op.Name] = step
 	case OpSetStart:
 		if op.MaxSize != nil {
 			st.out.Start.MaxSize, st.out.set.maxSize = *op.MaxSize, true
@@ -262,6 +300,8 @@ func settingOf(f File, name string) string {
 		return normOr(f.Start.MaxSize, DefaultMaxSize)
 	case SettingApprovers:
 		return approversOf(f)
+	case SettingPass:
+		return passesOf(f)
 	}
 	return strconv.FormatFloat(f.Start.MaxCost, 'f', -1, 64)
 }
@@ -296,6 +336,18 @@ func approversOf(f File) string {
 	for _, name := range sortedStepNames(f) {
 		if who := f.Steps[name].Who; who != "" {
 			out = append(out, name+": "+who)
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+// passesOf is every person step that says who may pass it, "approve: person,
+// signoff: manager when the plan is small".
+func passesOf(f File) string {
+	var out []string
+	for _, name := range sortedStepNames(f) {
+		if pass := f.Steps[name].Pass; pass != "" {
+			out = append(out, name+": "+pass)
 		}
 	}
 	return strings.Join(out, ", ")

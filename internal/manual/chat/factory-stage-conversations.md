@@ -458,7 +458,9 @@ Actions. Auto uses the shared yellow switch; Manual is grey. The saved mode foll
 the job across views and restarts. Older jobs with no saved mode stay Manual until
 you explicitly enable Auto; upgrading cannot publish an already waiting job.
 
-Auto passes optional routine plan gates, keeps bounded stage retries, and publishes
+In Auto the manager passes the approve steps it may pass — those whose **Who may pass** is
+"A person or the manager", and "The manager when …" ones whose condition it judges true —
+never an "Only a person" one (see "who may pass an approve step"). Auto keeps bounded stage retries, and publishes
 passing proof as a draft PR through the same recorded, exact-commit approval door.
 It repairs and updates that same PR within the job's budget and retry limits. The
 service records each approved publication; a worker cannot manufacture consent.
@@ -482,7 +484,9 @@ In Needs you the ask is its own kind, `approve_step` (gate `step`), never a plan
 
 Switching to Auto passes only the standing ask. An approve step still ahead stays a wait. One
 that is the pipeline's last step is where the run lands: it shows as waiting, and the proof
-approval answers it. That is your approval, or Auto's recorded one where Auto may pass it.
+approval answers it. That is your approval, or the manager's recorded one where the step lets
+the manager pass it. The proof approval card shows what you approve: the proof's claims, the
+files changed and how many lines.
 A job whose run went past an approve step nobody passed is refused with `has an approve step
 nobody has passed yet: <step>`, and nothing is published, in Auto or Manual.
 

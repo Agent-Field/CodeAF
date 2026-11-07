@@ -136,6 +136,10 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
 	qkind := it.QKind
+	asking := ""
+	if it.Asking != nil {
+		asking = it.Asking.Stage
+	}
 	if qkind == factory.QKindSpendStopped {
 		it.StopAfterStep = false
 		it.Question, it.QKind, it.Asking = "", "", nil
@@ -154,7 +158,19 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 	it.Question, it.QKind = "", ""
 	it.Asking = nil
 	s := it.Stream
-	if s == nil || s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
+	if s == nil {
+		return nil
+	}
+	// AN APPROVAL PASSES THE APPROVE STEP IT ANSWERS, wherever the current
+	// step points: a record whose current step was moved off the waiting
+	// approve step (the owner's #22) still has exactly one approve step
+	// waiting, and that is the one the yes is for.
+	if qkind == factory.QKindApprove {
+		if g := waitingGate(s, asking); g >= 0 {
+			s.Cur = g
+		}
+	}
+	if s.Cur < 0 || s.Cur >= len(s.Phases) || s.Phases[s.Cur].State != factory.PhaseWaiting {
 		return nil
 	}
 	if yes && qkind == factory.QKindApprove {
@@ -166,9 +182,13 @@ func AnswerHeld(it *factory.Item, yes bool, now time.Time, words ...string) erro
 		setPhaseState(ph, factory.PhaseRunning, now)
 	case yes:
 		setPhaseState(ph, factory.PhaseDone, now)
+		factory.StampPassed(it, s.Cur)
+		loopSay(it, now, "ok", passedLine(ph.Name, ph.Passed))
 	default:
 		setPhaseState(ph, factory.PhasePending, now)
 	}
+	// Who was passing it is spent by any answer to the approval.
+	it.Passing = nil
 	return nil
 }
 
@@ -299,6 +319,48 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 // answer: the waiting step must be a non-gate step holding a finished result,
 // and the step right after it must be a pending gate. Anything else is left
 // exactly as it was and takes the ordinary path.
+// passedLine is the run's line for an approve step passed: `approve passed by
+// the manager · the plan names two files`, `approve passed by @ada`.
+func passedLine(name string, p *factory.Passed) string {
+	who := "a person"
+	switch {
+	case p == nil:
+	case p.By == factory.PassedByManager:
+		who = "the manager"
+	case p.Handle != "":
+		who = "@" + strings.TrimPrefix(p.Handle, "@")
+	}
+	line := name + " passed by " + who
+	if p != nil && strings.TrimSpace(p.Why) != "" {
+		line += " · " + strings.TrimSpace(p.Why)
+	}
+	return line
+}
+
+// waitingGate is the approve step an approval answers when the current step is
+// not a waiting one: the waiting approve step the question names, else the
+// only approve step waiting; -1 when the current step already waits or no
+// single approve step does.
+func waitingGate(s *factory.Stream, stage string) int {
+	if s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
+		return -1
+	}
+	found := -1
+	for i, ph := range s.Phases {
+		if ph.Kind != factory.StageGate || ph.State != factory.PhaseWaiting {
+			continue
+		}
+		if stage != "" && ph.Name == stage {
+			return i
+		}
+		if found >= 0 {
+			return -1
+		}
+		found = i
+	}
+	return found
+}
+
 func repairMisfiledGate(s *factory.Stream) {
 	ph := &s.Phases[s.Cur]
 	if ph.Kind == factory.StageGate || ph.Result == nil || !ph.Result.Done || s.Cur+1 >= len(s.Phases) {
