@@ -121,6 +121,14 @@ func AgentFieldRunOf(it Item, step string) *AgentFieldRun {
 	return it.AgentField
 }
 
+// AgentFieldPause says the job waits in Needs you on an AgentField run's
+// approval. ITS REJECT IS THE CONTROL PLANE'S, NOT THIS FACTORY'S PLAN
+// REVISION: a factory that serves no plan revision of its own, or a solo
+// factory that reads its plans off the stored run, still offers it.
+func AgentFieldPause(it Item) bool {
+	return it.State == StateNeedsYou && it.QKind == QKindAgentField && AgentFieldWaiting(it) != nil
+}
+
 // AgentFieldWaiting is the run approval the job waits on, if any: the job's
 // own run's, else any agentfield step's.
 func AgentFieldWaiting(it Item) *AgentFieldWait {

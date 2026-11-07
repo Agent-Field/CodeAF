@@ -419,7 +419,7 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	// AN AGENTFIELD RUN'S APPROVAL IS THE JOB'S PERSON'S: approve, ask for
 	// changes with words, or reject — the three answers the control plane
 	// takes (the app's local factory carries them to it).
-	afApproval := it.State == factory.StateNeedsYou && it.QKind == factory.QKindAgentField && factory.AgentFieldWaiting(it) != nil &&
+	afApproval := factory.AgentFieldPause(it) &&
 		(person == "" || person == factory.NormalizeHandle(caller) || owner)
 	if afApproval {
 		approve = true

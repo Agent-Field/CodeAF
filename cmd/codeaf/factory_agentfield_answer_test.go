@@ -54,6 +54,11 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 		}
 		return id
 	}
+	// lastCan is the job's verbs as factory.job last read them.
+	var lastCan struct {
+		RequestChanges bool `json:"request_changes"`
+		RejectPlan     bool `json:"reject_plan"`
+	}
 	version := func(job int) int {
 		var read struct {
 			Version  int
@@ -66,6 +71,7 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 			} `json:"can"`
 		}
 		_ = json.Unmarshal(afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job}), &read)
+		lastCan = read.Can
 		return read.Version
 	}
 	answer := func(method string, job int, extra map[string]any) (string, string) {
@@ -81,12 +87,17 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 	var listed appwire.FactoryAgentFieldReasoners
 	_ = json.Unmarshal(afCall(s, "factory.agentfield_reasoners", map[string]any{"factory": st.Factory}), &listed)
 	if len(listed.Reasoners) != 1 || listed.Reasoners[0].Target != "swe-planner.build_issue" || !listed.Reasoners[0].Online ||
-		len(listed.Reasoners[0].Input) != 2 || listed.Reasoners[0].Input[1].Name != "title" || !listed.Reasoners[0].Input[1].Required ||
-		listed.Reasoners[0].Input[0].Type != "integer" || len(listed.Placeholders) == 0 {
+		len(listed.Reasoners[0].Input) != 4 || listed.Reasoners[0].Input[3].Name != "title" || !listed.Reasoners[0].Input[3].Required ||
+		listed.Reasoners[0].Input[1].Type != "integer" || listed.Reasoners[0].Input[2].Type != "boolean" || len(listed.Placeholders) == 0 {
 		t.Fatalf("reasoners = %+v", listed)
 	}
 
 	a := park("a")
+	// ALL THREE ANSWERS ARE OFFERED on the job the desk reads: a desk leaves
+	// a verb off when can says no, so a missing reject_plan hides Reject.
+	if version(a); !lastCan.RequestChanges || !lastCan.RejectPlan {
+		t.Fatalf("a run's pause offers can = %+v, want request_changes and reject_plan", lastCan)
+	}
 	if code, _ := answer("factory.job_request_changes", a, nil); code != appwire.CodeBadParams {
 		t.Fatalf("Ask for changes with no words = %q", code)
 	}
