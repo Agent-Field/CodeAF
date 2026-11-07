@@ -133,6 +133,15 @@ const FeatureFactoryPipelineEditRename = "factory.pipeline_edit_rename"
 // taken only when FeatureFactoryPipelineEditApprovers is announced too.
 const FeatureFactoryPipelineEditGates = "factory.pipeline_edit_gates"
 
+// FeatureFactoryPipelineEditAgentField is announced beside
+// FeatureFactoryPipelineEditStructure when this engine previews an add_step of
+// kind agentfield: a step that runs a reasoner on the AgentField control
+// plane, its prompt the reasoner (node.reasoner) and its optional input a map
+// of the reasoner's field names to text with the job's {placeholders}. It
+// spells `kind` and `input`, runtime keys, so the preview takes it only for a
+// file its factory attested.
+const FeatureFactoryPipelineEditAgentField = "factory.pipeline_edit_agentfield"
+
 // FeatureFactoryPipelineEditPipelines is announced beside
 // FeatureFactoryPipelineEditStructure when this engine previews the three
 // verbs that make, rename and remove a whole named pipeline:
@@ -310,21 +319,25 @@ type FactoryPipelineSource struct {
 // is in the list once (ignoring case for rules and ask_first, exactly for
 // never); a list holds at most 40 lines and is set once per preview.
 type FactoryPipelineEdit struct {
-	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start,set_approver,rename_step,add_pipeline,remove_pipeline,rename_pipeline"`
-	Name     string   `json:"name,omitempty"`
-	Pipeline string   `json:"pipeline,omitempty"`
-	After    *string  `json:"after,omitempty"`
-	Kind     *string  `json:"kind,omitempty" enum:"chat,check,gate"`
-	Prompt   *string  `json:"prompt,omitempty"`
-	Label    *string  `json:"label,omitempty"`
-	Until    *string  `json:"until,omitempty"`
-	Max      *int     `json:"max,omitempty"`
-	When     *string  `json:"when,omitempty"`
-	Effort   *string  `json:"effort,omitempty"`
-	Fanout   *string  `json:"fanout,omitempty"`
-	Value    *float64 `json:"value,omitempty"`
-	List     string   `json:"list,omitempty" enum:"rules,ask_first,never,labels"`
-	Lines    []string `json:"lines,omitempty"`
+	Op       string  `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start,set_approver,rename_step,add_pipeline,remove_pipeline,rename_pipeline"`
+	Name     string  `json:"name,omitempty"`
+	Pipeline string  `json:"pipeline,omitempty"`
+	After    *string `json:"after,omitempty"`
+	Kind     *string `json:"kind,omitempty" enum:"chat,check,gate,agentfield"`
+	// Input belongs to an add_step of kind agentfield alone (feature
+	// factory.pipeline_edit_agentfield): the reasoner's field names to text
+	// with the job's {placeholders}; omitted sends the default mapping.
+	Input  map[string]string `json:"input,omitempty"`
+	Prompt *string           `json:"prompt,omitempty"`
+	Label  *string           `json:"label,omitempty"`
+	Until  *string           `json:"until,omitempty"`
+	Max    *int              `json:"max,omitempty"`
+	When   *string           `json:"when,omitempty"`
+	Effort *string           `json:"effort,omitempty"`
+	Fanout *string           `json:"fanout,omitempty"`
+	Value  *float64          `json:"value,omitempty"`
+	List   string            `json:"list,omitempty" enum:"rules,ask_first,never,labels"`
+	Lines  []string          `json:"lines,omitempty"`
 	// Behind feature factory.pipeline_edit_settings: Adapt belongs to set_adapt
 	// (adapt, ask or fixed); Fixed, with Name, to set_fixed (true marks the step
 	// required); MaxSize and MaxCost to set_start, which names one or both. The
@@ -585,6 +598,14 @@ type FactoryPipelineGatesEditor interface {
 	PipelineGateEdits()
 }
 
+// FactoryPipelineAgentFieldEditor is implemented ONLY by a structure editor
+// whose preview applies an add_step of kind agentfield. Without it such a
+// step is refused before the engine is asked, and the feature is not
+// announced.
+type FactoryPipelineAgentFieldEditor interface {
+	PipelineAgentFieldEdits()
+}
+
 // FactoryPipelinePipelinesEditor is implemented ONLY by a structure editor
 // whose preview applies add_pipeline, remove_pipeline and rename_pipeline.
 // Without it the three verbs are refused before the engine is asked, and the
@@ -636,6 +657,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 			if _, gates := e.(FactoryPipelineGatesEditor); gates {
 				hello = withFeature(hello, FeatureFactoryPipelineEditGates)
 			}
+			if _, af := e.(FactoryPipelineAgentFieldEditor); af {
+				hello = withFeature(hello, FeatureFactoryPipelineEditAgentField)
+			}
 			if _, kinds := e.(FactoryPipelinePipelinesEditor); kinds {
 				hello = withFeature(hello, FeatureFactoryPipelineEditPipelines)
 			}
@@ -669,7 +693,7 @@ func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 		}
 		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Kind: kind, Label: e.Label, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
 			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines,
-			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who, To: e.To, Steps: e.Steps, From: e.From}
+			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who, To: e.To, Steps: e.Steps, From: e.From, Input: e.Input}
 	}
 	return ops
 }
@@ -945,6 +969,7 @@ func checkPipelinesServed(e Engine, edits []FactoryPipelineEdit) error {
 func checkChecksServed(e Engine, edits []FactoryPipelineEdit) error {
 	_, checks := e.(FactoryPipelineChecksEditor)
 	_, gates := e.(FactoryPipelineGatesEditor)
+	_, af := e.(FactoryPipelineAgentFieldEditor)
 	for i, edit := range edits {
 		var kind string
 		if edit.Kind != nil {
@@ -956,6 +981,9 @@ func checkChecksServed(e Engine, edits []FactoryPipelineEdit) error {
 			return Errorf(CodeBadParams, "edit %d: only add_step names a kind", i)
 		case kind == "gate" && !gates:
 			return Errorf(CodeBadParams, "edit %d: this engine does not add an approval", i)
+		case kind == "agentfield" && !af:
+			return Errorf(CodeBadParams, "edit %d: this engine does not add an AgentField step", i)
+		case kind == "agentfield":
 		case kind != "gate" && kind != "chat" && kind != "" && !checks:
 			return Errorf(CodeBadParams, "edit %d: this engine does not add a check", i)
 		}

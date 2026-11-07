@@ -294,6 +294,72 @@ the record then shows it as your steer. Refusals, word for word:
 Only codeaf harness steps can be steered. A plain reasoner's step has no chat
 at all, so there is no box to type in.
 
+## run a step on AgentField — an agentfield step in a pipeline, a reasoner that builds an issue, node.reasoner and its input
+
+A pipeline step can be a run on AgentField: `kind: agentfield` in
+`.codeaf/factory.yaml`, naming the reasoner as `node.reasoner`:
+
+```yaml
+pipeline:
+  build-issue: [build]
+steps:
+  build:
+    label: Build on AgentField
+    kind: agentfield
+    target: planner.build_issue
+    input:
+      title: "{title}"
+      body: "{body}"
+      repo_url: "{repo_url}"
+      issue_number: "{issue_number}"
+```
+
+`input` maps the reasoner's own field names to the job's facts: `{title}`,
+`{body}`, `{repo}`, `{repo_url}`, `{base}`, `{issue_url}`, `{issue_number}`,
+`{job}`. A value that is one fact alone keeps its type (`{issue_number}` is
+sent as a number) and is left out when the job has none. With no `input` the
+step sends `job, title, body, repo, repo_url, base_branch, issue_url,
+issue_number`. A fact not on that list is a problem in the file, and a step
+whose target is not `node.reasoner` holds for a person.
+
+The app's pipeline editor and Change with AI add the same step. A routing rule
+that sends GitHub issues to that pipeline makes each one an ordinary job: on
+Start the factory starts the reasoner, the run's executions appear under the
+step on the job's rail (harness steps with their chats, steerable), Stop
+cancels the whole run, and the step ends when the run does. A pull request the
+run opened becomes the job's. A run that ends saying it did not succeed (a result
+of `{"success": false, "summary": "Plan rejected: …"}`) ends the job with those words. A pipeline made only of
+agentfield steps and approvals ends when its runs do, with no proof to approve.
+
+## approve the plan an AgentField run asks about — Needs you, ask for changes, reject
+
+When a reasoner pauses for a person (a plan review, or any `Pause`), its
+job goes to Needs you with the reasoner's question and the WHOLE plan or body it
+asks about, readable in full. Three answers:
+
+- **Approve** — the run goes on.
+- **Ask for changes** — your words go to the run, which may make a new plan and
+  ask again. The new round shows the new plan, the plan before it, and the
+  words you sent. It needs words: "say what to change: Ask for changes sends
+  your words to the run".
+- **Reject** — the run stops and so does the job.
+
+Only the job's person answers; the manager never does. The answer goes to the
+control plane, which keeps the one approval: if it was answered first somewhere
+else (hax, the control plane's page) the job's question comes down by itself,
+and a late answer says "this was already answered somewhere else, and that
+answer stands".
+
+## a question from an AgentField step — the harness step asks, the manager or you answer
+
+A codeaf harness step on a node may ask a question while it works. It no longer
+takes its own default with nobody to ask: the step waits, and the question
+comes to the job like a question from one of this factory's own steps, first to
+the job's manager and then, if the manager sends it on, to you in Needs you with
+its options and the step's own pick. Your answer goes back to the step, which
+reads "the person answered: …" and carries on. When the run ends first, the
+question comes down.
+
 ## what the AgentField node cannot do
 
 - Only the factory on this machine connects; a team factory (`codeaf factory
@@ -301,9 +367,12 @@ at all, so there is no box to type in.
 - No DID or verifiable-credential signing: the node does not sign or check
   AgentField DIDs; the link's key and the HTTP bearer are its protection, and
   both are the control plane's global values, not one per node.
-- A pipeline step of a job this factory runs itself cannot call an
-  AgentField reasoner. A whole job can be run by one instead (see "a job run
-  by an AgentField reasoner"); then its steps are that run's executions.
+- An agentfield step runs a reasoner on its node, never on this machine,
+  and the control plane reports no money for it: the job's spend and budget
+  do not count what the run spent.
+- A team factory (`codeaf factory serve`) cannot answer an AgentField run's
+  approval: only the factory on this machine holds the connection that
+  carries the answer. Answer it on the control plane instead.
 - Only a step that ran the codeaf harness has a chat and takes a note. A
   plain reasoner's step, or a step on another harness, shows its state and
   timing only: it has no chat and no message box.

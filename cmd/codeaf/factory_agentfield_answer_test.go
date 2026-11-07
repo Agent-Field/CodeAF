@@ -75,6 +75,15 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 		return code, msg
 	}
 
+	// The reasoners an agentfield step may name, with their input fields.
+	var listed appwire.FactoryAgentFieldReasoners
+	_ = json.Unmarshal(afCall(s, "factory.agentfield_reasoners", map[string]any{"factory": st.Factory}), &listed)
+	if len(listed.Reasoners) != 1 || listed.Reasoners[0].Target != "swe-planner.build_issue" || !listed.Reasoners[0].Online ||
+		len(listed.Reasoners[0].Input) != 2 || listed.Reasoners[0].Input[1].Name != "title" || !listed.Reasoners[0].Input[1].Required ||
+		listed.Reasoners[0].Input[0].Type != "integer" || len(listed.Placeholders) == 0 {
+		t.Fatalf("reasoners = %+v", listed)
+	}
+
 	a := park("a")
 	if code, _ := answer("factory.job_request_changes", a, nil); code != appwire.CodeBadParams {
 		t.Fatalf("Ask for changes with no words = %q", code)

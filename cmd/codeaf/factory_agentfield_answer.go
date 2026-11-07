@@ -23,7 +23,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -166,4 +169,57 @@ func (b *appBackend) answerStepQuestion(ctx context.Context, id string, job int,
 		return appwire.FactoryJobActed{}, true, err
 	}
 	return b.factoryHub().acted(ctx, id, appwire.JobActApprove, job, a), true, nil
+}
+
+// FactoryAgentFieldReasoners is factory.agentfield_reasoners: the reasoners
+// of every node this factory's control plane knows, for an agentfield step to
+// name. Only this machine's factory has the connection to ask.
+func (b *appBackend) FactoryAgentFieldReasoners(ctx context.Context, p appwire.FactoryAgentFieldReasonersParams) (appwire.FactoryAgentFieldReasoners, error) {
+	host, err := b.localHostOf(p.Factory)
+	if err != nil {
+		return appwire.FactoryAgentFieldReasoners{}, err
+	}
+	client, _, ok := host.agentFieldConn()
+	lister, can := client.(interface {
+		Nodes(context.Context) ([]agentfield.NodeReasoners, error)
+	})
+	if !ok || !can {
+		return appwire.FactoryAgentFieldReasoners{}, appwire.Errorf(appwire.CodeConflict, "this factory is not connected to AgentField, so it has no reasoners to list")
+	}
+	nodes, err := lister.Nodes(ctx)
+	if err != nil {
+		return appwire.FactoryAgentFieldReasoners{}, appwire.Errorf(appwire.CodeConflict, "the AgentField control plane did not list its nodes: %s", err.Error())
+	}
+	out := appwire.FactoryAgentFieldReasoners{Reasoners: []appwire.FactoryAgentFieldReasoner{}, Placeholders: append([]string(nil), factory.AgentFieldPlaceholders...)}
+	for _, n := range nodes {
+		for _, r := range n.Reasoners {
+			out.Reasoners = append(out.Reasoners, appwire.FactoryAgentFieldReasoner{Node: n.ID, Reasoner: r.ID, Target: n.ID + "." + r.ID,
+				Description: r.Description, Online: n.HealthStatus == "active", Input: afSchemaFields(r.InputSchema)})
+		}
+	}
+	return out, nil
+}
+
+// afSchemaFields is the top-level fields a JSON Schema object names.
+func afSchemaFields(schema json.RawMessage) []appwire.FactoryAgentFieldInput {
+	var s struct {
+		Properties map[string]struct {
+			Type any `json:"type"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if json.Unmarshal(schema, &s) != nil || len(s.Properties) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(s.Properties))
+	for k := range s.Properties {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	out := make([]appwire.FactoryAgentFieldInput, 0, len(names))
+	for _, k := range names {
+		typ, _ := s.Properties[k].Type.(string)
+		out = append(out, appwire.FactoryAgentFieldInput{Name: k, Required: slices.Contains(s.Required, k), Type: typ})
+	}
+	return out
 }

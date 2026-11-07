@@ -772,6 +772,12 @@ absence. Where the asker recommended nothing there is nothing to take: the line
 reads `your call: <what was asked> (nobody to ask)` and the work stops there
 rather than guessing.
 
+One `--once` run does have somebody to ask: `codeaf chat --once` with both
+`--events` and `--steer`, which is how an AgentField node runs a WorkAF step.
+There a question is written on the events file and the run waits for its
+answer on the steer file, so the factory watching the step puts it to the job's
+manager and person and the step goes on with their answer.
+
 ## What stays behind after you answer
 
 Answering leaves one dim line where the question was:

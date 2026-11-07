@@ -49,3 +49,39 @@ func TestAnAgentFieldInputNamesOnlyTheJobsFacts(t *testing.T) {
 		}
 	}
 }
+
+// The desk's "Run on AgentField" and Change with AI add one step the same way:
+// an add_step of kind agentfield, its prompt the reasoner, its input the job's
+// facts. The file then runs it; a bad reasoner, a fact the job does not have,
+// a model's word, or input on another kind is refused.
+func TestAnAgentFieldStepIsAddedByOneEdit(t *testing.T) {
+	kind := "agentfield"
+	op := add("issue", "swe", "", "swe-planner.build_issue")
+	op.Kind = &kind
+	op.Input = map[string]string{"title": "{title}", "issue_number": "{issue_number}"}
+	got := mustApply(t, "pipeline:\n  issue: [plan]\n", op)
+	f := reread(t, got.Text)
+	var st factory.Stage
+	for _, s := range f.Recipe().Stages {
+		if s.Name == "swe" {
+			st = s
+		}
+	}
+	if st.Kind != factory.StageAgentField || st.Target != "swe-planner.build_issue" || st.Input["issue_number"] != "{issue_number}" {
+		t.Fatalf("added %+v from\n%s", st, got.Text)
+	}
+	until := "done"
+	for name, bad := range map[string]func(*EditOp){
+		"no reasoner":       func(o *EditOp) { o.Prompt = nil },
+		"not node.reasoner": func(o *EditOp) { p := "build issue"; o.Prompt = &p },
+		"an unknown fact":   func(o *EditOp) { o.Input = map[string]string{"x": "{branch}"} },
+		"a model's word":    func(o *EditOp) { o.Until = &until },
+		"input on a chat":   func(o *EditOp) { o.Kind = nil },
+	} {
+		o := op
+		bad(&o)
+		if _, err := ApplyEdits("pipeline:\n  issue: [plan]\n", []EditOp{o}); err == nil {
+			t.Errorf("%s was taken", name)
+		}
+	}
+}

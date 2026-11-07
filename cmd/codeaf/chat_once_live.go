@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -51,6 +52,7 @@ var chatOnceLive onceLive
 func copyTail(src, dst string, stop <-chan struct{}) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
+		defer guard.Recover("chat-once/events")
 		defer close(done)
 		out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
@@ -102,6 +104,7 @@ func copyTail(src, dst string, stop <-chan struct{}) <-chan struct{} {
 func steerTail(agent *session.Agent, path string, asker *onceAsker, sink io.Writer, stderr io.Writer, wg *sync.WaitGroup, stop <-chan struct{}) {
 	reader := newSteerFile(path)
 	go func() {
+		defer guard.Recover("chat-once/steer")
 		t := time.NewTicker(300 * time.Millisecond)
 		defer t.Stop()
 		for {
@@ -127,6 +130,7 @@ func steerTail(agent *session.Agent, path string, asker *onceAsker, sink io.Writ
 				fmt.Fprintln(stderr, "steered: "+note)
 				wg.Add(1)
 				go func() {
+					defer guard.Recover("chat-once/steer-drain")
 					defer wg.Done()
 					_ = drainOnceEvents(events, sink, stderr)
 				}()
@@ -253,17 +257,10 @@ func newOnceAsker(events string) *onceAsker {
 // Ask writes the question on --events and waits for its answer note, or for
 // ctx (the turn's stop, the run's end).
 func (o *onceAsker) Ask(ctx context.Context, q factory.Asked) (string, error) {
-	o.mu.Lock()
-	o.seq++
-	id := fmt.Sprintf("ask-%d", o.seq)
-	ch := make(chan onceAnswer, 1)
-	o.waiting[id] = ch
-	o.mu.Unlock()
+	id, ch := o.open()
 	defer func() {
-		o.mu.Lock()
-		delete(o.waiting, id)
-		o.mu.Unlock()
-		o.write(onceAskLine{Type: "ask_done", ID: id})
+		o.close(id)
+		_ = o.write(onceAskLine{Type: "ask_done", ID: id})
 	}()
 	if err := o.write(onceAskLine{Type: "ask", ID: id, Question: q.Question, Options: q.Options, Pick: q.Pick}); err != nil {
 		// Nobody can be told, so nobody is asked: `ask` goes its own way.
@@ -281,6 +278,32 @@ func (o *onceAsker) Ask(ctx context.Context, q factory.Asked) (string, error) {
 	}
 }
 
+// open registers one question waiting for its answer.
+func (o *onceAsker) open() (string, chan onceAnswer) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.seq++
+	id := fmt.Sprintf("ask-%d", o.seq)
+	ch := make(chan onceAnswer, 1)
+	o.waiting[id] = ch
+	return id, ch
+}
+
+// close forgets a question that was answered or withdrawn.
+func (o *onceAsker) close(id string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.waiting, id)
+}
+
+// waitingFor is the question id's answer channel, while it waits.
+func (o *onceAsker) waitingFor(id string) (chan onceAnswer, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	ch, ok := o.waiting[id]
+	return ch, ok
+}
+
 // take hands note to the question it answers and says whether it did; a note
 // that answers no waiting question is an ordinary steer.
 func (o *onceAsker) take(note string) bool {
@@ -291,9 +314,7 @@ func (o *onceAsker) take(note string) bool {
 	if json.Unmarshal([]byte(note), &a) != nil || a.Answer == "" {
 		return false
 	}
-	o.mu.Lock()
-	ch, ok := o.waiting[a.Answer]
-	o.mu.Unlock()
+	ch, ok := o.waitingFor(a.Answer)
 	if !ok {
 		// An answer to a question that was already answered or withdrawn is
 		// no steer either: its words were meant for a question, not the turn.

@@ -551,3 +551,20 @@ func (c *Client) Result(ctx context.Context, execution string) (json.RawMessage,
 	err := c.do(ctx, "read the result", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution), nil, nil, &out)
 	return out.Result, err
 }
+
+// NodeReasoners is one node the control plane knows, as GET /api/v1/nodes
+// lists it: its id, whether it is active now, and its reasoners.
+type NodeReasoners struct {
+	ID           string     `json:"id"`
+	HealthStatus string     `json:"health_status"`
+	Reasoners    []Reasoner `json:"reasoners"`
+}
+
+// Nodes is every node the control plane knows, online or not.
+func (c *Client) Nodes(ctx context.Context) ([]NodeReasoners, error) {
+	var out struct {
+		Nodes []NodeReasoners `json:"nodes"`
+	}
+	err := c.do(ctx, "list the nodes", http.MethodGet, "/api/v1/nodes", url.Values{"show_all": {"true"}}, nil, &out)
+	return out.Nodes, err
+}

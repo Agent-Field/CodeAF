@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -140,10 +141,13 @@ func checkAnchor(i int, op EditOp) *EditError {
 func checkAddStep(i int, op EditOp) (EditOp, *EditError) {
 	if op.Kind != nil {
 		k, ok := kindWord(*op.Kind)
-		if !ok || (k != "" && k != string(factory.StageCheck) && k != string(factory.StageGate)) {
-			return op, refuseEdit(EditBadValue, i, "a step added here is a chat, a check or a gate")
+		if !ok || (k != "" && k != string(factory.StageCheck) && k != string(factory.StageGate) && k != string(factory.StageAgentField)) {
+			return op, refuseEdit(EditBadValue, i, "a step added here is a chat, a check, a gate or an agentfield step")
 		}
 		op.Kind = &k
+	}
+	if bad := checkAgentFieldWords(i, &op); bad != nil {
+		return op, bad
 	}
 	if op.Prompt == nil && !addsGate(op) {
 		return op, refuseEdit(EditBadValue, i, "add_step needs a prompt")
@@ -178,6 +182,44 @@ func checkCheckWords(i int, op EditOp) *EditError {
 		if _, free := mechanicalUntil(*op.Until); free {
 			return refuseEdit(EditBadValue, i, "a check stops on done, clean, green or proven")
 		}
+	}
+	return nil
+}
+
+// checkAgentFieldWords holds an added agentfield step to what it is: a
+// reasoner (its prompt, node.reasoner) and an input of the job's facts; no
+// model reads it, so it takes no until, rounds, effort or fanout.
+func checkAgentFieldWords(i int, op *EditOp) *EditError {
+	if op.Kind == nil || *op.Kind != string(factory.StageAgentField) {
+		return nil
+	}
+	if op.Prompt == nil {
+		return refuseEdit(EditBadValue, i, "an agentfield step names its reasoner as its prompt: node.reasoner")
+	}
+	target, err := factory.AgentFieldTargetWord(*op.Prompt)
+	if err != nil {
+		return refuseEdit(EditBadValue, i, "an agentfield step names its reasoner as node.reasoner: %s", err.Error())
+	}
+	op.Prompt = &target
+	if op.Until != nil || op.Max != nil || (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
+		return refuseEdit(EditBadValue, i, "an agentfield step runs a reasoner, not a model; it takes no until, max, effort or fanout")
+	}
+	if len(op.Input) > 40 {
+		return refuseEdit(EditTooLarge, i, "an agentfield step's input names at most 40 fields")
+	}
+	clean := make(map[string]string, len(op.Input))
+	for k, v := range op.Input {
+		k = strings.TrimSpace(k)
+		if k == "" || len(k) > 64 || len(v) > 4000 {
+			return refuseEdit(EditBadValue, i, "an input field is a name of at most 64 characters with text of at most 4000")
+		}
+		if bad := factory.AgentFieldInputProblem(v); bad != "" {
+			return refuseEdit(EditBadValue, i, "input.%s: %s", k, bad)
+		}
+		clean[k] = v
+	}
+	if op.Input != nil {
+		op.Input = clean
 	}
 	return nil
 }
@@ -294,6 +336,9 @@ func (st *editState) define(i int, op EditOp) *EditError {
 	if op.Who != nil {
 		want.Who = *op.Who
 	}
+	if op.Input != nil {
+		want.Input = maps.Clone(op.Input)
+	}
 	setStepWords(&want, op)
 	if !exists {
 		st.out.Steps[op.Name] = want
@@ -301,7 +346,7 @@ func (st *editState) define(i int, op EditOp) *EditError {
 		return nil
 	}
 	if want.Label != have.Label || want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
-		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who {
+		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who || !maps.Equal(want.Input, have.Input) {
 		return refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
 	}
 	return nil

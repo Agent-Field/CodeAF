@@ -1096,9 +1096,11 @@ const (
 // and only while it is working is it steerable; the node refuses anything
 // else, and that refusal is the person's answer.
 func (b *appBackend) agentFieldSteer(a *appAgent, text string) (bool, error) {
-	b.mu.Lock()
-	file := a.transcript
-	b.mu.Unlock()
+	file := func() string {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return a.transcript
+	}()
 	state, ok := afSteerTarget(file)
 	if !ok {
 		return false, nil
@@ -1106,9 +1108,11 @@ func (b *appBackend) agentFieldSteer(a *appAgent, text string) (bool, error) {
 	if !state.Steerable {
 		return true, appwire.Errorf(appwire.CodeConflict, afSteerEnded)
 	}
-	b.local.mu.Lock()
-	host := b.local.host
-	b.local.mu.Unlock()
+	host := func() *appFactoryHost {
+		b.local.mu.Lock()
+		defer b.local.mu.Unlock()
+		return b.local.host
+	}()
 	if host == nil {
 		return true, appwire.Errorf(appwire.CodeConflict, afSteerNoFactory)
 	}
@@ -1280,15 +1284,18 @@ func (r *afRemote) waitOf(ctx context.Context, client afClient, root agentfield.
 		last = prev.Waiting
 	}
 	now := r.clock()
-	r.mu.Lock()
-	if r.asked == nil {
-		r.asked = map[string]time.Time{}
-	}
-	fresh := last == nil || now.Sub(r.asked[exec]) >= afApprovalEvery
-	if fresh {
-		r.asked[exec] = now
-	}
-	r.mu.Unlock()
+	fresh := func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.asked == nil {
+			r.asked = map[string]time.Time{}
+		}
+		fresh := last == nil || now.Sub(r.asked[exec]) >= afApprovalEvery
+		if fresh {
+			r.asked[exec] = now
+		}
+		return fresh
+	}()
 	if !fresh {
 		return last
 	}
@@ -1414,14 +1421,7 @@ func (r *afRemote) raiseAsks(client afClient, job int, exec string, pending []af
 		r.asking[key] = cancel
 		q := q
 		guard.Go("agentfield/ask", func() {
-			defer func() {
-				r.mu.Lock()
-				if c, ok := r.asking[key]; ok {
-					c()
-					delete(r.asking, key)
-				}
-				r.mu.Unlock()
-			}()
+			defer r.forgetAsk(key)
 			said, err := place.ask(ctx, factory.Asked{Question: q.Question, Options: q.Options, Pick: q.Pick})
 			if err != nil {
 				return
@@ -1447,6 +1447,16 @@ func (r *afRemote) raiseAsks(client afClient, job int, exec string, pending []af
 				}
 			}
 		})
+	}
+}
+
+// forgetAsk withdraws one question being put to the job.
+func (r *afRemote) forgetAsk(key string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c, ok := r.asking[key]; ok {
+		c()
+		delete(r.asking, key)
 	}
 }
 

@@ -74,6 +74,12 @@ func (f *afFakeCP) ResolveApproval(_ context.Context, exec, decision, reason str
 	return nil
 }
 
+// Nodes is the control plane's nodes, as GET /api/v1/nodes lists them.
+func (f *afFakeCP) Nodes(context.Context) ([]agentfield.NodeReasoners, error) {
+	return []agentfield.NodeReasoners{{ID: "swe-planner", HealthStatus: "active", Reasoners: []agentfield.Reasoner{{ID: "build_issue", Description: "build an issue",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"issue_number":{"type":"integer"}},"required":["title"]}`)}}}}, nil
+}
+
 // Result is the run's output, as GET /api/v1/executions/<id> reports it.
 func (f *afFakeCP) Result(context.Context, string) (json.RawMessage, error) {
 	f.mu.Lock()

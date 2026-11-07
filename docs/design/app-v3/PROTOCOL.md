@@ -254,6 +254,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.agentfield_run` | `in.FactoryAgentFieldRunParams` | `FactoryAgentFieldRun` |
+| `factory.agentfield_reasoners` | `in.FactoryAgentFieldReasonersParams` | `FactoryAgentFieldReasoners` |
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -447,6 +448,42 @@ event_types?}` is `POST /api/v1/triggers` targeting `<node_id>.intake` and
 answers the trigger. Every method but connect is `conflict` on a factory that
 is not connected, and every method is `not_found` for a factory other than
 this machine's.
+
+**A pipeline step that runs on AgentField.** `factory.pipeline_edit_agentfield`
+in hello features says `factory.pipeline_preview` takes an `add_step` of
+`kind: "agentfield"`: `prompt` is the reasoner, `node.reasoner`, and the
+optional `input` maps the reasoner's field names to text with the job's
+`{placeholders}` (`{title}`, `{body}`, `{repo}`, `{repo_url}`, `{base}`,
+`{issue_url}`, `{issue_number}`, `{job}`; a value that is exactly one of them is
+sent as that fact's type, so `{issue_number}` is a number). A job's `steps[]`
+read it back as a `StepDef {kind: "agentfield", target, input}`, and the run's
+executions follow it as steps whose `parent` is that step. The job also carries
+`agentfield_steps`, each run by its step's name. `factory.agentfield_reasoners
+{factory}` (hello feature of the same name) lists what such a step may name:
+`{reasoners: [{node, reasoner, target, description?, online, input?: [{name,
+required?, type?}]}], placeholders: [...]}`, read from the control plane's
+`GET /api/v1/nodes`, and `conflict` on a factory that is not connected.
+
+**A run's pause for a person.** A reasoner that pauses for approval puts its job
+in Needs you with `needs_you.question.kind: "agentfield_approval"`,
+`who_can_answer: "job_person"`, and on the question `text`, `body` (the whole
+markdown it asks about), `options: ["Approve","Ask for changes","Reject"]`,
+`from_step` (a step in `steps[]`), `approval_kind` (`plan_review`, `question`,
+`approval`), `node`, `round` (from 1), `previous_body` and `note` (the words
+that asked for this round) from round 2, and `url`. Its id changes with each
+round. `can.approve`, `can.request_changes` and `can.reject_plan` are true. The
+answers are the job verbs: `factory.job_approve {words?}` is the control plane's
+`approved`, `factory.job_request_changes {words}` is `request_changes` with the
+words (required), and `factory.job_reject_plan {words?}` (words may be empty for
+this kind) is `rejected` and stops the job. An answer given first somewhere else
+stands: the job's question comes down, and a late answer is `conflict` with
+"this was already answered somewhere else, and that answer stands".
+
+**A harness step's question.** A codeaf harness step that asks
+(`chat --once --events --steer`) waits for an answer. The factory puts the
+question to the job's manager and then to the person as an ordinary step
+question (`needs_you.question.kind: "step"`, with `options`, `pick` and `why`),
+which `factory.job_approve {words}` answers with those words.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
