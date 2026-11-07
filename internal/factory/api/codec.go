@@ -303,14 +303,14 @@ func failureOf(it factory.Item) *Failure {
 }
 
 func failureWire(f factory.Failure) *Failure {
-	return &Failure{Rounds: f.Attempts, Runner: f.Machine, Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+	return &Failure{Rounds: f.Attempts, Runner: f.Machine, Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At, Summary: f.Summary}
 }
 
 func failureItem(f *Failure) *factory.Failure {
 	if f == nil {
 		return nil
 	}
-	return &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+	return &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At, Summary: f.Summary}
 }
 
 // CanFor is MayAct in the wire's field names.

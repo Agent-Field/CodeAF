@@ -726,6 +726,8 @@ Reject refuses a job that waits on no approval with `is not waiting on an approv
 
 A job whose run failed or was stopped is never started again by a routing rule's `start: auto`, by a start label, or by the factory starting up. A rule starts only a job that has never run. A failed job waits in Needs you with the failure on it until a person presses **Try again** or **Run again**, or takes it over. This holds for every kind of step and every rule. What the failed step reported before it failed, such as its output, its files or a link it gave, stays on that step beside the failure.
 
+A failure also gets a one-line headline of at most 90 characters, such as `9 of 10 checks passed · failed: no pull request when checked`, above its full text. It is the step's own summary when the step gave one. Otherwise the job's manager writes it from the failure's words in one cheap turn, and what that turn costs is booked on the job like any other manager turn. A job run again in the meantime keeps no stale line. If there is no manager to ask, the headline stays empty and the full text is shown.
+
 ## Stop after the job moves on or starts publishing
 
 Stop still works when the job has moved on since you opened its page. Stopping

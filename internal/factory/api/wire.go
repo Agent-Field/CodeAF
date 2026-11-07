@@ -666,15 +666,19 @@ type SpendingLimit struct {
 // question, and the app shows it as a failure. attempts is how many tries
 // the step had made. machine is the one that was holding the work.
 type Failure struct {
-	Rounds   int       `json:"rounds,omitempty"`
-	Runner   string    `json:"runner,omitempty"`
-	Step     string    `json:"step,omitempty"`
-	Code     string    `json:"code"`
-	Detail   string    `json:"detail,omitempty"`
-	Attempts int       `json:"attempts,omitempty"`
-	Machine  string    `json:"machine,omitempty"`
-	Next     string    `json:"next"`
-	At       time.Time `json:"at"`
+	Rounds   int    `json:"rounds,omitempty"`
+	Runner   string `json:"runner,omitempty"`
+	Step     string `json:"step,omitempty"`
+	Code     string `json:"code"`
+	Detail   string `json:"detail,omitempty"`
+	Attempts int    `json:"attempts,omitempty"`
+	Machine  string `json:"machine,omitempty"`
+	Next     string `json:"next"`
+	// Summary is the failure in one line (at most 90 characters), for the
+	// headline; detail stays whole. Absent until the step or the job's
+	// manager gave one.
+	Summary string    `json:"summary,omitempty"`
+	At      time.Time `json:"at"`
 }
 
 // RoundLine is one finished try of a loop step. started_at is when the try

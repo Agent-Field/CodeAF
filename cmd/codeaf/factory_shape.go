@@ -174,6 +174,12 @@ func shapeCheap(it factory.Item) bool {
 // when this process holds it, else opened for the turn. It answers what the
 // manager said.
 func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, door session.RunDoor) (string, error) {
+	return s.turn(ctx, it, ask, door, shapeCheap(it))
+}
+
+// turn is through at the thinking cheap names when the conversation must be
+// opened for it.
+func (s *shapeTurns) turn(ctx context.Context, it factory.Item, ask string, door session.RunDoor, cheap bool) (string, error) {
 	if s == nil || s.open == nil {
 		return "", errors.New("no manager to ask")
 	}
@@ -190,7 +196,7 @@ func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, d
 		turn, _ = s.live(it.Talk, door)
 	}
 	if turn == nil {
-		opened, err := s.open(ctx, it, door, shapeCheap(it))
+		opened, err := s.open(ctx, it, door, cheap)
 		if errors.Is(err, session.ErrSessionLocked) {
 			// ANOTHER PROCESS HOLDS IT (a window on the engine host): this
 			// runner cannot give it a turn, and says so by name. No retry.
@@ -526,4 +532,17 @@ func managerAnswerResult(receipt factory.ManagerAnswer, err error) (string, erro
 		return line + " Worker notification could not be persisted: " + err.Error() + ". Retry factory_answer with the same question_id and answer to redeliver; the decision is already saved.", nil
 	}
 	return line + " The saved decision is confirmed. A newer pending question, if any, is unchanged.", nil
+}
+
+// FailureSummary is the runner's Options.FailureSummary: one cheap turn of the
+// job's manager writing a failed step's headline from its failure, with no
+// door, so it can only answer in words. The turn is the job's own
+// conversation, so what it costs is booked on the job like every other turn
+// there. The runner cuts the line to its headline length.
+func (s *shapeTurns) FailureSummary(ctx context.Context, it factory.Item, f factory.Failure) (string, error) {
+	detail := strings.Join(strings.Fields(f.Detail), " ")
+	if detail == "" {
+		detail = f.Code
+	}
+	return s.turn(ctx, it, fmt.Sprintf(factory.FailureSummaryAsk, f.Step, detail), nil, true)
 }

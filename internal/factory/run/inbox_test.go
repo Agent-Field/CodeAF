@@ -458,3 +458,59 @@ func TestAStepTellsAStopFromLettingGo(t *testing.T) {
 		})
 	}
 }
+
+// A FAILURE HAS A ONE-LINE HEADLINE. The step's own summary is used when it
+// gave one, and the manager is not asked; otherwise the manager writes one
+// line from the failure once, cut to the headline's length.
+func TestAFailureGetsItsOneLineSummary(t *testing.T) {
+	for name, c := range map[string]struct {
+		given, manager, want string
+		asks                 int
+	}{
+		"the step's own": {given: "9 of 10 checks passed · failed: no pull request when checked", want: "9 of 10 checks passed · failed: no pull request when checked"},
+		"the manager's":  {manager: "9 of 10 checks passed · failed: no pull request when checked\n", want: "9 of 10 checks passed · failed: no pull request when checked", asks: 1},
+		"cut to length":  {manager: strings.Repeat("word ", 40), asks: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var mu sync.Mutex
+			asks := 0
+			g, _ := managed(t, map[factory.StageKind]Executor{
+				factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) {
+					return factory.StageResult{Output: "the long report", Summary: c.given}, errors.New("9 of 10 acceptance criteria met; criterion 9: no pull request exists")
+				}),
+			}, newFakeTalk(), time.Hour)
+			g.r.opts.FailureSummary = func(_ context.Context, _ factory.Item, f factory.Failure) (string, error) {
+				mu.Lock()
+				asks++
+				mu.Unlock()
+				if !strings.Contains(f.Detail, "criterion 9") {
+					t.Errorf("the manager was not given the failure: %+v", f)
+				}
+				return c.manager, nil
+			}
+			id := g.add("fix it", chat("write"))
+			if err := g.r.Launch(id); err != nil {
+				t.Fatal(err)
+			}
+			it := g.wait(id, "summarized", func(it factory.Item) bool { return it.Failure != nil && it.Failure.Summary != "" })
+			got := it.Failure.Summary
+			if c.want != "" && got != c.want {
+				t.Fatalf("summary %q, want %q", got, c.want)
+			}
+			if len([]rune(got)) > factory.FailureSummaryMost || strings.Contains(got, "\n") {
+				t.Fatalf("summary is not one short line: %q", got)
+			}
+			if ph := it.Stream.Phases[0].Failure; ph == nil || ph.Summary != got {
+				t.Fatalf("the step's failure does not carry the summary: %+v", ph)
+			}
+			if !strings.Contains(it.Failure.Detail, "criterion 9") {
+				t.Fatalf("the full failure text was replaced: %q", it.Failure.Detail)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if asks != c.asks {
+				t.Fatalf("the manager was asked %d times, want %d", asks, c.asks)
+			}
+		})
+	}
+}

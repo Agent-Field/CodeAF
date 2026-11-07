@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -1124,6 +1125,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// the failure (a link the step reported among them).
 			lp.keepFailedResult(c, i, res)
 			lp.failStop(c, name, err)
+			lp.summarizeFailure(c.id, res.Summary)
 			return false
 		}
 		if res.Spent > 0 && !res.SpendRecorded {
@@ -1875,6 +1877,38 @@ func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 		})
 	}
 	lp.stop(c)
+}
+
+// summarizeFailure gives the job's failure its one-line headline
+// ([factory.Failure.Summary]): the step's own summary when it gave one, else
+// one line the job's manager writes from the failure's words
+// ([Options.FailureSummary]), asked once, off the stop's path, so a slow or
+// failed turn never holds the stop. A line that comes back after the job was
+// run again is dropped ([factory.SetFailureSummary]).
+func (lp *floorLoop) summarizeFailure(id int, given string) {
+	it, err := lp.r.opts.Store.Get(id)
+	if err != nil || it.Failure == nil || it.Failure.Summary != "" {
+		return
+	}
+	at := it.Failure.At
+	if given = factory.FailureSummary(given); given != "" {
+		_ = lp.r.opts.Store.Update(id, func(cur *factory.Item) error { factory.SetFailureSummary(cur, at, given); return nil })
+		return
+	}
+	write := lp.r.opts.FailureSummary
+	if write == nil {
+		return
+	}
+	failure := *it.Failure
+	guard.Go("factory/failure-summary", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), lp.shapeWait())
+		defer cancel()
+		line, err := write(ctx, it, failure)
+		if err != nil {
+			return
+		}
+		_ = lp.r.opts.Store.Update(id, func(cur *factory.Item) error { factory.SetFailureSummary(cur, at, line); return nil })
+	})
 }
 
 // keepFailedResult writes a failed round's result onto its step when the

@@ -157,7 +157,8 @@ type StepResult struct {
 // StepReport.Model on a worker report). A plan's edit never crosses (the
 // runner applies it as the round ends, and the kept result drops it), nor do
 // Reports and Inferred: they are folded into the round's summary line where
-// the round ran, and that line crosses (steps[].rounds). A field added here is
+// the round ran, and that line crosses (steps[].rounds). Summary stays too: it is written
+// onto the step's failure (Failure.Summary), which crosses on its own. A field added here is
 // one a factory older than it refuses a worker's whole report for.
 func stepResultWire(r factory.StageResult) *StepResult {
 	return &StepResult{Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
