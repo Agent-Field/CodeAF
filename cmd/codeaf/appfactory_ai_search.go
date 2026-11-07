@@ -189,11 +189,16 @@ func (b *appBackend) FactoryAISearchStart(ctx context.Context, p appwire.Factory
 			final.Phase, final.Error = aisearch.PhaseFailed, "the search took longer than ten minutes and was stopped"
 		}
 		run.set(final)
-		appAISearch.cacheMu.Lock()
-		_ = cache.Save()
-		appAISearch.cacheMu.Unlock()
+		appAISearch.save(cache)
 	})
 	return appwire.FactoryAISearchStarted{Run: run.id}, nil
+}
+
+// save writes one factory's answers, one writer at a time.
+func (r *appAISearchRuns) save(c *aisearch.Cache) {
+	r.cacheMu.Lock()
+	defer r.cacheMu.Unlock()
+	_ = c.Save()
 }
 
 func (r *appAISearchRun) set(s aisearch.Status) {
@@ -272,9 +277,13 @@ func (b *appBackend) FactoryAISearchStop(id string) (appwire.FactoryAISearchRun,
 	}
 	if !run.finished() {
 		run.cancel()
-		run.mu.Lock()
-		run.status.Phase = aisearch.PhaseStopped
-		run.mu.Unlock()
+		run.stopped()
 	}
 	return run.view(), nil
+}
+
+func (r *appAISearchRun) stopped() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.status.Phase = aisearch.PhaseStopped
 }
