@@ -302,6 +302,11 @@ type Pipeline struct {
 	// Merge is the file's `merge:` settings; absent is auto-merge off and the
 	// repository's own choice of method.
 	Merge *MergeBlock `json:"merge,omitempty"`
+	// Pipelines is every pipeline a job on this repository can run, from the
+	// repository's file, the factory's copy of it, the factory's library and
+	// the built-in steps, each once with where it came from: what "Pick the
+	// pipeline" offers. Absent from a factory that predates the library.
+	Pipelines []PipelineChoice `json:"pipelines,omitempty"`
 }
 
 // MergeBlock is a pipeline's merge settings on the wire.
@@ -328,10 +333,22 @@ type SizeBlock struct {
 // StepDef is one step as the pipeline defines it (code: [factory.Stage]).
 type StepDef struct {
 	Label string `json:"label,omitempty"`
-	Name  string `json:"name"`
-	Kind  string `json:"kind,omitempty"`
-	Ask   string `json:"ask,omitempty"`
-	Until string `json:"until,omitempty"`
+	// Parent is the name of the step that called this one in an AgentField
+	// run, absent for a top-level step; steps sharing a group ran at once.
+	// Both are absent on every step a factory runs itself.
+	Parent string `json:"parent,omitempty"`
+	Group  string `json:"group,omitempty"`
+	// GroupLabel is what the group this step ran at once with is called, in a
+	// person's words ("Investigate"); absent when its members share no words.
+	GroupLabel string `json:"group_label,omitempty"`
+	// Target and Input are an agentfield step's reasoner ("<node>.<reasoner>")
+	// and its input mapping; absent on every other step.
+	Target string            `json:"target,omitempty"`
+	Input  map[string]string `json:"input,omitempty"`
+	Name   string            `json:"name"`
+	Kind   string            `json:"kind,omitempty"`
+	Ask    string            `json:"ask,omitempty"`
+	Until  string            `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
 	UntilSentence string `json:"until_sentence,omitempty"`
@@ -353,6 +370,10 @@ type StepDef struct {
 	// "@handle" for a named person, operator for any of the factory's
 	// operators (factory.ApproverWord).
 	Who string `json:"who,omitempty"`
+	// Pass is who may pass an approve step: person, manager, or `manager when
+	// <condition>` (factory.PassWord); absent when the pipeline does not say,
+	// which reads as manager, or person on a fixed step.
+	Pass string `json:"pass,omitempty"`
 }
 
 // Job states, as the API says them (ARCHITECTURE §2).
@@ -367,7 +388,10 @@ const (
 
 // What Approve does on a job now ([Job.Gate]).
 const (
-	GatePlan     = "plan"
+	GatePlan = "plan"
+	// GateStep is Manual's hold before a step: the step waits for the
+	// person to go on. It is not a plan.
+	GateStep     = "step"
 	GateProof    = "proof"
 	GateQuestion = "question"
 	GateCap      = "cap"
@@ -395,9 +419,21 @@ type JobReadSize struct {
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
 	// RoundCostTables advertises table support only on worker admission.
-	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
-	FromJob         int    `json:"from_job,omitempty"`
-	SourceIssue     string `json:"source_issue,omitempty"`
+	RoundCostTables bool `json:"round_cost_tables,omitempty"`
+	// FailureSummaries advertises, on worker admission only, that this factory
+	// reads a failure's one-line summary in a worker's report. A factory older
+	// than it decodes reports strictly and refuses the whole one that carries it.
+	FailureSummaries bool   `json:"failure_summaries,omitempty"`
+	FromJob          int    `json:"from_job,omitempty"`
+	SourceIssue      string `json:"source_issue,omitempty"`
+	// RunOn is the AgentField reasoner that runs this job, "<node>.<reasoner>",
+	// and AgentField the run once it was dispatched; both absent on a job
+	// this factory runs itself.
+	RunOn      string                 `json:"run_on,omitempty"`
+	AgentField *factory.AgentFieldRun `json:"agentfield,omitempty"`
+	// AgentFieldSteps are the runs behind the job's agentfield steps, by
+	// step name; their executions are in steps[] under that step.
+	AgentFieldSteps map[string]*factory.AgentFieldRun `json:"agentfield_steps,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
@@ -455,9 +491,44 @@ type Job struct {
 	// FactoryModel is the factory's default model the job was last queued
 	// under (factory.Spending), which a step that names no model, on a job
 	// that names none, runs on; absent when the factory sets none.
-	FactoryModel  string            `json:"factory_model,omitempty"`
-	Reason        string            `json:"reason,omitempty"`
-	DoneHow       string            `json:"done_how,omitempty"`
+	FactoryModel string `json:"factory_model,omitempty"`
+	// RunsOn is THE model the job's current or next conversation step runs on,
+	// and the rung that named it ([factory.StepModel], the same resolution the
+	// runner opens the step on). Absent when this factory cannot know it: no
+	// pick of the job's and no default here, its runner elsewhere. A step
+	// carries its own as step.runs_on. Hello word `factory.job_runs_on`.
+	RunsOn *factory.ModelChoice `json:"runs_on,omitempty"`
+	// Source is where the job came from ([factory.JobSource]): github with
+	// `owner/repo#N` and the issue's address, a connector's or a trigger's
+	// name with the job's key there. RepoURL is the address of the job's
+	// repository on its forge ([factory.RepoURL]), read off an address the
+	// forge gave rather than guessed from the name. Route is the routing rule
+	// that decided the job and, when that rule asked the AI, its answer.
+	// RouteDeclined is every other rule whose AI question was answered no,
+	// with why: what a job no rule started says instead of nothing.
+	// Hello word `factory.job_source`.
+	Source *factory.JobSourceFacts `json:"source,omitempty"`
+	// Origin is the AgentField node and reasoner that run the job and the
+	// trigger that filed it ([factory.JobOriginOf]); absent for every other
+	// job. Labels is the source's labels as a reader filters on them, with
+	// `node:<node>` for an AgentField job ([factory.JobLabels]); absent when
+	// there are none. Both are read facts: a worker's report never sends them.
+	Origin        *factory.JobOrigin `json:"origin,omitempty"`
+	Labels        []string           `json:"labels,omitempty"`
+	RepoURL       string             `json:"repo_url,omitempty"`
+	Route         *JobRoute          `json:"route,omitempty"`
+	RouteDeclined []RouteDeclined    `json:"route_declined,omitempty"`
+	// StepsDone of StepsTotal is how far the job is ([factory.StepCount]): THE
+	// ONE STEP COUNT, which the Brief's own steps_done and steps_total read
+	// too. A skipped step counts for neither. Hello word `factory.job_steps`.
+	StepsDone  int    `json:"steps_done"`
+	StepsTotal int    `json:"steps_total"`
+	Reason     string `json:"reason,omitempty"`
+	DoneHow    string `json:"done_how,omitempty"`
+	// Rejection is the person's no that ended the job at an approval, with
+	// their words; absent on every other ending. The job is then done and
+	// closed here (done_how closed_locally).
+	Rejection     *Rejection        `json:"rejection,omitempty"`
 	DoneAt        time.Time         `json:"done_at"`
 	Dismissed     bool              `json:"dismissed"`
 	DismissedBy   []string          `json:"dismissed_by,omitempty"`
@@ -514,6 +585,11 @@ type Job struct {
 	// ([WorkerJob]), so it reads the same rules, and a list of jobs never
 	// carries every file again.
 	PipelineCopy *factory.PipelineCopy `json:"pipeline_copy,omitempty"`
+	// FirstRead is the job's read of its issue before work
+	// ([factory.FirstReadOf]), which every step is given. ONLY THE RUNNER
+	// THAT PULLS THE JOB GETS IT ([WorkerJob]); a reader reads the brief
+	// through GET /v1/jobs/{id}/brief.
+	FirstRead *factory.BriefVersion `json:"first_read,omitempty"`
 	// PipelineDecided says the job's pipeline file was decided at its first
 	// start, for its life (factory.Item.DecidePipeline): pipeline_copy, or
 	// main's file alone when that is absent. Absent before its first start.
@@ -596,6 +672,9 @@ type NeedsYou struct {
 	// out_of_rounds wait it is the finished step before the stuck one, which a
 	// step rerun from it sends the work back to.
 	BackTo string `json:"back_to,omitempty"`
+	// Step is, on an approve_step wait, the step that is next and waits for
+	// the person to go on, by its label when it has one, else its name.
+	Step string `json:"step,omitempty"`
 }
 
 // NeedsQuestion is the ask on a needs-you kind that is a question.
@@ -610,6 +689,23 @@ type NeedsQuestion struct {
 	Asks         string   `json:"asks,omitempty"`
 	WhoCanAnswer string   `json:"who_can_answer"`
 	Answered     *Answer  `json:"answered,omitempty"`
+	// Pick is the option the step would take, and Why the step's reason or
+	// evidence for asking, in its own words (a step's question).
+	Pick string `json:"pick,omitempty"`
+	Why  string `json:"why,omitempty"`
+	// An AgentField run's approval (kind agentfield_approval): Body is what
+	// the person approves, whole (a plan in markdown); ApprovalKind the
+	// reasoner's own kind (plan_review, question, approval); Node the
+	// node that waits; Round 1 for the first ask and one more after each
+	// "Ask for changes"; Note the person's words that asked for this round;
+	// PreviousBody the round before's body, so the change can be shown.
+	Body         string `json:"body,omitempty"`
+	ApprovalKind string `json:"approval_kind,omitempty"`
+	Node         string `json:"node,omitempty"`
+	Round        int    `json:"round,omitempty"`
+	Note         string `json:"note,omitempty"`
+	PreviousBody string `json:"previous_body,omitempty"`
+	URL          string `json:"url,omitempty"`
 }
 
 // SpendingLimit is the cap a continue answer would raise. next_limit comes
@@ -627,15 +723,19 @@ type SpendingLimit struct {
 // question, and the app shows it as a failure. attempts is how many tries
 // the step had made. machine is the one that was holding the work.
 type Failure struct {
-	Rounds   int       `json:"rounds,omitempty"`
-	Runner   string    `json:"runner,omitempty"`
-	Step     string    `json:"step,omitempty"`
-	Code     string    `json:"code"`
-	Detail   string    `json:"detail,omitempty"`
-	Attempts int       `json:"attempts,omitempty"`
-	Machine  string    `json:"machine,omitempty"`
-	Next     string    `json:"next"`
-	At       time.Time `json:"at"`
+	Rounds   int    `json:"rounds,omitempty"`
+	Runner   string `json:"runner,omitempty"`
+	Step     string `json:"step,omitempty"`
+	Code     string `json:"code"`
+	Detail   string `json:"detail,omitempty"`
+	Attempts int    `json:"attempts,omitempty"`
+	Machine  string `json:"machine,omitempty"`
+	Next     string `json:"next"`
+	// Summary is the failure in one line (at most 90 characters), for the
+	// headline; detail stays whole. Absent until the step or the job's
+	// manager gave one.
+	Summary string    `json:"summary,omitempty"`
+	At      time.Time `json:"at"`
 }
 
 // RoundLine is one finished try of a loop step. started_at is when the try
@@ -696,6 +796,14 @@ type Can struct {
 	// serves the route. A factory from before the route never sends it, which
 	// reads as false: no plan revision is offered.
 	RejectPlan bool `json:"reject_plan"`
+	// RequestChanges is "Ask for changes" on an AgentField run's approval
+	// (needs_you.question.kind agentfield_approval): request_changes with the
+	// person's words. Absent on every other wait.
+	RequestChanges bool `json:"request_changes,omitempty"`
+	// Reject is POST /v1/jobs/{id}/reject for this caller right now: the job
+	// waits on an approval the caller may answer, and a no ends the job with
+	// the caller's words ([factory.WaitsOnApproval]).
+	Reject bool `json:"reject"`
 	// Merge is the merge gate passing for the caller now: Merge would go.
 	Merge bool `json:"merge"`
 	// PRReady lets the job's person mark its open draft ready for review.
@@ -741,12 +849,16 @@ type NeedsYouGroup struct {
 // draw (DESIGN-BRIEF §5: triage, tier, origin, labels, checks, comments,
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
+	// SourceRef is the job's identity on a source outside the forge
+	// ([factory.Item.SourceRef]), as kept; a page reads job.source instead.
+	SourceRef string `json:"source_ref,omitempty"`
 	// EngineState preserves old documents without adding a sixth public state.
 	EngineState   string               `json:"engine_state,omitempty"`
 	Priority      *factory.JobPriority `json:"priority,omitempty"`
 	DoneHow       string               `json:"done_how,omitempty"`
 	Approval      *factory.Approval    `json:"approval,omitempty"`
 	PersonStopped *bool                `json:"person_stopped,omitempty"`
+	Rejection     *factory.Rejection   `json:"rejection,omitempty"`
 	StopUndo      *factory.StopUndo    `json:"stop_undo,omitempty"`
 
 	ChangeBase      string    `json:"change_base,omitempty"`
@@ -848,11 +960,21 @@ type Step struct {
 	// own in rounds.
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	// Model is the model the step's conversation ran on, once it ran.
-	Model      string `json:"model,omitempty"`
-	Handle     string `json:"handle,omitempty"` // desk
-	RunKind    string `json:"run_kind,omitempty"`
-	InPipeline bool   `json:"in_pipeline"`
-	InRun      bool   `json:"in_run"`
+	Model string `json:"model,omitempty"`
+	// Passed is who passed an approve step, once it is done: the manager (in
+	// Auto) or a person (by handle when known), and the manager's sentence
+	// when it judged a `manager when` condition. Absent on every other step.
+	Passed *StepPassed `json:"passed,omitempty"`
+	// RunsOn is the model a conversation step that has not finished runs on
+	// next, and the rung that named it ([factory.StepModel]); absent on a
+	// finished, skipped or non-conversation step, and where this factory
+	// cannot know it. ONLY A READER'S JOB CARRIES IT: a worker's report never
+	// does, so an older factory never meets it.
+	RunsOn     *factory.ModelChoice `json:"runs_on,omitempty"`
+	Handle     string               `json:"handle,omitempty"` // desk
+	RunKind    string               `json:"run_kind,omitempty"`
+	InPipeline bool                 `json:"in_pipeline"`
+	InRun      bool                 `json:"in_run"`
 	// Report is the step's whole last report (done, findings, claims, notes,
 	// output, exit), in the words a worker reports one with. ONLY THE WORKER'S
 	// PULL CARRIES IT ([WorkerJob]): the runner that takes a job on hands the
@@ -860,6 +982,13 @@ type Step struct {
 	// result, cost, tests and model already. A step without it (a pull from a
 	// factory older than the field) is read from result as before.
 	Report *StepResult `json:"report,omitempty"`
+}
+
+// StepPassed is who passed an approve step ([Step.Passed]).
+type StepPassed struct {
+	By     string `json:"by"` // manager or person
+	Handle string `json:"handle,omitempty"`
+	Why    string `json:"why,omitempty"`
 }
 
 // Claim is one row of a proof sheet.
@@ -1244,6 +1373,22 @@ type Approve struct {
 	Words  string  `json:"words,omitempty"`
 	Commit string  `json:"commit"`
 	Edited bool    `json:"edited,omitempty"`
+	Expect *Expect `json:"expect,omitempty"`
+}
+
+// Rejection is a job's ending by a person's rejection on the wire.
+type Rejection struct {
+	By    string    `json:"by,omitempty"`
+	Words string    `json:"words,omitempty"`
+	At    time.Time `json:"at"`
+}
+
+// Reject is the body of POST /v1/jobs/{id}/reject: the person's rejection of
+// what the job waits on them to approve. The job ends, closed as rejected,
+// with Words on it. Words may be empty and are at most [MaxRejectPlanWords]
+// characters.
+type Reject struct {
+	Words  string  `json:"words,omitempty"`
 	Expect *Expect `json:"expect,omitempty"`
 }
 

@@ -9,6 +9,7 @@ cmd/codeaf/chat.go:reflectAcrossJobs:CompleteWithMessages	exception: untraced te
 cmd/codeaf/chat.go:repairCraft:CompleteWithMessages	exception: untraced terminal helpers
 cmd/codeaf/chat.go:titleGoal:CompleteWithMessages	exception: untraced terminal helpers
 cmd/codeaf/chat.go:unlockedWhileThinking.CompleteWithMessages:CompleteWithMessages	exception: untraced terminal helpers
+cmd/codeaf/factory_judge.go:factoryAICall:CompleteWithMessages	owner: Factory page accounting (factoryAIAccounting -> recordFactoryAIUsage -> session.RecordUsage)
 cmd/codeaf/factory_scout.go:factoryScoutChat:CompleteWithMessages	owner: Factory page accounting (factoryAIAccounting -> recordFactoryAIUsage -> session.RecordUsage)
 cmd/codeaf/factory_triage.go:factoryTriageCallNoting:CompleteWithMessages	owner: Factory page accounting (factoryAIAccounting -> recordFactoryAIUsage -> session.RecordUsage)
 cmd/codeaf/image.go:runImage:GenerateImage	exception: untraced image and media transport

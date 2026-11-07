@@ -87,6 +87,11 @@ func factoryIntakeOwned(st *store.Store, owner func(context.Context) string) *in
 		}),
 		Owner:  owner,
 		Record: history,
+		// A routing rule's question is answered by the floor's AI filter,
+		// on the factory's default model (a rule names none yet) and booked
+		// as `factory filter`. Every host builds its intake here, so the app,
+		// a team server and the command line all ask the same judge.
+		Judge: factoryJudge(st, config.Load),
 		// An automatic start is looked at closer first, while Read new issues
 		// as they arrive is on.
 		Scout: func(ctx context.Context, id int) error {
@@ -240,7 +245,21 @@ func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipelin
 	if serr != nil {
 		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, serr)
 	}
-	return pipeline.WithSpending(pipeline.WithHouseRules(f, house), spending), err
+	// THE FACTORY'S PIPELINE LIBRARY goes beside every read the same way, so
+	// a Start, a routing rule and a job's own kind all resolve a pipeline's
+	// name through [pipeline.File.Resolve]: the repository's file, then the
+	// library, then the built-in steps. A library that cannot be read fails
+	// the read like the rules do: a rule naming one of its pipelines must
+	// never quietly run something else.
+	kept, lerr := st.PipelineLibrary()
+	if lerr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, lerr)
+	}
+	lib, lerr := pipeline.ParseLibrary(kept.Text)
+	if lerr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, lerr)
+	}
+	return pipeline.WithLibrary(pipeline.WithSpending(pipeline.WithHouseRules(f, house), spending), lib), err
 }
 
 // factoryProfileOwner is the forge login of this machine's GitHub connection:

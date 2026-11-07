@@ -502,7 +502,7 @@ func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Leas
 func wireSignals(in []lease.Signal) []api.WorkerSignal {
 	out := make([]api.WorkerSignal, len(in))
 	for i, s := range in {
-		out[i] = api.WorkerSignal{Delivery: s.Delivery, PublishAnyway: s.PublishAnyway, Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
+		out[i] = api.WorkerSignal{Delivery: s.Delivery, PublishAnyway: s.PublishAnyway, Automatic: s.Automatic, Budget: s.Budget, ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words, Execution: s.Execution, Decision: s.Decision, By: s.By}
 	}
 	return out
 }

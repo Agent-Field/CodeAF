@@ -242,6 +242,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.activity` | `in.FactoryActivityParams` | `FactoryActivity` |
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
+| `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -252,6 +253,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
+| `factory.agentfield_run` | `in.FactoryAgentFieldRunParams` | `FactoryAgentFieldRun` |
+| `factory.agentfield_reasoners` | `in.FactoryAgentFieldReasonersParams` | `FactoryAgentFieldReasoners` |
+| `factory.foreman_open` | `in.FactoryRef` | `FactoryForeman` |
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -262,9 +266,11 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_pr_ready` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
+| `factory.job_reject` | `in.FactoryJobRejectParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
 | `factory.job_reopen` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_request_changes` | `in.FactoryJobChangesParams` | `FactoryJobActed` |
+| `factory.job_answer` | `in.FactoryJobAnswerParams` | `FactoryJobActed` |
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_publish_anyway` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -276,6 +282,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_set_budget` | `in.FactoryJobBudgetParams` | `FactoryJobActed` |
 | `factory.job_set_model` | `in.FactoryJobSetModelParams` | `FactoryJobActed` |
 | `factory.job_set_priority` | `in.FactoryJobPriorityParams` | `FactoryJobActed` |
+| `factory.job_set_repo` | `in.FactoryJobSetRepoParams` | `FactoryJobActed` |
 | `factory.job_start` | `in.FactoryJobStartParams` | `FactoryJobActed` |
 | `factory.job_step_edit` | `in.FactoryJobStepEditParams` | `FactoryJobStepEdited` |
 | `factory.job_step_edits_read` | `in.FactoryJobStepEditsParams` | `FactoryJobStepEdits` |
@@ -294,6 +301,22 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.local_run` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_start` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_status` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
+| `factory.agentfield_connect` | `in.FactoryAgentFieldConnectParams` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_disconnect` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_sources` | `in.FactoryRef` | `FactoryAgentFieldSources` |
+| `factory.agentfield_status` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_trigger_add` | `in.FactoryAgentFieldTriggerAddParams` | `FactoryAgentFieldTrigger` |
+| `factory.agentfield_triggers` | `in.FactoryRef` | `FactoryAgentFieldTriggers` |
+| `factory.ai_search` | `in.FactoryAISearchParams` | `FactoryAISearchStarted` |
+| `factory.ai_search_estimate` | `in.FactoryAISearchParams` | `FactoryAISearchEstimate` |
+| `factory.ai_search_status` | `in.FactoryAISearchRunRef` | `FactoryAISearchRun` |
+| `factory.ai_search_stop` | `in.FactoryAISearchRunRef` | `FactoryAISearchRun` |
+| `factory.jira_connect` | `in.FactoryJiraConnectParams` | `FactoryJiraStatus` |
+| `factory.jira_disconnect` | `in.FactoryRef` | `FactoryJiraStatus` |
+| `factory.jira_status` | `in.FactoryRef` | `FactoryJiraStatus` |
+| `factory.library` | `in.FactoryRef` | `FactoryLibrary` |
+| `factory.library_preview` | `in.FactoryLibraryPreviewParams` | `FactoryLibraryPreview` |
+| `factory.library_set` | `in.FactoryLibrarySetParams` | `FactoryLibrary` |
 | `factory.me` | `in.FactoryRef` | `FactoryMe` |
 | `factory.people` | `in.FactoryRef` | `People` |
 | `factory.pipeline` | `in.FactoryRepoParams` | `FactoryPipeline` |
@@ -316,6 +339,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.revoke_sessions` | `in.FactoryAdminParams` | `FactoryAdminDone` |
 | `factory.rules` | `in.FactoryRef` | `FactoryRules` |
 | `factory.rules_set` | `in.FactoryRulesSetParams` | `FactoryRules` |
+| `factory.routes` | `in.FactoryRef` | `FactoryRoutes` |
+| `factory.routes_set` | `in.FactoryRoutesSetParams` | `FactoryRoutes` |
+| `factory.routes_test` | `in.FactoryRoutesTestParams` | `FactoryRoutesTried` |
 | `factory.runner_slots` | `in.FactoryRunnerSlotsParams` | `FactoryRunnerSlotsDone` |
 | `factory.runners` | `in.FactoryRef` | `Runners` |
 | `factory.scout` | `in.FactoryScoutParams` | `ScoutLook` |
@@ -328,6 +354,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.setup_continue` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_discover` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_done` | `in.FactoryLocalParams` | `FactorySetupView` |
+| `factory.setup_github_cancel` | `in.FactorySignInFlowParams` | `Empty` |
+| `factory.setup_github_poll` | `in.FactorySignInFlowParams` | `FactorySetupGitHubState` |
+| `factory.setup_github_start` | `in.FactoryLocalParams` | `FactorySignIn` |
 | `factory.setup_folder_check` | `in.FactorySetupFolderCheckParams` | `FactorySetupFolder` |
 | `factory.setup_read` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_retry_read` | `in.FactorySetupRepoParams` | `FactorySetupView` |
@@ -383,6 +412,120 @@ finished or publishing jobs. Ended jobs retain their existing `stale` or
 `conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
 and errors retain their existing codes, including `bad_params` for malformed
 requests. Other job actions retain their guards except Pause and Resume, described below.
+
+`factory.setup_github` in hello features says the engine can connect the
+first run's GitHub in the browser with GitHub's OAuth device flow. It is
+announced only by a build that names an OAuth app (the client ID stamped in at
+build time, or `CODEAF_GITHUB_CLIENT_ID`); without one the three methods are
+`unknown_method` and setup offers the gh login and a pasted token.
+`factory.setup_github_start {caller}` answers `FactorySignIn` (`flow`,
+`factory`, `user_code`, `verification_uri`, `interval`, `expires_in`), the
+shape `factory.sign_in_start` answers; GitHub's device code stays in the engine
+and a second start from the same caller replaces the first. The scope asked
+for is `repo`. `factory.setup_github_poll {flow, caller}` answers
+`{state: pending|signed_in|expired|denied, interval?, message?, github_token?,
+view?}`; a poll sooner than `interval` is answered `pending` without asking
+GitHub, and `slow_down` raises `interval`. On approval the engine connects the
+token exactly as `factory.setup_connect {source: token}` does and only then
+answers `signed_in` with the setup `view` after the connect and the token,
+once, as `github_token`, for the app to keep in its Keychain as it keeps a
+pasted token. It is the only answer of the setup wire that carries a secret. A
+connect that fails is that connect's error, and the flow is over either way.
+`factory.setup_github_cancel {flow, caller}` forgets the flow. Another
+caller's flow, an ended flow and an unknown one are `not_found`.
+
+`factory.intake` in hello features says the engine serves `factory.intake_add`:
+outside work filed as a job through `inbox.Add` in the engine's own process, on
+the factory this engine serves; the factory has no HTTP intake, and another
+factory is `not_found` ("work is filed on the machine that runs the factory; on
+another machine, connect GitHub or Jira there or send it through AgentField").
+Work for a repository that is off is `conflict` with the factory's repo-off words.
+Its params are `{factory, source, external_id, title, body?, url?, author?,
+labels?, priority?, repo?, trust?}`; `source` is a lowercase name (`jira`,
+`inbox:ops`), `priority` is `p0`..`p3`, and `trust` is `owner` (the default),
+`collaborator` or `stranger`, the job's tier; a repeat may lower it, never
+raise it. The pair `(source, external_id)` is
+the identity: a second call updates the job it made and answers `created:
+false`. The reply is `{id, created}`. A malformed entry is `bad_params` with
+the inbox's own sentence.
+
+`factory.agentfield` in hello features says the engine serves the six
+`factory.agentfield_*` methods, which make this machine's factory a node on an
+AgentField control plane so AgentField's triggers are its intake
+(internal/factory/agentfield).
+`factory.agentfield_connect {factory, url, api_key?, base_url, node_id?,
+listen?, trust?}` checks `url` and `api_key` against the control plane's
+`GET /api/v1/sources`, binds the node's listener on `listen` (default:
+`base_url`'s port, on 127.0.0.1 when `base_url` is loopback, else 0.0.0.0),
+registers node `node_id` (default `codeaf-factory`) with reasoners `intake`
+(accepts webhooks), `message` and `status`, and answers `FactoryAgentFieldStatus`
+once the control plane took the registration; a connect that fails any of
+those keeps nothing (`bad_params` for a refused key or registration,
+`unreachable` for a control plane that does not answer). `trust` is the
+ceiling for every entry the node files: `owner`, `collaborator` (default) or
+`stranger`. The registered `base_url` carries a 64-hex address secret
+(`<base_url>/n/<secret>`), the node answers nothing outside it, and neither the
+key nor the secret is ever in a reply. `factory.agentfield_status {factory}`
+answers `{factory, connected, url?, node_id?, base_url?, listen?, trust?,
+key_kept?, listening?, registered_at?, lease_seconds?, lease_until?,
+last_event?, last_event_source?, last_event_what?, last_error?,
+last_error_at?, executions?}`. `factory.agentfield_disconnect {factory}` tells
+the control plane the node is offline, stops the listener and forgets the
+settings, the key and the secret; jobs already filed stay.
+`factory.agentfield_triggers {factory}` is `GET /api/v1/triggers` for this node:
+`{factory, node_id, triggers: [{id, source, reasoner, event_types?, enabled,
+managed_by?, secret_env_var?, ingest_url, events_24h?, failed_24h?,
+last_event_at?}]}`, `ingest_url` being the control plane's `/sources/<id>`.
+`factory.agentfield_sources {factory}` is the control plane's catalog,
+`{factory, sources: [{name, kind, secret_required, config_schema?}]}`.
+`factory.agentfield_trigger_add {factory, source, config?, secret_env_var?,
+event_types?}` is `POST /api/v1/triggers` targeting `<node_id>.intake` and
+answers the trigger. Every method but connect is `conflict` on a factory that
+is not connected, and every method is `not_found` for a factory other than
+this machine's.
+
+**A pipeline step that runs on AgentField.** `factory.pipeline_edit_agentfield`
+in hello features says `factory.pipeline_preview` takes an `add_step` of
+`kind: "agentfield"`: `prompt` is the reasoner, `node.reasoner`, and the
+optional `input` maps the reasoner's field names to text with the job's
+`{placeholders}` (`{title}`, `{body}`, `{repo}`, `{repo_url}`, `{base}`,
+`{issue_url}`, `{issue_number}`, `{job}`; a value that is exactly one of them is
+sent as that fact's type, so `{issue_number}` is a number). A job's `steps[]`
+read it back as a `StepDef {kind: "agentfield", target, input}`, and the run's
+executions follow it as steps whose `parent` is that step. The job also carries
+`agentfield_steps`, each run by its step's name. `factory.agentfield_reasoners
+{factory}` (hello feature of the same name) lists what such a step may name:
+`{reasoners: [{node, reasoner, target, description?, online, input?: [{name,
+required?, type?}]}], placeholders: [...]}`, read from the control plane's
+`GET /api/v1/nodes`, and `conflict` on a factory that is not connected.
+
+**A run's pause for a person.** A reasoner that pauses for approval puts its job
+in Needs you with `needs_you.question.kind: "agentfield_approval"`,
+`who_can_answer: "job_person"`, and on the question `text`, `body` (the whole
+markdown it asks about), `options: ["Approve","Ask for changes","Reject"]`,
+`from_step` (a step in `steps[]`), `approval_kind` (`plan_review`, `question`,
+`approval`), `node`, `round` (from 1), `previous_body` and `note` (the words
+that asked for this round) from round 2, and `url`. Its id changes with each
+round. `can.approve`, `can.request_changes` and `can.reject_plan` are true. The
+answers are the job verbs: `factory.job_approve {words?}` is the control plane's
+`approved`, `factory.job_request_changes {words}` is `request_changes` with the
+words (required), and `factory.job_reject_plan {words?}` (words may be empty for
+this kind) is `rejected` and stops the job. An answer given first somewhere else
+stands: the job's question comes down, and a late answer is `conflict` with
+"this was already answered somewhere else, and that answer stands".
+
+**A harness step's question.** A codeaf harness step that asks
+(`chat --once --events --steer`) waits for an answer. The factory puts the
+question to the job's manager and then to the person as an ordinary step
+question (`needs_you.question.kind: "step"`, with `options`, `pick` and `why`),
+answered with `factory.job_answer {factory, job, question_id, option?, words?,
+expect: {version, state}}` (hello feature `factory.job_answer`): `question_id`
+is `needs_you.question.id`, `option` one of its `options` by label, `words` the
+person's own; at least one, and with both the step reads `<option>: <words>`.
+It is `FactoryJobActed` with action `answer`. A changed question or a moved job
+is refused as the factory's answer door refuses it, and an
+`agentfield_approval` question is `bad_params` (answer it with the three verbs
+above). This answers any step's question, a native step's too.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
@@ -556,6 +699,121 @@ the rules were never written, and when the factory last wrote them with a build
 that did not record the change. A write sent with the factory's script
 credential records the factory's operator.
 
+The job search bar's AI search (hello feature `factory.ai_search`) answers a
+person's question in their own words with the jobs it is about.
+`factory.ai_search_estimate {factory, question, jobs?}` asks no model and answers
+`{factory, question, model, items, reused, reads, judge_most, usd_typical?,
+usd_most?}`: `reads` screen reads of 40 items each, at most `judge_most` (60)
+yes/no questions, `reused` items whose answers to this question are already
+kept, and dollars only when the model's price is known. `factory.ai_search`
+with the same params starts one run and answers `{run}` at once; the run reads
+the caller's own queue (issue jobs, not dropped), or only `jobs` (at most 5000
+ids) when sent. `factory.ai_search_status {run}` answers `{run, factory,
+question, words, phase, total, read, related, checked, over?, asked, reused?,
+failed?, usd, model, matches: [{job, ref, title, repo, why, kept?}], error?}`
+where `phase` is `screening`, `judging`, `done`, `failed` or `stopped`, and
+`factory.ai_search_stop {run}` ends it. There is no event: a surface polls
+status. A question is at most 300 characters; a leading `?` is dropped. Every
+call is booked as `factory search`.
+
+An engine whose hello carries the feature `factory.routes` serves
+`factory.routes {factory}` and `factory.routes_set {factory, rules, expect?}`:
+the factory's routing table, an ordered list where the first rule that
+matches an arriving item decides it. A rule is
+`{"name": "...", "when": {sources?, repos?, labels?, authors?, text?,
+priority?}, "then": {repo?, pipeline?, priority?, start}}`; every `when` list
+matches when any entry does and an absent one matches anything; `start` is
+`auto`, `ask` or `backlog`; priorities are `p0`..`p3`; repositories are
+`owner/name`. The reply is `{"factory": "...", "rules": [...], "changed_by"?,
+"changed_at"?}`, `rules` always present (`[]` for none). `rules_set` replaces
+the whole table; an omitted `rules` is `bad_params`, a bad rule is
+`bad_params` naming it, only the operator may write (`forbidden`), and an
+`expect` that is not what the factory keeps is `stale` with nothing written.
+A rule's `when` may also carry `ask`, one yes/no question of at most 300
+characters for the factory's judge; a rule with a question matches only on a
+yes kept on the job. `factory.routes_test {factory, rules, limit?}` tries a
+table (need not be the kept one) on the newest `limit` jobs the caller may see
+(default 50, at most 200) and answers `{"factory": "...", "jobs": [{job, ref,
+title, outcome, rule?, why?, reason?}]}`, newest first, where `outcome` is
+`matched`, `pending` (a question with no answer kept yet), `refused` (the rule
+matched, and the repository it sends the job to lists no pipeline of the name
+it gives; `reason` is `routing rule <name>: <repo> has no pipeline <p>`) or
+`none`. It writes nothing and asks no model. `factory.routes_set` refuses, as
+`bad_params` in that same sentence, a rule that names both a repository and a
+pipeline that repository's file (or the factory's copy of it) does not list,
+when the file can be read; one whose file cannot be read now is kept. A rule
+refused while routing never fails the factory's pass: the job stays unrouted
+and its activity gets one `routed` row in that sentence.
+
+`factory.job_set_repo` in hello features says the engine serves
+`factory.job_set_repo {factory, job, repo, expect?}`: giving a job that never
+ran its repository (`owner/name`), the way out of Backlog for outside work
+that arrived with none. The factory sets the job's repository and places,
+stamps that repository's steps, keeps that a person chose it (a routing rule's
+repository never moves it again), clears the rule that routed it and routes it
+again at once. It replies `FactoryJobActed` with `action: "set_repo"`. Only
+the operator or the job's person may (`forbidden`); a job that has started is
+`conflict` "This job has already started, so it keeps its repository.", and a
+GitHub issue's job is `conflict` too. A Backlog job with no repository reads
+`state_presentation {kind: "backlog", title: "Waiting for a repository",
+detail: "Say which repository the work is on, or add a routing rule that sends
+it to one."}`, and `factory.job_start` on it is `conflict` "say which
+repository the work is on". `factory.job_start {pipeline}` is taken by a job
+queued and not yet taken: its steps are replaced and its run laid out again
+on them; only a job that ran is `conflict` "This job has already run, so it
+keeps its steps."
+
+An engine whose hello carries the feature `factory.library` serves the
+factory's PIPELINE LIBRARY: named pipelines and the step definitions they use,
+kept by the factory (not by one Mac, not in any repository) for every
+repository it works on, in the same YAML as a repository's
+`.codeaf/factory.yaml`, `pipeline:` and `steps:` only.
+`factory.library {factory}` answers `{"factory": "...", "text": "...",
+"version": 3, "pipelines": [{name, from: "library", steps}], "can": {"change":
+bool}, "changed_by"?, "changed_at"?}` (`GET /v1/pipeline-library`); `text` is
+`""` for an empty library and `version` starts at 1. Everyone signed in may
+read it. `factory.library_set {factory, text, expect: {version}}` replaces it
+whole (`PUT /v1/pipeline-library`): `text` is required (`""` empties it), it is
+parsed by the factory's own parser and kept as its encoder writes it, which
+writes only what the text wrote; a key other than `pipeline` and `steps`, a
+pipeline named `pr` or `ci`, a problem in the file or a step the runner would
+skip is `bad_params`; only the operator may write (`forbidden`); an `expect`
+that is not the kept version is `stale` with nothing written.
+`factory.library_preview {factory, base_text, edits}` applies the same edits
+as `factory.pipeline_preview` (only the verbs that touch `pipeline:` and
+`steps:`: `set_step`, `add_step`, `remove_step`, `move_step`, `rename_step`,
+`set_approver`, `add_pipeline`, `remove_pipeline`, `rename_pipeline`) to a
+library (`base_text` `""` is an empty one) and answers `{factory, text,
+changed, steps, structure?}`, `text` being exactly what `library_set` would
+keep. It writes nothing and asks the factory nothing.
+
+A JOB'S PIPELINE NAME RESOLVES IN ONE ORDER, for `factory.job_start
+{pipeline}`, `factory.job_create {pipeline}`, a routing rule's
+`then.pipeline` and a job's own kind: the repository's file as the factory
+runs it (its own copy when it keeps one, else main's file), then the library,
+then the built-in steps (which name only `issue`). A repository pipeline of
+the same name overrides the library's. A name found nowhere keeps the
+refusals it always had. Behind the same feature `factory.pipeline` carries
+`pipeline.pipelines`, every pipeline a job on that repository can run, each
+`{name, from, steps, over?}` where `from` is `repo`, `factory_copy`,
+`library` or `built_in` and `over` names the lower layers it overrides:
+what "Pick the pipeline" offers. A library pipeline also appears in
+`pipeline.by_kind`.
+
+An engine whose hello carries the feature `factory.pipeline_edit_pipelines`
+(beside `factory.pipeline_edit_structure`) previews three more edits in
+`factory.pipeline_preview`: `add_pipeline {name, steps}` or `{name, from}`
+makes a named pipeline (each step one the file or codeaf defines, or
+`approve`; `from` copies a pipeline the file holds), `remove_pipeline {name}`
+takes one out (its steps' definitions stay) and `rename_pipeline {name, to}`
+renames one. A name is spelled as a step is (2 to 32 lowercase letters, digits
+and inner hyphens); `pr`, `ci` and `issue` are refused as `locked`. A step not
+yet defined is added after `add_pipeline` with `add_step` naming the new
+pipeline, in the same preview. The answer's `structure.pipelines` lists every
+pipeline made, removed or renamed as `{op, pipeline, to?, steps?}`, and the new
+list is in `structure.order`. The pull request route and
+`factory.pipeline_copy_set` take the resulting text as any other.
+
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts
 counted by the factory over every job it keeps (`GET
@@ -655,6 +913,48 @@ directory with a trailing slash (`"cli/"`). Under a container directory (`src`,
 first two segments (`"internal/factory/"`), and a file directly inside one is
 the container (`"internal/"`). Every response that carries the job says the
 same area. It is absent when the job changed no file or only files at the root.
+
+### Factory job facts (`factory.job_source`, `factory.job_steps`, `factory.job_runs_on`)
+
+Each fact below is computed once in the engine (`internal/factory`) and sent on
+every job of `factory.queue` and on `factory.job`; a client draws it and never
+derives it again. All are additive; an engine without the word sends none of
+them, which reads as unknown.
+
+- `factory.job_source`:
+  - `source: {name, ref?, url?}` on every job that says where it came from.
+    `name` is `github`, a connector (`jira`), a trigger (`inbox:ops`), or
+    `terminal`/`chat` for a typed job. `ref` is the job's key there in the
+    source's spelling (`owner/repo#147`, `ENG-142`, `A1`); `url` is its address
+    there when the source sent one.
+  - `repo_url`: the repository's address, read off an address the forge gave
+    for it (the job's pull request, then its GitHub issue) so a non-github.com
+    host is kept; `https://github.com/<owner>/<name>` only when neither exists;
+    absent when the job names no `owner/name`. Clients stop building it from
+    `repo`.
+  - `route: {rule, answer?: {yes, why, model?}}`: the routing rule that decided
+    the job, and the AI's answer when that rule asked one. Absent when no rule
+    matched.
+  - `route_declined: [{rule, why, model?}]`: every other rule whose AI question
+    was answered no about this job, in rule-name order. A job no rule started
+    says why with it. Absent when there is none.
+- `factory.job_steps`: `steps_done` and `steps_total`, always present, THE ONE
+  STEP COUNT. The run's steps, then switched-on steps it has not reached; a
+  skipped step counts for neither side. The Brief's `steps_done`/`steps_total`
+  read the same function, and `step.index`/`step.count` stay the run's
+  position, never an "N of M".
+- `factory.job_runs_on`: `runs_on: {model, from}` on a read job (its current
+  conversation step's model, else its next one's, else its default) and on each
+  conversation step that has not finished. It is the resolution the runner
+  opens the step on. `from` names the rung: `step` (a person's pick for the
+  step), `job` (for the job), `one_model` (the runner runs every task on one
+  model), `effort` (the model the step's effort word runs on), `factory` (the
+  factory's default), `worker` (the person's worker model on the runner) or
+  `runner` (the runner's launch model). Absent where this factory cannot know
+  it (no pick, no default, its runner elsewhere). `model` keeps meaning the
+  person's pick for the job, `factory_model` the default it was queued under,
+  and `step.model` the model a step ran on; a worker's report never carries
+  `runs_on`.
 
 An engine whose hello carries the feature `factory.estimate` reads an issue
 with a complexity rubric and measures cost from its own finished jobs; a model
@@ -886,6 +1186,22 @@ one filesystem call per disk; it starts nothing. hello says `health.check`.
 | `keys.check` | `in.KeyParams` | `KeyCheck` |
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
+
+A credential a door gives an app-run engine (a pasted GitHub token through
+`factory.setup_connect`, a Jira token, an AgentField key and node secret through
+`factory.agentfield_connect`) is held in memory and handed to the app to keep, BY
+PULL, never on an event: the engine emits an empty `credentials.changed`, and the
+app's core calls `credentials.take`, which answers each change once, the latest per
+provider, as `{changes: [{provider, key}]}` or `{provider, removed: true}`; a change
+not taken within 60 seconds is dropped. The core keeps the key in its secure store
+under `provider` and hands it back at the next launch with `keys.set {provider, key}`,
+which queues nothing. `keys.set` takes `github`, `jira`, `agentfield` and
+`agentfield-node` this way, beside the model providers. Hello announces
+`credentials.take` when the engine serves it.
+
+| method | params | result |
+|---|---|---|
+| `credentials.take` | `Empty` | `CredentialsTaken` |
 
 ## manual methods
 
@@ -1268,6 +1584,30 @@ this optional field; older engines provide no Library breakdown.
 |---|---|---|
 | `work.graph` | `in.GraphRequest` | `GraphResult` |
 
+## Transcript entry author (`agents.entry_author`)
+
+An engine whose hello carries `agents.entry_author` sends `author` on the
+entries it reads from a conversation's transcript (`agents.entries` and
+`entry.added`):
+
+- `person`: a person's message;
+- `engine`: codeaf's own words. These are a factory step's opening
+  instructions (the step conversation's first message), a `[carry on]` nudge
+  in the person's seat (such as a step's reminder to call `stage_result`), the
+  factory runner's progress lines, and the session's quiet notes and
+  compaction summaries;
+- `agent`: the model's answers, updates and tool calls, and a crew's delivery.
+
+A user entry the engine wrote keeps kind `user`, because it is what the model
+reads in the person's seat; `author` says it is not the person's, so a client
+folds it without reading its words. Absent on entries built outside the
+transcript and from an older engine.
+
+`agents.suggest_reply` never offers a draft addressed to the model. A draft
+that names a tool of the conversation's belt (an underscored name such as
+`stage_result`) or opens with `[carry on]` is dropped where drafts are made,
+and the reply is empty.
+
 ## Events
 
 | event | data |
@@ -1280,6 +1620,7 @@ this optional field; older engines provide no Library breakdown.
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
 | `compaction.ended` | `CompactionEnded` |
+| `credentials.changed` | `Empty` |
 | `crew.changed` | `CrewChanged` |
 | `crew.log` | `CrewLogEvent` |
 | `crew.proposal.delta` | `CrewProposalDelta` |
@@ -1289,6 +1630,7 @@ this optional field; older engines provide no Library breakdown.
 | `deliverable.changed` | `DeliverableChanged` |
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
+| `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.sessions_changed` | `Empty` |
 | `hello` | `Hello` |
 | `inbox.added` | `InboxAddedEvent` |
@@ -1802,6 +2144,24 @@ manager chat or composer (and discards the returned step chats). They require a
 desktop update before pairing with this engine for jobs without a manager.
 The hello feature is capability advertisement, not client negotiation; it does
 not by itself make those older desktops compatible.
+
+## The factory's own manager (`factory.foreman_open`)
+
+The hello feature `factory.foreman_open` announces the factory-wide manager,
+titled "Factory manager" (the method keeps its `foreman` name, and its team
+handle stays `@foreman`). `factory.foreman_open {factory}` answers `{factory, agent}`: `agent` is
+an agent id the desk opens and sends to like any conversation (`agents.send`).
+The first call makes the conversation; every later call answers the same one.
+Only the factory this engine serves is accepted; any other is `not_found`, as
+`factory.job_chats` refuses it.
+
+The Factory manager reads only the floor of the factory home it belongs to, through
+`factory_floor`: `ask` is `running`, `queue` (not started, most urgent then
+oldest), `waiting`, `shipped` (shipped today, with pull requests and changes),
+`risky`, `cheapest`, `oldest`, `all` or `item`. When the person asks, `start`
+starts one job and `priority` (`p0`–`p3`, with `item`) sets one job's priority,
+each through the same factory verb the job page's own Start and priority send,
+as the person. It never stops, ships, merges or posts.
 ### factory.job_publish_anyway
 
 Hello feature `factory.publish_anyway` advertises this person action. Params:

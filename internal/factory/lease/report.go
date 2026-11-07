@@ -1,11 +1,14 @@
 package lease
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -33,6 +36,19 @@ func (d *Desk) Renew(id, worker string) (Lease, error) {
 // it never admits a running step and retains the existing continue signal path.
 func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*factory.Item) error) error {
 	blocked := false
+	// THE TWO MOMENTS A JOB'S SOURCE IS TOLD OF — its pull request opened, it
+	// merged — and a stop that needs a person, all arrive here, in a worker's
+	// report. They are told after the write is kept, never inside it
+	// ([inbox.Notify]), so an outside system can neither slow nor fail a job.
+	job, moments := 0, []inbox.Event(nil)
+	observed := func(it *factory.Item, write func(*factory.Item) error) error {
+		mark := inbox.MarkOf(*it)
+		if err := write(it); err != nil {
+			return err
+		}
+		job, moments = it.ID, mark.Moments(*it)
+		return nil
+	}
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
@@ -45,7 +61,7 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 				}
 				if err := d.store.Update(receipt.Lease.Job, func(it *factory.Item) error {
 					if !receipt.Restarted {
-						return change(it)
+						return observed(it, change)
 					}
 					// Validate the old report against an isolated stopped job. Only its
 					// opened PR receipt may cross into the replacement run.
@@ -82,7 +98,7 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 			return false, err
 		}
 		if err := d.store.Update(held.Job, func(it *factory.Item) error {
-			if err := change(it); err != nil {
+			if err := observed(it, change); err != nil {
 				return err
 			}
 			if !complete && holdAtJobBudget(it, now) {
@@ -93,6 +109,11 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 				if it.State == factory.StateShipped && it.PullRequest == nil && it.CommentURL != "" {
 					it.DoneHow = "answered"
 					it.DoneAt = now
+				}
+				// A job an AgentField run carried ends when its run does, with
+				// no pull request or comment to stamp it: its end is the run's.
+				if it.State == factory.StateShipped && strings.TrimSpace(it.RunOn) != "" && it.DoneAt.IsZero() {
+					it.DoneAt = factory.RunOnEnded(*it, now)
 				}
 			}
 			return nil
@@ -108,6 +129,9 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 		}
 		return true, d.keepPublish(doc, held.Job)
 	})
+	if err == nil {
+		inbox.Tell(context.Background(), d.store, job, moments)
+	}
 	if err == nil && blocked {
 		return ErrWithdrawn
 	}

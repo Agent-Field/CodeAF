@@ -87,6 +87,20 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 		r.Notes = append([]string(nil), cur.Notes[len(prev.Notes):]...)
 	}
 	r.Merge = mergeMoved(prev, cur)
+	if cur.AgentField != nil && !reflect.DeepEqual(prev.AgentField, cur.AgentField) {
+		run := *cur.AgentField
+		r.AgentField = &run
+	}
+	for name, run := range cur.AgentFieldSteps {
+		if run == nil || reflect.DeepEqual(prev.AgentFieldSteps[name], run) {
+			continue
+		}
+		if r.AgentFieldSteps == nil {
+			r.AgentFieldSteps = map[string]*factory.AgentFieldRun{}
+		}
+		cp := *run
+		r.AgentFieldSteps[name] = &cp
+	}
 	// Retry counters reset when local work completes, including publication
 	// and observed-head rechecks. Transport identity stays on the held attempt;
 	// the service derives acknowledgement from the accepted completion.
@@ -279,6 +293,11 @@ func claimsMoved(prev, cur []factory.Claim) []factory.Claim {
 // step it came from, its words and options, and its kind.
 func asked(prev, cur factory.Item, lines []factory.LogLine) (*factory.Asked, string) {
 	if cur.State != factory.StateNeedsYou || strings.TrimSpace(cur.Question) == "" {
+		return nil, ""
+	}
+	// AN AGENTFIELD RUN'S APPROVAL TRAVELS AS THE RUN: the factory reads the
+	// wait off the run record it is sent ([SyncAgentFieldWait]).
+	if cur.QKind == factory.QKindAgentField {
 		return nil, ""
 	}
 	// THE SAME WORDS CAN BE A NEW ASK: a step sent back can finish between two

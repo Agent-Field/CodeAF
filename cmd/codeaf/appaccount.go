@@ -614,6 +614,9 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 	if params.Provider == appwire.KeyGitHub {
 		return b.setGitHubKey(params.Key)
 	}
+	if config.AppKept(params.Provider) {
+		return b.setKeptKey(params.Provider, params.Key)
+	}
 	p, ok := b.appProviderNamed(params.Provider)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", params.Provider)
@@ -651,6 +654,21 @@ func (b *appBackend) setGitHubKey(key string) error {
 		return appwire.Errorf(appwire.CodeBadParams, "keys.set %s needs a token", appwire.KeyGitHub)
 	}
 	b.keys.Set(appwire.KeyGitHub, key)
+	return nil
+}
+
+// setKeptKey holds a credential a door kept with the app at an earlier
+// launch (config.AppKept: the Jira token, the AgentField key and node
+// secret), handed back now. It is no model provider, so no conversation,
+// model list or profile row hears of it; its readers find it in the app's
+// credentials first. It is held with Set, which does not tell the app to keep
+// it again.
+func (b *appBackend) setKeptKey(provider, key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return appwire.Errorf(appwire.CodeBadParams, "keys.set %s needs a key", provider)
+	}
+	b.keys.Set(provider, key)
 	return nil
 }
 

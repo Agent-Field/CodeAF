@@ -90,7 +90,7 @@ func TestAStopReleasesTheLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.state(t, it.ID, factory.StateNew)
-	if got, _ := f.store.Get(it.ID); got.Failure != nil || factory.JobState(got) != "needs_you" || !factory.StoppedByPerson(got) {
+	if got, _ := f.store.Get(it.ID); got.Failure != nil || factory.JobState(got) != "backlog" || !factory.StoppedByPerson(got) {
 		t.Fatalf("a stop that cut no step left %s %+v", factory.JobState(got), got.Failure)
 	}
 	if _, err := f.desk.Drain(held.ID, "w1"); !errors.Is(err, lease.ErrNoLease) {

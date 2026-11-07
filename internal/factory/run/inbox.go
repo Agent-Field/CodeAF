@@ -95,7 +95,16 @@ func (lp *floorLoop) inbox(ctx context.Context, c *loopCtl, i int, stage string,
 	}
 	lp.tell(c.id, asks)
 
-	reply := lp.managerAnswers(ctx, c, q)
+	// A JOB IN MANUAL, AND A QUESTION THE STEP SAID ONLY A PERSON CAN ANSWER,
+	// GO STRAIGHT TO THE PERSON ([factory.PersonFirst]): the manager is not
+	// given a turn on either, in any mode.
+	var reply InboxReply
+	if cur, err := lp.r.opts.Store.Get(c.id); err == nil {
+		reply.Why = factory.PersonFirst(cur, q)
+	}
+	if reply.Why == "" {
+		reply = lp.managerAnswers(ctx, c, q)
+	}
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
@@ -103,6 +112,7 @@ func (lp *floorLoop) inbox(ctx context.Context, c *loopCtl, i int, stage string,
 		line := fmt.Sprintf(sayManagerAnswered, stage, answer)
 		if err := lp.write(c, func(it *factory.Item) error {
 			it.Asking = nil
+			it.KeepManagerAnswer(q, answer, lp.r.now())
 			loopSay(it, lp.r.now(), "said", line)
 			return nil
 		}); err != nil {

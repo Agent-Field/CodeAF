@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
@@ -30,6 +31,10 @@ func (h *Handler) jobVerbs() {
 	h.postJob("run-as-new", stored && h.seam.NewJob != nil && h.seam.Launch != nil, h.onlyOwner(h.runAsNew))
 	h.postJob("run_again", stored && h.seam.Launch != nil, h.guarded("run_again", h.onlyOwner(h.runAgain)))
 	h.postJob("close", stored && h.workers != nil, h.closeJob)
+	// factory.job_reject on a job whose AgentField run paused is the run's
+	// Reject: the runner that owns the run carries it, then the job ends
+	// rejected (agentFieldAnswer, lease.Doors.AnswerAgentField).
+	h.postJob("reject", true, h.agentFieldAnswer(agentfield.DecisionRejected, h.rejectJob, stored && h.workers != nil))
 	h.postJob("reopen", stored, h.guarded("reopen", h.onlyOwner(h.reopenJob)))
 	h.postJob("restore", stored, h.guarded("restore", h.onlyOwner(h.restoreJob)))
 	h.postJob("dismiss", stored, h.dismissJob)
@@ -40,6 +45,7 @@ func (h *Handler) jobVerbs() {
 	h.postJob("nudge", stored, h.nudgeJob)
 	h.postJob("follow", stored, h.followJob)
 	h.postJob("priority", stored, h.setPriority)
+	h.postJob(SetRepoVerb, stored, h.setRepo)
 	h.postJob("stop-after-step", stored, h.onlyOwner(h.stopAfterStep))
 	h.postJob("raise_budget", stored, h.onlyOwner(h.raiseBudget))
 	h.postJob("model", stored, h.onlyOwner(h.setModel))
@@ -76,8 +82,10 @@ func (h *Handler) startJob(w http.ResponseWriter, r *http.Request, it factory.It
 // A PICKED PIPELINE IS ONE THE REPOSITORY'S FILE LISTS, read from the file the
 // start decides on the job ([Handler.jobPipeline]), and it replaces the steps
 // of a job that never ran in the start's one write. pr and ci are not an
-// issue job's to run, as at creation. A job that ran, or waits in the queue
-// already, keeps its steps. Every refusal comes before any write.
+// issue job's to run, as at creation. A JOB QUEUED AND NOT YET TAKEN HAS NOT
+// RUN ([run.Ran]): its pick replaces its steps and lays its run out again on
+// them, and Start now lets it take a slot as it always does. Only a job that
+// ran keeps its steps. Every refusal comes before any write.
 func (h *Handler) guardedStart() jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
 		var body struct {
@@ -106,29 +114,24 @@ func (h *Handler) pickRefused(w http.ResponseWriter, it factory.Item, pick strin
 		h.fail(w, 422, "pipeline must be a pipeline name of the repository's file")
 	case pick == string(factory.KindPR) || pick == string(factory.KindCI):
 		h.fail(w, 422, "factory jobs support the issue pipeline only")
-	case it.Stream != nil || len(it.Adapted) > 0:
+	case run.Ran(it):
 		h.refuse(w, 409, "This job has already run, so it keeps its steps.", "conflict", "", nil, factory.JobState(it))
-	case it.State == factory.StateQueued:
-		h.refuse(w, 409, "This job is already in the queue, so its steps are decided.", "conflict", "", nil, factory.JobState(it))
 	default:
 		return !h.requireVerb(w, h.config.Pipeline != nil && h.config.Store != nil)
 	}
 	return true
 }
 
-// pipelineStages is the steps one kind's pipeline runs: the issue pipeline as
-// the runner reads it (its fallback included), any other kind only when the
-// file lists it.
-func pipelineStages(recipe factory.Recipe, kind string) []factory.Stage {
-	if kind == string(factory.KindIssue) {
-		return recipe.For(factory.KindIssue)
-	}
-	return recipe.ByKind[factory.Kind(kind)]
-}
-
 // startRefused answers every refusal a start makes before it writes, and true
 // when it refused.
 func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	// A JOB WITH NO REPOSITORY IS REFUSED IN SO MANY WORDS, before anything
+	// reads a checkout for it: a definite conflict, which the app shows as
+	// the factory said it, never a failure that may have half-happened.
+	if factory.NamesNoRepo(it) {
+		h.refuse(w, 409, factory.NoRepoRefusal, "conflict", "", nil, factory.JobState(it))
+		return true
+	}
 	if it.QKind == factory.QKindAskFirst {
 		h.refuse(w, 409, "Approval needed: start", "conflict", "", nil, factory.JobState(it))
 		return true
@@ -139,7 +142,11 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 	if h.startModelRefused(w, it) {
 		return true
 	}
-	return h.endedOnGitHub(w, r, it) || h.needsCheckout(w, r, it.Repo, factory.JobState(it))
+	if h.endedOnGitHub(w, r, it) {
+		return true
+	}
+	// A JOB THAT RUNS ELSEWHERE NEEDS NO CHECKOUT HERE (factory.RunsElsewhere).
+	return !factory.RunsElsewhere(it) && h.needsCheckout(w, r, it.Repo, factory.JobState(it))
 }
 
 // launchJob is the start's one write and its launch, for a job startRefused
@@ -184,7 +191,7 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		var rules *factory.StartRules
 		var file *pipeline.File
 		var fileErr error
-		if h.config.Pipeline != nil && !queued {
+		if h.config.Pipeline != nil && (!queued || pick != "") {
 			f, err := h.jobPipeline(r.Context(), cur, "")
 			if errors.Is(err, pipeline.ErrHouseRulesUnread) {
 				h.fail(w, 503, "The factory's own rules could not be read, so this job cannot start yet. Try again in a moment.")
@@ -199,12 +206,15 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		var picked []factory.Stage
 		if pick != "" {
 			// A PICK IS READ FROM THE FILE OR NOT AT ALL: a read that failed
-			// refuses it, where a plain start would run on the defaults.
+			// refuses it, where a plain start would run on the defaults. The
+			// name resolves the one way ([pipeline.File.Resolve]): the
+			// repository's file, then the factory's library, then the
+			// built-in steps.
 			if file == nil || fileErr != nil {
 				h.fail(w, 503, "The repository's pipeline file could not be read, so this job cannot start on a picked pipeline yet.")
 				return false
 			}
-			if picked = pipelineStages(file.Recipe(), pick); len(picked) == 0 {
+			if picked = file.Named(pick); len(picked) == 0 {
 				h.fail(w, 422, "pipeline not found")
 				return false
 			}
@@ -231,15 +241,17 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 					also(cur)
 				}
 				if picked != nil {
-					if cur.Stream != nil || len(cur.Adapted) > 0 {
+					if run.Ran(*cur) {
 						return fmt.Errorf("%s has already run, so it keeps its steps", cur.Ref())
 					}
 					cur.Stages = factory.CopyStages(picked)
+					// A queued job's run was laid out on its old steps.
+					run.RelayTail(cur)
 				}
 				if file != nil {
 					cur.DecidePipeline(file.Copy, h.clock())
 				}
-				if rules != nil {
+				if rules != nil && !queued {
 					// A person's start judges nothing: what the factory's own
 					// start found under older rules no longer speaks for it.
 					cur.StartRules, cur.RuleHold = rules, ""
@@ -1115,6 +1127,18 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 		if a.Automatic {
 			handle = it.Person()
 		}
+		// WHO IS PASSING IT goes on the job before the answer does, so the
+		// write that passes the approve step keeps it on the step: the
+		// manager for Auto's approval (with its reason when it judged a
+		// condition), else the person who pressed.
+		passing := &factory.Passed{By: factory.PassedByPerson, Handle: factory.NormalizeHandle(a.DecidedBy)}
+		if a.Automatic {
+			passing = &factory.Passed{By: factory.PassedByManager}
+			if j, ok := factory.PassJudged(it); ok && j.Yes {
+				passing.Why = j.Why
+			}
+		}
+		_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Passing = passing; return nil })
 		raw, _ := json.Marshal(api.Approve{Commit: a.Commit, Edited: a.Edited, Words: a.Words})
 		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: handle}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))
 		r.SetPathValue("id", strconv.Itoa(it.ID))
@@ -1128,6 +1152,7 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 			if w.status() < 300 {
 				cp.State = "approved"
 			} else {
+				cur.Passing = nil
 				cp.State = "waiting"
 				var refusal refusalBody
 				_ = json.Unmarshal(w.body.Bytes(), &refusal)

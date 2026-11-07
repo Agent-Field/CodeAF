@@ -93,6 +93,34 @@ type BriefPersonRequest struct {
 	At   time.Time `json:"at,omitzero"`
 }
 
+// BriefManagerAnswer is a step's question the job's manager answered in the
+// person's place ([Item.KeepManagerAnswer]): never one of the person's own
+// requests, and always something the Brief may say was decided for them.
+type BriefManagerAnswer struct {
+	Step     string    `json:"step,omitempty"`
+	Question string    `json:"question"`
+	Answer   string    `json:"answer"`
+	At       time.Time `json:"at,omitzero"`
+}
+
+// managerAnsweredMark is the middle of the note a manager's answer leaves for
+// the step's later rounds (`plan asked: … · the manager answered: …`, spelled
+// in run/inbox.go). Such a note is the manager's words, never the person's.
+const managerAnsweredMark = " · the manager answered: "
+
+// briefManagerAnswers is every step question the manager answered for the
+// person, oldest first.
+func briefManagerAnswers(it Item) []BriefManagerAnswer {
+	var out []BriefManagerAnswer
+	for _, q := range it.AnsweredQuestions {
+		if q.With != AskedManager || q.Answer == nil {
+			continue
+		}
+		out = append(out, BriefManagerAnswer{Step: clip(q.FromStep, 128), Question: clip(q.Text, 512), Answer: clip(q.Answer.Text, 512), At: q.Answer.At})
+	}
+	return out
+}
+
 // BriefInput is everything the writer reads. Previous is not part of the
 // input's hash: a new version changes it, and that alone is no reason to
 // write another.
@@ -114,6 +142,7 @@ type BriefInput struct {
 	Model                  string                 `json:"model,omitempty"`
 	Plan                   string                 `json:"plan,omitempty"`
 	PersonRequests         []BriefPersonRequest   `json:"person_requests,omitempty"`
+	ManagerAnswers         []BriefManagerAnswer   `json:"manager_answers,omitempty"`
 	Steps                  []BriefStepInput       `json:"steps"`
 	Change                 *ChangeStat            `json:"change,omitempty"`
 	Hunks                  []PatchHunk            `json:"hunks,omitempty"`
@@ -209,6 +238,7 @@ func BriefInputOf(it Item) BriefInput {
 	var in BriefInput
 	in.beforeWork = briefBeforeWork(it)
 	in.PersonRequests = briefPersonRequests(it)
+	in.ManagerAnswers = briefManagerAnswers(it)
 	in.Issue.Title, in.Issue.Body, in.Issue.Labels = it.Title, clip(it.Body, briefOutputMost), it.Labels
 	in.NeedsYou, in.Question, in.Model = JobState(it) == "needs_you", it.Question, it.Model
 	in.State = strings.ReplaceAll(string(it.State), "_", " ")
@@ -255,12 +285,12 @@ func BriefInputOf(it Item) BriefInput {
 func briefPersonRequests(it Item) []BriefPersonRequest {
 	var requests []BriefPersonRequest
 	for _, text := range it.Notes {
-		if text = strings.TrimSpace(text); text != "" {
+		if text = strings.TrimSpace(text); text != "" && !strings.Contains(text, managerAnsweredMark) {
 			requests = append(requests, BriefPersonRequest{Text: text})
 		}
 	}
 	for _, q := range it.AnsweredQuestions {
-		if q.Answer == nil {
+		if q.Answer == nil || q.With == AskedManager {
 			continue
 		}
 		text := strings.TrimSpace(q.Answer.Text)
@@ -462,7 +492,7 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 	); fault != "" {
 		return BriefVersion{}, nil, fault
 	}
-	done, total := briefProgress(it)
+	done, total := StepCount(it)
 	v := BriefVersion{
 		Issue: it.Title, StepsDone: done, StepsTotal: total, Verdict: d.Verdict, VerdictEvidence: d.VerdictEvidence,
 		Facts: BriefFacts(it), Blocks: []BriefBlock{},

@@ -119,8 +119,8 @@ func (j *job) prepareDelivery(cur factory.Item, report factory.RunReport) (*pend
 	if err != nil {
 		return nil, err
 	}
-	wire := api.FromRunReport(report, j.tables)
-	if !j.tables {
+	wire := api.FromRunReport(report, j.admits)
+	if !j.admits.RoundCostTables {
 		wire.Cost = max(0, factory.JobSpent(cur)-factory.JobSpent(j.sent))
 	}
 	p.Request, err = client.PrepareWorkerReport(wire, key)

@@ -109,7 +109,10 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	j.Controls.ChangeAssignee = j.Can.ChangeAssignee && h.config.Store != nil
 	// The plan's target and the caller's right to answer are the job's own
 	// facts (api.CanFor); whether this factory takes the revision is its own.
-	j.Can.RejectPlan = j.Can.RejectPlan && h.servesPlanRevision()
+	// An AgentField run's Reject goes to its control plane through the app's
+	// own door (factory.AgentFieldPause), never through this plan revision.
+	afPause := j.NeedsYou != nil && j.NeedsYou.Question != nil && j.NeedsYou.Question.Kind == factory.QKindAgentField
+	j.Can.RejectPlan = j.Can.RejectPlan && (afPause || h.servesPlanRevision())
 	j.Can.SpendAnswer = j.Can.SpendAnswer && h.seam.SpendAnswer != nil
 	j.Can.Hold = j.Can.Hold && h.seam.Hold != nil
 	j.Can.Resume = j.Can.Resume && h.seam.Hold != nil
@@ -155,7 +158,10 @@ func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
 	proven := func(machine string) bool {
 		return machine != "" && (machine == live || h.callersOnlyMachine(caller, machine))
 	}
-	if !proven(j.Runner) {
+	// An AgentField job's runner is its node and the machine the node named
+	// to the control plane, which every viewer of the run may see; it is not a
+	// machine id from this factory's roster, so there is nothing to prove.
+	if strings.TrimSpace(j.RunOn) == "" && !proven(j.Runner) {
 		if j.StatePresentation.Kind == api.WaitingForComputer && j.Runner != "" {
 			j.StatePresentation.Title = "Waiting for its computer"
 			j.StatePresentation.Detail = "Waiting for the computer its work is on, which is not running now."

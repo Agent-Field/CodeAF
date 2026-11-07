@@ -1457,6 +1457,15 @@ type Config struct {
 	// session and never a path. Nil is a session with no cell, whose calls run
 	// on the host; see [Config.seat].
 	Seat procexec.Seat
+	// Fence is the confinement an unattended run's commands get when it has no
+	// cell seat (internal/executor's fence.go): writes only inside the job,
+	// keys and sign-ins unreadable, docker refused, the network open. The
+	// doors that run an agent with nobody at the keyboard set it (a factory
+	// stage, `codeaf chat --once`, a headless engine conversation); an
+	// interactive conversation leaves it nil and runs on the host as before.
+	// The session's own read, write and edit tools are held to it too, because
+	// they run inside codeaf and so outside any jail (fencedFileTool).
+	Fence *procexec.Fence
 	// Interrupted is what the last run of this conversation's cell left
 	// unfinished: the model is told once, on its next turn, that those calls were
 	// cut off (interrupted.go). Nil is nothing to tell.
@@ -2492,6 +2501,16 @@ type Config struct {
 	// It is set where FactoryItem is, and on the one turn the runner gives an
 	// item's manager to shape its run.
 	FactoryRun RunDoor
+
+	// StateHome is codeaf's own data folder for this window when it is not
+	// the person's default one (CODEAF_HOME names another), and "" otherwise.
+	// The page states it ([stateHomeFact]) because the manual's pages say
+	// `~/.codeaf` and a model that read them went looking in the person's
+	// default home, the wrong one, while the app ran on another (the
+	// 2026-11-06 audit: the desk's assistant listed the real
+	// `~/.codeaf/graph.db`). It is a fact on the page, not a confinement: the
+	// shell can still reach the person's whole home directory.
+	StateHome string
 	// FactoryWorkRefusal rechecks automatic manager work on a worker mirror.
 	FactoryWorkRefusal func() string
 
@@ -2518,6 +2537,15 @@ type Config struct {
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
 	Stage StageDoor
+
+	// Asker takes this conversation's clarifying questions when it is not a
+	// stage of this machine's factory but someone elsewhere still answers
+	// them: `codeaf chat --once --events --steer`, a step an AgentField node
+	// runs for a WorkAF factory, hands each one to the factory over its events
+	// and waits for the answer on its steer channel. It is asked only when
+	// Stage takes no questions, and IT PUTS NOTHING ON THE BELT: `ask` is the
+	// same verb, with someone to answer it.
+	Asker StageAsker
 
 	// PlanStage requires the plan file list in the stage_result answer schema.
 	PlanStage bool
@@ -4174,11 +4202,22 @@ type Agent struct {
 // seat is the executor this session's tool calls run on. A session with no
 // cell says so by name: it is on the host seat.
 func (c Config) seat() procexec.Seat {
-	if c.Seat == nil {
-		return procexec.Host
+	seat := c.Seat
+	if seat == nil {
+		seat = procexec.Host
 	}
-	return c.Seat
+	// THE FENCE GOES AROUND WHATEVER SEAT THIS IS: the host's, or the cell's
+	// that records each call. Wrapping is idempotent, so a seat this returned
+	// and a door stored back (WithEnvironment) is not fenced twice.
+	return procexec.WithFence(seat, c.Fence)
 }
+
+// fenced is whether this session's commands run fenced, the prompt's predicate.
+func (c Config) fenced() bool { return c.Fence != nil }
+
+// fence is the fence this session's commands and file tools keep to, nil
+// when none.
+func (c Config) fence() *procexec.Fence { return c.Fence }
 
 // seatFor is the seat a turn's tool calls run on: the session's own, or its
 // setup form when the turn is a setup turn (setup.go).

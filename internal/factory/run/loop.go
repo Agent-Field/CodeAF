@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -95,9 +96,13 @@ type floorLoop struct {
 
 // loopCtl is one item's controls, reached by the doors.
 type loopCtl struct {
-	id              int
-	ctx             context.Context
-	cancel          context.CancelFunc
+	id     int
+	ctx    context.Context
+	cancel context.CancelFunc
+	// cause cancels ctx with why; a person's Stop cancels it with
+	// [factory.ErrPersonStopped] first ([StoppedHere]), and every other end
+	// (a withdrawn lease, the engine closing) with none.
+	cause           context.CancelCauseFunc
 	spending        sync.WaitGroup
 	steer           chan string
 	modelSelections chan ModelSelection
@@ -215,8 +220,8 @@ func (r *Runner) Launch(id int) error {
 		lp.mu.Unlock()
 		return AlreadyRunning(it.Ref())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
@@ -261,6 +266,13 @@ func (r *Runner) Launch(id int) error {
 			factory.ClearJobRun(it)
 		}
 		it.Stream = freshStream(it, now)
+		if strings.TrimSpace(it.RunOn) != "" {
+			// An AgentField job's steps are its run's calls, made as they come.
+			// The pipeline it was filed with goes too: a step left there would
+			// be made into a phase with its stock words, and a run step of the
+			// same name (`plan`) would wear them.
+			it.Stages, it.Stream.Phases, it.AgentField = nil, nil, nil
+		}
 		loopSay(it, now, "said", "queued")
 		loopSay(it, now, "fail", unmade)
 		return nil
@@ -576,6 +588,12 @@ func (lp *floorLoop) drive(c *loopCtl) {
 	}); err != nil {
 		return
 	}
+	// A JOB RUN BY AN AGENTFIELD REASONER is handed to that run whole: its
+	// steps are the run's own calls, written by Remote as they happen.
+	if it, err := lp.r.opts.Store.Get(c.id); err == nil && strings.TrimSpace(it.RunOn) != "" {
+		lp.driveRemote(c)
+		return
+	}
 	// THE FIRST STAGE RUNS FIRST, with the item's stages as they stand. No
 	// manager turn comes before it (Options says why, at ShapeWait).
 	if lp.r.opts.Talk != nil {
@@ -599,6 +617,13 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		}
 
 		if i < 0 {
+			// A PIPELINE THAT ONLY RUNS ON AGENTFIELD ENDS AS ITS RUNS DO: it
+			// made no change here for a person to approve, so there is no
+			// proof to land on (a pull request its run opened is the job's).
+			if factory.AgentFieldPipeline(it) {
+				lp.shipAgentField(c)
+				return
+			}
 			lp.land(c)
 			return
 		}
@@ -757,12 +782,18 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	}
 	// Even Auto gates wait for the service's recorded decision. A worker's
 	// cached mode cannot bypass a Manual switch committed on the factory.
+	//
+	// THE LANDING IS NOT A PASS. This step once marked itself done here, and
+	// on a worker (which never reports an approve step) it stayed "to come"
+	// while Auto published past it. It now lands with the step waiting
+	// ([factory.LandingGate]), and only the proof approval passes it. One
+	// switched off still passes quietly, as if it were not there.
 	if last {
-		now := lp.r.now()
-		return lp.write(c, func(it *factory.Item) error {
-			setPhaseState(&it.Stream.Phases[i], factory.PhaseDone, now)
-			return nil
-		}) == nil
+		if st, index := lp.stageAt(it, i); index >= 0 && !st.On {
+			return lp.finish(c, i, name, "")
+		}
+		lp.land(c)
+		return false
 	}
 	prevName := ""
 	if prev >= 0 {
@@ -791,8 +822,15 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	}
 	said := ""
 	if factory.Automatic(it) && hold == "" {
-		if !st.Fixed {
-			said = "Auto requested routine approval to continue after " + prevName + "."
+		// WHAT THE MANAGER SAYS IS WHO MAY PASS IT ([factory.PassOf]).
+		switch kind, cond := factory.PassOf(st); {
+		case st.Fixed:
+		case kind == factory.PassPerson:
+			said = "Only a person can pass this approval after " + prevName + "; it waits for them."
+		case kind == factory.PassManagerWhen:
+			said = "The manager passes this approval after " + prevName + " when " + strings.TrimSuffix(cond, ".") + "."
+		default:
+			said = "The manager may pass this approval to continue after " + prevName + "."
 		}
 	}
 	question := factory.ApproveQuestion(prevName)
@@ -809,11 +847,32 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 			_ = lp.write(c, func(saved *factory.Item) error { saved.RuleHold = ""; return nil })
 		}
 		lp.addNote(c.id, a.words)
-		return lp.finish(c, i, name, "")
+		if !lp.finish(c, i, name, "") {
+			return false
+		}
+		// WHO PASSED IT is kept on the step, from the door that answered.
+		_ = lp.write(c, func(saved *factory.Item) error {
+			if i < len(saved.Stream.Phases) && saved.Stream.Phases[i].State == factory.PhaseDone {
+				// A worker's copy never hears who passed it (the service's
+				// does, and says so); only a door that said so is said here.
+				said := saved.Passing != nil
+				factory.StampPassed(saved, i)
+				if said {
+					loopSay(saved, lp.r.now(), "ok", passedLine(name, saved.Stream.Phases[i].Passed))
+				}
+			}
+			return nil
+		})
+		return true
 	case prev < 0:
-		lp.stop(c)
+		// NOTHING TO SEND BACK TO: the no is a rejection, and it ends the job
+		// ([factory.Item.EndRejected]) rather than leaving it stopped with a
+		// carry-on that would only ask the same question again.
+		_ = lp.write(c, func(saved *factory.Item) error { saved.Passing = nil; return nil })
+		lp.reject(c, a.words)
 		return false
 	}
+	_ = lp.write(c, func(saved *factory.Item) error { saved.Passing = nil; return nil })
 	return lp.back(c, i, prev, a.words)
 }
 
@@ -1105,8 +1164,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			continue
 		}
 		if err != nil {
-			// A step that errored is a failure, not a question. The job stops.
+			// A step that errored is a failure, not a question. The job stops,
+			// AND WHAT THE STEP REPORTED BEFORE IT FAILED STAYS ON IT: its
+			// output, files, claims and notes are the person's to read beside
+			// the failure (a link the step reported among them).
+			lp.keepFailedResult(c, i, res)
 			lp.failStop(c, name, err)
+			lp.summarizeFailure(c.id, res.Summary)
 			return false
 		}
 		if res.Spent > 0 && !res.SpendRecorded {
@@ -1643,7 +1707,13 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	// THE ROUND RUNS IN THE ITEM'S OWN WORKTREE when the floor makes one
 	// (workdir.go), else in the repository's checkout; a worktree that could
 	// not be made fails the round rather than running in the person's tree.
-	dir, dirErr := lp.jobDir(it)
+	// AN AGENTFIELD STEP WORKS ON ITS NODE, NOT HERE: it gets no folder on
+	// this machine, so a run on AgentField never clones the repository here.
+	var dir string
+	var dirErr error
+	if kindOf(st) != factory.StageAgentField {
+		dir, dirErr = lp.jobDir(it)
+	}
 	if dirErr == nil {
 		it = lp.settleRules(c, it)
 	}
@@ -1858,6 +1928,56 @@ func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 		})
 	}
 	lp.stop(c)
+}
+
+// summarizeFailure gives the job's failure its one-line headline
+// ([factory.Failure.Summary]): the step's own summary when it gave one, else
+// one line the job's manager writes from the failure's words
+// ([Options.FailureSummary]), asked once, off the stop's path, so a slow or
+// failed turn never holds the stop. A line that comes back after the job was
+// run again is dropped ([factory.SetFailureSummary]).
+func (lp *floorLoop) summarizeFailure(id int, given string) {
+	it, err := lp.r.opts.Store.Get(id)
+	if err != nil || it.Failure == nil || it.Failure.Summary != "" {
+		return
+	}
+	at := it.Failure.At
+	if given = factory.FailureSummary(given); given != "" {
+		_ = lp.r.opts.Store.Update(id, func(cur *factory.Item) error { factory.SetFailureSummary(cur, at, given); return nil })
+		return
+	}
+	write := lp.r.opts.FailureSummary
+	if write == nil {
+		return
+	}
+	failure := *it.Failure
+	guard.Go("factory/failure-summary", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), lp.shapeWait())
+		defer cancel()
+		line, err := write(ctx, it, failure)
+		if err != nil {
+			return
+		}
+		_ = lp.r.opts.Store.Update(id, func(cur *factory.Item) error { factory.SetFailureSummary(cur, at, line); return nil })
+	})
+}
+
+// keepFailedResult writes a failed round's result onto its step when the
+// step reported anything before it failed, so the failure never takes the
+// step's outputs with it. A round that reported nothing leaves the step's
+// earlier result as it was.
+func (lp *floorLoop) keepFailedResult(c *loopCtl, i int, res factory.StageResult) {
+	if strings.TrimSpace(res.Output) == "" && len(res.Files) == 0 && len(res.Claims) == 0 && len(res.Notes) == 0 && len(res.PublishSummary) == 0 {
+		return
+	}
+	kept := res
+	kept.Done = false
+	_ = lp.write(c, func(it *factory.Item) error {
+		if it.Stream != nil && i >= 0 && i < len(it.Stream.Phases) {
+			it.Stream.Phases[i].Result = &kept
+		}
+		return nil
+	})
 }
 
 // fold writes what a round said onto the item: its result for the stages
@@ -2100,6 +2220,9 @@ func clean(it factory.Item) bool {
 func (lp *floorLoop) stop(c *loopCtl) {
 	c.wmu.Lock()
 	first := c.ctx.Err() == nil
+	if c.cause != nil {
+		c.cause(factory.ErrPersonStopped)
+	}
 	c.cancel()
 	if first {
 		now := lp.r.now()
@@ -2185,6 +2308,33 @@ func (r *Runner) Stop(id int) error {
 // already carried, a runner that went offline mid-step among them, is replaced
 // by the stop, the newer fact.
 func stopStored(it *factory.Item, now time.Time) { endRun(it, now, nil) }
+
+// StoppedHere says a step's ctx ended because the job was stopped here: a
+// person's Stop, a rejection, a failed step stopping its run. Any other end
+// (the engine closing, a lease withdrawn) is not one.
+//
+// WORK THAT RUNS ELSEWHERE IS CANCELLED ONLY BY A STOP. An executor whose step
+// runs on another machine reads this when its ctx ends: a stop cancels the
+// remote work, and anything else lets go of it, so quitting this engine never
+// cancels a run that does not run here. The next engine start follows it
+// again.
+func StoppedHere(ctx context.Context) bool {
+	return errors.Is(context.Cause(ctx), factory.ErrPersonStopped)
+}
+
+// reject is a person's no that ends the job: the run stops as [floorLoop.stop]
+// stops it, and the job is then closed as rejected with their words, so it
+// leaves Needs you and no rule starts it again.
+func (lp *floorLoop) reject(c *loopCtl, words string) {
+	lp.stop(c)
+	now := lp.r.now()
+	_ = lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
+		if it.DoneHow == "" {
+			it.EndRejected("", words, now)
+		}
+		return nil
+	})
+}
 
 // endRun is the one write every stop makes, with a run to cancel or without:
 // the job is new again and the stream ends with its branch kept. why is the
@@ -2331,7 +2481,23 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 	lp.mu.Lock()
 	paused := want(c.paused)
 	unchanged := paused == c.paused
-	if !paused && c.paused && c.ctx.Err() != nil {
+	// A WITHDRAWN CONTROL IS ENDING, NOT RUNNING. A step edit withdraws the
+	// worker running a job (Runner.Withdraw cancels the control without a
+	// pause), and the next lease lays the job out paused at its step and asks
+	// to go on. The old control is still here while its round lets go of a
+	// model call, and it was never paused, so "go on" read as unchanged and was
+	// dropped: the old drive then ended and nothing ran the job, which the next
+	// worker gave back to Backlog (the live managers lane, job 61). A
+	// cancelled control asked to go on on a job the store holds paused is the
+	// same handover as a cut pause: wait for it, then revive the job.
+	handover := false
+	if !paused && !c.paused && c.ctx.Err() != nil && !c.reverify {
+		lp.mu.Unlock()
+		it, err := r.opts.Store.Get(c.id)
+		handover = err == nil && storedPaused(it) && factory.CheckPersonStop(it) == nil
+		lp.mu.Lock()
+	}
+	if !paused && (c.paused || handover) && c.ctx.Err() != nil {
 		if c.releasedDone == nil {
 			c.releasedDone = make(chan struct{})
 		}
@@ -2425,8 +2591,8 @@ func (r *Runner) revive(it factory.Item) error {
 		lp.mu.Unlock()
 		return AlreadyRunning(it.Ref())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	if i := nextPhase(it.Stream.Phases); i >= 0 && it.Stream.Phases[i].State == factory.PhaseRunning {
 		c.carry = strings.TrimSpace(it.Stream.Phases[i].Chat)
 	}
@@ -2663,6 +2829,12 @@ func ApprovalRefused(it *factory.Item, edited bool) error {
 	if it.State != factory.StateLanded {
 		return fmt.Errorf("%s has not landed", it.Ref())
 	}
+	// NOTHING PUBLISHES PAST AN APPROVE STEP NOBODY PASSED, whatever the mode:
+	// Auto passes routine steps through their own door, never by landing past
+	// them.
+	if gate := factory.UnpassedGate(*it); gate != "" {
+		return fmt.Errorf("%s has an approve step nobody has passed yet: %s", it.Ref(), gate)
+	}
 	if it.FollowUp != nil && it.FollowUp.Kind == "readiness" && !factory.ReadinessPending(*it) {
 		return errors.New("final readiness review is incomplete")
 	}
@@ -2703,6 +2875,13 @@ func approveStored(it *factory.Item, edited bool, now time.Time) error {
 		return err
 	}
 	it.Question, it.QKind = "", ""
+	// The proof approval is the answer the landing's approve step waited for.
+	if g := factory.LandingGate(*it); g >= 0 {
+		setPhaseState(&it.Stream.Phases[g], factory.PhaseDone, now)
+		factory.StampPassed(it, g)
+		loopSay(it, now, "ok", passedLine(it.Stream.Phases[g].Name, it.Stream.Phases[g].Passed))
+	}
+	it.Passing = nil
 	if factory.ReadinessPending(*it) {
 		it.Note(now, "Ready-for-review transition approved · head "+it.HeadCommit)
 	} else if edited {
@@ -2772,8 +2951,8 @@ func (r *Runner) SendBack(id int, words string) error {
 		lp.release(previous)
 		previous.wmu.Unlock()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
@@ -2873,8 +3052,8 @@ func (r *Runner) Reverify(id int) error {
 		lp.release(previous)
 		previous.wmu.Unlock()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
+	ctx, cause := context.WithCancelCause(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
@@ -3038,4 +3217,76 @@ func (c *loopCtl) settleSpend() {
 	case <-settled:
 	case <-timer.C:
 	}
+}
+
+// AnswerAgentField is the worker's door for a person's answer to an
+// AgentField run's pause, which reaches it as a lease signal: the decision is
+// sent to the control plane through [Options.AgentFieldAnswer] whether or not
+// the run is being followed here now, because the control plane holds the
+// pause, not this runner.
+func (r *Runner) AnswerAgentField(id int, d factory.AgentFieldDecision) error {
+	if r.opts.AgentFieldAnswer == nil {
+		return errors.New(NoRemoteWords)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), agentFieldAnswerWait)
+	defer cancel()
+	return r.opts.AgentFieldAnswer(ctx, id, d)
+}
+
+// agentFieldAnswerWait bounds one try at carrying an answer to the control
+// plane; a try that runs out is tried again on the next beat.
+const agentFieldAnswerWait = 30 * time.Second
+
+// NoRemoteWords refuses a RunOn job on a factory with no AgentField behind it.
+const NoRemoteWords = "this job runs on AgentField and this factory is not connected to AgentField"
+
+// driveRemote runs a RunOn job through Options.Remote and lands its ending
+// the way a job's own steps would: done, needs you with the run's words, or
+// left to the person's Stop.
+// shipAgentField ends a job whose pipeline only runs on AgentField
+// ([factory.AgentFieldPipeline]): done, as a run_on job is when its run is.
+func (lp *floorLoop) shipAgentField(c *loopCtl) {
+	now := lp.r.now()
+	_ = lp.write(c, func(it *factory.Item) error {
+		it.State = factory.StateShipped
+		it.Question, it.QKind = "", ""
+		it.Asking = nil
+		if it.Stream != nil {
+			it.Stream.Ended = now
+		}
+		it.DoneAt = factory.AgentFieldEnded(*it, now)
+		words := "the AgentField run finished"
+		if it.PullRequest != nil && it.PullRequest.URL != "" {
+			words += " and opened " + it.PullRequest.URL
+		}
+		loopSay(it, now, "said", words)
+		return nil
+	})
+	lp.emit(c.id, "", EventLanded, "done")
+}
+
+func (lp *floorLoop) driveRemote(c *loopCtl) {
+	if lp.r.opts.Remote == nil {
+		lp.failStop(c, "agentfield", errors.New(NoRemoteWords))
+		return
+	}
+	err := lp.r.opts.Remote(c.ctx, c.id)
+	if c.ctx.Err() != nil {
+		return
+	}
+	if err != nil {
+		lp.failStop(c, "agentfield", err)
+		return
+	}
+	now := lp.r.now()
+	_ = lp.write(c, func(it *factory.Item) error {
+		it.State = factory.StateShipped
+		if it.Stream != nil {
+			it.Stream.Ended = now
+		}
+		it.DoneAt = factory.RunOnEnded(*it, now)
+		loopSay(it, now, "said", "the AgentField run finished")
+		return nil
+	})
+	lp.emit(c.id, "", EventLanded, "done")
 }

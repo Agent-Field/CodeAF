@@ -3825,10 +3825,20 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 	if mapErr != nil {
 		return "", true, mapErr
 	}
+	// A FENCED RUN'S OWN FILE TOOLS KEEP TO THE FENCE its commands are held
+	// to: they run inside codeaf, where no jail reaches (fencedFileTool).
+	if refusal := fencedFileTool(a.config.fence(), a.config.Workspace, tool.Name, args); refusal != "" {
+		return refusal, true, nil
+	}
 	ctx, spawns := procexec.WithSpawns(ctx)
 	call := procexec.Call{Tool: tool.Name, Args: args, Changed: a.changedBy(tool.Name, args), Spawns: spawns, Deferred: procexec.Deferred(ctx)}
 	logErr := procexec.For(ctx).Around(ctx, call, func() ([]byte, bool) {
 		text, isError, err = tool.Execute(ctx, args)
+		// A COMMAND THE FENCE STOPPED SAYS SO, in the one sentence the model and
+		// the person both read, under the command's own error.
+		if isError && err == nil && a.config.fence() != nil {
+			text = procexec.WithFenceLine(text)
+		}
 		return []byte(text), isError || err != nil
 	})
 	if logErr != nil {

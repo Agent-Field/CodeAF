@@ -502,6 +502,16 @@ type Entry struct {
 	Turn  uint64    `json:"turn,omitempty"`
 	Kind  string    `json:"kind" enum:"user,answer,tool,receipt,notice,error,update,steer,note,summary,footer"`
 	At    time.Time `json:"at"`
+	// Author is who wrote the entry's words: the person, the engine (codeaf's
+	// own words in the conversation — a factory step's opening instructions,
+	// a "[carry on]" nudge, the runner's progress lines, a session note) or
+	// the agent (the model's answers and calls). IT IS THE PRODUCER'S FACT,
+	// so a client folds the engine's lines without reading their words. A
+	// user entry the engine wrote is still kind user, because it sits in the
+	// person's seat for the model; its author says it is not the person's.
+	// Absent where an older engine never said, and on entry kinds the engine
+	// builds outside the transcript. Hello word `agents.entry_author`.
+	Author string `json:"author,omitempty" enum:"person,engine,agent"`
 	// Text is the words of a user, answer, receipt, notice or error entry.
 	Text     string `json:"text,omitempty"`
 	Thinking string `json:"thinking,omitempty"`
@@ -623,6 +633,28 @@ type EntryOp struct {
 
 // OpCrewFormed is a crew made under this conversation's agent as its manager.
 const OpCrewFormed = "crew.formed"
+
+// Who wrote an entry's words ([Entry.Author]).
+const (
+	AuthorPerson = "person"
+	AuthorEngine = "engine"
+	AuthorAgent  = "agent"
+)
+
+// FeatureEntryAuthor is announced in hello when an engine says
+// [Entry.Author] on the entries it reads out of a conversation's transcript.
+const FeatureEntryAuthor = "agents.entry_author"
+
+// EntryAuthorSayer is an engine whose transcript entries carry
+// [Entry.Author]; it is the only thing [FeatureEntryAuthor] is announced on.
+type EntryAuthorSayer interface{ SaysEntryAuthor() bool }
+
+func withEntryAuthorFeature(hello Hello, e Engine) Hello {
+	if a, ok := e.(EntryAuthorSayer); ok && a.SaysEntryAuthor() {
+		hello = withFeature(hello, FeatureEntryAuthor)
+	}
+	return hello
+}
 
 // The kinds of entry.
 const (

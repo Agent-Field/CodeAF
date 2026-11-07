@@ -163,7 +163,11 @@ type PipelineEditStep struct {
 	Fanout string `json:"fanout,omitempty"`
 	// Who is who a person step waits on ("@handle" or operator); absent for
 	// the job's person.
-	Who    string `json:"who,omitempty"`
+	Who string `json:"who,omitempty"`
+	// Pass is who may pass a person step (person, manager, or `manager when
+	// <condition>`); absent when the file does not say, which reads as a
+	// person or the manager.
+	Pass   string `json:"pass,omitempty"`
 	Locked bool   `json:"locked"`
 	InFile bool   `json:"in_file"`
 }
@@ -215,6 +219,6 @@ func (s *PipelineEditSource) SetParsed(src pipeline.Source) {
 	}
 	for _, st := range src.Steps {
 		s.Steps = append(s.Steps, PipelineEditStep{Name: st.Name, Label: st.Label, Gate: st.Gate, Prompt: st.Prompt, Until: st.Until,
-			Max: st.Max, Kind: st.Kind, When: st.When, Effort: st.Effort, Fanout: st.Fanout, Who: st.Who, Locked: st.Locked, InFile: st.InFile})
+			Max: st.Max, Kind: st.Kind, When: st.When, Effort: st.Effort, Fanout: st.Fanout, Who: st.Who, Pass: st.Pass, Locked: st.Locked, InFile: st.InFile})
 	}
 }

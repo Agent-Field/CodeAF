@@ -264,6 +264,13 @@ To run stages narrower, set `CODEAF_FACTORY_POSTURE` to another posture (`ask`, 
 `deny`, or `auto` for your own settings rows) in the environment codeaf's host starts in; under
 any of them a call that would ask is refused the same way.
 
+The allow posture is not your full permissions. A stage's commands, and its own `read`, `write`
+and `edit`, are kept inside its worktree, the repository's git folder and the stage's own temp and
+cache folders. It cannot write the rest of the computer (no `brew install`), read keys and
+sign-ins such as `~/.ssh`, or use docker. A blocked command reads `codeaf blocked this: …`.
+`"jail.allow"` in the repository's `.codeaf/config.json` allows more. "What an unattended run may
+touch" has the whole list.
+
 ## what the manager hears — the progress lines in the item's chat
 
 The run reports into the item's chat (its manager, opened with `T`) one line per event, written
@@ -332,7 +339,10 @@ waits on it and no card stands between the press and the plan.
 
 To change the steps, tell the manager in the item's chat. Its `factory_run` changes them at
 once before a run, and only the steps not yet started during one (see change one job's steps,
-on the factory page). What it set is one line, the same one the Adapted row of the item page
+on the factory page). AN EDIT DURING A RUN KEEPS THE JOB RUNNING: the runner hands the job back
+and takes it up again at the step it was on, with the finished steps kept and the work so far
+in its checkout, then runs the edited steps after it. It never goes back to Backlog and never
+starts again from plan. What it set is one line, the same one the Adapted row of the item page
 shows, one clause for each change and the reason last:
 `manager set review: thorough on security, code and architecture · added arch after review ·
 skipped neaten · why: touches the call row`. It also removes a step from the job (`removed
@@ -422,7 +432,14 @@ from the job's budget like the job's steps: everything done for the job spends f
 
 ## Which model and branch does a factory step use?
 
-A step opens on the model selected for its job. A finished step's chat shows
+A step opens on the first that is set: a pick for that step on this job, a pick
+for the whole job, one model for every task (Task models or `--one-model`), the
+step's effort word (`cheap`: small work, `strong`: checks), the factory's
+default (Spending › Default model), your worker seat (Settings › Models ›
+worker), then the runner's own. With no factory default, steps run on your
+worker seat, never on a built-in default. The job page shows the choice and
+which rung made it, for the next step and each step still to run (`runs_on`).
+A finished step's chat shows
 the model recorded for that step when it is reopened, rather than the current
 profile default. New branches made by the app use the job person's GitHub
 login as their namespace; existing jobs keep their recorded branches.
@@ -441,7 +458,9 @@ Actions. Auto uses the shared yellow switch; Manual is grey. The saved mode foll
 the job across views and restarts. Older jobs with no saved mode stay Manual until
 you explicitly enable Auto; upgrading cannot publish an already waiting job.
 
-Auto passes optional routine plan gates, keeps bounded stage retries, and publishes
+In Auto the manager passes the approve steps it may pass — those whose **Who may pass** is
+"A person or the manager", and "The manager when …" ones whose condition it judges true —
+never an "Only a person" one (see "who may pass an approve step"). Auto keeps bounded stage retries, and publishes
 passing proof as a draft PR through the same recorded, exact-commit approval door.
 It repairs and updates that same PR within the job's budget and retry limits. The
 service records each approved publication; a worker cannot manufacture consent.
@@ -457,6 +476,19 @@ when that finishes. Start answers for the first step and an approve step answers
 step after it, so neither asks twice. Retries and send-backs of a step that already ran do
 not ask. Switching to Manual applies from the next step not yet run; switching to Auto passes
 an ask that is standing. Older jobs with no saved mode keep only their approve steps.
+
+In Needs you the ask is its own kind, `approve_step` (gate `step`), never a plan: it reads
+"RunVetAndTest is next · waiting for you to go on", naming the step by its label.
+
+## switching to Auto never skips an approve step — the last approve step waits for the proof approval
+
+Switching to Auto passes only the standing ask. An approve step still ahead stays a wait. One
+that is the pipeline's last step is where the run lands: it shows as waiting, and the proof
+approval answers it. That is your approval, or the manager's recorded one where the step lets
+the manager pass it. The proof approval card shows what you approve: the proof's claims, the
+files changed and how many lines.
+A job whose run went past an approve step nobody passed is refused with `has an approve step
+nobody has passed yet: <step>`, and nothing is published, in Auto or Manual.
 
 ## Retry a failed step or a failed message
 
@@ -1105,3 +1137,19 @@ Attempt exhaustion alone never opens Merge or acknowledges a requested change.
 When the refusal concerns local checkout changes, Try again first rereads the
 checkout without calling a model. An unchanged checkout remains refused without
 spending; restoring the clean published checkout permits a fresh assessment.
+
+## a step's question — the manager answered for you, override it, Manual sends every question to you, only a person can answer
+
+When a step asks a question, the job's manager is given it first and answers from the issue, the pipeline and the steps. Its answer goes back to the step at once, and the job keeps a record of it: the question, the step that asked and `Manager answered for you` with the answer. The record is in the job's questions beside your own answers (`with: manager`), and the job's Brief can say the manager decided it. The manager's answer is never counted as one of your requests. To override it, send the step that asked a message with your answer while it runs; once the step has ended, your message reaches the next step.
+
+The manager is skipped, and the question comes straight to you in Needs you, in two cases:
+
+- the job is in **Manual**: every step question comes to you, with `Manual: every step question comes to you`;
+- the step marked the question as one only a person can answer (the `ask` tool's `judgement` kind), in every mode, with `the step said only a person can answer this`.
+
+A question the manager sends on comes to you the same way, with the manager's reason. The step waits until you answer.
+
+## a message to a step that is ending — is it lost?
+
+No. A message sent while a step runs is kept on the job's notes as well as handed to the step. If the step ends before it reads it, every later step's brief carries it, so it reaches the run either way. A message sent once the job is no longer running is refused in words: `#12 is not running`.
+

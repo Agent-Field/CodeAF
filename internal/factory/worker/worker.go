@@ -288,7 +288,7 @@ func backoff(d time.Duration) time.Duration {
 type job struct {
 	o      Options
 	w      *client.WorkerClient
-	tables bool
+	admits api.ReportAdmits
 	lease  string
 	id     int
 	sent   factory.Item // the mirror as last reported
@@ -323,7 +323,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer o.cap.releaseJob(it.ID)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	j := &job{tables: pulled.Job.RoundCostTables, o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
+	j := &job{admits: pulled.Job.ReportAdmits(), o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
 	defer j.clearMirror()
 	defer j.keepLocal(api.WorkerLease{Job: it.ID})
 	pulledTalk, pulledNotes := it.Talk, it.Notes
@@ -552,7 +552,11 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 				return reportResult{alive: !j.lostLease(err), admitted: err == nil}
 			})
 		case <-ctx.Done():
-			j.drop()
+			// THIS PROCESS IS ENDING, WHICH IS NOT A STOP: the job is let go,
+			// never stopped as its person's, so work it runs elsewhere goes
+			// on and the lease expires into the queue to be followed again
+			// (run.StoppedHere reads false).
+			j.letGo()
 			return
 		case <-report.C:
 			// Ticks during an in-flight report are skipped, never queued.
@@ -827,6 +831,12 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			effectErr = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
 			effectErr = r.Steer(j.id, s.Words)
+		case lease.SignalAgentField:
+			// A PERSON ANSWERED THE RUN'S PAUSE ON THE FACTORY. This runner
+			// started the run, so it carries the answer to the control plane;
+			// a control plane that does not answer now is tried again on the
+			// next beat, because the signal stays until it is acknowledged.
+			effectErr = r.AnswerAgentField(j.id, factory.AgentFieldDecision{RequestID: s.ID, Execution: s.Execution, Decision: s.Decision, Words: s.Words, By: s.By})
 		case lease.SignalModel:
 			effectErr = r.SetModelSelection(j.id, s.Words, s.Automatic)
 		case lease.SignalAutonomy:
@@ -971,8 +981,17 @@ func (j *job) converse(ctx context.Context) {
 // the job's folder.
 const StopWait = 5 * time.Second
 
-// drop lets the job go here: the factory stopped it, or this process is
-// ending and the lease will expire into the queue for another worker.
+// letGo is drop for a process that is ending: the job is withdrawn here,
+// never stopped, and the lease expires into the queue for another worker.
+func (j *job) letGo() {
+	j.mu.Lock()
+	j.withdrawn = true
+	j.mu.Unlock()
+	j.drop()
+}
+
+// drop lets the job go here: the factory stopped it, took its lease back, or
+// this process is ending ([job.letGo]).
 func (j *job) drop() {
 	j.keepLocal(api.WorkerLease{Job: j.id})
 	j.mu.Lock()
@@ -1016,7 +1035,8 @@ func (j *job) refuse(ctx context.Context, why error) {
 func final(it factory.Item) api.WorkerDone {
 	switch it.State {
 	case factory.StateShipped:
-		if it.PullRequest != nil || it.CommentURL != "" {
+		// A job an AgentField reasoner ran is done when its run is.
+		if it.PullRequest != nil || it.CommentURL != "" || it.RunOn != "" || factory.AgentFieldPipeline(it) {
 			return api.WorkerDone{State: api.StateDone}
 		}
 		return api.WorkerDone{}

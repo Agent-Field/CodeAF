@@ -59,7 +59,8 @@ func (a *Agent) ReadFactoryStatus(ctx context.Context, text string) (string, boo
 	if err != nil {
 		return "", true, err
 	}
-	return strings.Split(status.Text, "\nPending question ID:")[0], true, nil
+	text = strings.Split(status.Text, "\nPending question ID:")[0]
+	return strings.Split(text, factory.ManagerActionsMarker)[0], true, nil
 }
 
 func factoryStatusStream(text string) <-chan Event {

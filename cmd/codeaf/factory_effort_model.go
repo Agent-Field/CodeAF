@@ -19,28 +19,32 @@ var factoryEffortTiers = map[string]string{
 	factory.EffortWords[1]: config.ModelTierHigh,
 }
 
-// factoryStepModel is the model a step's conversation opens on, "" to keep
-// the launch's default: the step's or the job's own pick first, then the
-// model its effort runs on. A profile on one model for every task keeps it.
-func factoryStepModel(profile string, spec factoryrun.ConversationSpec, oneModel bool) string {
-	if model := strings.TrimSpace(spec.Model); model != "" {
-		return model
+// factoryRunnerModels is what this machine's runner knows about models, the
+// runner's rungs of [factory.StepModel]: the launch's model, whether it runs
+// every task on it, the model each effort word runs on and the person's
+// worker model (Settings › Models › worker, pinned or routed). A launch on one
+// model for every task needs only the first two.
+func factoryRunnerModels(profile string, cfg session.Config) factory.RunnerModels {
+	r := factory.RunnerModels{OneModel: cfg.OneModel, Launch: strings.TrimSpace(cfg.Model)}
+	if cfg.OneModel {
+		return r
 	}
-	tier, ok := factoryEffortTiers[strings.TrimSpace(spec.StepEffort)]
-	if !ok || oneModel {
-		return ""
+	r.Effort = make(map[string]string, len(factoryEffortTiers))
+	for word, tier := range factoryEffortTiers {
+		if model := strings.TrimSpace(config.TierSeatAt(profile, tier).Model); model != "" {
+			r.Effort[word] = model
+		}
 	}
-	return strings.TrimSpace(config.TierSeatAt(profile, tier).Model)
+	r.Worker = strings.TrimSpace(config.TierSeatAt(profile, config.ModelTierWorker).Model)
+	return r
 }
 
-// factoryOpenModel is the model a step opens on: the one a person picked for the
-// step or the job, else the one its effort word runs on, else the factory's
-// default, else the launch's. The step's word is the more specific of the last
-// two. A launch on one model for every task keeps that model unless a person
-// picked one.
+// factoryOpenModel is the model a step's conversation opens on: THE ONE
+// RESOLUTION, [factory.StepModel], over what the spec carries of the step and
+// the job and what this runner knows. The wire's runs_on says the same
+// resolution, so the model a page names is the model the step opens on.
 func factoryOpenModel(profile string, cfg session.Config, spec factoryrun.ConversationSpec) string {
-	if model := factoryStepModel(profile, spec, cfg.OneModel); model != "" {
-		return model
-	}
-	return stageOpenModel(cfg, spec)
+	st := factory.Stage{Model: spec.Model, Effort: spec.StepEffort}
+	it := factory.Item{FactoryModel: spec.FactoryModel}
+	return factory.StepModel(st, it, factory.ModelDefaults{Runner: factoryRunnerModels(profile, cfg)}).Model
 }

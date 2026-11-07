@@ -397,6 +397,12 @@ func CarryOn(text string) string { return carryOnLead + strings.TrimSpace(text) 
 
 func isCarryOn(text string) bool { return strings.HasPrefix(text, carryOnLead) }
 
+// IsCarryOn says whether a user message is codeaf's own carry-on in the
+// person's seat ([CarryOn], the checkpoint's nudge, a factory step's reminder
+// to report) rather than words a person typed: the producer's lead, which a
+// surface reads to say who wrote the line.
+func IsCarryOn(text string) bool { return isCarryOn(strings.TrimLeft(text, " \t\r\n")) }
+
 // ClosedSignal closes as soon as Close refuses further work. A view subscribes
 // under the same lock as Close, so even a previously closed agent is observed.
 func (a *Agent) ClosedSignal() <-chan struct{} {

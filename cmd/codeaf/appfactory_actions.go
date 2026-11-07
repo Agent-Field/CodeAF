@@ -38,6 +38,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/redact"
 )
@@ -376,6 +377,12 @@ func (b *appBackend) FactoryJobSetBudget(ctx context.Context, p appwire.FactoryJ
 // it for its Undo window before it acts; the answer carries that window, and
 // FactoryJobUndo is how the same person withdraws it inside it.
 func (b *appBackend) FactoryJobApprove(ctx context.Context, p appwire.FactoryJobApproveParams) (appwire.FactoryJobActed, error) {
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActApprove, agentfield.DecisionApproved, p.Words, p.Expect); handled {
+		return out, err
+	}
+	if out, handled, err := b.answerStepQuestion(ctx, p.Factory, p.Job, p.Words, p.Expect); handled {
+		return out, err
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActApprove, p.Job, factoryVerbApprove, api.Approve{Words: p.Words, Commit: p.Commit, Edited: p.Edited, Expect: p.Expect})
 }
 
@@ -384,6 +391,9 @@ func (b *appBackend) FactoryJobUndo(ctx context.Context, p appwire.FactoryJobAct
 }
 
 func (b *appBackend) FactoryJobRequestChanges(ctx context.Context, p appwire.FactoryJobChangesParams) (appwire.FactoryJobActed, error) {
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActRequestChanges, agentfield.DecisionRequestChanges, p.Words, p.Expect); handled {
+		return out, err
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRequestChanges, p.Job, factoryVerbRequestChange, struct {
 		Words  string      `json:"words"`
 		Expect *api.Expect `json:"expect,omitempty"`

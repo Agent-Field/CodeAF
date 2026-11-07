@@ -204,6 +204,9 @@ func runApp(args []string) error {
 	services := openAppServices()
 	appServiceDoor.Store(services)
 	backend.attachServices(services)
+	// And the press a job's manager makes Merge and Mark ready through, the
+	// job page's own (factory_manager_press.go).
+	defer installAppLocalPress(backend)()
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
 	// standing orders runs while it is open (apporders.go).
@@ -567,10 +570,13 @@ type appBackend struct {
 	pluginOllama   appPluginOllama
 	pluginAuth     map[string]*appPluginAttempt
 	chats          appChats
-	pair           appPair
-	drives         *driveBook
-	sync           appSync
-	syncPending    map[string][]appSyncFact
+	// credentials is what a door gave this launch to keep, waiting for the
+	// app to take it (appkept_credentials.go).
+	credentials appKeptCredentials
+	pair        appPair
+	drives      *driveBook
+	sync        appSync
+	syncPending map[string][]appSyncFact
 
 	// devices observes existing sync traffic without starting a roster watch.
 	devices            *appDevices
@@ -613,6 +619,8 @@ type appBackend struct {
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
+	// setupGitHub is the first run's browser sign-ins (appfactory_setup_github.go).
+	setupGitHub appSetupGitHub
 	// startedAt is when this backend was made, and lastResume what its start
 	// carried on after the last quit, nil for nothing (apphealth.go). Both
 	// are guarded by mu.
@@ -1068,6 +1076,10 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	}
 	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
+	// A CREDENTIAL A DOOR GAVE THIS LAUNCH IS HANDED TO THE APP TO KEEP
+	// (config.AppCredentials.Keep, appkept_credentials.go), and comes back
+	// with keys.set at the next.
+	keys.OnKept(b.queueCredential)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
@@ -2419,6 +2431,11 @@ func (b *appBackend) send(id, text, clientID string, shown *appSending) (uint64,
 	if err != nil {
 		return 0, err
 	}
+	// A STEP AN AGENTFIELD NODE IS RUNNING takes the person's words as a note
+	// to that run, not a turn here (factory_agentfield_run.go).
+	if handled, err := b.agentFieldSteer(a, text); handled {
+		return 0, err
+	}
 	// The gate keeps the idle sweep from letting the conversation go between
 	// opening it and starting the turn.
 	a.gate.Lock()
@@ -3657,6 +3674,7 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	if err != nil {
 		return nil, false, appEntriesBusy(err)
 	}
+	appMarkStepBrief(page, transcript)
 	return page, more, nil
 }
 
@@ -4009,6 +4027,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		if entry.Kind == appwire.EntryUser && item.Person != nil {
 			entry.From = item.Person.From
 		}
+		entry.Author = appEntryAuthor(entry, item)
 		entries = append(entries, entry)
 		from = append(from, i)
 	}

@@ -1,6 +1,10 @@
 package api
 
-import "github.com/Agent-Field/codeaf/internal/factory"
+import (
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
 
 const ConcurrencySettingsHint = "Change Jobs at once in Settings → Factory → Your computers."
 
@@ -13,6 +17,8 @@ const WaitingForComputer = "waiting_for_computer"
 func PresentJob(j *Job) {
 	p := StatePresentation{Kind: j.State}
 	switch {
+	case j.DoneHow == "closed_locally" && j.Rejection != nil:
+		p.Kind, p.Title, p.Detail = "done", "Rejected", factory.RejectedWords(j.Rejection.Words)+". Reopen or Run as new to try again."
 	case j.DoneHow == "closed_locally":
 		p.Kind, p.Title, p.Detail = "done", "Closed", "Closed locally; work and spending kept. Reopen to continue."
 	case j.Recovery != nil && (j.Recovery.State == "waiting" || j.Recovery.State == "queued"):
@@ -41,6 +47,12 @@ func PresentJob(j *Job) {
 	case j.State == StateQueued && j.StatePresentation.Kind == WaitingForComputer:
 		// Nothing starts this job until its computer is back, Start now included.
 		p = j.StatePresentation
+	case j.State == StateQueued && strings.TrimSpace(j.RunOn) != "":
+		// An AgentField job (run_on) takes no runner and no Jobs at once
+		// place: Start dispatched it to its node, and it is starting there
+		// until the run reports, a few seconds at most.
+		node, _, _ := strings.Cut(strings.TrimSpace(j.RunOn), ".")
+		p.Title, p.Detail = "Starting", "Starting on AgentField · "+node+"."
 	case j.State == StateQueued && j.OverLimit:
 		p.Kind, p.Title, p.Detail = "waiting_for_runner", "Starting now", "Starting now, above Jobs at once this one time."
 	case j.State == StateQueued || (j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsRunnerOffline):
@@ -62,10 +74,20 @@ func PresentJob(j *Job) {
 			p.Detail = step.Name + ": " + step.Verification.Checks[0].Purpose + " is running. Waiting does not use a model turn."
 			break
 		}
+	case j.State == StateNeedsYou && j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsApproveStep && j.NeedsYou.Step != "":
+		// A MANUAL HOLD SAYS WHICH STEP IS NEXT, in a person's words, never
+		// the machine reason it is filed under.
+		p.Title, p.Detail = "Needs you", j.NeedsYou.Step+" is next · waiting for you to go on"
 	case j.State == StateNeedsYou:
 		p.Title, p.Detail = "Needs you", j.Reason
 	case j.State == StateDone:
 		p.Title = "Done"
+	case j.State == StateBacklog && strings.TrimSpace(j.Repo) == "" && strings.TrimSpace(j.RunOn) == "":
+		// Outside work no rule or person has given a repository yet: the
+		// launch refuses it ([factory.NoRepoRefusal]), so its read says why.
+		// A job an AgentField reasoner runs (run_on) needs none, so it waits
+		// as ordinary backlog.
+		p.Title, p.Detail = factory.NoRepoTitle, factory.NoRepoDetail
 	case j.State == StateBacklog:
 		p.Title = "Backlog"
 	}

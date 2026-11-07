@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"net"
 	"net/http"
 	"net/netip"
@@ -46,6 +47,10 @@ type JobFolders interface {
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// PassJudge answers the condition of a `manager when …` approve step for
+	// Auto ([factory.PassOf]): the factory's AI filter, on its default model.
+	// Nil leaves every such approval to a person, with the reason said.
+	PassJudge route.Judge
 	// Scout is Look closer on this factory (scout.Door.Look): nil when the
 	// factory has no model to look with, and the route then says so.
 	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
@@ -63,6 +68,11 @@ type Config struct {
 	// for the queue's `model`. Nil when this factory does not know it: a
 	// runner elsewhere decides with its own settings.
 	DefaultModel func() string
+	// RunnerModels answers what this factory's own runner knows about models
+	// (its effort models, its person's worker model, its launch model, whether
+	// it runs every task on one), for each read job's and step's runs_on
+	// ([factory.StepModel]). Nil when this factory's runners are elsewhere.
+	RunnerModels func() factory.RunnerModels
 	// ProfileDir resolves the solo factory's existing GitHub connection for setup reads.
 	ProfileDir string
 	// OperatorLogin names a solo host; team identity comes from the persisted claim.
@@ -93,6 +103,10 @@ type Config struct {
 	PersonKnown func(string) (factory.GitHubPerson, bool)
 	// CodeOwners reads a watched repository's cached default-branch ownership.
 	CodeOwners func(context.Context, string) ([]factory.CodeOwner, error)
+	// Route runs the factory's routing over its new jobs now (the intake
+	// pass), so a job a person just gave a repository is routed without
+	// waiting for the next poll. Nil leaves it to that poll, which is nudged.
+	Route func(context.Context) error
 	// Pipeline reads the same repository rules as intake, including personal limits.
 	Pipeline func(context.Context, string, string) (pipeline.File, error)
 	// JobPipeline reads the pipeline one job is bounded by, with the same
@@ -188,6 +202,10 @@ type Handler struct {
 	jobsTimer  *time.Timer
 	jobsClosed bool
 	jobsBusy   sync.WaitGroup
+	// judging holds the manager-when approvals being judged now, by job and
+	// key, so one approval is never judged twice at once.
+	judgingMu sync.Mutex
+	judging   map[int]string
 
 	seam    factory.Seam
 	areas   repoAreas
@@ -513,6 +531,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			h.soloJob(&q.Jobs[i], s.Items[i], handle)
 		}
 	}
+	h.modelsIn(q.Jobs, issues)
 	h.judgeProtected(r.Context(), s.Items, q.Jobs)
 	q.Reason = reason
 	if reason != "" {
@@ -562,6 +581,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	h.modelsIn(jobs, []factory.Item{it})
 	if h.config.CodeOwners != nil && len(itemFiles(it)) > 0 {
 		rules, err := h.config.CodeOwners(r.Context(), itemRepo(it))
 		if err == nil {
@@ -581,8 +601,8 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	}
 	// HOW A RUN GETS ITS CHECKOUT is said before anyone presses Start, in the
 	// words the start itself would act on ([factory.Seam.CheckoutOf]), and
-	// never as a path.
-	if h.seam.CheckoutOf != nil {
+	// never as a path. A job that runs elsewhere has none to say.
+	if h.seam.CheckoutOf != nil && !factory.RunsElsewhere(it) {
 		state, _ := h.seam.CheckoutOf(r.Context(), it.Repo)
 		jobs[0].Checkout = string(state)
 	}
