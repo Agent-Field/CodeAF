@@ -25,6 +25,14 @@ On a Claude plan, nothing is added to codeaf's spending, because the plan is not
 
 The run ends at once with `Claude Code is not installed here: install it, run `claude` once to sign in, or set CODEAF_CLAUDE_BIN to its path` when no `claude` program is on PATH. A `claude` that is only a shell alias or function does not count, because codeaf starts a program, not a shell. Set `CODEAF_CLAUDE_BIN` to the real file.
 
-## What /claude cannot do — questions, permissions, messages
+## Talking to Claude Code while it works — send a message, change direction, stop it
 
-It cannot ask you anything while it works: it runs unattended, with edits and shell commands allowed and every other permission prompt refused. It does not read messages sent to its task while it runs. It does not use codeaf's models, skills or memory; it uses Claude Code's own.
+Words you type on its task's page reach Claude Code while it works, the same as they reach senior-dev. Claude Code takes them into the turn it is on or starts a new turn for them, and the task ends only once it has answered everything it was sent and gone quiet for a few seconds. Stopping the task interrupts Claude Code's turn first, so it stops between tool calls rather than in the middle of writing a file.
+
+Each run keeps Claude Code's own session id, so `codeaf claude run --resume <id> -- <brief>` carries on that same conversation.
+
+## What /claude refuses and cannot do — git push, pull requests, publish, questions
+
+It may not push, open or merge a pull request, cut a release, or publish a package. Those commands are refused with `Pushing, publishing and opening pull requests are the person's to do; leave the work on this branch.`, and the refusal shows as a step. The rule holds even when your own Claude Code hooks would allow the command. Everything else inside the run's branch is allowed without asking.
+
+It cannot ask you a question and wait: nobody is assumed to be watching. It does not use codeaf's models, skills or memory; it uses Claude Code's own settings, hooks and MCP servers from your machine.

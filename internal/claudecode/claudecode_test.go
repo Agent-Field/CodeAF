@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/claudeagent"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 )
 
@@ -33,8 +34,8 @@ const stream = `{"type":"system","subtype":"hook_started"}
 
 func TestAPlanRunBecomesStepsAndAnEndingThatBooksNoSpend(t *testing.T) {
 	host := &fakeHost{}
-	end := Translate(strings.NewReader(stream), host)
-	if !end.seen || end.Status != delegate.StatusPass || end.Deliverable != "done" {
+	end := translate(stream, host)
+	if end.Status != delegate.StatusPass || end.Deliverable != "done" {
 		t.Fatalf("ending = %+v", end)
 	}
 	if end.CostUSD != 0 {
@@ -50,8 +51,27 @@ func TestAPlanRunBecomesStepsAndAnEndingThatBooksNoSpend(t *testing.T) {
 
 func TestAnAPIKeyRunBooksClaudeCodesOwnFigure(t *testing.T) {
 	keyed := strings.Replace(stream, `"apiKeySource":"none"`, `"apiKeySource":"ANTHROPIC_API_KEY"`, 1)
-	if end := Translate(strings.NewReader(keyed), &fakeHost{}); end.CostUSD != 0.007 {
+	if end := translate(keyed, &fakeHost{}); end.CostUSD != 0.007 {
 		t.Fatalf("cost = %v", end.CostUSD)
+	}
+}
+
+func translate(stream string, host *fakeHost) delegate.Ending {
+	tr := newTranslator(host)
+	for _, line := range strings.Split(strings.TrimSpace(stream), "\n") {
+		tr.handle(claudeagent.Event{Raw: []byte(line)})
+	}
+	return tr.ending("s1")
+}
+
+func TestAPushIsRefusedAndWorkOnTheBranchIsNot(t *testing.T) {
+	for input, allow := range map[string]bool{
+		`{"command":"git push origin HEAD"}`: false, `{"command":"gh pr create --fill"}`: false,
+		`{"command":"npm publish"}`: false, `{"command":"go test ./..."}`: true, `{"command":"git commit -m x"}`: true,
+	} {
+		if got := policy(claudeagent.PermissionRequest{ToolName: "Bash", Input: []byte(input)}); got.Allow != allow {
+			t.Errorf("%s: allow = %v", input, got.Allow)
+		}
 	}
 }
 
