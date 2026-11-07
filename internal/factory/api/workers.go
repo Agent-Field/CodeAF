@@ -158,7 +158,8 @@ type StepResult struct {
 // runner applies it as the round ends, and the kept result drops it), nor do
 // Reports and Inferred: they are folded into the round's summary line where
 // the round ran, and that line crosses (steps[].rounds). Summary stays too: it is written
-// onto the step's failure (Failure.Summary), which crosses on its own. A field added here is
+// onto the step's failure (Failure.Summary), which crosses only to a factory that admits it
+// ([ReportAdmits.FailureSummaries]). A field added here is
 // one a factory older than it refuses a worker's whole report for.
 func stepResultWire(r factory.StageResult) *StepResult {
 	return &StepResult{Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
@@ -185,7 +186,7 @@ func stageResultItem(r StepResult) factory.StageResult {
 // only the lease holder may read (serve's withholdChats).
 func WorkerJob(it factory.Item) Job {
 	j := FromItem(it)
-	j.RoundCostTables = true
+	j.RoundCostTables, j.FailureSummaries = true, true
 	// The runner runs the file the job carries, so it is sent whole here.
 	j.PipelineCopy = it.PipelineCopy.Clone()
 	// The read written before work is what every step is told the issue
@@ -257,12 +258,33 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 	return out
 }
 
+// ReportAdmits is what the factory that handed out a job said a worker's report
+// may carry beyond the established body. Each field is one the factory set on
+// the pulled job; a factory too old to set it reads reports strictly, so A FIELD
+// IT DID NOT ADMIT IS LEFT OFF rather than sent for it to refuse the whole report.
+type ReportAdmits struct {
+	// RoundCostTables is [Job.RoundCostTables]: per-round spending tables.
+	RoundCostTables bool
+	// FailureSummaries is [Job.FailureSummaries]: a failure's one-line summary.
+	FailureSummaries bool
+}
+
+// ReportAdmits reads the admissions off a pulled job.
+func (j Job) ReportAdmits() ReportAdmits {
+	return ReportAdmits{RoundCostTables: j.RoundCostTables, FailureSummaries: j.FailureSummaries}
+}
+
 // FromRunReport is the worker's half of the same boundary: what its runner
-// wrote, in the wire's words. Tables require explicit factory admission.
-// Without admission, Cost includes table spending; incremental delivery replaces
-// it with the full job-spend delta from its acknowledged snapshot.
-func FromRunReport(r factory.RunReport, tables ...bool) WorkerReport {
-	acceptsTables := len(tables) > 0 && tables[0]
+// wrote, in the wire's words, limited to what the factory admitted ([ReportAdmits];
+// none given admits nothing). Without table admission, Cost includes table
+// spending; incremental delivery replaces it with the full job-spend delta from
+// its acknowledged snapshot.
+func FromRunReport(r factory.RunReport, admits ...ReportAdmits) WorkerReport {
+	var admit ReportAdmits
+	if len(admits) > 0 {
+		admit = admits[0]
+	}
+	acceptsTables := admit.RoundCostTables
 	out := WorkerReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
 		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models}
 	// Keep the existing log vocabulary on the worker wire.
@@ -291,6 +313,15 @@ func FromRunReport(r factory.RunReport, tables ...bool) WorkerReport {
 		out.Steps = append(out.Steps, step)
 	}
 	withoutTryResults(out.Pipeline, out.Steps)
+	if !admit.FailureSummaries {
+		// Keep the established failure body for strict older factories.
+		for i := range out.Pipeline {
+			out.Pipeline[i].Failure = withoutSummary(out.Pipeline[i].Failure)
+		}
+		for i := range out.Steps {
+			out.Steps[i].Failure = withoutSummary(out.Steps[i].Failure)
+		}
+	}
 	if q := r.Question; q != nil {
 		out.Question = &Question{FromStep: q.Stage, Text: q.Question, Options: q.Options, Pick: q.Pick, Why: q.Why, Kind: r.QuestionKind, At: timeOrNil(q.At)}
 	}
@@ -361,4 +392,15 @@ type WorkerLease struct {
 	Machine    string    `json:"machine,omitempty"`
 	Handle     string    `json:"handle"`
 	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+// withoutSummary is a copy of f with no one-line summary, so the caller's
+// failure is never changed under it.
+func withoutSummary(f *Failure) *Failure {
+	if f == nil || f.Summary == "" {
+		return f
+	}
+	c := *f
+	c.Summary = ""
+	return &c
 }
