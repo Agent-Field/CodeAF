@@ -322,3 +322,37 @@ func TestTheForemanReadsRunningQueueAndShippedAndStartsByRef(t *testing.T) {
 		t.Fatalf("acted %v, want the jobs by their ids", acting.acted)
 	}
 }
+
+// A JOB FOLLOWING ITS PULL REQUEST READS SO ON THE FLOOR. Desk QA saw the
+// foreman report a job as "shipped, steps 3 of 4 done" with no step named:
+// the stored state, not the person's word. A shipped job with an open pull
+// request is following it, on Follow PR; one with nothing left to follow is
+// done.
+func TestFloorRowSaysAFollowingJobIsOnFollowPR(t *testing.T) {
+	now := time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	stream := func() *factory.Stream {
+		return &factory.Stream{Cur: 2, Phases: []factory.Phase{
+			{Name: "write", State: factory.PhaseDone},
+			{Name: "proof", State: factory.PhaseDone},
+			{Name: "followpr", State: factory.PhaseRunning},
+		}}
+	}
+	it := factory.Item{ID: 7, Num: 7, Title: "t", State: factory.StateShipped, Stream: stream(),
+		PullRequest: &factory.PullRequest{Number: 12, State: factory.PROpen}}
+	row := FloorRow(it, now)
+	if !strings.Contains(row, "following its pull request (Follow PR)") || !strings.Contains(row, ", on Follow PR") || strings.Contains(row, "shipped") {
+		t.Errorf("a following job reads %q", row)
+	}
+
+	it.PullRequest.State = factory.PRMerged
+	row = FloorRow(it, now)
+	if !strings.Contains(row, "done") || strings.Contains(row, "shipped") || strings.Contains(row, "Follow PR") || strings.Contains(row, ", on ") {
+		t.Errorf("a shipped job with nothing to follow reads %q", row)
+	}
+
+	it = factory.Item{ID: 8, Num: 8, Title: "t", State: factory.StateRunning, Stream: stream(),
+		PullRequest: &factory.PullRequest{Number: 13, State: factory.PROpen}}
+	if row := FloorRow(it, now); strings.Contains(row, "following") || !strings.Contains(row, ", on followpr") {
+		t.Errorf("a running job reads %q", row)
+	}
+}

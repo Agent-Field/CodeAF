@@ -30,11 +30,25 @@ import (
 // MADE BY DEFAULT: the first open makes it, every later open answers the same
 // one, and the store keeps which one it is (store/marks.go). It is made on
 // this machine's disk with no model call: a session folder in this window's
-// workspace bucket, seeded with [foremanBrief], and a member named `foreman`
-// directly in the one `factory` team, beside the items' own teams.
+// workspace bucket, seeded with [foremanBrief], and a member titled
+// "Factory manager" (handle `foreman`) directly in the one `factory` team,
+// beside the items' own teams.
 
-// foremanName is the conversation's name and its handle in the `factory` team.
-const foremanName = "foreman"
+// foremanTitle is the name a person reads for the factory-wide manager: the
+// conversation's title and its word in the `factory` team, so the tab, the
+// breadcrumb and the team all say it.
+const foremanTitle = "Factory manager"
+
+// foremanHandle is its address in the `factory` team, which a handle keeps
+// short and lowercase ([teams.ValidHandle]). IT IS NOT THE NAME: it stays
+// `foreman` so every foreman made before the rename keeps its address. The
+// conversation is found again by the store's mark ([store.Store.Foreman]),
+// never by either word.
+const foremanHandle = "foreman"
+
+// foremanOldTitle is the title and team word a foreman made before the rename
+// was given; [foremanRetitle] moves it to [foremanTitle] on the next open.
+const foremanOldTitle = "foreman"
 
 // foremanOpening is the brief's fixed part, said once so the brief, the test
 // and the manual quote the same words.
@@ -170,6 +184,7 @@ func foremanMaker(st *store.Store, workspace, profileDir string, load func() (fa
 		factoryReconcileOnce(profileDir, st)
 		if chat, err := st.Foreman(); err == nil && chat != "" {
 			if _, serr := os.Stat(chat); serr == nil {
+				foremanRetitle(profileDir, chat)
 				return chat, nil
 			}
 		}
@@ -190,7 +205,7 @@ func foremanMaker(st *store.Store, workspace, profileDir string, load func() (fa
 		if load != nil {
 			snap, _ = load()
 		}
-		if err := session.SeedConversation(transcript, where, foremanName, foremanBrief(snap)); err != nil {
+		if err := session.SeedConversation(transcript, where, foremanTitle, foremanBrief(snap)); err != nil {
 			return "", err
 		}
 		if err := foremanJoinTeam(profileDir, transcript, where); err != nil {
@@ -230,6 +245,33 @@ func foremanJoinTeam(profileDir, transcript, where string) error {
 	now := time.Now()
 	return teams.UpdateOpen(profileDir, func(f *teams.File) error {
 		id := factoryParentTeam(f, now)
-		return f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: foremanName, Handle: foremanName, JoinedAt: now})
+		return f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: foremanTitle, Handle: foremanHandle, JoinedAt: now})
+	})
+}
+
+// foremanRetitle renames a foreman made before the rename: its conversation's
+// title and its word in the `factory` team, when each still says the old
+// title. A title the person changed is theirs and stays. It is best effort;
+// the conversation opens either way.
+func foremanRetitle(profileDir, transcript string) {
+	dir := session.DirOf(transcript)
+	if meta, err := session.LoadMeta(dir); err == nil && strings.TrimSpace(meta.Title) == foremanOldTitle {
+		meta.Title = foremanTitle
+		_ = session.SaveMeta(dir, meta)
+	}
+	key := transcript
+	if real, err := filepath.EvalSymlinks(transcript); err == nil {
+		key = real
+	}
+	key = filepath.Clean(key)
+	_ = teams.UpdateOpen(profileDir, func(f *teams.File) error {
+		for ti := range f.Teams {
+			for mi := range f.Teams[ti].Members {
+				if m := &f.Teams[ti].Members[mi]; m.Key == key && m.Word == foremanOldTitle {
+					m.Word = foremanTitle
+				}
+			}
+		}
+		return nil
 	})
 }
