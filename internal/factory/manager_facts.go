@@ -40,7 +40,7 @@ func managerFactsLines(it Item) (out, guide []string) {
 		guide = append(guide, "Say the step count exactly as the Steps line gives it; it is the count every page of the job shows.")
 		if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 			ph := it.Stream.Phases[it.Stream.Cur]
-			line += " Current step: " + ph.Name + ", " + phaseWords(it, ph) + "."
+			line += " Current step: " + StepWords(it, ph.Name) + ", " + phaseWords(it, ph) + "."
 		}
 		out = append(out, line)
 	}
@@ -60,6 +60,22 @@ func managerFactsLines(it Item) (out, guide []string) {
 		guide = append(guide, "The factory read the pull request facts above on its last follow; your shell has no GitHub access by design, so answer pull request questions from them and never say the pull request cannot be read.")
 	}
 	return out, guide
+}
+
+// StepWords is a step's name as a person reads it: its label when the
+// pipeline gave one, "Follow PR" for the factory's own follow step, and its
+// name otherwise. A step key (`followpr`) is the store's spelling, never a
+// person's, so every manager fact names a step through here.
+func StepWords(it Item, name string) string {
+	if i := StageIndex(it.Stages, name); i >= 0 {
+		if l := strings.TrimSpace(it.Stages[i].Label); l != "" {
+			return l
+		}
+	}
+	if name == FollowPRStep {
+		return "Follow PR"
+	}
+	return name
 }
 
 // phaseWords is a phase's state as the job page says it, a step a person or a
@@ -135,11 +151,6 @@ func OffersMarkReady(it Item) bool {
 	return it.Kind != KindPR && it.Publish == "pr" && it.DoneHow != "dropped" && pr != nil && pr.Number > 0 && pr.State == PROpen && pr.Draft
 }
 
-// managerDecisionAsker stands in for the person in the merge gate's one
-// question about who asks: a merge needs a person, and the status asks on
-// their behalf. The door that presses Merge sends the real caller.
-const managerDecisionAsker = "person"
-
 // managerPRDecision is the post-PR decision the job page shows, in a line the
 // person reads and a line for the manager, or nothing when none waits: Mark
 // ready on a draft, Merge on an open pull request the gate passes, and the
@@ -164,13 +175,22 @@ func managerPRDecision(it Item) (person, actions []string) {
 		person = append(person, fmt.Sprintf("Waiting on the person: Mark pull request #%d ready for review? (%s)", pr.Number, "it is a draft: "+DraftWhy(it)))
 		actions = append(actions, "To mark it ready when the person asks in this conversation, call factory_answer with action=mark_ready and answer set to their words.")
 	}
-	if v := MergeGate(it, MergeAsk{By: managerDecisionAsker}); v.OK {
+	if v := MergeOffered(it); v.OK {
 		person = append(person, fmt.Sprintf("Waiting on the person: Merge pull request #%d?", pr.Number))
 		actions = append(actions, "To merge when the person asks in this conversation, call factory_answer with action=merge and answer set to their words; the merge waits out its Undo window first. Never merge on your own judgment, in Auto or Manual.")
 	} else if it.Kind != KindPR && it.Publish == "pr" {
 		person = append(person, "Merge is not offered yet: "+v.Why+".")
 	}
 	return person, actions
+}
+
+// PRDecisionWords is the post-PR decision lines the job page shows as they
+// stand on it now, the same lines factory_status carries. A press that changed
+// the job (Mark ready) reads them again, so the manager's answer says what the
+// page now offers rather than what it offered before the press.
+func PRDecisionWords(it Item) []string {
+	person, _ := managerPRDecision(it)
+	return person
 }
 
 // OffersPublishApproval says whether the job page asks the person to approve

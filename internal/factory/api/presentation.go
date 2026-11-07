@@ -66,6 +66,10 @@ func PresentJob(j *Job) {
 			p.Detail = step.Name + ": " + step.Verification.Checks[0].Purpose + " is running. Waiting does not use a model turn."
 			break
 		}
+	case j.State == StateNeedsYou && j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsApproveStep && j.NeedsYou.Step != "":
+		// A MANUAL HOLD SAYS WHICH STEP IS NEXT, in a person's words, never
+		// the machine reason it is filed under.
+		p.Title, p.Detail = "Needs you", j.NeedsYou.Step+" is next · waiting for you to go on"
 	case j.State == StateNeedsYou:
 		p.Title, p.Detail = "Needs you", j.Reason
 	case j.State == StateDone:

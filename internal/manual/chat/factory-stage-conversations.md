@@ -468,6 +468,17 @@ step after it, so neither asks twice. Retries and send-backs of a step that alre
 not ask. Switching to Manual applies from the next step not yet run; switching to Auto passes
 an ask that is standing. Older jobs with no saved mode keep only their approve steps.
 
+In Needs you the ask is its own kind, `approve_step` (gate `step`), never a plan: it reads
+"RunVetAndTest is next · waiting for you to go on", naming the step by its label.
+
+## switching to Auto never skips an approve step — the last approve step waits for the proof approval
+
+Switching to Auto passes only the standing ask. An approve step still ahead stays a wait. One
+that is the pipeline's last step is where the run lands: it shows as waiting, and the proof
+approval answers it. That is your approval, or Auto's recorded one where Auto may pass it.
+A job whose run went past an approve step nobody passed is refused with `has an approve step
+nobody has passed yet: <step>`, and nothing is published, in Auto or Manual.
+
 ## Retry a failed step or a failed message
 
 A failed pipeline step has **Try again** in the job's current conversation status.

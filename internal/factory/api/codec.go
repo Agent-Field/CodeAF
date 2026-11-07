@@ -244,6 +244,9 @@ func needsYou(it factory.Item) *NeedsYou {
 	switch kind {
 	case factory.NeedsApprovePlan:
 		ny.BackTo, _ = factory.PlanSendsBack(it)
+	case factory.NeedsApproveStep:
+		ny.BackTo, _ = factory.PlanSendsBack(it)
+		ny.Step, _ = factory.StepHold(it)
 	case factory.NeedsOutOfAttempts:
 		ny.BackTo = stuckBackTo(it)
 	}
@@ -417,7 +420,7 @@ func jobMerge(it factory.Item) *JobMerge {
 	if m := it.Merging; m == nil || m.State == factory.MergeFailed {
 		// Blocked is the gate's answer for a person: the same rule the Merge
 		// verb applies, so a disabled button and a refused verb agree.
-		if v := factory.MergeGate(it, factory.MergeAsk{By: "you"}); !v.OK {
+		if v := factory.MergeOffered(it); !v.OK {
 			out.Blocked = v.Why
 		}
 	}
@@ -587,6 +590,9 @@ func gate(it factory.Item) string {
 	case it.Question == "":
 		return ""
 	case it.QKind == factory.QKindApprove:
+		if _, ok := factory.StepHold(it); ok {
+			return GateStep
+		}
 		return GatePlan
 	case it.QKind == "cap":
 		return GateCap
@@ -1250,7 +1256,7 @@ func strip(jobs []Job) []Cell {
 			out = append(out, Cell{Step: j.Step.Name, Label: j.Step.Label})
 		}
 		out[i].Jobs++
-		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateProof
+		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateStep || j.Gate == GateProof
 	}
 	return out
 }

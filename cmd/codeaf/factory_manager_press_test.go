@@ -24,29 +24,40 @@ func TestTheManagersPRDecisionIsTheJobPagesPress(t *testing.T) {
 		verbs = append(verbs, verb)
 		return nil
 	})
-	if _, err := pressPRDecision(context.Background(), &press, it, session.ActionMerge); err == nil || !strings.HasPrefix(err.Error(), "Nothing changed: merge is not offered: the pull request is a draft") {
+	if _, err := pressPRDecision(context.Background(), &press, it, session.ActionMerge, nil); err == nil || !strings.HasPrefix(err.Error(), "Nothing changed: merge is not offered: the pull request is a draft") {
 		t.Fatalf("a draft was merged: %v", err)
 	}
-	if line, err := pressPRDecision(context.Background(), &press, it, session.ActionMarkReady); err != nil || !strings.Contains(line, "#161 is marked ready") {
+	// THE REPLY SAYS WHAT THE PAGE OFFERS NOW. The live walk's manager marked
+	// #177 ready, then said merge was not offered while the page offered it:
+	// it repeated the status it read while the pull request was a draft.
+	reread := func() (factory.Item, error) {
+		after := it
+		pr := *it.PullRequest
+		pr.Draft = false
+		after.PullRequest = &pr
+		return after, nil
+	}
+	line, err := pressPRDecision(context.Background(), &press, it, session.ActionMarkReady, reread)
+	if err != nil || !strings.Contains(line, "#161 is marked ready") || !strings.Contains(line, "Now on the job page: Waiting on the person: Merge pull request #161?") || strings.Contains(line, "not offered") {
 		t.Fatalf("mark ready = %q (%v)", line, err)
 	}
 	it.PullRequest.Draft = false
-	if _, err := pressPRDecision(context.Background(), &press, it, session.ActionMarkReady); err == nil {
+	if _, err := pressPRDecision(context.Background(), &press, it, session.ActionMarkReady, nil); err == nil {
 		t.Fatal("a ready pull request was marked ready again")
 	}
-	if line, err := pressPRDecision(context.Background(), &press, it, session.ActionMerge); err != nil || !strings.Contains(line, "Merge pressed for pull request #161") {
+	if line, err := pressPRDecision(context.Background(), &press, it, session.ActionMerge, nil); err != nil || !strings.Contains(line, "Merge pressed for pull request #161") {
 		t.Fatalf("merge = %q (%v)", line, err)
 	}
 	if strings.Join(verbs, ",") != "pr-ready,merge" {
 		t.Fatalf("pressed %v", verbs)
 	}
-	if _, err := pressPRDecision(context.Background(), nil, it, session.ActionMerge); !errors.Is(err, errNoPress) {
+	if _, err := pressPRDecision(context.Background(), nil, it, session.ActionMerge, nil); !errors.Is(err, errNoPress) {
 		t.Fatalf("no connection = %v", err)
 	}
 	refused := localJobPress(func(context.Context, int, string, any) error {
 		return errors.New("Sign in to GitHub before merging this job")
 	})
-	if _, err := pressPRDecision(context.Background(), &refused, it, session.ActionMerge); err == nil || !strings.HasPrefix(err.Error(), "Nothing changed: Sign in") {
+	if _, err := pressPRDecision(context.Background(), &refused, it, session.ActionMerge, nil); err == nil || !strings.HasPrefix(err.Error(), "Nothing changed: Sign in") {
 		t.Fatalf("a refusal = %v", err)
 	}
 }

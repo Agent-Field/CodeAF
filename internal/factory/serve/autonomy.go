@@ -67,7 +67,7 @@ func automaticApprovalAllowed(it factory.Item) bool {
 		}
 		return a.Kind == "proof" && len(it.Proof) > 0 && run.ApprovalRefused(&it, false) == nil
 	}
-	if it.State != factory.StateNeedsYou || it.QKind != factory.QKindApprove || a.Kind != "plan" {
+	if it.State != factory.StateNeedsYou || it.QKind != factory.QKindApprove || (a.Kind != "plan" && a.Kind != "step") {
 		return false
 	}
 	if it.Stream == nil || it.Stream.Cur < 0 || it.Stream.Cur >= len(it.Stream.Phases) {

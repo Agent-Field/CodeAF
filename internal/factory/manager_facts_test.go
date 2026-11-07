@@ -57,3 +57,25 @@ func TestManagerStatusCarriesAutonomyStepCountPullRequestAndThePostPRDecision(t 
 		t.Fatalf("manual job status:\n%s", got)
 	}
 }
+
+// A STEP KEY NEVER REACHES THE PERSON. The live walk's manager said "the final
+// readiness review (`followpr`) waiting": factory_status named the step by its
+// key. Every step the status names is in a person's words: its label, or
+// "Follow PR" for the factory's own follow step.
+func TestManagerStatusNamesStepsInPersonWords(t *testing.T) {
+	it := Item{ID: 175, Kind: KindIssue, State: StateShipped, Publish: "pr", Autonomy: AutonomyAuto,
+		Stages:   []Stage{{Name: "plan", On: true}, {Name: "runvetand", Label: "RunVetAndTest", On: true}, {Name: FollowPRStep, On: true}},
+		Stream:   &Stream{Cur: 2, Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "runvetand", State: PhaseDone}, {Name: FollowPRStep, State: PhaseWaiting}}},
+		FollowUp: &PRFollowUp{Kind: "readiness", State: "needs_you", Reason: "waiting"}}
+	got := StatusForManager(it, false, time.Now()).Text
+	for _, key := range []string{"followpr", "runvetand"} {
+		if strings.Contains(got, key) {
+			t.Errorf("status spells the step key %q:\n%s", key, got)
+		}
+	}
+	for _, want := range []string{"Completed: plan, RunVetAndTest.", "Current step: Follow PR, waiting."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("status lacks %q:\n%s", want, got)
+		}
+	}
+}
