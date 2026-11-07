@@ -943,6 +943,8 @@ func plannedStage(add Stage) (st Stage, when string, bad error) {
 	rest = strings.TrimSuffix(rest, " step")
 	if add.Kind == StageGate || ApproveWord(strings.ToLower(strings.TrimSpace(add.Name))) || ApproveWord(rest) {
 		a := Approve(nil)
+		// A NEWLY ADDED APPROVE STEP IS A PERSON'S ([PassForNewApprove]).
+		a.Pass = PassForNewApprove
 		a.When = add.When
 		a.Label = strings.TrimSpace(add.Label)
 		a.Why, a.By = add.Why, add.By

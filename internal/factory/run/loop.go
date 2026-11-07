@@ -797,8 +797,15 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	}
 	said := ""
 	if factory.Automatic(it) && hold == "" {
-		if !st.Fixed {
-			said = "Auto requested routine approval to continue after " + prevName + "."
+		// WHAT THE MANAGER SAYS IS WHO MAY PASS IT ([factory.PassOf]).
+		switch kind, cond := factory.PassOf(st); {
+		case st.Fixed:
+		case kind == factory.PassPerson:
+			said = "Only a person can pass this approval after " + prevName + "; it waits for them."
+		case kind == factory.PassManagerWhen:
+			said = "The manager passes this approval after " + prevName + " when " + strings.TrimSuffix(cond, ".") + "."
+		default:
+			said = "The manager may pass this approval to continue after " + prevName + "."
 		}
 	}
 	question := factory.ApproveQuestion(prevName)
@@ -815,11 +822,29 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 			_ = lp.write(c, func(saved *factory.Item) error { saved.RuleHold = ""; return nil })
 		}
 		lp.addNote(c.id, a.words)
-		return lp.finish(c, i, name, "")
+		if !lp.finish(c, i, name, "") {
+			return false
+		}
+		// WHO PASSED IT is kept on the step, from the door that answered.
+		_ = lp.write(c, func(saved *factory.Item) error {
+			if i < len(saved.Stream.Phases) && saved.Stream.Phases[i].State == factory.PhaseDone {
+				// A worker's copy never hears who passed it (the service's
+				// does, and says so); only a door that said so is said here.
+				said := saved.Passing != nil
+				factory.StampPassed(saved, i)
+				if said {
+					loopSay(saved, lp.r.now(), "ok", passedLine(name, saved.Stream.Phases[i].Passed))
+				}
+			}
+			return nil
+		})
+		return true
 	case prev < 0:
+		_ = lp.write(c, func(saved *factory.Item) error { saved.Passing = nil; return nil })
 		lp.stop(c)
 		return false
 	}
+	_ = lp.write(c, func(saved *factory.Item) error { saved.Passing = nil; return nil })
 	return lp.back(c, i, prev, a.words)
 }
 
@@ -2734,7 +2759,10 @@ func approveStored(it *factory.Item, edited bool, now time.Time) error {
 	// The proof approval is the answer the landing's approve step waited for.
 	if g := factory.LandingGate(*it); g >= 0 {
 		setPhaseState(&it.Stream.Phases[g], factory.PhaseDone, now)
+		factory.StampPassed(it, g)
+		loopSay(it, now, "ok", passedLine(it.Stream.Phases[g].Name, it.Stream.Phases[g].Passed))
 	}
+	it.Passing = nil
 	if factory.ReadinessPending(*it) {
 		it.Note(now, "Ready-for-review transition approved · head "+it.HeadCommit)
 	} else if edited {

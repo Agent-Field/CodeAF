@@ -101,6 +101,11 @@ func AutonomyBlockReason(it Item) string {
 	if NamesOtherApprover(it) {
 		return "This approval waits on " + WaitingApprover(it) + ", whom the pipeline names."
 	}
+	// AN APPROVE STEP SAYS WHO MAY PASS IT: only a person, or the manager
+	// when a condition it judged false ([PassBlockReason]).
+	if why := PassBlockReason(it); why != "" {
+		return why
+	}
 	// A PLAN THAT TOUCHES WHAT A RULE GUARDS IS NEVER ROUTINE: the person said
 	// to be asked, so Auto asks.
 	if it.QKind == QKindApprove && it.RuleHold != "" {

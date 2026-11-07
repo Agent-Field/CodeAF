@@ -3560,6 +3560,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"rules for every repository in the factory", "factory"},
 		{"make the factory ask before it touches auth", "factory"},
 		{"why did Auto stop at the plan saying a rule asks first", "factory"},
+		// WHO MAY PASS AN APPROVE STEP, asked the way an owner asks it.
+		{"make only a person able to approve the plan", "factory"},
+		{"let the manager pass the approval when the plan touches few files", "factory"},
+		{"who passed the approve step and when", "factory"},
 		{"stop the plan from changing the pipeline steps", "factory"},
 		{"send Jira tickets to a repository with a routing rule", "factory"},
 		{"route inbox work to a pipeline and start it by itself", "factory"},

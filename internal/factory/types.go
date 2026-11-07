@@ -133,6 +133,10 @@ type Stage struct {
 	// person, "@handle" a named person, operator any of the factory's
 	// operators. Only an approve step carries one.
 	Who string `json:",omitempty"`
+	// Pass is who may pass an approve step ([PassWord]): "" (as manager, for
+	// every pipeline written before it), person, manager, or `manager when
+	// <condition>`. Only an approve step carries one ([PassOf]).
+	Pass string `json:",omitempty"`
 	// OldGate and OldGateWhen are a stage's gate as a file or a document
 	// written before approve steps said it (`gate plan when large`). They are
 	// read, turned into approve steps ([ExpandGates]) and never written.
@@ -353,6 +357,9 @@ type Phase struct {
 	// of the same step clears it, and clears the job's failure for this
 	// step. The record keeps the incident.
 	Failure *Failure `json:",omitempty"`
+	// Passed is who passed an approve step, once it is done ([StampPassed]);
+	// nil on every other step, and again once the step waits or is sent back.
+	Passed *Passed `json:",omitempty"`
 }
 
 // ResultOutputMost is how much of a step's output [Phase.Result] keeps, in
@@ -563,6 +570,14 @@ type Item struct {
 	Scout    *Scout    `json:",omitempty"`
 	DoneAt   time.Time `json:",omitempty"`
 	Approval *Approval `json:",omitempty"`
+	// Passing is who is passing the approve step the job waits at, set by the
+	// door that answers it just before the answer goes in and moved onto the
+	// step's phase by the write that passes it ([StampPassed]).
+	Passing *Passed `json:",omitempty"`
+	// PassJudge is the manager's reading of the condition of a `manager when`
+	// approve step the job waits at ([PassJudged]); stale once its key no
+	// longer names the waiting approval.
+	PassJudge *PassJudgement `json:",omitempty"`
 	// PersonStopped survives state resets, expiry of Undo and engine restarts.
 	// Only an explicit person control may clear it.
 	PersonStopped *bool     `json:",omitempty"`
