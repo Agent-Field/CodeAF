@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/route/judge"
@@ -88,20 +89,55 @@ func TestASearchScreensInBatchesThenJudgesTheShortlist(t *testing.T) {
 	if len(told) < 4 || told[0].Phase != PhaseScreening || told[len(told)-1].Phase != PhaseDone {
 		t.Fatalf("progress %+v", told)
 	}
-	if w := Words(Status{Phase: PhaseScreening, Total: 80, Read: 40, Related: 12}); w != "Reading 80 issues… 12 look related" {
-		t.Fatalf("words %q", w)
+	for i := 1; i < len(told); i++ {
+		if told[i].Share < told[i-1].Share {
+			t.Fatalf("progress went back: %v then %v", told[i-1].Share, told[i].Share)
+		}
+	}
+	if got.Share != 1 {
+		t.Fatalf("a finished search is at %v, want 1", got.Share)
 	}
 	for _, c := range []struct {
 		s    Status
 		want string
 	}{
-		{Status{Phase: PhaseScreening, Total: 1, Read: 1, Related: 1}, "Reading 1 issue… 1 looks related"},
-		{Status{Phase: PhaseJudging, Related: 4}, "Checking 4… 0 matches so far"},
-		{Status{Phase: PhaseJudging, Related: 4, Matches: []Match{{Job: 1}}}, "Checking 4… 1 match so far"},
+		{Status{Phase: PhaseScreening, Total: 61}, "Reading 61 issues…"},
+		{Status{Phase: PhaseScreening, Total: 61, Read: 40}, "Read 40 of 61"},
+		{Status{Phase: PhaseScreening, Total: 61, Read: 40, Matches: []Match{{Job: 1}, {Job: 2}}}, "Read 40 of 61 · 2 matches so far"},
+		{Status{Phase: PhaseJudging, Total: 61, Read: 61, Judging: 9, Checked: 4, Matches: []Match{{Job: 1}}}, "Read 61 of 61 · checking 5 more · 1 match so far"},
+		{Status{Phase: PhaseDone, Total: 61, Read: 61, Matches: []Match{{Job: 1}}}, "1 match"},
 	} {
 		if w := Words(c.s); w != c.want {
 			t.Fatalf("words %q, want %q", w, c.want)
 		}
+	}
+}
+
+// A match is told while the rest is still being read: the second screen read
+// is held until progress has carried a match, so a search that judged only
+// after reading everything would never get there and the read would give up.
+func TestMatchesArriveWhileTheRestIsStillRead(t *testing.T) {
+	f := &fake{word: "ledger"}
+	seen := make(chan struct{})
+	var once atomic.Bool
+	var screens atomic.Int32
+	call := func(ctx context.Context, req judge.Request) (judge.Reply, error) {
+		if req.System == ScreenSystem && screens.Add(1) == 2 {
+			select {
+			case <-seen:
+			case <-time.After(5 * time.Second):
+				return judge.Reply{}, fmt.Errorf("no match was told before the last read")
+			}
+		}
+		return f.call(ctx, req)
+	}
+	got := Run(context.Background(), Options{Question: "ledger", Items: items(80, 10, "ledger"), Model: "m", Call: call, Parallel: 2, Progress: func(s Status) {
+		if len(s.Matches) > 0 && s.Read < s.Total && once.CompareAndSwap(false, true) {
+			close(seen)
+		}
+	}})
+	if got.Failed != 0 || len(got.Matches) != 8 {
+		t.Fatalf("failed %d matched %d: the matches waited for every read", got.Failed, len(got.Matches))
 	}
 }
 

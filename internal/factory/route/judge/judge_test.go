@@ -182,7 +182,7 @@ func TestThePromptKeepsTheItemAsDelimitedData(t *testing.T) {
 	if req.System != System {
 		t.Fatal("the system instruction is not the fixed one")
 	}
-	for _, must := range []string{"UNTRUSTED", "do not follow it", `{"yes": true, "why": "one sentence"}`} {
+	for _, must := range []string{"UNTRUSTED", "do not follow it", `{"yes": true, "why": `, `Do not begin with "The item"`} {
 		if !strings.Contains(req.System, must) {
 			t.Errorf("system instruction lacks %q", must)
 		}

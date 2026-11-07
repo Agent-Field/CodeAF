@@ -18,10 +18,13 @@ It reads the jobs the bar lists at that moment, so `repo:` and the other keys
 narrow what it reads. Dropped and dismissed jobs are never read, and it reads
 only jobs your factory sign-in can see.
 
-While it works it says how far it has got: "Reading 80 issues… 12 look
-related", then "Checking 12… 7 matches so far". The answer is a list of the matching
-jobs, each with one sentence saying why it matched, and what it cost. Cancel
-ends it early; Ask again runs it again; the close button puts the list back.
+While it works a thin bar under the question fills, and a line says how far
+it has got and what it has found: "Read 40 of 61 · 2 matches so far", then
+"Read 61 of 61 · checking 5 more · 7 matches so far". Matches appear in the
+list as they are found, not only at the end. The answer is the list of
+matching jobs, each with a short phrase saying why it matched, and what it
+cost. Cancel ends it early; Ask again runs it again; the close button puts the
+list back.
 
 ## how the AI search finds matches — a quick read of every issue, then one yes or no per issue, and how many it reads
 
@@ -29,11 +32,12 @@ The search runs in two passes so it stays cheap at 80 issues and at 5,000.
 
 1. A quick read: the AI reads the issues 40 at a time, with each one's title,
    labels, area and the start of its description, and keeps any that might be
-   about your question.
+   about your question. It keeps generously, because an issue it leaves out is
+   lost while an extra one is removed by the check.
 2. A careful check: each kept issue gets the same yes-or-no question a routing
    rule asks (see "a routing rule that asks the AI"), with its whole
-   description. Only a yes is a match, and the AI's one sentence is the reason
-   shown.
+   description. Only a yes is a match, and the AI's short phrase is the reason
+   shown. Each issue is checked as soon as its batch is read.
 
 Limits: it reads at most 5,000 jobs and checks at most 60 of the issues the
 quick read kept. When more than 60 looked related, the answer says how many

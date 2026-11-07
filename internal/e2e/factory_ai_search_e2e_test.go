@@ -24,9 +24,11 @@ package e2e
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -154,8 +156,10 @@ func TestFactoryAISearchE2E(t *testing.T) {
 		return len(q.Jobs) >= 40
 	})
 	titles := map[int]string{}
+	nums := map[int]int{}
 	for _, j := range q.Jobs {
 		titles[j.ID] = j.Title
+		nums[j.ID] = j.Num
 	}
 	t.Logf("AISEARCH queue: %d jobs", len(q.Jobs))
 
@@ -189,14 +193,155 @@ func TestFactoryAISearchE2E(t *testing.T) {
 	}
 	questions := []string{"issues about the ledger total", "anything about authentication", "performance problems"}
 	var runs []aiSearchRun
+	var scores []aiSearchScore
 	for _, question := range questions {
-		runs = append(runs, ask(question))
+		before := aiSearchKept(t, home)
+		run := ask(question)
+		runs = append(runs, run)
+		score := scoreAISearch(question, run, nums, titles, aiSearchNew(aiSearchKept(t, home), before))
+		scores = append(scores, score)
+		t.Logf("AISEARCH SCORE %q recall %d/%d precision %d/%d (borderline %v) missed %v",
+			question, score.Found, score.Truth, score.Right, score.Matched, score.Borderline, score.Missed)
 	}
 	again := ask(questions[0])
 	if again.USD != 0 || again.Asked != 0 || len(again.Matches) != len(runs[0].Matches) {
 		t.Fatalf("asking again cost %.5f over %d calls with %d matches, want nothing and %d", again.USD, again.Asked, len(again.Matches), len(runs[0].Matches))
 	}
-	report, _ := json.MarshalIndent(map[string]any{"titles": titles, "runs": runs, "again": again}, "", " ")
+	report, _ := json.MarshalIndent(map[string]any{"titles": titles, "runs": runs, "again": again, "scores": scores}, "", " ")
 	_ = os.WriteFile(filepath.Join(logDir, "aisearch-report.json"), report, 0o600)
 	t.Logf("AISEARCH report %s", filepath.Join(logDir, "aisearch-report.json"))
+}
+
+// aiSearchTruth is the answer key for the three questions, by factory-demo
+// issue number, labelled by hand from the titles and bodies on 2026-11-07.
+// Yes is what a person asking the question would want listed; maybe is
+// arguable either way, so it is neither demanded nor counted against
+// precision. An issue not in the queue (closed, or never imported) is left out
+// of the count.
+var aiSearchTruth = map[string]struct{ yes, maybe []int }{
+	"issues about the ledger total": {
+		yes:   []int{1, 3, 5, 49, 51, 53, 58, 64, 68, 78, 80, 91},
+		maybe: []int{6, 52, 76, 86, 88},
+	},
+	"anything about authentication": {
+		yes:   []int{43, 70, 90},
+		maybe: []int{82},
+	},
+	"performance problems": {
+		yes:   []int{50, 54, 56, 57, 62, 91, 95},
+		maybe: []int{77, 84, 71, 94},
+	},
+}
+
+type aiSearchScore struct {
+	Question string `json:"question"`
+	// Truth is how many yes issues are in the queue; Found how many of them
+	// matched.
+	Truth int `json:"truth"`
+	Found int `json:"found"`
+	// Matched is every match; Right those that are yes or maybe.
+	Matched    int   `json:"matched"`
+	Right      int   `json:"right"`
+	Borderline []int `json:"borderline"`
+	Wrong      []int `json:"wrong"`
+	// Missed is each yes issue that did not match and which pass said no.
+	Missed map[int]string `json:"missed"`
+}
+
+func scoreAISearch(question string, run aiSearchRun, nums map[int]int, titles map[int]string, kept map[string]aiSearchEntry) aiSearchScore {
+	key := aiSearchTruth[question]
+	in := map[int]int{}
+	for id, n := range nums {
+		in[n] = id
+	}
+	matched := map[int]bool{}
+	for _, m := range run.Matches {
+		matched[nums[m.Job]] = true
+	}
+	yes, maybe := map[int]bool{}, map[int]bool{}
+	for _, n := range key.yes {
+		yes[n] = true
+	}
+	for _, n := range key.maybe {
+		maybe[n] = true
+	}
+	s := aiSearchScore{Question: question, Matched: len(run.Matches), Missed: map[int]string{}}
+	for _, n := range key.yes {
+		if _, ok := in[n]; !ok {
+			continue
+		}
+		s.Truth++
+		if matched[n] {
+			s.Found++
+			continue
+		}
+		why := "not asked"
+		for k, e := range kept {
+			if strings.HasSuffix(k, "#"+strconv.Itoa(n)) {
+				switch {
+				case !e.Screened:
+					why = "screen left it out"
+				case e.Judged != nil && !e.Judged.Yes:
+					why = "judge said no: " + e.Judged.Why
+				}
+			}
+		}
+		s.Missed[n] = titles[in[n]] + " — " + why
+	}
+	for n := range matched {
+		switch {
+		case yes[n]:
+			s.Right++
+		case maybe[n]:
+			s.Right++
+			s.Borderline = append(s.Borderline, n)
+		default:
+			s.Wrong = append(s.Wrong, n)
+		}
+	}
+	slices.Sort(s.Borderline)
+	slices.Sort(s.Wrong)
+	return s
+}
+
+type aiSearchEntry struct {
+	Screened bool `json:"screened"`
+	Judged   *struct {
+		Yes bool   `json:"yes"`
+		Why string `json:"why"`
+	} `json:"judged"`
+}
+
+// aiSearchKept reads every answer the engine keeps under home.
+func aiSearchKept(t *testing.T, home string) map[string]aiSearchEntry {
+	t.Helper()
+	out := map[string]aiSearchEntry{}
+	_ = filepath.WalkDir(home, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Base(filepath.Dir(path)) != "factory-ai-search" {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		var doc struct {
+			Answers map[string]aiSearchEntry `json:"answers"`
+		}
+		if json.Unmarshal(raw, &doc) == nil {
+			maps.Copy(out, doc.Answers)
+		}
+		return nil
+	})
+	return out
+}
+
+// aiSearchNew is the answers in after that were not in before: one question's.
+func aiSearchNew(after, before map[string]aiSearchEntry) map[string]aiSearchEntry {
+	out := map[string]aiSearchEntry{}
+	for k, e := range after {
+		if _, ok := before[k]; !ok {
+			out[k] = e
+		}
+	}
+	return out
 }

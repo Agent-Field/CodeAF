@@ -61,8 +61,13 @@ func OpenCache(path string) *Cache {
 	return c
 }
 
+// CacheVersion is part of every key. A change to how the screen or the judge
+// is asked (its prompt) makes the answers kept under the old one stale, so
+// the version moves with it and those answers are never read again.
+const CacheVersion = "2"
+
 func key(question string, it factory.Item) string {
-	return route.AnswerKey(strings.ToLower(Clean(question)), it) + ":" + it.Ref()
+	return "v" + CacheVersion + ":" + route.AnswerKey(strings.ToLower(Clean(question)), it) + ":" + it.Ref()
 }
 
 func (c *Cache) screened(question string, it factory.Item) (bool, bool) {
