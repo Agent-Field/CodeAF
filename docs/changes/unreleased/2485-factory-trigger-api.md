@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Trigger API — messages and status for outside work, one event bus, signed webhooks per source
-pr: 0
+pr: 2485
 surface: [factory, docs]
 invalidates:
   - "Was true: a job filed from outside GitHub could not be told more after it was filed. Is true: POST /api/intake/{source}/{id}/messages {author?, text} (and trigger.Message, which AgentField's message reasoner calls) adds the words as a comment on the job, read by the next step's brief and handled once by the manager exactly as a GitHub comment is (a stranger's job reads it as context only), answering {job, accepted, outcome, line}."
