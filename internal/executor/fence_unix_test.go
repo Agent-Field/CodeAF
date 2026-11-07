@@ -283,3 +283,23 @@ func TestAHiddenFolderStaysClosedAndItsNeighboursOpen(t *testing.T) {
 		t.Fatalf("the key was read: %s", res.Stdout)
 	}
 }
+
+func TestAFencedStepRunsNpmTestInsideItsCheckout(t *testing.T) {
+	requireFence(t)
+	npm, err := exec.LookPath("npm")
+	if err != nil {
+		t.Skip("no npm")
+	}
+	w := newFenceWorld(t, FenceAllow{})
+	pkg := `{"name":"fence-probe","version":"1.0.0","scripts":{"test":"node -e \"require('fs').writeFileSync('npm-ran','ok')\""}}`
+	if err := os.WriteFile(filepath.Join(w.root, "package.json"), []byte(pkg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res := w.run(t, npm+" test")
+	if res.Exit != 0 {
+		t.Fatalf("npm test failed in the fence: %s %s", res.Stdout, res.Stderr)
+	}
+	if _, err := os.Stat(filepath.Join(w.root, "npm-ran")); err != nil {
+		t.Fatalf("npm test did not run its script: %v", err)
+	}
+}
