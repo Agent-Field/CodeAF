@@ -99,6 +99,8 @@ type appFactoryHost struct {
 	seamHook   func(factory.Seam) factory.Seam
 	// jira is the Jira poll beside the GitHub one (app_factory_jira.go).
 	jira appJiraLoop
+	// agentfield is the factory's AgentField node (app_factory_agentfield.go).
+	agentfield appAgentField
 }
 
 func newAppFactoryHost(ctx context.Context, root, address, token string, credentials factorySessions) (*appFactoryHost, error) {
@@ -126,6 +128,7 @@ func (h *appFactoryHost) close() {
 	// because letting go of the floor while a loop could still write to it
 	// would break the no-write-after-close law.
 	h.stopLoops()
+	h.stopAgentField()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.handler != nil {
@@ -219,6 +222,9 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	h.handler, h.release = handler, release
 	h.closeDiscovery = closeDiscovery
 	h.tidy(trace)
+	// A factory that starts connected to AgentField registers again, as a new
+	// instance, whether or not its read loops run.
+	h.startAgentField()
 	if h.quiet {
 		return handler, nil
 	}

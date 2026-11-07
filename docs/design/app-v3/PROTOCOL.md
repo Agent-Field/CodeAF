@@ -296,6 +296,12 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.local_run` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_start` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_status` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
+| `factory.agentfield_connect` | `in.FactoryAgentFieldConnectParams` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_disconnect` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_sources` | `in.FactoryRef` | `FactoryAgentFieldSources` |
+| `factory.agentfield_status` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
+| `factory.agentfield_trigger_add` | `in.FactoryAgentFieldTriggerAddParams` | `FactoryAgentFieldTrigger` |
+| `factory.agentfield_triggers` | `in.FactoryRef` | `FactoryAgentFieldTriggers` |
 | `factory.jira_connect` | `in.FactoryJiraConnectParams` | `FactoryJiraStatus` |
 | `factory.jira_disconnect` | `in.FactoryRef` | `FactoryJiraStatus` |
 | `factory.jira_status` | `in.FactoryRef` | `FactoryJiraStatus` |
@@ -402,6 +408,41 @@ raise it. The pair `(source, external_id)` is
 the identity: a second call updates the job it made and answers `created:
 false`. The reply is `{id, created}`. A malformed entry is `bad_params` with
 the inbox's own sentence.
+
+`factory.agentfield` in hello features says the engine serves the six
+`factory.agentfield_*` methods, which make this machine's factory a node on an
+AgentField control plane so AgentField's triggers are its intake
+(internal/factory/agentfield).
+`factory.agentfield_connect {factory, url, api_key?, base_url, node_id?,
+listen?, trust?}` checks `url` and `api_key` against the control plane's
+`GET /api/v1/sources`, binds the node's listener on `listen` (default:
+`base_url`'s port, on 127.0.0.1 when `base_url` is loopback, else 0.0.0.0),
+registers node `node_id` (default `codeaf-factory`) with reasoners `intake`
+(accepts webhooks), `message` and `status`, and answers `FactoryAgentFieldStatus`
+once the control plane took the registration; a connect that fails any of
+those keeps nothing (`bad_params` for a refused key or registration,
+`unreachable` for a control plane that does not answer). `trust` is the
+ceiling for every entry the node files: `owner`, `collaborator` (default) or
+`stranger`. The registered `base_url` carries a 64-hex address secret
+(`<base_url>/n/<secret>`), the node answers nothing outside it, and neither the
+key nor the secret is ever in a reply. `factory.agentfield_status {factory}`
+answers `{factory, connected, url?, node_id?, base_url?, listen?, trust?,
+key_kept?, listening?, registered_at?, lease_seconds?, lease_until?,
+last_event?, last_event_source?, last_event_what?, last_error?,
+last_error_at?, executions?}`. `factory.agentfield_disconnect {factory}` tells
+the control plane the node is offline, stops the listener and forgets the
+settings, the key and the secret; jobs already filed stay.
+`factory.agentfield_triggers {factory}` is `GET /api/v1/triggers` for this node:
+`{factory, node_id, triggers: [{id, source, reasoner, event_types?, enabled,
+managed_by?, secret_env_var?, ingest_url, events_24h?, failed_24h?,
+last_event_at?}]}`, `ingest_url` being the control plane's `/sources/<id>`.
+`factory.agentfield_sources {factory}` is the control plane's catalog,
+`{factory, sources: [{name, kind, secret_required, config_schema?}]}`.
+`factory.agentfield_trigger_add {factory, source, config?, secret_env_var?,
+event_types?}` is `POST /api/v1/triggers` targeting `<node_id>.intake` and
+answers the trigger. Every method but connect is `conflict` on a factory that
+is not connected, and every method is `not_found` for a factory other than
+this machine's.
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take
