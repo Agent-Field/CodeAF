@@ -18,33 +18,72 @@ const claudeStatusTTL = time.Minute
 
 var claudeStatusCache struct {
 	sync.Mutex
-	at     time.Time
-	status claudeagent.Status
+	at      time.Time
+	status  claudeagent.Status
+	reading bool
 }
 
 // claudeStatus is the cached reading of Claude Code's sign-in on the machine
-// this engine runs on.
-func (b *appBackend) claudeStatus() claudeagent.Status {
+// this engine runs on, and whether there is one yet.
+//
+// A LISTING NEVER WAITS FOR CLAUDE CODE. Reading the sign-in starts the
+// program, which takes seconds, and providers.list sits in front of
+// models.list and every page that asks whether anything is connected. So a
+// reading that is missing or stale is started in the background, the row is
+// drawn from what is known now, and provider.changed redraws it when the
+// reading lands.
+func (b *appBackend) claudeStatus() (claudeagent.Status, bool) {
 	claudeStatusCache.Lock()
 	defer claudeStatusCache.Unlock()
-	if !claudeStatusCache.at.IsZero() && time.Since(claudeStatusCache.at) < claudeStatusTTL {
-		return claudeStatusCache.status
+	known := !claudeStatusCache.at.IsZero()
+	if known && time.Since(claudeStatusCache.at) < claudeStatusTTL {
+		return claudeStatusCache.status, true
 	}
-	claudeStatusCache.status = claudeagent.ReadStatus(context.Background())
-	claudeStatusCache.at = time.Now()
-	return claudeStatusCache.status
+	if !claudeStatusCache.reading {
+		claudeStatusCache.reading = true
+		go b.readClaudeStatus()
+	}
+	return claudeStatusCache.status, known
 }
 
-// claudeStatusFresh reads the sign-in again, for a person who has just asked.
-func (b *appBackend) claudeStatusFresh() claudeagent.Status {
-	b.forgetClaudeStatus()
-	return b.claudeStatus()
+// readClaudeStatus takes one reading and says the row changed.
+func (b *appBackend) readClaudeStatus() {
+	status := claudeagent.ReadStatus(context.Background())
+	claudeStatusCache.Lock()
+	claudeStatusCache.status, claudeStatusCache.at, claudeStatusCache.reading = status, time.Now(), false
+	claudeStatusCache.Unlock()
+	if b.emit != nil {
+		b.providerIDChanged(claudemodel.ID, "")
+	}
+}
+
+// claudeStatusNow reads the sign-in again and waits for it, for a person who
+// has just pressed Check.
+func (b *appBackend) claudeStatusNow() claudeagent.Status {
+	status := claudeagent.ReadStatus(context.Background())
+	claudeStatusCache.Lock()
+	defer claudeStatusCache.Unlock()
+	claudeStatusCache.status, claudeStatusCache.at = status, time.Now()
+	return status
 }
 
 func (b *appBackend) forgetClaudeStatus() {
 	claudeStatusCache.Lock()
 	defer claudeStatusCache.Unlock()
 	claudeStatusCache.at = time.Time{}
+}
+
+// claudeCodeRowPlan is the row's plan before and after a reading: with none
+// yet, a program that is not there is said at once (finding it starts
+// nothing), and one that is there says nothing until its sign-in is read.
+func claudeCodeRowPlan(status claudeagent.Status, known bool) string {
+	if known {
+		return claudeCodePlanWord(status)
+	}
+	if _, err := claudeagent.Binary(); err != nil {
+		return claudeCodePlanWord(claudeagent.Status{})
+	}
+	return ""
 }
 
 // claudeCodePlanWord is the provider row's plan: how the installed Claude Code

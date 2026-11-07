@@ -30,6 +30,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/claudeagent"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/programguide"
 )
 
 // Name is the program's one word: the slash command, the shell verb and the
@@ -47,12 +48,6 @@ const stageWork = "work"
 // person before the run ends. A message that arrives later starts a new task.
 var idleGrace = 8 * time.Second
 
-// guide is what the conversation's model reads about the program on every
-// turn, so it is held to delegate.GuideMax.
-const guide = "Hands the task to the person's own Claude Code, which works in the folder with its own tools on " +
-	"their Claude plan and leaves its changes on the run's branch. Use it when they ask for Claude, or name " +
-	"Claude Code, to do the work. Its brief is the whole task in plain words."
-
 // unattended is the system prompt added to Claude Code's own.
 const unattended = "You are running as a codeaf task. The person may send you messages while you work; " +
 	"take them into account. Nobody answers questions mid-task: decide, do the work, check it, and end with a " +
@@ -63,7 +58,7 @@ const unattended = "You are running as a codeaf task. The person may send you me
 var Program = delegate.Delegate{
 	Name:    Name,
 	Summary: "hand a task to your own signed-in Claude Code",
-	Guide:   guide,
+	Guide:   programguide.Claude,
 	Lands:   delegate.LandsTree,
 	Listens: true,
 	// A PERSON'S CREW SEAT IS HEARD WHEN IT IS A CLAUDE MODEL. A crew whose

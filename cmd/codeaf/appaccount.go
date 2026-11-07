@@ -213,7 +213,7 @@ func (b *appBackend) providerView(p appProvider, sources modelsource.Set, rows m
 		_, held := rows[p.id]
 		view.SignedIn = found && held
 		view.KeyOptional = true
-		view.Plan = claudeCodePlanWord(b.claudeStatus())
+		view.Plan = claudeCodeRowPlan(b.claudeStatus())
 	case appwire.ProviderBrowser:
 		// The sign-in's key is a word naming where its tokens live, never a
 		// key a person could recognise, so no hint is drawn from it.
@@ -309,7 +309,7 @@ func (b *appBackend) CheckKey(provider, key string) (appwire.KeyCheck, error) {
 func (b *appBackend) CheckProvider(params appwire.KeyParams) (appwire.KeyCheck, error) {
 	p, ok := b.appProviderNamed(params.Provider)
 	if ok && p.kind == appwire.ProviderAgent {
-		return claudeCodeCheck(b.claudeStatusFresh()), nil
+		return claudeCodeCheck(b.claudeStatusNow()), nil
 	}
 	if !ok {
 		return appwire.KeyCheck{}, appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", params.Provider)
