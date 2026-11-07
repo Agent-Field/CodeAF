@@ -87,6 +87,10 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 		r.Notes = append([]string(nil), cur.Notes[len(prev.Notes):]...)
 	}
 	r.Merge = mergeMoved(prev, cur)
+	if cur.AgentField != nil && !reflect.DeepEqual(prev.AgentField, cur.AgentField) {
+		run := *cur.AgentField
+		r.AgentField = &run
+	}
 	// Retry counters reset when local work completes, including publication
 	// and observed-head rechecks. Transport identity stays on the held attempt;
 	// the service derives acknowledgement from the accepted completion.

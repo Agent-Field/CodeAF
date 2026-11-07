@@ -153,7 +153,7 @@ func FromItem(it factory.Item) Job {
 		factory.MarkPersonStopped(&it)
 	}
 	j := Job{
-		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
+		FromJob: it.FromJob, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
@@ -485,7 +485,7 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
-		FromJob: j.FromJob, SourceIssue: j.SourceIssue,
+		FromJob: j.FromJob, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField,
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
 		Owners: append([]string(nil), j.Owners...),
@@ -755,12 +755,12 @@ func toRecipe(p Pipeline) factory.Recipe {
 }
 
 func fromStage(s factory.Stage) StepDef {
-	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
+	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Parent: s.Parent, Group: s.Group, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
 		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
 }
 
 func toStage(d StepDef) factory.Stage {
-	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
+	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Parent: d.Parent, Group: d.Group, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
 		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
 }
 

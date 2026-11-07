@@ -1935,3 +1935,26 @@ answer. Workers already in flight keep their own states and may finish. Topping 
 choosing to finish clears the pause; stopping settles the run. A late attachment sees
 the current pause too. Restarting the engine leaves an interrupted record, not a budget
 question for a run that no longer exists.
+
+## Watch codeaf chat --once live, or send it a note mid-turn — --events, --steer, --json
+
+`codeaf chat --once "<words>"` runs one turn of an ordinary chat with no
+screen. Three flags let another program watch and steer it, and need `--once`
+("--events, --steer and --json go with --once"):
+
+- `--events PATH` — every line of the conversation's own record
+  (`transcript.jsonl`) is copied to PATH as it is written, byte for byte. A
+  program that writes those lines into a conversation folder of its own has
+  the same conversation, read by the same code.
+- `--steer PATH` — each complete line appended to PATH (plain text or
+  `{"text": "…"}`) is put into the running turn, the way typing during a turn
+  steers it, and lands in the record as a steer. stderr says `steered: <note>`.
+  A note that arrives after the turn ended starts the turn it asks for, and the
+  run waits that turn out.
+- `--json` — print one object at the end instead of the reply:
+  `{"ok", "stop", "answer", "model", "error"}`, the shape `codeaf exec --json`
+  prints.
+
+This is how an AgentField node runs a codeaf harness step that a factory can
+watch and steer.
+

@@ -253,6 +253,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
+| `factory.agentfield_run` | `in.FactoryAgentFieldRunParams` | `FactoryAgentFieldRun` |
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |

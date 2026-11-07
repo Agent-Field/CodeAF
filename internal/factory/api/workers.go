@@ -101,6 +101,8 @@ type WorkerReport struct {
 	Room       string       `json:"room,omitempty"`  // desk: the item team's id (Stream.Room), write-once
 	// Merge is what the runner's merge did: merging, merged or failed.
 	Merge *WorkerMerge `json:"merge,omitempty"`
+	// AgentField is a run_on job's AgentField run as the runner recorded it.
+	AgentField *factory.AgentFieldRun `json:"agentfield,omitempty"`
 	// Models is the report's model split. It is not part of the JSON body;
 	// [ModelSpendHeader] carries it.
 	Models []factory.ModelUse `json:"-"`
@@ -217,7 +219,7 @@ type WorkerDone struct {
 
 // ToWorkerReport is the single vocabulary boundary for worker writes.
 func ToWorkerReport(r WorkerReport) factory.RunReport {
-	out := factory.RunReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models}
+	out := factory.RunReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models, AgentField: r.AgentField}
 	if r.Pipeline != nil {
 		stages, stream := unsteps(Job{Steps: r.Pipeline, Desk: &JobDesk{Run: &Run{}}})
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
@@ -258,7 +260,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 func FromRunReport(r factory.RunReport, tables ...bool) WorkerReport {
 	acceptsTables := len(tables) > 0 && tables[0]
 	out := WorkerReport{FollowUp: r.FollowUp, HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
-		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models}
+		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL, Room: r.Room, Models: r.Models, AgentField: r.AgentField}
 	// Keep the existing log vocabulary on the worker wire.
 	for i := range out.Log {
 		if out.Log[i].Kind == "tool" {

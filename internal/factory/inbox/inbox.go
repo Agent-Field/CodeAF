@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -50,6 +51,9 @@ type Entry struct {
 	// ALWAYS SAYS: a Jira reporter is never the operator, and a stranger is
 	// the one tier an AI yes can never start and whose job never writes.
 	Trust factory.Tier `json:"trust,omitempty"`
+	// RunOn is an AgentField reasoner, "<node>.<reasoner>", that runs this job
+	// instead of the factory's own steps (factory.Item.RunOn).
+	RunOn string `json:"run_on,omitempty"`
 }
 
 // tier is the [factory.Item.Tier] a first delivery of e files its job with.
@@ -202,6 +206,9 @@ func newItem(e Entry, now time.Time, o options) factory.Item {
 	}
 	if e.Repo != "" {
 		it.Repo, it.Places = e.Repo, []string{e.Repo}
+	}
+	if run := strings.TrimSpace(e.RunOn); run != "" {
+		it.RunOn = run
 	}
 	it.Note(now, arrived(e))
 	if e.Repo == "" {

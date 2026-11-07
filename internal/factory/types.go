@@ -116,7 +116,13 @@ func (s Stage) CanWrite() bool { return s.Kind != StageGate }
 // skipped, dim, with its reason, on an item the condition does not fit.
 type Stage struct {
 	// Label is an optional display name; Name remains the step identity.
-	Label  string    `json:",omitempty"`
+	Label string `json:",omitempty"`
+	// Parent and Group place a step of an AgentField run in its tree
+	// (AgentFieldRun): Parent is the name of the step that called it, ""
+	// for a top-level step, and steps sharing a Group ran at the same time.
+	// Both are "" on every step this factory runs itself.
+	Parent string    `json:",omitempty"`
+	Group  string    `json:",omitempty"`
 	Name   string    // plan · write · test · review · neaten · security · proof
 	Kind   StageKind // chat unless said otherwise
 	Ask    string    // the sentence as typed; the brief is compiled from it
@@ -530,6 +536,13 @@ func (it *Item) SetPublishCheck(found string) {
 }
 
 type Item struct {
+	// RunOn is an AgentField reasoner, "<node>.<reasoner>", that runs this job
+	// instead of the factory's own steps. The job is filed, queued, started,
+	// stopped and read exactly as any other; its steps are that run's
+	// top-level calls (agentfield_run.go). Empty is an ordinary job.
+	RunOn string `json:",omitempty"`
+	// AgentField is the AgentField run behind a RunOn job, once dispatched.
+	AgentField *AgentFieldRun `json:",omitempty"`
 	// PublishAnyway preserves the person decision without changing measured proof.
 	PublishAnyway *Approval `json:",omitempty"`
 	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.

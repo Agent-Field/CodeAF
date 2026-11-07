@@ -279,6 +279,11 @@ func (c *Client) AddTrigger(ctx context.Context, t NewTrigger) (Trigger, error) 
 
 // do makes one call and decodes a success into out (nil reads nothing).
 func (c *Client) do(ctx context.Context, op, method, path string, q url.Values, in, out any) error {
+	return c.doHeaders(ctx, op, method, path, q, in, out, nil)
+}
+
+// doHeaders is do with extra request headers.
+func (c *Client) doHeaders(ctx context.Context, op, method, path string, q url.Values, in, out any, headers map[string]string) error {
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, callTimeout)
@@ -305,6 +310,11 @@ func (c *Client) do(ctx context.Context, op, method, path string, q url.Values, 
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "codeaf-factory")
+	for k, v := range headers {
+		if v != "" {
+			req.Header.Set(k, v)
+		}
+	}
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -358,4 +368,84 @@ func answerMessage(raw []byte) string {
 		msg = msg[:300] + "…"
 	}
 	return msg
+}
+
+// ── THE CALLS A RUNON JOB MAKES (run.go) ────────────────────────────────────
+
+// Dispatched is an async execute's answer.
+type Dispatched struct {
+	ExecutionID string `json:"execution_id"`
+	RunID       string `json:"run_id"`
+	WorkflowID  string `json:"workflow_id"`
+	Status      string `json:"status"`
+}
+
+// Dispatch is POST /api/v1/execute/async/<target>: the job's run.
+func (c *Client) Dispatch(ctx context.Context, target string, input any, owner string) (Dispatched, error) {
+	var out Dispatched
+	body := map[string]any{"input": input}
+	err := c.doHeaders(ctx, "dispatch the run", http.MethodPost, "/api/v1/execute/async/"+url.PathEscape(target), nil, body, &out,
+		map[string]string{"X-AgentField-Run-Owner": owner})
+	if out.RunID == "" {
+		out.RunID = out.WorkflowID
+	}
+	return out, err
+}
+
+// TreeNode is one execution of a run's tree (the control plane's DAG node).
+type TreeNode struct {
+	ExecutionID       string     `json:"execution_id"`
+	AgentNodeID       string     `json:"agent_node_id"`
+	ReasonerID        string     `json:"reasoner_id"`
+	Status            string     `json:"status"`
+	StatusReason      *string    `json:"status_reason,omitempty"`
+	StartedAt         string     `json:"started_at"`
+	CompletedAt       *string    `json:"completed_at,omitempty"`
+	DurationMS        *int64     `json:"duration_ms,omitempty"`
+	ParentExecutionID *string    `json:"parent_execution_id,omitempty"`
+	Children          []TreeNode `json:"children"`
+}
+
+// Tree is GET /api/ui/v1/workflows/<run>/dag: the run's execution tree.
+func (c *Client) Tree(ctx context.Context, run string) (TreeNode, string, error) {
+	var out struct {
+		WorkflowStatus string   `json:"workflow_status"`
+		DAG            TreeNode `json:"dag"`
+	}
+	err := c.do(ctx, "read the run", http.MethodGet, "/api/ui/v1/workflows/"+url.PathEscape(run)+"/dag", nil, nil, &out)
+	return out.DAG, out.WorkflowStatus, err
+}
+
+// RelayEntry is one entry the control plane holds for an execution.
+type RelayEntry struct {
+	Seq  int64           `json:"seq"`
+	Kind string          `json:"kind"`
+	Data json.RawMessage `json:"data,omitempty"`
+}
+
+// Relay is GET /api/v1/executions/<id>/relay?after=N.
+func (c *Client) Relay(ctx context.Context, execution string, after int64) ([]RelayEntry, error) {
+	var out struct {
+		Entries []RelayEntry `json:"entries"`
+	}
+	q := url.Values{"after": {fmt.Sprint(after)}, "limit": {"500"}}
+	err := c.do(ctx, "read the transcript", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution)+"/relay", q, nil, &out)
+	return out.Entries, err
+}
+
+// RelayAck is POST /api/v1/executions/<id>/relay/ack: this factory keeps
+// every entry through seq now, and the control plane may drop them.
+func (c *Client) RelayAck(ctx context.Context, execution string, through int64) error {
+	return c.do(ctx, "ack the transcript", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/relay/ack", nil, map[string]int64{"through": through}, nil)
+}
+
+// Steer is POST /api/v1/executions/<id>/steer: a person's note to a running
+// codeaf harness, delivered to its node. The refusal is the node's words.
+func (c *Client) Steer(ctx context.Context, execution, message string) error {
+	return c.do(ctx, "steer", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/steer", nil, map[string]string{"message": message}, nil)
+}
+
+// CancelTree is POST /api/ui/v1/workflows/<run>/cancel-tree.
+func (c *Client) CancelTree(ctx context.Context, run string) error {
+	return c.do(ctx, "cancel the run", http.MethodPost, "/api/ui/v1/workflows/"+url.PathEscape(run)+"/cancel-tree", nil, map[string]any{}, nil)
 }

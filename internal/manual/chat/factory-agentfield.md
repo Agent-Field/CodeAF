@@ -192,6 +192,53 @@ closes the link, stops listening, and forgets the settings, the key and the
 token. Jobs
 already filed stay as they are.
 
+## a job run by an AgentField reasoner — run_on, the job's steps are the reasoner's calls
+
+A job filed with `"run_on": "<node>.<reasoner>"` in its intake payload (for
+example a `generic_bearer` trigger's body) is run by that reasoner on its own
+node instead of by this factory's pipeline. It is an ordinary job everywhere:
+the same inbox, queue, Working, Needs you and All jobs lists, the same job
+page and step rail, Start and Stop.
+
+- **Start** dispatches the reasoner with `{"job", "title", "body", "event"}`.
+  The node needs no inbound port; the factory only calls the control plane.
+- **Its steps are the run's executions**, named by reasoner, in the order
+  they began: `triage`, `investigate`, `draftreply`. A step name is one word,
+  so `draft_reply` reads `draftreply` with `draft_reply` as its label, and a
+  reasoner called more than once is `investigate1`, `investigate2`. A nested
+  call (`searchdocs` inside `investigate`) carries its parent; calls that ran
+  at once share a group, drawn as one row.
+- **It ends with the run**: done when the reasoner succeeded, Needs you with
+  the run's own words ("the AgentField run failed: …") when it failed.
+  **Stop** cancels the whole run tree on AgentField.
+- A factory that is not connected refuses the job: "this job runs on
+  AgentField and this factory is not connected to AgentField".
+
+The node's developer writes nothing for any of this: a reasoner that calls
+`a.Harness(...)` on the codeaf provider is watched and steerable by itself.
+
+## watch and steer an AgentField step — open its chat, send it a note mid-run
+
+A step that ran the codeaf harness has a chat like any step this factory runs:
+open it from the job's rail and it shows the same entries — words, thinking,
+tool cards, diffs — streamed as the node works, because the node relays the
+run's own conversation record line by line and the factory keeps it as an
+ordinary conversation on this machine. The factory is the record: the control
+plane holds a line only until the factory has kept it, and a factory that was
+offline gets every line once when it is back.
+
+**Steering is the step chat's ordinary send.** While the step works, what you
+type goes to that run on its node, which reads it at its next turn boundary;
+the record then shows it as your steer. Refusals, word for word:
+
+- "this step has ended" — the run finished; nothing is listening.
+- "this step is not running the codeaf harness, so it cannot be steered".
+- "the run has notes it has not read yet; send this again in a moment".
+- "this factory is not connected to AgentField, so the step cannot be steered".
+
+Only codeaf harness steps can be steered. A plain reasoner's step has no chat
+at all, so there is no box to type in.
+
 ## what the AgentField node cannot do
 
 - Only the factory on this machine connects; a team factory (`codeaf factory
@@ -199,7 +246,12 @@ already filed stay as they are.
 - No DID or verifiable-credential signing: the node does not sign or check
   AgentField DIDs; the link's key and the HTTP bearer are its protection, and
   both are the control plane's global values, not one per node.
-- A pipeline step cannot call an AgentField reasoner yet, and a job's steps
-  are not child executions in AgentField's workflow view.
+- A pipeline step of a job this factory runs itself cannot call an
+  AgentField reasoner. A whole job can be run by one instead (see "a job run
+  by an AgentField reasoner"); then its steps are that run's executions.
+- Only a step that ran the codeaf harness has a chat and takes a note. A
+  plain reasoner's step, or a step on another harness, shows its state and
+  timing only: it has no chat and no message box.
+- A note to a step reaches it at its next turn boundary, not mid-sentence.
 - Jira is not an AgentField source; it has its own connector (see "connect
   Jira").

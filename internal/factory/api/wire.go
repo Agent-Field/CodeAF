@@ -333,10 +333,15 @@ type SizeBlock struct {
 // StepDef is one step as the pipeline defines it (code: [factory.Stage]).
 type StepDef struct {
 	Label string `json:"label,omitempty"`
-	Name  string `json:"name"`
-	Kind  string `json:"kind,omitempty"`
-	Ask   string `json:"ask,omitempty"`
-	Until string `json:"until,omitempty"`
+	// Parent is the name of the step that called this one in an AgentField
+	// run, absent for a top-level step; steps sharing a group ran at once.
+	// Both are absent on every step a factory runs itself.
+	Parent string `json:"parent,omitempty"`
+	Group  string `json:"group,omitempty"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind,omitempty"`
+	Ask    string `json:"ask,omitempty"`
+	Until  string `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
 	UntilSentence string `json:"until_sentence,omitempty"`
@@ -403,6 +408,11 @@ type Job struct {
 	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
 	FromJob         int    `json:"from_job,omitempty"`
 	SourceIssue     string `json:"source_issue,omitempty"`
+	// RunOn is the AgentField reasoner that runs this job, "<node>.<reasoner>",
+	// and AgentField the run once it was dispatched; both absent on a job
+	// this factory runs itself.
+	RunOn      string                 `json:"run_on,omitempty"`
+	AgentField *factory.AgentFieldRun `json:"agentfield,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.

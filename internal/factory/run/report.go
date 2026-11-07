@@ -180,6 +180,10 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		it.FollowUp = &f
 	}
 	ensureStream(it, now)
+	if report.AgentField != nil {
+		run := *report.AgentField
+		it.AgentField = &run
+	}
 	if err := reportRoom(it, report.Room); err != nil {
 		return err
 	}

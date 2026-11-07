@@ -157,6 +157,13 @@ type Event struct {
 // Options builds a [Runner].
 type Options struct {
 	Store *store.Store
+	// Remote runs a RunOn job (factory.Item.RunOn) on AgentField instead of
+	// its own steps, and returns when the run has ended: nil when it
+	// succeeded, the run's error when it failed. It keeps the job's steps,
+	// chats and spend up to date as the run goes. Its context ends when the
+	// person stops the job, and it cancels the run then. Nil refuses a RunOn
+	// job with the words below.
+	Remote func(ctx context.Context, job int) error
 	// Exec maps a stage kind to what runs it. A missing kind fails its stage.
 	Exec map[factory.StageKind]Executor
 	// Benches is how many items may run at once; 0 is unbounded.

@@ -626,7 +626,10 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 		// Receipts still book on the mirror and follow its ordinary settlement path.
 		maker.memoryOwner = h.floor
 	}
-	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, maker, turns)
+	// A JOB FILED WITH run_on IS RUN BY ITS AGENTFIELD REASONER, over this
+	// factory's own connection, and kept here as an ordinary job.
+	remote := &afRemote{items: mirror, floor: h.floor, workspace: h.workspace, conn: h.agentFieldConn, news: afTellNews}
+	runner := buildFactoryRunnerWith(mirror, h.floor, h.workspace, h.profile, maker, turns, remote.Run)
 	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI

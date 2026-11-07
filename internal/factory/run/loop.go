@@ -261,6 +261,10 @@ func (r *Runner) Launch(id int) error {
 			factory.ClearJobRun(it)
 		}
 		it.Stream = freshStream(it, now)
+		if strings.TrimSpace(it.RunOn) != "" {
+			// An AgentField job's steps are its run's calls, made as they come.
+			it.Stream.Phases, it.AgentField = nil, nil
+		}
 		loopSay(it, now, "said", "queued")
 		loopSay(it, now, "fail", unmade)
 		return nil
@@ -574,6 +578,12 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		it.Stream.Bench = c.benchNo
 		return nil
 	}); err != nil {
+		return
+	}
+	// A JOB RUN BY AN AGENTFIELD REASONER is handed to that run whole: its
+	// steps are the run's own calls, written by Remote as they happen.
+	if it, err := lp.r.opts.Store.Get(c.id); err == nil && strings.TrimSpace(it.RunOn) != "" {
+		lp.driveRemote(c)
 		return
 	}
 	// THE FIRST STAGE RUNS FIRST, with the item's stages as they stand. No
@@ -3038,4 +3048,35 @@ func (c *loopCtl) settleSpend() {
 	case <-settled:
 	case <-timer.C:
 	}
+}
+
+// NoRemoteWords refuses a RunOn job on a factory with no AgentField behind it.
+const NoRemoteWords = "this job runs on AgentField and this factory is not connected to AgentField"
+
+// driveRemote runs a RunOn job through Options.Remote and lands its ending
+// the way a job's own steps would: done, needs you with the run's words, or
+// left to the person's Stop.
+func (lp *floorLoop) driveRemote(c *loopCtl) {
+	if lp.r.opts.Remote == nil {
+		lp.failStop(c, "agentfield", errors.New(NoRemoteWords))
+		return
+	}
+	err := lp.r.opts.Remote(c.ctx, c.id)
+	if c.ctx.Err() != nil {
+		return
+	}
+	if err != nil {
+		lp.failStop(c, "agentfield", err)
+		return
+	}
+	now := lp.r.now()
+	_ = lp.write(c, func(it *factory.Item) error {
+		it.State = factory.StateShipped
+		if it.Stream != nil {
+			it.Stream.Ended = now
+		}
+		loopSay(it, now, "said", "the AgentField run finished")
+		return nil
+	})
+	lp.emit(c.id, "", EventLanded, "done")
 }
