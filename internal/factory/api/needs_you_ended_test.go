@@ -39,3 +39,23 @@ func TestStoppedAndRejectedJobsLeaveNeedsYou(t *testing.T) {
 		}
 	}
 }
+
+// A STOPPED JOB OFFERS ONLY WHAT WORKS ON IT. Start, Run again and Run again
+// as a new job start it again (the manual's "stop a job and start it again");
+// Resume only continues a paused job and refuses a stopped one with "is not
+// paused", so a stopped job does not offer it. Job 71 of the 2026-11-07 live
+// run offered resume beside start_now, run_again and run_as_new.
+func TestAStoppedJobDoesNotOfferResume(t *testing.T) {
+	now := time.Unix(1000, 0)
+	yes := true
+	stopped := factory.Item{ID: 2, Assignee: "sam", State: factory.StateNew, PersonStopped: &yes,
+		Failure: &factory.Failure{Step: "write", Code: factory.CodeStopped, Detail: "Stopped by you", Next: factory.FailureStopped},
+		Stream:  &factory.Stream{Ended: now, Phases: []factory.Phase{{Name: "write", State: factory.PhaseFailed}}}}
+	can := api.CanFor(stopped, "sam", now)
+	if can.Resume || can.Stop {
+		t.Fatalf("a stopped job offers a verb that refuses it: resume=%v stop=%v", can.Resume, can.Stop)
+	}
+	if !can.StartNow || !can.RunAgain || !can.RunAsNew {
+		t.Fatalf("a stopped job does not offer the ways to start it again: %+v", can)
+	}
+}

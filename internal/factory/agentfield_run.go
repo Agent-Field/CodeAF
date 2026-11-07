@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -72,6 +73,77 @@ type AgentFieldRefusal struct {
 // AgentFieldRejected is the control plane's word for a person's Reject of a
 // run's pause: the run is cancelled there, and the job ends as their Stop.
 const AgentFieldRejected = "rejected"
+
+// AgentFieldRunLive says step's AgentField run (the job's own run for a
+// RunOn job) was started on the control plane and has not ended: a runner
+// that takes the job again follows that run rather than starting another.
+func AgentFieldRunLive(it Item, step string) bool {
+	run := AgentFieldRunOf(it, step)
+	return run != nil && run.ExecutionID != "" && run.Ended.IsZero()
+}
+
+// AgentFieldRejectCancel is the control plane's reason on a run it
+// cancelled because a person rejected its pause: `approval_rejected: <their
+// words>`.
+const AgentFieldRejectCancel = "approval_rejected"
+
+// AgentFieldRejectedEnd is the person's Reject that ended one of the job's
+// runs, ok false when no run of it ended that way.
+//
+// A RUN THAT ENDED ON A PERSON'S NO IS A REJECTION, NEVER A FAILED STEP. The
+// control plane cancels a rejected run at once, so the runner's reading of
+// that cancel can reach the factory before (or instead of) the runner's
+// acknowledgement of carrying the Reject; whichever arrives first, the job
+// ends Rejected with the person's words. IT IS KEYED ON THE DECISION AND THE
+// CANCEL REASON, NEVER ON A PIPELINE'S OR A STEP'S NAME: the newest rejected
+// decision this factory recorded on one of the ended run's own pauses (with
+// who gave it), else the control plane's own reason when the no was given
+// elsewhere, such as on its own page. A decision on an earlier run's pause
+// is not this run's: a fresh run has fresh pauses.
+func AgentFieldRejectedEnd(it Item) (Rejection, bool) {
+	runs := []*AgentFieldRun{it.AgentField}
+	names := make([]string, 0, len(it.AgentFieldSteps))
+	for name := range it.AgentFieldSteps {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		runs = append(runs, it.AgentFieldSteps[name])
+	}
+	for _, run := range runs {
+		if run == nil || run.Ended.IsZero() {
+			continue
+		}
+		for i := len(run.Decisions) - 1; i >= 0; i-- {
+			d := run.Decisions[i]
+			if d.Decision == AgentFieldRejected && agentFieldPauseOf(run, d.Execution) {
+				return Rejection{By: NormalizeHandle(d.By), Words: strings.TrimSpace(d.Words), At: d.At}, true
+			}
+		}
+		if reason := strings.TrimSpace(run.Error); strings.HasPrefix(reason, AgentFieldRejectCancel) {
+			words := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(reason, AgentFieldRejectCancel), ":"))
+			return Rejection{Words: words, At: run.Ended}, true
+		}
+	}
+	return Rejection{}, false
+}
+
+// agentFieldPauseOf says execution is one of run's own pauses: the run
+// itself, the one it waits on, or one it asked.
+func agentFieldPauseOf(run *AgentFieldRun, execution string) bool {
+	if execution == "" {
+		return false
+	}
+	if run.ExecutionID == execution || (run.Waiting != nil && run.Waiting.Execution == execution) {
+		return true
+	}
+	for _, a := range run.Asks {
+		if a.Execution == execution {
+			return true
+		}
+	}
+	return false
+}
 
 // AgentFieldAnswerFor is the person's answer to the pause request waits on
 // that has not been refused since it was given: the newest decision for that
