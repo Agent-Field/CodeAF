@@ -139,6 +139,11 @@ func TestAStartedAgentFieldJobShowsNoStockStep(t *testing.T) {
 	if j.Step != nil || len(j.Steps) != 0 {
 		t.Fatalf("step %+v steps %d", j.Step, len(j.Steps))
 	}
+	// Its status says where it is starting, never that it waits for a runner.
+	PresentJob(&j)
+	if p := j.StatePresentation; p.Title != "Starting" || p.Detail != "Starting on AgentField · support." {
+		t.Fatalf("presentation %+v", p)
+	}
 	it.AgentField = &factory.AgentFieldRun{RunID: "r"}
 	it.Stages, it.Stream.Phases = []factory.Stage{{Name: "triage", Label: "Triage", Kind: factory.StageCheck, On: true}}, []factory.Phase{{Name: "triage", State: factory.PhaseRunning}}
 	it.State = factory.StateRunning

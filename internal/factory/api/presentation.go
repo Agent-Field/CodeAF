@@ -45,6 +45,12 @@ func PresentJob(j *Job) {
 	case j.State == StateQueued && j.StatePresentation.Kind == WaitingForComputer:
 		// Nothing starts this job until its computer is back, Start now included.
 		p = j.StatePresentation
+	case j.State == StateQueued && strings.TrimSpace(j.RunOn) != "":
+		// An AgentField job (run_on) takes no runner and no Jobs at once
+		// place: Start dispatched it to its node, and it is starting there
+		// until the run reports, a few seconds at most.
+		node, _, _ := strings.Cut(strings.TrimSpace(j.RunOn), ".")
+		p.Title, p.Detail = "Starting", "Starting on AgentField · "+node+"."
 	case j.State == StateQueued && j.OverLimit:
 		p.Kind, p.Title, p.Detail = "waiting_for_runner", "Starting now", "Starting now, above Jobs at once this one time."
 	case j.State == StateQueued || (j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsRunnerOffline):

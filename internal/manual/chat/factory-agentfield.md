@@ -236,7 +236,8 @@ node, so the cap is only what the job page shows beside it.
 - **Arriving**, its activity reads "arrived from AgentField · <node>", and
   it never says it is waiting for a repository: it needs none.
 - **Started but not yet running** (dispatched, the run has not reported),
-  it shows no step at all, never the factory's own pipeline (`plan`).
+  it reads "Starting" ("Starting on AgentField · <node>.") and shows no
+  step, never the factory's pipeline (`plan`) or a wait for a runner.
 - **Running**, its step is the run's own current step.
 - **Ended**, `done_at` is when the run ended on AgentField (else when this
   factory saw it end), so it sorts and reads like any finished job.
