@@ -2331,7 +2331,23 @@ func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
 	lp.mu.Lock()
 	paused := want(c.paused)
 	unchanged := paused == c.paused
-	if !paused && c.paused && c.ctx.Err() != nil {
+	// A WITHDRAWN CONTROL IS ENDING, NOT RUNNING. A step edit withdraws the
+	// worker running a job (Runner.Withdraw cancels the control without a
+	// pause), and the next lease lays the job out paused at its step and asks
+	// to go on. The old control is still here while its round lets go of a
+	// model call, and it was never paused, so "go on" read as unchanged and was
+	// dropped: the old drive then ended and nothing ran the job, which the next
+	// worker gave back to Backlog (the live managers lane, job 61). A
+	// cancelled control asked to go on on a job the store holds paused is the
+	// same handover as a cut pause: wait for it, then revive the job.
+	handover := false
+	if !paused && !c.paused && c.ctx.Err() != nil && !c.reverify {
+		lp.mu.Unlock()
+		it, err := r.opts.Store.Get(c.id)
+		handover = err == nil && storedPaused(it) && factory.CheckPersonStop(it) == nil
+		lp.mu.Lock()
+	}
+	if !paused && (c.paused || handover) && c.ctx.Err() != nil {
 		if c.releasedDone == nil {
 			c.releasedDone = make(chan struct{})
 		}
