@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Show identity-wide sync space usage in /status
-pr: 0
+pr: 2491
 surface: [chat, remote, docs]
 invalidates:
   - "The amount stored on the hosted relay was invisible until sync was refused; /status now shows stored bytes and the byte limit when the relay reports both."
