@@ -139,7 +139,7 @@ var Lost = map[string]string{
 	"Item.ReportReceipts": "known gap: the service's own acknowledgments of retained worker results, kept with the item so a lost reply never charges twice; no reader needs them",
 	"Item.ReportRetryAt":  "known gap: a person's retry grant, read by the service that holds the item; not carried to readers yet",
 	"Item.ManagerAnswer":  "known gap: the service's idempotency receipt for the manager's last decision; not carried to readers yet",
-	"Item.Briefs":         "the job's brief versions cross whole only through GET /v1/jobs/{id}/brief; a job carries the newest rev and status as brief",
+	"Item.Briefs":         "the job's brief versions cross whole only through GET /v1/jobs/{id}/brief; a job carries the newest rev and status as brief, and only the worker's pull carries the read before work (WorkerJob first_read)",
 	"Item.BriefWriting":   "crosses as the brief's status (job.brief.status and the brief route's failure); the writer's own record otherwise",
 	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
 	"Item.CommentsSeen":   "the service's own record of which comments the job's manager has considered; only the service that reads GitHub uses it, and readers see comment_reads",
@@ -520,6 +520,9 @@ func ToItem(j Job) factory.Item {
 	it.AskedFirstReason = j.AskedFirstReason
 	it.House = cloneHouse(j.HouseRules)
 	it.PipelineCopy = j.PipelineCopy.Clone()
+	if j.FirstRead != nil {
+		it.Briefs = []factory.BriefVersion{*j.FirstRead}
+	}
 	it.PipelineDecided = j.PipelineDecided
 	it.StartRules = cloneStartRules(j.StartRules)
 	it.RuleHold = j.RuleHold

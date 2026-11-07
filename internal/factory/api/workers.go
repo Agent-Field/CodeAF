@@ -187,6 +187,11 @@ func WorkerJob(it factory.Item) Job {
 	j.RoundCostTables = true
 	// The runner runs the file the job carries, so it is sent whole here.
 	j.PipelineCopy = it.PipelineCopy.Clone()
+	// The read written before work is what every step is told the issue
+	// asks, so the runner that holds the job is sent it.
+	if v, ok := factory.FirstReadOf(it); ok {
+		j.FirstRead = &v
+	}
 	if it.Stream == nil {
 		return j
 	}

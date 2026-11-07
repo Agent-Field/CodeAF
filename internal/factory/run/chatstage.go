@@ -690,6 +690,7 @@ func stageBrief(job Job) string {
 	for _, p := range itemContext(job) {
 		para(p...)
 	}
+	para(firstReadBrief(job))
 	para(stagePlace(job))
 	para(scratchBrief(ScratchDir(job.Dir)))
 	para(factory.StageMethod(job.Stage))

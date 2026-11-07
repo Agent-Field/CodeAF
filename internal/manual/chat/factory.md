@@ -1064,6 +1064,14 @@ changed state or newer step. The desk uses `verdict_behind` to show this. Retry
 asks for a fresh Brief. The writer receives the approval, PR and outcome facts;
 a PR number in its claims must be supported by the job's recorded PR evidence.
 
+## write the brief before a job starts — Write the brief, read the issue first, what it costs, does the job use it
+
+A job that has not started can have its issue read before any work: the desktop's Brief tab offers **Write the brief**. One small model call reads the issue and your later requests and writes what is really asked, the risky part, how a person would know it is done, and what is unclear, citing only the issue's own words. An issue too thin to read says `This issue says too little to read. Add what you want, or ask the manager.` and spends nothing.
+
+The button quotes what one such read typically costs on this factory, the median of the reads it has kept, once one has run; before that it quotes nothing. After the read the tab shows what it actually cost, and that cost goes on the job's spend like any brief.
+
+The read is kept on the job as a brief version. When the job starts, every step is given it beside the issue, as a reading rather than orders: where it disagrees with the issue or your notes, they win. A brief written after a step has reported is a report on the work and is never handed to a step. A runner on another computer is sent the read with the job.
+
 ## Job brief cost — one charge per model call
 
 Writing the job's brief adds the model call's cost to Spending and the job's

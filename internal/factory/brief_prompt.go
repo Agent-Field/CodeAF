@@ -121,5 +121,6 @@ func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDr
 		return fail("the brief did not pass its check: " + fault)
 	}
 	v.AfterStep, v.MadeAt, v.Model, v.CostUSD, v.InputHash, v.Dropped = after, now, w.Model, w.CostUSD, w.Hash, len(drops)
+	v.BeforeWork = briefBeforeWork(*it)
 	return it.KeepBrief(v), drops, true
 }
