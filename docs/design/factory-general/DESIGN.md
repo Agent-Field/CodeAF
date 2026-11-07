@@ -208,6 +208,27 @@ reasoner (`sec-af`, `pr-af` as a review step), each job step as a child
 execution in the AgentField DAG, the factory's approvals answered from
 AgentField's approval API.
 
+## The line between WorkAF and AgentField (owner, 2026-11-06)
+
+**A WorkAF user never thinks about code.** So:
+- **Built-in connectors live in WorkAF**, set up with clicks: GitHub, Jira,
+  and the ones we add later. Their translation and write-back are ours.
+- **Anything programmatic enters through AgentField**: a custom trigger, a
+  script, another agent. WorkAF exposes no open HTTP intake, no per-source
+  webhooks and no SDK. The AgentField node is the only programmatic door, and
+  the internal event bus is how a job's moments reach it.
+- **The queue is WorkAF's.** AgentField delivers work and hears its status;
+  priority, routing, runners and the desk view stay in the factory.
+- **The link is opened by the factory** (a node-initiated, long-lived
+  connection to the control plane; an AgentField feature to build), so a
+  laptop behind NAT works and no secret travels in a URL. Over it, later:
+  pipeline steps AgentField runs, streamed into the step's chat, and a person
+  talking to that running step.
+
+This supersedes the per-source webhook and `POST /api/intake` rows of the
+Trigger API table above; `inbox.Add`, the event bus and the local doors (the
+desk, `codeaf factory add` on the factory's own machine) remain.
+
 ## Later waves (not now)
 
 Workspace and deliverable interfaces (a non-git workspace, a non-PR output),
