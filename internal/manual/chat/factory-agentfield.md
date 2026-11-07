@@ -200,17 +200,21 @@ node instead of by this factory's pipeline. It is an ordinary job everywhere:
 the same inbox, queue, Working, Needs you and All jobs lists, the same job
 page and step rail, Start and Stop.
 
+- **Before Start** it waits as plain Backlog with no steps: its steps are
+  the run's, and the run has not said what they are yet.
 - **Start** dispatches the reasoner with `{"job", "title", "body", "event"}`.
   The node needs no inbound port; the factory only calls the control plane.
 - **Its steps are the run's executions**, named by reasoner, in the order
   they began: `triage`, `investigate`, `draftreply`. A step name is one word,
   so `draft_reply` reads `draftreply` with `draft_reply` as its label, and a
   reasoner called more than once is `investigate1`, `investigate2`. A nested
-  call (`searchdocs` inside `investigate`) carries its parent; calls that ran
-  at once share a group, drawn as one row.
+  call (`searchdocs` inside `investigate`) carries its parent and folds into
+  it, so it is not counted as a step of its own (`3 / 3`, not `4 / 4`);
+  calls that ran at once share a group, drawn as one row.
 - **It ends with the run**: done when the reasoner succeeded, Needs you with
   the run's own words ("the AgentField run failed: …") when it failed.
-  **Stop** cancels the whole run tree on AgentField.
+  **Stop** cancels the whole run tree on AgentField; the stopped step reads
+  skipped, the run reads cancelled, and the step's last lines are still kept.
 - It needs no repository and no model key on this machine — the work and
   its model calls happen on the node — and it has no proof to approve: a run
   that succeeded is done.
