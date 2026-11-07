@@ -303,6 +303,10 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.agentfield_status` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
 | `factory.agentfield_trigger_add` | `in.FactoryAgentFieldTriggerAddParams` | `FactoryAgentFieldTrigger` |
 | `factory.agentfield_triggers` | `in.FactoryRef` | `FactoryAgentFieldTriggers` |
+| `factory.ai_search` | `in.FactoryAISearchParams` | `FactoryAISearchStarted` |
+| `factory.ai_search_estimate` | `in.FactoryAISearchParams` | `FactoryAISearchEstimate` |
+| `factory.ai_search_status` | `in.FactoryAISearchRunRef` | `FactoryAISearchRun` |
+| `factory.ai_search_stop` | `in.FactoryAISearchRunRef` | `FactoryAISearchRun` |
 | `factory.jira_connect` | `in.FactoryJiraConnectParams` | `FactoryJiraStatus` |
 | `factory.jira_disconnect` | `in.FactoryRef` | `FactoryJiraStatus` |
 | `factory.jira_status` | `in.FactoryRef` | `FactoryJiraStatus` |
@@ -623,6 +627,23 @@ one repository, so there is one pair per factory. Both fields are absent when
 the rules were never written, and when the factory last wrote them with a build
 that did not record the change. A write sent with the factory's script
 credential records the factory's operator.
+
+The job search bar's AI search (hello feature `factory.ai_search`) answers a
+person's question in their own words with the jobs it is about.
+`factory.ai_search_estimate {factory, question, jobs?}` asks no model and answers
+`{factory, question, model, items, reused, reads, judge_most, usd_typical?,
+usd_most?}`: `reads` screen reads of 40 items each, at most `judge_most` (60)
+yes/no questions, `reused` items whose answers to this question are already
+kept, and dollars only when the model's price is known. `factory.ai_search`
+with the same params starts one run and answers `{run}` at once; the run reads
+the caller's own queue (issue jobs, not dropped), or only `jobs` (at most 5000
+ids) when sent. `factory.ai_search_status {run}` answers `{run, factory,
+question, words, phase, total, read, related, checked, over?, asked, reused?,
+failed?, usd, model, matches: [{job, ref, title, repo, why, kept?}], error?}`
+where `phase` is `screening`, `judging`, `done`, `failed` or `stopped`, and
+`factory.ai_search_stop {run}` ends it. There is no event: a surface polls
+status. A question is at most 300 characters; a leading `?` is dropped. Every
+call is booked as `factory search`.
 
 An engine whose hello carries the feature `factory.routes` serves
 `factory.routes {factory}` and `factory.routes_set {factory, rules, expect?}`:
