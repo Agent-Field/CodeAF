@@ -247,7 +247,7 @@ Say "merge it", "mark it ready" or "approve it" in the manager's chat and it pre
 
 Each factory has one manager of its own beside the jobs' managers, titled "Factory manager" (its team address is `@foreman`). The app opens it with `factory.foreman_open`; the first open makes the conversation and every later one opens the same. A factory manager made under the older title "foreman" keeps its conversation and is renamed when it next opens. It reads only the jobs of the factory home it belongs to, through `factory_floor`:
 
-- `running`: jobs running or queued to run, each with its step and `steps N of M done`. A shipped job whose pull request is still open reads "following its pull request (Follow PR)", on Follow PR; a shipped job with nothing left to follow reads "done".
+- `running`: jobs running or queued to run, each with its step and `steps N of M done`. A job whose pull request is still open, resting or running a Follow PR repair, reads "following its pull request (Follow PR)", on Follow PR; a shipped job with nothing left to follow reads "done".
 - `queue`: jobs not started yet, most urgent first (p0 before p1), then oldest.
 - `waiting`: jobs that need you. `shipped`: jobs shipped today, with their pull requests and changes, to sum up what shipped.
 - `all`, `oldest`, `cheapest`, `risky`, or one job in full with `item`.

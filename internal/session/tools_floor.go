@@ -451,9 +451,11 @@ func FloorRow(it factory.Item, now time.Time) string {
 	// stored state is shipped, and the row once said `shipped` beside a step
 	// count that was not finished and named no step, so the foreman read back
 	// "One job is active … State: shipped, step 3 of 4 done" to the person.
-	// It is following its pull request, on Follow PR; a shipped job that is
-	// not following one is done.
-	following := it.State == factory.StateShipped && floorFollowing(it)
+	// It is following its pull request, on Follow PR, whether it is resting
+	// (shipped) or running a repair (running, on followpr); a shipped job
+	// that is not following one is done.
+	onFollow := it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) && it.Stream.Phases[it.Stream.Cur].Name == factory.FollowPRStep
+	following := floorFollowing(it) && (it.State == factory.StateShipped || it.State == factory.StateRunning && onFollow)
 	state := string(it.State)
 	switch {
 	case following:
