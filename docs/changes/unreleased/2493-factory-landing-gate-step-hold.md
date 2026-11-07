@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: The last approve step waits for its answer, Manual holds read as steps, removed pipelines drop their steps
+title: The last approve step waits for its answer, a Manual hold reads as a step, removed pipelines drop steps
 pr: 2493
 surface: [engine, factory, app, docs]
 invalidates:
