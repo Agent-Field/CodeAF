@@ -91,6 +91,11 @@ type EditError struct {
 	// not have, a name that is taken or reserved), not about a step, so a
 	// door that words refusals by code can name the right thing.
 	Pipeline bool
+	// Clash is, on an add_step refused because the file already defines that
+	// step with other words, the step's name: a door that words refusals by
+	// code can then say which step clashes instead of a bare "out of bounds".
+	// The name has already passed the step-name check, so it is safe to say.
+	Clash string
 }
 
 func (e *EditError) Error() string { return e.Why }

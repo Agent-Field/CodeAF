@@ -334,6 +334,8 @@ func JobReason(it Item) string {
 			return "runner_offline"
 		case NeedsApprovePlan:
 			return "approval_plan"
+		case NeedsApproveStep:
+			return "approval_step"
 		case NeedsApproveProof:
 			return "approval_proof"
 		case NeedsSpendingLimit:
@@ -382,13 +384,18 @@ func JobApproval(it Item) *Approval {
 		kind = "start"
 	case "approval_plan":
 		kind = "plan"
+	case "approval_step":
+		kind = "step"
 	case "approval_proof":
 		kind = "proof"
 	}
 	// A plan approval that settled before the question now asked is the old
 	// consent for an old question; the new ask needs its own approval.
 	settledBefore := kind == "plan" && it.Approval != nil && it.Approval.Kind == "plan" && it.Approval.State == "approved" && it.Asking != nil && it.Asking.At.After(it.Approval.At)
-	if it.Approval != nil && !settledBefore && (kind == "" || it.Approval.Kind == kind) {
+	// An approval recorded on a step hold before the hold had its own kind
+	// was written as a plan approval; it is still that hold's.
+	sameKind := it.Approval != nil && (it.Approval.Kind == kind || kind == "step" && it.Approval.Kind == "plan")
+	if it.Approval != nil && !settledBefore && (kind == "" || sameKind) {
 		a := *it.Approval
 		return &a
 	}

@@ -302,7 +302,9 @@ func (st *editState) define(i int, op EditOp) *EditError {
 	}
 	if want.Label != have.Label || want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
 		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who {
-		return refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
+		bad := refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
+		bad.Clash = op.Name
+		return bad
 	}
 	return nil
 }

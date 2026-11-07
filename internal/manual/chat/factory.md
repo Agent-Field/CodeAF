@@ -323,6 +323,12 @@ The factory keeps a **pipeline library**: named pipelines and the step definitio
 - It is read and written over the app protocol, `factory.library`, `factory.library_preview` (the same edits as the pipeline editor, `add_pipeline` included) and `factory.library_set`. A change sent after someone else changed the library is refused: read it again, then make the change.
 - A library that names `issue` is what a repository runs when its own file does not list `issue` itself.
 
+## remove a library pipeline — its steps go with it, add a step of the same name again, "There is already a step named"
+
+`remove_pipeline` takes a pipeline out of the library or a repository's file, and with it the definition of every step only that pipeline listed, so a later pipeline can add a step of the same name with other words. A step another pipeline still lists, a step the `fixed:` list names, and a step codeaf ships (whose words in the file are what the default pipeline runs) keep their definitions exactly as written.
+
+An `add_step` whose name the file already defines with other words is refused, and the refusal names the step: `There is already a step named lint-it with other words. Pick another name, or add it with the words it has. Nothing was written.` Adding it with the words it already has lists it where you put it.
+
 ## which pipeline runs — the repository's file, the factory's copy, the library, the built-in steps, pick the pipeline at Start
 
 A pipeline's name (picked at Start, named by a routing rule, or a job's own `issue`) is looked up in one order, the same for every door:

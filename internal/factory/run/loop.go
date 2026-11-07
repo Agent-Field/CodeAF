@@ -757,12 +757,18 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	}
 	// Even Auto gates wait for the service's recorded decision. A worker's
 	// cached mode cannot bypass a Manual switch committed on the factory.
+	//
+	// THE LANDING IS NOT A PASS. This step once marked itself done here, and
+	// on a worker (which never reports an approve step) it stayed "to come"
+	// while Auto published past it. It now lands with the step waiting
+	// ([factory.LandingGate]), and only the proof approval passes it. One
+	// switched off still passes quietly, as if it were not there.
 	if last {
-		now := lp.r.now()
-		return lp.write(c, func(it *factory.Item) error {
-			setPhaseState(&it.Stream.Phases[i], factory.PhaseDone, now)
-			return nil
-		}) == nil
+		if st, index := lp.stageAt(it, i); index >= 0 && !st.On {
+			return lp.finish(c, i, name, "")
+		}
+		lp.land(c)
+		return false
 	}
 	prevName := ""
 	if prev >= 0 {
@@ -2679,6 +2685,12 @@ func ApprovalRefused(it *factory.Item, edited bool) error {
 	if it.State != factory.StateLanded {
 		return fmt.Errorf("%s has not landed", it.Ref())
 	}
+	// NOTHING PUBLISHES PAST AN APPROVE STEP NOBODY PASSED, whatever the mode:
+	// Auto passes routine steps through their own door, never by landing past
+	// them.
+	if gate := factory.UnpassedGate(*it); gate != "" {
+		return fmt.Errorf("%s has an approve step nobody has passed yet: %s", it.Ref(), gate)
+	}
 	if it.FollowUp != nil && it.FollowUp.Kind == "readiness" && !factory.ReadinessPending(*it) {
 		return errors.New("final readiness review is incomplete")
 	}
@@ -2719,6 +2731,10 @@ func approveStored(it *factory.Item, edited bool, now time.Time) error {
 		return err
 	}
 	it.Question, it.QKind = "", ""
+	// The proof approval is the answer the landing's approve step waited for.
+	if g := factory.LandingGate(*it); g >= 0 {
+		setPhaseState(&it.Stream.Phases[g], factory.PhaseDone, now)
+	}
 	if factory.ReadinessPending(*it) {
 		it.Note(now, "Ready-for-review transition approved · head "+it.HeadCommit)
 	} else if edited {

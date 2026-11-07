@@ -1166,6 +1166,12 @@ func PipelineEditRefusal(factoryID, repo string, bad *pipeline.EditError) *Error
 			words = "That pipeline name is taken or cannot be used."
 		}
 	}
+	// A STEP THAT CLASHES IS NAMED. The file already defines a step of that
+	// name with other words; "out of bounds" told the person nothing they
+	// could act on. The name passed the step-name check before it got here.
+	if bad.Code == pipeline.EditBadValue && !bad.Pipeline && pipeline.KindNamed(bad.Clash) {
+		words = "There is already a step named " + bad.Clash + " with other words. Pick another name, or add it with the words it has."
+	}
 	if words == "" {
 		bad = &pipeline.EditError{Code: pipeline.EditBadOp, Op: -1}
 		words = "That edit is not one this editor makes."

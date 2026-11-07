@@ -717,6 +717,14 @@ func landItem(it *factory.Item, now time.Time) bool {
 			it.Stream.Cur = n - 2
 		}
 	}
+	// THE APPROVE STEP A RUN LANDS AT WAITS FOR ITS ANSWER. The proof approval
+	// passes it ([approveStored]); until then it is the wait the page shows,
+	// on the local runner and on a worker alike (a worker never reports an
+	// approve step, so this is where the service's copy learns it).
+	if g := factory.LandingGate(*it); g >= 0 {
+		setPhaseState(&it.Stream.Phases[g], factory.PhaseWaiting, now)
+		it.Stream.Cur = g
+	}
 	// THE CHANGE IS CHECKED AGAINST THE RULES BEFORE ANYTHING IS PUBLISHED: a
 	// changed file an ask-first or never path names waits for the person, in
 	// Auto ([factory.AutonomyBlockReason]) and as a habit alike.

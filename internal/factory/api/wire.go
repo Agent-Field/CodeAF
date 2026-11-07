@@ -372,7 +372,10 @@ const (
 
 // What Approve does on a job now ([Job.Gate]).
 const (
-	GatePlan     = "plan"
+	GatePlan = "plan"
+	// GateStep is Manual's hold before a step: the step waits for the
+	// person to go on. It is not a plan.
+	GateStep     = "step"
 	GateProof    = "proof"
 	GateQuestion = "question"
 	GateCap      = "cap"
@@ -625,6 +628,9 @@ type NeedsYou struct {
 	// out_of_rounds wait it is the finished step before the stuck one, which a
 	// step rerun from it sends the work back to.
 	BackTo string `json:"back_to,omitempty"`
+	// Step is, on an approve_step wait, the step that is next and waits for
+	// the person to go on, by its label when it has one, else its name.
+	Step string `json:"step,omitempty"`
 }
 
 // NeedsQuestion is the ask on a needs-you kind that is a question.

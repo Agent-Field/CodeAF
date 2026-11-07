@@ -10,8 +10,12 @@ import (
 // here and to TestNeedsYouKindsContractTwo in the same commit. The queue groups
 // jobs by this list, in this order.
 const (
-	NeedsApproveStart  = "approve_start"
-	NeedsApprovePlan   = "approve_plan"
+	NeedsApproveStart = "approve_start"
+	NeedsApprovePlan  = "approve_plan"
+	// NeedsApproveStep is Manual's hold before a step's first round: the step
+	// is next and waits for the person to go on ([StepHold]). It is not a plan
+	// approval, so it has a kind of its own.
+	NeedsApproveStep   = "approve_step"
 	NeedsApproveProof  = "approve_proof"
 	NeedsQuestion      = "question"
 	NeedsRunnerOffline = "runner_offline"
@@ -64,6 +68,7 @@ const (
 var NeedsYouKinds = []string{
 	NeedsApproveStart,
 	NeedsApprovePlan,
+	NeedsApproveStep,
 	NeedsApproveProof,
 	NeedsQuestion,
 	NeedsSpendingLimit,
@@ -258,6 +263,11 @@ func NeedsKind(it Item) string {
 	case it.QKind == NeedsRunnerOffline:
 		return NeedsRunnerOffline
 	case it.QKind == QKindApprove:
+		// A MANUAL HOLD BETWEEN STEPS IS NOT A PLAN. Reading it as one put
+		// "Plan ready" over "RunVetAndTest is next" in Needs you.
+		if _, ok := StepHold(it); ok {
+			return NeedsApproveStep
+		}
 		return NeedsApprovePlan
 	case it.QKind == "cap":
 		return NeedsSpendingLimit
@@ -286,7 +296,7 @@ func publishFailed(it Item) bool {
 // A free question is anyone who can see the repository.
 func JobPersonOnly(kind string) bool {
 	switch kind {
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
 		return true
 	default:
 		return false
@@ -547,7 +557,7 @@ func MayAct(it Item, caller string) Acts {
 	switch NeedsKind(it) {
 	case NeedsQuestion:
 		answer = true
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
 		answer = owner
 	}
 	if it.QKind == QKindSpendStopped {
