@@ -393,10 +393,7 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 	// AN AGENTFIELD MESSAGE REACHES A JOB'S MANAGER THE WAY A PERSON'S DOES,
 	// through factory.job_send's own path on this machine's factory.
 	host.agentfield.send = func(ctx context.Context, job int, text string) error {
-		b.local.mu.Lock()
-		id := b.local.id
-		b.local.mu.Unlock()
-		_, err := b.FactoryJobSend(ctx, appwire.FactoryJobSendParams{Factory: id, Job: job, Text: text})
+		_, err := b.FactoryJobSend(ctx, appwire.FactoryJobSendParams{Factory: b.localFactoryID(), Job: job, Text: text})
 		return err
 	}
 	mount, err := host.mountSolo(ctx)

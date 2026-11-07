@@ -74,13 +74,18 @@ func (h *appFactoryHost) agentFieldNode() *agentfield.Node {
 // agentFieldAfter is the intake pass the host's read loops chose, or nothing
 // while they are off.
 func (h *appFactoryHost) agentFieldAfter(ctx context.Context) error {
-	h.loopMu.Lock()
-	after := h.jira.after
-	h.loopMu.Unlock()
-	if after == nil {
-		return nil
+	if after := h.loopAfter(); after != nil {
+		return after(ctx)
 	}
-	return after(ctx)
+	return nil
+}
+
+// loopAfter is the after-read intake the host's loops started with, nil
+// while they are off. It is the Jira poll's own (appJiraLoop.after).
+func (h *appFactoryHost) loopAfter() func(context.Context) error {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	return h.jira.after
 }
 
 // startAgentField starts the node when the factory is connected. A start that
@@ -115,6 +120,13 @@ func (b *appBackend) agentFieldHost(id string) (*appFactoryHost, error) {
 		return nil, appwire.Errorf(appwire.CodeNotFound, "AgentField connects only to the factory on this machine")
 	}
 	return l.host, nil
+}
+
+// localFactoryID is the id this machine's factory answers to now.
+func (b *appBackend) localFactoryID() string {
+	b.local.mu.Lock()
+	defer b.local.mu.Unlock()
+	return b.local.id
 }
 
 var _ appwire.FactoryAgentField = (*appBackend)(nil)
