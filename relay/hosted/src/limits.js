@@ -38,7 +38,10 @@ export const DEFAULTS = {
   newIdentitiesPerIpPerDay: 200,
   // Deployment-wide brakes are opt-in through CAF_LIMITS; zero closes the corresponding door.
   globalNewIdentitiesPerDay: Infinity,
+  // Shared storage closes admission only, so existing identities retain their own storage allowances.
   globalStoreBytes: Infinity,
+  // The emergency stop refuses every identity's new frames while preserving held frames and erasure.
+  globalHardStoreBytes: Infinity,
   // The pairing mailbox, for callers that have no identity yet.
   pairTtlMs: 10 * 60_000,
   pairMaxMsg: 4 << 10,

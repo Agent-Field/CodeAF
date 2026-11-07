@@ -260,15 +260,22 @@ for it. The per-minute rates are kept in memory: an eviction can only forgive a 
 
 ## Deployment limits and data erasure
 
-`CAF_LIMITS` optionally sets `globalNewIdentitiesPerDay` and `globalStoreBytes`.
-Both are unlimited by default. Set either to a finite number to enable that limit;
-`0` closes new admission or storage respectively. Per-identity and per-network limits
-still apply.
+`CAF_LIMITS` optionally sets `globalNewIdentitiesPerDay`, `globalStoreBytes` and
+`globalHardStoreBytes`. All three are unlimited (`Infinity`) by default. A finite
+`globalNewIdentitiesPerDay` caps daily admission. `globalStoreBytes` closes admission
+when stored bytes reach it; `0` closes admission immediately. Existing identities
+keep storing up to their own `storeBytes`, `storeObjects` and `framesPerDay` ceilings,
+which still answer `507 full`. Per-network limits still apply.
 
 A new identity over the daily admission limit gets `429 relay_admission_full` with
-`Retry-After`. New identities at the storage limit, and new frames that would exceed
-it, get `507 relay_storage_full`. Existing data stays readable, held frames can be
-retried, and identity erasure remains available.
+`Retry-After`. New identities at the shared storage ceiling get
+`507 relay_storage_full`. Every frame still counts in the deployment total as existing
+identities grow, so admission stays closed. This brake bounds total storage at roughly
+(identities admitted before it closed) × `storeBytes`, rather than at `globalStoreBytes`.
+The operator's opt-in emergency stop is `globalHardStoreBytes`: any new frame that would
+pass it gets `507 relay_storage_full`, for every identity. `0` closes all new writes.
+Under either brake, existing data stays readable, held frames can be retried, and
+identity erasure remains available and returns the owner's counted bytes.
 
 Every frame is under an identity prefix. Its owner can retire the identity through the
 signed rotation route (normally `codeaf identity rotate`); after the grace period, an

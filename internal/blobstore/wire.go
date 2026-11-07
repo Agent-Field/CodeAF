@@ -22,6 +22,8 @@ var wireErrors = []struct {
 	{"not_found", http.StatusNotFound, ErrNotFound},
 	{"range_not_satisfiable", http.StatusRequestedRangeNotSatisfiable, errRange},
 	{"conflict", http.StatusConflict, ErrConflict},
+	// Shared capacity precedes ErrFull because the decoder preserves both matches.
+	{"relay_storage_full", http.StatusInsufficientStorage, wireauth.ErrRelayFull},
 	{"full", http.StatusInsufficientStorage, ErrFull},
 	{"damaged", http.StatusInternalServerError, ErrDamaged},
 	{"unreachable", http.StatusServiceUnavailable, ErrUnreachable},
@@ -33,9 +35,8 @@ var wireErrors = []struct {
 	{"rotated", http.StatusGone, wireauth.ErrRotated},
 	{"gone", http.StatusGone, wireauth.ErrGone},
 	{"unauthorized", http.StatusUnauthorized, wireauth.ErrUnauthorized},
-	// Hosted deployment brakes reuse the client's existing retry and full handling.
+	// The admission brake reuses the client's retry handling without changing the server's rate-limit code.
 	{"relay_admission_full", http.StatusTooManyRequests, wireauth.ErrRateLimited},
-	{"relay_storage_full", http.StatusInsufficientStorage, ErrFull},
 }
 
 // codeOf finds the row for err; ok is false for an error the wire has no name for.
@@ -52,6 +53,10 @@ func codeOf(err error) (code string, status int, ok bool) {
 func errOf(code string) error {
 	for _, row := range wireErrors {
 		if row.code == code {
+			if row.err == wireauth.ErrRelayFull {
+				// Existing store callers still match the general full error.
+				return ErrRelayFull
+			}
 			return row.err
 		}
 	}
