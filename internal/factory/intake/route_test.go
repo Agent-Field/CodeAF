@@ -3,7 +3,6 @@ package intake_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -147,14 +146,14 @@ func TestARoutedJobWaitsInBacklog(t *testing.T) {
 }
 
 // A pipeline the target repository's file does not list refuses the rule
-// and changes nothing on the job.
+// and changes nothing on the job (triggers_test.go has the activity row and
+// the pass that goes on).
 func TestARoutedJobRefusesAPipelineTheFileLacks(t *testing.T) {
 	rule := jiraRule(route.StartAuto)
 	rule.Then.Pipeline = "missing"
 	r, job := routedFloor(t, []route.Rule{rule})
-	err := r.in.Once(context.Background())
-	if err == nil || !strings.Contains(err.Error(), `no pipeline "missing"`) {
-		t.Fatalf("err %v, want one naming the missing pipeline", err)
+	if err := r.in.Once(context.Background()); err != nil {
+		t.Fatalf("a refused rule failed the pass: %v", err)
 	}
 	got, _ := r.st.Get(job.ID)
 	if len(r.started) != 0 || got.Route != "" || got.Repo != "" {

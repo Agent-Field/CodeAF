@@ -1,8 +1,10 @@
 package serve
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -50,8 +52,13 @@ func (h *Handler) routes(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "rules is required; send [] for no routing rules")
 		return
 	}
-	if _, err := route.Clean(*body.Rules); err != nil {
+	clean, err := route.Clean(*body.Rules)
+	if err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if why := unlisted(clean, h.pipelineListed(r.Context())); why != "" {
+		h.fail(w, http.StatusUnprocessableEntity, why)
 		return
 	}
 	if body.Expect != nil {
@@ -119,5 +126,63 @@ func (h *Handler) routesTest(w http.ResponseWriter, r *http.Request) {
 			seen = append(seen, it)
 		}
 	}
-	h.write(w, 200, routesTried{Jobs: route.Preview(rules, seen, body.Limit)})
+	h.write(w, 200, routesTried{Jobs: route.PreviewListed(rules, seen, body.Limit, h.pipelineListed(r.Context()))})
+}
+
+// unlisted is the refusal of the first rule in rules that sends work to a
+// repository whose file can be read and lists no pipeline of the name the
+// rule gives ([route.PipelineRefusal]), "" when none does. A rule that names
+// no repository of its own is not checked here, because which repository it
+// sends a job to is known only when a job is routed; neither is one whose
+// repository's file cannot be read now, which is kept as before.
+func unlisted(rules []route.Rule, listed route.Listed) string {
+	if listed == nil {
+		return ""
+	}
+	for _, r := range rules {
+		if r.Then.Repo == "" || r.Then.Pipeline == "" {
+			continue
+		}
+		if ok, known := listed(r.Then.Repo, r.Then.Pipeline); known && !ok {
+			return route.PipelineRefusal(r.Name, r.Then.Repo, r.Then.Pipeline)
+		}
+	}
+	return ""
+}
+
+// pipelineListed reads, once per repository per call, whether a
+// repository's pipeline file lists a pipeline: THE SAME READ A ROUTED JOB'S
+// START MAKES ([Config.Pipeline], which keeps the factory's copy in place of
+// main's file), on the checkout the factory knows. A factory that cannot
+// read files answers nil, and a file that cannot be read now is unknown;
+// neither refuses anything.
+func (h *Handler) pipelineListed(ctx context.Context) route.Listed {
+	if h.config.Pipeline == nil {
+		return nil
+	}
+	type read struct {
+		recipe factory.Recipe
+		ok     bool
+	}
+	seen := map[string]read{}
+	return func(repo, name string) (bool, bool) {
+		key := strings.ToLower(strings.TrimSpace(repo))
+		got, done := seen[key]
+		if !done {
+			dir := ""
+			if h.seam.RecipeAt != nil {
+				if _, _, d, err := h.seam.RecipeAt(repo); err == nil {
+					dir = d
+				}
+			}
+			if f, err := h.config.Pipeline(ctx, repo, dir); err == nil {
+				got = read{recipe: f.Recipe(), ok: true}
+			}
+			seen[key] = got
+		}
+		if !got.ok {
+			return false, false
+		}
+		return len(got.recipe.Named(name)) > 0, true
+	}
 }

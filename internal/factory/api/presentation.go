@@ -1,6 +1,10 @@
 package api
 
-import "github.com/Agent-Field/codeaf/internal/factory"
+import (
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
 
 const ConcurrencySettingsHint = "Change Jobs at once in Settings → Factory → Your computers."
 
@@ -66,6 +70,10 @@ func PresentJob(j *Job) {
 		p.Title, p.Detail = "Needs you", j.Reason
 	case j.State == StateDone:
 		p.Title = "Done"
+	case j.State == StateBacklog && strings.TrimSpace(j.Repo) == "":
+		// Outside work no rule or person has given a repository yet: the
+		// launch refuses it ([factory.NoRepoRefusal]), so its read says why.
+		p.Title, p.Detail = factory.NoRepoTitle, factory.NoRepoDetail
 	case j.State == StateBacklog:
 		p.Title = "Backlog"
 	}

@@ -1,11 +1,15 @@
 package serve
 
 import (
+	"context"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -65,4 +69,59 @@ func TestFactoryRoutesTestTriesATableAndWritesNothing(t *testing.T) {
 	}
 	f.request(t, "POST", "/v1/routes/test", "operator-secret", map[string]any{}, 422, nil)
 	f.request(t, "POST", "/v1/routes/test", "", map[string]any{"rules": table}, 401, nil)
+}
+
+// pipelinesFile is acme/api's file as the factory reads it: an issue and a
+// docs pipeline, nothing called nope.
+const pipelinesFile = "pipeline:\n  issue: [write]\n  docs: [write]\nsteps:\n  write:\n    prompt: write it\n"
+
+// routedSetup is a team factory that reads acme/api's file, and cannot read
+// acme/dark's.
+func routedSetup(t *testing.T) *peopleV2Fixture {
+	t.Helper()
+	f := peopleV2Setup(t, "team")
+	f.h.config.Pipeline = func(_ context.Context, repo, _ string) (pipeline.File, error) {
+		if repo == "acme/dark" {
+			return pipeline.File{}, errors.New("not readable now")
+		}
+		return pipeline.Parse(pipelinesFile)
+	}
+	return f
+}
+
+// A RULE NAMING A PIPELINE ITS REPOSITORY'S FILE DOES NOT LIST IS REFUSED AT
+// THE SAVE, in the sentence the job's activity would have said, when that file
+// can be read. One whose file cannot be read now is kept, as before.
+func TestRoutesSetRefusesAPipelineTheRepositoryLacks(t *testing.T) {
+	f := routedSetup(t)
+	bad := []route.Rule{{Name: "nope pipeline", When: route.Match{Sources: []string{"jira"}}, Then: route.Action{Repo: "acme/api", Pipeline: "nope", Start: route.StartAuto}}}
+	body := f.request(t, "PUT", "/v1/routes", "operator-secret", map[string]any{"rules": bad}, 422, nil)
+	if !strings.Contains(body, "routing rule nope pipeline: acme/api has no pipeline nope") {
+		t.Fatalf("refusal %s", body)
+	}
+	if saved, _ := f.st.Routes(); len(saved) != 0 {
+		t.Fatalf("a refused table was saved: %+v", saved)
+	}
+	good := []route.Rule{
+		{Name: "docs", When: route.Match{Labels: []string{"docs"}}, Then: route.Action{Repo: "acme/api", Pipeline: "docs", Start: route.StartAuto}},
+		{Name: "unread", When: route.Match{Sources: []string{"jira"}}, Then: route.Action{Repo: "acme/dark", Pipeline: "nope", Start: route.StartBacklog}},
+	}
+	f.request(t, "PUT", "/v1/routes", "operator-secret", map[string]any{"rules": good}, 200, nil)
+}
+
+// routes_test SAYS A MATCHED RULE IS REFUSED, with the reason, rather than
+// calling it matched while every job it touches stays unrouted.
+func TestRoutesTestReportsARefusedRule(t *testing.T) {
+	f := routedSetup(t)
+	made, err := f.st.Create(factory.Item{Repo: "acme/api", Num: 7, Kind: factory.KindIssue, Title: "Typo", Labels: []string{"bug"}, State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := []route.Rule{{Name: "bugs", When: route.Match{Labels: []string{"bug"}}, Then: route.Action{Pipeline: "nope", Start: route.StartAuto}}}
+	var got routesTried
+	f.request(t, "POST", "/v1/routes/test", "operator-secret", map[string]any{"rules": table}, 200, &got)
+	if len(got.Jobs) != 1 || got.Jobs[0].Job != made.ID || got.Jobs[0].Outcome != "refused" || got.Jobs[0].Rule != "bugs" ||
+		got.Jobs[0].Reason != "routing rule bugs: acme/api has no pipeline nope" {
+		t.Fatalf("tried %+v", got)
+	}
 }

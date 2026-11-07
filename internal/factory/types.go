@@ -602,6 +602,19 @@ type Item struct {
 	// Route is the name of the routing rule that decided this item's repository,
 	// pipeline, priority and start ([route.Rule]), empty when none matched.
 	Route string `json:",omitempty"`
+	// RouteRefused is the sentence of the routing rule that matched this item
+	// and could not be applied, because the repository it sends the item to
+	// lists no pipeline of the name the rule gives ("routing rule docs:
+	// acme/api has no pipeline docs"). It is kept so the activity row that
+	// says so is written once, not once a pass, and cleared when a rule
+	// applies. Empty is nothing refused.
+	RouteRefused string `json:",omitempty"`
+	// RepoSetBy is the handle of the person who gave this job its repository
+	// (factory.job_set_repo), empty when its source or a rule did. A PERSON'S
+	// REPOSITORY WINS over a routing rule's, as a person's priority mark wins
+	// over a rule's priority: the rule still decides the pipeline, priority
+	// and start, on the person's repository.
+	RepoSetBy string `json:",omitempty"`
 	// Judged is each routing rule's AI answer about this item, by rule name
 	// ([route.Answer]), kept so a question is asked once per version of the
 	// item's words. nil is never judged.
