@@ -237,7 +237,17 @@ func checkGateWords(i int, op EditOp) (EditOp, *EditError) {
 		if op.Who != nil {
 			return op, refuseEdit(EditBadOp, i, "only a gate added here names who it waits on")
 		}
+		if op.Pass != nil {
+			return op, refuseEdit(EditBadOp, i, "only a gate added here says who may pass it")
+		}
 		return op, nil
+	}
+	if op.Pass != nil {
+		w, ok := factory.PassWord(*op.Pass)
+		if !ok {
+			return op, refuseEdit(EditBadValue, i, "pass is person, manager, or manager when <a condition of at most %d characters>", factory.PassWhenMost)
+		}
+		op.Pass = &w
 	}
 	if op.Until != nil || op.Max != nil || (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
 		return op, refuseEdit(EditBadValue, i, "a gate is a person; it takes no until, rounds, effort or fanout")
@@ -339,6 +349,14 @@ func (st *editState) define(i int, op EditOp) *EditError {
 	if op.Input != nil {
 		want.Input = maps.Clone(op.Input)
 	}
+	switch {
+	case op.Pass != nil:
+		want.Pass = *op.Pass
+	case !exists && addsGate(op):
+		// A NEWLY ADDED APPROVE STEP IS A PERSON'S unless the edit says
+		// otherwise: neither Auto nor the manager passes it.
+		want.Pass = factory.PassForNewApprove
+	}
 	setStepWords(&want, op)
 	if !exists {
 		st.out.Steps[op.Name] = want
@@ -346,8 +364,10 @@ func (st *editState) define(i int, op EditOp) *EditError {
 		return nil
 	}
 	if want.Label != have.Label || want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
-		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who || !maps.Equal(want.Input, have.Input) {
-		return refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
+		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who || want.Pass != have.Pass || !maps.Equal(want.Input, have.Input) {
+		bad := refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
+		bad.Clash = op.Name
+		return bad
 	}
 	return nil
 }

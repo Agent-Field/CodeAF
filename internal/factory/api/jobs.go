@@ -285,6 +285,14 @@ type JobBrief struct {
 	Brief            factory.BriefVersion `json:"brief"`
 	VerdictBehind    bool                 `json:"verdict_behind"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
+	// ReadDue says a write now would be a paid read of the issue before work
+	// ([factory.BriefReadable]): the job has not worked, has not ended and its
+	// issue is not too thin to read. A page offers "Write the brief" on it.
+	ReadDue bool `json:"read_due,omitempty"`
+	// ReadPrice is what one such read typically costs on this factory
+	// ([factory.FirstReadPrice]), for that button: only while ReadDue, and
+	// only once one has run; absent otherwise.
+	ReadPrice float64 `json:"read_price,omitempty"`
 }
 
 // BriefBeginRequest is POST /v1/jobs/{id}/brief/begin: why the brief may be

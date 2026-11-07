@@ -464,6 +464,7 @@ func workerFooter(config Config, now time.Time) string {
 		out.WriteString("- There is no project here: this is the conversation's own space, and it holds only what this conversation has put there.\n")
 	}
 	out.WriteString(shell.PromptFact())
+	out.WriteString(stateHomeFact(config))
 	out.WriteString(nowLine(now))
 
 	// THE PROJECT'S OWN RULES, UNDER THIS PROFILE'S BOUND. Both numbers here are
@@ -731,4 +732,14 @@ func fenceFor(content string) string {
 		longest = 2
 	}
 	return strings.Repeat("`", longest+1)
+}
+
+// stateHomeFact is the footer's line naming codeaf's own data folder when it
+// is not the default ([Config.StateHome]), and "" when it is.
+func stateHomeFact(config Config) string {
+	where := strings.TrimSpace(config.StateHome)
+	if where == "" {
+		return ""
+	}
+	return "- codeaf's own data folder in this window is " + where + ". Where the manual says ~/.codeaf, it means this folder here; never read or change ~/.codeaf, which belongs to another codeaf home.\n"
 }

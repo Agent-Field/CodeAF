@@ -136,8 +136,9 @@ func (in *Intake) Once(ctx context.Context) error {
 // and its routing decision when it does. The order is the law, because each
 // step answers a question the next one needs:
 //
-//  1. its own state: a job a person stopped, one done, a non-issue, a
-//     first-run import held for its person, one not new, or one already
+//  1. its own state: a job a person stopped, one that already ran
+//     ([factory.EverRan]: a failed run waits for a person, never for a
+//     rule), one done, a non-issue, a first-run import held for its person, one not new, or one already
 //     waiting on an ask-first hold is passed by, and costs nothing more;
 //  2. ROUTING, before anything that reads its labels or its repository: an
 //     inbox or Jira job arrives with neither, and a rule is what gives it a
@@ -160,7 +161,7 @@ func (in *Intake) Once(ctx context.Context) error {
 // A routing error (a judge that cannot be kept) is answered with false, and
 // the pass goes on to the next job.
 func (in *Intake) admit(ctx context.Context, it factory.Item, rules []route.Rule, sw factory.RepoSwitch) (*routing, bool, error) {
-	if factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || it.AskedFirstReason != "" {
+	if factory.StoppedByPerson(it) || factory.EverRan(it) || factory.JobState(it) == "done" || !factory.IsIssueJob(it) || it.SetupHeld || it.State != factory.StateNew || it.AskedFirstReason != "" {
 		return nil, false, nil
 	}
 	routed, err := in.routeFor(ctx, rules, it)
@@ -423,7 +424,7 @@ func (in *Intake) lookFirst(ctx context.Context, it factory.Item) (factory.Item,
 // after Once listed the backlog still wins. Only a person's Run door may
 // restart a job they stopped; labels never restore that permission.
 func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
-	if factory.StoppedByPerson(it) || it.SetupHeld || factory.JobState(it) == "done" {
+	if factory.StoppedByPerson(it) || factory.EverRan(it) || it.SetupHeld || factory.JobState(it) == "done" {
 		return errMoved
 	}
 	if it.State != factory.StateNew {

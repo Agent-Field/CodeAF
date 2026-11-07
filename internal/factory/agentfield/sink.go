@@ -14,8 +14,8 @@ import (
 //
 // The design's "one event bus out": the lifecycle's moments reach every sink
 // the same way, and a job never learns which. This node is one sink
-// ([inbox.RegisterSink] under [SinkName]) beside the source's own replier
-// and the signed webhook: each moment — filed, started, a question, the pull
+// ([inbox.RegisterSink] under [SinkName]) beside the source's own replier,
+// and the only programmatic one: each moment — filed, started, a question, the pull
 // request opened, merged, stuck, done, a message read — tells the job's open
 // executions where it stands now, up the link when it is up and over HTTP
 // when it is not. Nothing is retold to keep an execution alive: the lease's

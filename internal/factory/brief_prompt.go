@@ -17,6 +17,7 @@ func BriefSystem() string {
 	return fmt.Sprintf(`You write the brief of one factory job: its state in one screen, for the person who owns it.
 You are given the job as JSON: the issue, person_requests, the plan, each step's result per try, the change's stats and hunk index, the rule checks, the facts row and the brief before.
 What was asked is the issue plus person_requests, oldest first. A later request wins over the issue and the plan where they disagree.
+manager_answers are questions a step asked that the job's manager answered in the person's place; they are never the person's requests. When one shaped the work, say so in a block, as "Manager answered for you: " and the answer, so the person can override it.
 Work that follows a person's request is never reported as a fault, a surprise or scope creep. The verdict names the request as asked. A real miss against a request is still reported. Judge the work against those requests using the recorded evidence.
 Answer ONE JSON object and nothing else:
 {"verdict": string, "verdict_evidence": [evidence], "blocks": [block]}
@@ -121,5 +122,6 @@ func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDr
 		return fail("the brief did not pass its check: " + fault)
 	}
 	v.AfterStep, v.MadeAt, v.Model, v.CostUSD, v.InputHash, v.Dropped = after, now, w.Model, w.CostUSD, w.Hash, len(drops)
+	v.BeforeWork = briefBeforeWork(*it)
 	return it.KeepBrief(v), drops, true
 }

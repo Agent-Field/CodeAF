@@ -121,8 +121,8 @@ func (h *appFactoryHost) syncJiraReplier() {
 }
 
 // jiraRecipe gives a ticket filed on a known repository that repository's
-// steps, read through the floor's door exactly as POST /api/intake does
-// (internal/factory/serve's intake). The door is looked up when a ticket
+// steps, read through the floor's door exactly as the desk's
+// factory.intake_add does (appfactory_intake.go). The door is looked up when a ticket
 // arrives, never when the loop starts, because the loop can start while the
 // host's mount holds the lock the door sits behind.
 func (h *appFactoryHost) jiraRecipe() inbox.Option {

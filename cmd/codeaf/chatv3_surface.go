@@ -11,6 +11,7 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -59,7 +60,12 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		options.SyncService = chatSyncService()
 	}
 	forced := armFinalSaving()
-	setFinalSyncService(options.SyncService)
+	var progressAllowed func() bool
+	if options.Host == "" {
+		// Hosted local chats use this pairing; an explicit remote host uses its own.
+		progressAllowed = func() bool { return !syncsetup.ConfirmedRemoved(home.Dir()) }
+	}
+	setFinalSyncService(options.SyncService, progressAllowed)
 	previousCompatibility := options.SavingCompatibility
 	options.SavingCompatibility = func(check func() bool) {
 		retainSavingCompatibility(check)

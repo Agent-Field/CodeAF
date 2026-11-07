@@ -24,6 +24,7 @@ func Encode(f File) ([]byte, error) {
 		Until  string  `yaml:"until,omitempty"`
 		Max    int     `yaml:"max,omitempty"`
 		Who    string  `yaml:"who,omitempty"`
+		Pass   string  `yaml:"pass,omitempty"`
 		// Input is an agentfield step's input mapping.
 		Input map[string]string `yaml:"input,omitempty"`
 	}
@@ -44,8 +45,8 @@ func Encode(f File) ([]byte, error) {
 		}
 		// An approval carries its label and who it waits on, but no prompt.
 		if factory.ApproveWord(name) {
-			if s.Who != "" || strings.TrimSpace(s.Label) != "" {
-				steps[name] = step{Label: strings.TrimSpace(s.Label), Who: s.Who}
+			if s.Who != "" || s.Pass != "" || strings.TrimSpace(s.Label) != "" {
+				steps[name] = step{Label: strings.TrimSpace(s.Label), Who: s.Who, Pass: s.Pass}
 			}
 			continue
 		}
@@ -75,7 +76,7 @@ func Encode(f File) ([]byte, error) {
 				rounds = 0
 			}
 		}
-		steps[name] = step{strings.TrimSpace(s.Label), prompt, s.Kind, s.When, s.Effort, s.Fanout, until, rounds, s.Who, s.Input}
+		steps[name] = step{strings.TrimSpace(s.Label), prompt, s.Kind, s.When, s.Effort, s.Fanout, until, rounds, s.Who, s.Pass, s.Input}
 	}
 	// A KEY THE FILE NEVER SAID IS NEVER WRITTEN, the same law as merge
 	// below. Writing a default spells it out, and a spelled-out key READS
@@ -192,7 +193,7 @@ func Encode(f File) ([]byte, error) {
 // file can say.
 func sameStep(a, b Step) bool {
 	return a.Label == b.Label && a.Prompt == b.Prompt && a.Kind == b.Kind && a.When == b.When && a.Effort == b.Effort &&
-		a.Fanout == b.Fanout && a.Until == b.Until && a.Max == b.Max && a.Who == b.Who && maps.Equal(a.Input, b.Input)
+		a.Fanout == b.Fanout && a.Until == b.Until && a.Max == b.Max && a.Who == b.Who && a.Pass == b.Pass && maps.Equal(a.Input, b.Input)
 }
 
 // listKey is a list key to write: a pointer, because omitempty drops an

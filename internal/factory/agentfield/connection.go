@@ -255,20 +255,21 @@ func Check(ctx context.Context, httpc *http.Client, url, key string) ([]Source, 
 
 func (c *Connection) path() string { return filepath.Join(c.Store.Root(), settingsFile) }
 
-// keepSecrets keeps both where the GitHub token is kept: with the app's keys
-// in app mode, otherwise in the profile. Any legacy node secret is forgotten.
+// keepSecrets keeps both where the GitHub token is kept: handed to the app to
+// keep in app mode (config.AppCredentials.Keep), otherwise in the profile. Any
+// legacy node secret is forgotten.
 func keepSecrets(profile, key, token string) error {
 	redact.Register(key)
 	redact.Register(token)
 	if keys := config.AppCredentialSource(); keys != nil {
 		for provider, v := range map[string]string{config.AppAgentFieldProvider: key, config.AppAgentFieldTokenProvider: token} {
 			if v != "" {
-				keys.Set(provider, v)
+				keys.Keep(provider, v)
 			} else {
-				keys.Remove(provider)
+				keys.Forget(provider)
 			}
 		}
-		keys.Remove(config.AppAgentFieldNodeProvider)
+		keys.Forget(config.AppAgentFieldNodeProvider)
 		return nil
 	}
 	return config.WriteAgentFieldSecrets(profile, key, token)
@@ -276,9 +277,9 @@ func keepSecrets(profile, key, token string) error {
 
 func forgetSecrets(profile string) error {
 	if keys := config.AppCredentialSource(); keys != nil {
-		keys.Remove(config.AppAgentFieldProvider)
-		keys.Remove(config.AppAgentFieldNodeProvider)
-		keys.Remove(config.AppAgentFieldTokenProvider)
+		keys.Forget(config.AppAgentFieldProvider)
+		keys.Forget(config.AppAgentFieldNodeProvider)
+		keys.Forget(config.AppAgentFieldTokenProvider)
 		return nil
 	}
 	if config.AgentFieldKeyAt(profile) == "" && config.AgentFieldNodeSecretAt(profile) == "" && config.AgentFieldInternalTokenAt(profile) == "" {

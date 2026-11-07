@@ -248,6 +248,11 @@ type Options struct {
 	// turn that answers nothing all send the question to the person. The
 	// inbox lane added it, additively.
 	Inbox func(ctx context.Context, it factory.Item, q factory.Asked) (InboxReply, error)
+	// FailureSummary is one cheap turn of the job's manager writing a failed
+	// step's one-line headline from its failure, when the step gave none
+	// ([factory.FailureSummaryAsk]); it is spent and booked as the job's own
+	// conversation. Nil leaves such a failure without a summary.
+	FailureSummary func(ctx context.Context, it factory.Item, f factory.Failure) (string, error)
 	// Record receives a step_failed event when a step errors. Nil keeps the
 	// failure on the job and writes no audit line. The worker's mirror
 	// leaves this nil; the factory that accepts the report writes the event.

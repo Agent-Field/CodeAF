@@ -111,6 +111,8 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
+	"Item.Passing":       "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",
+	"Item.PassJudge":     "service-owned: the manager's judgement of a manager-when approval, read only by the service that decides Auto (its reason reaches the job as needs_you's words)",
 	"Item.GitHubIssueID": "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
 	"Item.SourceClosed":  "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
 	"Item.PersonTouched": "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",
@@ -138,7 +140,7 @@ var Lost = map[string]string{
 	"Item.ReportReceipts": "known gap: the service's own acknowledgments of retained worker results, kept with the item so a lost reply never charges twice; no reader needs them",
 	"Item.ReportRetryAt":  "known gap: a person's retry grant, read by the service that holds the item; not carried to readers yet",
 	"Item.ManagerAnswer":  "known gap: the service's idempotency receipt for the manager's last decision; not carried to readers yet",
-	"Item.Briefs":         "the job's brief versions cross whole only through GET /v1/jobs/{id}/brief; a job carries the newest rev and status as brief",
+	"Item.Briefs":         "the job's brief versions cross whole only through GET /v1/jobs/{id}/brief; a job carries the newest rev and status as brief, and only the worker's pull carries the read before work (WorkerJob first_read)",
 	"Item.BriefWriting":   "crosses as the brief's status (job.brief.status and the brief route's failure); the writer's own record otherwise",
 	"Item.Followers":      "each person's own: the caller's crosses as following (ForViewer), and nobody else's ever does",
 	"Item.CommentsSeen":   "the service's own record of which comments the job's manager has considered; only the service that reads GitHub uses it, and readers see comment_reads",
@@ -161,7 +163,7 @@ func FromItem(it factory.Item) Job {
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
 		Runner: runnerOf(it), JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
-		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
+		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt, Rejection: wireRejection(it.Rejection),
 		PublishAnyway: it.PublishAnyway, DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApprovalSummary(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo: it.Person(), Assignee: it.Person(),
@@ -248,6 +250,9 @@ func needsYou(it factory.Item) *NeedsYou {
 	switch kind {
 	case factory.NeedsApprovePlan:
 		ny.BackTo, _ = factory.PlanSendsBack(it)
+	case factory.NeedsApproveStep:
+		ny.BackTo, _ = factory.PlanSendsBack(it)
+		ny.Step, _ = factory.StepHold(it)
 	case factory.NeedsOutOfAttempts:
 		ny.BackTo = stuckBackTo(it)
 	}
@@ -368,14 +373,14 @@ func failureOf(it factory.Item) *Failure {
 }
 
 func failureWire(f factory.Failure) *Failure {
-	return &Failure{Rounds: f.Attempts, Runner: f.Machine, Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+	return &Failure{Rounds: f.Attempts, Runner: f.Machine, Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At, Summary: f.Summary}
 }
 
 func failureItem(f *Failure) *factory.Failure {
 	if f == nil {
 		return nil
 	}
-	return &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+	return &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At, Summary: f.Summary}
 }
 
 // CanFor is MayAct in the wire's field names.
@@ -434,7 +439,8 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		RetryPublish: a.RetryPublish, Answer: answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 		SpendAnswer: owner && it.State == factory.StateNeedsYou && it.QKind == factory.QKindSpendStopped,
 		RejectPlan:  answer && planSendsBack(it),
-		PRReady:     owner && factory.NormalizeHandle(caller) != "" && it.Kind != factory.KindPR && it.Publish == "pr" && it.DoneHow != "dropped" && it.PullRequest != nil && it.PullRequest.Number > 0 && it.PullRequest.State == factory.PROpen && it.PullRequest.Draft,
+		Reject:      (answer || approve) && factory.WaitsOnApproval(it),
+		PRReady:     owner && factory.NormalizeHandle(caller) != "" && factory.OffersMarkReady(it),
 		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
 		Restore:     owner && factory.JobDoneHow(it) == "dropped",
 	}
@@ -459,6 +465,15 @@ func AsOperator(can *Can, it factory.Item, caller string) {
 		can.Answer = true
 		can.RejectPlan = planSendsBack(it)
 	}
+	can.Reject = can.Reject || (can.Approve || can.Answer) && factory.WaitsOnApproval(it)
+}
+
+// wireRejection is a stored rejection on the wire, nil for none.
+func wireRejection(r *factory.Rejection) *Rejection {
+	if r == nil {
+		return nil
+	}
+	return &Rejection{By: r.By, Words: r.Words, At: r.At}
 }
 
 // heldInQueue is a queued job its person keeps from starting ([run.HoldQueued]).
@@ -497,7 +512,7 @@ func jobMerge(it factory.Item) *JobMerge {
 	if m := it.Merging; m == nil || m.State == factory.MergeFailed {
 		// Blocked is the gate's answer for a person: the same rule the Merge
 		// verb applies, so a disabled button and a refused verb agree.
-		if v := factory.MergeGate(it, factory.MergeAsk{By: "you"}); !v.OK {
+		if v := factory.MergeOffered(it); !v.OK {
 			out.Blocked = v.Why
 		}
 	}
@@ -572,7 +587,7 @@ func ToItem(j Job) factory.Item {
 		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
-		PublishAnyway: j.PublishAnyway, Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo, PersonStopped: d.PersonStopped,
+		PublishAnyway: j.PublishAnyway, Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo, PersonStopped: d.PersonStopped, Rejection: d.Rejection,
 		DismissedBy: j.DismissedBy, DoneAt: j.DoneAt,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
@@ -595,6 +610,9 @@ func ToItem(j Job) factory.Item {
 	it.AskedFirstReason = j.AskedFirstReason
 	it.House = cloneHouse(j.HouseRules)
 	it.PipelineCopy = j.PipelineCopy.Clone()
+	if j.FirstRead != nil {
+		it.Briefs = []factory.BriefVersion{*j.FirstRead}
+	}
 	it.PipelineDecided = j.PipelineDecided
 	it.StartRules = cloneStartRules(j.StartRules)
 	it.RuleHold = j.RuleHold
@@ -667,6 +685,9 @@ func gate(it factory.Item) string {
 	case it.Question == "":
 		return ""
 	case it.QKind == factory.QKindApprove:
+		if _, ok := factory.StepHold(it); ok {
+			return GateStep
+		}
 		return GatePlan
 	case it.QKind == "cap":
 		return GateCap
@@ -836,12 +857,12 @@ func toRecipe(p Pipeline) factory.Recipe {
 
 func fromStage(s factory.Stage) StepDef {
 	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Parent: s.Parent, Group: s.Group, GroupLabel: s.GroupLabel, Target: s.Target, Input: s.Input, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
-		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
+		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who, Pass: s.Pass}
 }
 
 func toStage(d StepDef) factory.Stage {
 	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Parent: d.Parent, Group: d.Group, GroupLabel: d.GroupLabel, Target: d.Target, Input: d.Input, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
-		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
+		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who, Pass: d.Pass}
 }
 
 // stockNames are the step names the default pipeline spells for any kind; a
@@ -881,7 +902,7 @@ func toClaim(c Claim) factory.Claim {
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
 		SourceRef:   it.SourceRef,
-		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped,
+		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped, Rejection: it.Rejection,
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
@@ -1054,7 +1075,7 @@ func questions(it factory.Item) []Question {
 	}
 	if a := it.Asking; a != nil {
 		at := a.At
-		q := Question{Text: a.Question, State: "open", Kind: QuestionAsked, FromStep: a.Stage,
+		q := Question{Text: a.Question, State: "open", Kind: QuestionAsked, FromStep: a.Stage, Person: a.Person,
 			With: a.With, Options: append([]string(nil), a.Options...), Pick: a.Pick, Why: a.Why, At: &at}
 		// A reported ask holds the same words in Question and Asking. Keep
 		// its gate kind and its answer details together on one wire entry.
@@ -1126,7 +1147,7 @@ func unquestions(it *factory.Item, qs []Question) {
 				continue
 			}
 		}
-		a := &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, With: q.With, Why: q.Why}
+		a := &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, With: q.With, Why: q.Why, Person: q.Person}
 		if q.At != nil {
 			a.At = *q.At
 		}
@@ -1200,6 +1221,9 @@ func runStep(s Step, p factory.Phase) Step {
 	s.At, s.StartedAt = timeOrNil(p.At), timeOrNil(p.Started)
 	s.Failure = failureWireOrNil(p.Failure)
 	s.Rounds = roundsWire(p.Rounds)
+	if p.Passed != nil && p.State == factory.PhaseDone {
+		s.Passed = &StepPassed{By: p.Passed.By, Handle: p.Passed.Handle, Why: p.Passed.Why}
+	}
 	return s
 }
 
@@ -1337,7 +1361,7 @@ func strip(jobs []Job) []Cell {
 			out = append(out, Cell{Step: j.Step.Name, Label: j.Step.Label})
 		}
 		out[i].Jobs++
-		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateProof
+		out[i].Waiting = out[i].Waiting || j.Gate == GatePlan || j.Gate == GateStep || j.Gate == GateProof
 	}
 	return out
 }

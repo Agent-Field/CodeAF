@@ -474,8 +474,7 @@ func TestTheTerminalTriageStartStillHoldsOneActiveLoop(t *testing.T) {
 	if _, err := floor.ChangeRunnerSettings(func(s *store.RunnerSettings) error { s.ReadOnArrival = true; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	factoryTriage = sync.Once{}
-	t.Cleanup(func() { factoryTriage = sync.Once{} })
+	freshEngineFactoryStore(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	startFactoryTriage(ctx, floor)
 	startFactoryTriage(ctx, floor)
@@ -510,8 +509,7 @@ func TestTheTerminalTriageReadsNothingWhileTheReadOnArrivalIsOff(t *testing.T) {
 	if _, err := floor.Create(factory.Item{Repo: "acme/api", Title: "Waiting", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
 		t.Fatal(err)
 	}
-	factoryTriage = sync.Once{}
-	t.Cleanup(func() { factoryTriage = sync.Once{} })
+	freshEngineFactoryStore(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	startFactoryTriage(ctx, floor)

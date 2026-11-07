@@ -18,6 +18,14 @@ BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=n
 BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO := github.com/Agent-Field/codeaf/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
+# The GitHub OAuth app the first run's browser sign-in uses. Its client ID is
+# not a secret; a build without one simply has no browser sign-in (the gh
+# login and a pasted token still work). Set it from the environment or the
+# command line: make app-sidecar CODEAF_GITHUB_CLIENT_ID=Ov23li...
+CODEAF_GITHUB_CLIENT_ID ?=
+ifneq ($(strip $(CODEAF_GITHUB_CLIENT_ID)),)
+BUILD_STAMP += -X github.com/Agent-Field/codeaf/internal/factory/github.clientID=$(strip $(CODEAF_GITHUB_CLIENT_ID))
+endif
 MANUAL_TAG := codeaf_packed_manual
 
 # The packed corpora — the two manuals. Each folder is the source of truth and

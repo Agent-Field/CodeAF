@@ -21,9 +21,10 @@ import (
 //     add_pipeline {name, from} starts it as a copy of a pipeline the file
 //     already holds. A step that does not exist yet is added afterwards with
 //     add_step naming the new pipeline, in the same preview.
-//   - remove_pipeline {name} takes a named pipeline out of the file. Its
-//     steps' definitions stay, as a removed row's do: another pipeline may
-//     list them.
+//   - remove_pipeline {name} takes a named pipeline out of the file, and with
+//     it the definition of every step only it listed. A step another
+//     pipeline lists, the fixed list names or codeaf ships keeps its
+//     definition ([editState.dropUnused]).
 //   - rename_pipeline {name, to} gives a named pipeline another name, its
 //     list and its adapt word unchanged.
 //
@@ -172,6 +173,7 @@ func (st *editState) pipelines(i int, op EditOp) *EditError {
 		}
 		delete(st.out.Pipeline, kind)
 		st.moveAdapt(kind, "")
+		st.dropUnused(list)
 		st.kinds = append(st.kinds, PipelineChange{Op: op.Op, Pipeline: op.Name})
 	case OpRenamePipeline:
 		if !exists {
@@ -221,6 +223,34 @@ func (st *editState) newPipeline(i int, op EditOp) ([]string, *EditError) {
 		out = append(out, name)
 	}
 	return out, nil
+}
+
+// dropUnused takes out of the file the definition of each step the removed
+// pipeline listed that nothing else in the file still uses.
+//
+// A REMOVED PIPELINE TAKES ITS OWN STEPS WITH IT. Leaving them behind left a
+// definition no list runs, and a later add_step of the same name with other
+// words was refused as a clash with a step the person could no longer see.
+// A step another pipeline lists, a step the fixed list names, and a step
+// codeaf ships (whose words in the file are what the default pipeline runs)
+// are still the file's, so each of those stays exactly as written.
+func (st *editState) dropUnused(removed []string) {
+	used := map[string]bool{}
+	for _, list := range st.out.Pipeline {
+		for _, name := range list {
+			used[name] = true
+		}
+	}
+	for _, name := range removed {
+		if used[name] || listed(st.out.Fixed, name) {
+			continue
+		}
+		if _, shipped := builtinTable[name]; shipped || factory.ApproveWord(name) {
+			continue
+		}
+		delete(st.out.Steps, name)
+		delete(st.inPipeline, name)
+	}
 }
 
 // moveAdapt carries one pipeline's own adapt word to its new name, or drops

@@ -186,3 +186,45 @@ func TestAnOpenQuestionHasNoMarkup(t *testing.T) {
 		t.Fatalf("fault %q, %+v", fault, v.Blocks)
 	}
 }
+
+// A READ BEFORE WORK IS MARKED AS ONE, so the steps that start later are
+// given it and a version written after work never is.
+func TestAReadKeptBeforeWorkIsTheOneAJobStartsWith(t *testing.T) {
+	it := firstReadJob()
+	if _, ok := FirstReadOf(it); ok {
+		t.Fatal("a job with no kept version has a read before work")
+	}
+	v, _, ok := it.EndBrief(BriefWritten{Hash: "h", Model: "m", CostUSD: 0.004, Draft: firstReadDraft(t, "Make a resend after a crash harmless", "the first send landed")}, briefNow)
+	if !ok || !v.BeforeWork {
+		t.Fatalf("the read before work was not kept as one: kept %v, %+v", ok, v)
+	}
+	if got, ok := FirstReadOf(it); !ok || got.Rev != v.Rev || got.CostUSD != 0.004 {
+		t.Fatalf("FirstReadOf = %+v, %v", got, ok)
+	}
+	worked := firstReadWorked()
+	worked.Briefs = it.Briefs
+	later := BriefVersion{Verdict: "the plan is written"}
+	worked.KeepBrief(later)
+	if got, ok := FirstReadOf(worked); !ok || got.Rev != v.Rev {
+		t.Fatalf("a later report hid the read before work: %+v, %v", got, ok)
+	}
+	if !BriefReadable(firstReadJob()) || BriefReadable(firstReadWorked()) || BriefReadable(Item{Title: "it doesn't work", Body: "It broke again."}) {
+		t.Fatal("BriefReadable is a paid read before work only")
+	}
+}
+
+// THE PRICE IS MEASURED: the median of the reads this factory kept, nothing
+// before one has run, and never a version written after work.
+func TestTheReadPriceIsTheMedianOfTheReadsKept(t *testing.T) {
+	if got := FirstReadPrice(nil); got != 0 {
+		t.Fatalf("no read quoted %v", got)
+	}
+	items := []Item{
+		{Briefs: []BriefVersion{{BeforeWork: true, CostUSD: 0.006}, {CostUSD: 0.5}}},
+		{Briefs: []BriefVersion{{BeforeWork: true, CostUSD: 0.002}}},
+		{Briefs: []BriefVersion{{BeforeWork: true, CostUSD: 0.004}}},
+	}
+	if got := FirstReadPrice(items); got != 0.004 {
+		t.Fatalf("price %v, want the median 0.004", got)
+	}
+}

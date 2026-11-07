@@ -106,18 +106,19 @@ const (
 // an errand's folder is still somebody's — an automation was saved from it —
 // and may be nil.
 func SweepHome(errandsRoot string, held func(dir string) bool, note func(string)) {
-	SweepHomeContext(context.Background(), errandsRoot, held, note)
+	SweepHomeContext(context.Background(), errandsRoot, held, nil, note)
 }
 
 // SweepHomeContext is SweepHome with cancellation. Cancellation is checked
 // before resolving the home so a stopped launch cannot target a home selected
-// after it started.
-func SweepHomeContext(ctx context.Context, errandsRoot string, held func(dir string) bool, note func(string)) {
+// after it started. A non-nil keep preserves project conversations retained by
+// the caller; held independently preserves errands saved by automations.
+func SweepHomeContext(ctx context.Context, errandsRoot string, held, keep func(dir string) bool, note func(string)) {
 	if contextDone(ctx) {
 		return
 	}
 	now := time.Now()
-	SweepPlacesContext(ctx, home.Join("v3", placesDirName), now, note)
+	SweepPlacesContext(ctx, home.Join("v3", placesDirName), now, keep, note)
 	if contextDone(ctx) {
 		return
 	}
@@ -129,12 +130,13 @@ func SweepHomeContext(ctx context.Context, errandsRoot string, held func(dir str
 // A root that is not there is not a failure — it is a machine that has not held
 // a conversation yet — and answers silently.
 func SweepPlaces(root string, now time.Time, note func(string)) {
-	SweepPlacesContext(context.Background(), root, now, note)
+	SweepPlacesContext(context.Background(), root, now, nil, note)
 }
 
 // SweepPlacesContext is SweepPlaces with cancellation between entries and
-// immediately before each destructive operation.
-func SweepPlacesContext(ctx context.Context, root string, now time.Time, note func(string)) {
+// immediately before each destructive operation. A non-nil keep can retain a
+// conversation that would otherwise be litter, without preventing log expiry.
+func SweepPlacesContext(ctx context.Context, root string, now time.Time, keep func(dir string) bool, note func(string)) {
 	if contextDone(ctx) {
 		return
 	}
@@ -174,7 +176,7 @@ func SweepPlacesContext(ctx context.Context, root string, now time.Time, note fu
 				sweepUnfinishedCopies(ctx, path, sessions, now, note)
 				continue
 			}
-			sweepSession(ctx, filepath.Join(path, entry.Name()), now, note)
+			sweepSession(ctx, filepath.Join(path, entry.Name()), now, keep, note)
 		}
 	}
 }
@@ -182,7 +184,7 @@ func SweepPlacesContext(ctx context.Context, root string, now time.Time, note fu
 // sweepSession is the three rules over one session folder, in the order that
 // makes rule 3 unconditional: the live check first, and nothing at all happens
 // to a folder that fails it.
-func sweepSession(ctx context.Context, dir string, now time.Time, note func(string)) {
+func sweepSession(ctx context.Context, dir string, now time.Time, keep func(dir string) bool, note func(string)) {
 	if contextDone(ctx) || sessionIsOpen(dir) {
 		// Somebody is talking to it. Not its logs, not its folder, nothing.
 		return
@@ -203,6 +205,9 @@ func sweepSession(ctx context.Context, dir string, now time.Time, note func(stri
 	}
 	if !sweepIsLitter(meta, dir, now) {
 		retireCheckpointForks(ctx, dir, true, note)
+		return
+	}
+	if keep != nil && keep(dir) {
 		return
 	}
 	reapSession(ctx, dir, meta, note)

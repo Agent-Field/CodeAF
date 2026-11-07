@@ -346,6 +346,11 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 		if j := factory.StageIndex(it.Stages, stages[i].Name); j >= 0 && stages[i].Model == "" {
 			stages[i].Model = it.Stages[j].Model
 		}
+		// WHO MAY PASS AN APPROVE STEP, AND WHOM IT WAITS ON, ARE THE
+		// SERVER'S: a worker's reshape never widens them.
+		if j := factory.StageIndex(it.Stages, stages[i].Name); j >= 0 && factory.IsApprove(it.Stages[j]) {
+			stages[i].Pass, stages[i].Who = it.Stages[j].Pass, it.Stages[j].Who
+		}
 	}
 	it.Stages = stages
 	it.Stream.Phases = phases
@@ -509,7 +514,14 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 			ph.RoundLimit = max(ph.RoundLimit, step.RoundLimit)
 		}
 	}
-	it.Stream.Cur = i
+	// A QUESTION STANDS WHERE IT WAS ASKED. A later report of another step (a
+	// finished step's cost or chat settling) does not move the run off the
+	// step that waits on the person: the answer reads the current step, and
+	// the owner's #22 had its approval look at the plan, find nothing waiting
+	// and leave the approve step waiting while the run went on.
+	if !waitsElsewhere(it, i) {
+		it.Stream.Cur = i
+	}
 	if step.Result != nil {
 		if step.Result.Edit != nil {
 			return fmt.Errorf("worker reports cannot change the pipeline")
@@ -536,6 +548,16 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		factory.StampFailure(it, f)
 	}
 	return nil
+}
+
+// waitsElsewhere says the job waits on the person at a step other than i: a
+// question stands and the current step is waiting on it.
+func waitsElsewhere(it *factory.Item, i int) bool {
+	s := it.Stream
+	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" || s.Cur == i || s.Cur < 0 || s.Cur >= len(s.Phases) {
+		return false
+	}
+	return s.Phases[s.Cur].State == factory.PhaseWaiting
 }
 
 func addCost(it *factory.Item, usd float64) { it.Stream.Spent += usd }
@@ -651,6 +673,10 @@ func skipPhase(it *factory.Item, ph *factory.Phase, reason string, now time.Time
 // not a new round.
 func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 	ph.State = state
+	if state != factory.PhaseDone {
+		// Who passed an approve step is true only while it stays passed.
+		ph.Passed = nil
+	}
 	if state != factory.PhaseSkipped {
 		ph.SkipReason = ""
 	}
@@ -764,6 +790,14 @@ func landItem(it *factory.Item, now time.Time) bool {
 		if it.PullRequest == nil && it.Stream.Phases[n-1].Name == factory.FollowPRStep && n > 1 {
 			it.Stream.Cur = n - 2
 		}
+	}
+	// THE APPROVE STEP A RUN LANDS AT WAITS FOR ITS ANSWER. The proof approval
+	// passes it ([approveStored]); until then it is the wait the page shows,
+	// on the local runner and on a worker alike (a worker never reports an
+	// approve step, so this is where the service's copy learns it).
+	if g := factory.LandingGate(*it); g >= 0 {
+		setPhaseState(&it.Stream.Phases[g], factory.PhaseWaiting, now)
+		it.Stream.Cur = g
 	}
 	// THE CHANGE IS CHECKED AGAINST THE RULES BEFORE ANYTHING IS PUBLISHED: a
 	// changed file an ask-first or never path names waits for the person, in

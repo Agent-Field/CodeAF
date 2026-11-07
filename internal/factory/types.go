@@ -151,6 +151,10 @@ type Stage struct {
 	// person, "@handle" a named person, operator any of the factory's
 	// operators. Only an approve step carries one.
 	Who string `json:",omitempty"`
+	// Pass is who may pass an approve step ([PassWord]): "" (as manager, for
+	// every pipeline written before it), person, manager, or `manager when
+	// <condition>`. Only an approve step carries one ([PassOf]).
+	Pass string `json:",omitempty"`
 	// OldGate and OldGateWhen are a stage's gate as a file or a document
 	// written before approve steps said it (`gate plan when large`). They are
 	// read, turned into approve steps ([ExpandGates]) and never written.
@@ -371,6 +375,9 @@ type Phase struct {
 	// of the same step clears it, and clears the job's failure for this
 	// step. The record keeps the incident.
 	Failure *Failure `json:",omitempty"`
+	// Passed is who passed an approve step, once it is done ([StampPassed]);
+	// nil on every other step, and again once the step waits or is sent back.
+	Passed *Passed `json:",omitempty"`
 }
 
 // ResultOutputMost is how much of a step's output [Phase.Result] keeps, in
@@ -589,10 +596,22 @@ type Item struct {
 	Priority    *JobPriority `json:",omitempty"`
 	DismissedBy []string     `json:",omitempty"`
 	DoneHow     string       `json:",omitempty"`
+	// Rejection is the person's decision that ended this job at one of its
+	// approvals, with their words ([Item.EndRejected]); nil for every other
+	// ending. A rejected job is closed here (DoneHow closed_locally).
+	Rejection *Rejection `json:",omitempty"`
 	// Scout is the last Look closer on this job ([Scout]); nil is never.
 	Scout    *Scout    `json:",omitempty"`
 	DoneAt   time.Time `json:",omitempty"`
 	Approval *Approval `json:",omitempty"`
+	// Passing is who is passing the approve step the job waits at, set by the
+	// door that answers it just before the answer goes in and moved onto the
+	// step's phase by the write that passes it ([StampPassed]).
+	Passing *Passed `json:",omitempty"`
+	// PassJudge is the manager's reading of the condition of a `manager when`
+	// approve step the job waits at ([PassJudged]); stale once its key no
+	// longer names the waiting approval.
+	PassJudge *PassJudgement `json:",omitempty"`
 	// PersonStopped survives state resets, expiry of Undo and engine restarts.
 	// Only an explicit person control may clear it.
 	PersonStopped *bool     `json:",omitempty"`
@@ -1109,6 +1128,60 @@ type Asked struct {
 	With string
 	// Why is the manager's reason for sending it to the person, "" for none.
 	Why string
+	// Person says the step marked the question as one only a person can
+	// answer (the ask tool's judgement kind): it goes straight to the person,
+	// and the manager is never given a turn on it ([PersonFirst]).
+	Person bool `json:",omitempty"`
+}
+
+// The reasons a step's question goes straight to the person, said where the
+// manager's own reason would be ([Asked.Why]).
+const (
+	WhyManualAsksYou = "Manual: every step question comes to you"
+	WhyOnlyAPerson   = "the step said only a person can answer this"
+)
+
+// PersonFirst is why a step's question skips the job's manager and goes
+// straight to the person, "" when the manager answers first as usual. A job
+// in Manual sends every step question to its person; a question the step
+// marked as needing a person goes to them in every mode. Neither reads a
+// pipeline's or a step's name.
+func PersonFirst(it Item, q Asked) string {
+	switch {
+	case it.Autonomy == AutonomyManual:
+		return WhyManualAsksYou
+	case q.Person:
+		return WhyOnlyAPerson
+	}
+	return ""
+}
+
+// AnsweredBy names who answered a recorded step question ([Question.With]):
+// the job's manager in the person's place, or the person.
+const AnsweredByManager = "manager"
+
+// KeepManagerAnswer records on the job a step's question the manager answered
+// in the person's place, beside the person's own answers
+// ([Item.AnsweredQuestions]), so the job's page can show "Manager answered for
+// you" with a way to override it, and its Brief can say so.
+//
+// AN ANSWER GIVEN FOR THE PERSON IS NEVER INVISIBLE. The manager answering a
+// step's question first is the design; doing it with nothing on the job a
+// person can read was not, and a live run had the manager settle a preference
+// only the person held, twice, with no trace.
+func (it *Item) KeepManagerAnswer(q Asked, answer string, now time.Time) {
+	at := q.At
+	if at.IsZero() {
+		at = now
+	}
+	it.AnsweredQuestions = append(it.AnsweredQuestions, Question{
+		Text: q.Question, FromStep: q.Stage, Kind: "asked", With: AskedManager, State: "answered",
+		Options: append([]string(nil), q.Options...), Pick: q.Pick, At: &at,
+		Answer: &Answer{By: AnsweredByManager, Text: answer, At: now},
+	})
+	if over := len(it.AnsweredQuestions) - AnswersMost; over > 0 {
+		it.AnsweredQuestions = it.AnsweredQuestions[over:]
+	}
 }
 
 // Who holds a step's question ([Asked.With]).

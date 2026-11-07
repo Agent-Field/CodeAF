@@ -255,6 +255,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
 | `factory.agentfield_run` | `in.FactoryAgentFieldRunParams` | `FactoryAgentFieldRun` |
 | `factory.agentfield_reasoners` | `in.FactoryAgentFieldReasonersParams` | `FactoryAgentFieldReasoners` |
+| `factory.foreman_open` | `in.FactoryRef` | `FactoryForeman` |
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -265,6 +266,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_hold` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_pr_ready` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_merge` | `in.FactoryJobMergeParams` | `FactoryJobActed` |
+| `factory.job_reject` | `in.FactoryJobRejectParams` | `FactoryJobActed` |
 | `factory.job_reject_plan` | `in.FactoryJobRejectPlanParams` | `FactoryJobActed` |
 | `factory.job_reopen` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_request_changes` | `in.FactoryJobChangesParams` | `FactoryJobActed` |
@@ -305,6 +307,10 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.agentfield_status` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
 | `factory.agentfield_trigger_add` | `in.FactoryAgentFieldTriggerAddParams` | `FactoryAgentFieldTrigger` |
 | `factory.agentfield_triggers` | `in.FactoryRef` | `FactoryAgentFieldTriggers` |
+| `factory.ai_search` | `in.FactoryAISearchParams` | `FactoryAISearchStarted` |
+| `factory.ai_search_estimate` | `in.FactoryAISearchParams` | `FactoryAISearchEstimate` |
+| `factory.ai_search_status` | `in.FactoryAISearchRunRef` | `FactoryAISearchRun` |
+| `factory.ai_search_stop` | `in.FactoryAISearchRunRef` | `FactoryAISearchRun` |
 | `factory.jira_connect` | `in.FactoryJiraConnectParams` | `FactoryJiraStatus` |
 | `factory.jira_disconnect` | `in.FactoryRef` | `FactoryJiraStatus` |
 | `factory.jira_status` | `in.FactoryRef` | `FactoryJiraStatus` |
@@ -348,6 +354,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.setup_continue` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_discover` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_done` | `in.FactoryLocalParams` | `FactorySetupView` |
+| `factory.setup_github_cancel` | `in.FactorySignInFlowParams` | `Empty` |
+| `factory.setup_github_poll` | `in.FactorySignInFlowParams` | `FactorySetupGitHubState` |
+| `factory.setup_github_start` | `in.FactoryLocalParams` | `FactorySignIn` |
 | `factory.setup_folder_check` | `in.FactorySetupFolderCheckParams` | `FactorySetupFolder` |
 | `factory.setup_read` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_retry_read` | `in.FactorySetupRepoParams` | `FactorySetupView` |
@@ -404,8 +413,33 @@ finished or publishing jobs. Ended jobs retain their existing `stale` or
 and errors retain their existing codes, including `bad_params` for malformed
 requests. Other job actions retain their guards except Pause and Resume, described below.
 
+`factory.setup_github` in hello features says the engine can connect the
+first run's GitHub in the browser with GitHub's OAuth device flow. It is
+announced only by a build that names an OAuth app (the client ID stamped in at
+build time, or `CODEAF_GITHUB_CLIENT_ID`); without one the three methods are
+`unknown_method` and setup offers the gh login and a pasted token.
+`factory.setup_github_start {caller}` answers `FactorySignIn` (`flow`,
+`factory`, `user_code`, `verification_uri`, `interval`, `expires_in`), the
+shape `factory.sign_in_start` answers; GitHub's device code stays in the engine
+and a second start from the same caller replaces the first. The scope asked
+for is `repo`. `factory.setup_github_poll {flow, caller}` answers
+`{state: pending|signed_in|expired|denied, interval?, message?, github_token?,
+view?}`; a poll sooner than `interval` is answered `pending` without asking
+GitHub, and `slow_down` raises `interval`. On approval the engine connects the
+token exactly as `factory.setup_connect {source: token}` does and only then
+answers `signed_in` with the setup `view` after the connect and the token,
+once, as `github_token`, for the app to keep in its Keychain as it keeps a
+pasted token. It is the only answer of the setup wire that carries a secret. A
+connect that fails is that connect's error, and the flow is over either way.
+`factory.setup_github_cancel {flow, caller}` forgets the flow. Another
+caller's flow, an ended flow and an unknown one are `not_found`.
+
 `factory.intake` in hello features says the engine serves `factory.intake_add`:
-outside work filed as a job, the same door as the factory's `POST /api/intake`.
+outside work filed as a job through `inbox.Add` in the engine's own process, on
+the factory this engine serves; the factory has no HTTP intake, and another
+factory is `not_found` ("work is filed on the machine that runs the factory; on
+another machine, connect GitHub or Jira there or send it through AgentField").
+Work for a repository that is off is `conflict` with the factory's repo-off words.
 Its params are `{factory, source, external_id, title, body?, url?, author?,
 labels?, priority?, repo?, trust?}`; `source` is a lowercase name (`jira`,
 `inbox:ops`), `priority` is `p0`..`p3`, and `trust` is `owner` (the default),
@@ -664,6 +698,23 @@ one repository, so there is one pair per factory. Both fields are absent when
 the rules were never written, and when the factory last wrote them with a build
 that did not record the change. A write sent with the factory's script
 credential records the factory's operator.
+
+The job search bar's AI search (hello feature `factory.ai_search`) answers a
+person's question in their own words with the jobs it is about.
+`factory.ai_search_estimate {factory, question, jobs?}` asks no model and answers
+`{factory, question, model, items, reused, reads, judge_most, usd_typical?,
+usd_most?}`: `reads` screen reads of 40 items each, at most `judge_most` (60)
+yes/no questions, `reused` items whose answers to this question are already
+kept, and dollars only when the model's price is known. `factory.ai_search`
+with the same params starts one run and answers `{run}` at once; the run reads
+the caller's own queue (issue jobs, not dropped), or only `jobs` (at most 5000
+ids) when sent. `factory.ai_search_status {run}` answers `{run, factory,
+question, words, phase, total, read, related, checked, over?, asked, reused?,
+failed?, usd, model, matches: [{job, ref, title, repo, why, kept?}], error?}`
+where `phase` is `screening`, `judging`, `done`, `failed` or `stopped`, and
+`factory.ai_search_stop {run}` ends it. There is no event: a surface polls
+status. A question is at most 300 characters; a leading `?` is dropped. Every
+call is booked as `factory search`.
 
 An engine whose hello carries the feature `factory.routes` serves
 `factory.routes {factory}` and `factory.routes_set {factory, rules, expect?}`:
@@ -1136,6 +1187,22 @@ one filesystem call per disk; it starts nothing. hello says `health.check`.
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
 
+A credential a door gives an app-run engine (a pasted GitHub token through
+`factory.setup_connect`, a Jira token, an AgentField key and node secret through
+`factory.agentfield_connect`) is held in memory and handed to the app to keep, BY
+PULL, never on an event: the engine emits an empty `credentials.changed`, and the
+app's core calls `credentials.take`, which answers each change once, the latest per
+provider, as `{changes: [{provider, key}]}` or `{provider, removed: true}`; a change
+not taken within 60 seconds is dropped. The core keeps the key in its secure store
+under `provider` and hands it back at the next launch with `keys.set {provider, key}`,
+which queues nothing. `keys.set` takes `github`, `jira`, `agentfield` and
+`agentfield-node` this way, beside the model providers. Hello announces
+`credentials.take` when the engine serves it.
+
+| method | params | result |
+|---|---|---|
+| `credentials.take` | `Empty` | `CredentialsTaken` |
+
 ## manual methods
 
 | method | params | result |
@@ -1553,6 +1620,7 @@ and the reply is empty.
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
 | `compaction.ended` | `CompactionEnded` |
+| `credentials.changed` | `Empty` |
 | `crew.changed` | `CrewChanged` |
 | `crew.log` | `CrewLogEvent` |
 | `crew.proposal.delta` | `CrewProposalDelta` |
@@ -2076,6 +2144,24 @@ manager chat or composer (and discards the returned step chats). They require a
 desktop update before pairing with this engine for jobs without a manager.
 The hello feature is capability advertisement, not client negotiation; it does
 not by itself make those older desktops compatible.
+
+## The factory's own manager (`factory.foreman_open`)
+
+The hello feature `factory.foreman_open` announces the factory-wide manager,
+titled "Factory manager" (the method keeps its `foreman` name, and its team
+handle stays `@foreman`). `factory.foreman_open {factory}` answers `{factory, agent}`: `agent` is
+an agent id the desk opens and sends to like any conversation (`agents.send`).
+The first call makes the conversation; every later call answers the same one.
+Only the factory this engine serves is accepted; any other is `not_found`, as
+`factory.job_chats` refuses it.
+
+The Factory manager reads only the floor of the factory home it belongs to, through
+`factory_floor`: `ask` is `running`, `queue` (not started, most urgent then
+oldest), `waiting`, `shipped` (shipped today, with pull requests and changes),
+`risky`, `cheapest`, `oldest`, `all` or `item`. When the person asks, `start`
+starts one job and `priority` (`p0`–`p3`, with `item`) sets one job's priority,
+each through the same factory verb the job page's own Start and priority send,
+as the person. It never stops, ships, merges or posts.
 ### factory.job_publish_anyway
 
 Hello feature `factory.publish_anyway` advertises this person action. Params:

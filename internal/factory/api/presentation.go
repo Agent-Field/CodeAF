@@ -17,6 +17,8 @@ const WaitingForComputer = "waiting_for_computer"
 func PresentJob(j *Job) {
 	p := StatePresentation{Kind: j.State}
 	switch {
+	case j.DoneHow == "closed_locally" && j.Rejection != nil:
+		p.Kind, p.Title, p.Detail = "done", "Rejected", factory.RejectedWords(j.Rejection.Words)+". Reopen or Run as new to try again."
 	case j.DoneHow == "closed_locally":
 		p.Kind, p.Title, p.Detail = "done", "Closed", "Closed locally; work and spending kept. Reopen to continue."
 	case j.Recovery != nil && (j.Recovery.State == "waiting" || j.Recovery.State == "queued"):
@@ -72,6 +74,10 @@ func PresentJob(j *Job) {
 			p.Detail = step.Name + ": " + step.Verification.Checks[0].Purpose + " is running. Waiting does not use a model turn."
 			break
 		}
+	case j.State == StateNeedsYou && j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsApproveStep && j.NeedsYou.Step != "":
+		// A MANUAL HOLD SAYS WHICH STEP IS NEXT, in a person's words, never
+		// the machine reason it is filed under.
+		p.Title, p.Detail = "Needs you", j.NeedsYou.Step+" is next · waiting for you to go on"
 	case j.State == StateNeedsYou:
 		p.Title, p.Detail = "Needs you", j.Reason
 	case j.State == StateDone:

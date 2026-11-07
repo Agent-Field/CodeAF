@@ -125,8 +125,16 @@ func sameStages(a, b []factory.Stage) bool {
 
 // withdrawForSteps takes job id from the worker holding it when its steps
 // changed, so the worker pulls the changed steps and no report from its old
-// copy writes them back; a running job is queued again for that pull. It
-// answers whether the desk changed.
+// copy writes them back; a running job is queued again for that pull, at the
+// step it was on. It answers whether the desk changed.
+//
+// THE LEASE IS WITHDRAWN, NEVER MERELY RELEASED. A worker whose lease is simply
+// gone reads that as the factory stopping the job and runs a person's Stop,
+// which ends the run and leaves the job new, in Backlog, to start again from
+// its first step; the live audit's "add a security step" did exactly that to a
+// running Write. A withdrawn lease is a handover: the worker cancels its drive
+// without writing a stop, and the queued job is pulled again with its finished
+// steps kept.
 func withdrawForSteps(doc *document, held *Lease, id int, it *factory.Item, changed bool) bool {
 	if held == nil || !changed {
 		return false
@@ -134,7 +142,7 @@ func withdrawForSteps(doc *document, held *Lease, id int, it *factory.Item, chan
 	if it.State == factory.StateRunning && it.Stream != nil && !it.Stream.Paused {
 		it.State = factory.StateQueued
 	}
-	release(doc, id)
+	withdraw(doc, *held)
 	delete(doc.Signals, id)
 	return true
 }

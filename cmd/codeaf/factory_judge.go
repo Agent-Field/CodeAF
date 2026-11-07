@@ -64,6 +64,12 @@ func factoryJudge(st *store.Store, load func() (config.Config, error)) route.Jud
 // temperature zero, so the same item asked twice is answered the same way, and
 // books what it cost.
 func factoryJudgeCall(load func() (config.Config, error)) judge.Call {
+	return factoryAICall(load, factoryJudgeName)
+}
+
+// factoryAICall is one factory AI question booked under name on the spend
+// ledger: the judge's `factory filter`, the search bar's `factory search`.
+func factoryAICall(load func() (config.Config, error), name string) judge.Call {
 	return func(ctx context.Context, req judge.Request) (judge.Reply, error) {
 		settings, err := load()
 		if err != nil {
@@ -75,8 +81,8 @@ func factoryJudgeCall(load func() (config.Config, error)) judge.Call {
 		if err != nil {
 			return judge.Reply{}, err
 		}
-		ctx = provider.WithoutStream(provider.WithCallTag(ctx, factoryJudgeName))
-		ctx, recorded := factoryAIAccounting(ctx, settings, req.Model, factoryJudgeName, nil)
+		ctx = provider.WithoutStream(provider.WithCallTag(ctx, name))
+		ctx, recorded := factoryAIAccounting(ctx, settings, req.Model, name, nil)
 		response, err := client.CompleteWithMessages(ctx, []ai.Message{
 			judgeMessage("system", req.System), judgeMessage("user", req.User),
 		}, ai.WithTemperature(0))

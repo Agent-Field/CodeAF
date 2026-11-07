@@ -367,7 +367,12 @@ turns away itself (an OpenRouter management key) says why in codeaf's words. Whi
 app connects, and how, is *Connecting a provider from the app* below. The GitHub token
 pasted while setting up the app's factory is kept the same way and handed back at every
 launch, so the factory stays connected after a restart; choosing gh's own login keeps only
-that choice, and gh keeps its token.
+that choice, and gh keeps its token. The same is true of a Jira token and of an AgentField
+control plane's API key (and the node secret codeaf made for it): codeaf hands each one to
+the app to keep in the keychain when it is connected, the app hands it back at the next
+launch, and disconnecting removes the kept copy too. An app older than this does not keep
+them, and then the factory's Jira or AgentField connection is gone after a restart until it
+is connected again.
 
 The app's day cap is the profile's daily limit, the same one `/budget day` sets: setup,
 Settings and the terminal all read and change that one figure, and a cap an older app
@@ -731,7 +736,7 @@ both use the cell the current folder is in.
 
 ## Do moving chats restrict commands, network access or installs
 
-New chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
+New interactive chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. `codeaf chat --once`, `codeaf exec` and factory steps are limited to their own folder instead ("What an unattended run may touch"). Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
 
 ## Your identity — codeaf identity show, export and import
 
@@ -2061,10 +2066,13 @@ processes; finished logs remain available on demand without an ended count.
 
 ## Desktop app quit and saving helpers
 
-Saving helpers started by the desktop app use a one-minute idle limit. While
-the app's engine is alive, it sends a light health request about every 20 seconds
-to the helpers it started, so a quiet app keeps the same saving helper ready.
-These requests never start or restart a helper, and failures are ignored.
+Saving helpers started by the desktop app use a one-minute idle limit. While a
+reply is running or a save is still in progress, the app's engine sends a light
+health request about every 20 seconds to the helpers it started, so they stay
+ready. An idle app sends none: its saving helper exits after about one minute
+and stops using the processor, and the next save starts it again, which can add
+a short delay to that save. These requests never start or restart a helper, and
+failures are ignored.
 
 After the engine quits or is killed, the requests stop. Its saving helpers exit
 by themselves after about one minute without activity. Quit sends no shutdown

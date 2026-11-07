@@ -47,6 +47,24 @@ type InboxDoor interface {
 	SendOn(ctx context.Context, conversation, why string) (string, error)
 }
 
+// ManagerPRDecider presses the job page's post-PR decisions for the person who
+// asked in the manager's conversation: Merge, or Mark ready on a draft. It is
+// the door the job page's own buttons take, so the factory checks the same
+// permission and the same merge gate; the manager gains no power the person
+// does not have. action is ActionMerge, ActionMarkReady or ActionApprove (the
+// job's publication approval).
+type ManagerPRDecider interface {
+	DecidePR(ctx context.Context, conversation, action, words string) (string, error)
+}
+
+// The post-PR actions `factory_answer` takes, spelled once for the schema,
+// the status lines (internal/factory's manager_facts.go) and the door.
+const (
+	ActionMerge     = "merge"
+	ActionMarkReady = "mark_ready"
+	ActionApprove   = "approve"
+)
+
 // The words `factory_answer` hands back when nothing waits on the manager or
 // the call says neither or both.
 const (
@@ -54,13 +72,13 @@ const (
 	answerNeedsOne     = factoryAnswerRefused + "Invalid arguments: factory_answer needs answer, or ask_person with one line of why, not both."
 )
 
-const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. To send a waiting plan back with requested changes, use action=reject_plan and put the person's words in answer. Never promise a state change before an accepted tool result. If an action fails, explain plainly that it did not happen, without tool names or internal identifiers; if the outcome is uncertain, say it is unconfirmed and read status before retrying. " +
+const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. To send a waiting plan back with requested changes, use action=reject_plan and put the person's words in answer. When factory_status says the person is asked to merge the pull request or mark it ready, and the person asks for exactly that here, use action=merge or action=mark_ready with their words in answer, and action=approve when it says publishing waits on their approval; never on your own judgment. Never promise a state change before an accepted tool result. If an action fails, explain plainly that it did not happen, without tool names or internal identifiers; if the outcome is uncertain, say it is unconfirmed and read status before retrying. " +
 	"answer is your answer in words, and the step goes on with it at once: answer yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. " +
 	"ask_person is one line of why, and sends the question to the person in this conversation; the step waits for their answer. " +
 	"Send it to the person when it turns on taste, scope, risk, credentials or access, money, or anything the issue and the recipe do not say. Never guess an answer to spare them."
 
 const factoryAnswerSchemaJSON = `{"type":"object","properties":{` +
-	`"action":{"type":"string","enum":["answer","reject_plan"],"description":"Default answer saves a step reply. reject_plan sends only a waiting plan back with answer as the requested changes; never approves or continues it."},` +
+	`"action":{"type":"string","enum":["answer","reject_plan","merge","mark_ready","approve"],"description":"Default answer saves a step reply. reject_plan sends only a waiting plan back with answer as the requested changes; never approves or continues it. merge presses Merge on the job's pull request, mark_ready marks its draft ready for review and approve approves publishing the checked work, each only when factory_status offers it and the person asked for it; answer carries the person's words."},` +
 	`"question_id":{"type":"string","description":"The exact pending question_id returned by factory_status, required for a persisted step reply or a plan send-back outside a temporary inbox turn."},` +
 	`"answer":{"type":"string","description":"Your answer in words, for the step."},` +
 	`"ask_person":{"type":"string","description":"One line of why the person decides it."}` +
@@ -98,6 +116,17 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 					return factoryAnswerFailure("Nothing changed: sending a plan back requires requested changes on an ordinary manager turn."), true, nil
 				}
 				line, err := d.RejectPendingPlan(ctx, a.config.SessionFile, parsed.QuestionID, strings.TrimSpace(parsed.Answer))
+				if err != nil {
+					return factoryAnswerFailure(err.Error()), true, nil
+				}
+				return line, false, nil
+			}
+			if parsed.Action == ActionMerge || parsed.Action == ActionMarkReady || parsed.Action == ActionApprove {
+				d, ok := a.runDoorForTurn().(ManagerPRDecider)
+				if !ok || answer == "" || why != "" {
+					return factoryAnswerFailure("Nothing changed: merging, marking ready or approving publication needs the person's words in answer, on an ordinary manager turn."), true, nil
+				}
+				line, err := d.DecidePR(ctx, a.config.SessionFile, parsed.Action, answer)
 				if err != nil {
 					return factoryAnswerFailure(err.Error()), true, nil
 				}
@@ -171,7 +200,9 @@ func (a *Agent) askInbox(ctx context.Context, q Question) (string, bool, error) 
 // stageAsked is q as the runner keeps it: the question in one line, its
 // answers by their labels, and the asker's pick by its label with its reason.
 func stageAsked(q Question) factory.Asked {
-	out := factory.Asked{Question: strings.Join(strings.Fields(q.Head), " ")}
+	// A JUDGEMENT IS A PERSON'S ([AskJudgement]): the step's question is
+	// marked so, and the factory never lets its manager answer it.
+	out := factory.Asked{Question: strings.Join(strings.Fields(q.Head), " "), Person: q.Ask == AskJudgement}
 	if reason := strings.Join(strings.Fields(q.Reason), " "); reason != "" && out.Question != "" {
 		out.Question += " (" + reason + ")"
 	}

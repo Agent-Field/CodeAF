@@ -77,6 +77,10 @@ func testAutoPipeline(t *testing.T, disconnectFirst bool) {
 	if got := git(t, bare, "rev-parse", dirs.Branch(it)); got != it.HeadCommit {
 		t.Fatal("pushed a different head")
 	}
+	// THE STEP SAYS WHO PASSED IT: the manager, in Auto.
+	if p := it.Stream.Phases[1].Passed; p == nil || p.By != factory.PassedByManager {
+		t.Fatalf("the approve step does not say the manager passed it: %+v", p)
+	}
 	events, err := g.record.Since(context.Background(), time.Time{})
 	if err != nil {
 		t.Fatal(err)

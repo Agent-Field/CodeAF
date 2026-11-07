@@ -10,8 +10,12 @@ import (
 // here and to TestNeedsYouKindsContractTwo in the same commit. The queue groups
 // jobs by this list, in this order.
 const (
-	NeedsApproveStart  = "approve_start"
-	NeedsApprovePlan   = "approve_plan"
+	NeedsApproveStart = "approve_start"
+	NeedsApprovePlan  = "approve_plan"
+	// NeedsApproveStep is Manual's hold before a step's first round: the step
+	// is next and waits for the person to go on ([StepHold]). It is not a plan
+	// approval, so it has a kind of its own.
+	NeedsApproveStep   = "approve_step"
 	NeedsApproveProof  = "approve_proof"
 	NeedsQuestion      = "question"
 	NeedsRunnerOffline = "runner_offline"
@@ -64,6 +68,7 @@ const (
 var NeedsYouKinds = []string{
 	NeedsApproveStart,
 	NeedsApprovePlan,
+	NeedsApproveStep,
 	NeedsApproveProof,
 	NeedsQuestion,
 	NeedsSpendingLimit,
@@ -103,13 +108,18 @@ type SourceRef struct {
 // when the step itself errored. Attempts is how many tries that step had
 // already made. Machine is the one that was holding the work.
 type Failure struct {
-	Step     string    `json:",omitempty"`
-	Code     string    `json:",omitempty"`
-	Detail   string    `json:",omitempty"`
-	Attempts int       `json:",omitempty"`
-	Machine  string    `json:",omitempty"`
-	Next     string    `json:",omitempty"`
-	At       time.Time `json:",omitempty"`
+	Step     string `json:",omitempty"`
+	Code     string `json:",omitempty"`
+	Detail   string `json:",omitempty"`
+	Attempts int    `json:",omitempty"`
+	Machine  string `json:",omitempty"`
+	Next     string `json:",omitempty"`
+	// Summary is the failure in one line a person reads first, at most
+	// [FailureSummaryMost] characters: the step's own when it gave one
+	// ([StageResult.Summary]), else one the job's manager wrote from Detail
+	// ([FailureSummary]). "" until either exists; Detail stays whole.
+	Summary string    `json:",omitempty"`
+	At      time.Time `json:",omitempty"`
 }
 
 // RoundLine is one finished try of a loop step. The step keeps one line per
@@ -258,6 +268,11 @@ func NeedsKind(it Item) string {
 	case it.QKind == NeedsRunnerOffline:
 		return NeedsRunnerOffline
 	case it.QKind == QKindApprove:
+		// A MANUAL HOLD BETWEEN STEPS IS NOT A PLAN. Reading it as one put
+		// "Plan ready" over "RunVetAndTest is next" in Needs you.
+		if _, ok := StepHold(it); ok {
+			return NeedsApproveStep
+		}
 		return NeedsApprovePlan
 	case it.QKind == "cap":
 		return NeedsSpendingLimit
@@ -286,7 +301,7 @@ func publishFailed(it Item) bool {
 // A free question is anyone who can see the repository.
 func JobPersonOnly(kind string) bool {
 	switch kind {
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
 		return true
 	default:
 		return false
@@ -547,7 +562,7 @@ func MayAct(it Item, caller string) Acts {
 	switch NeedsKind(it) {
 	case NeedsQuestion:
 		answer = true
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
 		answer = owner
 	}
 	if it.QKind == QKindSpendStopped {

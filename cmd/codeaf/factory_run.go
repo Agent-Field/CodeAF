@@ -268,6 +268,7 @@ func buildFactoryRunnerWith(items, floor *store.Store, workspace, profileDir str
 	// it none.
 	if turns != nil {
 		opts.Inbox = turns.Inbox
+		opts.FailureSummary = turns.FailureSummary
 	}
 	opts.Remote = remote
 	// AN AGENTFIELD STEP RUNS OVER THE SAME CONNECTION AS A run_on JOB: a

@@ -293,7 +293,7 @@ func EncodeLibrary(f File) ([]byte, string) {
 // touch only `pipeline:` and `steps:`.
 func LibraryOp(verb string) bool {
 	switch verb {
-	case OpSetStep, OpAddStep, OpRemoveStep, OpMoveStep, OpRenameStep, OpSetApprover,
+	case OpSetStep, OpAddStep, OpRemoveStep, OpMoveStep, OpRenameStep, OpSetApprover, OpSetPass,
 		OpAddPipeline, OpRemovePipeline, OpRenamePipeline:
 		return true
 	}

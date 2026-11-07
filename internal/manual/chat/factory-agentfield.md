@@ -27,6 +27,38 @@ is (by the desktop app, else in the profile) and never sent back. There is no
 slash command for this in the terminal chat, and only the factory on this
 machine can be connected.
 
+## connect my own tool or script to the factory — no HTTP API, no SDK, only AgentField
+
+A person using the factory never writes code to send it work. Built-in
+connectors (GitHub, Jira) are set up in the app with clicks. **Anything
+programmatic — your own tool, a script, a form, a helpdesk, an alerting
+service, Zapier, another agent — comes through AgentField**: connect the
+factory as a node (above), then aim an AgentField trigger at it, or call its
+`intake` reasoner directly.
+
+The factory itself has no open door for code: no `POST /api/intake`, no HTTP
+route that says more about a job or reads its status, no webhooks, no SDK.
+`codeaf factory add` and `codeaf factory webhook` were removed.
+
+- **Send a comment to a job from outside**, or add more details to a job your
+  tool filed: AgentField's `message` reasoner (below).
+- **Check the status of a factory job from my script**: AgentField's `status`
+  reasoner, or the execution the trigger started, which reports the job's
+  progress and its pull request.
+- **A token that only files its own tickets**: the tool holds AgentField's
+  credential (a trigger's signing secret, the control plane's API key), never
+  the factory's, and the connection's trust ceiling caps what it files.
+
+## webhooks from the factory — set a webhook, webhook events, signature, an endpoint that is down
+
+The factory sends no webhooks of its own, so there is no webhook to set for a
+source, no event list, no signature to verify and no retry schedule. A tool
+that wants to hear how its work is going calls through AgentField: the
+execution a trigger started is told when the job runs, asks a question, opens
+its pull request, finishes or gets stuck (see "the AgentField execution"
+below), and AgentField delivers that onward its own way. Jira tickets hear
+back as Jira comments.
+
 ## the control plane — what the factory registers and how its calls are trusted
 
 The node registers three reasoners, each with a JSON Schema:
@@ -34,12 +66,11 @@ The node registers three reasoners, each with a JSON Schema:
 - `intake` (takes webhook triggers): a trigger's event, or an entry from any
   caller, becomes a job (see the sections below).
 - `message`: `{source, id, text, author?}` or `{job, text}` says more about a
-  job filed from outside, exactly as the Trigger API's messages do: the words
+  job filed from outside, read as a comment on a GitHub issue is: the words
   become a comment on the job, a stranger's job (or a connection trusted no
   further) reads them as context only, and it answers `{job, accepted,
   outcome, line}`.
-- `status`: `{source, id}` or `{job}` answers what `GET
-  /api/intake/{source}/{id}` does: `{job, state, steps_done, steps_total,
+- `status`: `{source, id}` or `{job}` answers `{job, state, steps_done, steps_total,
   route?, pr_url?, question?, updated}`.
 
 Every restart of the factory registers again as a new instance.
@@ -149,8 +180,7 @@ it answers 202 and reports on that execution until the job settles:
 - when it stops and needs a person (a step failed, someone stopped it, its
   publish failed): failed, with the job's own words.
 
-Each change is reported as it happens, from the same moments a webhook and
-Jira hear, up the link when it is up and over HTTP otherwise. A long job is
+Each change is reported as it happens, from the same moments Jira hears, up the link when it is up and over HTTP otherwise. A long job is
 never taken for stale: every lease lists the open executions (`inflight`)
 and the control plane keeps them alive. A report that could not land (the
 control plane was down), or a job that ended with nothing to announce it (a
@@ -411,3 +441,8 @@ question comes down.
   Confine the node's machine itself if that matters.
 - Jira is not an AgentField source; it has its own connector (see "connect
   Jira").
+- A node's runs do not have your full permissions. They go through
+  `codeaf chat --once` and `codeaf exec`, whose commands may write only their
+  own checkout and their own temp and cache folders. They cannot read keys and
+  sign-ins or use docker unless `"jail.allow"` says so ("What an unattended run
+  may touch").

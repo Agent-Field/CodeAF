@@ -36,7 +36,7 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 			t.Fatal(err)
 		}
 		delta, _ := factoryrun.Diff(baseline, paid)
-		wire := api.ToWorkerReport(api.FromRunReport(delta, true))
+		wire := api.ToWorkerReport(api.FromRunReport(delta, api.ReportAdmits{RoundCostTables: true}))
 		if err := factoryrun.ApplyReport(&serverItem, wire, time.Now()); err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +95,7 @@ func TestStepCostMatchesJobSpendLedgerAcrossResumedRounds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		report := api.ToWorkerReport(api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: round, State: factory.PhaseRunning, RoundCosts: paid.Stream.Phases[0].RoundCosts, Result: &res}}}, true))
+		report := api.ToWorkerReport(api.FromRunReport(factory.RunReport{Stages: []factory.StageReport{{Name: "proof", Round: round, State: factory.PhaseRunning, RoundCosts: paid.Stream.Phases[0].RoundCosts, Result: &res}}}, api.ReportAdmits{RoundCostTables: true}))
 		for n := 0; n < 2; n++ {
 			if err := st.Annotate(it.ID, func(cur *factory.Item) error { return factoryrun.ApplyReport(cur, report, time.Now()) }); err != nil {
 				t.Fatal(err)

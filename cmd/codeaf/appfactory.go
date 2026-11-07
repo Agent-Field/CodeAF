@@ -829,6 +829,11 @@ func (b *appBackend) PipelineAgentFieldEdits() {}
 // factory.pipeline_edit_approvers.
 func (b *appBackend) PipelineApproverEdits() {}
 
+// PipelinePassEdits marks this backend as one whose preview applies set_pass
+// and pass on an added gate, which is what lets hello announce
+// factory.pipeline_edit_pass.
+func (b *appBackend) PipelinePassEdits() {}
+
 // PipelineAdaptKindEdits marks this backend as one whose preview applies
 // set_adapt for one pipeline and whose source carries each pipeline's word.
 func (b *appBackend) PipelineAdaptKindEdits() {}

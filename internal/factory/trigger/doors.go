@@ -1,3 +1,14 @@
+// Package trigger is the factory's Trigger API: the message and status doors
+// ([Message], [Status], [StatusOfJob]) that AgentField's `message` and
+// `status` reasoners call in-process.
+//
+// THEY HAVE NO HTTP DOOR OF THEIR OWN. A WorkAF user never thinks about code:
+// built-in connectors (GitHub, Jira) are set up in the app with clicks, and
+// anything programmatic enters through AgentField, so the factory serves no
+// /api/intake route and posts no signed webhook. Filing stays inbox.Add, THE
+// ONE DOOR, and a job's moments reach AgentField and Jira over the inbox's
+// event bus. docs/design/factory-general/DESIGN.md ("The line between WorkAF
+// and AgentField") is the line this package keeps.
 package trigger
 
 import (
@@ -11,9 +22,8 @@ import (
 
 // ── THE DOORS ANY CALLER USES ──────────────────────────────────────────────
 //
-// POST /api/intake/{source}/{id}/messages and GET /api/intake/{source}/{id}
-// only adapt HTTP to these, and AgentField's `message` and `status`
-// reasoners (factory/gi-agentfield) call them directly. Neither door decides
+// AgentField's `message` and `status` reasoners call these directly; nothing
+// reaches them over HTTP from outside the node. Neither door decides
 // anything of its own: the message is inbox.Message, the comment path every
 // GitHub comment takes; the status is the job wire's own facts.
 

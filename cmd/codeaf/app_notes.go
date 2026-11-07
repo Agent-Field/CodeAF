@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // A message written here to a chat another computer holds goes in this
@@ -24,10 +27,25 @@ import (
 // appNoteWords are the sentences a refused message says, in the person's words.
 var appNoteWords = map[error]string{
 	syncsetup.ErrNotesUnsupported: "This sync service can't carry a message to another computer yet. Bring the chat here to write to it.",
-	syncsetup.ErrOutboxFull:       "Eight messages are already waiting for the other computer. Send this one once it has taken them.",
+	syncsetup.ErrOutboxFull:       appNoteSpelled(directory.MaxNotes) + " messages sent from this computer, in this chat or others, haven't been delivered yet. Send this one once some of them are.",
 	syncsetup.ErrNoteEmpty:        "The message is empty.",
 	syncsetup.ErrNoteLong:         "Messages to another computer are limited to 2000 characters.",
 	syncsetup.ErrNoOwnRecord:      "This computer isn't listed by sync yet. Try again in a moment.",
+}
+
+// appNoteUnreachable is a message this computer could not leave because its
+// relay did not answer. Nothing was kept on the way, so the sentence says the
+// message did not go and the draft is the person's to send again.
+const appNoteUnreachable = "This computer can't reach your relay right now, so the message didn't go. Send it again once it's back."
+
+// appNoteSpelled is the outbox limit as a sentence starts it. THE LIMIT IS
+// directory.MaxNotes, never a hand-typed word, so the refusal moves with it.
+func appNoteSpelled(n int) string {
+	words := []string{"No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"}
+	if n >= 0 && n < len(words) {
+		return words[n]
+	}
+	return strconv.Itoa(n)
 }
 
 // appNotes remembers which messages this engine already put in a queue, until
@@ -140,6 +158,12 @@ func (b *appBackend) SendToChat(p appwire.ChatSendParams) (appwire.ChatNote, err
 		if errors.Is(err, refusal) {
 			return appwire.ChatNote{}, appwire.Errorf(appwire.CodeEngine, "%s", words)
 		}
+	}
+	// A relay this computer cannot reach is not the engine failing: the
+	// message was never left, the draft is still the person's, and the
+	// sentence says so instead of the transport's own words.
+	if errors.Is(err, directory.ErrUnreachable) || errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) {
+		return appwire.ChatNote{}, appwire.Errorf(appwire.CodeUnreachable, "%s", appNoteUnreachable)
 	}
 	if err != nil {
 		return appwire.ChatNote{}, appEngineError(err)

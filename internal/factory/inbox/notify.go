@@ -22,7 +22,7 @@ type Replier interface {
 type EventKind string
 
 // A REPLIER IGNORES A KIND IT DOES NOT KNOW. The list grows (wave 2 added
-// filed, started, question, done and message for the Trigger API's webhooks),
+// filed, started, question, done and message for the Trigger API),
 // and a connector written against an older list must stay quiet about the
 // new moments rather than misread them.
 const (
@@ -72,8 +72,8 @@ func replierFor(name string) Replier {
 	return repliers.by[name]
 }
 
-// Sink is one place the lifecycle's moments go: the factory's signed
-// webhooks, an AgentField control plane. THE LIFECYCLE NEVER LEARNS WHICH: it
+// Sink is one place the lifecycle's moments go: an AgentField control plane,
+// and later ones of its kind. THE LIFECYCLE NEVER LEARNS WHICH: it
 // calls [Notify], and every sink registered here is handed each moment of a
 // job the inbox filed, with the job's source and its key there. The
 // per-source repliers ([RegisterReplier], Jira's comments) are the first sink
@@ -98,9 +98,9 @@ var sinks = struct {
 	by map[string]Sink
 }{by: map[string]Sink{}}
 
-// RegisterSink makes s receive every moment, under name ("webhook",
-// "agentfield"). A second registration under the same name replaces the
-// first; a nil s takes it away again.
+// RegisterSink makes s receive every moment, under name ("agentfield"). A second
+// registration under the same name replaces the first; a nil s takes it away
+// again.
 func RegisterSink(name string, s Sink) {
 	sinks.Lock()
 	defer sinks.Unlock()

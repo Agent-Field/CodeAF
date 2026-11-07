@@ -23,7 +23,7 @@ const (
 	MaxAuthor     = 200
 	MaxLabels     = 30
 	MaxLabel      = 100
-	// MaxRequest is the most a POST /api/intake body may be, in bytes.
+	// MaxRequest is the most one entry's details may be, in bytes.
 	MaxRequest = 64 << 10
 )
 

@@ -19,8 +19,8 @@ type FactoryIntakeParams struct {
 }
 
 // FactoryIntaker is the engine's half of factory.intake_add. It files the
-// entry on the named factory ([inbox.Add] behind POST /api/intake) and
-// answers what was done: the job's id, and whether it is new.
+// entry on the factory this engine serves, through [inbox.Add] in its own
+// process (there is no HTTP intake), and answers what was done: the job's id, and whether it is new.
 type FactoryIntaker interface {
 	FactoryIntakeAdd(ctx context.Context, p FactoryIntakeParams) (inbox.Result, error)
 }

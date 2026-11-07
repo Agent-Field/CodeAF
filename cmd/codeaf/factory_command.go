@@ -40,6 +40,10 @@ type factoryDiscovery struct {
 	App   bool   `json:"app,omitempty"`
 }
 
+// factoryRemovedDoor is what `codeaf factory add` and `codeaf factory webhook`
+// answer now that the factory takes no work from a command or a script.
+const factoryRemovedDoor = "codeaf factory add and codeaf factory webhook were removed: file work in the desktop app, connect GitHub or Jira there, or send custom triggers through AgentField"
+
 func runFactory(args []string) error {
 	verb := "serve"
 	if len(args) > 0 {
@@ -64,11 +68,13 @@ func runFactory(args []string) error {
 	if verb == "token" {
 		return runFactoryToken(args)
 	}
-	if verb == "add" {
-		return runFactoryAdd(args, os.Stdin, os.Stdout)
-	}
-	if verb == "webhook" {
-		return runFactoryWebhook(args, os.Stdout)
+	// THE FACTORY HAS NO PROGRAMMATIC DOOR OF ITS OWN. Work is filed in the
+	// desktop app, by a built-in connector set up there with clicks (GitHub,
+	// Jira), or through AgentField; `add` and `webhook` were removed with the
+	// open intake, and are named here only so a person who remembers them is
+	// told where the work goes now.
+	if verb == "add" || verb == "webhook" {
+		return wrongCall(factoryRemovedDoor)
 	}
 	if verb == "name" {
 		return runFactoryName(args)
@@ -96,7 +102,7 @@ func runFactory(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return wrongCall("use codeaf factory serve, add, webhook, steps, convert, token, revoke, revoke-sessions or name")
+		return wrongCall("use codeaf factory serve, steps, convert, token, revoke, revoke-sessions or name")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -288,6 +294,9 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
 		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
+		// A `manager when …` approval's condition is judged by the floor's AI
+		// filter, as a routing rule's question is.
+		PassJudge:     factoryJudge(st, config.Load),
 		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryPipelineRead(ctx, st, repo, dir)
