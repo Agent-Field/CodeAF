@@ -38,6 +38,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can the model see my password", "giving-a-password-or-token"},
 		{"can I send a message to the chat running on my other computer", "desktop-sync"},
 		{"queue a message for my other computer while its turn is working", "desktop-sync"},
+		{"my message to the other computer was never delivered because it is offline", "desktop-sync"},
+		{"message to my other computer didn't send, can't reach relay", "desktop-sync"},
 		// C9: Windows shell questions must reach the self-contained Git Bash section.
 		{"why do my commands fail on Windows", "running-commands-on-windows"},
 		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
