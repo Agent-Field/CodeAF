@@ -80,8 +80,15 @@ func TestFactoryManagersE2E(t *testing.T) {
 	edit := w.awaitAnswer(t, manager, time.Now().Add(-time.Second), 5*time.Minute)
 	t.Logf("manager on the edit: %s", edit)
 	sawNew := false
+	seen := ""
 	fleEventually(t, "the edited job to carry on and run security", 25*time.Minute, 3*time.Second, func() bool {
 		it := w.item(id)
+		// Every change of state or step is on the log, so a run that stalls
+		// says where.
+		if now := fmt.Sprintf("%s · %s %s · %s", it.State, w.currentStep(id), w.phase(id, w.currentStep(id)).State, it.Question); now != seen {
+			seen = now
+			t.Logf("after the edit: %s", now)
+		}
 		if it.State == factory.StateNew || factory.StoppedByPerson(it) {
 			sawNew = true
 		}
