@@ -28,7 +28,15 @@ func (h *Handler) readJobBrief(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.write(w, http.StatusOK, jobBrief(h.factory, it, since))
+	out := jobBrief(h.factory, it, since)
+	// The price is read from every job only while it is worth quoting: a job
+	// whose next write is a paid read of its issue.
+	if factory.BriefReadable(it) && out.Status != factory.BriefGenerating {
+		if items, err := h.config.Store.List(); err == nil {
+			out.ReadPrice = factory.FirstReadPrice(items)
+		}
+	}
+	h.write(w, http.StatusOK, out)
 }
 
 // jobBrief is the answer for one job, read whole from the item.

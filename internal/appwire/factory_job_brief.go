@@ -56,6 +56,9 @@ type FactoryJobBrief struct {
 	Brief            factory.BriefVersion `json:"brief"`
 	VerdictBehind    bool                 `json:"verdict_behind"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
+	// ReadPrice is what one read of the issue before work typically costs on
+	// this factory, while a write now would be one and once one has run.
+	ReadPrice float64 `json:"read_price,omitempty"`
 }
 
 // FactoryJobBriefer is the engine's half of factory.job_brief.

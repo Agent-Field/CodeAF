@@ -546,6 +546,11 @@ type Job struct {
 	// ([WorkerJob]), so it reads the same rules, and a list of jobs never
 	// carries every file again.
 	PipelineCopy *factory.PipelineCopy `json:"pipeline_copy,omitempty"`
+	// FirstRead is the job's read of its issue before work
+	// ([factory.FirstReadOf]), which every step is given. ONLY THE RUNNER
+	// THAT PULLS THE JOB GETS IT ([WorkerJob]); a reader reads the brief
+	// through GET /v1/jobs/{id}/brief.
+	FirstRead *factory.BriefVersion `json:"first_read,omitempty"`
 	// PipelineDecided says the job's pipeline file was decided at its first
 	// start, for its life (factory.Item.DecidePipeline): pipeline_copy, or
 	// main's file alone when that is absent. Absent before its first start.

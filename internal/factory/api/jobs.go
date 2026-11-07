@@ -285,6 +285,11 @@ type JobBrief struct {
 	Brief            factory.BriefVersion `json:"brief"`
 	VerdictBehind    bool                 `json:"verdict_behind"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
+	// ReadPrice is what one read of the issue before work typically costs on
+	// this factory ([factory.FirstReadPrice]), for the "Write the brief"
+	// button. Only while a write now would be such a read, and only once one
+	// has run; absent otherwise.
+	ReadPrice float64 `json:"read_price,omitempty"`
 }
 
 // BriefBeginRequest is POST /v1/jobs/{id}/brief/begin: why the brief may be

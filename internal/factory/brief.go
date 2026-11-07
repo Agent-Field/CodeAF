@@ -219,6 +219,9 @@ type BriefVersion struct {
 	InputHash string `json:"input_hash,omitempty"`
 	// Dropped is how many parts of the writer's draft validation dropped.
 	Dropped int `json:"dropped,omitempty"`
+	// BeforeWork says the version is the read of the issue written before any
+	// step reported ([BriefFirstReadSystem]), which every step is then given.
+	BeforeWork bool `json:"before_work,omitempty"`
 }
 
 // BriefWriting is a write of the next version on its way, or the last one

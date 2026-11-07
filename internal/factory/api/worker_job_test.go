@@ -117,3 +117,26 @@ func TestAPullWithoutReportsIsReadFromTheResultLine(t *testing.T) {
 		t.Fatalf("the old pull's plan is %+v, want %+v", got, want)
 	}
 }
+
+// THE RUNNER IS SENT THE READ BEFORE WORK, and only the runner: a step is
+// given it, and a reader's job still carries none of the brief's versions.
+func TestTheWorkerPullCarriesTheReadBeforeWork(t *testing.T) {
+	it := workerJobItem()
+	read := factory.BriefVersion{Rev: 1, BeforeWork: true, Verdict: "make a resend harmless", Facts: []factory.BriefFact{}, Blocks: []factory.BriefBlock{}, ChangedKeys: []string{}}
+	it.Briefs = []factory.BriefVersion{read, {Rev: 2, Verdict: "later"}}
+	raw, err := json.Marshal(WorkerPull{Job: WorkerJob(it)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pulled WorkerPull
+	if err := json.Unmarshal(raw, &pulled); err != nil {
+		t.Fatal(err)
+	}
+	back := ToItem(pulled.Job)
+	if got, ok := factory.FirstReadOf(back); !ok || !reflect.DeepEqual(got, read) {
+		t.Fatalf("the runner's job has read %+v (%v), want %+v", got, ok, read)
+	}
+	if reader := FromItem(it); reader.FirstRead != nil {
+		t.Fatal("a reader's job carries the read before work")
+	}
+}
