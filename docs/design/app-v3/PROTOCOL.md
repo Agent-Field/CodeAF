@@ -346,6 +346,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.setup_continue` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_discover` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_done` | `in.FactoryLocalParams` | `FactorySetupView` |
+| `factory.setup_github_cancel` | `in.FactorySignInFlowParams` | `Empty` |
+| `factory.setup_github_poll` | `in.FactorySignInFlowParams` | `FactorySetupGitHubState` |
+| `factory.setup_github_start` | `in.FactoryLocalParams` | `FactorySignIn` |
 | `factory.setup_folder_check` | `in.FactorySetupFolderCheckParams` | `FactorySetupFolder` |
 | `factory.setup_read` | `in.FactoryLocalParams` | `FactorySetupView` |
 | `factory.setup_retry_read` | `in.FactorySetupRepoParams` | `FactorySetupView` |
@@ -401,6 +404,27 @@ finished or publishing jobs. Ended jobs retain their existing `stale` or
 `conflict` refusal; permissions are unchanged. Replies remain `FactoryJobActed`
 and errors retain their existing codes, including `bad_params` for malformed
 requests. Other job actions retain their guards except Pause and Resume, described below.
+
+`factory.setup_github` in hello features says the engine can connect the
+first run's GitHub in the browser with GitHub's OAuth device flow. It is
+announced only by a build that names an OAuth app (the client ID stamped in at
+build time, or `CODEAF_GITHUB_CLIENT_ID`); without one the three methods are
+`unknown_method` and setup offers the gh login and a pasted token.
+`factory.setup_github_start {caller}` answers `FactorySignIn` (`flow`,
+`factory`, `user_code`, `verification_uri`, `interval`, `expires_in`), the
+shape `factory.sign_in_start` answers; GitHub's device code stays in the engine
+and a second start from the same caller replaces the first. The scope asked
+for is `repo`. `factory.setup_github_poll {flow, caller}` answers
+`{state: pending|signed_in|expired|denied, interval?, message?, github_token?,
+view?}`; a poll sooner than `interval` is answered `pending` without asking
+GitHub, and `slow_down` raises `interval`. On approval the engine connects the
+token exactly as `factory.setup_connect {source: token}` does and only then
+answers `signed_in` with the setup `view` after the connect and the token,
+once, as `github_token`, for the app to keep in its Keychain as it keeps a
+pasted token. It is the only answer of the setup wire that carries a secret. A
+connect that fails is that connect's error, and the flow is over either way.
+`factory.setup_github_cancel {flow, caller}` forgets the flow. Another
+caller's flow, an ended flow and an unknown one are `not_found`.
 
 `factory.intake` in hello features says the engine serves `factory.intake_add`:
 outside work filed as a job through `inbox.Add` in the engine's own process, on

@@ -796,6 +796,20 @@ On a factory on your own machine, a person's Start, Run, Start now or Run again 
 
 A factory that was never given repositories to watch has no switch, so nothing on it is off.
 
+## connect GitHub in the app — sign in with GitHub in the browser, the one-time code, gh already signed in, paste a token instead
+
+The desktop app's first run connects GitHub with **Connect GitHub**. The app shows a one-time code such as `WDJB-MJHT`, with **Copy code**, and opens github.com/login/device in the browser. Type or paste the code there and approve. The app waits while you do, saying `Waiting for you to approve on GitHub…`, and moves on by itself once GitHub answers: `Connected as @you`. Nothing is typed in Terminal, and no token is shown or copied by hand.
+
+**What it asks GitHub for:** the `repo` permission, which lets the factory read issues, comment, push its branches and open pull requests on the repositories you pick. GitHub has no narrower permission for private repositories. An organization that restricts outside apps may need its owner to approve the app on GitHub before its repositories show up.
+
+**When it does not finish.** Choosing Cancel on GitHub reads `GitHub sign-in was cancelled.`; a code left for 15 minutes reads `That code expired.` Both offer **Get a new code**. Nothing was connected.
+
+**gh already signed in.** If the GitHub CLI on this Mac is signed in, setup offers that account instead (`Signed in on this Mac as @you`), and Connect uses it without a code. **Use a different account** goes to the browser sign-in.
+
+**Paste a token instead** sits under the button. It takes a GitHub personal access token: a classic token with `repo` ticked, or a fine-grained token for the repositories you pick with Contents, Issues and Pull requests set to Read and write (Metadata is read-only and always on).
+
+The token from either way is kept in the system keychain, the place a pasted token is kept, and handed back when the app next opens. A build without an OAuth app (`CODEAF_GITHUB_CLIENT_ID`, stamped in when the app is built) has no browser sign-in: setup then offers the gh login and a pasted token only.
+
 ## first-run setup in the app — Continue before every repository is read, skipped, checkout folder room
 
 **Continue ends reading early.** While setup reads open issues into Backlog, Continue stops the read in progress once at least one chosen repository is read, and moves on to checkouts, or straight to done when every chosen repository already has a checkout; before then it is refused with `Wait until one repo is read`. Repositories already read stay read and are watched. Each one still reading or waiting says skipped: the issues it already brought stay in Backlog, held until you start them, and it is not watched, so it is off until you turn it on in Repos. Back from checkouts reads every chosen repository again.

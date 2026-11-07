@@ -3535,6 +3535,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and a start checks the one issue on GitHub.
 		{"bring back a dropped factory job", "factory"},
 		{"send work to the factory from Jira", "factory"},
+		{"how do I connect GitHub in the app without Terminal", "factory"},
+		{"what does the one-time code for GitHub sign-in mean", "factory"},
+		{"which permissions does a GitHub token for the factory need", "factory"},
 		{"how do I add a factory job from a script", "factory"},
 		{"what does POST /api/intake take", "factory"},
 		{"codeaf factory add", "factory"},
