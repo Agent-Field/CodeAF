@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ── THE FENCE: WHAT AN UNATTENDED AGENT'S COMMANDS MAY TOUCH ────────────────
@@ -231,6 +232,10 @@ func NewFence(opts FenceOptions) (*Fence, error) {
 	if err := writeBlank(f.Blank); err != nil {
 		return nil, err
 	}
+	// A FENCE BUILT IS A JOB IN USE: the door's prune reads this folder's time,
+	// so a job that runs again is never mistaken for one that ended.
+	now := time.Now()
+	_ = os.Chtimes(f.Tmp, now, now)
 	if f.Tmp, err = canonicalPath(f.Tmp); err != nil {
 		return nil, err
 	}
