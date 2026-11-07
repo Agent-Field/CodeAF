@@ -141,7 +141,7 @@ func TestTheFileToolsKeepToTheFence(t *testing.T) {
 }
 
 func TestAvoidingGrantsEverythingBesideTheAvoidedPath(t *testing.T) {
-	root := t.TempDir()
+	root := canon(t, t.TempDir())
 	for _, d := range []string{"a/keep", "a/secret/inner", "b"} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0o700); err != nil {
 			t.Fatal(err)

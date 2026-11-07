@@ -324,7 +324,10 @@ func writeBlank(path string) error {
 	return file.Close()
 }
 
-// canonicalPath is an absolute path with links resolved where it exists.
+// canonicalPath is an absolute path with links resolved. A path that does not
+// exist yet has its nearest existing folder resolved and the rest kept, so a
+// file about to be written under /var on macOS (a link to /private/var) is
+// compared with the fence's folders in the same spelling they have.
 func canonicalPath(p string) (string, error) {
 	abs, err := filepath.Abs(p)
 	if err != nil {
@@ -333,7 +336,18 @@ func canonicalPath(p string) (string, error) {
 	if real, err := filepath.EvalSymlinks(abs); err == nil {
 		return real, nil
 	}
-	return abs, nil
+	rest := ""
+	for dir := abs; ; {
+		parent := filepath.Dir(dir)
+		rest = filepath.Join(filepath.Base(dir), rest)
+		if parent == dir {
+			return abs, nil
+		}
+		if real, err := filepath.EvalSymlinks(parent); err == nil {
+			return filepath.Join(real, rest), nil
+		}
+		dir = parent
+	}
 }
 
 // within reports p is dir or beneath it.

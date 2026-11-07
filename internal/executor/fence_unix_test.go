@@ -116,6 +116,7 @@ func TestAFencedStepIsRefusedOutsideItsJobAndSaysWhy(t *testing.T) {
 	refused := map[string]string{
 		"touch outside the checkout": `touch "$HOME/outside"`,
 		"read a private key":         `cat "$HOME"/.ssh/id_*`,
+		"read a key by its name":     `cat "$HOME/.ssh/id_ed25519"`,
 		"read cloud credentials":     `cat "$HOME/.aws/credentials"`,
 		"read codeaf's own key":      `cat "$HOME/.codeaf/config.json"`,
 		"read codeaf's credentials":  `cat "$HOME/.codeaf/credentials.json"`,
@@ -154,7 +155,7 @@ func TestAFencedStepStillWorksInsideItsJob(t *testing.T) {
 		"write in the checkout":   `echo hi > made.txt && cat made.txt`,
 		"write /tmp by name":      `echo hi > /tmp/scratch && cat /tmp/scratch`,
 		"read the home folder":    `cat "$HOME/notes.txt"`,
-		"read the system":         `ls /usr/bin >/dev/null && cat /etc/hostname >/dev/null`,
+		"read the system":         `ls /usr/bin >/dev/null && cat /etc/hosts >/dev/null`,
 		"commit in the checkout":  `git -c user.email=a@b -c user.name=a add -A && git -c user.email=a@b -c user.name=a commit -qm one && git log --oneline | grep -q one`,
 		"say where its cache is":  `test "$GOCACHE" = "` + filepath.Join(w.fence.Cache, "go-build") + `"`,
 		"write its own temp":      `echo x > "$TMPDIR/x" && cat "$TMPDIR/x"`,

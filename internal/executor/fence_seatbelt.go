@@ -1,6 +1,9 @@
 package executor
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
 
 // fence_seatbelt.go renders the fence (fence.go) as a macOS sandbox profile.
 // It is plain text, so it is built and tested on every system; only running
@@ -33,6 +36,13 @@ func fenceProfile(f *Fence) string {
 	}
 	if len(f.Hidden) > 0 {
 		parts = append(parts, clause("deny file-read* file-write*", subpaths(f.Hidden...)))
+		// A HIDDEN FOLDER'S NAMES STAY LISTABLE, as they are on Linux, so a
+		// command that names a key by pattern (`cat ~/.ssh/id_*`) is refused
+		// opening the key, and says so, rather than told it does not exist.
+		// Folders only: the same grant on a hidden FILE would open the file.
+		if dirs := existingDirs(f.Hidden); len(dirs) > 0 {
+			parts = append(parts, clause("allow file-read-data file-read-metadata", literals(dirs...)))
+		}
 	}
 	if len(f.Sockets) > 0 {
 		parts = append(parts, clause("deny network-outbound", socketFilters(f.Sockets)))
@@ -56,4 +66,15 @@ func globalNames(names []string) string {
 		b.WriteString("    (global-name " + quote(n) + ")\n")
 	}
 	return b.String()
+}
+
+// existingDirs is the paths that are folders now.
+func existingDirs(paths []string) []string {
+	var out []string
+	for _, p := range paths {
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			out = append(out, p)
+		}
+	}
+	return out
 }
