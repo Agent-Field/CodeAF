@@ -3616,6 +3616,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"send one Jira project to one repository", "factory-jira"},
 		{"what does Jira priority Highest become in the factory", "factory-jira"},
 		{"does codeaf work with Jira Server or Data Center", "factory-jira"},
+		// ASK AI IN THE JOBS SEARCH BAR: by meaning, two passes, a cost before
+		// it runs, saved as a view whose refresh reuses its answers.
+		{"can the factory search find issues by meaning, not just title words", "factory-ai-search"},
+		{"find all jobs related to exports with AI", "factory-ai-search"},
+		{"how does the AI search decide an issue matches", "factory-ai-search"},
+		{"what does an AI search of the jobs cost", "factory-ai-search"},
+		{"is there a spending cap or limit on an AI search", "factory-ai-search"},
+		{"save an AI search as a view", "factory-ai-search"},
+		{"does a saved AI view check new issues by itself", "factory-ai-search"},
 		// THE TRIGGER API: AgentField only, a message from outside read
 		// as a comment, the status of a job: none of it is an HTTP door or a
 		// webhook any more, and every one is answered by AgentField's page.

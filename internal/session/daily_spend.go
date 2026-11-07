@@ -77,7 +77,7 @@ func ReadDailySpend(path string, now time.Time) (DailySpendReading, error) {
 // page AI, the AI filter and briefs. They aren't chats, so they don't count under "your chats".
 // Afi's small errands are her own and stay out.
 var factoryAIRoles = map[string]bool{
-	"factory triage": true, "factory scout": true, "factory filter": true,
+	"factory triage": true, "factory scout": true, "factory filter": true, "factory search": true,
 	"repo_ask": true, "repo_notes": true, "repo_themes": true, "repo_eval": true,
 	"pipeline_ai": true, "step_ai": true, "my_pipeline_ai": true,
 	"view_topic": true, "factory_brief": true,
