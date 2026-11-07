@@ -72,18 +72,78 @@ func replierFor(name string) Replier {
 	return repliers.by[name]
 }
 
+// Sink is one place the lifecycle's moments go: the factory's signed
+// webhooks, an AgentField control plane. THE LIFECYCLE NEVER LEARNS WHICH: it
+// calls [Notify], and every sink registered here is handed each moment of a
+// job the inbox filed, with the job's source and its key there. The
+// per-source repliers ([RegisterReplier], Jira's comments) are the first sink
+// and need no registration.
+//
+// A sink is handed the moment on a goroutine of its own, under its own
+// deadline, after the job's write is kept; it must not block for long (queue
+// and return) and its failure is logged and never fails the job.
+type Sink interface {
+	Send(ctx context.Context, m Moment) error
+}
+
+// Moment is one event of one job, addressed as its source knows it.
+type Moment struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"external_id"`
+	Event
+}
+
+var sinks = struct {
+	sync.RWMutex
+	by map[string]Sink
+}{by: map[string]Sink{}}
+
+// RegisterSink makes s receive every moment, under name ("webhook",
+// "agentfield"). A second registration under the same name replaces the
+// first; a nil s takes it away again.
+func RegisterSink(name string, s Sink) {
+	sinks.Lock()
+	defer sinks.Unlock()
+	if s == nil {
+		delete(sinks.by, name)
+		return
+	}
+	sinks.by[name] = s
+}
+
+// targets is every sink a moment from source goes to, the source's own
+// replier first.
+func targets(source string) map[string]Sink {
+	out := map[string]Sink{}
+	if r := replierFor(source); r != nil {
+		out["replier:"+source] = replierSink{r}
+	}
+	sinks.RLock()
+	defer sinks.RUnlock()
+	for name, s := range sinks.by {
+		out[name] = s
+	}
+	return out
+}
+
+// replierSink is a [Replier] seen as a sink.
+type replierSink struct{ r Replier }
+
+func (s replierSink) Send(ctx context.Context, m Moment) error {
+	return s.r.Reply(ctx, m.ExternalID, m.Event)
+}
+
 // replies counts the answers still on their way, so a test can wait for them.
 var replies sync.WaitGroup
 
-// Notify tells the job's source about ev when that source registered a
-// [Replier].
+// Notify hands ev, a moment of job jobID, to every sink: the job's source's
+// [Replier] and each [RegisterSink]. A job the inbox did not file goes nowhere.
 //
 // IT NEVER FAILS THE JOB AND NEVER HOLDS IT UP. It returns at once: the job is
-// read and the answer sent on a goroutine of its own, with its own deadline
-// and detached from ctx's cancellation (a report's request ending must not
-// cut the comment short). A failure is logged, redacted, and forgotten; the
-// job has already moved on, and the outside system is told on the next
-// moment instead.
+// read and each sink handed the moment on a goroutine of its own, with its
+// own deadline and detached from ctx's cancellation (a report's request
+// ending must not cut the answer short). A failure is logged, redacted, and
+// forgotten; the job has already moved on.
 func Notify(ctx context.Context, st *store.Store, jobID int, ev Event) {
 	if st == nil || jobID <= 0 {
 		return
@@ -101,17 +161,24 @@ func Notify(ctx context.Context, st *store.Store, jobID int, ev Event) {
 		if !ok {
 			return
 		}
-		r := replierFor(source)
-		if r == nil {
-			return
-		}
-		ctx, cancel := context.WithTimeout(ctx, replyWait)
-		defer cancel()
-		if err := r.Reply(ctx, id, ev); err != nil {
-			logf("factory: telling %s about job %d failed: %s", source, jobID, redact.Secrets(err.Error()))
+		m := Moment{Source: source, ExternalID: id, Event: ev}
+		for name, s := range targets(source) {
+			replies.Add(1)
+			go func() {
+				defer replies.Done()
+				ctx, cancel := context.WithTimeout(ctx, replyWait)
+				defer cancel()
+				if err := s.Send(ctx, m); err != nil {
+					logf("factory: telling %s about job %d failed: %s", name, jobID, redact.Secrets(err.Error()))
+				}
+			}()
 		}
 	}()
 }
+
+// WaitSent waits until every moment handed to a sink so far has been sent or
+// given up. Tests use it; the lifecycle never waits.
+func WaitSent() { replies.Wait() }
 
 // Mark is what [Moments] compares: the few facts of a job, taken before a
 // write, whose change is worth telling its source about.

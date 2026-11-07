@@ -7,9 +7,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
-// THE TRIGGER API'S STATUS IS THE JOB WIRE'S OWN FACTS: every field is what
+// THE INTAKE STATUS IS THE JOB WIRE'S OWN FACTS: every field is what
 // FromItem says of the same job, never worked out again.
-func TestTriggerStatusIsTheJobWiresFacts(t *testing.T) {
+func TestIntakeStatusIsTheJobWiresFacts(t *testing.T) {
 	changed := time.Date(2026, 11, 6, 12, 30, 0, 0, time.UTC)
 	it := factory.Item{
 		ID: 9, Origin: "inbox:ops", SourceRef: "inbox:ops:A1", Repo: "acme/web", Kind: factory.KindIssue, Changed: changed,
@@ -19,7 +19,7 @@ func TestTriggerStatusIsTheJobWiresFacts(t *testing.T) {
 		PullRequest: &factory.PullRequest{URL: "https://github.com/acme/web/pull/4", State: factory.PROpen},
 	}
 	j := FromItem(it)
-	s := TriggerStatus(it)
+	s := IntakeStatusOf(it)
 	if s.Job != 9 || s.State != j.State || s.StepsDone != 1 || s.StepsTotal != 2 || s.Route != "ops to web" ||
 		s.PRURL != "https://github.com/acme/web/pull/4" || !s.Updated.Equal(changed) {
 		t.Fatalf("status %+v, job state %q", s, j.State)
@@ -27,7 +27,7 @@ func TestTriggerStatusIsTheJobWiresFacts(t *testing.T) {
 	waiting := it
 	waiting.PullRequest = nil
 	waiting.State, waiting.Question = factory.StateNeedsYou, "Which database should it use?"
-	s, j = TriggerStatus(waiting), FromItem(waiting)
+	s, j = IntakeStatusOf(waiting), FromItem(waiting)
 	want := ""
 	if n := j.NeedsYou; n != nil && n.Question != nil {
 		want = n.Question.Text

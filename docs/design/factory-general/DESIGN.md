@@ -116,8 +116,8 @@ connector we ship and one a customer writes are the same kind of thing:
 | in | `POST /api/intake` | file or update work: `(source, external_id)` is identity; title, body, url, author, labels, priority, repo, trust | exists |
 | in | `POST /api/intake/{source}/{id}/messages` | a comment or instruction on that work; reaches the job's manager like a GitHub comment, held to the entry's trust | wave 2 |
 | in | `GET /api/intake/{source}/{id}` | the job it made: state, steps done/total, route, PR url, last question | wave 2 |
-| out | webhooks: `POST <callback>` signed with the source's secret | `job.filed`, `job.started`, `job.question`, `job.pr_opened`, `job.merged`, `job.stuck`, `job.done`, `job.message` (the manager's reply) | wave 2 (the in-process `inbox.Replier` is the same events) |
-| auth | a token per source | `codeaf factory source add NAME [--callback URL]` mints a token that can only file and read work for `NAME`, and the webhook secret; revocable | wave 2 |
+| out | webhooks: `POST <url>` signed with the source's secret, set with `codeaf factory webhook add SOURCE URL` (`/v1/webhooks`) | `job.filed`, `job.started`, `job.question`, `job.pr_opened`, `job.merged`, `job.stuck`, `job.done`, `job.message` (the manager's reply) | wave 2 (the in-process `inbox.Replier` is the same events) |
+| auth | the factory's operator token | every call above is the operator's; a caller that needs its own scoped credential comes through AgentField (below) | wave 2 (a token per source was dropped for AgentField's DID auth) |
 
 Rules for the contract:
 - The factory decides policy (routing, trust ceilings, pipelines); a trigger
@@ -126,8 +126,14 @@ Rules for the contract:
 - Every call is idempotent on `(source, external_id)`; a webhook delivery
   carries an id and is retried with backoff until acknowledged.
 - The built-in connectors are clients of the same contract (Jira already
-  calls `inbox.Add` in process; its write-back is the same events). An SDK
-  (Go and TypeScript, thin) wraps these calls and nothing else.
+  calls `inbox.Add` in process; its write-back is the same events). codeaf
+  ships no SDK: AgentField's SDKs are the SDK (below).
+- ONE EVENT BUS OUT: `inbox.Notify` hands every moment to the source's
+  `inbox.Replier` and to each `inbox.RegisterSink` (`webhook` is
+  `trigger.WebhookSink`; `agentfield` is the AgentField lane's). The message
+  and status doors are `trigger.Message`, `trigger.Status` and
+  `trigger.StatusOfJob`, which the HTTP routes and AgentField's reasoners
+  both call.
 - GITHUB STAYS AS IT WORKS TODAY in wave 2: labels plus Pick up issues,
   `factory.yaml` start rules, the e2e scenario 5 green. Moving the GitHub
   poller onto this contract is a later refactor with its own proof.

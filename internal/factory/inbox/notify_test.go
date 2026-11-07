@@ -128,3 +128,42 @@ func TestMomentsAreTheChangesOfAnInboxJob(t *testing.T) {
 		t.Fatalf("forge job moments = %+v", got)
 	}
 }
+
+type fakeSink struct {
+	mu  sync.Mutex
+	got []Moment
+}
+
+func (s *fakeSink) Send(_ context.Context, m Moment) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.got = append(s.got, m)
+	return nil
+}
+
+// ONE BUS: a registered sink hears every moment of every job the inbox filed,
+// addressed by source and key, beside the source's own replier; a job the
+// inbox did not file reaches no sink.
+func TestEverySinkHearsEachMomentBesideTheReplier(t *testing.T) {
+	st := openStore(t)
+	af, ops := &fakeSink{}, &fakeReplier{}
+	RegisterSink("agentfield", af)
+	RegisterReplier("inbox:ops", ops)
+	defer RegisterSink("agentfield", nil)
+	defer RegisterReplier("inbox:ops", nil)
+	res, err := Add(context.Background(), st, entry(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	floor, _ := st.Add(context.Background(), factory.Item{Title: "typed", Repo: "acme/web"})
+	Notify(context.Background(), st, floor, Merged("u"))
+	Notify(context.Background(), st, res.ID, Opened("https://x/pull/1"))
+	WaitSent()
+	if len(af.got) != 2 || af.got[0].Source != "inbox:ops" || af.got[0].ExternalID != "A1" || af.got[0].JobID != res.ID {
+		t.Fatalf("sink heard %+v", af.got)
+	}
+	kinds := map[EventKind]bool{af.got[0].Kind: true, af.got[1].Kind: true}
+	if !kinds[EventFiled] || !kinds[EventPROpened] || len(ops.seen) != 2 {
+		t.Fatalf("sink kinds %v, replier %+v", kinds, ops.seen)
+	}
+}

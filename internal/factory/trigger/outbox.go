@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/redact"
-	"github.com/Agent-Field/codeaf/pkg/codeaftrigger"
 )
 
 // OutboxDir is where deliveries wait, one file each, in the floor's folder.
@@ -29,6 +28,8 @@ const OutboxDir = "trigger-outbox"
 // long each time, up to MaxRetryWait, and is given up only after GiveUpAfter
 // with no 2xx, so a callback that is down for a weekend still hears everything
 // when it comes back, and one that is gone for good stops filling the disk.
+// A webhook that cannot be read right now (its file is busy or broken) is
+// retried the same way rather than dropped.
 const (
 	FirstRetry   = 2 * time.Second
 	MaxRetryWait = time.Hour
@@ -38,6 +39,18 @@ const (
 	// idleWait is how often the loop looks again with nothing due.
 	idleWait = 30 * time.Second
 )
+
+// Body is one delivery's JSON body.
+type Body struct {
+	ID         string    `json:"id"`
+	Event      string    `json:"event"`
+	At         time.Time `json:"at"`
+	Source     string    `json:"source"`
+	ExternalID string    `json:"external_id"`
+	Job        int       `json:"job"`
+	Text       string    `json:"text"`
+	URL        string    `json:"url,omitempty"`
+}
 
 // delivery is one webhook waiting to be sent, as its file keeps it. The body
 // is fixed when it is queued, so every attempt sends the same bytes under the
@@ -55,11 +68,11 @@ type delivery struct {
 
 // Outbox keeps deliveries on disk and sends them. IT IS DURABLE: a delivery
 // is a file before [Outbox.Enqueue] returns and is removed only after a 2xx
-// (or when its source is revoked, or it is older than [GiveUpAfter]), so a
+// (or when its webhook is removed, or it is older than [GiveUpAfter]), so a
 // restart loses nothing and sends what was waiting.
 type Outbox struct {
 	Dir      string
-	Registry Registry
+	Webhooks Webhooks
 	// HTTP sends deliveries; nil is a client that follows no redirects.
 	HTTP *http.Client
 	// Now is the clock; nil is time.Now.
@@ -73,7 +86,7 @@ type Outbox struct {
 
 // OutboxAt is the outbox in the floor folder root.
 func OutboxAt(root string) *Outbox {
-	return &Outbox{Dir: filepath.Join(root, OutboxDir), Registry: RegistryAt(root)}
+	return &Outbox{Dir: filepath.Join(root, OutboxDir), Webhooks: WebhooksAt(root)}
 }
 
 func (o *Outbox) now() time.Time {
@@ -98,7 +111,7 @@ func (o *Outbox) kicker() chan struct{} {
 
 // Enqueue keeps w for source and wakes the sender. w.ID and w.At are filled
 // here when empty.
-func (o *Outbox) Enqueue(source string, w codeaftrigger.Webhook) (string, error) {
+func (o *Outbox) Enqueue(source string, w Body) (string, error) {
 	if w.ID == "" {
 		id, err := deliveryID()
 		if err != nil {
@@ -170,13 +183,16 @@ func (o *Outbox) Pass(ctx context.Context) time.Duration {
 			wait = min(wait, d.Next.Sub(now))
 			continue
 		}
-		src, err := o.Registry.Get(d.Source)
-		if err != nil || src.Callback == "" {
-			// A source revoked, or with no callback any more: nobody to tell.
+		hook, err := o.Webhooks.Get(d.Source)
+		if errors.Is(err, ErrNotFound) {
+			// The webhook was removed: nobody to tell.
 			o.drop(d)
 			continue
 		}
-		if err := o.send(ctx, src, d); err == nil {
+		if err == nil {
+			err = o.send(ctx, hook, d)
+		}
+		if err == nil {
 			o.drop(d)
 			continue
 		} else {
@@ -206,19 +222,19 @@ func retryWait(attempts int) time.Duration {
 	return min(d, MaxRetryWait)
 }
 
-// send is one attempt: the body, signed now, to the source's callback.
-func (o *Outbox) send(ctx context.Context, src Source, d delivery) error {
+// send is one attempt: the body, signed now, to the source's webhook.
+func (o *Outbox) send(ctx context.Context, hook Webhook, d delivery) error {
 	ctx, cancel := context.WithTimeout(ctx, deliverWait)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, src.Callback, bytes.NewReader(d.Body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hook.URL, bytes.NewReader(d.Body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "codeaf-factory")
-	req.Header.Set(codeaftrigger.SignatureHeader, codeaftrigger.Sign(src.Secret, d.Body, o.now()))
-	req.Header.Set(codeaftrigger.DeliveryHeader, d.ID)
-	req.Header.Set(codeaftrigger.EventHeader, d.Event)
+	req.Header.Set(SignatureHeader, Sign(hook.Secret, d.Body, o.now()))
+	req.Header.Set(DeliveryHeader, d.ID)
+	req.Header.Set(EventHeader, d.Event)
 	hc := o.HTTP
 	if hc == nil {
 		hc = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -230,7 +246,7 @@ func (o *Outbox) send(ctx context.Context, src Source, d delivery) error {
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("the callback answered %s", resp.Status)
+		return fmt.Errorf("the webhook answered %s", resp.Status)
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,113 +13,64 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
-	"github.com/Agent-Field/codeaf/pkg/codeaftrigger"
 )
 
 var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 
-func TestASourceTokenMatchesOnlyItsOwnSourceAndIsKeptHashed(t *testing.T) {
-	root := t.TempDir()
-	reg := RegistryAt(root)
-	ops, err := reg.Add("inbox:ops", "https://ops.example.com/hook", "", t0)
-	if err != nil {
-		t.Fatal(err)
+func TestAWebhookKeepsItsSecretPrivateAndIsReplacedWhole(t *testing.T) {
+	hooks := WebhooksAt(t.TempDir())
+	first, err := hooks.Add("inbox:ops", "https://ops.example.com/hook", t0)
+	if err != nil || !strings.HasPrefix(first.Secret, "whsec_") {
+		t.Fatalf("add = %+v, %v", first, err)
 	}
-	sales, err := reg.Add("sales", "", factory.TierCollab, t0)
-	if err != nil {
-		t.Fatal(err)
+	if info, _ := os.Stat(hooks.Path); info.Mode().Perm() != 0o600 {
+		t.Fatalf("webhooks file mode %v", info.Mode().Perm())
 	}
-	if got, ok := reg.Match(ops.Token); !ok || got.Name != "inbox:ops" {
-		t.Fatalf("ops token matched %+v %v", got, ok)
+	again, err := hooks.Add("inbox:ops", "https://ops.example.com/v2", t0)
+	if err != nil || again.Secret == first.Secret {
+		t.Fatalf("again = %+v, %v", again, err)
 	}
-	if got, ok := reg.Match(sales.Token); !ok || got.Name != "sales" {
-		t.Fatalf("sales token matched %+v %v", got, ok)
+	all, _ := hooks.Load()
+	if len(all) != 1 || all[0].URL != "https://ops.example.com/v2" || all[0].Secret != again.Secret {
+		t.Fatalf("kept %+v", all)
 	}
-	if _, ok := reg.Match(ops.Token + "x"); ok {
-		t.Fatal("a wrong token matched")
-	}
-	raw, err := os.ReadFile(reg.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), ops.Token) || strings.Contains(string(raw), sales.Token) {
-		t.Fatal("a token was kept in the clear")
-	}
-	if info, _ := os.Stat(reg.Path); info.Mode().Perm() != 0o600 {
-		t.Fatalf("sources file mode %v", info.Mode().Perm())
-	}
-	if ops.Trust != factory.TierStranger {
-		t.Fatalf("default trust %q, want stranger", ops.Trust)
-	}
-	if _, err := reg.Add("inbox:ops", "", "", t0); err != ErrExists {
-		t.Fatalf("second add = %v", err)
-	}
-	if err := reg.Revoke("inbox:ops"); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := reg.Match(ops.Token); ok {
-		t.Fatal("a revoked token still matched")
-	}
-}
-
-func TestASourceRefusesTheOperatorsTrustAndTheFactorysOwnNames(t *testing.T) {
-	reg := RegistryAt(t.TempDir())
-	for _, c := range []struct {
-		name, callback string
-		trust          factory.Tier
-	}{
-		{"ops", "", factory.TierOwner},
-		{"github", "", ""},
-		{"jira", "", ""},
-		{"Ops", "", ""},
-		{"ops", "ftp://x", ""},
-		{"ops", "https://user:pw@x.example.com", ""},
-	} {
-		if _, err := reg.Add(c.name, c.callback, c.trust, t0); err == nil {
-			t.Errorf("add %+v was taken", c)
+	for _, c := range [][2]string{{"github", "https://x"}, {"Ops", "https://x"}, {"ops", "ftp://x"}, {"ops", "https://u:pw@x"}, {"ops", ""}} {
+		if _, err := hooks.Add(c[0], c[1], t0); err == nil {
+			t.Errorf("add %v was taken", c)
 		}
 	}
-}
-
-func TestTrustIsCappedAtTheSources(t *testing.T) {
-	collab := Source{Trust: factory.TierCollab}
-	stranger := Source{Trust: factory.TierStranger}
-	for _, c := range []struct {
-		src  Source
-		ask  factory.Tier
-		want factory.Tier
-	}{
-		{collab, "", factory.TierCollab},
-		{collab, factory.TierOwner, factory.TierCollab},
-		{collab, factory.TierStranger, factory.TierStranger},
-		{stranger, factory.TierCollab, factory.TierStranger},
-		{stranger, factory.TierOwner, factory.TierStranger},
-	} {
-		if got := c.src.Cap(c.ask); got != c.want {
-			t.Errorf("%s capping %q = %q, want %q", c.src.Trust, c.ask, got, c.want)
-		}
+	if err := hooks.Remove("inbox:ops"); err != nil {
+		t.Fatal(err)
+	}
+	if err := hooks.Remove("inbox:ops"); err != ErrNotFound {
+		t.Fatalf("second remove = %v", err)
 	}
 }
 
-func TestTheSignatureIsTheSDKsAndRefusesATamperedOrStaleBody(t *testing.T) {
+// goldenSignature pins the scheme the manual states (HMAC-SHA256 of
+// "<t>.<body>"), so a receiver written from the manual keeps verifying.
+const goldenSignature = "t=1762430000,sha256=f422f8b27aa249cef7eb2e392d323b41c12d149d3daa64805c948469547e8046"
+
+func TestTheSignatureRefusesATamperedOrStaleBody(t *testing.T) {
 	body := []byte(`{"id":"dlv_1","event":"job.filed"}`)
-	h := codeaftrigger.Sign("whsec_x", body, t0)
-	if err := codeaftrigger.VerifyWebhookAt("whsec_x", body, h, t0.Add(time.Minute)); err != nil {
+	if got := Sign("whsec_abc", body, time.Unix(1762430000, 0)); got != goldenSignature {
+		t.Fatalf("Sign = %s", got)
+	}
+	h := Sign("whsec_x", body, t0)
+	if err := Verify("whsec_x", body, h, t0.Add(time.Minute)); err != nil {
 		t.Fatalf("good signature refused: %v", err)
 	}
-	if codeaftrigger.VerifyWebhookAt("whsec_y", body, h, t0) == nil {
+	if Verify("whsec_y", body, h, t0) == nil {
 		t.Fatal("the wrong secret passed")
 	}
-	if codeaftrigger.VerifyWebhookAt("whsec_x", append(body, ' '), h, t0) == nil {
+	if Verify("whsec_x", append(body, ' '), h, t0) == nil {
 		t.Fatal("a changed body passed")
 	}
-	if codeaftrigger.VerifyWebhookAt("whsec_x", body, h, t0.Add(codeaftrigger.Tolerance+time.Second)) == nil {
+	if Verify("whsec_x", body, h, t0.Add(Tolerance+time.Second)) == nil {
 		t.Fatal("a stale delivery passed")
 	}
-	retimed := strings.Replace(h, "t=", "t=1", 1)
-	if codeaftrigger.VerifyWebhookAt("whsec_x", body, retimed, t0) == nil {
+	if Verify("whsec_x", body, strings.Replace(h, "t=", "t=1", 1), t0) == nil {
 		t.Fatal("a delivery with a changed timestamp passed")
 	}
 }
@@ -150,7 +102,7 @@ func TestTheOutboxRetriesUntilA2xxAndSurvivesARestart(t *testing.T) {
 	rc := &receiver{refuse: 2}
 	srv := httptest.NewServer(rc)
 	defer srv.Close()
-	minted, err := RegistryAt(root).Add("ops", srv.URL, "", t0)
+	minted, err := WebhooksAt(root).Add("ops", srv.URL, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +110,7 @@ func TestTheOutboxRetriesUntilA2xxAndSurvivesARestart(t *testing.T) {
 	out := OutboxAt(root)
 	out.Now = func() time.Time { return clock }
 	out.Logf = t.Logf
-	id, err := out.Enqueue("ops", codeaftrigger.Webhook{Event: codeaftrigger.EventFiled, ExternalID: "A1", Job: 7, Text: "filed"})
+	id, err := out.Enqueue("ops", Body{Event: EventFiled, ExternalID: "A1", Job: 7, Text: "filed"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,33 +140,34 @@ func TestTheOutboxRetriesUntilA2xxAndSurvivesARestart(t *testing.T) {
 		t.Fatalf("after the 2xx: pending %d, sent %d", again.Pending(), len(rc.got))
 	}
 	for i, h := range rc.got {
-		if h.Get(codeaftrigger.DeliveryHeader) != id {
-			t.Errorf("attempt %d carried delivery %q, want %q", i, h.Get(codeaftrigger.DeliveryHeader), id)
+		if h.Get(DeliveryHeader) != id {
+			t.Errorf("attempt %d carried delivery %q, want %q", i, h.Get(DeliveryHeader), id)
 		}
-		if err := codeaftrigger.VerifyWebhookAt(minted.Secret, rc.bodies[i], h.Get(codeaftrigger.SignatureHeader), clock); err != nil {
+		if err := Verify(minted.Secret, rc.bodies[i], h.Get(SignatureHeader), clock); err != nil {
 			t.Errorf("attempt %d signature: %v", i, err)
 		}
 	}
-	w, err := codeaftrigger.ParseWebhook(rc.bodies[2])
-	if err != nil || w.ID != id || w.Event != codeaftrigger.EventFiled || w.Source != "ops" || w.ExternalID != "A1" || w.Job != 7 {
+	var w Body
+	err = json.Unmarshal(rc.bodies[2], &w)
+	if err != nil || w.ID != id || w.Event != EventFiled || w.Source != "ops" || w.ExternalID != "A1" || w.Job != 7 {
 		t.Fatalf("delivered %+v, %v", w, err)
 	}
 }
 
-func TestARevokedSourcesDeliveriesAreDroppedAndOldOnesGivenUp(t *testing.T) {
+func TestARemovedWebhooksDeliveriesAreDroppedAndOldOnesGivenUp(t *testing.T) {
 	root := t.TempDir()
 	rc := &receiver{refuse: 1000}
 	srv := httptest.NewServer(rc)
 	defer srv.Close()
-	reg := RegistryAt(root)
-	if _, err := reg.Add("ops", srv.URL, "", t0); err != nil {
+	reg := WebhooksAt(root)
+	if _, err := reg.Add("ops", srv.URL, t0); err != nil {
 		t.Fatal(err)
 	}
 	clock := t0
 	out := OutboxAt(root)
 	out.Now = func() time.Time { return clock }
 	out.Logf = t.Logf
-	if _, err := out.Enqueue("ops", codeaftrigger.Webhook{Event: codeaftrigger.EventDone}); err != nil {
+	if _, err := out.Enqueue("ops", Body{Event: EventDone}); err != nil {
 		t.Fatal(err)
 	}
 	out.Pass(context.Background())
@@ -223,16 +176,16 @@ func TestARevokedSourcesDeliveriesAreDroppedAndOldOnesGivenUp(t *testing.T) {
 	if out.Pending() != 0 {
 		t.Fatalf("a three-day-old delivery was kept")
 	}
-	if _, err := out.Enqueue("ops", codeaftrigger.Webhook{Event: codeaftrigger.EventDone}); err != nil {
+	if _, err := out.Enqueue("ops", Body{Event: EventDone}); err != nil {
 		t.Fatal(err)
 	}
-	if err := reg.Revoke("ops"); err != nil {
+	if err := reg.Remove("ops"); err != nil {
 		t.Fatal(err)
 	}
 	sent := len(rc.got)
 	out.Pass(context.Background())
 	if out.Pending() != 0 || len(rc.got) != sent {
-		t.Fatalf("a revoked source's delivery: pending %d, sent %d more", out.Pending(), len(rc.got)-sent)
+		t.Fatalf("a removed webhook's delivery: pending %d, sent %d more", out.Pending(), len(rc.got)-sent)
 	}
 }
 
@@ -242,12 +195,19 @@ func TestTheRetryWaitDoublesUpToAnHour(t *testing.T) {
 	}
 }
 
-func TestTheReplierQueuesEachMomentAndAMergeIsAlsoDone(t *testing.T) {
+func TestTheSinkQueuesOnlyForASourceWithAWebhookAndAMergeIsAlsoDone(t *testing.T) {
 	root := t.TempDir()
 	out := OutboxAt(root)
-	r := Replier{Source: "ops", Out: out}
+	sink := WebhookSink{Out: out}
+	ctx := context.Background()
+	if err := sink.Send(ctx, inbox.Moment{Source: "ops", ExternalID: "A1", Event: inbox.Filed("t")}); err != nil || out.Pending() != 0 {
+		t.Fatalf("a source with no webhook queued %d, %v", out.Pending(), err)
+	}
+	if _, err := out.Webhooks.Add("ops", "https://ops.example.com/hook", t0); err != nil {
+		t.Fatal(err)
+	}
 	for _, ev := range []inbox.Event{inbox.Filed("t"), inbox.Merged("https://x/pr/1"), {Kind: "something_new"}} {
-		if err := r.Reply(context.Background(), "A1", ev); err != nil {
+		if err := sink.Send(ctx, inbox.Moment{Source: "ops", ExternalID: "A1", Event: ev}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -256,7 +216,7 @@ func TestTheReplierQueuesEachMomentAndAMergeIsAlsoDone(t *testing.T) {
 	for _, d := range list {
 		got = append(got, d.Event)
 	}
-	want := []string{codeaftrigger.EventFiled, codeaftrigger.EventMerged, codeaftrigger.EventDone}
+	want := []string{EventFiled, EventMerged, EventDone}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("queued %v, want %v", got, want)
 	}

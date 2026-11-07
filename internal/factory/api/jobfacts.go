@@ -3,9 +3,9 @@ package api
 import (
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-	"github.com/Agent-Field/codeaf/pkg/codeaftrigger"
 )
 
 // JobRoute is the routing rule that decided a job ([factory.Item.Route]) and,
@@ -120,14 +120,27 @@ func ModelsIn(j *Job, it factory.Item, d factory.ModelDefaults) {
 	}
 }
 
-// TriggerStatus is GET /api/intake/{source}/{id}: how far a job filed from
-// outside is, for the tool that filed it. IT IS READ OFF THE JOB AS THE JOB
+// IntakeStatus is how far a job filed from outside is, for the tool that
+// filed it: GET /api/intake/{source}/{id} and AgentField's `status`. Route,
+// PRURL and Question are absent when there is none.
+type IntakeStatus struct {
+	Job        int       `json:"job"`
+	State      string    `json:"state"`
+	StepsDone  int       `json:"steps_done"`
+	StepsTotal int       `json:"steps_total"`
+	Route      string    `json:"route,omitempty"`
+	PRURL      string    `json:"pr_url,omitempty"`
+	Question   string    `json:"question,omitempty"`
+	Updated    time.Time `json:"updated"`
+}
+
+// IntakeStatusOf is it's [IntakeStatus]. IT IS READ OFF THE JOB AS THE JOB
 // WIRE SAYS IT ([FromItem], whose facts are [jobFacts]'), never worked out a
 // second time, so a source and the queue can never disagree about a job.
-// question is the open question's words when the job waits on one.
-func TriggerStatus(it factory.Item) codeaftrigger.Status {
+// Question is the open question's words when the job waits on one.
+func IntakeStatusOf(it factory.Item) IntakeStatus {
 	j := FromItem(it)
-	out := codeaftrigger.Status{Job: j.ID, State: j.State, StepsDone: j.StepsDone, StepsTotal: j.StepsTotal, Updated: it.Changed}
+	out := IntakeStatus{Job: j.ID, State: j.State, StepsDone: j.StepsDone, StepsTotal: j.StepsTotal, Updated: it.Changed}
 	if j.Route != nil {
 		out.Route = j.Route.Rule
 	}

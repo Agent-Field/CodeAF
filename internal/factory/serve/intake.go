@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/trigger"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -22,107 +21,9 @@ import (
 // shape is [inbox.Entry], which is the inbox's to keep.
 const IntakePath = "/api/intake"
 
-// IntakeJobPath is one filed job's status (GET) and, under /messages, the
-// door a source says more about it through (POST).
-const IntakeJobPath = IntakePath + "/{source}/{id}"
-
-// SourcesPath is the operator's list of registered sources (GET), where one
-// is registered (POST), and under /{name} where one is revoked (DELETE).
-const SourcesPath = "/v1/sources"
-
-// triggerState is the floor's Trigger API while the handler runs.
-type triggerState struct {
-	hub  *trigger.Hub
-	stop context.CancelFunc
-	done chan struct{}
-	once sync.Once
-}
-
-// sourceKey carries the registered source a request's token belongs to.
-type sourceKey struct{}
-
-// isIntakePath is every path a source's token opens.
-func isIntakePath(p string) bool {
-	return p == IntakePath || (len(p) > len(IntakePath) && p[:len(IntakePath)+1] == IntakePath+"/")
-}
-
-// sourceRequest is r marked with the registered source whose token it
-// carries, ON AN INTAKE PATH ONLY; anywhere else a source token is not
-// looked up at all, so it opens nothing.
-func (h *Handler) sourceRequest(r *http.Request) (*http.Request, bool) {
-	if h.triggers == nil || !isIntakePath(r.URL.Path) {
-		return r, false
-	}
-	token := bearer(r)
-	if token == "" || h.floorToken(token) {
-		return r, false
-	}
-	src, ok := h.triggers.hub.Registry.Match(token)
-	if !ok {
-		return r, false
-	}
-	return r.WithContext(context.WithValue(r.Context(), sourceKey{}, src)), true
-}
-
-// callerSource is the registered source r was authorized as, when it was.
-func callerSource(r *http.Request) (trigger.Source, bool) {
-	src, ok := r.Context().Value(sourceKey{}).(trigger.Source)
-	return src, ok
-}
-
 func (h *Handler) intakeRoutes() {
 	h.route(IntakePath, map[string]http.HandlerFunc{http.MethodPost: h.intake})
-	h.route(IntakeJobPath, map[string]http.HandlerFunc{http.MethodGet: h.intakeStatus})
-	h.route(IntakeJobPath+"/messages", map[string]http.HandlerFunc{http.MethodPost: h.intakeMessage})
-	h.route(SourcesPath, map[string]http.HandlerFunc{http.MethodGet: h.sources, http.MethodPost: h.addSource})
-	h.route(SourcesPath+"/{name}", map[string]http.HandlerFunc{http.MethodDelete: h.revokeSource})
-	h.startTriggers()
-}
-
-// startTriggers opens the floor's Trigger API: the answerers for every source
-// with a callback, and the outbox's sender, which runs until Close.
-func (h *Handler) startTriggers() {
-	if h.config.Store == nil {
-		return
-	}
-	hub := trigger.Open(h.config.Store.Root())
-	ctx, cancel := context.WithCancel(context.Background())
-	t := &triggerState{hub: hub, stop: cancel, done: make(chan struct{})}
-	h.triggers = t
-	_ = hub.Sync()
-	guard.Go("factory webhook outbox", func() {
-		defer close(t.done)
-		hub.Out.Run(ctx)
-	})
-}
-
-func (h *Handler) closeTriggers() {
-	t := h.triggers
-	if t == nil {
-		return
-	}
-	t.once.Do(func() {
-		t.stop()
-		<-t.done
-		t.hub.Close()
-	})
-}
-
-// intakeCaller is who may file, read and message work from source: the
-// operator for any source, a registered source only for its own. It answers
-// the source when the caller is one, and refuses everyone else.
-func (h *Handler) intakeCaller(w http.ResponseWriter, r *http.Request, source string) (trigger.Source, bool, bool) {
-	if src, ok := callerSource(r); ok {
-		if source != src.Name {
-			h.fail(w, http.StatusForbidden, fmt.Sprintf("this token files and reads only work from %s", src.Name))
-			return trigger.Source{}, false, false
-		}
-		return src, true, true
-	}
-	if !h.requireOperator(w, r) {
-		return trigger.Source{}, false, false
-	}
-	return trigger.Source{}, false, true
+	h.triggerRoutes()
 }
 
 // intake is POST /api/intake: one [inbox.Entry] filed through [inbox.Add],
@@ -130,17 +31,11 @@ func (h *Handler) intakeCaller(w http.ResponseWriter, r *http.Request, source st
 // checks who is calling, and hands over; the checking of the entry and the
 // filing are the inbox's, the same for every door.
 //
-// THE OPERATOR FILES ANY WORK: the factory's access token (what an
-// automation holds) or the operator's own session; a teammate's session is
-// refused, because what is filed here starts with the owner's standing. A
-// REGISTERED SOURCE FILES ONLY ITS OWN: the entry's source must be its name
-// (an empty one is taken as it), and its trust is capped at the source's.
+// ONLY THE OPERATOR FILES WORK FROM OUTSIDE: the factory's access token (what
+// an automation holds) or the operator's own session. A teammate's session is
+// refused, because what is filed here starts with the owner's standing.
 func (h *Handler) intake(w http.ResponseWriter, r *http.Request) {
-	if !h.requireVerb(w, h.config.Store != nil) {
-		return
-	}
-	src, viaSource := callerSource(r)
-	if !viaSource && !h.requireOperator(w, r) {
+	if !h.requireVerb(w, h.config.Store != nil) || !h.requireOperator(w, r) {
 		return
 	}
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, inbox.MaxRequest))
@@ -158,21 +53,10 @@ func (h *Handler) intake(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &e, false) {
 		return
 	}
-	if viaSource {
-		if e.Source == "" {
-			e.Source = src.Name
-		}
-		if _, ok, _ := h.intakeCaller(w, r, e.Source); !ok {
-			return
-		}
-	}
 	clean, err := inbox.Validate(e)
 	if err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
-	}
-	if viaSource {
-		e.Trust = src.Cap(clean.Trust)
 	}
 	// Work for a repository that is off is refused in the words every other
 	// door uses, before anything is filed.
@@ -197,17 +81,62 @@ func (h *Handler) intake(w http.ResponseWriter, r *http.Request) {
 	h.write(w, status, out)
 }
 
-// intakeStatus is GET /api/intake/{source}/{id}: how far the job is
-// ([api.TriggerStatus]).
+// IntakeJobPath is one filed job's status (GET) and, under /messages, the
+// door that says more about it (POST). Both are the operator's, like
+// POST /api/intake, and both only adapt HTTP to internal/factory/trigger,
+// whose [trigger.Message] and [trigger.Status] AgentField's reasoners call too.
+const IntakeJobPath = IntakePath + "/{source}/{id}"
+
+// WebhooksPath is the operator's list of webhooks (GET), where one is set
+// (POST), and under /{source} where one is removed (DELETE).
+const WebhooksPath = "/v1/webhooks"
+
+// triggerState is the floor's webhooks while the handler runs.
+type triggerState struct {
+	hub  *trigger.Hub
+	stop context.CancelFunc
+	done chan struct{}
+	once sync.Once
+}
+
+func (h *Handler) triggerRoutes() {
+	h.route(IntakeJobPath, map[string]http.HandlerFunc{http.MethodGet: h.intakeStatus})
+	h.route(IntakeJobPath+"/messages", map[string]http.HandlerFunc{http.MethodPost: h.intakeMessage})
+	h.route(WebhooksPath, map[string]http.HandlerFunc{http.MethodGet: h.webhooks, http.MethodPost: h.addWebhook})
+	h.route(WebhooksPath+"/{source}", map[string]http.HandlerFunc{http.MethodDelete: h.removeWebhook})
+	if h.config.Store == nil {
+		return
+	}
+	// The webhook sink goes on the bus, and the outbox's sender runs until
+	// Close.
+	hub := trigger.Open(h.config.Store.Root())
+	ctx, cancel := context.WithCancel(context.Background())
+	t := &triggerState{hub: hub, stop: cancel, done: make(chan struct{})}
+	h.triggers = t
+	guard.Go("factory webhook outbox", func() {
+		defer close(t.done)
+		hub.Out.Run(ctx)
+	})
+}
+
+func (h *Handler) closeTriggers() {
+	t := h.triggers
+	if t == nil {
+		return
+	}
+	t.once.Do(func() {
+		t.stop()
+		<-t.done
+		t.hub.Close()
+	})
+}
+
+// intakeStatus is GET /api/intake/{source}/{id} ([trigger.Status]).
 func (h *Handler) intakeStatus(w http.ResponseWriter, r *http.Request) {
-	if !h.requireVerb(w, h.config.Store != nil) {
+	if !h.requireVerb(w, h.config.Store != nil) || !h.requireOperator(w, r) {
 		return
 	}
-	source, id := r.PathValue("source"), r.PathValue("id")
-	if _, _, ok := h.intakeCaller(w, r, source); !ok {
-		return
-	}
-	it, err := inbox.Find(h.config.Store, source, id)
+	out, err := trigger.Status(h.config.Store, r.PathValue("source"), r.PathValue("id"))
 	if errors.Is(err, inbox.ErrNoJob) {
 		h.fail(w, http.StatusNotFound, err.Error())
 		return
@@ -215,7 +144,7 @@ func (h *Handler) intakeStatus(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.write(w, http.StatusOK, api.TriggerStatus(it))
+	h.write(w, http.StatusOK, out)
 }
 
 // messageBody is POST /api/intake/{source}/{id}/messages.
@@ -224,27 +153,19 @@ type messageBody struct {
 	Text   string `json:"text"`
 }
 
-// intakeMessage is POST /api/intake/{source}/{id}/messages: the words reach
-// the job's manager as a comment on an issue does ([inbox.Message]), at the
-// lower of the job's trust and the source's. It answers {job, accepted}.
+// intakeMessage is POST /api/intake/{source}/{id}/messages
+// ([trigger.Message]): the words reach the job's manager as a comment on an
+// issue does, held to the job's trust. It answers {job, accepted}.
 func (h *Handler) intakeMessage(w http.ResponseWriter, r *http.Request) {
-	if !h.requireVerb(w, h.config.Store != nil) {
-		return
-	}
-	source, id := r.PathValue("source"), r.PathValue("id")
-	src, viaSource, ok := h.intakeCaller(w, r, source)
-	if !ok {
+	if !h.requireVerb(w, h.config.Store != nil) || !h.requireOperator(w, r) {
 		return
 	}
 	var body messageBody
 	if !h.decode(w, r, &body, false) {
 		return
 	}
-	said := inbox.Said{Source: source, ID: id, Author: body.Author, Text: body.Text}
-	if viaSource {
-		said.Trust = src.Trust
-	}
-	heard, err := inbox.Message(r.Context(), h.config.Store, said, h.clock())
+	said := trigger.Said{Source: r.PathValue("source"), ID: r.PathValue("id"), Author: body.Author, Text: body.Text}
+	out, err := trigger.Message(r.Context(), h.config.Store, said, h.clock())
 	var refused inbox.Refused
 	switch {
 	case errors.Is(err, inbox.ErrNoJob):
@@ -256,68 +177,59 @@ func (h *Handler) intakeMessage(w http.ResponseWriter, r *http.Request) {
 	case h.failed(w, err):
 		return
 	}
-	h.write(w, http.StatusOK, struct {
-		Job      int  `json:"job"`
-		Accepted bool `json:"accepted"`
-	}{heard.Job, true})
+	h.write(w, http.StatusOK, out)
 }
 
-// sourceBody is POST /v1/sources.
-type sourceBody struct {
-	Name     string       `json:"name"`
-	Callback string       `json:"callback"`
-	Trust    factory.Tier `json:"trust"`
+// webhookBody is POST /v1/webhooks.
+type webhookBody struct {
+	Source string `json:"source"`
+	URL    string `json:"url"`
 }
 
-// sources is GET /v1/sources: every registered source, never its secrets.
-func (h *Handler) sources(w http.ResponseWriter, r *http.Request) {
+// webhooks is GET /v1/webhooks: every webhook, never its secret.
+func (h *Handler) webhooks(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.triggers != nil) || !h.requireOperator(w, r) {
 		return
 	}
-	all, err := h.triggers.hub.Registry.Load()
+	all, err := h.triggers.hub.Webhooks.Load()
 	if h.failed(w, err) {
 		return
 	}
 	out := make([]trigger.Public, 0, len(all))
-	for _, s := range all {
-		out = append(out, s.Public())
+	for _, hook := range all {
+		out = append(out, hook.Public())
 	}
 	h.write(w, http.StatusOK, struct {
-		Sources []trigger.Public `json:"sources"`
+		Webhooks []trigger.Public `json:"webhooks"`
 	}{out})
 }
 
-// addSource is POST /v1/sources {name, callback?, trust?}: it registers the
-// source and answers its token and signing secret, THE ONLY TIME EITHER IS
-// SHOWN.
-func (h *Handler) addSource(w http.ResponseWriter, r *http.Request) {
+// addWebhook is POST /v1/webhooks {source, url}: it sets the source's webhook
+// and answers its signing secret, THE ONLY TIME IT IS SHOWN. A source that
+// had one is given the new address and a new secret.
+func (h *Handler) addWebhook(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.triggers != nil) || !h.requireOperator(w, r) {
 		return
 	}
-	var body sourceBody
+	var body webhookBody
 	if !h.decode(w, r, &body, false) {
 		return
 	}
-	minted, err := h.triggers.hub.Registry.Add(body.Name, body.Callback, body.Trust, h.clock())
-	switch {
-	case errors.Is(err, trigger.ErrExists):
-		h.fail(w, http.StatusConflict, err.Error())
-		return
-	case err != nil:
+	added, err := h.triggers.hub.Webhooks.Add(body.Source, body.URL, h.clock())
+	if err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	_ = h.triggers.hub.Sync()
-	h.write(w, http.StatusCreated, minted)
+	h.write(w, http.StatusCreated, added)
 }
 
-// revokeSource is DELETE /v1/sources/{name}.
-func (h *Handler) revokeSource(w http.ResponseWriter, r *http.Request) {
+// removeWebhook is DELETE /v1/webhooks/{source}.
+func (h *Handler) removeWebhook(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.triggers != nil) || !h.requireOperator(w, r) {
 		return
 	}
-	name := r.PathValue("name")
-	err := h.triggers.hub.Registry.Revoke(name)
+	source := r.PathValue("source")
+	err := h.triggers.hub.Webhooks.Remove(source)
 	if errors.Is(err, trigger.ErrNotFound) {
 		h.fail(w, http.StatusNotFound, err.Error())
 		return
@@ -325,8 +237,7 @@ func (h *Handler) revokeSource(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	_ = h.triggers.hub.Sync()
 	h.write(w, http.StatusOK, struct {
-		Revoked string `json:"revoked"`
-	}{name})
+		Removed string `json:"removed"`
+	}{source})
 }
