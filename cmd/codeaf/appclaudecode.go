@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/claudeagent"
 	"github.com/Agent-Field/codeaf/internal/claudemodel"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // claudeStatusTTL is how long one reading of Claude Code's sign-in is shown
@@ -41,20 +42,24 @@ func (b *appBackend) claudeStatus() (claudeagent.Status, bool) {
 	}
 	if !claudeStatusCache.reading {
 		claudeStatusCache.reading = true
-		go b.readClaudeStatus()
+		guard.Go("app/claude-code-status", b.readClaudeStatus)
 	}
 	return claudeStatusCache.status, known
 }
 
 // readClaudeStatus takes one reading and says the row changed.
 func (b *appBackend) readClaudeStatus() {
-	status := claudeagent.ReadStatus(context.Background())
-	claudeStatusCache.Lock()
-	claudeStatusCache.status, claudeStatusCache.at, claudeStatusCache.reading = status, time.Now(), false
-	claudeStatusCache.Unlock()
+	keepClaudeStatus(claudeagent.ReadStatus(context.Background()))
 	if b.emit != nil {
 		b.providerIDChanged(claudemodel.ID, "")
 	}
+}
+
+// keepClaudeStatus stores one reading and ends the background read.
+func keepClaudeStatus(status claudeagent.Status) {
+	claudeStatusCache.Lock()
+	defer claudeStatusCache.Unlock()
+	claudeStatusCache.status, claudeStatusCache.at, claudeStatusCache.reading = status, time.Now(), false
 }
 
 // claudeStatusNow reads the sign-in again and waits for it, for a person who
