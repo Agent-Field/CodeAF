@@ -16,3 +16,7 @@ Found in the live desk walk (#176 published PR #179 with its approve step "to co
 Auto still passes a routine, non-fixed last approve step through its recorded proof
 approval, as before; it no longer does so by landing past it. Desks must learn the
 `approve_step` kind and the `step` gate.
+
+The desk walk's "approval that bounced" (an Approve on a Manual plan hold that came
+back as "Plan ready" with Approve showing) was this relabel: the approval settled,
+write ran, and the row showed the next hold, before test, under the old plan kind.
