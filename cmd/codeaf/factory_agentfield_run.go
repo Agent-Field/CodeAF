@@ -438,6 +438,14 @@ func (r *afRemote) follow(ctx context.Context, client afClient, job int, runID s
 		}
 		select {
 		case <-ctx.Done():
+			// ONLY THE PERSON'S STOP CANCELS THE RUN. Anything else that ends
+			// this reading — the engine closing, the lease let go, a desk
+			// quitting — lets go of a run that does not run here: the
+			// control plane's run goes on, and the next start follows it
+			// again (factoryrun.StoppedHere).
+			if !factoryrun.StoppedHere(ctx) {
+				return ctx.Err()
+			}
 			// THE PERSON'S STOP STOPS THE WHOLE RUN, not only this reading.
 			cancelCtx, cancel := context.WithTimeout(context.Background(), afStopDrain)
 			_ = client.CancelTree(cancelCtx, runID)

@@ -561,12 +561,17 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 
 	for _, tc := range []struct {
 		name, status, reason string
-		cancel               bool
-		want                 string
+		// cancel ends the run's context: with the person's Stop as its
+		// cause when stopped, as the engine closing does otherwise.
+		cancel, stopped bool
+		want            string
 	}{
 		{name: "succeeds", status: "succeeded"},
 		{name: "fails", status: "failed", reason: "investigate: the ledger is unreachable", want: "the AgentField run failed: investigate: the ledger is unreachable"},
-		{name: "is stopped", cancel: true, want: context.Canceled.Error()},
+		{name: "is stopped", cancel: true, stopped: true, want: context.Canceled.Error()},
+		// QUITTING THE ENGINE LETS GO OF A RUN THAT RUNS ELSEWHERE: the
+		// control plane's run goes on, and the next start follows it again.
+		{name: "is let go when the engine closes", cancel: true, want: context.Canceled.Error()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, it := afJob(t)
@@ -577,9 +582,14 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 			if tc.cancel {
 				floor, _ = afJob(t)
 			}
-			r := &afRemote{items: st, floor: floor, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			// THE CLOCK IS THE FIXTURE'S: triage ended at 12:00:02, and a step
+			// that ended over a minute ago with nothing relayed is no longer
+			// read (afDrainAfter), so a wall clock past that minute would
+			// never read the lines the node relays after the stop.
+			r := &afRemote{items: st, floor: floor, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true },
+				now: func() time.Time { return afTime("2026-11-07T12:00:03Z") }}
+			ctx, cancel := context.WithCancelCause(context.Background())
+			defer cancel(nil)
 			done := make(chan error, 1)
 			go func() { done <- r.Run(ctx, it.ID) }()
 			time.Sleep(50 * time.Millisecond)
@@ -587,7 +597,11 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 				cp.afterCancel = func() {
 					cp.relayLines("e-t", [][]byte{[]byte(`{"type":"message","role":"assistant","content":"stopping","timestamp":"2026-11-07T12:00:03Z"}`)}, true)
 				}
-				cancel()
+				var cause error
+				if tc.stopped {
+					cause = factory.ErrPersonStopped
+				}
+				cancel(cause)
 			} else {
 				cp.mu.Lock()
 				cp.tree.Status = tc.status
@@ -610,8 +624,8 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 			if len(cp.dispatched) != 1 || cp.dispatched[0]["_target"] != "support.handle_ticket" || cp.dispatched[0]["title"] != it.Title || cp.dispatched[0]["body"] != it.Body || cp.owner != "workaf-node" {
 				t.Fatalf("dispatched %+v as %q", cp.dispatched, cp.owner)
 			}
-			if tc.cancel != (len(cp.cancelled) == 1 && cp.cancelled[0] == "run-1") {
-				t.Fatalf("cancelled %v", cp.cancelled)
+			if tc.stopped != (len(cp.cancelled) == 1 && cp.cancelled[0] == "run-1") {
+				t.Fatalf("cancelled %v; a person's stop cancels the run, the engine closing never does", cp.cancelled)
 			}
 			job, _ := st.Get(it.ID)
 			if job.AgentField == nil || job.AgentField.ExecutionID != "exec-root" || len(job.Stream.Phases) != 1 || job.Stream.Phases[0].Name != "triage" {
@@ -624,7 +638,7 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 			// A stopped run is read to its end: the lines the node relays after
 			// the stop are kept and acked, so the control plane holds nothing,
 			// and the job records the run as cancelled.
-			if tc.cancel {
+			if tc.stopped {
 				if n := len(cp.held["e-t"]); n != 0 {
 					t.Fatalf("the control plane still holds %d entries after the stop", n)
 				}

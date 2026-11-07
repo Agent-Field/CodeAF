@@ -552,7 +552,11 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 				return reportResult{alive: !j.lostLease(err), admitted: err == nil}
 			})
 		case <-ctx.Done():
-			j.drop()
+			// THIS PROCESS IS ENDING, WHICH IS NOT A STOP: the job is let go,
+			// never stopped as its person's, so work it runs elsewhere goes
+			// on and the lease expires into the queue to be followed again
+			// (run.StoppedHere reads false).
+			j.letGo()
 			return
 		case <-report.C:
 			// Ticks during an in-flight report are skipped, never queued.
@@ -977,8 +981,17 @@ func (j *job) converse(ctx context.Context) {
 // the job's folder.
 const StopWait = 5 * time.Second
 
-// drop lets the job go here: the factory stopped it, or this process is
-// ending and the lease will expire into the queue for another worker.
+// letGo is drop for a process that is ending: the job is withdrawn here,
+// never stopped, and the lease expires into the queue for another worker.
+func (j *job) letGo() {
+	j.mu.Lock()
+	j.withdrawn = true
+	j.mu.Unlock()
+	j.drop()
+}
+
+// drop lets the job go here: the factory stopped it, took its lease back, or
+// this process is ending ([job.letGo]).
 func (j *job) drop() {
 	j.keepLocal(api.WorkerLease{Job: j.id})
 	j.mu.Lock()

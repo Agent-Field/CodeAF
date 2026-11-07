@@ -247,6 +247,9 @@ page and step rail, Start and Stop.
   the run's own words ("the AgentField run failed: …") when it failed.
   **Stop** cancels the whole run tree on AgentField; the stopped step reads
   skipped, the run reads cancelled, and the step's last lines are still kept.
+  **Only Stop cancels it.** Quitting the app, closing the engine or this
+  machine's runner letting the job go leaves the run going on AgentField; the
+  next start follows it again and catches up on what it did meanwhile.
 - It needs no repository and no model key on this machine — the work and
   its model calls happen on the node — and it has no proof to approve: a run
   that succeeded is done.
