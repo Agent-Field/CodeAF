@@ -264,6 +264,13 @@ To run stages narrower, set `CODEAF_FACTORY_POSTURE` to another posture (`ask`, 
 `deny`, or `auto` for your own settings rows) in the environment codeaf's host starts in; under
 any of them a call that would ask is refused the same way.
 
+The allow posture is not your full permissions. A stage's commands, and its own `read`, `write`
+and `edit`, are kept inside its worktree, the repository's git folder and the stage's own temp and
+cache folders. It cannot write the rest of the computer (no `brew install`), read keys and
+sign-ins such as `~/.ssh`, or use docker. A blocked command reads `codeaf blocked this: …`.
+`"jail.allow"` in the repository's `.codeaf/config.json` allows more. "What an unattended run may
+touch" has the whole list.
+
 ## what the manager hears — the progress lines in the item's chat
 
 The run reports into the item's chat (its manager, opened with `T`) one line per event, written

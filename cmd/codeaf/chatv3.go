@@ -374,6 +374,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// neither of them is a gate that quietly opens because the terminal
 		// happens to be a pipe.
 		cfg.AskConsent = false
+		// AND ITS COMMANDS ARE FENCED to the folder it runs in (fence.go):
+		// nobody watches them, so the jail holds what a person would have.
+		fence, err := unattendedFence(workspace, settings.ProfileDir)
+		if err != nil {
+			return err
+		}
+		cfg.Fence = fence
 		// AND NOTHING MAY BE SET UP HERE. An automation spends money at times
 		// nobody chose, so it needs a yes; a headless run has nobody to give
 		// one, and a clock that armed it anyway would be the harness agreeing on

@@ -381,6 +381,15 @@ var beltFacts = []beltFact{{
 	holds:   Config.mayAsk,
 	shelved: "- `ask` waits in the `questions` group; `load_capability` fetches it.",
 }, {
+	// THE FENCE IS SAID BEFORE IT IS MET (internal/executor's fence.go). A
+	// fenced run that is not told reaches for `brew install` or `docker pull`,
+	// is refused, and spends turns finding out; an unfenced one is told
+	// nothing, because nothing is different for it.
+	holds: Config.fenced,
+	// It is one short line because every byte of it is in the widest prefix
+	// (prefixbudget_test.go); the refusal sentence itself says the rest.
+	present: "- Shell fenced here: no brew, docker.",
+}, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
 	// the `Project` footer is rendered for all of them — and the second would be

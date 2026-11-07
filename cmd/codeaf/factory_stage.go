@@ -49,7 +49,9 @@ import (
 //   - it runs at the ALLOW POSTURE, what --yolo gives, behind the headless
 //     gate ([stageApprovalGate]): a stage that writes must be able to edit and
 //     run things in its checkout, and nothing it does may wait on a person who
-//     is not there;
+//     is not there. The posture opens the gate and NOT the machine: every
+//     command still runs inside the fence (fence.go), which keeps it to its
+//     worktree, its git folder and its own temp and cache folders;
 //   - the doors that raise a card for a person (factory_add, factory_recipe,
 //     factory_item) are taken off, because no person is there to answer one
 //     and a card nobody answers holds the round forever.
@@ -129,6 +131,11 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
+	// A STAGE'S COMMANDS ARE FENCED to its worktree (fence.go): the allow
+	// posture below opens the gate, and the fence is what still holds.
+	if cfg.Fence, err = unattendedFence(where, m.profileDir); err != nil {
+		return nil, err
+	}
 	cfg.AutomaticModels = spec.AutomaticModels
 	cfg.Model = factoryOpenModel(m.profileDir, cfg, spec)
 	fallback := appDefaultFallback(m.profileDir)

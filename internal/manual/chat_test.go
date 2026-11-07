@@ -41,6 +41,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my message to the other computer was never delivered because it is offline", "desktop-sync"},
 		{"message to my other computer didn't send, can't reach relay", "desktop-sync"},
 		// C9: Windows shell questions must reach the self-contained Git Bash section.
+		{"are factory steps sandboxed", "unattended-run-limits"},
+		{"why did brew install fail in a factory step", "unattended-run-limits"},
+		{"codeaf blocked this", "unattended-run-limits"},
+		{"let a factory step use docker", "unattended-run-limits"},
+		{"how do I allow more with jail.allow", "unattended-run-limits"},
+		{"can codeaf exec read my ssh keys", "unattended-run-limits"},
+		{"where does a step's GOCACHE go", "unattended-run-limits"},
 		{"why do my commands fail on Windows", "running-commands-on-windows"},
 		{"which bash does codeaf use on Windows", "running-commands-on-windows"},
 		{"can codeaf use WSL", "running-commands-on-windows"},

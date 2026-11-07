@@ -221,6 +221,9 @@ the work is and want the cheapest, most predictable path to an answer; reach for
 do` when you want codeaf to work out how the job divides and to judge what it produced.
 Nothing checks the answer here.
 
+Its commands are limited to the workspace it runs in and its own temp and cache folders: no
+writes elsewhere, no reading keys and sign-ins, no docker ("What an unattended run may touch").
+
 With no prompt written out, it reads the prompt from whatever is piped in.
 
 | flag | what it does |

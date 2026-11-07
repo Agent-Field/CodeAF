@@ -731,7 +731,7 @@ both use the cell the current folder is in.
 
 ## Do moving chats restrict commands, network access or installs
 
-New chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
+New interactive chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. `codeaf chat --once`, `codeaf exec` and factory steps are limited to their own folder instead ("What an unattended run may touch"). Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
 
 ## Your identity — codeaf identity show, export and import
 

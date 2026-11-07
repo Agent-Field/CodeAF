@@ -1045,6 +1045,11 @@ var OperatorEnvPins = []string{
 	// editable profile preferences.
 	"CODEAF_FACTORY_BENCHES",
 	"CODEAF_FACTORY_POSTURE",
+	// The fence widening a launcher hands an unattended run (jailallow.go).
+	"CODEAF_JAIL_ALLOW",
+	// What a fenced command is told about itself; codeaf sets it, nobody reads
+	// it back as a preference.
+	"CODEAF_FENCED",
 	"CODEAF_FACTORY_NO_WORKER",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
