@@ -244,7 +244,7 @@ func (c *Connection) Client() (*Client, Settings, bool) {
 	if !ok {
 		return nil, Settings{}, false
 	}
-	return &Client{URL: s.URL, Key: sec.Key, HTTP: c.HTTP}, s, true
+	return &Client{URL: s.URL, Key: sec.Key, HTTP: c.HTTP, Owner: s.NodeID}, s, true
 }
 
 // Check asks the control plane at url, with key, for its source catalog: the

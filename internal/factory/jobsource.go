@@ -31,6 +31,17 @@ func SourceKey(it Item) (source, id string, ok bool) {
 // JobSource is the job's [JobSourceFacts]; ok is false for a job that says
 // nothing about where it came from.
 func JobSource(it Item) (JobSourceFacts, bool) {
+	// A JOB AN AGENTFIELD REASONER RUNS COMES FROM AGENTFIELD, whatever
+	// trigger filed it: its source is the reasoner that runs it, and its
+	// link is the run's page on the control plane. The trigger that fired
+	// is in [JobOriginOf].
+	if it.RunOn != "" {
+		src := JobSourceFacts{Name: AgentFieldSource, Ref: strings.TrimSpace(it.RunOn)}
+		if it.AgentField != nil {
+			src.URL = it.AgentField.URL
+		}
+		return src, true
+	}
 	if source, id, ok := SourceKey(it); ok {
 		return JobSourceFacts{Name: source, Ref: id, URL: strings.TrimSpace(it.URL)}, true
 	}

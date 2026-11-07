@@ -33,11 +33,13 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -142,6 +144,11 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 			return err
 		}
 		fresh := &factory.AgentFieldRun{Target: strings.TrimSpace(it.RunOn), ExecutionID: d.ExecutionID, RunID: firstNonEmpty(d.RunID, d.WorkflowID, d.ExecutionID), Began: r.clock(), Status: d.Status}
+		// The run's page, for the job's source link, when the client knows
+		// the control plane's address.
+		if pages, ok := client.(interface{ RunURL(string) string }); ok {
+			fresh.URL = pages.RunURL(fresh.RunID)
+		}
 		if err := r.items.Update(job, func(it *factory.Item) error { it.AgentField = fresh; return nil }); err != nil {
 			return err
 		}
@@ -457,6 +464,11 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 		}
 		return m
 	}
+	// THE RECORD IS KEYED BY (EXECUTION, SEQ). After a control plane restart
+	// a node's replay can bring a batch this factory already kept, and a
+	// resend can arrive beside newer entries: in seq order, every seq at or
+	// below the kept one is skipped, so each lands once.
+	slices.SortStableFunc(entries, func(a, b agentfield.RelayEntry) int { return cmp.Compare(a.Seq, b.Seq) })
 	through := after
 	var lines [][]byte
 	started, closed := false, false

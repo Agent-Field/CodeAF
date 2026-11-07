@@ -25,6 +25,8 @@ type AgentFieldRun struct {
 	// Status is the root execution's last known status, in AgentField's words.
 	Status string `json:"status,omitempty"`
 	Error  string `json:"error,omitempty"`
+	// URL is the run's page on the control plane's own UI, when it has one.
+	URL string `json:"url,omitempty"`
 	// A harness step's conversation keeps its own relay record beside its
 	// transcript (agentfield.json): which execution it is, how much of it is
 	// kept, whether it is steerable now. It lives with the conversation,

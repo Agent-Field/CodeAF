@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -12,7 +14,7 @@ import (
 // the rail draws and counts.
 func TestARunOnJobReadsAsBacklogWithNoStepsUntilItsRunBegins(t *testing.T) {
 	it := factory.Item{Num: 7, Kind: factory.KindIssue, Title: "ledger total wrong", State: factory.StateNew,
-		RunOn: "workaf-support.handle_ticket",
+		RunOn:  "workaf-support.handle_ticket",
 		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, On: true}, {Name: "approve", Kind: factory.StageGate, On: true}}}
 	j := FromItem(it)
 	PresentJob(&j)
@@ -44,5 +46,43 @@ func TestARunOnJobReadsAsBacklogWithNoStepsUntilItsRunBegins(t *testing.T) {
 	PresentJob(&j)
 	if j.StatePresentation.Title != factory.NoRepoTitle {
 		t.Fatalf("outside work with no repository reads %q, want %q", j.StatePresentation.Title, factory.NoRepoTitle)
+	}
+}
+
+// The ordinary job read says where an AgentField job came from: source,
+// origin and labels, on the wire under those names, and none of them on a job
+// that has nothing to say.
+func TestAnAgentFieldJobsReadCarriesItsSourceOriginAndLabels(t *testing.T) {
+	it := factory.Item{Num: 9, Kind: factory.KindIssue, Title: "refund failed", State: factory.StateNew,
+		RunOn: "support.triage", Origin: "agentfield:generic-bearer", SourceRef: "agentfield:generic-bearer:T-9",
+		AgentField: &factory.AgentFieldRun{RunID: "run_9", URL: "http://cp/ui/runs/run_9"}, Labels: []string{"Billing"}}
+	raw, err := json.Marshal(FromItem(it))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read struct {
+		Source *factory.JobSourceFacts `json:"source"`
+		Origin *factory.JobOrigin      `json:"origin"`
+		Labels []string                `json:"labels"`
+	}
+	_ = json.Unmarshal(raw, &read)
+	if read.Source == nil || *read.Source != (factory.JobSourceFacts{Name: "agentfield", Ref: "support.triage", URL: "http://cp/ui/runs/run_9"}) {
+		t.Fatalf("source %+v", read.Source)
+	}
+	if read.Origin == nil || *read.Origin != (factory.JobOrigin{Node: "support", Reasoner: "triage", Trigger: "generic-bearer"}) {
+		t.Fatalf("origin %+v", read.Origin)
+	}
+	if strings.Join(read.Labels, ",") != "node:support,billing" {
+		t.Fatalf("labels %v", read.Labels)
+	}
+
+	raw, _ = json.Marshal(FromItem(factory.Item{Num: 10, Kind: factory.KindIssue, State: factory.StateNew}))
+	var top map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &top)
+	if _, ok := top["origin"]; ok {
+		t.Fatalf("a plain job reads an origin: %s", top["origin"])
+	}
+	if _, ok := top["labels"]; ok {
+		t.Fatalf("a job with no labels reads labels: %s", top["labels"])
 	}
 }

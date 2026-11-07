@@ -20,6 +20,10 @@ const Source = "jira"
 // repository: a ticket ENG-142 carries jira-project:ENG.
 const ProjectLabel = "jira-project:"
 
+// ComponentLabel begins the label each of a ticket's components becomes, so
+// a job can be found by the component a person filed it under.
+const ComponentLabel = "jira-component:"
+
 // CursorLayout is how a cursor is spelled: JQL's own minute format, which
 // Jira reads in the connected account's time zone.
 const CursorLayout = "2006-01-02 15:04"
@@ -167,6 +171,11 @@ func EntryOf(site string, is Issue) inbox.Entry {
 	for _, l := range is.Fields.Labels {
 		if l = strings.TrimSpace(l); l != "" {
 			labels = append(labels, l)
+		}
+	}
+	for _, c := range is.Fields.Components {
+		if c := strings.TrimSpace(c.Name); c != "" {
+			labels = append(labels, ComponentLabel+c)
 		}
 	}
 	labels = append(labels, ProjectLabel+ProjectOf(is.Key))

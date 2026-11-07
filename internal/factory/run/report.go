@@ -304,8 +304,15 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 		held[ph.Name] = ph
 	}
 	phases := make([]factory.Phase, 0, len(change.Phases))
+	runOn := strings.TrimSpace(it.RunOn) != ""
 	for _, ph := range change.Phases {
 		if kept, ok := held[ph.Name]; ok {
+			if runOn {
+				// The run's step keeps the state the server holds, but its kind
+				// and words are the run's: a phase the factory made from its
+				// stock `plan` must not dress a run step of the same name.
+				kept.Kind, kept.Note = ph.Kind, ph.Note
+			}
 			phases = append(phases, kept)
 			continue
 		}

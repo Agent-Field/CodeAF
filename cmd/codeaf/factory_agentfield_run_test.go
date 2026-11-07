@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,6 +57,9 @@ func (f *afFakeCP) Dispatch(_ context.Context, target string, input any, owner s
 	f.owner = owner
 	return agentfield.Dispatched{ExecutionID: "exec-root", RunID: "run-1", Status: "running"}, nil
 }
+
+// RunURL is the run's page, as the real client names it.
+func (f *afFakeCP) RunURL(run string) string { return "http://cp.test/ui/runs/" + run }
 
 func (f *afFakeCP) Tree(context.Context, string) (agentfield.TreeNode, string, error) {
 	f.mu.Lock()
@@ -521,6 +525,10 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 			if job.AgentField == nil || job.AgentField.ExecutionID != "exec-root" || len(job.Stream.Phases) != 1 || job.Stream.Phases[0].Name != "triage" {
 				t.Fatalf("the job does not carry its run: %+v %+v", job.AgentField, job.Stream)
 			}
+			// The run's page is the job's source link.
+			if src, _ := factory.JobSource(job); job.AgentField.URL != "http://cp.test/ui/runs/run-1" || src.URL != job.AgentField.URL {
+				t.Fatalf("the job's run page is %q, its source %+v", job.AgentField.URL, src)
+			}
 			// A stopped run is read to its end: the lines the node relays after
 			// the stop are kept and acked, so the control plane holds nothing,
 			// and the job records the run as cancelled.
@@ -650,7 +658,8 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
 		afNode("e-l1", "lookup", "succeeded", "2026-11-07T12:00:00.2Z", "2026-11-07T12:00:00.6Z"),
 		afNode("e-l2", "lookup", "succeeded", "2026-11-07T12:00:00.3Z", "2026-11-07T12:00:00.7Z"),
-		afNode("e-t", "triage", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"),
+		// A run step may share a stock step's name: it is still the run's.
+		afNode("e-t", "plan", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"),
 		afNode("e-i", "investigate", "running", "2026-11-07T12:00:03Z", "",
 			afNode("e-s", "search_docs", "succeeded", "2026-11-07T12:00:04Z", "2026-11-07T12:00:05Z"),
 			afNode("e-v", "verify", "running", "2026-11-07T12:00:06Z", "")))}
@@ -724,13 +733,16 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 	want := []string{
 		"lookup1/check/done//lookup1/lookup",
 		"lookup2/check/done//lookup1/lookup",
-		"triage/check/done///",
+		"plan/check/done///",
 		"investigate/chat/running///",
 		"searchdocs/check/done/investigate//search_docs",
 		"verify/chat/running/investigate//",
 	}
 	if strings.Join(steps, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("factory.job's steps are\n%s\nwant\n%s\n(%s)", strings.Join(steps, "\n"), strings.Join(want, "\n"), raw)
+	}
+	if strings.Contains(string(raw), `"note"`) || strings.Contains(string(raw), "write a plan") {
+		t.Fatalf("a run step wears a stock step's words: %s", raw)
 	}
 	if strings.Contains(string(raw), `"runs_on"`) {
 		t.Fatalf("a run_on job names a model this factory does not run: %s", raw)
@@ -813,5 +825,49 @@ func TestAMirrorOpenedBeforeItsFirstLineHasOneHeader(t *testing.T) {
 	}
 	if headers != 1 || len(kept) != 2 || !bytes.Equal(kept[1], line) {
 		t.Fatalf("the conversation is\n%s\nwant one header and the line", bytes.Join(kept, []byte("\n")))
+	}
+}
+
+// A REPLAY IS NEVER A SECOND COPY. After a control plane restart the node can
+// resend a batch this factory already kept and acked, beside newer entries
+// and out of order; the record keeps each (execution, seq) once, in order.
+func TestAReplayedBatchIsKeptOnce(t *testing.T) {
+	appDayProfile(t)
+	workspace := t.TempDir()
+	st, it := afJob(t)
+	line := func(n int) json.RawMessage {
+		return json.RawMessage(fmt.Sprintf(`{"type":"message","role":"assistant","content":"line %d","timestamp":"2026-11-07T12:00:00Z"}`, n))
+	}
+	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
+		afNode("exec-inv", "investigate", "running", "2026-11-07T12:00:01Z", ""))}
+	cp.held = map[string][]agentfield.RelayEntry{"exec-inv": {
+		{Seq: 1, Kind: "started", Data: json.RawMessage(`{"harness":"codeaf","steerable":true}`)},
+		{Seq: 2, Kind: "line", Data: line(1)},
+		{Seq: 3, Kind: "line", Data: line(2)},
+	}}
+	r := &afRemote{items: st, floor: st, workspace: workspace}
+	r.sync(context.Background(), cp, it.ID, cp.tree)
+	if n := cp.heldCount("exec-inv"); n != 0 {
+		t.Fatalf("the first batch was not acked: %d held", n)
+	}
+	// The node's replay after a restart: 2 and 3 again, 4, a duplicate 4, out of order.
+	cp.mu.Lock()
+	cp.held["exec-inv"] = []agentfield.RelayEntry{{Seq: 4, Kind: "line", Data: line(3)}, {Seq: 3, Kind: "line", Data: line(2)},
+		{Seq: 2, Kind: "line", Data: line(1)}, {Seq: 4, Kind: "line", Data: line(3)}}
+	cp.mu.Unlock()
+	again := &afRemote{items: st, floor: st, workspace: workspace}
+	again.sync(context.Background(), cp, it.ID, cp.tree)
+	got, _ := st.Get(it.ID)
+	kept := afRecordLines(t, got.Stream.Phases[0].Chat)
+	if len(kept) != 4 {
+		t.Fatalf("the record has %d lines, want the header and three lines once each:\n%s", len(kept), bytes.Join(kept, []byte("\n")))
+	}
+	for i := 1; i <= 3; i++ {
+		if !bytes.Equal(kept[i], line(i)) {
+			t.Fatalf("line %d is %s", i, kept[i])
+		}
+	}
+	if n := cp.heldCount("exec-inv"); n != 0 {
+		t.Fatalf("the replay was not acked: %d held", n)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -376,6 +377,17 @@ func fromEntry(meta Meta, event json.RawMessage) (Translation, error) {
 	// THE SOURCE IS THE CONTROL PLANE'S, NEVER THE SENDER'S: a caller who can
 	// post to one trigger may not file work as another system.
 	e.Source = ""
+	// An event's tags are labels too: senders spell the one idea both ways.
+	var tagged struct {
+		Tags []string `json:"tags"`
+	}
+	if json.Unmarshal(raw, &tagged) == nil {
+		for _, t := range tagged.Tags {
+			if t = strings.TrimSpace(t); t != "" && !slices.Contains(e.Labels, t) {
+				e.Labels = append(e.Labels, t)
+			}
+		}
+	}
 	return Translation{File: &e}, nil
 }
 

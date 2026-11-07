@@ -486,10 +486,17 @@ type Job struct {
 	// RouteDeclined is every other rule whose AI question was answered no,
 	// with why: what a job no rule started says instead of nothing.
 	// Hello word `factory.job_source`.
-	Source        *factory.JobSourceFacts `json:"source,omitempty"`
-	RepoURL       string                  `json:"repo_url,omitempty"`
-	Route         *JobRoute               `json:"route,omitempty"`
-	RouteDeclined []RouteDeclined         `json:"route_declined,omitempty"`
+	Source *factory.JobSourceFacts `json:"source,omitempty"`
+	// Origin is the AgentField node and reasoner that run the job and the
+	// trigger that filed it ([factory.JobOriginOf]); absent for every other
+	// job. Labels is the source's labels as a reader filters on them, with
+	// `node:<node>` for an AgentField job ([factory.JobLabels]); absent when
+	// there are none. Both are read facts: a worker's report never sends them.
+	Origin        *factory.JobOrigin `json:"origin,omitempty"`
+	Labels        []string           `json:"labels,omitempty"`
+	RepoURL       string             `json:"repo_url,omitempty"`
+	Route         *JobRoute          `json:"route,omitempty"`
+	RouteDeclined []RouteDeclined    `json:"route_declined,omitempty"`
 	// StepsDone of StepsTotal is how far the job is ([factory.StepCount]): THE
 	// ONE STEP COUNT, which the Brief's own steps_done and steps_total read
 	// too. A skipped step counts for neither. Hello word `factory.job_steps`.

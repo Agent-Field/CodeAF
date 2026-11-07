@@ -56,6 +56,11 @@ type Client struct {
 	URL  string
 	Key  string
 	HTTP *http.Client
+	// Owner is the node this factory is on the control plane. It is sent as
+	// X-AgentField-Run-Owner on every call, so the control plane serves this
+	// factory only the runs it started (their trees, entries, acks, steers
+	// and cancels) and refuses another's.
+	Owner string
 }
 
 // Reasoner is one entry of a registration's reasoner list, in the control
@@ -310,6 +315,9 @@ func (c *Client) doHeaders(ctx context.Context, op, method, path string, q url.V
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "codeaf-factory")
+	if c.Owner != "" {
+		req.Header.Set("X-AgentField-Run-Owner", c.Owner)
+	}
 	for k, v := range headers {
 		if v != "" {
 			req.Header.Set(k, v)
@@ -404,6 +412,14 @@ type TreeNode struct {
 	DurationMS        *int64     `json:"duration_ms,omitempty"`
 	ParentExecutionID *string    `json:"parent_execution_id,omitempty"`
 	Children          []TreeNode `json:"children"`
+}
+
+// RunURL is the run's page on the control plane's own UI.
+func (c *Client) RunURL(run string) string {
+	if strings.TrimSpace(c.URL) == "" || strings.TrimSpace(run) == "" {
+		return ""
+	}
+	return strings.TrimRight(c.URL, "/") + "/ui/runs/" + url.PathEscape(run)
 }
 
 // Tree is GET /api/ui/v1/workflows/<run>/dag: the run's execution tree.

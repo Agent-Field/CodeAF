@@ -227,6 +227,27 @@ page and step rail, Start and Stop.
 The node's developer writes nothing for any of this: a reasoner that calls
 `a.Harness(...)` on the codeaf provider is watched and steerable by itself.
 
+## where did this job come from — the AgentField node, reasoner, trigger and labels
+
+A job an AgentField reasoner runs (`run_on`) says where it came from on its
+ordinary read, with nothing for the node's developer to write:
+
+- **source** is `agentfield`, its reference the reasoner that runs it
+  (`support.triage`), and its link the run's page on the control plane's UI
+  (`/ui/runs/<run>`).
+- **origin** names the node, the reasoner and the trigger that filed it (the
+  trigger's source, such as `generic-bearer`; a direct execute names none). A
+  job this factory runs itself has no origin, even when a trigger filed it.
+- **labels** are the event's `labels` and `tags` and `node:<node>` —
+  lowercased, each once, at most 20. A trigger on the control plane has no
+  tags of its own to add.
+
+Every other job's labels are read the same way: a GitHub issue's labels, and
+a Jira ticket's labels, `jira-component:<name>` and `jira-project:<key>`.
+
+Filtering jobs by `source:`, `node:` or `label:` happens in the app's job
+list, over these fields.
+
 ## watch and steer an AgentField step — open its chat, send it a note mid-run
 
 A step that ran the codeaf harness has a chat like any step this factory runs:

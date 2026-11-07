@@ -411,3 +411,14 @@ func TestAReporterIsTrustedAsACollaboratorAndACustomerIsAStranger(t *testing.T) 
 		t.Fatalf("stub customer: %+v, %v", entries, err)
 	}
 }
+
+// A ticket's components are labels a job can be found by, beside its own
+// labels and its project.
+func TestATicketsComponentsAreLabels(t *testing.T) {
+	e := jira.EntryOf("https://acme.atlassian.net", jira.Issue{Key: "ENG-9", Fields: jira.IssueFields{Summary: "s", Labels: []string{"backend"},
+		Components: []jira.Named{{Name: "Billing"}, {Name: " "}}}})
+	want := "backend," + jira.ComponentLabel + "Billing," + jira.ProjectLabel + "ENG"
+	if got := strings.Join(e.Labels, ","); got != want {
+		t.Fatalf("labels are %s, want %s", got, want)
+	}
+}

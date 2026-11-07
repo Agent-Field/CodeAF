@@ -54,6 +54,10 @@ func jobFacts(j *Job, it factory.Item) {
 	if src, ok := factory.JobSource(it); ok {
 		j.Source = &src
 	}
+	if o, ok := factory.JobOriginOf(it); ok {
+		j.Origin = &o
+	}
+	j.Labels = factory.JobLabels(it)
 	j.RepoURL = factory.RepoURL(it)
 	if rule := it.Route; rule != "" {
 		j.Route = &JobRoute{Rule: rule}

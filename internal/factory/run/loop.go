@@ -263,7 +263,10 @@ func (r *Runner) Launch(id int) error {
 		it.Stream = freshStream(it, now)
 		if strings.TrimSpace(it.RunOn) != "" {
 			// An AgentField job's steps are its run's calls, made as they come.
-			it.Stream.Phases, it.AgentField = nil, nil
+			// The pipeline it was filed with goes too: a step left there would
+			// be made into a phase with its stock words, and a run step of the
+			// same name (`plan`) would wear them.
+			it.Stages, it.Stream.Phases, it.AgentField = nil, nil, nil
 		}
 		loopSay(it, now, "said", "queued")
 		loopSay(it, now, "fail", unmade)
