@@ -143,6 +143,64 @@ Decisions for wave 2 (owner's call, recommended defaults taken):
    manager; a stranger's is read as context only.
 5. Operator changes routing and the library; anyone edits one job's steps.
 
+## AgentField — the factory is a node on the control plane (decided 2026-11-06)
+
+AgentField (Agent-Field/agentfield, open source) already IS a trigger hub:
+signed sources (`github`, `slack`, `stripe`, `linear`, `sentry`, `databricks`,
+`snowflake`, `generic_hmac`, `generic_bearer`, `cron`), each event verified,
+stored, de-duplicated on `(source, idempotency_key)`, replayable, and
+dispatched as `POST {node.base_url}/reasoners/{name}` with `{event, _meta}`
+and `X-Workflow-ID` / `X-Execution-ID` headers; its Python, Go and TypeScript
+SDKs, DID auth, workflow DAG, approvals and memory come with it. So codeaf does
+NOT grow its own trigger zoo or SDKs: **the factory registers as an AgentField
+node, and AgentField's triggers are its intake.**
+
+```
+source (Linear, Sentry, Slack, cron, any HMAC/bearer caller, other AF agents)
+   │  AgentField: verify · store · dedupe · replay · DID/VC
+   ▼
+POST <factory>/reasoners/intake {event,_meta}  ──►  translate ──► inbox.Add ──► router ──► pipeline
+   ◄── 202, then POST /api/v1/executions/:id/status {progress…, result:{pr_url,state}}
+```
+
+The node, `codeaf-factory` by default (settings: control plane URL on the
+network, API key in the keychain, node id, the address the control plane
+reaches the factory on):
+
+| Reasoner | In | Does |
+|---|---|---|
+| `intake` (accepts_webhook) | a trigger event, or an `inbox.Entry` from any caller | translates by `_meta.source` (linear, sentry, slack, generic: the event is already an Entry) and files through `inbox.Add`; answers 202 and reports the job's moments as execution progress, completing on PR opened / done / stuck |
+| `message` | `{source, id, text}` | the Trigger API's message: reaches the job's manager |
+| `status` | `{source, id}` or `{job}` | the Trigger API's status facts |
+
+Rules:
+- **Translators only translate** (the `inbox.Feed` law): one small function
+  per AgentField source, fixture-tested against that source's real payload.
+- **GitHub stays native.** An AgentField `github` event never files a job
+  (`github` is the factory's own source): it asks the native poller to read
+  that repository NOW, so a webhook makes GitHub instant while identity,
+  labels, Pick up issues and every GitHub side effect stay exactly as today.
+- **One event bus out.** The lifecycle's moments (`inbox.Notify`) have sinks:
+  the in-process repliers (Jira), the signed webhook of the Trigger API, and
+  the AgentField execution status. A job never learns which.
+- **The Trigger API stays** for people without AgentField (`POST /api/intake`,
+  messages, status, signed webhooks); AgentField is the SDK story, so codeaf
+  ships no SDK of its own.
+- Trust: a control plane is registered with a trust ceiling (collaborator by
+  default); a translated entry never exceeds it.
+
+The desktop's Settings → AgentField: URL, key, register, live status (lease,
+last event, last error), the triggers that target the factory
+(`GET /api/v1/triggers`), and **Add a trigger** drawn from the control
+plane's own source catalog (`GET /api/v1/sources` gives each source's JSON
+config schema), created with `POST /api/v1/triggers` targeting
+`codeaf-factory.intake`.
+
+Next on the same seam (later): a pipeline step that calls an AgentField
+reasoner (`sec-af`, `pr-af` as a review step), each job step as a child
+execution in the AgentField DAG, the factory's approvals answered from
+AgentField's approval API.
+
 ## Later waves (not now)
 
 Workspace and deliverable interfaces (a non-git workspace, a non-PR output),
