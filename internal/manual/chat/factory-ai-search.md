@@ -52,8 +52,10 @@ Before it runs, the bar shows the estimate: how many issues it will read and
 about what it will cost at the factory's default model's price (no figure when
 the price is not known). After, the answer shows what it actually cost.
 
-On deepseek/deepseek-v4.1-flash a search of 61 issues cost between $0.004 and
-$0.013, depending on how many issues looked related. Asking the same question
+On deepseek/deepseek-v4.1-flash a search of 65 issues cost between $0.002 and
+$0.026, depending on how many issues looked related: a broad question such as
+"issues about the ledger total" keeps more for the careful check and costs
+the most. Asking the same question
 again over the same issues cost $0.00. Every call goes on Spending as
 `factory search` and counts toward the factory's day, like `factory filter` and the issue read. It runs on the
 factory's default model; with none set, the issue read's model.

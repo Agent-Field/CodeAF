@@ -198,17 +198,19 @@ func TestAnUnreadableScreenFallsToTheJudge(t *testing.T) {
 
 func TestTheEstimateCountsReadsAndAPrice(t *testing.T) {
 	e := EstimateFor("ledger", items(80, 10, "ledger"), nil, &Price{In: 0.1, Out: 0.4})
-	if e.Items != 80 || e.Reads != 2 || e.JudgeMost != 60 || e.Typical == nil || e.Most == nil || *e.Typical >= *e.Most || *e.Most > 0.01 {
+	if e.Items != 80 || e.Reads != 2 || e.JudgeMost != 60 || e.Typical == nil || e.Most == nil || *e.Typical >= *e.Most || *e.Most > 0.02 {
 		t.Fatalf("estimate %+v", e)
 	}
 	if e := EstimateFor("ledger", items(3, 10, "ledger"), nil, nil); e.Typical != nil || e.Reads != 1 {
 		t.Fatalf("no price gives no figure: %+v", e)
 	}
-	// Measured: 61 factory-demo issues on deepseek/deepseek-v4.1-flash
-	// ($0.30 in, $1.20 out a million) kept 19 and cost $0.0132.
-	e = EstimateFor("ledger", items(61, 10, "ledger"), nil, &Price{In: 0.3, Out: 1.2})
-	if *e.Typical < 0.006 || *e.Typical > 0.0132 || *e.Most < 0.0132 {
-		t.Fatalf("the estimate does not bracket the measured run: %+v typical %v most %v", e, *e.Typical, *e.Most)
+	// Measured 2026-11-07: 65 factory-demo issues on deepseek/deepseek-v4.1-flash
+	// ($0.30 in, $1.20 out a million) cost $0.0017, $0.0079 and $0.0263 for
+	// three questions. The typical figure sits among them and the most covers
+	// the dearest.
+	e = EstimateFor("ledger", items(65, 10, "ledger"), nil, &Price{In: 0.3, Out: 1.2})
+	if *e.Typical < 0.0017 || *e.Typical > 0.0263 || *e.Most < 0.0263 {
+		t.Fatalf("the estimate does not bracket the measured runs: %+v typical %v most %v", e, *e.Typical, *e.Most)
 	}
 }
 
