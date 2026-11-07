@@ -239,8 +239,18 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 		cur := -1
 		for i, step := range steps {
 			n := step.node
-			stages = append(stages, factory.Stage{Name: step.name, Label: step.label, Parent: step.parent, Group: step.group, Kind: factory.StageChat, On: true})
-			p := factory.Phase{Name: step.name, Kind: factory.StageChat, State: afPhaseState(n.Status), Chat: chats[n.ExecutionID]}
+			// A STEP IS A CHAT ONLY WHEN IT HAS A CONVERSATION: an execution
+			// that runs the codeaf harness relays its record and gets one, and
+			// every other execution is the reasoner's plain code — drawn as a
+			// native command step ("check"), with no chat and no steer box. A
+			// reasoner that does some code before it calls the harness reads
+			// as a check until the harness's first line arrives.
+			kind := factory.StageCheck
+			if chats[n.ExecutionID] != "" {
+				kind = factory.StageChat
+			}
+			stages = append(stages, factory.Stage{Name: step.name, Label: step.label, Parent: step.parent, Group: step.group, Kind: kind, On: true})
+			p := factory.Phase{Name: step.name, Kind: kind, State: afPhaseState(n.Status), Chat: chats[n.ExecutionID]}
 			p.Started = afTime(n.StartedAt)
 			if n.CompletedAt != nil {
 				p.At = afTime(*n.CompletedAt)

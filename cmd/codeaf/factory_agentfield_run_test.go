@@ -645,10 +645,20 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 	// A runner with no model key takes no job at all (it attaches needing a
 	// provider), so the test's runner has one. The run_on job never uses it.
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
+	// Two lookups run at once, then triage, then investigate (which calls
+	// search_docs, plain code, and verify, which runs the harness).
 	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
+		afNode("e-l1", "lookup", "succeeded", "2026-11-07T12:00:00.2Z", "2026-11-07T12:00:00.6Z"),
+		afNode("e-l2", "lookup", "succeeded", "2026-11-07T12:00:00.3Z", "2026-11-07T12:00:00.7Z"),
 		afNode("e-t", "triage", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"),
 		afNode("e-i", "investigate", "running", "2026-11-07T12:00:03Z", "",
-			afNode("e-s", "search_docs", "succeeded", "2026-11-07T12:00:04Z", "2026-11-07T12:00:05Z")))}
+			afNode("e-s", "search_docs", "succeeded", "2026-11-07T12:00:04Z", "2026-11-07T12:00:05Z"),
+			afNode("e-v", "verify", "running", "2026-11-07T12:00:06Z", "")))}
+	// A nested execution that runs the harness is a chat at its depth.
+	cp.relayLines("e-v", [][]byte{
+		[]byte(`{"type":"session","version":1,"id":"nodeverify","cwd":"/node","model":"m","timestamp":"2026-11-07T12:00:06Z"}`),
+		[]byte(`{"type":"message","role":"user","content":"verify the fix","timestamp":"2026-11-07T12:00:06Z"}`),
+	}, false)
 	cp.relayLines("e-i", [][]byte{
 		[]byte(`{"type":"session","version":1,"id":"nodefolder","cwd":"/node","model":"m","timestamp":"2026-11-07T12:00:03Z"}`),
 		[]byte(`{"type":"message","role":"user","content":"why is the total wrong?","timestamp":"2026-11-07T12:00:03Z"}`),
@@ -691,27 +701,48 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 		chats = appwire.FactoryJobChats{}
 		raw := afCall(s, "factory.job_chats", map[string]any{"factory": st.Factory, "job": job})
 		_ = json.Unmarshal(raw, &chats)
-		return len(chats.Steps) == 1 && chats.Steps[0].Step == "investigate"
+		return len(chats.Steps) == 2 && chats.Steps[0].Step == "investigate" && chats.Steps[1].Step == "verify"
 	})
+	// THE DESK READS THE ORDINARY JOB AND NOTHING ELSE (owner's decision):
+	// every execution, nested ones too, is a flat step with its parent and
+	// group, a name unique in the job, kind "check" for plain code and
+	// "chat" for a harness step, whose chat factory.job_chats names.
 	var read struct {
 		Steps []struct {
-			Name, State, Parent, Label string
-			InRun                      bool `json:"in_run"`
+			Name, State, Parent, Group, Label, Kind string
+			InRun                                   bool `json:"in_run"`
 		}
+		StepsDone  int `json:"steps_done"`
+		StepsTotal int `json:"steps_total"`
 	}
 	raw := afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job})
 	_ = json.Unmarshal(raw, &read)
 	var steps []string
 	for _, x := range read.Steps {
-		steps = append(steps, x.Name+"/"+x.State+"/"+x.Parent+"/"+x.Label)
+		steps = append(steps, x.Name+"/"+x.Kind+"/"+x.State+"/"+x.Parent+"/"+x.Group+"/"+x.Label)
 	}
-	if strings.Join(steps, ",") != "triage/done//,investigate/running//,searchdocs/done/investigate/search_docs" {
-		t.Fatalf("factory.job's steps are %v (%s)", steps, raw)
+	want := []string{
+		"lookup1/check/done//lookup1/lookup",
+		"lookup2/check/done//lookup1/lookup",
+		"triage/check/done///",
+		"investigate/chat/running///",
+		"searchdocs/check/done/investigate//search_docs",
+		"verify/chat/running/investigate//",
+	}
+	if strings.Join(steps, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("factory.job's steps are\n%s\nwant\n%s\n(%s)", strings.Join(steps, "\n"), strings.Join(want, "\n"), raw)
+	}
+	if strings.Contains(string(raw), `"runs_on"`) {
+		t.Fatalf("a run_on job names a model this factory does not run: %s", raw)
+	}
+	if read.StepsDone != 3 || read.StepsTotal != 4 {
+		t.Fatalf("the job counts %d / %d; want the four top-level steps, three done", read.StepsDone, read.StepsTotal)
 	}
 
+	// factory.agentfield_run stays as an internal read; the desk needs none.
 	var tree appwire.FactoryAgentFieldRun
 	_ = json.Unmarshal(afCall(s, "factory.agentfield_run", map[string]any{"factory": st.Factory, "job": job}), &tree)
-	if len(tree.Steps) != 2 || tree.Steps[1].Agent != chats.Steps[0].Agent || !tree.Steps[1].Steerable || len(tree.Steps[1].Children) != 1 {
+	if len(tree.Steps) != 4 || tree.Steps[3].Agent != chats.Steps[0].Agent || !tree.Steps[3].Steerable || len(tree.Steps[3].Children) != 2 {
 		t.Fatalf("factory.agentfield_run is %+v", tree)
 	}
 
@@ -726,7 +757,8 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 
 	cp.mu.Lock()
 	end := "2026-11-07T12:00:09Z"
-	cp.tree.Status, cp.tree.Children[1].Status, cp.tree.Children[1].CompletedAt = "succeeded", "succeeded", &end
+	cp.tree.Status, cp.tree.Children[3].Status, cp.tree.Children[3].CompletedAt = "succeeded", "succeeded", &end
+	cp.tree.Children[3].Children[1].Status, cp.tree.Children[3].Children[1].CompletedAt = "succeeded", &end
 	cp.held["e-i"] = append(cp.held["e-i"], agentfield.RelayEntry{Seq: 5, Kind: "ended", Data: json.RawMessage(`{}`)})
 	cp.mu.Unlock()
 	eventually(t, "the job is done", func() bool {

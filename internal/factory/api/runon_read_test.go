@@ -33,6 +33,12 @@ func TestARunOnJobReadsAsBacklogWithNoStepsUntilItsRunBegins(t *testing.T) {
 		t.Fatalf("once the run began the job reads %d steps (%d counted), want the run's three with two counted", len(j.Steps), j.StepsTotal)
 	}
 
+	// Its model is the node's, which this factory does not know.
+	ModelsIn(&j, it, factory.ModelDefaults{Factory: "vendor/strong"})
+	if j.RunsOn != nil || j.Steps[1].RunsOn != nil {
+		t.Fatalf("a run_on job names the factory's model: job %+v, step %+v", j.RunsOn, j.Steps[1].RunsOn)
+	}
+
 	plain := factory.Item{Num: 8, Kind: factory.KindIssue, State: factory.StateNew}
 	j = FromItem(plain)
 	PresentJob(&j)

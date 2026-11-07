@@ -210,7 +210,10 @@ page and step rail, Start and Stop.
   reasoner called more than once is `investigate1`, `investigate2`. A nested
   call (`searchdocs` inside `investigate`) carries its parent and folds into
   it, so it is not counted as a step of its own (`3 / 3`, not `4 / 4`);
-  calls that ran at once share a group, drawn as one row.
+  calls that ran at once share a group, drawn as one row. A call that runs
+  the codeaf harness is a conversation step with its own chat; any other
+  call is the reasoner's plain code and reads as a command step, with no
+  chat. No step names a model: the node chooses its own.
 - **It ends with the run**: done when the reasoner succeeded, Needs you with
   the run's own words ("the AgentField run failed: …") when it failed.
   **Stop** cancels the whole run tree on AgentField; the stopped step reads
