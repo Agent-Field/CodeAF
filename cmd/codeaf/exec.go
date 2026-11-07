@@ -77,6 +77,10 @@ func runExec(args []string) error {
 	output := flags.String("out", "", "write the machine-readable result to this file")
 	shorthandFlag(flags, "o", "out")
 	debug := flags.Bool("debug", false, debugFlagHelp())
+	// The two live files (exec_live.go): a watcher tails --events, a person's
+	// notes are appended to --steer. Neither is opened unless it is given.
+	eventsPath := flags.String("events", "", "append every transcript entry to this file as one JSON line while the run works")
+	steerPath := flags.String("steer", "", "read each line appended to this file while the run works as a note from a person")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -138,6 +142,16 @@ func runExec(args []string) error {
 	}
 	ctx = settings.Context(ctx, prompt)
 	execCtx := typedDoorContext(settings.ExecContext(ctx))
+	var events *eventFile
+	if *eventsPath != "" {
+		events, err = openEventFile(*eventsPath, exec.TranscriptFrom(execCtx))
+		if err != nil {
+			return fmt.Errorf("--events: %w", err)
+		}
+		defer events.Close()
+		execCtx = exec.WithTranscript(execCtx, events)
+		events.Status("started")
+	}
 
 	space, err := exec.NewWorkspace(*workspace)
 	if err != nil {
@@ -156,7 +170,15 @@ func runExec(args []string) error {
 	// away the one fact exit 1 is about — whether anything ran at all — and
 	// made a run that never started indistinguishable from one that failed at
 	// turn nine. [execStop] is the only reader of that difference now.
-	outcome, runErr := linear.Run(execCtx, execTask(prompt, *system, space.Root()))
+	task := execTask(prompt, *system, space.Root())
+	if *steerPath != "" {
+		task.Steer = newSteerFile(*steerPath).Read
+	}
+	outcome, runErr := linear.Run(execCtx, task)
+	if events != nil {
+		stop := string(execStop(outcome, runErr))
+		events.Status("ended: " + stop)
+	}
 	if runErr != nil {
 		// The same sentence the envelope carries, and the same one either way:
 		// a caller reading stderr and a caller reading --json must not be told
