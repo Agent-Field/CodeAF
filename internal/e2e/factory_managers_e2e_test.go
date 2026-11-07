@@ -104,8 +104,19 @@ func TestFactoryManagersE2E(t *testing.T) {
 	t.Logf("RESULT edit: job carried on, security %s, plan round %d", w.phase(id, "security").State, w.phase(id, "plan").Round)
 
 	// ── 2. "merge it?" at the pull request's decision ──
+	seen = ""
 	fleEventually(t, "the pull request and its decision", 30*time.Minute, 5*time.Second, func() bool {
 		it := w.item(id)
+		// A run that stalls after proof says where, as the first wait does:
+		// the job's state, its approval and what Auto says it is blocked on,
+		// with the whole saved job beside the logs.
+		if now := auda2Landing(it); now != seen {
+			seen = now
+			t.Logf("after proof: %s", now)
+		}
+		if raw, err := json.MarshalIndent(it, "", "  "); err == nil {
+			_ = os.WriteFile(filepath.Join(w.logDir, fmt.Sprintf("job-%d.json", id)), raw, 0o600)
+		}
 		if it.PullRequest == nil || it.PullRequest.Number == 0 {
 			return false
 		}
@@ -319,4 +330,27 @@ func (w *fleWorld) auda2Cleanup() {
 			t.Logf("deleted branch %s: %v %s", b, err, o)
 		}
 	}
+}
+
+// auda2Landing is one line of what a landed job waits on: its state and
+// reason, the approval Auto prepares, publication, the claims not shown and
+// the exception Auto names, so a stall between proof and the pull request
+// names the gate it stopped at.
+func auda2Landing(it factory.Item) string {
+	approval := "none"
+	if a := factory.JobApproval(it); a != nil {
+		approval = fmt.Sprintf("%s/%s auto=%v err=%q", a.Kind, a.State, a.Automatic, a.Error)
+	}
+	bad := 0
+	for _, cl := range append(append([]factory.Claim(nil), it.Proof...), it.Policy...) {
+		if !cl.OK {
+			bad++
+		}
+	}
+	pr := 0
+	if it.PullRequest != nil {
+		pr = it.PullRequest.Number
+	}
+	return fmt.Sprintf("state=%s reason=%s approval=[%s] publishing=%v publish_err=%q head=%.12s proof=%d bad=%d pr=%d blocked=%q question=%q",
+		it.State, factory.JobReason(it), approval, it.Publishing, it.PublishError, it.HeadCommit, len(it.Proof), bad, pr, factory.AutonomyBlockReason(it), it.Question)
 }
