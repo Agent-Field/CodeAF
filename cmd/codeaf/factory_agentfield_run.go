@@ -166,10 +166,16 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 			// the control plane after the stop, and the control plane holds
 			// them until this factory acks them: a reader that went home at
 			// the stop would leave them there for good, and the job would go
-			// on saying its run is running.
+			// on saying its run is running. A worker lets its copy of a
+			// stopped job go within seconds and the factory takes no more
+			// reports for it, so the end is written on the factory's own job.
+			jobs := r.items
+			if r.floor != nil {
+				jobs = r.floor
+			}
 			for cancelCtx.Err() == nil {
 				if tree, _, err := client.Tree(cancelCtx, run.RunID); err == nil {
-					if ended, _ := r.sync(cancelCtx, client, job, tree); ended {
+					if ended, _ := r.syncTo(cancelCtx, client, jobs, job, tree); ended {
 						break
 					}
 				}
@@ -200,8 +206,14 @@ func afJobEvent(it factory.Item) any {
 // sync writes one reading of the tree onto the job: its steps, and every
 // harness step's new lines. It says whether the run has ended, and how.
 func (r *afRemote) sync(ctx context.Context, client afClient, job int, root agentfield.TreeNode) (bool, error) {
+	return r.syncTo(ctx, client, r.items, job, root)
+}
+
+// syncTo is sync writing the job in jobs: the runner's own store while the
+// run is followed, the factory's once a stop has let the runner's copy go.
+func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Store, job int, root agentfield.TreeNode) (bool, error) {
 	steps := afFlatten(root)
-	it, err := r.items.Get(job)
+	it, err := jobs.Get(job)
 	if err != nil {
 		return false, nil
 	}
@@ -213,7 +225,7 @@ func (r *afRemote) sync(ctx context.Context, client afClient, job int, root agen
 	}
 	now := r.clock()
 	ended := afEnded(root.Status)
-	_ = r.items.Update(job, func(it *factory.Item) error {
+	_ = jobs.Update(job, func(it *factory.Item) error {
 		if it.Stream == nil {
 			it.Stream = &factory.Stream{Started: now}
 		}

@@ -476,7 +476,12 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 			st, it := afJob(t)
 			cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "running", "2026-11-07T12:00:00Z", "",
 				afNode("e-t", "triage", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"))}
-			r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+			// The factory's job is floor; a worker runs its own copy of it.
+			floor := st
+			if tc.cancel {
+				floor, _ = afJob(t)
+			}
+			r := &afRemote{items: st, floor: floor, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
@@ -523,8 +528,9 @@ func TestARunOnJobDispatchesFollowsAndEndsWithItsRun(t *testing.T) {
 				if n := len(cp.held["e-t"]); n != 0 {
 					t.Fatalf("the control plane still holds %d entries after the stop", n)
 				}
-				if job.AgentField.Status != "cancelled" {
-					t.Fatalf("the stopped job records its run as %q", job.AgentField.Status)
+				fj, _ := floor.Get(it.ID)
+				if fj.AgentField == nil || fj.AgentField.Status != "cancelled" || fj.AgentField.Ended.IsZero() {
+					t.Fatalf("the factory's stopped job records its run as %+v", fj.AgentField)
 				}
 			}
 		})
