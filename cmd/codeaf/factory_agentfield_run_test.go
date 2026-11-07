@@ -714,3 +714,38 @@ func afCall(s *localSetup, method string, params any) json.RawMessage {
 	}
 	return raw
 }
+
+// A held chat opens a step's conversation the moment the step is listed, and
+// an opener that finds the record empty writes its own header. The live run
+// caught the mirror then appending the node's header second, so the record
+// opened twice. The mirror is minted with its header, so an opener finds it
+// whole and the node's header is a repeat.
+func TestAMirrorOpenedBeforeItsFirstLineHasOneHeader(t *testing.T) {
+	appDayProfile(t)
+	workspace := t.TempDir()
+	st, it := afJob(t)
+	r := &afRemote{items: st, floor: st, workspace: workspace}
+	m := r.mirror(it, "exec-inv", "investigate", true)
+	if m == nil {
+		t.Fatal("no mirror was minted")
+	}
+	// What an opener does to an empty record.
+	if info, err := os.Stat(m.file); err != nil || info.Size() == 0 {
+		_ = os.WriteFile(m.file, []byte(`{"type":"session","version":1,"id":"opener"}`+"\n"), 0o600)
+	}
+	header := []byte(`{"type":"session","version":1,"id":"nodefolder","cwd":"/node/work","timestamp":"2026-11-07T12:00:00Z"}`)
+	line := []byte(`{"type":"message","role":"user","content":"hello","timestamp":"2026-11-07T12:00:01Z"}`)
+	if err := m.append([][]byte{header, line}, workspace); err != nil {
+		t.Fatal(err)
+	}
+	kept := afRecordLines(t, m.file)
+	headers := 0
+	for _, l := range kept {
+		if afIsHeader(l) {
+			headers++
+		}
+	}
+	if headers != 1 || len(kept) != 2 || !bytes.Equal(kept[1], line) {
+		t.Fatalf("the conversation is\n%s\nwant one header and the line", bytes.Join(kept, []byte("\n")))
+	}
+}

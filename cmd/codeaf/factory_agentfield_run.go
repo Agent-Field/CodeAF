@@ -547,6 +547,15 @@ func (r *afRemote) mirror(it factory.Item, exec, step string, make bool) *afMirr
 		_ = os.WriteFile(filepath.Join(filepath.Dir(file), factoryOwnerFile), raw, 0o600)
 	}
 	m := &afMirror{file: file, id: place.ID(), state: afRelayState{ExecutionID: exec, Step: step, Job: it.ID}}
+	// THE HEADER IS WRITTEN WITH THE FOLDER. A held chat opens this
+	// conversation as soon as its step is listed, and an opener that finds
+	// the record empty writes a header of its own — so a header left for the
+	// first relayed line to bring would land second, and the record would
+	// open twice. The node's own header is then skipped as a repeat.
+	if os.WriteFile(file, append(afLocalHeader(nil, m.id, afHeaderCwd(file, r.workspace)), '\n'), 0o600) != nil {
+		return nil
+	}
+	m.header = true
 	if m.save() != nil {
 		return nil
 	}
@@ -563,6 +572,11 @@ func afHasHeader(file string) bool {
 // node's folder and cwd, so it is replaced by this conversation's; every other
 // line is written byte for byte.
 func (m *afMirror) append(lines [][]byte, workspace string) error {
+	if !m.header {
+		// Something else may have opened the conversation since this mirror
+		// was found, and opening an empty record writes its header.
+		m.header = afHasHeader(m.file)
+	}
 	var buf bytes.Buffer
 	for _, line := range lines {
 		line = bytes.TrimRight(line, "\r\n")
