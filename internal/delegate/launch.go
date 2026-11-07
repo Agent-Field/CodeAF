@@ -169,6 +169,9 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	cmd, err := executor.For(ctx).In(launch.Dir).Command(context.Background(), executor.ExecRequest{
 		Argv: append([]string{launch.Bin}, launch.Args...),
 		Env:  append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker),
+		// A FENCED PROGRAM STILL WRITES ITS OWN RECORDS AND READS ITS INBOX,
+		// which codeaf keeps outside the folder it works in.
+		Writable: recordFolders(baseEnv),
 	})
 	if err != nil {
 		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
@@ -305,3 +308,21 @@ func openStderr(path string) (io.WriteCloser, error) {
 type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
+
+// recordFolders is the folders a program's environment names for its records
+// and its inbox: what it must be able to write under a fence.
+func recordFolders(environment []string) []string {
+	var out []string
+	for _, kv := range environment {
+		name, value, _ := strings.Cut(kv, "=")
+		value = strings.TrimSpace(value)
+		switch {
+		case value == "":
+		case name == EnvRecords:
+			out = append(out, value)
+		case name == EnvInbox:
+			out = append(out, filepath.Dir(value))
+		}
+	}
+	return out
+}

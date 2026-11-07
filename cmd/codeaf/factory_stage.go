@@ -129,6 +129,11 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		return nil, err
 	}
 	cfg.Workspace = where
+	// A STAGE'S COMMANDS ARE FENCED to its worktree (fence.go): the allow
+	// posture below opens the gate, and the fence is what still holds.
+	if cfg.Fence, err = unattendedFence(where, m.profileDir); err != nil {
+		return nil, err
+	}
 	cfg.AutomaticModels = spec.AutomaticModels
 	cfg.Model = factoryOpenModel(m.profileDir, cfg, spec)
 	fallback := appDefaultFallback(m.profileDir)

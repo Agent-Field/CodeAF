@@ -216,3 +216,8 @@ already filed stay as they are.
   are not child executions in AgentField's workflow view.
 - Jira is not an AgentField source; it has its own connector (see "connect
   Jira").
+- A node's runs do not have your full permissions. They go through
+  `codeaf chat --once` and `codeaf exec`, whose commands may write only their
+  own checkout and their own temp and cache folders. They cannot read keys and
+  sign-ins or use docker unless `"jail.allow"` says so ("What an unattended run
+  may touch").

@@ -143,6 +143,13 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
+	// AN EXEC RUN'S COMMANDS ARE FENCED to its workspace (fence.go). The seat
+	// replaces the host seat the context was opened with.
+	fence, err := unattendedFence(space.Root(), settings.ProfileDir)
+	if err != nil {
+		return err
+	}
+	execCtx = fencedSeat(execCtx, fence)
 	web := exec.NewWeb()
 	if web == nil {
 		fmt.Fprintln(os.Stderr, "note: EXA_API_KEY unset — the web tool will be unavailable")

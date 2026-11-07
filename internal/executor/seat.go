@@ -120,11 +120,37 @@ type Stance struct {
 	Setup    bool
 	Observer Observer
 	Secrets  SecretSource // added to every process's environment; nil adds none
+	Fence    *Fence       // a Fenced stance's confinement (fence.go)
 }
 
 // In implements Seat.
 func (s Stance) In(dir string) Runner {
-	return Local{Root: dir, Class: s.Class, Jail: DefaultJail(), Setup: s.Setup, Observer: s.Observer, Secrets: s.Secrets}
+	return Local{Root: dir, Class: s.Class, Jail: DefaultJail(), Setup: s.Setup, Observer: s.Observer, Secrets: s.Secrets, Fence: s.Fence}
+}
+
+// FencedSeat is the seat an unattended agent's commands run on: the fence f
+// around every call, the network open, nothing recorded. A nil fence (the
+// person turned it off) is [Host].
+func FencedSeat(f *Fence) Seat {
+	if f == nil {
+		return Host
+	}
+	return Stance{Class: Fenced, Fence: f}
+}
+
+// FenceOf is the fence a seat applies, nil when it applies none.
+func FenceOf(s Seat) *Fence {
+	switch seat := s.(type) {
+	case Stance:
+		if seat.Class == Fenced {
+			return seat.Fence
+		}
+	case environmentSeat:
+		return FenceOf(seat.Seat)
+	case gated:
+		return FenceOf(seat.Seat)
+	}
+	return nil
 }
 
 // ForSetup is the same stance for a setup turn's calls.

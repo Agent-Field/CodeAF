@@ -1089,6 +1089,16 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// and it is the one fact the shared assembly cannot know for itself.
 	cfg := launch.Config
 	cfg.AskConsent = !hello.Headless
+	// A HEADLESS HELLO IS --once THROUGH A HOST, and is fenced as --once is
+	// (fence.go). A later hello that is not headless cannot join it: the
+	// server refuses a mismatch (internal/remote's server.go).
+	if hello.Headless {
+		fence, err := unattendedFence(launch.Workspace, launch.Settings.ProfileDir)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Fence = fence
+	}
 	// The app's one supervisor of kept-running processes, when this process
 	// is the app's (appservices.go); every other engine has none.
 	cfg.Services = appServiceDoor.Load()

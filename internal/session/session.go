@@ -1457,6 +1457,15 @@ type Config struct {
 	// session and never a path. Nil is a session with no cell, whose calls run
 	// on the host; see [Config.seat].
 	Seat procexec.Seat
+	// Fence is the confinement an unattended run's commands get when it has no
+	// cell seat (internal/executor's fence.go): writes only inside the job,
+	// keys and sign-ins unreadable, docker refused, the network open. The
+	// doors that run an agent with nobody at the keyboard set it (a factory
+	// stage, `codeaf chat --once`, a headless engine conversation); an
+	// interactive conversation leaves it nil and runs on the host as before.
+	// The session's own read, write and edit tools are held to it too, because
+	// they run inside codeaf and so outside any jail (fencedFileTool).
+	Fence *procexec.Fence
 	// Interrupted is what the last run of this conversation's cell left
 	// unfinished: the model is told once, on its next turn, that those calls were
 	// cut off (interrupted.go). Nil is nothing to tell.
@@ -4185,9 +4194,24 @@ type Agent struct {
 // cell says so by name: it is on the host seat.
 func (c Config) seat() procexec.Seat {
 	if c.Seat == nil {
+		if c.Fence != nil {
+			return procexec.FencedSeat(c.Fence)
+		}
 		return procexec.Host
 	}
 	return c.Seat
+}
+
+// fenced is whether this session's commands run fenced, the prompt's predicate.
+func (c Config) fenced() bool { return c.fence() != nil }
+
+// fence is the fence this session's commands run under, nil when none: a
+// cell seat brings its own jail and is never fenced twice.
+func (c Config) fence() *procexec.Fence {
+	if c.Fence == nil {
+		return nil
+	}
+	return procexec.FenceOf(c.seat())
 }
 
 // seatFor is the seat a turn's tool calls run on: the session's own, or its
