@@ -790,6 +790,13 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 		_ = json.Unmarshal(raw, &chats)
 		return len(chats.Steps) == 2 && chats.Steps[0].Step == "investigate" && chats.Steps[1].Step == "verify"
 	})
+	// A STEP'S CHAT SAYS WHICH FOLDER ITS PATHS ARE WRITTEN AGAINST: the
+	// node's own cwd from the record it relayed, not this machine's.
+	for _, c := range chats.Steps {
+		if c.WorkspaceRoot != "/node" {
+			t.Fatalf("%s's chat has workspace_root %q, want the node's /node", c.Step, c.WorkspaceRoot)
+		}
+	}
 	// THE DESK READS THE ORDINARY JOB AND NOTHING ELSE (owner's decision):
 	// every execution, nested ones too, is a flat step with its parent and
 	// group, a name unique in the job, kind "check" for plain code and

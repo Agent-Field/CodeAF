@@ -928,6 +928,11 @@ type afRelayState struct {
 	Job         int    `json:"job"`
 	// Acked is the last relay seq this conversation has.
 	Acked int64 `json:"acked"`
+	// OriginCwd is the folder the node's record names as its cwd: the
+	// step's paths are written against it on the node, so a reader can show
+	// them relative to it (factory.job_chats' workspace_root). The record's
+	// own header names this machine's folder instead (afLocalHeader).
+	OriginCwd string `json:"origin_cwd,omitempty"`
 	// Steerable is true from the run's "started" to its "ended": a codeaf
 	// harness run working now.
 	Steerable bool `json:"steerable"`
@@ -1040,6 +1045,12 @@ func (m *afMirror) append(lines [][]byte, workspace string) error {
 			continue
 		}
 		if afIsHeader(line) {
+			var h struct {
+				Cwd string `json:"cwd"`
+			}
+			if json.Unmarshal(line, &h) == nil && strings.TrimSpace(h.Cwd) != "" && m.state.OriginCwd == "" {
+				m.state.OriginCwd = filepath.Clean(strings.TrimSpace(h.Cwd))
+			}
 			if m.header {
 				continue
 			}
