@@ -221,6 +221,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// running total is the one account that moves per paid call, so it is read
 	// as each event comes by and told to the run whenever it has risen.
 	banked := 0.0
+	refused, executed, lastRefusal := attemptedWork(past)
 	// sameStep is the law below, held for the whole turn: the identity of the
 	// last finished step, how many identical ones have come back in a row, and
 	// the moment the store was last read. The words a worker says between its
@@ -451,6 +452,14 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 					// not end the task.
 					_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryNotesKind, Notes: had})
 				}
+				if event.HarnessMade {
+					if event.Refused {
+						refused = true
+						lastRefusal = event.Output
+					}
+				} else if !onlyPlanFinish(stepCommand(event)) {
+					executed = true
+				}
 				// THE STORE'S OWN ENDING IS DETECTED AFTER THE COMMAND RUNS. A
 				// `plandb done`, or a `plandb wait`, that the worker itself just
 				// ran is the end of the loop: the shim's verb is already in the
@@ -491,6 +500,16 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		}
 		switch {
 		case ending.kind == endingDone:
+			if refused && !executed {
+				reason := "the worker could not finish: every attempted action was refused"
+				if lastRefusal = strings.TrimSpace(lastRefusal); lastRefusal != "" {
+					reason += " · " + lastRefusal
+				}
+				if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Reason: reason}); err != nil {
+					return Report{Steps: steps}, err
+				}
+				return Report{Steps: steps}, refusedOnlyCompletionError{reason: reason}
+			}
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {
 				return Report{Steps: steps}, err
 			}
@@ -834,6 +853,41 @@ type storeEnding struct {
 	// says beside its "waiting" what the worker was doing, so a person reading
 	// the record asks no second question.
 	reason string
+}
+
+// attemptedWork reads whether a task has met a door refusal, whether anything
+// other than a bare finish really ran, and the newest refusal's words. It is
+// one function for a resumed trajectory and the live worker's same booleans:
+// their truth must not change when a worker is relaunched.
+func attemptedWork(steps []Step) (refused, executed bool, lastRefusal string) {
+	for _, step := range steps {
+		if step.Refused {
+			refused = true
+			lastRefusal = step.Observation
+		}
+		if !step.NotRun && !onlyPlanFinish(step.Command) {
+			executed = true
+		}
+	}
+	return refused, executed, lastRefusal
+}
+
+// refusedOnlyCompletionError is a worker claiming completion after every
+// action it attempted was refused and nothing else ran. It is typed so the
+// supervisor can keep that false completion from winning merely because
+// `plandb done` reached the store before the worker returned (#1351). Other
+// errors after a stored completion keep the review behavior they already have.
+type refusedOnlyCompletionError struct{ reason string }
+
+func (e refusedOnlyCompletionError) Error() string { return e.reason }
+
+// onlyPlanFinish says a command's only act is the store's `plandb done`. A bare
+// finish is valid for read-only or already-complete work when no door refused
+// anything, but it is not executed recovery after a refusal. Any compound shell
+// command is conservatively a real action: this parser does not claim to prove
+// the other segment had no effect.
+func onlyPlanFinish(command string) bool {
+	return session.BashCommandIsOnly(command, "plandb", "done")
 }
 
 // storeEnding reads the task's row and answers the ending it carries, if any.
