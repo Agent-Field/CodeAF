@@ -119,6 +119,31 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 				}
 				return false
 			})
+			var reply string
+			for _, e := range entries() {
+				if e.Turn == turn.Turn && e.Kind == "answer" {
+					reply = e.Text
+				}
+			}
+			if reply == "" {
+				t.Fatal("finished manager turn has no reply")
+			}
+			prior := map[string]bool{}
+			for _, m := range before.Thread {
+				prior[m.ID] = true
+			}
+			// TurnDone precedes the worker report that saves the manager's reply.
+			// Read action versions only after that content write has landed.
+			wait("manager reply is saved on the job", func(j api.Job) bool {
+				if j.Desk != nil {
+					for _, m := range j.Desk.Thread {
+						if !prior[m.ID] && m.From == "manager" && m.Text == reply {
+							return true
+						}
+					}
+				}
+				return false
+			})
 			if action == "give back" {
 				act("factory.job_control", map[string]any{"mode": "take_over"})
 				// Takeover is a separate action; wait for the withdrawn worker before

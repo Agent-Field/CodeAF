@@ -17,7 +17,7 @@ func (e CloseRefusal) Error() string { return string(e) }
 // Close revokes the lease and ends the job atomically, preserving its branch,
 // chats, PR, steps and accounting. Old worker reports cannot resurrect it.
 func (d *Doors) Close(id int, revision *int, who string) error {
-	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	return d.updateAt(id, revision, false, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if factory.JobState(*it) == "done" {
 			return false, CloseRefusal(fmt.Sprintf("%s is already closed", it.Ref()))
 		}

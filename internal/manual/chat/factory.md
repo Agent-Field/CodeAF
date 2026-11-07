@@ -558,6 +558,17 @@ A job owned by this factory has one manager, however many asks race to open it. 
 
 To go on from a step that was cut instead, keeping the steps before it and the money spent, run that step again (try again) rather than starting the job.
 
+## Waiting job actions and stale versions — job moved on while you looked
+
+Give back, try again, send back, stop job, stop step and control mode changes
+still accept your action if only brief-writing status or an unchanged worker
+report moved the version after you read it. Approval, publication and plan
+revision still require the exact version you read. A change to
+the job's state, assignment, budget, steps, question or result still refuses with
+"job moved on while you looked"; read the job again before deciding. A newly
+kept brief or a late manager reply also requires a fresh read. Older saved jobs keep strict version
+checks until the new engine records bookkeeping after a read.
+
 ## Stop after the job moves on or starts publishing
 
 Stop still works when the job has moved on since you opened its page. Stopping

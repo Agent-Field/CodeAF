@@ -78,14 +78,37 @@ func (h *Handler) fresh(w http.ResponseWriter, r *http.Request, it factory.Item,
 	if job.Step != nil {
 		step = job.Step.Name
 	}
+	versionStale := false
+	if exp.Version != nil && (h.config.Store == nil || !bookkeepingAction(verb)) {
+		versionStale = *exp.Version != job.Version
+	} else if exp.Version != nil {
+		err := h.config.Store.CheckActionExpected(it.ID, *exp.Version)
+		var stale *store.StaleError
+		if err != nil && !errors.As(err, &stale) {
+			h.failed(w, err)
+			return false
+		}
+		versionStale = err != nil
+	}
 	stale := (exp.State != "" && exp.State != job.State) ||
 		(exp.Step != "" && exp.Step != step) ||
-		(exp.Version != nil && *exp.Version != job.Version)
+		versionStale
 	if !stale {
 		return true
 	}
 	h.moved(w, r, it, job, verb)
 	return false
+}
+
+// bookkeepingAction opts only job controls into action revision history.
+// Approval, publication and plan revision always require the exact version.
+func bookkeepingAction(verb string) bool {
+	switch verb {
+	case "control", "step_rerun", "step_stop", "stop", "request_changes":
+		return true
+	default:
+		return false
+	}
 }
 
 // moved answers a stale expect. The sentence is the one the page can show:
