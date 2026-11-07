@@ -43,8 +43,8 @@ func (b *appBackend) claudeStatusFresh() claudeagent.Status {
 
 func (b *appBackend) forgetClaudeStatus() {
 	claudeStatusCache.Lock()
+	defer claudeStatusCache.Unlock()
 	claudeStatusCache.at = time.Time{}
-	claudeStatusCache.Unlock()
 }
 
 // claudeCodePlanWord is the provider row's plan: how the installed Claude Code
