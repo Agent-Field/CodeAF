@@ -26,7 +26,7 @@ func fencedFileTool(fence *procexec.Fence, workspace, tool string, args json.Raw
 		Path     string `json:"path"`
 		FilePath string `json:"file_path"`
 	}
-	if json.Unmarshal(args, &call) != nil {
+	if decodeToolArguments(args, &call) != nil {
 		return ""
 	}
 	path := strings.TrimSpace(call.Path)
