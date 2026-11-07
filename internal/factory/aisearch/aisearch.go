@@ -71,10 +71,17 @@ const (
 	QuestionMost = 300
 	// Parallel is how many model calls one search has in flight at once.
 	Parallel = 6
-	// ScreenAnswerTokens is what one screen reply is budgeted in the estimate:
-	// a list of numbers. JudgeAnswerTokens is one {"yes","why"} object.
-	ScreenAnswerTokens = 200
-	JudgeAnswerTokens  = 80
+	// ScreenAnswerTokens is what one screen reply is budgeted in the estimate,
+	// and JudgeAnswerTokens one judge reply. Both are MEASURED, not the size
+	// of the JSON: a cheap model thinks before it answers, and its thinking is
+	// billed as output. On 2026-11-07, 61 factory-demo issues on
+	// deepseek/deepseek-v4.1-flash, a screen reply was 650 to 1,250 tokens and
+	// a judge reply 60 to 320.
+	ScreenAnswerTokens = 1000
+	JudgeAnswerTokens  = 200
+	// TypicalShare is the estimate's guess at how much the screen keeps: one
+	// item in four (the same run kept 7% to 31%).
+	TypicalShare = 4
 )
 
 // Phases of a search.
@@ -546,7 +553,7 @@ type Estimate struct {
 	// Reads is how many screen reads; JudgeMost how many questions at most.
 	Reads     int `json:"reads"`
 	JudgeMost int `json:"judge_most"`
-	// Typical is the cost when the screen keeps about one item in five;
+	// Typical is the cost when the screen keeps one item in [TypicalShare];
 	// Most is every read and the full [JudgeMost] questions. Both are absent
 	// without a price.
 	Typical *float64 `json:"usd_typical,omitempty"`
@@ -575,6 +582,12 @@ func EstimateFor(question string, items []factory.Item, cache *Cache, price *Pri
 	if price == nil {
 		return e
 	}
+	if len(fresh) == 0 {
+		// Every answer is kept: asking again costs nothing.
+		zero := 0.0
+		e.Typical, e.Most = &zero, &zero
+		return e
+	}
 	screenIn := 0
 	for i := 0; i < len(fresh); i += ScreenBatch {
 		screenIn += len(ScreenSystem) + len(ScreenUser(question, fresh[i:min(i+ScreenBatch, len(fresh))]))
@@ -590,7 +603,7 @@ func EstimateFor(question string, items []factory.Item, cache *Cache, price *Pri
 		perJudge = tokens(total/len(fresh))*price.In + JudgeAnswerTokens*price.Out
 	}
 	screen := tokens(screenIn)*price.In + float64(reads*ScreenAnswerTokens)*price.Out
-	typical := (screen + perJudge*float64(min(judgeMost, (len(fresh)+4)/5))) / 1e6
+	typical := (screen + perJudge*float64(min(judgeMost, (len(fresh)+TypicalShare-1)/TypicalShare))) / 1e6
 	most := (screen + perJudge*float64(judgeMost)) / 1e6
 	e.Typical, e.Most = &typical, &most
 	return e

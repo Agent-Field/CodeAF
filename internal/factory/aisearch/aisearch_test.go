@@ -133,7 +133,7 @@ func TestASearchAgainReusesItsAnswersAndAsksOnlyWhatChanged(t *testing.T) {
 		t.Fatalf("one edited item took %d reads and %d questions", f.screens.Load(), f.judges.Load())
 	}
 	// That run was not saved, so the edited item is still unknown.
-	if e := EstimateFor("exports", list, OpenCache(path), &Price{In: 0.1, Out: 0.4}); e.Reused != 79 || e.Reads != 1 {
+	if e := EstimateFor("exports", list, OpenCache(path), &Price{In: 0.1, Out: 0.4}); e.Reused != 79 || e.Reads != 1 || *e.Most == 0 {
 		t.Fatalf("estimate over a kept question %+v", e)
 	}
 }
@@ -155,6 +155,12 @@ func TestTheEstimateCountsReadsAndAPrice(t *testing.T) {
 	}
 	if e := EstimateFor("ledger", items(3, 10, "ledger"), nil, nil); e.Typical != nil || e.Reads != 1 {
 		t.Fatalf("no price gives no figure: %+v", e)
+	}
+	// Measured: 61 factory-demo issues on deepseek/deepseek-v4.1-flash
+	// ($0.30 in, $1.20 out a million) kept 19 and cost $0.0132.
+	e = EstimateFor("ledger", items(61, 10, "ledger"), nil, &Price{In: 0.3, Out: 1.2})
+	if *e.Typical < 0.006 || *e.Typical > 0.0132 || *e.Most < 0.0132 {
+		t.Fatalf("the estimate does not bracket the measured run: %+v typical %v most %v", e, *e.Typical, *e.Most)
 	}
 }
 

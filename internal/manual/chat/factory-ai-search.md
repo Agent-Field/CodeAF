@@ -10,7 +10,7 @@ with `?` and press Enter. For example `? anything touching auth tokens`.
 
 The AI never runs while you type. It runs only when you press Ask AI or Enter
 on a `?` question, and before it runs the bar says what it will read and what
-it is likely to cost, such as "Reads 80 issues · about $0.002".
+it is likely to cost, such as "Reads 61 issues · about $0.01".
 
 It reads the jobs the bar lists at that moment, so `repo:` and the other keys
 narrow what it reads. Dropped and dismissed jobs are never read, and it reads
@@ -45,8 +45,9 @@ Before it runs, the bar shows the estimate: how many issues it will read and
 about what it will cost at the factory's default model's price (no figure when
 the price is not known). After, the answer shows what it actually cost.
 
-On deepseek/deepseek-v4.1-flash a search of 80 issues costs a fraction of a
-cent. Every call goes on Spending as `factory search` and counts toward the
+On deepseek/deepseek-v4.1-flash a search of 61 issues cost between $0.004 and
+$0.013, depending on how many issues looked related. Asking the same question
+again over the same issues cost $0.00. Every call goes on Spending as `factory search` and counts toward the
 factory's day, like `factory filter` and the issue read. It runs on the
 factory's default model; with none set, the issue read's model.
 
