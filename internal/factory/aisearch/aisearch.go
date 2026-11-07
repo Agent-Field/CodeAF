@@ -161,8 +161,18 @@ type Options struct {
 
 // Ask is the routing question one item is judged on: the person's words,
 // turned into the yes/no the judge answers.
+//
+// IT ASKS WHAT A SEARCHER WANTS TO SEE, NOT WHETHER THE ITEM IS A DEFECT IN
+// THE THING. Asked "is this about: issues about the ledger total?", the judge
+// read "issues" as bugs and turned down a rename of Total, a test of it and the
+// way totals are printed (2026-11-07, five of twelve lost on factory-demo).
+// A person searching for a subject wants all the work on it, so the question
+// names the kinds of work that count. It stays within the judge's
+// [judge.AskMost] with the longest question, so nothing of it is cut.
 func Ask(question string) string {
-	return "Is this work item about the following, as the team would mean it: " + clip(oneLine(question), QuestionMost) + "?"
+	return "Would someone searching the queue for \"" + clip(oneLine(question), QuestionMost) + "\" want this item listed? " +
+		"Yes for any work on it: fixing, changing, renaming, testing, speeding up, formatting or documenting it. " +
+		"No if it only shares a word."
 }
 
 // Clean is the question as it is asked and kept: one line, at most

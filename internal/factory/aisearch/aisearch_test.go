@@ -229,3 +229,11 @@ func abs(f float64) float64 {
 	}
 	return f
 }
+
+// The search's question fits the judge's bound whole, however long the
+// person's words are: a cut would drop the kinds of work that count.
+func TestTheAskFitsTheJudgeWhole(t *testing.T) {
+	if n := len([]rune(Ask(strings.Repeat("a", QuestionMost+50)))); n > judge.AskMost {
+		t.Fatalf("the ask is %d runes, the judge keeps %d", n, judge.AskMost)
+	}
+}
