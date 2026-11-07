@@ -3,6 +3,7 @@ package executor
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -131,9 +132,15 @@ func TestTheFileToolsKeepToTheFence(t *testing.T) {
 			t.Errorf("%s (write %v) refused", path, write)
 		}
 	}
-	for path, write := range map[string]bool{filepath.Join(home, ".ssh", "id_rsa"): false, filepath.Join(home, "outside"): true,
+	refused := map[string]bool{filepath.Join(home, ".ssh", "id_rsa"): false, filepath.Join(home, "outside"): true,
 		filepath.Join(main, ".git", "hooks", "pre-commit"): true, filepath.Join(work, ".codeaf", "config.json"): true,
-		filepath.Join(home, ".codeaf", "config.json"): false} {
+		filepath.Join(home, ".codeaf", "config.json"): false}
+	// macOS keeps its system temporary folders writable (darwinTemp), and a
+	// test's own temporary folder is one of them.
+	if runtime.GOOS == "darwin" && within(canon(t, home), "/private/var/folders") {
+		delete(refused, filepath.Join(home, "outside"))
+	}
+	for path, write := range refused {
 		if f.Allows(path, write) {
 			t.Errorf("%s (write %v) allowed", path, write)
 		}
