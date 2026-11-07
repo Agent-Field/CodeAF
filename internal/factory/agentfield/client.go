@@ -56,6 +56,11 @@ type Client struct {
 	URL  string
 	Key  string
 	HTTP *http.Client
+	// Owner is the node this factory is on the control plane. It is sent as
+	// X-AgentField-Run-Owner on every call, so the control plane serves this
+	// factory only the runs it started (their trees, entries, acks, steers
+	// and cancels) and refuses another's.
+	Owner string
 }
 
 // Reasoner is one entry of a registration's reasoner list, in the control
@@ -228,14 +233,19 @@ func (c *Client) Register(ctx context.Context, r Registration) error {
 }
 
 // Renew is PATCH /api/v1/nodes/:id/status with phase (ready, or offline when
-// the node is going away).
-func (c *Client) Renew(ctx context.Context, node, phase, version string) (Lease, error) {
+// the node is going away) and the executions the node still holds, which the
+// control plane touches so its stale reaper leaves them alone.
+func (c *Client) Renew(ctx context.Context, node, phase, version string, inflight []string) (Lease, error) {
 	score := 100
 	if phase != "ready" {
 		score = 0
 	}
+	body := map[string]any{"phase": phase, "version": version, "health_score": score}
+	if len(inflight) > 0 {
+		body["inflight"] = inflight
+	}
 	var out Lease
-	err := c.do(ctx, "node", http.MethodPatch, "/api/v1/nodes/"+url.PathEscape(node)+"/status", nil, map[string]any{"phase": phase, "version": version, "health_score": score}, &out)
+	err := c.do(ctx, "node", http.MethodPatch, "/api/v1/nodes/"+url.PathEscape(node)+"/status", nil, body, &out)
 	return out, err
 }
 
@@ -274,6 +284,11 @@ func (c *Client) AddTrigger(ctx context.Context, t NewTrigger) (Trigger, error) 
 
 // do makes one call and decodes a success into out (nil reads nothing).
 func (c *Client) do(ctx context.Context, op, method, path string, q url.Values, in, out any) error {
+	return c.doHeaders(ctx, op, method, path, q, in, out, nil)
+}
+
+// doHeaders is do with extra request headers.
+func (c *Client) doHeaders(ctx context.Context, op, method, path string, q url.Values, in, out any, headers map[string]string) error {
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, callTimeout)
@@ -300,6 +315,14 @@ func (c *Client) do(ctx context.Context, op, method, path string, q url.Values, 
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "codeaf-factory")
+	if c.Owner != "" {
+		req.Header.Set("X-AgentField-Run-Owner", c.Owner)
+	}
+	for k, v := range headers {
+		if v != "" {
+			req.Header.Set(k, v)
+		}
+	}
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -353,4 +376,243 @@ func answerMessage(raw []byte) string {
 		msg = msg[:300] + "…"
 	}
 	return msg
+}
+
+// ── THE CALLS A RUNON JOB MAKES (run.go) ────────────────────────────────────
+
+// Dispatched is an async execute's answer.
+type Dispatched struct {
+	ExecutionID string `json:"execution_id"`
+	RunID       string `json:"run_id"`
+	WorkflowID  string `json:"workflow_id"`
+	Status      string `json:"status"`
+}
+
+// Dispatch is POST /api/v1/execute/async/<target>: the job's run.
+func (c *Client) Dispatch(ctx context.Context, target string, input any, owner string) (Dispatched, error) {
+	var out Dispatched
+	body := map[string]any{"input": input}
+	err := c.doHeaders(ctx, "dispatch the run", http.MethodPost, "/api/v1/execute/async/"+url.PathEscape(target), nil, body, &out,
+		map[string]string{"X-AgentField-Run-Owner": owner})
+	if out.RunID == "" {
+		out.RunID = out.WorkflowID
+	}
+	return out, err
+}
+
+// TreeNode is one execution of a run's tree (the control plane's DAG node).
+type TreeNode struct {
+	ExecutionID       string     `json:"execution_id"`
+	AgentNodeID       string     `json:"agent_node_id"`
+	ReasonerID        string     `json:"reasoner_id"`
+	Status            string     `json:"status"`
+	StatusReason      *string    `json:"status_reason,omitempty"`
+	StartedAt         string     `json:"started_at"`
+	CompletedAt       *string    `json:"completed_at,omitempty"`
+	DurationMS        *int64     `json:"duration_ms,omitempty"`
+	ParentExecutionID *string    `json:"parent_execution_id,omitempty"`
+	Children          []TreeNode `json:"children"`
+}
+
+// RunURL is the run's page on the control plane's own UI (its execution
+// page: the UI's /executions/<id> only redirects to the run list). IT IS
+// SENT ONLY WHEN THE CONTROL PLANE IS HTTPS: the app opens a source's link
+// only over https, so a plain-http page would be a chip nobody can click —
+// none at all is the honest answer.
+func (c *Client) RunURL(run string) string {
+	base, err := url.Parse(strings.TrimSpace(c.URL))
+	if err != nil || base.Scheme != "https" || base.Host == "" || strings.TrimSpace(run) == "" {
+		return ""
+	}
+	return strings.TrimRight(base.String(), "/") + "/ui/runs/" + url.PathEscape(run)
+}
+
+// NodeHost is the machine a node says it runs on: the "host" its SDK put in
+// its registration's custom metadata. Empty when the node sent none or the
+// control plane cannot say; that is not an error worth failing a run over.
+func (c *Client) NodeHost(ctx context.Context, node string) string {
+	var out struct {
+		Metadata struct {
+			Custom map[string]any `json:"custom"`
+		} `json:"metadata"`
+	}
+	if strings.TrimSpace(node) == "" || c.do(ctx, "read the node", http.MethodGet, "/api/v1/nodes/"+url.PathEscape(node), nil, nil, &out) != nil {
+		return ""
+	}
+	host, _ := out.Metadata.Custom["host"].(string)
+	return strings.TrimSpace(host)
+}
+
+// Tree is GET /api/ui/v1/workflows/<run>/dag: the run's execution tree.
+func (c *Client) Tree(ctx context.Context, run string) (TreeNode, string, error) {
+	var out struct {
+		WorkflowStatus string   `json:"workflow_status"`
+		DAG            TreeNode `json:"dag"`
+	}
+	err := c.do(ctx, "read the run", http.MethodGet, "/api/ui/v1/workflows/"+url.PathEscape(run)+"/dag", nil, nil, &out)
+	return out.DAG, out.WorkflowStatus, err
+}
+
+// RelayEntry is one entry the control plane holds for an execution.
+type RelayEntry struct {
+	Seq  int64           `json:"seq"`
+	Kind string          `json:"kind"`
+	Data json.RawMessage `json:"data,omitempty"`
+}
+
+// Relay is GET /api/v1/executions/<id>/relay?after=N.
+func (c *Client) Relay(ctx context.Context, execution string, after int64) ([]RelayEntry, error) {
+	var out struct {
+		Entries []RelayEntry `json:"entries"`
+	}
+	q := url.Values{"after": {fmt.Sprint(after)}, "limit": {"500"}}
+	err := c.do(ctx, "read the transcript", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution)+"/relay", q, nil, &out)
+	return out.Entries, err
+}
+
+// RelayAck is POST /api/v1/executions/<id>/relay/ack: this factory keeps
+// every entry through seq now, and the control plane may drop them.
+func (c *Client) RelayAck(ctx context.Context, execution string, through int64) error {
+	return c.do(ctx, "ack the transcript", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/relay/ack", nil, map[string]int64{"through": through}, nil)
+}
+
+// Steer is POST /api/v1/executions/<id>/steer: a person's note to a running
+// codeaf harness, delivered to its node. The refusal is the node's words.
+func (c *Client) Steer(ctx context.Context, execution, message string) error {
+	return c.do(ctx, "steer", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/steer", nil, map[string]string{"message": message}, nil)
+}
+
+// CancelTree is POST /api/ui/v1/workflows/<run>/cancel-tree.
+func (c *Client) CancelTree(ctx context.Context, run string) error {
+	return c.do(ctx, "cancel the run", http.MethodPost, "/api/ui/v1/workflows/"+url.PathEscape(run)+"/cancel-tree", nil, map[string]any{}, nil)
+}
+
+// Approval is an execution's pause for a person, as GET
+// /api/v1/executions/<id>/approval-status answers it. Question, Body, Options
+// and Kind are what the reasoner asked with (a control plane that predates
+// them sends none, and the job then says only that the run asks for approval
+// and links RequestURL). Status is pending, approved, rejected,
+// request_changes or expired.
+type Approval struct {
+	Status     string   `json:"status"`
+	RequestID  string   `json:"approval_request_id,omitempty"`
+	RequestURL string   `json:"request_url,omitempty"`
+	Question   string   `json:"question,omitempty"`
+	Body       string   `json:"body,omitempty"`
+	Options    []string `json:"options,omitempty"`
+	Kind       string   `json:"kind,omitempty"`
+	ExpiresAt  *string  `json:"expires_at,omitempty"`
+}
+
+// ApprovalStatus is GET /api/v1/executions/<id>/approval-status.
+func (c *Client) ApprovalStatus(ctx context.Context, execution string) (Approval, error) {
+	var out Approval
+	err := c.do(ctx, "read the approval", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution)+"/approval-status", nil, nil, &out)
+	return out, err
+}
+
+// The decisions a person's answer to a run's approval becomes on the control
+// plane (POST …/approval-response).
+const (
+	DecisionApproved       = "approved"
+	DecisionRequestChanges = "request_changes"
+	DecisionRejected       = "rejected"
+)
+
+// ResolveApproval is POST /api/v1/executions/<id>/approval-response: the
+// person's decision, with their words as the reason. The control plane takes
+// the first answer from any door (hax, its own UI, this factory) and answers
+// a later one with the state it is already in, which is not an error here.
+func (c *Client) ResolveApproval(ctx context.Context, execution, decision, reason string) error {
+	return c.ResolveApprovalBy(ctx, execution, decision, reason, "")
+}
+
+// ResolveApprovalBy is [Client.ResolveApproval] naming the person who
+// answered. THE ANSWER IS THIS NODE'S, AS THE RUN'S OWNER (X-AgentField-Run-Owner),
+// and the person is named beside it in the response as answered_by — never
+// inside reason, which the reasoner reads as the person's words to it.
+func (c *Client) ResolveApprovalBy(ctx context.Context, execution, decision, reason, by string) error {
+	var out struct {
+		Status string `json:"status"`
+	}
+	body := map[string]any{"decision": decision, "reason": reason}
+	if by = strings.TrimSpace(by); by != "" {
+		body["response"] = map[string]string{"answered_by": "@" + strings.TrimPrefix(by, "@")}
+	}
+	if err := c.do(ctx, "answer the approval", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/approval-response", nil, body, &out); err != nil {
+		return err
+	}
+	// FIRST ANSWER WINS on the control plane, and a later one is a 200 that
+	// says so: this answer changed nothing.
+	if out.Status == "already_processed" {
+		return ErrAnsweredElsewhere
+	}
+	return nil
+}
+
+// Refused says err is the control plane's own refusal of a call (a 4xx other
+// than a timeout or a rate limit): sending the same call again cannot help.
+func Refused(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Code >= 400 && e.Code < 500 && e.Code != http.StatusRequestTimeout && e.Code != http.StatusTooManyRequests
+}
+
+// ErrAnsweredElsewhere is an approval answer that came after another one
+// (hax, the control plane's page, another person): the first answer stands.
+var ErrAnsweredElsewhere = errors.New("the run's question was already answered")
+
+// Result is an execution's result as GET /api/v1/executions/<id> answers
+// it, raw; nil when it has none.
+func (c *Client) Result(ctx context.Context, execution string) (json.RawMessage, error) {
+	var out struct {
+		Result json.RawMessage `json:"result"`
+	}
+	err := c.do(ctx, "read the result", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution), nil, nil, &out)
+	return out.Result, err
+}
+
+// Naming is how a reasoner says its calls are named, in its own tags: Label
+// from "label:<words>", the step's label in a person's words, and Fanout from
+// "label_fanout:<field.path>", the input field whose value tells one call from
+// its siblings ("label_fanout:issue.title"). Both are "" when the reasoner
+// declares nothing. THE CONVENTION IS THE FACTORY'S, NOT ANY ONE PIPELINE'S:
+// any reasoner may declare either tag.
+func (r Reasoner) Naming() (label, fanout string) {
+	for _, tag := range r.Tags {
+		if v, ok := strings.CutPrefix(tag, "label:"); ok && label == "" {
+			label = strings.TrimSpace(v)
+		}
+		if v, ok := strings.CutPrefix(tag, "label_fanout:"); ok && fanout == "" {
+			fanout = strings.TrimSpace(v)
+		}
+	}
+	return label, fanout
+}
+
+// NodeReasoners is one node the control plane knows, as GET /api/v1/nodes
+// lists it: its id, whether it is active now, and its reasoners.
+type NodeReasoners struct {
+	ID           string     `json:"id"`
+	HealthStatus string     `json:"health_status"`
+	Reasoners    []Reasoner `json:"reasoners"`
+}
+
+// Nodes is every node the control plane knows, online or not.
+func (c *Client) Nodes(ctx context.Context) ([]NodeReasoners, error) {
+	var out struct {
+		Nodes []NodeReasoners `json:"nodes"`
+	}
+	err := c.do(ctx, "list the nodes", http.MethodGet, "/api/v1/nodes", url.Values{"show_all": {"true"}}, nil, &out)
+	return out.Nodes, err
+}
+
+// ExecutionInput is the input one execution was called with, as the control
+// plane's execution details (GET /api/ui/v1/executions/<id>/details,
+// input_data) hold it.
+func (c *Client) ExecutionInput(ctx context.Context, execution string) (json.RawMessage, error) {
+	var out struct {
+		Input json.RawMessage `json:"input_data"`
+	}
+	err := c.do(ctx, "read the call's input", http.MethodGet, "/api/ui/v1/executions/"+url.PathEscape(execution)+"/details", nil, nil, &out)
+	return out.Input, err
 }

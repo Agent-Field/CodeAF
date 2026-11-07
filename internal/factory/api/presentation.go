@@ -47,6 +47,12 @@ func PresentJob(j *Job) {
 	case j.State == StateQueued && j.StatePresentation.Kind == WaitingForComputer:
 		// Nothing starts this job until its computer is back, Start now included.
 		p = j.StatePresentation
+	case j.State == StateQueued && strings.TrimSpace(j.RunOn) != "":
+		// An AgentField job (run_on) takes no runner and no Jobs at once
+		// place: Start dispatched it to its node, and it is starting there
+		// until the run reports, a few seconds at most.
+		node, _, _ := strings.Cut(strings.TrimSpace(j.RunOn), ".")
+		p.Title, p.Detail = "Starting", "Starting on AgentField · "+node+"."
 	case j.State == StateQueued && j.OverLimit:
 		p.Kind, p.Title, p.Detail = "waiting_for_runner", "Starting now", "Starting now, above Jobs at once this one time."
 	case j.State == StateQueued || (j.NeedsYou != nil && j.NeedsYou.Kind == factory.NeedsRunnerOffline):
@@ -76,9 +82,11 @@ func PresentJob(j *Job) {
 		p.Title, p.Detail = "Needs you", j.Reason
 	case j.State == StateDone:
 		p.Title = "Done"
-	case j.State == StateBacklog && strings.TrimSpace(j.Repo) == "":
+	case j.State == StateBacklog && strings.TrimSpace(j.Repo) == "" && strings.TrimSpace(j.RunOn) == "":
 		// Outside work no rule or person has given a repository yet: the
 		// launch refuses it ([factory.NoRepoRefusal]), so its read says why.
+		// A job an AgentField reasoner runs (run_on) needs none, so it waits
+		// as ordinary backlog.
 		p.Title, p.Detail = factory.NoRepoTitle, factory.NoRepoDetail
 	case j.State == StateBacklog:
 		p.Title = "Backlog"

@@ -2,8 +2,6 @@ package agentfield
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,25 +22,28 @@ import (
 
 // ── HOW A FACTORY IS CONNECTED TO A CONTROL PLANE ───────────────────────────
 //
-// A connection is settings and two secrets, kept in two places. The control
+// A connection is settings and secrets, kept in two places. The control
 // plane's address, the node id, the address the control plane reaches the
-// factory on, the address the node listens on and the trust ceiling are the
-// factory's settings, in agentfield.json beside the floor's other settings.
-// The control plane's API key and the node's ADDRESS SECRET are kept THE WAY
-// THE GITHUB TOKEN IS KEPT: by the desktop app when the app started this
-// process, otherwise in the profile, never in the factory's folder and never
-// in an answer.
+// factory on (optional), the address the node listens on and the trust
+// ceiling are the factory's settings, in agentfield.json beside the floor's
+// other settings. The control plane's API key and its INTERNAL TOKEN are
+// kept THE WAY THE GITHUB TOKEN IS KEPT: by the desktop app when the app
+// started this process, otherwise in the profile, never in the factory's
+// folder and never in an answer.
 //
-// THE ADDRESS SECRET IS HOW THE NODE KNOWS A CALL IS THE CONTROL PLANE'S. The
-// control plane dispatches a trigger to `{base_url}/reasoners/{name}` with no
-// credential of its own (its trigger dispatcher sets none; only a direct
-// execute carries the optional internal token), so a node that demanded a
-// bearer would refuse every trigger. What the control plane DOES keep is the
-// path of the base_url it was given, on every call it makes to the node. So
-// the node registers `<base_url>/n/<secret>` — 32 random bytes — and answers
-// nothing outside that prefix. Anyone who can read the control plane's node
-// list with its API key can see it; anyone who can do that can also add a
-// trigger, so the secret asks nothing of them they do not already have.
+// TWO CARRIERS, ONE NODE. The node always dials the control plane's link
+// (link.go): one WebSocket it opens and keeps, so dispatches and cancels
+// reach a factory that has NO address the control plane can dial — a laptop
+// behind NAT. With no base_url the node binds nothing at all. With a
+// base_url it also listens, for a control plane that offers no link, and
+// THE INTERNAL TOKEN IS HOW IT KNOWS AN HTTP CALL IS THE CONTROL PLANE'S:
+// the control plane sends it as Authorization: Bearer on every dispatch and
+// cancel, and the node refuses a reasoner call without it.
+//
+// THE OLD ADDRESS SECRET (`/n/<secret>`, from before the trigger dispatcher
+// sent the bearer) is still answered for one release when it is kept, so a
+// control plane that has the old base_url stored still reaches a node that
+// restarted on this build. A fresh connect forgets it.
 
 // settingsFile lives in the floor's folder. It is not a number, so the store
 // never reads it as a job.
@@ -62,11 +63,13 @@ type Settings struct {
 	URL string `json:"url"`
 	// NodeID is the node the factory registers as.
 	NodeID string `json:"node_id"`
-	// BaseURL is where the control plane reaches the factory, such as
-	// http://10.0.0.5:8765. It is registered with the secret after it.
-	BaseURL string `json:"base_url"`
-	// Listen is the address the node's listener binds, such as 0.0.0.0:8765.
-	Listen string `json:"listen"`
+	// BaseURL is where the control plane reaches the factory over HTTP, such
+	// as http://10.0.0.5:8765. EMPTY MEANS LINK ONLY: the node binds no port
+	// and is reached only down the link it opens.
+	BaseURL string `json:"base_url,omitempty"`
+	// Listen is the address the node's listener binds, such as 0.0.0.0:8765;
+	// empty with no base_url.
+	Listen string `json:"listen,omitempty"`
 	// Trust is the most an entry from this control plane is trusted.
 	Trust factory.Tier `json:"trust"`
 }
@@ -77,6 +80,9 @@ type Status struct {
 	Settings
 	// KeyKept says an API key is kept for the control plane.
 	KeyKept bool
+	// TokenKept says the control plane's internal token is kept, without
+	// which the node refuses every HTTP reasoner call.
+	TokenKept bool
 }
 
 // Connection is one factory's connection: Store is the floor (its folder
@@ -100,8 +106,12 @@ func Clean(s Settings) (Settings, error) {
 	if s.URL, err = cleanURL("the AgentField address", s.URL); err != nil {
 		return s, err
 	}
-	if s.BaseURL, err = cleanURL("the address AgentField reaches this factory on", s.BaseURL); err != nil {
-		return s, err
+	if strings.TrimSpace(s.BaseURL) != "" {
+		if s.BaseURL, err = cleanURL("the address AgentField reaches this factory on", s.BaseURL); err != nil {
+			return s, err
+		}
+	} else {
+		s.BaseURL = ""
 	}
 	if s.NodeID = strings.ToLower(strings.TrimSpace(s.NodeID)); s.NodeID == "" {
 		s.NodeID = DefaultNodeID
@@ -109,14 +119,19 @@ func Clean(s Settings) (Settings, error) {
 	if !reNodeID.MatchString(s.NodeID) {
 		return s, errors.New("the node id is a lowercase word, such as codeaf-factory")
 	}
-	if s.Listen = strings.TrimSpace(s.Listen); s.Listen == "" {
-		s.Listen, err = listenFor(s.BaseURL)
-		if err != nil {
-			return s, err
+	if s.BaseURL == "" {
+		// LINK ONLY: nothing listens.
+		s.Listen = ""
+	} else {
+		if s.Listen = strings.TrimSpace(s.Listen); s.Listen == "" {
+			s.Listen, err = listenFor(s.BaseURL)
+			if err != nil {
+				return s, err
+			}
 		}
-	}
-	if _, port, err := net.SplitHostPort(s.Listen); err != nil || port == "" {
-		return s, errors.New("the listen address is host:port, such as 0.0.0.0:8765")
+		if _, port, err := net.SplitHostPort(s.Listen); err != nil || port == "" {
+			return s, errors.New("the listen address is host:port, such as 0.0.0.0:8765")
+		}
 	}
 	switch s.Trust = factory.Tier(strings.ToLower(strings.TrimSpace(string(s.Trust)))); s.Trust {
 	case "":
@@ -157,17 +172,23 @@ func listenFor(base string) (string, error) {
 	return net.JoinHostPort("0.0.0.0", port), nil
 }
 
-// Keep writes the settings and the secrets: key (empty for a control plane
-// that takes none) and a fresh address secret. A keep that fails keeps
-// nothing.
-func (c *Connection) Keep(s Settings, key string) error {
-	secret, err := newSecret()
-	if err != nil {
-		return ErrNotKept
-	}
+// Secrets are what a connection keeps besides its settings.
+type Secrets struct {
+	// Key is the control plane's API key; empty for one that takes none.
+	Key string
+	// Token is the control plane's internal token, the bearer an HTTP
+	// dispatch must carry. Empty refuses every HTTP reasoner call.
+	Token string
+	// Legacy is a node secret kept from before the bearer (read only).
+	Legacy string
+}
+
+// Keep writes the settings and the secrets: key and internal token (either
+// empty for a control plane that has none). A keep that fails keeps nothing.
+func (c *Connection) Keep(s Settings, key, token string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err := keepSecrets(c.Profile, strings.TrimSpace(key), secret); err != nil {
+	if err := keepSecrets(c.Profile, strings.TrimSpace(key), strings.TrimSpace(token)); err != nil {
 		return fmt.Errorf("%w: the key was not kept", ErrNotKept)
 	}
 	if err := writePrivate(c.path(), s); err != nil {
@@ -194,36 +215,36 @@ func (c *Connection) Disconnect() error {
 
 // Status is the connection as it is kept now.
 func (c *Connection) Status() Status {
-	s, key, secret, ok := c.Kept()
-	if !ok && s.URL == "" {
+	s, sec, ok := c.Kept()
+	if !ok {
 		return Status{}
 	}
-	return Status{Connected: ok && secret != "", Settings: s, KeyKept: key != ""}
+	return Status{Connected: true, Settings: s, KeyKept: sec.Key != "", TokenKept: sec.Token != ""}
 }
 
-// Kept is the kept settings, key and address secret, and whether there is a
-// connection at all (settings and a secret).
-func (c *Connection) Kept() (Settings, string, string, bool) {
+// Kept is the kept settings and secrets, and whether there is a connection
+// at all (settings with a control plane address).
+func (c *Connection) Kept() (Settings, Secrets, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var s Settings
-	if c.Store == nil || readJSON(c.path(), &s) != nil || s.URL == "" || s.BaseURL == "" {
-		return Settings{}, "", "", false
+	if c.Store == nil || readJSON(c.path(), &s) != nil || s.URL == "" {
+		return Settings{}, Secrets{}, false
 	}
-	key := config.AgentFieldKeyAt(c.Profile)
-	secret := config.AgentFieldNodeSecretAt(c.Profile)
-	redact.Register(key)
-	redact.Register(secret)
-	return s, key, secret, secret != ""
+	sec := Secrets{Key: config.AgentFieldKeyAt(c.Profile), Token: config.AgentFieldInternalTokenAt(c.Profile), Legacy: config.AgentFieldNodeSecretAt(c.Profile)}
+	redact.Register(sec.Key)
+	redact.Register(sec.Token)
+	redact.Register(sec.Legacy)
+	return s, sec, true
 }
 
 // Client is a control plane client over the kept connection, or false.
 func (c *Connection) Client() (*Client, Settings, bool) {
-	s, key, _, ok := c.Kept()
+	s, sec, ok := c.Kept()
 	if !ok {
 		return nil, Settings{}, false
 	}
-	return &Client{URL: s.URL, Key: key, HTTP: c.HTTP}, s, true
+	return &Client{URL: s.URL, Key: sec.Key, HTTP: c.HTTP, Owner: s.NodeID}, s, true
 }
 
 // Check asks the control plane at url, with key, for its source catalog: the
@@ -234,38 +255,34 @@ func Check(ctx context.Context, httpc *http.Client, url, key string) ([]Source, 
 
 func (c *Connection) path() string { return filepath.Join(c.Store.Root(), settingsFile) }
 
-func newSecret() (string, error) {
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(raw), nil
-}
-
 // keepSecrets keeps both where the GitHub token is kept: handed to the app to
-// keep in app mode (config.AppCredentials.Keep), otherwise in the profile.
-func keepSecrets(profile, key, secret string) error {
+// keep in app mode (config.AppCredentials.Keep), otherwise in the profile. Any
+// legacy node secret is forgotten.
+func keepSecrets(profile, key, token string) error {
 	redact.Register(key)
-	redact.Register(secret)
+	redact.Register(token)
 	if keys := config.AppCredentialSource(); keys != nil {
-		if key != "" {
-			keys.Keep(config.AppAgentFieldProvider, key)
-		} else {
-			keys.Forget(config.AppAgentFieldProvider)
+		for provider, v := range map[string]string{config.AppAgentFieldProvider: key, config.AppAgentFieldTokenProvider: token} {
+			if v != "" {
+				keys.Keep(provider, v)
+			} else {
+				keys.Forget(provider)
+			}
 		}
-		keys.Keep(config.AppAgentFieldNodeProvider, secret)
+		keys.Forget(config.AppAgentFieldNodeProvider)
 		return nil
 	}
-	return config.WriteAgentFieldSecrets(profile, key, secret)
+	return config.WriteAgentFieldSecrets(profile, key, token)
 }
 
 func forgetSecrets(profile string) error {
 	if keys := config.AppCredentialSource(); keys != nil {
 		keys.Forget(config.AppAgentFieldProvider)
 		keys.Forget(config.AppAgentFieldNodeProvider)
+		keys.Forget(config.AppAgentFieldTokenProvider)
 		return nil
 	}
-	if config.AgentFieldKeyAt(profile) == "" && config.AgentFieldNodeSecretAt(profile) == "" {
+	if config.AgentFieldKeyAt(profile) == "" && config.AgentFieldNodeSecretAt(profile) == "" && config.AgentFieldInternalTokenAt(profile) == "" {
 		return nil
 	}
 	return config.ForgetAgentFieldSecrets(profile)

@@ -333,10 +333,22 @@ type SizeBlock struct {
 // StepDef is one step as the pipeline defines it (code: [factory.Stage]).
 type StepDef struct {
 	Label string `json:"label,omitempty"`
-	Name  string `json:"name"`
-	Kind  string `json:"kind,omitempty"`
-	Ask   string `json:"ask,omitempty"`
-	Until string `json:"until,omitempty"`
+	// Parent is the name of the step that called this one in an AgentField
+	// run, absent for a top-level step; steps sharing a group ran at once.
+	// Both are absent on every step a factory runs itself.
+	Parent string `json:"parent,omitempty"`
+	Group  string `json:"group,omitempty"`
+	// GroupLabel is what the group this step ran at once with is called, in a
+	// person's words ("Investigate"); absent when its members share no words.
+	GroupLabel string `json:"group_label,omitempty"`
+	// Target and Input are an agentfield step's reasoner ("<node>.<reasoner>")
+	// and its input mapping; absent on every other step.
+	Target string            `json:"target,omitempty"`
+	Input  map[string]string `json:"input,omitempty"`
+	Name   string            `json:"name"`
+	Kind   string            `json:"kind,omitempty"`
+	Ask    string            `json:"ask,omitempty"`
+	Until  string            `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
 	UntilSentence string `json:"until_sentence,omitempty"`
@@ -414,6 +426,14 @@ type Job struct {
 	FailureSummaries bool   `json:"failure_summaries,omitempty"`
 	FromJob          int    `json:"from_job,omitempty"`
 	SourceIssue      string `json:"source_issue,omitempty"`
+	// RunOn is the AgentField reasoner that runs this job, "<node>.<reasoner>",
+	// and AgentField the run once it was dispatched; both absent on a job
+	// this factory runs itself.
+	RunOn      string                 `json:"run_on,omitempty"`
+	AgentField *factory.AgentFieldRun `json:"agentfield,omitempty"`
+	// AgentFieldSteps are the runs behind the job's agentfield steps, by
+	// step name; their executions are in steps[] under that step.
+	AgentFieldSteps map[string]*factory.AgentFieldRun `json:"agentfield_steps,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
@@ -487,10 +507,17 @@ type Job struct {
 	// RouteDeclined is every other rule whose AI question was answered no,
 	// with why: what a job no rule started says instead of nothing.
 	// Hello word `factory.job_source`.
-	Source        *factory.JobSourceFacts `json:"source,omitempty"`
-	RepoURL       string                  `json:"repo_url,omitempty"`
-	Route         *JobRoute               `json:"route,omitempty"`
-	RouteDeclined []RouteDeclined         `json:"route_declined,omitempty"`
+	Source *factory.JobSourceFacts `json:"source,omitempty"`
+	// Origin is the AgentField node and reasoner that run the job and the
+	// trigger that filed it ([factory.JobOriginOf]); absent for every other
+	// job. Labels is the source's labels as a reader filters on them, with
+	// `node:<node>` for an AgentField job ([factory.JobLabels]); absent when
+	// there are none. Both are read facts: a worker's report never sends them.
+	Origin        *factory.JobOrigin `json:"origin,omitempty"`
+	Labels        []string           `json:"labels,omitempty"`
+	RepoURL       string             `json:"repo_url,omitempty"`
+	Route         *JobRoute          `json:"route,omitempty"`
+	RouteDeclined []RouteDeclined    `json:"route_declined,omitempty"`
 	// StepsDone of StepsTotal is how far the job is ([factory.StepCount]): THE
 	// ONE STEP COUNT, which the Brief's own steps_done and steps_total read
 	// too. A skipped step counts for neither. Hello word `factory.job_steps`.
@@ -662,6 +689,23 @@ type NeedsQuestion struct {
 	Asks         string   `json:"asks,omitempty"`
 	WhoCanAnswer string   `json:"who_can_answer"`
 	Answered     *Answer  `json:"answered,omitempty"`
+	// Pick is the option the step would take, and Why the step's reason or
+	// evidence for asking, in its own words (a step's question).
+	Pick string `json:"pick,omitempty"`
+	Why  string `json:"why,omitempty"`
+	// An AgentField run's approval (kind agentfield_approval): Body is what
+	// the person approves, whole (a plan in markdown); ApprovalKind the
+	// reasoner's own kind (plan_review, question, approval); Node the
+	// node that waits; Round 1 for the first ask and one more after each
+	// "Ask for changes"; Note the person's words that asked for this round;
+	// PreviousBody the round before's body, so the change can be shown.
+	Body         string `json:"body,omitempty"`
+	ApprovalKind string `json:"approval_kind,omitempty"`
+	Node         string `json:"node,omitempty"`
+	Round        int    `json:"round,omitempty"`
+	Note         string `json:"note,omitempty"`
+	PreviousBody string `json:"previous_body,omitempty"`
+	URL          string `json:"url,omitempty"`
 }
 
 // SpendingLimit is the cap a continue answer would raise. next_limit comes
@@ -752,6 +796,10 @@ type Can struct {
 	// serves the route. A factory from before the route never sends it, which
 	// reads as false: no plan revision is offered.
 	RejectPlan bool `json:"reject_plan"`
+	// RequestChanges is "Ask for changes" on an AgentField run's approval
+	// (needs_you.question.kind agentfield_approval): request_changes with the
+	// person's words. Absent on every other wait.
+	RequestChanges bool `json:"request_changes,omitempty"`
 	// Reject is POST /v1/jobs/{id}/reject for this caller right now: the job
 	// waits on an approval the caller may answer, and a no ends the job with
 	// the caller's words ([factory.WaitsOnApproval]).

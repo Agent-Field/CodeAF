@@ -27,7 +27,7 @@ import (
 
 // SearchFields are the issue fields a search asks for: what an entry is made
 // of, and nothing else, so a large site's tickets stay small on the wire.
-const SearchFields = "summary,description,labels,priority,reporter,updated,status"
+const SearchFields = "summary,description,labels,components,priority,reporter,updated,status"
 
 // PageSize is how many issues one search page asks for.
 const PageSize = 100
@@ -106,6 +106,7 @@ type IssueFields struct {
 	// Description is ADF (see [PlainText]); null when the ticket has none.
 	Description json.RawMessage `json:"description,omitempty"`
 	Labels      []string        `json:"labels,omitempty"`
+	Components  []Named         `json:"components,omitempty"`
 	Priority    *Named          `json:"priority,omitempty"`
 	Reporter    *User           `json:"reporter,omitempty"`
 	Updated     Time            `json:"updated"`

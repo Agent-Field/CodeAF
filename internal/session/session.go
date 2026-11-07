@@ -2538,6 +2538,15 @@ type Config struct {
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
 	Stage StageDoor
 
+	// Asker takes this conversation's clarifying questions when it is not a
+	// stage of this machine's factory but someone elsewhere still answers
+	// them: `codeaf chat --once --events --steer`, a step an AgentField node
+	// runs for a WorkAF factory, hands each one to the factory over its events
+	// and waits for the answer on its steer channel. It is asked only when
+	// Stage takes no questions, and IT PUTS NOTHING ON THE BELT: `ask` is the
+	// same verb, with someone to answer it.
+	Asker StageAsker
+
 	// PlanStage requires the plan file list in the stage_result answer schema.
 	PlanStage bool
 	// RepairStage offers the PR repair report in the stage_result answer schema;

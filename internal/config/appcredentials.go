@@ -67,7 +67,7 @@ func (c *AppCredentials) Set(provider, key string) {
 // hand-back takes each of these as it was kept.
 func AppKept(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "github", AppJiraProvider, AppAgentFieldProvider, AppAgentFieldNodeProvider:
+	case "github", AppJiraProvider, AppAgentFieldProvider, AppAgentFieldNodeProvider, AppAgentFieldTokenProvider:
 		return true
 	}
 	return false

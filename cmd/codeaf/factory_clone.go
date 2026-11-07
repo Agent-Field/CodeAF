@@ -257,7 +257,9 @@ func factoryCheckouts(seam factory.Seam, st *store.Store, dirs func(repo string)
 	}
 	launch := seam.Launch
 	seam.Launch = func(id int) error {
-		if it, err := st.Get(id); err == nil {
+		// A JOB THAT RUNS ELSEWHERE NEEDS NO CHECKOUT HERE
+		// (factory.RunsElsewhere): this machine only follows its run.
+		if it, err := st.Get(id); err == nil && !factory.RunsElsewhere(it) {
 			if _, err := checkout(context.Background(), it.Repo); err != nil {
 				return err
 			}

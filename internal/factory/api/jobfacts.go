@@ -54,6 +54,10 @@ func jobFacts(j *Job, it factory.Item) {
 	if src, ok := factory.JobSource(it); ok {
 		j.Source = &src
 	}
+	if o, ok := factory.JobOriginOf(it); ok {
+		j.Origin = &o
+	}
+	j.Labels = factory.JobLabels(it)
 	j.RepoURL = factory.RepoURL(it)
 	if rule := it.Route; rule != "" {
 		j.Route = &JobRoute{Rule: rule}
@@ -93,6 +97,16 @@ func itemFacts(j Job, it *factory.Item) {
 // steps, and an older factory refuses a field it does not know.
 func ModelsIn(j *Job, it factory.Item, d factory.ModelDefaults) {
 	j.RunsOn = nil
+	// A JOB AN AGENTFIELD REASONER RUNS NAMES NO MODEL HERE. Its model calls
+	// happen on the node, under the node's own choice, which this factory does
+	// not know; naming the factory's default would be a claim about a model
+	// that never ran. Unknown is drawn as nothing.
+	if it.RunOn != "" {
+		for i := range j.Steps {
+			j.Steps[i].RunsOn = nil
+		}
+		return
+	}
 	next, ok := factory.NextModelStage(it)
 	if !ok {
 		next = factory.Stage{}

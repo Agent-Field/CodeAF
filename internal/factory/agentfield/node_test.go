@@ -35,8 +35,17 @@ type fakePlane struct {
 }
 
 func newFakePlane(t *testing.T, key string) *fakePlane {
+	return newFakePlaneWith(t, key, nil, nil)
+}
+
+// newFakePlaneWith is a fake plane with extra routes, and down saying when
+// every HTTP call fails as a control plane that is not there.
+func newFakePlaneWith(t *testing.T, key string, extra func(*http.ServeMux), down func() bool) *fakePlane {
 	p := &fakePlane{key: key, reports: map[string][]ExecutionUpdate{}}
 	mux := http.NewServeMux()
+	if extra != nil {
+		extra(mux)
+	}
 	mux.HandleFunc("GET /api/v1/sources", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"sources": []Source{{Name: "generic_bearer", Kind: "http", SecretRequired: true, ConfigSchema: json.RawMessage(`{"type":"object"}`)}}})
 	})
@@ -79,6 +88,14 @@ func newFakePlane(t *testing.T, key string) *fakePlane {
 		writeJSON(w, 201, Trigger{ID: "trig-1", SourceName: nt.SourceName, TargetNodeID: nt.TargetNodeID, TargetReasoner: nt.TargetReasoner, Enabled: true})
 	})
 	p.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down != nil && down() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "down"})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/link") {
+			mux.ServeHTTP(w, r)
+			return
+		}
 		if key != "" && r.Header.Get("X-API-Key") != key {
 			writeJSON(w, 401, map[string]any{"error": "unauthorized", "message": "invalid or missing API key"})
 			return
@@ -118,9 +135,10 @@ type world struct {
 	plane  *fakePlane
 	floor  *store.Store
 	node   *Node
-	base   string // the registered base_url, secret included
+	base   string // the node's listener
 	nudges int
 	ahead  time.Duration // how far the node's clock runs ahead of now
+	filed  []int         // every job the node said it filed
 	mu     sync.Mutex
 }
 
@@ -139,18 +157,19 @@ func newWorld(t *testing.T, trust factory.Tier) *world {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := conn.Keep(s, "af-key-1"); err != nil {
+	if err := conn.Keep(s, "af-key-1", "itok-1"); err != nil {
 		t.Fatal(err)
 	}
 	w.node = &Node{Conn: conn, Store: floor, Version: NodeVersion, Build: "test",
 		Nudge: func() { w.mu.Lock(); w.nudges++; w.mu.Unlock() },
+		Filed: func(job int) { w.mu.Lock(); w.filed = append(w.filed, job); w.mu.Unlock() },
 		Clock: func() time.Time { w.mu.Lock(); defer w.mu.Unlock(); return time.Now().Add(w.ahead) }}
 	if err := w.node.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { w.node.Stop(); w.node.Forget() })
 	eventually(t, "the registration", func() bool { return len(w.plane.registrations()) > 0 })
-	w.base = "http://" + w.node.Health().Listening + SecretPrefix + config.AgentFieldNodeSecretAt(conn.Profile)
+	w.base = "http://" + w.node.Health().Listening
 	return w
 }
 
@@ -158,6 +177,8 @@ func (w *world) post(path string, headers map[string]string, body string) (int, 
 	w.t.Helper()
 	req, _ := http.NewRequest(http.MethodPost, w.base+path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	// THE CONTROL PLANE'S BEARER, as its trigger dispatcher now sends it.
+	req.Header.Set("Authorization", "Bearer itok-1")
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -178,14 +199,13 @@ func dispatch(source string, event any, key string) string {
 	return string(raw)
 }
 
-func TestTheRegistrationNamesThreeReasonersAndTheSecretBase(t *testing.T) {
+func TestTheRegistrationNamesThreeReasonersAndAPlainBase(t *testing.T) {
 	w := newWorld(t, "")
 	reg := w.plane.registrations()[0]
-	secret := config.AgentFieldNodeSecretAt(w.node.Conn.Profile)
-	if len(secret) != 64 {
-		t.Fatalf("the address secret is %d characters, want 64 hex", len(secret))
+	if secret := config.AgentFieldNodeSecretAt(w.node.Conn.Profile); secret != "" {
+		t.Fatalf("a fresh connect kept an address secret")
 	}
-	if reg.ID != DefaultNodeID || reg.BaseURL != "http://127.0.0.1:1/n/"+secret || reg.Version != NodeVersion || reg.InstanceID == "" {
+	if reg.ID != DefaultNodeID || reg.BaseURL != "http://127.0.0.1:1" || reg.Version != NodeVersion || reg.InstanceID == "" {
 		t.Fatalf("registration %s %s %s %q", reg.ID, reg.BaseURL, reg.Version, reg.InstanceID)
 	}
 	if reg.CallbackDiscovery["mode"] != "manual" || reg.DeploymentType != "long_running" {
@@ -235,7 +255,7 @@ func TestTheLeaseIsRenewedAndAForgottenNodeRegistersAgain(t *testing.T) {
 	w.node.mu.Lock()
 	r := w.node.running
 	w.node.mu.Unlock()
-	lease, err := r.client.Renew(context.Background(), DefaultNodeID, "ready", NodeVersion)
+	lease, err := r.client.Renew(context.Background(), DefaultNodeID, "ready", NodeVersion, nil)
 	if !RefusedAs(err, RefusedMissing) {
 		t.Fatalf("a forgotten node's lease: %+v %v", lease, err)
 	}
@@ -249,22 +269,36 @@ func TestTheLeaseIsRenewedAndAForgottenNodeRegistersAgain(t *testing.T) {
 	}
 }
 
-// A CALL WITHOUT THE SECRET IS NOT ANSWERED AT ALL: not under another secret,
-// not at the bare path, not with the API key.
-func TestACallWithoutTheSecretIsRefused(t *testing.T) {
+// A DISPATCH WITHOUT THE CONTROL PLANE'S BEARER IS REFUSED: no bearer, a
+// wrong one, the API key in its place, an X-API-Key, a cancel, and a path
+// under an old secret prefix when none is kept. /health stays open for the
+// control plane's probe.
+func TestADispatchWithoutTheBearerIsRefused(t *testing.T) {
 	w := newWorld(t, "")
-	listening := "http://" + w.node.Health().Listening
-	for _, path := range []string{"/reasoners/intake", "/n/wrong/reasoners/intake", "/n/" + strings.Repeat("0", 64) + "/reasoners/intake", "/health"} {
-		req, _ := http.NewRequest(http.MethodPost, listening+path, strings.NewReader(dispatch("generic_bearer", map[string]any{"title": "x"}, "k")))
-		req.Header.Set("X-API-Key", "af-key-1")
-		req.Header.Set("Authorization", "Bearer af-key-1")
+	body := dispatch("generic_bearer", map[string]any{"title": "x"}, "k")
+	for _, tc := range []struct {
+		name, path string
+		hdr        map[string]string
+		code       int
+	}{
+		{"no bearer", "/reasoners/intake", nil, http.StatusUnauthorized},
+		{"wrong bearer", "/reasoners/intake", map[string]string{"Authorization": "Bearer nope"}, http.StatusUnauthorized},
+		{"the API key as bearer", "/reasoners/intake", map[string]string{"Authorization": "Bearer af-key-1"}, http.StatusUnauthorized},
+		{"X-API-Key", "/reasoners/intake", map[string]string{"X-API-Key": "itok-1"}, http.StatusUnauthorized},
+		{"a cancel", "/_internal/executions/x/cancel", nil, http.StatusUnauthorized},
+		{"an old prefix with none kept", "/n/" + strings.Repeat("0", 64) + "/reasoners/intake", map[string]string{"Authorization": "Bearer itok-1"}, http.StatusNotFound},
+	} {
+		req, _ := http.NewRequest(http.MethodPost, w.base+tc.path, strings.NewReader(body))
+		for k, v := range tc.hdr {
+			req.Header.Set(k, v)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("%s answered %d, want 404", path, resp.StatusCode)
+		if resp.StatusCode != tc.code {
+			t.Errorf("%s: %s answered %d, want %d", tc.name, tc.path, resp.StatusCode, tc.code)
 		}
 	}
 	items, _ := w.floor.ListSaved()
@@ -273,9 +307,35 @@ func TestACallWithoutTheSecretIsRefused(t *testing.T) {
 	}
 	resp, err := http.Get(w.base + "/health")
 	if err != nil || resp.StatusCode != 200 {
-		t.Fatalf("health under the secret: %v %v", resp, err)
+		t.Fatalf("health: %v %v", resp, err)
 	}
 	resp.Body.Close()
+}
+
+// THE OLD PREFIX STILL ANSWERS FOR ONE RELEASE when its secret is kept, with
+// no bearer, because a control plane that registered it sends none.
+func TestTheLegacyPrefixStillAnswersWhenKept(t *testing.T) {
+	var got string
+	h := Guarded("tok", "legacy-secret", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { got = r.URL.Path }))
+	for path, want := range map[string]int{"/n/legacy-secret/reasoners/intake": 200, "/n/other/reasoners/intake": 404, "/reasoners/intake": 401} {
+		got = ""
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
+		if rec.Code != want {
+			t.Errorf("%s answered %d, want %d", path, rec.Code, want)
+		}
+		if want == 200 && got != "/reasoners/intake" {
+			t.Errorf("%s reached %q, want the prefix taken off", path, got)
+		}
+	}
+	// No token kept refuses every reasoner call, a bearer or not.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/reasoners/intake", nil)
+	req.Header.Set("Authorization", "Bearer ")
+	Guarded("", "", http.NotFoundHandler()).ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no token kept answered %d", rec.Code)
+	}
 }
 
 // GitHub stays native: a github event wakes the GitHub read for a watched
@@ -376,6 +436,23 @@ func TestTheIntakeAnswers202AndThePullRequestCompletesTheExecution(t *testing.T)
 	})
 }
 
+// A job a trigger files is told at once, so the desk's Backlog reads it then
+// rather than on its next slow refresh (factory.jobs_changed in the app).
+func TestAFiledJobIsToldAtOnce(t *testing.T) {
+	w := newWorld(t, factory.TierOwner)
+	entry := map[string]any{"title": "AFNODE: add Len", "body": "In ledger.go add Len.", "repo": "santoshkumarradha/factory-demo"}
+	code, out := w.post("/reasoners/intake", map[string]string{"X-Execution-ID": "exec-1"}, dispatch("generic_bearer", entry, "idem-1"))
+	if code != http.StatusAccepted || out["created"] != true {
+		t.Fatalf("intake: %d %v", code, out)
+	}
+	job := int(out["job"].(float64))
+	eventually(t, "the job told as filed", func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return len(w.filed) > 0 && w.filed[0] == job
+	})
+}
+
 func TestAStoppedJobFailsItsExecutionWithTheJobsWords(t *testing.T) {
 	w := newWorld(t, "")
 	code, out := w.post("/reasoners/intake", map[string]string{"X-Execution-ID": "exec-s"}, dispatch("generic_bearer", map[string]any{"title": "Fix it"}, "idem-s"))
@@ -465,20 +542,24 @@ func TestConnectionKeepsNoSecretInTheFloorAndForgetsOnDisconnect(t *testing.T) {
 	if _, err := Clean(Settings{URL: "http://cp:8080", BaseURL: "http://10.0.0.5"}); err == nil {
 		t.Fatal("a base_url with no port and no listen address was taken")
 	}
-	if err := c.Keep(s, "secret-key-123"); err != nil {
+	// NO base_url IS A LINK-ONLY NODE: it listens on nothing.
+	if linkOnly, err := Clean(Settings{URL: "http://cp:8080", Listen: "0.0.0.0:9"}); err != nil || linkOnly.BaseURL != "" || linkOnly.Listen != "" {
+		t.Fatalf("a link-only node: %+v %v", linkOnly, err)
+	}
+	if err := c.Keep(s, "secret-key-123", "itok-456"); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(floor.Root(), settingsFile))
-	if bytes.Contains(raw, []byte("secret-key-123")) || bytes.Contains(raw, []byte(config.AgentFieldNodeSecretAt(c.Profile))) {
+	if bytes.Contains(raw, []byte("secret-key-123")) || bytes.Contains(raw, []byte("itok-456")) {
 		t.Fatalf("the settings file holds a secret: %s", raw)
 	}
-	if st := c.Status(); !st.Connected || !st.KeyKept {
+	if st := c.Status(); !st.Connected || !st.KeyKept || !st.TokenKept {
 		t.Fatalf("status %+v", st)
 	}
 	if err := c.Disconnect(); err != nil {
 		t.Fatal(err)
 	}
-	if st := c.Status(); st.Connected || config.AgentFieldKeyAt(c.Profile) != "" || config.AgentFieldNodeSecretAt(c.Profile) != "" {
+	if st := c.Status(); st.Connected || config.AgentFieldKeyAt(c.Profile) != "" || config.AgentFieldInternalTokenAt(c.Profile) != "" {
 		t.Fatalf("after disconnect: %+v", st)
 	}
 }
@@ -497,9 +578,10 @@ func TestTheClientRefusesAWrongKeyInWords(t *testing.T) {
 func itoaT(n int) string { b, _ := json.Marshal(n); return string(b) }
 
 // A job that ends with no moment on the bus (a person dropped it) still
-// completes its execution: the lease's renewal tells an execution quiet for
-// keepAlive where its job stands.
-func TestAQuietExecutionIsToldAgainWithTheLease(t *testing.T) {
+// completes its execution: the next lease tick catches it up. An execution
+// already told its job's state is not told again — nothing is retold to keep
+// it alive, the lease's inflight does that.
+func TestADroppedJobIsCaughtUpOnTheNextLease(t *testing.T) {
 	w := newWorld(t, factory.TierOwner)
 	code, out := w.post("/reasoners/intake", map[string]string{"X-Execution-ID": "exec-q"}, dispatch("generic_bearer", map[string]any{"title": "Fix it"}, "idem-q"))
 	if code != http.StatusAccepted {
@@ -507,20 +589,40 @@ func TestAQuietExecutionIsToldAgainWithTheLease(t *testing.T) {
 	}
 	job := int(out["job"].(float64))
 	eventually(t, "a running report", func() bool { return len(w.plane.reportsFor("exec-q")) > 0 })
-	_ = w.floor.Update(job, func(it *factory.Item) error { it.State = factory.StateDismissed; return nil })
 	w.node.mu.Lock()
-	client := w.node.running.client
+	r := w.node.running
 	w.node.mu.Unlock()
-	w.node.retellQuiet(context.Background(), client)
+	w.node.catchUp(context.Background(), r)
 	if n := len(w.plane.reportsFor("exec-q")); n != 1 {
-		t.Fatalf("an execution told %d times inside keepAlive", n)
+		t.Fatalf("an unchanged execution was told %d times", n)
 	}
-	w.mu.Lock()
-	w.ahead = keepAlive
-	w.mu.Unlock()
-	w.node.retellQuiet(context.Background(), client)
-	r := w.plane.reportsFor("exec-q")
-	if last := r[len(r)-1]; last.Status != ExecSucceeded || len(w.node.Open()) != 0 {
-		t.Fatalf("after keepAlive: %+v, open %v", last, w.node.Open())
+	if got := w.node.inflight(); len(got) != 1 || got[0] != "exec-q" {
+		t.Fatalf("the lease's inflight is %v, want [exec-q]", got)
+	}
+	_ = w.floor.Update(job, func(it *factory.Item) error { it.State = factory.StateDismissed; return nil })
+	w.node.catchUp(context.Background(), r)
+	rs := w.plane.reportsFor("exec-q")
+	if last := rs[len(rs)-1]; last.Status != ExecSucceeded || len(w.node.Open()) != 0 {
+		t.Fatalf("after the drop: %+v, open %v", last, w.node.Open())
+	}
+	if got := w.node.inflight(); len(got) != 0 {
+		t.Fatalf("a completed execution is still inflight: %v", got)
+	}
+}
+
+// THE HTTP LEASE CARRIES INFLIGHT.
+func TestTheHTTPLeaseListsInflight(t *testing.T) {
+	w := newWorld(t, "")
+	w.node.mu.Lock()
+	r := w.node.running
+	w.node.mu.Unlock()
+	if _, err := r.client.Renew(context.Background(), DefaultNodeID, "ready", NodeVersion, []string{"exec-a", "exec-b"}); err != nil {
+		t.Fatal(err)
+	}
+	w.plane.mu.Lock()
+	last := w.plane.leases[len(w.plane.leases)-1]
+	w.plane.mu.Unlock()
+	if got, _ := json.Marshal(last["inflight"]); string(got) != `["exec-a","exec-b"]` {
+		t.Fatalf("lease inflight %s", got)
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
@@ -101,6 +102,9 @@ type appFactoryHost struct {
 	jira appJiraLoop
 	// agentfield is the factory's AgentField node (app_factory_agentfield.go).
 	agentfield appAgentField
+	// jobFiled is told a job an AgentField trigger filed; the app's own
+	// local host emits factory.jobs_changed with it. nil tells nobody.
+	jobFiled func(job int)
 }
 
 func newAppFactoryHost(ctx context.Context, root, address, token string, credentials factorySessions) (*appFactoryHost, error) {
@@ -626,7 +630,10 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 		// Receipts still book on the mirror and follow its ordinary settlement path.
 		maker.memoryOwner = h.floor
 	}
-	runner := buildFactoryRunner(mirror, h.floor, h.workspace, h.profile, maker, turns)
+	// A JOB FILED WITH run_on IS RUN BY ITS AGENTFIELD REASONER, over this
+	// factory's own connection, and kept here as an ordinary job.
+	remote := &afRemote{items: mirror, floor: h.floor, workspace: h.workspace, conn: h.agentFieldConn, news: afTellNews}
+	runner := buildFactoryRunnerWith(mirror, h.floor, h.workspace, h.profile, maker, turns, remote.Run, factoryrun.ExecutorFunc(remote.Step), remote.Answer)
 	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI

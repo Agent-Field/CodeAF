@@ -61,6 +61,11 @@ func TestFactoryAgentFieldMethodsAreRegisteredAnnouncedAndBounded(t *testing.T) 
 	if st := out.(*FactoryAgentFieldStatus); !st.Connected || st.URL != "http://cp:8080" || !st.KeyKept {
 		t.Fatalf("answered %+v", st)
 	}
+	// NO base_url IS A LINK-ONLY CONNECT, and is taken.
+	if _, err := methods["factory.agentfield_connect"].call(e, json.RawMessage(`{"factory":"factory_local","url":"http://cp:8080"}`)); err != nil {
+		t.Fatalf("a link-only connect: %v", err)
+	}
+	e.connects = e.connects[:1]
 	if len(e.connects) != 1 || e.connects[0].Factory != "factory_local" || e.connects[0].APIKey != "k3y-s3cret" || e.connects[0].BaseURL != "http://10.0.0.5:8765" {
 		t.Fatalf("handed %+v", e.connects)
 	}
@@ -70,7 +75,7 @@ func TestFactoryAgentFieldMethodsAreRegisteredAnnouncedAndBounded(t *testing.T) 
 	}
 	for _, bad := range []string{
 		`{"factory":"f","base_url":"http://x:1"}`,
-		`{"factory":"f","url":"http://cp"}`,
+		`{"factory":"f","url":"http://cp","internal_token":"two words"}`,
 		`{"factory":"f","url":"http://cp","base_url":"http://x:1","api_key":"two words"}`,
 	} {
 		if _, err := methods["factory.agentfield_connect"].call(e, json.RawMessage(bad)); wireCode(t, err) != CodeBadParams {

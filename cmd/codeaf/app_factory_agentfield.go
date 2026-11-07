@@ -24,6 +24,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -55,6 +57,12 @@ func (h *appFactoryHost) agentFieldNode() *agentfield.Node {
 			After:   h.agentFieldAfter,
 			Options: func() []inbox.Option { return []inbox.Option{h.jiraRecipe()} },
 			Nudge:   func() { factorygithub.Nudge(h.floor) },
+			Cancel:  h.agentFieldCancel,
+			Filed: func(job int) {
+				if h.jobFiled != nil {
+					h.jobFiled(job)
+				}
+			},
 			Version: agentfield.NodeVersion,
 			Build:   buildinfo.String(),
 		}
@@ -83,10 +91,39 @@ func (h *appFactoryHost) loopAfter() func(context.Context) error {
 // fails is on the node's status as its last error; the factory goes on.
 func (h *appFactoryHost) startAgentField() {
 	node := h.agentFieldNode()
-	if _, _, _, ok := node.Conn.Kept(); !ok || h.ctx.Err() != nil {
+	if _, _, ok := node.Conn.Kept(); !ok || h.ctx.Err() != nil {
 		return
 	}
 	_ = node.Start(h.ctx)
+}
+
+// agentFieldCancel is the Stop a cancel from AgentField makes of a job: the
+// factory's own POST /v1/jobs/<n>/stop, with this host's access token, so it
+// is recorded and undone exactly like a person's Stop.
+func (h *appFactoryHost) agentFieldCancel(ctx context.Context, job int) error {
+	if h.address == "" {
+		return errors.New("the factory is not serving")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(h.address, "/")+jobPath(job, factoryVerbStop), strings.NewReader("{}"))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if h.token != "" {
+		req.Header.Set("Authorization", "Bearer "+h.token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
+		return fmt.Errorf("the factory answered %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	return nil
 }
 
 // stopAgentField stops the node, telling the control plane it is offline.
@@ -140,7 +177,7 @@ func (b *appBackend) FactoryAgentFieldConnect(ctx context.Context, p appwire.Fac
 		return appwire.FactoryAgentFieldStatus{}, agentFieldWireError(err)
 	}
 	node.Stop()
-	if err := node.Conn.Keep(settings, p.APIKey); err != nil {
+	if err := node.Conn.Keep(settings, p.APIKey, p.InternalToken); err != nil {
 		return appwire.FactoryAgentFieldStatus{}, agentFieldWireError(err)
 	}
 	if err := node.Start(host.ctx); err != nil {
@@ -254,8 +291,9 @@ func (b *appBackend) agentFieldClient(id string) (*agentfield.Client, agentfield
 func agentFieldWireStatus(id string, node *agentfield.Node) appwire.FactoryAgentFieldStatus {
 	st := node.Conn.Status()
 	h := node.Health()
-	out := appwire.FactoryAgentFieldStatus{Factory: id, Connected: st.Connected, URL: st.URL, NodeID: st.NodeID, BaseURL: st.BaseURL, Listen: st.Listen, Trust: string(st.Trust), KeyKept: st.KeyKept,
-		Listening: h.Listening, LeaseSeconds: h.LeaseSeconds, LastEventSource: h.LastEventSource, LastEventWhat: h.LastEventWhat, LastError: h.LastError, Executions: len(node.Open())}
+	out := appwire.FactoryAgentFieldStatus{Factory: id, Connected: st.Connected, URL: st.URL, NodeID: st.NodeID, BaseURL: st.BaseURL, Listen: st.Listen, Trust: string(st.Trust), KeyKept: st.KeyKept, TokenKept: st.TokenKept,
+		Listening: h.Listening, Link: h.Link, LinkUps: h.LinkUps, LastEventVia: h.LastEventVia, LeaseSeconds: h.LeaseSeconds, LastEventSource: h.LastEventSource, LastEventWhat: h.LastEventWhat, LastError: h.LastError, Executions: len(node.Open())}
+	out.LinkSince = wireTime(h.LinkSince)
 	out.RegisteredAt = wireTime(h.Registered)
 	out.LeaseUntil = wireTime(h.LeaseUntil)
 	out.LastEvent = wireTime(h.LastEvent)

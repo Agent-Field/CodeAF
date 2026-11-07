@@ -13,9 +13,16 @@ import "strings"
 // tokens: the write is refused with [ErrAppKeys], and the reader asks the
 // app's keys first, under [AppAgentFieldProvider] and
 // [AppAgentFieldNodeProvider].
+//
+// KeyAgentFieldInternalToken is the third: the control plane's internal
+// token, which it sends as Authorization: Bearer on every call it makes to
+// the node. The node refuses a dispatch that does not carry it. The node
+// secret is now only READ, for one release, so a control plane that still
+// has the old `/n/<secret>` base_url stored reaches the node (legacy).
 const (
-	KeyAgentFieldKey        = "agentfield_key"
-	KeyAgentFieldNodeSecret = "agentfield_node_secret"
+	KeyAgentFieldKey           = "agentfield_key"
+	KeyAgentFieldNodeSecret    = "agentfield_node_secret"
+	KeyAgentFieldInternalToken = "agentfield_internal_token"
 )
 
 // AppAgentFieldProvider and AppAgentFieldNodeProvider are the names the app's
@@ -23,7 +30,15 @@ const (
 const (
 	AppAgentFieldProvider     = "agentfield"
 	AppAgentFieldNodeProvider = "agentfield-node"
+	// AppAgentFieldTokenProvider carries the internal token.
+	AppAgentFieldTokenProvider = "agentfield-internal-token"
 )
+
+// AgentFieldInternalTokenAt is the control plane's internal token kept for
+// this profile, or "".
+func AgentFieldInternalTokenAt(profileDir string) string {
+	return agentFieldSecretAt(profileDir, AppAgentFieldTokenProvider, KeyAgentFieldInternalToken)
+}
 
 // AgentFieldKeyAt is the control plane API key kept for this profile, or "".
 func AgentFieldKeyAt(profileDir string) string {
@@ -36,18 +51,22 @@ func AgentFieldNodeSecretAt(profileDir string) string {
 	return agentFieldSecretAt(profileDir, AppAgentFieldNodeProvider, KeyAgentFieldNodeSecret)
 }
 
-// WriteAgentFieldSecrets keeps the API key and the node secret in the
-// profile. An empty key removes the kept one: a control plane that runs
-// without a key is connected with none. THE SECRETS NEVER REACH A LOG.
-func WriteAgentFieldSecrets(profileDir, key, nodeSecret string) error {
+// WriteAgentFieldSecrets keeps the API key and the internal token in the
+// profile, and forgets any legacy node secret (a fresh connect registers a
+// plain base_url, so no control plane needs the old path any more). An empty
+// value removes the kept one: a control plane that runs without a key is
+// connected with none. THE SECRETS NEVER REACH A LOG.
+func WriteAgentFieldSecrets(profileDir, key, internalToken string) error {
 	if AppMode() {
 		return ErrAppKeys
 	}
-	values := map[string]any{KeyAgentFieldNodeSecret: strings.TrimSpace(nodeSecret)}
-	if key = strings.TrimSpace(key); key != "" {
-		values[KeyAgentFieldKey] = key
-	} else {
-		values[KeyAgentFieldKey] = removeProfileKey
+	values := map[string]any{KeyAgentFieldNodeSecret: removeProfileKey}
+	for field, v := range map[string]string{KeyAgentFieldKey: key, KeyAgentFieldInternalToken: internalToken} {
+		if v = strings.TrimSpace(v); v != "" {
+			values[field] = v
+		} else {
+			values[field] = removeProfileKey
+		}
 	}
 	return writeProfileValues(profileDir, values)
 }
@@ -57,7 +76,7 @@ func ForgetAgentFieldSecrets(profileDir string) error {
 	if AppMode() {
 		return ErrAppKeys
 	}
-	return writeProfileValues(profileDir, map[string]any{KeyAgentFieldKey: removeProfileKey, KeyAgentFieldNodeSecret: removeProfileKey})
+	return writeProfileValues(profileDir, map[string]any{KeyAgentFieldKey: removeProfileKey, KeyAgentFieldNodeSecret: removeProfileKey, KeyAgentFieldInternalToken: removeProfileKey})
 }
 
 // agentFieldSecretAt reads one of the two. An app handoff owns the

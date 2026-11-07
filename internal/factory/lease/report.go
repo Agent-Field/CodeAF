@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -108,6 +109,11 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 				if it.State == factory.StateShipped && it.PullRequest == nil && it.CommentURL != "" {
 					it.DoneHow = "answered"
 					it.DoneAt = now
+				}
+				// A job an AgentField run carried ends when its run does, with
+				// no pull request or comment to stamp it: its end is the run's.
+				if it.State == factory.StateShipped && strings.TrimSpace(it.RunOn) != "" && it.DoneAt.IsZero() {
+					it.DoneAt = factory.RunOnEnded(*it, now)
 				}
 			}
 			return nil

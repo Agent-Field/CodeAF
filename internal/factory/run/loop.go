@@ -266,6 +266,13 @@ func (r *Runner) Launch(id int) error {
 			factory.ClearJobRun(it)
 		}
 		it.Stream = freshStream(it, now)
+		if strings.TrimSpace(it.RunOn) != "" {
+			// An AgentField job's steps are its run's calls, made as they come.
+			// The pipeline it was filed with goes too: a step left there would
+			// be made into a phase with its stock words, and a run step of the
+			// same name (`plan`) would wear them.
+			it.Stages, it.Stream.Phases, it.AgentField = nil, nil, nil
+		}
 		loopSay(it, now, "said", "queued")
 		loopSay(it, now, "fail", unmade)
 		return nil
@@ -581,6 +588,12 @@ func (lp *floorLoop) drive(c *loopCtl) {
 	}); err != nil {
 		return
 	}
+	// A JOB RUN BY AN AGENTFIELD REASONER is handed to that run whole: its
+	// steps are the run's own calls, written by Remote as they happen.
+	if it, err := lp.r.opts.Store.Get(c.id); err == nil && strings.TrimSpace(it.RunOn) != "" {
+		lp.driveRemote(c)
+		return
+	}
 	// THE FIRST STAGE RUNS FIRST, with the item's stages as they stand. No
 	// manager turn comes before it (Options says why, at ShapeWait).
 	if lp.r.opts.Talk != nil {
@@ -604,6 +617,13 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		}
 
 		if i < 0 {
+			// A PIPELINE THAT ONLY RUNS ON AGENTFIELD ENDS AS ITS RUNS DO: it
+			// made no change here for a person to approve, so there is no
+			// proof to land on (a pull request its run opened is the job's).
+			if factory.AgentFieldPipeline(it) {
+				lp.shipAgentField(c)
+				return
+			}
 			lp.land(c)
 			return
 		}
@@ -1687,7 +1707,13 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	// THE ROUND RUNS IN THE ITEM'S OWN WORKTREE when the floor makes one
 	// (workdir.go), else in the repository's checkout; a worktree that could
 	// not be made fails the round rather than running in the person's tree.
-	dir, dirErr := lp.jobDir(it)
+	// AN AGENTFIELD STEP WORKS ON ITS NODE, NOT HERE: it gets no folder on
+	// this machine, so a run on AgentField never clones the repository here.
+	var dir string
+	var dirErr error
+	if kindOf(st) != factory.StageAgentField {
+		dir, dirErr = lp.jobDir(it)
+	}
 	if dirErr == nil {
 		it = lp.settleRules(c, it)
 	}
@@ -3191,4 +3217,76 @@ func (c *loopCtl) settleSpend() {
 	case <-settled:
 	case <-timer.C:
 	}
+}
+
+// AnswerAgentField is the worker's door for a person's answer to an
+// AgentField run's pause, which reaches it as a lease signal: the decision is
+// sent to the control plane through [Options.AgentFieldAnswer] whether or not
+// the run is being followed here now, because the control plane holds the
+// pause, not this runner.
+func (r *Runner) AnswerAgentField(id int, d factory.AgentFieldDecision) error {
+	if r.opts.AgentFieldAnswer == nil {
+		return errors.New(NoRemoteWords)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), agentFieldAnswerWait)
+	defer cancel()
+	return r.opts.AgentFieldAnswer(ctx, id, d)
+}
+
+// agentFieldAnswerWait bounds one try at carrying an answer to the control
+// plane; a try that runs out is tried again on the next beat.
+const agentFieldAnswerWait = 30 * time.Second
+
+// NoRemoteWords refuses a RunOn job on a factory with no AgentField behind it.
+const NoRemoteWords = "this job runs on AgentField and this factory is not connected to AgentField"
+
+// driveRemote runs a RunOn job through Options.Remote and lands its ending
+// the way a job's own steps would: done, needs you with the run's words, or
+// left to the person's Stop.
+// shipAgentField ends a job whose pipeline only runs on AgentField
+// ([factory.AgentFieldPipeline]): done, as a run_on job is when its run is.
+func (lp *floorLoop) shipAgentField(c *loopCtl) {
+	now := lp.r.now()
+	_ = lp.write(c, func(it *factory.Item) error {
+		it.State = factory.StateShipped
+		it.Question, it.QKind = "", ""
+		it.Asking = nil
+		if it.Stream != nil {
+			it.Stream.Ended = now
+		}
+		it.DoneAt = factory.AgentFieldEnded(*it, now)
+		words := "the AgentField run finished"
+		if it.PullRequest != nil && it.PullRequest.URL != "" {
+			words += " and opened " + it.PullRequest.URL
+		}
+		loopSay(it, now, "said", words)
+		return nil
+	})
+	lp.emit(c.id, "", EventLanded, "done")
+}
+
+func (lp *floorLoop) driveRemote(c *loopCtl) {
+	if lp.r.opts.Remote == nil {
+		lp.failStop(c, "agentfield", errors.New(NoRemoteWords))
+		return
+	}
+	err := lp.r.opts.Remote(c.ctx, c.id)
+	if c.ctx.Err() != nil {
+		return
+	}
+	if err != nil {
+		lp.failStop(c, "agentfield", err)
+		return
+	}
+	now := lp.r.now()
+	_ = lp.write(c, func(it *factory.Item) error {
+		it.State = factory.StateShipped
+		if it.Stream != nil {
+			it.Stream.Ended = now
+		}
+		it.DoneAt = factory.RunOnEnded(*it, now)
+		loopSay(it, now, "said", "the AgentField run finished")
+		return nil
+	})
+	lp.emit(c.id, "", EventLanded, "done")
 }

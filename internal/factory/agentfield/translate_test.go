@@ -1,7 +1,10 @@
 package agentfield
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -230,5 +233,67 @@ func TestTrustIsCappedByTheCeiling(t *testing.T) {
 		if got := capTrust(c.said, c.ceiling); got != c.want {
 			t.Errorf("capTrust(%q, %q) = %q, want %q", c.said, c.ceiling, got, c.want)
 		}
+	}
+}
+
+// AN EVENT THAT NAMES A REASONER FILES A JOB THAT REASONER RUNS: run_on
+// survives the translation and the inbox's own check.
+func TestAnEventWithRunOnFilesARunOnJob(t *testing.T) {
+	out, err := Translate(Meta{Source: "generic_bearer", EventID: "ev1"}, json.RawMessage(`{"title":"ledger total wrong","body":"refund -500 printed 0.-50","run_on":"support.handle_ticket"}`), factory.TierCollab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.File == nil || out.File.RunOn != "support.handle_ticket" || out.File.Title != "ledger total wrong" {
+		t.Fatalf("filed %+v", out.File)
+	}
+}
+
+// An event's labels and tags both become the job's labels, each once, with
+// nothing for the sender to do but send them.
+func TestAnEventsLabelsAndTagsAreItsLabels(t *testing.T) {
+	out, err := Translate(Meta{Source: "generic_bearer", EventID: "ev2"}, json.RawMessage(`{"title":"refund failed","labels":["billing"],"tags":["urgent","billing"," "],"run_on":"support.triage"}`), factory.TierCollab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.File == nil || strings.Join(out.File.Labels, ",") != "billing,urgent" {
+		t.Fatalf("filed labels %v", out.File.Labels)
+	}
+}
+
+// The run's page on the control plane's own UI.
+func TestARunsPageIsOnTheControlPlanesUI(t *testing.T) {
+	c := &Client{URL: "https://cp.example:18741/"}
+	if got := c.RunURL("run_20261107_1"); got != "https://cp.example:18741/ui/runs/run_20261107_1" {
+		t.Fatalf("RunURL is %q", got)
+	}
+	if (&Client{}).RunURL("run_1") != "" || c.RunURL("") != "" {
+		t.Fatal("a client with no address, or no run, names a page")
+	}
+	// The app opens a source's link only over https: a plain-http control
+	// plane gets no link rather than a chip nobody can click.
+	if got := (&Client{URL: "http://100.64.233.75:18741"}).RunURL("run_1"); got != "" {
+		t.Fatalf("an http control plane names a page: %q", got)
+	}
+}
+
+func TestANodesHostIsWhatItsSDKRegistered(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/nodes/support":
+			_, _ = w.Write([]byte(`{"id":"support","metadata":{"custom":{"host":"dumb"}}}`))
+		case "/api/v1/nodes/bare":
+			_, _ = w.Write([]byte(`{"id":"bare","metadata":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := &Client{URL: srv.URL}
+	ctx := context.Background()
+	if got := c.NodeHost(ctx, "support"); got != "dumb" {
+		t.Fatalf("host %q", got)
+	}
+	if c.NodeHost(ctx, "bare") != "" || c.NodeHost(ctx, "gone") != "" {
+		t.Fatal("a node that named no host, or no node, has one")
 	}
 }

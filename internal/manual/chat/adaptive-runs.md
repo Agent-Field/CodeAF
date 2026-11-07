@@ -269,6 +269,25 @@ Without `--json`, standard output is the worker's own text and nothing else. It 
 error stream naming one model rather than three — `models: worker <model> (routed)` —
 because only one of them runs anything.
 
+
+## Watch codeaf exec live, or send it a note mid-flight — --events, --steer
+
+`codeaf exec` prints one result at the end. Two flags let something else watch it and talk
+to it while it works; both are files, because stdin already carries the prompt.
+
+| flag | what it does |
+| --- | --- |
+| `--events <file>` | every entry of the run's transcript is appended to the file as one JSON line the moment it happens: `{"at", "kind", "turn", "tool", "text", "ms", "failed"}`, where `kind` is `assistant`, `tool_call`, `tool_result`, `note`, `fault`, or `status` (`started`, then `ended: <stop>`) |
+| `--steer <file>` | every complete line appended to the file is a note from a person — plain text or `{"text": "…"}` — read at the worker's next turn boundary and shown to it as your guidance |
+
+A note that lands shows in the events as a `note` reading `steered: <your words>`, and the
+worker adjusts course without throwing away sound work. A note arriving after the worker
+has handed over its answer is not read. A half-written line waits until its newline arrives.
+Neither flag changes the run when it is not given.
+
+The AgentField Go SDK's codeaf harness passes both flags itself, which is how a step in an
+AgentField run shows a live transcript in WorkAF and takes a steer note (see the AgentField
+page on watching a run).
 ## What one costs and what happens when the money runs out
 
 Every model call in the run bills against **one tank**: the nodes, and the planner's own
@@ -1919,3 +1938,27 @@ answer. Workers already in flight keep their own states and may finish. Topping 
 choosing to finish clears the pause; stopping settles the run. A late attachment sees
 the current pause too. Restarting the engine leaves an interrupted record, not a budget
 question for a run that no longer exists.
+
+## Watch codeaf chat --once live, or send it a note mid-turn — --events, --steer, --json
+
+`codeaf chat --once "<words>"` runs one turn of an ordinary chat with no
+screen. Three flags let another program watch and steer it, and need `--once`
+("--events, --steer and --json go with --once"):
+
+- `--events PATH` — every line of the conversation's own record
+  (`transcript.jsonl`) is copied to PATH as it is written, byte for byte. A
+  program that writes those lines into a conversation folder of its own has
+  the same conversation, read by the same code.
+- `--steer PATH` — each complete line appended to PATH (plain text or
+  `{"text": "…"}`) is put into the running turn, the way typing during a turn
+  steers it, and lands in the record as a steer. stderr says `steered: <note>`.
+  A note that arrives after the turn ended starts the turn it asks for, and the
+  run waits that turn out. Before it exits, the run reads PATH once more, so a
+  note written as the last turn ends still gets its turn and is never lost.
+- `--json` — print one object at the end instead of the reply:
+  `{"ok", "stop", "answer", "model", "error"}`, the shape `codeaf exec --json`
+  prints.
+
+This is how an AgentField node runs a codeaf harness step that a factory can
+watch and steer.
+

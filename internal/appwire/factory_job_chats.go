@@ -56,9 +56,13 @@ type FactoryJobChats struct {
 // conversation, and a round whose chat cannot be opened are left out; a step
 // with no such round has no rounds.
 type FactoryJobStepChat struct {
-	Step   string                `json:"step"`
-	Agent  string                `json:"agent"`
-	Rounds []FactoryJobRoundChat `json:"rounds,omitempty"`
+	Step  string `json:"step"`
+	Agent string `json:"agent"`
+	// WorkspaceRoot is the folder the step's paths are written against, as
+	// its own record names it: for a step that ran on another machine, that
+	// machine's folder. Absent when the record names none.
+	WorkspaceRoot string                `json:"workspace_root,omitempty"`
+	Rounds        []FactoryJobRoundChat `json:"rounds,omitempty"`
 }
 
 // FactoryJobRoundChat is one finished round's chat.

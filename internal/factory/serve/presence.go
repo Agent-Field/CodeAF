@@ -235,7 +235,12 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 		if machine == "" {
 			machine = names[held.Worker]
 		}
-		jobs[i].Runner = machine
+		// AN AGENTFIELD JOB RUNS ON ITS NODE, not on the runner holding its
+		// lease here: that runner only watches the run. Its runner words
+		// (the node and its machine) stay.
+		if strings.TrimSpace(jobs[i].RunOn) == "" {
+			jobs[i].Runner = machine
+		}
 		jobs[i].HeldBy = &api.HeldBy{Machine: machine, Handle: held.Handle, HeartbeatAt: at, Since: since}
 	}
 	return online, busy, nil

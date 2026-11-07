@@ -31,8 +31,8 @@ type Execution struct {
 	Began time.Time `json:"began"`
 	// Said is the last report's fingerprint, so a moment is told once.
 	Said string `json:"said,omitempty"`
-	// SaidAt is when it was last told anything; a running execution is told
-	// again after [keepAlive] so the control plane never thinks it stale.
+	// SaidAt is when it was last told anything. Nothing is retold to keep it
+	// alive: the lease lists it as inflight.
 	SaidAt time.Time `json:"said_at,omitempty"`
 	// Ended is when it was completed (succeeded or failed); zero while open.
 	Ended time.Time `json:"ended,omitempty"`
@@ -69,6 +69,21 @@ func (x *executions) add(id string, job int, now time.Time) error {
 	}
 	d.Executions = append(d.Executions, Execution{ID: id, Job: job, Began: now})
 	return x.write(d, now)
+}
+
+// byID is execution id, ended or not.
+func (x *executions) byID(id string) (Execution, bool) {
+	if id == "" {
+		return Execution{}, false
+	}
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	for _, e := range x.read().Executions {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return Execution{}, false
 }
 
 // open is every execution not yet ended, oldest first.

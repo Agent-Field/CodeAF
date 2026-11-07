@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -24,6 +25,8 @@ func Encode(f File) ([]byte, error) {
 		Max    int     `yaml:"max,omitempty"`
 		Who    string  `yaml:"who,omitempty"`
 		Pass   string  `yaml:"pass,omitempty"`
+		// Input is an agentfield step's input mapping.
+		Input map[string]string `yaml:"input,omitempty"`
 	}
 	names := make([]string, 0, len(f.Steps))
 	for name := range f.Steps {
@@ -73,7 +76,7 @@ func Encode(f File) ([]byte, error) {
 				rounds = 0
 			}
 		}
-		steps[name] = step{strings.TrimSpace(s.Label), prompt, s.Kind, s.When, s.Effort, s.Fanout, until, rounds, s.Who, s.Pass}
+		steps[name] = step{strings.TrimSpace(s.Label), prompt, s.Kind, s.When, s.Effort, s.Fanout, until, rounds, s.Who, s.Pass, s.Input}
 	}
 	// A KEY THE FILE NEVER SAID IS NEVER WRITTEN, the same law as merge
 	// below. Writing a default spells it out, and a spelled-out key READS
@@ -190,7 +193,7 @@ func Encode(f File) ([]byte, error) {
 // file can say.
 func sameStep(a, b Step) bool {
 	return a.Label == b.Label && a.Prompt == b.Prompt && a.Kind == b.Kind && a.When == b.When && a.Effort == b.Effort &&
-		a.Fanout == b.Fanout && a.Until == b.Until && a.Max == b.Max && a.Who == b.Who && a.Pass == b.Pass
+		a.Fanout == b.Fanout && a.Until == b.Until && a.Max == b.Max && a.Who == b.Who && a.Pass == b.Pass && maps.Equal(a.Input, b.Input)
 }
 
 // listKey is a list key to write: a pointer, because omitempty drops an

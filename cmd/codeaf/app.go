@@ -2431,6 +2431,11 @@ func (b *appBackend) send(id, text, clientID string, shown *appSending) (uint64,
 	if err != nil {
 		return 0, err
 	}
+	// A STEP AN AGENTFIELD NODE IS RUNNING takes the person's words as a note
+	// to that run, not a turn here (factory_agentfield_run.go).
+	if handled, err := b.agentFieldSteer(a, text); handled {
+		return 0, err
+	}
 	// The gate keeps the idle sweep from letting the conversation go between
 	// opening it and starting the turn.
 	a.gate.Lock()

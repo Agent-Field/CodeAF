@@ -3641,10 +3641,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// THE FACTORY IS AN AGENTFIELD NODE: AgentField's triggers are its
 		// intake, translated per source, completed with the pull request.
 		{"how do I connect AgentField to the factory", "factory-agentfield"},
+		{"can I approve an AgentField plan from a team factory on another computer", "factory-agentfield"},
+		{"answer an AgentField approval from a desk attached to a remote factory", "factory-agentfield"},
 		{"register the factory on the AgentField control plane", "factory-agentfield"},
 		{"can a Linear issue start a factory job through AgentField", "factory-agentfield"},
 		{"trigger factory work from Sentry", "factory-agentfield"},
 		{"can a Slack message become a factory job", "factory-agentfield"},
+		{"can a pipeline step run a reasoner on AgentField", "factory-agentfield"},
+		{"approve the plan an AgentField run asks about", "factory-agentfield"},
+		{"ask for changes to the AgentField plan", "factory-agentfield"},
+		{"an AgentField step asked a question, who answers it", "factory-agentfield"},
+		{"why do the parallel AgentField steps all have the same name", "factory-agentfield"},
 		{"does an AgentField cron trigger make a job", "factory-agentfield"},
 		{"why didn't my AgentField trigger make a job", "factory-agentfield"},
 		{"what source name does AgentField work get in routing rules", "factory-agentfield"},

@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -46,8 +51,10 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 			return appwire.FactoryJobChats{}, err
 		}
 	}
-	if it.Stream != nil {
-		for _, ph := range it.Stream.Phases {
+	{
+		// Every step's chat: the job's own, and those of the run under each
+		// agentfield step ([factory.AllPhases]).
+		for _, ph := range factory.AllPhases(it) {
 			chat := strings.TrimSpace(ph.Chat)
 			if chat == "" {
 				continue
@@ -57,7 +64,7 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 			if id := appAgentID(chat); jobChatErr(b.holdJobChat(id)) == nil {
 				// Execution history is evidence, not a model preference. Opening a
 				// finished stage must preserve its saved Main/Fallback pair too.
-				out.Steps = append(out.Steps, appwire.FactoryJobStepChat{Step: ph.Name, Agent: id, Rounds: b.roundChats(ph.Rounds)})
+				out.Steps = append(out.Steps, appwire.FactoryJobStepChat{Step: ph.Name, Agent: id, WorkspaceRoot: chatWorkspaceRoot(chat), Rounds: b.roundChats(ph.Rounds)})
 			}
 		}
 	}
@@ -185,4 +192,31 @@ func (b *appBackend) jobAgentModel(factoryID string, job int) {
 		}
 		_, _ = b.SetModel(appAgentID(it.Talk), model)
 	}
+}
+
+// chatWorkspaceRoot is the folder a step's chat writes its paths against:
+// for a chat relayed from another machine, that machine's folder as its
+// record named it (afRelayState.OriginCwd); else the cwd the record's own
+// header names; "" when neither is known. A sealed cell names none.
+func chatWorkspaceRoot(file string) string {
+	if raw, err := os.ReadFile(filepath.Join(filepath.Dir(file), afRelayFile)); err == nil {
+		var st afRelayState
+		if json.Unmarshal(raw, &st) == nil && strings.TrimSpace(st.OriginCwd) != "" {
+			return st.OriginCwd
+		}
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	line, _ := bufio.NewReaderSize(f, 64<<10).ReadBytes('\n')
+	var h struct {
+		Type string `json:"type"`
+		Cwd  string `json:"cwd"`
+	}
+	if json.Unmarshal(bytes.TrimSpace(line), &h) != nil || h.Type != "session" || strings.TrimSpace(h.Cwd) == "" {
+		return ""
+	}
+	return filepath.Clean(strings.TrimSpace(h.Cwd))
 }

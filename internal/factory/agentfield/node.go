@@ -22,28 +22,31 @@ import (
 //
 // While connected, and only then, the node:
 //
-//   - listens on the settings' listen address and answers the control
-//     plane's calls under its secret prefix (reasoners.go): the intake,
-//     message and status reasoners, and /health, /status, /discover;
 //   - registers with the control plane (POST /api/v1/nodes) as a fresh
 //     instance — EVERY START IS A NEW instance_id, so the control plane knows
-//     a restarted factory from a running one — and keeps the lease renewed
-//     (PATCH /api/v1/nodes/:id/status), registering again when the control
-//     plane has forgotten it;
+//     a restarted factory from a running one — registering again when the
+//     control plane has forgotten it;
+//   - OPENS THE LINK (link.go): one WebSocket it dials out and keeps, with
+//     reconnect and backoff. Dispatches and cancels come down it, so a
+//     factory behind NAT needs NO listening port. With no base_url the node
+//     binds nothing;
+//   - with a base_url, also listens and answers the control plane's HTTP
+//     calls behind the internal-token bearer (reasoners.go), for a control
+//     plane that offers no link;
+//   - keeps the lease: a heartbeat frame down the link while it is up, the
+//     lease PATCH otherwise, and EITHER WAY it lists the open executions
+//     (`inflight`), which the control plane touches so the stale reaper never
+//     times out a job the node still holds. There is no retelling of quiet
+//     executions any more: the lease keeps them alive;
 //   - reports the job behind every open execution (sink.go): it is a sink
 //     on the factory's event bus ([inbox.RegisterSink]), so each of the
-//     job's moments reaches its execution as it happens, and a quiet
-//     execution is told again with the lease so it never looks stale.
+//     job's moments reaches its execution as it happens, up the link when it
+//     is up and over HTTP when it is not. Each lease tick also catches up an
+//     execution whose last report did not land.
 //
-// NOT CONNECTED, NOTHING RUNS: no listener, no registration, no lease. A
-// disconnect tells the control plane the node is offline on its way out.
-
-// keepAlive is how long an open execution goes untold before the lease's
-// renewal tells it again, well inside the control plane's stale-execution
-// window (ten minutes in its shipped config), so a long job is never reaped
-// as stale. It also catches a job that ended with no moment on the bus (a
-// person dropped it): its execution completes within keepAlive.
-const keepAlive = 3 * time.Minute
+// NOT CONNECTED, NOTHING RUNS: no listener, no link, no registration, no
+// lease. A disconnect tells the control plane the node is offline on its way
+// out.
 
 // SinkName is the node's name on the event bus.
 const SinkName = "agentfield"
@@ -55,8 +58,17 @@ var ErrNotConnected = errors.New("this factory is not connected to AgentField")
 // secret.
 type Health struct {
 	// Listening is the address the node's listener is bound to; empty while
-	// it is not running.
+	// it is not running, and always empty for a link-only node.
 	Listening string
+	// Link is the link's state: "up", "connecting", "not offered" (the
+	// control plane has no link route) or "" while the node is stopped.
+	// LinkSince is when it last changed and LinkUps how many times it has
+	// come up since the node started.
+	Link      string
+	LinkSince time.Time
+	LinkUps   int
+	// LastEventVia is the carrier the last call came by: "link" or "http".
+	LastEventVia string
 	// Registered is when the control plane last took the registration.
 	Registered time.Time
 	// LeaseSeconds and LeaseUntil are the last lease the control plane gave.
@@ -88,6 +100,14 @@ type Node struct {
 	// Nudge asks the factory's own GitHub read to read now. nil makes a
 	// github event a no-op.
 	Nudge func()
+	// Cancel stops a job, the way a person's Stop does, when the control
+	// plane cancels the execution behind it. nil leaves the job running and
+	// only closes the execution here.
+	Cancel func(ctx context.Context, job int) error
+	// Filed is told the job an entry filed, once on filing and once after
+	// the intake pass, so a page showing the queue reads it again now. nil
+	// tells nobody.
+	Filed func(job int)
 	// Version is the node contract the node registers as ([NodeVersion]).
 	Version string
 	// Build is the codeaf build, kept in the registration's metadata.
@@ -107,11 +127,22 @@ type running struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	server   *http.Server
+	mux      http.Handler
 	done     chan struct{}
+	linkDone chan struct{}
 	settings Settings
+	secrets  Secrets
 	client   *Client
 	instance string
 	began    time.Time
+	// registered is closed by the first registration that worked; the link
+	// waits for it, since the control plane refuses a link for a node it
+	// does not know.
+	registered     chan struct{}
+	registeredOnce sync.Once
+	// link is the live link, nil while it is down (guarded by Node.mu).
+	link *linkSession
+	seen *seenSet
 }
 
 func (n *Node) now() time.Time {
@@ -146,31 +177,49 @@ func (n *Node) Running() bool {
 // running is stopped first, so a connect with new settings takes effect.
 func (n *Node) Start(ctx context.Context) error {
 	n.Stop()
-	s, key, secret, ok := n.Conn.Kept()
+	s, sec, ok := n.Conn.Kept()
 	if !ok {
 		return ErrNotConnected
 	}
-	listener, err := net.Listen("tcp", s.Listen)
-	if err != nil {
-		return errors.New("the factory could not listen on " + s.Listen + " for AgentField: " + redact.Secrets(err.Error()))
+	// LINK ONLY (no base_url): nothing is bound, at all.
+	var listener net.Listener
+	if s.BaseURL != "" {
+		var err error
+		if listener, err = net.Listen("tcp", s.Listen); err != nil {
+			return errors.New("the factory could not listen on " + s.Listen + " for AgentField: " + redact.Secrets(err.Error()))
+		}
 	}
 	instance, err := newInstance()
 	if err != nil {
-		listener.Close()
+		if listener != nil {
+			listener.Close()
+		}
 		return err
 	}
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	r := &running{ctx: ctx, cancel: cancel, done: make(chan struct{}), settings: s, client: &Client{URL: s.URL, Key: key, HTTP: n.Conn.HTTP}, instance: instance, began: n.now()}
-	r.server = &http.Server{Handler: n.handler(secret, r), ReadHeaderTimeout: 10 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	r := &running{ctx: ctx, cancel: cancel, done: make(chan struct{}), linkDone: make(chan struct{}), settings: s, secrets: sec, client: &Client{URL: s.URL, Key: sec.Key, HTTP: n.Conn.HTTP}, instance: instance, began: n.now(), registered: make(chan struct{}), seen: newSeenSet(10000)}
+	r.mux = n.routes(r)
+	if listener != nil {
+		r.server = &http.Server{Handler: Guarded(sec.Token, sec.Legacy, viaHTTP(n, r.mux)), ReadHeaderTimeout: 10 * time.Second, BaseContext: func(net.Listener) context.Context { return ctx }}
+	}
 	n.mu.Lock()
 	n.running = r
-	n.health = Health{Listening: listener.Addr().String()}
+	n.health = Health{Link: "connecting", LinkSince: n.now()}
+	if listener != nil {
+		n.health.Listening = listener.Addr().String()
+	}
 	n.mu.Unlock()
 	inbox.RegisterSink(SinkName, sink{n})
-	guard.Go("factory/agentfield listen", func() { _ = r.server.Serve(listener) })
+	if r.server != nil {
+		guard.Go("factory/agentfield listen", func() { _ = r.server.Serve(listener) })
+	}
 	guard.Go("factory/agentfield lease", func() {
 		defer close(r.done)
-		n.keep(ctx, r, secret)
+		n.keep(ctx, r)
+	})
+	guard.Go("factory/agentfield link", func() {
+		defer close(r.linkDone)
+		n.linkLoop(ctx, r)
 	})
 	return nil
 }
@@ -189,34 +238,70 @@ func (n *Node) Stop() {
 	inbox.RegisterSink(SinkName, nil)
 	r.cancel()
 	<-r.done
+	<-r.linkDone
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	_, _ = r.client.Renew(ctx, r.settings.NodeID, "offline", n.Version)
-	_ = r.server.Shutdown(ctx)
-	_ = r.server.Close()
+	_, _ = r.client.Renew(ctx, r.settings.NodeID, "offline", n.Version, nil)
+	if r.server != nil {
+		_ = r.server.Shutdown(ctx)
+		_ = r.server.Close()
+	}
+	n.mu.Lock()
+	n.health.Link = ""
+	n.mu.Unlock()
 }
 
-// keep registers and renews the lease until ctx ends. Each renewal tells
-// the executions that have gone quiet for [keepAlive] where their job stands;
-// every other report is a moment on the bus (sink.go).
-func (n *Node) keep(ctx context.Context, r *running, secret string) {
+// linkHeartbeat is how often the lease is renewed down the link.
+const linkHeartbeat = time.Minute
+
+// keep registers and renews the lease until ctx ends: a heartbeat frame down
+// the link while it is up, the lease PATCH otherwise, each listing the open
+// executions. Each renewal then catches up any execution whose last report
+// did not land; every other report is a moment on the bus (sink.go).
+func (n *Node) keep(ctx context.Context, r *running) {
 	registered := false
 	wait := time.Duration(0)
 	failed := 0
 	nextLease := time.Time{}
 	for {
 		if !registered {
-			if err := n.register(ctx, r, secret); err != nil {
+			if err := n.register(ctx, r); err != nil {
 				failed++
 				n.trouble("registering with AgentField: " + err.Error())
 				wait = backoff(failed)
 			} else {
 				registered, failed, wait = true, 0, 0
+				r.registeredOnce.Do(func() { close(r.registered) })
 			}
 		}
 		if registered && !n.now().Before(nextLease) {
-			lease, err := r.client.Renew(ctx, r.settings.NodeID, "ready", n.Version)
+			inflight := n.inflight()
+			renewed := false
+			if ls := n.liveLink(); ls != nil {
+				ok, err := ls.call(ctx, frame{T: tHeartbeat}, heartbeat{Inflight: inflight})
+				switch {
+				case err == nil && ok.Code == http.StatusNotFound:
+					registered = false
+					continue
+				case err == nil && ok.Code < 300:
+					nextLease = n.now().Add(linkHeartbeat)
+					n.mu.Lock()
+					n.health.LeaseSeconds = 0
+					n.health.LeaseUntil = time.Time{}
+					n.health.LastError, n.health.LastErrorAt = "", time.Time{}
+					n.mu.Unlock()
+					n.catchUp(ctx, r)
+					renewed = true
+				}
+				// Otherwise the link could not carry it: renew over HTTP.
+			}
+			var lease Lease
+			var err error
+			if !renewed {
+				lease, err = r.client.Renew(ctx, r.settings.NodeID, "ready", n.Version, inflight)
+			}
 			switch {
+			case renewed:
 			case err == nil:
 				every := leaseEvery(lease.Seconds)
 				nextLease = n.now().Add(every)
@@ -225,7 +310,7 @@ func (n *Node) keep(ctx context.Context, r *running, secret string) {
 				n.health.LeaseUntil = n.now().Add(time.Duration(lease.Seconds) * time.Second)
 				n.health.LastError, n.health.LastErrorAt = "", time.Time{}
 				n.mu.Unlock()
-				n.retellQuiet(ctx, r.client)
+				n.catchUp(ctx, r)
 			case RefusedAs(err, RefusedMissing):
 				// THE CONTROL PLANE FORGOT THE NODE (it restarted on a fresh
 				// database, or someone deleted it): register again at once.
@@ -252,8 +337,8 @@ func (n *Node) keep(ctx context.Context, r *running, secret string) {
 }
 
 // register sends the registration for this start's instance.
-func (n *Node) register(ctx context.Context, r *running, secret string) error {
-	if err := r.client.Register(ctx, RegistrationFor(r.settings, secret, r.instance, n.Version, n.Build)); err != nil {
+func (n *Node) register(ctx context.Context, r *running) error {
+	if err := r.client.Register(ctx, RegistrationFor(r.settings, r.instance, n.Version, n.Build)); err != nil {
 		return err
 	}
 	n.mu.Lock()
@@ -269,6 +354,15 @@ func (n *Node) trouble(what string) {
 	defer n.mu.Unlock()
 	n.health.LastError = redact.Secrets(what)
 	n.health.LastErrorAt = n.now()
+}
+
+// inflight is every open execution's id, for the lease.
+func (n *Node) inflight() []string {
+	var out []string
+	for _, e := range n.table().open() {
+		out = append(out, e.ID)
+	}
+	return out
 }
 
 // heard records a call that reached a reasoner.

@@ -150,6 +150,10 @@ type EditOp struct {
 	// who may pass the person step ([factory.PassWord]). A gate added with no
 	// pass says person ([factory.PassForNewApprove]).
 	Pass *string
+	// Input belongs to an add_step of kind agentfield alone: the reasoner's
+	// input, each value text with the job's {placeholders}; nil sends the
+	// default mapping ([factory.AgentFieldInput]).
+	Input map[string]string
 	// To belongs to rename_step, with Name: the step's new name; and to
 	// rename_pipeline, with Name: the pipeline's new name.
 	To string
@@ -749,6 +753,9 @@ func stepChanges(before Source, out File, renamed map[string]string) []StepChang
 // written. Whether the step exists, or is locked, depends on the file and is
 // [ApplyEdits]'s to say. i is the edit's position, for the refusal.
 func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
+	if op.Input != nil && (op.Op != OpAddStep || op.Kind == nil || *op.Kind != string(factory.StageAgentField)) {
+		return op, refuseEdit(EditBadOp, i, "only an add_step of kind agentfield takes an input")
+	}
 	if op.Op != OpSetList && (op.List != "" || op.Lines != nil) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no list and no lines", op.Op)
 	}

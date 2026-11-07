@@ -181,6 +181,9 @@ func factoryAnswerFailure(detail string) string {
 // it), and `ask` goes on as it does everywhere else.
 func (a *Agent) askInbox(ctx context.Context, q Question) (string, bool, error) {
 	asker, ok := a.config.Stage.(StageAsker)
+	if !ok || asker == nil {
+		asker, ok = a.config.Asker, a.config.Asker != nil
+	}
 	if !ok || asker == nil || !askGoesUp(q.Ask, true) {
 		return "", false, nil
 	}

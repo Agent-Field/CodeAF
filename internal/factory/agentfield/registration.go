@@ -20,14 +20,11 @@ const (
 // only when the reasoners' contract does; the build is in the metadata.
 const NodeVersion = "1"
 
-// SecretPrefix is the path segment the node's address secret follows.
+// SecretPrefix is the path segment a LEGACY node secret follows. A fresh
+// node registers a plain base_url and is authenticated by the internal
+// token; the prefix is only answered, for one release, when an old secret is
+// still kept (see connection.go).
 const SecretPrefix = "/n/"
-
-// RegisteredBase is the base_url the control plane is given: the base_url a
-// person typed with the address secret after it.
-func RegisteredBase(baseURL, secret string) string {
-	return strings.TrimRight(baseURL, "/") + SecretPrefix + secret
-}
 
 // entrySchema is an inbox.Entry as JSON Schema, the input of a direct call to
 // intake and the shape a generic trigger's event takes.
@@ -135,10 +132,13 @@ func Reasoners() []Reasoner {
 // callback_discovery is "manual": the control plane takes the base_url as
 // given and probes no other address, because the address a person typed is
 // the one their network routes.
-func RegistrationFor(s Settings, secret, instance, version, build string) Registration {
+//
+// AN EMPTY base_url IS A LINK-ONLY NODE: the control plane has no address to
+// dial or probe, and reaches it only down the link it opens.
+func RegistrationFor(s Settings, instance, version, build string) Registration {
 	r := Registration{
 		ID:             s.NodeID,
-		BaseURL:        RegisteredBase(s.BaseURL, secret),
+		BaseURL:        strings.TrimRight(s.BaseURL, "/"),
 		Version:        version,
 		Reasoners:      Reasoners(),
 		Skills:         []json.RawMessage{},
@@ -149,7 +149,10 @@ func RegistrationFor(s Settings, secret, instance, version, build string) Regist
 		},
 		Metadata: map[string]any{"codeaf": map[string]any{"kind": "factory", "build": build, "trust_ceiling": string(s.Trust)}},
 	}
-	r.CommunicationConfig.Protocols = []string{"http"}
+	r.CommunicationConfig.Protocols = []string{"link"}
+	if s.BaseURL != "" {
+		r.CommunicationConfig.Protocols = []string{"link", "http"}
+	}
 	r.CommunicationConfig.HeartbeatInterval = "60s"
 	return r
 }
