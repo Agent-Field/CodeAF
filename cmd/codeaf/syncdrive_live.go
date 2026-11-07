@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -18,19 +19,28 @@ import (
 // before its computer is paired, and /pair inside the chat then makes the
 // identity that sync needs; a drive side fixed at open would leave that chat
 // unsynced until the next restart. So the chat's seat holds a liveDrive, which
-// asks again at each seal, gate and idle for as long as the one thing missing
-// is the identity, and goes on with the real drive from the call that finds it.
+// asks again at each seal, gate and idle while local setup is missing. A refusal
+// that time or capacity can cure also arms a timer, so pending turns upload even
+// when the person leaves the chat open without saving another turn.
 type liveDrive struct {
 	start func() (*syncsetup.Drive, error)
+	now   func() time.Time
+	after func(time.Duration, func()) func() bool
+	say   func(string)
 	// transcript identifies the retained turns if this writer's final publish fails.
 	transcript string
 
-	mu        sync.Mutex
-	drive     *syncsetup.Drive
-	waiting   bool // sync is on and only an identity, or the end of solo, is missing
-	ready     chan struct{}
-	attempted bool
-	closed    bool
+	mu           sync.Mutex
+	drive        *syncsetup.Drive
+	waiting      bool // local setup or a retryable failure still permits another attempt
+	ready        chan struct{}
+	attempted    bool
+	closed       bool
+	retryAt      time.Time
+	retryWait    time.Duration
+	stopRetry    func() bool
+	refusedSince time.Time
+	told         error
 	// changes coalesces local health updates for the host's cached surface state.
 	changes chan struct{}
 }
@@ -38,7 +48,10 @@ type liveDrive struct {
 // newLiveDrive starts the drive side behind the first paint. Local startup
 // screening stays off the surface loop; saving and new tools wait for ownership.
 func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
-	l := &liveDrive{changes: make(chan struct{}, 1)}
+	l := &liveDrive{
+		changes: make(chan struct{}, 1), now: time.Now, say: surfaceNotices.SayHomeOnce,
+		after: func(d time.Duration, fn func()) func() bool { return time.AfterFunc(d, fn).Stop },
+	}
 	l.start = func() (*syncsetup.Drive, error) { return start(l.renewalChanged) }
 	l.try()
 	return l
@@ -53,6 +66,15 @@ func (l *liveDrive) try() {
 	if l.closed || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
 		return
 	}
+	// Seals and idle notifications cannot shorten the relay's requested wait.
+	if !l.retryAt.IsZero() && l.now().Before(l.retryAt) {
+		return
+	}
+	if l.stopRetry != nil {
+		l.stopRetry()
+		l.stopRetry = nil
+	}
+	l.retryAt = time.Time{}
 	l.ready = make(chan struct{})
 	ready := l.ready
 	guard.Go("chat sync startup", func() {
@@ -79,6 +101,25 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	defer close(ready)
 	l.ready = nil
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
+	if d == nil && !l.closed {
+		if r, ok := cellsync.RefusalOf(err); ok {
+			now := l.now()
+			if l.refusedSince.IsZero() {
+				l.refusedSince = now
+			}
+			if l.told != r.Is && now.Sub(l.refusedSince) >= r.Quiet {
+				l.told = r.Is
+				if l.say != nil {
+					l.say(r.Say(err))
+				}
+			}
+			if wait, retry := r.StartupWait(l.retryWait, cellsync.DefaultInterval, err); retry {
+				l.waiting = true
+				l.retryWait, l.retryAt = wait, now.Add(wait)
+				l.stopRetry = l.after(wait, l.try)
+			}
+		}
+	}
 	if d != nil {
 		d.CatchUp()
 	}
@@ -179,6 +220,10 @@ func (l *liveDrive) Close(ctx context.Context) error {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		l.closed = true
+		if l.stopRetry != nil {
+			l.stopRetry()
+			l.stopRetry = nil
+		}
 		return l.ready
 	}()
 	if ready != nil {

@@ -137,8 +137,8 @@ func (b *Batcher) Note(t cellstore.Turn) {
 func (b *Batcher) Idle() { b.idle.fire() }
 
 // Freed says something a refusal waited on has changed (space was freed on the
-// relay, say), so a halted chat tries again now instead of waiting for a
-// reopen. It never waits, so it is safe to call from any goroutine.
+// relay, say), so a halted chat tries again now instead of waiting for its
+// hourly retry. It never waits, so it is safe to call from any goroutine.
 func (b *Batcher) Freed() { b.freed.fire() }
 
 // wakeup carries at most one pending request from a caller to a loop. The zero

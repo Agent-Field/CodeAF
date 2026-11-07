@@ -2,6 +2,7 @@ package chatlist
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -27,7 +28,7 @@ const (
 	// What the relay's refusals say (one sentence each, in the order the
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
-	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
+	relayFull      = "your sync space is full%s, so new turns stay on this computer"
 	Removed        = removedChatStart + "run codeaf pair to bring it back"
 	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
 	tooManyNewIn   = "too many new identities from this network today — try again in about %s"
@@ -69,6 +70,9 @@ const (
 	OfferGotIt  = "got it"
 	SetupLater  = "/setup does this later"
 )
+
+// RelayStorageFull names shared capacity because it is separate from the person's quota.
+const RelayStorageFull = "sync is full for everyone right now, so new turns stay on this computer and go up when it has room"
 
 // namesShown is how many names a line of the setup card spells before it says
 // how many more there are.
@@ -300,13 +304,12 @@ func CopiesCame(names []string) string {
 	return fmt.Sprintf(copiesCame, strings.Join(names, ", "))
 }
 
-// RelayFull is said when the relay has no room left. It names the ceiling the
-// relay told us, and says nothing of one when the relay named none (the
-// emptiness law): a relay run on its own disk has no number to give.
+// RelayFull names the identity's ceiling so shared capacity is not blamed on the person.
+// It omits the number when the relay names none, as a relay on its own disk does not.
 func RelayFull(limitBytes int64) string {
 	size := ""
 	if limitBytes > 0 {
-		size = " (" + bytesSize(limitBytes) + ")"
+		size = " (" + BytesSize(limitBytes) + ")"
 	}
 	return fmt.Sprintf(relayFull, size)
 }
@@ -340,14 +343,18 @@ func waitWords(wait time.Duration) string {
 // ceilUnits is wait in whole units of unit, rounded up.
 func ceilUnits(wait, unit time.Duration) int { return int((wait + unit - 1) / unit) }
 
-// bytesSize spells a byte count in the largest binary unit it reaches, without
-// trailing zeros: 5 GiB, 1.5 GiB, 512 MiB.
-func bytesSize(n int64) string {
-	const mib, gib = 1 << 20, 1 << 30
-	if n >= gib {
-		return fmt.Sprintf("%g GiB", float64(n)/gib)
+// BytesSize keeps usage and refusal amounts in the same binary units, rounded
+// to one decimal place so a stored total does not expose a long fraction.
+func BytesSize(n int64) string {
+	for _, unit := range []struct {
+		bytes int64
+		name  string
+	}{{1 << 40, "TiB"}, {1 << 30, "GiB"}, {1 << 20, "MiB"}, {1 << 10, "KiB"}} {
+		if n >= unit.bytes {
+			return fmt.Sprintf("%g %s", math.Round(float64(n)/float64(unit.bytes)*10)/10, unit.name)
+		}
 	}
-	return fmt.Sprintf("%g MiB", float64(n)/mib)
+	return fmt.Sprintf("%d B", n)
 }
 
 // Superseded is said to a driver whose lease another device took over.

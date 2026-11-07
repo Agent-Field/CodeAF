@@ -48,6 +48,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -468,6 +469,9 @@ type Options struct {
 	TeamsPaired func() bool
 	// SyncService names the service selected for this chat's sync notices.
 	SyncService string
+	// SyncStats reads the selected relay only when /status is requested.
+	// Nil leaves sync space absent for connections that cannot report it.
+	SyncStats func(context.Context) (blobstore.Counts, error)
 	// Approvals answers a new device's request to join and revokes devices
 	// (approve.go, devices.go). Nil is a connection that cannot, and the
 	// screens are then absent.

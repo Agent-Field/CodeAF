@@ -16,8 +16,9 @@ const enc = new TextEncoder();
 
 // One tenant over an identity's SQLite and R2 prefix, the way the identity object builds it, so the
 // route handlers and the stats counting can be tested without the whole Durable Object around them.
-const tenantOf = (identity, sql = memorySql()) => new Tenant({
+const tenantOf = (identity, sql = memorySql(), options = {}) => new Tenant({
   identity, sql, bucket: env.bucket, clock: () => 0, policy: policyOf(), limits: DEFAULTS, flight: new Flight(), arm: () => {}, watchers: NOBODY,
+  ...options,
 });
 
 // runRoute sends one request through the route table to a tenant, as the identity object would.
@@ -34,6 +35,59 @@ after(() => env.close());
 // One identity's state is its SQLite and its R2 prefix; a "cold" store is a new object over the same two.
 const open = (identity, sql = memorySql()) => ({ sql, store: new R2Store(env.bucket, sql, identity) });
 const put = async (store, f, admit) => store.put(await sealFrame(f.bytes), admit);
+
+test('stats adds durable stored totals and active limits without changing request counters or writing on a read', async () => {
+  const sql = memorySql(), queries = [];
+  const countedSql = { exec: (query, ...params) => (queries.push(query), sql.exec(query, ...params)) };
+  const counted = countingBucket(env.bucket);
+  let now = 1_000;
+  const limits = { ...DEFAULTS, storeBytes: 10_000, storeObjects: 100, framesPerDay: 10 };
+  const options = { bucket: counted.bucket, clock: () => now, limits };
+  const t = tenantOf('id_stats_totals', countedSql, options);
+  const first = frame([rid(801), rid(802)]), second = frame([rid(803)], 'second');
+  await runRoute('POST', '/v1/store/frames', t, first.bytes);
+  await runRoute('POST', '/v1/store/frames', t, second.bytes);
+  await runRoute('POST', '/v1/store/frames', t, first.bytes);
+  await runRoute('GET', '/v1/store/objects/' + rid(801), t);
+  await runRoute('POST', '/v1/store/has', t, enc.encode(JSON.stringify({ rids: [rid(803)] })));
+
+  // Reopening over the same SQLite must report stored totals independently of batched request counts.
+  t.stats.flush();
+  const cold = tenantOf('id_stats_totals', countedSql, options);
+  const counters = t.stats.snapshot(), calls = { ...counted.calls };
+  const used = { stored_bytes: first.bytes.length + second.bytes.length, stored_objects: 3, frames_today: 2 };
+  const caps = { limit_bytes: 10_000, limit_objects: 100, limit_frames_per_day: 10 };
+  queries.length = 0;
+  const stats = async (tenant = cold) => (await runRoute('GET', '/v1/store/stats', tenant)).json();
+  assert.deepEqual(await stats(), { ...counters, ...used, ...caps });
+  assert.deepEqual(counters, { puts: 3, gets: 1, has: 1, bytes_in: first.bytes.length * 2 + second.bytes.length, bytes_out: first.objs[0].length });
+  assert.deepEqual(await stats(tenantOf('id_stats_other')), { puts: 0, gets: 0, has: 0, bytes_in: 0, bytes_out: 0,
+    stored_bytes: 0, stored_objects: 0, frames_today: 0,
+    limit_bytes: DEFAULTS.storeBytes, limit_objects: DEFAULTS.storeObjects, limit_frames_per_day: DEFAULTS.framesPerDay });
+
+  now = 86_400_000;
+  assert.deepEqual(await stats(), { ...counters, ...used, frames_today: 0, ...caps });
+  assert.deepEqual(sql.exec('SELECT day, frames, bytes, objects FROM usage').one(), {
+    day: 0, frames: 2, bytes: used.stored_bytes, objects: 3,
+  });
+  assert.ok(queries.every((query) => /^SELECT\b/i.test(query)), 'stats reads only SQLite and never writes');
+  assert.deepEqual(counted.calls, calls, 'stats never calls R2, including list');
+});
+
+test('stats omits every non-finite limit from JSON while preserving known zero limits', async () => {
+  for (const [name, field] of [['storeBytes', 'limit_bytes'], ['storeObjects', 'limit_objects'], ['framesPerDay', 'limit_frames_per_day']]) {
+    const t = tenantOf('id_stats_' + name, memorySql(), { limits: { ...DEFAULTS, [name]: Infinity } });
+    const answer = await (await runRoute('GET', '/v1/store/stats', t)).json();
+    assert.equal(Object.hasOwn(answer, field), false);
+    for (const other of ['limit_bytes', 'limit_objects', 'limit_frames_per_day'].filter((key) => key !== field)) {
+      assert.equal(typeof answer[other], 'number');
+    }
+    assert.equal(Object.values(answer).includes(null), false);
+  }
+  const t = tenantOf('id_stats_zero_limits', memorySql(), { limits: { ...DEFAULTS, storeBytes: 0, storeObjects: 0, framesPerDay: 0 } });
+  const answer = await (await runRoute('GET', '/v1/store/stats', t)).json();
+  assert.deepEqual([answer.limit_bytes, answer.limit_objects, answer.limit_frames_per_day], [0, 0, 0]);
+});
 
 test('put, has and get through the index; a cold store finds everything in the SQLite', async () => {
   const { sql, store } = open('id_s1');
