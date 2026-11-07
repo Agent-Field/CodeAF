@@ -131,6 +131,10 @@ type afRemote struct {
 	// asked is when each waiting execution's approval was last read, so a
 	// pause is read once and then again only every afApprovalEvery.
 	asked map[string]time.Time
+	// subjects is each fanned-out call's subject, read once from its input
+	// (afSubjectOf); tried is when a read that failed was last tried.
+	subjects map[string]string
+	tried    map[string]time.Time
 	// asking is each harness question being put to the job now, by
 	// job/execution/id, with how to withdraw it.
 	asking map[string]context.CancelFunc
@@ -413,7 +417,7 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 	if place.step != "" {
 		reserved = afReserved(it, place.step)
 	}
-	steps := afFlatten(root, reserved...)
+	steps := afFlattenNamed(root, r.subjectsFor(ctx, client, root), reserved...)
 	wait := r.waitOf(ctx, client, root, steps, place.recorded(it), place)
 	chats := map[string]string{}
 	for _, step := range steps {
@@ -517,6 +521,9 @@ type afStep struct {
 	// groupLabel is what a group of steps that ran at once is called: the
 	// words its members' labels share ("Investigate"), "" when they share none.
 	groupLabel string
+	// base is the reasoner's own label, before the call's subject: what a
+	// group's members share.
+	base string
 }
 
 // afFlatten is every execution under root, each after the step that called
@@ -528,6 +535,14 @@ type afStep struct {
 // reads the step — the rail, the chat, the activity — reads the label, so
 // it is never a code name like investigate_ncruces.
 func afFlatten(root agentfield.TreeNode, reserved ...string) []afStep {
+	return afFlattenNamed(root, nil, reserved...)
+}
+
+// afFlattenNamed is afFlatten with each call's subject (by execution, from
+// its input: afSubjectOf) in its label, so calls of one reasoner that fan
+// out read apart — "Investigate goccy/go-json", "Coder · add Len() to
+// Ledger" — while the group they make is still named by the reasoner's words.
+func afFlattenNamed(root agentfield.TreeNode, subjects map[string]string, reserved ...string) []afStep {
 	count := map[string]int{}
 	var tally func(n agentfield.TreeNode)
 	tally = func(n agentfield.TreeNode) {
@@ -565,7 +580,8 @@ func afFlatten(root agentfield.TreeNode, reserved ...string) []afStep {
 				seen[reasoner]++
 				n = seen[reasoner]
 			}
-			step := afStep{node: c, name: afStepWord(reasoner, n, taken), parent: parent, label: afLabel(reasoner)}
+			base := afLabel(reasoner)
+			step := afStep{node: c, name: afStepWord(reasoner, n, taken), parent: parent, label: afSubjectLabel(base, subjects[c.ExecutionID]), base: base}
 			named[i] = step
 		}
 		afGroup(named)
@@ -632,7 +648,7 @@ func afGroup(steps []afStep) {
 		if j-i > 1 {
 			labels := make([]string, 0, j-i)
 			for k := i; k < j; k++ {
-				labels = append(labels, steps[k].label)
+				labels = append(labels, firstNonEmpty(steps[k].base, steps[k].label))
 			}
 			shared := afSharedWords(labels)
 			for k := i; k < j; k++ {
@@ -672,6 +688,14 @@ func afLabel(reasoner string) string {
 	flush()
 	if len(words) == 0 {
 		return strings.TrimSpace(reasoner)
+	}
+	// A ROLE IS NAMED BY WHAT IT IS, NOT BY THE VERB THAT RUNS IT: run_coder
+	// is "Coder", run_qa "QA" (a short role reads as an initialism).
+	if len(words) > 1 && strings.EqualFold(words[0], "run") {
+		words = words[1:]
+		if len(words) == 1 && utf8.RuneCountInString(words[0]) <= 2 {
+			words[0] = strings.ToUpper(words[0])
+		}
 	}
 	first := []rune(words[0])
 	first[0] = unicode.ToUpper(first[0])
@@ -1471,4 +1495,164 @@ func (r *afRemote) dropAsks(job int) {
 			delete(r.asking, key)
 		}
 	}
+}
+
+// ── A CALL'S SUBJECT: which of several calls of one reasoner this is ─────────
+
+// afSubjectRetry is how long a call whose input could not be read waits
+// before it is read again.
+const afSubjectRetry = 30 * time.Second
+
+// afSubjectMost is how long a subject may be in a label, in characters.
+const afSubjectMost = 48
+
+// subjectsFor is the subject of every call in the run whose reasoner is called
+// more than once, read from each call's input on the control plane ONCE and
+// kept. A call of a reasoner called once needs none: its label already says
+// which it is.
+func (r *afRemote) subjectsFor(ctx context.Context, client afClient, root agentfield.TreeNode) map[string]string {
+	inputs, ok := client.(interface {
+		ExecutionInput(context.Context, string) (json.RawMessage, error)
+	})
+	if !ok {
+		return nil
+	}
+	count := map[string]int{}
+	var all []agentfield.TreeNode
+	var walk func(n agentfield.TreeNode)
+	walk = func(n agentfield.TreeNode) {
+		for _, c := range n.Children {
+			count[afReasoner(c)]++
+			all = append(all, c)
+			walk(c)
+		}
+	}
+	walk(root)
+	now := r.clock()
+	var need []string
+	func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.subjects == nil {
+			r.subjects, r.tried = map[string]string{}, map[string]time.Time{}
+		}
+		for _, c := range all {
+			if count[afReasoner(c)] < 2 || c.ExecutionID == "" {
+				continue
+			}
+			if _, have := r.subjects[c.ExecutionID]; have {
+				continue
+			}
+			if at, ok := r.tried[c.ExecutionID]; ok && now.Sub(at) < afSubjectRetry {
+				continue
+			}
+			r.tried[c.ExecutionID] = now
+			need = append(need, c.ExecutionID)
+		}
+	}()
+	got := map[string]string{}
+	for _, exec := range need {
+		if raw, err := inputs.ExecutionInput(ctx, exec); err == nil {
+			got[exec] = afSubjectOf(raw)
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for exec, s := range got {
+		r.subjects[exec] = s
+	}
+	out := make(map[string]string, len(r.subjects))
+	for exec, s := range r.subjects {
+		out[exec] = s
+	}
+	return out
+}
+
+// afSubjectKeys are the input fields that name a call's subject, best first;
+// afSummaryKeys are the fields whose first line summarises it when none does.
+var (
+	afSubjectKeys = []string{"subject", "topic", "title", "issue_title", "name", "issue_name", "option", "package", "repo"}
+	afSummaryKeys = []string{"goal", "task", "summary", "description", "prompt", "question", "body"}
+)
+
+// afSubjectOf is the few words that tell one call of a reasoner from its
+// siblings: a short subject, topic or name field of its input, or of an
+// object in it (SWE-AF's issue: {title}, the research example's option:
+// {name}), else the first line of a summary field, cut to afSubjectMost.
+// "" when the input says nothing short.
+func afSubjectOf(raw json.RawMessage) string {
+	var in map[string]any
+	if json.Unmarshal(raw, &in) != nil || len(in) == 0 {
+		return ""
+	}
+	if s := afSubjectIn(in); s != "" {
+		return s
+	}
+	for _, k := range afSubjectKeys {
+		if obj, ok := in[k].(map[string]any); ok {
+			if s := afSubjectIn(obj); s != "" {
+				return s
+			}
+		}
+	}
+	for _, v := range in {
+		if obj, ok := v.(map[string]any); ok {
+			if s := afSubjectIn(obj); s != "" {
+				return s
+			}
+		}
+	}
+	for _, k := range afSummaryKeys {
+		if s, ok := in[k].(string); ok {
+			if line := afFirstLine(s); line != "" {
+				return afCut(line)
+			}
+		}
+	}
+	return ""
+}
+
+// afSubjectIn is the first short subject field of obj.
+func afSubjectIn(obj map[string]any) string {
+	for _, k := range afSubjectKeys {
+		s, ok := obj[k].(string)
+		if !ok {
+			continue
+		}
+		if line := afFirstLine(s); line != "" && utf8.RuneCountInString(line) <= afSubjectMost*2 {
+			return afCut(line)
+		}
+	}
+	return ""
+}
+
+func afFirstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return strings.Join(strings.Fields(strings.TrimLeft(s, "#*- ")), " ")
+}
+
+func afCut(s string) string {
+	r := []rune(s)
+	if len(r) <= afSubjectMost {
+		return s
+	}
+	return strings.TrimSpace(string(r[:afSubjectMost-1])) + "…"
+}
+
+// afSubjectLabel is a call's label: its reasoner's words, then its subject —
+// one word after a space ("Investigate goccy/go-json"), words after a dot
+// ("Coder · add Len() to Ledger"). A subject the label already says is not
+// said twice.
+func afSubjectLabel(base, subject string) string {
+	subject = strings.TrimSpace(subject)
+	if subject == "" || strings.Contains(strings.ToLower(base), strings.ToLower(subject)) {
+		return base
+	}
+	if !strings.ContainsAny(subject, " \t") {
+		return base + " " + subject
+	}
+	return base + " · " + subject
 }

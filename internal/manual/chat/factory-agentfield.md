@@ -207,7 +207,7 @@ page and step rail, Start and Stop.
 - **Its steps are the run's executions**, in the order they began. A
   step's name is one word from its reasoner (`draft_reply` is `draftreply`;
   a second call is `investigate2`) and its label is the reasoner in words
-  (`Draft reply`, `Investigate ncruces`). A nested call carries its parent
+  (`Draft reply`; see "the names of an AgentField run's steps"). A nested call carries its parent
   and is not counted as a step of its own (`3 / 3`, not `4 / 4`). Calls
   that ran at once share a group, drawn as one row, whose `group_label` is
   the words they share (`Investigate`). A harness call is a conversation
@@ -225,6 +225,21 @@ page and step rail, Start and Stop.
 
 The node's developer writes nothing for any of this: a reasoner that calls
 `a.Harness(...)` on the codeaf provider is watched and steerable by itself.
+
+## the names of an AgentField run's steps — why parallel steps read the same, a call's subject
+
+A run's step is labelled with its reasoner in words: `draft_reply` is
+`Draft reply`, and a role run by a verb is named by the role (`run_coder` is
+`Coder`, `run_qa` is `QA`). A reasoner called several times — a research run's
+investigations side by side, a build's coder for each issue — has each call
+told apart by its subject, read once from that call's input: a `subject`,
+`topic`, `title` or `name` field, or one inside an object of it (an `issue`'s
+title, an `option`'s name), else the first line of a `goal`, `task` or
+`description`, cut short. One word follows the reasoner (`Investigate
+goccy/go-json`), a phrase follows a dot (`Coder · add Len() to Ledger`). The
+group they make is still named by the reasoner (`Investigate`). A call whose
+input names nothing short keeps the reasoner's label alone; give the reasoner a
+`subject` field to name it.
 
 ## an AgentField job's budget, status and finish time — why Start is not greyed out
 

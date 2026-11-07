@@ -49,6 +49,20 @@ type afFakeCP struct {
 	approval map[string]agentfield.Approval
 	resolved []string
 	result   json.RawMessage
+	// inputs is each execution's input; inputReads every read of one.
+	inputs     map[string]string
+	inputReads []string
+}
+
+func (f *afFakeCP) ExecutionInput(_ context.Context, exec string) (json.RawMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.inputReads = append(f.inputReads, exec)
+	in, ok := f.inputs[exec]
+	if !ok {
+		return nil, errors.New("not found")
+	}
+	return json.RawMessage(in), nil
 }
 
 func (f *afFakeCP) ApprovalStatus(_ context.Context, exec string) (agentfield.Approval, error) {
@@ -1049,6 +1063,10 @@ func TestARunsStepNamesReadAsWords(t *testing.T) {
 		"plan":                "Plan",
 		"handle_ticket.v2":    "Handle ticket v2",
 		"__":                  "__",
+		"run_coder":           "Coder",
+		"run_qa":              "QA",
+		"run_code_reviewer":   "Code reviewer",
+		"run":                 "Run",
 	} {
 		if got := afLabel(in); got != want {
 			t.Errorf("afLabel(%q) = %q, want %q", in, got, want)

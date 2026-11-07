@@ -568,3 +568,14 @@ func (c *Client) Nodes(ctx context.Context) ([]NodeReasoners, error) {
 	err := c.do(ctx, "list the nodes", http.MethodGet, "/api/v1/nodes", url.Values{"show_all": {"true"}}, nil, &out)
 	return out.Nodes, err
 }
+
+// ExecutionInput is the input one execution was called with, as the control
+// plane's execution details (GET /api/ui/v1/executions/<id>/details,
+// input_data) hold it.
+func (c *Client) ExecutionInput(ctx context.Context, execution string) (json.RawMessage, error) {
+	var out struct {
+		Input json.RawMessage `json:"input_data"`
+	}
+	err := c.do(ctx, "read the call's input", http.MethodGet, "/api/ui/v1/executions/"+url.PathEscape(execution)+"/details", nil, nil, &out)
+	return out.Input, err
+}

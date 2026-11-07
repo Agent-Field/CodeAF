@@ -242,3 +242,52 @@ func TestAHarnessStepsQuestionIsAnsweredOverSteer(t *testing.T) {
 		t.Fatalf("the step's conversation is wrong:\n%s", raw)
 	}
 }
+
+// CALLS THAT FAN OUT READ APART: three investigate calls that ran at once are
+// each named by their own subject from their input, and the group they make
+// is still "Investigate"; SWE-AF's coder calls are named by their issue.
+func TestFannedOutCallsAreNamedByTheirSubject(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{`{"question":"which json lib?","option":{"name":"goccy/go-json","why":"fast"}}`, "goccy/go-json"},
+		{`{"subject":"encoding/json","plan":{"options":[]}}`, "encoding/json"},
+		{`{"issue":{"name":"len-method","title":"add Len() to Ledger"},"iteration":1}`, "add Len() to Ledger"},
+		{`{"goal":"# Make the ledger report its size\n\nmore words"}`, "Make the ledger report its size"},
+		{`{"n":3}`, ""},
+	} {
+		if got := afSubjectOf(json.RawMessage(tc.input)); got != tc.want {
+			t.Errorf("afSubjectOf(%s) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+	if got := afSubjectLabel("Coder", "add Len() to Ledger"); got != "Coder · add Len() to Ledger" {
+		t.Errorf("phrase label = %q", got)
+	}
+
+	inv := func(id, start string) agentfield.TreeNode {
+		return afNode(id, "investigate", "succeeded", start, "2026-11-07T12:00:05Z")
+	}
+	root := afNode("exec-root", "research", "running", "2026-11-07T12:00:00Z", "",
+		inv("e-1", "2026-11-07T12:00:01Z"), inv("e-2", "2026-11-07T12:00:01.1Z"), inv("e-3", "2026-11-07T12:00:01.2Z"),
+		afNode("e-s", "synthesize", "running", "2026-11-07T12:00:09Z", ""))
+	cp := &afFakeCP{tree: root, inputs: map[string]string{
+		"e-1": `{"option":{"name":"goccy/go-json"}}`, "e-2": `{"option":{"name":"encoding/json"}}`, "e-3": `{"subject":"json-iterator/go"}`,
+	}}
+	r := &afRemote{}
+	steps := afFlattenNamed(root, r.subjectsFor(context.Background(), cp, root))
+	var labels []string
+	for _, s := range steps[:3] {
+		labels = append(labels, s.label)
+		if s.groupLabel != "Investigate" || s.group != steps[0].name {
+			t.Errorf("%s is grouped as %q/%q", s.label, s.group, s.groupLabel)
+		}
+	}
+	if strings.Join(labels, " | ") != "Investigate goccy/go-json | Investigate encoding/json | Investigate json-iterator/go" || steps[3].label != "Synthesize" {
+		t.Fatalf("labels = %v, %q", labels, steps[3].label)
+	}
+	// The input is read once per call, and never for a reasoner called once.
+	_ = r.subjectsFor(context.Background(), cp, root)
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	if strings.Join(cp.inputReads, ",") != "e-1,e-2,e-3" {
+		t.Fatalf("inputs read: %v", cp.inputReads)
+	}
+}
