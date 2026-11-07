@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/pkg/codeaftrigger"
 )
 
 // JobRoute is the routing rule that decided a job ([factory.Item.Route]) and,
@@ -117,4 +118,24 @@ func ModelsIn(j *Job, it factory.Item, d factory.ModelDefaults) {
 			s.RunsOn = &c
 		}
 	}
+}
+
+// TriggerStatus is GET /api/intake/{source}/{id}: how far a job filed from
+// outside is, for the tool that filed it. IT IS READ OFF THE JOB AS THE JOB
+// WIRE SAYS IT ([FromItem], whose facts are [jobFacts]'), never worked out a
+// second time, so a source and the queue can never disagree about a job.
+// question is the open question's words when the job waits on one.
+func TriggerStatus(it factory.Item) codeaftrigger.Status {
+	j := FromItem(it)
+	out := codeaftrigger.Status{Job: j.ID, State: j.State, StepsDone: j.StepsDone, StepsTotal: j.StepsTotal, Updated: it.Changed}
+	if j.Route != nil {
+		out.Route = j.Route.Rule
+	}
+	if j.PR != nil {
+		out.PRURL = j.PR.URL
+	}
+	if n := j.NeedsYou; n != nil && n.Question != nil && n.Question.Answered == nil {
+		out.Question = n.Question.Text
+	}
+	return out
 }

@@ -9,7 +9,8 @@ import (
 
 // Replier answers on the ticket a job came from: a comment with the pull
 // request's link when it opens and when it merges, and the job's own words
-// when it stops and needs a person. It is an [inbox.Replier].
+// when it stops and needs a person, with or without a question. It is an
+// [inbox.Replier]; every other moment posts nothing.
 type Replier struct {
 	Client *Client
 }
@@ -40,7 +41,7 @@ func ReplyText(ev inbox.Event) string {
 			return ""
 		}
 		return "Merged: " + url
-	case inbox.EventStuck:
+	case inbox.EventStuck, inbox.EventQuestion:
 		return strings.TrimSpace(ev.Text)
 	}
 	return ""

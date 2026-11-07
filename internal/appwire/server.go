@@ -230,6 +230,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withSearchJobsFeature(hello, engine)
 	hello = withFactoryActorFeature(hello, engine)
 	hello = withFactoryIntakeFeature(hello, engine)
+	hello = withFactorySourcesFeature(hello, engine)
 	hello = withFactoryJobStepRerunModelFeature(hello, engine)
 	hello = withFactoryJobStepEditFeature(hello, engine)
 	hello = withFactoryJobStepEditMaxFeature(hello, engine)

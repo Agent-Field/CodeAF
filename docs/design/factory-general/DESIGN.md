@@ -1,6 +1,7 @@
 # A general factory — intake, router, pipeline, output, follow
 
-Status: wave 1 in progress on `factory/general-intake` (off `app/v3`), 2026-11-06.
+Status: wave 1 in progress on `factory/general-intake` (off `app/v3`), 2026-11-06;
+wave 2 (the Trigger API) on `factory/gi-trigger-api`, 2026-11-06.
 
 ## Why
 
@@ -103,6 +104,52 @@ resident vocabulary.
 2. `codeaf factory add --source inbox:ops --id A1 --title … --priority p0` with jobs-at-once 1 and two older p2 jobs queued: the p0 job runs next.
 3. The same `(source, id)` added twice makes one job.
 4. With no rules, a GitHub issue labelled `agent-ready` behaves exactly as before.
+
+## Wave 2 — the Trigger API
+
+Any tool can file work, say more about it, read how far it is and hear back,
+without a connector written for it. `internal/factory/trigger` holds the
+credentials and the webhooks; `inbox.Add` stays the one door.
+
+1. **Per-source credentials.** `codeaf factory source add NAME [--callback URL]
+   [--trust collaborator|stranger]`, `source list`, `source revoke NAME`, and
+   the wire's `factory.source_add|list|revoke`, all through the operator-only
+   `/v1/sources`. Add mints a token (`cft_…`) and a signing secret (`whsec_…`),
+   shown once. The token is kept as its SHA-256 in `trigger-sources.json` in
+   the floor's folder (0600); the secret is kept there as it is, because
+   signing needs it. A SOURCE TOKEN OPENS ONLY THE INTAKE PATHS
+   (`serve.ServeHTTP` looks it up there and nowhere else) and only for its own
+   source; elsewhere it is an unknown secret, 401. An entry's trust is capped
+   at the source's; the operator's token behaves as in wave 1.
+2. **`POST /api/intake/{source}/{id}/messages {author?, text}`** →
+   `{job, accepted}`. `inbox.Message` appends the words as a `factory.Comment`
+   (at the lower of the job's tier and the source's) and calls
+   `factory.ReadComments`, THE ONE COMMENT PATH: kept among the last
+   `inbox.MessagesKept` (= `github.CommentsMost`) comments, read by the next
+   step's brief, handled once by the manager (stranger: context only; a run
+   under way: asked in the manager chat). The source is then sent
+   `job.message` with the manager's line.
+3. **`GET /api/intake/{source}/{id}`** → `{job, state, steps_done,
+   steps_total, route?, pr_url?, question?, updated}`, read off
+   `api.FromItem` by `api.TriggerStatus`, never derived again.
+4. **Outbound webhooks.** `trigger.Hub.Sync` registers a `trigger.Replier` for
+   every source with a callback. `inbox.EventKind` gains `filed` (fired by
+   `inbox.Add` on a new job), `started` (a run's stream appears), `question`
+   (needs you with a question; without one it stays `stuck`), `done`, and
+   `message`; `Mark.Moments` fires them from the same lease report path that
+   fired wave 1's three. A merge is sent as `job.merged` then `job.done`
+   (Moments does not send its own done for a merge). Deliveries are files in
+   `trigger-outbox/`, sent with `X-Codeaf-Signature: t=<unix>,sha256=<HMAC of
+   "<t>.<body>">`, `X-Codeaf-Delivery` and `X-Codeaf-Event`, retried at 2s
+   doubling to 1h for 72h until a 2xx, dropped when the source is revoked.
+   Jira's replier answers `question` as it answered `stuck`, and ignores the
+   rest.
+5. **SDKs.** `pkg/codeaftrigger` (Go, the signer the factory itself uses, and
+   `examples/filer`) and `sdk/typescript/codeaf-trigger.ts` (fetch and Web
+   Crypto, no dependencies), each `file`, `message`, `status`, `verifyWebhook`,
+   pinned to one golden signature.
+
+GitHub is untouched: the poller, its comments and its replies are as before.
 
 ## Later waves (not now)
 

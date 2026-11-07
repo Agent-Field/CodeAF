@@ -668,7 +668,7 @@ timer — `ai.agentfield.codeaf.tick` under launchd, `codeaf-tick.timer` under s
 the older `ai.agentfield.codeaf.wake` — that ran `codeaf tick` with no window open. This
 version removes them, whoever installed them, on every start.
 
-## What automations cannot do
+## What automations cannot do — a watch cannot trigger on a webhook, no phone notifications
 
 - **No — they do not run while codeaf is closed.** Keep a window open, here or attached to
   another machine; anything missed runs once, late, when one is.

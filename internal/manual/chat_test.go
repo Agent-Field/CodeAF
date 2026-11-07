@@ -3584,6 +3584,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"send one Jira project to one repository", "factory-jira"},
 		{"what does Jira priority Highest become in the factory", "factory-jira"},
 		{"does codeaf work with Jira Server or Data Center", "factory-jira"},
+		// THE TRIGGER API: a source's own token, a message from outside read as
+		// a comment, the status of a job, signed webhooks and the two SDKs.
+		{"how do I connect my own tool to the factory", "factory-trigger-api"},
+		{"give my helpdesk a token that can only file its own tickets", "factory-trigger-api"},
+		{"can a source token read another source's jobs", "factory-trigger-api"},
+		{"send a comment to a job from outside", "factory-trigger-api"},
+		{"how does my tool add more details to a factory job it filed", "factory-trigger-api"},
+		{"check the status of a factory job from my script", "factory-trigger-api"},
+		{"which webhook events does the factory send", "factory-trigger-api"},
+		{"how do I verify the factory webhook signature", "factory-trigger-api"},
+		{"what happens if my webhook endpoint is down", "factory-trigger-api"},
+		{"is there an SDK for the factory", "factory-trigger-api"},
+		{"TypeScript client for filing work on the factory", "factory-trigger-api"},
+		{"revoke a source token", "factory-trigger-api"},
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 	}

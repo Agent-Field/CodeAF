@@ -33,6 +33,7 @@ func TestNotifyAnswersTheJobsOwnSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	replies.Wait() // the filing's own moment, told before anyone listens
 	ops, other := &fakeReplier{}, &fakeReplier{}
 	RegisterReplier("inbox:ops", ops)
 	RegisterReplier("inbox", other)
@@ -72,12 +73,13 @@ func TestNotifyNeverFailsAndSkipsJobsWithNoSource(t *testing.T) {
 	res, _ := Add(context.Background(), st, entry(), at)
 	Notify(context.Background(), st, res.ID, Merged("u"))
 	replies.Wait()
-	if len(r.got) != 1 || len(logged) != 1 || !strings.Contains(logged[0], "failed") {
+	// The filing and the merge: two answers, both failed, both logged.
+	if len(r.got) != 2 || len(logged) != 2 || !strings.Contains(logged[0], "failed") {
 		t.Fatalf("replies %v, logged %v", r.got, logged)
 	}
 }
 
-func TestMomentsAreTheThreeChangesOfAnInboxJob(t *testing.T) {
+func TestMomentsAreTheChangesOfAnInboxJob(t *testing.T) {
 	job := factory.Item{SourceRef: "inbox:ops:A1", Origin: "inbox:ops", State: factory.StateRunning}
 	mark := MarkOf(job)
 	if got := mark.Moments(job); len(got) != 0 {
@@ -96,8 +98,28 @@ func TestMomentsAreTheThreeChangesOfAnInboxJob(t *testing.T) {
 	}
 	stuck := job
 	stuck.State, stuck.Question = factory.StateNeedsYou, "Approval needed: plan"
-	if got := MarkOf(job).Moments(stuck); len(got) != 1 || got[0].Kind != EventStuck || !strings.Contains(got[0].Text, "Approval needed: plan") {
+	if got := MarkOf(job).Moments(stuck); len(got) != 1 || got[0].Kind != EventQuestion || !strings.Contains(got[0].Text, "Approval needed: plan") {
+		t.Fatalf("question = %+v", got)
+	}
+	stuck.Question = ""
+	if got := MarkOf(job).Moments(stuck); len(got) != 1 || got[0].Kind != EventStuck {
 		t.Fatalf("stuck = %+v", got)
+	}
+	// The first step beginning is started; a second report is not.
+	fresh := factory.Item{SourceRef: "inbox:ops:A1", Origin: "inbox:ops", State: factory.StateQueued}
+	ran := fresh
+	ran.State, ran.Stream = factory.StateRunning, &factory.Stream{Started: at}
+	if got := MarkOf(fresh).Moments(ran); len(got) != 1 || got[0].Kind != EventStarted {
+		t.Fatalf("started = %+v", got)
+	}
+	if got := MarkOf(ran).Moments(ran); len(got) != 0 {
+		t.Fatalf("a second report = %+v", got)
+	}
+	// Finishing with no pull request is done; a merge is merged alone.
+	answered := ran
+	answered.State, answered.DoneHow = factory.StateShipped, "answered"
+	if got := MarkOf(ran).Moments(answered); len(got) != 1 || got[0].Kind != EventDone || !strings.Contains(got[0].Text, "answered") {
+		t.Fatalf("done = %+v", got)
 	}
 	// A job the inbox did not file has none.
 	forge := opened

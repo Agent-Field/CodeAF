@@ -243,6 +243,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
 | `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
+| `factory.source_add` | `in.FactorySourceAddParams` | `trigger.Minted` |
+| `factory.source_list` | `in.FactoryRef` | `FactorySources` |
+| `factory.source_revoke` | `in.FactorySourceParams` | `FactorySourceRevoked` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -401,6 +404,29 @@ raise it. The pair `(source, external_id)` is
 the identity: a second call updates the job it made and answers `created:
 false`. The reply is `{id, created}`. A malformed entry is `bad_params` with
 the inbox's own sentence.
+
+`factory.sources` in hello features says the engine serves the Trigger API's
+registered sources, each the named factory's operator-only `/v1/sources`, the
+same doors as `codeaf factory source add|list|revoke`:
+
+- `factory.source_add` takes `{factory, name, callback?, trust?}`. `name` is a
+  lowercase source name (`ops`, `inbox:ops`; `github`, `terminal`, `chat` and
+  `jira` are refused); `callback` is an http or https address with no
+  password; `trust` is `collaborator` or `stranger` (the default). It replies
+  `{name, callback?, trust, created, token, webhook_secret}`, THE ONLY TIME the
+  token and the secret are shown. A name already registered is `conflict`; a
+  yes that names no token is `uncertain` (revoke and add again).
+- `factory.source_list` takes `{factory}` and replies `{sources: [{name,
+  callback?, trust, created}]}`, never a token or a secret.
+- `factory.source_revoke` takes `{factory, name}` and replies `{revoked}`; the
+  token stops working at once and its waiting webhooks are dropped. A name not
+  registered is `not_found`.
+
+A refusal of a bad name, trust or callback is `bad_params` with the factory's
+own sentence. The token a source is given files, reads and messages only work
+whose source is its name, at the factory's `POST /api/intake`,
+`GET /api/intake/{source}/{id}` and `POST /api/intake/{source}/{id}/messages`
+(docs/design/factory-general/DESIGN.md, "Wave 2 — the Trigger API").
 
 `factory.job_pause` in hello features says `factory.job_hold` also pauses a
 running job. Both `factory.job_hold` and `factory.job_resume` take

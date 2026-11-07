@@ -167,6 +167,9 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
+	// triggers is the floor's Trigger API (registered sources, their webhook
+	// outbox and answerers), nil without a store. intake.go owns it.
+	triggers    *triggerState
 	setupMu     sync.Mutex
 	setupBusy   bool
 	setupClosed bool
@@ -359,6 +362,9 @@ func (h *Handler) Close() {
 	if h != nil && h.watch != nil {
 		h.watch.stop()
 	}
+	if h != nil {
+		h.closeTriggers()
+	}
 }
 
 // ServeHTTP checks the peer before routing, so even errors cannot reveal the
@@ -374,7 +380,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if secureRequest(r) {
 		w.Header().Set("Strict-Transport-Security", hstsValue)
 	}
-	if h.config.ServedBy == "app" && !workerPath(r.URL.Path) && !h.floorToken(bearer(r)) {
+	// A REGISTERED SOURCE'S TOKEN OPENS THE INTAKE PATHS AND NOTHING ELSE
+	// (intake.go). It is not an access token: on every other path it is
+	// refused as a secret this factory does not recognize.
+	r, viaSource := h.sourceRequest(r)
+	if h.config.ServedBy == "app" && !workerPath(r.URL.Path) && !viaSource && !h.floorToken(bearer(r)) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
 		h.fail(w, http.StatusUnauthorized, "the app bearer token is required")
 		return
@@ -385,7 +395,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
+	} else if !viaSource && r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
 		if h.authFailed(w, r) {
 			return
 		}

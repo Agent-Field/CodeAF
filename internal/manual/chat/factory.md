@@ -88,6 +88,7 @@ Work from outside GitHub becomes a factory job through one inbox. Three ways in,
 - `codeaf factory add --source NAME --id ID --title TEXT [--body TEXT|-] [--repo owner/name] [--label L]... [--priority p0..p3] [--trust owner|collaborator|stranger] [--url URL] [--factory URL --token T]`. `--body -` reads the details from standard input; `--label` is given once per label. Without `--factory` it posts to the factory this machine is attached to, else the one it serves. It prints `filed job 12 from inbox:ops:A1`, or `updated job 12 …` for a repeat.
 - `POST /api/intake` on the factory's address, with `Authorization: Bearer <access token>` (what `codeaf factory token` prints) or the operator's own session. The body is JSON: `{"source":"inbox:ops","external_id":"A1","title":"…","body":"…","url":"…","author":"…","labels":["bug"],"priority":"p1","repo":"owner/name","trust":"collaborator"}`. It answers `{"id":12,"created":true}` (201), or `created:false` (200) for a repeat. This is what a Jira automation, Zapier or any webhook calls. A teammate's sign-in is refused with "only the operator can do this".
 - The desktop's `factory.intake_add`, the same entry plus `factory`.
+- Your own tool, with a token of its own that can file only its own work: `codeaf factory source add NAME`. See the page "The factory's Trigger API".
 
 `source` is a lowercase name such as `jira` or `inbox:ops`; `github`, `terminal` and `chat` are the factory's own and are refused. `trust` is optional (see "who outside work is trusted as"). `priority` is `p0` (urgent) to `p3` (low). Limits: title 200 characters on one line, body 32000, id 200, at most 30 labels of 100, a request at most 64 KiB (larger is refused as too large).
 
@@ -97,7 +98,7 @@ The pair source and id is the job's identity: sending the same pair again update
 
 Such a job is like `job 21`: it has no GitHub issue, so nothing is commented or closed on GitHub, and its pull request says no `Closes #`. Sent without `--repo` it is filed anyway and waits in Backlog (`waiting for a repository`); starting it is refused with "say which repository the work is on" until a rule or a person gives it one, and a later send that names a repository gives it that one.
 
-A connector that can answer back on its own system is told when the job opens its pull request, when it merges, and when it stops and needs a person. A failed answer is logged and never stops the job.
+A connector that can answer back on its own system is told when the job opens its pull request, when it merges, and when it stops and needs a person (Jira comments on the ticket for each). A tool registered as a source with a callback is also told when the job is filed, starts, asks a question and finishes, as signed webhooks; the page "The factory's Trigger API" has them. A failed answer is logged and never stops the job.
 
 ## finding jobs with desktop search and ⌘K
 
@@ -676,7 +677,7 @@ The job's manager reads every new comment on the issue once the factory's next G
 - on a job with a run under way: "asked you in the manager chat whether the plan should change", and the manager conversation quotes the comment and asks. Reply there with what to do;
 - on a job that has not started, or has finished: nothing changes, and the line says why.
 
-The manager never changes the plan from a comment on its own yet, even one that only narrows the work.
+The manager never changes the plan from a comment on its own yet, even one that only narrows the work. A job filed from outside GitHub has no issue to comment on; its tool says more with `POST /api/intake/{source}/{id}/messages`, read the same way (the page "The factory's Trigger API").
 
 ## starting a job checks GitHub first — closed issue, wasn't started, Check GitHub now, last checked
 
