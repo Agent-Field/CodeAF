@@ -1,6 +1,9 @@
 package factory
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ── A JOB RUN BY AN AGENTFIELD REASONER ─────────────────────────────────────
 //
@@ -27,10 +30,27 @@ type AgentFieldRun struct {
 	Error  string `json:"error,omitempty"`
 	// URL is the run's page on the control plane's own UI, when it has one.
 	URL string `json:"url,omitempty"`
+	// Host is the machine the node said it runs on when the run began.
+	Host string `json:"host,omitempty"`
 	// A harness step's conversation keeps its own relay record beside its
 	// transcript (agentfield.json): which execution it is, how much of it is
 	// kept, whether it is steerable now. It lives with the conversation,
 	// because the conversation is what this factory keeps.
+}
+
+// AgentFieldRunner is where an AgentField job runs, in the words the job's
+// "runs on" fact shows: the node, and the node's machine when it named one —
+// "support · dumb". A RunOn job never runs on this factory's machine, so it
+// is never the factory's own machine word.
+func AgentFieldRunner(it Item) string {
+	node, _, _ := strings.Cut(strings.TrimSpace(it.RunOn), ".")
+	if node == "" {
+		return ""
+	}
+	if it.AgentField != nil && strings.TrimSpace(it.AgentField.Host) != "" {
+		return node + " · " + strings.TrimSpace(it.AgentField.Host)
+	}
+	return node
 }
 
 // RunOnPending says the job is run by an AgentField reasoner ([Item.RunOn])

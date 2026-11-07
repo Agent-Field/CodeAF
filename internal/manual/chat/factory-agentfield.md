@@ -227,7 +227,7 @@ page and step rail, Start and Stop.
 The node's developer writes nothing for any of this: a reasoner that calls
 `a.Harness(...)` on the codeaf provider is watched and steerable by itself.
 
-## where did this job come from — the AgentField node, reasoner, trigger and labels
+## where did this job come from, and where does it run — the AgentField node, its machine, reasoner, trigger and labels
 
 A job an AgentField reasoner runs (`run_on`) says where it came from on its
 ordinary read, with nothing for the node's developer to write:
@@ -238,6 +238,9 @@ ordinary read, with nothing for the node's developer to write:
 - **origin** names the node, the reasoner and the trigger that filed it (the
   trigger's source, such as `generic-bearer`; a direct execute names none). A
   job this factory runs itself has no origin, even when a trigger filed it.
+- **runs on** (`runner`) is the node and the machine it named to the
+  control plane — `support · dumb`, or just `support` when the node named
+  none. It is never this machine: the factory here only watches the run.
 - **labels** are the event's `labels` and `tags` and `node:<node>` —
   lowercased, each once, at most 20. A trigger on the control plane has no
   tags of its own to add.
@@ -284,5 +287,10 @@ at all, so there is no box to type in.
   plain reasoner's step, or a step on another harness, shows its state and
   timing only: it has no chat and no message box.
 - A note to a step reaches it at its next turn boundary, not mid-sentence.
+- A harness step on a node is not sandboxed. It runs codeaf with every tool
+  allowed, the same gate a factory step has by default, so its shell can
+  install software or pull images on the node's machine; only codeaf's
+  built-in floor of critical commands is refused, with nobody there to ask.
+  Confine the node's machine itself if that matters.
 - Jira is not an AgentField source; it has its own connector (see "connect
   Jira").

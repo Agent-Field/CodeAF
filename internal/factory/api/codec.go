@@ -159,7 +159,7 @@ func FromItem(it factory.Item) Job {
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
-		Runner: it.WorktreeMachine, JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
+		Runner: runnerOf(it), JobID: factory.JobKey(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap, StopAfterStep: it.StopAfterStep, Model: it.Model, AutomaticModels: it.AutomaticModels, FactoryModel: it.FactoryModel,
 		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
 		PublishAnyway: it.PublishAnyway, DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApprovalSummary(it),
 		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
@@ -1321,4 +1321,13 @@ func briefMark(it factory.Item) *BriefMark {
 		rev = it.Briefs[n-1].Rev
 	}
 	return &BriefMark{Rev: rev, Status: status}
+}
+
+// runnerOf is the machine a job runs on. An AgentField job runs on its node's
+// machine, never this factory's, so it says the node (and its host).
+func runnerOf(it factory.Item) string {
+	if strings.TrimSpace(it.RunOn) != "" {
+		return factory.AgentFieldRunner(it)
+	}
+	return it.WorktreeMachine
 }

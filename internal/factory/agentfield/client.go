@@ -422,6 +422,22 @@ func (c *Client) RunURL(run string) string {
 	return strings.TrimRight(c.URL, "/") + "/ui/runs/" + url.PathEscape(run)
 }
 
+// NodeHost is the machine a node says it runs on: the "host" its SDK put in
+// its registration's custom metadata. Empty when the node sent none or the
+// control plane cannot say; that is not an error worth failing a run over.
+func (c *Client) NodeHost(ctx context.Context, node string) string {
+	var out struct {
+		Metadata struct {
+			Custom map[string]any `json:"custom"`
+		} `json:"metadata"`
+	}
+	if strings.TrimSpace(node) == "" || c.do(ctx, "read the node", http.MethodGet, "/api/v1/nodes/"+url.PathEscape(node), nil, nil, &out) != nil {
+		return ""
+	}
+	host, _ := out.Metadata.Custom["host"].(string)
+	return strings.TrimSpace(host)
+}
+
 // Tree is GET /api/ui/v1/workflows/<run>/dag: the run's execution tree.
 func (c *Client) Tree(ctx context.Context, run string) (TreeNode, string, error) {
 	var out struct {

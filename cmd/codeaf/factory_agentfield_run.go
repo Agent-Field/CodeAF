@@ -180,6 +180,13 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 		if pages, ok := client.(interface{ RunURL(string) string }); ok {
 			fresh.URL = pages.RunURL(fresh.RunID)
 		}
+		// The node's machine, for the job's "runs on" fact.
+		if nodes, ok := client.(interface {
+			NodeHost(context.Context, string) string
+		}); ok {
+			n, _, _ := strings.Cut(fresh.Target, ".")
+			fresh.Host = nodes.NodeHost(ctx, n)
+		}
 		if err := r.items.Update(job, func(it *factory.Item) error { it.AgentField = fresh; return nil }); err != nil {
 			return err
 		}

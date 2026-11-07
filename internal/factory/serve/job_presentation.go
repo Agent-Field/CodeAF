@@ -155,7 +155,10 @@ func (h *Handler) redactMachines(r *http.Request, j *api.Job) {
 	proven := func(machine string) bool {
 		return machine != "" && (machine == live || h.callersOnlyMachine(caller, machine))
 	}
-	if !proven(j.Runner) {
+	// An AgentField job's runner is its node and the machine the node named
+	// to the control plane, which every viewer of the run may see; it is not a
+	// machine id from this factory's roster, so there is nothing to prove.
+	if strings.TrimSpace(j.RunOn) == "" && !proven(j.Runner) {
 		if j.StatePresentation.Kind == api.WaitingForComputer && j.Runner != "" {
 			j.StatePresentation.Title = "Waiting for its computer"
 			j.StatePresentation.Detail = "Waiting for the computer its work is on, which is not running now."

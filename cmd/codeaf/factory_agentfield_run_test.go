@@ -61,6 +61,13 @@ func (f *afFakeCP) Dispatch(_ context.Context, target string, input any, owner s
 // RunURL is the run's page, as the real client names it.
 func (f *afFakeCP) RunURL(run string) string { return "http://cp.test/ui/runs/" + run }
 
+func (f *afFakeCP) NodeHost(_ context.Context, node string) string {
+	if node == "support" {
+		return "dumb"
+	}
+	return ""
+}
+
 func (f *afFakeCP) Tree(context.Context, string) (agentfield.TreeNode, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -692,7 +699,7 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 	s.backend.local.mu.Lock()
 	host := s.backend.local.host
 	s.backend.local.mu.Unlock()
-	job, err := host.floor.Add(context.Background(), factory.Item{Title: "ledger total wrong", Body: "refund -500 printed 0.-50", Tier: factory.TierOwner, RunOn: "workaf-support.handle_ticket"})
+	job, err := host.floor.Add(context.Background(), factory.Item{Title: "ledger total wrong", Body: "refund -500 printed 0.-50", Tier: factory.TierOwner, RunOn: "support.handle_ticket"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -721,8 +728,9 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 			Name, State, Parent, Group, Label, Kind string
 			InRun                                   bool `json:"in_run"`
 		}
-		StepsDone  int `json:"steps_done"`
-		StepsTotal int `json:"steps_total"`
+		StepsDone  int    `json:"steps_done"`
+		StepsTotal int    `json:"steps_total"`
+		Runner     string `json:"runner"`
 	}
 	raw := afCall(s, "factory.job", map[string]any{"factory": st.Factory, "job": job})
 	_ = json.Unmarshal(raw, &read)
@@ -746,6 +754,9 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 	}
 	if strings.Contains(string(raw), `"runs_on"`) {
 		t.Fatalf("a run_on job names a model this factory does not run: %s", raw)
+	}
+	if read.Runner != "support · dumb" {
+		t.Fatalf("the job runs on %q; want the node and its machine", read.Runner)
 	}
 	if read.StepsDone != 3 || read.StepsTotal != 4 {
 		t.Fatalf("the job counts %d / %d; want the four top-level steps, three done", read.StepsDone, read.StepsTotal)

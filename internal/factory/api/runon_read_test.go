@@ -14,7 +14,7 @@ import (
 // the rail draws and counts.
 func TestARunOnJobReadsAsBacklogWithNoStepsUntilItsRunBegins(t *testing.T) {
 	it := factory.Item{Num: 7, Kind: factory.KindIssue, Title: "ledger total wrong", State: factory.StateNew,
-		RunOn:  "workaf-support.handle_ticket",
+		RunOn:  "support.handle_ticket",
 		Stages: []factory.Stage{{Name: "plan", Kind: factory.StageChat, On: true}, {Name: "approve", Kind: factory.StageGate, On: true}}}
 	j := FromItem(it)
 	PresentJob(&j)
@@ -84,5 +84,30 @@ func TestAnAgentFieldJobsReadCarriesItsSourceOriginAndLabels(t *testing.T) {
 	}
 	if _, ok := top["labels"]; ok {
 		t.Fatalf("a job with no labels reads labels: %s", top["labels"])
+	}
+}
+
+// AN AGENTFIELD JOB RUNS ON ITS NODE'S MACHINE. The job's "runs on" fact is
+// the node, with the machine the node named when the run began — never this
+// factory's own machine, which the desk would otherwise fall back to.
+func TestAnAgentFieldJobRunsOnItsNodeNotThisMachine(t *testing.T) {
+	runner := func(it factory.Item) string {
+		raw, _ := json.Marshal(FromItem(it))
+		var read struct {
+			Runner string `json:"runner"`
+		}
+		_ = json.Unmarshal(raw, &read)
+		return read.Runner
+	}
+	base := factory.Item{Num: 9, Kind: factory.KindIssue, State: factory.StateNew, RunOn: "support.handle_ticket", WorktreeMachine: "mac-studio"}
+	if got := runner(base); got != "support" {
+		t.Fatalf("before the run, runner %q", got)
+	}
+	base.AgentField = &factory.AgentFieldRun{RunID: "r", Host: "dumb"}
+	if got := runner(base); got != "support · dumb" {
+		t.Fatalf("with the node's host, runner %q", got)
+	}
+	if got := runner(factory.Item{Num: 10, Kind: factory.KindIssue, State: factory.StateNew, WorktreeMachine: "mac-studio"}); got != "mac-studio" {
+		t.Fatalf("a native job's runner moved: %q", got)
 	}
 }

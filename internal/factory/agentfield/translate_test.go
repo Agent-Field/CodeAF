@@ -1,7 +1,10 @@
 package agentfield
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -236,11 +239,11 @@ func TestTrustIsCappedByTheCeiling(t *testing.T) {
 // AN EVENT THAT NAMES A REASONER FILES A JOB THAT REASONER RUNS: run_on
 // survives the translation and the inbox's own check.
 func TestAnEventWithRunOnFilesARunOnJob(t *testing.T) {
-	out, err := Translate(Meta{Source: "generic_bearer", EventID: "ev1"}, json.RawMessage(`{"title":"ledger total wrong","body":"refund -500 printed 0.-50","run_on":"workaf-support.handle_ticket"}`), factory.TierCollab)
+	out, err := Translate(Meta{Source: "generic_bearer", EventID: "ev1"}, json.RawMessage(`{"title":"ledger total wrong","body":"refund -500 printed 0.-50","run_on":"support.handle_ticket"}`), factory.TierCollab)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.File == nil || out.File.RunOn != "workaf-support.handle_ticket" || out.File.Title != "ledger total wrong" {
+	if out.File == nil || out.File.RunOn != "support.handle_ticket" || out.File.Title != "ledger total wrong" {
 		t.Fatalf("filed %+v", out.File)
 	}
 }
@@ -265,5 +268,27 @@ func TestARunsPageIsOnTheControlPlanesUI(t *testing.T) {
 	}
 	if (&Client{}).RunURL("run_1") != "" || c.RunURL("") != "" {
 		t.Fatal("a client with no address, or no run, names a page")
+	}
+}
+
+func TestANodesHostIsWhatItsSDKRegistered(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/nodes/support":
+			_, _ = w.Write([]byte(`{"id":"support","metadata":{"custom":{"host":"dumb"}}}`))
+		case "/api/v1/nodes/bare":
+			_, _ = w.Write([]byte(`{"id":"bare","metadata":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := &Client{URL: srv.URL}
+	ctx := context.Background()
+	if got := c.NodeHost(ctx, "support"); got != "dumb" {
+		t.Fatalf("host %q", got)
+	}
+	if c.NodeHost(ctx, "bare") != "" || c.NodeHost(ctx, "gone") != "" {
+		t.Fatal("a node that named no host, or no node, has one")
 	}
 }
