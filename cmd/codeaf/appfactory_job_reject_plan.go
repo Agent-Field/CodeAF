@@ -27,6 +27,8 @@ package main
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -38,5 +40,13 @@ var _ appwire.FactoryPlanRejecter = (*appBackend)(nil)
 const factoryVerbRejectPlan = "reject_plan"
 
 func (b *appBackend) FactoryJobRejectPlan(ctx context.Context, p appwire.FactoryJobRejectPlanParams) (appwire.FactoryJobActed, error) {
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActRejectPlan, agentfield.DecisionRejected, p.Words, p.Expect); handled {
+		return out, err
+	}
+	// A PLAN OF THIS FACTORY'S OWN IS SENT BACK WITH WORDS: a bare no would
+	// only rewind the run. (An AgentField run's Reject, above, takes none.)
+	if strings.TrimSpace(p.Words) == "" {
+		return appwire.FactoryJobActed{}, appwire.Errorf(appwire.CodeBadParams, "words is required")
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRejectPlan, p.Job, factoryVerbRejectPlan, api.RejectPlan{Words: p.Words, Expect: p.Expect})
 }

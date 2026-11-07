@@ -28,6 +28,7 @@ package pipeline
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -159,6 +160,12 @@ type Step struct {
 	// Who is who a person step waits on ([factory.ApproverWord]): "" the job's
 	// person. Only approve and a gate take one.
 	Who string
+	// Input is an agentfield step's input, by the reasoner's own field names,
+	// each value a string with the job's {placeholders}
+	// ([factory.AgentFieldInput]); nil sends the default mapping. An
+	// agentfield step's Prompt is its reasoner, "<node>.<reasoner>" (the file
+	// may spell it `target:`).
+	Input map[string]string
 
 	wrotePrompt bool
 	wroteUntil  bool
@@ -177,6 +184,12 @@ func (s Step) holdWhy() string {
 	if !textRun(s.Kind) {
 		return ""
 	}
+	if s.Kind == string(factory.StageAgentField) {
+		if _, err := factory.AgentFieldTargetWord(s.Prompt); err != nil {
+			return "an agentfield step names its reasoner as node.reasoner (target: swe-planner.build); " + err.Error() + "; the run holds here for a person"
+		}
+		return ""
+	}
 	if strings.TrimSpace(s.Prompt) == "" {
 		return "a " + s.Kind + " runs its own prompt as written and this one has none; the run holds here for a person"
 	}
@@ -189,7 +202,7 @@ func (s Step) holdWhy() string {
 // textRun says whether a kind hands its prompt to something other than a
 // model: a check's shell, a post's verb. Neither may be given extra words.
 func textRun(kind string) bool {
-	return kind == string(factory.StageCheck) || kind == string(factory.StagePost)
+	return kind == string(factory.StageCheck) || kind == string(factory.StagePost) || kind == string(factory.StageAgentField)
 }
 
 // isGate says whether a step is a person: a gate by kind, or a step that holds.
@@ -212,7 +225,7 @@ func kindWord(s string) (string, bool) {
 // vocabulary documents on [factory.Stage]; a count or a free "per x" is a
 // markdown spelling the YAML does not take.
 var (
-	StepKinds   = []string{string(factory.StageChat), string(factory.StageCheck), string(factory.StageGate), string(factory.StagePost)}
+	StepKinds   = []string{string(factory.StageChat), string(factory.StageCheck), string(factory.StageGate), string(factory.StagePost), string(factory.StageAgentField)}
 	StepFanouts = []string{"one", "per-file", "per-finding", "per-claim"}
 )
 
@@ -467,10 +480,20 @@ func (f File) stages(names []string) []factory.Stage {
 		if kind == factory.StageGate {
 			who = step.Who
 		}
-		out = append(out, factory.Stage{
+		st := factory.Stage{
 			Name: name, Label: strings.TrimSpace(step.Label), Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
 			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who,
-		})
+		}
+		if kind == factory.StageAgentField {
+			// AN AGENTFIELD STEP'S PROMPT IS ITS REASONER: what runs it is a
+			// run on the control plane, so there is no model to hand words to.
+			st.Target, _ = factory.AgentFieldTargetWord(step.Prompt)
+			st.Ask = st.Target
+			if len(step.Input) > 0 {
+				st.Input = maps.Clone(step.Input)
+			}
+		}
+		out = append(out, st)
 	}
 	return out
 }

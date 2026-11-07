@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
@@ -632,7 +633,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	// A JOB FILED WITH run_on IS RUN BY ITS AGENTFIELD REASONER, over this
 	// factory's own connection, and kept here as an ordinary job.
 	remote := &afRemote{items: mirror, floor: h.floor, workspace: h.workspace, conn: h.agentFieldConn, news: afTellNews}
-	runner := buildFactoryRunnerWith(mirror, h.floor, h.workspace, h.profile, maker, turns, remote.Run)
+	runner := buildFactoryRunnerWith(mirror, h.floor, h.workspace, h.profile, maker, turns, remote.Run, factoryrun.ExecutorFunc(remote.Step))
 	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()
 	kind := api.RunnerCI

@@ -104,6 +104,9 @@ const (
 	StageCheck StageKind = "check" // a deterministic command; no model
 	StageGate  StageKind = "gate"  // a person: yes, no, or words as the stage's result
 	StagePost  StageKind = "post"  // a source write, consent-gated
+	// StageAgentField runs an AgentField reasoner (Stage.Target) as this
+	// step: the run's executions fold under it ([AgentFieldRun.Stages]).
+	StageAgentField StageKind = "agentfield"
 )
 
 // CanWrite reports whether a stage can change files or write to the source.
@@ -125,12 +128,18 @@ type Stage struct {
 	Group  string `json:",omitempty"`
 	// GroupLabel names a group of steps that ran at once in a person's words:
 	// the words its members' labels share ("Investigate"), "" when none.
-	GroupLabel string    `json:",omitempty"`
-	Name       string    // plan · write · test · review · neaten · security · proof
-	Kind       StageKind // chat unless said otherwise
-	Ask        string    // the sentence as typed; the brief is compiled from it
-	When       string    // "" or always · thin · large · touches auth · has ui
-	Effort     string    // "" (the knee) · cheap · strong — the crew's one word
+	GroupLabel string `json:",omitempty"`
+	// Target and Input are an agentfield step's reasoner ("<node>.<reasoner>")
+	// and its input, each value a string with the job's {placeholders}
+	// ([AgentFieldInput]); nil Input sends the default mapping. Only an
+	// agentfield step carries them.
+	Target string            `json:",omitempty"`
+	Input  map[string]string `json:",omitempty"`
+	Name   string            // plan · write · test · review · neaten · security · proof
+	Kind   StageKind         // chat unless said otherwise
+	Ask    string            // the sentence as typed; the brief is compiled from it
+	When   string            // "" or always · thin · large · touches auth · has ui
+	Effort string            // "" (the knee) · cheap · strong — the crew's one word
 	// Model is the model a person picked for this stage on this job, "" for
 	// the job's own (Item.Model) or the factory's default. Only a
 	// conversation stage carries one; a check and an approval run no model.
@@ -546,6 +555,11 @@ type Item struct {
 	RunOn string `json:",omitempty"`
 	// AgentField is the AgentField run behind a RunOn job, once dispatched.
 	AgentField *AgentFieldRun `json:",omitempty"`
+	// AgentFieldSteps are the AgentField runs behind the job's agentfield
+	// steps, by step name, once each was dispatched. Unlike AgentField (a
+	// RunOn job's whole run) each keeps its run's executions as its own
+	// Stages and Phases, which fold under that step.
+	AgentFieldSteps map[string]*AgentFieldRun `json:",omitempty"`
 	// PublishAnyway preserves the person decision without changing measured proof.
 	PublishAnyway *Approval `json:",omitempty"`
 	// GitHubIssueID pins the permanent issue identity, learned only by a direct read.

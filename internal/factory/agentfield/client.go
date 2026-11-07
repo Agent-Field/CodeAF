@@ -486,3 +486,68 @@ func (c *Client) Steer(ctx context.Context, execution, message string) error {
 func (c *Client) CancelTree(ctx context.Context, run string) error {
 	return c.do(ctx, "cancel the run", http.MethodPost, "/api/ui/v1/workflows/"+url.PathEscape(run)+"/cancel-tree", nil, map[string]any{}, nil)
 }
+
+// Approval is an execution's pause for a person, as GET
+// /api/v1/executions/<id>/approval-status answers it. Question, Body, Options
+// and Kind are what the reasoner asked with (a control plane that predates
+// them sends none, and the job then says only that the run asks for approval
+// and links RequestURL). Status is pending, approved, rejected,
+// request_changes or expired.
+type Approval struct {
+	Status     string   `json:"status"`
+	RequestID  string   `json:"approval_request_id,omitempty"`
+	RequestURL string   `json:"request_url,omitempty"`
+	Question   string   `json:"question,omitempty"`
+	Body       string   `json:"body,omitempty"`
+	Options    []string `json:"options,omitempty"`
+	Kind       string   `json:"kind,omitempty"`
+	ExpiresAt  *string  `json:"expires_at,omitempty"`
+}
+
+// ApprovalStatus is GET /api/v1/executions/<id>/approval-status.
+func (c *Client) ApprovalStatus(ctx context.Context, execution string) (Approval, error) {
+	var out Approval
+	err := c.do(ctx, "read the approval", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution)+"/approval-status", nil, nil, &out)
+	return out, err
+}
+
+// The decisions a person's answer to a run's approval becomes on the control
+// plane (POST …/approval-response).
+const (
+	DecisionApproved       = "approved"
+	DecisionRequestChanges = "request_changes"
+	DecisionRejected       = "rejected"
+)
+
+// ResolveApproval is POST /api/v1/executions/<id>/approval-response: the
+// person's decision, with their words as the reason. The control plane takes
+// the first answer from any door (hax, its own UI, this factory) and answers
+// a later one with the state it is already in, which is not an error here.
+func (c *Client) ResolveApproval(ctx context.Context, execution, decision, reason string) error {
+	var out struct {
+		Status string `json:"status"`
+	}
+	if err := c.do(ctx, "answer the approval", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/approval-response", nil, map[string]string{"decision": decision, "reason": reason}, &out); err != nil {
+		return err
+	}
+	// FIRST ANSWER WINS on the control plane, and a later one is a 200 that
+	// says so: this answer changed nothing.
+	if out.Status == "already_processed" {
+		return ErrAnsweredElsewhere
+	}
+	return nil
+}
+
+// ErrAnsweredElsewhere is an approval answer that came after another one
+// (hax, the control plane's page, another person): the first answer stands.
+var ErrAnsweredElsewhere = errors.New("the run's question was already answered")
+
+// Result is an execution's result as GET /api/v1/executions/<id> answers
+// it, raw; nil when it has none.
+func (c *Client) Result(ctx context.Context, execution string) (json.RawMessage, error) {
+	var out struct {
+		Result json.RawMessage `json:"result"`
+	}
+	err := c.do(ctx, "read the result", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution), nil, nil, &out)
+	return out.Result, err
+}

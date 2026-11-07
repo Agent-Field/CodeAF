@@ -1017,7 +1017,7 @@ func final(it factory.Item) api.WorkerDone {
 	switch it.State {
 	case factory.StateShipped:
 		// A job an AgentField reasoner ran is done when its run is.
-		if it.PullRequest != nil || it.CommentURL != "" || it.RunOn != "" {
+		if it.PullRequest != nil || it.CommentURL != "" || it.RunOn != "" || factory.AgentFieldPipeline(it) {
 			return api.WorkerDone{State: api.StateDone}
 		}
 		return api.WorkerDone{}

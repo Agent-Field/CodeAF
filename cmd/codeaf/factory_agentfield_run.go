@@ -72,6 +72,37 @@ type afClient interface {
 	RelayAck(ctx context.Context, execution string, through int64) error
 	Steer(ctx context.Context, execution, message string) error
 	CancelTree(ctx context.Context, run string) error
+	ApprovalStatus(ctx context.Context, execution string) (agentfield.Approval, error)
+	ResolveApproval(ctx context.Context, execution, decision, reason string) error
+}
+
+// afPlace is where a run's steps are written on its job: the job's own steps
+// (a RunOn job, step "") or under one agentfield step of its pipeline.
+type afPlace struct{ step string }
+
+// runOf is the run record the place keeps on it, made when missing.
+func (p afPlace) runOf(it *factory.Item) *factory.AgentFieldRun {
+	if p.step == "" {
+		if it.AgentField == nil {
+			it.AgentField = &factory.AgentFieldRun{}
+		}
+		return it.AgentField
+	}
+	if it.AgentFieldSteps == nil {
+		it.AgentFieldSteps = map[string]*factory.AgentFieldRun{}
+	}
+	if it.AgentFieldSteps[p.step] == nil {
+		it.AgentFieldSteps[p.step] = &factory.AgentFieldRun{}
+	}
+	return it.AgentFieldSteps[p.step]
+}
+
+// recorded is the run record the place keeps, nil when none.
+func (p afPlace) recorded(it factory.Item) *factory.AgentFieldRun {
+	if p.step == "" {
+		return it.AgentField
+	}
+	return it.AgentFieldSteps[p.step]
 }
 
 // afRemote runs RunOn jobs for one runner.
@@ -89,7 +120,16 @@ type afRemote struct {
 	mu    sync.Mutex
 	files map[string]*afMirror // by execution id
 	drain map[string]bool      // executions with nothing more to read
+	// asked is when each waiting execution's approval was last read, so a
+	// pause is read once and then again only every afApprovalEvery.
+	asked map[string]time.Time
 }
+
+// afApprovalEvery is how often a waiting execution's approval is read again
+// while it waits: often enough that a re-plan's new body arrives within
+// seconds, rarely enough that a run waiting a day asks the control plane
+// little.
+const afApprovalEvery = 5 * time.Second
 
 // afDrainAfter is how long after an execution ended its relay is still read.
 const afDrainAfter = time.Minute
@@ -97,10 +137,10 @@ const afDrainAfter = time.Minute
 // readToEnd reads the run, writing it on jobs, until its tree has ended and
 // every harness step's record has closed ("ended" read and kept), or ctx is
 // done: a step whose node died without closing is waited out to the deadline.
-func (r *afRemote) readToEnd(ctx context.Context, client afClient, runID string, job int, jobs *store.Store) {
+func (r *afRemote) readToEnd(ctx context.Context, client afClient, runID string, job int, jobs *store.Store, place afPlace) {
 	for {
 		if tree, _, err := client.Tree(ctx, runID); err == nil {
-			if ended, _ := r.syncTo(ctx, client, jobs, job, tree); ended && r.recordsClosed() {
+			if ended, _ := r.syncTo(ctx, client, jobs, job, tree, place); ended && r.recordsClosed() {
 				return
 			}
 		}
@@ -170,34 +210,132 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 	run := it.AgentField
 	if run == nil || run.ExecutionID == "" {
 		input := map[string]any{"job": it.ID, "title": it.Title, "body": it.Body, "event": afJobEvent(it)}
-		d, err := client.Dispatch(ctx, strings.TrimSpace(it.RunOn), input, node)
+		fresh, err := r.dispatch(ctx, client, node, strings.TrimSpace(it.RunOn), input)
 		if err != nil {
 			return err
-		}
-		fresh := &factory.AgentFieldRun{Target: strings.TrimSpace(it.RunOn), ExecutionID: d.ExecutionID, RunID: firstNonEmpty(d.RunID, d.WorkflowID, d.ExecutionID), Began: r.clock(), Status: d.Status}
-		// The run's page, for the job's source link, when the client knows
-		// the control plane's address.
-		if pages, ok := client.(interface{ RunURL(string) string }); ok {
-			fresh.URL = pages.RunURL(fresh.RunID)
-		}
-		// The node's machine, for the job's "runs on" fact.
-		if nodes, ok := client.(interface {
-			NodeHost(context.Context, string) string
-		}); ok {
-			n, _, _ := strings.Cut(fresh.Target, ".")
-			fresh.Host = nodes.NodeHost(ctx, n)
 		}
 		if err := r.items.Update(job, func(it *factory.Item) error { it.AgentField = fresh; return nil }); err != nil {
 			return err
 		}
 		run = fresh
 	}
+	return r.follow(ctx, client, job, run.RunID, afPlace{})
+}
+
+// Step is the Executor of an agentfield step (factory.StageAgentField): it
+// starts the step's reasoner on the control plane with the input the step
+// maps from the job, follows the run with its executions folded under the
+// step, and ends when the run does — done when it succeeded, the run's own
+// words when it failed. A run this step already started and that has not
+// ended (a restart, a lease taken again) is followed, never started twice.
+func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
+	st := job.Stage
+	target, err := factory.AgentFieldTargetWord(firstNonEmpty(st.Target, st.Ask))
+	if err != nil {
+		return factory.StageResult{}, errors.New("this agentfield step names no reasoner: " + err.Error())
+	}
+	client, node, ok := r.conn()
+	if !ok {
+		return factory.StageResult{}, errors.New(factoryrun.NoRemoteWords)
+	}
+	it, err := r.items.Get(job.Item.ID)
+	if err != nil {
+		return factory.StageResult{}, err
+	}
+	place := afPlace{step: st.Name}
+	run := place.recorded(it)
+	if run == nil || run.ExecutionID == "" || !run.Ended.IsZero() {
+		fresh, err := r.dispatch(ctx, client, node, target, factory.AgentFieldInput(it, st))
+		if err != nil {
+			return factory.StageResult{}, err
+		}
+		if err := r.items.Update(it.ID, func(it *factory.Item) error {
+			*place.runOf(it) = *fresh
+			return nil
+		}); err != nil {
+			return factory.StageResult{}, err
+		}
+		run = fresh
+		if job.Log != nil {
+			job.Log("started " + target + " on AgentField")
+		}
+	}
+	if err := r.follow(ctx, client, it.ID, run.RunID, place); err != nil {
+		return factory.StageResult{}, err
+	}
+	if ctx.Err() != nil {
+		return factory.StageResult{}, ctx.Err()
+	}
+	out := "the AgentField run " + target + " finished"
+	// A PULL REQUEST THE RUN OPENED IS THE JOB'S: its link is read off the
+	// run's result, wherever the reasoner put it.
+	if results, ok := client.(interface {
+		Result(context.Context, string) (json.RawMessage, error)
+	}); ok {
+		if raw, err := results.Result(ctx, run.ExecutionID); err == nil {
+			// A RUN THAT SUCCEEDED AND SAYS IT DID NOT IS NOT DONE: SWE-AF
+			// ends a rejected plan as a clean run whose result is
+			// {success:false, summary:"Plan rejected: …"}, and the job then
+			// ends with those words rather than as work finished.
+			var said struct {
+				Success *bool  `json:"success"`
+				Summary string `json:"summary"`
+			}
+			if json.Unmarshal(raw, &said) == nil && said.Success != nil && !*said.Success {
+				why := strings.TrimSpace(said.Summary)
+				if why == "" {
+					why = "it did not succeed"
+				}
+				return factory.StageResult{}, errors.New("the AgentField run " + target + " ended: " + why)
+			}
+			if link, n := factory.PullRequestIn(raw); link != "" {
+				out += " and opened " + link
+				_ = r.items.Update(it.ID, func(it *factory.Item) error {
+					if it.PullRequest == nil {
+						it.PullRequest = &factory.PullRequest{URL: link, Number: n, State: factory.PROpen}
+						it.Publish = "pr"
+					}
+					return nil
+				})
+			}
+		}
+	}
+	return factory.StageResult{Done: true, Output: out}, nil
+}
+
+// dispatch starts target on the control plane and answers the run's record.
+func (r *afRemote) dispatch(ctx context.Context, client afClient, node, target string, input any) (*factory.AgentFieldRun, error) {
+	d, err := client.Dispatch(ctx, target, input, node)
+	if err != nil {
+		return nil, err
+	}
+	fresh := &factory.AgentFieldRun{Target: target, ExecutionID: d.ExecutionID, RunID: firstNonEmpty(d.RunID, d.WorkflowID, d.ExecutionID), Began: r.clock(), Status: d.Status}
+	// The run's page, for the job's source link, when the client knows
+	// the control plane's address.
+	if pages, ok := client.(interface{ RunURL(string) string }); ok {
+		fresh.URL = pages.RunURL(fresh.RunID)
+	}
+	// The node's machine, for the job's "runs on" fact.
+	if nodes, ok := client.(interface {
+		NodeHost(context.Context, string) string
+	}); ok {
+		n, _, _ := strings.Cut(fresh.Target, ".")
+		fresh.Host = nodes.NodeHost(ctx, n)
+	}
+	return fresh, nil
+}
+
+// follow reads the run onto its place until it ends, and answers how it
+// ended: nil when it succeeded, the run's words when it did not. Its ctx
+// ending is the person's Stop: the whole run is cancelled, and still read to
+// its end.
+func (r *afRemote) follow(ctx context.Context, client afClient, job int, runID string, place afPlace) error {
 	tick := time.NewTicker(afRemoteEvery)
 	defer tick.Stop()
 	for {
-		tree, _, err := client.Tree(ctx, run.RunID)
+		tree, _, err := client.Tree(ctx, runID)
 		if err == nil {
-			ended, failure := r.sync(ctx, client, job, tree)
+			ended, failure := r.syncTo(ctx, client, r.items, job, tree, place)
 			if ended {
 				// A RUN THAT ENDED IS STILL READ TO ITS LAST LINE: a node
 				// relays a step's record beside the step, so its last lines
@@ -205,7 +343,7 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 				// is over, and the control plane holds them until this
 				// factory acks them.
 				drainCtx, cancel := context.WithTimeout(context.Background(), afStopDrain)
-				r.readToEnd(drainCtx, client, run.RunID, job, r.items)
+				r.readToEnd(drainCtx, client, runID, job, r.items, place)
 				cancel()
 				return failure
 			}
@@ -214,7 +352,7 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 		case <-ctx.Done():
 			// THE PERSON'S STOP STOPS THE WHOLE RUN, not only this reading.
 			cancelCtx, cancel := context.WithTimeout(context.Background(), afStopDrain)
-			_ = client.CancelTree(cancelCtx, run.RunID)
+			_ = client.CancelTree(cancelCtx, runID)
 			// AND THE RUN IS STILL READ TO ITS END. A step's last lines reach
 			// the control plane after the stop, and the control plane holds
 			// them until this factory acks them: a reader that went home at
@@ -226,7 +364,7 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 			if r.floor != nil {
 				jobs = r.floor
 			}
-			r.readToEnd(cancelCtx, client, run.RunID, job, jobs)
+			r.readToEnd(cancelCtx, client, runID, job, jobs, place)
 			cancel()
 			return ctx.Err()
 		case <-tick.C:
@@ -249,17 +387,22 @@ func afJobEvent(it factory.Item) any {
 // sync writes one reading of the tree onto the job: its steps, and every
 // harness step's new lines. It says whether the run has ended, and how.
 func (r *afRemote) sync(ctx context.Context, client afClient, job int, root agentfield.TreeNode) (bool, error) {
-	return r.syncTo(ctx, client, r.items, job, root)
+	return r.syncTo(ctx, client, r.items, job, root, afPlace{})
 }
 
 // syncTo is sync writing the job in jobs: the runner's own store while the
 // run is followed, the factory's once a stop has let the runner's copy go.
-func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Store, job int, root agentfield.TreeNode) (bool, error) {
-	steps := afFlatten(root)
+func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Store, job int, root agentfield.TreeNode, place afPlace) (bool, error) {
 	it, err := jobs.Get(job)
 	if err != nil {
 		return false, nil
 	}
+	var reserved []string
+	if place.step != "" {
+		reserved = afReserved(it, place.step)
+	}
+	steps := afFlatten(root, reserved...)
+	wait := r.waitOf(ctx, client, root, steps, place.recorded(it), place)
 	chats := map[string]string{}
 	for _, step := range steps {
 		if m := r.pull(ctx, client, it, step); m != nil {
@@ -272,10 +415,7 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 		if it.Stream == nil {
 			it.Stream = &factory.Stream{Started: now}
 		}
-		if it.AgentField == nil {
-			it.AgentField = &factory.AgentFieldRun{}
-		}
-		run := it.AgentField
+		run := place.runOf(it)
 		run.Status = root.Status
 		stages := make([]factory.Stage, 0, len(steps))
 		phases := make([]factory.Phase, 0, len(steps))
@@ -312,8 +452,28 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 		if cur < 0 {
 			cur = len(phases) - 1
 		}
-		it.Stages = stages
-		it.Stream.Phases, it.Stream.Cur = phases, max(cur, 0)
+		if place.step == "" {
+			it.Stages = stages
+			it.Stream.Phases, it.Stream.Cur = phases, max(cur, 0)
+		} else {
+			run.Stages, run.Phases = stages, phases
+		}
+		run.Waiting = wait
+		if ended {
+			run.Waiting = nil
+		}
+		if w := run.Waiting; w != nil {
+			// EACH DISTINCT PAUSE IS ONE ROUND: the same approval read again is
+			// not a new one, a re-plan after "Ask for changes" is.
+			n := len(run.Asks)
+			if n == 0 || run.Asks[n-1].Execution != w.Execution || run.Asks[n-1].RequestID != w.RequestID || run.Asks[n-1].Body != w.Body {
+				run.Asks = append(run.Asks, factory.AgentFieldAsk{RequestID: w.RequestID, Execution: w.Execution, Body: w.Body, At: w.At})
+				if over := len(run.Asks) - factory.AgentFieldAsksMost; over > 0 {
+					run.Asks = append([]factory.AgentFieldAsk(nil), run.Asks[over:]...)
+				}
+			}
+		}
+		factoryrun.SyncAgentFieldWait(it, now)
 		if ended {
 			run.Ended = now
 			if root.StatusReason != nil {
@@ -355,7 +515,7 @@ type afStep struct {
 // LABEL IS THE REASONER IN A PERSON'S WORDS (afLabel): every place a person
 // reads the step — the rail, the chat, the activity — reads the label, so
 // it is never a code name like investigate_ncruces.
-func afFlatten(root agentfield.TreeNode) []afStep {
+func afFlatten(root agentfield.TreeNode, reserved ...string) []afStep {
 	count := map[string]int{}
 	var tally func(n agentfield.TreeNode)
 	tally = func(n agentfield.TreeNode) {
@@ -366,7 +526,13 @@ func afFlatten(root agentfield.TreeNode) []afStep {
 	}
 	tally(root)
 	seen := map[string]int{}
+	// A RUN UNDER A PIPELINE STEP NEVER TAKES ONE OF THE PIPELINE'S NAMES:
+	// a step is found by its name, so a run's `plan` beside the job's own
+	// would be two steps answering to one word.
 	taken := map[string]bool{}
+	for _, name := range reserved {
+		taken[name] = true
+	}
 	var out []afStep
 	var walk func(n agentfield.TreeNode, parent string)
 	walk = func(n agentfield.TreeNode, parent string) {
@@ -1055,3 +1221,85 @@ func afWireTime(t time.Time) *time.Time {
 }
 
 var _ appwire.FactoryAgentFieldRunner = (*appBackend)(nil)
+
+// afWaitingForApproval is the control plane's status_reason on an execution
+// paused for a person's approval (request-approval).
+const afWaitingForApproval = "waiting_for_approval"
+
+// waitOf is the run's pause for a person in this reading of its tree, nil
+// when no execution of it waits for approval. The approval itself (the
+// question, the whole body, the options) is read from the control plane when
+// the pause is new and again every afApprovalEvery while it lasts, so a
+// re-plan after "Ask for changes" replaces the body the person reads. A read
+// that fails keeps what was last read: a control plane that does not answer
+// is waited out, never a reason to drop the question.
+func (r *afRemote) waitOf(ctx context.Context, client afClient, root agentfield.TreeNode, steps []afStep, prev *factory.AgentFieldRun, place afPlace) *factory.AgentFieldWait {
+	exec, step, node := "", "", ""
+	if afWaitsForApproval(root) {
+		exec, step, node = root.ExecutionID, place.step, root.AgentNodeID
+	}
+	for _, s := range steps {
+		if exec == "" && afWaitsForApproval(s.node) {
+			exec, step, node = s.node.ExecutionID, s.name, s.node.AgentNodeID
+		}
+	}
+	if exec == "" {
+		return nil
+	}
+	var last *factory.AgentFieldWait
+	if prev != nil && prev.Waiting != nil && prev.Waiting.Execution == exec {
+		last = prev.Waiting
+	}
+	now := r.clock()
+	r.mu.Lock()
+	if r.asked == nil {
+		r.asked = map[string]time.Time{}
+	}
+	fresh := last == nil || now.Sub(r.asked[exec]) >= afApprovalEvery
+	if fresh {
+		r.asked[exec] = now
+	}
+	r.mu.Unlock()
+	if !fresh {
+		return last
+	}
+	a, err := client.ApprovalStatus(ctx, exec)
+	if err != nil {
+		if last != nil {
+			return last
+		}
+		return &factory.AgentFieldWait{Execution: exec, Step: step, Node: node, At: now}
+	}
+	if a.Status != "" && a.Status != "pending" {
+		// Answered already; the tree has not caught up. Nothing to ask.
+		return nil
+	}
+	w := &factory.AgentFieldWait{Execution: exec, Step: step, Node: node, RequestID: a.RequestID, Question: strings.TrimSpace(a.Question),
+		Body: a.Body, Options: a.Options, Kind: a.Kind, URL: a.RequestURL, At: now}
+	if last != nil && last.RequestID == w.RequestID && last.Body == w.Body && last.Question == w.Question {
+		w.At = last.At
+	}
+	return w
+}
+
+func afWaitsForApproval(n agentfield.TreeNode) bool {
+	return strings.EqualFold(n.Status, "waiting") && n.StatusReason != nil && strings.TrimSpace(*n.StatusReason) == afWaitingForApproval
+}
+
+// afReserved are the names a run under the agentfield step `step` may not
+// take: the job's own steps, and the steps of its other agentfield runs.
+func afReserved(it factory.Item, step string) []string {
+	var out []string
+	for _, st := range it.Stages {
+		out = append(out, st.Name)
+	}
+	for name, r := range it.AgentFieldSteps {
+		if name == step || r == nil {
+			continue
+		}
+		for _, st := range r.Stages {
+			out = append(out, st.Name)
+		}
+	}
+	return out
+}

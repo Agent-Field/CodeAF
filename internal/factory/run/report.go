@@ -182,7 +182,28 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	ensureStream(it, now)
 	if report.AgentField != nil {
 		run := *report.AgentField
+		// THE PEOPLE'S DECISIONS ARE THE FACTORY'S: a runner's copy of the
+		// run never carries the ones it was not there to see.
+		if it.AgentField != nil {
+			run.Decisions = it.AgentField.Decisions
+		}
 		it.AgentField = &run
+	}
+	for name, r := range report.AgentFieldSteps {
+		if r == nil {
+			continue
+		}
+		if it.AgentFieldSteps == nil {
+			it.AgentFieldSteps = map[string]*factory.AgentFieldRun{}
+		}
+		run := *r
+		if old := it.AgentFieldSteps[name]; old != nil {
+			run.Decisions = old.Decisions
+		}
+		it.AgentFieldSteps[name] = &run
+	}
+	if report.AgentField != nil || len(report.AgentFieldSteps) > 0 {
+		SyncAgentFieldWait(it, now)
 	}
 	if err := reportRoom(it, report.Room); err != nil {
 		return err
@@ -665,7 +686,7 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 		// A JOB AN AGENTFIELD REASONER RAN IS DONE WHEN ITS RUN SUCCEEDED: it
 		// has no change here for a person to approve, so there is no proof
 		// to wait on.
-		if strings.TrimSpace(it.RunOn) != "" {
+		if strings.TrimSpace(it.RunOn) != "" || factory.AgentFieldPipeline(*it) {
 			it.State = factory.StateShipped
 			it.Question, it.QKind = "", ""
 			it.Asking = nil

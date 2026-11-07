@@ -76,7 +76,7 @@ func TestEncodeWritesOnlyThePipelinesAndStepsTheAuthorWrote(t *testing.T) {
 	if err != nil || len(back.Problems) > 0 {
 		t.Fatalf("re-parse: %v %v", err, back.Problems)
 	}
-	if !slices.Equal(back.Pipeline["docs"], f.Pipeline["docs"]) || !slices.Equal(back.Pipeline[factory.KindIssue], f.Pipeline[factory.KindIssue]) || back.Steps["write"] != f.Steps["write"] {
+	if !slices.Equal(back.Pipeline["docs"], f.Pipeline["docs"]) || !slices.Equal(back.Pipeline[factory.KindIssue], f.Pipeline[factory.KindIssue]) || !sameStep(back.Steps["write"], f.Steps["write"]) {
 		t.Fatalf("round trip changed the file: %v / %v", back.Pipeline, f.Pipeline)
 	}
 	// A shipped step the author changed is written, and an empty file stays a file.

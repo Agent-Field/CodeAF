@@ -46,8 +46,10 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 			return appwire.FactoryJobChats{}, err
 		}
 	}
-	if it.Stream != nil {
-		for _, ph := range it.Stream.Phases {
+	{
+		// Every step's chat: the job's own, and those of the run under each
+		// agentfield step ([factory.AllPhases]).
+		for _, ph := range factory.AllPhases(it) {
 			chat := strings.TrimSpace(ph.Chat)
 			if chat == "" {
 				continue

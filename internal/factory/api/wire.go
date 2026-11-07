@@ -341,10 +341,14 @@ type StepDef struct {
 	// GroupLabel is what the group this step ran at once with is called, in a
 	// person's words ("Investigate"); absent when its members share no words.
 	GroupLabel string `json:"group_label,omitempty"`
-	Name       string `json:"name"`
-	Kind       string `json:"kind,omitempty"`
-	Ask        string `json:"ask,omitempty"`
-	Until      string `json:"until,omitempty"`
+	// Target and Input are an agentfield step's reasoner ("<node>.<reasoner>")
+	// and its input mapping; absent on every other step.
+	Target string            `json:"target,omitempty"`
+	Input  map[string]string `json:"input,omitempty"`
+	Name   string            `json:"name"`
+	Kind   string            `json:"kind,omitempty"`
+	Ask    string            `json:"ask,omitempty"`
+	Until  string            `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
 	// runner's word (done, clean, green, proven). The pipeline route sets it.
 	UntilSentence string `json:"until_sentence,omitempty"`
@@ -416,6 +420,9 @@ type Job struct {
 	// this factory runs itself.
 	RunOn      string                 `json:"run_on,omitempty"`
 	AgentField *factory.AgentFieldRun `json:"agentfield,omitempty"`
+	// AgentFieldSteps are the runs behind the job's agentfield steps, by
+	// step name; their executions are in steps[] under that step.
+	AgentFieldSteps map[string]*factory.AgentFieldRun `json:"agentfield_steps,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
@@ -659,6 +666,23 @@ type NeedsQuestion struct {
 	Asks         string   `json:"asks,omitempty"`
 	WhoCanAnswer string   `json:"who_can_answer"`
 	Answered     *Answer  `json:"answered,omitempty"`
+	// Pick is the option the step would take, and Why the step's reason or
+	// evidence for asking, in its own words (a step's question).
+	Pick string `json:"pick,omitempty"`
+	Why  string `json:"why,omitempty"`
+	// An AgentField run's approval (kind agentfield_approval): Body is what
+	// the person approves, whole (a plan in markdown); ApprovalKind the
+	// reasoner's own kind (plan_review, question, approval); Node the
+	// node that waits; Round 1 for the first ask and one more after each
+	// "Ask for changes"; Note the person's words that asked for this round;
+	// PreviousBody the round before's body, so the change can be shown.
+	Body         string `json:"body,omitempty"`
+	ApprovalKind string `json:"approval_kind,omitempty"`
+	Node         string `json:"node,omitempty"`
+	Round        int    `json:"round,omitempty"`
+	Note         string `json:"note,omitempty"`
+	PreviousBody string `json:"previous_body,omitempty"`
+	URL          string `json:"url,omitempty"`
 }
 
 // SpendingLimit is the cap a continue answer would raise. next_limit comes
@@ -745,6 +769,10 @@ type Can struct {
 	// serves the route. A factory from before the route never sends it, which
 	// reads as false: no plan revision is offered.
 	RejectPlan bool `json:"reject_plan"`
+	// RequestChanges is "Ask for changes" on an AgentField run's approval
+	// (needs_you.question.kind agentfield_approval): request_changes with the
+	// person's words. Absent on every other wait.
+	RequestChanges bool `json:"request_changes,omitempty"`
 	// Merge is the merge gate passing for the caller now: Merge would go.
 	Merge bool `json:"merge"`
 	// PRReady lets the job's person mark its open draft ready for review.

@@ -41,6 +41,9 @@ type RunReport struct {
 	// recorded it, nil for no change. The factory keeps it, so a runner that
 	// takes the job again follows the same run rather than starting another.
 	AgentField *AgentFieldRun
+	// AgentFieldSteps are the runs behind the job's agentfield steps as the
+	// runner last recorded them, by step, each one whole; nil for no change.
+	AgentFieldSteps map[string]*AgentFieldRun `json:",omitempty"`
 	// Models is the priced calls recorded since the previous report, by model.
 	// It rides a header, not the report body: a factory older than the field
 	// refuses an unknown JSON field and would drop the whole report.

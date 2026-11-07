@@ -197,7 +197,7 @@ var WhenWords = []string{"always", "thin", "large", "touches auth", "has ui"}
 var EffortWords = []string{"cheap", "strong"}
 
 // StageKinds are what may run a stage, in the order the manual names them.
-var StageKinds = []StageKind{StageChat, StageCheck, StageGate, StagePost}
+var StageKinds = []StageKind{StageChat, StageCheck, StageGate, StagePost, StageAgentField}
 
 func oneOf(word string, words []string) bool {
 	for _, w := range words {

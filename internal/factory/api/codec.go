@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,7 +154,7 @@ func FromItem(it factory.Item) Job {
 		factory.MarkPersonStopped(&it)
 	}
 	j := Job{
-		FromJob: it.FromJob, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField,
+		FromJob: it.FromJob, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField, AgentFieldSteps: it.AgentFieldSteps,
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
@@ -235,7 +236,7 @@ func needsYou(it factory.Item) *NeedsYou {
 		return nil
 	}
 	ny := &NeedsYou{Kind: kind, Since: factory.NeedsSince(it), WhoCanAnswer: factory.WhoCanAnswer(kind)}
-	if it.QKind == factory.QKindSpendStopped {
+	if it.QKind == factory.QKindSpendStopped || it.QKind == factory.QKindAgentField {
 		ny.WhoCanAnswer = factory.WhoJobPerson
 	}
 	if who := factory.WaitingApprover(it); who != "" && factory.JobPersonOnly(kind) {
@@ -267,6 +268,11 @@ func stuckBackTo(it factory.Item) string {
 }
 
 func needsQuestion(it factory.Item) *NeedsQuestion {
+	if it.QKind == factory.QKindAgentField {
+		if w := factory.AgentFieldWaiting(it); w != nil {
+			return agentFieldQuestion(it, *w)
+		}
+	}
 	form, options, who := factory.QuestionForm(it)
 	q := &NeedsQuestion{
 		ID: itQuestionID(it.ID), Kind: form, Text: it.Question, Options: options, WhoCanAnswer: who,
@@ -282,7 +288,66 @@ func needsQuestion(it factory.Item) *NeedsQuestion {
 	if asks := it.Person(); asks != "" {
 		q.Asks = asks
 	}
+	if a := it.Asking; a != nil {
+		q.Pick, q.Why = a.Pick, a.Why
+	}
 	return q
+}
+
+// AgentFieldApprovalOptions are an AgentField approval's answers, in the
+// order the person reads them: approved, request_changes with their words,
+// rejected.
+var AgentFieldApprovalOptions = []string{"Approve", "Ask for changes", "Reject"}
+
+// agentFieldQuestion is a run's pause for a person as the job's question:
+// the reasoner's question, the whole body it asks the person to approve, and
+// which round of it this is. ONLY THE JOB'S PERSON ANSWERS IT.
+func agentFieldQuestion(it factory.Item, w factory.AgentFieldWait) *NeedsQuestion {
+	q := &NeedsQuestion{
+		ID: itQuestionID(it.ID) + ":" + firstNonBlank(w.RequestID, w.Execution+"@"+strconv.FormatInt(w.At.Unix(), 10)), Kind: factory.QKindAgentField,
+		Text: factory.AgentFieldQuestion(w), Body: w.Body, Options: append([]string(nil), AgentFieldApprovalOptions...),
+		FromStep: w.Step, WhoCanAnswer: factory.WhoJobPerson, ApprovalKind: w.Kind, Node: w.Node, URL: w.URL,
+	}
+	run := agentFieldRunWaiting(it, w)
+	if run == nil {
+		q.Round = 1
+		return q
+	}
+	q.Round = max(1, len(run.Asks))
+	if n := len(run.Asks); n >= 2 {
+		q.PreviousBody = run.Asks[n-2].Body
+	}
+	for i := len(run.Decisions) - 1; i >= 0; i-- {
+		if d := run.Decisions[i]; d.Decision == "request_changes" {
+			if q.Round > 1 {
+				q.Note = d.Words
+			}
+			break
+		}
+	}
+	return q
+}
+
+// agentFieldRunWaiting is the run record that holds the wait w.
+func agentFieldRunWaiting(it factory.Item, w factory.AgentFieldWait) *factory.AgentFieldRun {
+	if it.AgentField != nil && it.AgentField.Waiting != nil && it.AgentField.Waiting.Execution == w.Execution {
+		return it.AgentField
+	}
+	for _, r := range it.AgentFieldSteps {
+		if r != nil && r.Waiting != nil && r.Waiting.Execution == w.Execution {
+			return r
+		}
+	}
+	return nil
+}
+
+func firstNonBlank(v ...string) string {
+	for _, s := range v {
+		if strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
 }
 
 func itQuestionID(id int) string { return fmt.Sprintf("q%d", id) }
@@ -351,7 +416,15 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	queued := state == StateQueued && it.State == factory.StateQueued
 	running := state == StateRunning && it.State == factory.StateRunning && !it.Publishing
 	held := (queued || running) && it.Stream != nil && it.Stream.Paused
-	return Can{
+	// AN AGENTFIELD RUN'S APPROVAL IS THE JOB'S PERSON'S: approve, ask for
+	// changes with words, or reject — the three answers the control plane
+	// takes (the app's local factory carries them to it).
+	afApproval := it.State == factory.StateNeedsYou && it.QKind == factory.QKindAgentField && factory.AgentFieldWaiting(it) != nil &&
+		(person == "" || person == factory.NormalizeHandle(caller) || owner)
+	if afApproval {
+		approve = true
+	}
+	can := Can{
 		Run: owner && state == StateBacklog, StartNow: owner && (state == StateBacklog || queued && !it.OverLimit),
 		Hold: owner && (queued || running) && !held, Resume: owner && held,
 		Close: owner && state != StateDone, Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
@@ -365,6 +438,10 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 		Merge:       owner && factory.NormalizeHandle(caller) != "" && factory.MergeGate(it, factory.MergeAsk{By: caller}).OK,
 		Restore:     owner && factory.JobDoneHow(it) == "dropped",
 	}
+	if afApproval {
+		can.RejectPlan, can.RequestChanges = true, true
+	}
+	return can
 }
 
 // AsOperator grants what an approval that waits on the factory's operators
@@ -488,7 +565,7 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
-		FromJob: j.FromJob, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField,
+		FromJob: j.FromJob, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField, AgentFieldSteps: j.AgentFieldSteps,
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
 		Owners: append([]string(nil), j.Owners...),
@@ -758,12 +835,12 @@ func toRecipe(p Pipeline) factory.Recipe {
 }
 
 func fromStage(s factory.Stage) StepDef {
-	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Parent: s.Parent, Group: s.Group, GroupLabel: s.GroupLabel, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
+	return StepDef{Name: s.Name, Label: strings.TrimSpace(s.Label), Parent: s.Parent, Group: s.Group, GroupLabel: s.GroupLabel, Target: s.Target, Input: s.Input, Kind: string(s.Kind), Ask: s.Ask, Until: s.Until, Max: s.Max, Fixed: s.Fixed,
 		Custom: custom(s), Off: !s.On, When: s.When, Effort: s.Effort, UseModel: s.Model, Fanout: s.Fanout, Proof: s.Proof, Why: s.Why, By: s.By, Who: s.Who}
 }
 
 func toStage(d StepDef) factory.Stage {
-	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Parent: d.Parent, Group: d.Group, GroupLabel: d.GroupLabel, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
+	return factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Parent: d.Parent, Group: d.Group, GroupLabel: d.GroupLabel, Target: d.Target, Input: d.Input, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Max: d.Max, Fixed: d.Fixed,
 		On: !d.Off, When: d.When, Effort: d.Effort, Model: d.UseModel, Fanout: d.Fanout, Proof: d.Proof, Why: d.Why, By: d.By, Who: d.Who}
 }
 
@@ -1093,6 +1170,7 @@ func steps(it factory.Item) []Step {
 	for ; j < len(phases); j++ {
 		out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
 	}
+	out = withAgentFieldSteps(it, out)
 	// A persisted decision owns the current step even if an older worker
 	// left its phase marked running. Do not draw an idle working timer.
 	if it.State == factory.StateNeedsYou && it.Question != "" && it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(phases) {
@@ -1335,4 +1413,34 @@ func runnerOf(it factory.Item) string {
 		return factory.AgentFieldRunner(it)
 	}
 	return it.WorktreeMachine
+}
+
+// withAgentFieldSteps places each agentfield step's run right after the step:
+// every execution of the run is a step of its own, a top-level call naming
+// the agentfield step as its parent, so the run folds under it on the rail
+// exactly as a RunOn job's nested calls fold under theirs.
+func withAgentFieldSteps(it factory.Item, steps []Step) []Step {
+	if len(it.AgentFieldSteps) == 0 {
+		return steps
+	}
+	out := make([]Step, 0, len(steps))
+	for _, s := range steps {
+		out = append(out, s)
+		r := it.AgentFieldSteps[s.Name]
+		if r == nil {
+			continue
+		}
+		for k, st := range r.Stages {
+			def := fromStage(st)
+			if def.Parent == "" {
+				def.Parent = s.Name
+			}
+			c := Step{StepDef: def, State: StepPending, InPipeline: false}
+			if k < len(r.Phases) && r.Phases[k].Name == st.Name {
+				c = runStep(c, r.Phases[k])
+			}
+			out = append(out, c)
+		}
+	}
+	return out
 }
