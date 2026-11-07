@@ -552,6 +552,24 @@ func (c *Client) Result(ctx context.Context, execution string) (json.RawMessage,
 	return out.Result, err
 }
 
+// Naming is how a reasoner says its calls are named, in its own tags: Label
+// from "label:<words>", the step's label in a person's words, and Fanout from
+// "label_fanout:<field.path>", the input field whose value tells one call from
+// its siblings ("label_fanout:issue.title"). Both are "" when the reasoner
+// declares nothing. THE CONVENTION IS THE FACTORY'S, NOT ANY ONE PIPELINE'S:
+// any reasoner may declare either tag.
+func (r Reasoner) Naming() (label, fanout string) {
+	for _, tag := range r.Tags {
+		if v, ok := strings.CutPrefix(tag, "label:"); ok && label == "" {
+			label = strings.TrimSpace(v)
+		}
+		if v, ok := strings.CutPrefix(tag, "label_fanout:"); ok && fanout == "" {
+			fanout = strings.TrimSpace(v)
+		}
+	}
+	return label, fanout
+}
+
 // NodeReasoners is one node the control plane knows, as GET /api/v1/nodes
 // lists it: its id, whether it is active now, and its reasoners.
 type NodeReasoners struct {

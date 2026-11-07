@@ -226,20 +226,25 @@ page and step rail, Start and Stop.
 The node's developer writes nothing for any of this: a reasoner that calls
 `a.Harness(...)` on the codeaf provider is watched and steerable by itself.
 
-## the names of an AgentField run's steps — why parallel steps read the same, a call's subject
+## the names of an AgentField run's steps — why parallel steps read the same, a call's subject, a label tag
 
-A run's step is labelled with its reasoner in words: `draft_reply` is
-`Draft reply`, and a role run by a verb is named by the role (`run_coder` is
-`Coder`, `run_qa` is `QA`). A reasoner called several times — a research run's
-investigations side by side, a build's coder for each issue — has each call
-told apart by its subject, read once from that call's input: a `subject`,
-`topic`, `title` or `name` field, or one inside an object of it (an `issue`'s
-title, an `option`'s name), else the first line of a `goal`, `task` or
-`description`, cut short. One word follows the reasoner (`Investigate
-goccy/go-json`), a phrase follows a dot (`Coder · add Len() to Ledger`). The
-group they make is still named by the reasoner (`Investigate`). A call whose
-input names nothing short keeps the reasoner's label alone; give the reasoner a
-`subject` field to name it.
+A run's step takes the label its reasoner declares on the control plane, in
+the reasoner's tags: `label:<words>` is the step's label (`label:Code` reads
+`Code`). Without one, the step is the reasoner's name in words, every word
+kept: `draft_reply` is `Draft reply`, `run_coder` is `Run coder`. codeaf
+guesses at no pipeline's own naming habits, so a reasoner that wants another
+label declares it.
+
+A call is told apart by its subject, read once from that call's input. A
+reasoner that declares `label_fanout:<field.path>` names the field
+(`label_fanout:issue.title`), and that value follows every call of it, even
+one called once (`Code · add Len() to Ledger`). Otherwise only a reasoner
+called several times gets a subject: a `subject`, `topic`, `title` or `name`
+field, or one inside an object of it, else the first line of a `goal`, `task`
+or `description`, cut short. One word follows the label (`Investigate
+goccy/go-json`), a phrase follows a dot. Calls that ran at once are one group,
+named by the words their labels share (`Investigate`). A call whose input names
+nothing short keeps its label alone.
 
 ## an AgentField job's budget, status and finish time — why Start is not greyed out
 

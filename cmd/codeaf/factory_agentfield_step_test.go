@@ -251,6 +251,7 @@ func TestFannedOutCallsAreNamedByTheirSubject(t *testing.T) {
 		{`{"question":"which json lib?","option":{"name":"goccy/go-json","why":"fast"}}`, "goccy/go-json"},
 		{`{"subject":"encoding/json","plan":{"options":[]}}`, "encoding/json"},
 		{`{"issue":{"name":"len-method","title":"add Len() to Ledger"},"iteration":1}`, "add Len() to Ledger"},
+		{`{"issue_title":"a field only one pipeline spells"}`, ""},
 		{`{"goal":"# Make the ledger report its size\n\nmore words"}`, "Make the ledger report its size"},
 		{`{"n":3}`, ""},
 	} {
@@ -272,7 +273,7 @@ func TestFannedOutCallsAreNamedByTheirSubject(t *testing.T) {
 		"e-1": `{"option":{"name":"goccy/go-json"}}`, "e-2": `{"option":{"name":"encoding/json"}}`, "e-3": `{"subject":"json-iterator/go"}`,
 	}}
 	r := &afRemote{}
-	steps := afFlattenNamed(root, r.subjectsFor(context.Background(), cp, root))
+	steps := afFlattenNamed(root, r.namesFor(context.Background(), cp, root))
 	var labels []string
 	for _, s := range steps[:3] {
 		labels = append(labels, s.label)
@@ -284,11 +285,47 @@ func TestFannedOutCallsAreNamedByTheirSubject(t *testing.T) {
 		t.Fatalf("labels = %v, %q", labels, steps[3].label)
 	}
 	// The input is read once per call, and never for a reasoner called once.
-	_ = r.subjectsFor(context.Background(), cp, root)
+	_ = r.namesFor(context.Background(), cp, root)
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 	if strings.Join(cp.inputReads, ",") != "e-1,e-2,e-3" {
 		t.Fatalf("inputs read: %v", cp.inputReads)
+	}
+}
+
+// A STEP IS NAMED THE WAY ITS REASONER SAYS: the label a reasoner declares in
+// its tags on the control plane ("label:<words>") is the step's label, and a
+// declared fan-out path ("label_fanout:<field.path>") is read from each call's
+// input and said after it, even for a reasoner called once. A reasoner that
+// declares nothing is its own name in words, every word kept: the factory
+// strips no prefix any one pipeline happens to use.
+func TestAReasonerNamesItsOwnSteps(t *testing.T) {
+	on := func(n agentfield.TreeNode) agentfield.TreeNode { n.AgentNodeID = "builder"; return n }
+	root := on(afNode("exec-root", "work_issue", "running", "2026-11-07T12:00:00Z", "",
+		on(afNode("e-code", "run_coder", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:05Z")),
+		on(afNode("e-check", "check_it", "succeeded", "2026-11-07T12:00:06Z", "2026-11-07T12:00:07Z")),
+		on(afNode("e-tidy", "run_tidy_up", "running", "2026-11-07T12:00:08Z", ""))))
+	cp := &afFakeCP{tree: root, inputs: map[string]string{"e-code": `{"issue":{"title":"add Len() to Ledger","name":"len"}}`},
+		nodes: []agentfield.NodeReasoners{{ID: "builder", Reasoners: []agentfield.Reasoner{
+			{ID: "run_coder", Tags: []string{"internal", "label:Code", "label_fanout:issue.title"}},
+			{ID: "check_it", Tags: []string{"label:Check it works"}},
+			{ID: "run_tidy_up"},
+		}}}}
+	r := &afRemote{}
+	steps := afFlattenNamed(root, r.namesFor(context.Background(), cp, root))
+	var labels []string
+	for _, s := range steps {
+		labels = append(labels, s.label)
+	}
+	if got := strings.Join(labels, " | "); got != "Code · add Len() to Ledger | Check it works | Run tidy up" {
+		t.Fatalf("labels = %s", got)
+	}
+	// The node list is read once for the run, and each declared input once.
+	_ = r.namesFor(context.Background(), cp, root)
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	if cp.nodeReads != 1 || strings.Join(cp.inputReads, ",") != "e-code" {
+		t.Fatalf("node reads %d, inputs read %v", cp.nodeReads, cp.inputReads)
 	}
 }
 

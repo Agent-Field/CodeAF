@@ -131,10 +131,17 @@ type afRemote struct {
 	// asked is when each waiting execution's approval was last read, so a
 	// pause is read once and then again only every afApprovalEvery.
 	asked map[string]time.Time
-	// subjects is each fanned-out call's subject, read once from its input
-	// (afSubjectOf); tried is when a read that failed was last tried.
+	// subjects is each named call's subject, read once from its input
+	// (afSubjectOf, or the path its reasoner declares); tried is when a read
+	// that failed was last tried.
 	subjects map[string]string
 	tried    map[string]time.Time
+	// naming is how each reasoner says its calls are named, by
+	// "<node>.<reasoner>" (agentfield.Reasoner.Naming), read from the node
+	// list once and again only for a reasoner it did not list, at most every
+	// afSubjectRetry (namingAt).
+	naming   map[string]afNaming
+	namingAt time.Time
 	// asking is each harness question being put to the job now, by
 	// job/execution/id, with how to withdraw it.
 	asking map[string]context.CancelFunc
@@ -417,7 +424,7 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 	if place.step != "" {
 		reserved = afReserved(it, place.step)
 	}
-	steps := afFlattenNamed(root, r.subjectsFor(ctx, client, root), reserved...)
+	steps := afFlattenNamed(root, r.namesFor(ctx, client, root), reserved...)
 	wait := r.waitOf(ctx, client, root, steps, place.recorded(it), place)
 	chats := map[string]string{}
 	for _, step := range steps {
@@ -535,14 +542,14 @@ type afStep struct {
 // reads the step — the rail, the chat, the activity — reads the label, so
 // it is never a code name like investigate_ncruces.
 func afFlatten(root agentfield.TreeNode, reserved ...string) []afStep {
-	return afFlattenNamed(root, nil, reserved...)
+	return afFlattenNamed(root, afNames{}, reserved...)
 }
 
 // afFlattenNamed is afFlatten with each call's subject (by execution, from
 // its input: afSubjectOf) in its label, so calls of one reasoner that fan
 // out read apart — "Investigate goccy/go-json", "Coder · add Len() to
 // Ledger" — while the group they make is still named by the reasoner's words.
-func afFlattenNamed(root agentfield.TreeNode, subjects map[string]string, reserved ...string) []afStep {
+func afFlattenNamed(root agentfield.TreeNode, names afNames, reserved ...string) []afStep {
 	count := map[string]int{}
 	var tally func(n agentfield.TreeNode)
 	tally = func(n agentfield.TreeNode) {
@@ -580,8 +587,11 @@ func afFlattenNamed(root agentfield.TreeNode, subjects map[string]string, reserv
 				seen[reasoner]++
 				n = seen[reasoner]
 			}
-			base := afLabel(reasoner)
-			step := afStep{node: c, name: afStepWord(reasoner, n, taken), parent: parent, label: afSubjectLabel(base, subjects[c.ExecutionID]), base: base}
+			base := names.labels[c.ExecutionID]
+			if base == "" {
+				base = afLabel(reasoner)
+			}
+			step := afStep{node: c, name: afStepWord(reasoner, n, taken), parent: parent, label: afSubjectLabel(base, names.subjects[c.ExecutionID]), base: base}
 			named[i] = step
 		}
 		afGroup(named)
@@ -689,14 +699,9 @@ func afLabel(reasoner string) string {
 	if len(words) == 0 {
 		return strings.TrimSpace(reasoner)
 	}
-	// A ROLE IS NAMED BY WHAT IT IS, NOT BY THE VERB THAT RUNS IT: run_coder
-	// is "Coder", run_qa "QA" (a short role reads as an initialism).
-	if len(words) > 1 && strings.EqualFold(words[0], "run") {
-		words = words[1:]
-		if len(words) == 1 && utf8.RuneCountInString(words[0]) <= 2 {
-			words[0] = strings.ToUpper(words[0])
-		}
-	}
+	// EVERY WORD IS KEPT. A reasoner that wants another label declares it
+	// (agentfield.Reasoner.Naming); the factory guesses at no pipeline's
+	// naming habits, so run_coder reads "Run coder".
 	first := []rune(words[0])
 	first[0] = unicode.ToUpper(first[0])
 	words[0] = string(first)
@@ -1506,30 +1511,52 @@ const afSubjectRetry = 30 * time.Second
 // afSubjectMost is how long a subject may be in a label, in characters.
 const afSubjectMost = 48
 
-// subjectsFor is the subject of every call in the run whose reasoner is called
-// more than once, read from each call's input on the control plane ONCE and
-// kept. A call of a reasoner called once needs none: its label already says
-// which it is.
-func (r *afRemote) subjectsFor(ctx context.Context, client afClient, root agentfield.TreeNode) map[string]string {
+// afNames is how each call of a run is named, by execution id: the label its
+// reasoner declares, and the subject read from its input.
+type afNames struct {
+	labels, subjects map[string]string
+}
+
+// afNaming is one reasoner's declared label and fan-out path.
+type afNaming struct{ label, fanout string }
+
+// namesFor names every call in the run. A call's label is the one its
+// reasoner declares on the control plane, else its name in words (afLabel).
+// Its subject is the value at the input path its reasoner declares, else,
+// for a reasoner called more than once, the input's own subject (afSubjectOf).
+// Each input is read ONCE and kept; a reasoner called once with nothing
+// declared needs none, because its label already says which it is.
+func (r *afRemote) namesFor(ctx context.Context, client afClient, root agentfield.TreeNode) afNames {
+	count := map[string]int{}
+	var all []agentfield.TreeNode
+	var walk func(n agentfield.TreeNode, node string)
+	walk = func(n agentfield.TreeNode, node string) {
+		for _, c := range n.Children {
+			if c.AgentNodeID == "" {
+				c.AgentNodeID = node
+			}
+			count[afReasoner(c)]++
+			all = append(all, c)
+			walk(c, c.AgentNodeID)
+		}
+	}
+	walk(root, root.AgentNodeID)
+	naming := r.namingFor(ctx, client, all)
+	labels := map[string]string{}
+	for _, c := range all {
+		if d := naming[afNamingKey(c)]; d.label != "" {
+			labels[c.ExecutionID] = d.label
+		}
+	}
 	inputs, ok := client.(interface {
 		ExecutionInput(context.Context, string) (json.RawMessage, error)
 	})
 	if !ok {
-		return nil
+		return afNames{labels: labels}
 	}
-	count := map[string]int{}
-	var all []agentfield.TreeNode
-	var walk func(n agentfield.TreeNode)
-	walk = func(n agentfield.TreeNode) {
-		for _, c := range n.Children {
-			count[afReasoner(c)]++
-			all = append(all, c)
-			walk(c)
-		}
-	}
-	walk(root)
 	now := r.clock()
-	var need []string
+	type want struct{ exec, fanout string }
+	var need []want
 	func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -1537,7 +1564,8 @@ func (r *afRemote) subjectsFor(ctx context.Context, client afClient, root agentf
 			r.subjects, r.tried = map[string]string{}, map[string]time.Time{}
 		}
 		for _, c := range all {
-			if count[afReasoner(c)] < 2 || c.ExecutionID == "" {
+			fanout := naming[afNamingKey(c)].fanout
+			if (fanout == "" && count[afReasoner(c)] < 2) || c.ExecutionID == "" {
 				continue
 			}
 			if _, have := r.subjects[c.ExecutionID]; have {
@@ -1547,38 +1575,127 @@ func (r *afRemote) subjectsFor(ctx context.Context, client afClient, root agentf
 				continue
 			}
 			r.tried[c.ExecutionID] = now
-			need = append(need, c.ExecutionID)
+			need = append(need, want{c.ExecutionID, fanout})
 		}
 	}()
 	got := map[string]string{}
-	for _, exec := range need {
-		if raw, err := inputs.ExecutionInput(ctx, exec); err == nil {
-			got[exec] = afSubjectOf(raw)
+	for _, w := range need {
+		raw, err := inputs.ExecutionInput(ctx, w.exec)
+		if err != nil {
+			continue
 		}
+		subject := afPathValue(raw, w.fanout)
+		if subject == "" {
+			subject = afSubjectOf(raw)
+		}
+		got[w.exec] = subject
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for exec, s := range got {
 		r.subjects[exec] = s
 	}
-	out := make(map[string]string, len(r.subjects))
+	subjects := make(map[string]string, len(r.subjects))
 	for exec, s := range r.subjects {
-		out[exec] = s
+		subjects[exec] = s
+	}
+	return afNames{labels: labels, subjects: subjects}
+}
+
+// afNamingKey is the key a call's reasoner is declared under.
+func afNamingKey(n agentfield.TreeNode) string {
+	return n.AgentNodeID + "." + afReasoner(n)
+}
+
+// namingFor is every reasoner's declared naming the run's calls need, read
+// from the control plane's node list once, and again only when a call names a
+// reasoner the last read did not list, at most every afSubjectRetry. A client
+// that cannot list nodes declares nothing.
+func (r *afRemote) namingFor(ctx context.Context, client afClient, calls []agentfield.TreeNode) map[string]afNaming {
+	lister, ok := client.(interface {
+		Nodes(context.Context) ([]agentfield.NodeReasoners, error)
+	})
+	now := r.clock()
+	read := func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if !ok || (!r.namingAt.IsZero() && now.Sub(r.namingAt) < afSubjectRetry) {
+			return false
+		}
+		if r.naming == nil {
+			return true
+		}
+		for _, c := range calls {
+			if _, known := r.naming[afNamingKey(c)]; !known {
+				return true
+			}
+		}
+		return false
+	}()
+	if read {
+		nodes, err := lister.Nodes(ctx)
+		func() {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			r.namingAt = now
+			if err != nil {
+				return
+			}
+			r.naming = map[string]afNaming{}
+			for _, n := range nodes {
+				for _, re := range n.Reasoners {
+					label, fanout := re.Naming()
+					r.naming[n.ID+"."+re.ID] = afNaming{label, fanout}
+				}
+			}
+		}()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]afNaming, len(r.naming))
+	for k, v := range r.naming {
+		out[k] = v
 	}
 	return out
+}
+
+// afPathValue is the short text at a dotted path of the input ("issue.title"),
+// cut to afSubjectMost; "" for no path, no such field, or one that is not a
+// line of text.
+func afPathValue(raw json.RawMessage, path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	var cur any
+	if json.Unmarshal(raw, &cur) != nil {
+		return ""
+	}
+	for _, key := range strings.Split(path, ".") {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		cur = obj[key]
+	}
+	s, ok := cur.(string)
+	if !ok {
+		return ""
+	}
+	return afCut(afFirstLine(s))
 }
 
 // afSubjectKeys are the input fields that name a call's subject, best first;
 // afSummaryKeys are the fields whose first line summarises it when none does.
 var (
-	afSubjectKeys = []string{"subject", "topic", "title", "issue_title", "name", "issue_name", "option", "package", "repo"}
+	afSubjectKeys = []string{"subject", "topic", "title", "name", "option", "package", "repo"}
 	afSummaryKeys = []string{"goal", "task", "summary", "description", "prompt", "question", "body"}
 )
 
 // afSubjectOf is the few words that tell one call of a reasoner from its
 // siblings: a short subject, topic or name field of its input, or of an
-// object in it (SWE-AF's issue: {title}, the research example's option:
-// {name}), else the first line of a summary field, cut to afSubjectMost.
+// object in it ({"issue": {"title": …}}, {"option": {"name": …}}), else the
+// first line of a summary field, cut to afSubjectMost. It is the guess for a
+// reasoner that declares no fan-out path (afPathValue reads one that does).
 // "" when the input says nothing short.
 func afSubjectOf(raw json.RawMessage) string {
 	var in map[string]any

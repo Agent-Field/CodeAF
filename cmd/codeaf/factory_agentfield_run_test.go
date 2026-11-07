@@ -52,6 +52,10 @@ type afFakeCP struct {
 	// inputs is each execution's input; inputReads every read of one.
 	inputs     map[string]string
 	inputReads []string
+	// nodes is the node list GET /api/v1/nodes answers, when a test names
+	// one; nodeReads counts the reads of it.
+	nodes     []agentfield.NodeReasoners
+	nodeReads int
 }
 
 func (f *afFakeCP) ExecutionInput(_ context.Context, exec string) (json.RawMessage, error) {
@@ -90,6 +94,12 @@ func (f *afFakeCP) ResolveApproval(_ context.Context, exec, decision, reason str
 
 // Nodes is the control plane's nodes, as GET /api/v1/nodes lists them.
 func (f *afFakeCP) Nodes(context.Context) ([]agentfield.NodeReasoners, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nodeReads++
+	if f.nodes != nil {
+		return f.nodes, nil
+	}
 	return []agentfield.NodeReasoners{{ID: "swe-planner", HealthStatus: "active", Reasoners: []agentfield.Reasoner{{ID: "build_issue", Description: "build an issue",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"issue_number":{"type":"integer"},"plan_review":{"type":"boolean"},"config":{"type":"object"}},"required":["title"]}`)}}}}, nil
 }
@@ -1063,10 +1073,11 @@ func TestARunsStepNamesReadAsWords(t *testing.T) {
 		"plan":                "Plan",
 		"handle_ticket.v2":    "Handle ticket v2",
 		"__":                  "__",
-		"run_coder":           "Coder",
-		"run_qa":              "QA",
-		"run_code_reviewer":   "Code reviewer",
-		"run":                 "Run",
+		// EVERY WORD IS KEPT: a label a pipeline wants is declared on its
+		// reasoner (TestAReasonerNamesItsOwnSteps), never guessed here.
+		"run_coder":         "Run coder",
+		"run_code_reviewer": "Run code reviewer",
+		"run":               "Run",
 	} {
 		if got := afLabel(in); got != want {
 			t.Errorf("afLabel(%q) = %q, want %q", in, got, want)
