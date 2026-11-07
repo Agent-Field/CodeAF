@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package executor
 
@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -80,18 +81,23 @@ func newFenceWorld(t *testing.T, allow FenceAllow) fenceWorld {
 	return w
 }
 
-// requireFence skips where the kernel can apply none of the fence and
-// answers whether it applies all of it (user namespaces as well as Landlock).
+// requireFence skips where this system can apply none of the fence and
+// answers whether it applies all of it: macOS's sandbox, or Linux with user
+// namespaces as well as Landlock.
 func requireFence(t *testing.T) (full bool) {
 	t.Helper()
-	switch thisFenceMode() {
-	case fenceNone:
-		t.Skip("this kernel has neither Landlock nor user namespaces")
-	case fenceFull:
+	switch fenceLimit() {
+	case FenceDegradedLine:
+		t.Skip("this system cannot confine commands")
+	case "":
 		return true
 	}
 	return false
 }
+
+// jobOwnsTmp is whether /tmp is the job's own temp folder: Linux binds it in
+// a mount namespace; macOS keeps the system's, which TMPDIR steers away from.
+func jobOwnsTmp(full bool) bool { return full && runtime.GOOS == "linux" }
 
 func (w fenceWorld) run(t *testing.T, script string) ExecResult {
 	t.Helper()
@@ -169,7 +175,7 @@ func TestAFencedStepStillWorksInsideItsJob(t *testing.T) {
 	// THE PRIVATE /tmp IS THE JOB'S OWN TEMP FOLDER, so what one call left there
 	// is there for the next and nowhere else. With Landlock alone there is no
 	// mount namespace to bind it in, and /tmp stays the shared one.
-	if !full {
+	if !jobOwnsTmp(full) {
 		return
 	}
 	if _, err := os.Stat(filepath.Join(w.fence.Tmp, "scratch")); err != nil {
