@@ -367,7 +367,12 @@ turns away itself (an OpenRouter management key) says why in codeaf's words. Whi
 app connects, and how, is *Connecting a provider from the app* below. The GitHub token
 pasted while setting up the app's factory is kept the same way and handed back at every
 launch, so the factory stays connected after a restart; choosing gh's own login keeps only
-that choice, and gh keeps its token.
+that choice, and gh keeps its token. The same is true of a Jira token and of an AgentField
+control plane's API key (and the node secret codeaf made for it): codeaf hands each one to
+the app to keep in the keychain when it is connected, the app hands it back at the next
+launch, and disconnecting removes the kept copy too. An app older than this does not keep
+them, and then the factory's Jira or AgentField connection is gone after a restart until it
+is connected again.
 
 The app's day cap is the profile's daily limit, the same one `/budget day` sets: setup,
 Settings and the terminal all read and change that one figure, and a cap an older app

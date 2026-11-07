@@ -358,6 +358,10 @@ type StepDef struct {
 	// "@handle" for a named person, operator for any of the factory's
 	// operators (factory.ApproverWord).
 	Who string `json:"who,omitempty"`
+	// Pass is who may pass an approve step: person, manager, or `manager when
+	// <condition>` (factory.PassWord); absent when the pipeline does not say,
+	// which reads as manager, or person on a fixed step.
+	Pass string `json:"pass,omitempty"`
 }
 
 // Job states, as the API says them (ARCHITECTURE §2).
@@ -900,6 +904,10 @@ type Step struct {
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	// Model is the model the step's conversation ran on, once it ran.
 	Model string `json:"model,omitempty"`
+	// Passed is who passed an approve step, once it is done: the manager (in
+	// Auto) or a person (by handle when known), and the manager's sentence
+	// when it judged a `manager when` condition. Absent on every other step.
+	Passed *StepPassed `json:"passed,omitempty"`
 	// RunsOn is the model a conversation step that has not finished runs on
 	// next, and the rung that named it ([factory.StepModel]); absent on a
 	// finished, skipped or non-conversation step, and where this factory
@@ -917,6 +925,13 @@ type Step struct {
 	// result, cost, tests and model already. A step without it (a pull from a
 	// factory older than the field) is read from result as before.
 	Report *StepResult `json:"report,omitempty"`
+}
+
+// StepPassed is who passed an approve step ([Step.Passed]).
+type StepPassed struct {
+	By     string `json:"by"` // manager or person
+	Handle string `json:"handle,omitempty"`
+	Why    string `json:"why,omitempty"`
 }
 
 // Claim is one row of a proof sheet.

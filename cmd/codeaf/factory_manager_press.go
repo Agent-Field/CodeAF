@@ -77,6 +77,11 @@ func pressPRDecision(ctx context.Context, press *localJobPress, it factory.Item,
 		if !factory.OffersPublishApproval(it) {
 			return "", errors.New("Nothing changed: no publication waits on an approval")
 		}
+		// ONLY A PERSON PASSES A PERSON'S APPROVE STEP: the manager never
+		// presses it, even with the person's words.
+		if st, _, ok := factory.WaitingGateStage(it); ok && factory.PersonOnly(st) {
+			return "", errors.New("Nothing changed: only a person can pass this approval; they press Approve on the job page")
+		}
 	case session.ActionMerge:
 		if v := factory.MergeOffered(it); !v.OK {
 			return "", errors.New("Nothing changed: merge is not offered: " + v.Why)

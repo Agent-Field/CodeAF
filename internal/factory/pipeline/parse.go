@@ -449,8 +449,19 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 				continue
 			}
 			step.Who = w
+		case "pass":
+			// AN UNREADABLE PASS WORD IS NEVER "THE MANAGER": the step is read
+			// as a person's alone, and the file says why.
+			s, ok := scalar(p.val)
+			w, good := factory.PassWord(s)
+			if !ok || !good {
+				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "pass is person, manager, or manager when <a condition the manager judges>; until it is one, only a person passes this step"})
+				step.Pass = factory.PassPerson
+				continue
+			}
+			step.Pass = w
 		default:
-			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until, a max and, for a person, who"})
+			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until, a max and, for a person, who and pass"})
 		}
 	}
 	// An unreadable condition costs a chat or a check money when it falls back
@@ -539,7 +550,7 @@ func (d draft) file(defaults bool) File {
 				base.Max = step.Max
 				base.wroteMax = true
 			}
-			base.Kind, base.When, base.Effort, base.Fanout, base.Who, base.hold = step.Kind, step.When, step.Effort, step.Fanout, step.Who, step.hold
+			base.Kind, base.When, base.Effort, base.Fanout, base.Who, base.Pass, base.hold = step.Kind, step.When, step.Effort, step.Fanout, step.Who, step.Pass, step.hold
 			if base.Kind != "" {
 				// A shipped prompt and stop sentence are words for a model. A
 				// check would run the prompt in a shell and a post would read it
@@ -627,6 +638,11 @@ func (f *File) clean(requireStep bool) {
 		if step.Who != "" && !factory.ApproveWord(name) && step.Kind != string(factory.StageGate) {
 			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".who", Why: "only approve or a gate waits on someone"})
 			step.Who = ""
+			f.Steps[name] = step
+		}
+		if step.Pass != "" && !factory.ApproveWord(name) && step.Kind != string(factory.StageGate) {
+			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".pass", Why: "only approve or a gate is passed by someone"})
+			step.Pass = ""
 			f.Steps[name] = step
 		}
 		if factory.ApproveWord(name) {

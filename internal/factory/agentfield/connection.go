@@ -242,18 +242,18 @@ func newSecret() (string, error) {
 	return hex.EncodeToString(raw), nil
 }
 
-// keepSecrets keeps both where the GitHub token is kept: with the app's keys
-// in app mode, otherwise in the profile.
+// keepSecrets keeps both where the GitHub token is kept: handed to the app to
+// keep in app mode (config.AppCredentials.Keep), otherwise in the profile.
 func keepSecrets(profile, key, secret string) error {
 	redact.Register(key)
 	redact.Register(secret)
 	if keys := config.AppCredentialSource(); keys != nil {
 		if key != "" {
-			keys.Set(config.AppAgentFieldProvider, key)
+			keys.Keep(config.AppAgentFieldProvider, key)
 		} else {
-			keys.Remove(config.AppAgentFieldProvider)
+			keys.Forget(config.AppAgentFieldProvider)
 		}
-		keys.Set(config.AppAgentFieldNodeProvider, secret)
+		keys.Keep(config.AppAgentFieldNodeProvider, secret)
 		return nil
 	}
 	return config.WriteAgentFieldSecrets(profile, key, secret)
@@ -261,8 +261,8 @@ func keepSecrets(profile, key, secret string) error {
 
 func forgetSecrets(profile string) error {
 	if keys := config.AppCredentialSource(); keys != nil {
-		keys.Remove(config.AppAgentFieldProvider)
-		keys.Remove(config.AppAgentFieldNodeProvider)
+		keys.Forget(config.AppAgentFieldProvider)
+		keys.Forget(config.AppAgentFieldNodeProvider)
 		return nil
 	}
 	if config.AgentFieldKeyAt(profile) == "" && config.AgentFieldNodeSecretAt(profile) == "" {

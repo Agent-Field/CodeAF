@@ -258,11 +258,12 @@ func zoneOf(name string) *time.Location {
 	return nil
 }
 
-// keepToken keeps the token where the GitHub token is kept: with the app's
-// keys in app mode, otherwise in the profile.
+// keepToken keeps the token where the GitHub token is kept: handed to the
+// app to keep in app mode (config.AppCredentials.Keep), otherwise in the
+// profile.
 func keepToken(profile, token string) error {
 	if keys := config.AppCredentialSource(); keys != nil {
-		keys.Set(config.AppJiraProvider, token)
+		keys.Keep(config.AppJiraProvider, token)
 		return nil
 	}
 	return config.WriteJiraToken(profile, token)
@@ -270,7 +271,7 @@ func keepToken(profile, token string) error {
 
 func forgetToken(profile string) error {
 	if keys := config.AppCredentialSource(); keys != nil {
-		keys.Remove(config.AppJiraProvider)
+		keys.Forget(config.AppJiraProvider)
 		return nil
 	}
 	if config.JiraTokenAt(profile) == "" {

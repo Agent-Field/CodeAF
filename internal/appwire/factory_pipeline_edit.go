@@ -111,6 +111,13 @@ const FeatureFactoryPipelineEditChecks = "factory.pipeline_edit_checks"
 // file its factory attested. The source's steps then carry their who.
 const FeatureFactoryPipelineEditApprovers = "factory.pipeline_edit_approvers"
 
+// FeatureFactoryPipelineEditPass is announced beside FeatureFactoryPipelineEditSettings
+// when this engine previews set_pass and pass on an added gate: who may pass
+// an approve step, person, manager, or `manager when <condition>`. A step that
+// says one spells `pass`, a runtime key, so the preview takes it only for a
+// file its factory attested. The source's steps then carry their pass.
+const FeatureFactoryPipelineEditPass = "factory.pipeline_edit_pass"
+
 // FeatureFactoryPipelineEditAdaptKind is announced beside FeatureFactoryPipelineEditSettings
 // when this engine previews set_adapt with a pipeline (one word for one
 // pipeline, the file then writing `adapt:` as a map of kind to word) and its
@@ -172,6 +179,7 @@ const (
 	PipelineEditSetFixed    = pipeline.OpSetFixed
 	PipelineEditSetStart    = pipeline.OpSetStart
 	PipelineEditSetApprover = pipeline.OpSetApprover
+	PipelineEditSetPass     = pipeline.OpSetPass
 	PipelineEditRenameStep  = pipeline.OpRenameStep
 
 	PipelineEditAddPipeline    = pipeline.OpAddPipeline
@@ -310,7 +318,7 @@ type FactoryPipelineSource struct {
 // is in the list once (ignoring case for rules and ask_first, exactly for
 // never); a list holds at most 40 lines and is set once per preview.
 type FactoryPipelineEdit struct {
-	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start,set_approver,rename_step,add_pipeline,remove_pipeline,rename_pipeline"`
+	Op       string   `json:"op" enum:"set_step,set_budget,add_step,remove_step,move_step,set_list,set_adapt,set_fixed,set_start,set_approver,set_pass,rename_step,add_pipeline,remove_pipeline,rename_pipeline"`
 	Name     string   `json:"name,omitempty"`
 	Pipeline string   `json:"pipeline,omitempty"`
 	After    *string  `json:"after,omitempty"`
@@ -340,6 +348,10 @@ type FactoryPipelineEdit struct {
 	// (feature factory.pipeline_edit_approvers, and factory.pipeline_edit_gates
 	// for the add_step): "@handle", operator, or "".
 	Who *string `json:"who,omitempty"`
+	// Pass belongs to set_pass, with Name, and to an add_step of kind gate
+	// (feature factory.pipeline_edit_pass): person, manager, or
+	// `manager when <condition>`. A gate added without one is a person's.
+	Pass *string `json:"pass,omitempty"`
 	// To belongs to rename_step, with Name (feature
 	// factory.pipeline_edit_rename): the step's new name, spelled as a step
 	// is (2 to 32 of a-z, 0-9 and inner hyphens; 2 to 12 once hyphens are
@@ -600,6 +612,13 @@ type FactoryPipelineApproversEditor interface {
 	PipelineApproverEdits()
 }
 
+// FactoryPipelinePassEditor is implemented ONLY by a settings editor whose
+// preview applies set_pass and pass on an added gate. Without it both are
+// refused before the engine is asked, and the feature is not announced.
+type FactoryPipelinePassEditor interface {
+	PipelinePassEdits()
+}
+
 // FactoryPipelineAdaptKindEditor is implemented ONLY by a settings editor whose
 // preview applies set_adapt with a pipeline and whose source carries
 // adapt_kinds. Without it a pipeline on set_adapt is refused before the engine
@@ -647,6 +666,9 @@ func withFactoryPipelineEditFeature(hello Hello, e Engine) Hello {
 				if _, approvers := e.(FactoryPipelineApproversEditor); approvers {
 					hello = withFeature(hello, FeatureFactoryPipelineEditApprovers)
 				}
+				if _, pass := e.(FactoryPipelinePassEditor); pass {
+					hello = withFeature(hello, FeatureFactoryPipelineEditPass)
+				}
 				if _, kinds := e.(FactoryPipelineAdaptKindEditor); kinds {
 					hello = withFeature(hello, FeatureFactoryPipelineEditAdaptKind)
 				}
@@ -669,7 +691,7 @@ func PipelineEditOps(edits []FactoryPipelineEdit) []pipeline.EditOp {
 		}
 		ops[i] = pipeline.EditOp{Op: e.Op, Name: e.Name, Pipeline: e.Pipeline, After: e.After, Kind: kind, Label: e.Label, Prompt: e.Prompt, Until: e.Until, Max: e.Max,
 			When: e.When, Effort: e.Effort, Fanout: e.Fanout, Value: e.Value, List: e.List, Lines: e.Lines,
-			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who, To: e.To, Steps: e.Steps, From: e.From}
+			Adapt: e.Adapt, Fixed: e.Fixed, MaxSize: e.MaxSize, MaxCost: e.MaxCost, Who: e.Who, Pass: e.Pass, To: e.To, Steps: e.Steps, From: e.From}
 	}
 	return ops
 }
@@ -1000,6 +1022,13 @@ func checkSettingsServed(e Engine, edits []FactoryPipelineEdit) error {
 // checkApproversServed refuses who, on set_approver or on an added gate, to an
 // editor that has not said it previews one.
 func checkApproversServed(e Engine, edits []FactoryPipelineEdit) error {
+	if _, ok := e.(FactoryPipelinePassEditor); !ok {
+		for i, edit := range edits {
+			if edit.Op == PipelineEditSetPass || edit.Pass != nil {
+				return Errorf(CodeBadParams, "edit %d: this engine does not say who may pass an approval", i)
+			}
+		}
+	}
 	if _, ok := e.(FactoryPipelineApproversEditor); ok {
 		return nil
 	}
@@ -1026,7 +1055,7 @@ func checkAdaptKindServed(e Engine, edits []FactoryPipelineEdit) error {
 }
 
 func settingOp(op string) bool {
-	return op == PipelineEditSetAdapt || op == PipelineEditSetFixed || op == PipelineEditSetStart || op == PipelineEditSetApprover
+	return op == PipelineEditSetAdapt || op == PipelineEditSetFixed || op == PipelineEditSetStart || op == PipelineEditSetApprover || op == PipelineEditSetPass
 }
 
 func anySetting(edits []FactoryPipelineEdit) bool {

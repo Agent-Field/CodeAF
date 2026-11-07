@@ -570,10 +570,13 @@ type appBackend struct {
 	pluginOllama   appPluginOllama
 	pluginAuth     map[string]*appPluginAttempt
 	chats          appChats
-	pair           appPair
-	drives         *driveBook
-	sync           appSync
-	syncPending    map[string][]appSyncFact
+	// credentials is what a door gave this launch to keep, waiting for the
+	// app to take it (appkept_credentials.go).
+	credentials appKeptCredentials
+	pair        appPair
+	drives      *driveBook
+	sync        appSync
+	syncPending map[string][]appSyncFact
 
 	// devices observes existing sync traffic without starting a roster watch.
 	devices            *appDevices
@@ -1073,6 +1076,10 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	}
 	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
+	// A CREDENTIAL A DOOR GAVE THIS LAUNCH IS HANDED TO THE APP TO KEEP
+	// (config.AppCredentials.Keep, appkept_credentials.go), and comes back
+	// with keys.set at the next.
+	keys.OnKept(b.queueCredential)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()

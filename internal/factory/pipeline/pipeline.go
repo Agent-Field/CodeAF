@@ -159,6 +159,10 @@ type Step struct {
 	// Who is who a person step waits on ([factory.ApproverWord]): "" the job's
 	// person. Only approve and a gate take one.
 	Who string
+	// Pass is who may pass a person step ([factory.PassWord]): "" (a person
+	// or the manager, as before the key), person, manager, or `manager when
+	// <condition>`. Only approve and a gate take one.
+	Pass string
 
 	wrotePrompt bool
 	wroteUntil  bool
@@ -425,7 +429,7 @@ func (f File) stages(names []string) []factory.Stage {
 				continue
 			}
 			used[raw] = true
-			out = append(out, factory.Stage{Name: raw, Label: strings.TrimSpace(f.Steps[raw].Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who})
+			out = append(out, factory.Stage{Name: raw, Label: strings.TrimSpace(f.Steps[raw].Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who, Pass: f.Steps[raw].Pass})
 			continue
 		}
 		step, ok := f.Steps[raw]
@@ -463,13 +467,13 @@ func (f File) stages(names []string) []factory.Stage {
 		if free && kind == factory.StageChat {
 			ask = withStop(ask, step.Until)
 		}
-		who := ""
+		who, pass := "", ""
 		if kind == factory.StageGate {
-			who = step.Who
+			who, pass = step.Who, step.Pass
 		}
 		out = append(out, factory.Stage{
 			Name: name, Label: strings.TrimSpace(step.Label), Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
-			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who,
+			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who, Pass: pass,
 		})
 	}
 	return out

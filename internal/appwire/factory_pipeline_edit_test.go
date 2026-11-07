@@ -269,7 +269,7 @@ func TestFactoryPipelineEditSchemaIsTheDocumentedFieldsAndNothingElse(t *testing
 		reflect.TypeFor[FactoryPipelineSource](): {"factory", "repo", "path", "default_branch", "base_sha", "ref", "pr", "can_push", "archived", "runtime_fields", "state", "editable", "text", "problems",
 			"default_budget", "budget_in_file", "pipelines", "steps", "fixed", "rules", "ask_first", "never", "adapt", "labels", "max_size", "max_cost",
 			"adapt_kinds", "factory_copy", "copy_version", "can"},
-		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "pipeline", "after", "kind", "prompt", "label", "until", "max", "when", "effort", "fanout", "value", "list", "lines", "adapt", "fixed", "max_size", "max_cost", "who", "to", "steps", "from"},
+		reflect.TypeFor[FactoryPipelineEdit]():          {"op", "name", "pipeline", "after", "kind", "prompt", "label", "until", "max", "when", "effort", "fanout", "value", "list", "lines", "adapt", "fixed", "max_size", "max_cost", "who", "pass", "to", "steps", "from"},
 		reflect.TypeFor[FactoryPipelinePreviewParams](): {"factory", "repo", "base_sha", "base_text", "edits"},
 		reflect.TypeFor[FactoryPipelineStepValues]():    {"label", "prompt", "until", "max", "when", "effort", "fanout"},
 		reflect.TypeFor[FactoryPipelineStepChange]():    {"name", "fields", "before", "after"},

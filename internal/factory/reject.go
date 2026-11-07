@@ -43,6 +43,8 @@ func (it *Item) EndRejected(by, words string, now time.Time) {
 	it.Rejection = &Rejection{By: NormalizeHandle(by), Words: words, At: now}
 	it.State, it.Marked, it.Manual = StateNew, false, true
 	it.Publishing, it.Approval, it.StopUndo, it.Recovery = false, nil, nil, nil
+	// Who was passing it is spent by the answer, as by any answer to an approval.
+	it.Passing = nil
 	it.Question, it.QKind, it.Asking = "", "", nil
 	for i := range it.Thread {
 		if it.Thread[i].State == "pending" {

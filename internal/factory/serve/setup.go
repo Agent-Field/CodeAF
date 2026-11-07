@@ -523,7 +523,13 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 					return errors.New("codeaf could not keep this GitHub connection")
 				}
 			}
-			credentials.Set("github", token)
+			// A pasted token is handed to the app to keep (Keep); gh's own
+			// token is held for this launch only, since gh keeps it.
+			if body.Source == "gh" {
+				credentials.Set("github", token)
+			} else {
+				credentials.Keep("github", token)
+			}
 		} else {
 			if token != "" {
 				if err := h.setupScope(ctx, token); err != nil {

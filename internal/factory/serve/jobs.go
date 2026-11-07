@@ -1119,6 +1119,18 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 		if a.Automatic {
 			handle = it.Person()
 		}
+		// WHO IS PASSING IT goes on the job before the answer does, so the
+		// write that passes the approve step keeps it on the step: the
+		// manager for Auto's approval (with its reason when it judged a
+		// condition), else the person who pressed.
+		passing := &factory.Passed{By: factory.PassedByPerson, Handle: factory.NormalizeHandle(a.DecidedBy)}
+		if a.Automatic {
+			passing = &factory.Passed{By: factory.PassedByManager}
+			if j, ok := factory.PassJudged(it); ok && j.Yes {
+				passing.Why = j.Why
+			}
+		}
+		_ = h.config.Store.Update(it.ID, func(cur *factory.Item) error { cur.Passing = passing; return nil })
 		raw, _ := json.Marshal(api.Approve{Commit: a.Commit, Edited: a.Edited, Words: a.Words})
 		r, _ := http.NewRequestWithContext(context.WithValue(context.Background(), workerKey{}, lease.Worker{Handle: handle}), http.MethodPost, "/v1/jobs/approve", strings.NewReader(string(raw)))
 		r.SetPathValue("id", strconv.Itoa(it.ID))
@@ -1132,6 +1144,7 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 			if w.status() < 300 {
 				cp.State = "approved"
 			} else {
+				cur.Passing = nil
 				cp.State = "waiting"
 				var refusal refusalBody
 				_ = json.Unmarshal(w.body.Bytes(), &refusal)

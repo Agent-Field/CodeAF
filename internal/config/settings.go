@@ -1237,6 +1237,14 @@ var OperatorEnvPins = []string{
 	// (internal/githubcalls). It is for measuring one run's rate-limit spend, so
 	// it is not a setting anyone keeps.
 	"CODEAF_GITHUB_LOG",
+	// CODEAF_GITHUB_CLIENT_ID names the GitHub app the factory's browser
+	// sign-in asks for a device code (internal/factory/github). It is a
+	// build-time identity the release normally bakes in, so it is not a
+	// setting a person keeps.
+	"CODEAF_GITHUB_CLIENT_ID",
+	// CODEAF_GITHUB_LOGIN_URL points that same sign-in at a stand-in GitHub for
+	// tests. It is test plumbing, never a preference.
+	"CODEAF_GITHUB_LOGIN_URL",
 	// Opt-in developer profiling output and its bounded capture controls. These
 	// are process instrumentation, not persisted model or user preferences.
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
