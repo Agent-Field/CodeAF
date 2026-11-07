@@ -53,6 +53,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -78,7 +79,14 @@ type afClient interface {
 
 // afPlace is where a run's steps are written on its job: the job's own steps
 // (a RunOn job, step "") or under one agentfield step of its pipeline.
-type afPlace struct{ step string }
+type afPlace struct {
+	step string
+	// ask is the job's road for a harness step's question — its manager
+	// first, then the person (factoryrun.Job.Ask) — nil where the run has
+	// none, and life is how long such a question may wait: the step's.
+	ask  func(ctx context.Context, q factory.Asked) (string, error)
+	life context.Context
+}
 
 // runOf is the run record the place keeps on it, made when missing.
 func (p afPlace) runOf(it *factory.Item) *factory.AgentFieldRun {
@@ -123,6 +131,9 @@ type afRemote struct {
 	// asked is when each waiting execution's approval was last read, so a
 	// pause is read once and then again only every afApprovalEvery.
 	asked map[string]time.Time
+	// asking is each harness question being put to the job now, by
+	// job/execution/id, with how to withdraw it.
+	asking map[string]context.CancelFunc
 }
 
 // afApprovalEvery is how often a waiting execution's approval is read again
@@ -242,7 +253,8 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	if err != nil {
 		return factory.StageResult{}, err
 	}
-	place := afPlace{step: st.Name}
+	place := afPlace{step: st.Name, ask: job.Ask, life: ctx}
+	defer r.dropAsks(it.ID)
 	run := place.recorded(it)
 	if run == nil || run.ExecutionID == "" || !run.Ended.IsZero() {
 		fresh, err := r.dispatch(ctx, client, node, target, factory.AgentFieldInput(it, st))
@@ -405,7 +417,7 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 	wait := r.waitOf(ctx, client, root, steps, place.recorded(it), place)
 	chats := map[string]string{}
 	for _, step := range steps {
-		if m := r.pull(ctx, client, it, step); m != nil {
+		if m := r.pull(ctx, client, it, step, place); m != nil {
 			chats[step.node.ExecutionID] = m.file
 		}
 	}
@@ -697,7 +709,7 @@ func afEnd(n agentfield.TreeNode) time.Time {
 // pull keeps one step's conversation: every relayed line after the last one
 // kept is appended, then the record says so, then the control plane is told.
 // It answers the step's conversation, nil while it has none.
-func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, step afStep) *afMirror {
+func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, step afStep, place afPlace) *afMirror {
 	exec, name := step.node.ExecutionID, step.name
 	m := r.mirror(it, exec, name, false)
 	// AN ACK THAT FAILED IS SENT AGAIN: the lines are kept, so the next read
@@ -749,6 +761,7 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 	// execution is still running (the live run stranded a retry's 33 entries
 	// that way).
 	started, last := false, ""
+	var asks []afHarnessAsk
 	for _, e := range entries {
 		if e.Seq <= through {
 			continue // already kept: never twice
@@ -758,6 +771,13 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 		case "started":
 			started, last = true, "started"
 		case "line":
+			// A QUESTION THE STEP ASKS IS NOT A LINE OF ITS RECORD
+			// (chat_once_live.go's onceAsker): it is kept beside it, put to
+			// the job's manager and person, and answered over steer.
+			if q, ok := afAskLineOf(e.Data); ok {
+				asks = append(asks, q)
+				continue
+			}
 			lines = append(lines, append([]byte(nil), e.Data...))
 		case "ended":
 			last = "ended"
@@ -786,10 +806,15 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 			defer r.markDrained(exec)
 		}
 	}
+	m.state.Asks = afPendingAsks(m.state.Asks, asks)
+	if afEnded(step.node.Status) {
+		m.state.Asks = nil
+	}
 	m.state.Acked = through
 	if err := m.save(); err != nil {
 		return m
 	}
+	r.raiseAsks(client, it.ID, exec, m.state.Asks, place)
 	// THE ACK FOLLOWS THE RECORD. A factory that dies between the two is asked
 	// again from its record, skips those seqs, and acks then.
 	if client.RelayAck(ctx, exec, through) == nil {
@@ -819,6 +844,10 @@ type afRelayState struct {
 	// Closed is true when the last harness run's "ended" is kept: the record
 	// is complete unless the execution starts another run (a schema retry).
 	Closed bool `json:"closed,omitempty"`
+	// Asks are the step's questions still waiting for an answer, kept here
+	// so a factory that restarts asks them again rather than leaving the
+	// step waiting for good.
+	Asks []afHarnessAsk `json:"asks,omitempty"`
 }
 
 func afReadRelay(file string) (afRelayState, bool) {
@@ -1302,4 +1331,134 @@ func afReserved(it factory.Item, step string) []string {
 		}
 	}
 	return out
+}
+
+// ── A HARNESS STEP'S QUESTION ───────────────────────────────────────────────
+
+// afHarnessAsk is one question a codeaf harness step asked on its events
+// (onceAskLine), as this factory keeps it until it is answered.
+type afHarnessAsk struct {
+	ID       string   `json:"id"`
+	Done     bool     `json:"done,omitempty"`
+	Question string   `json:"question,omitempty"`
+	Options  []string `json:"options,omitempty"`
+	Pick     string   `json:"pick,omitempty"`
+}
+
+// afAskLineOf reads a relayed line that is a question or its taking down.
+func afAskLineOf(data []byte) (afHarnessAsk, bool) {
+	if !bytes.Contains(data, []byte(`"ask`)) {
+		return afHarnessAsk{}, false
+	}
+	var line onceAskLine
+	if json.Unmarshal(data, &line) != nil || line.ID == "" {
+		return afHarnessAsk{}, false
+	}
+	switch line.Type {
+	case "ask":
+		return afHarnessAsk{ID: line.ID, Question: line.Question, Options: line.Options, Pick: line.Pick}, true
+	case "ask_done":
+		return afHarnessAsk{ID: line.ID, Done: true}, true
+	}
+	return afHarnessAsk{}, false
+}
+
+// afPendingAsks is pending with this batch's questions added and its taken
+// down ones removed, in order.
+func afPendingAsks(pending, batch []afHarnessAsk) []afHarnessAsk {
+	for _, q := range batch {
+		if q.Done {
+			pending = slices.DeleteFunc(pending, func(p afHarnessAsk) bool { return p.ID == q.ID })
+			continue
+		}
+		if !slices.ContainsFunc(pending, func(p afHarnessAsk) bool { return p.ID == q.ID }) {
+			pending = append(pending, q)
+		}
+	}
+	return pending
+}
+
+// afAnswerSteerTries is how often an answer is sent before it is given up.
+const afAnswerSteerTries = 5
+
+// raiseAsks puts each pending question of execution exec to the job — its
+// manager first, then the person — and sends the answer back down the step's
+// steer channel as an answer frame. A question taken down (answered by the
+// step's own default, the run ended) is withdrawn from the job.
+func (r *afRemote) raiseAsks(client afClient, job int, exec string, pending []afHarnessAsk, place afPlace) {
+	prefix := strconv.Itoa(job) + "/" + exec + "/"
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.asking == nil {
+		r.asking = map[string]context.CancelFunc{}
+	}
+	live := map[string]bool{}
+	for _, q := range pending {
+		live[prefix+q.ID] = true
+	}
+	for key, cancel := range r.asking {
+		if strings.HasPrefix(key, prefix) && !live[key] {
+			cancel()
+			delete(r.asking, key)
+		}
+	}
+	if place.ask == nil || place.life == nil {
+		return
+	}
+	for _, q := range pending {
+		key := prefix + q.ID
+		if _, on := r.asking[key]; on {
+			continue
+		}
+		ctx, cancel := context.WithCancel(place.life)
+		r.asking[key] = cancel
+		q := q
+		guard.Go("agentfield/ask", func() {
+			defer func() {
+				r.mu.Lock()
+				if c, ok := r.asking[key]; ok {
+					c()
+					delete(r.asking, key)
+				}
+				r.mu.Unlock()
+			}()
+			said, err := place.ask(ctx, factory.Asked{Question: q.Question, Options: q.Options, Pick: q.Pick})
+			if err != nil {
+				return
+			}
+			by, words := "person", said
+			if w, ok := strings.CutPrefix(said, "the manager answered: "); ok {
+				by, words = "manager", w
+			} else if w, ok := strings.CutPrefix(said, "the person answered: "); ok {
+				words = w
+			}
+			frame, _ := json.Marshal(onceAnswer{Answer: q.ID, Text: words, By: by})
+			for try := 0; try < afAnswerSteerTries && ctx.Err() == nil; try++ {
+				c := client
+				if now, _, ok := r.conn(); ok {
+					c = now
+				}
+				if c.Steer(ctx, exec, string(frame)) == nil {
+					return
+				}
+				select {
+				case <-ctx.Done():
+				case <-time.After(time.Duration(try+1) * time.Second):
+				}
+			}
+		})
+	}
+}
+
+// dropAsks withdraws every question of job still being put to it.
+func (r *afRemote) dropAsks(job int) {
+	prefix := strconv.Itoa(job) + "/"
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for key, cancel := range r.asking {
+		if strings.HasPrefix(key, prefix) {
+			cancel()
+			delete(r.asking, key)
+		}
+	}
 }

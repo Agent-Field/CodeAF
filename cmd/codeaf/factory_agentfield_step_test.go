@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -167,5 +168,77 @@ func TestARejectedPlanEndsTheStepWithTheRunsWords(t *testing.T) {
 	_, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
 	if err == nil || !strings.Contains(err.Error(), "Plan rejected: not now") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A HARNESS STEP'S QUESTION REACHES THE JOB AND ITS ANSWER REACHES THE STEP:
+// the node relays the step's ask line; the factory keeps it out of the
+// step's conversation, puts it to the job (its manager first, then the
+// person: Job.Ask), and sends the answer back down the step's steer channel
+// as an answer frame.
+func TestAHarnessStepsQuestionIsAnsweredOverSteer(t *testing.T) {
+	appDayProfile(t)
+	prev := afRemoteEvery
+	afRemoteEvery = 10 * time.Millisecond
+	t.Cleanup(func() { afRemoteEvery = prev })
+	st, it, stage := afStepJob(t)
+	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "running", "2026-11-07T12:00:00Z", "",
+		afNode("e-code", "coder", "running", "2026-11-07T12:00:01Z", ""))}
+	cp.relayLines("e-code", [][]byte{
+		[]byte(`{"type":"session","version":1,"id":"nodecoder","cwd":"/node","model":"m","timestamp":"2026-11-07T12:00:01Z"}`),
+		[]byte(`{"type":"message","role":"user","content":"add Len","timestamp":"2026-11-07T12:00:01Z"}`),
+		[]byte(`{"type":"ask","id":"ask-1","question":"Which storage shape?","options":["sqlite","jsonl"],"pick":"sqlite","timestamp":"2026-11-07T12:00:02Z"}`),
+	}, false)
+	// The node closes the step's record once the run is cancelled.
+	cp.afterCancel = func() {
+		cp.set(func() {
+			cp.held["e-code"] = append(cp.held["e-code"], agentfield.RelayEntry{Seq: 100, Kind: "ended", Data: json.RawMessage(`{}`)})
+		})
+	}
+	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	asked := make(chan factory.Asked, 1)
+	ask := func(_ context.Context, q factory.Asked) (string, error) {
+		asked <- q
+		return "the manager answered: jsonl", nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stepped := make(chan struct{})
+	go func() { defer close(stepped); _, _ = r.Step(ctx, factoryrun.Job{Item: it, Stage: stage, Ask: ask}) }()
+	t.Cleanup(func() { cancel(); <-stepped })
+	select {
+	case q := <-asked:
+		if q.Question != "Which storage shape?" || strings.Join(q.Options, ",") != "sqlite,jsonl" || q.Pick != "sqlite" {
+			t.Fatalf("asked %+v", q)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the question never reached the job")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		cp.mu.Lock()
+		steers := strings.Join(cp.steers, "\n")
+		cp.mu.Unlock()
+		if steers == `e-code: {"answer":"ask-1","text":"jsonl","by":"manager"}` {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("steers = %q", steers)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	chat := ""
+	afUntil(t, st, it.ID, "a conversation for the harness step", func(i factory.Item) bool {
+		for _, ph := range factory.AllPhases(i) {
+			if ph.Chat != "" {
+				chat = ph.Chat
+				return true
+			}
+		}
+		return false
+	})
+	raw, _ := os.ReadFile(chat)
+	if strings.Contains(string(raw), `"type":"ask"`) || !strings.Contains(string(raw), "add Len") {
+		t.Fatalf("the step's conversation is wrong:\n%s", raw)
 	}
 }

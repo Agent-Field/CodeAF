@@ -2939,6 +2939,12 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 	// directory for an OWNED conversation — there it is the session's private
 	// work folder under ~/.codeaf/v3/projects — so the launch's own workspace is
 	// carried in rather than read back off the config.
+	// A LIVE, STEERABLE RUN HAS SOMEONE TO ASK (chat_once_live.go's onceAsker).
+	var asker *onceAsker
+	if chatOnceLive.events != "" && chatOnceLive.steer != "" {
+		asker = newOnceAsker(chatOnceLive.events)
+		cfg.Asker = asker
+	}
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
 		return reported(err)
@@ -3005,7 +3011,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		}()
 	}
 	var steers sync.WaitGroup
-	finishSteer, finishCopy := startOnceLive(agent, cfg.SessionFile, live, reply, os.Stderr, &steers)
+	finishSteer, finishCopy := startOnceLive(agent, cfg.SessionFile, live, asker, reply, os.Stderr, &steers)
 	finishEvents = finishCopy
 	defer finishSteer()
 
