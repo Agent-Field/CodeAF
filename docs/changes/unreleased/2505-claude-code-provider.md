@@ -1,4 +1,5 @@
 ---
+pr: 2505
 kind: added
 title: Claude Code as a provider, a task program and a crew seat
 surface: [engine, app, chat]
