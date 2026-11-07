@@ -8,9 +8,11 @@ the words you want are not in the titles, ask the AI instead: type a question
 in your own words and press **Ask AI** at the end of the bar, or start the text
 with `?` and press Enter. For example `? anything touching auth tokens`.
 
-The AI never runs while you type. It runs only when you press Ask AI or Enter
-on a `?` question, and before it runs the bar says what it will read and what
-it is likely to cost, such as "Reads 61 issues · about $0.01".
+The AI never runs while you type. Ask AI (or Enter on a `?` question) first
+shows, above the list, what it will read and what it is likely to cost, such
+as "Reads 61 issues · about $0.0095", and asks no model. It runs only when you
+press **Run** there. A question asked before over the same issues says "Asked
+before · nothing new to read".
 
 It reads the jobs the bar lists at that moment, so `repo:` and the other keys
 narrow what it reads. Dropped and dismissed jobs are never read, and it reads
@@ -18,7 +20,8 @@ only jobs your factory sign-in can see.
 
 While it works it says how far it has got: "Reading 80 issues… 12 look
 related", then "Checking 12… 7 match". The answer is a list of the matching
-jobs, each with one sentence saying why it matched. Stop ends it early.
+jobs, each with one sentence saying why it matched, and what it cost. Cancel
+ends it early; Ask again runs it again; the close button puts the list back.
 
 ## how the AI search finds matches — a quick read of every issue, then one yes or no per issue, and how many it reads
 
@@ -47,14 +50,15 @@ the price is not known). After, the answer shows what it actually cost.
 
 On deepseek/deepseek-v4.1-flash a search of 61 issues cost between $0.004 and
 $0.013, depending on how many issues looked related. Asking the same question
-again over the same issues cost $0.00. Every call goes on Spending as `factory search` and counts toward the
-factory's day, like `factory filter` and the issue read. It runs on the
+again over the same issues cost $0.00. Every call goes on Spending as
+`factory search` and counts toward the factory's day, like `factory filter` and the issue read. It runs on the
 factory's default model; with none set, the issue read's model.
 
 ## save an AI search as a view — the question is kept, reopening is cheap, new issues
 
-Press **Save as view** under an AI answer to keep it in the sidebar's Views.
-The view keeps your question and the matches with their reasons.
+Press **Save as view** beside an AI answer to keep it in the sidebar's Views,
+named after your question; then **Open view** opens it. It is a topic view:
+it keeps your question and the matches with their reasons.
 
 Opening the view shows the kept matches straight away. **Refresh** asks the
 question again, and every answer the AI gave before is reused: only issues that
