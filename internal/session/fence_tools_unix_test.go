@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package session
 
@@ -66,6 +66,9 @@ func TestAFencedConversationRefusesOutsideItsJobInOneSentence(t *testing.T) {
 			t.Fatal(err)
 		}
 		c.Fence = fence
+		// A SEAT OF ITS OWN IS FENCED TOO: a chat normally sits on its cell's
+		// seat, declared host-bound, and the fence must hold there as well.
+		c.Seat = executor.Stance{Class: executor.HostBound}
 	})
 	var outputs []string
 	notices := 0

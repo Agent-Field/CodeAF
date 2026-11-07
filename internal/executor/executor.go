@@ -103,6 +103,12 @@ type ExecRequest struct {
 	Combined  bool          // stderr shares stdout's pipe, so arrival order is kept
 	Stream    bool          // output goes to onOutput only; the result keeps none of it
 
+	// Fence is the confinement a fenced seat ([WithFence]) stamps on every
+	// call. Local applies it to a call whose workspace is host-bound, making
+	// the call [Fenced]; a sandboxed or files-only workspace keeps its own
+	// class. A caller never sets it: a value set at a call site is the seat's.
+	Fence *Fence
+
 	// Writable names folders a fenced call may also write (fence.go): codeaf's
 	// own record and inbox folders for a program it launched, which live
 	// outside the job. It widens nothing for any other class.

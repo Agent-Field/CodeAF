@@ -4193,26 +4193,22 @@ type Agent struct {
 // seat is the executor this session's tool calls run on. A session with no
 // cell says so by name: it is on the host seat.
 func (c Config) seat() procexec.Seat {
-	if c.Seat == nil {
-		if c.Fence != nil {
-			return procexec.FencedSeat(c.Fence)
-		}
-		return procexec.Host
+	seat := c.Seat
+	if seat == nil {
+		seat = procexec.Host
 	}
-	return c.Seat
+	// THE FENCE GOES AROUND WHATEVER SEAT THIS IS: the host's, or the cell's
+	// that records each call. Wrapping is idempotent, so a seat this returned
+	// and a door stored back (WithEnvironment) is not fenced twice.
+	return procexec.WithFence(seat, c.Fence)
 }
 
 // fenced is whether this session's commands run fenced, the prompt's predicate.
-func (c Config) fenced() bool { return c.fence() != nil }
+func (c Config) fenced() bool { return c.Fence != nil }
 
-// fence is the fence this session's commands run under, nil when none: a
-// cell seat brings its own jail and is never fenced twice.
-func (c Config) fence() *procexec.Fence {
-	if c.Fence == nil {
-		return nil
-	}
-	return procexec.FenceOf(c.seat())
-}
+// fence is the fence this session's commands and file tools keep to, nil
+// when none.
+func (c Config) fence() *procexec.Fence { return c.Fence }
 
 // seatFor is the seat a turn's tool calls run on: the session's own, or its
 // setup form when the turn is a setup turn (setup.go).

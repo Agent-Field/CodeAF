@@ -50,10 +50,6 @@ type Local struct {
 	// Secrets, when set, names variables added to every process's environment:
 	// the vault's, for a workspace whose secret files are not in its history.
 	Secrets SecretSource
-
-	// Fence is the [Fenced] class's confinement (fence.go); it is read only
-	// when Class is Fenced, and a Fenced call with none runs unconfined.
-	Fence *Fence
 }
 
 // resolve stamps the request with the workspace's class and the network policy
@@ -61,7 +57,14 @@ type Local struct {
 func (l Local) resolve(req ExecRequest) ExecRequest {
 	req.Class = l.Class
 	req.Setup = req.Setup || l.Setup
-	req.Net = PolicyFor(l.Class, req.Setup)
+	// A FENCED SEAT'S CALL IN A HOST-BOUND WORKSPACE IS FENCED. A sandboxed
+	// workspace keeps its own jail, which already keeps the network out.
+	if req.Fence != nil && (l.Class == HostBound || l.Class == Fenced) {
+		req.Class = Fenced
+	} else if l.Class != Fenced {
+		req.Fence = nil
+	}
+	req.Net = PolicyFor(req.Class, req.Setup)
 	return req
 }
 
@@ -79,7 +82,7 @@ func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) 
 	}
 	res, err := run(ctx, cmd, req, l.Root, onOutput)
 	res.JailDegraded = l.degraded(req)
-	if err == nil && req.Class == Fenced && l.Fence != nil && res.Exit != 0 {
+	if err == nil && req.Class == Fenced && req.Fence != nil && res.Exit != 0 {
 		res = withFenceNote(res, req, onOutput)
 	}
 	if err == nil && l.Observer != nil {
@@ -97,7 +100,7 @@ func degraded(j Jail, req ExecRequest) bool {
 // the jail's own answer for a sandboxed call, the fence's for a fenced one.
 func (l Local) degraded(req ExecRequest) bool {
 	if req.Class == Fenced {
-		return l.Fence != nil && fenceLimit() != ""
+		return req.Fence != nil && fenceLimit() != ""
 	}
 	return degraded(l.Jail, req)
 }
@@ -145,13 +148,13 @@ func (l Local) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) 
 	configureGroup(cmd, req.Group)
 	cmd.Cancel = canceller(cmd, req.Group)
 	cmd.WaitDelay = max(req.WaitDelay, 0)
-	if req.Class == Fenced && l.Fence != nil {
-		cmd.Env = mergeEnvironment(cmd.Env, l.Fence.Env)
-	}
-	if req.Class == Fenced && l.Fence != nil && len(req.Writable) > 0 {
-		widened := *l.Fence
-		widened.Writable = dedupe(append(append([]string(nil), l.Fence.Writable...), canonicalAll(req.Writable)...))
-		l.Fence = &widened
+	if req.Class == Fenced && req.Fence != nil {
+		cmd.Env = mergeEnvironment(cmd.Env, req.Fence.Env)
+		if len(req.Writable) > 0 {
+			widened := *req.Fence
+			widened.Writable = dedupe(append(append([]string(nil), req.Fence.Writable...), canonicalAll(req.Writable)...))
+			req.Fence = &widened
+		}
 	}
 	if err := l.confine(cmd, req); err != nil {
 		return nil, err
@@ -231,8 +234,8 @@ func (l Local) check(req ExecRequest) (string, error) {
 // confine applies the jail to sandboxed calls and the fence to fenced ones.
 func (l Local) confine(cmd *exec.Cmd, req ExecRequest) error {
 	switch {
-	case req.Class == Fenced && l.Fence != nil:
-		return confineFence(cmd, l.Fence)
+	case req.Class == Fenced && req.Fence != nil:
+		return confineFence(cmd, req.Fence)
 	case req.Class != Sandboxed:
 		return nil
 	}

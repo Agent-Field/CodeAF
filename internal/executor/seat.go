@@ -120,31 +120,64 @@ type Stance struct {
 	Setup    bool
 	Observer Observer
 	Secrets  SecretSource // added to every process's environment; nil adds none
-	Fence    *Fence       // a Fenced stance's confinement (fence.go)
 }
 
 // In implements Seat.
 func (s Stance) In(dir string) Runner {
-	return Local{Root: dir, Class: s.Class, Jail: DefaultJail(), Setup: s.Setup, Observer: s.Observer, Secrets: s.Secrets, Fence: s.Fence}
+	return Local{Root: dir, Class: s.Class, Jail: DefaultJail(), Setup: s.Setup, Observer: s.Observer, Secrets: s.Secrets}
 }
 
-// FencedSeat is the seat an unattended agent's commands run on: the fence f
-// around every call, the network open, nothing recorded. A nil fence (the
-// person turned it off) is [Host].
-func FencedSeat(f *Fence) Seat {
-	if f == nil {
-		return Host
+// FencedSeat is the seat an unattended agent's commands run on when it has no
+// seat of its own: the host's, with the fence f around every call. A nil
+// fence (the person turned it off) is [Host].
+func FencedSeat(f *Fence) Seat { return WithFence(Host, f) }
+
+// WithFence is seat with the fence f stamped on every call it runs, so the
+// fence holds whichever seat a session sits on: the host's, or a cell's that
+// records and seals each call. A host-bound workspace's calls become [Fenced];
+// a sandboxed one keeps its own jail. A nil fence, or a seat already fenced,
+// is the seat as it was.
+func WithFence(seat Seat, f *Fence) Seat {
+	if f == nil || FenceOf(seat) != nil {
+		return seat
 	}
-	return Stance{Class: Fenced, Fence: f}
+	return fenceSeat{Seat: seat, fence: f}
 }
 
-// FenceOf is the fence a seat applies, nil when it applies none.
+type fenceSeat struct {
+	Seat
+	fence *Fence
+}
+
+func (s fenceSeat) In(dir string) Runner {
+	return fenceRunner{Runner: s.Seat.In(dir), fence: s.fence}
+}
+func (s fenceSeat) ForSetup() Seat                  { return fenceSeat{Seat: ForSetup(s.Seat), fence: s.fence} }
+func (s fenceSeat) NoteModelCall(call ModelCall)    { NoteModelCall(s.Seat, call) }
+func (s fenceSeat) Interrupted() Interrupted        { return InterruptedOn(s.Seat) }
+func (s fenceSeat) Settle(ctx context.Context)      { Settle(ctx, s.Seat) }
+func (s fenceSeat) Drain(ctx context.Context) error { return Drain(ctx, s.Seat) }
+func (s fenceSeat) CheckWork() error                { return CheckWork(s.Seat) }
+
+type fenceRunner struct {
+	Runner
+	fence *Fence
+}
+
+func (r fenceRunner) Exec(ctx context.Context, req ExecRequest, output func(Chunk)) (ExecResult, error) {
+	req.Fence = r.fence
+	return r.Runner.Exec(ctx, req, output)
+}
+func (r fenceRunner) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) {
+	req.Fence = r.fence
+	return r.Runner.Command(ctx, req)
+}
+
+// FenceOf is the fence a seat stamps on its calls, nil when it stamps none.
 func FenceOf(s Seat) *Fence {
 	switch seat := s.(type) {
-	case Stance:
-		if seat.Class == Fenced {
-			return seat.Fence
-		}
+	case fenceSeat:
+		return seat.fence
 	case environmentSeat:
 		return FenceOf(seat.Seat)
 	case gated:

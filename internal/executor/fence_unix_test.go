@@ -101,9 +101,11 @@ func jobOwnsTmp(full bool) bool { return full && runtime.GOOS == "linux" }
 
 func (w fenceWorld) run(t *testing.T, script string) ExecResult {
 	t.Helper()
-	l := Local{Root: w.root, Class: Fenced, Fence: w.fence}
+	// THROUGH THE SEAT, as a session's calls go: the host's seat with the fence
+	// around it, in a host-bound workspace.
+	runner := FencedSeat(w.fence).In(w.root)
 	env := append(os.Environ(), "HOME="+w.home, "PREFIX="+w.prefix)
-	res, err := l.Exec(context.Background(), ExecRequest{Argv: []string{"/bin/sh", "-c", script}, Env: env}, nil)
+	res, err := runner.Exec(context.Background(), ExecRequest{Argv: []string{"/bin/sh", "-c", script}, Env: env}, nil)
 	if err != nil {
 		t.Fatalf("%q: %v", script, err)
 	}
