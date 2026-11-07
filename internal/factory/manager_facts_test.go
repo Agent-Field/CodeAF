@@ -64,8 +64,8 @@ func TestManagerStatusCarriesAutonomyStepCountPullRequestAndThePostPRDecision(t 
 // "Follow PR" for the factory's own follow step.
 func TestManagerStatusNamesStepsInPersonWords(t *testing.T) {
 	it := Item{ID: 175, Kind: KindIssue, State: StateShipped, Publish: "pr", Autonomy: AutonomyAuto,
-		Stages: []Stage{{Name: "plan", On: true}, {Name: "runvetand", Label: "RunVetAndTest", On: true}, {Name: FollowPRStep, On: true}},
-		Stream: &Stream{Cur: 2, Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "runvetand", State: PhaseDone}, {Name: FollowPRStep, State: PhaseWaiting}}},
+		Stages:   []Stage{{Name: "plan", On: true}, {Name: "runvetand", Label: "RunVetAndTest", On: true}, {Name: FollowPRStep, On: true}},
+		Stream:   &Stream{Cur: 2, Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "runvetand", State: PhaseDone}, {Name: FollowPRStep, State: PhaseWaiting}}},
 		FollowUp: &PRFollowUp{Kind: "readiness", State: "needs_you", Reason: "waiting"}}
 	got := StatusForManager(it, false, time.Now()).Text
 	for _, key := range []string{"followpr", "runvetand"} {
