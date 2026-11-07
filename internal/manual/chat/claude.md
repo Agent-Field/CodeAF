@@ -4,7 +4,7 @@
 
 `claude` is a program codeaf carries that hands a whole task to the Claude Code you installed and signed in to yourself. codeaf starts `claude` in the task's folder, Claude Code plans and edits with its own tools, and codeaf shows each tool call as a step and its last message as the answer.
 
-**Claude is a worker here, not a model.** codeaf cannot send Claude requests on your Claude plan the way it sends them to OpenRouter or a ChatGPT plan, and it holds no Claude credential. Claude Code runs on whatever account you signed it in to. Anthropic's terms for that account apply to the work.
+codeaf holds no Claude credential: Claude Code runs on whatever account you signed it in to, and Anthropic's terms for that account apply to the work. To put a whole conversation or a crew member on Claude Code rather than one task, connect Claude Code as a provider — see "Claude Code as a provider".
 
 ## How do I use Claude Code from codeaf — /claude, codeaf claude, via claude
 
@@ -14,6 +14,8 @@ codeaf claude add a --json flag to the status command
 ```
 
 Asking in words works too: "have Claude Code do this" makes the chat propose the task with `via: "claude"`. When your crew's working seat is a Claude model, Claude Code runs that family (`opus`, `sonnet` or `haiku`); any other model leaves Claude Code on its own default.
+
+With Claude Code connected as a provider, pinning the Worker role to a Claude Code model in Task models sends every task to `claude` without naming it: the task is handed to Claude Code, not run by codeaf's own loop.
 
 ## Where the work lands and what it costs — branch, spending, ceiling
 

@@ -561,6 +561,17 @@ func Vendored() []Source {
 			ID: CustomID, Written: CustomID, Name: "Custom OpenAI-compatible API",
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
+		{
+			// CLAUDE CODE IS THE PERSON'S OWN PROGRAM, SIGNED IN ON THEIR OWN
+			// ACCOUNT. Nothing is dialled at this address: the service's
+			// transport (internal/claudemodel) answers every request by running
+			// the installed Claude Code, and its key is only a sentinel that
+			// says it is signed in.
+			ID: "claude-code", Written: "claude-code", Name: "Claude Code", ServedAs: "Claude Code",
+			Address:  "http://claude-code.local/v1",
+			KeyShape: func(key string) bool { return strings.TrimSpace(key) == "claude-code" },
+			Listing:  ListingNone, Probe: Probe{}, Preferred: "sonnet",
+		},
 	}
 }
 

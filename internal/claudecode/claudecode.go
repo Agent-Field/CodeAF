@@ -22,9 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -32,17 +30,14 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/claudeagent"
 	"github.com/Agent-Field/codeaf/internal/delegate"
-	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // Name is the program's one word: the slash command, the shell verb and the
 // manual page.
 const Name = "claude"
 
-// EnvBinary names the Claude Code program to start in place of the first
-// `claude` on PATH, for a machine whose `claude` is a wrapper or a shell
-// function that a child process cannot reach.
-const EnvBinary = "CODEAF_CLAUDE_BIN"
+// EnvBinary names the Claude Code program to start (internal/claudeagent).
+const EnvBinary = claudeagent.EnvBinary
 
 // stageWork is the one stage a run reports. Claude Code plans, edits and
 // checks inside its own loop, so codeaf has no phases of its own to name.
@@ -95,21 +90,8 @@ func crewFlags(crew delegate.Crew) []string {
 	return nil
 }
 
-// Family answers the Claude Code model word (`opus`, `sonnet`, `haiku`) for a
-// model id from any service's spelling of it, or "" for a model that is not
-// Claude.
-func Family(model string) string {
-	lower := strings.ToLower(model)
-	if !strings.Contains(lower, "claude") && !strings.HasPrefix(lower, "anthropic/") {
-		return ""
-	}
-	for _, family := range []string{"opus", "sonnet", "haiku"} {
-		if strings.Contains(lower, family) {
-			return family
-		}
-	}
-	return ""
-}
+// Family answers Claude Code's model word for a model id (internal/claudeagent).
+func Family(model string) string { return claudeagent.Family(model) }
 
 func bindRun(fs *flag.FlagSet) delegate.Body {
 	model := fs.String("claude-model", "", "Claude Code model: opus, sonnet, haiku or a full name")
@@ -253,21 +235,8 @@ func policy(req claudeagent.PermissionRequest) claudeagent.Decision {
 	return claudeagent.Decision{Allow: true}
 }
 
-// Binary finds the Claude Code program: [EnvBinary] when it is set, else the
-// first `claude` on PATH.
-func Binary() (string, error) {
-	if named := strings.TrimSpace(env.Get(EnvBinary)); named != "" {
-		if _, err := os.Stat(named); err != nil {
-			return "", fmt.Errorf("%s names %s, which is not there", EnvBinary, named)
-		}
-		return named, nil
-	}
-	path, err := exec.LookPath("claude")
-	if err != nil {
-		return "", fmt.Errorf("Claude Code is not installed here: install it, run `claude` once to sign in, or set %s to its path", EnvBinary)
-	}
-	return path, nil
-}
+// Binary finds the Claude Code program (internal/claudeagent).
+func Binary() (string, error) { return claudeagent.Binary() }
 
 // translator turns Claude Code's events into the task's stage, steps and
 // ending.
