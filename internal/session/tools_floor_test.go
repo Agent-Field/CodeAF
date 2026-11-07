@@ -289,9 +289,15 @@ func TestTheForemanReadsRunningQueueAndShippedAndStartsByRef(t *testing.T) {
 		factory.Item{ID: 9, Num: 12, Repo: "acme/api", Kind: factory.KindIssue, Title: "old shipped", State: factory.StateShipped, DoneAt: now.Add(-48 * time.Hour)})
 	door.snap.Items[2].Priority = &factory.JobPriority{Value: "high"}
 	door.snap.Items = append(door.snap.Items, factory.Item{ID: 10, Num: 13, Repo: "acme/api", Kind: factory.KindIssue, Title: "following its PR", State: factory.StateShipped,
-		PullRequest: &factory.PullRequest{Number: 165, State: factory.PROpen, Draft: true}})
+		PullRequest: &factory.PullRequest{Number: 165, State: factory.PROpen, Draft: true}},
+		// The live lane's job: its pull request's state not read yet, waiting
+		// on Mark ready. It is still the factory's work.
+		factory.Item{ID: 11, Num: 14, Repo: "acme/api", Kind: factory.KindIssue, Title: "pull request unread", State: factory.StateNeedsYou,
+			PullRequest: &factory.PullRequest{Number: 166, Draft: true}},
+		factory.Item{ID: 12, Num: 15, Repo: "acme/api", Kind: factory.KindIssue, Title: "closed pull request", State: factory.StateShipped,
+			PullRequest: &factory.PullRequest{Number: 167, State: factory.PRClosed}})
 	text, _ := floorCall(t, door, `{"ask":"running"}`)
-	if !strings.Contains(text, "#9 cache warmup") || !strings.Contains(text, "steps 1 of 3 done, on write") || strings.Contains(text, "#1 ") || !strings.Contains(text, "#13 following its PR") {
+	if !strings.Contains(text, "#9 cache warmup") || !strings.Contains(text, "steps 1 of 3 done, on write") || strings.Contains(text, "#1 ") || !strings.Contains(text, "#13 following its PR") || !strings.Contains(text, "#14 pull request unread") || strings.Contains(text, "#15 ") {
 		t.Errorf("running:\n%s", text)
 	}
 	text, _ = floorCall(t, door, `{"ask":"queue"}`)

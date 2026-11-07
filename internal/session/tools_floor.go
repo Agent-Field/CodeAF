@@ -647,11 +647,13 @@ func floorShippedToday(snap factory.Snapshot, now time.Time) string {
 	return b.String()
 }
 
-// floorFollowing says a published job is still at work on its open pull
-// request: the factory follows it (checks, reviews, readiness) and it still
-// waits on Mark ready or Merge. The live audit's foreman called such a job's
-// factory idle, because a published job read as finished.
+// floorFollowing says a published job is still at work on its pull request:
+// the factory follows it (checks, reviews, readiness) and it still waits on
+// Mark ready or Merge. The live audit's foreman called such a job's factory
+// idle twice: first because a published job read as finished, then because
+// the factory had not yet read the pull request's state, so only a pull
+// request known merged or closed ends the following.
 func floorFollowing(it factory.Item) bool {
 	pr := it.PullRequest
-	return pr != nil && pr.Number > 0 && pr.State == factory.PROpen && it.DoneHow == ""
+	return pr != nil && pr.Number > 0 && pr.State != factory.PRMerged && pr.State != factory.PRClosed && it.DoneHow == ""
 }
