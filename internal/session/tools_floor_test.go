@@ -322,3 +322,46 @@ func TestTheForemanReadsRunningQueueAndShippedAndStartsByRef(t *testing.T) {
 		t.Fatalf("acted %v, want the jobs by their ids", acting.acted)
 	}
 }
+
+// A JOB FOLLOWING ITS PULL REQUEST READS SO ON THE FLOOR. Desk QA saw the
+// foreman report a job as "shipped, steps 3 of 4 done" with no step named,
+// and the live managers lane saw "running, step 7 of 8 done, on followpr":
+// stored states and a step's key, not the person's words. A job with an open
+// pull request, resting or running a repair on Follow PR, is following it, on
+// Follow PR; one with nothing left to follow is done.
+func TestFloorRowSaysAFollowingJobIsOnFollowPR(t *testing.T) {
+	now := time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	stream := func() *factory.Stream {
+		return &factory.Stream{Cur: 2, Phases: []factory.Phase{
+			{Name: "write", State: factory.PhaseDone},
+			{Name: "proof", State: factory.PhaseDone},
+			{Name: "followpr", State: factory.PhaseRunning},
+		}}
+	}
+	it := factory.Item{ID: 7, Num: 7, Title: "t", State: factory.StateShipped, Stream: stream(),
+		PullRequest: &factory.PullRequest{Number: 12, State: factory.PROpen}}
+	row := FloorRow(it, now)
+	if !strings.Contains(row, "following its pull request (Follow PR)") || !strings.Contains(row, ", on Follow PR") || strings.Contains(row, "shipped") {
+		t.Errorf("a following job reads %q", row)
+	}
+
+	it.PullRequest.State = factory.PRMerged
+	row = FloorRow(it, now)
+	if !strings.Contains(row, "done") || strings.Contains(row, "shipped") || strings.Contains(row, "Follow PR") || strings.Contains(row, ", on ") {
+		t.Errorf("a shipped job with nothing to follow reads %q", row)
+	}
+
+	// Follow PR running a repair is stored running; it is still following.
+	it = factory.Item{ID: 8, Num: 8, Title: "t", State: factory.StateRunning, Stream: stream(),
+		PullRequest: &factory.PullRequest{Number: 13, State: factory.PROpen}}
+	if row := FloorRow(it, now); !strings.Contains(row, "following its pull request (Follow PR)") || !strings.Contains(row, ", on Follow PR") || strings.Contains(row, "followpr") {
+		t.Errorf("a job repairing its pull request reads %q", row)
+	}
+
+	// A job running an earlier step reads running, on that step.
+	it = factory.Item{ID: 9, Num: 9, Title: "t", State: factory.StateRunning, Stream: stream()}
+	it.Stream.Cur = 0
+	if row := FloorRow(it, now); strings.Contains(row, "following") || !strings.Contains(row, "running") || !strings.Contains(row, ", on write") {
+		t.Errorf("a running job reads %q", row)
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -211,4 +212,66 @@ func TestTheForemanStartsAndPrioritisesThroughTheJobPagesDoors(t *testing.T) {
 	if !strings.Contains(foremanOpening, "only when the person asks") || strings.Contains(foremanOpening, " L") {
 		t.Fatalf("the foreman's brief still describes a key nothing has: %q", foremanOpening)
 	}
+}
+
+// THE FOREMAN IS CALLED THE FACTORY MANAGER. Its conversation's title and its
+// word in the factory team say "Factory manager"; its team address stays
+// @foreman. A foreman made before the rename keeps its conversation and is
+// retitled when it next opens, never made a second time.
+func TestTheFactoryManagerIsTheForemansName(t *testing.T) {
+	st, web, profile := talkLab(t)
+	seam := withForeman(factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(factoryRepoDirs(st, web))), st, web, profile)
+	chat, err := seam.Foreman(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := filepath.EvalSymlinks(chat)
+	key = filepath.Clean(key)
+	named := func(why string) {
+		t.Helper()
+		meta, err := session.LoadMeta(session.DirOf(chat))
+		if err != nil || meta.Title != "Factory manager" {
+			t.Errorf("%s: the conversation is titled %q (%v)", why, meta.Title, err)
+		}
+		f, err := teams.Load(profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, team := range f.Teams {
+			for _, m := range team.Members {
+				if m.Key == key && (m.Word != "Factory manager" || m.Handle != "foreman") {
+					t.Errorf("%s: the team member is %q @%s", why, m.Word, m.Handle)
+				}
+			}
+		}
+	}
+	named("a new foreman")
+
+	// One made before the rename carries the old word in both places.
+	dir := session.DirOf(chat)
+	meta, err := session.LoadMeta(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.Title = "foreman"
+	if err := session.SaveMeta(dir, meta); err != nil {
+		t.Fatal(err)
+	}
+	if err := teams.UpdateOpen(profile, func(f *teams.File) error {
+		for ti := range f.Teams {
+			for mi := range f.Teams[ti].Members {
+				if f.Teams[ti].Members[mi].Key == key {
+					f.Teams[ti].Members[mi].Word = "foreman"
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	again, err := seam.Foreman(context.Background())
+	if err != nil || again != chat {
+		t.Fatalf("the old foreman reopened as %q, %v; want %q", again, err, chat)
+	}
+	named("an old foreman reopened")
 }

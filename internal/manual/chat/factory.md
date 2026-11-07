@@ -243,11 +243,11 @@ A job's manager answers job facts from `factory_status`, the job as the factory 
 
 Say "merge it", "mark it ready" or "approve it" in the manager's chat and it presses that decision for you, as you, through the job page's own door; a decision that is not offered is refused with the page's reason. A terminal chat has no signed-in factory connection to press with and says so; press it on the job page.
 
-## the factory's own manager — what's running, start the oldest p1, what did we ship today, the foreman
+## the Factory manager — the factory's own manager, what's running, start the oldest p1, what did we ship today, the foreman
 
-Each factory has one manager of its own beside the jobs' managers: the foreman. The app opens it with `factory.foreman_open`; the first open makes the conversation and every later one opens the same. It reads only the jobs of the factory home it belongs to, through `factory_floor`:
+Each factory has one manager of its own beside the jobs' managers, titled "Factory manager" (its team address is `@foreman`). The app opens it with `factory.foreman_open`; the first open makes the conversation and every later one opens the same. A factory manager made under the older title "foreman" keeps its conversation and is renamed when it next opens. It reads only the jobs of the factory home it belongs to, through `factory_floor`:
 
-- `running`: jobs running or queued to run, each with its step and `steps N of M done`.
+- `running`: jobs running or queued to run, each with its step and `steps N of M done`. A job whose pull request is still open, resting or running a Follow PR repair, reads "following its pull request (Follow PR)", on Follow PR; a shipped job with nothing left to follow reads "done".
 - `queue`: jobs not started yet, most urgent first (p0 before p1), then oldest.
 - `waiting`: jobs that need you. `shipped`: jobs shipped today, with their pull requests and changes, to sum up what shipped.
 - `all`, `oldest`, `cheapest`, `risky`, or one job in full with `item`.
@@ -544,6 +544,16 @@ A removal or a move reaches the run at once, from whichever door makes it (the j
 ## two steps with the same name — step names in capitals, "more than one stage is named", cannot change a step by name
 
 A step is found by its name without regard to case, so `tidy`, `Tidy` and ` TIDY ` all reach a step stored as `Tidy`, and the answer spells it as it is stored: nothing is renamed. Jobs made by this build never have two steps whose names differ only in case, and a step added with a name an existing step already has in another case is refused as `there is already a stage named tidy`. An older saved job can have two steps with one name (`tidy` and `tidy`, or `Tidy` and `tidy`). Naming such a step in an edit, in the `factory_item` card's step changes or in a skip or switch-on, is refused whole with `more than one stage is named tidy, so it cannot be changed by name until the steps have one name each`, and nothing in that edit is applied, not even a budget or a note on the same card. The `factory_item` thinking change names only the conversation steps it would change (not begun, not fixed, not already thinking that way): it is refused when one of those shares its name with another step, and leaves the pair alone, refusing nothing, when neither is one it would change, as when a step spelled exactly that way has already run. There is no command that renames a step, so for now such a job's steps cannot be edited by name. A step that has already run stays protected under whichever spelling it was saved with. The same lookup places a new step: `after tidy` or `before review`, whether typed in the step's ask or given as the edit's after, lands next to the step stored as `Tidy`, and the answer says `added inspect after Tidy`. A name two steps answer to refuses the edit whole. Under a recipe's `ask`, the approve step lands after a step stored as `Plan` too, and two steps named plan refuse the manager's or plan's change whole with `more than one stage is named plan, so there is no one place to ask for approval until the steps have one name each`. A step the recipe file fixes stays fixed under any spelling of its name, so `Review` is refused as `Review is fixed by the recipe`.
+
+## a step the manager or plan adds needs a name of its own — a step called Immediately, a step named after a random word, "has no name of its own"
+
+A step added from a sentence can name itself with one word and a colon: `after write, vet: run go vet ./...` adds a step called `vet` after `write`. When you type a sentence with no name, the step takes its first meaningful word, so `after review, make it neater` is `make`.
+
+The job's manager and its plan step must name what they add. If one of them adds a sentence with no name, and its first word is not already a step (one codeaf ships, such as `security`, or one in the repository's pipeline), the whole edit is refused and nothing changes. The model is told:
+
+`the step "…" has no name of its own, and "immediately", its first word, is not a step; give it one word before a colon, as "vet: run go vet ./..."`
+
+It then adds the step again with a name. This stops a request like "immediately after write, run go vet" from becoming a step called **Immediately**, placed just before Proof. `factory_run` always takes the step's name as its own field, so this applies to the sentence doors: `factory_item`'s add and the plan's `plan_edit`.
 
 ## change one job's thinking — think strong, think cheap, back to usual, fixed steps, landed
 

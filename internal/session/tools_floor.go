@@ -447,7 +447,22 @@ func FloorRow(it factory.Item, now time.Time) string {
 	} else {
 		add(floorPriority(it.Triage))
 	}
+	// A JOB FOLLOWING ITS PULL REQUEST IS ONE STATE, IN A PERSON'S WORDS. Its
+	// stored state is shipped, and the row once said `shipped` beside a step
+	// count that was not finished and named no step, so the foreman read back
+	// "One job is active … State: shipped, step 3 of 4 done" to the person.
+	// It is following its pull request, on Follow PR, whether it is resting
+	// (shipped) or running a repair (running, on followpr); a shipped job
+	// that is not following one is done.
+	onFollow := it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) && it.Stream.Phases[it.Stream.Cur].Name == factory.FollowPRStep
+	following := floorFollowing(it) && (it.State == factory.StateShipped || it.State == factory.StateRunning && onFollow)
 	state := string(it.State)
+	switch {
+	case following:
+		state = floorFollowingWords
+	case it.State == factory.StateShipped:
+		state = "done"
+	}
 	if it.Marked && it.State == factory.StateNew {
 		state += ", selected"
 	}
@@ -457,7 +472,10 @@ func FloorRow(it factory.Item, now time.Time) string {
 	if it.Stream != nil {
 		if done, total := factory.StepCount(it); total > 0 {
 			step := fmt.Sprintf("steps %d of %d done", done, total)
-			if c := it.Stream.Cur; c >= 0 && c < len(it.Stream.Phases) && it.State != factory.StateShipped {
+			switch c := it.Stream.Cur; {
+			case following:
+				step += ", on " + floorFollowStep
+			case c >= 0 && c < len(it.Stream.Phases) && it.State != factory.StateShipped:
 				step += ", on " + it.Stream.Phases[c].Name
 			}
 			add(step)
@@ -653,6 +671,13 @@ func floorShippedToday(snap factory.Snapshot, now time.Time) string {
 // idle twice: first because a published job read as finished, then because
 // the factory had not yet read the pull request's state, so only a pull
 // request known merged or closed ends the following.
+// floorFollowingWords and floorFollowStep are how a job following its pull
+// request reads on the floor: the job page's own name for that step.
+const (
+	floorFollowingWords = "following its pull request (Follow PR)"
+	floorFollowStep     = "Follow PR"
+)
+
 func floorFollowing(it factory.Item) bool {
 	pr := it.PullRequest
 	return pr != nil && pr.Number > 0 && pr.State != factory.PRMerged && pr.State != factory.PRClosed && it.DoneHow == ""

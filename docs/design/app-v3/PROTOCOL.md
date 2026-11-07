@@ -2037,14 +2037,15 @@ not by itself make those older desktops compatible.
 
 ## The factory's own manager (`factory.foreman_open`)
 
-The hello feature `factory.foreman_open` announces the factory-wide manager, the
-foreman. `factory.foreman_open {factory}` answers `{factory, agent}`: `agent` is
+The hello feature `factory.foreman_open` announces the factory-wide manager,
+titled "Factory manager" (the method keeps its `foreman` name, and its team
+handle stays `@foreman`). `factory.foreman_open {factory}` answers `{factory, agent}`: `agent` is
 an agent id the desk opens and sends to like any conversation (`agents.send`).
 The first call makes the conversation; every later call answers the same one.
 Only the factory this engine serves is accepted; any other is `not_found`, as
 `factory.job_chats` refuses it.
 
-The foreman reads only the floor of the factory home it belongs to, through
+The Factory manager reads only the floor of the factory home it belongs to, through
 `factory_floor`: `ask` is `running`, `queue` (not started, most urgent then
 oldest), `waiting`, `shipped` (shipped today, with pull requests and changes),
 `risky`, `cheapest`, `oldest`, `all` or `item`. When the person asks, `start`
