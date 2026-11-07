@@ -48,7 +48,9 @@ type afFakeCP struct {
 	// reports it; resolved records every answer posted to approval-response.
 	approval map[string]agentfield.Approval
 	resolved []string
-	result   json.RawMessage
+	// resolveErr, when set, is every approval answer's refusal.
+	resolveErr error
+	result     json.RawMessage
 	// results is a call's own result, by execution id, when a test names
 	// one; any other execution answers result.
 	results map[string]json.RawMessage
@@ -82,10 +84,22 @@ func (f *afFakeCP) ApprovalStatus(_ context.Context, exec string) (agentfield.Ap
 	return a, nil
 }
 
-func (f *afFakeCP) ResolveApproval(_ context.Context, exec, decision, reason string) error {
+func (f *afFakeCP) ResolveApproval(ctx context.Context, exec, decision, reason string) error {
+	return f.resolve(exec+": "+decision+": "+reason, exec, decision)
+}
+
+// ResolveApprovalBy is ResolveApproval naming the person who answered.
+func (f *afFakeCP) ResolveApprovalBy(_ context.Context, exec, decision, reason, by string) error {
+	return f.resolve(exec+": "+decision+": "+reason+" (by "+by+")", exec, decision)
+}
+
+func (f *afFakeCP) resolve(line, exec, decision string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.resolved = append(f.resolved, exec+": "+decision+": "+reason)
+	if f.resolveErr != nil {
+		return f.resolveErr
+	}
+	f.resolved = append(f.resolved, line)
 	a := f.approval[exec]
 	a.Status = decision
 	if f.approval == nil {
@@ -686,7 +700,7 @@ func TestTheFactoryRunnerHandsARunOnJobToItsRun(t *testing.T) {
 		afNode("e-t", "triage", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"),
 		afNode("e-i", "investigate", "running", "2026-11-07T12:00:03Z", ""))}
 	remote := &afRemote{items: g.st, floor: g.st, workspace: g.workspace, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
-	r := buildFactoryRunnerWith(g.st, g.st, g.workspace, t.TempDir(), nil, nil, remote.Run, factoryrun.ExecutorFunc(remote.Step))
+	r := buildFactoryRunnerWith(g.st, g.st, g.workspace, t.TempDir(), nil, nil, remote.Run, factoryrun.ExecutorFunc(remote.Step), remote.Answer)
 	stopAll(t, g.st, r)
 	id, err := g.st.Add(context.Background(), factory.Item{Title: "refund never arrived", Body: "order 1182", Tier: factory.TierOwner, RunOn: "support.handle_ticket"})
 	if err != nil {

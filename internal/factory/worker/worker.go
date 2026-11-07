@@ -827,6 +827,12 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			effectErr = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
 			effectErr = r.Steer(j.id, s.Words)
+		case lease.SignalAgentField:
+			// A PERSON ANSWERED THE RUN'S PAUSE ON THE FACTORY. This runner
+			// started the run, so it carries the answer to the control plane;
+			// a control plane that does not answer now is tried again on the
+			// next beat, because the signal stays until it is acknowledged.
+			effectErr = r.AnswerAgentField(j.id, factory.AgentFieldDecision{RequestID: s.ID, Execution: s.Execution, Decision: s.Decision, Words: s.Words, By: s.By})
 		case lease.SignalModel:
 			effectErr = r.SetModelSelection(j.id, s.Words, s.Automatic)
 		case lease.SignalAutonomy:

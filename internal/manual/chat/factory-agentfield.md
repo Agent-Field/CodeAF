@@ -401,11 +401,34 @@ asks about, readable in full. Three answers:
   your words to the run".
 - **Reject** — the run stops and so does the job.
 
-Only the job's person answers; the manager never does. The answer goes to the
-control plane, which keeps the one approval: if it was answered first somewhere
-else (hax, the control plane's page) the job's question comes down by itself,
-and a late answer says "this was already answered somewhere else, and that
-answer stands".
+Only the job's person answers; the manager never does. Anyone else is refused
+with "only @<person> can answer this". The answer goes to the control plane,
+which keeps the one approval: if it was answered first somewhere else (hax, the
+control plane's page) the job's question comes down by itself, and a late
+answer says "this was already answered somewhere else, and that answer stands".
+
+## answer an AgentField approval from another computer — a team factory, a server, a desk attached to a remote factory
+
+The plan is answered the same way whichever factory holds the job: the one on
+this machine, a team factory on a server (`codeaf factory serve`), or a factory
+on another computer that this desk is attached to. Approve, Ask for changes and
+Reject are that factory's own job answers.
+
+- The factory checks who may answer (the job's person; anyone on a job with no
+  person yet), keeps the answer on the job with who gave it, and takes the
+  question down at once.
+- The runner that started the run carries the answer to the control plane. It
+  holds the AgentField key and is the run's owner there, so the control plane
+  still lets only that node answer the run. Your handle goes with it as
+  `answered_by`; your words go to the reasoner as they are.
+- A Reject stops the job once the runner has passed it on.
+- An answer survives a restart of the factory, the runner or the desk: the
+  runner that takes the job again sends any answer the control plane has not
+  had yet.
+- If the control plane refuses the answer, the question comes back and the job
+  says "the AgentField control plane did not take the answer: …".
+- A Reject given while no runner holds the job stops the job at once, and the
+  control plane's pause then runs out on its own.
 
 ## a question from an AgentField step — the harness step asks, the manager or you answer
 
@@ -427,9 +450,6 @@ question comes down.
 - An agentfield step runs a reasoner on its node, never on this machine,
   and the control plane reports no money for it: the job's spend and budget
   do not count what the run spent.
-- A team factory (`codeaf factory serve`) cannot answer an AgentField run's
-  approval: only the factory on this machine holds the connection that
-  carries the answer. Answer it on the control plane instead.
 - Only a step that ran the codeaf harness has a chat and takes a note. A
   plain reasoner's step, or a step on another harness, shows its state and
   timing only: it has no chat and no message box.

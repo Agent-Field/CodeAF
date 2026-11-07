@@ -423,9 +423,8 @@ func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
 	held := (queued || running) && it.Stream != nil && it.Stream.Paused
 	// AN AGENTFIELD RUN'S APPROVAL IS THE JOB'S PERSON'S: approve, ask for
 	// changes with words, or reject — the three answers the control plane
-	// takes (the app's local factory carries them to it).
-	afApproval := factory.AgentFieldPause(it) &&
-		(person == "" || person == factory.NormalizeHandle(caller) || owner)
+	// takes, carried to it by the runner that started the run.
+	afApproval := factory.AgentFieldPause(it) && factory.MayAnswerAgentField(it, caller)
 	if afApproval {
 		approve = true
 	}

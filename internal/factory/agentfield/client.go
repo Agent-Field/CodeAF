@@ -524,10 +524,22 @@ const (
 // the first answer from any door (hax, its own UI, this factory) and answers
 // a later one with the state it is already in, which is not an error here.
 func (c *Client) ResolveApproval(ctx context.Context, execution, decision, reason string) error {
+	return c.ResolveApprovalBy(ctx, execution, decision, reason, "")
+}
+
+// ResolveApprovalBy is [Client.ResolveApproval] naming the person who
+// answered. THE ANSWER IS THIS NODE'S, AS THE RUN'S OWNER (X-AgentField-Run-Owner),
+// and the person is named beside it in the response as answered_by — never
+// inside reason, which the reasoner reads as the person's words to it.
+func (c *Client) ResolveApprovalBy(ctx context.Context, execution, decision, reason, by string) error {
 	var out struct {
 		Status string `json:"status"`
 	}
-	if err := c.do(ctx, "answer the approval", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/approval-response", nil, map[string]string{"decision": decision, "reason": reason}, &out); err != nil {
+	body := map[string]any{"decision": decision, "reason": reason}
+	if by = strings.TrimSpace(by); by != "" {
+		body["response"] = map[string]string{"answered_by": "@" + strings.TrimPrefix(by, "@")}
+	}
+	if err := c.do(ctx, "answer the approval", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/approval-response", nil, body, &out); err != nil {
 		return err
 	}
 	// FIRST ANSWER WINS on the control plane, and a later one is a 200 that
@@ -536,6 +548,13 @@ func (c *Client) ResolveApproval(ctx context.Context, execution, decision, reaso
 		return ErrAnsweredElsewhere
 	}
 	return nil
+}
+
+// Refused says err is the control plane's own refusal of a call (a 4xx other
+// than a timeout or a rate limit): sending the same call again cannot help.
+func Refused(err error) bool {
+	var e *Error
+	return errors.As(err, &e) && e.Code >= 400 && e.Code < 500 && e.Code != http.StatusRequestTimeout && e.Code != http.StatusTooManyRequests
 }
 
 // ErrAnsweredElsewhere is an approval answer that came after another one

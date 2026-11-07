@@ -148,6 +148,11 @@ type afRemote struct {
 	// opened is every ended call whose result has been read for a pull
 	// request, so each is read once (pullRequestOf).
 	opened map[string]bool
+	// owedAt is when each answer this runner still owes the control plane
+	// was last tried (owes), by execution and request, so a control plane
+	// that does not answer is tried again every afApprovalEvery, not on
+	// every reading.
+	owedAt map[string]time.Time
 }
 
 // afApprovalEvery is how often a waiting execution's approval is read again
@@ -484,6 +489,11 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 	}
 	steps := afFlattenNamed(root, r.namesFor(ctx, client, root), reserved...)
 	wait := r.waitOf(ctx, client, root, steps, place.recorded(it), place)
+	if wait != nil && r.owes(ctx, client, jobs, job, place.recorded(it), *wait) {
+		// THE PERSON ALREADY ANSWERED THIS PAUSE and the control plane has
+		// it now: nothing to ask.
+		wait = nil
+	}
 	chats := map[string]string{}
 	for _, step := range steps {
 		if m := r.pull(ctx, client, it, step, place); m != nil {
@@ -1907,4 +1917,120 @@ func afTypedInput(ctx context.Context, client afClient, target string, input map
 		}
 	}
 	return input
+}
+
+// ── THE PERSON'S ANSWER, CARRIED BY THE RUNNER THAT STARTED THE RUN ────────
+//
+// A person answers a run's pause on the factory that holds the job, from any
+// desk attached to it; that factory keeps the decision and signals it here
+// (lease SignalAgentField). THIS RUNNER STARTED THE RUN, so it holds the
+// control plane's key and is the run's owner there, and it alone can answer
+// as that owner. A decision the job already holds when this runner reads the
+// pause again — after a restart of the factory, the runner or the desk — is
+// sent then (owes), so no answer is lost between them.
+
+// Answer is Options.AgentFieldAnswer: the person's decision d on job's run
+// pause, sent to the control plane now. It is kept on this runner's copy of
+// the job first, so this runner's own readings stop asking the question.
+func (r *afRemote) Answer(ctx context.Context, job int, d factory.AgentFieldDecision) error {
+	client, _, ok := r.conn()
+	if !ok {
+		return errors.New(factoryrun.NoRemoteWords)
+	}
+	_ = r.items.Update(job, func(it *factory.Item) error {
+		for _, run := range afRuns(it) {
+			if !afRunHas(run, d.Execution) {
+				continue
+			}
+			if factory.AgentFieldAnswerFor(run, d.Execution, d.RequestID) == nil {
+				run.Decisions = append(run.Decisions, d)
+			}
+			if run.Waiting != nil && run.Waiting.Execution == d.Execution {
+				run.Waiting = nil
+			}
+		}
+		factoryrun.SyncAgentFieldWait(it, r.clock())
+		return nil
+	})
+	return r.send(ctx, client, r.items, job, d)
+}
+
+// owes says the job already holds the person's answer to the pause w — so
+// the pause is not asked again — and sends it to the control plane when it
+// is due: at once the first time, then every afApprovalEvery while the
+// control plane does not answer.
+func (r *afRemote) owes(ctx context.Context, client afClient, jobs *store.Store, job int, run *factory.AgentFieldRun, w factory.AgentFieldWait) bool {
+	d := factory.AgentFieldAnswerFor(run, w.Execution, w.RequestID)
+	if d == nil {
+		return false
+	}
+	if r.owedDue(w.Execution+"/"+w.RequestID, r.clock()) {
+		_ = r.send(ctx, client, jobs, job, *d)
+	}
+	return true
+}
+
+// owedDue says an owed answer is due to be tried at now, and marks it tried.
+func (r *afRemote) owedDue(key string, now time.Time) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.owedAt == nil {
+		r.owedAt = map[string]time.Time{}
+	}
+	if now.Sub(r.owedAt[key]) < afApprovalEvery {
+		return false
+	}
+	r.owedAt[key] = now
+	return true
+}
+
+// send carries d to the control plane as this node. The first answer
+// standing already, from any door, is as good as this one taken. A refusal
+// the control plane means is written on the run record, so the question
+// stands again on the factory with its words; anything else is an error to
+// try again.
+func (r *afRemote) send(ctx context.Context, client afClient, jobs *store.Store, job int, d factory.AgentFieldDecision) error {
+	var err error
+	if by, ok := client.(interface {
+		ResolveApprovalBy(ctx context.Context, execution, decision, reason, by string) error
+	}); ok {
+		err = by.ResolveApprovalBy(ctx, d.Execution, d.Decision, d.Words, d.By)
+	} else {
+		err = client.ResolveApproval(ctx, d.Execution, d.Decision, d.Words)
+	}
+	switch {
+	case err == nil || errors.Is(err, agentfield.ErrAnsweredElsewhere):
+		return nil
+	case agentfield.Refused(err):
+		at := r.clock()
+		_ = jobs.Update(job, func(it *factory.Item) error {
+			for _, run := range afRuns(it) {
+				if afRunHas(run, d.Execution) {
+					run.Refused = &factory.AgentFieldRefusal{RequestID: d.RequestID, Execution: d.Execution, Words: afAnswerError(err), At: at}
+				}
+			}
+			return nil
+		})
+		return nil
+	}
+	return err
+}
+
+// afRunHas says execution is one of run's pauses: the one it waits on now,
+// one it asked before, or one a person answered.
+func afRunHas(run *factory.AgentFieldRun, execution string) bool {
+	if run.Waiting != nil && run.Waiting.Execution == execution {
+		return true
+	}
+	for _, a := range run.Asks {
+		if a.Execution == execution {
+			return true
+		}
+	}
+	for _, d := range run.Decisions {
+		if d.Execution == execution {
+			return true
+		}
+	}
+	return run.ExecutionID == execution
 }
