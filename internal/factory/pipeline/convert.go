@@ -55,7 +55,24 @@ func Encode(f File) ([]byte, error) {
 		if s.Kind == string(factory.StageGate) && s.Prompt == "" {
 			prompt = nil // a person needs no prompt, and "" would read as a missing one
 		}
-		steps[name] = step{strings.TrimSpace(s.Label), prompt, s.Kind, s.When, s.Effort, s.Fanout, s.Until, s.Max, s.Who}
+		until, rounds := s.Until, s.Max
+		// A SHIPPED STEP A FILE CHANGED IN PART WRITES ONLY THAT PART: the
+		// words it did not write are the shipped ones, which a reader fills
+		// back in, so a new prompt for write is not saved with write's
+		// shipped stop and rounds echoed beside it. Only a chat inherits
+		// (a step of another kind keeps none of the shipped words).
+		if b, ok := builtin[name]; ok && s.Kind == b.Kind {
+			if !s.wrotePrompt && s.Prompt == b.Prompt {
+				prompt = nil
+			}
+			if !s.wroteUntil && s.Until == b.Until {
+				until = ""
+			}
+			if !s.wroteMax && s.Max == b.Max {
+				rounds = 0
+			}
+		}
+		steps[name] = step{strings.TrimSpace(s.Label), prompt, s.Kind, s.When, s.Effort, s.Fanout, until, rounds, s.Who}
 	}
 	// A KEY THE FILE NEVER SAID IS NEVER WRITTEN, the same law as merge
 	// below. Writing a default spells it out, and a spelled-out key READS
@@ -145,6 +162,16 @@ func Encode(f File) ([]byte, error) {
 			merge.Auto = "off"
 		}
 	}
+	// A file that defines no step of its own writes no `steps:` key at all,
+	// never an empty `steps: {}` its author did not write.
+	var stepsKey any
+	if len(steps) > 0 {
+		stepsKey = steps
+	}
+	var pipelinesKey any
+	if len(pipelines) > 0 {
+		pipelinesKey = pipelines
+	}
 	return yaml.Marshal(struct {
 		DefaultBudget float64   `yaml:"default_budget,omitempty"`
 		Start         any       `yaml:"start,omitempty"`
@@ -155,7 +182,7 @@ func Encode(f File) ([]byte, error) {
 		Rules         *[]string `yaml:"rules,omitempty"`
 		Adapt         any       `yaml:"adapt,omitempty"`
 		Merge         *mergeKey `yaml:"merge,omitempty"`
-	}{budget, start, size, pipelines, steps, fixed, rules, adaptKey(f), merge})
+	}{budget, start, size, pipelinesKey, stepsKey, fixed, rules, adaptKey(f), merge})
 }
 
 // sameStep says a and b say the same thing in a file, reading only what a

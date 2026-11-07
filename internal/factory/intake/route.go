@@ -190,7 +190,7 @@ func stage(cur *factory.Item, f pipeline.File, r *routing) error {
 func applyRoute(cur *factory.Item, rule route.Rule, f pipeline.File) error {
 	var steps []factory.Stage
 	if rule.Then.Pipeline != "" {
-		if steps = f.Recipe().Named(rule.Then.Pipeline); len(steps) == 0 {
+		if steps = f.Named(rule.Then.Pipeline); len(steps) == 0 {
 			return fmt.Errorf("routing rule %q: %s has no pipeline %q in its file", rule.Name, rule.Then.RepoFor(*cur), rule.Then.Pipeline)
 		}
 	}

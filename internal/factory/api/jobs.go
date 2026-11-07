@@ -259,6 +259,8 @@ var ServiceRoutes = []ServiceRoute{
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/factory-copy", nil, PipelineCopyAnswer{}},
 	{"PUT", "/v1/repos/{owner}/{repo}/pipeline/factory-copy", PipelineCopyRequest{}, PipelineCopyAnswer{}},
 	{"DELETE", "/v1/repos/{owner}/{repo}/pipeline/factory-copy", PipelineCopyRequest{}, PipelineCopyAnswer{}},
+	{"GET", "/v1/pipeline-library", nil, PipelineLibraryAnswer{}},
+	{"PUT", "/v1/pipeline-library", PipelineLibraryRequest{}, PipelineLibraryAnswer{}},
 	{"POST", "/v1/issues", NewJob{}, JobCreated{}},
 	{"GET", "/v1/issues", nil, Issues{}},
 	{"POST", "/v1/jobs", NewJob{}, JobCreated{}},

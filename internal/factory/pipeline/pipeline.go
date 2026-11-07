@@ -107,6 +107,10 @@ type File struct {
 	// Problems are lines that did not load. The rest of the file did.
 	Problems []Problem
 
+	// library is the factory's pipeline library this read was given
+	// ([WithLibrary]); nil for none. It is never written into the file.
+	library *File
+
 	// set records which keys a personal file wrote. A repo file leaves it unused.
 	set presence
 	// markdownAdapt preserves the older section-wide constraint until conversion
@@ -392,16 +396,19 @@ func (f File) Recipe() factory.Recipe {
 	for _, problem := range f.Problems {
 		r.Problems = append(r.Problems, problem.Error())
 	}
-	for kind, names := range f.Pipeline {
-		stages := f.stages(names)
+	// EVERY NAME IS RESOLVED THE ONE WAY ([File.Resolve]): the file's own
+	// list, else the library's, else the built-in steps.
+	for _, name := range f.pipelineNames() {
+		res, _ := f.Resolve(name)
+		kind := factory.Kind(name)
 		if kind == factory.KindIssue {
-			r.Stages = stages
+			r.Stages = res.Stages
 			continue
 		}
-		if len(stages) == 0 {
+		if len(res.Stages) == 0 {
 			continue
 		}
-		r.ByKind[kind] = stages
+		r.ByKind[kind] = res.Stages
 	}
 	if r.Stages == nil {
 		r.Stages = []factory.Stage{}
@@ -549,8 +556,8 @@ func (f File) adaptByKind() map[factory.Kind]factory.AdaptMode {
 		return copyAdapt(f.markdownAdapt)
 	}
 	out := map[factory.Kind]factory.AdaptMode{factory.KindIssue: f.Adapt}
-	for kind := range f.Pipeline {
-		out[kind] = f.Adapt
+	for _, kind := range f.pipelineNames() {
+		out[factory.Kind(kind)] = f.Adapt
 	}
 	return out
 }

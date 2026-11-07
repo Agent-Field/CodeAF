@@ -298,6 +298,9 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.jira_connect` | `in.FactoryJiraConnectParams` | `FactoryJiraStatus` |
 | `factory.jira_disconnect` | `in.FactoryRef` | `FactoryJiraStatus` |
 | `factory.jira_status` | `in.FactoryRef` | `FactoryJiraStatus` |
+| `factory.library` | `in.FactoryRef` | `FactoryLibrary` |
+| `factory.library_preview` | `in.FactoryLibraryPreviewParams` | `FactoryLibraryPreview` |
+| `factory.library_set` | `in.FactoryLibrarySetParams` | `FactoryLibrary` |
 | `factory.me` | `in.FactoryRef` | `FactoryMe` |
 | `factory.people` | `in.FactoryRef` | `People` |
 | `factory.pipeline` | `in.FactoryRepoParams` | `FactoryPipeline` |
@@ -595,6 +598,57 @@ table (need not be the kept one) on the newest `limit` jobs the caller may see
 title, outcome, rule?, why?}]}`, newest first, where `outcome` is `matched`,
 `pending` (a question with no answer kept yet) or `none`. It writes nothing
 and asks no model.
+
+An engine whose hello carries the feature `factory.library` serves the
+factory's PIPELINE LIBRARY: named pipelines and the step definitions they use,
+kept by the factory (not by one Mac, not in any repository) for every
+repository it works on, in the same YAML as a repository's
+`.codeaf/factory.yaml`, `pipeline:` and `steps:` only.
+`factory.library {factory}` answers `{"factory": "...", "text": "...",
+"version": 3, "pipelines": [{name, from: "library", steps}], "can": {"change":
+bool}, "changed_by"?, "changed_at"?}` (`GET /v1/pipeline-library`); `text` is
+`""` for an empty library and `version` starts at 1. Everyone signed in may
+read it. `factory.library_set {factory, text, expect: {version}}` replaces it
+whole (`PUT /v1/pipeline-library`): `text` is required (`""` empties it), it is
+parsed by the factory's own parser and kept as its encoder writes it, which
+writes only what the text wrote; a key other than `pipeline` and `steps`, a
+pipeline named `pr` or `ci`, a problem in the file or a step the runner would
+skip is `bad_params`; only the operator may write (`forbidden`); an `expect`
+that is not the kept version is `stale` with nothing written.
+`factory.library_preview {factory, base_text, edits}` applies the same edits
+as `factory.pipeline_preview` (only the verbs that touch `pipeline:` and
+`steps:`: `set_step`, `add_step`, `remove_step`, `move_step`, `rename_step`,
+`set_approver`, `add_pipeline`, `remove_pipeline`, `rename_pipeline`) to a
+library (`base_text` `""` is an empty one) and answers `{factory, text,
+changed, steps, structure?}`, `text` being exactly what `library_set` would
+keep. It writes nothing and asks the factory nothing.
+
+A JOB'S PIPELINE NAME RESOLVES IN ONE ORDER, for `factory.job_start
+{pipeline}`, `factory.job_create {pipeline}`, a routing rule's
+`then.pipeline` and a job's own kind: the repository's file as the factory
+runs it (its own copy when it keeps one, else main's file), then the library,
+then the built-in steps (which name only `issue`). A repository pipeline of
+the same name overrides the library's. A name found nowhere keeps the
+refusals it always had. Behind the same feature `factory.pipeline` carries
+`pipeline.pipelines`, every pipeline a job on that repository can run, each
+`{name, from, steps, over?}` where `from` is `repo`, `factory_copy`,
+`library` or `built_in` and `over` names the lower layers it overrides:
+what "Pick the pipeline" offers. A library pipeline also appears in
+`pipeline.by_kind`.
+
+An engine whose hello carries the feature `factory.pipeline_edit_pipelines`
+(beside `factory.pipeline_edit_structure`) previews three more edits in
+`factory.pipeline_preview`: `add_pipeline {name, steps}` or `{name, from}`
+makes a named pipeline (each step one the file or codeaf defines, or
+`approve`; `from` copies a pipeline the file holds), `remove_pipeline {name}`
+takes one out (its steps' definitions stay) and `rename_pipeline {name, to}`
+renames one. A name is spelled as a step is (2 to 32 lowercase letters, digits
+and inner hyphens); `pr`, `ci` and `issue` are refused as `locked`. A step not
+yet defined is added after `add_pipeline` with `add_step` naming the new
+pipeline, in the same preview. The answer's `structure.pipelines` lists every
+pipeline made, removed or renamed as `{op, pipeline, to?, steps?}`, and the new
+list is in `structure.order`. The pull request route and
+`factory.pipeline_copy_set` take the resulting text as any other.
 
 An engine whose hello carries `factory.repo_facts` serves
 `factory.repo_facts {factory, repo, days?, months?}`: one repository's facts

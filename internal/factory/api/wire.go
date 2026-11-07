@@ -302,6 +302,11 @@ type Pipeline struct {
 	// Merge is the file's `merge:` settings; absent is auto-merge off and the
 	// repository's own choice of method.
 	Merge *MergeBlock `json:"merge,omitempty"`
+	// Pipelines is every pipeline a job on this repository can run, from the
+	// repository's file, the factory's copy of it, the factory's library and
+	// the built-in steps, each once with where it came from: what "Pick the
+	// pipeline" offers. Absent from a factory that predates the library.
+	Pipelines []PipelineChoice `json:"pipelines,omitempty"`
 }
 
 // MergeBlock is a pipeline's merge settings on the wire.

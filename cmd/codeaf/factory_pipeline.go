@@ -245,7 +245,21 @@ func withFactoryHouseRules(st *store.Store, f pipeline.File, err error) (pipelin
 	if serr != nil {
 		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, serr)
 	}
-	return pipeline.WithSpending(pipeline.WithHouseRules(f, house), spending), err
+	// THE FACTORY'S PIPELINE LIBRARY goes beside every read the same way, so
+	// a Start, a routing rule and a job's own kind all resolve a pipeline's
+	// name through [pipeline.File.Resolve]: the repository's file, then the
+	// library, then the built-in steps. A library that cannot be read fails
+	// the read like the rules do: a rule naming one of its pipelines must
+	// never quietly run something else.
+	kept, lerr := st.PipelineLibrary()
+	if lerr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, lerr)
+	}
+	lib, lerr := pipeline.ParseLibrary(kept.Text)
+	if lerr != nil {
+		return f, fmt.Errorf("%w: %v", pipeline.ErrHouseRulesUnread, lerr)
+	}
+	return pipeline.WithLibrary(pipeline.WithSpending(pipeline.WithHouseRules(f, house), spending), lib), err
 }
 
 // factoryProfileOwner is the forge login of this machine's GitHub connection:
