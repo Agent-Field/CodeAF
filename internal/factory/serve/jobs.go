@@ -197,12 +197,15 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		var picked []factory.Stage
 		if pick != "" {
 			// A PICK IS READ FROM THE FILE OR NOT AT ALL: a read that failed
-			// refuses it, where a plain start would run on the defaults.
+			// refuses it, where a plain start would run on the defaults. The
+			// name resolves the one way ([pipeline.File.Resolve]): the
+			// repository's file, then the factory's library, then the
+			// built-in steps.
 			if file == nil || fileErr != nil {
 				h.fail(w, 503, "The repository's pipeline file could not be read, so this job cannot start on a picked pipeline yet.")
 				return false
 			}
-			if picked = file.Recipe().Named(pick); len(picked) == 0 {
+			if picked = file.Named(pick); len(picked) == 0 {
 				h.fail(w, 422, "pipeline not found")
 				return false
 			}

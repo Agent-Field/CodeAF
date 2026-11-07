@@ -809,6 +809,11 @@ func (b *appBackend) PipelineCheckEdits() {}
 // rename_step, which is what lets hello announce factory.pipeline_edit_rename.
 func (b *appBackend) PipelineRenameEdits() {}
 
+// PipelinePipelineEdits marks this backend as one whose preview applies
+// add_pipeline, remove_pipeline and rename_pipeline, which is what lets hello
+// announce factory.pipeline_edit_pipelines.
+func (b *appBackend) PipelinePipelineEdits() {}
+
 // PipelineGateEdits marks this backend as one whose preview applies an
 // add_step of kind gate, which is what lets hello announce
 // factory.pipeline_edit_gates.

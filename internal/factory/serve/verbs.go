@@ -838,15 +838,17 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
+		selected = recipe.Named(body.Pipeline)
 		if h.config.Pipeline != nil {
 			f, err := h.config.Pipeline(r.Context(), body.Repo, dir)
 			if h.failed(w, err) {
 				return
 			}
-			recipe = f.Recipe()
+			// The one resolver: the repository's file, the factory's
+			// library, the built-in steps ([pipeline.File.Resolve]).
+			selected = f.Named(body.Pipeline)
 			copied, decided = f.Copy, true
 		}
-		selected = recipe.Named(body.Pipeline)
 		if len(selected) == 0 {
 			h.fail(w, 422, "pipeline not found")
 			return

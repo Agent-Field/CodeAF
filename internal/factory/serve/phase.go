@@ -33,9 +33,9 @@ func markPreMutation(r *http.Request) bool {
 	case http.MethodPost:
 		return r.URL.Path == "/v1/access/links" || r.URL.Path == "/v1/access/revoke-sessions"
 	case http.MethodPut:
-		// The factory's own rules and its routing table: exactly /v1/rules
-		// and /v1/routes.
-		if r.URL.Path == "/v1/rules" || r.URL.Path == "/v1/routes" {
+		// The factory's own rules, its routing table and its pipeline
+		// library: exactly /v1/rules, /v1/routes and /v1/pipeline-library.
+		if r.URL.Path == "/v1/rules" || r.URL.Path == "/v1/routes" || r.URL.Path == "/v1/pipeline-library" {
 			return true
 		}
 		// One runner's settings: exactly /v1/runners/{runner}.

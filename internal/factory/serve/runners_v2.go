@@ -20,6 +20,7 @@ func (h *Handler) v2Routes() {
 	h.route("/v1/settings", map[string]http.HandlerFunc{http.MethodGet: h.runnerPolicy, http.MethodPatch: h.runnerPolicy})
 	h.route("/v1/rules", map[string]http.HandlerFunc{http.MethodGet: h.houseRules, http.MethodPut: h.houseRules})
 	h.route("/v1/routes", map[string]http.HandlerFunc{http.MethodGet: h.routes, http.MethodPut: h.routes})
+	h.route("/v1/pipeline-library", map[string]http.HandlerFunc{http.MethodGet: h.pipelineLibrary, http.MethodPut: h.pipelineLibrary})
 	h.route("/v1/routes/test", map[string]http.HandlerFunc{http.MethodPost: h.routesTest})
 	h.route("/v1/spending", map[string]http.HandlerFunc{http.MethodGet: h.spending, http.MethodPatch: h.spending})
 	h.read("/v1/runners", h.runnersDirectory)

@@ -87,12 +87,23 @@ type EditError struct {
 	Code string
 	Op   int
 	Why  string
+	// Pipeline says the refusal is about a whole pipeline (one the file does
+	// not have, a name that is taken or reserved), not about a step, so a
+	// door that words refusals by code can name the right thing.
+	Pipeline bool
 }
 
 func (e *EditError) Error() string { return e.Why }
 
 func refuseEdit(code string, op int, format string, args ...any) *EditError {
 	return &EditError{Code: code, Op: op, Why: fmt.Sprintf(format, args...)}
+}
+
+// refusePipeline is a refusal about a whole pipeline ([EditError.Pipeline]).
+func refusePipeline(code string, op int, format string, args ...any) *EditError {
+	e := refuseEdit(code, op, format, args...)
+	e.Pipeline = true
+	return e
 }
 
 // EditOp is one edit. Pointers tell a field that was not sent from one that was
@@ -130,8 +141,14 @@ type EditOp struct {
 	// Who belongs to set_approver, with Name, and to an add_step of kind
 	// gate: who the added person waits on.
 	Who *string
-	// To belongs to rename_step, with Name: the step's new name.
+	// To belongs to rename_step, with Name: the step's new name; and to
+	// rename_pipeline, with Name: the pipeline's new name.
 	To string
+	// Steps and From belong to add_pipeline alone (edit_pipelines.go), whose
+	// Name is the new pipeline's: Steps is its list in order, or From names
+	// the pipeline whose list it starts as a copy of.
+	Steps []string
+	From  string
 }
 
 // StepView is one step as the file reads. Gate is a step that is a person
@@ -236,9 +253,12 @@ type Edited struct {
 	Order      []OrderChange
 	// Renamed is every rename_step, in edit order; set only with Structural.
 	Renamed []Rename
-	Added   []string
-	Counts  []KindCount
-	Gates   []GateChange
+	// Pipelines is every add_pipeline, remove_pipeline and rename_pipeline,
+	// in edit order; set only with Structural.
+	Pipelines []PipelineChange
+	Added     []string
+	Counts    []KindCount
+	Gates     []GateChange
 
 	Listed bool
 	Lists  []ListChange
@@ -518,11 +538,17 @@ type editState struct {
 	// edit set, and settingsEdited says one did.
 	settingSeen    map[string]bool
 	settingsEdited bool
+	// kindSeen is every pipeline name a pipeline verb named, kinds what each
+	// did, and renamedKinds each renamed pipeline's old name by its new one.
+	kindSeen     map[string]bool
+	kinds        []PipelineChange
+	renamedKinds map[string]string
 }
 
 func newEditState(f File) *editState {
 	st := &editState{base: f, out: f, inPipeline: map[string]bool{}, named: map[string]bool{}, added: map[string]bool{}, placed: map[string]bool{},
-		placedAt: map[string]int{}, setAt: map[string]int{}, firstOp: map[factory.Kind]int{}, listSeen: map[string]bool{}, settingSeen: map[string]bool{}}
+		placedAt: map[string]int{}, setAt: map[string]int{}, firstOp: map[factory.Kind]int{}, listSeen: map[string]bool{}, settingSeen: map[string]bool{},
+		kindSeen: map[string]bool{}, renamedKinds: map[string]string{}}
 	st.out.Steps = make(map[string]Step, len(f.Steps))
 	for name, s := range f.Steps {
 		st.out.Steps[name] = s
@@ -554,6 +580,8 @@ func (st *editState) apply(i int, op EditOp) *EditError {
 		return st.settings(i, op)
 	case OpRenameStep:
 		return st.rename(i, op)
+	case OpAddPipeline, OpRemovePipeline, OpRenamePipeline:
+		return st.pipelines(i, op)
 	}
 	return st.structure(i, op)
 }
@@ -644,6 +672,13 @@ func (st *editState) result(base string, canonical []byte) (Edited, error) {
 		st.settingsFacts(&res)
 	}
 	if bytes.Equal(text, canonical) {
+		// THE SAME BYTES ARE NOT ALWAYS THE SAME EDIT: clearing a shipped
+		// step's inherited until writes what the base wrote, and reads back
+		// as the shipped word again. That is a change the file cannot hold,
+		// never a silent nothing.
+		if why := notRoundTrip(text, out); why != "" {
+			return Edited{}, refuseEdit(EditNotRepresentable, -1, "%s", why)
+		}
 		return res, nil
 	}
 	if why := notRoundTrip(text, out); why != "" {
@@ -706,8 +741,17 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 	if op.Op != OpSetList && (op.List != "" || op.Lines != nil) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no list and no lines", op.Op)
 	}
+	if pipelineOp(op.Op) {
+		if settingFieldsNamed(op) || op.Who != nil {
+			return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size, max_cost or who", op.Op)
+		}
+		return checkPipelineOp(i, op)
+	}
+	if op.Steps != nil || op.From != "" {
+		return op, refuseEdit(EditBadOp, i, "only add_pipeline takes steps or from")
+	}
 	if op.Op != OpRenameStep && op.To != "" {
-		return op, refuseEdit(EditBadOp, i, "only rename_step takes to")
+		return op, refuseEdit(EditBadOp, i, "only rename_step and rename_pipeline take to")
 	}
 	if !settingsOp(op.Op) && settingFieldsNamed(op) {
 		return op, refuseEdit(EditBadOp, i, "%s takes no adapt, fixed, max_size, max_cost or who", op.Op)
@@ -726,7 +770,7 @@ func CheckEdit(i int, op EditOp) (EditOp, *EditError) {
 			return op, refuseEdit(EditBadOp, i, "%s takes no pipeline and no position", op.Op)
 		}
 	default:
-		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start, set_approver and rename_step")
+		return op, refuseEdit(EditBadOp, i, "that edit is not one of set_step, set_budget, add_step, remove_step, move_step, set_list, set_adapt, set_fixed, set_start, set_approver, rename_step, add_pipeline, remove_pipeline and rename_pipeline")
 	}
 	if op.Op == OpSetBudget {
 		return checkSetBudget(i, op)

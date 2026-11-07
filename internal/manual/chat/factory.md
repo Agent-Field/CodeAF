@@ -277,6 +277,41 @@ A repository's steps are its `.codeaf/factory.yaml`, read from the main branch, 
 
 Only the factory's operator may save or stop a copy, as with the factory's own rules; on a factory you run yourself, that is you. The copy is kept on the factory (on a team, the shared server), never in one Mac's settings. A copy the factory cannot read refuses to start jobs rather than quietly running main's steps. Steps that use kind, when, effort or fanout are saved as a copy only when the factory has confirmed it runs them for the file they were edited from, as for a pull request. A factory older than this feature answers `This factory doesn't support that yet; nothing was changed. Update the factory to use it.`
 
+## make a new pipeline — a named pipeline of your own, a docs pipeline, rename or remove a pipeline
+
+A repository's `.codeaf/factory.yaml` holds one list of steps per pipeline under `pipeline:`. `issue` is the one a job runs when nothing picks another; any other name (`docs`, `quick`, `careful`) is a pipeline of your own that a person picks at Start or a routing rule names with `then.pipeline`.
+
+Making one is an edit of the file, previewed like adding a step (`factory.pipeline_preview` over the app protocol), so the result lands the same ways: a pull request, **Use on this factory**, or the factory's library. The app's repository editor has no New pipeline button of its own yet.
+
+- `add_pipeline {name, steps}` makes a named pipeline from steps the file or codeaf already defines (or `approve`), in that order. `add_pipeline {name, from}` starts it as a copy of a pipeline the file already has. A step that does not exist yet is added afterwards with `add_step`, naming the new pipeline, in the same preview.
+- `rename_pipeline {name, to}` gives one another name; its list and its own `adapt` word move with it.
+- `remove_pipeline {name}` takes one out. Its steps' definitions stay, because another pipeline may list them.
+
+A name is 2 to 32 lowercase letters, digits and inner hyphens. `issue` is always there, so it is never made, renamed or removed; `pr` and `ci` are the factory's lists for pull request and CI jobs and are refused as names. A step nobody defined, an empty list, a name already taken and a chat listed after proof are refused, and nothing is written. The file that results writes only what you wrote: shipped steps you left alone are not copied into it.
+
+## reuse a pipeline across repos — the factory's pipeline library, one pipeline for every repository
+
+The factory keeps a **pipeline library**: named pipelines and the step definitions they use, written once and runnable on every repository the factory works on. It is the same YAML as a repository's `factory.yaml`, `pipeline:` and `steps:` only; start rules, sizes, budgets and rules belong to a repository or to the factory's own rules and are refused there.
+
+- It is kept by the factory itself (on a team, the shared server), not on one Mac and not in any repository. Everyone signed in can read it; only the factory's operator can change it.
+- A library pipeline runs the library's own words for its steps, never a repository step of the same name.
+- It is read and written over the app protocol, `factory.library`, `factory.library_preview` (the same edits as the pipeline editor, `add_pipeline` included) and `factory.library_set`. A change sent after someone else changed the library is refused: read it again, then make the change.
+- A library that names `issue` is what a repository runs when its own file does not list `issue` itself.
+
+## which pipeline runs — the repository's file, the factory's copy, the library, the built-in steps, pick the pipeline at Start
+
+A pipeline's name (picked at Start, named by a routing rule, or a job's own `issue`) is looked up in one order, the same for every door:
+
+1. the repository's file as this factory runs it: **its own copy** when it keeps one, else main's `.codeaf/factory.yaml`;
+2. the factory's **pipeline library**;
+3. the built-in steps, which only name `issue`.
+
+**A repository pipeline of the same name wins** over the library's. For **Pick the pipeline**, the factory lists every pipeline a job on that repository can run from all of these (`factory.pipeline`, its `pipelines`), each saying where it comes from: `repo`, `factory_copy`, `library` or `built_in`, and which lower one it overrides. A name found nowhere is refused: Start answers `pipeline not found`, and a routing rule is refused with the job left unchanged. With no library, every repository runs exactly what it ran before.
+
+## my pipelines — kept on this Mac, versus the factory's library
+
+**My pipelines** and **My steps** in the app are yours alone: kept on this Mac, in no repository, and teammates do not see them. One can only be applied to one job at a time (**Apply to a job…**); it cannot become a repository's pipeline, be picked at Start or be named by a routing rule. To use a pipeline on every repository, from Start and from routing rules, put it in the factory's pipeline library (see "reuse a pipeline across repos").
+
 ## a running step's chat — watching a step work, its words as it writes them
 
 Press a running step to open its chat. If the step is still getting ready, the
@@ -322,13 +357,13 @@ The factory keeps one **routing table**: an ordered list of rules, read for ever
 A rule has a `name`, a `when` and a `then`:
 
 - `when`: `sources` (`github`, `jira`, `inbox`, or one inbox such as `inbox:ops`), `repos` (`owner/name`), `labels`, `authors` (handles or emails), `text` (words in the title or body, any case) `priority` (`p0`..`p3`), and `ask`, a yes/no question for the AI (see "a routing rule that asks the AI"). Every list you fill must hold, and a list holds when any one entry does; an empty list matches anything.
-- `then`: `repo` (`owner/name` the job is worked on), `pipeline` (a pipeline named in that repository's `factory.yaml`, the same names Start's pipeline pick takes; not `pr` or `ci`), `priority` (`p0`..`p3`), and `start`, which is required: `auto`, `ask` or `backlog`.
+- `then`: `repo` (`owner/name` the job is worked on), `pipeline` (a pipeline that repository's `factory.yaml` names, or the factory's pipeline library does, the same names Start's pipeline pick takes; not `pr` or `ci`), `priority` (`p0`..`p3`), and `start`, which is required: `auto`, `ask` or `backlog`.
 
 **A routed job needs no label.** `auto` starts it inside its repository's start rules (size, cost, protected paths still hold it, with "Approval needed: start ·" and the rule). `ask` holds it with "Approval needed: start · routing rule <name>". `backlog` files it in Backlog with the rule's repository, priority and steps on it, and starts nothing. A person's own priority mark wins over a rule's; the priority the source sent (Jira's, an inbox entry's) does not, so a rule's `priority` replaces it.
 
 ## what a routing rule did to a job — Backlog row, a pipeline the repository doesn't have, an edited ticket, rules while Pick up issues is off
 
-**Pick up issues** does not switch rules off: it governs only labels starting work no rule matched, so every rule applies whether it is on or off. A rule files a job in Backlog with one activity row, `routing rule <name> · Backlog`. A rule whose pipeline the target repository's file does not list is refused: the job stays unrouted, its activity says `routing rule <name>: <repo> has no pipeline <p>` once, and every other job and source carries on. A job a rule already routed keeps its route and steps when its ticket is edited, unless a different rule now matches; then that rule's pipeline replaces the old one and the activity says `routing rule <new> · in place of routing rule <old> · steps …`.
+**Pick up issues** does not switch rules off: it governs only labels starting work no rule matched, so every rule applies whether it is on or off. A rule files a job in Backlog with one activity row, `routing rule <name> · Backlog`. A rule whose pipeline neither the target repository's file nor the factory's pipeline library lists is refused: the job stays unrouted, its activity says `routing rule <name>: <repo> has no pipeline <p>` once, and every other job and source carries on. A job a rule already routed keeps its route and steps when its ticket is edited, unless a different rule now matches; then that rule's pipeline replaces the old one and the activity says `routing rule <new> · in place of routing rule <old> · steps …`.
 
 ## a routing rule that asks the AI — the answer kept on a job, "couldn't judge", why it started, test these rules
 

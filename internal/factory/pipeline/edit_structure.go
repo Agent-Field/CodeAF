@@ -96,7 +96,7 @@ func checkStructure(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadOp, i, "%s names a pipeline", op.Op)
 	}
 	if !stepNamed(op.Pipeline) {
-		return op, refuseEdit(EditUnknownStep, i, "that is not a pipeline name")
+		return op, refusePipeline(EditUnknownStep, i, "that is not a pipeline name")
 	}
 	if !stepNamed(op.Name) {
 		return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
@@ -222,7 +222,7 @@ func (st *editState) structure(i int, op EditOp) *EditError {
 	kind := factory.Kind(op.Pipeline)
 	list, ok := st.out.Pipeline[kind]
 	if !ok {
-		return refuseEdit(EditUnknownStep, i, "%s is not a pipeline in this file", op.Pipeline)
+		return refusePipeline(EditUnknownStep, i, "%s is not a pipeline in this file", op.Pipeline)
 	}
 	row := op.Pipeline + "\x00" + op.Name
 	if st.placed[row] {
@@ -517,8 +517,18 @@ func (st *editState) structureFacts(res *Edited) {
 	res.Order, res.Counts, res.Gates = []OrderChange{}, []KindCount{}, []GateChange{}
 	res.Added = append([]string{}, st.newSteps...)
 	res.Renamed = append([]Rename{}, st.renames...)
+	res.Pipelines = append([]PipelineChange{}, st.kinds...)
 	for _, kind := range sortedKinds(st.out) {
-		before, after := st.base.Pipeline[factory.Kind(kind)], st.out.Pipeline[factory.Kind(kind)]
+		// A renamed pipeline is compared with its list under its old name, so
+		// a rename alone moves no step.
+		was := kind
+		if from, ok := st.renamedKinds[kind]; ok {
+			was = from
+		}
+		before, after := st.base.Pipeline[factory.Kind(was)], st.out.Pipeline[factory.Kind(kind)]
+		if before == nil {
+			before = []string{}
+		}
 		res.Counts = append(res.Counts, KindCount{Pipeline: kind, Steps: len(after)})
 		if strings.Join(before, "\n") == strings.Join(after, "\n") {
 			continue
