@@ -154,6 +154,41 @@ func TestASearchOfFiveThousandIsBounded(t *testing.T) {
 	}
 }
 
+// A search that reaches its limit stops asking at once: it never spends more
+// than the limit and the one call that crossed it, keeps what it found, and
+// says how many items it never finished.
+func TestASearchStopsAtItsCostLimit(t *testing.T) {
+	f := &fake{word: "auth"}
+	const limit = 0.01
+	got := Run(context.Background(), Options{Question: "auth", Items: items(5000, 10, "auth"), Model: "m", Call: f.call, Parallel: 1, Limit: limit})
+	if !got.Limited || got.Phase != PhaseDone {
+		t.Fatalf("not stopped at the limit: %+v", got)
+	}
+	if got.USD > limit+0.001+1e-9 || f.screens.Load() > 11 {
+		t.Fatalf("spent %v over %d reads past a limit of %v", got.USD, f.screens.Load(), limit)
+	}
+	if want := got.Total - got.Read + got.Judging - got.Checked; got.Unread != want || got.Unread < 4000 {
+		t.Fatalf("unread %d, want %d", got.Unread, want)
+	}
+	if w := Words(got); !strings.Contains(w, " · stopped at the cost limit · ") || !strings.HasSuffix(w, fmt.Sprintf("%d not read", got.Unread)) {
+		t.Fatalf("words %q", w)
+	}
+	// Stopped with questions under way: the matches already found are kept,
+	// and the reads and questions not made are what is unread.
+	fj := &fake{word: "auth"}
+	seen := 0
+	mid := Run(context.Background(), Options{Question: "auth", Items: items(200, 10, "auth"), Model: "m", Call: fj.call, Parallel: 1, Limit: 0.0105,
+		Progress: func(s Status) { seen = max(seen, len(s.Matches)) }})
+	if !mid.Limited || len(mid.Matches) != seen || mid.Unread != mid.Total-mid.Read+mid.Judging-mid.Checked || mid.Unread == 0 || mid.USD > 0.0105+0.001 {
+		t.Fatalf("stopped while judging: %+v", mid)
+	}
+	// No limit: the same search reads everything.
+	f2 := &fake{word: "auth"}
+	if all := Run(context.Background(), Options{Question: "auth", Items: items(200, 10, "auth"), Model: "m", Call: f2.call}); all.Limited || all.Read != 200 {
+		t.Fatalf("an unlimited search stopped: %+v", all)
+	}
+}
+
 // The same question again reads its kept answers: no call at all, the same
 // matches. An edited item is asked again.
 func TestASearchAgainReusesItsAnswersAndAsksOnlyWhatChanged(t *testing.T) {

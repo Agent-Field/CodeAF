@@ -141,7 +141,12 @@ type Status struct {
 	Reused int `json:"reused,omitempty"`
 	// Failed is how many reads or questions failed; their items are not
 	// matches, and the person is told the answer is incomplete.
-	Failed  int     `json:"failed,omitempty"`
+	Failed int `json:"failed,omitempty"`
+	// Limited says the search reached [Options.Limit] and stopped asking;
+	// Unread is how many items it never finished: not screened, or kept and
+	// not yet judged. The matches found before the stop are kept.
+	Limited bool    `json:"limited,omitempty"`
+	Unread  int     `json:"unread,omitempty"`
 	USD     float64 `json:"usd"`
 	Model   string  `json:"model,omitempty"`
 	Matches []Match `json:"matches"`
@@ -165,7 +170,18 @@ type Options struct {
 	Progress func(Status)
 	// Parallel overrides [Parallel]; zero keeps it.
 	Parallel int
+	// Limit is the most the search may spend, in dollars; zero is no limit.
+	// THE MOMENT THE SPEND REACHES IT, every call still running is cancelled
+	// and no more are started, so an estimate's word is a bound the run keeps,
+	// not a hope. A surface sets it to [LimitTimes] the estimate's most.
+	Limit float64
 }
+
+// LimitTimes is how far past the estimate's most a search may spend before it
+// stops itself. The screen's reasoning length varies run to run (a 65-issue
+// question measured $0.0188 against a most of $0.0186 on 2026-11-07), so the
+// most is a guide; twice it is the hard stop.
+const LimitTimes = 2
 
 // Ask is the routing question one item is judged on: the person's words,
 // turned into the yes/no the judge answers.
@@ -191,10 +207,13 @@ func Clean(question string) string {
 	return clip(q, QuestionMost)
 }
 
-// Run is one search to the end, or until ctx is done.
-func Run(ctx context.Context, o Options) Status {
+// Run is one search to the end, until ctx is done, or until it has spent
+// [Options.Limit].
+func Run(outer context.Context, o Options) Status {
 	o.Question = Clean(o.Question)
-	st := &run{o: o, s: Status{Phase: PhaseScreening, Matches: []Match{}, Model: o.Model}}
+	ctx, halt := context.WithCancel(outer)
+	defer halt()
+	st := &run{o: o, halt: halt, s: Status{Phase: PhaseScreening, Matches: []Match{}, Model: o.Model}}
 	if o.Question == "" {
 		st.s.Phase, st.s.Error = PhaseFailed, ErrNoQuestion.Error()
 		return st.s
@@ -214,10 +233,13 @@ func Run(ctx context.Context, o Options) Status {
 	st.tell()
 
 	st.search(ctx, items)
-	if ctx.Err() != nil {
+	if outer.Err() != nil {
 		return st.stop()
 	}
 	st.mu.Lock()
+	if st.s.Limited {
+		st.s.Unread = st.s.Total - st.s.Read + st.s.Judging - st.s.Checked
+	}
 	order := map[int]int{}
 	for i, it := range items {
 		order[it.ID] = i
@@ -233,9 +255,11 @@ func Run(ctx context.Context, o Options) Status {
 }
 
 type run struct {
-	o  Options
-	mu sync.Mutex
-	s  Status
+	o Options
+	// halt cancels every call of the search; spent calls it at the limit.
+	halt context.CancelFunc
+	mu   sync.Mutex
+	s    Status
 	// tellMu keeps Progress to one goroutine at a time.
 	tellMu sync.Mutex
 }
@@ -274,6 +298,10 @@ func (r *run) spent(usd float64, served string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.s.USD += usd
+	if r.o.Limit > 0 && r.s.USD >= r.o.Limit && !r.s.Limited {
+		r.s.Limited = true
+		r.halt()
+	}
 	if served = strings.TrimSpace(served); served != "" {
 		r.s.Model = served
 	}
@@ -328,8 +356,10 @@ func (r *run) search(ctx context.Context, items []factory.Item) {
 				return
 			}
 			kept, usd, served, err := screenOnce(ctx, r.o.Call, r.o.Model, r.o.Question, part)
-			<-sem
+			// The cost is booked BEFORE the slot is given back, so the next
+			// call never starts on a spend that has already passed the limit.
 			r.spent(usd, served)
+			<-sem
 			if ctx.Err() != nil {
 				return
 			}
@@ -388,8 +418,8 @@ func (r *run) judgeOne(ctx context.Context, sem chan struct{}, ask string, it fa
 	}
 	var usd float64
 	a, err := r.o.Judge.Judge(withSpent(judge.WithRuleModel(ctx, r.o.Model), &usd), ask, it)
-	<-sem
 	r.spent(usd, a.Model)
+	<-sem
 	if ctx.Err() != nil {
 		return
 	}
@@ -417,8 +447,13 @@ func (r *run) judged(it factory.Item, a route.Answer, err error, kept bool) {
 }
 
 // acquire takes one of the search's call slots, or answers false when ctx
-// ends first.
+// ends first. AN ENDED SEARCH NEVER TAKES A SLOT: select picks at random
+// between a free slot and a done ctx, so ctx is checked before it, and a run
+// stopped at its cost limit starts no further call.
 func acquire(ctx context.Context, sem chan struct{}) bool {
+	if ctx.Err() != nil {
+		return false
+	}
 	select {
 	case sem <- struct{}{}:
 		return true
@@ -671,7 +706,11 @@ func Words(s Status) string {
 		}
 		return fmt.Sprintf("Read %d of %d", s.Read, s.Total) + found
 	case PhaseDone:
-		return fmt.Sprintf("%d %s", len(s.Matches), plural(len(s.Matches), "match", "matches"))
+		done := fmt.Sprintf("%d %s", len(s.Matches), plural(len(s.Matches), "match", "matches"))
+		if s.Limited {
+			done += fmt.Sprintf(" · stopped at the cost limit · %d not read", s.Unread)
+		}
+		return done
 	}
 	return ""
 }

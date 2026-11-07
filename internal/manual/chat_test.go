@@ -3608,6 +3608,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"find all jobs related to exports with AI", "factory-ai-search"},
 		{"how does the AI search decide an issue matches", "factory-ai-search"},
 		{"what does an AI search of the jobs cost", "factory-ai-search"},
+		{"is there a spending cap or limit on an AI search", "factory-ai-search"},
 		{"save an AI search as a view", "factory-ai-search"},
 		{"does a saved AI view check new issues by itself", "factory-ai-search"},
 		// THE TRIGGER API: AgentField only, a message from outside read

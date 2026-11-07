@@ -9,8 +9,8 @@ in your own words and press **Ask AI** at the end of the bar, or start the text
 with `?` and press Enter. For example `? anything touching auth tokens`.
 
 The AI never runs while you type. Ask AI (or Enter on a `?` question) first
-shows, above the list, what it will read and what it is likely to cost, such
-as "Reads 61 issues · about $0.0095", and asks no model. It runs only when you
+shows, above the list, what it will read and the range it is likely to cost,
+such as "Reads 65 issues · about $0.01–$0.02", and asks no model. It runs only when you
 press **Run** there. A question asked before over the same issues says "Asked
 before · nothing new to read".
 
@@ -46,11 +46,18 @@ more were not checked, so narrow the question or the bar. A question is at most
 says it is incomplete. There is no search index behind it: every issue is read
 by the AI.
 
-## what an AI search costs — Spending, factory search, the estimate before it runs
+## what an AI search costs — Spending, factory search, the estimate before it runs, the cost limit it stops at
 
 Before it runs, the bar shows the estimate: how many issues it will read and
-about what it will cost at the factory's default model's price (no figure when
-the price is not known). After, the answer shows what it actually cost.
+the range it is likely to cost at the factory's default model's price, from
+typical to most (no figure when the price is not known). After, the answer
+shows what it actually cost.
+
+The range is a guide, not a promise: the model thinks for longer on some
+questions. The search has a hard limit of twice the top of the range. If it
+reaches that, it stops at once, keeps the matches found so far, and says
+"stopped at the cost limit · 12 not read". There is no setting to change the
+limit; Ask again runs it again, and answers already given are reused.
 
 On deepseek/deepseek-v4.1-flash a search of 65 issues cost between $0.002 and
 $0.015, depending on how many issues looked related: a broad question such as

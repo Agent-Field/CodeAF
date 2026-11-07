@@ -173,6 +173,12 @@ func (b *appBackend) FactoryAISearchStart(ctx context.Context, p appwire.Factory
 	}
 	items := appAISearchItems(q, p.Jobs)
 	cache := appAISearch.cache(h.dir(), p.Factory)
+	// The run stops itself at twice the estimate's most, so the figure the
+	// person was shown before Run is a bound, not a hope. No price: no limit.
+	limit := 0.0
+	if e := aisearch.EstimateFor(p.Question, items, cache, b.aiSearchPrice(model)); e.Most != nil {
+		limit = aisearch.LimitTimes * *e.Most
+	}
 	raw := make([]byte, 8)
 	_, _ = rand.Read(raw)
 	run := &appAISearchRun{id: "s_" + hex.EncodeToString(raw), factory: p.Factory, question: p.Question, started: time.Now(),
@@ -183,7 +189,7 @@ func (b *appBackend) FactoryAISearchStart(ctx context.Context, p appwire.Factory
 	call := aisearch.Spending(factoryAICall(appAISearchLoad, factorySearchName))
 	guard.Go("app/factory ai search", func() {
 		defer cancel()
-		final := aisearch.Run(runCtx, aisearch.Options{Question: p.Question, Items: items, Model: model, Call: call, Cache: cache,
+		final := aisearch.Run(runCtx, aisearch.Options{Question: p.Question, Items: items, Model: model, Call: call, Cache: cache, Limit: limit,
 			Progress: func(s aisearch.Status) { run.set(s) }})
 		if final.Phase == aisearch.PhaseStopped && runCtx.Err() == context.DeadlineExceeded {
 			final.Phase, final.Error = aisearch.PhaseFailed, "the search took longer than ten minutes and was stopped"
