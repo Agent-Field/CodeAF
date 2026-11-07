@@ -738,17 +738,18 @@ func (b *appBackend) agentFieldSteer(a *appAgent, text string) (bool, error) {
 	return true, nil
 }
 
-// afSteerWords is the node's own refusal when the control plane passed one
-// on, else the error.
+// afSteerWords is the refusal in a person's words: the control plane's own
+// sentence when it gave one ("this step has ended", "the node did not take
+// the note: …"), with the node's execution-speak said of the step.
 func afSteerWords(err error) string {
 	msg := err.Error()
-	for _, words := range []string{"this execution is not running the codeaf harness, so it cannot be steered", "the run has notes it has not read yet; send this again in a moment"} {
-		if strings.Contains(msg, words) {
-			if strings.HasPrefix(words, "this execution") {
-				return "this step is not running the codeaf harness, so it cannot be steered"
-			}
-			return words
-		}
+	var refusal *agentfield.Error
+	if errors.As(err, &refusal) && strings.TrimSpace(refusal.Message) != "" {
+		msg = strings.TrimSpace(refusal.Message)
+	}
+	const nodeSays = "this execution is not running the codeaf harness, so it cannot be steered"
+	if strings.Contains(msg, nodeSays) {
+		return "this step is not running the codeaf harness, so it cannot be steered"
 	}
 	return msg
 }
