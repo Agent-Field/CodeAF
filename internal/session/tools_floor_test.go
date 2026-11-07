@@ -113,7 +113,7 @@ func TestFactoryFloorIsOnTheBeltOnlyWithItsDoor(t *testing.T) {
 			continue
 		}
 		found = true
-		for _, want := range []string{"foreman", "the person runs what is selected with L", "nothing you do here runs, ships or posts"} {
+		for _, want := range []string{"foreman", "only when the person asks", "nothing here ships, merges or posts"} {
 			if !strings.Contains(tool.Description, want) {
 				t.Errorf("the description lacks %q: %q", want, tool.Description)
 			}
@@ -256,5 +256,61 @@ func TestFloorRowNamesTheSourceOfASize(t *testing.T) {
 		if row := FloorRow(it, now); strings.Contains(row, "size") || strings.Contains(row, "says") {
 			t.Errorf("%s: %q says a size", name, row)
 		}
+	}
+}
+
+// actingFloorDoor is a floor that also starts and prioritises, recording each.
+type actingFloorDoor struct {
+	*fakeFloorDoor
+	acted []string
+}
+
+func (d *actingFloorDoor) StartItem(_ context.Context, id int) (string, error) {
+	d.acted = append(d.acted, "start "+itoaFloor(id))
+	return "#" + itoaFloor(id) + " started", nil
+}
+
+func (d *actingFloorDoor) SetPriority(_ context.Context, id int, value string) (string, error) {
+	d.acted = append(d.acted, "priority "+itoaFloor(id)+" "+value)
+	return "set", nil
+}
+
+// THE FACTORY-WIDE MANAGER READS EVERY JOB AND ACTS ON ONE WHEN ASKED. The
+// audit's "what's running?", "start the oldest p1" and "what did we ship
+// today?" had no answer anywhere; running, queue and shipped answer them from
+// the floor, start and priority reach the job by the ref the person read, and
+// a floor that cannot act says so and changes nothing.
+func TestTheForemanReadsRunningQueueAndShippedAndStartsByRef(t *testing.T) {
+	door := floorLab()
+	now := door.snap.Now
+	door.snap.Items[5].Stream = &factory.Stream{Cur: 1, Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}, {Name: "write", State: factory.PhaseRunning}, {Name: "proof", State: factory.PhasePending}}}
+	door.snap.Items = append(door.snap.Items, factory.Item{ID: 8, Num: 11, Repo: "acme/api", Kind: factory.KindIssue, Title: "add Ledger.Largest", State: factory.StateShipped, DoneAt: now.Add(-time.Hour), DoneHow: "merged",
+		PullRequest: &factory.PullRequest{Number: 161, URL: "https://github.com/acme/api/pull/161", State: factory.PRMerged}, Change: &factory.Change{Stat: &factory.ChangeStat{Files: 3, Added: 83, Removed: 1}}},
+		factory.Item{ID: 9, Num: 12, Repo: "acme/api", Kind: factory.KindIssue, Title: "old shipped", State: factory.StateShipped, DoneAt: now.Add(-48 * time.Hour)})
+	door.snap.Items[2].Priority = &factory.JobPriority{Value: "high"}
+	text, _ := floorCall(t, door, `{"ask":"running"}`)
+	if !strings.Contains(text, "#9 cache warmup") || !strings.Contains(text, "steps 1 of 3 done, on write") || strings.Contains(text, "#1 ") {
+		t.Errorf("running:\n%s", text)
+	}
+	text, _ = floorCall(t, door, `{"ask":"queue"}`)
+	if lines := strings.Split(text, "\n"); len(lines) < 2 || !strings.HasPrefix(lines[1], "#6 meter rounds wrong") || !strings.Contains(lines[1], "priority p1 (high)") {
+		t.Errorf("queue does not lead with the p1:\n%s", text)
+	}
+	text, _ = floorCall(t, door, `{"ask":"shipped"}`)
+	if !strings.Contains(text, "shipped today · 1 job") || !strings.Contains(text, "pull/161") || !strings.Contains(text, "3 files, +83 −1") || strings.Contains(text, "old shipped") {
+		t.Errorf("shipped:\n%s", text)
+	}
+	if text, bad := floorCall(t, door, `{"start":6}`); !bad || !strings.Contains(text, "Nothing changed") {
+		t.Errorf("a floor that cannot act started a job: %q", text)
+	}
+	acting := &actingFloorDoor{fakeFloorDoor: door}
+	agent := &Agent{config: Config{Workspace: t.TempDir(), Floor: acting}}
+	for _, args := range []string{`{"start":6}`, `{"item":4,"priority":"p0"}`} {
+		if _, bad, err := agent.factoryFloorTool().Execute(context.Background(), json.RawMessage(args)); bad || err != nil {
+			t.Fatalf("%s refused: %v", args, err)
+		}
+	}
+	if strings.Join(acting.acted, ",") != "start 3,priority 2 urgent" {
+		t.Fatalf("acted %v, want the jobs by their ids", acting.acted)
 	}
 }

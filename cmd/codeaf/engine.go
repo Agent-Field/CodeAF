@@ -1151,7 +1151,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	}
 	// `factory_floor`, now that the hello has settled which conversation this
 	// is: on the foreman's belt and no other (factory_foreman.go).
-	cfg.Floor = foremanFloorDoor(floorStore, workspace, cfg.SessionFile)
+	cfg.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, cfg.SessionFile)
 
 	// THE THREE ROAD-DEPENDENT CAPABILITIES ARE DECIDED IN ONE PLACE, and this
 	// door no longer keeps its own answer to any of them (chatv3_lanes.go). Each
@@ -1324,7 +1324,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			if err != nil {
 				return nil, "", err
 			}
-			fresh.Floor = foremanFloorDoor(floorStore, workspace, fresh.SessionFile)
+			fresh.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, fresh.SessionFile)
 			// THROUGH THE SAME BUILDER THE BOOT CONVERSATION WAS OPENED WITH, so
 			// a conversation started by /new over a connection is not a lesser
 			// one than the conversation it replaced: the adaptive runner is
@@ -1351,7 +1351,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			if err != nil {
 				return nil, false, err
 			}
-			earlier.Floor = foremanFloorDoor(floorStore, workspace, earlier.SessionFile)
+			earlier.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, earlier.SessionFile)
 			// Whether the file was found is asked BEFORE it is opened, because
 			// opening it creates it: a path nobody has written yet is a new
 			// conversation, and the surface says so on its first line.
