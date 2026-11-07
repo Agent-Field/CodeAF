@@ -53,7 +53,7 @@ about what it will cost at the factory's default model's price (no figure when
 the price is not known). After, the answer shows what it actually cost.
 
 On deepseek/deepseek-v4.1-flash a search of 65 issues cost between $0.002 and
-$0.026, depending on how many issues looked related: a broad question such as
+$0.015, depending on how many issues looked related: a broad question such as
 "issues about the ledger total" keeps more for the careful check and costs
 the most. Asking the same question
 again over the same issues cost $0.00. Every call goes on Spending as

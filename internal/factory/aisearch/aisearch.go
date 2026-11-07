@@ -78,11 +78,13 @@ const (
 	// ScreenAnswerTokens is what one screen reply is budgeted in the estimate,
 	// and JudgeAnswerTokens one judge reply. Both are MEASURED, not the size
 	// of the JSON: a cheap model thinks before it answers, and its thinking is
-	// billed as output. On 2026-11-07, after the screen was told to keep
-	// generously, 65 factory-demo issues on deepseek/deepseek-v4.1-flash gave
-	// screen replies of 98 to 4,020 tokens (median 1,520) and judge replies of
-	// 38 to 998 (median 91); the budgets sit near the top of each so the
-	// estimate's "most" holds.
+	// billed as output. On 2026-11-07, with the generous screen at 20 issues
+	// a read, 65 factory-demo issues on deepseek/deepseek-v4.1-flash gave
+	// screen replies of 45 to 3,275 tokens (median 574) and judge replies of
+	// 36 to 580 (median 101); at 40 a read they had run to 4,020 and 998. The
+	// budgets sit near the top of each so the estimate's "most" holds: it
+	// said $0.0186 most for three questions that cost $0.0019, $0.0066 and
+	// $0.0146.
 	ScreenAnswerTokens = 3000
 	JudgeAnswerTokens  = 300
 	// TypicalShare is the estimate's guess at how much the screen keeps: one
