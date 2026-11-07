@@ -1,6 +1,6 @@
 # AgentField and the factory
 
-## connect AgentField — the factory as a node on the AgentField control plane
+## connect AgentField — the factory as a node on the AgentField control plane, even behind NAT
 
 AgentField (the open-source agent control plane) already takes webhooks from
 Linear, Sentry, Slack, GitHub, Stripe and any signed caller, runs cron
@@ -8,19 +8,21 @@ schedules, stores and de-duplicates every event, and dispatches each one to an
 agent. The factory on this machine can register on a control plane as an
 AgentField **node**, so a trigger on AgentField becomes factory work.
 
-Connecting takes: the control plane's address (`url`, such as
-`http://agentfield.local:8080`), its API key if it has one, and the address
-the control plane reaches this factory on (`base_url`, such as
-`http://10.0.0.5:8765`; it needs a port). Optional: a node id (default
-`codeaf-factory`), the address to listen on (default: base_url's port, on
-127.0.0.1 when base_url is loopback, else on every interface), and a trust
-ceiling (default `collaborator`).
+Connecting takes the control plane's address (`url`, such as
+`http://agentfield.local:8080`) and its API key if it has one. That is
+enough: the node dials the control plane's **link** and needs no address of
+its own, so a laptop behind NAT works. Optional: `base_url` (an address the
+control plane can reach this factory on, such as `http://10.0.0.5:8765`) and
+the control plane's `internal_token`, for a control plane that offers no
+link; a node id (default `codeaf-factory`); the address to listen on
+(default: base_url's port); a trust ceiling (default `collaborator`).
+With no base_url the factory binds no port at all for AgentField.
 
 The app's engine connects with `factory.agentfield_connect`. Before keeping
-anything it asks the control plane for its source catalog with the key, starts
-listening, and registers; if any of those fails ("AgentField did not accept
-that API key", "AgentField could not be reached", "the factory could not
-listen on …") nothing is kept. The API key is kept the way the GitHub token
+anything it asks the control plane for its source catalog with the key, then
+registers; if that fails ("AgentField did not accept that API key",
+"AgentField could not be reached", "the factory could not listen on …")
+nothing is kept. The API key is kept the way the GitHub token
 is (by the desktop app, else in the profile) and never sent back. There is no
 slash command for this in the terminal chat, and only the factory on this
 machine can be connected.
@@ -40,15 +42,22 @@ The node registers three reasoners, each with a JSON Schema:
   /api/intake/{source}/{id}` does: `{job, state, steps_done, steps_total,
   route?, pr_url?, question?, updated}`.
 
-The node also answers `/health`, `/status` and `/discover`. Every restart of
-the factory registers again as a new instance, and the node renews its lease
-with the control plane every minute or so.
+Every restart of the factory registers again as a new instance.
 
-AgentField sends no credential when it dispatches a trigger, so the node is
-protected by its address instead: it registers `<base_url>/n/<secret>` with a
-random 64-character secret and answers nothing outside that path (anything
-else is "404 not found"). Only someone who can read the control plane's node
-list with its API key can see that address.
+**The link.** The node opens one WebSocket to the control plane
+(`/api/v1/nodes/<id>/link`, the API key as its bearer, never in the URL) and
+keeps it, reconnecting with backoff (half a second up to thirty) when it
+drops. Dispatches and cancels come down it, each acked once and deduped by
+delivery, execution and idempotency key; the job's progress and completion
+and the lease's heartbeat go up it. A control plane without the link is
+reached over HTTP instead, and the node says the link is "not offered".
+
+**Over HTTP**, with a base_url, the node answers `/health`, `/status` and
+`/discover` openly, and a reasoner or cancel call only when it carries the
+control plane's internal token as `Authorization: Bearer`; anything else is
+refused 401. The old `<base_url>/n/<secret>` path is still answered for one
+release when an old secret is kept; a fresh connect registers a plain
+base_url.
 
 ## trigger from Linear / Sentry / Slack — what each event becomes
 
@@ -141,11 +150,14 @@ it answers 202 and reports on that execution until the job settles:
   publish failed): failed, with the job's own words.
 
 Each change is reported as it happens, from the same moments a webhook and
-Jira hear. An execution not told anything for three minutes is told again,
-so a long job is never taken for stale, and a job that ended with nothing to
-announce it (a person dropped it) completes its execution within those three
-minutes. An event that files nothing completes its execution at once with
-the reason as the result.
+Jira hear, up the link when it is up and over HTTP otherwise. A long job is
+never taken for stale: every lease lists the open executions (`inflight`)
+and the control plane keeps them alive. A report that could not land (the
+control plane was down), or a job that ended with nothing to announce it (a
+person dropped it), is caught up at the next lease or reconnect. Cancelling
+the execution in AgentField stops the job, as a person's Stop does. An event
+that files nothing completes its execution at once with the reason as the
+result.
 
 ## why didn't my AgentField trigger make a job
 
@@ -158,22 +170,26 @@ last call ("filed job 12 (ENG-142)", "filed nothing: …", "refused: …").
 - **Refused**: the entry was not one the factory takes; the reason is on the
   execution in AgentField too.
 - **No call at all**: the trigger is disabled, its event type is filtered
-  out, AgentField could not reach `base_url` (look at the trigger's failed
-  events in AgentField), or the factory is not connected.
+  out, the link is down and AgentField could not reach `base_url` (look at
+  the trigger's failed events in AgentField, and `link` in the status), or
+  the factory is not connected.
 - **A job, but it did not start**: that is the routing and start rules, and on
   this machine **Pick up issues** must be on for anything to start by itself.
 
 ## AgentField status, lease and disconnect
 
 `factory.agentfield_status` answers whether the factory is connected, the
-control plane, node id, base_url, listen address and ceiling, whether a key is
-kept (never the key), the address the node is listening on, when it last
-registered, its lease, the last call it had and what became of it, the last
-error, and how many executions are waiting on jobs. An engine that serves
+control plane, node id, base_url, listen address and ceiling, whether a key
+and an internal token are kept (never either), the address the node is
+listening on (none for a link-only node), the link (`up`, `connecting`, `not
+offered`) and how many times it came up, when it last registered, its lease,
+the last call, which way it came (`link` or `http`) and what became of it,
+the last error, and how many executions are waiting on jobs. An engine that serves
 these methods says `factory.agentfield` in its hello.
 
 `factory.agentfield_disconnect` tells the control plane the node is offline,
-stops listening, and forgets the settings, the key and the secret. Jobs
+closes the link, stops listening, and forgets the settings, the key and the
+token. Jobs
 already filed stay as they are.
 
 ## what the AgentField node cannot do
@@ -181,7 +197,8 @@ already filed stay as they are.
 - Only the factory on this machine connects; a team factory (`codeaf factory
   serve`) does not run the node.
 - No DID or verifiable-credential signing: the node does not sign or check
-  AgentField DIDs; its address secret is its protection.
+  AgentField DIDs; the link's key and the HTTP bearer are its protection, and
+  both are the control plane's global values, not one per node.
 - A pipeline step cannot call an AgentField reasoner yet, and a job's steps
   are not child executions in AgentField's workflow view.
 - Jira is not an AgentField source; it has its own connector (see "connect

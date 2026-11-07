@@ -228,14 +228,19 @@ func (c *Client) Register(ctx context.Context, r Registration) error {
 }
 
 // Renew is PATCH /api/v1/nodes/:id/status with phase (ready, or offline when
-// the node is going away).
-func (c *Client) Renew(ctx context.Context, node, phase, version string) (Lease, error) {
+// the node is going away) and the executions the node still holds, which the
+// control plane touches so its stale reaper leaves them alone.
+func (c *Client) Renew(ctx context.Context, node, phase, version string, inflight []string) (Lease, error) {
 	score := 100
 	if phase != "ready" {
 		score = 0
 	}
+	body := map[string]any{"phase": phase, "version": version, "health_score": score}
+	if len(inflight) > 0 {
+		body["inflight"] = inflight
+	}
 	var out Lease
-	err := c.do(ctx, "node", http.MethodPatch, "/api/v1/nodes/"+url.PathEscape(node)+"/status", nil, map[string]any{"phase": phase, "version": version, "health_score": score}, &out)
+	err := c.do(ctx, "node", http.MethodPatch, "/api/v1/nodes/"+url.PathEscape(node)+"/status", nil, body, &out)
 	return out, err
 }
 

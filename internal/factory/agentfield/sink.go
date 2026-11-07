@@ -17,8 +17,11 @@ import (
 // ([inbox.RegisterSink] under [SinkName]) beside the source's own replier
 // and the signed webhook: each moment — filed, started, a question, the pull
 // request opened, merged, stuck, done, a message read — tells the job's open
-// executions where it stands now, and [Node.retellQuiet] on the lease's
-// renewal tells an execution that has gone quiet for [keepAlive] again.
+// executions where it stands now, up the link when it is up and over HTTP
+// when it is not. Nothing is retold to keep an execution alive: the lease's
+// `inflight` does that. Each lease tick only catches up ([Node.catchUp]) an
+// execution whose job moved without the report landing (a control plane that
+// was down, a job a person dropped with no moment on the bus).
 //
 // Whatever reports, the same rule decides, from the job as it is now:
 //
@@ -32,8 +35,7 @@ import (
 //   - otherwise → running, with progress as the share of steps done and the
 //     job's question in the result while it waits on one.
 //
-// Each execution is told each distinct state once ([Execution.Said]); an
-// open one is told again after [keepAlive].
+// Each execution is told each distinct state once ([Execution.Said]).
 
 // Update is what an execution waiting on it is told now, a fingerprint of
 // it, and whether it completes the execution.
@@ -93,15 +95,14 @@ func (s sink) Send(ctx context.Context, m inbox.Moment) error {
 	return nil
 }
 
-// retellQuiet tells every open execution untold for [keepAlive] where its
-// job stands.
-func (n *Node) retellQuiet(ctx context.Context, c *Client) {
+// catchUp reports every open execution whose job stands somewhere it was not
+// told. An execution already told its job's state is skipped by reportJob.
+func (n *Node) catchUp(ctx context.Context, r *running) {
 	seen := map[int]bool{}
-	now := n.now()
 	for _, e := range n.table().open() {
-		if !seen[e.Job] && now.Sub(e.SaidAt) >= keepAlive {
+		if !seen[e.Job] {
 			seen[e.Job] = true
-			n.reportJob(ctx, c, e.Job)
+			n.reportJob(ctx, r.client, e.Job)
 		}
 	}
 }
@@ -126,7 +127,7 @@ func (n *Node) reportJob(ctx context.Context, c *Client, job int) {
 	}
 	u, fingerprint, ends := Update(it)
 	for _, e := range open {
-		if e.Said == fingerprint && (ends || n.now().Sub(e.SaidAt) < keepAlive) {
+		if e.Said == fingerprint {
 			continue
 		}
 		n.tell(ctx, c, e, u, fingerprint, ends)
@@ -143,7 +144,7 @@ func (n *Node) tell(ctx context.Context, c *Client, e Execution, u ExecutionUpda
 		took := now.Sub(e.Began).Milliseconds()
 		u.CompletedAt, u.DurationMS = &at, &took
 	}
-	err := c.Report(ctx, e.ID, u)
+	err := n.report(ctx, c, e.ID, u)
 	switch {
 	case err == nil:
 		_ = n.table().said(e.ID, fingerprint, ends, now)

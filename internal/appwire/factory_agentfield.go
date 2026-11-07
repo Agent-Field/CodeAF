@@ -43,9 +43,15 @@ type FactoryAgentFieldConnectParams struct {
 	// APIKey is the control plane's API key; empty for one that runs without.
 	// It is never sent back.
 	APIKey string `json:"api_key,omitempty"`
-	// BaseURL is the address the control plane reaches this factory on, such
-	// as http://10.0.0.5:8765.
-	BaseURL string `json:"base_url"`
+	// BaseURL is the address the control plane reaches this factory on over
+	// HTTP, such as http://10.0.0.5:8765. EMPTY IS LINK ONLY: the factory
+	// binds no port and is reached down the link it opens (a laptop behind
+	// NAT).
+	BaseURL string `json:"base_url,omitempty"`
+	// InternalToken is the control plane's internal token, which it sends as
+	// the bearer of every HTTP dispatch; the node refuses an HTTP dispatch
+	// without it. Not needed for a link-only node. Never sent back.
+	InternalToken string `json:"internal_token,omitempty"`
 	// NodeID is the node the factory registers as; empty is codeaf-factory.
 	NodeID string `json:"node_id,omitempty"`
 	// Listen is the address the node binds; empty is base_url's port, on
@@ -68,8 +74,17 @@ type FactoryAgentFieldStatus struct {
 	Trust     string `json:"trust,omitempty"`
 	// KeyKept says an API key is kept (never what it is).
 	KeyKept bool `json:"key_kept,omitempty"`
-	// Listening is the address the node is answering on now.
+	// TokenKept says the internal token is kept (never what it is).
+	TokenKept bool `json:"token_kept,omitempty"`
+	// Listening is the address the node is answering on now; always empty
+	// for a link-only node.
 	Listening string `json:"listening,omitempty"`
+	// Link is the link's state: up, connecting, not offered.
+	Link      string     `json:"link,omitempty"`
+	LinkSince *time.Time `json:"link_since,omitempty"`
+	LinkUps   int        `json:"link_ups,omitempty"`
+	// LastEventVia is the carrier the last call came by: link or http.
+	LastEventVia string `json:"last_event_via,omitempty"`
 	// RegisteredAt is when the control plane last took the registration.
 	RegisteredAt *time.Time `json:"registered_at,omitempty"`
 	// LeaseSeconds and LeaseUntil are the last lease the control plane gave.
@@ -173,17 +188,17 @@ func CheckAgentFieldConnect(p FactoryAgentFieldConnectParams) (FactoryAgentField
 	if p.Factory, err = factoryID(strings.TrimSpace(p.Factory)); err != nil {
 		return p, err
 	}
-	p.URL, p.APIKey, p.BaseURL = strings.TrimSpace(p.URL), strings.TrimSpace(p.APIKey), strings.TrimSpace(p.BaseURL)
+	p.URL, p.APIKey, p.BaseURL, p.InternalToken = strings.TrimSpace(p.URL), strings.TrimSpace(p.APIKey), strings.TrimSpace(p.BaseURL), strings.TrimSpace(p.InternalToken)
 	p.NodeID, p.Listen, p.Trust = strings.TrimSpace(p.NodeID), strings.TrimSpace(p.Listen), strings.TrimSpace(p.Trust)
 	switch {
 	case p.URL == "":
 		return p, Errorf(CodeBadParams, "url is required: the AgentField control plane, such as http://agentfield.local:8080")
-	case p.BaseURL == "":
-		return p, Errorf(CodeBadParams, "base_url is required: the address AgentField reaches this factory on, such as http://10.0.0.5:8765")
 	case strings.ContainsAny(p.APIKey, " \t\r\n\x00"):
 		return p, Errorf(CodeBadParams, "an API key is one word")
 	case len(p.APIKey) > 4096:
 		return p, Errorf(CodeBadParams, "an API key is at most 4096 bytes")
+	case strings.ContainsAny(p.InternalToken, " \t\r\n\x00") || len(p.InternalToken) > 4096:
+		return p, Errorf(CodeBadParams, "the internal token is one word of at most 4096 bytes")
 	}
 	return p, nil
 }

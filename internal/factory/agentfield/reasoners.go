@@ -22,16 +22,21 @@ import (
 
 // ── THE NODE'S HTTP SURFACE ─────────────────────────────────────────────────
 //
-// Everything is under `/n/<secret>` (see connection.go for why that is the
-// node's authentication), and everything else is 404 — a caller without the
-// secret cannot even learn that a codeaf node answers here:
+// The same routes answer both carriers. Down the link (link.go) a dispatch
+// frame is fed to them as the HTTP request it replaces; over HTTP they sit
+// behind [Guarded], which refuses a reasoner or cancel call that does not
+// carry the control plane's internal token as its bearer:
 //
-//	POST /n/<secret>/reasoners/intake   a trigger's {event, _meta}, or an entry
-//	POST /n/<secret>/reasoners/message  {source, id, text} or {job, text}
-//	POST /n/<secret>/reasoners/status   {source, id} or {job}
-//	GET  /n/<secret>/health             {status: healthy, node_id}
-//	GET  /n/<secret>/status             the control plane's agent status shape
-//	GET  /n/<secret>/discover           the node id, version and reasoners
+//	POST /reasoners/intake                  a trigger's {event, _meta}, or an entry
+//	POST /reasoners/message                 {source, id, text} or {job, text}
+//	POST /reasoners/status                  {source, id} or {job}
+//	POST /_internal/executions/{id}/cancel  stop the job behind an execution
+//	GET  /health                            {status: healthy, node_id}
+//	GET  /status                            the control plane's agent status shape
+//	GET  /discover                          the node id, version and reasoners
+//
+// /health, /status and /discover stay open: the control plane's health
+// probe sends no credential, and they say nothing a node list does not.
 //
 // THE INTAKE ANSWERS 202 when it filed a job for a dispatched execution: the
 // control plane leaves the execution running, and the node reports on it
@@ -45,8 +50,11 @@ import (
 // maxCall is the most of one call's body the node reads.
 const maxCall = 1 << 20
 
-func (n *Node) handler(secret string, r *running) http.Handler {
+// routes is the node's routes, unguarded: the link feeds them directly, and
+// [Guarded] wraps them for HTTP.
+func (n *Node) routes(r *running) *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /_internal/executions/{id}/cancel", n.cancelCall)
 	mux.HandleFunc("POST /reasoners/"+ReasonerIntake, n.intake)
 	mux.HandleFunc("POST /reasoners/"+ReasonerMessage, n.message)
 	mux.HandleFunc("POST /reasoners/"+ReasonerStatus, n.status)
@@ -65,27 +73,44 @@ func (n *Node) handler(secret string, r *running) http.Handler {
 	mux.HandleFunc("GET /discover", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"node_id": r.settings.NodeID, "version": n.Version, "deployment_type": "long_running", "reasoners": Reasoners(), "skills": []any{}})
 	})
-	return Guarded(secret, mux)
+	return mux
 }
 
-// Guarded answers next only under /n/<secret>, with that prefix taken off,
-// and 404 to everything else. The secret is compared in constant time.
-func Guarded(secret string, next http.Handler) http.Handler {
+// Guarded is the node's HTTP door:
+//
+//   - a reasoner or cancel call must carry `Authorization: Bearer <token>`,
+//     the control plane's internal token, compared in constant time; without
+//     it the answer is 401, and with no token kept every such call is
+//     refused — THE NODE NEVER RUNS AN UNAUTHENTICATED DISPATCH;
+//   - a call under the LEGACY `/n/<legacy>/` prefix, when an old secret is
+//     still kept, is the control plane that registered the old base_url, and
+//     is answered with the prefix taken off (one release of compatibility);
+//   - /health, /status and /discover are open.
+func Guarded(token, legacy string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rest, ok := strings.CutPrefix(r.URL.Path, SecretPrefix)
-		if !ok || secret == "" {
-			http.NotFound(w, r)
+		if rest, ok := strings.CutPrefix(r.URL.Path, SecretPrefix); ok {
+			got, tail, _ := strings.Cut(rest, "/")
+			if legacy == "" || subtle.ConstantTimeCompare([]byte(got), []byte(legacy)) != 1 {
+				http.NotFound(w, r)
+				return
+			}
+			inner := r.Clone(r.Context())
+			inner.URL.Path = "/" + tail
+			inner.URL.RawPath = ""
+			next.ServeHTTP(w, inner)
 			return
 		}
-		got, tail, _ := strings.Cut(rest, "/")
-		if subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
-			http.NotFound(w, r)
+		switch r.URL.Path {
+		case "/health", "/status", "/discover":
+			next.ServeHTTP(w, r)
 			return
 		}
-		inner := r.Clone(r.Context())
-		inner.URL.Path = "/" + tail
-		inner.URL.RawPath = ""
-		next.ServeHTTP(w, inner)
+		bearer, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok || token == "" || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(bearer)), []byte(token)) != 1 {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "this node answers only its control plane: the call must carry the control plane's internal token as its bearer"})
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -134,6 +159,13 @@ func (n *Node) intake(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	via := "http"
+	if r.Header.Get(viaHeader) == "link" {
+		via = "link"
+	}
+	n.mu.Lock()
+	n.health.LastEventVia = via
+	n.mu.Unlock()
 	meta, event, err := dispatchOf(raw, r)
 	if err != nil {
 		n.heard("", err.Error())
@@ -141,7 +173,7 @@ func (n *Node) intake(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source := SourceName(meta.Source)
-	s, _, _, _ := n.Conn.Kept()
+	s, _, _ := n.Conn.Kept()
 	t, err := Translate(meta, event, s.Trust)
 	if err != nil {
 		n.heard(source, "refused: "+err.Error())
@@ -288,7 +320,7 @@ func (n *Node) message(w http.ResponseWriter, r *http.Request) {
 	}
 	source, id, err := n.filedAs(ref)
 	if err == nil {
-		s, _, _, _ := n.Conn.Kept()
+		s, _, _ := n.Conn.Kept()
 		var got trigger.Accepted
 		got, err = trigger.Message(r.Context(), n.Store, trigger.Said{Source: source, ID: id, Author: ref.Author, Text: ref.Text, Trust: capTrust("", s.Trust)}, n.now())
 		if err == nil {
