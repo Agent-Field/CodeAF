@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a job's manager keeps a running job running when it edits the steps, sees the pull request's decisions, and the factory has a manager of its own
+title: a step edit keeps a running job running, managers see PR decisions, and the foreman opens
 pr: 2488
 surface: [factory, engine, app]
 invalidates:
