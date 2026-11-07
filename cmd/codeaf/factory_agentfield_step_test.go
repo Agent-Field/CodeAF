@@ -213,6 +213,28 @@ func TestAPullRequestACallOpenedIsTheJobsAtOnceWhateverTheRunsEnd(t *testing.T) 
 	}
 }
 
+// A CALL THAT OPENED A PULL REQUEST AND THEN FAILED STILL GIVES IT TO THE
+// JOB: the pull request is read off every call that ended, whatever its end,
+// so a call that opened one and then failed its own checks leaves it on the
+// job beside the run's failure.
+func TestAPullRequestACallReportedIsKeptWhenThatCallFailed(t *testing.T) {
+	appDayProfile(t)
+	prev := afRemoteEvery
+	afRemoteEvery = 10 * time.Millisecond
+	t.Cleanup(func() { afRemoteEvery = prev })
+	st, it, stage := afStepJob(t)
+	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "failed", "2026-11-07T12:00:00Z", "2026-11-07T12:00:05Z",
+		afNode("e-ship", "ship_work", "failed", "2026-11-07T12:00:01Z", "2026-11-07T12:00:04Z")),
+		results: map[string]json.RawMessage{"e-ship": json.RawMessage(`{"pr_url":"https://github.com/santoshkumarradha/factory-demo/pull/34","pr_number":34,"error":"one check did not pass"}`)}}
+	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	if _, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage}); err == nil {
+		t.Fatal("a failed run ended its step as done")
+	}
+	if end, _ := st.Get(it.ID); end.PullRequest == nil || end.PullRequest.Number != 34 {
+		t.Fatalf("the pull request a failed call reported was lost: %+v", end.PullRequest)
+	}
+}
+
 // A HARNESS STEP'S QUESTION REACHES THE JOB AND ITS ANSWER REACHES THE STEP:
 // the node relays the step's ask line; the factory keeps it out of the
 // step's conversation, puts it to the job (its manager first, then the

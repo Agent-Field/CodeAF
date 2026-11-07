@@ -350,7 +350,7 @@ func afKeepPullRequest(jobs *store.Store, job int, raw json.RawMessage) bool {
 }
 
 // pullRequestOf reads, once each, the result of every call in steps that has
-// ended well and attaches the first pull request one names to the job. THE
+// ended, well or not, and attaches the first pull request one names to the job. THE
 // JOB PAGE FOLLOWS THE RUN: a call that opened a pull request may end long
 // before the run does, and the page says "to come" until it is attached.
 func (r *afRemote) pullRequestOf(ctx context.Context, client afClient, jobs *store.Store, job int, steps []afStep) {
@@ -375,7 +375,9 @@ func (r *afRemote) pullRequestOf(ctx context.Context, client afClient, jobs *sto
 	}
 	for _, step := range steps {
 		exec := step.node.ExecutionID
-		if exec == "" || !afSucceeded(step.node.Status) || !unread(exec) {
+		// EVERY CALL THAT ENDED IS READ, HOWEVER IT ENDED: one that opened a
+		// pull request and then failed its own checks still reports it.
+		if exec == "" || !afEnded(step.node.Status) || !unread(exec) {
 			continue
 		}
 		raw, err := results.Result(ctx, exec)
