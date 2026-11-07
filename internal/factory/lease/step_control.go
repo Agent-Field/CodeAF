@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -67,6 +68,9 @@ func (d *Doors) EditSteps(id int, edit factory.RunEdit, recipe factory.Recipe) (
 		if err := factory.CheckPersonStop(*it); err != nil {
 			return false, err
 		}
+		// A job that never ran is first given the steps its repository runs,
+		// so the edit lands on them ([pipeline.StampRecipe]).
+		pipeline.StampRecipe(it, recipe)
 		var err error
 		lines, err = run.EditStepsItem(it, edit, recipe)
 		if err != nil {

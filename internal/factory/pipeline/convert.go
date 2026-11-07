@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -29,8 +30,15 @@ func Encode(f File) ([]byte, error) {
 	}
 	sort.Strings(names)
 	steps := make(map[string]step)
+	builtin := Builtins()
 	for _, name := range names {
 		s := f.Steps[name]
+		// A SHIPPED STEP THE FILE LEAVES AS SHIPPED IS NOT WRITTEN: a reader
+		// fills it back in, and writing all of them buried the few steps a
+		// person wrote under every one they did not.
+		if b, ok := builtin[name]; ok && sameStep(s, b) {
+			continue
+		}
 		// An approval carries its label and who it waits on, but no prompt.
 		if factory.ApproveWord(name) {
 			if s.Who != "" || strings.TrimSpace(s.Label) != "" {
@@ -104,6 +112,20 @@ func Encode(f File) ([]byte, error) {
 			size = z
 		}
 	}
+	def := Defaults()
+	pipelines := map[factory.Kind][]string{}
+	for kind, names := range f.Pipeline {
+		if f.set.pipeline[kind] || !slices.Equal(names, def.Pipeline[kind]) {
+			pipelines[kind] = names
+		}
+	}
+	var fixed, rules *[]string
+	if f.set.fixed || !slices.Equal(f.Fixed, def.Fixed) {
+		fixed = listKey(f.Fixed)
+	}
+	if f.set.rules || len(f.Rules) > 0 {
+		rules = listKey(f.Rules)
+	}
 	budget := 0.0
 	if f.set.defaultBudget || f.DefaultBudget != factory.DefaultJobBudget {
 		budget = f.DefaultBudget
@@ -127,13 +149,20 @@ func Encode(f File) ([]byte, error) {
 		DefaultBudget float64   `yaml:"default_budget,omitempty"`
 		Start         any       `yaml:"start,omitempty"`
 		Size          any       `yaml:"size,omitempty"`
-		Pipeline      any       `yaml:"pipeline"`
-		Steps         any       `yaml:"steps"`
-		Fixed         []string  `yaml:"fixed"`
-		Rules         []string  `yaml:"rules"`
+		Pipeline      any       `yaml:"pipeline,omitempty"`
+		Steps         any       `yaml:"steps,omitempty"`
+		Fixed         *[]string `yaml:"fixed,omitempty"`
+		Rules         *[]string `yaml:"rules,omitempty"`
 		Adapt         any       `yaml:"adapt,omitempty"`
 		Merge         *mergeKey `yaml:"merge,omitempty"`
-	}{budget, start, size, f.Pipeline, steps, f.Fixed, f.Rules, adaptKey(f), merge})
+	}{budget, start, size, pipelines, steps, fixed, rules, adaptKey(f), merge})
+}
+
+// sameStep says a and b say the same thing in a file, reading only what a
+// file can say.
+func sameStep(a, b Step) bool {
+	return a.Label == b.Label && a.Prompt == b.Prompt && a.Kind == b.Kind && a.When == b.When && a.Effort == b.Effort &&
+		a.Fanout == b.Fanout && a.Until == b.Until && a.Max == b.Max && a.Who == b.Who
 }
 
 // listKey is a list key to write: a pointer, because omitempty drops an
