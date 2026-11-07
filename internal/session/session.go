@@ -2492,6 +2492,16 @@ type Config struct {
 	// It is set where FactoryItem is, and on the one turn the runner gives an
 	// item's manager to shape its run.
 	FactoryRun RunDoor
+
+	// StateHome is codeaf's own data folder for this window when it is not
+	// the person's default one (CODEAF_HOME names another), and "" otherwise.
+	// The page states it ([stateHomeFact]) because the manual's pages say
+	// `~/.codeaf` and a model that read them went looking in the person's
+	// default home, the wrong one, while the app ran on another (the
+	// 2026-11-06 audit: the desk's assistant listed the real
+	// `~/.codeaf/graph.db`). It is a fact on the page, not a confinement: the
+	// shell can still reach the person's whole home directory.
+	StateHome string
 	// FactoryWorkRefusal rechecks automatic manager work on a worker mirror.
 	FactoryWorkRefusal func() string
 

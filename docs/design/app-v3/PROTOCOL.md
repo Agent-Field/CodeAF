@@ -253,6 +253,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_brief_spot` | `in.FactoryJobBriefSpotParams` | `FactoryJobBriefSpot` |
 | `factory.job_brief_write` | `in.FactoryJobBriefWriteParams` | `FactoryJobBriefWritten` |
 | `factory.job_chats` | `in.FactoryJobChatsParams` | `FactoryJobChats` |
+| `factory.foreman_open` | `in.FactoryRef` | `FactoryForeman` |
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -2029,6 +2030,23 @@ manager chat or composer (and discards the returned step chats). They require a
 desktop update before pairing with this engine for jobs without a manager.
 The hello feature is capability advertisement, not client negotiation; it does
 not by itself make those older desktops compatible.
+
+## The factory's own manager (`factory.foreman_open`)
+
+The hello feature `factory.foreman_open` announces the factory-wide manager, the
+foreman. `factory.foreman_open {factory}` answers `{factory, agent}`: `agent` is
+an agent id the desk opens and sends to like any conversation (`agents.send`).
+The first call makes the conversation; every later call answers the same one.
+Only the factory this engine serves is accepted; any other is `not_found`, as
+`factory.job_chats` refuses it.
+
+The foreman reads only the floor of the factory home it belongs to, through
+`factory_floor`: `ask` is `running`, `queue` (not started, most urgent then
+oldest), `waiting`, `shipped` (shipped today, with pull requests and changes),
+`risky`, `cheapest`, `oldest`, `all` or `item`. When the person asks, `start`
+starts one job and `priority` (`p0`–`p3`, with `item`) sets one job's priority,
+each through the same factory verb the job page's own Start and priority send,
+as the person. It never stops, ships, merges or posts.
 ### factory.job_publish_anyway
 
 Hello feature `factory.publish_anyway` advertises this person action. Params:

@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -347,8 +348,40 @@ func managerEdit(st *store.Store, dirs func(string) string) func(ctx context.Con
 		if err != nil {
 			return factory.Item{}, nil, err
 		}
-		return lease.NewDoors(desk).EditSteps(id, e, f.Recipe())
+		updated, lines, err := lease.NewDoors(desk).EditSteps(id, e, f.Recipe())
+		if err != nil {
+			return updated, lines, err
+		}
+		// THE MANAGER'S EDIT IS ON THE FACTORY'S RECORD as the person's is: the
+		// job page's step-edit door writes a timed "edited steps" event after
+		// its edit lands, and the job's activity and its consent trail read
+		// that record, so an edit made in conversation must not be missing
+		// from them.
+		if err := recordManagerEdit(ctx, st, updated, e); err != nil {
+			return updated, lines, fmt.Errorf("the steps changed, but the factory's record did not take the edit: %w", err)
+		}
+		return updated, lines, nil
 	}
+}
+
+// recordManagerEdit writes the step-edit event for one landed manager edit,
+// with the reason the manager gave, or the job's manager named when it gave
+// none.
+func recordManagerEdit(ctx context.Context, st *store.Store, it factory.Item, e factory.RunEdit) error {
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		return err
+	}
+	detail := strings.TrimSpace(e.Why)
+	if detail == "" {
+		detail = "edited by the job's manager"
+	}
+	cost := 0.0
+	if it.Stream != nil {
+		cost = it.Stream.Spent
+	}
+	_, err = history.Append(ctx, record.Event{Kind: record.StepEdited, Job: it.ID, Cost: cost, Detail: detail})
+	return err
 }
 
 // seamRunDoor finds the item a conversation manages and edits it through the

@@ -87,7 +87,7 @@ func TestFactoryForemanBriefCarriesThePolicy(t *testing.T) {
 // on the page's next read as Snapshot.Marked and the item's Marked, a new item
 // only; and a nil store is a nil door, never a typed nil.
 func TestFactoryFloorDoorMarksWhatThePageReads(t *testing.T) {
-	if floorDoor(nil, "") != nil {
+	if floorDoor(nil, "", "") != nil {
 		t.Fatal("a nil store made a floor door")
 	}
 	st, web, _ := talkLab(t)
@@ -96,7 +96,7 @@ func TestFactoryFloorDoorMarksWhatThePageReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	door := floorDoor(st, web)
+	door := floorDoor(st, web, "")
 	if err := door.Mark(context.Background(), []int{id}, true); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestFactoryFloorDoorMarksWhatThePageReads(t *testing.T) {
 // no conversation the door; once it names one, that session file gets the door
 // (by its own path or a symlink to it) and every other conversation gets nil.
 func TestFactoryFloorDoorIsTheForemansOnly(t *testing.T) {
-	if foremanFloorDoor(nil, "", "/some/transcript.jsonl") != nil {
+	if foremanFloorDoor(nil, "", "", "/some/transcript.jsonl") != nil {
 		t.Fatal("a nil store made a floor door")
 	}
 	st, web, _ := talkLab(t)
@@ -141,26 +141,74 @@ func TestFactoryFloorDoorIsTheForemansOnly(t *testing.T) {
 		}
 	}
 	for _, p := range []string{foreman, other, ""} {
-		if foremanFloorDoor(st, web, p) != nil {
+		if foremanFloorDoor(st, web, "", p) != nil {
 			t.Fatalf("a floor with no foreman put the door on %q", p)
 		}
 	}
 	if err := st.SetForeman(foreman); err != nil {
 		t.Fatal(err)
 	}
-	if foremanFloorDoor(st, web, foreman) == nil {
+	if foremanFloorDoor(st, web, "", foreman) == nil {
 		t.Fatal("the foreman's own conversation has no floor door")
 	}
-	if foremanFloorDoor(st, web, filepath.Join(dir, "foreman", ".", "transcript.jsonl")) == nil {
+	if foremanFloorDoor(st, web, "", filepath.Join(dir, "foreman", ".", "transcript.jsonl")) == nil {
 		t.Fatal("an unclean spelling of the foreman's path lost the door")
 	}
 	link := filepath.Join(dir, "link")
 	if err := os.Symlink(filepath.Join(dir, "foreman"), link); err == nil {
-		if foremanFloorDoor(st, web, filepath.Join(link, "transcript.jsonl")) == nil {
+		if foremanFloorDoor(st, web, "", filepath.Join(link, "transcript.jsonl")) == nil {
 			t.Fatal("the foreman's path through a symlink lost the door")
 		}
 	}
-	if foremanFloorDoor(st, web, other) != nil {
+	if foremanFloorDoor(st, web, "", other) != nil {
 		t.Fatal("a conversation that is not the foreman carries the floor door")
+	}
+}
+
+// THE FOREMAN STARTS AND PRIORITISES AS THE JOB PAGE DOES. Asked "start the
+// oldest p1", it sends the page's own Start for that job through the app's
+// press (the person's credential, the factory's own checks); a priority goes
+// the same road, and a window with no press says so and changes nothing.
+func TestTheForemanStartsAndPrioritisesThroughTheJobPagesDoors(t *testing.T) {
+	st, web, profile := talkLab(t)
+	id, err := factory.LocalSeam(st, time.Now()).New("web", "add Ledger.Largest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	door, ok := floorDoor(st, web, profile).(interface {
+		StartItem(context.Context, int) (string, error)
+		SetPriority(context.Context, int, string) (string, error)
+	})
+	if !ok {
+		t.Fatal("the foreman's door cannot start or prioritise")
+	}
+	if prev := appLocalPress.Swap(nil); prev != nil {
+		t.Cleanup(func() { appLocalPress.Store(prev) })
+	}
+	if _, err := door.SetPriority(context.Background(), id, "high"); err == nil || !strings.HasPrefix(err.Error(), "Nothing changed") {
+		t.Fatalf("a priority with no press = %v", err)
+	}
+	type sent struct {
+		job  int
+		verb string
+	}
+	var got []sent
+	press := localJobPress(func(_ context.Context, job int, verb string, _ any) error {
+		got = append(got, sent{job, verb})
+		return nil
+	})
+	appLocalPress.Store(&press)
+	t.Cleanup(func() { appLocalPress.CompareAndSwap(&press, nil) })
+	if line, err := door.SetPriority(context.Background(), id, "high"); err != nil || !strings.Contains(line, "p1 (high)") {
+		t.Fatalf("priority = %q (%v)", line, err)
+	}
+	if line, err := door.StartItem(context.Background(), id); err != nil || !strings.Contains(line, "started") {
+		t.Fatalf("start = %q (%v)", line, err)
+	}
+	if len(got) != 2 || got[0] != (sent{id, factoryVerbPriority}) || got[1] != (sent{id, factoryVerbStart}) {
+		t.Fatalf("pressed %+v", got)
+	}
+	if !strings.Contains(foremanOpening, "only when the person asks") || strings.Contains(foremanOpening, " L") {
+		t.Fatalf("the foreman's brief still describes a key nothing has: %q", foremanOpening)
 	}
 }

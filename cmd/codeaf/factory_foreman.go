@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,14 +17,17 @@ import (
 
 // ── THE FOREMAN: THE FLOOR'S OWN CONVERSATION ──────────────────────────────
 //
-// `m` on the factory floor opens the foreman: ONE conversation per home (later
-// one per product), the product-level judgment about what to take first. It is
-// never the runner. It reads the floor through `factory_floor` and proposes by
-// selecting items; the person runs what is selected with `L`. It never
-// runs, ships or posts, and its belt has no verb that could.
+// The app's factory.foreman_open opens the foreman ([appBackend.FactoryForemanOpen]):
+// ONE conversation per factory home, the factory-wide manager. It is never the
+// runner. It reads every job through `factory_floor` (queued, running, waiting
+// on the person, shipped today), proposes by selecting items, and starts or
+// prioritises one job when the person asks, through the job page's own Start
+// and priority ([seamFloorDoor.StartItem]). It never stops, ships, merges or
+// posts, and its belt has no verb that could. It reads only the floor of the
+// home it belongs to.
 //
-// Like an item's own conversation (`T`, factory_talk.go) it is OPTIONAL AND
-// NEVER MADE BY DEFAULT: the first `m` makes it, every later `m` opens the same
+// Like an item's own conversation (factory_talk.go) it is OPTIONAL AND NEVER
+// MADE BY DEFAULT: the first open makes it, every later open answers the same
 // one, and the store keeps which one it is (store/marks.go). It is made on
 // this machine's disk with no model call: a session folder in this window's
 // workspace bucket, seeded with [foremanBrief], and a member named `foreman`
@@ -34,7 +38,7 @@ const foremanName = "foreman"
 
 // foremanOpening is the brief's fixed part, said once so the brief, the test
 // and the manual quote the same words.
-const foremanOpening = "You are the foreman of this factory. The factory's items, their reads and stages come through factory_floor. Propose a morning batch by selecting items; the person runs them with L. Never launch, ship or post. Name items by their ref."
+const foremanOpening = "You are the foreman of this factory, its factory-wide manager. Every job, its state, its step and its pull request come through factory_floor; answer what is running, what waits, what is queued and what shipped only from it. Start a job or set its priority with factory_floor only when the person asks for it here, naming the job by its ref. Propose what to take on by selecting jobs. Never stop, ship, merge or post. Name jobs by their ref."
 
 // floorDoor is `factory_floor`'s door over the store, or nil.
 //
@@ -43,7 +47,7 @@ const foremanOpening = "You are the foreman of this factory. The factory's items
 // same local seam the page draws ([factory.LocalSeam]), with the same record
 // of where each repository is checked out, so the foreman reads the recipe the
 // page reads and its marks are the ones the page draws.
-func floorDoor(st *store.Store, workspace string) session.FloorDoor {
+func floorDoor(st *store.Store, workspace, profileDir string) session.FloorDoor {
 	if st == nil {
 		return nil
 	}
@@ -51,7 +55,7 @@ func floorDoor(st *store.Store, workspace string) session.FloorDoor {
 	if seam.Load == nil || seam.Mark == nil {
 		return nil
 	}
-	return seamFloorDoor{seam: seam}
+	return seamFloorDoor{seam: seam, st: st, workspace: workspace, profileDir: profileDir}
 }
 
 // foremanFloorDoor is `factory_floor`'s door for ONE conversation: the floor's
@@ -61,7 +65,7 @@ func floorDoor(st *store.Store, workspace string) session.FloorDoor {
 // floor reaches it through `factory_item` and `factory_add`, or the person
 // opens the foreman with `m`. A nil store, a store that names no foreman yet,
 // or a store that cannot be read is a nil door, by [floorDoor]'s law.
-func foremanFloorDoor(st *store.Store, workspace, transcript string) session.FloorDoor {
+func foremanFloorDoor(st *store.Store, workspace, profileDir, transcript string) session.FloorDoor {
 	if st == nil || strings.TrimSpace(transcript) == "" {
 		return nil
 	}
@@ -69,7 +73,7 @@ func foremanFloorDoor(st *store.Store, workspace, transcript string) session.Flo
 	if err != nil || !sameSessionFile(chat, transcript) {
 		return nil
 	}
-	return floorDoor(st, workspace)
+	return floorDoor(st, workspace, profileDir)
 }
 
 // sameSessionFile says whether two paths name one session file: cleaned, and
@@ -92,9 +96,53 @@ func sameSessionFile(a, b string) bool {
 	return resolve(a) == resolve(b)
 }
 
-// seamFloorDoor answers the foreman's door from a seam's Load and Mark.
+// seamFloorDoor answers the foreman's door from a seam's Load and Mark, and
+// starts or prioritises a job over st the way the job page does.
 type seamFloorDoor struct {
-	seam factory.Seam
+	seam       factory.Seam
+	st         *store.Store
+	workspace  string
+	profileDir string
+}
+
+// StartItem is the foreman's start of one job: the job page's Start, sent as
+// the person through the app's press when there is one, and otherwise the
+// job manager's own start ([startItem]) on this machine's floor.
+func (d seamFloorDoor) StartItem(ctx context.Context, id int) (string, error) {
+	it, err := d.st.Get(id)
+	if err != nil {
+		return "", err
+	}
+	if press := appLocalPress.Load(); press != nil && it.State == factory.StateNew {
+		if err := (*press)(ctx, id, factoryVerbStart, guardBody{}); err != nil {
+			return "", fmt.Errorf("Nothing changed: %w", err)
+		}
+		return fmt.Sprintf(sayStartLaunched, it.Ref()), nil
+	}
+	line, err := startItem(d.st, d.workspace, d.profileDir, it)
+	if err != nil {
+		return "", fmt.Errorf("Nothing changed: %w", err)
+	}
+	return line, nil
+}
+
+// SetPriority is the job page's priority, as the person, through the app's
+// press; a window with none says so and changes nothing.
+func (d seamFloorDoor) SetPriority(ctx context.Context, id int, value string) (string, error) {
+	it, err := d.st.Get(id)
+	if err != nil {
+		return "", err
+	}
+	press := appLocalPress.Load()
+	if press == nil {
+		return "", errNoPress
+	}
+	if err := (*press)(ctx, id, factoryVerbPriority, struct {
+		Priority string `json:"priority"`
+	}{value}); err != nil {
+		return "", fmt.Errorf("Nothing changed: %w", err)
+	}
+	return fmt.Sprintf("%s is now %s (%s)", it.Ref(), factory.PriorityShort(value), value), nil
 }
 
 func (d seamFloorDoor) Snapshot(context.Context) (factory.Snapshot, error) { return d.seam.Load() }
