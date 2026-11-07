@@ -140,7 +140,7 @@ func TestStepCostWorkerTableSeededSequences(t *testing.T) {
 			baseline := clone(worker)
 			report := func() factory.RunReport {
 				r, _ := run.Diff(baseline, worker)
-				raw, _ := json.Marshal(api.FromRunReport(r, true))
+				raw, _ := json.Marshal(api.FromRunReport(r, api.ReportAdmits{RoundCostTables: true}))
 				var wire api.WorkerReport
 				if err := json.Unmarshal(raw, &wire); err != nil {
 					t.Fatal(err)

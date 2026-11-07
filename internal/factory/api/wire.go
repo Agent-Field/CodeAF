@@ -407,9 +407,13 @@ type JobReadSize struct {
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
 	// RoundCostTables advertises table support only on worker admission.
-	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
-	FromJob         int    `json:"from_job,omitempty"`
-	SourceIssue     string `json:"source_issue,omitempty"`
+	RoundCostTables bool `json:"round_cost_tables,omitempty"`
+	// FailureSummaries advertises, on worker admission only, that this factory
+	// reads a failure's one-line summary in a worker's report. A factory older
+	// than it decodes reports strictly and refuses the whole one that carries it.
+	FailureSummaries bool   `json:"failure_summaries,omitempty"`
+	FromJob          int    `json:"from_job,omitempty"`
+	SourceIssue      string `json:"source_issue,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
