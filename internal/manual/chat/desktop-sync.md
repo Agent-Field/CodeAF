@@ -177,20 +177,33 @@ until that computer puts it in the queue, then `Delivered to <name>`. Once the
 chat comes here its transcript shows what ran, and those lines go.
 
 The chat is the address, not the computer: if the chat moves before the message
-is taken, whichever computer holds it then takes it, which can be this one.
-The text is sealed with your identity's key, so the relay cannot read it.
-
-Limits and refusals:
-
-- At most eight messages wait at once: `Eight messages are already waiting for the other computer. Send this one once it has taken them.`
-- A message is at most 2000 characters: `Messages to another computer are limited to 2000 characters.`
-- A sync service that does not carry messages says `This sync service can't carry a message to another computer yet. Bring the chat here to write to it.`
-- Only an app engine (the desktop app, or `codeaf app`) on the holding computer takes messages. A terminal chat there does not; the message waits.
-- A chat whose computer is offline stays read-only, and a handed-over chat's next message still moves it here.
+is taken, whichever computer holds it then takes it, which can be this one. So
+continuing a chat here runs your messages still waiting for the other computer
+on this computer, right after the move; the chat says so beside every Continue
+here (`Continuing here runs your 2 waiting messages on this computer.`). A
+waiting message cannot be taken back.
 
 To bring the chat here instead, choose Continue here. While a turn runs there
 it waits (`Comes here when this turn ends.`, with Cancel), then moves, retrying
 once if that computer saved again first.
+
+## A message to another computer is not delivered, the computer is offline, or it didn't send
+
+These are messages written here to a chat that another of your computers holds.
+
+If the other computer goes offline before it takes a message, the message's
+line reads `Not delivered yet · <name> is offline`, and the chat says
+`Your 2 messages waiting for <name> go when it's back online, or run here if you continue here.`
+The text is sealed with your identity's key, so the relay cannot read it.
+
+Limits and refusals:
+
+- At most eight messages from this computer wait at once, counted across every chat and every other computer, not per chat: `Eight messages sent from this computer, in this chat or others, haven't been delivered yet. Send this one once some of them are.`
+- When this computer cannot reach your relay, nothing is sent and the words stay in the box: `This computer can't reach your relay right now, so the message didn't go. Send it again once it's back.` The box says `Can't reach your relay · messages to <name> send once it answers` while that lasts.
+- A message is at most 2000 characters: `Messages to another computer are limited to 2000 characters.`
+- A sync service that does not carry messages says `This sync service can't carry a message to another computer yet. Bring the chat here to write to it.`
+- Only an app engine (the desktop app, or `codeaf app`) on the holding computer takes messages. A terminal chat there does not; the message waits.
+- A chat whose computer is offline stays read-only, and a handed-over chat's next message still moves it here.
 
 ## Does an idle desktop chat keep its hold on the relay
 
