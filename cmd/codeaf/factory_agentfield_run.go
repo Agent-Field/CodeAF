@@ -94,6 +94,37 @@ type afRemote struct {
 // afDrainAfter is how long after an execution ended its relay is still read.
 const afDrainAfter = time.Minute
 
+// readToEnd reads the run, writing it on jobs, until its tree has ended and
+// every harness step's record has closed ("ended" read and kept), or ctx is
+// done: a step whose node died without closing is waited out to the deadline.
+func (r *afRemote) readToEnd(ctx context.Context, client afClient, runID string, job int, jobs *store.Store) {
+	for {
+		if tree, _, err := client.Tree(ctx, runID); err == nil {
+			if ended, _ := r.syncTo(ctx, client, jobs, job, tree); ended && r.recordsClosed() {
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(afRemoteEvery):
+		}
+	}
+}
+
+// recordsClosed says every harness step this run made a conversation for has
+// had its record closed.
+func (r *afRemote) recordsClosed() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for exec := range r.files {
+		if !r.drain[exec] {
+			return false
+		}
+	}
+	return true
+}
+
 func (r *afRemote) drained(exec string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -161,6 +192,14 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 		if err == nil {
 			ended, failure := r.sync(ctx, client, job, tree)
 			if ended {
+				// A RUN THAT ENDED IS STILL READ TO ITS LAST LINE: a node
+				// relays a step's record beside the step, so its last lines
+				// (and its "ended") can reach the control plane after the run
+				// is over, and the control plane holds them until this
+				// factory acks them.
+				drainCtx, cancel := context.WithTimeout(context.Background(), afStopDrain)
+				r.readToEnd(drainCtx, client, run.RunID, job, r.items)
+				cancel()
 				return failure
 			}
 		}
@@ -180,17 +219,7 @@ func (r *afRemote) Run(ctx context.Context, job int) error {
 			if r.floor != nil {
 				jobs = r.floor
 			}
-			for cancelCtx.Err() == nil {
-				if tree, _, err := client.Tree(cancelCtx, run.RunID); err == nil {
-					if ended, _ := r.syncTo(cancelCtx, client, jobs, job, tree); ended {
-						break
-					}
-				}
-				select {
-				case <-cancelCtx.Done():
-				case <-time.After(afRemoteEvery):
-				}
-			}
+			r.readToEnd(cancelCtx, client, run.RunID, job, jobs)
 			cancel()
 			return ctx.Err()
 		case <-tick.C:

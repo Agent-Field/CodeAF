@@ -772,6 +772,7 @@ func TestARunOnJobThroughTheRealFactoryDoors(t *testing.T) {
 	cp.tree.Status, cp.tree.Children[3].Status, cp.tree.Children[3].CompletedAt = "succeeded", "succeeded", &end
 	cp.tree.Children[3].Children[1].Status, cp.tree.Children[3].Children[1].CompletedAt = "succeeded", &end
 	cp.held["e-i"] = append(cp.held["e-i"], agentfield.RelayEntry{Seq: 5, Kind: "ended", Data: json.RawMessage(`{}`)})
+	cp.held["e-v"] = append(cp.held["e-v"], agentfield.RelayEntry{Seq: 4, Kind: "ended", Data: json.RawMessage(`{}`)})
 	cp.mu.Unlock()
 	eventually(t, "the job is done", func() bool {
 		var j struct{ State string }
@@ -869,5 +870,44 @@ func TestAReplayedBatchIsKeptOnce(t *testing.T) {
 	}
 	if n := cp.heldCount("exec-inv"); n != 0 {
 		t.Fatalf("the replay was not acked: %d held", n)
+	}
+}
+
+// A RUN THAT ENDED IS READ TO ITS LAST LINE. The node relays a step's record
+// beside the step, so the run can be over on the control plane while the
+// step's last lines and its "ended" are still on their way; the live run left
+// 29 of them held. They are kept and acked, and the control plane holds none.
+func TestARunThatEndedIsReadToItsLastLine(t *testing.T) {
+	appDayProfile(t)
+	prev := afRemoteEvery
+	afRemoteEvery = 10 * time.Millisecond
+	t.Cleanup(func() { afRemoteEvery = prev })
+	st, it := afJob(t)
+	cp := &afFakeCP{tree: afNode("exec-root", "handle_ticket", "succeeded", "2026-11-07T12:00:00Z", "2026-11-07T12:00:09Z",
+		afNode("e-d", "draft_reply", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:08Z"))}
+	cp.relayLines("e-d", [][]byte{[]byte(`{"type":"message","role":"user","content":"draft it","timestamp":"2026-11-07T12:00:01Z"}`)}, false)
+	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	done := make(chan error, 1)
+	go func() { done <- r.Run(context.Background(), it.ID) }()
+	time.Sleep(60 * time.Millisecond)
+	late := []byte(`{"type":"message","role":"assistant","content":"Dear customer,","timestamp":"2026-11-07T12:00:08Z"}`)
+	cp.mu.Lock()
+	cp.held["e-d"] = append(cp.held["e-d"], agentfield.RelayEntry{Seq: 3, Kind: "line", Data: late}, agentfield.RelayEntry{Seq: 4, Kind: "ended", Data: json.RawMessage(`{}`)})
+	cp.mu.Unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run was never read to its end")
+	}
+	if n := cp.heldCount("e-d"); n != 0 {
+		t.Fatalf("the control plane still holds %d entries", n)
+	}
+	got, _ := st.Get(it.ID)
+	kept := afRecordLines(t, got.Stream.Phases[0].Chat)
+	if !bytes.Equal(kept[len(kept)-1], late) {
+		t.Fatalf("the last line was not kept: %s", bytes.Join(kept, []byte("\n")))
 	}
 }
