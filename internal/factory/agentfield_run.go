@@ -248,7 +248,9 @@ func AgentFieldInputProblem(v string) string {
 			return ""
 		}
 		name := rest[i+1 : i+j]
-		if !oneOf(name, AgentFieldPlaceholders) {
+		// ONLY A WORD IN BRACES IS A PLACEHOLDER: JSON text for an object
+		// field ({"check_ci": false}) is braces too, and is the reasoner's.
+		if placeholderWord(name) && !oneOf(name, AgentFieldPlaceholders) {
 			return "{" + name + "} is not a fact of the job; the job's facts are {" + strings.Join(AgentFieldPlaceholders, "}, {") + "}"
 		}
 		rest = rest[i+j+1:]
@@ -274,6 +276,20 @@ func agentFieldFacts(it Item) map[string]string {
 		"title": it.Title, "body": it.Body, "repo": RepoOf(it), "repo_url": RepoURL(it), "base": base,
 		"issue_url": issue, "issue_number": number, "job": strconv.Itoa(it.ID),
 	}
+}
+
+// placeholderWord says whether s could name a placeholder: lowercase letters,
+// digits and underscores.
+func placeholderWord(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // AgentFieldInput is the input an agentfield step dispatches its reasoner

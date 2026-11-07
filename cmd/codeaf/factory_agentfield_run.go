@@ -1700,6 +1700,21 @@ func afTypedInput(ctx context.Context, client afClient, target string, input map
 			if n, ok := v.(int); ok {
 				input[k] = strconv.Itoa(n)
 			}
+		case "boolean":
+			if s, ok := v.(string); ok {
+				if b, err := strconv.ParseBool(strings.TrimSpace(s)); err == nil {
+					input[k] = b
+				}
+			}
+		case "object", "array":
+			// A pipeline writes an object field as JSON text:
+			// config: '{"check_ci": false}'.
+			if s, ok := v.(string); ok {
+				var decoded any
+				if json.Unmarshal([]byte(s), &decoded) == nil {
+					input[k] = decoded
+				}
+			}
 		}
 	}
 	return input

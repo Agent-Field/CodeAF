@@ -50,6 +50,9 @@ func TestATargetIsNodeDotReasonerAndAPlaceholderIsAFact(t *testing.T) {
 	if p := AgentFieldInputProblem("{title} on {branch}"); p == "" {
 		t.Fatal("an unknown placeholder passed")
 	}
+	if p := AgentFieldInputProblem(`{"check_ci": false}`); p != "" {
+		t.Fatalf("JSON text for an object field was read as a placeholder: %s", p)
+	}
 	if p := AgentFieldInputProblem("{title}\n\n{body} in {repo_url}"); p != "" {
 		t.Fatalf("known placeholders refused: %s", p)
 	}

@@ -333,7 +333,8 @@ steps:
 `{body}`, `{repo}`, `{repo_url}`, `{base}`, `{issue_url}`, `{issue_number}`,
 `{job}`. Each value is sent in the type the reasoner's input says for its
 field (`{issue_number}` is a number for a number field), and one that is a
-fact alone is left out when the job has none. With no `input` the
+fact alone is left out when the job has none. An object or a yes/no field is written
+as its JSON text (`config: '{"check_ci": false}'`, `plan_review: "true"`). With no `input` the
 step sends `job, title, body, repo, repo_url, base_branch, issue_url,
 issue_number`. A fact not on that list is a problem in the file, and a step
 whose target is not `node.reasoner` holds for a person.

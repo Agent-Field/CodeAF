@@ -297,8 +297,10 @@ func TestFannedOutCallsAreNamedByTheirSubject(t *testing.T) {
 // string even from a number, and a field the schema does not name is as sent.
 func TestAnAgentFieldInputFollowsTheReasonersSchema(t *testing.T) {
 	cp := &afFakeCP{} // swe-planner.build_issue: title string, issue_number integer
-	got := afTypedInput(context.Background(), cp, "swe-planner.build_issue", map[string]any{"title": 7, "issue_number": "12", "extra": "12"})
-	if got["title"] != "7" || got["issue_number"] != 12 || got["extra"] != "12" {
+	got := afTypedInput(context.Background(), cp, "swe-planner.build_issue", map[string]any{"title": 7, "issue_number": "12", "extra": "12",
+		"plan_review": "true", "config": `{"check_ci": false, "agent_timeout_seconds": 5400}`})
+	cfg, _ := got["config"].(map[string]any)
+	if got["title"] != "7" || got["issue_number"] != 12 || got["extra"] != "12" || got["plan_review"] != true || cfg["check_ci"] != false || cfg["agent_timeout_seconds"] != float64(5400) {
 		t.Fatalf("typed = %#v", got)
 	}
 	if got := afTypedInput(context.Background(), cp, "other.reasoner", map[string]any{"issue_number": "12"}); got["issue_number"] != "12" {
