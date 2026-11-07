@@ -1,0 +1,1 @@
+{"action":"create","actor":{"id":"6b2b","type":"user","name":"Ada Lovelace"},"createdAt":"2026-11-06T15:05:00.000Z","data":{"id":"c-1","body":"looks good","issueId":"2174add1-f7c8-44e3-bbf3-2d60b5ea8bc9"},"type":"Comment","url":"https://linear.app/acme/issue/ENG-142#comment-c-1","webhookTimestamp":1793977500000,"webhookId":"000042e3-d123-4980-b49f-8e140eef9329"}
