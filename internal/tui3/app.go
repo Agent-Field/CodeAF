@@ -18,6 +18,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/atlas"
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
@@ -2747,6 +2748,8 @@ type app struct {
 	cellsUnavailable string
 	pairing          Pairing
 	syncService      string
+	syncStats        func(context.Context) (blobstore.Counts, error)
+	syncSpace        blobstore.Counts
 	pair             pairPanel
 
 	// approvals answers a new device's request and revokes devices, and
@@ -3108,6 +3111,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		pairing:             opts.Pairing,
 		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
+		syncStats:           opts.SyncStats,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
 		taskComputers:       opts.TaskComputers,
@@ -3697,6 +3701,12 @@ func (a *app) Init() tea.Cmd {
 	// (delegate.go). The list is the engine's, so a switch asks again
 	// ([app.attachConversation]).
 	standing = append(standing, a.installDelegates())
+	// The relay's sync-space reading is asked for once here, off the loop, so the
+	// first /status can answer at once instead of waiting on the network
+	// (syncspace.go). Nil when sync is off or no relay can report it.
+	if read := a.refreshSyncSpace(); read != nil {
+		standing = append(standing, read)
+	}
 	return tea.Batch(standing...)
 }
 
@@ -5934,6 +5944,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A cache errand's whole answer is one line, success and refusal alike
 		// (cachecmd.go).
 		a.toldNote(msg.line)
+		return a, nil
+
+	case syncSpaceMsg:
+		// The reading is the identity's, not one chat's, so it is kept whichever
+		// chat is on screen. It is only ever read by the next /status.
+		a.syncSpace = msg.counts
 		return a, nil
 
 	case spelledMsg:
@@ -8620,13 +8636,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// serialized object would corrupt the JSON. Any other words after the
 		// name fall through to the bare form, the route this command has always
 		// answered on.
-		if rest == "--json" {
-			a.note(a.statusJSON())
-			return nil
-		}
-		text := a.statusText()
-		a.noteFacts(text, a.statusFacts(text)...)
-		return nil
+		return a.runStatusCommand(rest)
 
 	case "cost":
 		// THE FIGURE IS THE PAYLOAD AND THE LABEL IS THE FURNITURE (payload.go).

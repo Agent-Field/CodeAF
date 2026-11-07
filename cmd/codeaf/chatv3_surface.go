@@ -58,6 +58,9 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	if options.SyncService == "" && options.Host == "" {
 		options.SyncService = chatSyncService()
 	}
+	if options.SyncStats == nil && options.Host == "" {
+		options.SyncStats = chatSyncStats
+	}
 	forced := armFinalSaving()
 	setFinalSyncService(options.SyncService)
 	previousCompatibility := options.SavingCompatibility

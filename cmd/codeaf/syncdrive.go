@@ -6,6 +6,7 @@ import (
 	"log"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
@@ -215,4 +216,22 @@ func chatSyncService() string {
 		return ""
 	}
 	return syncsetup.Resolve(home.Dir()).URL
+}
+
+// chatSyncStats uses the sync client's signed store wire without starting a driver.
+// A quiet or disabled identity must not make a request just to open /status.
+func chatSyncStats(ctx context.Context) (blobstore.Counts, error) {
+	if chatSyncService() == "" {
+		return blobstore.Counts{}, nil
+	}
+	s, err := syncOf()
+	if err != nil {
+		return blobstore.Counts{}, err
+	}
+	if store, ok := s.Store.(interface {
+		Stats(context.Context) (blobstore.Counts, error)
+	}); ok {
+		return store.Stats(ctx)
+	}
+	return blobstore.Counts{}, nil
 }

@@ -20,6 +20,26 @@ A chunk the relay already holds costs nothing again, so a computer that sends it
 
 **Coordination storage has a separate limit on both relays.** Each identity starts with an 8 MiB allowance for directory and coordination records. A larger imported identity keeps its measured allowance. New growth beyond it is refused; existing records and saved chats are retained. A relay you run yourself also needs enough disk for encrypted chunks and all three coordination copies. Older directory requests keep their 1 MiB HTTP limit; staging a large request does not bypass retained storage capacity.
 
+## How much sync space have I used
+
+Open `/status` in a chat to see a dim `sync space` line, for example
+`sync space  2.8 GiB of 5 GiB`. It shows how big your relay storage is and how
+close you are to the relay limit: the amount stored, then the byte limit the
+hosted relay reports. The same reading appears in `/status --json`. It is read when the chat opens and
+again after each `/status`, so it can trail what the last few turns uploaded.
+
+This counts everything stored for your identity on the hosted relay across all
+your computers and chats, not this chat alone. GiB and MiB are binary byte units,
+the same units shown when your sync space is full.
+
+The stored amount never goes down while your identity exists today. Nothing is
+deleted from the relay for a living identity, even if you delete or archive a
+chat on a computer. Cleanup is planned, but is not built.
+
+A self-hosted relay shows no line. There is also no line when sync is off, no
+relay is selected, an older relay does not report the amount and limit, there
+is nothing stored yet, or the relay does not answer the short request.
+
 ## Too many new identities from one network
 
 The hosted relay lets one network make **200 new identities in a day**. A network is one IPv4 address, or one IPv6 block of /64 (changing the address inside your own block does not make a new network). Computers of an identity that exists are never counted. After 200 the relay answers `429` with the code `too_many_identities` and a `Retry-After` that says how many seconds are left until that network's day ends. A relay you run yourself has no such limit.
