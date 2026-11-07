@@ -100,11 +100,38 @@ func copyTail(src, dst string, stop <-chan struct{}) <-chan struct{} {
 
 // steerTail feeds each note appended to path into agent's running turn. A
 // note's own stream is drained into sink (the reply) on wg, so the run does
-// not end under a turn the note started.
-func steerTail(agent *session.Agent, path string, asker *onceAsker, sink io.Writer, stderr io.Writer, wg *sync.WaitGroup, stop <-chan struct{}) {
+// not end under a turn the note started. The reader stops when stop closes;
+// last then reads path until no note is waiting ([startOnceLive]).
+func steerTail(agent *session.Agent, path string, asker *onceAsker, sink io.Writer, stderr io.Writer, wg *sync.WaitGroup, stop <-chan struct{}) (done <-chan struct{}, last func()) {
 	reader := newSteerFile(path)
+	feed := func(notes []string) {
+		for _, note := range notes {
+			if asker.take(note) {
+				fmt.Fprintln(stderr, "answered a question")
+				continue
+			}
+			events, err := agent.Steer(note)
+			if err != nil {
+				// No turn in flight: the note becomes the next message.
+				events, err = agent.Submit(context.Background(), note)
+			}
+			if err != nil {
+				fmt.Fprintln(stderr, "steer: "+err.Error())
+				continue
+			}
+			fmt.Fprintln(stderr, "steered: "+note)
+			wg.Add(1)
+			go func() {
+				defer guard.Recover("chat-once/steer-drain")
+				defer wg.Done()
+				_ = drainOnceEvents(events, sink, stderr)
+			}()
+		}
+	}
+	stopped := make(chan struct{})
 	go func() {
 		defer guard.Recover("chat-once/steer")
+		defer close(stopped)
 		t := time.NewTicker(300 * time.Millisecond)
 		defer t.Stop()
 		for {
@@ -113,34 +140,29 @@ func steerTail(agent *session.Agent, path string, asker *onceAsker, sink io.Writ
 				return
 			case <-t.C:
 			}
-			for _, note := range reader.Read() {
-				if asker.take(note) {
-					fmt.Fprintln(stderr, "answered a question")
-					continue
-				}
-				events, err := agent.Steer(note)
-				if err != nil {
-					// No turn in flight: the note becomes the next message.
-					events, err = agent.Submit(context.Background(), note)
-				}
-				if err != nil {
-					fmt.Fprintln(stderr, "steer: "+err.Error())
-					continue
-				}
-				fmt.Fprintln(stderr, "steered: "+note)
-				wg.Add(1)
-				go func() {
-					defer guard.Recover("chat-once/steer-drain")
-					defer wg.Done()
-					_ = drainOnceEvents(events, sink, stderr)
-				}()
-			}
+			feed(reader.Read())
 		}
 	}()
+	// A NOTE THAT LANDS AS THE RUN ENDS IS STILL TAKEN: written after the
+	// reader's last look, it would otherwise be read by nobody. Each note
+	// found gets its turn, waited out, and the file is read again until it
+	// holds nothing new.
+	last = func() {
+		for {
+			notes := reader.Read()
+			if len(notes) == 0 {
+				return
+			}
+			feed(notes)
+			wg.Wait()
+		}
+	}
+	return stopped, last
 }
 
 // startOnceLive starts --events' copy and --steer's reader for one run.
-// finishSteer waits out notes in flight and stops reading new ones; it is
+// finishSteer waits out notes in flight, stops the reader, then reads the
+// steer file once more and gives any note waiting there its turn; it is
 // called while the agent is still open. finishEvents makes the last copy and
 // is called only AFTER the agent and the usage ledger are closed, because
 // closing still writes lines to the record. Either is a no-op for a flag the
@@ -157,10 +179,12 @@ func startOnceLive(agent *session.Agent, record string, live onceLive, asker *on
 	}
 	if live.steer != "" {
 		stop := make(chan struct{})
-		steerTail(agent, live.steer, asker, reply, stderr, steers, stop)
+		stopped, last := steerTail(agent, live.steer, asker, reply, stderr, steers, stop)
 		finishSteer = func() {
 			steers.Wait()
 			close(stop)
+			<-stopped
+			last()
 		}
 	}
 	return finishSteer, finishEvents

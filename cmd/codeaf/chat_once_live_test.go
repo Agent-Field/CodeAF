@@ -18,6 +18,67 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// A NOTE THAT LANDS AS THE RUN ENDS IS READ, NEVER LOST: the steer file is
+// read once more after the last turn, and a note waiting there gets the one
+// more turn it asks for before chat --once exits. Without that last read, a
+// note written between the reader's last look and the exit was taken by
+// nobody, and the step ended as though it had never been sent.
+func TestChatOnceReadsANoteThatLandsAsTheRunEnds(t *testing.T) {
+	appDayProfile(t)
+	workspace := t.TempDir()
+	dir := t.TempDir()
+	steerPath := filepath.Join(dir, "steer")
+	const note = "also say which file you read"
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			http.Error(w, "no catalog for a test", http.StatusServiceUnavailable)
+			return
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var env recordedRequest
+		_ = json.Unmarshal(raw, &env)
+		answer := "the ledger balances"
+		for _, m := range env.Messages {
+			if m.Role == "user" && strings.Contains(string(m.Content), note) {
+				answer = "the note was read: ledger.txt"
+			}
+		}
+		writeText(w, env.Stream, answer)
+	}))
+	t.Cleanup(model.Close)
+
+	file, err := appMint(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources := modelsource.NewSet(modelsource.Connected{Source: modelsource.DefaultSource(model.URL), Key: "test-key", Address: model.URL})
+	agent, err := session.New(session.Config{Workspace: workspace, Place: session.Place{Dir: session.DirOf(file)}, SessionFile: file, Model: "openai/gpt-4.1-mini", Sources: sources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	reply, stderr := &lockedWriter{}, &lockedWriter{}
+	var steers sync.WaitGroup
+	finishSteer, finishEvents := startOnceLive(agent, file, onceLive{steer: steerPath}, nil, reply, stderr, &steers)
+	defer finishEvents()
+	events, err := agent.Submit(context.Background(), "does the ledger balance?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := drainOnceEvents(events, reply, stderr); err != nil {
+		t.Fatal(err)
+	}
+	// The note lands the moment the turn has ended, before the reader's next
+	// look, and the run then exits.
+	if err := os.WriteFile(steerPath, []byte(`{"text":"`+note+`"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	finishSteer()
+	if !strings.Contains(reply.String(), "the note was read: ledger.txt") || !strings.Contains(stderr.String(), "steered: "+note) {
+		t.Fatalf("the note that landed as the run ended was lost:\nreply: %s\nstderr: %s", reply.String(), stderr.String())
+	}
+}
+
 // THE MID-RUN NOTE, THROUGH THE REAL SESSION ENGINE: while the model is
 // answering, a note lands in --steer's file; it is put into the running turn,
 // the model's next call reads it and changes the answer, and --events is the

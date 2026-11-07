@@ -1953,7 +1953,8 @@ screen. Three flags let another program watch and steer it, and need `--once`
   `{"text": "…"}`) is put into the running turn, the way typing during a turn
   steers it, and lands in the record as a steer. stderr says `steered: <note>`.
   A note that arrives after the turn ended starts the turn it asks for, and the
-  run waits that turn out.
+  run waits that turn out. Before it exits, the run reads PATH once more, so a
+  note written as the last turn ends still gets its turn and is never lost.
 - `--json` — print one object at the end instead of the reply:
   `{"ok", "stop", "answer", "model", "error"}`, the shape `codeaf exec --json`
   prints.
