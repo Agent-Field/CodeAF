@@ -91,6 +91,18 @@ func TestASearchScreensInBatchesThenJudgesTheShortlist(t *testing.T) {
 	if w := Words(Status{Phase: PhaseScreening, Total: 80, Read: 40, Related: 12}); w != "Reading 80 issues… 12 look related" {
 		t.Fatalf("words %q", w)
 	}
+	for _, c := range []struct {
+		s    Status
+		want string
+	}{
+		{Status{Phase: PhaseScreening, Total: 1, Read: 1, Related: 1}, "Reading 1 issue… 1 looks related"},
+		{Status{Phase: PhaseJudging, Related: 4}, "Checking 4… 0 matches so far"},
+		{Status{Phase: PhaseJudging, Related: 4, Matches: []Match{{Job: 1}}}, "Checking 4… 1 match so far"},
+	} {
+		if w := Words(c.s); w != c.want {
+			t.Fatalf("words %q, want %q", w, c.want)
+		}
+	}
 }
 
 // Five thousand items cost a bounded number of calls: 125 reads, and the

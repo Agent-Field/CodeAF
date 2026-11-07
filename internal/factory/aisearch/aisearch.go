@@ -619,16 +619,17 @@ func clip(s string, most int) string {
 }
 
 // Words is the one progress sentence a surface may show, from the status
-// alone: "Reading 80 issues… 12 look related", "Checking 12… 7 match".
+// alone: "Reading 80 issues… 12 look related", "Checking 12… 7 matches so far".
+// THE COUNTS AGREE AT ONE: "1 looks related", "1 match so far".
 func Words(s Status) string {
 	switch s.Phase {
 	case PhaseScreening:
 		if s.Read == 0 {
 			return fmt.Sprintf("Reading %d %s…", s.Total, plural(s.Total, "issue", "issues"))
 		}
-		return fmt.Sprintf("Reading %d %s… %d look related", s.Total, plural(s.Total, "issue", "issues"), s.Related)
+		return fmt.Sprintf("Reading %d %s… %d %s related", s.Total, plural(s.Total, "issue", "issues"), s.Related, plural(s.Related, "looks", "look"))
 	case PhaseJudging:
-		return fmt.Sprintf("Checking %d… %d match", s.Related-s.Over, len(s.Matches))
+		return fmt.Sprintf("Checking %d… %d %s so far", s.Related-s.Over, len(s.Matches), plural(len(s.Matches), "match", "matches"))
 	case PhaseDone:
 		return fmt.Sprintf("%d %s", len(s.Matches), plural(len(s.Matches), "match", "matches"))
 	}

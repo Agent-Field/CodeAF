@@ -19,7 +19,7 @@ narrow what it reads. Dropped and dismissed jobs are never read, and it reads
 only jobs your factory sign-in can see.
 
 While it works it says how far it has got: "Reading 80 issues… 12 look
-related", then "Checking 12… 7 match". The answer is a list of the matching
+related", then "Checking 12… 7 matches so far". The answer is a list of the matching
 jobs, each with one sentence saying why it matched, and what it cost. Cancel
 ends it early; Ask again runs it again; the close button puts the list back.
 
