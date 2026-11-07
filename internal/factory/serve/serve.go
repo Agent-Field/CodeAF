@@ -599,8 +599,8 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	}
 	// HOW A RUN GETS ITS CHECKOUT is said before anyone presses Start, in the
 	// words the start itself would act on ([factory.Seam.CheckoutOf]), and
-	// never as a path.
-	if h.seam.CheckoutOf != nil {
+	// never as a path. A job that runs elsewhere has none to say.
+	if h.seam.CheckoutOf != nil && !factory.RunsElsewhere(it) {
 		state, _ := h.seam.CheckoutOf(r.Context(), it.Repo)
 		jobs[0].Checkout = string(state)
 	}

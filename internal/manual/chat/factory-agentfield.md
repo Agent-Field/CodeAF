@@ -349,9 +349,14 @@ that sends GitHub issues to that pipeline makes each one an ordinary job: on
 Start the factory starts the reasoner, the run's executions appear under the
 step on the job's rail (harness steps with their chats, steerable), Stop
 cancels the whole run, and the step ends when the run does. A pull request the
-run opened becomes the job's. A run that ends saying it did not succeed (a result
-of `{"success": false, "summary": "Plan rejected: …"}`) ends the job with those words. A pipeline made only of
-agentfield steps and approvals ends when its runs do, with no proof to approve.
+run opened becomes the job's the moment the call that opened it ends, while the
+rest of the run is still going, and stays the job's whatever the run says after.
+A run that ends saying it did not succeed (a result of `{"success": false,
+"summary": "Plan rejected: …"}`) ends the job with those words, beside any pull
+request it opened. A pipeline made only of agentfield steps and approvals ends
+when its runs do, with no proof to approve, and needs no checkout on this
+machine: its job never says it is cloning the repository here, and Start is not
+refused because this machine cannot clone it. The same is true of a `run_on` job.
 
 ## approve the plan an AgentField run asks about — Needs you, ask for changes, reject
 

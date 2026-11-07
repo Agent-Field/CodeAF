@@ -49,6 +49,9 @@ type afFakeCP struct {
 	approval map[string]agentfield.Approval
 	resolved []string
 	result   json.RawMessage
+	// results is a call's own result, by execution id, when a test names
+	// one; any other execution answers result.
+	results map[string]json.RawMessage
 	// inputs is each execution's input; inputReads every read of one.
 	inputs     map[string]string
 	inputReads []string
@@ -105,9 +108,12 @@ func (f *afFakeCP) Nodes(context.Context) ([]agentfield.NodeReasoners, error) {
 }
 
 // Result is the run's output, as GET /api/v1/executions/<id> reports it.
-func (f *afFakeCP) Result(context.Context, string) (json.RawMessage, error) {
+func (f *afFakeCP) Result(_ context.Context, exec string) (json.RawMessage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if raw, ok := f.results[exec]; ok {
+		return raw, nil
+	}
 	return f.result, nil
 }
 

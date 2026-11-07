@@ -171,6 +171,48 @@ func TestARejectedPlanEndsTheStepWithTheRunsWords(t *testing.T) {
 	}
 }
 
+// A PULL REQUEST ANY CALL OF THE RUN OPENED IS THE JOB'S AT ONCE, AND STAYS
+// THE JOB'S WHATEVER THE RUN SAYS AFTER: the call that opened it ended while
+// the run went on, so the job page shows it while the run is still running,
+// and the run then reporting failure does not take it away.
+func TestAPullRequestACallOpenedIsTheJobsAtOnceWhateverTheRunsEnd(t *testing.T) {
+	appDayProfile(t)
+	prev := afRemoteEvery
+	afRemoteEvery = 10 * time.Millisecond
+	t.Cleanup(func() { afRemoteEvery = prev })
+	st, it, stage := afStepJob(t)
+	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "running", "2026-11-07T12:00:00Z", "",
+		afNode("e-open", "open_pull_request", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"),
+		afNode("e-check", "check_work", "running", "2026-11-07T12:00:03Z", "")),
+		results: map[string]json.RawMessage{"e-open": json.RawMessage(`{"pr_url":"https://github.com/santoshkumarradha/factory-demo/pull/33","pr_number":33}`)}}
+	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
+		done <- err
+	}()
+	mid := afUntil(t, st, it.ID, "holding the pull request while the run runs", func(i factory.Item) bool { return i.PullRequest != nil })
+	if mid.PullRequest.Number != 33 || mid.Publish != "pr" || mid.AgentFieldSteps["build"].Status != "running" {
+		t.Fatalf("mid-run pull request %+v publish %q run %+v", mid.PullRequest, mid.Publish, mid.AgentFieldSteps["build"])
+	}
+	cp.set(func() {
+		cp.result = json.RawMessage(`{"success":false,"summary":"one check did not pass"}`)
+		cp.tree.Status = "succeeded"
+		cp.tree.Children[1].Status = "succeeded"
+	})
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "one check did not pass") {
+			t.Fatalf("err = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the step never ended")
+	}
+	if end, _ := st.Get(it.ID); end.PullRequest == nil || end.PullRequest.Number != 33 {
+		t.Fatalf("the failed run's pull request was lost: %+v", end.PullRequest)
+	}
+}
+
 // A HARNESS STEP'S QUESTION REACHES THE JOB AND ITS ANSWER REACHES THE STEP:
 // the node relays the step's ask line; the factory keeps it out of the
 // step's conversation, puts it to the job (its manager first, then the

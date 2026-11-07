@@ -137,7 +137,11 @@ func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factor
 	if h.startModelRefused(w, it) {
 		return true
 	}
-	return h.endedOnGitHub(w, r, it) || h.needsCheckout(w, r, it.Repo, factory.JobState(it))
+	if h.endedOnGitHub(w, r, it) {
+		return true
+	}
+	// A JOB THAT RUNS ELSEWHERE NEEDS NO CHECKOUT HERE (factory.RunsElsewhere).
+	return !factory.RunsElsewhere(it) && h.needsCheckout(w, r, it.Repo, factory.JobState(it))
 }
 
 // launchJob is the start's one write and its launch, for a job startRefused

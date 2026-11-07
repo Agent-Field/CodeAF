@@ -145,6 +145,9 @@ type afRemote struct {
 	// asking is each harness question being put to the job now, by
 	// job/execution/id, with how to withdraw it.
 	asking map[string]context.CancelFunc
+	// opened is every ended call whose result has been read for a pull
+	// request, so each is read once (pullRequestOf).
+	opened map[string]bool
 }
 
 // afApprovalEvery is how often a waiting execution's approval is read again
@@ -290,16 +293,24 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 		return factory.StageResult{}, ctx.Err()
 	}
 	out := "the AgentField run " + target + " finished"
-	// A PULL REQUEST THE RUN OPENED IS THE JOB'S: its link is read off the
-	// run's result, wherever the reasoner put it.
+	// A PULL REQUEST THE RUN OPENED IS THE JOB'S, WHATEVER THE RUN SAYS
+	// AFTER: its link is read off the run's result, wherever the reasoner put
+	// it, and kept before the result's own word on success is weighed, so a
+	// run that opened a pull request and then reported failure leaves the
+	// pull request on the job beside the failure.
 	if results, ok := client.(interface {
 		Result(context.Context, string) (json.RawMessage, error)
 	}); ok {
 		if raw, err := results.Result(ctx, run.ExecutionID); err == nil {
-			// A RUN THAT SUCCEEDED AND SAYS IT DID NOT IS NOT DONE: SWE-AF
-			// ends a rejected plan as a clean run whose result is
-			// {success:false, summary:"Plan rejected: …"}, and the job then
-			// ends with those words rather than as work finished.
+			if link, _ := factory.PullRequestIn(raw); link != "" {
+				out += " and opened " + link
+				afKeepPullRequest(r.items, it.ID, raw)
+			}
+			// A RUN THAT ENDED CLEANLY AND SAYS IT DID NOT SUCCEED IS NOT
+			// DONE: a reasoner may end a rejected plan, or work that failed
+			// its own checks, as a clean run whose result is
+			// {success:false, summary:"…"}, and the job then ends with those
+			// words rather than as work finished.
 			var said struct {
 				Success *bool  `json:"success"`
 				Summary string `json:"summary"`
@@ -311,19 +322,66 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 				}
 				return factory.StageResult{}, errors.New("the AgentField run " + target + " ended: " + why)
 			}
-			if link, n := factory.PullRequestIn(raw); link != "" {
-				out += " and opened " + link
-				_ = r.items.Update(it.ID, func(it *factory.Item) error {
-					if it.PullRequest == nil {
-						it.PullRequest = &factory.PullRequest{URL: link, Number: n, State: factory.PROpen}
-						it.Publish = "pr"
-					}
-					return nil
-				})
-			}
 		}
 	}
 	return factory.StageResult{Done: true, Output: out}, nil
+}
+
+// afKeepPullRequest attaches the pull request raw names to the job, unless
+// the job already holds one: the first a run reports is the job's.
+func afKeepPullRequest(jobs *store.Store, job int, raw json.RawMessage) bool {
+	link, n := factory.PullRequestIn(raw)
+	if link == "" {
+		return false
+	}
+	_ = jobs.Update(job, func(it *factory.Item) error {
+		if it.PullRequest == nil {
+			it.PullRequest = &factory.PullRequest{URL: link, Number: n, State: factory.PROpen}
+			it.Publish = "pr"
+		}
+		return nil
+	})
+	return true
+}
+
+// pullRequestOf reads, once each, the result of every call in steps that has
+// ended well and attaches the first pull request one names to the job. THE
+// JOB PAGE FOLLOWS THE RUN: a call that opened a pull request may end long
+// before the run does, and the page says "to come" until it is attached.
+func (r *afRemote) pullRequestOf(ctx context.Context, client afClient, jobs *store.Store, job int, steps []afStep) {
+	results, ok := client.(interface {
+		Result(context.Context, string) (json.RawMessage, error)
+	})
+	if !ok {
+		return
+	}
+	unread := func(exec string) bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return !r.opened[exec]
+	}
+	read := func(exec string) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.opened == nil {
+			r.opened = map[string]bool{}
+		}
+		r.opened[exec] = true
+	}
+	for _, step := range steps {
+		exec := step.node.ExecutionID
+		if exec == "" || !afSucceeded(step.node.Status) || !unread(exec) {
+			continue
+		}
+		raw, err := results.Result(ctx, exec)
+		if err != nil {
+			continue
+		}
+		read(exec)
+		if afKeepPullRequest(jobs, job, raw) {
+			return
+		}
+	}
 }
 
 // dispatch starts target on the control plane and answers the run's record.
@@ -431,6 +489,9 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 		if m := r.pull(ctx, client, it, step, place); m != nil {
 			chats[step.node.ExecutionID] = m.file
 		}
+	}
+	if it.PullRequest == nil {
+		r.pullRequestOf(ctx, client, jobs, job, steps)
 	}
 	now := r.clock()
 	ended := afEnded(root.Status)

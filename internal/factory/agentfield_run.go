@@ -360,6 +360,18 @@ func agentFieldValue(name, fact string) any {
 // succeeded — since it made no change on this factory for a person to
 // approve (a pull request a run opened is the job's own).
 func AgentFieldPipeline(it Item) bool {
+	return agentFieldOnly(it)
+}
+
+// RunsElsewhere reports whether every step of the job runs on another
+// machine — a RunOn job, or an [AgentFieldPipeline] — so this machine only
+// follows the run and needs no checkout of the job's repository: it never
+// clones one, and its page never says it is cloning.
+func RunsElsewhere(it Item) bool {
+	return strings.TrimSpace(it.RunOn) != "" || AgentFieldPipeline(it)
+}
+
+func agentFieldOnly(it Item) bool {
 	if it.RunOn != "" {
 		return false
 	}
