@@ -1119,6 +1119,22 @@ one filesystem call per disk; it starts nothing. hello says `health.check`.
 | `keys.remove` | `in.ProviderParams` | `Empty` |
 | `keys.set` | `in.KeyParams` | `Empty` |
 
+A credential a door gives an app-run engine (a pasted GitHub token through
+`factory.setup_connect`, a Jira token, an AgentField key and node secret through
+`factory.agentfield_connect`) is held in memory and handed to the app to keep, BY
+PULL, never on an event: the engine emits an empty `credentials.changed`, and the
+app's core calls `credentials.take`, which answers each change once, the latest per
+provider, as `{changes: [{provider, key}]}` or `{provider, removed: true}`; a change
+not taken within 60 seconds is dropped. The core keeps the key in its secure store
+under `provider` and hands it back at the next launch with `keys.set {provider, key}`,
+which queues nothing. `keys.set` takes `github`, `jira`, `agentfield` and
+`agentfield-node` this way, beside the model providers. Hello announces
+`credentials.take` when the engine serves it.
+
+| method | params | result |
+|---|---|---|
+| `credentials.take` | `Empty` | `CredentialsTaken` |
+
 ## manual methods
 
 | method | params | result |
@@ -1536,6 +1552,7 @@ and the reply is empty.
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
 | `compaction.ended` | `CompactionEnded` |
+| `credentials.changed` | `Empty` |
 | `crew.changed` | `CrewChanged` |
 | `crew.log` | `CrewLogEvent` |
 | `crew.proposal.delta` | `CrewProposalDelta` |
