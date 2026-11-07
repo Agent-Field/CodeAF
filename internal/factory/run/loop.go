@@ -3066,6 +3066,24 @@ func (c *loopCtl) settleSpend() {
 	}
 }
 
+// AnswerAgentField is the worker's door for a person's answer to an
+// AgentField run's pause, which reaches it as a lease signal: the decision is
+// sent to the control plane through [Options.AgentFieldAnswer] whether or not
+// the run is being followed here now, because the control plane holds the
+// pause, not this runner.
+func (r *Runner) AnswerAgentField(id int, d factory.AgentFieldDecision) error {
+	if r.opts.AgentFieldAnswer == nil {
+		return errors.New(NoRemoteWords)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), agentFieldAnswerWait)
+	defer cancel()
+	return r.opts.AgentFieldAnswer(ctx, id, d)
+}
+
+// agentFieldAnswerWait bounds one try at carrying an answer to the control
+// plane; a try that runs out is tried again on the next beat.
+const agentFieldAnswerWait = 30 * time.Second
+
 // NoRemoteWords refuses a RunOn job on a factory with no AgentField behind it.
 const NoRemoteWords = "this job runs on AgentField and this factory is not connected to AgentField"
 

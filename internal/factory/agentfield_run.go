@@ -55,6 +55,54 @@ type AgentFieldRun struct {
 	// Decisions are the people's answers this factory sent, oldest first
 	// (the factory's own to write; a runner's report never replaces them).
 	Decisions []AgentFieldDecision `json:"decisions,omitempty"`
+	// Refused is the control plane's refusal of the last answer the runner
+	// carried to it (the runner's to write): the answer did not reach the
+	// run, so its question stands again with these words beside it.
+	Refused *AgentFieldRefusal `json:"refused,omitempty"`
+}
+
+// AgentFieldRefusal is an answer the control plane would not take.
+type AgentFieldRefusal struct {
+	RequestID string    `json:"request_id,omitempty"`
+	Execution string    `json:"execution"`
+	Words     string    `json:"words"`
+	At        time.Time `json:"at,omitzero"`
+}
+
+// AgentFieldRejected is the control plane's word for a person's Reject of a
+// run's pause: the run is cancelled there, and the job ends as their Stop.
+const AgentFieldRejected = "rejected"
+
+// AgentFieldAnswerFor is the person's answer to the pause request waits on
+// that has not been refused since it was given: the newest decision for that
+// request (and execution), nil when there is none or the control plane
+// refused it. IT IS WHAT A RUNNER STILL OWES THE CONTROL PLANE, and what
+// keeps a runner's older reading of the same pause from asking again.
+func AgentFieldAnswerFor(run *AgentFieldRun, execution, request string) *AgentFieldDecision {
+	if run == nil || execution == "" {
+		return nil
+	}
+	for i := len(run.Decisions) - 1; i >= 0; i-- {
+		d := run.Decisions[i]
+		if d.Execution != execution || d.RequestID != request {
+			continue
+		}
+		if f := run.Refused; f != nil && f.Execution == execution && f.RequestID == request && !d.At.After(f.At) {
+			return nil
+		}
+		return &d
+	}
+	return nil
+}
+
+// MayAnswerAgentField says caller may answer the job's AgentField pause.
+// ONLY THE JOB'S PERSON ANSWERS IT, or anyone the factory lets act on a job
+// that has no person yet: the same rule whatever door the answer comes
+// through, so the buttons a person is offered and the answers a factory
+// takes never disagree.
+func MayAnswerAgentField(it Item, caller string) bool {
+	person := it.Person()
+	return person == "" || person == NormalizeHandle(caller)
 }
 
 // AgentFieldAsk is one pause of the run, as it was first read.

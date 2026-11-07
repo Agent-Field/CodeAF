@@ -181,13 +181,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	}
 	ensureStream(it, now)
 	if report.AgentField != nil {
-		run := *report.AgentField
-		// THE PEOPLE'S DECISIONS ARE THE FACTORY'S: a runner's copy of the
-		// run never carries the ones it was not there to see.
-		if it.AgentField != nil {
-			run.Decisions = it.AgentField.Decisions
-		}
-		it.AgentField = &run
+		it.AgentField = reportedAgentFieldRun(it, it.AgentField, *report.AgentField, now)
 	}
 	for name, r := range report.AgentFieldSteps {
 		if r == nil {
@@ -196,11 +190,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		if it.AgentFieldSteps == nil {
 			it.AgentFieldSteps = map[string]*factory.AgentFieldRun{}
 		}
-		run := *r
-		if old := it.AgentFieldSteps[name]; old != nil {
-			run.Decisions = old.Decisions
-		}
-		it.AgentFieldSteps[name] = &run
+		it.AgentFieldSteps[name] = reportedAgentFieldRun(it, it.AgentFieldSteps[name], *r, now)
 	}
 	if report.AgentField != nil || len(report.AgentFieldSteps) > 0 {
 		SyncAgentFieldWait(it, now)
@@ -872,4 +862,29 @@ func ChangeRuleHold(it factory.Item) string {
 // protected paths unknown, so the change was not judged against them.
 func changeJudged(it factory.Item) bool {
 	return it.Change != nil && len(it.Change.Files) > 0 && it.StartRules != nil && !it.StartRules.Unread
+}
+
+// reportedAgentFieldRun is the run record a runner reported, kept on the
+// factory's job beside what only the factory knows.
+//
+//   - THE PEOPLE'S DECISIONS ARE THE FACTORY'S: a runner's copy of the run
+//     never carries the ones it was not there to see.
+//   - AN ANSWER ON ITS WAY IS NOT ASKED AGAIN. A person answered the pause on
+//     this factory and the runner has not yet carried it to the control plane,
+//     so the runner's reading still says the run waits; that older reading
+//     does not put the question back in front of the person.
+//   - A REFUSED ANSWER IS SAID. When the control plane would not take the
+//     answer, the question stands again and the job says why, once.
+func reportedAgentFieldRun(it *factory.Item, old *factory.AgentFieldRun, reported factory.AgentFieldRun, now time.Time) *factory.AgentFieldRun {
+	run := reported
+	if old != nil {
+		run.Decisions = old.Decisions
+	}
+	if w := run.Waiting; w != nil && factory.AgentFieldAnswerFor(&run, w.Execution, w.RequestID) != nil {
+		run.Waiting = nil
+	}
+	if f := run.Refused; f != nil && (old == nil || old.Refused == nil || !old.Refused.At.Equal(f.At)) {
+		loopSay(it, now, "said", "the AgentField control plane did not take the answer: "+f.Words)
+	}
+	return &run
 }

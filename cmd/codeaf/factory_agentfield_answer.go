@@ -14,6 +14,13 @@ package main
 // between them, and one given in hax or on the control plane's own page
 // clears here the same way.
 //
+// THIS IS THE SHORTCUT FOR THE FACTORY THIS ENGINE HOSTS. Every other
+// factory — a team factory on a server, another computer's factory this desk
+// is attached to — takes the same three verbs over HTTP, keeps the decision,
+// and signals the runner that started the run, which carries it to the
+// control plane as the run's owner (internal/factory/serve/agentfield_answer.go,
+// afRemote.Answer).
+//
 // A Reject also stops the job, the way the person's Stop does: the reasoner
 // sees "rejected" and its run is cancelled, and the job reads "Stopped by
 // you" rather than a failure.

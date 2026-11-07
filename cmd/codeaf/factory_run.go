@@ -179,12 +179,12 @@ func setFactoryProcess(change func()) {
 // is handed no ledger: what a round spent goes on the item (its spend, its
 // cap, today's rail) and nowhere else.
 func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns) *factoryrun.Runner {
-	return buildFactoryRunnerWith(items, floor, workspace, profileDir, maker, turns, nil, nil)
+	return buildFactoryRunnerWith(items, floor, workspace, profileDir, maker, turns, nil, nil, nil)
 }
 
 // buildFactoryRunnerWith is [buildFactoryRunner] with the run a job filed
 // with run_on is handed to (factory_agentfield_run.go); nil refuses one.
-func buildFactoryRunnerWith(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns, remote func(context.Context, int) error, step factoryrun.Executor) *factoryrun.Runner {
+func buildFactoryRunnerWith(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns, remote func(context.Context, int) error, step factoryrun.Executor, answer func(context.Context, int, factory.AgentFieldDecision) error) *factoryrun.Runner {
 	dirs := factoryRepoDirs(floor, workspace)
 	// EVERY BOUND ON A JOB IS THE FILE IT WAS DECIDED ON at its first start:
 	// the factory's copy it carries, else main's file here
@@ -270,6 +270,7 @@ func buildFactoryRunnerWith(items, floor *store.Store, workspace, profileDir str
 		opts.Inbox = turns.Inbox
 	}
 	opts.Remote = remote
+	opts.AgentFieldAnswer = answer
 	// AN AGENTFIELD STEP RUNS OVER THE SAME CONNECTION AS A run_on JOB: a
 	// runner with no AgentField connection has no executor for it, and the
 	// step fails with the runner's sentence for a kind it cannot run.

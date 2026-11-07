@@ -347,6 +347,12 @@ type WorkerSignal struct {
 	Verb          string            `json:"verb"`
 	Yes           bool              `json:"yes,omitempty"`
 	Words         string            `json:"words,omitempty"`
+	// Execution, Decision and By are an AgentField answer's (lease
+	// SignalAgentField): the waiting execution, the control plane's word
+	// for the answer, and the handle of the person who gave it.
+	Execution string `json:"execution,omitempty"`
+	Decision  string `json:"decision,omitempty"`
+	By        string `json:"by,omitempty"`
 }
 
 type WorkerLease struct {
