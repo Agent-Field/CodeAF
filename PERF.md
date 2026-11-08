@@ -626,6 +626,46 @@ presence beat. With 43 chats that each ran fifteen tool calls the same build
 reads 7.6%. Quit took 1.5–1.7 s on both hosts, before and after; the rig does
 not reproduce the live run's 28–30 s.
 
+### The settle and the held-job flush (the eighth live A+B round)
+
+After the seventh run's changes the macOS idle still spent about a fifth of its
+profile re-reading jobs that had not changed. Two changes:
+
+- **The settle lists the floor from memory.** `settleJobs` and
+  `scheduleJobTimer` use `Store.ListShared`: one directory read, and every job
+  whose file is the one read last (`os.SameFile`, size, time, mode) is answered
+  from memory with no stat, decode or copy; only an edited file is read again,
+  whatever wrote it. Hydration (author access, output retention) is applied to
+  every listing on a copy, with the retention read once per listing rather than
+  once per job. The items are shared and read-only; every settle re-reads a
+  candidate under its lock before acting.
+  `TestASharedListingOfAnUnchangedFloorReadsNothingAndSeesAnEdit` (five
+  listings of 30 jobs read none; an in-place edit reads one and matches `List`)
+  and `TestASettleOfAnUnchangedFloorReadsNoJob`.
+- **A held job's quiet flush is not repeated.** A flush (every 500 ms per held
+  job) that found nothing to send keeps the mirror file's `store.Stamp` and the
+  journal's `thread.Version`; later flushes stat both and read nothing while
+  both are unchanged, for at most `quietTrust` (one minute, because retention
+  depends on the clock). A send forgets the quiet; an accepted reply not yet
+  acknowledged always reports. `TestAHeldJobWhoseMirrorIsUnchangedIsNotReadAgain`
+  (fake clock: twenty flushes read nothing; an edit, a journal change and a
+  minute each read once).
+
+Same rig and window as above (`r7rig.py`, 84 + 2 held jobs, 37–38 open chats,
+15 slots, 120 s from 200 s after start):
+
+| | linux/arm64 | macOS (mac-studio) |
+| --- | --- | --- |
+| before (`5a4402f65`) | 1.57% | 6.05% |
+| after | 1.02% | 4.62% |
+
+The 60 s steady profile on macOS fell from 5.21% to 3.68% of a core;
+`settleJobs` (14% of it) and the flush (8%) are gone. What remains is the chat
+presence beat (`presenceDesk.writeAt`, 10%), `Agent.scanKnowledge` (7%) and the
+root watch's poll `snapshot` (5%). Quit took 1.3–1.4 s on both hosts, and now
+leaves no hold behind: a clean quit hands each lease back (`Desk.HandBack`), so
+`leases.json` reads `[]` after it instead of the two holds running out.
+
 `CODEAF_DIAGNOSTIC_PROFILE_DELAY` (1..3600 s) opens the developer profile's
 window that long after start, so a steady idle can be profiled; the window
 itself is still at most 60 s.
