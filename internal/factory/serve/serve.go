@@ -176,9 +176,13 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
-	setupMu     sync.Mutex
-	setupBusy   bool
-	setupClosed bool
+	// workerSettled is when a runner's request last settled the floor
+	// ([Handler.workerSettleDue]).
+	workerSettleMu sync.Mutex
+	workerSettled  time.Time
+	setupMu        sync.Mutex
+	setupBusy      bool
+	setupClosed    bool
 	// setupContinuing is held by a Continue from the moment it decides to stop
 	// the reader until it saves its own step, so nothing starts reading again
 	// in between.
@@ -445,8 +449,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.settleJobs(r.Method == http.MethodPost)
+	if !workerPath(r.URL.Path) || h.workerSettleDue() {
+		h.settleJobs(r.Method == http.MethodPost)
+	}
 	h.idempotent(w, r)
+}
+
+// workerSettleEvery is how often a runner's requests settle the floor.
+const workerSettleEvery = time.Second
+
+// workerSettleDue says a runner's request settles the floor now. A SETTLE
+// LISTS AND DECODES EVERY JOB, and it ran before every request: each runner
+// slot's pull and each heartbeat. Fifteen idle slots re-pull together every
+// wait, so an idle machine decoded the whole floor fifteen times every thirty
+// seconds to settle nothing. A runner's requests settle at most once per
+// [workerSettleEvery], so a deadline falls due on a runner's request at most
+// that late; every request a person makes still settles first.
+func (h *Handler) workerSettleDue() bool {
+	now := h.clock()
+	h.workerSettleMu.Lock()
+	defer h.workerSettleMu.Unlock()
+	if !h.workerSettled.IsZero() && now.Sub(h.workerSettled) < workerSettleEvery && !now.Before(h.workerSettled) {
+		return false
+	}
+	h.workerSettled = now
+	return true
 }
 
 func (h *Handler) read(pattern string, handler http.HandlerFunc) {

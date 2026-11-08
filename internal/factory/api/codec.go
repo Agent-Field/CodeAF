@@ -1294,7 +1294,23 @@ func failureWireOrNil(f *factory.Failure) *Failure {
 func unsteps(j Job) ([]factory.Stage, *factory.Stream) {
 	var stages []factory.Stage
 	var phases []factory.Phase
+	// A RUN'S OWN CALLS ARE NEVER THE JOB'S STEPS. [withAgentFieldSteps]
+	// folds each agentfield step's run right after the step, one row per call
+	// of that run, so the rail can draw them under it; they come back on the
+	// step's own run record ([Job.AgentFieldSteps]), never as phases of the
+	// job. Read back as phases, a runner that took the job again mid-run went
+	// on to the run's next call when the step ended and reported it as a step
+	// the pipeline does not have, and the factory refused the whole report.
+	folded := 0
 	for _, s := range j.Steps {
+		if folded > 0 && !s.InPipeline {
+			folded--
+			continue
+		}
+		folded = 0
+		if r := j.AgentFieldSteps[s.Name]; r != nil {
+			folded = len(r.Stages)
+		}
 		if s.InPipeline {
 			stages = append(stages, toStage(s.StepDef))
 		}

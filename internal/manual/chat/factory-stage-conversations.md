@@ -324,7 +324,9 @@ or while another codeaf has the chat open, the line waits and is written afterwa
 
 After you Stop a running step or job and carry on from that step, its earlier
 round says `stopped`. A round cut by a lost runner, including an engine
-restart, says `interrupted` when retried. Neither means the work failed its
+restart, says `interrupted` when retried. A step that was running when codeaf
+quit is always such an interrupted step and is offered again: it never sits
+reading "running" with no runner until you Pause and Resume it. Neither means the work failed its
 completion rule, so neither says "didn't pass" or "fixing them". A real step
 error remains a failed round and says `failed` when retried. Reported results
 still use their rule's words, such as `clean`, `not clean` or `green`.

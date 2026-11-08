@@ -440,6 +440,62 @@ identity. `TestAnIdleManagersStopCheckDecodesNothingUnchanged` counts the
 decoded documents (`factoryStopCheckDecodes`): fifty unchanged checks decode
 none, and a Stop is seen at the next check.
 
+A conversation that manages no job (every open step chat) is NOT keyed on the
+floor folder: the folder's time moves with every file renamed into it (the
+runner registry, a lease heartbeat, the sources' poll record), which made every
+open step chat list and decode every job every few seconds. It is answered from
+one look at the floor's job files (`floorJobFiles`: one directory read and one
+stat per job, shared by every conversation for `floorLookEvery`, 100 ms) and
+reads only a job document that changed. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
+fifty checks while the registry is rewritten decode none; one changed job costs
+one decode.
+
+## Idle runner pulls and the runner registry
+
+Every runner slot holds a pull open (`pullWorker`) and makes a fresh one each
+wait (30 s); a look (`lease.Desk.Pull`) decodes every job on the floor. While
+NO LEASE IS HELD a pull does not look again at a floor none of whose files
+changed since its last empty look (`Handler.idleFloor`: one directory read and
+one stat per file, the pull's own bookkeeping — `runners.json`, the live
+record, `sources.json` — left out; the worker's slots and consent are part of
+the key). With any lease held every pull looks, because a hold expires by the
+clock and a look is what requeues it. The sources' poll record no longer wakes
+open pulls either. `TestAnIdlePullDoesNotLookAgainAtAnUnchangedFloor` counts
+looks (`pullLooks`): ten idle pulls of an unchanged floor make none.
+
+A worker's presence (`Last`) moves on every request it makes and is saved to
+`runners.json` at most every `heardSaveEvery` (a quarter of
+`lease.OfflineAfter`, 15 s); the rows a page reads are in memory. It was saved
+on every request, rewriting the registry every ~4 s on an idle machine. A
+runner's rows from before a restart (same machine, a new runner id) are dropped
+by the next idle pull once quiet past the runner timeout and holding no lease
+(`TestAnIdlePullForgetsARestartedRunnersOldRows`), so the registry no longer
+grows by one set of rows per restart.
+
+`settleJobs` (a hydrated `Store.List`) ran before EVERY request. A runner's own
+requests (`/v1/worker/…`, fifteen pulls re-made each 30 s wait) now settle the
+floor at most once a `workerSettleEvery` (1 s); every other request still
+settles first. `TestARunnersRequestsSettleTheFloorAtMostOnceASecond` counts
+settles (`settles`): twenty runner requests inside one second make one.
+
+Live, `codeaf app` on linux/arm64 with a GitHub-connected local factory, 79
+jobs on the floor (eight of them the fourth live run's documents, 24–135 KB),
+68 conversations held open (8 managers, 60 step chats), the runner on with 15
+slots and nothing to do; the engine's own CPU from `/proc/<pid>/stat` every
+10 s for 5 minutes (scratch rig `idle_rig.py`):
+
+| | average | max |
+| --- | --- | --- |
+| before (`2c3805a2e`, idle code as `550796049`) | 5.8% | 23.5% |
+| after | 3.1% | 18.0% |
+
+Both runs spend their first 20 s settling (13–23%). Then the before engine
+holds about 2% with a 7–8% sample every 30 s, when the fifteen pulls are made
+again and each looks and settles; the after engine holds 1.7–2.6% throughout. A
+CPU profile of an idle minute taken with only the stop-check change applied put
+35% of its samples in `lease.Desk.Pull` → `store.ListSaved` → `encoding/json`
+and 12% in `settleJobs`, which is what the pull and settle changes remove.
+
 `BenchmarkAutomaticRefusal`, six jobs of about 30 KB each, linux/arm64:
 
 | | per check | allocated | allocations |
