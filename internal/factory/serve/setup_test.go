@@ -378,10 +378,8 @@ func TestFactorySetupAppScopeValidationKeepsCredentialsOffDisk(t *testing.T) {
 	if token, _ := credentials.Key("github"); token != "setup-secret" {
 		t.Fatal("app handoff not connected")
 	}
-	// The engine keeps the token in its own profile as well, for the next
-	// launch (live e2e round 9); the app's copy still answers first.
-	if got := config.GitHubTokenAt(f.h.config.ProfileDir); got != "setup-secret" {
-		t.Fatalf("the token read back %q", got)
+	if data, _ := os.ReadFile(config.ProfilePath(f.h.config.ProfileDir, "config.json")); strings.Contains(string(data), "setup-secret") {
+		t.Fatal("app credential written to profile")
 	}
 	f.h.config.GitHubHTTPClient = &http.Client{Transport: githubTransport(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"X-Oauth-Scopes": []string{"read:user"}}, Body: io.NopCloser(strings.NewReader(`{"login":"owner"}`))}, nil
@@ -708,11 +706,10 @@ func TestFactorySetupDiscoverNamesGHThroughTheSharedResolver(t *testing.T) {
 	}
 }
 
-// THE APP'S CONNECTION OUTLIVES ITS LAUNCH: a yes to gh is kept in the
-// factory's profile (gh keeps its own token, which never reaches the profile),
-// and a pasted token takes that yes back and is kept both by the app and in the
-// engine's own profile, owner-readable only, so an engine the desk starts again
-// reads it back when the app hands nothing (live e2e round 9).
+// THE APP'S CONNECTION OUTLIVES ITS LAUNCH, each way kept by its owner: a yes
+// to gh is kept in the factory's profile (gh keeps its own token), and a pasted
+// token takes that yes back, because the app keeps that token in its keychain.
+// No token reaches the profile either way.
 func TestFactorySetupInTheAppKeepsHowGitHubWasConnected(t *testing.T) {
 	f := peopleV2Setup(t, api.FactorySolo)
 	fail := false
@@ -732,9 +729,6 @@ func TestFactorySetupInTheAppKeepsHowGitHubWasConnected(t *testing.T) {
 	if out.State != "repos" || config.GitHubViaAt(profile) != "gh" {
 		t.Fatalf("a gh connection was not kept: state %q, via %q", out.State, config.GitHubViaAt(profile))
 	}
-	if data, _ := os.ReadFile(config.ProfilePath(profile, "config.json")); strings.Contains(string(data), "setup-secret") {
-		t.Fatal("gh's own token was written to the profile")
-	}
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "back"}, 200, &out)
 	f.request(t, "POST", "/v1/factory-setup/local", "operator-secret", api.FactorySetupRequest{Verb: "connect", Source: "token", Token: "setup-secret"}, 200, &out)
 	if out.State != "repos" || config.GitHubViaAt(profile) != "" {
@@ -743,14 +737,8 @@ func TestFactorySetupInTheAppKeepsHowGitHubWasConnected(t *testing.T) {
 	if token, _ := credentials.Key("github"); token != "setup-secret" {
 		t.Fatal("the app does not hold the pasted token")
 	}
-	next := config.NewAppCredentials()
-	restore := config.UseAppCredentials(next)
-	defer restore()
-	if got := config.GitHubTokenAt(profile); got != "setup-secret" {
-		t.Fatalf("the next launch read the pasted token back as %q", got)
-	}
-	if info, err := os.Stat(config.ProfilePath(profile, "config.json")); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("the profile holding the token is not owner-readable only: %v", err)
+	if data, _ := os.ReadFile(config.ProfilePath(profile, "config.json")); strings.Contains(string(data), "setup-secret") {
+		t.Fatal("a GitHub token was written to the profile")
 	}
 }
 

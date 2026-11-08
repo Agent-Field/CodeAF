@@ -31,17 +31,14 @@ func GitHubViaAt(profileDir string) string {
 }
 
 // WriteGitHubToken keeps a token in the profile and forgets any yes to gh,
-// in one write, so the two can never both be the answer. THE TOKEN NEVER
+// in one write, so the two can never both be the answer. IN APP MODE THE APP
+// HOLDS EVERY KEY AND NONE REACHES THE PROFILE: the write is refused with
+// [ErrAppKeys]. THE TOKEN NEVER
 // REACHES A LOG; a caller says "a token", never the bytes.
-//
-// IN APP MODE IT IS KEPT HERE TOO, beside the copy handed to the app
-// (AppCredentials.Keep): an engine the desk starts again reads it back from
-// its own profile, owner-readable only (0600), when the app hands nothing
-// back at the next launch. Before 2026-11-08 an app-run engine held a pasted
-// token in memory alone, and a desk whose keychain did not keep it lost
-// GitHub at every launch (live e2e round 9). [GitHubTokenAt] still asks the
-// app first, so a removal the app hands back wins over this copy.
 func WriteGitHubToken(profileDir, token string) error {
+	if AppMode() {
+		return ErrAppKeys
+	}
 	return writeProfileValues(profileDir, map[string]any{
 		KeyGitHubToken: strings.TrimSpace(token),
 		KeyGitHubVia:   removeProfileKey,

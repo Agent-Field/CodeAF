@@ -10,5 +10,9 @@ invalidates:
   - "Was true: a resumed step chat showed '[carry on] <brief>' as the person's line. Is true now: session.ResumedStepBrief's lead is continuation context the display hides; the model still reads it."
   - "Was true: a reader's job showed an agentfield step's note as its node.reasoner. Is true now: it reads the step's label (api.PlainStepNotes, reader-side only)."
   - "Was true: a failed run's headline never named the failing command. Is true now: a short, plain command quoted as '`cmd` exited N' or '`cmd` failed' is named, '(cmd failed)', while the line fits FailureSummaryMost."
-  - "Was true: in app mode the AgentField key and internal token and a pasted GitHub token were never written to disk (ErrAppKeys), so a desk whose keychain did not keep them lost them at every engine launch. Is true now: they are also written to the engine's own profile (its home's config.json, 0600); the app's copy still answers first, and Disconnect forgets both. gh's own token is still never written."
 ---
+
+Keys are unchanged by this pull request: in the app, the AgentField key and
+internal token and a pasted or browser-signed-in GitHub token are held in
+memory only and never written to the engine's profile. The app hands them over
+again each time it starts the engine.

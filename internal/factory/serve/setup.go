@@ -525,18 +525,10 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 			}
 			// A pasted token is handed to the app to keep (Keep); gh's own
 			// token is held for this launch only, since gh keeps it.
-			// A pasted token is also kept in the engine's own profile
-			// (config.WriteGitHubToken, owner-readable only), so an engine the
-			// desk starts again reads it back when the app hands nothing.
 			if body.Source == "gh" {
 				credentials.Set("github", token)
 			} else {
 				credentials.Keep("github", token)
-				if profile := h.config.ProfileDir; profile != "" {
-					if err := config.WriteGitHubToken(profile, token); err != nil {
-						return errors.New("codeaf could not keep this GitHub connection")
-					}
-				}
 			}
 		} else {
 			if token != "" {

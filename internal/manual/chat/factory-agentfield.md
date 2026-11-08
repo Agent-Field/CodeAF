@@ -23,10 +23,11 @@ anything it asks the control plane for its source catalog with the key, then
 registers; if that fails ("AgentField did not accept that API key",
 "AgentField could not be reached", "the factory could not listen on …")
 nothing is kept. The API key and internal token are kept the way a pasted
-GitHub token is: in the engine's own profile (owner-readable only, never in a
-log), and in the desktop app also handed to the app, so a desk that starts its
-engine again stays connected. Disconnect forgets them in both places. They are
-never sent back. The desk has no settings screen to connect AgentField yet:
+GitHub token is. In the desktop app they are held in memory only and never
+written to disk: the engine hands them to the app, and the app hands them over
+again each time it starts the engine. Outside the app they are kept in the
+profile, owner-readable only. They never reach a log, Disconnect forgets them,
+and they are never sent back. The desk has no settings screen to connect AgentField yet:
 `factory.agentfield_connect` is the one way in. There is no slash command for
 this in the terminal chat, and only the factory on this machine can be
 connected.
