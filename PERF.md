@@ -617,7 +617,14 @@ starting 200 s after start:
 | | linux/arm64 | macOS (mac-studio) |
 | --- | --- | --- |
 | before (`1436ad765`) | 11.12% | 24.09% |
-| after | 2.68% | MACAFTER |
+| after | 1.78% | 6.25% |
+
+The macOS after is above the 5% bar. Its remaining steady profile (60 s, 6.2%
+of a core) is file-status calls: the floor's hydrated settle every five seconds
+(`settleJobs`, 11%), each held job's flush re-reading its job (10%), and the
+presence beat. With 43 chats that each ran fifteen tool calls the same build
+reads 7.6%. Quit took 1.5–1.7 s on both hosts, before and after; the rig does
+not reproduce the live run's 28–30 s.
 
 `CODEAF_DIAGNOSTIC_PROFILE_DELAY` (1..3600 s) opens the developer profile's
 window that long after start, so a steady idle can be profiled; the window
