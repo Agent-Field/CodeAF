@@ -734,6 +734,8 @@ To go on from a step that was cut instead, keeping the steps before it and the m
 
 **Ask for changes** is different: it sends a plan back to be planned again with your words, and the job keeps going. A plain no to an approval that has no finished step before it to send back to is a Reject too.
 
+A rejected or closed job is nobody's to give back: it does not offer the takeover bar or **Give back** (`controls.give_back` is false), and a change of control on it is refused with `Finished or publishing jobs cannot change control.` It stays out of every automation's reach until you reopen it.
+
 Reject refuses a job that waits on no approval with `is not waiting on an approval · Stop or Close end it instead`. Only someone who may answer the approval may reject it. The app's method is `factory.job_reject` (`POST /v1/jobs/{id}/reject`), and a job offers it as `can.reject`.
 
 ## a failed job never starts again by itself — failed step, start: auto, labels, Try again

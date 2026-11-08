@@ -39,7 +39,7 @@ func TestNeedsYouKindsQuestionsAndWhoMayAnswer(t *testing.T) {
 		{"publish", factory.Item{ID: 3, State: factory.StateLanded, PublishError: "protected", Changed: when}, factory.NeedsPublishFailed, factory.WhoJobPerson, ""},
 		{"cap", factory.Item{ID: 4, State: factory.StateNeedsYou, Question: "budget?", QKind: "cap", Cap: 5, Starter: "raj", Changed: when, Stream: &factory.Stream{Spent: 5, Cur: 0, Phases: []factory.Phase{{Name: "write"}}}}, factory.NeedsSpendingLimit, factory.WhoJobPerson, ""},
 		{"rounds", factory.Item{ID: 5, State: factory.StateNeedsYou, Question: "try once more, send it back, or cancel the job?", QKind: factory.QKindOutOfAttempts, Starter: "raj", Stream: step}, factory.NeedsOutOfAttempts, factory.WhoJobPerson, factory.AskOptions},
-		{"text", factory.Item{ID: 6, State: factory.StateNeedsYou, Question: "which file?", QKind: "step", Stream: step}, factory.NeedsQuestion, factory.WhoAnyoneWithRepo, factory.QuestionText},
+		{"step", factory.Item{ID: 6, State: factory.StateNeedsYou, Question: "which file?", QKind: factory.QKindStep, Stream: step}, factory.NeedsQuestion, factory.WhoAnyoneWithRepo, factory.QKindStep},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

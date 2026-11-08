@@ -18,7 +18,7 @@ func PresentJob(j *Job) {
 	p := StatePresentation{Kind: j.State}
 	switch {
 	case j.DoneHow == "closed_locally" && j.Rejection != nil:
-		p.Kind, p.Title, p.Detail = "done", "Rejected", factory.RejectedWords(j.Rejection.Words)+". Reopen or Run as new to try again."
+		p.Kind, p.Title, p.Detail = "done", "Rejected", endSentence(factory.RejectedWords(j.Rejection.Words))+" Reopen or Run as new to try again."
 	case j.DoneHow == "closed_locally":
 		p.Kind, p.Title, p.Detail = "done", "Closed", "Closed locally; work and spending kept. Reopen to continue."
 	case j.Recovery != nil && (j.Recovery.State == "waiting" || j.Recovery.State == "queued"):
@@ -92,5 +92,18 @@ func PresentJob(j *Job) {
 		p.Title = "Backlog"
 	}
 	j.StatePresentation = p
-	j.Controls = JobControls{ChangeAssignee: j.Can.ChangeAssignee, Timeline: len(j.Steps) > 0}
+	publishing := j.Publishing != nil && (j.Publishing.State == "queued" || j.Publishing.State == "pushing")
+	j.Controls = JobControls{ChangeAssignee: j.Can.ChangeAssignee, Timeline: len(j.Steps) > 0,
+		GiveBack: j.Manual && j.State != StateDone && !publishing}
+}
+
+// endSentence is s ending its sentence once: a full stop is added unless the
+// words already end in one, or in ! ? or …, so a person's own "Too broad."
+// never reads "Too broad.." (live A+B run 2, E3).
+func endSentence(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") || strings.HasSuffix(s, "…") {
+		return s
+	}
+	return s + "."
 }

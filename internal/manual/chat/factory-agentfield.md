@@ -460,8 +460,16 @@ takes its own default with nobody to ask: the step waits, and the question
 comes to the job like a question from one of this factory's own steps, first to
 the job's manager and then, if the manager sends it on, to you in Needs you with
 its options and the step's own pick. Your answer goes back to the step, which
-reads "the person answered: …" and carries on. When the run ends first, the
-question comes down.
+reads "the person answered: …" and carries on. The options are its answers:
+the app shows each as a button beside "In my words…", and the job's question
+says it is a step's (`needs_you.question.kind` is `step`).
+
+A question is asked once. After you answer, the step keeps working until it
+reads your answer, and the question is not put to you again in that time,
+even if the factory restarts. When the step takes its question down without
+an answer, or the run ends first, the question comes off the job: it leaves
+Needs you and reads running again, and the run's end still ends the step,
+with the pull request it opened on the job.
 
 A question the step marks as one only a person can answer (the `ask` tool's
 judgement kind) skips the manager and comes straight to you, saying "the step
