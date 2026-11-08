@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -4696,6 +4697,12 @@ func (b *appBackend) Close() error {
 		crews.close()
 	}
 	lap("crews")
+	// EVERY CONVERSATION IS LET GO AT ONCE, each on its own goroutine, so the
+	// quit waits for the slowest of them and never for their sum. Each is
+	// timed in its two halves, the wait for its gate and its own close, and
+	// one slower than [appLeaveSlowLap] is named on stderr: the sixth live
+	// A+B run spent 18 seconds here with about 24 chats open, and nothing it
+	// wrote said which conversation, or which half, it was waiting on.
 	var wg sync.WaitGroup
 	for _, a := range agents {
 		if b.liveOf(a) == nil {
@@ -4711,7 +4718,7 @@ func (b *appBackend) Close() error {
 			if live := b.liveOf(a); live != nil && live.conn.Assembled {
 				live.conn.Conv.Interrupt()
 			}
-			b.letGo(a)
+			b.letGoTimed(a, os.Stderr)
 		})
 	}
 	wg.Wait()
@@ -4746,6 +4753,34 @@ func (b *appBackend) letGo(a *appAgent) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	b.release(a)
+}
+
+// letGoTimed is letGo at quit, naming on w a conversation whose wait for its
+// gate or whose own close took longer than [appLeaveSlowLap].
+func (b *appBackend) letGoTimed(a *appAgent, w io.Writer) {
+	began := time.Now()
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	gated := time.Now()
+	var id string
+	b.locked(func() { id = a.view.ID })
+	b.release(a)
+	if line := appSlowCloseLine(id, gated.Sub(began), time.Since(gated)); line != "" {
+		fmt.Fprintln(w, line)
+	}
+}
+
+// appSlowCloseLine is the stderr line for one slow conversation at quit, or ""
+// for a quick one. It names the conversation by its id, which is no secret,
+// and says which half was slow: a long wait for the gate is something else
+// holding the conversation (an open still assembling it), and a long close is
+// the conversation's own wrap-up (its turn, its commands, its save).
+func appSlowCloseLine(id string, gate, close time.Duration) string {
+	if gate+close <= appLeaveSlowLap {
+		return ""
+	}
+	return fmt.Sprintf("codeaf app: leaving: conversation %s took %s (waiting for it %s, closing it %s)",
+		id, (gate + close).Round(100*time.Millisecond), gate.Round(100*time.Millisecond), close.Round(100*time.Millisecond))
 }
 
 func (b *appBackend) liveNeedsYou(live *appLive) bool {

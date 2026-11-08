@@ -169,6 +169,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
+		workWake:           make(chan struct{}, 1),
 		taskComputerPrompt: config.mayNameTaskComputer(),
 		config:             config,
 		receipts:           config.receipts,

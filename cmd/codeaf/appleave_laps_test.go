@@ -22,3 +22,16 @@ func TestLeavingNamesTheSlowPart(t *testing.T) {
 		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }
+
+// A conversation that is slow to let go at quit is named with which half was
+// slow; a quick one says nothing.
+func TestLeavingNamesTheSlowConversation(t *testing.T) {
+	if line := appSlowCloseLine("5e55a0f1", 200*time.Millisecond, 300*time.Millisecond); line != "" {
+		t.Fatalf("a quick conversation was named: %q", line)
+	}
+	got := appSlowCloseLine("5e55a0f1", 12*time.Second, 6*time.Second)
+	want := "codeaf app: leaving: conversation 5e55a0f1 took 18s (waiting for it 12s, closing it 6s)"
+	if got != want {
+		t.Fatalf("line = %q, want %q", got, want)
+	}
+}

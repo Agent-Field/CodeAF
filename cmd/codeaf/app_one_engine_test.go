@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -80,6 +81,12 @@ func TestAppOneEngine(t *testing.T) {
 		first.kill(t)
 		second.hello(t)
 		second.leave(t)
+		// The waiting engine said whom it waited for, so a start that is
+		// waiting is never mistaken for one that is wedged. Its stderr is read
+		// only once it has exited.
+		if want := fmt.Sprintf("waiting for the engine still closing this home (pid %d)", first.cmd.Process.Pid); !strings.Contains(second.stderr.String(), want) {
+			t.Fatalf("the waiting engine did not name the one it waits for: %q", second.stderr.String())
+		}
 	})
 	t.Run("a crash leaves nothing to wait for", func(t *testing.T) {
 		root := t.TempDir()
@@ -166,6 +173,83 @@ func TestAppOneEngine(t *testing.T) {
 		next := startOneEngine(t, root, "ordinary")
 		next.hello(t)
 		next.leave(t)
+	})
+	// A QUIT SAVES EVERY OPEN CONVERSATION AND IS A CLEAN EXIT. The sixth live
+	// A+B run's quit, with about 24 chats open, ended in "codeaf could not
+	// save this chat" and status 1. Here a dozen conversations each take a
+	// real turn against a provider on this machine, the app is quit the way
+	// the desk quits it, and every journal must hold its own turn, the
+	// process must exit 0, and stderr must say nothing failed.
+	t.Run("a quit with many conversations saves every one and exits zero", func(t *testing.T) {
+		provider := httptest.NewServer(http.HandlerFunc(oneEngineModel))
+		defer provider.Close()
+		t.Setenv("CODEAF_BASE_URL", provider.URL)
+		t.Setenv("OPENROUTER_API_KEY", "fixture")
+		root := t.TempDir()
+		workspace := t.TempDir()
+		// The app reads its key from the profile, as a key pasted into setup is.
+		if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(`{"api_key":"sk-or-fixture-not-real"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		p := startOneEngine(t, root, "ordinary")
+		p.hello(t)
+		const chats = 12
+		for n := 1; n <= chats; n++ {
+			fmt.Fprintf(p.stdin, `{"id":%d,"method":"agents.create","params":{"workspace":%q,"model":"stub/scripted","text":"keep turn %02d","client_id":"quit-%d"}}`+"\n", n, workspace, n, n)
+		}
+		done := 0
+		deadline := time.After(60 * time.Second)
+		for done < chats {
+			select {
+			case line := <-p.lines:
+				if strings.Contains(line, `"event":"turn.done"`) {
+					done++
+				}
+			case <-p.done:
+				t.Fatalf("engine ended before its turns did: %s", p.stderr.String())
+			case <-deadline:
+				t.Fatalf("%d of %d turns finished: %s", done, chats, p.stderr.String())
+			}
+		}
+		began := time.Now()
+		fmt.Fprintln(p.stdin, `{"id":999,"method":"shutdown"}`)
+		_ = p.stdin.Close()
+		select {
+		case <-p.done:
+		case <-time.After(60 * time.Second):
+			t.Fatal("the quit had no end")
+		}
+		if code := p.cmd.ProcessState.ExitCode(); code != 0 {
+			t.Fatalf("a clean quit exited %d: %s", code, p.stderr.String())
+		}
+		if strings.Contains(p.stderr.String(), "could not save") {
+			t.Fatalf("a clean quit lost a save: %s", p.stderr.String())
+		}
+		if took := time.Since(began); took > 15*time.Second {
+			t.Fatalf("a quit with %d idle conversations took %s, longer than a new engine's hello waits", chats, took)
+		}
+		kept := map[string]bool{}
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && d.Name() == "transcript.jsonl" {
+				raw, _ := os.ReadFile(path)
+				for n := 1; n <= chats; n++ {
+					if word := fmt.Sprintf("keep turn %02d", n); bytes.Contains(raw, []byte(word)) && bytes.Contains(raw, []byte("kept: "+word)) {
+						kept[word] = true
+					}
+				}
+			}
+			return nil
+		})
+		if len(kept) != chats {
+			var found []string
+			_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+				if err == nil && !d.IsDir() {
+					found = append(found, path)
+				}
+				return nil
+			})
+			t.Fatalf("%d of %d conversations kept their turn after the quit: %v\nfiles %v\nstderr %s", len(kept), chats, kept, found, p.stderr.String())
+		}
 	})
 	t.Run("only one home's app is held", func(t *testing.T) {
 		root := t.TempDir()
@@ -279,4 +363,44 @@ func waitOneEngineFile(t *testing.T, path string) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// oneEngineModel is a provider on this machine that answers every turn by
+// quoting the person's last words, in OpenRouter's streaming dialect, so a
+// journal that kept a turn holds both the words and the reply to them.
+func oneEngineModel(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/models") {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"id":"stub/scripted","canonical_slug":"stub/scripted","name":"Scripted","context_length":200000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0","request":"0","input_cache_read":"0"},"supported_parameters":["tools","tool_choice","max_tokens"]}]}`)
+		return
+	}
+	var body struct {
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	said := ""
+	for _, m := range body.Messages {
+		if m.Role == "user" {
+			said = string(m.Content)
+		}
+	}
+	reply := "kept"
+	if at := strings.Index(said, "keep turn "); at >= 0 && len(said) >= at+len("keep turn 00") {
+		reply = "kept: " + said[at:at+len("keep turn 00")]
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	flusher, _ := w.(http.Flusher)
+	send := func(payload string) {
+		fmt.Fprintf(w, "data: %s\n\n", payload)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	at := time.Now().Unix()
+	send(fmt.Sprintf(`{"id":"q","object":"chat.completion.chunk","created":%d,"model":"stub/scripted","choices":[{"index":0,"delta":{"role":"assistant","content":%q},"finish_reason":null}]}`, at, reply))
+	send(fmt.Sprintf(`{"id":"q","object":"chat.completion.chunk","created":%d,"model":"stub/scripted","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0}}`, at))
+	send("[DONE]")
 }

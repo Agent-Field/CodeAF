@@ -2855,6 +2855,11 @@ type Agent struct {
 	// of Config.JobChat once ([Agent.jobChatOf]); nil is no job's.
 	jobChatOnce sync.Once
 	jobChat     JobChat
+	// workWake tells the job's budget watch that work may have started, so a
+	// watch resting on its idle cadence moves to the live one at once rather
+	// than at its next idle look ([Agent.watchJobBudget]). It is made by
+	// [New] and nil on an agent built any other way, where a send is dropped.
+	workWake chan struct{}
 	// moveAsked is the person's ask to move the running reply to a task, taken
 	// at the next step boundary ([Agent.MoveTurnToTask]).
 	moveAsked atomic.Bool

@@ -430,11 +430,14 @@ requires the backlog to drain within 110 successful heartbeats.
 Every open job manager and every open step asks whether its job was stopped or
 its budget reached (`watchJobBudget` in `internal/session/job_budget.go`): ten
 times a second (`jobBudgetLiveEvery`) while it owns work in flight — a turn, a
-running background command, an unfinished task — and once a second
-(`jobBudgetIdleEvery`) while it owns none, since there is then nothing a Stop
-or a spent budget could cut short and the next model call is checked at its own
-boundary. `TestIdleManagerBudgetWatchLooksOnceASecond`: an idle manager looks
-at most once in 950 ms, and at least three times in 500 ms once a command runs. Neither check may decode a job document that
+running background command, an unfinished task — and once every five seconds
+(`jobBudgetIdleEvery`, the presence beat) while it owns none, since there is
+then nothing a Stop or a spent budget could cut short and the next model call
+is checked at its own boundary. An idle watch sleeps that whole interval on one
+timer rather than waking every 100 ms; a turn opening, a command starting and
+every presence nudge wake it onto the live cadence at once (`wakeWorkWatch`).
+`TestIdleManagerBudgetWatchLooksOnceABeat`: an idle manager looks at most once
+in 950 ms, and at least three times in 500 ms once a command runs. Neither check may decode a job document that
 has not changed since it last looked: `seamRunDoor.AutomaticRefusal`
 (`cmd/codeaf/factory_person_stop.go`) and `stageBudget.Refusal` remember the
 answer with the file it came from (`os.SameFile`, size and modification time;
@@ -454,6 +457,41 @@ stat per job, shared by every conversation for `floorLookEvery`, 100 ms) and
 reads only a job document that changed. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
 fifty checks while the registry is rewritten decode none; one changed job costs
 one decode.
+
+## Idle open conversations
+
+An open conversation that is idle — nothing running, nothing asked — costs no
+system call between its heartbeats (`internal/session/taskpresence.go`):
+
+- Its presence file is rewritten when its contents change and otherwise once a
+  minute (`presenceIdleRefresh`), under a lease written into it
+  (`leaseSeconds`, `presenceIdleWindow`, three minutes) that readers believe
+  instead of the 15-second busy window (`SessionPresence.Window`). A working
+  or waiting session keeps the seven-second refresh and the short window.
+- Its doorstep — answers and requests from other windows — is read when the
+  shared directory watch reports a write there (`presenceDoorstepEvent`), and
+  otherwise once a minute (`presenceQuietPass`); a folder the watch cannot see
+  is knocked on every five-second beat as before.
+- Its job's budget watch (above) sleeps five seconds at a time.
+
+`TestAnIdleChatWritesNothingBetweenHeartbeats` drives one desk on fake shared
+clocks through a minute of beats and refreshes and fails on any rewrite before
+the heartbeat; `TestQuietDoorstepIsWokenByTheWatchOrKnockedWhereItIsBlind`.
+
+The sixth live A+B run (macOS, ~24 idle job and step chats) measured the engine
+at 6.9–9.1% of a core. Rig: `codeaf app` with 24 conversations, each made a
+job's own chat (r6's job documents, Talk pointed at it), opened and left idle,
+a stub model, CPU from `/proc/<pid>/stat` or `ps` over 90–120 s after 20 s
+settling; system calls by `strace -f` over 40 s on Linux:
+
+| | Linux CPU | Linux syscalls/s | macOS (mac-studio) CPU | presence rewrites/s |
+| --- | --- | --- | --- | --- |
+| before (`78aca0491`) | 2.07% | 1,426 | 5.46% | 3.6 |
+| after | 0.58% | 201 | 0.53% | 0.3–0.4 |
+
+At quit every conversation is let go on its own goroutine, and one slower than
+a second is named on stderr with its two halves:
+`codeaf app: leaving: conversation <id> took 18s (waiting for it 12s, closing it 6s)`.
 
 ## Factory floor reads
 
