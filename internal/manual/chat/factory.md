@@ -999,6 +999,24 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
 
+## quit codeaf while a job runs — the job is handed back and picked up at once after a restart
+
+A clean quit hands back every job this computer's runner holds before codeaf
+leaves. A running job goes straight back to the queue: no "Runner went offline
+mid-step", no automatic retry spent, and the next runner that may take it (this
+computer after a restart, or another one) picks it up at once instead of about
+a minute later. A step that ran here runs again from the step the job was in.
+An agentfield step's run keeps going on the control plane, and the runner that
+takes the job follows that same run. A job waiting on you, paused or done keeps
+its state.
+
+The hand-back is bounded: each job waits up to five seconds for its step to
+stop here and then makes one request of at most two seconds. A job is not handed
+back, and its hold runs out after about a minute as before, when its step has not
+stopped yet, when its latest results are saved but not yet confirmed by the
+factory, or when the factory cannot be reached. A crash, a killed process, a
+lost connection or a closed lid always take that path.
+
 ## Step admission retry window — waiting for the factory report
 
 A worker waits for the factory to accept a step's start before running it.

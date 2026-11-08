@@ -575,9 +575,14 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		case <-ctx.Done():
 			// THIS PROCESS IS ENDING, WHICH IS NOT A STOP: the job is let go,
 			// never stopped as its person's, so work it runs elsewhere goes
-			// on and the lease expires into the queue to be followed again
-			// (run.StoppedHere reads false).
+			// on (run.StoppedHere reads false), and the lease is handed back
+			// so the job is on the queue at once to be taken or followed
+			// again ([job.handBack]).
 			j.letGo()
+			// The reporter owns the delivery state the hand-back reads; it
+			// ends with this context once its report in flight returns.
+			<-reporterDone
+			j.handBack()
 			return
 		case <-report.C:
 			// Ticks during an in-flight report are skipped, never queued.
@@ -1015,7 +1020,8 @@ func (j *job) converse(ctx context.Context) {
 const StopWait = 5 * time.Second
 
 // letGo is drop for a process that is ending: the job is withdrawn here,
-// never stopped, and the lease expires into the queue for another worker.
+// never stopped, and the lease is handed back ([job.handBack]) or, failing
+// that, expires into the queue for another worker.
 func (j *job) letGo() {
 	j.mu.Lock()
 	j.withdrawn = true

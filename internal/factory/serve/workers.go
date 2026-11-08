@@ -118,6 +118,7 @@ func (h *Handler) workerRoutes() {
 	h.route("/v1/workers/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/workers/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/workers/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
+	h.route("/v1/workers/leases/{lease}/handback", map[string]http.HandlerFunc{http.MethodPost: h.handBackWorker})
 	h.route("/v1/workers/recover/{id}", map[string]http.HandlerFunc{http.MethodPost: h.recoverWorkerReport, http.MethodGet: h.workerRecoveryStatus})
 }
 
@@ -685,6 +686,21 @@ func (h *Handler) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.write(w, http.StatusOK, api.WorkerHeartbeat{Factory: h.factory, Lease: workerLease(held), Signals: wireSignals(signals)})
+}
+
+// handBackWorker takes back a hold whose runner is quitting cleanly
+// ([lease.Desk.HandBack]), so the job is on the queue at once instead of
+// after the hold's silence runs out.
+func (h *Handler) handBackWorker(w http.ResponseWriter, r *http.Request) {
+	if !h.workerReady(w) {
+		return
+	}
+	if h.workerError(w, h.workers.desk.HandBack(r.PathValue("lease"), requestWorker(r).ID)) {
+		return
+	}
+	h.write(w, http.StatusOK, struct {
+		Factory api.Factory `json:"factory"`
+	}{h.factory})
 }
 
 func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {

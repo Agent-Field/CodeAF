@@ -3541,6 +3541,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A DROP DELETES THE JOB'S LOCAL WORK, asking first when there is some,
 		// and a start checks the one issue on GitHub.
 		{"bring back a dropped factory job", "factory"},
+		{"what happens to a running factory job when I quit codeaf", "factory"},
 		{"send work to the factory from Jira", "factory"},
 		{"how do I connect GitHub in the app without Terminal", "factory"},
 		{"what does the one-time code for GitHub sign-in mean", "factory"},

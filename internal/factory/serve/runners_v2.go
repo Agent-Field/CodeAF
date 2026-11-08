@@ -32,6 +32,7 @@ func (h *Handler) v2Routes() {
 	h.route("/v1/runners/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/runners/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/runners/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
+	h.route("/v1/runners/leases/{lease}/handback", map[string]http.HandlerFunc{http.MethodPost: h.handBackWorker})
 	h.route("/v1/runners/recover/{id}", map[string]http.HandlerFunc{http.MethodPost: h.recoverWorkerReport, http.MethodGet: h.workerRecoveryStatus})
 	h.read("/v1/people", h.peopleDirectory)
 	h.route("/v1/people/{handle}/sessions", map[string]http.HandlerFunc{http.MethodDelete: h.operatorRevokePerson})

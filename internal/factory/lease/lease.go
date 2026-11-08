@@ -470,6 +470,37 @@ func (d *Desk) Requeue(id int, worker string) error {
 	})
 }
 
+// HandBack gives back the hold named id, which worker holds, because its
+// process is ending cleanly. It is [Desk.Requeue] by the hold's identity: a
+// running job is queued again with no failure stamped, a publish or a merge
+// the hold carried waits for the next pull, and the hold is released.
+//
+// A QUIT IS NOT A LOST MACHINE. Before, a runner that quit let its holds run
+// out, so the job sat on a dead hold for the lease's whole silence (a minute)
+// and was then marked "Runner went offline mid-step" for a person or the
+// automatic retry to pick up; a restart minutes later found nothing to take.
+// Handed back, the job is on the queue at once: a native step is run again
+// from where its job stands, and a step whose AgentField run goes on at the
+// control plane is followed by whichever runner pulls it next
+// ([owesFollow]), without a retry spent. A job that is not running (waiting
+// on a person, paused, finished) keeps its state, as expiry would keep it.
+func (d *Desk) HandBack(id, worker string) error {
+	return d.change(func(doc *document, _ time.Time) (bool, error) {
+		held, err := identified(doc, id, worker)
+		if err != nil {
+			return false, err
+		}
+		job := held.Job
+		if err := d.queue(job); err != nil {
+			return false, err
+		}
+		if err := d.restorePublish(doc, job); err != nil {
+			return false, err
+		}
+		return true, d.keepPublish(doc, job)
+	})
+}
+
 func eligible(it factory.Item, worker Worker) bool {
 	if factory.StoppedByPerson(it) && !pendingReply(it) && !owesStop(it) {
 		return false
