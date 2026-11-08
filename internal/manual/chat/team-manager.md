@@ -564,7 +564,7 @@ while it was closed.
 
 ## Team sharing and Traffic on another computer
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+Hosted sync storage approval is required for team sharing; storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
@@ -625,7 +625,7 @@ Review manager choices in Teams.
 
 ## Shared team spending caps and continued members
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Teams and their settings share automatically between paired computers by default;
 an unpaired computer is unaffected. A shared team's spending cap counts spending

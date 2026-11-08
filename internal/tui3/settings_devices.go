@@ -28,7 +28,8 @@ import (
 const (
 	// tabDevices is the category title on the settings bar, placed between
 	// Connections and Privacy.
-	tabDevices = "Devices"
+	tabDevices   = "Devices"
+	storageLabel = "sync storage"
 	// devicesAddKey is the key legend clause for the row that starts pairing
 	// another computer.
 	devicesAddKey = "enter add"
@@ -269,7 +270,7 @@ func (s *sheet) appendDevicesSearch(terms []fuzzy.Term) int {
 		}
 	}
 	if s.storageCode != "" {
-		if score, ok, at, size := s.matchHits([]string{"relay storage", "request access", tabDevices}, terms); ok {
+		if score, ok, at, size := s.matchHits([]string{storageLabel, "request access", tabDevices}, terms); ok {
 			best = max(best, score)
 			matched = append(matched, devHit{item: sheetItem{dev: &deviceSheetRow{storage: true}, hitAt: at, hitLen: size}, score: score})
 		}
@@ -301,7 +302,7 @@ func (s *sheet) devRowLines(row *deviceSheetRow, hit []int, selected, hovered bo
 		return overlayLines(s.devicesUnavailable(), "", selected, false, hovered, width, pal)
 	}
 	if row.storage {
-		return overlayLinesHit("relay storage", s.storageState, hit, selected, false, hovered, width, pal)
+		return overlayLinesHit(storageLabel, s.storageState, hit, selected, false, hovered, width, pal)
 	}
 	if row.add {
 		return overlayLinesHit(addDeviceWord, "", hit, selected, false, hovered, width, pal)

@@ -2,8 +2,6 @@
 
 ## Can I run codeaf on my own server or an always-on computer in the cloud?
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
-
 Yes. `codeaf devbox up <name>` creates an always-on computer on **your own Railway
 account** and pairs it into your identity. You pay Railway for its compute and
 persistent volume. Your laptop can sleep while the box keeps running.
@@ -62,7 +60,7 @@ removal of the one-time setup values. Then open `codeaf chat --at build-box`.
 
 ## How saved provider keys, settings and shared memories reach the box
 
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 The box starts `codeaf serve` with `CODEAF_SERVE_SYNC=1`, so it pulls the identity's saved provider keys,
 settings and shared memories at startup and every five seconds by default,
@@ -154,7 +152,7 @@ to admit another computer yet; use the creating laptop.
 
 ## Send a task to my dev box
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 A dev box also takes tasks. It starts `codeaf serve --take-tasks` whenever its
 installed build lists that option, so a chat on your laptop can run one task on the

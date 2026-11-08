@@ -118,7 +118,7 @@ func (r *run) seal(ctx context.Context) error {
 		if err := r.registerDevice(ctx); err != nil {
 			return err
 		}
-		r.say("relay storage is off; chats stay on your computers")
+		r.say("sync storage is off; chats stay on your computers")
 		return r.advance(Sealed)
 	}
 	if err := r.registerDevice(ctx); err != nil {

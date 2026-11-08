@@ -19,7 +19,7 @@ const (
 	ContinueVerb    = "Continue here"
 	LostRace        = "another device continued this chat first"
 	NoIdentity      = "this machine has no identity yet: codeaf identity import"
-	RelayStorageOff = "relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices"
+	RelayStorageOff = "sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices"
 	SyncOff         = "sync is off: set CODEAF_SYNC_URL to your sync service's address"
 	Unreachable     = "the sync service is not answering"
 	ReadTimedOut    = "the sync service did not answer in time"

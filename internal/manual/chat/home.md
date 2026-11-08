@@ -289,7 +289,9 @@ updates the tab and the row in Sessions together.
 
 ## A chat is running on my other computer — how does home show it, chats on my other machines, "held on tower", "tower offline", why does it say held on build-box offline, merge / discard
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -306,7 +308,7 @@ happened. The row says where the chat is only where that tells you something:
 
 ## Why a chat says held on build-box or build-box offline
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 For a chat on another paired computer, read the two words apart: `held on build-box` says that computer still holds the chat, including while it is idle, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
@@ -338,7 +340,9 @@ same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
 ## Continue a chat here that another machine left — "tower offline", takeover, "continue here", the chat is running on another computer
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -356,7 +360,7 @@ question takes the whole screen, with the sentence wrapped.
 
 ## Continue here with unsaved edits, another device continuing first, or an unreachable computer
 
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 When continuing a chat from another paired computer:
 
@@ -369,7 +373,7 @@ When continuing a chat from another paired computer:
 
 ## Is my project folder changed when I continue a chat here — what comes with a continued chat, the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
 
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
@@ -397,7 +401,9 @@ identity on this machine, no secrets are fetched and no file is written.
 
 ## Do saved provider keys and credentials follow me to another computer
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -415,7 +421,7 @@ is kept beside it as `credentials.json.damaged`.
 
 ## Do budgets, settings and model choices move between computers
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Your stored model picks, display and approval defaults, and spending-limit values follow your paired computers through the encrypted vault. Each setting merges independently; the later edit wins. Spending counted against a limit stays **per computer**, so a daily limit is not a combined fleet allowance. Local paths, caches, service addresses, automations and operator environment pins stay on their computer.
 
@@ -429,7 +435,7 @@ chat while you are still fetching it, this machine keeps exactly what it had.
 
 ## Is my git history sent — secrets in my repo, .git, committed keys, branches
 
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Yes. When you continue a chat on your own paired device, the repository's `.git` travels as it is, including its history, branches, settings and any keys in old commits. Task commits travel too. Git history is sealed end to end between your devices; the relay sees only ciphertext. codeaf does not screen, remove or rewrite committed secrets.
 
@@ -437,7 +443,7 @@ The working-tree guard is separate: a `.env` or source file it recognises as hol
 
 ## What a move carries and what it leaves behind — job logs, task history, kept branches, do spend and usage numbers sync between computers, memory, withheld folders
 
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 A chat that moves to another computer brings, from the relay and sealed on the way:
 
@@ -450,7 +456,7 @@ A chat that moves to another computer brings, from the relay and sealed on the w
 
 ## What stays on this computer when a chat moves — task history, install folders, secrets and spending limits
 
-Hosted chat/file sync needs approval in Settings → Devices → relay storage → enter. Pairing, presence and live `--at` work while storage is off. Self-hosted `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
 
@@ -458,7 +464,7 @@ It leaves behind, and lists on the card under `not brought along:`: install fold
 
 ## Does dist or other gitignored output move — ignored files and secret files
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Untracked Git-ignored output stays on the computer that made it and is named on the arrival card with `(git ignores them)`. It is neither captured locally nor uploaded. Tracked files still move. A wholly ignored directory is not walked or screened; an ignored secret file in an ordinary directory, such as `.env` or `config/.env.local`, is screened and still travels through the key vault to paired computers.
 
@@ -2737,7 +2743,7 @@ from a previous visit cannot replace the current visit's selection or draft.
 
 ## I quit on my laptop and opened my desktop — straight back into the chat
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 After a clean quit lets a paired computer's chat go, bare `codeaf` on another paired computer continues that chat automatically within 24 hours. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
@@ -2758,3 +2764,7 @@ An empty new chat on one of your other devices stays off Home until it has a sav
 Turning sync off with `CODEAF_SYNC_URL=off` (or leaving sync off before pairing) means "do not talk to the sync service", never "forget my chats". Home still lists every chat on this computer — chats this version saved and chats from older versions alike — each once, and each opens and can be written.
 
 When an older chat was already copied into this version's store, Home lists and opens that copy even while sync is off, and the untouched original stays on disk beside it. Saved sync hold receipts from an earlier session stay dormant while sync is off, so sending a message in any local chat works without asking the sync service.
+
+## Why are chats and files still on this computer after pairing — sync storage
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Home can list paired devices while uploads wait; an offline computer cannot supply new turns that never reached the service.

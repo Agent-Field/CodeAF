@@ -838,6 +838,6 @@ reaches a conversation when you next open it or switch models;
 `OPENROUTER_API_KEY` still wins. `your key was not accepted for this model` means
 the provider refused the key; doctor helps find the source to replace.
 
-## Chats on another computer and hosted relay storage
+## Chats on another computer and hosted sync storage
 
-Pairing and live `--at` access work while hosted relay storage is off. Hosted storage is off by default while its privacy terms are being finished, so chats and files stay on this computer until approval. After pairing, request access in Settings → Devices → relay storage → enter. The panel shows the public request code and link as well as opening a browser. Sync starts by itself after a background reading sees approval; `/status` refreshes it without holding up the chat. A self-hosted `codeaf relay --store <directory>` needs no request.
+Pairing and live `--at` access work while hosted sync storage is off. Hosted storage is off by default while its privacy terms are being finished, so chats and files stay on this computer until approval. After pairing, request access in Settings → Devices → sync storage → enter. The panel shows the public request code and link as well as opening a browser. Sync starts by itself after a background reading sees approval; `/status` refreshes it without holding up the chat. A self-hosted `codeaf relay --store <directory>` needs no request.

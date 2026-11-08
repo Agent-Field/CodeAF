@@ -133,7 +133,7 @@ func (s *Sync) StorageAllowed() bool {
 
 // StorageRequestLink includes only the public account identifier, never a key.
 func StorageRequestLink(identity string) string {
-	query := url.Values{"title": {"relay storage access: " + identity}, "body": {"Please turn on relay storage for my account.\n\nRequest code: " + identity}}
+	query := url.Values{"title": {"sync storage access: " + identity}, "body": {"Please turn on sync storage for my account.\n\nRequest code: " + identity}}
 	return StorageRequestURL + "?" + query.Encode()
 }
 

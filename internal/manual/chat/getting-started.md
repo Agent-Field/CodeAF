@@ -51,7 +51,9 @@ screen. Its heading is `Basic settings`, one line, with the keys line directly u
 
 ## I already use codeaf on a second computer — the code field on the first screen
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -62,7 +64,7 @@ have a code from another device?
 use your own relay: codeaf pair <code> --via <url>
 ```
 
-On the computer that has your chats, type `/pair` to show a code like `42-715-302`. Type that code in the field. Compare the three words on both screens. The other computer asks `y / n`. On `y`, this computer has your identity; chats copy here only when relay storage is enabled. Read *Pairing your chats with a second computer* for the rest.
+On the computer that has your chats, type `/pair` to show a code like `42-715-302`. Type that code in the field. Compare the three words on both screens. The other computer asks `y / n`. On `y`, this computer has your identity; chats copy here only when sync storage is enabled. Read *Pairing your chats with a second computer* for the rest.
 
 ## Skipping setup and reading its header
 

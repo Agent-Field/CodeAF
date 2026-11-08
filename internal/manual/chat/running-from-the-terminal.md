@@ -342,7 +342,7 @@ by default on Linux and macOS on every build. Native Windows is supported too; a
 
 ## codeaf pair — show a code, or use one, from the terminal
 
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 **`codeaf pair approve <link>`** compares the four-digit check number and asks `y / n`: only `y` or `yes` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
 
@@ -402,7 +402,7 @@ version; the map does not keep a second version number.
 
 ## The cell verbs — list a cell's turns and rewind it
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval. They need a compatible furrow engine. `codeaf cell` is hidden from the
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. They need a compatible furrow engine. `codeaf cell` is hidden from the
 help text. **`codeaf cell log [<cell>]`** lists a cell's
 turns, newest first, one line each (turn, parent, time, trigger, tools, receipt; a setup turn says `Setup` and its calls are marked `[external]`), and
 **`codeaf cell rewind <turn> [<cell>]`** puts the cell's files and transcript back to that
@@ -441,7 +441,7 @@ be read. A wrong passphrase and a damaged blob get the same refusal.
 computer you keep: a new root, every chat and your saved keys sealed again under it, and the
 old identity deleted by the relay after the grace period. It is how a lost computer is locked
 out for good. It asks first and says what it costs; `--abandon` stops a rotation that has not
-switched yet. With hosted relay storage off it still completes, without resealing uploads: chats stay on your computers and the old stored frames wait for grace-period erasure. With storage on, successor proof carries approval unless the new identity already has its own setting. Read *Locking out a lost computer for good*.
+switched yet. With hosted sync storage off it still completes, without resealing uploads: chats stay on your computers and the old stored frames wait for grace-period erasure. With storage on, successor proof carries approval unless the new identity already has its own setting. Read *Locking out a lost computer for good*.
 
 Each machine also has its own device key, made the first time and never exported. Your
 identity signs a small certificate for it, so two machines share one id but keep separate
@@ -452,7 +452,7 @@ key the first time the identity is made on that machine.
 
 ## List your chats on every machine — codeaf cell list --all, and what its lines mean
 
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
 each: id, title, device, where it runs (`held on <device>`, `<device> offline`,
@@ -472,14 +472,18 @@ To use the new setting at once without touching the other window, run `codeaf ch
 
 Only a terminal that sets `CODEAF_SYNC_URL` itself is asking for a different relay. A window with the variable unset — `codeaf chat --host` reaching this computer over ssh, whose shell usually does not carry what you exported, or a terminal you never set it in — joins the running engine and its relay as it is. It restarts the engine only when the relay a pairing saved on this computer has changed since the engine started.
 
-## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
+## Sync your chats between machines — what is CODEAF_SYNC_URL, and CODEAF_SYNC_INTERVAL_MS
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 These environment settings are not rows in `/settings`. `CODEAF_SYNC_URL=off` stops relay
 traffic; new chats still keep their local cells.
+
+## What is CODEAF_SYNC_URL — the sync service address or off
 
 **`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`, or the word `off`.
 Plain `http` is for trying it out inside an ssh tunnel; later the relay needs TLS. Unset, it
@@ -493,7 +497,7 @@ to the relay until pairing; that identity alone does not connect your other comp
 
 ## How often chat turns sync — CODEAF_SYNC_INTERVAL_MS
 
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 After pairing, codeaf sends sealed chat turns to the relay configured by `CODEAF_SYNC_URL`.
 
@@ -535,8 +539,6 @@ once and tries again on the next round; fix the clock and it carries on. With sy
 this exists and the chat behaves as it always did.
 
 ## What syncing a conversation cost — how much data it uploaded, codeaf cell report, and sending the numbers only if you choose
-
-Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
 
 Each time a conversation is synced to another machine, codeaf adds one line of counts to a file on this
 machine, `v3/sync/stats/<cell>.jsonl` in the codeaf home: how many turns, frames and objects that flush

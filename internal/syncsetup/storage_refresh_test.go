@@ -238,3 +238,80 @@ func TestStorageOptInCustomProbeSharedByCallers(t *testing.T) {
 		}
 	}
 }
+
+// A terminal stats refusal must end scheduled work, including local waiter sampling.
+func TestStorageOptInRefresherStopsAfterDeviceRemoval(t *testing.T) {
+	celltest.Available(t)
+	for _, refusal := range []struct {
+		code    string
+		status  int
+		storage string
+	}{
+		{"revoked", http.StatusUnauthorized, "off"},
+		{"gone", http.StatusGone, "off"},
+		{"revoked", http.StatusUnauthorized, "unknown"},
+		{"gone", http.StatusGone, "unknown"},
+	} {
+		t.Run(refusal.code+"/"+refusal.storage, func(t *testing.T) {
+			var requests atomic.Int32
+			var approved atomic.Bool
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if r.URL.Path != "/v1/store/stats" || r.Header.Get("Codeaf-Sig") == "" {
+					t.Errorf("unexpected stats request: %s %s", r.Method, r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				if approved.Load() {
+					_, _ = io.WriteString(w, `{"storage":"on"}`)
+					return
+				}
+				w.WriteHeader(refusal.status)
+				_, _ = io.WriteString(w, `{"err":"`+refusal.code+`"}`)
+			}))
+			defer srv.Close()
+			home := machine(t, srv.URL)
+			id, err := identity.Load(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if refusal.storage == "off" {
+				if err := SaveStorage(home, srv.URL, id.ID(), "off"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := storageProcessFor(home)
+			p.users = 1
+			p.waiting[1] = func() { t.Error("removed device woke a waiting chat") }
+			var next func()
+			p.after = func(_ time.Duration, fn func()) func() bool {
+				next = fn
+				return func() bool { next = nil; return true }
+			}
+			defer p.disarm()
+			p.check(true)
+			if requests.Load() != 1 || next != nil {
+				t.Fatalf("removed device: requests=%d timer=%v", requests.Load(), next != nil)
+			}
+			// Another waiter or caller cannot restart the refused lifetime.
+			p.check(false)
+			p.check(true)
+			if requests.Load() != 1 || next != nil {
+				t.Fatalf("refusal restarted: requests=%d timer=%v", requests.Load(), next != nil)
+			}
+			// Pairing again supplies a different device key and a new eligible lifetime.
+			delete(p.waiting, 1)
+			dev, err := identity.NewDevice(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := identity.Install(home, id, dev); err != nil {
+				t.Fatal(err)
+			}
+			approved.Store(true)
+			p.check(true)
+			if requests.Load() != 2 || StorageState(home, srv.URL, id.ID()) != "on" || next != nil {
+				t.Fatalf("new pairing did not discover approval: requests=%d timer=%v", requests.Load(), next != nil)
+			}
+		})
+	}
+}

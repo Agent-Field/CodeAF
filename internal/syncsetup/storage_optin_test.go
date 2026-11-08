@@ -212,3 +212,15 @@ func TestStorageOptInLegacyCustomOnCacheDoesNotInventCapability(t *testing.T) {
 		t.Fatal("explicit on answer must be gating and idle")
 	}
 }
+
+func TestStorageOptInRequestLinkUsesPublicWording(t *testing.T) {
+	const id = "id_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	link, err := url.Parse(StorageRequestLink(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := link.Query()
+	if query.Get("title") != "sync storage access: "+id || query.Get("body") != "Please turn on sync storage for my account.\n\nRequest code: "+id {
+		t.Fatalf("request wording: %v", query)
+	}
+}

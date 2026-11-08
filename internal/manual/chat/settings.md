@@ -82,7 +82,7 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
-**Settings → General → share teams** is on by default for paired computers. On the hosted relay it takes effect only with relay storage approval (Settings → Devices → relay storage); a self-hosted relay with `--store` needs no approval. It
+**Settings → General → share teams** is on by default for paired computers. On the hosted sync service sharing needs sync storage approval (Settings → Devices → sync storage). It
 shares teams, their members and settings, and recent Traffic as read-only history.
 The choice stays on each computer. Turning it off on either computer stops sharing
 between them: that computer stops sending and receiving teams and Traffic. What
@@ -160,7 +160,7 @@ routing, internal role overrides and context limits.
 
 **Devices** lists your paired computers in the same words and order as `/devices`,
 renames this device with `n`, removes another with `r`, and starts `/pair` from
-`Add another device`. For a paired hosted account, **relay storage** shows **on** or **off**. With **off**, Enter requests access and shows the public request code and link even if no browser opens. Choosing this row in search clears the search and opens Devices. The row is absent with sync off, before pairing, or on a self-hosted relay.
+`Add another device`.
 
 **Privacy** separates input history, unfinished drafts, anonymous usage reporting
 and **shared model recommendations** (formerly Model Pool). Recommendations can
@@ -190,3 +190,9 @@ A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
 setting. Knowledge capture must still be enabled from Memory for each project.
+
+## Devices — sync storage, off or on, and request access
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
+A paired account whose service reports storage permission has a **sync storage** row showing **on** or **off**. While **off**, press Enter (`enter request access`) to open a pre-filled GitHub issue. The panel also shows the public request code and link if no browser opens. The code is your identity id (`id_` and 32 hex digits), safe to post and granting nothing by itself. Choosing this row in Settings search clears the search and opens Devices. The row is absent with sync off, before pairing, or when the service answers without storage permission. `/status` shows the dim line `sync storage  off` while storage is off.

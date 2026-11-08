@@ -13,6 +13,10 @@ Only two things can save you before that day:
 
 ## Can I change my identity — identity rotate
 
-If one trusted computer remains, **`codeaf identity rotate` works now**. It makes a replacement identity and reseals saved keys locally. With hosted relay storage off, it finishes with no resealing uploads and chats stay on your computers; with storage on, it reseals and uploads chats and saved keys. It retires the relay's old copy after the grace period. Pair the computers you keep again from that replacement. Read *Locking out a lost computer for good* for the steps and limits.
+If one trusted computer remains, **`codeaf identity rotate` works now**. It makes a replacement identity and reseals saved keys locally. With hosted sync storage off, it finishes with no resealing uploads and chats stay on your computers; with storage on, it reseals and uploads chats and saved keys. It retires the relay's old copy after the grace period. Pair the computers you keep again from that replacement. Read *Locking out a lost computer for good* for the steps and limits.
 
 Rotation needs the old identity on a surviving computer. It cannot recover an identity when every copy, including any exported identity file and its passphrase, is lost. Revoking or rotating cannot take back chats and keys already downloaded by a lost computer; change exposed provider keys at their providers.
+
+## Why pairing alone is not a backup — sync storage and completed uploads
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Approval cannot recover turns that never left a lost computer. Keep a surviving computer with the content, or an exported identity and an accessible encrypted copy.

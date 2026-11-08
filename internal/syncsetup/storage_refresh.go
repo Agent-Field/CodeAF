@@ -2,11 +2,13 @@ package syncsetup
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const StorageRefreshEvery = 10 * time.Minute
@@ -30,6 +32,7 @@ type storageProcess struct {
 	lastRefresh                 time.Time
 	active                      bool
 	dirty                       bool
+	refused                     *Sync
 	counts                      blobstore.Counts
 	countsRelay, countsIdentity string
 	probeRelay, probeIdentity   string
@@ -129,6 +132,10 @@ func (s *Sync) RefreshStorage(ctx context.Context) (blobstore.Counts, error) {
 	if p != nil {
 		p.mu.Lock()
 		p.lastRefresh = p.now()
+		if errors.Is(err, wireauth.ErrRevoked) || errors.Is(err, wireauth.ErrGone) {
+			p.refused = s
+			p.disarm()
+		}
 		if err == nil {
 			p.counts = counts
 			p.countsRelay, p.countsIdentity = s.Relay, s.Identity.ID()
@@ -200,15 +207,35 @@ func (p *storageProcess) check(refresh bool) {
 	p.mu.Unlock()
 	relay, id, state := p.read()
 	p.mu.Lock()
-	ask := state == "off" || state == "" && (p.probeRelay != normalizeStorageURL(relay) || p.probeIdentity != id)
+	refused := p.refused
+	p.mu.Unlock()
+	removed := false
+	if refused != nil {
+		// Only a different pairing can reopen a refused lifetime. This extra
+		// lookup happens after refusal, keeping ordinary waiter samples small.
+		current, ok, err := Open(p.home)
+		removed = err != nil || !ok || (current.Relay == refused.Relay &&
+			current.Identity.ID() == refused.Identity.ID() && current.Device.ID() == refused.Device.ID())
+		if !removed {
+			p.mu.Lock()
+			if p.refused == refused {
+				p.refused = nil
+				p.probeRelay, p.probeIdentity = "", ""
+			}
+			p.mu.Unlock()
+		}
+	}
+	p.mu.Lock()
+	ask := !removed && (state == "off" || state == "" && (p.probeRelay != normalizeStorageURL(relay) || p.probeIdentity != id))
 	if relay != "" && ask && refresh {
 		p.probeRelay, p.probeIdentity = normalizeStorageURL(relay), id
 	}
 	p.mu.Unlock()
 	if relay != "" && ask && refresh {
 		ctx, cancel := context.WithTimeout(p.ctx, requestTimeout)
-		_ = p.fetch(ctx)
+		err := p.fetch(ctx)
 		cancel()
+		removed = errors.Is(err, wireauth.ErrRevoked) || errors.Is(err, wireauth.ErrGone)
 		p.mu.Lock()
 		p.lastRefresh = p.now()
 		p.mu.Unlock()
@@ -216,16 +243,18 @@ func (p *storageProcess) check(refresh bool) {
 	}
 	p.mu.Lock()
 	p.active = false
-	again := p.dirty
+	removed = removed || p.refused != nil
+	again := p.dirty && !removed
 	p.dirty = false
 	var callbacks []func()
-	if state == "on" {
+	if !removed && state == "on" {
 		for id, fn := range p.waiting {
 			callbacks = append(callbacks, fn)
 			delete(p.waiting, id)
 		}
 	}
-	if relay != "" && state == "off" && (p.users > 0 || len(p.waiting) > 0) {
+	// A removed device cannot regain access by polling for storage approval.
+	if !removed && relay != "" && state == "off" && (p.users > 0 || len(p.waiting) > 0) {
 		wait := StorageRefreshEvery
 		if p.users > 0 && !p.lastRefresh.IsZero() {
 			wait = max(time.Millisecond, StorageRefreshEvery-p.now().Sub(p.lastRefresh))

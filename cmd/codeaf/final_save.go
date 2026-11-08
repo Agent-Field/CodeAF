@@ -25,7 +25,7 @@ const quitSavingWord = "saving this chat to your other devices…"
 const quitStillSavingWord = "still saving — ctrl+c leaves it saved here"
 const quitStillLocalWord = "still saving on this computer — ctrl+c leaves the written turns here"
 const quitLegacySavingWord = "codeaf is still saving this chat in the background; unsaved turns stay on this computer."
-const quitStorageOffWord = "saved here; relay storage is off for this account, so it stays on this computer"
+const quitStorageOffWord = "saved here; sync storage is off for this account, so it stays on this computer"
 const quitSavedHereWord = "saved here; it reaches your other devices when the sync service at %s answers"
 
 // finalSaving keeps one failure until cleanup has returned the terminal.

@@ -118,7 +118,7 @@ func (a *app) statusItems() []deckItem {
 		items = append(items, item)
 	}
 	if a.relayStorageOff() {
-		items = append(items, deckItem{label: "relay storage", value: "off"})
+		items = append(items, deckItem{label: storageLabel, value: "off"})
 	} else if word := a.syncSpaceWord(); word != "" {
 		items = append(items, deckItem{label: "sync space", value: word})
 	}

@@ -197,7 +197,7 @@ func TestStorageOptInQuitReceiptAfterRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(raw)) != "saved here; relay storage is off for this account, so it stays on this computer" {
+	if strings.TrimSpace(string(raw)) != "saved here; sync storage is off for this account, so it stays on this computer" {
 		t.Fatalf("receipt: %s", raw)
 	}
 }

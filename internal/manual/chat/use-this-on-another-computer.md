@@ -2,7 +2,9 @@
 
 ## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
 
-Pairing and moving chats are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -10,7 +12,7 @@ There is no account and no password to log in with. You pair: a code on one scre
 
 Use a code shown on a screen you own.
 
-The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them only when relay storage is on.
+The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them only when sync storage is on.
 
 This page is the code way. A new computer can also ask to join and be approved from a link, with a four-digit check: the page *Adding a computer to your devices, approving it, and removing it* tells it.
 
@@ -32,26 +34,28 @@ Dashes and spaces in the code do not matter. `42-715-302`, `42 715 302` and `427
 
 The code is good for 10 minutes. It works once.
 
-## Sync my chats — get my chats on my other computer
+## Sync my chats — get my chats on my other computer, chat syncing between paired computers
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
-Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync through the saved or hosted relay when storage is on. Hosted sync to paired computers needs approval in Settings → Devices → relay storage → enter; self-hosted `--store` needs none. Pairing, presence and live `--at` work while storage is off. `CODEAF_SYNC_URL=off` stops relay traffic.
+Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync through the saved or hosted relay when storage is on. `CODEAF_SYNC_URL=off` stops relay traffic.
 
 ## Do older chats sync after pairing — independent copies and untouched originals
 
-Hosted sync needs approval in Settings → Devices → relay storage → enter; self-hosted `--store` needs none. Pairing, presence and live `--at` work while storage is off.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Recent chats are prepared in the background, and opening any other older chat prepares its copy. A never-paired home sends no relay requests.
 
 ## What does /laptop do — the laptop command pairs chats with my other computer; /pair, /sync and /link
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 `/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair --code` shows a code in a terminal; `codeaf pair` with nothing after it asks to join by link instead. `codeaf pair <code>` uses one.
 
 ## Terminal pairing usage — codeaf pair
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 ```
 usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
@@ -63,7 +67,7 @@ A computer that has no relay cannot pair. See "The relay" below. A chat that run
 
 ## The three words — the check on the computer that has your chats
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Both screens show the same three words. This is how you know the two computers are the ones you hold.
 
@@ -107,7 +111,7 @@ The code is now dead. It cannot pair a third computer.
 
 ## The code did not work — one attempt for each code
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 **Each code takes 1 attempt.** A wrong code does not get a second try. The computer that shows the code throws it away and shows a new one at once. You do not press a key. It says:
 
@@ -129,7 +133,7 @@ A code that ran out of time (10 minutes) says the same. Ask for a new code with 
 
 ## Why did pairing fail — wrong code shape, expired code, another device or network limits
 
-Pairing works while relay storage is off. These are other code-pairing refusals, each in one sentence:
+These are other code-pairing refusals, each in one sentence:
 
 A code with the wrong shape is refused before anything is sent:
 
@@ -183,9 +187,11 @@ too many pairings from this network; wait 7 min
 
 ## What the pairing shares — the other computer holds everything this one holds
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
-**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; saved chats and vault content still need enabled relay storage to copy.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; saved chats and vault content still need enabled sync storage to copy.
 
 It is not a view of your chats. It is a copy of you. Pair only a computer you own and trust.
 
@@ -209,7 +215,9 @@ already paired; nothing changed
 
 ## I got a new laptop — move my chats to a new machine
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 1. On the old computer, type `/pair`.
 2. On the new computer, run `codeaf pair <code>`, or type `/pair <code>` in the chat, or type the code on the first screen.
@@ -221,7 +229,7 @@ There is no phone app for continuing chats. A phone browser can open the `/p/` p
 
 ## Devices and revoking — what you can stop, and what you cannot
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 When moving chats is available, `codeaf devices` lists this computer and every linked device, in up to two groups (in the chat, `/devices` and `/settings` → `Devices` list your paired computers). A group with no entries stays hidden. Before pairing, this computer's local name, platform and `this device` come first, followed by `Run codeaf pair to add another device.` A chat-sync list with no removable peer has that same next step instead of a removal hint.
 
@@ -263,7 +271,7 @@ To make revoking take effect for real, give all your other computers a new ident
 
 ## Without a relay — identity export and import
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 You can move your identity by file. This needs no relay. It is the way to use when neither computer can reach a relay.
 
@@ -276,7 +284,7 @@ Keep the file and the passphrase safe. Anybody who has both has your chats.
 
 ## Is my code sent anywhere before I pair — quiet first launch
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 On a new home, no device record reaches the relay, and no relay request, connection or chat upload is sent, until this home completes a pairing or starts offering a pairing code. Showing a code needs the relay even if nobody joins. A new device's `codeaf pair` also contacts the relay to offer its link; its chats start syncing only after approval. Opening or closing `+ Add another device` with `alt+d`, reading its instructions, listing `/devices` or `codeaf devices`, and ordinary local chats leave a new home **quiet**.
 
@@ -288,9 +296,9 @@ The first-run line about the hosted relay is said once, when chats are first cop
 
 ## Where are my chats stored — where your chats are stored, the hosted relay, turning it off, self-host your own relay, is my code private
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Your chats live on your own computer first. When relay storage is enabled they are also copied, sealed,
+Your chats live on your own computer first. When sync storage is enabled they are also copied, sealed,
 to the relay, so your other computers can open them. Which relay is one setting,
 `CODEAF_SYNC_URL`, and there is no sign-in and no account:
 
@@ -309,7 +317,7 @@ to the relay, so your other computers can open them. Which relay is one setting,
 
 ## Is my code private on the relay — encrypted chats, files and visible metadata
 
-Hosted chat/file sync needs approval in Settings → Devices → relay storage → enter. Pairing, presence and live `--at` work while storage is off. Self-hosted `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 **Is my code private?** Everything a chat holds, its turns and the files it saved, is sealed
 on your computer with a key only your own computers have, before it is sent. The relay keeps
@@ -317,9 +325,9 @@ ciphertext: it cannot read your messages, your code, or even the names of your c
 see that an identity's devices talk to it, when, and how many bytes. Turning it off
 stops new copies going, and a relay you run is yours to empty.
 
-## The relay — what it sees, your own relay, and turning pairing off
+## The relay — what it sees, your own relay, and turning pairing off; sync is off, CODEAF_SYNC_URL=off, pairing needs a sync address
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A relay is a small service that passes bytes between the two computers. Your chats sync end to end encrypted. The relay only carries ciphertext. It never sees the code, the three words or your chats.
 
@@ -356,7 +364,7 @@ sync is off (CODEAF_SYNC_URL=off); pairing needs the sync service
 
 ## The pairing relay does not answer, is full or is too old
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Other things the relay can say while you pair:
 
@@ -391,7 +399,7 @@ can also delay its answer.
 
 ## I lost my laptop — what to do
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 1. On a computer you still have, run `codeaf devices`.
 2. Run `codeaf devices revoke <name>` for the lost computer.
@@ -399,7 +407,9 @@ Pairing is available on Linux, macOS and native Windows with a compatible engine
 
 ## Which door do I use — pairing, --at or --host
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 - **The same chats on both computers:** pair them with `/pair`. This page.
 - **Work on one machine from the other, with no ssh:** `codeaf serve` on the machine that has the work, and `codeaf chat --at <name>` on the other. Read *Reaching a machine with a pairing code*.
@@ -409,7 +419,9 @@ Pairing is available on Linux, macOS and native Windows with a compatible engine
 
 ## Moving chats on Windows — vault permissions, refused names, symlinks, hard links, WSL and every build
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 `CODEAF_SYNC_URL=off` stops relay traffic; local chats still keep their saved turns.
 Older chats move through independent copies after pairing. Their original files and layout remain untouched for older builds. Nothing is deleted automatically to save disk.
@@ -432,7 +444,7 @@ mode bits are recorded for later moves, but do not provide Windows access contro
 
 ## Moving chats needs a newer furrow engine than this build carries
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Chat movement needs the configured or embedded furrow's exchange verbs, daemon and
 changed-path sealing. codeaf checks these capabilities once at startup, without using a
@@ -443,7 +455,9 @@ and existing remote access still work. Use a build carrying the newer engine, or
 
 ## Does a CA certificate bundle stay out as a private key — cacert.pem
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A PEM certificate bundle containing only `BEGIN CERTIFICATE` blocks is kept in saved history and can move with the workspace. A `.pem` suffix alone does not make it a private key. Files containing PEM private-key headers (including encrypted keys and OpenSSH keys), PuTTY private keys, and PKCS#12 key containers are withheld; a PEM containing both certificates and a private key is withheld too. The same folder exclusions still apply: a certificate inside an install folder left behind for rebuilding is rebuilt with that folder.
 
@@ -482,8 +496,12 @@ Once this computer has its own saved pairing keys, a sent turn, tracked work, a 
 
 ## What happens to chats made with chat --once before the first pairing?
 
-On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 If this computer has no saved pairing keys yet — for example it has only ever run `codeaf chat --once` — those chats are kept when it first pairs without `--replace`, and pairing does not discard or hide them. They are not sent at the moment of pairing. The next time codeaf's window opens on this computer, each one is saved for syncing and appears on your other computers' Home, where it can be continued.
 
 A computer that already has its own saved pairing keys follows the local-work refusal and explicit `--replace` rules above.
+
+## Why pairing alone does not copy saved chats — sync storage access
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

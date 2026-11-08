@@ -20,8 +20,12 @@ var stateMu sync.Mutex
 // its lifetime. Quiet, unpaired and removed homes end silently; other failures
 // retry after the sync interval and are reported once per distinct error.
 func RunHomeState(ctx context.Context, home string, report func(error)) {
-	stopStorage := StartStorageRefresh(ctx, home)
-	defer stopStorage()
+	var stopStorage func()
+	defer func() {
+		if stopStorage != nil {
+			stopStorage()
+		}
+	}()
 	interval, err := flushInterval()
 	if err != nil {
 		interval = DefaultInterval
@@ -54,6 +58,11 @@ func RunHomeState(ctx context.Context, home string, report func(error)) {
 		}
 		if errors.Is(err, directory.ErrRevoked) || (current != nil && current.isRemoved()) {
 			return
+		}
+		// The first state round proves the device may still use this home.
+		// Starting earlier races a revoked device's one final request.
+		if stopStorage == nil && current != nil {
+			stopStorage = StartStorageRefresh(ctx, home)
 		}
 		if err != nil && ctx.Err() == nil && !reported[err.Error()] {
 			reported[err.Error()] = true

@@ -4696,9 +4696,9 @@ func TestChatTeamSharingSafetyAnswers(t *testing.T) {
 
 func TestStorageOptInManualQuestions(t *testing.T) {
 	for _, question := range []string{
-		"how do I turn on relay storage",
+		"how do I turn on sync storage",
 		"why don't my chats sync to my other computer",
-		"request access to relay storage",
+		"request access to sync storage",
 		"does the relay store my chats",
 	} {
 		found := false
@@ -4723,7 +4723,7 @@ func TestStorageOptInSettingsAndTeamsQuestions(t *testing.T) {
 		t.Run(probe.question, func(t *testing.T) {
 			for _, section := range Chat().Search(probe.question, DefaultResults) {
 				if section.Page == probe.page && strings.HasPrefix(section.Title, probe.heading) {
-					if !strings.Contains(section.Body, "relay storage approval") {
+					if !strings.Contains(section.Body, "sync storage approval") {
 						t.Fatalf("approval missing: %s", section.Body)
 					}
 					return
