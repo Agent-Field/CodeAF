@@ -337,6 +337,54 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	return factory.StageResult{Done: true, Output: out}, nil
 }
 
+// CarryStop is the worker's [factoryworker.Options.CarryStop]: it carries a
+// person's Stop that landed while no runner held the job to every run of the
+// job that has not ended. THE PERSON'S STOP STOPS THE WHOLE RUN WHEREVER IT
+// LANDED: each live run is cancelled on the control plane and read to its end
+// onto the factory's own job, exactly as [afRemote.follow] does for a Stop
+// that reached a runner following the run. A control plane it cannot reach is
+// an error, and the job is offered again once this hold runs out.
+func (r *afRemote) CarryStop(ctx context.Context, it factory.Item) error {
+	client, _, ok := r.conn()
+	if !ok {
+		return errors.New(factoryrun.NoRemoteWords)
+	}
+	jobs := r.items
+	if r.floor != nil {
+		jobs = r.floor
+	}
+	type live struct {
+		run   string
+		place afPlace
+	}
+	var runs []live
+	if run := it.AgentField; run != nil && run.ExecutionID != "" && run.Ended.IsZero() && run.RunID != "" {
+		runs = append(runs, live{run.RunID, afPlace{}})
+	}
+	names := make([]string, 0, len(it.AgentFieldSteps))
+	for name := range it.AgentFieldSteps {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		if run := it.AgentFieldSteps[name]; run != nil && run.ExecutionID != "" && run.Ended.IsZero() && run.RunID != "" {
+			runs = append(runs, live{run.RunID, afPlace{step: name}})
+		}
+	}
+	for _, l := range runs {
+		cancelCtx, cancel := context.WithTimeout(ctx, afStopDrain)
+		err := client.CancelTree(cancelCtx, l.run)
+		if err == nil {
+			r.readToEnd(cancelCtx, client, l.run, it.ID, jobs, l.place)
+		}
+		cancel()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // afKeepPullRequest attaches the pull request raw names to the job, unless
 // the job already holds one: the first a run reports is the job's.
 func afKeepPullRequest(jobs *store.Store, job int, raw json.RawMessage) bool {

@@ -60,6 +60,11 @@ type FenceOptions struct {
 	StateDir string
 	// Allow is the person's widening, as [ParseFenceAllow] reads it.
 	Allow FenceAllow
+	// Receipts are codeaf's own record folders the step writes from inside
+	// the fence: a factory step's check receipts, beside its transcript in
+	// codeaf's home (verification.ReceiptRoot). Each is made if missing and
+	// is writable; nothing else of codeaf's home is.
+	Receipts []string
 }
 
 // FenceAllow is how far a person widened the fence. Paths are absolute and
@@ -260,6 +265,21 @@ func NewFence(opts FenceOptions) (*Fence, error) {
 	}
 	f.ReadOnly = append(f.ReadOnly, filepath.Join(root, ".codeaf"))
 	for _, p := range opts.Allow.Paths {
+		if c, err := canonicalPath(p); err == nil {
+			f.Writable = append(f.Writable, c)
+		}
+	}
+	// CODEAF'S OWN RECORD OF THE STEP IS THE STEP'S TO WRITE. A check's
+	// receipt is made from inside the fenced shell, so its folder must exist
+	// before the fence is drawn (a bind or a rule needs a real path) and be
+	// writable; a fence that refused it failed every check with exit 125.
+	for _, p := range opts.Receipts {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		if err := os.MkdirAll(p, 0o700); err != nil {
+			return nil, err
+		}
 		if c, err := canonicalPath(p); err == nil {
 			f.Writable = append(f.Writable, c)
 		}

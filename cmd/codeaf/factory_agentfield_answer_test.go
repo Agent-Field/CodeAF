@@ -37,7 +37,10 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 	host := s.backend.local.host
 	s.backend.local.mu.Unlock()
 
-	// park files a job waiting on its run's plan.
+	// park files a job waiting on its run's plan. Its worktree is another
+	// computer's, so this machine's runner does not take it to follow the
+	// run (a live run with no runner is owed one): this test is the answer
+	// doors on a job no runner holds.
 	park := func(round string) int {
 		t.Helper()
 		id, err := host.floor.Add(context.Background(), factory.Item{Title: "Add Len", Tier: factory.TierOwner})
@@ -46,6 +49,7 @@ func TestARunsPauseIsAnsweredWithTheJobVerbs(t *testing.T) {
 		}
 		if err := host.floor.Update(id, func(it *factory.Item) error {
 			it.State, it.QKind, it.Question = factory.StateNeedsYou, factory.QKindAgentField, "Approve the plan?"
+			it.WorktreeMachine = "another-computer"
 			it.Stages = []factory.Stage{{Name: "build", Kind: factory.StageAgentField, Target: "swe-planner.build_issue", On: true}}
 			it.AgentFieldSteps = map[string]*factory.AgentFieldRun{"build": {ExecutionID: "exec-" + round, RunID: "run-" + round,
 				Waiting: &factory.AgentFieldWait{Execution: "exec-" + round, Step: "build", RequestID: "swe-plan-" + round, Question: "Approve the plan?", Body: "# Plan", At: time.Now()}}}
