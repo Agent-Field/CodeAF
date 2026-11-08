@@ -424,3 +424,28 @@ the reply still carries them. Deduplication retains only outstanding deliveries,
 not the history of a lease. `TestAcknowledgementsLeaveOnlyUnconfirmedDeliveries`
 drives 25,000 receipts through real HTTP, checks failed-heartbeat retention, and
 requires the backlog to drain within 110 successful heartbeats.
+
+## Idle factory manager checks
+
+Every open job manager and every open step asks ten times a second whether its
+job was stopped or its budget reached (`watchJobBudget` in
+`internal/session/job_budget.go`). Neither check may decode a job document that
+has not changed since it last looked: `seamRunDoor.AutomaticRefusal`
+(`cmd/codeaf/factory_person_stop.go`) and `stageBudget.Refusal` remember the
+answer with the file it came from (`os.SameFile`, size and modification time;
+every store write renames a fresh file into place) and stat the file before
+reading it, so a write landing mid-read is read on the next check. A
+conversation that manages no job is remembered against the floor folder's own
+identity. `TestAnIdleManagersStopCheckDecodesNothingUnchanged` counts the
+decoded documents (`factoryStopCheckDecodes`): fifty unchanged checks decode
+none, and a Stop is seen at the next check.
+
+`BenchmarkAutomaticRefusal`, six jobs of about 30 KB each, linux/arm64:
+
+| | per check | allocated | allocations |
+| --- | --- | --- | --- |
+| before (list and decode every job) | 8.5 ms | 1.9 MB | 6,420 |
+| after (stat the job's file) | 4.5 µs | 1.7 KB | 21 |
+
+Five idle managers made 50 checks a second, about 0.43 of a core on this floor
+before, growing with jobs × managers; after, about 0.2 ms of CPU a second.

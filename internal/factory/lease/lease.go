@@ -282,7 +282,7 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 		}
 		// A Stop may have landed after List. A pending reply may still borrow
 		// its manager, but only the locked job can authorize running steps.
-		taken.ThreadOnly = factory.StoppedByPerson(*it) || it.State != factory.StateQueued || paused(*it)
+		taken.ThreadOnly = factory.StoppedByPerson(*it) || it.State != factory.StateQueued && !owesFollow(*it) || paused(*it)
 		delete(doc.Withdrawn, worker.ID)
 		doc.Leases = append(doc.Leases, *taken)
 		if err := d.write(*doc); err != nil {
@@ -298,7 +298,11 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 				cp.Reason = fmt.Sprintf("Automatic retry %d of %d is running.", cp.Attempts, cp.Limit)
 				it.Recovery = &cp
 			}
-			it.State = factory.StateRunning
+			// A RUN WAITING ON ITS APPROVAL KEEPS ITS QUESTION while the runner
+			// that takes it follows it again: the person is still asked.
+			if !factory.AgentFieldPause(*it) {
+				it.State = factory.StateRunning
+			}
 			it.OverLimit = false
 		}
 		return nil
@@ -417,7 +421,7 @@ func (d *Desk) Requeue(id int, worker string) error {
 }
 
 func eligible(it factory.Item, worker Worker) bool {
-	if factory.StoppedByPerson(it) && !pendingReply(it) {
+	if factory.StoppedByPerson(it) && !pendingReply(it) && !owesStop(it) {
 		return false
 	}
 	if factory.JobState(it) == "done" {
@@ -432,7 +436,7 @@ func eligible(it factory.Item, worker Worker) bool {
 	if !factory.IsIssueJob(it) {
 		return false
 	}
-	if (it.State != factory.StateQueued || paused(it)) && !pendingReply(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
+	if (it.State != factory.StateQueued || paused(it)) && !pendingReply(it) && !owesFollow(it) && !owesStop(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
 		return false
 	}
 	if worker.Solo {
@@ -448,6 +452,39 @@ func eligible(it factory.Item, worker Worker) bool {
 		return false
 	}
 	return !worker.Team && (worker.TakesUnassigned[it.Repo] || worker.TakesUnassigned[EveryRepo])
+}
+
+// owesFollow is a job whose AgentField run goes on at the control plane with
+// no runner here following it: running, queued, or waiting in Needs you on
+// that run's own approval. A RUN THAT GOES ON WITHOUT A FOLLOWER IS OWED ONE,
+// whatever left it alone — a hold that expired while the job waited on an
+// approval (a job in Needs you is not running, so expiry queues nothing), an
+// approval given while no runner held the job (it turns the job running with
+// no hold), a runner that let go. Its pull is the job's own Pull, called only
+// when no lease is on the job, so a followed run is never taken twice; the
+// runner that takes it follows the same run ([factory.AgentFieldRunLive]) and
+// sends any decision it still owes. A paused, stopped or finished job is not
+// owed one.
+func owesFollow(it factory.Item) bool {
+	if paused(it) || factory.StoppedByPerson(it) || factory.JobState(it) == "done" || !factory.AgentFieldAnyRunLive(it) {
+		return false
+	}
+	switch it.State {
+	case factory.StateRunning, factory.StateQueued:
+		return true
+	case factory.StateNeedsYou:
+		return it.QKind == factory.QKindAgentField
+	}
+	return false
+}
+
+// owesStop is a job a person stopped whose AgentField run has not ended: the
+// Stop was written on the job, but only a runner can carry it to the control
+// plane, and none held the job when it landed. It is offered to a runner held
+// to talk only (never to run a step), and that runner cancels the run and
+// writes its end on the job, after which it is owed nothing.
+func owesStop(it factory.Item) bool {
+	return factory.StoppedByPerson(it) && factory.JobState(it) != "done" && factory.AgentFieldAnyRunLive(it)
 }
 
 func pendingReply(it factory.Item) bool {

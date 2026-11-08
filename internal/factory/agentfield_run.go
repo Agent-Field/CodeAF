@@ -82,6 +82,23 @@ func AgentFieldRunLive(it Item, step string) bool {
 	return run != nil && run.ExecutionID != "" && run.Ended.IsZero()
 }
 
+// AgentFieldAnyRunLive says one of the job's runs (its own, or any agentfield
+// step's) was started on the control plane and has not ended. Such a run goes
+// on there whether or not a runner here follows it, so a job that has one and
+// no runner holding it is owed a runner: to follow it, carry an answer the
+// person gave, or carry the person's Stop.
+func AgentFieldAnyRunLive(it Item) bool {
+	if r := it.AgentField; r != nil && r.ExecutionID != "" && r.Ended.IsZero() {
+		return true
+	}
+	for _, r := range it.AgentFieldSteps {
+		if r != nil && r.ExecutionID != "" && r.Ended.IsZero() {
+			return true
+		}
+	}
+	return false
+}
+
 // AgentFieldRejectCancel is the control plane's reason on a run it
 // cancelled because a person rejected its pause: `approval_rejected: <their
 // words>`.

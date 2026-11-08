@@ -177,7 +177,10 @@ round ran for two hours (or an idle Plan could not finish reporting within its t
 - `write did not finish: the checkout has no change from where the run began · …` when write
   reported done but changed nothing;
 - `test is not proven: 1 of 2 claims shown · …` for a step that runs once;
-- `review is not clean after 3 rounds: 1 finding · …` only for a step that loops.
+- `review is not clean after 3 rounds: 1 finding · …` only for a step that loops;
+- `test is not green after 3 rounds: 2 checks it ran were not confirmed to pass · …` when its
+  checks never measured green. The question counts them in a sentence; the commands themselves
+  are on the step's record and in its chat, never in the Needs you row.
 
 Rounds are named only for a step that loops. `send it back` is offered only when a finished
 step before this one can take the work back; plan, the first step, never offers it. Try again
@@ -266,7 +269,8 @@ any of them a call that would ask is refused the same way.
 
 The allow posture is not your full permissions. A stage's commands, and its own `read`, `write`
 and `edit`, are kept inside its worktree, the repository's git folder and the stage's own temp and
-cache folders. It cannot write the rest of the computer (no `brew install`), read keys and
+cache folders, plus the one folder of codeaf's own where its check receipts are kept (beside the
+step's conversation), so a `go test` or `npm test` it runs is measured wherever codeaf's home is. It cannot write the rest of the computer (no `brew install`), read keys and
 sign-ins such as `~/.ssh`, or use docker. A blocked command reads `codeaf blocked this: …`.
 `"jail.allow"` in the repository's `.codeaf/config.json` allows more. "What an unattended run may
 touch" has the whole list.

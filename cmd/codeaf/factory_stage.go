@@ -133,7 +133,14 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.Workspace = where
 	// A STAGE'S COMMANDS ARE FENCED to its worktree (fence.go): the allow
 	// posture below opens the gate, and the fence is what still holds.
-	if cfg.Fence, err = unattendedFence(where, m.profileDir); err != nil {
+	// Its check receipts are written beside its transcript, in codeaf's home,
+	// from inside that fence, so their folder is the one place outside the
+	// worktree it also writes (verification.ReceiptRoot).
+	var receipts []string
+	if cfg.SessionFile != "" {
+		receipts = append(receipts, verification.ReceiptRoot(cfg.SessionFile))
+	}
+	if cfg.Fence, err = unattendedFence(where, m.profileDir, receipts...); err != nil {
 		return nil, err
 	}
 	cfg.AutomaticModels = spec.AutomaticModels

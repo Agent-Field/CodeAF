@@ -41,6 +41,11 @@ type Options struct {
 	// LocalLease keeps this machine's receipt of a pulled or renewed lease.
 	// An empty lease removes the receipt before the mirror is put away.
 	LocalLease func(base string, lease api.WorkerLease)
+	// CarryStop carries a person's Stop that landed while no runner held the
+	// job to the runs of it that go on elsewhere (an AgentField run on its
+	// control plane), and writes their end. The factory offers such a job to
+	// a runner held to talk only. Nil leaves those runs alone.
+	CarryStop func(context.Context, factory.Item) error
 	// Reply submits words to the manager on this machine. A failed delivery
 	// stays pending; the next heartbeat offers it again.
 	Reply func(context.Context, factory.Item, string) error
@@ -341,6 +346,20 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer o.Runner.SetPublishCheck(it.ID, nil)
 	if pulled.Lease.ThreadOnly {
 		j.sent = it
+		// A STOP THAT LANDED WITH NO RUNNER HOLDING THE JOB IS CARRIED HERE:
+		// its run going on elsewhere is cancelled before anything else. A
+		// carry that failed keeps the hold until it runs out, and the
+		// factory offers the job again; one that worked lets go at once
+		// unless a reply is waiting.
+		if o.CarryStop != nil && factory.StoppedByPerson(it) && factory.AgentFieldAnyRunLive(it) {
+			if err := o.CarryStop(ctx, it); err != nil {
+				return
+			}
+			if !pendingReply(it) {
+				_ = w.Done(ctx, j.lease, api.WorkerDone{})
+				return
+			}
+		}
 		j.signals(ctx, pulled.Signals)
 		j.converse(ctx)
 		return
@@ -1100,4 +1119,17 @@ func (j *job) lostLease(err error) bool {
 		j.mu.Unlock()
 	}
 	return gone(err)
+}
+
+// pendingReply says a person's words wait on the job's manager.
+func pendingReply(it factory.Item) bool {
+	if it.Talk == "" {
+		return false
+	}
+	for _, m := range it.Thread {
+		if m.State == "pending" {
+			return true
+		}
+	}
+	return false
 }

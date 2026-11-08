@@ -117,6 +117,16 @@ func (d *Desk) Apply(id, worker string, complete, capWait bool, change func(*fac
 					if f := it.Failure; f != nil && f.Code != factory.CodeStopped {
 						it.Failure = nil
 					}
+					// The step it answered carries no failure either, as a
+					// native Reject leaves its step: an older runner stamped
+					// the cancel on it as a tool_error.
+					if it.Stream != nil {
+						for i := range it.Stream.Phases {
+							if f := it.Stream.Phases[i].Failure; f != nil && f.Code != factory.CodeStopped {
+								it.Stream.Phases[i].Failure = nil
+							}
+						}
+					}
 					rejected = true
 					_, err = endRejectedLocked(history, doc, held, held.Job, it, now, no.By, no.Words)
 					return err

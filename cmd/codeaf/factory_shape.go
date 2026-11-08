@@ -416,6 +416,22 @@ func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory
 	return d.edit(ctx, it.ID, e)
 }
 
+// managedFrom is [seamRunDoor.managed] that reads the job hint first, by id,
+// and lists the floor only when hint is not (or no longer) that job: a
+// conversation's job almost never changes, and one document is cheaper to
+// read than every document on the floor.
+func (d seamRunDoor) managedFrom(conversation string, hint int) (factory.Item, error) {
+	want := sameFileKey(conversation)
+	if hint != 0 && want != "" && d.st != nil {
+		it, err := d.st.Get(hint)
+		factoryStopCheckDecodes.Add(1)
+		if err == nil && strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
+			return it, nil
+		}
+	}
+	return d.managed(conversation)
+}
+
 // managed is the item whose conversation is the asking one.
 func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
 	want := sameFileKey(conversation)
@@ -426,6 +442,7 @@ func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
 	if err != nil {
 		return factory.Item{}, err
 	}
+	factoryStopCheckDecodes.Add(int64(len(items)))
 	for _, it := range items {
 		if strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
 			return it, nil

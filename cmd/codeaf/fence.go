@@ -33,7 +33,7 @@ const fenceStateMaxAge = 14 * 24 * time.Hour
 
 // unattendedFence is the fence for a run working in workspace under the
 // profile at profileDir, or nil when the person turned it off.
-func unattendedFence(workspace, profileDir string) (*executor.Fence, error) {
+func unattendedFence(workspace, profileDir string, receipts ...string) (*executor.Fence, error) {
 	if strings.TrimSpace(workspace) == "" {
 		return nil, fmt.Errorf("codeaf does not know which folder this run works in, so it cannot keep its commands inside it")
 	}
@@ -50,6 +50,7 @@ func unattendedFence(workspace, profileDir string) (*executor.Fence, error) {
 		CodeafHome: home.Dir(),
 		StateDir:   state,
 		Allow:      executor.ParseFenceAllow(person, words...),
+		Receipts:   receipts,
 	})
 }
 

@@ -1494,12 +1494,33 @@ func stepShort(name string, st factory.Stage, round int, res factory.StageResult
 		until = factory.UntilDone
 	}
 	if st.Max > 1 {
-		return fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round)), shortfall(res)
+		return fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round)), personShortfall(res)
 	}
 	if until == factory.UntilDone && !res.Done {
 		return name + " did not finish", firstLine(res.Output)
 	}
-	return name + " is not " + until, shortfall(res)
+	return name + " is not " + until, personShortfall(res)
+}
+
+// personShortfall is [shortfall] as the person's question says it. A CHECK
+// THAT WAS NOT CONFIRMED IS COUNTED IN A SENTENCE, NEVER QUOTED: its command
+// is a shell line with the worktree's path in it ("cd /Users/…/factory-demo-
+// 211 && …"), which the Needs you row printed whole. The commands stay on
+// the step's own record ([shortfall]), which its chat and its next round read.
+func personShortfall(res factory.StageResult) string {
+	n := 0
+	for _, note := range res.Notes {
+		if strings.HasPrefix(note, verification.FailurePrefix) {
+			n++
+		}
+	}
+	switch {
+	case n == 1:
+		return "1 check it ran was not confirmed to pass"
+	case n > 1:
+		return strconv.Itoa(n) + " checks it ran were not confirmed to pass"
+	}
+	return shortfall(res)
 }
 
 // stepShortChoices is the end of that question: what the person may do, with
@@ -1901,6 +1922,10 @@ func NoteBudgetRaised(it *factory.Item, now time.Time) {
 // a question: nobody is asked to skip it.
 func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 	now := lp.r.now()
+	if lp.rejectedHere(c, step, now) {
+		lp.stop(c)
+		return
+	}
 	code, detail := factory.ClassifyFailure(err.Error())
 	var attempts int
 	var machine string
@@ -1928,6 +1953,40 @@ func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 		})
 	}
 	lp.stop(c)
+}
+
+// rejectedHere ends step as a person's Reject ends the step it answered, when
+// the run behind it ended on that no ([factory.AgentFieldRejectedEnd]): the
+// step reads failed, with NO FAILURE ON IT OR ON THE JOB and no step_failed
+// event, exactly as [factory.Item.EndRejected] leaves a native approve step.
+// The control plane cancels a rejected run at once, so its follower returns
+// that cancel as the step's error ("the AgentField run cancelled:
+// approval_rejected: …"); recorded as a tool_error, it read on the desk's
+// rail as a step that failed, not one the person rejected. The factory ends
+// the job Rejected with the person's words when it reads the run's end. IT IS
+// KEYED ON THE RUN'S DECISION, NEVER ON A PIPELINE'S OR A STEP'S NAME.
+func (lp *floorLoop) rejectedHere(c *loopCtl, step string, now time.Time) bool {
+	rejected := false
+	_ = lp.write(c, func(it *factory.Item) error {
+		if _, ok := factory.AgentFieldRejectedEnd(*it); !ok {
+			return nil
+		}
+		rejected = true
+		if it.Stream == nil {
+			return nil
+		}
+		for i := range it.Stream.Phases {
+			ph := &it.Stream.Phases[i]
+			if ph.Name == step || ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting {
+				ph.State, ph.At, ph.Verification, ph.Failure = factory.PhaseFailed, now, nil, nil
+			}
+		}
+		if f := it.Failure; f != nil && f.Code != factory.CodeStopped {
+			it.Failure = nil
+		}
+		return nil
+	})
+	return rejected
 }
 
 // summarizeFailure gives the job's failure its one-line headline

@@ -103,3 +103,46 @@ func TestAnAnswerTheControlPlaneRefusesIsWrittenOnTheRun(t *testing.T) {
 		t.Fatal("a refused answer still reads as owed")
 	}
 }
+
+// A STOP NO RUNNER HELD IS CARRIED BY THE NEXT ONE. Job 71 of the third live
+// run: the person's Stop landed while no runner held the job, so its run went
+// on at the control plane and opened a pull request four seconds later. The
+// runner that next takes the stopped job cancels the whole run and writes its
+// end on the factory's own job, so the job is owed nothing more.
+func TestARunnerCarriesAStopThatLandedWithNoRunnerHoldingTheJob(t *testing.T) {
+	prev := afRemoteEvery
+	afRemoteEvery = 10 * time.Millisecond
+	t.Cleanup(func() { afRemoteEvery = prev })
+	floor, id, cp, tree := afPausedStep(t)
+	stopped := true
+	if err := floor.Update(id, func(it *factory.Item) error {
+		it.PersonStopped = &stopped
+		it.State, it.QKind, it.Question = factory.StateNew, "", ""
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cp.tree = tree
+	mirror, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := &afRemote{items: mirror, floor: floor, conn: func() (afClient, string, bool) { return cp, "workaf", true }}
+	it, _ := floor.Get(id)
+	if err := remote.CarryStop(context.Background(), it); err != nil {
+		t.Fatal(err)
+	}
+	cp.mu.Lock()
+	cancelled := append([]string(nil), cp.cancelled...)
+	cp.mu.Unlock()
+	if len(cancelled) != 1 || cancelled[0] != "run-1" {
+		t.Fatalf("the stop did not reach the control plane: cancelled %v", cancelled)
+	}
+	got, _ := floor.Get(id)
+	if run := got.AgentFieldSteps["build"]; run.Ended.IsZero() || run.Status != "cancelled" {
+		t.Fatalf("the run's end is not on the factory's job: %+v", run)
+	}
+	if !factory.StoppedByPerson(got) || factory.AgentFieldAnyRunLive(got) {
+		t.Fatalf("after the carry the job still owes its run a runner: stopped %v", factory.StoppedByPerson(got))
+	}
+}

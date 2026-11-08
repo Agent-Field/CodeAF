@@ -9,6 +9,7 @@ A command in such a run may:
 - read and write inside the folder it works in: the item's worktree, or the folder `--once` or `exec` was started in;
 - write the repository's own git folder, so a worktree can commit, fetch and make branches;
 - write its own temp folder and its own cache folders (see "its own temp and cache folders");
+- for a factory step, write the folder beside its conversation where codeaf keeps the receipts of the checks it runs (`go test`, `npm test`, …), so those checks are measured wherever codeaf's own folder is; nothing else of codeaf's folder is writable;
 - read the rest of the computer, so toolchains under `/usr`, `/opt/homebrew`, Xcode and the Go root work;
 - use the network.
 

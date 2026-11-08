@@ -406,7 +406,9 @@ asks about, readable in full. Three answers:
   you gave any (at most 4000 characters). It is done: it offers Reopen or Run as
   new, never Carry on, and it leaves Needs you. The control plane cancels a
   rejected run at once, and the job still ends Rejected, never "Step failed" or
-  Try again, whichever reaches the factory first. A no given on the control
+  Try again, whichever reaches the factory first. The step the plan was asked
+  in carries no failure: the rail reads it rejected there, as a Reject of one
+  of this factory's own approve steps reads. A no given on the control
   plane's own page ends it Rejected too, with the words its cancel carries
   (`approval_rejected: <words>`). A run that failed on its own is still a
   failed step.
@@ -425,6 +427,18 @@ The job waits for its runner again ("Waiting to start"), and the runner that
 takes it follows that same run. There is no second run, no "interrupted"
 round, no "trying <step> again", and no automatic retry is spent, however many
 times it restarts. Only a person's Stop cancels the run.
+
+This holds wherever the job was when its runner went away: running, or
+waiting in Needs you on the run's approval. A job whose run goes on with no
+runner following it is taken again by the next runner, even if you approved
+it while no runner held it, and the run's end (its pull request, done, or its
+own failure) lands on the job. It never sits reading "running" while its run
+finishes somewhere else.
+
+A **Stop** reaches the run whether or not a runner holds the job when you
+press it. With no runner holding it, the job is stopped at once and the next
+runner to come back cancels the run on the control plane and writes its end,
+so the run does not go on to open a pull request.
 
 A run that had already ended when the runner went away is an ordinary
 interrupted step: it is retried automatically, at most 3 times.
