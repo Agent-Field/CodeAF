@@ -280,7 +280,14 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	place := afPlace{step: st.Name, ask: job.Ask, life: ctx}
 	defer r.dropAsks(it.ID)
 	run := place.recorded(it)
-	if run == nil || run.ExecutionID == "" || !run.Ended.IsZero() {
+	// A RUN THAT ENDED WHILE NOTHING HERE WAS LEFT TO SAY SO IS READ, NEVER
+	// STARTED AGAIN. A quit that lands seconds after the run finished (or a
+	// lease let go then) leaves the step running with the run's end already
+	// on its record; the round a restart picks up is that same round going on
+	// (factoryrun.Job.Continuing), so its run's end is this round's outcome
+	// — its pull request, its words — and not a reason to begin a second run.
+	// A round begun afresh (Run again, Try again) starts a run of its own.
+	if run == nil || run.ExecutionID == "" || (!run.Ended.IsZero() && !afRoundsRun(job, *run)) {
 		fresh, err := r.dispatch(ctx, client, node, target, afTypedInput(ctx, client, target, factory.AgentFieldInput(it, st)))
 		if err != nil {
 			return factory.StageResult{}, err
@@ -312,6 +319,7 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	// already heads every line a person reads it on ("Build on AgentField ·
 	// done · finished and opened …"), so the reasoner's id never repeats it.
 	out := "finished"
+	opened := false
 	// A PULL REQUEST THE RUN OPENED IS THE JOB'S, WHATEVER THE RUN SAYS
 	// AFTER: its link is read off the run's result, wherever the reasoner put
 	// it, and kept before the result's own word on success is weighed, so a
@@ -323,6 +331,7 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 		if raw, err := results.Result(ctx, run.ExecutionID); err == nil {
 			if link, _ := factory.PullRequestIn(raw); link != "" {
 				out += " and opened " + link
+				opened = true
 				afKeepPullRequest(r.items, it.ID, raw)
 			}
 			// A RUN THAT ENDED CLEANLY AND SAYS IT DID NOT SUCCEED IS NOT
@@ -345,14 +354,64 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 				// A run that left no note says how it ended in its summary
 				// ("Plan rejected: not now"); the outcome is read from the
 				// words' shape alone ([factory.AgentFieldOutcome]).
-				outcome := factory.AgentFieldOutcome(afOutcomeNote(ctx, client, run.ExecutionID), said.Summary)
+				notes := afNoteWords(ctx, client, run.ExecutionID)
+				if !opened && factory.AgentFieldNoChange(append(notes, said.Summary)...) {
+					return afNothingToChange(said.Summary)
+				}
+				outcome := factory.AgentFieldOutcome(factory.AgentFieldTellingNote(notes), said.Summary)
 				words := factory.AgentFieldDidNotSucceed(st, outcome)
 				res := factory.StageResult{Output: strings.TrimSpace(said.Summary), Summary: firstNonEmpty(outcome, words)}
 				return res, errors.New(words)
 			}
+			// A RUN THAT CHANGED NOTHING HAS SHIPPED NOTHING. It may end
+			// cleanly — the work it was asked for was already there — and its
+			// own notes say the change came out empty ("No commits between
+			// main and …"): the job then ends with that said in plain words,
+			// where the person finds it, never as shipped with no pull
+			// request and no reason.
+			if !opened {
+				var summary struct {
+					Summary string `json:"summary"`
+				}
+				_ = json.Unmarshal(raw, &summary)
+				if factory.AgentFieldNoChange(append(afNoteWords(ctx, client, run.ExecutionID), summary.Summary)...) {
+					return afNothingToChange(summary.Summary)
+				}
+			}
 		}
 	}
 	return factory.StageResult{Done: true, Output: out}, nil
+}
+
+// afNothingToChange is the end of an agentfield step whose run made no
+// change: the step is done — nothing failed, nothing is the person's to fix —
+// and its output is [factory.AgentFieldNothingToChange], which the job's read
+// carries as its state's detail (api.PresentJob) so the person is told why
+// there is no pull request. The run's own summary stays in its notes.
+func afNothingToChange(summary string) (factory.StageResult, error) {
+	res := factory.StageResult{Done: true, Output: factory.AgentFieldNothingToChange}
+	if summary = strings.TrimSpace(summary); summary != "" {
+		res.Notes = []string{summary}
+	}
+	return res, nil
+}
+
+// afRoundsRun says run, which has ended, is the run of the round job is: the
+// round a restart cut short and picked up again (job.Continuing), whose step
+// began no later than the run did. Any other round of the step is a fresh
+// start and runs again.
+func afRoundsRun(job factoryrun.Job, run factory.AgentFieldRun) bool {
+	if !job.Continuing || run.Began.IsZero() {
+		return false
+	}
+	if s := job.Item.Stream; s != nil {
+		for _, ph := range s.Phases {
+			if ph.Name == job.Stage.Name {
+				return ph.Started.IsZero() || !run.Began.Before(ph.Started)
+			}
+		}
+	}
+	return true
 }
 
 // CarryStop is the worker's [factoryworker.Options.CarryStop]: it carries a
@@ -501,7 +560,13 @@ func (r *afRemote) follow(ctx context.Context, client afClient, job int, runID s
 				// (and its "ended") can reach the control plane after the run
 				// is over, and the control plane holds them until this
 				// factory acks them.
-				drainCtx, cancel := context.WithTimeout(context.Background(), afStopDrain)
+				// THE DRAIN NEVER HOLDS A QUIT. It is bounded by the reading's
+				// own life as well as afStopDrain: an engine closing or a lease
+				// let go ends it at once, the run's end is already on the job
+				// (written above), and the round a restart picks up reads it
+				// again (afRoundsRun). A drain that ran on past a quit held the
+				// local factory's shutdown for its whole wait.
+				drainCtx, cancel := context.WithTimeout(ctx, afStopDrain)
 				r.readToEnd(drainCtx, client, runID, job, r.items, place)
 				cancel()
 				return failure
@@ -702,31 +767,40 @@ func (e afRunEnded) step(st factory.Stage) string {
 	return words
 }
 
-// afOutcomeNote is the newest note the run's own execution left on the
-// control plane, "" when it left none or the control plane cannot say. THE
-// LAST THING A RUN SAID IS HOW IT ENDED, for every reasoner alike: no tag or
-// pipeline name is read.
+// afOutcomeNote is the note the run's own execution left on the control
+// plane that says how it ended, "" when it left none or the control plane
+// cannot say. A NOTE IS CHOSEN BY WHAT IT SAYS, NEVER BY WHEN ALONE: a
+// reasoner may write a tidy-up note after the one that decided the run ("Repo
+// finalized: …" 8 ms after "No pull request: the build did not pass …"), so
+// the note that says no pull request was opened, or that something failed,
+// wins over a newer one that only reports progress
+// ([factory.AgentFieldTellingNote]). No tag or pipeline name is read.
 func afOutcomeNote(ctx context.Context, client afClient, execution string) string {
+	return factory.AgentFieldTellingNote(afNoteWords(ctx, client, execution))
+}
+
+// afNoteWords is every note the run's execution left, oldest first, nil when
+// it left none or the control plane cannot say.
+func afNoteWords(ctx context.Context, client afClient, execution string) []string {
 	notes, ok := client.(interface {
 		Notes(context.Context, string) ([]agentfield.Note, error)
 	})
 	if !ok || strings.TrimSpace(execution) == "" {
-		return ""
+		return nil
 	}
 	all, err := notes.Notes(ctx, execution)
 	if err != nil {
-		return ""
+		return nil
 	}
-	var newest agentfield.Note
+	all = slices.Clone(all)
+	slices.SortStableFunc(all, func(a, b agentfield.Note) int { return a.Timestamp.Compare(b.Timestamp) })
+	words := make([]string, 0, len(all))
 	for _, n := range all {
-		if strings.TrimSpace(n.Message) == "" {
-			continue
-		}
-		if newest.Message == "" || !n.Timestamp.Before(newest.Timestamp) {
-			newest = n
+		if strings.TrimSpace(n.Message) != "" {
+			words = append(words, n.Message)
 		}
 	}
-	return newest.Message
+	return words
 }
 
 // afStep is one execution of the run as a step of the job.

@@ -110,6 +110,13 @@ type Job struct {
 	// CarryOn is what the carried-on chat is told besides the carry-on note:
 	// the answers given while the step was paused ([factory.Phase.Carry]).
 	CarryOn []string
+	// Continuing says this round is the one a restart cut short and picked up
+	// again, the same round going on rather than a new start (the step was
+	// running at that round when the restart revived the job). A step that
+	// runs off this machine — an AgentField run it follows — reads the end
+	// its run already reached as this round's, never as a reason to begin a
+	// second run.
+	Continuing bool
 	// Opened is told the conversation's id the moment a chat stage has one,
 	// so the item keeps the stage's chat before the round ends and a pause or
 	// a restart can come back to it. Nil is nobody listening.

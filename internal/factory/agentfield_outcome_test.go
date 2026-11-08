@@ -92,3 +92,48 @@ func TestAFailedJobsFileSaysFailedAndReadsBackAsItWas(t *testing.T) {
 		}
 	}
 }
+
+// THE NOTE THAT SAYS HOW A RUN ENDED IS CHOSEN BY WHAT IT SAYS (live e2e
+// round 8, job 84): a tidy-up note written 8 ms after "No pull request: …"
+// is never the outcome, and nothing here names a pipeline or a step.
+func TestAgentFieldTellingNotePrefersTheOutcomeOverANewerTidyUp(t *testing.T) {
+	notes := []string{
+		"Project build check failed: `go build ./...` exited 1",
+		"Phase 3b: Repo finalization",
+		"No pull request: the build did not pass verification (Partial: 1/1 issues completed)",
+		"Repo finalized: Surveyed the repository: it is a small Go project",
+	}
+	if got := AgentFieldTellingNote(notes); got != notes[2] {
+		t.Fatalf("chose %q", got)
+	}
+	// With no outcome note, a failure wins over progress; with neither, the newest.
+	if got := AgentFieldTellingNote([]string{"Project build check failed: exit 1", "Repo finalized: tidy"}); got != "Project build check failed: exit 1" {
+		t.Fatalf("chose %q", got)
+	}
+	if got := AgentFieldTellingNote([]string{"Phase 1", "Phase 2", " "}); got != "Phase 2" {
+		t.Fatalf("chose %q", got)
+	}
+	if got := AgentFieldTellingNote(nil); got != "" {
+		t.Fatalf("chose %q from nothing", got)
+	}
+}
+
+// A run's own words that say the change came out empty, in git's and the
+// forge's vocabulary.
+func TestAgentFieldNoChangeReadsAnEmptyChange(t *testing.T) {
+	for _, s := range []string{
+		"Opening the PR with gh failed: GraphQL: No commits between main and feature/x (createPullRequest)",
+		"the integration branch 'feature/x' has no commits ahead of the base branch 'main'",
+		"Project build check did not run: the run changed nothing",
+		"nothing to commit, working tree clean",
+	} {
+		if !AgentFieldNoChange(s) {
+			t.Errorf("%q not read as an empty change", s)
+		}
+	}
+	for _, s := range []string{"Build succeeded: 1/1 issues", "No pull request: the build did not pass its checks", ""} {
+		if AgentFieldNoChange(s) {
+			t.Errorf("%q read as an empty change", s)
+		}
+	}
+}
