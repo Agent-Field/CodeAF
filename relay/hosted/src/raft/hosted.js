@@ -1,3 +1,4 @@
+import { checkStorageHandoff } from '../storage.js';
 import { Flight } from '../flight.js';
 import { PersonalForward } from './forward.js';
 import { PersonalPeers } from './peers.js';
@@ -831,7 +832,23 @@ export class HostedIdentity {
       entry.error=new Wire(code,code==='revoked'?401:410);entry.reject(entry.error);
     }
   }
+  // Handoff uses the same committed rotation view as GET, but its binding and
+  // approval belong only to this hosted object's meta, never to Raft commands.
+  async handoff(c,fresh){
+    await this.ensure(fromBase64Url(c.request.headers.get('codeaf-identity')));
+    const authority=await this.authorize(c.device,c.request.headers.get('codeaf-cert'),false,fresh);
+    checkTime(c.request.headers.get('codeaf-time'),this.readNow(authority.app.now));
+    if(!['frozen','retired'].includes(authority.identity.rotation?.state))throw new Wire('not_rotating',409);
+    const successor=await checkStorageHandoff(this.tenant.identity,c.body);
+    await this.finishRead(authority.barrier,null);
+    this.tenant.storage.bindSuccessor(successor);
+    await this.ctx.storage.sync();
+    const approval=this.tenant.limits.storageOpen?null:this.tenant.storage.approval();
+    const storage=unwrap(await this.env.IDENTITY.get(this.env.IDENTITY.idFromName(successor)).inheritStorage(approval?.storage==='on'?approval:null));
+    return json({successor,storage});
+  }
   async dispatch(c,route){
+    if(new URL(c.request.url).pathname==='/v1/store/handoff')return this.operation(()=>this.retryRead(fresh=>this.handoff(c,fresh)));
     if(!new URL(c.request.url).pathname.startsWith('/v1/store/'))return this.operation(()=>c.request.method==='GET'?this.retryRead(fresh=>this.serve(c,route,fresh)):this.serve(c,route));
     const cert=c.request.headers.get('codeaf-cert');
     const ticket=await this.operation(()=>this.retryRead(async fresh=>{
