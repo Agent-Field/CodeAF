@@ -315,3 +315,40 @@ func TestStorageOptInRefresherStopsAfterDeviceRemoval(t *testing.T) {
 		})
 	}
 }
+
+// THE LAST USER TO LEAVE CANCELS THE CHECK IN FLIGHT AND WAITS FOR IT. A
+// serving loop that has returned must not leave a request behind that later
+// writes its answer into the home, which is what a temporary home's cleanup
+// caught as "directory not empty".
+func TestStorageOptInLastStopCancelsAndJoinsTheCheckInFlight(t *testing.T) {
+	home := t.TempDir()
+	p := storageProcessFor(home)
+	p.read = func() (string, string, string) {
+		return "https://relay.example", "id_0123456789abcdef0123456789abcdef", "off"
+	}
+	p.after = func(time.Duration, func()) func() bool { return func() bool { return true } }
+	started, finished := make(chan struct{}), make(chan struct{})
+	p.fetch = func(ctx context.Context) error {
+		close(started)
+		<-ctx.Done()
+		time.Sleep(20 * time.Millisecond) // the answer is still being saved after the cancel
+		close(finished)
+		return ctx.Err()
+	}
+	stop := StartStorageRefresh(context.Background(), home)
+	<-started
+	stop()
+	select {
+	case <-finished:
+	default:
+		t.Fatal("the last stop returned while its check was still running")
+	}
+	again := StartStorageRefresh(context.Background(), home, false)
+	defer again()
+	p.mu.Lock()
+	live := p.ctx.Err() == nil
+	p.mu.Unlock()
+	if !live {
+		t.Fatal("a new lifetime kept the cancelled context")
+	}
+}

@@ -21,14 +21,20 @@ var storageProcesses = struct {
 }{homes: make(map[string]*storageProcess)}
 
 type storageProcess struct {
-	mu                          sync.Mutex
-	home                        string
-	users                       int
-	next                        uint64
-	waiting                     map[uint64]func()
-	opened                      map[uint64]func()
-	stop                        func() bool
-	ctx                         context.Context
+	mu      sync.Mutex
+	home    string
+	users   int
+	next    uint64
+	waiting map[uint64]func()
+	opened  map[uint64]func()
+	stop    func() bool
+	// ctx belongs to the current lifetime of users; the last user to leave
+	// cancels it, so a request in flight cannot outlive everyone who asked.
+	ctx    context.Context
+	cancel context.CancelFunc
+	// inflight is open while a check runs and closed when it ends, so the
+	// last user can wait for it instead of returning while it still writes.
+	inflight                    chan struct{}
 	lastRefresh                 time.Time
 	active                      bool
 	dirty                       bool
@@ -88,6 +94,9 @@ func StartStorageRefresh(ctx context.Context, home string, initial ...bool) func
 	p.mu.Lock()
 	p.users++
 	first := p.users == 1
+	if first && (p.ctx == nil || p.ctx.Err() != nil || p.cancel == nil) {
+		p.ctx, p.cancel = context.WithCancel(context.Background())
+	}
 	p.mu.Unlock()
 	if first {
 		refresh := len(initial) == 0 || initial[0]
@@ -98,10 +107,20 @@ func StartStorageRefresh(ctx context.Context, home string, initial ...bool) func
 		once.Do(func() {
 			p.mu.Lock()
 			p.users--
+			var running chan struct{}
 			if p.users == 0 && len(p.waiting) == 0 {
 				p.disarm()
+				if p.cancel != nil {
+					p.cancel()
+				}
+				running = p.inflight
 			}
 			p.mu.Unlock()
+			// A check that already started may still be saving its answer into
+			// the home; the caller must not return while that write can land.
+			if running != nil {
+				<-running
+			}
 		})
 	}
 	done := make(chan struct{})
@@ -197,12 +216,21 @@ func (p *storageProcess) disarm() {
 
 func (p *storageProcess) check(refresh bool) {
 	p.mu.Lock()
+	// Checks start on their own goroutines, so one can begin after the last
+	// user and waiter left. It then has nobody to answer and must not touch
+	// the home, or it outlives the lifetime that started it.
+	if p.users == 0 && len(p.waiting) == 0 {
+		p.mu.Unlock()
+		return
+	}
 	if p.active {
 		p.dirty = true
 		p.mu.Unlock()
 		return
 	}
 	p.active = true
+	p.inflight = make(chan struct{})
+	requests := p.ctx
 	p.disarm()
 	p.mu.Unlock()
 	relay, id, state := p.read()
@@ -232,7 +260,7 @@ func (p *storageProcess) check(refresh bool) {
 	}
 	p.mu.Unlock()
 	if relay != "" && ask && refresh {
-		ctx, cancel := context.WithTimeout(p.ctx, requestTimeout)
+		ctx, cancel := context.WithTimeout(requests, requestTimeout)
 		err := p.fetch(ctx)
 		cancel()
 		removed = errors.Is(err, wireauth.ErrRevoked) || errors.Is(err, wireauth.ErrGone)
@@ -243,6 +271,8 @@ func (p *storageProcess) check(refresh bool) {
 	}
 	p.mu.Lock()
 	p.active = false
+	close(p.inflight)
+	p.inflight = nil
 	removed = removed || p.refused != nil
 	again := p.dirty && !removed
 	p.dirty = false
