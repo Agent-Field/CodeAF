@@ -98,13 +98,16 @@ func receiptAskContext(ctx context.Context, hurry context.Context) (context.Cont
 		defer mu.Unlock()
 		timer = time.AfterFunc(receiptHurryAsk, cancel)
 	})
-	return ask, func() {
-		stop()
+	stopTimer := func() {
 		mu.Lock()
+		defer mu.Unlock()
 		if timer != nil {
 			timer.Stop()
 		}
-		mu.Unlock()
+	}
+	return ask, func() {
+		stop()
+		stopTimer()
 		cancel()
 	}
 }
