@@ -295,10 +295,24 @@ func TestAllBrowserWaitingCardsUseOneShortLinkWithTheCompleteTarget(t *testing.T
 
 func TestSetupOffersClaudeCodeOnlyWhereItIsInstalled(t *testing.T) {
 	a, _, _ := setupProviderApp(t, nil)
+	// laterOffers says the add-a-provider menu opened after setup lists it.
+	laterOffers := func() bool {
+		a.openAddProvider(false)
+		defer a.addPanel.close()
+		for _, item := range a.addPanel.items {
+			if item.sourceID == claudemodel.ID {
+				return true
+			}
+		}
+		return false
+	}
 	for _, row := range a.setupProviderRows() {
 		if row.id == claudemodel.ID {
 			t.Fatal("setup offered Claude Code on a machine without it")
 		}
+	}
+	if laterOffers() {
+		t.Fatal("the add-a-provider menu offered Claude Code on a machine without it")
 	}
 	fake := filepath.Join(t.TempDir(), "claude")
 	if err := os.WriteFile(fake, []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -311,5 +325,8 @@ func TestSetupOffersClaudeCodeOnlyWhereItIsInstalled(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("setup hid Claude Code on a machine that has it")
+	}
+	if !laterOffers() {
+		t.Fatal("the add-a-provider menu hid Claude Code on a machine that has it")
 	}
 }

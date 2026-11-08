@@ -56,8 +56,9 @@ func (a *app) setupProviderRows() []setupProviderRow {
 	for _, source := range providerCatalog(a.modelCatalog) {
 		// THE CLAUDE PROVIDER IS OFFERED ONLY WHERE IT IS INSTALLED, as the app's first
 		// run offers it: it needs no key, so on a machine without the `claude`
-		// program the row could only ever answer that it is missing. /connect
-		// still lists it everywhere, with that answer.
+		// program the row could only ever answer that it is missing. The later
+		// add-a-provider menu follows the same rule; /connect still lists it
+		// everywhere, with that answer.
 		if source.ID == claudemodel.ID && !claudeHere {
 			continue
 		}
