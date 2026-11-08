@@ -582,7 +582,10 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 	if err != nil {
 		return err
 	}
-	if !lost.IsZero() && d.record != nil {
+	// ONLY A FAILURE IS RECORDED AS ONE. A hold that ran out on a live remote
+	// run stamped none (it goes on, and the next runner follows it), and an
+	// event for it read " ·  · " on every job a restarted runner took back.
+	if !lost.IsZero() && failed.Code != "" && d.record != nil {
 		_, _ = d.record.Append(context.Background(), record.Event{
 			Kind: record.StepFailed, Job: id, Detail: failed.Code + " · " + failed.Step + " · " + failed.Next,
 		})
