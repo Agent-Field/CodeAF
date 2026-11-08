@@ -884,6 +884,12 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		}
 	}
 	a.machineRead.rows = rows
+	if msg.send != nil && msg.row.Mine && msg.taken.LocalOnly && msg.fromFile == a.file && msg.taken.Transcript == a.file {
+		// The local conversation was kept in place, so reopening would repeat its startup notices.
+		a.restoreTakeDraft(msg)
+		a.finishHomeTake(false)
+		return msg.send()
+	}
 	a.machinesRetaken = a.machinesAsking
 	a.considerResume()
 	a.home.others = a.othersNow()

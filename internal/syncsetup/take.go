@@ -233,10 +233,16 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if lease.Device == c.sync.Device.ID() {
 		from = ""
 	}
-	retired := handoff.Trace(c.opt.OnPhase, "retirement")
-	c.retireHolder(ctx, id)
-	retired()
 	storageOff := !c.sync.StorageAllowed()
+	// An own free chat can return without replacing its open local conversation.
+	keepOpen := storageOff && lease.Device == c.sync.Device.ID() && lease.Expires <= view.Now
+	retire := func() {
+		defer handoff.Trace(c.opt.OnPhase, "retirement")()
+		c.retireHolder(ctx, id)
+	}
+	if !keepOpen {
+		retire()
+	}
 	localWork := engineLocal{eng: c.eng, ctx: ctx}
 	if storageOff {
 		local := cell.Cell{ID: id, Root: root}
@@ -249,14 +255,18 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			if err != nil {
 				return Continued{}, err
 			}
-			// Only work that keepLocal would preserve needs the in-place road;
-			// an absent or clean older copy can read the recorded history normally.
-			if head != "" || dirty {
+			// An own free chat whose shared turn is here can keep its live reader;
+			// an absent or clean older copy still reads the recorded history normally.
+			if head != "" || dirty || keepOpen && known {
 				return c.takeLocalStorageOff(ctx, id, root, seen)
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return Continued{}, err
 		}
+	}
+	if keepOpen {
+		// A read-only fetch still replaces files, so it must retire their live reader.
+		retire()
 	}
 	sc := c.sync.scope(id)
 	defer func() {

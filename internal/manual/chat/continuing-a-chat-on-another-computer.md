@@ -79,7 +79,9 @@ Keeping turns made here that another computer lacks waits for storage access onl
 
 ## Why does continue here say this chat was last held here — my only computer asks to continue
 
-A chat this computer held last, whose hold expired with no other computer holding it, opens without a question, even if nothing has been shared yet. Enter sends. While sync storage is off, new turns stay on this computer; after approval, opening the chat here sends its preserved turns to your other computers. Earlier builds asked `Continue this chat here?` on the only computer that used the chat.
+A chat this computer held last can resume sending after its hold expires when nobody else holds it. While sync storage is off, Enter sends without a question if the local history contains every shared turn, including when later turns stayed only here or nothing was shared yet. The conversation stays open and the storage-off sentence is not repeated after idle time. After approval, opening the chat here sends its preserved turns to your other computers.
+
+With storage on, differing saved turns still raise the question. Missing shared turns also require a choice or show the existing refusal while storage is off; local turns stay here.
 
 The card still says `this chat was last held here; last saved turn 2h ago` when this window's own earlier move failed. Choose `continue here` to resume it. The landing says `Moved here` and never names this computer as somewhere the chat moved from.
 
@@ -472,8 +474,6 @@ Yes. Directory requests from older builds keep the existing 1 MiB request limit,
 
 ## Why did Enter show Continue here instead of sending my message
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Choose **continue here** to bring the saved chat here, then press Enter to send.
 
 Once this window says another computer continued the chat, its first Enter
@@ -481,7 +481,7 @@ raises that question without running a turn or making a branch. A saved hold
 from an earlier process cannot bypass the question. A window whose writer
 still holds the chat sends with one Enter without asking the service first.
 
-A new chat can send its first message normally. A sleeping computer can also resume sending when nobody else has taken the chat and its local saved turn is still current. That safe return happens without another question. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
+A new chat can send its first message normally. A sleeping computer can also resume sending when nobody else has taken the chat and its local saved turn is still current. While storage is off, a free chat last held here also resumes quietly if its local history contains every shared turn, even with newer turns saved only here. These returns keep the conversation open without another question. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
 
 ## A move that failed partway — are my typed words safe, can the old copy still send
 

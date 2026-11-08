@@ -184,7 +184,8 @@ func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offli
 		return nil, 0, false, directory.ErrUnreachable
 	}
 	rows, version, err := s.RowsForSend(ctx)
-	return rows, version, false, err
+	// Storage-off chats save locally without an uploading writer, even after their hold expires.
+	return rows, version, !s.StorageAllowed(), err
 }
 
 func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64, error) {
