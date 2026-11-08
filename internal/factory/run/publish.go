@@ -219,7 +219,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 				a.State, a.At = "ready", now
 				it.FollowUp.Readiness = &a
 				it.Note(now, "PR marked ready for review · head "+a.Head+" · "+a.Summary)
-				loopSay(it, now, "ok", fmt.Sprintf("PR #%d marked ready for review · reviewed head %s · %s", receipt.pr.Number, a.Head, a.Summary))
+				loopSay(it, now, "ok", fmt.Sprintf("PR #%d marked ready for review · reviewed commit %s · %s", receipt.pr.Number, shortCommit(a.Head), a.Summary))
 			}
 			factory.WatchPublishedPR(it)
 		}
@@ -237,7 +237,9 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 		lp.emit(c.id, "", EventShipped, "shipped")
 		if receipt.pr != nil {
 			if factory.ReadinessPending(it) && !receipt.pr.Draft {
-				lp.tell(c.id, fmt.Sprintf("PR #%d is ready for review. Final review passed on head %s. Follow PR continues monitoring CI, feedback and conflicts; merge remains your decision.", receipt.pr.Number, it.HeadCommit))
+				// A PERSON READS A COMMIT BY ITS SHORT NAME, as GitHub shows it,
+				// never by its 40 characters.
+				lp.tell(c.id, fmt.Sprintf("PR #%d is ready for review. Final review passed on commit %s. Follow PR continues monitoring CI, feedback and conflicts; merge remains your decision.", receipt.pr.Number, shortCommit(it.HeadCommit)))
 				return
 			}
 			mode := "Manual asks before pushing repairs; enable Auto for automatic checked updates within the job budget."

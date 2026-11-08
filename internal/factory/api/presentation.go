@@ -83,6 +83,11 @@ func PresentJob(j *Job) {
 		p.Title, p.Detail = "Needs you", j.NeedsYou.Step+" is next · waiting for you to go on"
 	case j.State == StateNeedsYou:
 		p.Title, p.Detail = "Needs you", j.Reason
+	case j.State == StateDone && j.DoneHow == "answered" && nothingChanged(j):
+		// A RUN THAT CHANGED NOTHING SHIPPED NOTHING, and its read says so in
+		// plain words where a person looks first: done, with no pull request,
+		// and the reason ([factory.AgentFieldNothingToChange]).
+		p.Title, p.Detail = "Nothing to change", factory.AgentFieldNothingToChange
 	case j.State == StateDone:
 		p.Title = "Done"
 	case j.State == StateBacklog && strings.TrimSpace(j.Repo) == "" && strings.TrimSpace(j.RunOn) == "":
@@ -109,4 +114,15 @@ func endSentence(s string) string {
 		return s
 	}
 	return s + "."
+}
+
+// nothingChanged says one of the job's steps ended saying its run made no
+// change ([factory.AgentFieldNothingToChange] is its whole output).
+func nothingChanged(j *Job) bool {
+	for _, st := range j.Steps {
+		if strings.TrimSpace(st.Result) == factory.AgentFieldNothingToChange || st.Report != nil && strings.TrimSpace(st.Report.Output) == factory.AgentFieldNothingToChange {
+			return true
+		}
+	}
+	return false
 }

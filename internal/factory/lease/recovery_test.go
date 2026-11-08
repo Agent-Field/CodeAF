@@ -398,12 +398,15 @@ func TestRecoveryALiveRemoteRunIsReattachedNotRetried(t *testing.T) {
 	}
 }
 
-// A remote run that already ended is not followed again: losing the runner
-// then is the ordinary interrupted step, retried within its limit.
+// A remote run that ended before its step's round began is an earlier
+// round's: losing the runner in this round is the ordinary interrupted step,
+// retried within its limit.
 func TestRecoveryAnEndedRemoteRunIsStillAnInterruptedStep(t *testing.T) {
 	f := setup(t)
 	d := recoveryDesk(t, f)
-	it := f.add(t, liveRemoteJob(true))
+	job := liveRemoteJob(true)
+	job.Stream.Phases[0].Started = job.AgentFieldSteps["build"].Ended.Add(time.Minute)
+	it := f.add(t, job)
 	held, e := d.Pull(worker("runner-1", "sam"))
 	if e != nil {
 		t.Fatal(e)
@@ -415,5 +418,38 @@ func TestRecoveryAnEndedRemoteRunIsStillAnInterruptedStep(t *testing.T) {
 	got := readRecovery(t, f, it.ID)
 	if got.Failure == nil || got.Failure.Code != factory.CodeMachineLost {
 		t.Fatalf("an ended run's lost runner was not an interrupted step: %+v", got.Failure)
+	}
+}
+
+// A RUN THAT FINISHED SECONDS BEFORE A QUIT WAS NEVER "OFFLINE MID-STEP"
+// (live e2e round 8, job 77): its run succeeded and opened its pull request,
+// its end reached the job's record, and the quit came before the step's own
+// end did. The hold that runs out then stamps no failure — the job is queued
+// for the runner that reads that end as the step's — even in Manual, where a
+// failure would have waited on the person with no automatic retry.
+func TestRecoveryARunThatEndedThisRoundIsReadNotLost(t *testing.T) {
+	f := setup(t)
+	d := recoveryDesk(t, f)
+	job := liveRemoteJob(true)
+	job.Autonomy = factory.AutonomyManual
+	job.Stream.Phases[0].Started = job.AgentFieldSteps["build"].Began.Add(-time.Second)
+	it := f.add(t, job)
+	held, e := d.Pull(worker("runner-1", "sam"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.now = held.ExpiresAt
+	if _, e = d.Expire(); e != nil {
+		t.Fatal(e)
+	}
+	got := readRecovery(t, f, it.ID)
+	if got.State != factory.StateQueued || got.Failure != nil || got.QKind != "" {
+		t.Fatalf("a run that ended this round read as lost: state %s failure %+v question %q", got.State, got.Failure, got.Question)
+	}
+	if ph := got.Stream.Phases[0]; ph.State != factory.PhaseRunning || ph.Round != 1 {
+		t.Fatalf("the step was retried: %+v", ph)
+	}
+	if _, e := d.Pull(worker("runner-1", "sam")); e != nil {
+		t.Fatalf("the job was not offered to read its run's end: %v", e)
 	}
 }

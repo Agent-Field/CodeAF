@@ -82,6 +82,28 @@ func AgentFieldRunLive(it Item, step string) bool {
 	return run != nil && run.ExecutionID != "" && run.Ended.IsZero()
 }
 
+// AgentFieldRunOwed says step's AgentField run is one a runner still owes
+// the job: live ([AgentFieldRunLive]), or ended while the step that started
+// it is still running — a quit or a lease let go between the run's end and
+// the step's — so its end is on the record and not yet the step's. A runner
+// that takes the job again reads that end as the step's outcome; the step was
+// never lost, and nothing about it is a retry.
+func AgentFieldRunOwed(it Item, step string) bool {
+	if AgentFieldRunLive(it, step) {
+		return true
+	}
+	run := AgentFieldRunOf(it, step)
+	if run == nil || run.ExecutionID == "" || run.Ended.IsZero() || run.Began.IsZero() || it.Stream == nil {
+		return false
+	}
+	for _, ph := range it.Stream.Phases {
+		if ph.Name == step {
+			return ph.State == PhaseRunning && (ph.Started.IsZero() || !run.Began.Before(ph.Started))
+		}
+	}
+	return false
+}
+
 // AgentFieldAnyRunLive says one of the job's runs (its own, or any agentfield
 // step's) was started on the control plane and has not ended. Such a run goes
 // on there whether or not a runner here follows it, so a job that has one and

@@ -792,7 +792,8 @@ and observed head after the write. It sends the mutation once; if its outcome
 is uncertain, a retry first observes GitHub and does not repeat a successful
 transition. Access/refusal/read errors keep a specific recoverable reason.
 A PR marked ready externally is recognized too. Overview and the conversation
-show the ready milestone and reviewed head. Follow PR keeps watching afterward;
+show the ready milestone and the reviewed commit by its seven-character short
+id ("Final review passed on commit 23ba8fc."). Follow PR keeps watching afterward;
 ready is not job completion and Auto never grants merge authority.
 
 ## Follow PR explains its current work in the job conversation

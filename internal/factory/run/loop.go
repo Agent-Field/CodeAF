@@ -1166,6 +1166,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}
 		job := lp.job(c, st, index, i, round)
 		job.Resume, job.Opened, job.CarryOn = resume, lp.opened(c, i), carried
+		job.Continuing = continuing && before.State == factory.PhaseRunning && before.Round == round
 		if job.Progress != nil {
 			job.Progress(followProgressStart(job))
 		}
@@ -2698,6 +2699,14 @@ func (r *Runner) revive(it factory.Item) error {
 	// The lease door already said an explicit Resume before queueing this run.
 	log := it.Stream.Log
 	resumeSaid := len(log) > 0 && log[len(log)-1].Text == sayResumed
+	// "RESUMED" IS SAID ONLY WHEN A STEP GOES ON WORKING. A runner that takes
+	// a job back after a restart revives it through this same door, and a job
+	// that only waits on an AgentField run's approval, or has no step left to
+	// run, resumes nothing: saying so put a stray "resumed" in its chat on
+	// every restart.
+	if nextPhase(it.Stream.Phases) < 0 || it.QKind == factory.QKindAgentField {
+		resumeSaid = true
+	}
 	line := sayResumed
 	if i := nextPhase(it.Stream.Phases); i >= 0 {
 		ph := it.Stream.Phases[i]
@@ -3338,6 +3347,9 @@ func (lp *floorLoop) shipAgentField(c *loopCtl) {
 		words := "the AgentField run finished"
 		if it.PullRequest != nil && it.PullRequest.URL != "" {
 			words += " and opened " + it.PullRequest.URL
+		} else if factory.AgentFieldNothingChanged(*it) {
+			// NOTHING WENT OUT, and the log says why rather than "finished".
+			words = factory.AgentFieldNothingToChange
 		}
 		loopSay(it, now, "said", words)
 		return nil

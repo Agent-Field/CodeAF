@@ -185,3 +185,83 @@ func capitalFirst(s string) string {
 	}
 	return string(unicode.ToUpper(r)) + s[size:]
 }
+
+// AgentFieldNothingToChange is how a run that made no changes ends, in the
+// words a person reads first: the work it was asked for is already there, or
+// it found nothing to do, and so there is no pull request to open. IT IS NOT
+// SHIPPED: nothing went out. The job is done, and its read says this as its
+// state's detail rather than a bare "Done".
+const AgentFieldNothingToChange = "Nothing to change: the run made no changes, so no pull request was opened."
+
+// AgentFieldNothingChanged says one of the job's steps ended saying its run
+// made no change: its output is [AgentFieldNothingToChange], whole.
+func AgentFieldNothingChanged(it Item) bool {
+	if it.Stream == nil {
+		return false
+	}
+	for _, ph := range it.Stream.Phases {
+		if ph.Result != nil && strings.TrimSpace(ph.Result.Output) == AgentFieldNothingToChange {
+			return true
+		}
+	}
+	return false
+}
+
+// agentFieldNoChange is a run's own words for a change that came out empty,
+// in git's and the forge's vocabulary rather than any one pipeline's: "No
+// commits between main and feature/…", "has no commits ahead of the base
+// branch", "the run changed nothing", "nothing to commit".
+var agentFieldNoChange = regexp.MustCompile(`(?i)\bno commits (?:between|ahead)\b|\b(?:changed|changes) nothing\b|\bmade no changes\b|\bnothing to commit\b|\bno changes (?:to commit|were made)\b`)
+
+// AgentFieldNoChange says any of a run's words (its notes, its summary) say
+// the run made no change to the repository. THE SHAPE OF THE WORDS DECIDES,
+// never a pipeline's or a step's name.
+func AgentFieldNoChange(said ...string) bool {
+	for _, s := range said {
+		if agentFieldNoChange.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
+// agentFieldBad is an outcome that says something did not happen or did
+// not pass: "failed", "did not", "could not", "error".
+var agentFieldBad = regexp.MustCompile(`(?i)\b(?:fail(?:s|ed|ure)?|did not|didn't|could not|couldn't|cannot|can't|errors?|refused|rejected|not pass(?:ed)?)\b`)
+
+// agentFieldPullRequestWords is an outcome about the pull request itself.
+var agentFieldPullRequestWords = regexp.MustCompile(`(?i)\b(?:pull request|PR)\b`)
+
+// agentFieldNoteRank is how much one note says about how a run ended: a
+// pull request that was not opened, or a change that came out empty, says
+// the most; a failure of any kind next; a note that only reports progress
+// ("Repo finalized: …", "Phase 3b: …") says nothing about the outcome.
+func agentFieldNoteRank(s string) int {
+	switch {
+	case agentFieldNoPullRequest.MatchString(strings.TrimSpace(s)), AgentFieldNoChange(s),
+		agentFieldPullRequestWords.MatchString(s) && agentFieldBad.MatchString(s):
+		return 2
+	case agentFieldBad.MatchString(s):
+		return 1
+	}
+	return 0
+}
+
+// AgentFieldTellingNote is the note, of a run's notes oldest first, that says
+// how the run ended: the newest of those that say the most
+// ([agentFieldNoteRank]), else the newest. A RUN'S LAST NOTE IS NOT ALWAYS
+// ITS OUTCOME: a reasoner may tidy up after it decided ("Repo finalized: …"
+// 8 ms after "No pull request: the build did not pass …"), and the tidying
+// never reads as the reason a build failed. "" when there is none.
+func AgentFieldTellingNote(notes []string) string {
+	best, rank := "", -1
+	for _, n := range notes {
+		if strings.TrimSpace(n) == "" {
+			continue
+		}
+		if r := agentFieldNoteRank(n); r >= rank {
+			best, rank = n, r
+		}
+	}
+	return best
+}

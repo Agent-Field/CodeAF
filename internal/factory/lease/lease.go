@@ -611,7 +611,12 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 		// go, and the runner that takes it follows the same run. No failure
 		// is stamped, so no automatic retry is spent and the step keeps its
 		// round.
-		if !it.Publishing && factory.AgentFieldRunLive(*it, step) {
+		// NOR IS A RUN THAT ENDED ON THE CONTROL PLANE BEFORE ITS STEP DID
+		// HERE: a quit seconds after the run finished leaves its end on the
+		// record and the step running, and the runner that takes the job
+		// reads that end as the step's (factory.AgentFieldRunOwed). It was
+		// never "offline mid-step".
+		if !it.Publishing && factory.AgentFieldRunOwed(*it, step) {
 			return nil
 		}
 		it.State = factory.StateNeedsYou

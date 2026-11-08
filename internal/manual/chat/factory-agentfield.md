@@ -404,8 +404,13 @@ alone.
 The `why` is the run's own last word, read from the shape of its words and
 never from a pipeline's or a step's name:
 
-- the newest note the run left on the control plane, else the first sentence
-  of its result's summary;
+- the note the run left on the control plane that says how it ended, else
+  the first sentence of its result's summary. A note is chosen by what it
+  says, not only by when: one that says no pull request was opened, or that
+  the change was empty, wins over one that says something failed, which wins
+  over a note that only reports progress. So a tidy-up note written after
+  the decision ("Repo finalized: …") is never the reason a build failed; among
+  notes that say as much, the newest wins;
 - a report that starts with a grade (`OVERALL: FAIL.`) gives the reason after
   it, cut before any command it quotes, so what a command printed is never on
   the line;
@@ -420,6 +425,18 @@ output: open the step to read it in full. A step that finished reads
 
 A failed job's file on disk says `"State": "failed"`; it is read back as a job
 that is not running with its failure on it, so Run again works as before.
+
+## an AgentField run that changed nothing — nothing to change, no pull request, already done
+
+When a run ends having changed nothing — the work the issue asks for is
+already on the default branch, so its notes say the change came out empty
+("No commits between main and …", "the run changed nothing") — the step is
+done and nothing failed, but nothing shipped either. The job reads **Nothing to
+change** with the line "Nothing to change: the run made no changes, so no pull
+request was opened." It is a finished job and stays in All jobs; it is not
+shown as shipped, and its log says that line instead of "the AgentField run
+finished". Close the issue yourself if the work really is there, or Run again
+with clearer words if it is not.
 
 ## merge a pull request an AgentField run opened — which commit is approved, "no approved commit is recorded"
 
@@ -487,8 +504,13 @@ press it. With no runner holding it, the job is stopped at once and the next
 runner to come back cancels the run on the control plane and writes its end,
 so the run does not go on to open a pull request.
 
-A run that had already ended when the runner went away is an ordinary
-interrupted step: it is retried automatically, at most 3 times.
+A run that ended while its step was still running here — you quit codeaf a
+few seconds after the run finished and opened its pull request — is never
+"Runner went offline mid-step". Its end is already on the job, so the runner
+that takes it after the restart reads that end as the step's: done with its
+pull request, or the run's own failure. No second run is started, and this
+holds in Manual too. A step you start again yourself (Run again, Try again)
+starts a run of its own.
 
 When the run a re-taken job follows ends, the job lands on what it did: the
 pull request it opened, done, or its own failure. Only the agentfield step
