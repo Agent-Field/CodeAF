@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: An AgentField run that finished just before a quit is recorded finished, and a run that changed nothing says so
+title: A run that finished just before a quit reads finished, and a run that changed nothing says so
 pr: 2518
 surface: [factory, engine]
 invalidates:
