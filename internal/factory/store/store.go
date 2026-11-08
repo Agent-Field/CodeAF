@@ -597,7 +597,11 @@ func (st *Store) now() time.Time {
 	return st.clock()
 }
 
-func (st *Store) read(path string) (doc, error) {
+func (st *Store) read(path string) (doc, error) { return cachedRead(path, readDocument) }
+
+// readDocument reads and decodes the document at path; [Store.read] answers
+// it from the process's cache while the file is unchanged.
+func readDocument(path string) (doc, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

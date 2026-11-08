@@ -653,7 +653,9 @@ and saved task reports.
 **Building knowledge base… You can keep chatting.** shows that work continues
 in the background. You can leave Memory, change chats, and return later; pages
 appear after the initial history has been processed and organized. New chats
-can continue arriving while that initial collection is built.
+can continue arriving while that initial collection is built. While nothing
+new arrives the background build looks for new chats less and less often, at
+most every 30 seconds; pressing **Build knowledge base** looks at once.
 
 ## Closing a chat waits for knowledge capture
 

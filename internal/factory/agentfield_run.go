@@ -570,3 +570,30 @@ func PullRequestIn(result []byte) (string, int) {
 	}
 	return "", 0
 }
+
+// RunDeliveredPR says the job's pull request was opened by a run on another
+// machine ([RunsElsewhere]): an AgentField pipeline or a RunOn job. No
+// worktree on this factory ever held its commits, so no proof gate here
+// recorded the commit a person approved, and [PinDeliveredHead] records the
+// equivalent from the pull request itself.
+func RunDeliveredPR(it Item) bool {
+	return it.Kind != KindPR && it.Publish == "pr" && it.PullRequest != nil && it.PullRequest.Number > 0 && RunsElsewhere(it)
+}
+
+// PinDeliveredHead records head as the job's approved commit when the job
+// shipped on a run that delivered its pull request and none is recorded yet.
+// THE RUN'S ENDING IS ITS APPROVAL: the person approved the run's plan and the
+// run, not a local proof, decided the change was done, so the head the pull
+// request carries when the run has ended is what the merge gate holds the
+// merge to, exactly as a native publish holds it to the head the person
+// approved. A push after this is a commit nobody approved, and the gate says
+// so. It never touches a job that recorded its own commit, and never a native
+// job, whose approved commit is its proof's alone.
+func PinDeliveredHead(it *Item, head string) bool {
+	head = strings.TrimSpace(head)
+	if head == "" || strings.TrimSpace(it.HeadCommit) != "" || it.State != StateShipped || !RunDeliveredPR(*it) || it.PullRequest.State != PROpen {
+		return false
+	}
+	it.HeadCommit = head
+	return true
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -93,6 +94,7 @@ func (v *Vault) StartBuild() error {
 		return err
 	}
 	v.forgetConsent()
+	wakeBuild(v.root)
 	return nil
 }
 
@@ -123,11 +125,22 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 	defer filelock.Unlock(lock)
 	delay := time.Second
 	lastInventory := ""
+	wake := buildWake(v.root)
+	// A Build pressed before this loop began is answered by its first pass.
+	select {
+	case <-wake:
+	default:
+	}
+	seen, quiet := "", false
 	for {
 		if err = ctx.Err(); err != nil {
 			return err
 		}
+		before := seen
+		v.passSeen = ""
 		err = v.runPass(ctx, history, key, &lastInventory)
+		seen = v.passSeen
+		quiet = err == nil && seen != "" && seen == before
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -149,13 +162,58 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 				return saveErr
 			}
 			delay = min(120*time.Second, max(5*time.Second, delay*2))
+		} else if quiet {
+			// A PASS THAT FOUND THE SAME CHATS AS THE LAST ONE BACKS OFF. Each
+			// pass lists every saved chat and opens the database, and an idle
+			// engine has nothing new for it; a new chat is still found within
+			// buildQuietMax, and a person's Build wakes the loop at once.
+			delay = min(buildQuietMax, max(buildEvery, delay*2))
 		} else {
-			delay = 2 * time.Second
+			delay = buildEvery
 		}
-		if err = waitBuild(ctx, delay); err != nil {
+		if err = waitBuildOrWake(ctx, delay, wake); err != nil {
 			return err
 		}
 	}
+}
+
+// buildEvery is how soon a pass follows one that found something new;
+// buildQuietMax is the longest a quiet vault waits between passes. A test
+// shortens both.
+var (
+	buildEvery    = 2 * time.Second
+	buildQuietMax = 30 * time.Second
+)
+
+// buildWakes is each vault folder's wake, shared by every [Vault] opened on
+// it: the one running the loop and the one a person's Build was pressed on
+// are separate values.
+var buildWakes sync.Map
+
+func buildWake(root string) chan struct{} {
+	w, _ := buildWakes.LoadOrStore(filepath.Clean(root), make(chan struct{}, 1))
+	return w.(chan struct{})
+}
+
+// wakeBuild asks the loop running on root for a pass now. It never blocks: a
+// wake already waiting is the same ask.
+func wakeBuild(root string) {
+	select {
+	case buildWake(root) <- struct{}{}:
+	default:
+	}
+}
+
+func waitBuildOrWake(ctx context.Context, delay time.Duration, wake <-chan struct{}) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	case <-wake:
+	}
+	return nil
 }
 func buildRetryNotice(attempts float64) string {
 	if attempts >= ordinaryBuildAttemptLimit {
@@ -202,6 +260,7 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err != nil {
 		return err
 	}
+	v.passSeen = identity([]any{journals, v.Enabled()})
 	db, err := v.database()
 	if err != nil {
 		return err
