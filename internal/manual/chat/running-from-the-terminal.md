@@ -547,7 +547,14 @@ quitting the app only lets go of it.
 The app waits for local saving, publishes the newest saved turn and releases its
 hold so another computer can continue. Each saving boundary waits up to 30 seconds.
 A successful save is quiet; a definite final-save failure is kept in the engine
-log and leaves unsaved turns on this computer.
+log and leaves unsaved turns on this computer. A chat whose folder was deleted
+while it was open, such as a finished job's checkout, has nothing left to save
+there and is not a failure.
+
+A reply stopped by a quit still has its cost recorded. The app asks the router
+for that call's price once more, for at most two seconds, and waits at most
+three seconds in all; a price the router has not worked out yet is recorded as
+unpriced, with its tokens, instead of holding the quit.
 
 Crew members follow the same quit and resume rules. A member still opening
 does not hold up quitting for optional file cleanup; its files are kept.

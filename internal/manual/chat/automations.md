@@ -494,7 +494,8 @@ clock, nothing runs and saved automations wait.
 
 The clock inherits the environment — keys, `PATH`, time zone — of the window that started
 it. When its own build is replaced it leaves as soon as nothing is running, and the next
-window's check starts the new one. What it could not do outside a run goes to
+window's check starts the new one. When the window that started it closes and no other
+window is open, it leaves within about two seconds once nothing is running. What it could not do outside a run goes to
 `~/.codeaf/v3/automations/clock.log`.
 
 ## What does an automation cost — 30 minutes and $5 a run, and where the spend shows
