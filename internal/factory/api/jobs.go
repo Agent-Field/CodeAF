@@ -224,6 +224,13 @@ type JobControls struct {
 	ChangeAssignee bool `json:"change_assignee"`
 	Sync           bool `json:"sync"`
 	Timeline       bool `json:"timeline"`
+	// GiveBack is the takeover bar and its Give back: a person has this job
+	// (manual) and it has not ended. AN ENDED JOB IS NOBODY'S TO GIVE BACK.
+	// Close and Reject keep manual set, because that mark is what keeps
+	// every automation and old worker report off the job, and the control
+	// door refuses a finished job; a desk that drew the bar from manual alone
+	// offered Give back on a rejected job (live A+B run 2, D1).
+	GiveBack bool `json:"give_back"`
 }
 
 // ServiceRoute publishes the person routes implemented by the factory service.

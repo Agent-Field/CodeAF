@@ -50,7 +50,7 @@ import (
 
 // afStepQuestion is the QKind a step's question carries while the person holds
 // it (internal/factory/run's qkindStep).
-const afStepQuestion = "step"
+const afStepQuestion = factory.QKindStep
 
 // afAnswerWords are the refusals an answer to a run's pause can meet.
 const (

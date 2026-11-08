@@ -23,7 +23,10 @@ const (
 	NeedsOutOfAttempts = "out_of_rounds"
 	NeedsPublishFailed = "publish_failed"
 	// Persisted question kinds keep their bytes across wire contracts.
-	QKindSpendStopped     = "spend_stopped"
+	QKindSpendStopped = "spend_stopped"
+	// QKindStep is a step's question the person holds, and the wire's kind
+	// for it (appwire's factory.job_answer answers it by that kind).
+	QKindStep             = "step"
 	QKindOutOfAttempts    = "out_of_attempts"
 	NeedsFailed           = "failed"
 	NeedsChangesRequested = "changes_requested"
@@ -333,6 +336,16 @@ func QuestionForm(it Item) (kind string, options []string, who string) {
 	case NeedsQuestion:
 		who = WhoAnyoneWithRepo
 		var opts []string
+		// A STEP'S QUESTION IS KIND STEP, WITH ITS OPTIONS AS ITS ANSWERS,
+		// however many there are and whatever they say: the answer door and
+		// every desk read it by that kind. It went out as "options" (or
+		// "yes_no", or "text") and its buttons were never drawn.
+		if it.QKind == QKindStep {
+			if it.Asking != nil {
+				opts = append(opts, it.Asking.Options...)
+			}
+			return QKindStep, opts, who
+		}
 		if it.Asking != nil {
 			opts = it.Asking.Options
 		}

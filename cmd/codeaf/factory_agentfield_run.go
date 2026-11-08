@@ -145,6 +145,11 @@ type afRemote struct {
 	// asking is each harness question being put to the job now, by
 	// job/execution/id, with how to withdraw it.
 	asking map[string]context.CancelFunc
+	// answered is every harness question answered here and not yet taken
+	// down by its step, by afAnsweredKey. The step reads its answer and takes
+	// the question down ("ask_done") only when it reads the steer, so until
+	// then its question is still among the ones it keeps asking.
+	answered map[string]bool
 	// opened is every ended call whose result has been read for a pull
 	// request, so each is read once (pullRequestOf).
 	opened map[string]bool
@@ -830,6 +835,15 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 			m.cpAcked = m.state.Acked
 		}
 	}
+	// AN ANSWER IS KEPT ON DISK WITH THE QUESTIONS, at the next reading
+	// whether or not the step relayed anything since: a factory that
+	// restarts before the step takes its question down does not ask it again.
+	if m != nil && len(m.state.Asks) > 0 {
+		if kept := r.unanswered(it.ID, exec, m.state.Asks); len(kept) != len(m.state.Asks) {
+			m.state.Asks = kept
+			_ = m.save()
+		}
+	}
 	if r.drained(exec) {
 		return m
 	}
@@ -885,6 +899,7 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 			// (chat_once_live.go's onceAsker): it is kept beside it, put to
 			// the job's manager and person, and answered over steer.
 			if q, ok := afAskLineOf(e.Data); ok {
+				q.Seq = e.Seq
 				asks = append(asks, q)
 				continue
 			}
@@ -916,7 +931,7 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 			defer r.markDrained(exec)
 		}
 	}
-	m.state.Asks = afPendingAsks(m.state.Asks, asks)
+	m.state.Asks = r.unanswered(it.ID, exec, afPendingAsks(m.state.Asks, asks))
 	if afEnded(step.node.Status) {
 		m.state.Asks = nil
 	}
@@ -1466,7 +1481,11 @@ func afReserved(it factory.Item, step string) []string {
 // afHarnessAsk is one question a codeaf harness step asked on its events
 // (onceAskLine), as this factory keeps it until it is answered.
 type afHarnessAsk struct {
-	ID       string   `json:"id"`
+	ID string `json:"id"`
+	// Seq is the relay seq of the line that asked it: a step that starts
+	// again (a schema retry) numbers its questions from ask-1 again, so the
+	// id alone does not say which asking this is.
+	Seq      int64    `json:"seq,omitempty"`
 	Done     bool     `json:"done,omitempty"`
 	Question string   `json:"question,omitempty"`
 	Options  []string `json:"options,omitempty"`
@@ -1537,7 +1556,7 @@ func (r *afRemote) raiseAsks(client afClient, job int, exec string, pending []af
 	}
 	for _, q := range pending {
 		key := prefix + q.ID
-		if _, on := r.asking[key]; on {
+		if _, on := r.asking[key]; on || r.answered[afAnsweredKey(job, exec, q)] {
 			continue
 		}
 		ctx, cancel := context.WithCancel(place.life)
@@ -1547,8 +1566,20 @@ func (r *afRemote) raiseAsks(client afClient, job int, exec string, pending []af
 			defer r.forgetAsk(key)
 			said, err := place.ask(ctx, factory.Asked{Question: q.Question, Options: q.Options, Pick: q.Pick, Person: q.Person})
 			if err != nil {
+				// WITHDRAWN WHILE THE STEP GOES ON — taken down by the step,
+				// or the run ended — the question comes off the job. A stop,
+				// or a runner letting go (place.life over), leaves the job
+				// to whoever ends it.
+				if ctx.Err() != nil && place.life.Err() == nil {
+					r.withdraw(job, q)
+				}
 				return
 			}
+			// ANSWERED IS ANSWERED, from the moment the answer is given:
+			// the step's question stays among its asks until it reads the
+			// steer, and every reading in between would put it to the job
+			// again (live A+B run 2, job 78).
+			r.markAnswered(job, exec, q)
 			by, words := "person", said
 			if w, ok := strings.CutPrefix(said, "the manager answered: "); ok {
 				by, words = "manager", w
@@ -1573,6 +1604,43 @@ func (r *afRemote) raiseAsks(client afClient, job int, exec string, pending []af
 	}
 }
 
+// afAnsweredKey names one asking of one harness question: its job, its
+// execution, its id and the relay seq that asked it.
+func afAnsweredKey(job int, exec string, q afHarnessAsk) string {
+	return strconv.Itoa(job) + "/" + exec + "/" + q.ID + "@" + strconv.FormatInt(q.Seq, 10)
+}
+
+// markAnswered records that q was answered here.
+func (r *afRemote) markAnswered(job int, exec string, q afHarnessAsk) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.answered == nil {
+		r.answered = map[string]bool{}
+	}
+	r.answered[afAnsweredKey(job, exec, q)] = true
+}
+
+// unanswered is pending without the questions answered here.
+func (r *afRemote) unanswered(job int, exec string, pending []afHarnessAsk) []afHarnessAsk {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.answered) == 0 {
+		return pending
+	}
+	return slices.DeleteFunc(slices.Clone(pending), func(q afHarnessAsk) bool { return r.answered[afAnsweredKey(job, exec, q)] })
+}
+
+// withdraw takes q off the job, when it is still the question the job holds.
+func (r *afRemote) withdraw(job int, q afHarnessAsk) {
+	errSame := errors.New("unchanged")
+	_ = r.items.Update(job, func(it *factory.Item) error {
+		if !factoryrun.WithdrawAsk(it, q.Question, r.clock()) {
+			return errSame
+		}
+		return nil
+	})
+}
+
 // forgetAsk withdraws one question being put to the job.
 func (r *afRemote) forgetAsk(key string) {
 	r.mu.Lock()
@@ -1588,6 +1656,11 @@ func (r *afRemote) dropAsks(job int) {
 	prefix := strconv.Itoa(job) + "/"
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for key := range r.answered {
+		if strings.HasPrefix(key, prefix) {
+			delete(r.answered, key)
+		}
+	}
 	for key, cancel := range r.asking {
 		if strings.HasPrefix(key, prefix) {
 			cancel()
