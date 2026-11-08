@@ -316,11 +316,15 @@ func TestLocalFactorySetupWalksGitHubReposIssuesAndCheckoutsStartingNothing(t *t
 			t.Fatalf("a job moved to %q", j.State)
 		}
 	}
+	// The GitHub token is kept in one place on disk: the engine's own
+	// profile, owner-readable only, for the next launch (live e2e round 9).
 	s.neverSaid(setupSecret, host.token)
+	engine := filepath.Join(s.home, "config.json")
 	for _, root := range []string{s.home} {
 		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 			if err == nil && info.Mode().IsRegular() {
-				if data, _ := os.ReadFile(path); strings.Contains(string(data), setupSecret) || strings.Contains(string(data), host.token) {
+				data, _ := os.ReadFile(path)
+				if (path != engine && strings.Contains(string(data), setupSecret)) || strings.Contains(string(data), host.token) {
 					t.Errorf("%s holds a secret", path)
 				}
 			}

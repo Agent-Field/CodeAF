@@ -22,10 +22,14 @@ The app's engine connects with `factory.agentfield_connect`. Before keeping
 anything it asks the control plane for its source catalog with the key, then
 registers; if that fails ("AgentField did not accept that API key",
 "AgentField could not be reached", "the factory could not listen on …")
-nothing is kept. The API key is kept the way the GitHub token
-is (by the desktop app, else in the profile) and never sent back. There is no
-slash command for this in the terminal chat, and only the factory on this
-machine can be connected.
+nothing is kept. The API key and internal token are kept the way a pasted
+GitHub token is: in the engine's own profile (owner-readable only, never in a
+log), and in the desktop app also handed to the app, so a desk that starts its
+engine again stays connected. Disconnect forgets them in both places. They are
+never sent back. The desk has no settings screen to connect AgentField yet:
+`factory.agentfield_connect` is the one way in. There is no slash command for
+this in the terminal chat, and only the factory on this machine can be
+connected.
 
 ## connect my own tool or script to the factory — no HTTP API, no SDK, only AgentField
 
@@ -416,6 +420,11 @@ never from a pipeline's or a step's name:
   the line;
 - a note that starts "No pull request:" reads "<reason>, so no pull request
   was opened";
+- when the run's words name the command that failed, short and plain (a
+  quoted `` `go build ./...` exited 1 ``), the line names it, never what it
+  printed: "The build did not pass its checks (go build ./... failed), so no
+  pull request was opened". A command too long for the line, or not plain, is
+  left off;
 - a run that failed or was cancelled on the control plane reads "<step>
   failed: <reason>" or "<step> was cancelled: <reason>".
 
@@ -423,8 +432,15 @@ The run's whole report, command output included, is kept as the step's
 output: open the step to read it in full. A step that finished reads
 "<step> · done · finished", or "finished and opened <pull request link>".
 
-A failed job's file on disk says `"State": "failed"`; it is read back as a job
-that is not running with its failure on it, so Run again works as before.
+## a failed, rejected or stopped job on disk — its file says so; a step reads as its label
+
+A failed job's file on disk says `"State": "failed"`, a rejected one
+`"State": "rejected"` and a stopped one `"State": "stopped"`; each is read back
+as a job that is not running with that end on it, so Run again, Reopen and
+Carry on work as before.
+
+A step's details read its label ("Build on AgentField"), never the
+`node.reasoner` the pipeline file names it by.
 
 ## an AgentField run that changed nothing — nothing to change, no pull request, already done
 
@@ -437,6 +453,21 @@ request was opened." It is a finished job and stays in All jobs; it is not
 shown as shipped, and its log says that line instead of "the AgentField run
 finished". Close the issue yourself if the work really is there, or Run again
 with clearer words if it is not.
+
+## an empty pull request — 0 files, changes nothing, closed, no Merge
+
+A run may still open a pull request that changes no files (its commits are
+empty, so the forge never said "No commits between"). Once GitHub's file list
+for the pull request's head is empty and the pull request's own counts agree
+(0 files, 0 lines), the job reads **Nothing to change** with "Nothing to
+change: the pull request changed no files, so there is nothing to merge." and
+offers no Merge ("the pull request changes no files"). An empty list GitHub's
+counts contradict is not yet read, never empty.
+
+A pull request this factory's job opened is then closed with a comment saying
+it changes no files, and the job notes "Nothing to change: pull request #<n>
+changed no files, so it was closed." One someone else opened is left open; its
+job still offers no Merge.
 
 ## merge a pull request an AgentField run opened — which commit is approved, "no approved commit is recorded"
 
@@ -504,14 +535,6 @@ press it. With no runner holding it, the job is stopped at once and the next
 runner to come back cancels the run on the control plane and writes its end,
 so the run does not go on to open a pull request.
 
-A run that ended while its step was still running here — you quit codeaf a
-few seconds after the run finished and opened its pull request — is never
-"Runner went offline mid-step". Its end is already on the job, so the runner
-that takes it after the restart reads that end as the step's: done with its
-pull request, or the run's own failure. No second run is started, and this
-holds in Manual too. A step you start again yourself (Run again, Try again)
-starts a run of its own.
-
 When the run a re-taken job follows ends, the job lands on what it did: the
 pull request it opened, done, or its own failure. Only the agentfield step
 reports. The run's own calls (its plan, its coder, its review…) are drawn
@@ -520,6 +543,20 @@ restart cannot end in "The factory refused this step's results (HTTP 422):
 report names an unknown step". Picking a job up again records nothing on its
 activity: no blank "failed" line. The step keeps the start time it had before
 the restart, and its chat reads "resumed" without a second "<step> started".
+
+## quit just after an AgentField run ended — read after the restart, never started again by itself, Manual too
+
+A run that ended while its step was still running here — you quit codeaf a
+few seconds after the run finished — is never "Runner went offline mid-step".
+Its end is already on the job and is owed to its step, so the runner that
+takes it after the restart reads that end as the step's: done with its pull
+request, or the run's own outcome ("No pull request: …"). No second run is
+started, it does not ask for the plan's approval again, and this holds in
+Manual too, however the job came back (a clean quit's hand-back, a hold that
+ran out) and whatever the step's start time says. A step you start again
+yourself after it read its run's end (Run again, Try again, Reopen) starts a
+run of its own; a run someone stopped or rejected is never read as a later
+round's end.
 
 ## answer an AgentField approval from another computer — a team factory, a server, a desk attached to a remote factory
 

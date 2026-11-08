@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -34,10 +33,11 @@ func TestGitHubTokenAndViaReplaceEachOther(t *testing.T) {
 	}
 }
 
-// THE APP'S GITHUB KEY IS MEMORY ONLY: it answers the reader, and no writer
-// puts a token in the profile while the app holds the keys. The yes to gh is
-// consent, not a key, so the app's profile keeps that alone, and takes it back.
-func TestAppGitHubKeyNeverReachesTheProfile(t *testing.T) {
+// A TOKEN PASTED INTO AN APP-RUN ENGINE OUTLIVES THE LAUNCH IN ITS PROFILE
+// (live e2e round 9: held in memory alone, it was lost at every desk launch).
+// The app's own key still answers the reader first and never reaches the
+// profile. The yes to gh is consent, not a key, and is kept and taken back.
+func TestAppKeepsAPastedGitHubTokenInTheProfileForTheNextLaunch(t *testing.T) {
 	dir := t.TempDir()
 	creds := NewAppCredentials()
 	defer UseAppCredentials(creds)()
@@ -45,9 +45,24 @@ func TestAppGitHubKeyNeverReachesTheProfile(t *testing.T) {
 	if got := GitHubTokenAt(dir); got != "opaque-app-gh-7c21" {
 		t.Fatalf("the app's key lost to %q", got)
 	}
-	if err := WriteGitHubToken(dir, "ghp_written"); !errors.Is(err, ErrAppKeys) {
+	// A pasted token is kept in the profile too, owner-readable only, and the
+	// app's own key still answers first.
+	if err := WriteGitHubToken(dir, "ghp_written"); err != nil {
 		t.Fatalf("a token write was answered %v", err)
 	}
+	if got := GitHubTokenAt(dir); got != "opaque-app-gh-7c21" {
+		t.Fatalf("the profile's copy won over the app's key: %q", got)
+	}
+	if info, err := os.Stat(BudgetConfigPath(dir)); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("the profile holding the token is %v, %v; want 0600", info.Mode().Perm(), err)
+	}
+	// The next launch, where the app hands nothing back, reads it from there.
+	next := NewAppCredentials()
+	restore := UseAppCredentials(next)
+	if got := GitHubTokenAt(dir); got != "ghp_written" {
+		t.Fatalf("the next launch lost the token: %q", got)
+	}
+	restore()
 	if err := WriteGitHubViaGH(dir); err != nil || GitHubViaAt(dir) != "gh" {
 		t.Fatalf("the yes to gh was not kept: %v, via %q", err, GitHubViaAt(dir))
 	}
@@ -55,7 +70,7 @@ func TestAppGitHubKeyNeverReachesTheProfile(t *testing.T) {
 		t.Fatalf("the yes to gh was not taken back: %v, via %q", err, GitHubViaAt(dir))
 	}
 	raw, _ := os.ReadFile(BudgetConfigPath(dir))
-	if strings.Contains(string(raw), "opaque-app") || strings.Contains(string(raw), "ghp_") {
-		t.Fatalf("a GitHub key reached the profile: %s", raw)
+	if strings.Contains(string(raw), "opaque-app") {
+		t.Fatalf("the app's own key reached the profile: %s", raw)
 	}
 }

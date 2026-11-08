@@ -255,9 +255,11 @@ func Check(ctx context.Context, httpc *http.Client, url, key string) ([]Source, 
 
 func (c *Connection) path() string { return filepath.Join(c.Store.Root(), settingsFile) }
 
-// keepSecrets keeps both where the GitHub token is kept: handed to the app to
-// keep in app mode (config.AppCredentials.Keep), otherwise in the profile. Any
-// legacy node secret is forgotten.
+// keepSecrets keeps both where the GitHub token is kept: in the profile,
+// owner-readable only, and in app mode also handed to the app to keep
+// (config.AppCredentials.Keep). THE PROFILE'S COPY IS WHAT AN ENGINE THE DESK
+// STARTS AGAIN READS when the app hands nothing back. Any legacy node secret
+// is forgotten.
 func keepSecrets(profile, key, token string) error {
 	redact.Register(key)
 	redact.Register(token)
@@ -270,7 +272,9 @@ func keepSecrets(profile, key, token string) error {
 			}
 		}
 		keys.Forget(config.AppAgentFieldNodeProvider)
-		return nil
+		if strings.TrimSpace(profile) == "" {
+			return nil
+		}
 	}
 	return config.WriteAgentFieldSecrets(profile, key, token)
 }
@@ -280,10 +284,9 @@ func forgetSecrets(profile string) error {
 		keys.Forget(config.AppAgentFieldProvider)
 		keys.Forget(config.AppAgentFieldNodeProvider)
 		keys.Forget(config.AppAgentFieldTokenProvider)
-		return nil
-	}
-	if config.AgentFieldKeyAt(profile) == "" && config.AgentFieldNodeSecretAt(profile) == "" && config.AgentFieldInternalTokenAt(profile) == "" {
-		return nil
+		if strings.TrimSpace(profile) == "" {
+			return nil
+		}
 	}
 	return config.ForgetAgentFieldSecrets(profile)
 }

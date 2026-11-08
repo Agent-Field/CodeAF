@@ -34,7 +34,8 @@ func TestAFailedBuildsHeadlineIsTheNoPullRequestNoteNotTheNewerTidyUp(t *testing
 		}}}
 	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
-	const why = "The build did not pass its checks, so no pull request was opened"
+	// The failing command is named, never what it printed (live e2e round 9).
+	const why = "The build did not pass its checks (go build ./... failed), so no pull request was opened"
 	if err == nil || err.Error() != "Build with SWE-AF did not succeed: "+why {
 		t.Fatalf("err = %v", err)
 	}

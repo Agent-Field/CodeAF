@@ -143,8 +143,13 @@ func agentFieldLeadReason(s string) string {
 //     a graded one in parentheses, else the note's;
 //   - otherwise the note in plain words, else the summary's first sentence.
 //
+// When the run's words name the command that failed, short and plain
+// ([AgentFieldFailingCommand]) — in the note, the summary or any of more, the
+// run's other notes — the line says it ("The build did not pass its checks
+// (go build ./... failed), …") while it still fits [FailureSummaryMost].
+//
 // The raw report is never here: it stays the step's output, whole.
-func AgentFieldOutcome(note, summary string) string {
+func AgentFieldOutcome(note, summary string, more ...string) string {
 	note = strings.Join(strings.Fields(note), " ")
 	inner := ""
 	if strings.HasSuffix(note, ")") {
@@ -153,20 +158,69 @@ func AgentFieldOutcome(note, summary string) string {
 		}
 	}
 	specific := firstNonEmptyWords(agentFieldLeadReason(inner), agentFieldLeadReason(summary))
+	cause := AgentFieldFailingCommand(append([]string{note, summary}, more...)...)
 	if loc := agentFieldNoPullRequest.FindStringIndex(note); loc != nil {
 		reason := firstNonEmptyWords(specific, AgentFieldOutcomeWords(note[loc[1]:]))
 		if reason == "" {
+			if cause != "" {
+				return "No pull request was opened: " + cause + " failed"
+			}
 			return "No pull request was opened"
 		}
-		return capitalFirst(reason) + ", so no pull request was opened"
+		const so = ", so no pull request was opened"
+		return capitalFirst(withCause(reason, cause, len(so))) + so
 	}
 	if specific != "" {
-		return capitalFirst(specific)
+		return capitalFirst(withCause(specific, cause, 0))
 	}
 	if words := AgentFieldOutcomeWords(note); words != "" {
 		return words
 	}
 	return AgentFieldOutcomeWords(FirstSentence(summary))
+}
+
+// agentFieldFailedCommand is a command a run quotes as the one that failed:
+// "`go build ./...` exited 1", "`npm test` failed", "`make` exited with code
+// 2". The command is in backticks (\x60), the way reasoners and tools quote
+// one.
+var agentFieldFailedCommand = regexp.MustCompile(`\x60([^\x60\n]{1,60})\x60\s+(?:exited\s+(?:with\s+(?:code|status)\s+)?[1-9][0-9]*|failed)\b`)
+
+// agentFieldPlainCommand is a command short and plain enough to say in a
+// headline: letters, digits and the punctuation of an ordinary command line,
+// no quoting and no shell machinery beyond "&&".
+var agentFieldPlainCommand = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ./:_=+,@&-]*$`)
+
+// agentFieldCommandMost is the longest failing command a headline names.
+const agentFieldCommandMost = 48
+
+// AgentFieldFailingCommand is the command a run's words say failed, when it is
+// short and plain ("go build ./..."), else "". ONLY THE COMMAND'S NAME IS
+// EVER TAKEN, never what it printed: its output stays in the report.
+func AgentFieldFailingCommand(said ...string) string {
+	for _, s := range said {
+		for _, m := range agentFieldFailedCommand.FindAllStringSubmatch(s, -1) {
+			cmd := strings.Join(strings.Fields(m[1]), " ")
+			if len(cmd) <= agentFieldCommandMost && agentFieldPlainCommand.MatchString(cmd) {
+				return cmd
+			}
+		}
+	}
+	return ""
+}
+
+// withCause is reason with the failing command said after it ("The build did
+// not pass its checks (go build ./... failed)"), unless reason already names
+// it, there is none, or the line — with tail more characters after it — would
+// no longer fit [FailureSummaryMost]: the reason alone is then the line.
+func withCause(reason, cause string, tail int) string {
+	if cause == "" || strings.Contains(reason, cause) {
+		return reason
+	}
+	with := reason + " (" + cause + " failed)"
+	if len([]rune(with))+tail > FailureSummaryMost {
+		return reason
+	}
+	return with
 }
 
 func firstNonEmptyWords(v ...string) string {

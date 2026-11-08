@@ -22,6 +22,7 @@ package factory
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -513,7 +514,9 @@ type PullRequest struct {
 	// commit FilesHead, at most [PRFilesMost] of FilesTotal. A FILE LIST IS
 	// ONLY EVER ABOUT ITS OWN HEAD: a reader compares FilesHead with HeadSHA
 	// and treats a list for another commit as unknown, never as the change
-	// it is about to merge. Empty is not read yet, not "changes nothing".
+	// it is about to merge. No FilesHead is not read yet, never "changes
+	// nothing"; a FilesHead with no files and no FilesTotal is a pull request
+	// GitHub read twice as changing nothing on that head ([PRChangesNothing]).
 	Files      []ChangedFile `json:",omitempty"`
 	FilesTotal int           `json:",omitempty"`
 	FilesHead  string        `json:",omitempty"`
@@ -522,6 +525,28 @@ type PullRequest struct {
 // PRFilesMost is how many of a pull request's files the factory keeps on the
 // job. A change larger than that still says its whole size in FilesTotal.
 const PRFilesMost = 300
+
+// PRChangesNothing says pr was read on its head as a change of no files: an
+// empty pull request (live e2e round 9, #315: a run whose work was already on
+// the base branch opened one with 0 files and read as shipped). Unknown is
+// never empty: a list never read, or read for another head, says nothing.
+func PRChangesNothing(pr *PullRequest) bool {
+	return pr != nil && pr.HeadSHA != "" && pr.FilesHead == pr.HeadSHA && pr.FilesTotal == 0 && len(pr.Files) == 0
+}
+
+// EmptyPRClosedWords is the plain note a job carries when the factory closed
+// the empty pull request it opened, n its number.
+func EmptyPRClosedWords(n int) string {
+	return fmt.Sprintf("Nothing to change: pull request #%d changed no files, so it was closed.", n)
+}
+
+// EmptyPRComment is what the factory says on an empty pull request it opened
+// as it closes it.
+const EmptyPRComment = "Closing this pull request: it changes no files, so there is nothing to merge. The work it was opened for is already on the base branch."
+
+// EmptyPRDetail is the state detail of a job whose pull request changes
+// nothing: no Merge is offered.
+const EmptyPRDetail = "Nothing to change: the pull request changed no files, so there is nothing to merge."
 
 // Item is one row on the floor.
 // QKindAskFirst is an intake question, before a run or any step exists.

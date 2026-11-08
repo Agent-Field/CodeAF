@@ -224,7 +224,9 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	}
 	brief := spec.Brief + inheritFactoryChecks(spec, cfg.SessionFile, where)
 	if resumed {
-		brief = session.CarryOn(brief)
+		// The model reads its brief again; the person's chat does not show
+		// the engine's resume prompt as a line they typed.
+		brief = session.ResumedStepBrief(brief)
 	}
 	events, err := agent.Submit(context.WithoutCancel(ctx), brief)
 	if err != nil {

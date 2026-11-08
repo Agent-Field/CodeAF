@@ -88,6 +88,11 @@ func PresentJob(j *Job) {
 		// plain words where a person looks first: done, with no pull request,
 		// and the reason ([factory.AgentFieldNothingToChange]).
 		p.Title, p.Detail = "Nothing to change", factory.AgentFieldNothingToChange
+	case j.State == StateDone && j.PR != nil && j.PR.State != factory.PRMerged && emptyPR(j.PR):
+		// AN EMPTY PULL REQUEST SHIPPED NOTHING (live e2e round 9, #315):
+		// the job reads as nothing to change, with no Merge, whether the
+		// factory has closed the pull request yet or not.
+		p.Title, p.Detail = "Nothing to change", factory.EmptyPRDetail
 	case j.State == StateDone:
 		p.Title = "Done"
 	case j.State == StateBacklog && strings.TrimSpace(j.Repo) == "" && strings.TrimSpace(j.RunOn) == "":
@@ -125,4 +130,30 @@ func nothingChanged(j *Job) bool {
 		}
 	}
 	return false
+}
+
+// PlainStepNotes puts each agentfield step's label where its note would
+// otherwise name its reasoner: such a step's note is the pipeline file's
+// `<node>.<reasoner>` ("swe-planner.build_issue"), a name only the file needs,
+// and a person reading the step's details reads the step as its label. IT IS
+// FOR A READER'S JOB ONLY: a worker's report carries the note back as the
+// step's, so the stored note is never changed.
+func PlainStepNotes(j *Job) {
+	for i := range j.Steps {
+		s := &j.Steps[i]
+		note := strings.TrimSpace(s.Note)
+		if note == "" || (s.Kind != string(factory.StageAgentField) && s.RunKind != string(factory.StageAgentField)) {
+			continue
+		}
+		if _, err := factory.AgentFieldTargetWord(note); err != nil && note != strings.TrimSpace(s.Target) {
+			continue
+		}
+		s.Note = strings.TrimSpace(s.Label)
+	}
+}
+
+// emptyPR says the pull request on the wire was read on its head as a change
+// of no files ([factory.PRChangesNothing]).
+func emptyPR(pr *PR) bool {
+	return pr.HeadSHA != "" && pr.FilesHead == pr.HeadSHA && pr.FilesTotal == 0 && len(pr.Files) == 0
 }

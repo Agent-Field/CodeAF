@@ -9,10 +9,13 @@ import "strings"
 // value in one owner-readable file, never in the factory's own folder next to
 // the address it belongs to.
 //
-// IN APP MODE THE APP HOLDS THEM, exactly as it holds the GitHub and Jira
-// tokens: the write is refused with [ErrAppKeys], and the reader asks the
-// app's keys first, under [AppAgentFieldProvider] and
-// [AppAgentFieldNodeProvider].
+// IN APP MODE BOTH THE APP AND THE PROFILE KEEP THEM: a door hands each to
+// the app to keep (AppCredentials.Keep) and writes it to the profile, so an
+// engine the desk starts again reads it back from its own profile when the
+// app hands nothing back (live e2e round 9: the key was held in memory alone
+// and lost at every desk launch). The reader asks the app's keys first, under
+// [AppAgentFieldProvider] and [AppAgentFieldNodeProvider], so a removal the
+// app hands back wins over the profile's copy.
 //
 // KeyAgentFieldInternalToken is the third: the control plane's internal
 // token, which it sends as Authorization: Bearer on every call it makes to
@@ -57,9 +60,6 @@ func AgentFieldNodeSecretAt(profileDir string) string {
 // value removes the kept one: a control plane that runs without a key is
 // connected with none. THE SECRETS NEVER REACH A LOG.
 func WriteAgentFieldSecrets(profileDir, key, internalToken string) error {
-	if AppMode() {
-		return ErrAppKeys
-	}
 	values := map[string]any{KeyAgentFieldNodeSecret: removeProfileKey}
 	for field, v := range map[string]string{KeyAgentFieldKey: key, KeyAgentFieldInternalToken: internalToken} {
 		if v = strings.TrimSpace(v); v != "" {
@@ -73,9 +73,6 @@ func WriteAgentFieldSecrets(profileDir, key, internalToken string) error {
 
 // ForgetAgentFieldSecrets removes both kept secrets from the profile.
 func ForgetAgentFieldSecrets(profileDir string) error {
-	if AppMode() {
-		return ErrAppKeys
-	}
 	return writeProfileValues(profileDir, map[string]any{KeyAgentFieldKey: removeProfileKey, KeyAgentFieldNodeSecret: removeProfileKey, KeyAgentFieldInternalToken: removeProfileKey})
 }
 

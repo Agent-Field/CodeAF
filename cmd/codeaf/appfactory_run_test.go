@@ -310,7 +310,7 @@ func TestLocalRunIsRefusedWhenAnotherCodeafServes(t *testing.T) {
 	}
 }
 
-// ── GitHub custody: nothing a connect writes reaches a profile ─────────────
+// ── GitHub custody: a pasted token reaches the engine's own profile only ────
 
 // snapshotTree is every file under dir with its bytes, for a before and after.
 func snapshotTree(t *testing.T, dir string) map[string]string {
@@ -326,10 +326,12 @@ func snapshotTree(t *testing.T, dir string) map[string]string {
 	return out
 }
 
-// THE APP HOLDS THE TOKEN IN MEMORY AND NO PROFILE KEEPS IT. A connect leaves
-// the ambient profile byte-for-byte as it was, writes neither profile field the
-// terminal's connect writes (github_token, github_via) anywhere under the app
-// home, the person's home or the profile, and the credential memory holds it.
+// THE APP HOLDS THE TOKEN AND THE ENGINE'S OWN PROFILE KEEPS IT FOR THE NEXT
+// LAUNCH (live e2e round 9: held in memory alone, it was lost whenever the desk
+// started the engine again). A connect leaves the ambient profile as it was,
+// keeps the token as one row (github_token, owner-readable only) in the
+// engine's own profile at its home, writes no github_via, reaches nowhere else
+// under the app home or the person's home, and the credential memory holds it.
 func TestLocalConnectWritesNoProfileAndFillsTheCredentialMemory(t *testing.T) {
 	appHome, userHome, decoy := useLocalHome(t)
 	if err := os.WriteFile(filepath.Join(decoy, "config.json"), []byte(`{"model":"keep/me"}`), 0o600); err != nil {
@@ -390,11 +392,23 @@ func TestLocalConnectWritesNoProfileAndFillsTheCredentialMemory(t *testing.T) {
 	if !ok || len(stamps) != 1 || !numeric || stamp <= 0 {
 		t.Fatalf("only the budget's preference clock may be added: %+v", now["sync.preference_times"])
 	}
+	// The engine's own profile is its home's: the token's one row is there,
+	// owner-readable only, and the next launch reads it back.
+	engine := filepath.Join(appHome, "config.json")
+	if config.GitHubTokenAt(appHome) != setupSecret || !strings.Contains(snapshotTree(t, appHome)[engine], `"github_token"`) {
+		t.Fatalf("the engine's profile does not keep the pasted token for the next launch")
+	}
+	if info, err := os.Stat(engine); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("the profile holding the token is not owner-readable only: %v", err)
+	}
 	for _, dir := range []string{appHome, userHome, decoy} {
-		for path, data := range snapshotTree(t, dir) {
+		for file, data := range snapshotTree(t, dir) {
 			for _, field := range []string{`"github_token"`, `"github_via"`, setupSecret} {
+				if file == engine && field != `"github_via"` {
+					continue
+				}
 				if strings.Contains(data, field) {
-					t.Fatalf("%s holds %s", path, field)
+					t.Fatalf("%s holds %s", file, field)
 				}
 			}
 		}

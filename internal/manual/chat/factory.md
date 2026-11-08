@@ -846,7 +846,7 @@ The desktop app's first run connects GitHub with **Connect GitHub**. The app sho
 
 **Paste a token instead** sits under the button. It takes a GitHub personal access token: a classic token with `repo` ticked, or a fine-grained token for the repositories you pick with Contents, Issues and Pull requests set to Read and write (Metadata is read-only and always on).
 
-The token from either way is kept in the system keychain, the place a pasted token is kept, and handed back when the app next opens. A build without an OAuth app (`CODEAF_GITHUB_CLIENT_ID`, stamped in when the app is built) has no browser sign-in: setup then offers the gh login and a pasted token only.
+The token from either way is kept in the system keychain, the place a pasted token is kept, and handed back when the app next opens. A token from the browser sign-in or pasted in is also kept in the engine's own profile (owner-readable only, never in a log), so an engine the app starts again reads it back even when the keychain hands nothing; gh's own token is never written there, since gh keeps it. A build without an OAuth app (`CODEAF_GITHUB_CLIENT_ID`, stamped in when the app is built) has no browser sign-in: setup then offers the gh login and a pasted token only.
 
 ## first-run setup in the app — Continue before every repository is read, skipped, checkout folder room
 

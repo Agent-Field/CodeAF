@@ -41,10 +41,16 @@ func TestAnAgentFieldOutcomeIsReadFromItsWordsShape(t *testing.T) {
 	build := "OVERALL: FAIL. The project does not build or its tests fail: `go build ./...` exited 1. ./ledger.go:12:2: no required module provides package github.com/x/hashkit; to add it:\n\tgo get github.com/x/hashkit"
 	partial := "Partial: 1/1 issues completed, verification: OVERALL: FAIL. The delivered implementation does not satisfy the PRD."
 	for _, tc := range []struct{ name, note, summary, want string }{
+		// The failing command does not fit beside this reason within
+		// FailureSummaryMost, so the reason alone is the line.
 		{"a project that does not build, with its note", "No pull request: the build did not pass verification (" + build + ")", build,
 			"The project does not build or its tests fail, so no pull request was opened"},
-		{"a project that does not build, no note", "", build, "The project does not build or its tests fail"},
+		{"a project that does not build, no note", "", build, "The project does not build or its tests fail (go build ./... failed)"},
 		{"an ungraded report under a no-pull-request note", "No pull request: the build did not pass verification (" + partial + ")", partial,
+			"The build did not pass its checks, so no pull request was opened"},
+		{"a failing command named in the note", "No pull request: the build did not pass verification (Partial: 1/1 issues completed, verification: `go build ./...` exited 1)", partial,
+			"The build did not pass its checks (go build ./... failed), so no pull request was opened"},
+		{"a command that is not plain is not named", "No pull request: the build did not pass verification (Partial: `bash -c 'go build $(ls)'` exited 2)", partial,
 			"The build did not pass its checks, so no pull request was opened"},
 		{"a note of another shape", "Stopped early: the node went away", partial, "Stopped early: the node went away"},
 		{"a plain summary", "", "Plan rejected: not now", "Plan rejected: not now"},
@@ -82,13 +88,42 @@ func TestAFailedJobsFileSaysFailedAndReadsBackAsItWas(t *testing.T) {
 	if back.State != StateNew || back.Failure == nil || back.Failure.Detail != "Build did not succeed" {
 		t.Fatalf("read back as %q %+v", back.State, back.Failure)
 	}
-	stopped := failed
-	stopped.Failure = &Failure{Step: "build", Code: CodeStopped, Detail: "Stopped by you", At: at}
 	fresh := Item{ID: 86, State: StateNew}
-	for name, it := range map[string]Item{"stopped": stopped, "never ran": fresh} {
-		raw, _ := json.Marshal(it)
-		if !strings.Contains(string(raw), `"State":"new"`) {
-			t.Errorf("%s job's file reads %s", name, raw)
+	raw, _ = json.Marshal(fresh)
+	if !strings.Contains(string(raw), `"State":"new"`) {
+		t.Errorf("a job that never ran reads %s", raw)
+	}
+}
+
+// A REJECTED OR STOPPED JOB'S FILE SAYS SO (live e2e round 9: rejected job
+// 312 and stopped job 318 read "new"), and reading it back is the job it was:
+// not running, with the person's Reject or Stop on it, so Reopen, Run again
+// and every read behave as before.
+func TestARejectedOrStoppedJobsFileSaysSoAndReadsBackAsItWas(t *testing.T) {
+	at := time.Date(2026, 11, 8, 15, 31, 9, 0, time.UTC)
+	yes := true
+	stopped := Item{ID: 86, State: StateNew, PersonStopped: &yes,
+		Failure: &Failure{Step: "build", Code: CodeStopped, Detail: "Stopped by you", Next: FailureStopped, At: at}}
+	rejected := Item{ID: 2, State: StateNew, DoneHow: "closed_locally", PersonStopped: &yes, Rejection: &Rejection{Words: "not this way"},
+		Failure: &Failure{Step: "build", Code: CodeStopped, Detail: "Stopped by you", Next: FailureStopped, At: at}}
+	for _, tc := range []struct {
+		name string
+		it   Item
+		want State
+	}{{"stopped", stopped, StateStoppedOnDisk}, {"rejected", rejected, StateRejectedOnDisk}} {
+		raw, err := json.Marshal(tc.it)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), `"State":"`+string(tc.want)+`"`) {
+			t.Errorf("a %s job's file reads %s", tc.name, raw)
+		}
+		var back Item
+		if err := json.Unmarshal(raw, &back); err != nil {
+			t.Fatal(err)
+		}
+		if back.State != StateNew || !StoppedByPerson(back) || back.DoneHow != tc.it.DoneHow || (tc.it.Rejection != nil) != (back.Rejection != nil) {
+			t.Errorf("a %s job read back as %q, done %q, stopped %v, rejection %+v", tc.name, back.State, back.DoneHow, StoppedByPerson(back), back.Rejection)
 		}
 	}
 }

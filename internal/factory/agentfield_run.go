@@ -34,6 +34,14 @@ type AgentFieldRun struct {
 	URL string `json:"url,omitempty"`
 	// Host is the machine the node said it runs on when the run began.
 	Host string `json:"host,omitempty"`
+	// EndOwed says this run is an agentfield step's whose end the step has
+	// not yet taken as its outcome: set when the step starts the run, cleared
+	// when the step reads the run's end. A RUN WHOSE END IS OWED IS THE STEP'S
+	// RUN, WHATEVER THE CLOCKS SAY: a runner that takes the job again (a
+	// restart, a lease handed back or run out) reads that end instead of
+	// starting a second run. False on a record written before it was kept,
+	// which is judged by its times as before ([AgentFieldRunOwed]).
+	EndOwed bool `json:"end_owed,omitempty"`
 	// A harness step's conversation keeps its own relay record beside its
 	// transcript (agentfield.json): which execution it is, how much of it is
 	// kept, whether it is steerable now. It lives with the conversation,
@@ -93,13 +101,37 @@ func AgentFieldRunOwed(it Item, step string) bool {
 		return true
 	}
 	run := AgentFieldRunOf(it, step)
-	if run == nil || run.ExecutionID == "" || run.Ended.IsZero() || run.Began.IsZero() || it.Stream == nil {
+	if run == nil || run.ExecutionID == "" || run.Ended.IsZero() || it.Stream == nil {
 		return false
 	}
 	for _, ph := range it.Stream.Phases {
 		if ph.Name == step {
-			return ph.State == PhaseRunning && (ph.Started.IsZero() || !run.Began.Before(ph.Started))
+			if ph.State != PhaseRunning {
+				return false
+			}
+			// THE RECORD SAYS SO, when it was written by a runner that keeps
+			// [AgentFieldRun.EndOwed]. A step's start can move past its run's
+			// (a round entered again after a pause or an admission retry
+			// stamps a new start while the same run goes on), so the times
+			// alone once disowned a run that was the step's (live e2e round
+			// 9, job 306) and a second run was started.
+			if run.EndOwed {
+				return true
+			}
+			return !run.Began.IsZero() && (ph.Started.IsZero() || !run.Began.Before(ph.Started))
 		}
+	}
+	return false
+}
+
+// AgentFieldRunStopped says run ended because someone stopped it — a
+// person's Stop or Reject carried to the control plane, or a cancel there —
+// rather than by finishing its work. Such an end is never a later round's
+// outcome: Reopen or Run again starts a run of its own.
+func AgentFieldRunStopped(run AgentFieldRun) bool {
+	switch strings.ToLower(strings.TrimSpace(run.Status)) {
+	case "cancelled", "canceled", AgentFieldRejected:
+		return true
 	}
 	return false
 }

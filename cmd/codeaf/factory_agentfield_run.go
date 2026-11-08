@@ -283,15 +283,17 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	// A RUN THAT ENDED WHILE NOTHING HERE WAS LEFT TO SAY SO IS READ, NEVER
 	// STARTED AGAIN. A quit that lands seconds after the run finished (or a
 	// lease let go then) leaves the step running with the run's end already
-	// on its record; the round a restart picks up is that same round going on
-	// (factoryrun.Job.Continuing), so its run's end is this round's outcome
-	// — its pull request, its words — and not a reason to begin a second run.
-	// A round begun afresh (Run again, Try again) starts a run of its own.
+	// on its record and still owed to the step ([factory.AgentFieldRun]'s
+	// EndOwed); the round a runner takes up next reads that end as its
+	// outcome — its pull request, its words — and never begins a second run,
+	// in Manual or Auto alike. A round begun afresh after the step read its
+	// run's end (Run again, Try again, Reopen) starts a run of its own.
 	if run == nil || run.ExecutionID == "" || (!run.Ended.IsZero() && !afRoundsRun(job, *run)) {
 		fresh, err := r.dispatch(ctx, client, node, target, afTypedInput(ctx, client, target, factory.AgentFieldInput(it, st)))
 		if err != nil {
 			return factory.StageResult{}, err
 		}
+		fresh.EndOwed = true
 		if err := r.items.Update(it.ID, func(it *factory.Item) error {
 			*place.runOf(it) = *fresh
 			return nil
@@ -303,11 +305,27 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 			job.Log("started its run on AgentField")
 		}
 	}
+	// THE STEP TAKES ITS RUN'S END ONCE: from here on, every way this call
+	// returns having read how the run ended clears EndOwed, so a later round
+	// is a new start. A return cut short (an engine closing, a lease let go)
+	// leaves the end owed for the runner that takes the job next.
+	read := false
+	defer func() {
+		if read {
+			_ = r.items.Update(it.ID, func(it *factory.Item) error {
+				if run := place.recorded(*it); run != nil {
+					run.EndOwed = false
+				}
+				return nil
+			})
+		}
+	}()
 	if err := r.follow(ctx, client, it.ID, run.RunID, place); err != nil {
 		// A RUN THAT ENDED BADLY READS AS THE STEP, never as the reasoner's
 		// id: "Build on AgentField failed: …".
 		var ended afRunEnded
 		if ctx.Err() == nil && errors.As(err, &ended) {
+			read = true
 			return factory.StageResult{}, errors.New(ended.step(st))
 		}
 		return factory.StageResult{}, err
@@ -315,6 +333,7 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 	if ctx.Err() != nil {
 		return factory.StageResult{}, ctx.Err()
 	}
+	read = true
 	// THE STEP'S OUTPUT IS WHAT IT DID, in words: the step's own label
 	// already heads every line a person reads it on ("Build on AgentField ·
 	// done · finished and opened …"), so the reasoner's id never repeats it.
@@ -358,7 +377,7 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 				if !opened && factory.AgentFieldNoChange(append(notes, said.Summary)...) {
 					return afNothingToChange(said.Summary)
 				}
-				outcome := factory.AgentFieldOutcome(factory.AgentFieldTellingNote(notes), said.Summary)
+				outcome := factory.AgentFieldOutcome(factory.AgentFieldTellingNote(notes), said.Summary, notes...)
 				words := factory.AgentFieldDidNotSucceed(st, outcome)
 				res := factory.StageResult{Output: strings.TrimSpace(said.Summary), Summary: firstNonEmpty(outcome, words)}
 				return res, errors.New(words)
@@ -396,11 +415,22 @@ func afNothingToChange(summary string) (factory.StageResult, error) {
 	return res, nil
 }
 
-// afRoundsRun says run, which has ended, is the run of the round job is: the
-// round a restart cut short and picked up again (job.Continuing), whose step
-// began no later than the run did. Any other round of the step is a fresh
-// start and runs again.
+// afRoundsRun says run, which has ended, is the run of the round job is, so
+// its end is read rather than a second run started:
+//
+//   - a run whose end its step has not read yet ([factory.AgentFieldRun]'s
+//     EndOwed) is the step's, whichever round takes it up and whatever its
+//     start time says — unless someone stopped it, since a stopped run is never
+//     a later round's outcome (Reopen after a Reject starts afresh);
+//   - a record written before EndOwed was kept is the round's when that round
+//     is the one a restart cut short and picked up (job.Continuing) and the
+//     step began no later than the run did, as before.
+//
+// Any other round of the step is a fresh start and runs again.
 func afRoundsRun(job factoryrun.Job, run factory.AgentFieldRun) bool {
+	if run.EndOwed {
+		return job.Continuing || !factory.AgentFieldRunStopped(run)
+	}
 	if !job.Continuing || run.Began.IsZero() {
 		return false
 	}

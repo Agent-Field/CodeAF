@@ -27,6 +27,11 @@ type fakeFilesForge struct {
 	total  int
 	fail   bool
 	listed atomic.Int32
+	// closedNotMerged serves a closed pull request as closed unmerged;
+	// closes and comments count the closes and comments asked for on it.
+	closedNotMerged bool
+	closes          atomic.Int32
+	comments        atomic.Int32
 }
 
 func (f *fakeFilesForge) serve(t *testing.T) API {
@@ -41,10 +46,22 @@ func (f *fakeFilesForge) serve(t *testing.T) API {
 				"number": 7, "html_url": "https://github.com/acme/api/pull/7", "state": f.state, "changed_files": f.total,
 				"head": map[string]any{"sha": f.head, "ref": "factory/7"}, "base": map[string]any{"ref": "main"},
 			}
-			if f.state == "closed" {
+			if f.state == "closed" && !f.closedNotMerged {
 				pr["merged"], pr["merged_at"] = true, "2026-11-01T10:00:00Z"
 			}
 			_ = json.NewEncoder(w).Encode(pr)
+		case "/repos/acme/api/issues/7":
+			if r.Method != http.MethodPatch {
+				http.Error(w, r.Method, http.StatusMethodNotAllowed)
+				return
+			}
+			f.closes.Add(1)
+			f.state, f.closedNotMerged = "closed", true
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": 7, "html_url": "https://github.com/acme/api/pull/7"})
+		case "/repos/acme/api/issues/7/comments":
+			f.comments.Add(1)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1, "html_url": "https://github.com/acme/api/pull/7#issuecomment-1"})
 		case "/repos/acme/api/pulls/7/files":
 			f.listed.Add(1)
 			if f.fail {
@@ -208,5 +225,79 @@ func TestFollowOpenedStoresTheFileListOnARunElsewhereJob(t *testing.T) {
 	got, _ = st.Get(it.ID)
 	if n := f.listed.Load(); n != 1 || got.PullRequest.State != factory.PRMerged || got.PullRequest.FilesHead != "aaa" || len(got.PullRequest.Files) != 1 {
 		t.Fatalf("merged: listed %d, stored %+v", n, got.PullRequest)
+	}
+}
+
+// AN EMPTY PULL REQUEST THE FACTORY OPENED IS CLOSED AND READS AS NOTHING TO
+// CHANGE (live e2e round 9, #315): a run whose work was already on the base
+// branch opened a pull request of 0 files, and the job read shipped with
+// Merge offered. Once GitHub's two answers agree the change is empty, the
+// factory says so on the pull request, closes it, notes it on the job, and the
+// job's read is "Nothing to change" with no Merge. An empty file list that
+// the pull request's own counts contradict is unknown, never empty, and a pull
+// request the factory did not open is never closed from here.
+func TestAnEmptyPullRequestTheFactoryOpenedIsClosedAndReadsNothingToChange(t *testing.T) {
+	st := openStore(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateShipped, Publish: "pr", RunOn: "swe-af.build", HeadCommit: "aaa",
+		PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen, URL: "https://github.com/acme/api/pull/7"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The list is empty but the pull request says it changes a file: not yet.
+	f := &fakeFilesForge{head: "aaa", state: "open", total: 1}
+	if err := followOpened(context.Background(), New(f.serve(t), nil, nil), st); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Get(it.ID)
+	if f.closes.Load() != 0 || factory.PRChangesNothing(got.PullRequest) || got.PullRequest.State != factory.PROpen {
+		t.Fatalf("an unfilled list read as an empty change: closes %d, stored %+v", f.closes.Load(), got.PullRequest)
+	}
+	// A new head, and both answers say nothing changed on it.
+	f.mu.Lock()
+	f.head, f.total = "bbb", 0
+	f.mu.Unlock()
+	if err := followOpened(context.Background(), New(f.serve(t), nil, nil), st); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = st.Get(it.ID)
+	if f.closes.Load() != 1 || f.comments.Load() != 1 || got.PullRequest.State != factory.PRClosed {
+		t.Fatalf("the empty pull request was not closed with a word: closes %d, comments %d, stored %+v", f.closes.Load(), f.comments.Load(), got.PullRequest)
+	}
+	noted := false
+	for _, e := range got.Activity {
+		noted = noted || e.What == factory.EmptyPRClosedWords(7)
+	}
+	if !noted {
+		t.Fatalf("the job carries no plain note: %+v", got.Activity)
+	}
+	if v := factory.MergeGate(got, factory.MergeAsk{By: "sam"}); v.OK {
+		t.Fatalf("Merge is offered on an empty pull request: %+v", v)
+	}
+	j := api.FromItem(got)
+	if j.StatePresentation.Title != "Nothing to change" || j.StatePresentation.Detail != factory.EmptyPRDetail {
+		t.Fatalf("the job reads %+v", j.StatePresentation)
+	}
+	// A later poll does not close or say it again.
+	if err := followOpened(context.Background(), New(f.serve(t), nil, nil), st); err != nil {
+		t.Fatal(err)
+	}
+	if f.closes.Load() != 1 || f.comments.Load() != 1 {
+		t.Fatalf("closed again: closes %d, comments %d", f.closes.Load(), f.comments.Load())
+	}
+
+	// An empty pull request someone else opened is left open, and its job
+	// still offers no Merge.
+	elsewhere := openStore(t)
+	other, err := elsewhere.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateShipped, HeadCommit: "aaa",
+		PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen, URL: "https://github.com/acme/api/pull/7"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := &fakeFilesForge{head: "aaa", state: "open"}
+	if err := followOpened(context.Background(), New(g.serve(t), nil, nil), elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := elsewhere.Get(other.ID); g.closes.Load() != 0 || got.PullRequest.State != factory.PROpen || !factory.PRChangesNothing(got.PullRequest) {
+		t.Fatalf("a pull request the factory did not open: closes %d, stored %+v", g.closes.Load(), got.PullRequest)
 	}
 }

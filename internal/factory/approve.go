@@ -195,11 +195,10 @@ func (it *Item) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*it = Item(p)
-	// A FAILED JOB'S FILE SAYS SO ([StateFailedOnDisk]); in memory it is a
-	// job that is not running, with its failure on it, as it always was.
-	if it.State == StateFailedOnDisk {
-		it.State = StateNew
-	}
+	// A FAILED, REJECTED OR STOPPED JOB'S FILE SAYS SO ([StateFailedOnDisk],
+	// [StateRejectedOnDisk], [StateStoppedOnDisk]); in memory it is a job that
+	// is not running, with that end on it, as it always was.
+	it.State = fromDiskState(it.State)
 	MigrateGates(it)
 	RepairShipDefault(it)
 	NormalizeStageNames(it)

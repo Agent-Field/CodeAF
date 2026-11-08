@@ -246,6 +246,10 @@ with no report and no line in its traffic; its conversations still open from the
 When the job comes back (you reopen it or run it again, or its pull request is reopened) its team
 opens again and its next round joins it. A team you closed or archived yourself stays as you left it.
 
+A step whose chat carries on after a restart is given its brief again. That resume note goes to
+the model only: the chat never shows it as a line you typed (an older chat may still show one
+written before this, opening `[carry on]`).
+
 ## what a stage may do — edit files and run commands, the allow posture
 
 A stage conversation runs with the allow posture, the same open gate `--yolo` gives, inside the

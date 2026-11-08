@@ -626,3 +626,40 @@ func TestTheHTTPLeaseListsInflight(t *testing.T) {
 		t.Fatalf("lease inflight %s", got)
 	}
 }
+
+// AN APP-RUN ENGINE'S AGENTFIELD KEY OUTLIVES THE LAUNCH (live e2e round 9:
+// held in memory alone, it was lost whenever the desk started the engine
+// again, and the next Approve read "AgentField did not accept that API key").
+// The key and the internal token are handed to the app and written to the
+// engine's own profile, owner-readable only; the next launch, where the app
+// hands nothing back, reads them from there, and Disconnect forgets both.
+func TestAnAppRunConnectionKeepsItsKeyInTheProfileForTheNextLaunch(t *testing.T) {
+	floor, _ := store.Open(t.TempDir())
+	c := &Connection{Store: floor, Profile: t.TempDir()}
+	creds := config.NewAppCredentials()
+	restore := config.UseAppCredentials(creds)
+	s, _ := Clean(Settings{URL: "http://cp:8080", BaseURL: "http://10.0.0.5:8765"})
+	if err := c.Keep(s, "secret-key-123", "itok-456"); err != nil {
+		restore()
+		t.Fatal(err)
+	}
+	if key, _ := creds.Key(config.AppAgentFieldProvider); key != "secret-key-123" {
+		restore()
+		t.Fatalf("the app was not handed the key: %q", key)
+	}
+	restore()
+	next := config.NewAppCredentials()
+	defer config.UseAppCredentials(next)()
+	if config.AgentFieldKeyAt(c.Profile) != "secret-key-123" || config.AgentFieldInternalTokenAt(c.Profile) != "itok-456" {
+		t.Fatal("the next launch lost the AgentField key or token")
+	}
+	if info, err := os.Stat(config.BudgetConfigPath(c.Profile)); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("the profile holding the key is not owner-readable only: %v", err)
+	}
+	if err := c.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	if config.AgentFieldKeyAt(c.Profile) != "" || config.AgentFieldInternalTokenAt(c.Profile) != "" {
+		t.Fatal("Disconnect left the key in the profile")
+	}
+}
