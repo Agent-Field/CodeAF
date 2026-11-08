@@ -37,4 +37,4 @@ Each run keeps Claude Code's own session id, so `codeaf claude run --resume <id>
 
 It may not push, open or merge a pull request, cut a release, or publish a package. Those commands are refused with `Pushing, publishing and opening pull requests are the person's to do; leave the work on this branch.`, and the refusal shows as a step. The rule holds even when your own Claude Code hooks would allow the command. Everything else inside the run's branch is allowed without asking.
 
-It cannot ask you a question and wait: nobody is assumed to be watching. It does not use codeaf's models, skills or memory; it uses Claude Code's own settings, hooks and MCP servers from your machine.
+It cannot ask you a question and wait: nobody is assumed to be watching. It does not use codeaf's models or memory; it uses Claude Code's own settings, hooks and MCP servers from your machine, and is handed the skills you keep for codeaf and other programs as `codeaf:<name>` (the canvas skill among them).

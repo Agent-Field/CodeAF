@@ -110,3 +110,42 @@ func TestCodeafToolsClaudeCodeHasItsOwnOfAreNotServedTwice(t *testing.T) {
 		t.Fatalf("belt = %+v", belt)
 	}
 }
+
+func TestClaudeCodesOwnStepsAreSpelledAsCodeafsCalls(t *testing.T) {
+	edit, ok := stepFor("t1", startedStep{name: "Edit", input: json.RawMessage(`{"file_path":"a.go","old_string":"x","new_string":"y"}`)}, "ok", false)
+	if !ok || edit.ID != "claude_code_t1" || edit.Name != "edit" || string(edit.Arguments) != `{"edits":[{"newText":"y","oldText":"x"}],"path":"a.go"}` {
+		t.Fatalf("edit = %+v %s", edit, edit.Arguments)
+	}
+	bash, ok := stepFor("t2", startedStep{name: "Bash", input: json.RawMessage(`{"command":"go test ./...","description":"run tests"}`)}, "FAIL", true)
+	if !ok || bash.Name != "bash" || string(bash.Arguments) != `{"command":"go test ./..."}` || !bash.IsError {
+		t.Fatalf("bash = %+v %s", bash, bash.Arguments)
+	}
+	if _, ok := stepFor("t3", startedStep{name: "TodoWrite", input: json.RawMessage(`{}`)}, "", false); ok {
+		t.Fatal("a step codeaf has no tool for was spelled as one")
+	}
+	long, _ := stepFor("t4", startedStep{name: "Read", input: json.RawMessage(`{"file_path":"big"}`)}, strings.Repeat("x", 40_000), false)
+	if len(long.Output) > stepOutputBudget+100 || !strings.Contains(long.Output, "bytes not kept") {
+		t.Fatalf("a long output was kept at %d bytes", len(long.Output))
+	}
+}
+
+func TestClaudeCodeIsNotToldItsOwnStepsAsSomethingItMissed(t *testing.T) {
+	text := func(s string) json.RawMessage { raw, _ := json.Marshal(s); return raw }
+	step := chatMessage{Role: "assistant", Content: text("")}
+	step.ToolCalls = append(step.ToolCalls, struct {
+		ID string `json:"id"`
+	}{ID: "claude_code_t1"})
+	chat := chatRequest{Messages: []chatMessage{
+		{Role: "system", Content: text("be codeaf")},
+		{Role: "user", Content: text("make notes")},
+		step,
+		{Role: "tool", ToolCallID: "claude_code_t1", Content: text("SECRET-STEP-OUTPUT")},
+		{Role: "assistant", Content: text("done")},
+		{Role: "user", Content: text("what changed?")},
+	}}
+	// The session saw the system prompt, the request and its own answer.
+	prompt := turnPrompt(chat, 3)
+	if prompt != "what changed?" {
+		t.Fatalf("Claude Code was told %q", prompt)
+	}
+}

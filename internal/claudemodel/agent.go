@@ -107,6 +107,11 @@ type live struct {
 	// are the ones handed to codeaf and not yet answered.
 	calls    chan *pendingCall
 	awaiting map[string]*pendingCall
+	// started are Claude Code's own calls waiting for their results, by its
+	// id for them. Only the turn's stream reads or writes it, and one stream
+	// runs at a time, a cut one's calls carrying over to the stream that
+	// adopts its turn.
+	started map[string]startedStep
 }
 
 // tools is the served list.
@@ -122,7 +127,7 @@ func (l *live) call(ctx context.Context, call claudeagent.ToolCall) claudeagent.
 	if id == "" {
 		id = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
-	pc := &pendingCall{id: "call_" + id, name: call.Name, args: call.Arguments, result: make(chan claudeagent.ToolResult, 1)}
+	pc := &pendingCall{id: stepPrefix + id, name: call.Name, args: call.Arguments, result: make(chan claudeagent.ToolResult, 1)}
 	select {
 	case l.calls <- pc:
 	case <-l.session.Done():
@@ -169,7 +174,7 @@ func liveKey(dir, conversation string) string { return dir + "\x00" + conversati
 
 // liveFor answers the session for this conversation, starting one when there
 // is none or the last one has ended.
-func liveFor(ctx context.Context, dir, conversation, model, kept string, belt []claudeagent.Tool) (*live, error) {
+func liveFor(ctx context.Context, dir, conversation, model, kept string, env []string, belt []claudeagent.Tool) (*live, error) {
 	livesMu.Lock()
 	defer livesMu.Unlock()
 	key := liveKey(dir, conversation)
@@ -189,14 +194,15 @@ func liveFor(ctx context.Context, dir, conversation, model, kept string, belt []
 	if err != nil {
 		return nil, err
 	}
-	l := &live{model: model, kept: kept, belt: belt, calls: make(chan *pendingCall, 64), awaiting: map[string]*pendingCall{}}
+	l := &live{model: model, kept: kept, belt: belt, calls: make(chan *pendingCall, 64), awaiting: map[string]*pendingCall{}, started: map[string]startedStep{}}
 	options := claudeagent.Options{
 		Binary: binary, Dir: dir, Model: model, PermissionMode: "acceptEdits",
 		AppendSystemPrompt: seated, Disallowed: outwardRules, Stderr: os.Stderr,
-		Tools: &claudeagent.ToolServer{Name: "codeaf", List: l.tools, Call: l.call},
+		Tools:      &claudeagent.ToolServer{Name: "codeaf", List: l.tools, Call: l.call},
+		PluginDirs: pluginDirs(dir),
 		// A codeaf tool may wait on the person (a proposed task, a question),
 		// so Claude Code is told to wait as long as an hour for one.
-		Env: []string{"MCP_TOOL_TIMEOUT=3600000"},
+		Env: append([]string{"MCP_TOOL_TIMEOUT=3600000"}, env...),
 		OnEvent: func(ev claudeagent.Event) {
 			l.mu.Lock()
 			sink := l.sink
@@ -227,6 +233,14 @@ func liveFor(ctx context.Context, dir, conversation, model, kept string, belt []
 	return l, nil
 }
 
+// pluginDirs is the plugin of codeaf's skills for dir, when there is one.
+func pluginDirs(dir string) []string {
+	if root := claudeagent.SkillPlugin(dir); root != "" {
+		return []string{root}
+	}
+	return nil
+}
+
 // CloseAll ends every live session, for a process that is shutting down.
 func CloseAll() {
 	livesMu.Lock()
@@ -246,7 +260,7 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 	}
 	model := model(chat.Model)
 	belt := beltOf(chat.Tools)
-	l, err := liveFor(request.Context(), dir, conversation, model, t.kept, belt)
+	l, err := liveFor(request.Context(), dir, conversation, model, t.kept, envFrom(request.Context()), belt)
 	if err != nil {
 		return jsonResponse(request, http.StatusServiceUnavailable, errorBody(err.Error()))
 	}
@@ -262,7 +276,7 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 	from := l.seen
 	switch {
 	case adopted:
-		from = len(chat.Messages)
+		from = len(spoken(chat.Messages))
 	case l.turns == 0:
 		from = 0
 	}
@@ -272,7 +286,7 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 		l.turn.Unlock()
 		return jsonResponse(request, http.StatusBadRequest, errorBody("there is nothing new to say to Claude Code"))
 	}
-	l.seen = len(chat.Messages) + 1
+	l.seen = len(spoken(chat.Messages)) + 1
 	if adopted {
 		l.letGo.Stop()
 		l.adoptable = false
@@ -327,7 +341,7 @@ func (l *live) resume(request *http.Request, chat chatRequest, model string) (*h
 		delete(l.awaiting, id)
 	}
 	events := l.sink
-	l.seen = len(chat.Messages) + 1
+	l.seen = len(spoken(chat.Messages)) + 1
 	l.mu.Unlock()
 	if len(words) > 0 {
 		if err := l.session.Send(strings.Join(words, "\n\n")); err != nil {
@@ -406,6 +420,9 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 	defer beat.Stop()
 	started := time.Now()
 	running, held := "", ""
+	// weight is how much the newest call of the turn read: its input,
+	// cached or not.
+	weight := 0
 	// settled fires a while after a result in a turn that took a correction;
 	// until then that result waits in last, because the correction may yet
 	// start a turn of its own whose result is the real answer.
@@ -423,6 +440,15 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 		}
 		_ = json.Unmarshal(raw, &r)
 		in := r.Usage.InputTokens + r.Usage.CacheReadTokens + r.Usage.CacheCreationTokens
+		// THE RESULT'S INPUT IS EVERY CALL OF THE TURN ADDED UP: a turn of four
+		// steps reads its context four times. codeaf reads a request's input as
+		// how full the conversation is, and a sum four times the context made it
+		// compact a three-line conversation as though it filled the window. So
+		// the input reported is what the turn's LAST call read, which is the
+		// conversation's actual weight.
+		if weight > 0 {
+			in = weight
+		}
 		finish(strings.TrimSpace(r.Result), map[string]any{"prompt_tokens": in, "completion_tokens": r.Usage.OutputTokens, "total_tokens": in + r.Usage.OutputTokens})
 	}
 	for {
@@ -481,6 +507,9 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 			}
 			switch ev.Type {
 			case "assistant":
+				if read := callContext(ev.Raw); read > 0 {
+					weight = read
+				}
 				for _, b := range contentBlocks(ev.Raw) {
 					switch b.Type {
 					case "text":
@@ -502,6 +531,9 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 						}
 						running = b.Name + " " + describe(b.Input)
 						started = time.Now()
+						if b.ID != "" {
+							l.started[b.ID] = startedStep{name: b.Name, input: b.Input, at: started}
+						}
 						if !think("▸ " + running + "\n") {
 							return
 						}
@@ -509,6 +541,22 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 				}
 			case "user":
 				running = ""
+				// EACH FINISHED STEP GOES UP AS CODEAF'S OWN CALL, so it is
+				// drawn and written down where every tool's is (steps.go).
+				var ran []ranStep
+				for _, result := range toolResults(ev.Raw) {
+					call, ok := l.started[result.id]
+					if !ok {
+						continue
+					}
+					delete(l.started, result.id)
+					if step, ok := stepFor(result.id, call, result.text, result.isError); ok {
+						ran = append(ran, step)
+					}
+				}
+				if len(ran) > 0 && !write(map[string]any{"codeaf_steps": ran}, "", nil) {
+					return
+				}
 			case "result":
 				l.keep()
 				if steered {
@@ -588,6 +636,9 @@ func (l *live) keep() {
 // that started elsewhere, or what another model said and was told while the
 // person had moved the conversation off Claude Code and back.
 func turnPrompt(chat chatRequest, from int) string {
+	// FROM COUNTS WHAT WAS SAID, not Claude Code's own steps codeaf wrote
+	// down: those are its session's own history (steps.go).
+	chat.Messages = spoken(chat.Messages)
 	last := -1
 	for i := len(chat.Messages) - 1; i >= 0; i-- {
 		if chat.Messages[i].Role == "user" {
@@ -624,10 +675,28 @@ func turnPrompt(chat chatRequest, from int) string {
 }
 
 type contentBlock struct {
+	ID    string          `json:"id"`
 	Type  string          `json:"type"`
 	Text  string          `json:"text"`
 	Name  string          `json:"name"`
 	Input json.RawMessage `json:"input"`
+}
+
+// callContext is how many tokens one of Claude Code's calls read, from the
+// usage its assistant message carries, or 0 when it says none.
+func callContext(raw json.RawMessage) int {
+	var line struct {
+		Message struct {
+			Usage struct {
+				InputTokens         int `json:"input_tokens"`
+				CacheReadTokens     int `json:"cache_read_input_tokens"`
+				CacheCreationTokens int `json:"cache_creation_input_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
+	}
+	_ = json.Unmarshal(raw, &line)
+	u := line.Message.Usage
+	return u.InputTokens + u.CacheReadTokens + u.CacheCreationTokens
 }
 
 func contentBlocks(raw json.RawMessage) []contentBlock {

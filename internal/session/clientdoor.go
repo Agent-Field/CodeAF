@@ -910,7 +910,7 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 		if c.SessionFile != "" {
 			kept = filepath.Join(filepath.Dir(c.SessionFile), "claude-code-session.json")
 		}
-		configured.HTTPClient = claudemodel.ClientFor(c.Workspace, kept)
+		configured.HTTPClient = claudemodel.ClientAt(claudemodel.Seat{Dir: c.Workspace, Kept: kept})
 	}
 	return configured
 }

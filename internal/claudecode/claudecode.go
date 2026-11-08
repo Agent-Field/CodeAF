@@ -119,6 +119,8 @@ func run(ctx context.Context, host delegate.Host, brief, model, resume string) {
 		Binary: binary, Dir: host.Workspace(), Model: model, Resume: resume,
 		PermissionMode: "acceptEdits", AppendSystemPrompt: unattended, MaxBudgetUSD: ceilings.CostUSD,
 		Disallowed: outwardRules,
+		// A TASK SEES THE SKILLS A CONVERSATION DOES, the canvas among them.
+		PluginDirs: pluginDirs(host.Workspace()),
 		CanUseTool: func(_ context.Context, req claudeagent.PermissionRequest) claudeagent.Decision {
 			decision := policy(req)
 			if !decision.Allow {
@@ -406,4 +408,12 @@ func resultText(raw json.RawMessage) string {
 		b.WriteString(part.Text)
 	}
 	return b.String()
+}
+
+// pluginDirs is the plugin of codeaf's skills for dir, when there is one.
+func pluginDirs(dir string) []string {
+	if root := claudeagent.SkillPlugin(dir); root != "" {
+		return []string{root}
+	}
+	return nil
 }

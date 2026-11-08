@@ -2160,6 +2160,11 @@ func (c *Client) completeWithMessagesStreaming(
 				}
 				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})
 			}
+			// STEPS ANOTHER PROGRAM ALREADY RAN are handed up as they finish,
+			// in order with the words around them ([StreamStepsRan]).
+			if len(choice.Delta.Steps) > 0 {
+				observer(StreamEvent{Kind: StreamStepsRan, Delta: string(choice.Delta.Steps), Session: session})
+			}
 			for _, fragment := range choice.Delta.ToolCalls {
 				// A response that asked for a call is a response that behaved,
 				// however little it said in words, so the split must never read

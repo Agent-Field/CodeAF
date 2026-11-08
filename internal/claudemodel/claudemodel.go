@@ -68,13 +68,43 @@ func Client() *http.Client { return ClientIn("") }
 
 // ClientIn is the client for a conversation working in dir, whose turns with
 // tools are turns of a Claude Code session in that folder.
-func ClientIn(dir string) *http.Client { return ClientFor(dir, "") }
+func ClientIn(dir string) *http.Client { return ClientAt(Seat{Dir: dir}) }
 
-// ClientFor is [ClientIn] for a conversation that keeps its Claude Code session
-// in kept, so the conversation picks up the same session after codeaf restarts
-// rather than starting Claude Code over with the history written out.
-func ClientFor(dir, kept string) *http.Client {
-	return &http.Client{Transport: transport{ask: claudeagent.Once, dir: dir, kept: kept}}
+// Seat is where a conversation's Claude Code session works and what it carries.
+type Seat struct {
+	// Dir is the conversation's folder.
+	Dir string
+	// Kept is the file the session's id is kept in, so the conversation picks
+	// up the same session after codeaf restarts rather than starting Claude
+	// Code over with the history written out; "" keeps nothing.
+	Kept string
+}
+
+type envKey struct{}
+
+// WithEnv carries variables a request's turn wants in Claude Code's
+// environment, and so in every command it runs: the conversation's agent
+// identity, which a tool such as `canvas` records as who made a change,
+// exactly as a command codeaf runs sees it.
+//
+// IT RIDES THE REQUEST, NOT THE CLIENT, because a conversation's first client
+// is built before its identity is settled; the turn that sends the request
+// always knows it. It is read when the conversation's session starts.
+func WithEnv(ctx context.Context, env []string) context.Context {
+	if len(env) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, envKey{}, env)
+}
+
+func envFrom(ctx context.Context) []string {
+	env, _ := ctx.Value(envKey{}).([]string)
+	return env
+}
+
+// ClientAt is the client for a conversation seated as seat says.
+func ClientAt(seat Seat) *http.Client {
+	return &http.Client{Transport: transport{ask: claudeagent.Once, dir: seat.Dir, kept: seat.Kept}}
 }
 
 type transport struct {
@@ -106,6 +136,9 @@ type chatMessage struct {
 	Role       string          `json:"role"`
 	Content    json.RawMessage `json:"content"`
 	ToolCallID string          `json:"tool_call_id,omitempty"`
+	ToolCalls  []struct {
+		ID string `json:"id"`
+	} `json:"tool_calls,omitempty"`
 }
 
 func (t transport) complete(request *http.Request) (*http.Response, error) {

@@ -73,6 +73,10 @@ type Options struct {
 	// Tools, when set, are tools this client serves to Claude Code inside the
 	// session, beside its own (see [ToolServer]).
 	Tools *ToolServer
+	// PluginDirs are Claude Code plugin folders loaded for this session only,
+	// beside the plugins the person installed: how a skill kept for codeaf
+	// reaches Claude Code without being copied into its own folders.
+	PluginDirs []string
 }
 
 // ToolServer is a set of tools codeaf serves to Claude Code in-process, over
@@ -232,6 +236,9 @@ func Args(opts Options) []string {
 	if opts.Tools != nil {
 		config, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{opts.Tools.Name: map[string]any{"type": "sdk", "name": opts.Tools.Name}}})
 		args = append(args, "--mcp-config", string(config))
+	}
+	for _, dir := range opts.PluginDirs {
+		args = append(args, "--plugin-dir", dir)
 	}
 	return args
 }
