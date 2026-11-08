@@ -329,8 +329,8 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 		}
 		return a.beginCodexConnect(*draft)
 	case source.ID == claudemodel.ID:
-		// NO KEY IS ASKED FOR: codeaf never holds Claude Code's sign-in, so
-		// connecting is checking it is here and signed in.
+		// NO KEY IS ASKED FOR: codeaf never holds the `claude` program's
+		// sign-in, so connecting is checking it is here and signed in.
 		a.modelDraft = nil
 		return a.beginClaudeCodeConnect(*draft)
 	default:
@@ -457,7 +457,7 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 	}
 }
 
-// beginClaudeCodeConnect connects the person's own Claude Code through the
+// beginClaudeCodeConnect connects the person's own `claude` program through the
 // same door the app and `codeaf connect claude-code` use, and keeps its three
 // models with their window, so a conversation on one is measured against
 // Claude's window and not a stranger's default.

@@ -99,8 +99,8 @@ func connectCodex(ctx context.Context, profileDir string, noBrowser bool) error 
 	return nil
 }
 
-// connectClaudeCode connects the person's own Claude Code. It asks for no key,
-// because codeaf never holds its sign-in: it checks that Claude Code is here
+// connectClaudeCode connects the person's own `claude` program. It asks for no
+// key, because codeaf never holds its sign-in: it checks the program is here
 // and signed in, keeps the row and seeds its three models, exactly as the
 // app's Connect does.
 func connectClaudeCode(ctx context.Context, profileDir string) error {
