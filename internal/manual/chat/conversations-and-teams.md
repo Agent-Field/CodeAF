@@ -450,7 +450,7 @@ profile or changes the requesting chat's model.
 
 ## Do my teams show on my other computer?
 
-Team sharing is on by default for paired computers. The local switch is
+The share-teams preference is on by default for paired computers, but sharing through the hosted relay waits for storage approval in Settings → Devices → relay storage → enter. The local switch is
 **Settings → General → share teams**. Sharing includes teams, members, handles, the
 manager and team settings, plus recent Traffic as read-only history. Team changes
 show within a few seconds, even with no chat open. The Teams dropdown, Teams page
@@ -481,7 +481,7 @@ wait while this computer finishes sending an earlier change to the relay.
 
 ## Will deleting a team on my laptop delete it on my desktop?
 
-Team sharing is on by default for paired computers. With **Settings → General →
+The share-teams preference is on by default for paired computers, but sharing through the hosted relay waits for storage approval in Settings → Devices → relay storage → enter. With **Settings → General →
 share teams** enabled on both computers, a deleted team stays deleted. A desktop that was
 offline catches up when it reconnects. Renaming its old copy while offline does
 not bring the team back. Deleting a team does not delete its conversations.
@@ -494,6 +494,8 @@ creation order on both computers. Conflicting handles and parents are repaired
 consistently, and a removed member cannot remain the manager.
 
 ## Does Traffic sync between computers?
+
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
 
 Traffic sharing is on by default for paired computers through **Settings → General →
 share teams**. Turning it off on either computer stops sharing between them.
@@ -519,7 +521,7 @@ on the other computer's history.
 
 ## How do I turn on team sharing?
 
-Team sharing is on by default for paired computers. If it was turned off, open
+The share-teams preference is on by default for paired computers, but sharing through the hosted relay waits for storage approval in Settings → Devices → relay storage → enter. If it was turned off, open
 **Settings → General → share teams** on that computer and choose **on** to resume.
 Sharing exchanges teams, members, manager choices and settings, and recent Traffic as read-only history
 while the switch stays enabled on both paired computers.
@@ -532,7 +534,7 @@ Turn **share teams** to **off** to stop all team sharing immediately. Teams alre
 
 ## Stop sharing teams with my other computer
 
-Team sharing is on by default for paired computers. Open **Settings → General →
+The share-teams preference is on by default for paired computers, but sharing through the hosted relay waits for storage approval in Settings → Devices → relay storage → enter. Open **Settings → General →
 share teams** on either computer and choose **off**. Turning it off on either computer stops sharing
 teams, members, manager choices and settings, and recent Traffic between them immediately.
 That computer stops sending and receiving teams and Traffic. Teams already received
@@ -546,6 +548,8 @@ computers need to be running codeaf and able to reach the relay. Team changes
 arrive within a few seconds; recent Traffic can take about 2 minutes.
 
 ## First team sharing: backup, duplicate names and global managers
+
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
 
 Paired computers exchange teams automatically while **Settings → General →
 share teams** is on, its default. An unpaired computer is unaffected. Before the
@@ -566,6 +570,8 @@ existing former appointment stays; the copy made before the first exchange keeps
 the original teams. Review manager choices in Teams.
 
 ## Does a shared team's spending cap cover both computers?
+
+On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
 
 A team's spending cap counts spending on each computer separately. Sharing the
 team and its cap does not combine the usage meters. A member continued on the

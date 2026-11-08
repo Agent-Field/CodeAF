@@ -72,7 +72,7 @@ older version saved stays in the profile, read by nothing, and is never reported
 as an unknown setting. Internal model slots that this surface cannot
 change are omitted; supported model controls remain in Models.
 
-## General — interface preferences and hints
+## General — interface preferences, hints and share teams between paired computers
 
 **General** contains mouse interaction, completed tool details, tool icons, chat
 switching, the task sidebar and updates. There is no background reminders row: codeaf
@@ -82,7 +82,7 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
-**Settings → General → share teams** is on by default for paired computers. It
+**Settings → General → share teams** is on by default for paired computers. On the hosted relay it takes effect only with relay storage approval (Settings → Devices → relay storage); a self-hosted relay with `--store` needs no approval. It
 shares teams, their members and settings, and recent Traffic as read-only history.
 The choice stays on each computer. Turning it off on either computer stops sharing
 between them: that computer stops sending and receiving teams and Traffic. What
@@ -160,7 +160,7 @@ routing, internal role overrides and context limits.
 
 **Devices** lists your paired computers in the same words and order as `/devices`,
 renames this device with `n`, removes another with `r`, and starts `/pair` from
-`Add another device`.
+`Add another device`. For a paired hosted account, **relay storage** shows **on** or **off**. With **off**, Enter requests access and shows the public request code and link even if no browser opens. Choosing this row in search clears the search and opens Devices. The row is absent with sync off, before pairing, or on a self-hosted relay.
 
 **Privacy** separates input history, unfinished drafts, anonymous usage reporting
 and **shared model recommendations** (formerly Model Pool). Recommendations can

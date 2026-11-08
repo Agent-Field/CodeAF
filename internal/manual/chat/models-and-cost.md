@@ -4335,6 +4335,8 @@ a chain ends after ten requests rather than waiting forever.
 
 ## Do my crew settings follow me to my other computer?
 
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+
 After pairing, crew seat model pins, allowed-model choices, the crew daily cap,
 per-task cap and free-route choice follow synced preferences within a few seconds,
 even with no chat open. Both computers need to be running codeaf and able to reach

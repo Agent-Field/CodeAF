@@ -564,6 +564,8 @@ while it was closed.
 
 ## Team sharing and Traffic on another computer
 
+On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
 messages written on this computer. Team sharing is on by default for paired
@@ -622,6 +624,8 @@ former appointment stays; the copy made before the first exchange keeps the orig
 Review manager choices in Teams.
 
 ## Shared team spending caps and continued members
+
+On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
 
 Teams and their settings share automatically between paired computers by default;
 an unpaired computer is unaffected. A shared team's spending cap counts spending

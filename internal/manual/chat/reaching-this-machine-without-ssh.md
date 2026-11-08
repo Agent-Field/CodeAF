@@ -4,6 +4,8 @@ For an always-on computer on your own Railway account, see [A dev box](a-dev-box
 
 ## Two codes, two grants — remote access and your chats
 
+Live `--at` access and pairing work with hosted relay storage off while the other computer is on. Continuing saved chats with that computer off needs storage approval in Settings → Devices → relay storage → enter.
+
 You learn one thing: **a code shown on a screen you own, typed on the other computer.** A code can grant two different things. They stay two things, because they are two different powers.
 
 | | remote access (`codeaf serve`, `codeaf chat --at <name>`) | your chats (`/pair`, `codeaf pair`) |

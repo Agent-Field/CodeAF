@@ -2,7 +2,7 @@
 
 ## How do I add another computer — the Add another device card (add another machine), codeaf pair, a link to paste, and pairing a server with no browser
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Older chats move through an independent copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -39,6 +39,8 @@ The card goes away once you have two devices. After that, `/pair` or Settings �
 
 ## Do older chats move after pairing?
 
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 ## Pairing a server with no browser — the link, token and check number
@@ -68,13 +70,13 @@ The approving device says `desk-b is now paired. Your chats can continue there.`
 
 ## What does codeaf pair --code do
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 `codeaf pair --code` shows a code such as `04-063-213` on this computer. On the other computer, run `codeaf pair <code>` to share this computer's chats. Compare the three words and approve on the computer showing the code. The page *Pairing your chats with a second computer* explains each step.
 
 ## The pair words — approve, --code and --via
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 ```
 usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
@@ -91,7 +93,7 @@ A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair`
 
 ## The four-digit check — how I know the right computer is asking
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 The new device shows a check number of four digits. The device that approves shows the same four digits. Look at both screens. Approve only when they match. If they do not match, decline: somebody else may have used the link.
 
@@ -99,7 +101,7 @@ On the approving screen the number reads `Check number 4821. Approve only if the
 
 ## Approve a new device — the approve screen, a and d, and decline
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 When you open a link on a device that is already in (paste it, or type `/pair <link>`), the screen says who is asking:
 
@@ -129,7 +131,7 @@ Every other device that is on says it too, a moment later, from the same message
 
 ## What does the dot next to a computer mean — the devices row, online and offline
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 When you have two or more devices, home shows one row of them:
 
@@ -143,7 +145,7 @@ Under the row, `alt+m bring work here` brings the newest chat of an online devic
 
 ## Does the other computer appear on the device list straight after pairing — a just-paired device, devices empty after pairing
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Yes, on both sides. When a pairing finishes — a code such as `04-063-213` on both screens, a link
 typed into `codeaf pair approve`, either end of it — the computer it finished on writes
@@ -154,7 +156,7 @@ says one line about it, `paired; this computer will appear on your other devices
 
 ## Which devices do I have — /devices, how to remove or revoke one, a device that was revoked, and I was told this machine was removed
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Type `/devices` to list them:
 
@@ -183,6 +185,8 @@ The list is in a fixed order: this device first, then devices that are online, t
 
 ## Devices in /settings — where your computers are on the settings page, add another device, rename this one, or remove (revoke) one from settings
 
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+
 Open `/settings` (or `ctrl+,`) and walk with `←` and `→` to `Devices`, between `Connections` and `Privacy` — or type `devices`, `remove`, `revoke`, `pair` or `add device` in settings search.
 
 While loading, the tab says `looking up your devices…`. Loaded, it begins with the same dim `sync service: 127.0.0.1:8901 (your own)` or `sync service: codeaf.agentfield.ai (hosted)` line as `/devices` and the terminal. It lists this computer even before pairing, with the same platform and presence columns and in the same order and words as `/devices` — `●` online, `○` away (`seen 3h ago`, or `offline`), `this device`, and `removed` — followed by `Add another device`. The open tab refreshes on its own when a computer joins, renames itself or is removed.
@@ -203,7 +207,7 @@ After a successful removal, its confirmation stays visible even if refreshing th
 
 ## I was told this device was removed — how to bring it back
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Home shows `removed by another of your devices — pair again to sync` on its own dim line with the Add another device card. The line remains visible when this connection cannot offer that card. The footer keeps only key hints. `/pair` repeats that notice, then says `on a device still in your devices, open /pair; enter its code here to pair again` and shows `Code from another device`. Enter the other device’s code and confirm pairing. It cannot offer a code from the removed membership or approve another device’s link. If this computer was removed while its window was closed, the explanation appears on Home on the next launch too. The launch check and the live check share one notice, so learning it both ways does not repeat it.
 
@@ -214,6 +218,8 @@ this device was removed by another of your devices, so this chat stays here only
 ```
 
 ## Can a removed computer rejoin — /devices, pairing again and retained local chats
+
+Pairing again restores device access. Sending new chats, keys or shared state through the hosted relay also requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
 
 `/devices` on a removed computer says the same line in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If this computer has chats with submitted turns, run `codeaf pair --replace` instead. Its existing chats stay on this computer but no longer sync; shared memories and settings are cleared. Approve the new link from a computer still in your devices. A computer that has only opened codeaf, even with a provider connected, and whose chats contain only startup headers needs no `--replace`; saved knowledge, automations, tracked work and unknown local files still require the explicit replacement road. An active, already-paired computer is refused with the names of its other devices; `codeaf devices` lists them.
 
@@ -227,7 +233,7 @@ chats no longer sync under the replaced membership.
 
 ## The link did not work — a pairing link or token that ran out, was declined or was answered already
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 These are the sentences a link pairing says when it stops, in the words the screen uses. Nothing was changed on either device when you read one of them.
 
@@ -243,6 +249,8 @@ These are the sentences a link pairing says when it stops, in the words the scre
 Too many requests from one network are refused too: at most 10 new links in an hour and 3 waiting at once from one network. See *Pairing your chats with a second computer* for the code route and its own limit `too many pairings from this network; wait 7 min`.
 
 ## I quit on my laptop and opened my desktop after pairing
+
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
 
 After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. A sleeping or disconnected laptop still needs `alt+c` on Home. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
 

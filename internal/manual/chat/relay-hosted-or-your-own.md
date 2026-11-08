@@ -2,22 +2,26 @@
 
 ## Hosted relay or my own — which one do I use, where does sync go by default, and which relay each channel uses
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-A relay is the small service your computers sync through. There are two kinds. Both speak the same wire: the chat cannot tell them apart.
+A relay is the small service your computers sync through. There are two kinds. Both speak the same wire. Hosted storage requires account approval; your own relay with `--store` does not.
 
 - **A hosted relay** is run for you on a cloud account. You do nothing to run it. You give the chat its address.
 - **Your own relay** is the program `codeaf relay`. You run it on a computer you control.
 
 Either way the relay sees only ciphertext and the short list on "What can the relay see".
 
-**Where sync goes by default.** Unset, each release channel syncs through its own hosted relay: stable releases and release candidates use `https://codeaf.agentfield.ai/fabric`, staging builds use `https://caf-fabric-staging.instrument-santosh.workers.dev`, and dev builds and local builds from source use `https://caf-fabric-dev.instrument-santosh.workers.dev`. Channels do not sync with each other: computers must run the same channel (or set the same `CODEAF_SYNC_URL`) to pair and share chats. A build whose `HostedRelayURL` is empty has no default, and then nothing is copied and pairing says `no sync service is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
+## Where sync goes by default — stable, staging and dev relay addresses
+
+Hosted storage needs approval in Settings → Devices → relay storage; pairing and live `--at` work while storage is off.
+
+Unset, each release channel selects its own hosted relay: stable releases and release candidates use `https://codeaf.agentfield.ai/fabric`, staging builds use `https://caf-fabric-staging.instrument-santosh.workers.dev`, and dev builds and local builds from source use `https://caf-fabric-dev.instrument-santosh.workers.dev`. Channels do not sync with each other: computers must run the same channel (or set the same `CODEAF_SYNC_URL`) to pair and share chats. A build whose `HostedRelayURL` is empty has no default, and then nothing is copied and pairing says `no sync service is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>`. A new home sends no relay requests before completing a pairing or offering a code or link. Reading the add-device instructions does not start sync. Older identities without the quiet marker retain their earlier behavior: see "Is my code sent anywhere before I pair" on the page *Pairing your chats with a second computer*. To use your own relay instead, set `CODEAF_SYNC_URL` as below. Turn sync off with `CODEAF_SYNC_URL=off`; pairing cannot override that with `--via`.
 
 ## Point codeaf at a relay — CODEAF_SYNC_URL, url or off
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Set `CODEAF_SYNC_URL` in the environment of every computer that shares the chats.
 
@@ -33,7 +37,7 @@ Your own computers must all name the same relay and hold the same identity, or t
 
 ## Run my own relay — codeaf relay --listen and --store
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 ```
 codeaf relay --listen :8787 --store /var/lib/codeaf
@@ -50,7 +54,7 @@ There is no Docker image for the relay. The page `docs/relay.md` in the reposito
 
 ## Who can use my own relay
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 **Any caller with a valid signature may make an identity and store on your relay.** The relay has no list of allowed people: an identity is made from a key, and the relay accepts any key. Keep your relay on a private network, a tailnet or behind a proxy that checks who calls. One identity cannot read another's data.
 

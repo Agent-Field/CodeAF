@@ -2,6 +2,8 @@
 
 ## Can I run it on another computer?
 
+Live `--at` access and pairing work with hosted relay storage off while the other computer is on. Continuing saved chats with that computer off needs storage approval in Settings → Devices → relay storage → enter.
+
 `--host` runs the chat surface on the machine you are sitting at, and runs the
 conversation on another machine, over ssh.
 
@@ -307,7 +309,7 @@ purpose, and says `this window is reading this conversation, not typing into it`
 
 ## How do I work on the same conversation from two computers — another window, and another machine
 
-Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 

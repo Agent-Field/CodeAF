@@ -6,7 +6,7 @@ An older service cannot promise that taking a chat displaces only the computer y
 
 ## Is there a storage limit on the relay — how much can I sync
 
-It depends on the relay.
+Hosted storage starts off and requires approval in Settings → Devices → relay storage → enter while privacy terms are being finished. A self-hosted relay with `--store` needs no request. Limits below apply when storage is on.
 
 **A hosted relay has limits.** The hosted relay in this repository sets, for each identity:
 
@@ -16,17 +16,18 @@ It depends on the relay.
 - 2 chunks being sent at one moment;
 - 16 MiB for one chunk, and 1 MiB for any other message.
 
-A chunk the relay already holds costs nothing again, so a computer that sends it twice is never refused for that.
+With storage on, a chunk already held costs nothing again. Storage off refuses even a repeated put with `403 storage_off`; existing chunks remain readable.
 
 **Coordination storage has a separate limit on both relays.** Each identity starts with an 8 MiB allowance for directory and coordination records. A larger imported identity keeps its measured allowance. New growth beyond it is refused; existing records and saved chats are retained. A relay you run yourself also needs enough disk for encrypted chunks and all three coordination copies. Older directory requests keep their 1 MiB HTTP limit; staging a large request does not bypass retained storage capacity.
 
 ## How much sync space have I used
 
-Open `/status` in a chat to see a dim `sync space` line, for example
+When hosted storage is off, `/status` shows one dim `relay storage  off` line instead of sync space. The cached permission is refreshed in the background at launch and after each `/status`.
+
+With storage on, open `/status` in a chat to see a dim `sync space` line, for example
 `sync space  2.8 GiB of 5 GiB`. It shows how big your relay storage is and how
 close you are to the relay limit: the amount stored, then the byte limit the
-hosted relay reports. The same reading appears in `/status --json`. It is read when the chat opens and
-again after each `/status`, so it can trail what the last few turns uploaded.
+hosted relay reports. The same reading appears in `/status --json`. The permission refresher retains its last successful amount in this process. While hosted storage is on it makes no further permission requests, so this amount can trail new uploads. After a restart only the remembered on/off choice remains, and unknown usage draws no line.
 
 This counts everything stored for your identity on the hosted relay across all
 your computers and chats, not this chat alone. GiB and MiB are binary byte units,
@@ -45,6 +46,10 @@ is nothing stored yet, or the relay does not answer the short request.
 The hosted relay lets one network make **200 new identities in a day**. A network is one IPv4 address, or one IPv6 block of /64 (changing the address inside your own block does not make a new network). Computers of an identity that exists are never counted. After 200 the relay answers `429` with the code `too_many_identities` and a `Retry-After` that says how many seconds are left until that network's day ends. A relay you run yourself has no such limit.
 
 Pairing has limits on both kinds of relay: 10 new codes in an hour for one network, and a relay holds at most 2,000 waiting pairings. The messages are on the pairing page, for example `too many pairings from this network; wait 7 min` and `sync is full right now; try again in a few minutes`.
+
+## Relay storage is off — approval, retries and chats staying here
+
+**Relay storage is off** (`403`, code `storage_off`). The chat says `relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices`, once while it waits. No upload requests are made when this computer knows storage is off. A refresh that sees approval wakes sync automatically. This is separate from every full refusal; reads, pairing and live `--at` still work. Running uploads retry through the local gate on their normal backoff, capped at 60 seconds. One process-wide waiter starts chats waiting for storage within a minute of another process learning approval. Approval discovery runs at launch, after `/status`, and every ten minutes while hosted storage is off; serving computers use it too. It stops polling once storage is on.
 
 ## What do I see when the relay says no
 

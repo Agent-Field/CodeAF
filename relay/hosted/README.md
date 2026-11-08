@@ -291,3 +291,28 @@ metrics and update prompts off, no dependency on a writable home. Use that wrapp
 local Wrangler commands too. The project `.npmrc` keeps npm's own installation cache and
 logs below the ignored `.wrangler/npm-cache` directory, so `npm ci && npm test` also
 works with a read-only home. `npm ci` installs only the lockfile's dependencies.
+
+## Hosted storage approvals
+
+Hosted R2 writes are closed by default, including dev and staging, while the privacy terms are being finished. Pairing, presence, directory coordination, live tunnels and existing frame reads remain available. Account approval is stored separately from newcomer admission. A self-hosted Go relay does not use this policy.
+
+Build the operator-only command with `go build -o /tmp/codeaf-relay-admin ./cmd/codeaf-relay-admin` from the repository root; it is not packaged in releases or installers. An operator supplies their own Ed25519 seed file, one unpadded base64url 32-byte seed per file with owner-only permissions. The default is `~/.config/codeaf-relay-admin/admin.key`; `CODEAF_RELAY_ADMIN_KEY` or `--key` overrides it. Never place a private key in this repository.
+
+```sh
+codeaf-relay-admin public-key --key <seed-file>
+codeaf-relay-admin approve id_<32-hex> --relay prod --key <seed-file>
+codeaf-relay-admin revoke id_<32-hex> --relay staging --key <seed-file>
+```
+
+`--relay` defaults to `prod`; `staging`, `dev` and an explicit HTTP URL are also accepted. URL prefixes such as `/fabric` are preserved. The command signs the exact JSON body after `codeaf/relay-admin/v1\n` and posts to `/v1/admin/storage`. The front Worker verifies an Ed25519 signature from `CAF_ADMIN_KEYS`, the arrived host and a ten-minute clock window. The identity object rejects replayed or reordered timestamps with `409 stale`. Revocation stops future writes without deleting existing frames.
+
+`CAF_ADMIN_KEYS` contains comma-separated unpadded base64url raw public keys; an empty value permits no approvals. The committed public key in `[vars]` is retained by every channel configuration. `CAF_LIMITS.storageOpen` accepts `true` or `1` to open storage for everyone later; no deployment configuration enables it by default.
+
+
+## Storage handoff during rotation
+
+Relays advertise handoff support through the `storage` field in signed store stats. The client always sends the original freeze body, then posts a device-signed `POST /v1/store/handoff` as the source identity before resealing uploads. Its JSON body is `{"successor":"id_…","successor_key":"<hex Ed25519 public key>","proof":"<hex signature>"}`. The successor identity key signs `codeaf/storage-handoff/v1\n<source id>\n<successor id>`.
+
+The hosted object checks its committed rotation view: a source that is neither frozen nor retired receives `409 not_rotating`. WebCrypto verifies the successor's key-derived ID and proof. The first accepted successor is permanently bound in the source's local `meta`, surviving thaw and object restart. A different successor receives `409 conflict`; the same successor may retry. This does not change coordination commands, records or the shared evaluator.
+
+Only an `on` approval can be inherited, only into a successor with no approval record, and only while storage is closed globally. The response is `200 {"successor":…, "storage":"on"|"off"}` with the successor's resulting state. A frozen rotation journal repeats this handoff before uploads; `--abandon` keeps its bound successor keys for reuse. Storage-off rotation completes locally with no store writes. An older relay receives no handoff request.

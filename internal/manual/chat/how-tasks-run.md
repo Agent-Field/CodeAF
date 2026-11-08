@@ -3205,6 +3205,8 @@ pointer — they still point at your turn, never at the parent task's own journa
 
 ## The optional arguments on propose_task
 
+On the hosted relay, sharing new content between paired computers requires relay storage approval in Settings → Devices → relay storage. A self-hosted relay with `--store` needs no approval.
+
 These arguments are optional. Bad values return a refusal the model can correct.
 
 **`computer`** — the shown name of a paired computer that runs

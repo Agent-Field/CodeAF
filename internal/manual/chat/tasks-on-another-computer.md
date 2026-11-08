@@ -2,6 +2,8 @@
 
 ## Can a task run on my other computer
 
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+
 Yes. Pair both computers with the same identity and run `codeaf serve --take-tasks` on the
 computer that will do the task. Both ends need Linux or macOS; Windows cannot
 send or receive these tasks yet. An ordinary open chat window does not take tasks.
@@ -26,6 +28,8 @@ The other computer uses its own provider keys; its spend appears here against
 the conversation and task, once, and also stays on that computer's ledger.
 
 ## Run a task on my mac mini
+
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
 
 Pair your Mac mini and this computer, then run `codeaf serve --take-tasks` on the mini.
 Use its shown name, quoting names that contain spaces:
@@ -142,6 +146,8 @@ setting names another computer, without a special placement sentence.
 
 ## codeaf serve --take-tasks takes tasks from paired computers
 
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
+
 Plain `codeaf serve` opens only the machine connection and does not take tasks.
 Run `codeaf serve --take-tasks` on the paired computer that should take tasks. It prints
 `takes tasks from your paired computers`. Pairing with the same identity is
@@ -204,6 +210,8 @@ Do not substitute another computer just because its name looks the same.
 requires updating both ends before retrying.
 
 ## The task copy could not be sent
+
+Hosted chat/file sync requires storage approval in Settings → Devices → relay storage → enter; pairing alone does not enable it. Pairing, the device list and live `--at` still work while storage is off. A self-hosted relay with `--store` needs no request.
 
 `the task copy changed while it was being sent; try again` keeps the copy here.
 Finish or pause the edits, then retry the task.
