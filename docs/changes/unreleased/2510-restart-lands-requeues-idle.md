@@ -1,7 +1,7 @@
 ---
 kind: fixed
-title: A job picked up after a restart lands on its run's pull request, an interrupted native step is offered again, and idle step chats read nothing
-pr: 0
+title: A job re-taken after a restart lands on its PR, an interrupted step reruns, idle stays idle
+pr: 2510
 surface: [factory, engine]
 invalidates:
   - "Was true (#2508): a job re-taken after a restart while its AgentField step's run went on followed the run to its end, then reported a step named after one of the run's own calls (`execute`) and the factory refused the whole report with HTTP 422 \"report names an unknown step\"; the run's pull request opened but the job sat in Needs you (`results_not_saved`), jobs 72 and 74 of the fourth live run. The cause was the wire: the run's calls are folded under their step in `Job.Steps` for the rail, and `api.ToItem` read them back as phases of the job. Is true now: `unsteps` skips the rows folded from `Job.AgentFieldSteps`, so a re-taken runner's phases are the pipeline's own and the job lands on its run's pull request."
