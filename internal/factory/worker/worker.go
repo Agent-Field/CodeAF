@@ -315,6 +315,8 @@ type job struct {
 	reconcile     func(string)
 	spendReport   *client.PreparedWorkerReport
 	spendBaseline float64
+	// quiet is the last flush that found nothing to send ([quietFlush]).
+	quiet quietFlush
 }
 
 var admissionRetryWindow = factory.RecoveryWindow
@@ -653,6 +655,15 @@ func (j *job) flush(ctx context.Context) bool {
 	if j.pending != nil {
 		return j.sendPending(ctx)
 	}
+	// The mirror is looked at before it is read, so a write landing between
+	// the two leaves the newer document under the older stamp and the next
+	// flush reads it again ([quietFlush]).
+	stamp, stampErr := j.o.Mirror.Stamp(j.id)
+	if stampErr == nil && j.quiet.holds(stamp, j.now()) && !j.owesDelivery() {
+		return true
+	}
+	j.quiet = quietFlush{}
+	fullFlushes.Add(1)
 	cur, err := j.o.Mirror.Get(j.id)
 	if err != nil {
 		return true
@@ -696,6 +707,9 @@ func (j *job) flush(ctx context.Context) bool {
 	j.mu.Unlock()
 	ok = ok || len(report.Delivered) > 0
 	if !ok {
+		if stampErr == nil {
+			j.quiet = quietFlush{mirror: stamp, talk: cur.Talk, thread: factorythread.VersionOf(cur.Talk), at: j.now()}
+		}
 		return true
 	}
 	// Later thread or usage updates must still identify a parked budget wait;

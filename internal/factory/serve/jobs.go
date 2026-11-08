@@ -1060,8 +1060,11 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	// One listing serves every scan for due work. Each scan only picks
 	// candidates from it and reads every candidate again under its lock
 	// before acting, so sharing it changes nothing but the number of times
-	// every document on the floor is read before each request.
-	pending, err := h.config.Store.List()
+	// every document on the floor is read before each request. IT IS THE
+	// STORE'S SHARED LISTING ([store.Store.ListShared]): a settle of a floor
+	// on which nothing changed reads no job and copies none, and no scan
+	// writes through an item it was handed.
+	pending, err := h.config.Store.ListShared()
 	if err != nil {
 		return
 	}
@@ -1173,7 +1176,8 @@ func (h *Handler) scheduleJobTimer() {
 	if h.config.Store == nil {
 		return
 	}
-	items, err := h.config.Store.List()
+	// The timer only reads deadlines, so the shared listing serves it.
+	items, err := h.config.Store.ListShared()
 	if err != nil {
 		return
 	}

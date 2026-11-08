@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // AN IDLE RUNNER DECODES NOTHING TO LEARN NOTHING CHANGED. Every runner slot
@@ -92,5 +93,51 @@ func TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow(t *testing.T) {
 	f.request(t, "POST", beat, worker.Credential, nil, 200, nil)
 	if got := serve.Settles() - before; got != 1 {
 		t.Fatalf("a beat five seconds on settled %d times, want 1", got)
+	}
+}
+
+// A SETTLE OF AN UNCHANGED FLOOR READS NO JOB. A held job's beats settle the
+// floor every five seconds; each settle listed and copied every job on it. The
+// settle's listing is now the store's shared one, so a floor on which nothing
+// changed is settled from memory, and a job edited on disk by another process
+// is read again at the next settle.
+func TestASettleOfAnUnchangedFloorReadsNoJob(t *testing.T) {
+	f := workerSetup(t)
+	worker := f.attach(t, "sam")
+	var ids []int
+	for range 20 {
+		ids = append(ids, f.add(t, "").ID)
+	}
+	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
+	settled, read := serve.Settles(), store.SharedReads()
+	for range 5 {
+		f.clock.Add(int64(serve.WorkerSettleEvery))
+		f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
+	}
+	if got := serve.Settles() - settled; got != 5 {
+		t.Fatalf("five pulls a window apart settled %d times, want 5", got)
+	}
+	if got := store.SharedReads() - read; got != 0 {
+		t.Fatalf("five settles of an unchanged floor read %d jobs, want 0", got)
+	}
+
+	// Another process rewrites one job's file in place.
+	path := f.st.ItemPath(ids[3])
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Date(2031, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	read = store.SharedReads()
+	f.clock.Add(int64(serve.WorkerSettleEvery))
+	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
+	if got := store.SharedReads() - read; got != 1 {
+		t.Fatalf("a settle after one job was edited read %d jobs, want 1", got)
 	}
 }
