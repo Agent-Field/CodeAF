@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -63,7 +64,7 @@ func run(ctx context.Context, args []string, out io.Writer, hc *http.Client) err
 	flags := flag.NewFlagSet("codeaf-relay-admin", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	relay := flags.String("relay", "prod", "relay name or URL")
-	keyPath := flags.String("key", os.Getenv("CODEAF_RELAY_ADMIN_KEY"), "private seed file")
+	keyPath := flags.String("key", env.Get("CODEAF_RELAY_ADMIN_KEY"), "private seed file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}

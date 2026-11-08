@@ -251,13 +251,19 @@ func (b *driveBook) storageOpened() {
 	if b == nil {
 		return
 	}
+	for _, d := range b.openDrives() {
+		d.storageOpened()
+	}
+}
+
+// openDrives copies the open drives under the lock, so waking them happens
+// outside it.
+func (b *driveBook) openDrives() []*liveDrive {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	drives := make([]*liveDrive, 0, len(b.drive))
 	for _, d := range b.drive {
 		drives = append(drives, d)
 	}
-	b.mu.Unlock()
-	for _, d := range drives {
-		d.storageOpened()
-	}
+	return drives
 }

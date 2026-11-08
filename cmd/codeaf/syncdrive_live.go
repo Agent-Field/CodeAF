@@ -332,18 +332,23 @@ func (l *liveDrive) catchUpAfter(used *syncsetup.Drive) {
 
 // storageOpened shortens only a capacity wait; it never replaces an active writer.
 func (l *liveDrive) storageOpened() {
+	if d := l.endStorageWait(); d != nil {
+		d.StorageOpened()
+	} else {
+		l.try()
+	}
+}
+
+// endStorageWait clears the storage wait and its retry timer under the lock and
+// answers the running drive, if there is one, so waking it happens outside.
+func (l *liveDrive) endStorageWait() *syncsetup.Drive {
 	l.mu.Lock()
-	d := l.drive
+	defer l.mu.Unlock()
 	l.storageWaiting = false
 	if l.stopRetry != nil {
 		l.stopRetry()
 		l.stopRetry = nil
 	}
 	l.retryAt = time.Time{}
-	l.mu.Unlock()
-	if d != nil {
-		d.StorageOpened()
-	} else {
-		l.try()
-	}
+	return l.drive
 }
