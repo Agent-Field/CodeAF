@@ -39,6 +39,8 @@ type SealWatch struct {
 	// OnRetire releases seat-owned subscriptions after the session stops.
 	OnRetire func()
 	retired  sync.Once
+	stopped  bool
+	owners   int
 	wake     func()
 	listener uint64
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
@@ -142,16 +144,48 @@ func (w *SealWatch) Listen(wake func()) func() {
 	}
 }
 
+// Adopt keeps subscriptions alive while a conversation still uses this watch.
+func (w *SealWatch) Adopt() func() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stopped {
+		return func() {}
+	}
+	w.owners++
+	var released sync.Once
+	return func() {
+		released.Do(func() {
+			last := func() bool {
+				w.mu.Lock()
+				defer w.mu.Unlock()
+				w.owners--
+				if w.owners != 0 {
+					return false
+				}
+				// Mark the last release before unlocking so a retired watch cannot be adopted again.
+				w.stopped = true
+				return true
+			}()
+			if last {
+				w.Retire()
+			}
+		})
+	}
+}
+
 // Retire stops subscriptions and tail work once this seat has no session left.
 func (w *SealWatch) Retire() {
 	w.retired.Do(func() {
+		func() {
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			w.stopped = true
+			w.stopTail()
+			w.wake = nil
+		}()
 		if w.OnRetire != nil {
 			w.OnRetire()
 		}
-		w.mu.Lock()
-		defer w.mu.Unlock()
-		w.stopTail()
-		w.wake = nil
 	})
 }
 
@@ -184,7 +218,7 @@ func (w *SealWatch) TurnStarted() {
 func (w *SealWatch) Wrote() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if !w.idle || w.OnTail == nil {
+	if w.stopped || !w.idle || w.OnTail == nil {
 		return
 	}
 	w.stopTail()
@@ -206,10 +240,13 @@ func (w *SealWatch) stopTail() {
 }
 
 func (w *SealWatch) sealTail() {
-	w.mu.Lock()
-	owed := w.idle && w.tail != nil
-	w.tail = nil
-	w.mu.Unlock()
+	owed := func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		owed := !w.stopped && w.idle && w.tail != nil
+		w.tail = nil
+		return owed
+	}()
 	if owed {
 		w.OnTail()
 	}

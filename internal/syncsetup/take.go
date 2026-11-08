@@ -237,14 +237,15 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	c.retireHolder(ctx, id)
 	retired()
 	storageOff := !c.sync.StorageAllowed()
+	localWork := engineLocal{eng: c.eng, ctx: ctx}
 	if storageOff {
 		local := cell.Cell{ID: id, Root: root}
 		if _, err := os.Stat(root); err == nil {
-			head, _, err := cellstore.Unpublished(local, view.Cell.Head)
+			head, _, err := localWork.Unpublished(local, view.Cell.Head)
 			if err != nil {
 				return Continued{}, err
 			}
-			dirty, err := c.eng.Dirty(ctx, local)
+			dirty, err := localWork.Dirty(ctx, local)
 			if err != nil {
 				return Continued{}, err
 			}
@@ -267,6 +268,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		intendedPrimary = project
 	}
 	taker := c.taker(ctx, sc)
+	taker.Local = localWork
 	preflight := func(_ context.Context, staged cell.Cell) error {
 		place := session.Place{Dir: staged.Root, Workspace: intendedPrimary}
 		plan, err := session.TaskWorkspaceTransferPlan(place)

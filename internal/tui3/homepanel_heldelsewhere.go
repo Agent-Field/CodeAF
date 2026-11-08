@@ -308,7 +308,10 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 			}
 			return msg.resume()
 		}
-		if !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && row.Head != "" && row.Head == msg.head {
+		// An empty head still belongs here when this device was the last holder;
+		// conditional acquisition checks that nobody took it after this reading.
+		localHead := row.Head != "" && row.Head == msg.head || row.Head == "" && row.Mine
+		if !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && localHead {
 			if _, ok := a.taker.(conditionalTaker); ok {
 				draft := a.mainComposer()
 				return a.takeRemoteState(homeTakenMsg{row: row, draft: &draft, send: msg.resume})

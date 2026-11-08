@@ -267,3 +267,22 @@ func TestSealWatchStartupTurnStillWaitsForPublish(t *testing.T) {
 		t.Fatal("published startup turn did not recover")
 	}
 }
+
+func TestRetiredSealWatchNeverArmsAnotherTail(t *testing.T) {
+	w := &SealWatch{Quiet: time.Hour, OnTail: func() { t.Error("retired watch sealed a tail") }}
+	w.Waiting()
+	w.Wrote()
+	w.Retire()
+	defer w.Retire()
+	w.Wrote()
+	w.TurnStarted()
+	w.TurnEnded()
+	w.Waiting()
+	w.Wrote()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.tail != nil {
+		w.tail.Stop()
+		t.Fatal("retired watch armed a new tail timer")
+	}
+}

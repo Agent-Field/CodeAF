@@ -36,11 +36,12 @@ func (placeSettings) word() string { return "settings" }
 
 func (placeSettings) open(a *app) tea.Cmd {
 	a.raiseSettings()
-	// The place clock reads the saved account code and storage permission only
-	// on Devices or in Settings search, so pairing updates the visible row
-	// without recurring account discovery on unrelated tabs. The same beat
-	// keeps the navigation bar's counts current; other settings rows change
-	// only when their settings change.
+	// The place clock samples local sync setup, the pairing identity, the solo
+	// marker and the saved storage permission only on Devices or in Settings
+	// search. It derives the public account code from that identity, so pairing
+	// updates the visible row without recurring account discovery on unrelated
+	// tabs. The same beat keeps the navigation bar's counts current; other
+	// settings rows change only when their settings change.
 
 	// OVER --host THE TEAMS TAB READS THE FAR MACHINE, once, off the loop. A
 	// local launch asks for nothing.

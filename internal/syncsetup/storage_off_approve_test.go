@@ -66,6 +66,85 @@ func TestStorageOffContinueReadsRecordedHistory(t *testing.T) {
 	}
 }
 
+// Continuation must preserve precisely the work the ordinary taker would keep.
+func TestStorageOffContinuationUsesTheSameLocalWorkChecks(t *testing.T) {
+	for _, mode := range []string{"bookkeeping behind", "same length transcript edit", "workspace files only"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newTwoHomes(t)
+			a := h.openA()
+			a.mustSay("first recorded turn")
+			h.durable(h.cell.ID, h.cell)
+			mustNil(t, a.drive.Close(t.Context()))
+			got, err := h.continuerB().Take(t.Context(), h.cell.ID)
+			mustNil(t, err)
+			local := got.Taken.Cell
+			mustNil(t, h.b.Dir.Release(t.Context(), h.cell.ID, got.Taken.Driving.Fence))
+			cont := h.continuerB()
+			before, err := os.ReadFile(transcriptOf(local))
+			mustNil(t, err)
+			workspaceFile := filepath.Join(workspaceOf(local.Root), "kept.txt")
+			switch mode {
+			case "bookkeeping behind":
+				_, err = cont.eng.Seal(t.Context(), local, cellstore.TurnInfo{})
+				mustNil(t, err)
+				a = h.openA()
+				a.mustSay("newer recorded turn")
+				h.durable(h.cell.ID, h.cell)
+				mustNil(t, a.drive.Close(t.Context()))
+				before, err = os.ReadFile(transcriptOf(h.cell))
+				mustNil(t, err)
+				cont = h.continuerB()
+			case "same length transcript edit":
+				edited := bytes.Replace(before, []byte("first recorded turn"), []byte("local edited record"), 1)
+				if bytes.Equal(edited, before) || len(edited) != len(before) {
+					t.Fatal("fixture must edit a message without changing its length")
+				}
+				before = edited
+				mustNil(t, os.WriteFile(transcriptOf(local), before, 0600))
+			case "workspace files only":
+				mustNil(t, os.WriteFile(workspaceFile, []byte("keep this work"), 0600))
+			}
+			view, err := h.b.Dir.Cell(t.Context(), h.cell.ID)
+			mustNil(t, err)
+			rawHead, _, err := cellstore.Unpublished(local, view.Cell.Head)
+			mustNil(t, err)
+			rawDirty, err := cont.eng.Dirty(t.Context(), local)
+			mustNil(t, err)
+			if mode == "bookkeeping behind" && rawHead == "" {
+				t.Fatal("fixture needs an unpublished bookkeeping seal")
+			}
+			if mode == "same length transcript edit" && (rawHead != "" || rawDirty) {
+				t.Fatal("fixture must evade the raw checks")
+			}
+			counted := &storageOffStore{Store: h.b.Store, off: true}
+			h.b.Store = counted
+			mustNil(t, SaveStorage(h.homeB, h.b.Relay, h.b.Identity.ID(), "off"))
+			got, takeErr := cont.Take(t.Context(), h.cell.ID)
+			actual, err := os.ReadFile(transcriptOf(local))
+			mustNil(t, err)
+			if !bytes.Equal(actual, before) || counted.writes != 0 || got.Taken.Kept != "" {
+				t.Fatalf("history=%q want=%q writes=%d kept=%q", actual, before, counted.writes, got.Taken.Kept)
+			}
+			mustNil(t, takeErr)
+			if mode == "bookkeeping behind" {
+				if got.Taken.Driving.Head != view.Cell.Head || headOf(t, local) != view.Cell.Head {
+					t.Fatal("bookkeeping prevented the read-only fetch")
+				}
+			} else if got.Taken.Cell.Root != local.Root || got.Taken.Driving.Head != view.Cell.Head {
+				t.Fatal("local work did not continue in place")
+			}
+			if mode == "workspace files only" {
+				raw, err := os.ReadFile(workspaceFile)
+				mustNil(t, err)
+				if string(raw) != "keep this work" {
+					t.Fatalf("workspace work changed: %q", raw)
+				}
+			}
+			storageOffRequireLocalReady(t, got)
+		})
+	}
+}
+
 // B5 carries every preserved turn through quit, expiry, approval and publication.
 func TestContinueOffThenApprovePublishes(t *testing.T) {
 	celltest.RequireEngine(t)

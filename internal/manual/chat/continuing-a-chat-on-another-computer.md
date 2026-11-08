@@ -79,7 +79,7 @@ Keeping turns made here that another computer lacks waits for storage access onl
 
 ## Why does continue here say this chat was last held here — my only computer asks to continue
 
-A chat this computer held last, whose hold expired with no other computer holding it, opens without a question: there is nothing to continue from. Enter sends, and turns this computer saved while it could not reach your other devices are sent to them when the chat opens. Earlier builds asked `Continue this chat here?` on the only computer that used the chat.
+A chat this computer held last, whose hold expired with no other computer holding it, opens without a question, even if nothing has been shared yet. Enter sends. While sync storage is off, new turns stay on this computer; after approval, opening the chat here sends its preserved turns to your other computers. Earlier builds asked `Continue this chat here?` on the only computer that used the chat.
 
 The card still says `this chat was last held here; last saved turn 2h ago` when this window's own earlier move failed. Choose `continue here` to resume it. The landing says `Moved here` and never names this computer as somewhere the chat moved from.
 
