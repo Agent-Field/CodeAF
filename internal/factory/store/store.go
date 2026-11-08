@@ -62,6 +62,8 @@ type Store struct {
 	root         string
 	outputPolicy func() (int, int)
 	observer     atomic.Pointer[func(before, after factory.Item)]
+	// shared is the last [Store.ListShared], reused while the floor is unchanged.
+	shared sharedList
 	// clock is the store's now. A test may hold it still; it is nil in every
 	// real build, which reads as time.Now.
 	clock func() time.Time

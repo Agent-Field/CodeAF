@@ -194,6 +194,7 @@ func (j *job) sendPending(ctx context.Context) bool {
 	// This snapshot, rather than a later mirror read, is the acknowledged
 	// baseline. New work becomes a new delta only after this exact request lands.
 	j.sent = p.Snapshot
+	j.quiet = quietFlush{}
 	j.mu.Lock()
 	for _, id := range p.Delivered {
 		j.acknowledged[id] = true

@@ -96,6 +96,35 @@ func readKeyOf(path string) (readKey, bool) {
 	return readKey{file: file, dir: dir}, true
 }
 
+// Version is one look at a journal's identity, the same look [Read] makes
+// before it answers from memory. Two versions that are [Version.Same] would
+// be answered alike by Read.
+type Version struct {
+	key readKey
+	// none is a job with no journal at all, which Read answers as nothing.
+	none bool
+	ok   bool
+}
+
+// VersionOf looks at the journal at path without reading it.
+func VersionOf(path string) Version {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return Version{none: true, ok: true}
+	}
+	key, ok := readKeyOf(path)
+	return Version{key: key, ok: ok}
+}
+
+// Same says two looks saw one unchanged journal. A journal that could not be
+// looked at is never the same as anything.
+func (v Version) Same(o Version) bool {
+	if !v.ok || !o.ok || v.none != o.none {
+		return false
+	}
+	return v.none || v.key.same(o.key)
+}
+
 // read is [Read] without the memory: the journal parsed as it is now.
 func read(path string) []factory.Message {
 	readParses.Add(1)
