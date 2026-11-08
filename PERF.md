@@ -669,3 +669,56 @@ leaves no hold behind: a clean quit hands each lease back (`Desk.HandBack`), so
 `CODEAF_DIAGNOSTIC_PROFILE_DELAY` (1..3600 s) opens the developer profile's
 window that long after start, so a steady idle can be profiled; the window
 itself is still at most 60 s.
+
+### Quit and idle, the ninth live round
+
+The ninth live WorkAF round quit with jobs running in 30 s (the desk's kill,
+exit 143) two times in three, an idle quit exited 1 with "codeaf could not save
+this chat", the old `codeaf clock` stayed about 30 s after its engine, and the
+idle engine read 6.3–7.4% of a core on macOS.
+
+- **A quit hurries cut streams' receipts.** A goroutine dump of a 41 s rig quit
+  showed every conversation's close waiting in `provider.reconcile`'s pauses
+  (1, 4, 15, 20 s; `ReceiptWait` 70 s) for the price of the call the quit cut.
+  `appBackend.Close` now calls `provider.HurryReceipts`: a pause ends, each owed
+  receipt asks once more within `receiptHurryAsk` (2 s) and is then recorded
+  unpriced with its tokens, and the app's close waits at most
+  `appQuitReceiptWait` (3 s) per conversation. `receipt_hurry_test.go`.
+- **A gone checkout is not a failed save.** A job chat whose folder was deleted
+  failed its next capture, and `Flush` reported it at exit (exit 1). A capture
+  or seal of a missing folder is `cellstore.ErrWorkspaceGone`, which is nothing
+  to save. Rig: a turn after the checkout is removed exits 1 three times in
+  three before, 0 in three after. `workspace_gone_test.go`.
+- **An orphaned clock with no window leaves at once**, not after its 30 s
+  `closingGrace` (`TestAnOrphanedClockWithNoWindowOpenLeavesWithoutTheGrace`).
+- **Idle writes that said nothing new are gone.** Every write under the factory
+  root wakes its watchers, and on macOS a kqueue directory event re-lists the
+  root (`fsnotify.(*kqueue).dirChange`, 13% of the before profile):
+  - a lease renewal is written once the stored one is `lease.RenewalSettles`
+    (10 s) old, not every 2 s (`TestARenewalRewritesTheLeasesOnlyOnceTheStoredOneHasAged`);
+  - a machine busy on two jobs keeps the job it was announced with, instead of
+    two live events and a `live-events.json` rewrite per beat
+    (`TestAMachineBusyOnTwoJobsAnnouncesNothingAsTheyBeatInTurn`: 18 → 0);
+  - a followed AgentField run whose reading changes nothing does not write its
+    job, which it did every 500 ms (`TestAFollowedRunThatIsNotMovingDoesNotRewriteItsJob`: 50 → 0);
+  - a watched root is re-read every 30 s (`changePollWatched`), not 2 s;
+  - an idle chat's knowledge tick whose journal is unchanged since a read that
+    reached its end reads nothing
+    (`TestAnIdleChatsSafetyTickDoesNotReadAJournalThatHasNotMoved`).
+
+Rig (scratch `rig9.py`, `r7rig.py` with a stub that can hold a reply open):
+84 + 2 held jobs, 35 open chats, 15 slots; idle is the engine's CPU over 120 s
+from 200 s after start. The quit has 6 held step streams and 14 chats
+mid-reply on a stub dribbling a token a second.
+
+| | linux/arm64 before (`a27f3abd5`) | linux after | macOS before | macOS after |
+| --- | --- | --- | --- | --- |
+| idle CPU | 0.97% | 0.60% | 4.19% | 2.60% |
+| `leases.json` rewrites | 0.90/s | 0.17/s | 1.00/s | 0.18/s |
+| quit, 20 streams mid-reply | 41.3 s | 1.7 s, exit 0 | 40.6 s | 2.2 s, exit 0 |
+| clock after the engine exits | 33 s | 2 s | 28 s | 1 s |
+
+The macOS 60 s steady profile fell from 3.03% to 2.10% of a core. What remains
+is the factory's lease reads on runner requests (17%) and the chat presence
+beat (13%). The rig does not follow a live AgentField run, which the live
+round's idle did; the AgentField write above is that path's share.
