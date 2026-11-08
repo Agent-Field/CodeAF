@@ -671,6 +671,12 @@ One check, in code, decides every merge; no model does. A job's manager presses 
 
 **Auto-merge** is off unless the repository's `.codeaf/factory.yaml` says `merge: {auto: on}` (`method: merge`, `squash` or `rebase`; omitted lets the repository's settings choose). A personal `~/.codeaf/factory.yaml` may only turn it off. The setting is fixed on a job when its proof is approved. An auto-merge also needs every claim proven and at least one passing check, and until then it waits quietly. A merge that failed is the person's to look at, says why, and is never tried again on its own.
 
+## which files a merge changes — the pull request's file list, removed files, renamed files
+
+Every job with an open pull request carries that pull request's own file list, read from GitHub, whoever built it: a run on this factory, a run on AgentField or SWE-AF, or any run that delivered a pull request. Each file has its path and its status: `added`, `modified`, `removed` or `renamed` (a rename also says the path it came from), and GitHub's other words as GitHub spells them. The job page's Merge card reads it to say what a merge puts on the base branch, and names every removed file before you press.
+
+The list is read once for each commit the pull request points at, and it says which commit that was. When the branch moves, the old list is not shown for the new commit: it is read again, and until then the files are unknown, which the card says ("This app cannot see which files it changes. Check them on the pull request before you merge."). At most the first 300 files are kept, in GitHub's order, with the whole change's file count beside them. A merged or closed pull request keeps the list it had and is not read again. A list GitHub refuses is left unknown; it never stops the other pull request facts, and it never blocks Merge.
+
 ## a runner missed my choice — lost heartbeat replies, repeated signals
 
 A current factory keeps a choice sent to a current runner until that runner
@@ -1055,6 +1061,10 @@ first. Dated answers carry their step, gate and answer time. Saved notes have
 no recorded step or time; their saved order comes before dated answers.
 Duplicate words appear once. Requests survive cuts to fit the writer's input.
 A new request makes an earlier Brief out of date.
+
+## Job Brief words — plain headings, never machinery words
+
+The Brief is written for the person who owns the job, in plain words. Its headings and its text never use the factory's internal words for checking and reviewing: the writer is told so, and every word it drafts is put into plain words before the Brief is kept, so a heading about what was checked reads `What the checks found`, checked work reads "checked", and the Brief's headline is the job's outcome. A proof's command, a file path and a step's name are left exactly as written.
 
 ## Job Brief after proof, publishing and an out of date line
 

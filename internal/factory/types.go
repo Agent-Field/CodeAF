@@ -509,7 +509,19 @@ type PullRequest struct {
 	// HeadBranch is the branch the pull request comes from, which a repair pushes
 	// to: an older branch can leave it named apart from the job's own.
 	HeadBranch string `json:",omitempty"`
+	// Files is the pull request's change as GitHub lists it, read on the
+	// commit FilesHead, at most [PRFilesMost] of FilesTotal. A FILE LIST IS
+	// ONLY EVER ABOUT ITS OWN HEAD: a reader compares FilesHead with HeadSHA
+	// and treats a list for another commit as unknown, never as the change
+	// it is about to merge. Empty is not read yet, not "changes nothing".
+	Files      []ChangedFile `json:",omitempty"`
+	FilesTotal int           `json:",omitempty"`
+	FilesHead  string        `json:",omitempty"`
 }
+
+// PRFilesMost is how many of a pull request's files the factory keeps on the
+// job. A change larger than that still says its whole size in FilesTotal.
+const PRFilesMost = 300
 
 // Item is one row on the floor.
 // QKindAskFirst is an intake question, before a run or any step exists.

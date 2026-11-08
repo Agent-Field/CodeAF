@@ -64,7 +64,7 @@ func (s *Source) Follow(ctx context.Context, it factory.Item) (factory.PullReque
 	if !ok {
 		return factory.PullRequest{}, fmt.Errorf("cannot tell which repository %s is on", it.Ref())
 	}
-	fresh, err := s.FollowPR(ctx, owner, name, it.PullRequest.Number)
+	fresh, err := s.followPR(ctx, owner, name, it.PullRequest.Number, it.PullRequest)
 	if err != nil {
 		return factory.PullRequest{}, err
 	}

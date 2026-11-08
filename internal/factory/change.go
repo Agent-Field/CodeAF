@@ -19,6 +19,9 @@ type ChangedFile struct {
 	Added   int    `json:"added,omitempty"`
 	Removed int    `json:"removed,omitempty"`
 	Status  string `json:"status"`
+	// PreviousPath is where a renamed or copied file came from, as the forge
+	// reports it on a pull request's list; a worktree change never sets it.
+	PreviousPath string `json:"previous_path,omitempty"`
 }
 
 // ChangeStat counts the whole change rather than a truncated path list.

@@ -1065,6 +1065,14 @@ type PR struct {
 	NoChecks      bool       `json:"no_checks,omitempty"`
 	// HeadBranch is the branch the pull request comes from.
 	HeadBranch string `json:"head_branch,omitempty"`
+	// Files is the pull request's own file list as the forge reports it, each
+	// path with its status (added, modified, removed, renamed, ...), at most
+	// [factory.PRFilesMost] of FilesTotal, read on the commit FilesHead. A
+	// client shows the list only while FilesHead is HeadSHA; a list for an
+	// older head is stale and never describes the head Merge is pressed on.
+	Files      []factory.ChangedFile `json:"files,omitempty"`
+	FilesTotal int                   `json:"files_total,omitempty"`
+	FilesHead  string                `json:"files_head,omitempty"`
 }
 
 // JobMerge is a job's merging: the pipeline's settings pinned when its proof

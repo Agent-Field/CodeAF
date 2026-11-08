@@ -99,8 +99,9 @@ Write these blocks in this order, leaving out one only when the issue gives noth
 - {"kind":"bullets","heading":"Done when","bullets":[{"text","evidence"}]}: how a person would know it is done.
 - {"kind":"open_question","heading":"Unclear","questions":[{"text","evidence"}]}: at most %d things the issue does not settle.
 At most %d bullets a block, at most %d words each. Plain text only, no markdown.
-Say nothing about the code, its files or its causes unless the issue says it: no one has read the code yet. EVERY NUMBER YOU WRITE MUST BE IN THAT CLAIM'S ref; a claim that breaks this is thrown away. Unsure is a line under Unclear, never a guess.`,
-		BriefWordsMost, BriefWordsMost, BriefQuestionsMost, BriefBulletsMost, BriefWordsMost)
+Say nothing about the code, its files or its causes unless the issue says it: no one has read the code yet. EVERY NUMBER YOU WRITE MUST BE IN THAT CLAIM'S ref; a claim that breaks this is thrown away. Unsure is a line under Unclear, never a guess.
+%s`,
+		BriefWordsMost, BriefWordsMost, BriefQuestionsMost, BriefBulletsMost, BriefWordsMost, BriefPlainWordsRule)
 }
 
 // briefFirstReadInput is the input of a read before work: the issue and what a
