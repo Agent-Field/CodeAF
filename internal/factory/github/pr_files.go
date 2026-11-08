@@ -74,6 +74,14 @@ func (s *Source) readPRFiles(ctx context.Context, owner, repo string, p forge.Pu
 		s.mu.Unlock()
 	}
 	if len(row.files) == 0 && row.total == 0 {
+		// AN EMPTY CHANGE IS A FACT ONLY WHEN BOTH OF GITHUB'S ANSWERS SAY
+		// SO: the file list read on this head is empty, and the pull request's
+		// own counts (changed files, lines added and removed) are all zero.
+		// Either alone stays unknown, so a list GitHub has not filled yet
+		// never reads as a pull request that changes nothing.
+		if p.Files == 0 && p.Additions == 0 && p.Deletions == 0 {
+			out.Files, out.FilesTotal, out.FilesHead = nil, 0, row.head
+		}
 		return
 	}
 	out.Files, out.FilesTotal, out.FilesHead = append([]factory.ChangedFile(nil), row.files...), row.total, row.head
@@ -82,7 +90,7 @@ func (s *Source) readPRFiles(ctx context.Context, owner, repo string, p forge.Pu
 // keepPRFiles carries prev's list onto out when it was read on out's head,
 // and says whether it did. A list for any other head is dropped, not kept.
 func keepPRFiles(prev *factory.PullRequest, out *factory.PullRequest) bool {
-	if prev == nil || out.HeadSHA == "" || prev.FilesHead != out.HeadSHA || (len(prev.Files) == 0 && prev.FilesTotal == 0) {
+	if prev == nil || out.HeadSHA == "" || prev.FilesHead != out.HeadSHA {
 		return false
 	}
 	out.Files, out.FilesTotal, out.FilesHead = append([]factory.ChangedFile(nil), prev.Files...), prev.FilesTotal, prev.FilesHead

@@ -453,3 +453,30 @@ func TestRecoveryARunThatEndedThisRoundIsReadNotLost(t *testing.T) {
 		t.Fatalf("the job was not offered to read its run's end: %v", e)
 	}
 }
+
+// A RUN WHOSE END IS OWED TO ITS STEP IS NEVER "OFFLINE MID-STEP", whatever
+// its step's start says (live e2e round 9, job 306): a round entered again
+// after an earlier restart moved the step's start fifteen minutes past its
+// run's, and the clocks alone then read the run as an earlier round's. The
+// record says the end is owed, so the hold that runs out stamps no failure.
+func TestRecoveryAnOwedRunEndIsReadEvenWhenItsStepsStartMoved(t *testing.T) {
+	f := setup(t)
+	d := recoveryDesk(t, f)
+	job := liveRemoteJob(true)
+	job.Autonomy = factory.AutonomyManual
+	job.AgentFieldSteps["build"].EndOwed = true
+	job.Stream.Phases[0].Started = job.AgentFieldSteps["build"].Began.Add(15 * time.Minute)
+	it := f.add(t, job)
+	held, e := d.Pull(worker("runner-1", "sam"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.now = held.ExpiresAt
+	if _, e = d.Expire(); e != nil {
+		t.Fatal(e)
+	}
+	got := readRecovery(t, f, it.ID)
+	if got.State != factory.StateQueued || got.Failure != nil || got.QKind != "" {
+		t.Fatalf("an owed run's end read as lost: state %s failure %+v question %q", got.State, got.Failure, got.Question)
+	}
+}

@@ -329,6 +329,22 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if fresh.URL == "" {
 			fresh.URL = it.PullRequest.URL
 		}
+		// AN EMPTY PULL REQUEST THE FACTORY OPENED IS CLOSED, with a word on
+		// it and a plain note on the job (live e2e round 9, #315: a run whose
+		// work was already on the base branch opened one with 0 files, and
+		// the job read shipped with Merge offered). Nothing went out, so
+		// nothing stays open to merge. A pull request someone else opened is
+		// never closed from here; its job only reads as nothing to change.
+		closedEmpty := false
+		// Only a job that reads shipped closes its pull request: a job a
+		// person stopped writes nothing to GitHub, and a draft is still being
+		// worked on.
+		if fresh.State == factory.PROpen && !fresh.Draft && factory.PRChangesNothing(&fresh) && it.Publish == "pr" && it.Kind != factory.KindPR && it.State == factory.StateShipped && !factory.StoppedByPerson(it) {
+			_, _ = f.api.Comment(ctx, owner, name, fresh.Number, factory.EmptyPRComment)
+			if _, err := f.api.Close(ctx, owner, name, fresh.Number); err == nil {
+				fresh.State, closedEmpty = factory.PRClosed, true
+			}
+		}
 		factory.SettleNoChecks(it.PullRequest, &fresh, f.now())
 		checkpointRecovered := false
 		if !held[it.ID] && f.verificationRecovered != nil && len(fresh.Problems) == 0 && it.PullRequest.HeadSHA == fresh.HeadSHA {
@@ -358,7 +374,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if !held[it.ID] || fresh.State == factory.PRMerged || fresh.State == factory.PRClosed {
 			followChanged = factory.QueueCIFollowUp(&probe, f.now())
 		}
-		followChanged = followChanged || initialWatch || checkpointRecovered || pin
+		followChanged = followChanged || initialWatch || checkpointRecovered || pin || closedEmpty
 		if reflect.DeepEqual(*it.PullRequest, fresh) && !followChanged {
 			continue
 		}
@@ -401,6 +417,13 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 				factory.ReleaseVerificationPause(item, f.now())
 			}
 			item.PullRequest = &cp
+			if closedEmpty {
+				words := factory.EmptyPRClosedWords(cp.Number)
+				item.Note(f.now(), words)
+				if item.Stream != nil {
+					item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: f.now(), Tone: "said", Text: words})
+				}
+			}
 			factory.PinDeliveredHead(item, cp.HeadSHA)
 			if initialWatch && item.FollowUp == nil {
 				factory.WatchPublishedPR(item)

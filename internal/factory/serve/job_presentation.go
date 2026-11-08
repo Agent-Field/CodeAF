@@ -83,6 +83,7 @@ func stepNamesChat(s api.Step) bool {
 // job. A button appears only when its engine door can handle the current facts.
 func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	api.PresentJob(j)
+	api.PlainStepNotes(j)
 	h.redactMachines(r, j)
 	active := j.State == api.StateRunning || j.State == api.StateQueued || j.State == api.StateNeedsYou
 	owner := j.Can.Stop || j.Can.Run || j.Can.RunAgain || j.Can.CancelJob

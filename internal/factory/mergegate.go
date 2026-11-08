@@ -134,6 +134,10 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 		return refuseMerge("the pull request is closed")
 	case pr.State != PROpen:
 		return refuseMerge("cannot read whether the pull request is open")
+	case PRChangesNothing(pr):
+		// AN EMPTY PULL REQUEST HAS NOTHING TO MERGE: merging it would put
+		// nothing on the base branch and call the job shipped.
+		return refuseMerge("the pull request changes no files")
 	}
 	if m := it.Merging; m != nil && (m.State == MergeQueued || m.State == MergeMerging) {
 		return refuseMerge("a merge is already on its way")
