@@ -281,7 +281,7 @@ func (d *approvalsDoor) SyncService() string { return syncsetup.Resolve(d.dir).U
 // RelayStorage reads this computer's account without creating keys or asking the network.
 func (d *approvalsDoor) RelayStorage() (code, state string) {
 	relay := syncsetup.Resolve(d.dir)
-	if !relay.On() || !syncsetup.MayTalk(d.dir) {
+	if !relay.On() || identity.Solo(d.dir) {
 		return "", ""
 	}
 	id, err := identity.Load(d.dir)
@@ -289,8 +289,9 @@ func (d *approvalsDoor) RelayStorage() (code, state string) {
 		return "", ""
 	}
 	code = reqsign.IDOf(id.PublicKey())
-	if !syncsetup.StorageGated(d.dir, relay.URL, code) {
+	state = syncsetup.ReportedStorage(d.dir, relay.URL, code)
+	if state == "" {
 		return "", ""
 	}
-	return code, syncsetup.StorageState(d.dir, relay.URL, code)
+	return code, state
 }

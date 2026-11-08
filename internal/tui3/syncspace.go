@@ -25,8 +25,9 @@ type syncSpaceMsg struct {
 // laptop wait on every press; the stored amount changes slowly, so a reading
 // taken at launch or at the previous /status is close enough.
 func (a *app) runStatusCommand(rest string) tea.Cmd {
+	refresh := a.refreshSyncSpace()
 	a.showStatus(rest == "--json")
-	return a.refreshSyncSpace()
+	return refresh
 }
 
 // refreshSyncSpace is the one background reading, or nil when sync is off or no

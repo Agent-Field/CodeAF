@@ -36,6 +36,11 @@ type SealWatch struct {
 
 	// Say, when set, receives each sentence as it happens.
 	Say func(string)
+	// OnRetire releases seat-owned subscriptions after the session stops.
+	OnRetire func()
+	retired  sync.Once
+	wake     func()
+	listener uint64
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
 	// sets it to the sync side's idle call.
 	OnTurnEnd func()
@@ -113,6 +118,41 @@ func (w *SealWatch) say(sentence string) {
 		return
 	}
 	w.said = append(w.said, sentence)
+	if w.wake != nil {
+		w.wake()
+	}
+}
+
+// Listen wakes a local surface without giving its sentences a second consuming road.
+func (w *SealWatch) Listen(wake func()) func() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.listener++
+	serial := w.listener
+	w.wake = wake
+	if len(w.said) > 0 && wake != nil {
+		wake()
+	}
+	return func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.listener == serial {
+			w.wake = nil
+		}
+	}
+}
+
+// Retire stops subscriptions and tail work once this seat has no session left.
+func (w *SealWatch) Retire() {
+	w.retired.Do(func() {
+		if w.OnRetire != nil {
+			w.OnRetire()
+		}
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		w.stopTail()
+		w.wake = nil
+	})
 }
 
 // Waiting arms a newly constructed chat that is waiting for its first input.

@@ -286,6 +286,11 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		if err != nil {
 			return drv, "", err
 		}
+		// An empty head has no stored turns to require from this device's own
+		// expired hold; other devices retain the ordinary ancestry decision.
+		if view.Cell.Head == "" && view.Cell.Lease.Device == s.Device.ID() {
+			extends = true
+		}
 		if !extends {
 			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
 		}

@@ -1272,6 +1272,7 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // arrived, and "you closed this conversation" and "another window took it" are
 // two different sentences to be owed (internal/session's stopcause.go).
 func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
+	address := a.syncService
 	name := a.sessionName()
 	if name == "" {
 		name = a.place
@@ -1284,9 +1285,9 @@ func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
 	a.conversationClosing = true
 	a.retainSavingDurability([]Agent{leaving})
 	desk := a.outsideDesk
-	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted, func() {
-		desk.Say(name + ": " + closeSaveFailedWord)
-	})), true
+	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted, func(err error) {
+		desk.Say(name + ": " + closeSaveWords(err, false, address))
+	}, address)), true
 }
 
 // stepBackFront is the same act for a window that is NOT ending anything: another
@@ -1397,6 +1398,10 @@ func (a *app) leaveEverything() {
 // leavingWork captures surface state before any engine work leaves the loop.
 // The returned work owns only the captured agents and thread-safe callbacks.
 func (a *app) leavingWork() func() {
+	if a.stopSealNotice != nil {
+		a.stopSealNotice()
+		a.stopSealNotice = nil
+	}
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {
 		agents = append(agents, a.agent)

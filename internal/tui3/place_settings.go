@@ -36,19 +36,49 @@ func (placeSettings) word() string { return "settings" }
 
 func (placeSettings) open(a *app) tea.Cmd {
 	a.raiseSettings()
-	// THE CLOCK IS ARMED FOR THE BAR AND NOT FOR THIS PANEL. Nothing here is
-	// read from disk on a beat — the rows are this machine's settings and they
-	// change when somebody changes them — but the tab bar's numbers are
-	// recomputed on that beat, and a room that armed no clock stopped the whole
-	// bar counting while it was up ([placeSettings.tick]).
-	//
+	// The place clock reads the saved account code and storage permission only
+	// on Devices or in Settings search, so pairing updates the visible row
+	// without recurring account discovery on unrelated tabs. The same beat
+	// keeps the navigation bar's counts current; other settings rows change
+	// only when their settings change.
+
 	// OVER --host THE TEAMS TAB READS THE FAR MACHINE, once, off the loop. A
 	// local launch asks for nothing.
 	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults(), a.ensureSheetDevices())
 }
 
-// tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].
-func (placeSettings) tick(a *app, now time.Time) (bool, tea.Cmd) { return true, nil }
+// tick refreshes only the account reading this page currently displays.
+func (placeSettings) tick(a *app, now time.Time) (bool, tea.Cmd) {
+	return true, a.sampleStorageAccount(true)
+}
+
+type storageAccountMsg struct {
+	code, state string
+	serial      uint64
+}
+
+// storageSampling survives page changes so a pending read cannot overlap a new visit.
+type storageSampling struct {
+	next, pending, applied uint64
+	code, state            string
+}
+
+func (a *app) sampleStorageAccount(refresh bool) tea.Cmd {
+	door, ok := a.approvals.(interface{ RelayStorage() (string, string) })
+	if !ok || !a.at(pageSettings) || a.cellsUnavailable != "" ||
+		(!a.sheet.onDevices() && !a.sheet.searching()) || a.storageRead.pending != 0 ||
+		(!refresh && a.sheet.storageSampled) {
+		return nil
+	}
+	a.sheet.storageSampled = true
+	a.storageRead.next++
+	serial := a.storageRead.next
+	a.storageRead.pending = serial
+	return func() tea.Msg {
+		code, state := door.RelayStorage()
+		return storageAccountMsg{code: code, state: state, serial: serial}
+	}
+}
 
 func (placeSettings) close(a *app) { a.dropSettings() }
 

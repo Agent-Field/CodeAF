@@ -83,6 +83,15 @@ func StorageGated(home, relay, identity string) bool {
 	return gating
 }
 
+// ReportedStorage samples permission once for display, omitting services that do not gate storage.
+func ReportedStorage(home, relay, identity string) string {
+	state, gating, _ := storagePolicy(home, relay, identity)
+	if !gating {
+		return ""
+	}
+	return state
+}
+
 // SaveStorage remembers a successful stats answer atomically. An empty state
 // records a relay without storage permission, so it need not be probed again.
 func SaveStorage(home, relay, identity, state string) error {

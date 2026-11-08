@@ -2410,6 +2410,12 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
 func (a *Agent) Close() (saveErr error) {
+	// Child conversations may share the parent's watch without owning its subscriptions.
+	if !a.config.InTask && !a.config.Errand {
+		if seals, ok := a.config.Seals.(interface{ Retire() }); ok {
+			defer seals.Retire()
+		}
+	}
 	defer func() { saveErr = SavingError(a.config.SessionFile, saveErr) }()
 	// WHAT THE RECORD ALREADY HOLDS IS SETTLED BEFORE THE DOOR SHUTS, so an idle
 	// session that read a landing in its last turn does not re-tell it tomorrow.

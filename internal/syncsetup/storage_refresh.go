@@ -37,6 +37,7 @@ type storageProcess struct {
 	inflight                    chan struct{}
 	lastRefresh                 time.Time
 	active                      bool
+	watchSetup                  bool
 	dirty                       bool
 	refused                     *Sync
 	counts                      blobstore.Counts
@@ -93,6 +94,7 @@ func StartStorageRefresh(ctx context.Context, home string, initial ...bool) func
 	p := storageProcessFor(home)
 	p.mu.Lock()
 	p.users++
+	p.watchSetup = true
 	first := p.users == 1
 	if first && (p.ctx == nil || p.ctx.Err() != nil || p.cancel == nil) {
 		p.ctx, p.cancel = context.WithCancel(context.Background())
@@ -284,12 +286,14 @@ func (p *storageProcess) check(refresh bool) {
 		}
 	}
 	// A removed device cannot regain access by polling for storage approval.
-	if !removed && relay != "" && state == "off" && (p.users > 0 || len(p.waiting) > 0) {
+	// Before pairing, sample local setup only; the first eligible sample asks once.
+	watchingPairing := p.watchSetup && p.users > 0 && relay == "" && Resolve(p.home).On()
+	if !removed && (watchingPairing || relay != "" && state == "off") && (p.users > 0 || len(p.waiting) > 0) {
 		wait := StorageRefreshEvery
 		if p.users > 0 && !p.lastRefresh.IsZero() {
 			wait = max(time.Millisecond, StorageRefreshEvery-p.now().Sub(p.lastRefresh))
 		}
-		if len(p.waiting) > 0 {
+		if watchingPairing || len(p.waiting) > 0 {
 			wait = min(wait, StoragePollEvery)
 		}
 		p.stop = p.after(wait, func() {

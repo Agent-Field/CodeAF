@@ -146,7 +146,8 @@ func (s *sheet) syncDeviceCursor() {
 // ensureSheetDevices starts the initial directory read and joins the change
 // watch the first time a visit lands on the Devices tab. Other categories never
 // pay a network ask they did not look at.
-func (a *app) ensureSheetDevices() tea.Cmd {
+func (a *app) ensureSheetDevices() (cmd tea.Cmd) {
+	defer func() { cmd = tea.Batch(cmd, a.sampleStorageAccount(false)) }()
 	if !a.at(pageSettings) || !a.sheet.onDevices() {
 		return nil
 	}

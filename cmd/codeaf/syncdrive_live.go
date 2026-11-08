@@ -24,10 +24,11 @@ import (
 // that time or capacity can cure also arms a timer, so pending turns upload even
 // when the person leaves the chat open without saving another turn.
 type liveDrive struct {
-	start func() (*syncsetup.Drive, error)
-	now   func() time.Time
-	after func(time.Duration, func()) func() bool
-	say   func(string)
+	start   func() (*syncsetup.Drive, error)
+	now     func() time.Time
+	after   func(time.Duration, func()) func() bool
+	say     func(string)
+	notices *driveNotices
 	// transcript identifies the retained turns if this writer's final publish fails.
 	transcript string
 
@@ -49,10 +50,14 @@ type liveDrive struct {
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
 // screening stays off the surface loop; saving and new tools wait for ownership.
-func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
+func newLiveDrive(start func(func()) (*syncsetup.Drive, error), notices ...*driveNotices) *liveDrive {
 	l := &liveDrive{
 		changes: make(chan struct{}, 1), now: time.Now, say: surfaceNotices.SayHomeOnce,
 		after: func(d time.Duration, fn func()) func() bool { return time.AfterFunc(d, fn).Stop },
+	}
+	if len(notices) > 0 {
+		l.notices = notices[0]
+		l.say = l.notices.refuse
 	}
 	l.start = func() (*syncsetup.Drive, error) { return start(l.renewalChanged) }
 	l.try()
@@ -129,6 +134,11 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 		}
 	}
 	if d != nil {
+		if l.notices != nil {
+			l.notices.clear()
+		}
+		l.told = nil
+		l.refusedSince = time.Time{}
 		d.CatchUp()
 	}
 	l.renewalChanged()
@@ -332,6 +342,9 @@ func (l *liveDrive) catchUpAfter(used *syncsetup.Drive) {
 
 // storageOpened shortens only a capacity wait; it never replaces an active writer.
 func (l *liveDrive) storageOpened() {
+	if l.notices != nil {
+		l.notices.clearStorageOff()
+	}
 	if d := l.endStorageWait(); d != nil {
 		d.StorageOpened()
 	} else {

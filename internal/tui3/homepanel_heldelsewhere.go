@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // ── A WINDOW ON A CHAT ANOTHER MACHINE NOW HOLDS ────────────────────────────
@@ -421,6 +422,8 @@ func (a *app) failedTake(msg homeTakenMsg) string {
 // safety reading has not started a take and must not cancel one already running.
 func (a *app) continueFailure(msg homeTakenMsg) string {
 	switch {
+	case errors.Is(msg.err, syncwords.ErrContinueStorageOff):
+		return syncwords.ErrContinueStorageOff.Error()
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return lostRaceWord
 	case errors.Is(msg.err, directory.ErrUnreachable):

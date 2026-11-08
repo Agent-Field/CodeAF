@@ -1013,6 +1013,7 @@ type sheet struct {
 	cellsUnavailable string
 	storageCode      string
 	storageState     string
+	storageSampled   bool
 	storageRequest   bool
 	approvals        Approvals
 	dev              *deviceCard
@@ -1339,7 +1340,7 @@ func (a *app) raiseSettings() {
 		routing:          a.routing,
 		today:            a.todayReading(),
 	}
-	a.sheet.storageCode, a.sheet.storageState = a.relayStorageAccount()
+	a.sheet.storageCode, a.sheet.storageState = a.storageRead.code, a.storageRead.state
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
 	// WHOSE ROWS, SAID FOR THE TAB ON SHOW. Over --host the note is
@@ -2904,7 +2905,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 			} else {
 				a.sheet.msg = ""
 			}
-			a.sheet.storageCode, a.sheet.storageState = a.relayStorageAccount()
+			a.sheet.storageCode, a.sheet.storageState = a.storageRead.code, a.storageRead.state
 			a.sheet.rows = a.sheet.registry.Rows()
 			a.sheet.build()
 		})
@@ -2914,7 +2915,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 	}
 	a.sheet.msg = note
 	a.sheet.savedKey = item.row.Key
-	a.sheet.storageCode, a.sheet.storageState = a.relayStorageAccount()
+	a.sheet.storageCode, a.sheet.storageState = a.storageRead.code, a.storageRead.state
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
 	return true
@@ -4078,6 +4079,9 @@ func (s *sheet) keysLine() string {
 			case item.memoryDoor, item.crewDoor:
 				action = "open"
 			case item.dev != nil && item.dev.storage:
+				if s.storageState != "off" {
+					return "↑↓ results · esc clear search"
+				}
 				action = "request access"
 			case item.dev != nil && item.dev.add:
 				action = "add"
