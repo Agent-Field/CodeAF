@@ -45,6 +45,13 @@ func (s *Source) noWorkflows(ctx context.Context, owner, repo, head string, stat
 // FollowPR reads one pull request the factory opened, including after GitHub
 // has merged or closed it. The open list never carries those.
 func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (factory.PullRequest, error) {
+	return s.followPR(ctx, owner, repo, number, nil)
+}
+
+// followPR is [Source.FollowPR] knowing what the job last stored for this
+// pull request, prev (nil when nothing), so a head whose file list is already
+// on the job costs no read.
+func (s *Source) followPR(ctx context.Context, owner, repo string, number int, prev *factory.PullRequest) (factory.PullRequest, error) {
 	p, err := s.api.Pull(ctx, owner, repo, number)
 	if err != nil {
 		return factory.PullRequest{}, err
@@ -56,9 +63,14 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, HeadBranch: p.Head, Mergeable: mergeableWord(p.Mergeable),
 	}
 	// Terminal metadata is authoritative even when optional APIs are unavailable.
+	// A merged or closed pull request costs no file read, but keeps the list
+	// the job already holds for that same head: what the merge put on the
+	// base branch stays said.
 	if out.State != factory.PROpen {
+		keepPRFiles(prev, &out)
 		return out, nil
 	}
+	s.readPRFiles(ctx, owner, repo, p, prev, &out)
 	if p.HeadSHA != "" {
 		state, runs, e := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
 		if e != nil {
@@ -288,7 +300,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if !ok {
 			continue
 		}
-		fresh, err := f.FollowPR(ctx, owner, name, it.PullRequest.Number)
+		fresh, err := f.followPR(ctx, owner, name, it.PullRequest.Number, it.PullRequest)
 		if err != nil {
 			// A failed feedback read must not leave an old all-clear on screen.
 			// Do not replace an active repair or facts for a newer head.

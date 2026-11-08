@@ -33,10 +33,11 @@ Pick 2 to %d blocks. Every block has "kind" and a short "heading". Kinds and the
 - open_question: "questions": [{"text","evidence","action":{"label","step","ask"}}] at most %d, for what the evidence does not cover.
 - your_call: "options": 2-%d short answers; only while needs_you is true; "evidence".
 - screenshots: "shots": [{"label","ref","evidence"}] at most %d.
-EVERY NUMBER YOU WRITE MUST BE ONE ITS EVIDENCE SHOWS; a claim or block that breaks this, or names a step or try the job does not have, is thrown away. Never restate the facts row. Say nothing you cannot point at.`,
+EVERY NUMBER YOU WRITE MUST BE ONE ITS EVIDENCE SHOWS; a claim or block that breaks this, or names a step or try the job does not have, is thrown away. Never restate the facts row. Say nothing you cannot point at.
+%s`,
 		strings.Join(BriefEvidenceKinds, ", "), BriefWordsMost, BriefBlocksMost, BriefBulletsMost, BriefWordsMost,
 		BriefFlowNodesMost, BriefDiagramMost, BriefTableColsMost, BriefTableRowsMost, BriefSpotsMost,
-		BriefQuestionsMost, BriefOptionsMost, BriefShotsMost)
+		BriefQuestionsMost, BriefOptionsMost, BriefShotsMost, BriefPlainWordsRule)
 }
 
 // BriefInputText is the input as the writer reads it, cut to

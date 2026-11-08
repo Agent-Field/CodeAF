@@ -63,6 +63,8 @@ func TestReadinessSourceRevalidatesEverythingAndConfirmsTheMutation(t *testing.T
 						return
 					}
 					fmt.Fprintf(w, `{"node_id":"PR_node","number":7,"title":"Fix it","body":%q,"state":"open","draft":%t,"mergeable":true,"changed_files":1,"html_url":"https://github.com/acme/api/pull/7","head":{"sha":%q},"base":{"ref":"main","sha":"base"}}`, body, draft, head)
+				case strings.HasSuffix(r.URL.Path, "/pulls/7/files"):
+					fmt.Fprint(w, `[{"filename":"a.go","status":"modified","additions":1}]`)
 				case strings.Contains(r.URL.Path, "/check-runs"):
 					if pending {
 						fmt.Fprint(w, `{"total_count":1,"check_runs":[{"name":"test","status":"in_progress"}]}`)

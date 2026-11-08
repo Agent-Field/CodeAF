@@ -738,6 +738,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 		out.MergedAt = &at
 	}
 	out.NoWorkflows, out.NoChecks = pr.NoWorkflows, pr.NoChecks
+	out.Files, out.FilesTotal, out.FilesHead = append([]factory.ChangedFile(nil), pr.Files...), pr.FilesTotal, pr.FilesHead
 	if !pr.NoChecksSince.IsZero() {
 		since := pr.NoChecksSince
 		out.NoChecksSince = &since
@@ -766,6 +767,7 @@ func toPR(pr *PR) *factory.PullRequest {
 		out.MergedAt = *pr.MergedAt
 	}
 	out.NoWorkflows, out.NoChecks = pr.NoWorkflows, pr.NoChecks
+	out.Files, out.FilesTotal, out.FilesHead = append([]factory.ChangedFile(nil), pr.Files...), pr.FilesTotal, pr.FilesHead
 	if pr.NoChecksSince != nil {
 		out.NoChecksSince = *pr.NoChecksSince
 	}

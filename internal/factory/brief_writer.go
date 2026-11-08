@@ -510,7 +510,7 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 	}
 	done, total := StepCount(it)
 	v := BriefVersion{
-		Issue: it.Title, StepsDone: done, StepsTotal: total, Verdict: d.Verdict, VerdictEvidence: d.VerdictEvidence,
+		Issue: it.Title, StepsDone: done, StepsTotal: total, Verdict: BriefPlainWords(d.Verdict), VerdictEvidence: d.VerdictEvidence,
 		Facts: BriefFacts(it), Blocks: []BriefBlock{},
 	}
 	drops := unread
@@ -519,6 +519,11 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 		part := fmt.Sprintf("block %d (%s)", i+1, b.Kind)
 		kept, bd := ev.checkBlock(b, part, it.State == StateNeedsYou)
 		drops = append(drops, bd...)
+		// Plain words before the heading is compared, so two headings that
+		// read the same once plain are one block, not two.
+		if kept != nil {
+			briefPlainBlock(kept)
+		}
 		switch {
 		case kept == nil:
 		case seen[kept.Key()]:
