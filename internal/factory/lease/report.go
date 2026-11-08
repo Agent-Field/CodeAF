@@ -22,10 +22,9 @@ func (d *Desk) Renew(id, worker string) (Lease, error) {
 		if err != nil {
 			return false, err
 		}
-		held.ExpiresAt = now.Add(d.TTL())
-		held.HeartbeatAt = now
-		renewed = *held
-		return true, nil
+		var dirty bool
+		renewed, dirty = d.renew(held, now)
+		return dirty, nil
 	})
 	return renewed, err
 }

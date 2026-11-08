@@ -25,10 +25,21 @@ import (
 // The manual's event-stream section states this duration and changePoll.
 const changeDebounce = 100 * time.Millisecond
 
-// changePoll is the fallback when the filesystem watch is missing or silent.
-// The poll asks the same question the watch does — did the root change —
-// and sends a tick only when the answer is yes.
+// changePoll is the fallback when the filesystem watch is missing. The poll
+// asks the same question the watch does — did the root change — and sends a
+// tick only when the answer is yes.
 const changePoll = 2 * time.Second
+
+// changePollWatched is the same look with a live filesystem watch (inotify,
+// kqueue), which hears every write already: it only covers a watch that went
+// silent without saying so. A watch that reports an error (an overflowed
+// queue) is looked behind at once.
+//
+// THE WATCHED ROOT IS NOT RE-READ EVERY TWO SECONDS. The look lists the root
+// and stats every job in it; with 86 jobs that was five per cent of the
+// eighth live round's idle engine on macOS, where a stat is dear, for an
+// answer the watch had already given.
+const changePollWatched = 30 * time.Second
 
 // rootWatch tells subscribers when the factory root's files change.
 type rootWatch struct {
@@ -136,6 +147,8 @@ func (w *rootWatch) readFS() {
 			if !ok {
 				return
 			}
+			// A watch that lost events is looked behind now.
+			w.nudge()
 		}
 	}
 }
@@ -147,8 +160,17 @@ func (w *rootWatch) nudge() {
 	}
 }
 
+// pollEvery is how often the loop looks without being told: rarely behind a
+// live watch, often without one.
+func (w *rootWatch) pollEvery() time.Duration {
+	if w.fs != nil {
+		return changePollWatched
+	}
+	return changePoll
+}
+
 func (w *rootWatch) loop() {
-	tick := time.NewTicker(changePoll)
+	tick := time.NewTicker(w.pollEvery())
 	defer tick.Stop()
 	defer w.stopTimer()
 	for {

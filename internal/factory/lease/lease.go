@@ -29,6 +29,16 @@ const DefaultTTL = factory.DefaultRunnerTimeoutSeconds * time.Second
 // are measured on one clock.
 const HeartbeatEvery = 2 * time.Second
 
+// RenewalSettles is how old a hold's stored renewal must be before a renewal
+// rewrites leases.json. A runner renews every [HeartbeatEvery], and each
+// rewrite wakes every watcher of the factory's folder (on macOS, a re-read of
+// the whole folder): the ninth live round's idle engine rewrote the file once
+// a second for two held jobs whose deadlines were most of a minute away. A
+// renewal still answers its full deadline at once, and the stored one is never
+// more than this behind it, a sixth of the default [DefaultTTL] ([Desk.settles]
+// keeps the same share of a shorter one).
+const RenewalSettles = 10 * time.Second
+
 // OfflineMisses is how many heartbeat intervals may pass with nothing heard
 // before a machine is offline. S2 SETS SIXTY SECONDS: presence and the default lease share this deadline.
 const OfflineMisses = int(OfflineAfter / HeartbeatEvery)
@@ -424,15 +434,28 @@ func (d *Desk) Heartbeat(id int, worker string) (Lease, error) {
 		if err != nil {
 			return false, err
 		}
-		held.ExpiresAt = now.Add(d.TTL())
-		held.HeartbeatAt = now
-		renewed = *held
-		return true, nil
+		var dirty bool
+		renewed, dirty = d.renew(held, now)
+		return dirty, nil
 	})
 	if err != nil {
 		return Lease{}, err
 	}
 	return renewed, nil
+}
+
+// renew is one renewal of held at now: the lease as renewed, and whether the
+// renewal is worth writing ([RenewalSettles]). A renewal that is not written
+// leaves held as stored.
+func (d *Desk) renew(held *Lease, now time.Time) (Lease, bool) {
+	ttl := d.TTL()
+	renewed := *held
+	renewed.ExpiresAt, renewed.HeartbeatAt = now.Add(ttl), now
+	if !held.HeartbeatAt.IsZero() && !held.Asleep && now.Sub(held.HeartbeatAt) < min(RenewalSettles, ttl/6) && now.Before(held.ExpiresAt) {
+		return renewed, false
+	}
+	*held = renewed
+	return renewed, true
 }
 
 // Expire returns the leases it released, even though completed or paused jobs

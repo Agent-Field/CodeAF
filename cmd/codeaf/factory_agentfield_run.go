@@ -681,10 +681,21 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 	}
 	now := r.clock()
 	ended := afEnded(root.Status)
-	_ = jobs.Update(job, func(it *factory.Item) error {
+	_ = jobs.Update(job, func(it *factory.Item) (err error) {
+		// A READING THAT CHANGES NOTHING WRITES NOTHING. A run waiting on a
+		// person is read every afRemoteEvery for as long as it waits, and a
+		// write is a new revision, Changed stamped now and every watcher of
+		// the factory's folder woken: the ninth live round's idle engine
+		// rewrote such a job twice a second to say the same thing.
+		seen, _ := json.Marshal(it)
 		if it.Stream == nil {
 			it.Stream = &factory.Stream{Started: now}
 		}
+		defer func() {
+			if after, _ := json.Marshal(it); seen != nil && bytes.Equal(seen, after) {
+				err = errAFReadingUnchanged
+			}
+		}()
 		run := place.runOf(it)
 		run.Status = root.Status
 		stages := make([]factory.Stage, 0, len(steps))
@@ -764,6 +775,10 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 	}
 	return true, end
 }
+
+// errAFReadingUnchanged ends a reading's job write that would have written the
+// job as it already is; nothing is written.
+var errAFReadingUnchanged = errors.New("the run's reading changed nothing")
 
 // afRunEnded is a run that ended without succeeding: the control plane's
 // status and its reason. Its Error is the whole-job run's sentence; an
