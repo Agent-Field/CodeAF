@@ -735,7 +735,7 @@ func (s *Sync) withVaultWithin(ctx context.Context, within time.Duration, use fu
 	}
 	sc := s.scope(cellstats.VaultScope)
 	defer sc.Settle()
-	return use(vaultsync.Syncer{Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
+	return use(vaultsync.Syncer{StorageOn: s.StorageAllowed, Store: sc.Store, Dir: s.Dir, Vault: v, CellKeyID: s.Identity.CellKeyID(),
 		Carry: append(s.carried(), extra...)})
 }
 

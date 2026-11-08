@@ -500,7 +500,7 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	b.adopt(d)
 	b.setFlag(&b.published, true)
 	b.tell(0) // a publish always carries the newest turn, so nothing is pending
-	b.recovered()
+	b.recovered(true)
 	turns := b.durable(head)
 	b.emit(Flush{Head: head, Turns: turns, Frames: len(ex.Frames), Objects: ex.Objects, Bytes: ex.Bytes})
 	return nil
@@ -520,7 +520,7 @@ func (b *Batcher) beat(ctx context.Context) {
 	switch {
 	case err == nil:
 		b.tell(pending)
-		b.recovered()
+		b.recovered(false)
 	case errors.Is(err, directory.ErrFenceStale):
 		b.lost(ctx, d)
 	default:
@@ -716,10 +716,14 @@ func (b *Batcher) now() time.Time {
 	return time.Now()
 }
 
-// recovered notes that the relay answered, so the next refusal is news again.
-func (b *Batcher) recovered() {
+// A directory heartbeat cannot end an upload-permission refusal episode.
+// Only a successful upload proves that storage has recovered.
+func (b *Batcher) recovered(upload bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if !upload && b.told == wireauth.ErrStorageOff.Error() {
+		return
+	}
 	b.refusedSince, b.told = time.Time{}, ""
 }
 

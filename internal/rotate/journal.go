@@ -11,6 +11,8 @@ import (
 // File is the journal under the codeaf home.
 const File = "rotation.json"
 
+const successorFile = "rotation-successor.json"
+
 // State is how far a rotation has got. Each state names what is already true.
 type State string
 
@@ -43,6 +45,7 @@ type Journal struct {
 	NewDevice json.RawMessage `json:"new_device"` // identity.Dev document
 	GraceMS   int64           `json:"grace_ms"`
 	Items     []Item          `json:"items,omitempty"`
+	LocalOnly bool            `json:"local_only,omitempty"`
 	Vault     bool            `json:"vault,omitempty"` // the resealed vault is on the new relay
 }
 

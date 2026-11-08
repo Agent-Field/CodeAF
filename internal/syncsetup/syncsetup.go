@@ -204,7 +204,7 @@ func buildAt(home, base string, id identity.Identity, dev identity.Dev, interval
 		Interval:   interval,
 	}
 	s.Dir = directory.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{Timeout: requestTimeout}))
-	s.Store = blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{}))
+	s.Store = GateStore(blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{})), home, base, id.ID())
 	return s
 }
 
