@@ -556,41 +556,16 @@ by the next idle pull once quiet past the runner timeout and holding no lease
 grows by one set of rows per restart.
 
 `settleJobs` (a hydrated `Store.List`) ran before EVERY request. A runner's own
-requests (`/v1/worker/…`, fifteen pulls re-made each 30 s wait, and every held
-job's heartbeat each `lease.HeartbeatEvery`, 2 s) now settle the floor at most
-once a `workerSettleEvery` (5 s; it was 1 s, which two holds turned into a full
-settle every second); every other request still settles first, and the job
-timer settles at each deadline it knows.
+requests (`/v1/worker/…`, fifteen pulls re-made each 30 s wait) now settle the
+floor at most once a `workerSettleEvery` (1 s), and its beats (every held job's
+lease heartbeat each `lease.HeartbeatEvery`, 2 s, and its presence) at most once
+a `beatSettleEvery` (5 s; at 1 s two holds made a full settle every second). A
+beat reports nothing, so nothing it brings settles late; a report still settles
+within a second, which is how Auto's publish follows its proof. Every other
+request still settles first, and the job timer settles at each deadline it knows.
 `TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow` counts settles
-(`settles`): runner requests inside one window make none, one after it makes one.
-
-Live, `codeaf app` on linux/arm64 with a GitHub-connected local factory, 79
-jobs on the floor (eight of them the fourth live run's documents, 24–135 KB),
-68 conversations held open (8 managers, 60 step chats), the runner on with 15
-slots and nothing to do; the engine's own CPU from `/proc/<pid>/stat` every
-10 s for 5 minutes (scratch rig `idle_rig.py`):
-
-| | average | max |
-| --- | --- | --- |
-| before (`2c3805a2e`, idle code as `550796049`) | 5.8% | 23.5% |
-| after | 3.1% | 18.0% |
-
-Both runs spend their first 20 s settling (13–23%). Then the before engine
-holds about 2% with a 7–8% sample every 30 s, when the fifteen pulls are made
-again and each looks and settles; the after engine holds 1.7–2.6% throughout. A
-CPU profile of an idle minute taken with only the stop-check change applied put
-35% of its samples in `lease.Desk.Pull` → `store.ListSaved` → `encoding/json`
-and 12% in `settleJobs`, which is what the pull and settle changes remove.
-
-`BenchmarkAutomaticRefusal`, six jobs of about 30 KB each, linux/arm64:
-
-| | per check | allocated | allocations |
-| --- | --- | --- | --- |
-| before (list and decode every job) | 8.5 ms | 1.9 MB | 6,420 |
-| after (stat the job's file) | 4.5 µs | 1.7 KB | 21 |
-
-Five idle managers made 50 checks a second, about 0.43 of a core on this floor
-before, growing with jobs × managers; after, about 0.2 ms of CPU a second.
+(`settles`): pulls inside one second make none, beats inside five make none, one
+after each window makes one.
 
 ### With a hold on the floor (the seventh live A+B run)
 
@@ -620,6 +595,12 @@ a `ListSaved` deep copy of all 86 jobs and a sort, once a second. Three changes:
   file, which woke every pull to save it again.
   `TestALookLeavesAJobAtItsBudgetAsItIsOnDisk` (ten looks; the old code moved
   its revision from 2 to 12).
+- **A held job's runner parses its manager's journal once per version.** The
+  worker's flush ran `thread.Read` every beat, parsing the manager's whole
+  transcript twice; it now hands back the answer read last while the journal
+  and its folder are unchanged (os.SameFile, size, time, mode).
+  `TestAnUnchangedJournalIsParsedOnceAndAnAppendedLineIsRead`: eleven reads of
+  an unchanged journal parse it once; an appended line is read.
 
 Rig (scratch `r7rig.py`): `codeaf app` with a local factory, 84 of r7's final
 job documents plus two native jobs whose step holds its lease, about 45 open job

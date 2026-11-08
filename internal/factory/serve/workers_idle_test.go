@@ -45,11 +45,13 @@ func TestAnIdlePullDoesNotLookAgainAtAnUnchangedFloor(t *testing.T) {
 	}
 }
 
-// A RUNNER'S REQUESTS SETTLE THE FLOOR AT MOST ONCE A WINDOW (five seconds).
-// A settle lists and decodes every job and ran before every request, so
-// fifteen idle slots re-pulling together decoded the whole floor fifteen times
-// each wait, and two held jobs beating every two seconds settled it every
-// second. A person's request still settles first, every time.
+// A RUNNER'S REQUESTS SETTLE THE FLOOR AT MOST ONCE A WINDOW: a second for
+// a pull or a report, five seconds for a beat. A settle lists and decodes
+// every job and ran before every request, so fifteen idle slots re-pulling
+// together decoded the whole floor fifteen times each wait, and two held jobs
+// beating every two seconds settled it every second. A beat brings nothing to
+// settle; a report or a pull still settles within a second, which is how
+// Auto's publish follows its proof. A person's request still settles first.
 func TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow(t *testing.T) {
 	f := workerSetup(t)
 	worker := f.attach(t, "sam")
@@ -61,7 +63,6 @@ func TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow(t *testing.T) {
 	if got := serve.Settles() - before; got != 0 {
 		t.Fatalf("10 pulls in one instant settled %d times", got)
 	}
-	// A heartbeat every two seconds inside one window settles nothing more.
 	f.clock.Add(int64(serve.WorkerSettleEvery - time.Millisecond))
 	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
 	if got := serve.Settles() - before; got != 0 {
@@ -71,5 +72,25 @@ func TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow(t *testing.T) {
 	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
 	if got := serve.Settles() - before; got != 1 {
 		t.Fatalf("a pull a window later settled %d times, want 1", got)
+	}
+
+	// A held job's beats: every two seconds, a settle at most every five.
+	f.add(t, "sam")
+	pulled := f.pull(t, worker)
+	beat := "/v1/workers/leases/" + pulled.Lease.ID + "/heartbeat"
+	f.clock.Add(int64(serve.BeatSettleEvery))
+	f.request(t, "POST", beat, worker.Credential, nil, 200, nil)
+	before = serve.Settles()
+	for range 2 {
+		f.clock.Add(int64(2 * time.Second))
+		f.request(t, "POST", beat, worker.Credential, nil, 200, nil)
+	}
+	if got := serve.Settles() - before; got != 0 {
+		t.Fatalf("two beats within five seconds of a settle settled %d times, want 0", got)
+	}
+	f.clock.Add(int64(serve.BeatSettleEvery - 4*time.Second))
+	f.request(t, "POST", beat, worker.Credential, nil, 200, nil)
+	if got := serve.Settles() - before; got != 1 {
+		t.Fatalf("a beat five seconds on settled %d times, want 1", got)
 	}
 }

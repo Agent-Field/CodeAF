@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -19,6 +22,83 @@ func Read(path string) []factory.Message {
 	if path == "" {
 		return []factory.Message{}
 	}
+	key, keyed := readKeyOf(path)
+	if keyed {
+		reads.mu.Lock()
+		last, ok := reads.last[path]
+		reads.mu.Unlock()
+		if ok && last.key.same(key) {
+			return append([]factory.Message(nil), last.out...)
+		}
+	}
+	out := read(path)
+	if keyed {
+		reads.mu.Lock()
+		if len(reads.last) >= readsMost {
+			reads.last = map[string]readAnswer{}
+		}
+		reads.last[path] = readAnswer{key: key, out: append([]factory.Message(nil), out...)}
+		reads.mu.Unlock()
+	}
+	return out
+}
+
+// ── a journal is parsed once per version of it ─────────────────────────────
+//
+// A HELD JOB'S RUNNER READ ITS MANAGER'S WHOLE JOURNAL ON EVERY BEAT. The
+// worker's flush runs every two seconds for each job it holds and parsed the
+// manager's transcript twice (its entries, then its clocks) to find manager
+// lines nobody had written; the seventh live A+B run's idle profile on macOS
+// put a seventh of the engine there with two jobs held. A journal is appended
+// to or replaced, never edited in place, so the file's identity (size, time,
+// inode) and its folder's (a segment or sidecar added beside it) say whether
+// the answer read last is still the answer.
+
+// readsMost bounds the journals remembered.
+const readsMost = 256
+
+type readKey struct {
+	file, dir os.FileInfo
+}
+
+// same says two looks saw one unchanged journal in one unchanged folder.
+func (a readKey) same(b readKey) bool {
+	return sameInfo(a.file, b.file) && sameInfo(a.dir, b.dir)
+}
+
+func sameInfo(a, b os.FileInfo) bool {
+	return a != nil && b != nil && os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime()) && a.Mode() == b.Mode()
+}
+
+type readAnswer struct {
+	key readKey
+	out []factory.Message
+}
+
+var reads = struct {
+	mu   sync.Mutex
+	last map[string]readAnswer
+}{last: map[string]readAnswer{}}
+
+// readParses counts the journals parsed, so a test can say an unchanged one
+// was not parsed again.
+var readParses atomic.Int64
+
+func readKeyOf(path string) (readKey, bool) {
+	file, err := os.Stat(path)
+	if err != nil {
+		return readKey{}, false
+	}
+	dir, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		return readKey{}, false
+	}
+	return readKey{file: file, dir: dir}, true
+}
+
+// read is [Read] without the memory: the journal parsed as it is now.
+func read(path string) []factory.Message {
+	readParses.Add(1)
 	entries := spoken(session.ReadTranscript(path))
 	clocks := messageClocks(path)
 	out := make([]factory.Message, 0, len(entries))

@@ -8,3 +8,6 @@ func Settles() int64 { return settles.Load() }
 
 // WorkerSettleEvery is how often a runner's requests settle the floor.
 const WorkerSettleEvery = workerSettleEvery
+
+// BeatSettleEvery is how often a runner's beats alone settle the floor.
+const BeatSettleEvery = beatSettleEvery
