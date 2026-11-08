@@ -1504,8 +1504,8 @@ func stepShort(name string, st factory.Stage, round int, res factory.StageResult
 
 // personShortfall is [shortfall] as the person's question says it. A CHECK
 // THAT WAS NOT CONFIRMED IS COUNTED IN A SENTENCE, NEVER QUOTED: its command
-// is a shell line with the worktree's path in it ("cd /Users/…/factory-demo-
-// 211 && …"), which the Needs you row printed whole. The commands stay on
+// is a shell line that starts by changing into the worktree's full path,
+// which the Needs you row printed whole. The commands stay on
 // the step's own record ([shortfall]), which its chat and its next round read.
 func personShortfall(res factory.StageResult) string {
 	n := 0

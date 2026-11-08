@@ -81,9 +81,7 @@ var stopChecks = &stopCheckMemo{by: map[string]stopCheck{}}
 
 // answer is the remembered answer for key while its file is unchanged.
 func (m *stopCheckMemo) answer(key string, d seamRunDoor) (string, bool) {
-	m.mu.Lock()
-	last, ok := m.by[key]
-	m.mu.Unlock()
+	last, ok := m.last(key)
 	if !ok {
 		return "", false
 	}
@@ -96,6 +94,14 @@ func (m *stopCheckMemo) answer(key string, d seamRunDoor) (string, bool) {
 		return "", false
 	}
 	return last.refusal, true
+}
+
+// last is what key's conversation was last answered, and whether it was.
+func (m *stopCheckMemo) last(key string) (stopCheck, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.by[key]
+	return c, ok
 }
 
 // job is the job key's conversation was last found managing, 0 for none.
