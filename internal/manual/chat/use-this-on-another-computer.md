@@ -2,13 +2,13 @@
 
 ## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing and moving chats are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 There is no account and no password to log in with. You pair: a code on one screen, typed on the other.
 
-You learn one thing here: **a code shown on a screen you own, typed on the other computer.**
+Use a code shown on a screen you own.
 
 The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them only when relay storage is on.
 
@@ -32,11 +32,15 @@ Dashes and spaces in the code do not matter. `42-715-302`, `42 715 302` and `427
 
 The code is good for 10 minutes. It works once.
 
-## Sync my chats — how to sync between paired computers
+## Sync my chats — get my chats on my other computer
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
-Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired
-computers through the saved or hosted relay. `CODEAF_SYNC_URL=off` stops relay traffic.
+Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync through the saved or hosted relay when storage is on. Hosted sync to paired computers needs approval in Settings → Devices → relay storage → enter; self-hosted `--store` needs none. Pairing, presence and live `--at` work while storage is off. `CODEAF_SYNC_URL=off` stops relay traffic.
+
+## Do older chats sync after pairing — independent copies and untouched originals
+
+Hosted sync needs approval in Settings → Devices → relay storage → enter; self-hosted `--store` needs none. Pairing, presence and live `--at` work while storage is off.
+
 Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Recent chats are prepared in the background, and opening any other older chat prepares its copy. A never-paired home sends no relay requests.
 
 ## What does /laptop do — the laptop command pairs chats with my other computer; /pair, /sync and /link
@@ -123,7 +127,9 @@ that code did not work, or it timed out; ask for a new one
 
 A code that ran out of time (10 minutes) says the same. Ask for a new code with `/pair` on the computer that has your chats.
 
-Other things you can meet, each in one sentence:
+## Why did pairing fail — wrong code shape, expired code, another device or network limits
+
+Pairing works while relay storage is off. These are other code-pairing refusals, each in one sentence:
 
 A code with the wrong shape is refused before anything is sent:
 
@@ -300,6 +306,10 @@ to the relay, so your other computers can open them. Which relay is one setting,
   `codeaf relay --listen :8787 --store <directory>` (see "Running the relay yourself" on the page
   *Reaching a machine with a pairing code*). The hosted relay and your own speak the same way, so
   nothing else changes.
+
+## Is my code private on the relay — encrypted chats, files and visible metadata
+
+Hosted chat/file sync needs approval in Settings → Devices → relay storage → enter. Pairing, presence and live `--at` work while storage is off. Self-hosted `--store` needs no approval.
 
 **Is my code private?** Everything a chat holds, its turns and the files it saved, is sealed
 on your computer with a key only your own computers have, before it is sent. The relay keeps

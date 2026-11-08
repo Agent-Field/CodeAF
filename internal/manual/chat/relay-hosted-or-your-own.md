@@ -2,7 +2,7 @@
 
 ## Hosted relay or my own — which one do I use, where does sync go by default, and which relay each channel uses
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing and moving chats are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 

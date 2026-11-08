@@ -67,6 +67,9 @@ type Env struct {
 	Home     string
 	Identity identity.Identity // the identity on disk now
 	Device   identity.Dev      // this machine's device under it
+	// HostedRelay is the normalized hosted URL, empty for other relays. Only an
+	// accepted binding on this service requires keeping a canceled successor.
+	HostedRelay string
 	// Connect binds the relay to a signer: the old identity's device, then the
 	// new one's.
 	Connect func(reqsign.Signer) Relay
@@ -196,7 +199,7 @@ func (e Env) mint() (Journal, error) {
 		if json.Unmarshal(raw, &j) != nil {
 			return Journal{}, errors.New("rotate: saved successor keys are damaged; keep " + successorFile)
 		}
-		if j.OldID == e.Identity.ID() {
+		if j.OldID == e.Identity.ID() && e.HostedRelay != "" && j.HandoffRelay == e.HostedRelay {
 			if _, err := identity.Unmarshal(j.New); err != nil {
 				return Journal{}, err
 			}
@@ -287,8 +290,8 @@ func (r *run) refusedFirst(err error) error {
 }
 
 // Abandon stops a rotation that has not switched: the old identity is thawed
-// and its successor keys are kept outside the active journal so a later
-// rotation can reuse the relay’s permanently bound successor. With no journal
+// and keeps its successor keys only when a hosted relay accepted their binding.
+// A later rotation of that source on the same relay must reuse them. With no journal
 // it thaws anyway, which is how another computer undoes a rotation whose
 // keeper lost its disk.
 func (e Env) Abandon(ctx context.Context) error {
@@ -308,6 +311,9 @@ func (e Env) Abandon(ctx context.Context) error {
 	}
 	if err := r.old.Gate.Thaw(ctx); err != nil {
 		return err
+	}
+	if r.j.HandoffRelay == "" {
+		return remove(e.Home)
 	}
 	r.j.State = Minted
 	r.j.Items = nil

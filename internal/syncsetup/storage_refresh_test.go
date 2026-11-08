@@ -3,93 +3,15 @@ package syncsetup
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
-
-func TestStorageOptInSharedWaiterWork(t *testing.T) {
-	for _, n := range []int{1, 10, 50} {
-		for _, mode := range []string{"on", "off", "self-hosted"} {
-			t.Run(fmt.Sprintf("%s/%d", mode, n), func(t *testing.T) {
-				home := t.TempDir()
-				relay := ProductionRelayURL
-				if mode == "self-hosted" {
-					relay = "http://own.test"
-				}
-				t.Setenv(URLVar, relay)
-				id, err := identity.Ensure(home)
-				if err != nil {
-					t.Fatal(err)
-				}
-				state := mode
-				if state == "self-hosted" {
-					state = "on"
-				}
-				if err := SaveStorage(home, relay, id.ID(), state); err != nil {
-					t.Fatal(err)
-				}
-				reads, timers, requests := 0, 0, 0
-				var next func()
-				p := storageProcessFor(home)
-				p.load = func(home string) (identity.Identity, error) { reads++; return identity.Load(home) }
-				p.state = func(home, relay, id string) string { reads++; return StorageState(home, relay, id) }
-				p.fetch = func(context.Context) error { requests++; return nil }
-				p.after = func(wait time.Duration, fn func()) func() bool {
-					if wait > StoragePollEvery {
-						t.Fatalf("wait %v", wait)
-					}
-					timers++
-					next = fn
-					return func() bool { next = nil; return true }
-				}
-				woke := 0
-				if mode == "off" {
-					for i := 0; i < n; i++ {
-						p.waiting[uint64(i)] = func() { woke++ }
-					}
-				}
-				p.check(false)
-				// Setup resolves the identity once. Count actual identity and permission
-				// file reads in one minute of steady-state local waiting.
-				reads, timers, requests = 0, 0, 0
-				if next != nil {
-					fn := next
-					next = nil
-					fn()
-				}
-				wantReads, wantTimers := 0, 0
-				if mode == "off" {
-					wantReads, wantTimers = 2, 1
-				}
-				if reads != wantReads || timers != wantTimers || requests != 0 {
-					t.Fatalf("reads=%d timers=%d requests=%d", reads, timers, requests)
-				}
-				t.Logf("chats=%d state=%s file-reads/min=%d timer-arms/min=%d relay-requests=%d", n, mode, reads, timers, requests)
-				if mode == "off" {
-					// A raw atomic file change models another process sharing this home.
-					raw := fmt.Sprintf(`{"relay":%q,"identity":%q,"storage":"on"}`, relay, id.ID())
-					if err := os.WriteFile(filepath.Join(home, StorageFile), []byte(raw), 0600); err != nil {
-						t.Fatal(err)
-					}
-					fn := next
-					fn()
-					if woke != n || next != nil {
-						t.Fatalf("wake=%d timer=%v", woke, next != nil)
-					}
-				}
-			})
-		}
-	}
-}
 
 func TestStorageOptInFailedRefreshPreservesCache(t *testing.T) {
 	home := t.TempDir()

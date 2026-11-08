@@ -838,7 +838,8 @@ export class HostedIdentity {
     await this.ensure(fromBase64Url(c.request.headers.get('codeaf-identity')));
     const authority=await this.authorize(c.device,c.request.headers.get('codeaf-cert'),false,fresh);
     checkTime(c.request.headers.get('codeaf-time'),this.readNow(authority.app.now));
-    if(!['frozen','retired'].includes(authority.identity.rotation?.state))throw new Wire('not_rotating',409);
+    const rotation=authority.identity.rotation;
+    if(!['frozen','retired'].includes(rotation?.state)||rotation.by!==c.device)throw new Wire('not_rotating',409);
     const successor=await checkStorageHandoff(this.tenant.identity,c.body);
     await this.finishRead(authority.barrier,null);
     this.tenant.storage.bindSuccessor(successor);

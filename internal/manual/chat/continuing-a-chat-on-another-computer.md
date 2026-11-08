@@ -4,7 +4,7 @@ To continue on this machine, select the chat on home and choose `continue here`.
 
 ## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, my message did not send and home opened with a question
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing and moving chats are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -225,12 +225,17 @@ a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry 
 - `could not continue this chat here`: the move failed. The row stays where it was; choose `retry` or try again.
 - A move does not fail because another chat on this computer is saving its secrets to the sync service at that moment. Its last step waits up to 30 seconds for that save to finish, then arrives.
 - `could not continue this chat here because the sync service is not answering; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.
+
+## Why can't I take an open chat from another computer — older relays and --host
+
+Hosted chat/file sync needs approval in Settings → Devices → relay storage → enter. Pairing, presence and live `--at` work while storage is off. Self-hosted `--store` needs no approval.
+
 - `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here` means the chat is open on another computer and the sync service is too old to take it from there safely. Everything else works, including continuing a chat the other computer has closed. Close the chat on that computer, then choose `continue here` again.
 - Under `codeaf chat --host`, `continue here` is not offered and a chat the remote host already holds never shows as held elsewhere. With no way to continue set up, an off row has no `continue here`: enter says why.
 
 ## taking a chat back, and two computers continuing the same chat — which one opens
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing works on Linux, macOS and native Windows with a compatible engine, even with storage off, as do presence and live `--at`. Hosted chat/file sync needs approval: Settings → Devices → relay storage → enter. Self-hosted `--store` needs no approval.
 
 A chat has one holder at a time. To take a chat back from the computer that took it, continue it there the same way: press enter on its row on that computer and choose `continue here`. Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
@@ -306,6 +311,10 @@ Pairing is available on Linux, macOS and native Windows with a compatible engine
 Your repository's `.git`, including its history, branches and settings, moves with the chat to your own paired devices. A task's commits travel too, and its working-copy bookkeeping is rebuilt on arrival. A key in an old commit remains in that history: codeaf does not remove or rewrite it. Git history travels sealed end to end; the sync service sees only ciphertext, including when the history contains keys.
 
 The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried through the encrypted vault. If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only through the vault.
+
+## How are secret files screened before saving or moving a chat — .env, ignored folders and changing files
+
+Hosted chat/file sync needs approval in Settings → Devices → relay storage → enter. Pairing, presence and live `--at` work while storage is off. Self-hosted `--store` needs no approval.
 
 Before each seal, codeaf asks which files will be captured and screens those candidates, including a full candidate list for a first reply or a capture that needs a full scan. If a file changes between screening and capture, saving plans and screens again. If repeated edits prevent a stable capture, it says `files kept changing while saving this chat; try again` and keeps the calls for a later save. A wholly git-ignored directory is neither entered nor screened unless it holds tracked files. An ignored file in an ordinary directory is still screened: root `.env`, `config/.env.local` and a private key in a `*.pem` file travel through the encrypted vault to paired computers. A withheld file stays out of local saved packs and the uploaded workspace capture. Tools still see a `.env` file's variables through the vault. An unreadable folder stays out until its permissions recover; its newly eligible files are then screened with a fresh capture plan. Restores and arrivals also screen before an automatic safety capture.
 

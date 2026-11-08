@@ -12,6 +12,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -78,28 +81,129 @@ func TestStorageOptInRotationOffFinishesWithoutWrites(t *testing.T) {
 }
 
 func TestStorageOptInCanceledRotationKeepsBoundSuccessor(t *testing.T) {
-	r := newRig(t)
-	r.env.After = crashAt(string(Frozen))
-	if _, err := r.env.Rotate(t.Context()); err != errCrash {
-		t.Fatal(err)
-	}
-	j, _, err := load(r.home)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := r.env.Abandon(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if Pending(r.home) {
-		t.Fatal("cancellation still blocks ordinary sync")
-	}
-	r.env.After = nil
-	result, err := r.env.Rotate(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.NewID != j.NewID {
-		t.Fatal("new successor would conflict with first handoff")
+	for _, mode := range []string{"self-hosted", "no-storage-field", "before-handoff", "refused-handoff", "accepted-same-relay", "accepted-other-relay"} {
+		t.Run(mode, func(t *testing.T) {
+			r := newRig(t)
+			if mode != "self-hosted" {
+				r.env.HostedRelay = "https://hosted.test/fabric"
+				connect := r.env.Connect
+				source := connect(signer{r.old.PublicKey(), r.dev})
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+					switch request.URL.Path {
+					case "/v1/identity/rotation":
+						var req directory.RotationReq
+						if err := json.NewDecoder(request.Body).Decode(&req); err != nil {
+							t.Error(err)
+							return
+						}
+						var err error
+						switch req.Op {
+						case directory.OpFreeze:
+							err = source.Gate.Freeze(request.Context())
+						case directory.OpThaw:
+							err = source.Gate.Thaw(request.Context())
+						case directory.OpRetire:
+							err = source.Gate.Retire(request.Context(), 0)
+						default:
+							t.Errorf("unexpected rotation %s", req.Op)
+						}
+						if err != nil {
+							http.Error(w, err.Error(), 500)
+							return
+						}
+						w.Write([]byte(`{}`))
+					case "/v1/store/stats":
+						state := "off"
+						if mode == "no-storage-field" {
+							state = ""
+						}
+						json.NewEncoder(w).Encode(blobstore.Counts{Storage: state})
+					case "/v1/store/handoff":
+						if mode == "refused-handoff" {
+							http.Error(w, `{"err":"unavailable"}`, 503)
+							return
+						}
+						w.Write([]byte(`{"storage":"off"}`))
+					default:
+						t.Errorf("unexpected request %s", request.URL.Path)
+					}
+				}))
+				defer server.Close()
+				sign := func(*http.Request, []byte) {}
+				r.env.Connect = func(sig reqsign.Signer) Relay {
+					side := connect(sig)
+					if reqsign.IDOf(sig.IdentityKey()) == r.old.ID() {
+						side.Gate = directory.Gate{Client: directory.NewHTTP(server.URL, sign, server.Client()), Store: blobstore.NewHTTP(server.URL, sign, server.Client()), Source: r.old.ID()}
+					}
+					return side
+				}
+			}
+			r.env.StorageAllowed = func(context.Context, blobstore.Store) (bool, error) { return false, nil }
+			stop := Sealed
+			if mode == "before-handoff" {
+				stop = Frozen
+			}
+			accepted := strings.HasPrefix(mode, "accepted-")
+			r.env.After = crashAt(string(stop))
+			if _, err := r.env.Rotate(t.Context()); err == nil || (mode != "refused-handoff" && err != errCrash) {
+				t.Fatalf("stop: %v", err)
+			}
+			j, _, err := load(r.home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.env.Abandon(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if Pending(r.home) {
+				t.Fatal("cancellation still blocks ordinary sync")
+			}
+			raw, err := os.ReadFile(filepath.Join(r.home, successorFile))
+			if accepted {
+				if err != nil {
+					t.Fatal(err)
+				}
+				var saved Journal
+				if err := json.Unmarshal(raw, &saved); err != nil {
+					t.Fatal(err)
+				}
+				if saved.HandoffRelay != r.env.HostedRelay {
+					t.Fatalf("saved relay %q", saved.HandoffRelay)
+				}
+				info, err := os.Stat(filepath.Join(r.home, successorFile))
+				if err != nil || info.Mode().Perm() != 0600 {
+					t.Fatalf("saved keys mode: %v %v", info, err)
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("unbound successor was retained: %v", err)
+			}
+			// An independent relay has no binding to this canceled successor.
+			if mode == "accepted-other-relay" {
+				second := &fakeRelay{clock: r.relay.clock, ns: map[string]*namespace{}}
+				r.env.Connect = second.connect
+				r.env.HostedRelay = "https://other.test/fabric"
+			}
+			// Stop after minting so even a deliberately refused relay can expose its candidate.
+			r.env.After = crashAt(string(Minted))
+			if _, err := r.env.Rotate(t.Context()); err != errCrash {
+				t.Fatal(err)
+			}
+			next, _, err := load(r.home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reuse := mode == "accepted-same-relay"
+			if (next.NewID == j.NewID) != reuse {
+				t.Fatalf("successor reused=%v, want %v", next.NewID == j.NewID, reuse)
+			}
+			if reuse {
+				r.env.After = nil
+				result, err := r.env.Rotate(t.Context())
+				if err != nil || result.NewID != j.NewID || Pending(r.home) {
+					t.Fatalf("same-relay completion: %+v %v", result, err)
+				}
+			}
+		})
 	}
 }
 
@@ -222,4 +326,30 @@ type storageHandoffWrites struct {
 func (s storageHandoffWrites) PutFrame(ctx context.Context, b []byte) (blobstore.FrameID, error) {
 	s.before()
 	return s.Store.PutFrame(ctx, b)
+}
+
+func TestReview2UnrelatedRelayRotationMintsFreshSuccessor(t *testing.T) {
+	r := newRig(t)
+	r.env.After = crashAt(string(Frozen))
+	if _, err := r.env.Rotate(t.Context()); err != errCrash {
+		t.Fatal(err)
+	}
+	oldJournal, _, err := load(r.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.env.Abandon(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// A new self-hosted relay has no approval binding to the canceled successor.
+	second := &fakeRelay{clock: r.relay.clock, ns: map[string]*namespace{}}
+	r.env.Connect = second.connect
+	r.env.After = nil
+	result, err := r.env.Rotate(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewID == oldJournal.NewID {
+		t.Fatal("an unrelated relay rotation reused the canceled rotation's complete private identity")
+	}
 }

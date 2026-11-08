@@ -83,10 +83,17 @@ func (r *run) seal(ctx context.Context) error {
 	// A frozen journal already holds the successor keys. The separate handoff
 	// retries safely after a crash without changing any coordination command.
 	if gate, ok := r.old.Gate.(interface {
-		HandoffTo(context.Context, identity.Identity) error
+		HandoffTo(context.Context, identity.Identity) (bool, error)
 	}); ok {
-		if err := gate.HandoffTo(ctx, r.newID); err != nil {
+		accepted, err := gate.HandoffTo(ctx, r.newID)
+		if err != nil {
 			return err
+		}
+		if accepted && r.HostedRelay != "" {
+			r.j.HandoffRelay = r.HostedRelay
+			if err := save(r.Home, r.j); err != nil {
+				return err
+			}
 		}
 	}
 	if r.StorageAllowed != nil {

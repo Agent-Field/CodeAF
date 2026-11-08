@@ -2,7 +2,7 @@
 
 ## How do I add another computer — the Add another device card (add another machine), codeaf pair, a link to paste, and pairing a server with no browser
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing and moving chats are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
 
 Older chats move through an independent copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -76,7 +76,7 @@ Pairing is available on Linux, macOS and native Windows with a compatible engine
 
 ## The pair words — approve, --code and --via
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing works on Linux, macOS and native Windows with a compatible engine, even with storage off, as do presence and live `--at`. Hosted chat/file sync needs approval: Settings → Devices → relay storage → enter. Self-hosted `--store` needs no approval.
 
 ```
 usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
@@ -101,9 +101,9 @@ On the approving screen the number reads `Check number 4821. Approve only if the
 
 ## Approve a new device — the approve screen, a and d, and decline
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing works on Linux, macOS and native Windows with a compatible engine, even with storage off, as do presence and live `--at`. Hosted chat/file sync needs approval: Settings → Devices → relay storage → enter. Self-hosted `--store` needs no approval.
 
-When you open a link on a device that is already in (paste it, or type `/pair <link>`), the screen says who is asking:
+On an already paired device, paste a link or type `/pair <link>` to see who is asking:
 
 ```
 A new device wants to pair.
@@ -233,7 +233,7 @@ chats no longer sync under the replaced membership.
 
 ## The link did not work — a pairing link or token that ran out, was declined or was answered already
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing works on Linux, macOS and native Windows with a compatible engine, even with storage off, as do presence and live `--at`. Hosted chat/file sync needs approval: Settings → Devices → relay storage → enter. Self-hosted `--store` needs no approval.
 
 These are the sentences a link pairing says when it stops, in the words the screen uses. Nothing was changed on either device when you read one of them.
 

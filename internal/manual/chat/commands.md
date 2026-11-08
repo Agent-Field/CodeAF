@@ -34,6 +34,8 @@ its next saved turn, just like changes from the model's shell commands.
 A failed command keeps its output and exit status too. Shell paths, `@` names and
 slash words remain literal, not mentions or send tags.
 
+## What can ! shell commands do — input, timeouts, approvals and workspace permissions
+
 Commands receive no interactive input or terminal. Use non-interactive flags;
 editors, prompts and terminal apps are not supported. Each command starts a fresh
 shell in the workspace: `cd` and `export` apply only within that command. Large

@@ -448,6 +448,10 @@ A chat that moves to another computer brings, from the relay and sealed on the w
 - what the chat spent: the chat's share of the usage and spend figures is read again from its sealed record on the new computer, so its cost shows there and a rewind never drops it;
 - the memories that chat wrote, kept in the chat's own ledger and read back into the new computer's memory.
 
+## What stays on this computer when a chat moves — task history, install folders, secrets and spending limits
+
+Hosted chat/file sync needs approval in Settings → Devices → relay storage → enter. Pairing, presence and live `--at` work while storage is off. Self-hosted `--store` needs no approval.
+
 The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
 
 It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.

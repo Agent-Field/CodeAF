@@ -309,11 +309,9 @@ purpose, and says `this window is reading this conversation, not typing into it`
 
 ## How do I work on the same conversation from two computers — another window, and another machine
 
-Pairing is available on Linux, macOS and native Windows with a compatible engine. Hosted chat and file sync also needs relay storage approval: Settings → Devices → relay storage → enter. Pairing, device presence and live `--at` work while storage is off. A self-hosted relay with `--store` needs no approval.
+Pairing works on Linux, macOS and native Windows with a compatible engine, even with storage off, as do presence and live `--at`. Hosted chat/file sync needs approval: Settings → Devices → relay storage → enter. Self-hosted `--store` needs no approval.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
-
-These are two different things and they are easy to run together.
 
 **Another window** is a second codeaf on the *same* machine holding a conversation you can
 see on home. Its row says `another window` in the right margin — and `another window · enter
@@ -620,7 +618,7 @@ The task roster lists this far conversation's work. Its rows come from the far
     bytes to the far conversation's `attachments/` folder. Generated and viewed pictures
     take the reverse road automatically so their far bytes can be painted in this terminal.
 
-## Reminders and watches over --host — they work, and they are that machine's automations
+## Where does a reminder I set up over --host actually run — reminders, watches and that machine's automations
 
 `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
 all work over `--host` and `--at`. The conversation over there proposes the automation, its

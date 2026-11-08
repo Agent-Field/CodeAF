@@ -49,7 +49,7 @@ Hosted chat/file sync requires storage approval in Settings → Devices → rela
 
 If `codeaf identity rotate` stops half way, because the network dropped or the computer went to sleep, run it again. It finds what it had done and finishes. It never makes a second new identity. If saved replacement keys are damaged, keep `rotation-successor.json`; deleting it would lose the replacement already bound by the relay. While a rotation is unfinished, the computer does not sync, and says `a rotation is unfinished on this computer; run codeaf identity rotate to finish it`.
 
-To stop a rotation before step 7, run `codeaf identity rotate --abandon`. The old identity opens again. This computer keeps the unused replacement keys privately, outside the active rotation, so a later rotation can reuse the successor already bound by the relay. After step 7 the only way is forward: it says `already switched to the new identity`.
+To stop a rotation before step 7, run `codeaf identity rotate --abandon`. The old identity opens again. Only after a hosted relay accepts the successor binding does this computer keep the replacement keys privately, outside the active rotation, for another rotation of the same identity on that same relay. Canceling before acceptance, using a relay without the storage capability, or using a self-hosted relay discards the candidate; the next rotation makes fresh keys. After step 7 the only way is forward: it says `already switched to the new identity`.
 
 If the computer that started the rotation is lost too, run `codeaf identity rotate --abandon` on another computer that still has the old identity. It opens the old identity again.
 

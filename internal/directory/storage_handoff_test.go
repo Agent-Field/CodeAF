@@ -79,8 +79,12 @@ func TestStorageOptInFreezeNegotiatesExactLegacyBytes(t *testing.T) {
 			if err := gate.Freeze(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if err := gate.HandoffTo(context.Background(), next); err != nil {
+			accepted, err := gate.HandoffTo(context.Background(), next)
+			if err != nil {
 				t.Fatal(err)
+			}
+			if accepted != (state != "") {
+				t.Fatalf("handoff accepted=%v with storage=%q", accepted, state)
 			}
 			want := []string{"/fabric/v1/identity/rotation", "/fabric/v1/store/stats"}
 			if state != "" {

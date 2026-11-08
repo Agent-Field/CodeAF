@@ -35,18 +35,19 @@ type Item struct {
 // Journal is everything a crashed rotation needs. It holds secrets (the new
 // identity and both device keys) and is written 0600, atomically.
 type Journal struct {
-	V         uint16          `json:"V"`
-	State     State           `json:"state"`
-	OldID     string          `json:"old_id"`
-	OldPublic string          `json:"old_public"` // hex of the old signing public key: enough to verify the old device's cert
-	OldDevice json.RawMessage `json:"old_device"` // identity.Dev document, to ask the relay to retire
-	NewID     string          `json:"new_id"`
-	New       json.RawMessage `json:"new"`        // identity document
-	NewDevice json.RawMessage `json:"new_device"` // identity.Dev document
-	GraceMS   int64           `json:"grace_ms"`
-	Items     []Item          `json:"items,omitempty"`
-	LocalOnly bool            `json:"local_only,omitempty"`
-	Vault     bool            `json:"vault,omitempty"` // the resealed vault is on the new relay
+	V            uint16          `json:"V"`
+	State        State           `json:"state"`
+	OldID        string          `json:"old_id"`
+	OldPublic    string          `json:"old_public"` // hex of the old signing public key: enough to verify the old device's cert
+	OldDevice    json.RawMessage `json:"old_device"` // identity.Dev document, to ask the relay to retire
+	NewID        string          `json:"new_id"`
+	New          json.RawMessage `json:"new"`        // identity document
+	NewDevice    json.RawMessage `json:"new_device"` // identity.Dev document
+	GraceMS      int64           `json:"grace_ms"`
+	Items        []Item          `json:"items,omitempty"`
+	LocalOnly    bool            `json:"local_only,omitempty"`
+	HandoffRelay string          `json:"handoff_relay,omitempty"` // Retain canceled keys only for the hosted relay that accepted them.
+	Vault        bool            `json:"vault,omitempty"`         // the resealed vault is on the new relay
 }
 
 func path(home string) string { return filepath.Join(home, File) }

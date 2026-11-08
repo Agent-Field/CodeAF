@@ -37,8 +37,6 @@ type storageProcess struct {
 	read  func() (string, string, string)
 	fetch func(context.Context) error
 	now   func() time.Time
-	load  func(string) (identity.Identity, error)
-	state func(string, string, string) string
 }
 
 func storageProcessFor(home string) *storageProcess {
@@ -48,19 +46,17 @@ func storageProcessFor(home string) *storageProcess {
 	if p == nil {
 		ctx := context.Background()
 		p = &storageProcess{home: home, ctx: ctx, waiting: make(map[uint64]func()), opened: make(map[uint64]func()), now: time.Now}
-		p.load = identity.Load
-		p.state = StorageState
 		p.after = func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop }
 		p.read = func() (string, string, string) {
 			relay := Resolve(home)
-			if !relay.On() || !IsHostedRelay(relay.URL) || Quiet(home) {
+			if !relay.On() || !IsHostedRelay(relay.URL) || identity.Solo(home) {
 				return "", "", ""
 			}
-			id, err := p.load(home)
+			id, err := identity.Load(home)
 			if err != nil {
 				return "", "", ""
 			}
-			return relay.URL, id.ID(), p.state(home, relay.URL, id.ID())
+			return relay.URL, id.ID(), StorageState(home, relay.URL, id.ID())
 		}
 		p.fetch = func(ctx context.Context) error {
 			s, ok, err := Open(home)

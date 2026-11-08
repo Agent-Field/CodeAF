@@ -36,9 +36,14 @@ func scratchDir(home string) string { return filepath.Join(home, "rotation-scrat
 // machine; a chat it does not know is fetched into a scratch folder.
 func (s *Sync) Rotation(eng cellstore.Engine, held func(id string) (cell.Cell, bool), name string, say func(string)) rotate.Env {
 	eng.WorkspaceOf = func(c cell.Cell) string { return workspaceOf(c.Root) }
+	hostedRelay := ""
+	if IsHostedRelay(s.Relay) {
+		hostedRelay = normalizeStorageURL(s.Relay)
+	}
 	return rotate.Env{
 		Home: s.Home, Identity: s.Identity, Device: s.Device, Say: say,
-		Connect: s.relayOf,
+		HostedRelay: hostedRelay,
+		Connect:     s.relayOf,
 		StorageAllowed: func(ctx context.Context, successor blobstore.Store) (bool, error) {
 			if !IsHostedRelay(s.Relay) {
 				return true, nil

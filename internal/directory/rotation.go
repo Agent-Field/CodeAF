@@ -153,25 +153,27 @@ type Gate struct {
 func (g Gate) Freeze(ctx context.Context) error { return g.move(ctx, RotationReq{Op: OpFreeze}) }
 
 // HandoffTo carries hosted storage permission after freezing and before uploads.
-// Relays without the stats field receive no additional request.
-func (g Gate) HandoffTo(ctx context.Context, successor identity.Identity) error {
+// It reports whether a binding was accepted; relays without the stats field
+// receive no additional request and need no saved successor after cancellation.
+func (g Gate) HandoffTo(ctx context.Context, successor identity.Identity) (bool, error) {
 	if g.Store == nil {
-		return nil
+		return false, nil
 	}
 	counts, err := g.Store.Stats(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if counts.Storage == "" {
-		return nil
+		return false, nil
 	}
 	client, ok := g.Client.(interface {
 		HandoffStorage(context.Context, string, identity.Identity) error
 	})
 	if !ok {
-		return ErrTooOld
+		return false, ErrTooOld
 	}
-	return client.HandoffStorage(ctx, g.Source, successor)
+	err = client.HandoffStorage(ctx, g.Source, successor)
+	return err == nil, err
 }
 
 // HandoffStorage signs consent with the successor root; the HTTP request is

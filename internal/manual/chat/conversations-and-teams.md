@@ -450,7 +450,7 @@ profile or changes the requesting chat's model.
 
 ## Do my teams show on my other computer?
 
-The share-teams preference is on by default for paired computers, but sharing through the hosted relay waits for storage approval in Settings → Devices → relay storage → enter. The local switch is
+The share-teams preference is on by default for paired computers, but sharing through the hosted relay waits for storage approval in Settings → Devices → relay storage → enter. Use
 **Settings → General → share teams**. Sharing includes teams, members, handles, the
 manager and team settings, plus recent Traffic as read-only history. Team changes
 show within a few seconds, even with no chat open. The Teams dropdown, Teams page

@@ -191,3 +191,28 @@ test('R8 a handoff from an unfrozen identity is refused without binding a succes
   assert.deepEqual(await h.call(c,'POST','/v1/store/handoff',accepted),{status:200,body:{successor:accepted.successor,storage:'off'}});
  } finally {await h.close();}
 });
+
+
+test('R1 only the device that froze the identity can bind its hosted successor', {timeout:60000}, async () => {
+ const h=await hostedFixture({storageOpen:false});
+ const makeHandoff=()=>{
+  const root=generateKeyPairSync('ed25519'),key=root.publicKey.export({type:'spki',format:'der'}).subarray(-32);
+  const successor='id_'+createHash('sha256').update(key).digest('hex').slice(0,32);
+  return {successor,successor_key:key.toString('hex'),proof:sign(null,Buffer.from('codeaf/storage-handoff/v1\n'+h.identity+'\n'+successor),root.privateKey).toString('hex')};
+ };
+ try {
+  await h.start();const keeper=h.client(),other=h.client();
+  for(const device of [keeper,other])assert.equal((await h.call(device,'GET','/v1/store/stats')).body.storage,'off');
+  const frozen=await h.call(keeper,'POST','/v1/identity/rotation',{op:'freeze'});
+  assert.equal(frozen.status,200);assert.equal(frozen.body.rotation.by,keeper.device);
+  const competing=makeHandoff();
+  assert.deepEqual(await h.call(other,'POST','/v1/store/handoff',competing),{status:409,body:{err:'not_rotating'}});
+  // A durable competing binding would make the keeper's different successor conflict.
+  await h.start();const accepted=makeHandoff();
+  assert.deepEqual(await h.call(keeper,'POST','/v1/store/handoff',accepted),{status:200,body:{successor:accepted.successor,storage:'off'}});
+  assert.deepEqual(await h.call(other,'POST','/v1/store/handoff',competing),{status:409,body:{err:'not_rotating'}});
+  assert.equal((await h.call(keeper,'POST','/v1/identity/rotation',{op:'retire'})).status,200);
+  assert.deepEqual(await h.call(other,'POST','/v1/store/handoff',accepted),{status:409,body:{err:'not_rotating'}});
+  assert.deepEqual(await h.call(keeper,'POST','/v1/store/handoff',accepted),{status:200,body:{successor:accepted.successor,storage:'off'}});
+ } finally {await h.close();}
+});

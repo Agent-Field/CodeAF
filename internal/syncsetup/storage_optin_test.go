@@ -169,3 +169,26 @@ func TestStorageOptInDefaultPortsAndCase(t *testing.T) {
 		t.Fatal("port normalization")
 	}
 }
+
+func TestStorageOptInRotationBindingRelay(t *testing.T) {
+	for _, relay := range []string{ProductionRelayURL, StagingRelayURL, DevRelayURL} {
+		raw := strings.Replace(relay, "https://", "HTTPS://", 1)
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.Host = strings.ToUpper(u.Host) + ":443"
+		u.Path += "/"
+		s := &Sync{Relay: u.String()}
+		env := s.Rotation(cellstore.Engine{}, nil, "", nil)
+		if env.HostedRelay != relay {
+			t.Fatalf("binding relay %q, want %q", env.HostedRelay, relay)
+		}
+	}
+	for _, relay := range []string{"http://own.test:8787", "https://own.test"} {
+		s := &Sync{Relay: relay}
+		if env := s.Rotation(cellstore.Engine{}, nil, "", nil); env.HostedRelay != "" {
+			t.Fatalf("self-hosted binding %q", env.HostedRelay)
+		}
+	}
+}
