@@ -69,6 +69,14 @@ at five seconds without a chat-list answer, Home says `waiting for <host>; still
 
 these are Home's listing sentences. a message left unsent by a failed send check gets its own explanation: `<host> has not answered; your message is still in the box, press enter to send it`.
 
+## Continue a chat on its own computer while sync storage is off
+
+Reading history already stored for your account needs no storage approval. With no local work to keep, `1 continue here` brings that recorded history here, even if this computer has no copy yet or its clean copy is older.
+
+After a live `--at` session, come back to the original computer and choose `1 continue here`. If its local history contains the last shared turn and any later local turns, or no turn was shared yet, the chat continues in place. Every local turn stays, the continue card goes away, and you can send messages and use tools immediately. Nothing is uploaded while storage is off. Quit and reopen normally; after approval, opening the chat on this same computer publishes the preserved turns even if its earlier hold expired.
+
+Keeping turns made here that another computer lacks waits for storage access only when they must be saved separately before replacing this copy. If those turns diverge from newer stored history, codeaf preserves them and says `cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here`. Your typed message stays in the box. Request access in Settings → Devices → sync storage before continuing this divergent copy.
+
 ## Why does continue here say this chat was last held here — my only computer asks to continue
 
 A chat this computer held last, whose hold expired with no other computer holding it, opens without a question: there is nothing to continue from. Enter sends, and turns this computer saved while it could not reach your other devices are sent to them when the chat opens. Earlier builds asked `Continue this chat here?` on the only computer that used the chat.

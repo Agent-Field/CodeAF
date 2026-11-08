@@ -8,6 +8,8 @@ invalidates:
   - "Every hosted relay write was accepted up to the account's 5 GiB limit; a write from an account that is not approved is now refused with 403 storage_off before anything is stored, and frames stored before this change stay readable."
   - "There was no way to grant or withdraw hosted storage per account; codeaf-relay-admin approve and revoke send an operator-signed request to POST /v1/admin/storage, checked against CAF_ADMIN_KEYS, and CAF_LIMITS storageOpen opens storage for everyone."
   - "Rotating an identity needed nothing from the hosted relay beyond the freeze; the freeze bytes are unchanged, and a relay that reports storage also takes a separate POST /v1/store/handoff from the freezing device so an approved account keeps storage."
+  - "On the default engine road, sync refusal sentences for storage full, removed, replaced, clock skew and displacement stayed in the engine process and never reached the window; they now reach every attached window of that chat."
+  - "Reopening local turns under this device's expired hold with an empty recorded head opened a viewer; it now reacquires the chat and publishes those turns when storage is on, including after approval."
 ---
 The privacy terms for the hosted relay are not finished, so until they are it
 keeps nobody's chats or files. A person asks for storage from Settings →
