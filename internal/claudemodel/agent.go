@@ -233,6 +233,18 @@ func liveFor(ctx context.Context, dir, conversation, model, kept string, env []s
 	return l, nil
 }
 
+// adoptedOpening is the first line of a stream that took over a running turn:
+// the person's words going in, or the turn simply being watched again.
+func adoptedOpening(adopted bool, prompt string) string {
+	switch {
+	case !adopted:
+		return ""
+	case prompt != "":
+		return "taking in your message\n"
+	}
+	return "still working\n"
+}
+
 // pluginDirs is the plugin of codeaf's skills for dir, when there is one.
 func pluginDirs(dir string) []string {
 	if root := claudeagent.SkillPlugin(dir); root != "" {
@@ -282,13 +294,21 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 	case l.turns == 0:
 		from = 0
 	}
-	prompt := turnPrompt(chat, from)
-	if prompt == "" {
-		l.mu.Unlock()
-		l.turn.Unlock()
-		return jsonResponse(request, http.StatusBadRequest, errorBody("there is nothing new to say to Claude Code"))
+	said := len(spoken(chat.Messages))
+	// A TURN ADOPTED WITH NOTHING NEW IS ONLY WATCHED AGAIN. codeaf may cut
+	// the same correction's request twice (a second look at a running step
+	// cuts again); the request that follows carries no new words, and sending
+	// its newest message would hand Claude Code the correction a second time.
+	prompt := ""
+	if !adopted || said > from {
+		prompt = turnPrompt(chat, from)
+		if prompt == "" {
+			l.mu.Unlock()
+			l.turn.Unlock()
+			return jsonResponse(request, http.StatusBadRequest, errorBody("there is nothing new to say to Claude Code"))
+		}
 	}
-	l.seen = len(spoken(chat.Messages)) + 1
+	l.seen = said + 1
 	if adopted {
 		l.letGo.Stop()
 		l.adoptable = false
@@ -297,13 +317,15 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 		l.sink = events
 	}
 	l.mu.Unlock()
-	if err := l.session.SendWith(prompt, newestImages(chat)); err != nil {
-		l.release()
-		return jsonResponse(request, http.StatusServiceUnavailable, errorBody("Claude Code would not take the message: "+err.Error()))
+	if prompt != "" {
+		if err := l.session.SendWith(prompt, newestImages(chat)); err != nil {
+			l.release()
+			return jsonResponse(request, http.StatusServiceUnavailable, errorBody("Claude Code would not take the message: "+err.Error()))
+		}
 	}
 	l.turns++
 	reader, writer := io.Pipe()
-	go l.stream(request.Context(), writer, events, model, adopted)
+	go l.stream(request.Context(), writer, events, model, adopted, adoptedOpening(adopted, prompt))
 	return &http.Response{
 		StatusCode: http.StatusOK, Status: "200 OK", Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
 		Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: reader, ContentLength: -1, Request: request,
@@ -352,7 +374,7 @@ func (l *live) resume(request *http.Request, chat chatRequest, model string) (*h
 		}
 	}
 	reader, writer := io.Pipe()
-	go l.stream(request.Context(), writer, events, model, len(words) > 0)
+	go l.stream(request.Context(), writer, events, model, len(words) > 0, "still working\n")
 	return &http.Response{
 		StatusCode: http.StatusOK, Status: "200 OK", Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
 		Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: reader, ContentLength: -1, Request: request,
@@ -388,7 +410,7 @@ func (l *live) park() {
 }
 
 // stream writes the turn as server-sent chunks until Claude Code's result.
-func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claudeagent.Event, model string, steered bool) {
+func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claudeagent.Event, model string, steered bool, opening string) {
 	parked := false
 	defer func() {
 		if !parked {
@@ -417,6 +439,13 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 		write(map[string]any{}, "stop", usage)
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 		_ = w.Close()
+	}
+	// A STREAM THAT JOINS A TURN ALREADY RUNNING SAYS SO AT ONCE. Claude Code
+	// may be inside a long command and print nothing for a minute, and codeaf
+	// cuts a request that shows nothing in its first seconds and asks again —
+	// which cut the request carrying a correction and sent it twice.
+	if opening != "" && !think(opening) {
+		return
 	}
 	beat := time.NewTicker(heartbeat)
 	defer beat.Stop()
