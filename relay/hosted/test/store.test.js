@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { Conflict, R2Store, sealFrame } from '../src/store.js';
 import { Tenant } from '../src/tenant.js';
 import { matchRoute } from '../src/routes.js';
-import { DEFAULTS } from '../src/limits.js';
+import { DEFAULTS as CLOSED_DEFAULTS } from '../src/limits.js';
+const DEFAULTS = { ...CLOSED_DEFAULTS, storageOpen: true };
 import { policyOf } from '../src/rules.js';
 import { Flight } from '../src/flight.js';
 import { Wire } from '../src/wire.js';
@@ -33,7 +34,7 @@ before(async () => { env = await openBucket(); });
 after(() => env.close());
 
 // One identity's state is its SQLite and its R2 prefix; a "cold" store is a new object over the same two.
-const open = (identity, sql = memorySql()) => ({ sql, store: new R2Store(env.bucket, sql, identity) });
+const open = (identity, sql = memorySql()) => ({ sql, store: new R2Store(env.bucket, sql, identity, () => {}) });
 const put = async (store, f, admit) => store.put(await sealFrame(f.bytes), admit);
 
 test('stats adds durable stored totals and active limits without changing request counters or writing on a read', async () => {
@@ -59,14 +60,14 @@ test('stats adds durable stored totals and active limits without changing reques
   const caps = { limit_bytes: 10_000, limit_objects: 100, limit_frames_per_day: 10 };
   queries.length = 0;
   const stats = async (tenant = cold) => (await runRoute('GET', '/v1/store/stats', tenant)).json();
-  assert.deepEqual(await stats(), { ...counters, ...used, ...caps });
+  assert.deepEqual(await stats(), { storage: 'on', ...counters, ...used, ...caps });
   assert.deepEqual(counters, { puts: 3, gets: 1, has: 1, bytes_in: first.bytes.length * 2 + second.bytes.length, bytes_out: first.objs[0].length });
-  assert.deepEqual(await stats(tenantOf('id_stats_other')), { puts: 0, gets: 0, has: 0, bytes_in: 0, bytes_out: 0,
+  assert.deepEqual(await stats(tenantOf('id_stats_other')), { storage: 'on', puts: 0, gets: 0, has: 0, bytes_in: 0, bytes_out: 0,
     stored_bytes: 0, stored_objects: 0, frames_today: 0,
     limit_bytes: DEFAULTS.storeBytes, limit_objects: DEFAULTS.storeObjects, limit_frames_per_day: DEFAULTS.framesPerDay });
 
   now = 86_400_000;
-  assert.deepEqual(await stats(), { ...counters, ...used, frames_today: 0, ...caps });
+  assert.deepEqual(await stats(), { storage: 'on', ...counters, ...used, frames_today: 0, ...caps });
   assert.deepEqual(sql.exec('SELECT day, frames, bytes, objects FROM usage').one(), {
     day: 0, frames: 2, bytes: used.stored_bytes, objects: 3,
   });
@@ -185,7 +186,7 @@ test('getMany costs one R2 read per frame touched, not one per object', async ()
   const { sql, store } = open('id_many_cost');
   await put(store, frame([rid(1), rid(2), rid(3), rid(4)]));
   const counted = countingBucket(env.bucket);
-  const cold = new R2Store(counted.bucket, sql, 'id_many_cost');
+  const cold = new R2Store(counted.bucket, sql, 'id_many_cost', () => {});
   await cold.getMany([rid(4), rid(1), rid(3), rid(2)]);
   assert.equal(counted.calls.get, 1);
 });
@@ -274,7 +275,7 @@ test('R21 upload references become confirmable only after local R2 and index com
     async put(...args) { if (fail) throw new Error('injected R2 failure'); return env.bucket.put(...args); },
     get(...args) { return env.bucket.get(...args); },
   };
-  const sql = memorySql(), store = new R2Store(bucket, sql, 'id_r21');
+  const sql = memorySql(), store = new R2Store(bucket, sql, 'id_r21', () => {});
   const f = frame([rid(21), rid(22)]), sealed = await sealFrame(f.bytes);
   await assert.rejects(store.put(sealed), /injected R2 failure/);
   await assert.rejects(store.checkReferences(rid(21), [sealed.id], async () => {}));
@@ -283,7 +284,7 @@ test('R21 upload references become confirmable only after local R2 and index com
   let completed = false;
   await store.checkReferences(rid(21), [sealed.id], async () => { completed = true; });
   assert(completed);
-  const cold = new R2Store(bucket, sql, 'id_r21');
+  const cold = new R2Store(bucket, sql, 'id_r21', () => {});
   await cold.checkReferences(rid(21), [], async () => {});
   assert.deepEqual(await cold.get(rid(22)), f.objs[1]);
 });

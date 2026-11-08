@@ -42,6 +42,7 @@ package main
 // cannot work must still take a remote session.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -155,6 +156,8 @@ func runRemoteEngine(args []string) error {
 			return quietRefusal(remote.Refuse(os.Stdout, stale.reason))
 		}
 	}
+	stopStorage := syncsetup.StartStorageRefresh(context.Background(), home.Dir())
+	defer stopStorage()
 	err := remote.Serve(os.Stdin, os.Stdout, remote.Options{
 		SyncService: chatSyncService(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
@@ -925,6 +928,8 @@ func placesWord(n int) string {
 // the machine is in exactly the state that was asked for — and this process was
 // started by another one that is about to dial the socket either way.
 func runEngineHost(workspaceFlag, sessionFlag string) error {
+	stopStorage := syncsetup.StartStorageRefresh(context.Background(), home.Dir())
+	defer stopStorage()
 	workspace, err := engineWorkspace(workspaceFlag)
 	if err != nil {
 		return err

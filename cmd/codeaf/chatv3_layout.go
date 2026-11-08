@@ -826,12 +826,15 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
 	watch := &cellstore.SealWatch{Say: say, SyncAddress: chatSyncService()}
 	failed(watch, err)
-	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport)
+	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport, watch)
 	if drive != nil {
 		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
 	failed(watch, err)
+	if err != nil {
+		watch.Retire()
+	}
 	watch.OnTail = func() { sealTail(seat, drive) }
 	// A fresh seat has no foreground turn in flight. Background tasks may be
 	// the first input; their journal writes need a tail seal even before chat.
@@ -873,6 +876,9 @@ func sealSeamOf(agent any, seals session.SealState) tui3.SealSeam {
 	var seam tui3.SealSeam
 	if seals != nil {
 		seam = tui3.SealSeam{Failing: seals.Failing, Notice: seals.Take}
+	}
+	if watch, ok := seals.(interface{ Listen(func()) func() }); ok {
+		seam.Listen = watch.Listen
 	}
 	if door, ok := agent.(interface{ SealFailing() bool }); ok {
 		seam.Failing = door.SealFailing

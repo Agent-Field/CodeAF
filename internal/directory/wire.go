@@ -19,6 +19,7 @@ type wireError struct {
 // wireErrors is the single place a sentinel and its code meet, so the handler
 // and the client cannot drift apart. Order matters only for errors.Is chains.
 var wireErrors = []wireError{
+	{wireauth.ErrStorageOff, "storage_off", http.StatusForbidden},
 	{ErrUnreachable, "unreachable", http.StatusServiceUnavailable},
 	{wireauth.ErrUnavailable, "unreachable", http.StatusServiceUnavailable},
 	{clusterstate.ErrMigration, "unreachable", http.StatusServiceUnavailable},

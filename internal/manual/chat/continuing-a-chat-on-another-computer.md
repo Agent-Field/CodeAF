@@ -4,6 +4,8 @@ To continue on this machine, select the chat on home and choose `continue here`.
 
 ## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, my message did not send and home opened with a question
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
@@ -43,6 +45,8 @@ taking a chat from Home restores that chat's own saved draft, or leaves its box 
 
 ## Read a finished task's worker conversation after moving its chat
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Open `/task` and choose the finished task. Its saved worker conversation and steps remain readable with its outcome after moving the chat, even when the original working copy is no longer available. A finished task offers no restart action; typing `r` or `R` writes those letters in the box.
 
 ## What does leave it there do
@@ -65,15 +69,27 @@ at five seconds without a chat-list answer, Home says `waiting for <host>; still
 
 these are Home's listing sentences. a message left unsent by a failed send check gets its own explanation: `<host> has not answered; your message is still in the box, press enter to send it`.
 
+## Continue a chat on its own computer while sync storage is off
+
+Reading history already stored for your account needs no storage approval. With no local work to keep, `1 continue here` brings that recorded history here, even if this computer has no copy yet or its clean copy is older.
+
+After a live `--at` session, come back to the original computer and choose `1 continue here`. If its local history contains the last shared turn and any later local turns, or no turn was shared yet, the chat continues in place. Every local turn stays, the continue card goes away, and you can send messages and use tools immediately. Nothing is uploaded while storage is off. Quit and reopen normally; after approval, opening the chat on this same computer publishes the preserved turns even if its earlier hold expired.
+
+Keeping turns made here that another computer lacks waits for storage access only when they must be saved separately before replacing this copy. If those turns diverge from newer stored history, codeaf preserves them and says `cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here`. Your typed message stays in the box. Request access in Settings → Devices → sync storage before continuing this divergent copy.
+
 ## Why does continue here say this chat was last held here — my only computer asks to continue
 
-A chat this computer held last, whose hold expired with no other computer holding it, opens without a question: there is nothing to continue from. Enter sends, and turns this computer saved while it could not reach your other devices are sent to them when the chat opens. Earlier builds asked `Continue this chat here?` on the only computer that used the chat.
+A chat this computer held last can resume sending after its hold expires when nobody else holds it. While sync storage is off, Enter sends without a question if the local history contains every shared turn, including when later turns stayed only here or nothing was shared yet. The conversation stays open and the storage-off sentence is not repeated after idle time. After approval, opening the chat here sends its preserved turns to your other computers.
+
+With storage on, differing saved turns still raise the question. Missing shared turns also require a choice or show the existing refusal while storage is off; local turns stay here.
 
 The card still says `this chat was last held here; last saved turn 2h ago` when this window's own earlier move failed. Choose `continue here` to resume it. The landing says `Moved here` and never names this computer as somewhere the chat moved from.
 
 If unpublished work needs to be kept separately, the number of kept turns counts conversation turns. Intermediate saves and tool records within one question and answer do not become extra turns.
 
 ## What does held on tower mean — a row on home and the verb it offers
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -82,6 +98,8 @@ Home lists chats from your other devices. A chat another device still holds says
 Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
 
 ## Continue on this machine — Continue where you left off, alt+c and alt+x
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -103,6 +121,8 @@ computer, even when an older record says this computer went offline.
 To bring work from a device that is online, use the devices row: `alt+m bring work here`. The page *Adding a device to your devices, approving it, and removing it* shows the row and the dots.
 
 ## What happens when the chat arrives — the banner Moved from tower, and what was not brought
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -130,6 +150,8 @@ got it
 
 ## What was not brought along — folders, commands and tests on the arrival card
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 When a chat arrives on a paired computer, its arrival card can include these lines:
 
 Each line is left out when it has nothing to say.
@@ -152,6 +174,8 @@ A new chat is host-bound and keeps that class when moved. Its commands run on th
 
 ## What folder does the moved chat work in — old absolute paths in earlier turns
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A moved copy works in the workspace it arrived in. Before its next model request, the agent gets a session note naming the device it came from, the old folder and the new folder. Paths in earlier turns under the old folder now name the same relative paths under this workspace. The note is context for the agent, not a message you typed, and remains available after reopening or compacting.
@@ -172,6 +196,8 @@ name.
 
 ## This chat is not syncing — the sync service is not answering, working offline
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 If this computer holds the chat and renewals have failed for longer than one
 renewal period, one dim line says
 `the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back`.
@@ -184,9 +210,13 @@ only shows it` notice still applies.
 
 ## Reopen a kept copy after another computer takes the chat
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 When unsent turns were kept as a separate copy, reopening that copy checks who holds the copy itself. Another computer may still hold the original chat. The previous window finishes saving and stops syncing before the reopened copy starts its own sync, so a late save cannot change which copy it opens. Taking that copy elsewhere still stops new tool work in its older window.
 
 ## Continue here does nothing — continue here did nothing, the engine store is busy, or a chat is already continuing here
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -195,6 +225,8 @@ while a chat you explicitly chose is moving here, the card says `continuing here
 every failure stays where you are looking: on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window. a fresh reading decides whether a different computer continued first. if the same computer picked the chat up again, the card asks again with `<holder> picked this chat up again; press enter to continue it here`. it does not blame another device.
 
 ## why continue here failed — retry or leave it there
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry confirms the holder and turn of ownership now displayed on that card.
 
@@ -205,6 +237,9 @@ a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry 
 - `could not continue this chat here`: the move failed. The row stays where it was; choose `retry` or try again.
 - A move does not fail because another chat on this computer is saving its secrets to the sync service at that moment. Its last step waits up to 30 seconds for that save to finish, then arrives.
 - `could not continue this chat here because the sync service is not answering; your words are still in the box`: the service went away during the move. Nothing was sent and the chat stays where it was; send again once the other machines are reachable.
+
+## Why can't I take an open chat from another computer — older relays and --host
+
 - `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here` means the chat is open on another computer and the sync service is too old to take it from there safely. Everything else works, including continuing a chat the other computer has closed. Close the chat on that computer, then choose `continue here` again.
 - Under `codeaf chat --host`, `continue here` is not offered and a chat the remote host already holds never shows as held elsewhere. With no way to continue set up, an off row has no `continue here`: enter says why.
 
@@ -245,6 +280,8 @@ need another upload before the move.
 
 ## I reopened an old local chat after the other computer let go — where are the newer turns
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Reopening an older copy does not replace newer history on your other devices, even if the other computer has closed the chat. This window only shows its local copy until you choose `continue here`. Submitting a message opens that question and keeps your words in the box. Continuing brings the newer history here before writing can resume.
@@ -259,6 +296,8 @@ Turns already shared do not become kept edits. Usage, reconciled task cost, nami
 
 ## The chat is arriving on this computer — why it waits to open
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 While a chat is moving onto this computer, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Nothing is wrong and nothing needs doing: the move takes a second or two, and the chat opens by itself when it ends, with the other computer's latest turns in it. Opening it earlier is refused on purpose, because a window opened halfway would show the chat as it was before the move and could not save your turns.
@@ -267,11 +306,15 @@ When the holder is off (its lid is shut), the row reads `<device> offline` and y
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Yes. A chat's messages name files that sit beside the chat and not in your project: the log of a background job (`log at …/logs/jobs/2.log`), the full output of a tool result that was cut short (`full: logs/stubs/9c2f.txt`), and the journals of its tasks. They move with the chat. The other computer puts the logs and saved output back in the chat's own folder, so the same names open there. The task journals (each task's transcript, trajectory and saved output) are part of the chat itself, so they arrive whole inside it at the paths the chat reads them from. The first message it receives after the move says where they are now (`… that earlier messages name under <old folder> were carried: they are under <new folder> here`). A path in an old message still shows the old folder; use the new one.
 
 ## Job log and saved tool output limits after a move — task journals stay whole
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Three limits keep a move light, and they apply to job logs and saved tool output only. A single such file over 1 MiB stays behind, and so does whatever does not fit in 16 MiB together (the oldest go first). A task journal has no size limit and always moves whole. A file that looks like it holds a secret (a key, a token) stays behind too. Each one is named under `not brought along:` with the reason and `stayed on the machine that made it`; read it there by asking that machine, and never assume the other computer has it.
 
@@ -279,15 +322,21 @@ Two things are made again on the other computer and are not carried: the project
 
 ## What moves with a chat — is my git history sent, branches, secrets in my repo
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Your repository's `.git`, including its history, branches and settings, moves with the chat to your own paired devices. A task's commits travel too, and its working-copy bookkeeping is rebuilt on arrival. A key in an old commit remains in that history: codeaf does not remove or rewrite it. Git history travels sealed end to end; the sync service sees only ciphertext, including when the history contains keys.
 
 The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried through the encrypted vault. If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only through the vault.
 
+## How are secret files screened before saving or moving a chat — .env, ignored folders and changing files
+
 Before each seal, codeaf asks which files will be captured and screens those candidates, including a full candidate list for a first reply or a capture that needs a full scan. If a file changes between screening and capture, saving plans and screens again. If repeated edits prevent a stable capture, it says `files kept changing while saving this chat; try again` and keeps the calls for a later save. A wholly git-ignored directory is neither entered nor screened unless it holds tracked files. An ignored file in an ordinary directory is still screened: root `.env`, `config/.env.local` and a private key in a `*.pem` file travel through the encrypted vault to paired computers. A withheld file stays out of local saved packs and the uploaded workspace capture. Tools still see a `.env` file's variables through the vault. An unreadable folder stays out until its permissions recover; its newly eligible files are then screened with a fresh capture plan. Restores and arrivals also screen before an automatic safety capture.
 
 ## Why does home appear while my chats are still syncing
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -295,9 +344,13 @@ The first screen draws while this computer publishes its device record, shares i
 
 ## Does every chat copy my whole project — disk space, shared saved files, older chats
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 New chats on this computer share one store of saved file contents. Opening four chats in the same project does not make four private copies of every unchanged file. Each chat keeps its own history, call log and transport scratch; restoring one does not move another chat's saved head. A chat whose older private store already exists keeps using that store in place, without migration. Nothing is deleted automatically. `codeaf cell gc` is an explicit command and removes only files the saved copy can restore.
 
 ## Why did dist or node_modules not move — gitignored files, build output, ignored folders
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Every chat's capture follows Git's ignore rules. Untracked ignored output stays on the computer that made it: it is neither stored in the local file history nor uploaded. Tracked files travel even if an ignore rule matches their name. A wholly ignored directory is not walked or screened. Lockfile rebuild folders still follow the existing rebuild rules.
 
@@ -313,11 +366,13 @@ A command's result returns after its call log is written, while its file capture
 
 A save wait lasts at most 30 seconds. After the screen closes, a pending sync save says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 
-If the turns are saved locally but not uploaded, the final sentence is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service’s host. That is a successful exit. Ctrl+c during this wait leaves promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`; that failure may include the local recovery path.
+If the turns are saved locally but not uploaded, the final sentence is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service’s host. If that pending upload was refused because storage is off, the successful receipt is `saved here; sync storage is off for this account, so it stays on this computer`. That is a successful exit. Ctrl+c during this wait leaves promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`; that failure may include the local recovery path.
 
 If the last upload fails when you quit, for example because the connection dropped, this computer does not let the chat go. Your other computer keeps showing it as running here and does not open the older save by itself; the unsent turns stay on this computer until an upload succeeds.
 
 ## I pressed alt+m before the other chat appeared — still arriving, home on a second computer
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Device presence can arrive before its list of chats. If you press `alt+m` early, home says `chats are still arriving from your other computer; this opens when they are ready`. It keeps your request and opens the ordinary confirmation once the chat arrives; it never takes the chat without that confirmation. A recent chat left on another computer is offered when home opens, including one that computer closed cleanly.
 
@@ -341,6 +396,8 @@ A saved attachment reference keeps the source computer's path spelling with slas
 
 ## Can I rewind an old chat on my new laptop — where does the copy start
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Yes, after the older chat has a movable copy and you continue it on your paired laptop. Its first saved file state is the folder as it stood when the copy was made. Rewind can reach that first saved turn; file states from before the copy were never saved and cannot be reconstructed. The whole earlier conversation is still there to read.
 
 Recent older chats are prepared in the background after pairing. If you explicitly open an older chat whose copy is not ready, opening that conversation waits for its first folder snapshot to be saved. Large folders can take longer; Home's initial display does not wait for the background batch.
@@ -348,6 +405,8 @@ Recent older chats are prepared in the background after pairing. If you explicit
 The original older chat is untouched. A turn typed into the original by an older codeaf after the copy was made stays in that original; it is not merged into the copy. This build lists only the copy in place of the original, with its title and ordering retained.
 
 ## I quit on my laptop and opened my desktop — do I need alt+c
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 A clean quit lets go after the last save is durable. Opening bare `codeaf` on your other paired computer within 24 hours continues the released chat automatically, with the usual `Moved from` banner and `not brought along:` lines. `esc` goes Home. A sleeping laptop has not let go: Home offers the chat and `alt+c` continues it, asking only if local work needs a choice.
 
@@ -372,6 +431,8 @@ An older chat whose folder is a symbolic link, or whose saved conversation state
 An older chat that worked in your home folder, or in a folder that holds it, is not copied either. A copy saves the whole folder as it stands, and your home folder is not one project: saving all of it takes minutes and holds up every open chat's tools meanwhile. That chat keeps opening where it is, on this computer only, and it does not move to your other devices. Chats with their own folder are copied as usual.
 
 ## A save has not reached the other computer yet — upload failed or another device continued first
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 A saved chat reaches your other computers only after its encrypted objects have
 been uploaded and its new saved head has been accepted. If an upload fails, the
@@ -401,6 +462,8 @@ No. The worker saves its claim and an execution intent before invoking tools. A 
 
 ## Why can an older computer list chats but not continue a chat that is still running?
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Older builds can still list, save, publish and release chats through a compatible service. A service using quorum-backed coordination refuses an older request that tries to take a live chat without naming its observed holder and ownership number. It uses the existing refusal, `another device continued this chat first`; an old build does not necessarily show an extra update hint. Quit on the computer holding the chat before continuing it elsewhere, or update codeaf on the computer trying to continue. A released or expired chat can still be taken. A conditional choice never silently changes to a newer holder.
 
 
@@ -418,7 +481,7 @@ raises that question without running a turn or making a branch. A saved hold
 from an earlier process cannot bypass the question. A window whose writer
 still holds the chat sends with one Enter without asking the service first.
 
-A new chat can send its first message normally. A sleeping computer can also resume sending when nobody else has taken the chat and its local saved turn is still current. That safe return happens without another question. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
+A new chat can send its first message normally. A sleeping computer can also resume sending when nobody else has taken the chat and its local saved turn is still current. While storage is off, a free chat last held here also resumes quietly if its local history contains every shared turn, even with newer turns saved only here. These returns keep the conversation open without another question. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
 
 ## A move that failed partway — are my typed words safe, can the old copy still send
 
@@ -460,3 +523,7 @@ presence; it does not guess which computers are online.
 ## Sync notices between older and current builds
 
 A current window understands the earlier outage and removed-computer notices too. It uses one outage line while local work continues, and points to `/pair` for recovery in a chat. A current engine keeps the earlier notice spelling for an older window, so that window's existing outage and removal handling still works.
+
+## Why can't I continue new turns from my offline computer — sync storage is off
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Existing saved content remains readable; turning storage off deletes nothing. The refusal is `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. Once approval is read in the background, waiting chats start within a minute without restarting.

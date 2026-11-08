@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // liveDrive is the drive side of one chat, started when it can be. A chat opens
@@ -23,34 +24,40 @@ import (
 // that time or capacity can cure also arms a timer, so pending turns upload even
 // when the person leaves the chat open without saving another turn.
 type liveDrive struct {
-	start func() (*syncsetup.Drive, error)
-	now   func() time.Time
-	after func(time.Duration, func()) func() bool
-	say   func(string)
+	start   func() (*syncsetup.Drive, error)
+	now     func() time.Time
+	after   func(time.Duration, func()) func() bool
+	say     func(string)
+	notices *driveNotices
 	// transcript identifies the retained turns if this writer's final publish fails.
 	transcript string
 
-	mu           sync.Mutex
-	drive        *syncsetup.Drive
-	waiting      bool // local setup or a retryable failure still permits another attempt
-	ready        chan struct{}
-	attempted    bool
-	closed       bool
-	retryAt      time.Time
-	retryWait    time.Duration
-	stopRetry    func() bool
-	refusedSince time.Time
-	told         error
+	mu             sync.Mutex
+	drive          *syncsetup.Drive
+	storageWaiting bool
+	waiting        bool // local setup or a retryable failure still permits another attempt
+	ready          chan struct{}
+	attempted      bool
+	closed         bool
+	retryAt        time.Time
+	retryWait      time.Duration
+	stopRetry      func() bool
+	refusedSince   time.Time
+	told           error
 	// changes coalesces local health updates for the host's cached surface state.
 	changes chan struct{}
 }
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
 // screening stays off the surface loop; saving and new tools wait for ownership.
-func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
+func newLiveDrive(start func(func()) (*syncsetup.Drive, error), notices ...*driveNotices) *liveDrive {
 	l := &liveDrive{
 		changes: make(chan struct{}, 1), now: time.Now, say: surfaceNotices.SayHomeOnce,
 		after: func(d time.Duration, fn func()) func() bool { return time.AfterFunc(d, fn).Stop },
+	}
+	if len(notices) > 0 {
+		l.notices = notices[0]
+		l.say = l.notices.refuse
 	}
 	l.start = func() (*syncsetup.Drive, error) { return start(l.renewalChanged) }
 	l.try()
@@ -63,7 +70,7 @@ func newLiveDrive(start func(func()) (*syncsetup.Drive, error)) *liveDrive {
 func (l *liveDrive) try() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
+	if l.closed || l.storageWaiting || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
 		return
 	}
 	// Seals and idle notifications cannot shorten the relay's requested wait.
@@ -116,11 +123,22 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 			if wait, retry := r.StartupWait(l.retryWait, cellsync.DefaultInterval, err); retry {
 				l.waiting = true
 				l.retryWait, l.retryAt = wait, now.Add(wait)
-				l.stopRetry = l.after(wait, l.try)
+				if errors.Is(err, wireauth.ErrStorageOff) {
+					l.storageWaiting = true
+					cancel := syncsetup.WaitStorage(home.Dir(), l.storageOpened)
+					l.stopRetry = func() bool { cancel(); return true }
+				} else {
+					l.stopRetry = l.after(wait, l.try)
+				}
 			}
 		}
 	}
 	if d != nil {
+		if l.notices != nil {
+			l.notices.clear()
+		}
+		l.told = nil
+		l.refusedSince = time.Time{}
 		d.CatchUp()
 	}
 	l.renewalChanged()
@@ -320,4 +338,30 @@ func (l *liveDrive) catchUpAfter(used *syncsetup.Drive) {
 	if l.drive != nil && l.drive != used {
 		l.drive.CatchUp()
 	}
+}
+
+// storageOpened shortens only a capacity wait; it never replaces an active writer.
+func (l *liveDrive) storageOpened() {
+	if l.notices != nil {
+		l.notices.clearStorageOff()
+	}
+	if d := l.endStorageWait(); d != nil {
+		d.StorageOpened()
+	} else {
+		l.try()
+	}
+}
+
+// endStorageWait clears the storage wait and its retry timer under the lock and
+// answers the running drive, if there is one, so waking it happens outside.
+func (l *liveDrive) endStorageWait() *syncsetup.Drive {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.storageWaiting = false
+	if l.stopRetry != nil {
+		l.stopRetry()
+		l.stopRetry = nil
+	}
+	l.retryAt = time.Time{}
+	return l.drive
 }

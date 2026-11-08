@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,9 +16,13 @@ import (
 // HTTP is a Store that lives behind the store wire (contract §3). Every
 // request is signed, so the far side knows whose namespace it is.
 type HTTP struct {
-	base string
-	sign wireauth.Sign
-	hc   *http.Client
+	// CanStore screens uploads locally while leaving the read wire available.
+	CanStore func() bool
+	// OnStorageOff remembers a refusal immediately for other local uploaders.
+	OnStorageOff func()
+	base         string
+	sign         wireauth.Sign
+	hc           *http.Client
 
 	// deadline sizes each request's time limit from its body; a test swaps it
 	// to make a modest frame time out.
@@ -35,8 +40,14 @@ func NewHTTP(base string, sign wireauth.Sign, hc *http.Client) *HTTP {
 
 // PutFrame implements Store.
 func (c *HTTP) PutFrame(ctx context.Context, frame []byte) (FrameID, error) {
+	if c.CanStore != nil && !c.CanStore() {
+		return "", wireauth.ErrStorageOff
+	}
 	var out putAnswer
 	if err := c.doJSON(ctx, http.MethodPost, pathFrames, frame, &out); err != nil {
+		if errors.Is(err, wireauth.ErrStorageOff) && c.OnStorageOff != nil {
+			c.OnStorageOff()
+		}
 		return "", err
 	}
 	return out.Frame, nil
@@ -139,6 +150,7 @@ func (c *HTTP) Stats(ctx context.Context) (Counts, error) {
 // Counts holds request counters and optional stored totals for one identity.
 // Nil totals distinguish an older or self-hosted relay from a reported zero.
 type Counts struct {
+	Storage                                     string
 	Puts, Gets, Has, BytesIn, BytesOut          int64
 	StoredBytes, StoredObjects, FramesToday     *int64
 	LimitBytes, LimitObjects, LimitFramesPerDay *int64

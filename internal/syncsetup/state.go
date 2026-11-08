@@ -20,6 +20,12 @@ var stateMu sync.Mutex
 // its lifetime. Quiet, unpaired and removed homes end silently; other failures
 // retry after the sync interval and are reported once per distinct error.
 func RunHomeState(ctx context.Context, home string, report func(error)) {
+	var stopStorage func()
+	defer func() {
+		if stopStorage != nil {
+			stopStorage()
+		}
+	}()
 	interval, err := flushInterval()
 	if err != nil {
 		interval = DefaultInterval
@@ -52,6 +58,11 @@ func RunHomeState(ctx context.Context, home string, report func(error)) {
 		}
 		if errors.Is(err, directory.ErrRevoked) || (current != nil && current.isRemoved()) {
 			return
+		}
+		// The first state round proves the device may still use this home.
+		// Starting earlier races a revoked device's one final request.
+		if stopStorage == nil && current != nil {
+			stopStorage = StartStorageRefresh(ctx, home)
 		}
 		if err != nil && ctx.Err() == nil && !reported[err.Error()] {
 			reported[err.Error()] = true
@@ -96,7 +107,7 @@ func (s *Sync) SyncState(ctx context.Context) error {
 			return err
 		}
 		fp, exists := keys.Fingerprint(s.Home)
-		if exists && fp != s.stateSent {
+		if exists && fp != s.stateSent && s.StorageAllowed() {
 			if err := v.Push(ctx); err != nil {
 				return err
 			}
@@ -112,7 +123,9 @@ func (s *Sync) SyncState(ctx context.Context) error {
 			}
 			s.stateVault, s.stateVaultKnown = rid, local
 		}
-		s.stateSent, _ = keys.Fingerprint(s.Home)
+		if s.StorageAllowed() {
+			s.stateSent, _ = keys.Fingerprint(s.Home)
+		}
 		return nil
 	})
 }

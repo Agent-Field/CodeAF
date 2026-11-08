@@ -2156,7 +2156,8 @@ type app struct {
 	link LinkSeam
 	// seal is what the door can tell this surface about the sealing of the
 	// conversation's calls (sealseam.go). Its zero value draws nothing.
-	seal SealSeam
+	seal           SealSeam
+	stopSealNotice func()
 	// newsSilenceSaid is whether this window has already said that its engine
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
@@ -2397,7 +2398,8 @@ type app struct {
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
 	// as for the keyboard. Closed, it costs the frame nothing.
-	sheet sheet
+	sheet       sheet
+	storageRead storageSampling
 	// deck is the phone tier's status sheet (statusdeck.go): the SECOND
 	// fullscreen thing, and the only one that exists at one size class only —
 	// under sixty columns the status row is a two-row deck, and this is where
@@ -3491,6 +3493,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		opts.Notices = NewNotices()
 	}
 	a.useNotices(opts.Notices)
+	a.useSeal(opts.Seal)
 	return a
 }
 
@@ -3871,12 +3874,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case conversationClosedMsg:
 		a.conversationClosing = false
-		if errors.Is(msg.err, session.ErrSavingUnanswered) {
-			a.note(closeStillFinishingWord)
-		} else if msg.err != nil {
-			a.note(closeSaveFailedWord)
-		} else if msg.finishing {
-			a.note(closeStillFinishingWord)
+		if line := closeSaveWords(msg.err, msg.finishing, msg.address); line != "" {
+			a.note(line)
 		}
 		a.touch()
 		return a, nil
@@ -5946,11 +5945,28 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.toldNote(msg.line)
 		return a, nil
 
+	case storageAccountMsg:
+		if msg.serial <= a.storageRead.applied || msg.serial != a.storageRead.pending {
+			return a, nil
+		}
+		a.storageRead.pending = 0
+		a.storageRead.applied = msg.serial
+		a.storageRead.code, a.storageRead.state = msg.code, msg.state
+		if a.at(pageSettings) && (a.sheet.storageCode != msg.code || a.sheet.storageState != msg.state) {
+			a.sheet.storageCode, a.sheet.storageState = msg.code, msg.state
+			a.sheet.build()
+			a.touch()
+		}
+		return a, nil
+
 	case syncSpaceMsg:
 		// The reading is the identity's, not one chat's, so it is kept whichever
 		// chat is on screen. It is only ever read by the next /status.
+		if msg.counts.Storage == "" {
+			msg.counts.Storage = a.syncSpace.Storage
+		}
 		a.syncSpace = msg.counts
-		return a, nil
+		return a, a.sampleStorageAccount(true)
 
 	case spelledMsg:
 		// The expansion, or nothing at all — a failure, a timeout and a model that
@@ -8871,7 +8887,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	a.history = conv.History
 	// AND THE SEALS ARE THIS CONVERSATION'S OWN, cleared by a zero for the same
 	// reason: one chat's failed seal is not another's (sealseam.go).
-	a.seal = conv.Seal
+	a.useSeal(conv.Seal)
 	a.saveApproval = conv.SaveApproval
 	a.saveBashApproval = conv.SaveBashApproval
 	a.applyApprovals = conv.ApplyApprovals

@@ -18,6 +18,8 @@ export const PRESENCE = { maxBeat: 60, defaultBeat: 30, windowFactor: 2.5 };
 export const windowMs = (beat) => beat * 1000 * PRESENCE.windowFactor;
 
 export const DEFAULTS = {
+  // Hosted storage remains closed until an account is approved or the operator opens it.
+  storageOpen: false,
   // One identity.
   storeBytes: 5 * GiB, // Maximum stored bytes per identity.
   storeObjects: 5_000_000, // the index is rows in the identity's SQLite, so this is a backstop; the byte cap rules
@@ -68,7 +70,7 @@ export const DEFAULTS = {
 export function limitsOf(env) {
   const table = { ...DEFAULTS, ...JSON.parse(env.CAF_LIMITS ?? '{}') };
   // A device may come back to its code until the code's life ends, so the default quarantine is one life.
-  return { ...table, plateQuarantineMs: table.plateQuarantineMs ?? table.pairTtlMs };
+  return { ...table, storageOpen: [true, 1, 'true', '1'].includes(table.storageOpen), plateQuarantineMs: table.plateQuarantineMs ?? table.pairTtlMs };
 }
 
 /**

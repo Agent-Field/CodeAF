@@ -93,6 +93,8 @@ const STORE_WRITE = { ...STORE, write: true };
 const DIR_WRITE = { ...DIR, write: true };
 
 const ROUTES = [
+  // HostedIdentity serves this against committed read authority outside Raft.
+  ['POST', /^\/v1\/store\/handoff$/, { ...STORE, limit: 4096 }, () => { throw notFound(); }],
   ['POST', /^\/v1\/store\/frames$/, { ...STORE_WRITE, limit: MAX_FRAME, frames: true }, async (c) => json(await c.tenant.putFrame(c.body))],
   ['GET', /^\/v1\/store\/objects\/([^/]+)$/, STORE, async (c, [rid]) => {
     if (!isRid(rid)) throw new Wire('bad_rid', 400);
@@ -102,7 +104,7 @@ const ROUTES = [
   ['GET', /^\/v1\/store\/frames\/([^/]+)$/, STORE, frameOf],
   ['POST', /^\/v1\/store\/locate$/, STORE, async (c) => json({ at: await c.tenant.locate(asRids(object(c.body))) })],
   ['POST', /^\/v1\/store\/has$/, STORE, async (c) => json({ have: await c.tenant.has(asRids(object(c.body))) })],
-  ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json({ ...c.tenant.stats.snapshot(), ...c.tenant.quota.snapshot(c.tenant.clock()) })],
+  ['GET', /^\/v1\/store\/stats$/, STORE, (c) => json({ storage: c.tenant.storage.state(), ...c.tenant.stats.snapshot(), ...c.tenant.quota.snapshot(c.tenant.clock()) })],
   ['GET', /^\/v1\/dir\/list$/, DIR, (c) => withVersion(json(c.tenant.dir.list()), c.tenant.dir.version)],
   ['GET', /^\/v1\/dir\/watch$/, DIR_WRITE, (c) => watching(c)],
   // C7: the client reads this promise before it can displace a holder.

@@ -267,3 +267,18 @@ func TestSealWatchStartupTurnStillWaitsForPublish(t *testing.T) {
 		t.Fatal("published startup turn did not recover")
 	}
 }
+
+// A retired watch still seals what is written while the agent waits: retiring
+// ends the delivery of sentences, never the trailing seal a later write is owed.
+func TestARetiredSealWatchStillSealsALaterWrite(t *testing.T) {
+	sealed := make(chan struct{}, 1)
+	w := &SealWatch{Quiet: time.Millisecond, OnTail: func() { sealed <- struct{}{} }}
+	w.Waiting()
+	w.Retire()
+	w.Wrote()
+	select {
+	case <-sealed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a write after retirement was never sealed")
+	}
+}

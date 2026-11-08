@@ -3206,6 +3206,8 @@ type Agent struct {
 	closingBeltDone <-chan struct{}
 	deletionGrace   time.Duration
 	closeFinalizer  bool
+	// releaseSeals gives back this conversation's share after its last local save.
+	releaseSeals func()
 	// closeDone is closed by [Agent.Close] as its LAST act, and it is what makes
 	// the close complete for everybody rather than only for whoever got there
 	// first.

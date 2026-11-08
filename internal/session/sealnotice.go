@@ -51,3 +51,15 @@ func (a *Agent) noticeSealed() {
 		hub.send(Event{Kind: EventNotice, Text: said, Told: true})
 	}
 }
+
+// Deferred journal completion still owns the watch after Close returns to the surface.
+func (a *Agent) releaseSealsAfterClose() {
+	pending := func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return a.closeFinalizer
+	}()
+	if !pending && a.releaseSeals != nil {
+		a.releaseSeals()
+	}
+}

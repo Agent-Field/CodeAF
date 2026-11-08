@@ -1345,6 +1345,7 @@ func Run(ctx context.Context, opts Options) error {
 	defer listenForNews(surface.news)()
 	defer surface.news.close()
 	defer surface.noticeBell.close()
+	defer func() { surface.useSeal(SealSeam{}) }()
 	defer surface.leaving.close()
 	// AND THE DOOR LINE ENDS WITH THE WINDOW, after what is already in it has
 	// been asked (offloop.go): a person's last keystroke before they close a

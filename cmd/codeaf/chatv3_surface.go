@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"log"
 	"os"
 
@@ -49,6 +50,8 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	stopStorage := syncsetup.StartStorageRefresh(ctx, home.Dir(), false)
+	defer stopStorage()
 	if options.Host == "" {
 		if options.Notices == nil {
 			options.Notices = surfaceNotices

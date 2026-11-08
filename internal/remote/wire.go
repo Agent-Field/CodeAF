@@ -454,6 +454,7 @@ type Frame struct {
 	LocalSaved bool `json:"localSaved,omitempty"`
 	// SyncPending distinguishes an upload failure after the local close succeeded.
 	SyncPending bool `json:"syncPending,omitempty"`
+	StorageOff  bool `json:"storageOff,omitempty"`
 	// UnsavedTranscript preserves a recovery location on a failed saving reply.
 	UnsavedTranscript string `json:"unsavedTranscript,omitempty"`
 

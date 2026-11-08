@@ -11,7 +11,7 @@ import { frame, rid, openBucket } from './helpers.js';
 
 const empty = { list: async () => ({ objects: [], truncated: false }) };
 const refusal = (code, status) => (e) => e.code === code && e.status === status;
-const limits = (overrides) => ({ ...DEFAULTS, ...overrides });
+const limits = (overrides) => ({ ...DEFAULTS, storageOpen: true, ...overrides });
 
 test('deployment defaults allow admission and storage above the former global limits', async () => {
   const sql = memorySql();
