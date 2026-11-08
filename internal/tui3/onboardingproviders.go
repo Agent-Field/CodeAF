@@ -54,7 +54,7 @@ func (a *app) setupProviderRows() []setupProviderRow {
 	var rows []setupProviderRow
 	claudeHere := claudeCodeHere()
 	for _, source := range providerCatalog(a.modelCatalog) {
-		// CLAUDE CODE IS OFFERED ONLY WHERE IT IS INSTALLED, as the app's first
+		// THE CLAUDE PROVIDER IS OFFERED ONLY WHERE IT IS INSTALLED, as the app's first
 		// run offers it: it needs no key, so on a machine without the `claude`
 		// program the row could only ever answer that it is missing. /connect
 		// still lists it everywhere, with that answer.
