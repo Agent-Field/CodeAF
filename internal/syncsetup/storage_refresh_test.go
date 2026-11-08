@@ -225,12 +225,16 @@ func TestStorageOptInDiscoveryQuietHomes(t *testing.T) {
 }
 
 func TestStorageOptInCustomProbeSharedByCallers(t *testing.T) {
- home := t.TempDir()
- id, err := identity.Ensure(home)
- if err != nil { t.Fatal(err) }
- const relay = "http://127.0.0.1:18831"
- for i:=0;i<50;i++ {
-  want := i==0
-  if got:=StorageNeedsRefresh(home,relay,id.ID());got!=want { t.Fatalf("caller %d requests=%v want=%v",i,got,want) }
- }
+	home := t.TempDir()
+	id, err := identity.Ensure(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const relay = "http://127.0.0.1:18831"
+	for i := 0; i < 50; i++ {
+		want := i == 0
+		if got := StorageNeedsRefresh(home, relay, id.ID()); got != want {
+			t.Fatalf("caller %d requests=%v want=%v", i, got, want)
+		}
+	}
 }
