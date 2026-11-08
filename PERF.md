@@ -427,9 +427,14 @@ requires the backlog to drain within 110 successful heartbeats.
 
 ## Idle factory manager checks
 
-Every open job manager and every open step asks ten times a second whether its
-job was stopped or its budget reached (`watchJobBudget` in
-`internal/session/job_budget.go`). Neither check may decode a job document that
+Every open job manager and every open step asks whether its job was stopped or
+its budget reached (`watchJobBudget` in `internal/session/job_budget.go`): ten
+times a second (`jobBudgetLiveEvery`) while it owns work in flight — a turn, a
+running background command, an unfinished task — and once a second
+(`jobBudgetIdleEvery`) while it owns none, since there is then nothing a Stop
+or a spent budget could cut short and the next model call is checked at its own
+boundary. `TestIdleManagerBudgetWatchLooksOnceASecond`: an idle manager looks
+at most once in 950 ms, and at least three times in 500 ms once a command runs. Neither check may decode a job document that
 has not changed since it last looked: `seamRunDoor.AutomaticRefusal`
 (`cmd/codeaf/factory_person_stop.go`) and `stageBudget.Refusal` remember the
 answer with the file it came from (`os.SameFile`, size and modification time;
@@ -449,6 +454,46 @@ stat per job, shared by every conversation for `floorLookEvery`, 100 ms) and
 reads only a job document that changed. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
 fifty checks while the registry is rewritten decode none; one changed job costs
 one decode.
+
+## Factory floor reads
+
+`store.Store.read` (every `Get`, `List`, `ListSaved` and update of a job
+document) decodes a document only when its file changed since the process last
+read it (`internal/factory/store/readcache.go`): one stat, compared on
+`os.SameFile`, size, modification time and mode — every store write renames a
+fresh file into place — answers an unchanged document from a process-wide
+cache, deep-copied (`deepCopy`) so no caller shares anything with the next. The
+cache is the process's, not a `Store`'s, since many doors open their own store
+on one root, and holds at most `readCacheMost` (8,192) documents.
+`TestListingAnUnchangedFloorDecodesNothing`: ten listings of an unchanged
+40-job floor through two stores decode none (`documentDecodes`); one write
+costs one decode. `TestDeepCopySharesNoStorageWithTheDocument` fills every
+exported field of a document and fails if any slice, map or pointer of the copy
+shares storage with it.
+
+The knowledge vault's build loop (`knowledge.Vault.Run`) passed every 2 s for
+the engine's life — listing every saved chat, stat'ing each, opening the
+database. A pass that finds the same chats as the last now doubles the wait up
+to `buildQuietMax` (30 s); anything new, or a person's Build (`StartBuild`
+wakes the loop), starts it again from `buildEvery` (2 s).
+`TestQuietVaultBacksOffAndBuildWakesIt`.
+
+The fifth live A+B run (macOS, 82 jobs, a step chat, a manager and the Factory
+manager open) measured the engine at 21.4% average and 66.6% max, with libc
+`open`, `stat` and `getdirentries` the busiest leaves. Live on linux/arm64:
+`codeaf app` with a GitHub-connected local factory, 82 jobs on the floor (the
+fifth run's eleven documents, 15–178 KB, repeated), 6 job managers opened and
+idle, the runner on with 15 slots and nothing to do; the engine's own CPU from
+`/proc/<pid>/stat` every 10 s for 5 minutes, after 20 s settling (scratch rig
+`rig.py`):
+
+| | average | max | bytes read in the run |
+| --- | --- | --- | --- |
+| before (`0838f42a6` plus the E10 change) | 5.8% | 6.6% | 1.7 GB |
+| after | 1.6% | 2.1% | 8.3 MB |
+
+Linux stats and opens files far more cheaply than macOS, which is why the
+same floor cost 21% there; what was removed is the reading itself.
 
 ## Idle runner pulls and the runner registry
 

@@ -4642,11 +4642,13 @@ func (b *appBackend) Close() error {
 			attempt.flow.Cancel()
 		}
 	}
+	lap := leaveLaps()
 	b.closePair()
 	if b.stopSyncedSettings != nil {
 		b.stopSyncedSettings()
 	}
 	b.closeChats()
+	lap("chats")
 	if stopModelNotices != nil {
 		stopModelNotices()
 	}
@@ -4659,14 +4661,18 @@ func (b *appBackend) Close() error {
 	// the next engine cannot serve the factory until this one has let it go.
 	// Its runner stops here the way a quit has always stopped it.
 	b.closeLocalFactory()
+	lap("local factory")
 	b.stopCloseWatch()
+	lap("close watch")
 	if balances != nil {
 		balances.stop()
 	}
 	b.closeFactories()
+	lap("factories")
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).
 	b.markQuit(agents)
+	lap("mark quit")
 	close(b.sweepStop)
 	<-b.sweepDone
 	if b.stopPhases != nil {
@@ -4681,12 +4687,15 @@ func (b *appBackend) Close() error {
 	if b.briefs != nil {
 		b.briefs.stop()
 	}
+	lap("background loops")
 	if warmed != nil {
 		<-warmed
 	}
+	lap("warm-up")
 	if crews != nil {
 		crews.close()
 	}
+	lap("crews")
 	var wg sync.WaitGroup
 	for _, a := range agents {
 		if b.liveOf(a) == nil {
@@ -4706,6 +4715,7 @@ func (b *appBackend) Close() error {
 		})
 	}
 	wg.Wait()
+	lap("conversations")
 	// An unfinished crew open owns its gate but has no held conversation to
 	// release. Optional file cleanup must not join that open; retain its files.
 	var settled []*appAgent
@@ -4723,9 +4733,11 @@ func (b *appBackend) Close() error {
 		b.reapBlank(a)
 	}
 	b.closeCollections()
+	lap("references")
 	// Kept-running processes stay up through a quit; services.stop_all is
 	// how a quit stops them (appservices.go).
 	b.closeServices()
+	lap("services")
 	return nil
 }
 

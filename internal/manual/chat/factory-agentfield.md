@@ -391,6 +391,23 @@ when its runs do, with no proof to approve, and needs no checkout on this
 machine: its job never says it is cloning the repository here, and Start is not
 refused because this machine cannot clone it. The same is true of a `run_on` job.
 
+## merge a pull request an AgentField run opened — which commit is approved, "no approved commit is recorded"
+
+A job whose pull request was opened by a run on another machine (an
+agentfield step, or a `run_on` job) has **Merge** like any other job, once
+the run has ended and the job reads shipped. No proof was approved on this
+machine, so the approved commit is the head the pull request carries when the
+factory first reads it after the run ended: the run's own last commit. The
+merge is held to exactly that commit, as a native job's merge is held to the
+commit its proof approved. A push to the branch after that is refused with
+"the pull request has commits you did not approve". Checks, conflicts, drafts
+and reviews are read as for any other job.
+
+Until the factory has read the pull request once after the run ended (its
+next GitHub read, within a minute) Merge says "no approved commit is recorded
+for this job"; that refusal never lasts past that read. Such a job is not
+watched for CI repairs: there is no checkout on this machine to repair it in.
+
 ## approve the plan an AgentField run asks about — Needs you, ask for changes, reject
 
 When a reasoner pauses for a person (a plan review, or any `Pause`), its

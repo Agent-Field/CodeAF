@@ -331,7 +331,14 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			factory.ReleaseVerificationPause(&probe, f.now())
 		}
 		probe.PullRequest = &fresh
-		initialWatch := probe.FollowUp == nil && probe.State == factory.StateShipped && probe.Publish == "pr" && probe.HeadCommit != ""
+		// A pull request a run on another machine delivered is followed for
+		// its state and checks, never repaired from here: there is no
+		// checkout on this factory to carry a CI follow-up out in.
+		initialWatch := probe.FollowUp == nil && probe.State == factory.StateShipped && probe.Publish == "pr" && probe.HeadCommit != "" && !factory.RunDeliveredPR(probe)
+		// pin records, once, the head a run delivered as the job's approved
+		// commit ([factory.PinDeliveredHead]); it is a change worth writing
+		// even when the pull request itself read exactly as before.
+		pin := factory.PinDeliveredHead(&probe, fresh.HeadSHA)
 		if initialWatch {
 			factory.WatchPublishedPR(&probe)
 		}
@@ -339,7 +346,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if !held[it.ID] || fresh.State == factory.PRMerged || fresh.State == factory.PRClosed {
 			followChanged = factory.QueueCIFollowUp(&probe, f.now())
 		}
-		followChanged = followChanged || initialWatch || checkpointRecovered
+		followChanged = followChanged || initialWatch || checkpointRecovered || pin
 		if reflect.DeepEqual(*it.PullRequest, fresh) && !followChanged {
 			continue
 		}
@@ -382,6 +389,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 				factory.ReleaseVerificationPause(item, f.now())
 			}
 			item.PullRequest = &cp
+			factory.PinDeliveredHead(item, cp.HeadSHA)
 			if initialWatch && item.FollowUp == nil {
 				factory.WatchPublishedPR(item)
 			}
