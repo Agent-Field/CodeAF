@@ -149,3 +149,24 @@ func TestClaudeCodeIsNotToldItsOwnStepsAsSomethingItMissed(t *testing.T) {
 		t.Fatalf("Claude Code was told %q", prompt)
 	}
 }
+
+func TestANoteCodeafLandsIsNotTakenForWhatThePersonSaid(t *testing.T) {
+	text := func(s string) json.RawMessage { raw, _ := json.Marshal(s); return raw }
+	note := "A note from the session, not from the person: where the work stands right now."
+	chat := chatRequest{Messages: []chatMessage{
+		{Role: "system", Content: text("be codeaf")},
+		{Role: "user", Content: text("make notes")},
+		{Role: "assistant", Content: text("done")},
+		{Role: "user", Content: text("now add a title")},
+		{Role: "user", Content: text(note)},
+	}}
+	prompt := turnPrompt(chat, 3)
+	if prompt != "now add a title\n\n"+note {
+		t.Fatalf("Claude Code was told %q", prompt)
+	}
+	// A correction to a running turn is only what arrived after the request
+	// the turn started on.
+	if got := turnPrompt(chatRequest{Messages: append(chat.Messages[:2:2], chatMessage{Role: "user", Content: text("in French")})}, 2); got != "in French" {
+		t.Fatalf("the correction was given as %q", got)
+	}
+}

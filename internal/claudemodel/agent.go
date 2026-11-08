@@ -276,7 +276,9 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 	from := l.seen
 	switch {
 	case adopted:
-		from = len(spoken(chat.Messages))
+		// The cut request's messages reached the running turn; no answer
+		// followed them, so the correction starts one short of seen.
+		from = l.seen - 1
 	case l.turns == 0:
 		from = 0
 	}
@@ -638,24 +640,43 @@ func (l *live) keep() {
 func turnPrompt(chat chatRequest, from int) string {
 	// FROM COUNTS WHAT WAS SAID, not Claude Code's own steps codeaf wrote
 	// down: those are its session's own history (steps.go).
-	chat.Messages = spoken(chat.Messages)
-	last := -1
-	for i := len(chat.Messages) - 1; i >= 0; i-- {
-		if chat.Messages[i].Role == "user" {
+	messages := spoken(chat.Messages)
+	last, lastAnswer := -1, -1
+	for i, m := range messages {
+		switch m.Role {
+		case "user":
 			last = i
-			break
+		case "assistant":
+			lastAnswer = i
 		}
 	}
 	if last < 0 {
 		return ""
 	}
-	newest := strings.TrimSpace(contentText(chat.Messages[last].Content))
 	if from < 0 {
 		from = 0
 	}
+	// WHAT IS NEW IS EVERYTHING IN THE USER ROLE SINCE THE LAST ANSWER, not
+	// the last such message alone: codeaf lands its own notes in that role
+	// between an answer and the next request (where the work stands, what the
+	// crew is doing), and each opens by saying it is a note, not the person.
+	// Taking only the last one handed Claude Code a note as "the person now
+	// says" and dropped what the person actually typed.
+	begin := max(lastAnswer+1, from)
+	begin = min(begin, last)
+	var fresh []string
+	for _, m := range messages[begin:] {
+		if m.Role != "user" {
+			continue
+		}
+		if text := strings.TrimSpace(contentText(m.Content)); text != "" {
+			fresh = append(fresh, text)
+		}
+	}
+	newest := strings.Join(fresh, "\n\n")
 	var earlier []string
-	for i := from; i < last; i++ {
-		m := chat.Messages[i]
+	for i := from; i < begin; i++ {
+		m := messages[i]
 		text := strings.TrimSpace(contentText(m.Content))
 		if text == "" || m.Role == "system" || m.Role == "developer" {
 			continue
@@ -671,7 +692,7 @@ func turnPrompt(chat chatRequest, from int) string {
 	if len(earlier) == 0 {
 		return newest
 	}
-	return "What was said in this conversation that you have not seen:\n\n" + strings.Join(earlier, "\n\n") + "\n\nThe person now says:\n\n" + newest
+	return "What was said in this conversation that you have not seen:\n\n" + strings.Join(earlier, "\n\n") + "\n\nNow:\n\n" + newest
 }
 
 type contentBlock struct {

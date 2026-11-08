@@ -132,8 +132,8 @@ const (
 	// StreamStepsRan carries, in Delta, a JSON array of tool calls the MODEL'S
 	// OWN PROGRAM has already run and finished — each {id, name, arguments,
 	// output, is_error, took_ms}, in codeaf's own tool names. It is raised only
-	// by a transport for a model that works with tools of its own, such as
-	// Claude Code (internal/claudemodel), whose edits and commands happen inside
+	// by a transport for a model that works with tools of its own (the
+	// internal/claudemodel transport), whose edits and commands happen inside
 	// one request rather than being handed back for codeaf to run.
 	//
 	// THEY ARE FACTS, NOT INSTRUCTIONS. Nothing downstream may run them again:

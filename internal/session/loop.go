@@ -722,8 +722,8 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 				hub.send(formed)
 			}
 		case provider.StreamStepsRan:
-			// STEPS THE MODEL'S OWN PROGRAM ALREADY RAN (Claude Code's Bash and
-			// Edit) are written down as calls and results, in order with the
+			// STEPS THE MODEL'S OWN PROGRAM ALREADY RAN (its own shell and
+			// edits) are written down as calls and results, in order with the
 			// words around them, and drawn as rows. They are on the page, so
 			// they count as read exactly as a word of the answer does.
 			reached.drew()
@@ -737,7 +737,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		}
 	}
 	ctx = provider.WithStreamObserver(ctx, turnObserver)
-	// A MODEL WHOSE OWN PROGRAM RUNS COMMANDS (Claude Code) is handed the
+	// A MODEL WHOSE OWN PROGRAM RUNS COMMANDS (internal/claudemodel) is handed the
 	// conversation's identity for them, as the commands codeaf runs are.
 	if a.config.actorDID != "" {
 		ctx = claudemodel.WithEnv(ctx, []string{agentdid.AgentDIDEnv + "=" + a.config.actorDID})

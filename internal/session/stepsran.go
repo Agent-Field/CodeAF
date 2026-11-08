@@ -8,8 +8,8 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// ranStep is one tool call a model's own program already ran — Claude Code's
-// Bash or Edit — as internal/provider's StreamStepsRan hands it up, already
+// ranStep is one tool call a model's own program already ran — its own shell
+// command or edit — as internal/provider's StreamStepsRan hands it up, already
 // spelled in codeaf's tool names (internal/claudemodel's steps.go).
 type ranStep struct {
 	ID        string          `json:"id"`
@@ -27,7 +27,7 @@ type ranStep struct {
 //
 // NOTHING HERE RUNS ANYTHING. A step is a fact about the folder, not an
 // instruction, so it never reaches the executor, the approval chain or the
-// hooks: Claude Code asked its own permissions before it ran it.
+// hooks: the program asked its own permissions before it ran it.
 //
 // A TURN THAT WAS ABANDONED WRITES NOTHING MORE, for the reason the batch
 // boundary in loop.go gives: a newer turn may already own the history.
