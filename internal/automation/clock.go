@@ -127,6 +127,14 @@ type Clock struct {
 	// fail every check and every piece of work for as long as any window
 	// stayed open. Empty never leaves for this reason.
 	Env string
+	// Orphaned says the window that started this clock has gone. THE CLOCK
+	// LEAVES WITH THE WINDOW THAT STARTED IT once nothing is in hand: an
+	// engine restarted by its desk used to find the old engine's clock still
+	// running, a process of the build it had just replaced, and keep it for
+	// as long as it stayed open (the seventh live A+B run). Any window still
+	// open starts the next clock within [keepEvery]. Nil never leaves for
+	// this reason.
+	Orphaned func() bool
 
 	mu       sync.Mutex
 	inflight map[int64]*flight
@@ -202,8 +210,8 @@ func (c *Clock) Run(ctx context.Context) error {
 		case windows > 0:
 			empty = time.Time{}
 			c.pass(ctx, now)
-			if c.outgrown() {
-				c.log("a window started with a different environment is open; leaving so it starts the clock")
+			if why := c.leaveFor(); why != "" {
+				c.log(why)
 				return nil
 			}
 		case empty.IsZero():
@@ -219,6 +227,30 @@ func (c *Clock) Run(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// leaveFor is why this clock should leave an open window to start the next,
+// or "" to stay: the window that started it has gone, or a newer window says
+// a different environment. Either waits until nothing is in hand.
+func (c *Clock) leaveFor() string {
+	switch {
+	case c.orphaned():
+		return "the window that started this clock has closed; leaving so an open one starts its own"
+	case c.outgrown():
+		return "a window started with a different environment is open; leaving so it starts the clock"
+	}
+	return ""
+}
+
+// orphaned reports whether the window that started this clock has gone, with
+// nothing in hand to stop by leaving.
+func (c *Clock) orphaned() bool {
+	if c.Orphaned == nil || !c.Orphaned() {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.inflight) == 0
 }
 
 // outgrown reports whether the newest open window says a different environment

@@ -45,11 +45,12 @@ func TestAnIdlePullDoesNotLookAgainAtAnUnchangedFloor(t *testing.T) {
 	}
 }
 
-// A RUNNER'S REQUESTS SETTLE THE FLOOR AT MOST ONCE A SECOND. A settle lists
-// and decodes every job and ran before every request, so fifteen idle slots
-// re-pulling together decoded the whole floor fifteen times each wait. A
-// person's request still settles first, every time.
-func TestARunnersRequestsSettleTheFloorAtMostOnceASecond(t *testing.T) {
+// A RUNNER'S REQUESTS SETTLE THE FLOOR AT MOST ONCE A WINDOW (five seconds).
+// A settle lists and decodes every job and ran before every request, so
+// fifteen idle slots re-pulling together decoded the whole floor fifteen times
+// each wait, and two held jobs beating every two seconds settled it every
+// second. A person's request still settles first, every time.
+func TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow(t *testing.T) {
 	f := workerSetup(t)
 	worker := f.attach(t, "sam")
 	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
@@ -60,9 +61,15 @@ func TestARunnersRequestsSettleTheFloorAtMostOnceASecond(t *testing.T) {
 	if got := serve.Settles() - before; got != 0 {
 		t.Fatalf("10 pulls in one instant settled %d times", got)
 	}
-	f.clock.Add(int64(time.Second))
+	// A heartbeat every two seconds inside one window settles nothing more.
+	f.clock.Add(int64(serve.WorkerSettleEvery - time.Millisecond))
+	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
+	if got := serve.Settles() - before; got != 0 {
+		t.Fatalf("a pull inside the window settled %d times, want 0", got)
+	}
+	f.clock.Add(int64(time.Millisecond))
 	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
 	if got := serve.Settles() - before; got != 1 {
-		t.Fatalf("a pull a second later settled %d times, want 1", got)
+		t.Fatalf("a pull a window later settled %d times, want 1", got)
 	}
 }

@@ -556,10 +556,13 @@ by the next idle pull once quiet past the runner timeout and holding no lease
 grows by one set of rows per restart.
 
 `settleJobs` (a hydrated `Store.List`) ran before EVERY request. A runner's own
-requests (`/v1/worker/…`, fifteen pulls re-made each 30 s wait) now settle the
-floor at most once a `workerSettleEvery` (1 s); every other request still
-settles first. `TestARunnersRequestsSettleTheFloorAtMostOnceASecond` counts
-settles (`settles`): twenty runner requests inside one second make one.
+requests (`/v1/worker/…`, fifteen pulls re-made each 30 s wait, and every held
+job's heartbeat each `lease.HeartbeatEvery`, 2 s) now settle the floor at most
+once a `workerSettleEvery` (5 s; it was 1 s, which two holds turned into a full
+settle every second); every other request still settles first, and the job
+timer settles at each deadline it knows.
+`TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow` counts settles
+(`settles`): runner requests inside one window make none, one after it makes one.
 
 Live, `codeaf app` on linux/arm64 with a GitHub-connected local factory, 79
 jobs on the floor (eight of them the fourth live run's documents, 24–135 KB),
@@ -588,3 +591,46 @@ and 12% in `settleJobs`, which is what the pull and settle changes remove.
 
 Five idle managers made 50 checks a second, about 0.43 of a core on this floor
 before, growing with jobs × managers; after, about 0.2 ms of CPU a second.
+
+### With a hold on the floor (the seventh live A+B run)
+
+The seventh live run idled at 20–26% of a core on macOS with 86 jobs, 15 slots
+and two native jobs holding leases. Each held job's runner renews its lease
+every 2 s, which rewrote `leases.json`, which woke every open pull, and with any
+hold present every woken pull looked: fifteen `Desk.Pull` calls, each a flock,
+a `ListSaved` deep copy of all 86 jobs and a sort, once a second. Three changes:
+
+- **A renewal wakes no pull.** The root watch compares the lease document's
+  `lease.RenewalShape` (every hold, signal and receipt, without `heartbeat_at`
+  and `expires_at`); a rewrite that only renewed wakes nobody. Folders under
+  the root (a runner's holds and reports) and `events.jsonl` are no input of a
+  look either. A hold that expires is still requeued by the next look, at most
+  one pull wait (30 s) later, as before.
+  `TestARenewalWakesNoPullAndARealChangeWakesThemAll` publishes thirty renewals
+  by hand and counts no wake.
+- **One reading of a change for every slot.** `Desk.floorQueue` keeps the queue
+  in `runsBefore` order with the file each job came from; a look stats the floor
+  and reuses every job whose file is unchanged, reading only a changed one, and
+  sorts only when one changed. The queue is shared and read-only (the
+  reservation re-reads the job under its lock). `OverLimit` reads the same
+  queue. `TestSlotsWokenByOneChangeShareOneReadingOfIt`: 45 looks at an
+  unchanged 40-job floor read no job; one change reads one job once.
+- **A job already held at its budget is not saved again by a look.** With a
+  reply pending it stays eligible, and each look saved it unchanged as a fresh
+  file, which woke every pull to save it again.
+  `TestALookLeavesAJobAtItsBudgetAsItIsOnDisk` (ten looks; the old code moved
+  its revision from 2 to 12).
+
+Rig (scratch `r7rig.py`): `codeaf app` with a local factory, 84 of r7's final
+job documents plus two native jobs whose step holds its lease, about 45 open job
+chats, the runner on with 15 slots, a stub model; the engine's CPU over 120 s
+starting 200 s after start:
+
+| | linux/arm64 | macOS (mac-studio) |
+| --- | --- | --- |
+| before (`1436ad765`) | 11.12% | 24.09% |
+| after | 2.68% | MACAFTER |
+
+`CODEAF_DIAGNOSTIC_PROFILE_DELAY` (1..3600 s) opens the developer profile's
+window that long after start, so a steady idle can be profiled; the window
+itself is still at most 60 s.

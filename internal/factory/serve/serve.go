@@ -456,15 +456,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // workerSettleEvery is how often a runner's requests settle the floor.
-const workerSettleEvery = time.Second
+const workerSettleEvery = 5 * time.Second
 
 // workerSettleDue says a runner's request settles the floor now. A SETTLE
-// LISTS AND DECODES EVERY JOB, and it ran before every request: each runner
-// slot's pull and each heartbeat. Fifteen idle slots re-pull together every
-// wait, so an idle machine decoded the whole floor fifteen times every thirty
-// seconds to settle nothing. A runner's requests settle at most once per
+// LISTS AND DEEP-COPIES EVERY JOB, and it ran before every request: each
+// runner slot's pull and each heartbeat. Fifteen idle slots re-pull together
+// every wait, so an idle machine decoded the whole floor fifteen times every
+// thirty seconds to settle nothing. A runner's requests settle at most once per
 // [workerSettleEvery], so a deadline falls due on a runner's request at most
-// that late; every request a person makes still settles first.
+// that late; every request a person makes still settles first, and the job
+// timer ([Handler.scheduleJobTimer]) settles at each deadline it knows.
+// FIVE SECONDS, NOT ONE: every held job's runner beats every two seconds, so at
+// one second two holds settled the floor every second for as long as they were
+// held, the biggest cost left in the seventh live run's idle engine once the
+// pulls were quiet.
 func (h *Handler) workerSettleDue() bool {
 	now := h.clock()
 	h.workerSettleMu.Lock()

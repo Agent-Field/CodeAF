@@ -440,7 +440,9 @@ there are any it is the door alone.
 operating system — no launchd agent, no systemd timer, no helper or background service — and
 nothing runs with every window or the whole app closed. One small process, `codeaf clock`, does the running: a window
 starts it when none is running, every window checks every half minute that it still is, and
-it leaves by itself half a minute after the last window closes.
+it leaves by itself half a minute after the last window closes. It also leaves with the
+window that started it, once no run is in hand, so a restarted app never keeps the old one's
+clock; any window still open starts the next within half a minute.
 
 **What fell due while codeaf was closed, or while the machine slept, runs once** when a
 window is next open, marked `late`. A rhythm that missed five slots runs one run, and its

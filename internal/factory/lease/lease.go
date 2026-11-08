@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"reflect"
 	"strings"
 	"time"
 
@@ -111,6 +111,8 @@ type Desk struct {
 	record *record.Record
 	// persist is the atomic lease-file writer; nil uses writeAtomic.
 	persist func(string, []byte) error
+	// queued is the floor as the last look read it ([Desk.floorQueue]).
+	queued queueCache
 }
 
 // Open holds no handles. Reading is deferred to each operation so a desk
@@ -213,10 +215,16 @@ func (d *Desk) Release(id int, handle string) error {
 // a person's mark, a routing rule's, or a p0..p3 / priority:* label); then
 // the oldest, and the lower number between two made in the same instant.
 func runsBefore(a, b factory.Item) bool {
+	return runsBeforeRanked(a, b, factory.PriorityRank(a), factory.PriorityRank(b))
+}
+
+// runsBeforeRanked is [runsBefore] given each job's [factory.PriorityRank],
+// so a sort works each one out once rather than once per comparison.
+func runsBeforeRanked(a, b factory.Item, pa, pb int) bool {
 	if a.Marked != b.Marked {
 		return a.Marked
 	}
-	if pa, pb := factory.PriorityRank(a), factory.PriorityRank(b); pa != pb {
+	if pa != pb {
 		return pa < pb
 	}
 	if a.Created.Equal(b.Created) {
@@ -247,11 +255,12 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			}
 		}
 		full := worker.Slots > 0 && occupied >= worker.Slots
-		items, err := d.store.ListSaved()
+		// The queue is shared with every other look until the floor changes
+		// (queue.go): it is read here and never written.
+		items, err := d.floorQueue()
 		if err != nil {
 			return false, err
 		}
-		sort.Slice(items, func(i, j int) bool { return runsBefore(items[i], items[j]) })
 		for _, it := range items {
 			if !eligible(it, worker) || find(doc, it.ID) != nil || full && !overLimit(it) {
 				continue
@@ -288,7 +297,16 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 		if !eligible(*it, worker) {
 			return ErrNoJob
 		}
+		was := budgetHoldOf(*it)
 		if holdAtJobBudget(it, d.now()) {
+			// A JOB ALREADY HELD AT ITS BUDGET IS LEFT AS IT IS ON DISK. A
+			// job waiting on its budget with a reply pending stays eligible,
+			// and saving it unchanged made a fresh file every look; a fresh
+			// file wakes every open pull, which looked, found it, and saved it
+			// again: a loop that never let an idle machine rest.
+			if reflect.DeepEqual(budgetHoldOf(*it), was) {
+				return ErrNoJob
+			}
 			blocked = true
 			return nil
 		}
@@ -323,6 +341,25 @@ func (d *Desk) reserve(doc *document, worker Worker, taken *Lease) error {
 		return ErrNoJob
 	}
 	return err
+}
+
+// budgetHold is what [holdAtJobBudget] may change, so a reservation can tell a
+// hold it made from one already in place.
+type budgetHold struct {
+	state     factory.State
+	question  string
+	qkind     string
+	asking    factory.Asked
+	asked     bool
+	overLimit bool
+}
+
+func budgetHoldOf(it factory.Item) budgetHold {
+	h := budgetHold{state: it.State, question: it.Question, qkind: it.QKind, overLimit: it.OverLimit}
+	if it.Asking != nil {
+		h.asking, h.asked = *it.Asking, true
+	}
+	return h
 }
 
 // holdAtJobBudget uses the server's saved total while its item lock is held.
@@ -363,7 +400,8 @@ func (d *Desk) OverLimit(worker Worker) (int, error) {
 	worker.Machine = strings.TrimSpace(worker.Machine)
 	n := 0
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
-		items, err := d.store.ListSaved()
+		// The shared queue (queue.go), read and never written.
+		items, err := d.floorQueue()
 		if err != nil {
 			return false, err
 		}

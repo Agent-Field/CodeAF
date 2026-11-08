@@ -329,3 +329,46 @@ func TestGeneratedProfilesParse(t *testing.T) {
 		}
 	}
 }
+
+// A DELAYED WINDOW MEASURES THE STEADY STATE, NOT THE START. Nothing is
+// created and no profiler runs while the delay lasts; then the window opens
+// and ends as an immediate one would. A session stopped during the delay
+// leaves nothing at all, and a delay outside its bounds is refused.
+func TestADelayedWindowOpensLaterAndAStopBeforeItLeavesNothing(t *testing.T) {
+	dir := privateDir(t)
+	s, err := start(context.Background(), Config{Dir: dir, Duration: 30 * time.Millisecond, Delay: 150 * time.Millisecond}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := listing(t, dir); len(got) != 0 {
+		t.Fatalf("a delayed window wrote before its delay passed: %v", got)
+	}
+	burn(250 * time.Millisecond)
+	<-s.done
+	s.Stop()
+	if got := listing(t, dir); len(got) != 1 || !strings.Contains(got[0], "-cpu-") {
+		t.Fatalf("a delayed window left %v; want one CPU profile", got)
+	}
+
+	early := privateDir(t)
+	s, err = start(context.Background(), Config{Dir: early, Duration: time.Second, Delay: time.Hour}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Stop()
+	if got := listing(t, early); len(got) != 0 {
+		t.Fatalf("a session stopped during its delay left %v", got)
+	}
+
+	for _, raw := range []string{"0", "3601", "-5", "1m", " 60", "99999"} {
+		if _, err := ParseConfig(mapLookup(map[string]string{EnvDir: dir, EnvDelay: raw})); err == nil {
+			t.Fatalf("delay %q was accepted", raw)
+		} else if strings.Contains(err.Error(), raw) && raw != "0" {
+			t.Fatalf("the refusal echoed the value: %v", err)
+		}
+	}
+	cfg, err := ParseConfig(mapLookup(map[string]string{EnvDir: dir, EnvDelay: "600"}))
+	if err != nil || cfg.Delay != 10*time.Minute {
+		t.Fatalf("delay 600 parsed as %v, %v", cfg.Delay, err)
+	}
+}
