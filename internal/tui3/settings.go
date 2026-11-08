@@ -1011,6 +1011,9 @@ type sheet struct {
 	// hosts a [deviceCard] over the surface's own [Approvals] door and clock
 	// (settings_devices.go).
 	cellsUnavailable string
+	storageCode      string
+	storageState     string
+	storageRequest   bool
 	approvals        Approvals
 	dev              *deviceCard
 	now              func() time.Time
@@ -1336,6 +1339,7 @@ func (a *app) raiseSettings() {
 		routing:          a.routing,
 		today:            a.todayReading(),
 	}
+	a.sheet.storageCode, a.sheet.storageState = a.relayStorageAccount()
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
 	// WHOSE ROWS, SAID FOR THE TAB ON SHOW. Over --host the note is
@@ -2387,7 +2391,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
 			if s.dev != nil && s.dev.loaded {
 				s.syncDeviceCursor()
-				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.unavailable {
+				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
 					return a.revoke(s.dev), true
 				}
 			}
@@ -2399,7 +2403,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
 			if s.dev != nil && s.dev.loaded {
 				s.syncDeviceCursor()
-				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.unavailable {
+				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
 					s.dev.startNaming()
 				}
 			}
@@ -2528,6 +2532,9 @@ func (a *app) activate() tea.Cmd {
 				}
 			}
 			s.syncDeviceCursor()
+		}
+		if item.dev.storage {
+			return a.requestRelayStorage()
 		}
 		return nil
 	}
@@ -2897,6 +2904,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 			} else {
 				a.sheet.msg = ""
 			}
+			a.sheet.storageCode, a.sheet.storageState = a.relayStorageAccount()
 			a.sheet.rows = a.sheet.registry.Rows()
 			a.sheet.build()
 		})
@@ -2906,6 +2914,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 	}
 	a.sheet.msg = note
 	a.sheet.savedKey = item.row.Key
+	a.sheet.storageCode, a.sheet.storageState = a.relayStorageAccount()
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
 	return true
@@ -4068,6 +4077,8 @@ func (s *sheet) keysLine() string {
 			switch {
 			case item.memoryDoor, item.crewDoor:
 				action = "open"
+			case item.dev != nil && item.dev.storage:
+				action = "request access"
 			case item.dev != nil && item.dev.add:
 				action = "add"
 			case item.dev != nil:

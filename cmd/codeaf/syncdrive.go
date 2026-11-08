@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // driveCloseWithin bounds the quit path's last publish and lease release, so a
@@ -94,6 +95,9 @@ func startDrive(c cell.Cell, engine cellstore.Engine, report func(error), change
 	}
 	if syncsetup.Quiet(home.Dir()) {
 		return nil, syncsetup.ErrQuiet // a fleet of one has nothing to sync with yet
+	}
+	if !s.StorageAllowed() {
+		return nil, wireauth.ErrStorageOff
 	}
 	if line, first := s.FirstRun(); first {
 		surfaceNotices.Say(line)
@@ -228,10 +232,32 @@ func chatSyncStats(ctx context.Context) (blobstore.Counts, error) {
 	if err != nil {
 		return blobstore.Counts{}, err
 	}
-	if store, ok := s.Store.(interface {
-		Stats(context.Context) (blobstore.Counts, error)
-	}); ok {
-		return store.Stats(ctx)
+	if syncsetup.IsHostedRelay(s.Relay) && s.StorageAllowed() {
+		return syncsetup.StorageCounts(s.Home, s.Relay, s.Identity.ID()), nil
 	}
-	return blobstore.Counts{}, nil
+	before := s.StorageAllowed()
+	counts, err := s.RefreshStorage(ctx)
+	if err == nil && !before && s.StorageAllowed() {
+		syncDrives.storageOpened()
+	}
+	if syncsetup.IsHostedRelay(s.Relay) && counts.Storage != "on" {
+		counts.Storage = "off"
+	}
+	return counts, err
+}
+
+// storageOpened wakes both running batchers and local startup waits for open chats.
+func (b *driveBook) storageOpened() {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	drives := make([]*liveDrive, 0, len(b.drive))
+	for _, d := range b.drive {
+		drives = append(drives, d)
+	}
+	b.mu.Unlock()
+	for _, d := range drives {
+		d.storageOpened()
+	}
 }

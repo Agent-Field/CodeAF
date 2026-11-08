@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"os"
 	"os/signal"
 	"strings"
@@ -24,6 +25,7 @@ const quitSavingWord = "saving this chat to your other devices…"
 const quitStillSavingWord = "still saving — ctrl+c leaves it saved here"
 const quitStillLocalWord = "still saving on this computer — ctrl+c leaves the written turns here"
 const quitLegacySavingWord = "codeaf is still saving this chat in the background; unsaved turns stay on this computer."
+const quitStorageOffWord = "saved here; relay storage is off for this account, so it stays on this computer"
 const quitSavedHereWord = "saved here; it reaches your other devices when the sync service at %s answers"
 
 // finalSaving keeps one failure until cleanup has returned the terminal.
@@ -176,7 +178,7 @@ func recordFinalSaveFailure(err error) {
 	}
 	if syncwords.UploadPending(err) {
 		finalSaving.finishing = true
-		if finalSaving.failure == nil {
+		if finalSaving.failure == nil || syncwords.UploadPending(finalSaving.failure) && errors.Is(err, wireauth.ErrStorageOff) {
 			finalSaving.failure = err
 		}
 		return
@@ -266,6 +268,9 @@ func finishFinalSaving(ctx context.Context) (ok bool) {
 // finalSaveWords distinguishes durable local turns from a failed local write.
 func finalSaveWords(err error, finishing bool, address string) (string, bool) {
 	if syncwords.UploadPending(err) {
+		if errors.Is(err, wireauth.ErrStorageOff) {
+			return quitStorageOffWord, true
+		}
 		return fmt.Sprintf(quitSavedHereWord, syncwords.Host(address)), true
 	}
 	if (err == nil && finishing) || errors.Is(err, session.ErrSavingUnanswered) {

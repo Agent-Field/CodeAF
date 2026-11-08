@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -276,3 +277,17 @@ func (d *approvalsDoor) ownRow() tui3.DeviceRow {
 
 // SyncService names the local pairing service even when the chat runs elsewhere.
 func (d *approvalsDoor) SyncService() string { return syncsetup.Resolve(d.dir).URL }
+
+// RelayStorage reads this computer's account without creating keys or asking the network.
+func (d *approvalsDoor) RelayStorage() (code, state string) {
+	relay := syncsetup.Resolve(d.dir)
+	if !relay.On() || !syncsetup.IsHostedRelay(relay.URL) || !syncsetup.MayTalk(d.dir) {
+		return "", ""
+	}
+	id, err := identity.Load(d.dir)
+	if err != nil {
+		return "", ""
+	}
+	code = reqsign.IDOf(id.PublicKey())
+	return code, syncsetup.StorageState(d.dir, relay.URL, code)
+}

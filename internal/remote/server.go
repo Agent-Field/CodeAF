@@ -60,6 +60,7 @@ import (
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"path/filepath"
 	"sort"
@@ -2123,6 +2124,7 @@ func (s *server) dispatch(call Frame) {
 	if err != nil {
 		result.Payload, result.Error = nil, err.Error()
 		result.SyncPending = result.LocalSaved && syncwords.UploadPending(err)
+		result.StorageOff = result.SyncPending && errors.Is(err, wireauth.ErrStorageOff)
 		var unsaved *session.UnsavedChatError
 		if errors.As(err, &unsaved) {
 			result.UnsavedTranscript = unsaved.Transcript

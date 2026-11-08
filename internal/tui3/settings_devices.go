@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // ── THE DEVICES TAB ON THE SETTINGS SHEET ───────────────────────────────────
@@ -38,6 +39,7 @@ const (
 type deviceSheetRow struct {
 	index       int
 	id          string
+	storage     bool
 	add         bool
 	unavailable bool
 }
@@ -82,20 +84,27 @@ func (s *sheet) devNow() time.Time {
 	return timeNow()
 }
 
-// buildDevices populates the Devices tab when no search query is active. When
-// devices cannot work here, or while the initial directory read is still in
-// flight or failed, no rows are emitted — [sheet.listLines] draws the single
-// explanatory sentence instead, never an empty list and never a working-looking
-// add row.
+// buildDevices keeps the local storage request available while a directory
+// read waits or fails; device actions still require a loaded device list.
 func (s *sheet) buildDevices() {
-	if s.devicesUnavailable() != "" || s.dev == nil || !s.dev.loaded {
+	if s.devicesUnavailable() != "" {
 		s.cursor = 0
+		return
+	}
+	if s.dev == nil || !s.dev.loaded {
+		if s.storageCode != "" {
+			s.items = append(s.items, sheetItem{dev: &deviceSheetRow{storage: true}})
+		}
+		s.cursor = s.clampCursor(s.cursor)
 		return
 	}
 	for i, d := range s.dev.rowsOf {
 		s.items = append(s.items, sheetItem{
 			dev: &deviceSheetRow{index: i, id: d.ID},
 		})
+	}
+	if s.storageCode != "" {
+		s.items = append(s.items, sheetItem{dev: &deviceSheetRow{storage: true}})
 	}
 	s.items = append(s.items, sheetItem{
 		dev: &deviceSheetRow{add: true},
@@ -126,7 +135,7 @@ func (s *sheet) syncDeviceCursor() {
 		return
 	}
 	item, ok := s.current()
-	if !ok || item.dev == nil || item.dev.add || item.dev.unavailable {
+	if !ok || item.dev == nil || item.dev.add || item.dev.storage || item.dev.unavailable {
 		s.dev.cursor = len(s.dev.rowsOf)
 		return
 	}
@@ -259,6 +268,12 @@ func (s *sheet) appendDevicesSearch(terms []fuzzy.Term) int {
 			})
 		}
 	}
+	if s.storageCode != "" {
+		if score, ok, at, size := s.matchHits([]string{"relay storage", "request access", tabDevices}, terms); ok {
+			best = max(best, score)
+			matched = append(matched, devHit{item: sheetItem{dev: &deviceSheetRow{storage: true}, hitAt: at, hitLen: size}, score: score})
+		}
+	}
 	if score, ok, hitAt, hitLen := s.matchHits(addDeviceSearchWords, terms); ok {
 		best = max(best, score)
 		matched = append(matched, devHit{
@@ -284,6 +299,9 @@ func (s *sheet) appendDevicesSearch(terms []fuzzy.Term) int {
 func (s *sheet) devRowLines(row *deviceSheetRow, hit []int, selected, hovered bool, width int, pal palette) []string {
 	if row.unavailable {
 		return overlayLines(s.devicesUnavailable(), "", selected, false, hovered, width, pal)
+	}
+	if row.storage {
+		return overlayLinesHit("relay storage", s.storageState, hit, selected, false, hovered, width, pal)
 	}
 	if row.add {
 		return overlayLinesHit(addDeviceWord, "", hit, selected, false, hovered, width, pal)
@@ -339,12 +357,22 @@ func (s *sheet) devicesNote(pal palette, width int) ([]string, bool) {
 // foot rule (or a concurrent refresh error standing alongside a completed
 // removal, so neither fact erases the other).
 func (s *sheet) devicesDetails(frameWidth, bodyWidth int) []string {
-	if !s.onDevices() || s.searching() || s.devicesUnavailable() != "" || s.dev == nil || !s.dev.loaded {
+	if !s.onDevices() || s.searching() || s.devicesUnavailable() != "" {
 		return nil
 	}
 	ruleRoom := max(1, frameWidth-placeNoteRuleFrame)
 	wrapRoom := max(1, bodyWidth-4)
 	var lines []string
+	if s.storageRequest && s.storageCode != "" {
+		lines = append(lines, wrap("request code  "+s.storageCode, wrapRoom)...)
+		target := syncsetup.StorageRequestLink(s.storageCode)
+		for _, line := range wrap(target, wrapRoom) {
+			lines = append(lines, linkify(line, target))
+		}
+	}
+	if s.dev == nil {
+		return lines
+	}
 	if s.dev.line != "" && ansi.StringWidth(s.dev.line) > ruleRoom {
 		lines = append(lines, wrap(s.dev.line, wrapRoom)...)
 	}
@@ -376,7 +404,11 @@ func (s *sheet) devicesKeysLine() string {
 		out = append(out, devicesMoveKey)
 	}
 	if item, ok := s.current(); ok && item.dev != nil && !item.dev.unavailable {
-		if item.dev.add {
+		if item.dev.storage {
+			if s.storageState == "off" {
+				out = append(out, "enter request access")
+			}
+		} else if item.dev.add {
 			out = append(out, devicesAddKey)
 		} else {
 			out = append(out, devicesNameKey)
@@ -390,3 +422,25 @@ func (s *sheet) devicesKeysLine() string {
 	out = append(out, "←→ categories", devicesCloseKey)
 	return strings.Join(out, " · ")
 }
+
+func (a *app) relayStorageAccount() (string, string) {
+	if a.cellsUnavailable != "" {
+		return "", ""
+	}
+	if door, ok := a.approvals.(interface{ RelayStorage() (string, string) }); ok {
+		return door.RelayStorage()
+	}
+	return "", ""
+}
+
+func (a *app) requestRelayStorage() tea.Cmd {
+	if a.sheet.storageCode == "" || a.sheet.storageState != "off" {
+		return nil
+	}
+	a.sheet.storageRequest = true
+	link := syncsetup.StorageRequestLink(a.sheet.storageCode)
+	open := processOpener
+	return func() tea.Msg { _ = open(link); return storageRequestOpenedMsg{} }
+}
+
+type storageRequestOpenedMsg struct{}

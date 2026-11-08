@@ -173,6 +173,9 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 	detailRoom := 0
 	if s.edit == nil && s.conn.entry == nil {
 		detailRoom = min(6, max(0, room-3))
+		if s.storageRequest {
+			detailRoom = min(len(settingsDetails(a, width))+1, max(0, room-3))
+		}
 	}
 	room -= detailRoom
 	body, owner := s.listLines(width, room, pal, a.hoveredSheetRow())
@@ -409,7 +412,7 @@ func settingsDetails(a *app, width int) []string {
 	if a.sheet.onDevices() && !a.sheet.searching() {
 		frameW, _ := a.size()
 		lines := a.sheet.devicesDetails(frameW, width)
-		if len(lines) > 5 {
+		if len(lines) > 5 && !a.sheet.storageRequest {
 			lines = lines[:5]
 			lines[4] = fit(lines[4]+glyphMore, max(1, width-4))
 		}
@@ -431,7 +434,7 @@ func settingsDetails(a *app, width int) []string {
 		}
 	}
 	lines = append(lines, wrap(about, max(1, width-4))...)
-	if len(lines) > 5 {
+	if len(lines) > 5 && !a.sheet.storageRequest {
 		lines = lines[:5]
 		lines[4] = fit(lines[4]+glyphMore, max(1, width-4))
 	}

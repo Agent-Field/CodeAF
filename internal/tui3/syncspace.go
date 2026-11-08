@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // syncSpaceWithin keeps an optional relay reading from outliving its usefulness.
@@ -33,6 +34,14 @@ func (a *app) runStatusCommand(rest string) tea.Cmd {
 // relay can report it. It is a command, so it never runs on the update loop or
 // while a frame is painted.
 func (a *app) refreshSyncSpace() tea.Cmd {
+	// Pairing can happen after this surface opened with no sync service.
+	if a.syncService == "" {
+		if code, _ := a.relayStorageAccount(); code != "" {
+			if door, ok := a.approvals.(interface{ SyncService() string }); ok {
+				a.syncService = door.SyncService()
+			}
+		}
+	}
 	if a.syncService == "" || a.syncService == "off" || a.syncStats == nil {
 		a.syncSpace = blobstore.Counts{}
 		return nil
@@ -61,8 +70,20 @@ func (a *app) showStatus(json bool) {
 // syncSpaceWord reads only the last answer, so rendering cannot contact a relay.
 func (a *app) syncSpaceWord() string {
 	used, limit := a.syncSpace.StoredBytes, a.syncSpace.LimitBytes
-	if a.syncService == "" || a.syncService == "off" || used == nil || limit == nil || *used <= 0 || *limit <= 0 {
+	if a.syncService == "" || a.syncService == "off" || a.relayStorageOff() || used == nil || limit == nil || *used <= 0 || *limit <= 0 {
 		return ""
 	}
 	return chatlist.BytesSize(*used) + " of " + chatlist.BytesSize(*limit)
+}
+
+// Failed readings retain only the previous permission, never stale usage totals.
+func (a *app) relayStorageOff() bool {
+	if !syncsetup.IsHostedRelay(a.syncService) {
+		return false
+	}
+	if a.syncSpace.Storage != "" {
+		return a.syncSpace.Storage == "off"
+	}
+	_, state := a.relayStorageAccount()
+	return state == "off"
 }

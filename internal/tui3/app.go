@@ -5949,7 +5949,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case syncSpaceMsg:
 		// The reading is the identity's, not one chat's, so it is kept whichever
 		// chat is on screen. It is only ever read by the next /status.
+		if msg.counts.Storage == "" {
+			msg.counts.Storage = a.syncSpace.Storage
+		}
 		a.syncSpace = msg.counts
+		if a.at(pageSettings) {
+			a.sheet.storageCode, a.sheet.storageState = a.relayStorageAccount()
+			a.sheet.build()
+		}
 		return a, nil
 
 	case spelledMsg:
