@@ -400,6 +400,27 @@ func TestJinaFetch(t *testing.T) {
 	}
 }
 
+// TestJinaFetchBypassesTheCache: the reader caches a page for an hour, and a
+// stale snapshot is worse than a slower fresh read - an agent handed someone
+// else's cache of a page reasons about the wrong page. The fetch asks for a
+// fresh copy with r.jina.ai's x-no-cache header so what comes back is the page
+// at that address now.
+func TestJinaFetchBypassesTheCache(t *testing.T) {
+	var gotNoCache string
+	server := serve(t, &jinaBaseURL, func(w http.ResponseWriter, r *http.Request) {
+		gotNoCache = r.Header.Get("x-no-cache")
+		fmt.Fprint(w, "# fresh\n")
+	})
+	jinaBaseURL = server.URL + "/"
+
+	if _, err := (jina{}).Bind(Options{}).Fetch(context.Background(), "https://example.com"); err != nil {
+		t.Fatalf("Fetch error = %v", err)
+	}
+	if gotNoCache != "true" {
+		t.Errorf("x-no-cache = %q, want %q so the reader skips its cached snapshot", gotNoCache, "true")
+	}
+}
+
 func TestJinaFetchRejectsNonURLs(t *testing.T) {
 	// Caught here rather than at the service, which would concatenate and
 	// return a confusing 404 for a page on jina itself.

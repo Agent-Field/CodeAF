@@ -162,6 +162,10 @@ func (j jina) Fetch(ctx context.Context, target string) (string, error) {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	req.Header.Set("Accept", "text/plain")
+	// r.jina.ai caches a rendered page for an hour, so a plain fetch can hand
+	// back a stale snapshot - and worse, someone else's cache of that address.
+	// x-no-cache: true skips the cache so what comes back is the page now.
+	req.Header.Set("x-no-cache", "true")
 
 	resp, err := j.opts.client().Do(req)
 	if err != nil {
