@@ -17,6 +17,10 @@ import (
 type machineRow struct {
 	Handle string
 	api.Machine
+	// held is every job the machine's slots hold. Machine.Job names one of
+	// them, the one heard from last; held lets an announcement keep the job
+	// it named while the machine still holds it ([Handler.machineEvents]).
+	held []int
 }
 
 // leases is the live holds, or none when this handler has no claims desk.
@@ -76,6 +80,7 @@ func (h *Handler) roster(now time.Time, leases []lease.Lease) []machineRow {
 		last                      time.Time
 		job                       int
 		jobAt                     time.Time
+		held                      []int
 		asleep                    bool
 	}
 	by := map[string]*acc{}
@@ -117,6 +122,7 @@ func (h *Handler) roster(now time.Time, leases []lease.Lease) []machineRow {
 			continue
 		}
 		got := by[row.Worker.Handle+"\x00"+machineOf(row)]
+		got.held = append(got.held, held.Job)
 		at, _ := h.beat(held)
 		if got.job == 0 || at.After(got.jobAt) || (at.Equal(got.jobAt) && (got.job == 0 || held.Job < got.job)) {
 			got.job = held.Job
@@ -141,6 +147,7 @@ func (h *Handler) roster(now time.Time, leases []lease.Lease) []machineRow {
 				Name: got.name, OS: got.os, CodeafVersion: got.version,
 				Status: status, Job: got.job, LastHeartbeat: got.last,
 			},
+			held: got.held,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
