@@ -385,11 +385,41 @@ cancels the whole run, and the step ends when the run does. A pull request the
 run opened becomes the job's the moment the call that opened it ends, while the
 rest of the run is still going, and stays the job's whatever the run says after.
 A run that ends saying it did not succeed (a result of `{"success": false,
-"summary": "Plan rejected: …"}`) ends the job with those words, beside any pull
-request it opened. A pipeline made only of agentfield steps and approvals ends
+"summary": "Plan rejected: …"}`) fails the step, beside any pull request it
+opened; how that reads is under "an AgentField step that did not succeed". A pipeline made only of agentfield steps and approvals ends
 when its runs do, with no proof to approve, and needs no checkout on this
 machine: its job never says it is cloning the repository here, and Start is not
 refused because this machine cannot clone it. The same is true of a `run_on` job.
+
+## an AgentField step that did not succeed — why my job failed, no pull request was opened, the project does not build
+
+When an agentfield step's run ends without doing its work, the job reads
+**Failed** and the step is named by its label, never by its reasoner
+(`node.reasoner` is only the pipeline file's word). The failure reads
+"<step> did not succeed: <why>", for example "Build on AgentField did not
+succeed: The project does not build or its tests fail, so no pull request was
+opened". The short line on the job, its Brief and Afi's notice is the `why`
+alone.
+
+The `why` is the run's own last word, read from the shape of its words and
+never from a pipeline's or a step's name:
+
+- the newest note the run left on the control plane, else the first sentence
+  of its result's summary;
+- a report that starts with a grade (`OVERALL: FAIL.`) gives the reason after
+  it, cut before any command it quotes, so what a command printed is never on
+  the line;
+- a note that starts "No pull request:" reads "<reason>, so no pull request
+  was opened";
+- a run that failed or was cancelled on the control plane reads "<step>
+  failed: <reason>" or "<step> was cancelled: <reason>".
+
+The run's whole report, command output included, is kept as the step's
+output: open the step to read it in full. A step that finished reads
+"<step> · done · finished", or "finished and opened <pull request link>".
+
+A failed job's file on disk says `"State": "failed"`; it is read back as a job
+that is not running with its failure on it, so Run again works as before.
 
 ## merge a pull request an AgentField run opened — which commit is approved, "no approved commit is recorded"
 
@@ -466,7 +496,8 @@ reports. The run's own calls (its plan, its coder, its review…) are drawn
 under that step and are never steps of the job, so a run picked up after a
 restart cannot end in "The factory refused this step's results (HTTP 422):
 report names an unknown step". Picking a job up again records nothing on its
-activity: no blank "failed" line.
+activity: no blank "failed" line. The step keeps the start time it had before
+the restart, and its chat reads "resumed" without a second "<step> started".
 
 ## answer an AgentField approval from another computer — a team factory, a server, a desk attached to a remote factory
 

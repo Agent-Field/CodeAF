@@ -357,7 +357,7 @@ func (c *jobChat) MaintainPR(ctx context.Context, words string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return "Follow PR resumed with your request. Verified repairs will update the existing PR; merge remains yours.", nil
+	return "Follow PR resumed with your request. Checked repairs will update the existing PR; merge remains yours.", nil
 }
 
 // A local job's worker mirror carries the same saved manager as its floor.

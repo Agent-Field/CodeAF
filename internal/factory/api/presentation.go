@@ -24,7 +24,10 @@ func PresentJob(j *Job) {
 	case j.Recovery != nil && (j.Recovery.State == "waiting" || j.Recovery.State == "queued"):
 		p.Kind, p.Title, p.Detail = "waiting_for_runner", "Waiting to retry", j.Recovery.Reason
 	case j.Failure != nil:
-		p.Kind, p.Title, p.Detail = "failed", "Step failed", j.Failure.Detail
+		// THE ONE LINE A PERSON READS FIRST IS THE FAILURE'S SUMMARY when it
+		// has one (the step's own outcome, or the manager's line), and its
+		// whole detail otherwise; the detail stays on the failure, whole.
+		p.Kind, p.Title, p.Detail = "failed", "Step failed", firstNonBlank(j.Failure.Summary, j.Failure.Detail)
 		if j.Failure.Code == factory.CodeStopped {
 			p.Title = "Step stopped"
 		}
