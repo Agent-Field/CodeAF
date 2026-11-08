@@ -153,6 +153,18 @@ func (d *Desk) Live() ([]Lease, error) {
 	return live, err
 }
 
+// Unheld says no lease is held at all, read without reaping anything. With no
+// hold there is nothing a clock can expire, so what a pull would find changes
+// only when a file under the floor does.
+func (d *Desk) Unheld() (bool, error) {
+	unheld := false
+	err := d.locked(func(doc *document, _ time.Time) error {
+		unheld = len(doc.Leases) == 0
+		return nil
+	})
+	return unheld, err
+}
+
 // Assign implements Take: it gives an unassigned item a person, not a worker.
 // Pull remains the only door that reserves a worker and starts a queued job.
 func (d *Desk) Assign(id int, handle string) error {

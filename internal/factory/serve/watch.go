@@ -189,7 +189,7 @@ func touchesFloor(before, after map[string]string) bool {
 // missing from to or differs there.
 func changedBeyond(from, to map[string]string) bool {
 	for name, sig := range from {
-		if name == registryFile || name == live.File {
+		if lookBookkeeping(name) {
 			continue
 		}
 		if other, ok := to[name]; !ok || other != sig {
@@ -198,6 +198,16 @@ func changedBeyond(from, to map[string]string) bool {
 	}
 	return false
 }
+
+// lookBookkeeping is a file under the root that no look reads: the runner
+// registry, the live record, and the sources' poll record, which the intake
+// rewrites on every poll whether or not a job arrived.
+func lookBookkeeping(name string) bool {
+	return name == registryFile || name == live.File || name == sourcesFile
+}
+
+// sourcesFile is the sources' poll record ([store.Store.MetaPath]).
+const sourcesFile = "sources.json"
 
 // fileSnap is one look at the root. sig is the whole look, so a second look
 // that matches sends nothing; files is how that look names a single job.

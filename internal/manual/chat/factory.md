@@ -141,7 +141,9 @@ computers are full, queued jobs say **Waiting for capacity** and show the
 number of occupied execution slots and the configured limit. The notice points
 to Settings → Factory → Your computers and offers **Change jobs at once**. An
 offline or unknown runner is reported as waiting for a runner, without
-inventing a full-capacity count. The manager calls these execution slots, never
+inventing a full-capacity count. A restarted codeaf lists each of its computers
+once: the rows the process before it left go once they have been quiet past
+the runner timeout (60 seconds by default). The manager calls these execution slots, never
 benches, and gives the same Settings location.
 
 A queued job whose work is already on one computer can only run there. While

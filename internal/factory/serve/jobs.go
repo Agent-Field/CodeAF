@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -1046,12 +1047,16 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}{h.factory, a, a.UndoUntil})
 }
 
+// settles counts the settles run: each one lists and decodes every job.
+var settles atomic.Int64
+
 // settleJobs is run at deadlines, before reads and after a restart. Consent is
 // locked across processes so two servers cannot open the same decision twice.
 func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if h.config.Store == nil {
 		return
 	}
+	settles.Add(1)
 	// One listing serves every scan for due work. Each scan only picks
 	// candidates from it and reads every candidate again under its lock
 	// before acting, so sharing it changes nothing but the number of times

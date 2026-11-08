@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -109,5 +111,70 @@ func BenchmarkAutomaticRefusal(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_ = door.AutomaticRefusal(talk)
+	}
+}
+
+// A STEP CHAT DECODES NOTHING WHILE THE FLOOR'S OTHER FILES CHURN. Every open
+// step chat manages no job, and its answer was remembered against the floor
+// folder's own identity, which moves with every file renamed into it: the
+// runner registry a pull touched, a lease's heartbeat, the sources' poll
+// record. Each of those, every few seconds, made every open step chat list and
+// decode every job on the floor again; the fourth live run's engine idled at
+// 150% of a core. Only a job document that changed is read, and only once.
+func TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns(t *testing.T) {
+	st, _ := personStopFloor(t, 6)
+	door := seamRunDoor{st: st}
+	clock := time.Date(2026, 11, 8, 1, 0, 0, 0, time.UTC)
+	floorNow = func() time.Time { return clock }
+	t.Cleanup(func() { floorNow = time.Now })
+	tick := func() { clock = clock.Add(floorLookEvery) }
+	step := filepath.Join(t.TempDir(), "step", ".cell", "transcript.jsonl")
+	_ = door.AutomaticRefusal(step)
+	before := factoryStopCheckDecodes.Load()
+	for i := range 50 {
+		// The bookkeeping beside the jobs is rewritten as a runner does.
+		if err := os.WriteFile(filepath.Join(st.Root(), ".runners-tmp"), []byte(strconv.Itoa(i)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(filepath.Join(st.Root(), ".runners-tmp"), filepath.Join(st.Root(), "runners.json")); err != nil {
+			t.Fatal(err)
+		}
+		tick()
+		if why := door.AutomaticRefusal(step); why != "" {
+			t.Fatalf("a step chat refuses: %q", why)
+		}
+	}
+	if got := factoryStopCheckDecodes.Load() - before; got != 0 {
+		t.Fatalf("50 checks while the registry churned decoded %d job documents", got)
+	}
+	// A job that changed is read once, and only that job.
+	items, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := items[0]
+	if err := st.Update(other.ID, func(it *factory.Item) error { it.Title += " again"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	before = factoryStopCheckDecodes.Load()
+	for range 5 {
+		tick()
+		_ = door.AutomaticRefusal(step)
+	}
+	if got := factoryStopCheckDecodes.Load() - before; got != 1 {
+		t.Fatalf("one changed job cost %d decodes, want 1", got)
+	}
+	// A job that takes this conversation as its own is managed by it at the
+	// next look, and its person's Stop is seen.
+	if err := st.Update(other.ID, func(it *factory.Item) error {
+		it.Talk = step
+		factory.MarkPersonStopped(it)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tick()
+	if why := door.AutomaticRefusal(step); why != factory.PersonStopReason {
+		t.Fatalf("the job that took this conversation was not seen: %q", why)
 	}
 }

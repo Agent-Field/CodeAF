@@ -278,7 +278,11 @@ func (s *workerService) saveRegistry() error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile))
+	if err = os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile)); err != nil {
+		return err
+	}
+	s.savedAt = s.now()
+	return nil
 }
 
 // readRegistry is the saved registry, empty when none was ever saved.

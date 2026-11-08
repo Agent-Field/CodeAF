@@ -443,6 +443,14 @@ so the run does not go on to open a pull request.
 A run that had already ended when the runner went away is an ordinary
 interrupted step: it is retried automatically, at most 3 times.
 
+When the run a re-taken job follows ends, the job lands on what it did: the
+pull request it opened, done, or its own failure. Only the agentfield step
+reports. The run's own calls (its plan, its coder, its review…) are drawn
+under that step and are never steps of the job, so a run picked up after a
+restart cannot end in "The factory refused this step's results (HTTP 422):
+report names an unknown step". Picking a job up again records nothing on its
+activity: no blank "failed" line.
+
 ## answer an AgentField approval from another computer — a team factory, a server, a desk attached to a remote factory
 
 The plan is answered the same way whichever factory holds the job: the one on
