@@ -366,8 +366,16 @@ func (c *Client) reconcile(work receiptWork) {
 	// last is the newest parsed receipt's verified price. A not-ready all-zero
 	// placeholder stays unknown; a nonempty receipt can state a real zero.
 	last := UnknownCost()
+	// A HURRIED RECEIPT ASKS ONCE MORE AND THEN ANSWERS (receipt_hurry.go).
+	hurry := receiptHurried()
+	final := false
 	for attempt := 0; attempt < receiptAttempts; attempt++ {
-		read := c.readReceiptAt(ctx, result.Ref, base)
+		final = final || hurry.Err() != nil
+		ask, cancelAsk := receiptAskContext(ctx, hurry)
+		read := c.readReceiptAt(ask, result.Ref, base)
+		cancelAsk()
+		// An ask the hurry reached while it was in flight was the last one.
+		final = final || hurry.Err() != nil
 		billed, found, noRoute := read.billed, read.found, read.noRoute
 		if read.parsed {
 			last = read.financial
@@ -403,8 +411,11 @@ func (c *Client) reconcile(work receiptWork) {
 			work.sink(result)
 			return
 		}
+		if final {
+			break
+		}
 		if attempt < len(receiptRetrySchedule) {
-			if err := c.wait(ctx, receiptRetrySchedule[attempt]); err != nil {
+			if _, err := c.pauseReceipt(ctx, hurry, receiptRetrySchedule[attempt]); err != nil {
 				break
 			}
 		}

@@ -96,6 +96,13 @@ const appLazyHotWindow = 10 * time.Minute
 // last events to be written before the outbox is shut regardless.
 const appReleaseWait = 5 * time.Second
 
+// appQuitReceiptWait is the longest the app's quit waits for the prices its
+// cut streams still owe, once they are hurried. A hurried receipt answers within
+// about two seconds of the hurry; this is the bound on top of it, so that a
+// router that does not answer at all costs the quit three seconds and not the
+// seventy of [provider.ReceiptWait].
+const appQuitReceiptWait = 3 * time.Second
+
 func runApp(args []string) error {
 	localGUI := consumeAppLocalGUI()
 	flags := commandFlags("app")
@@ -155,6 +162,16 @@ func runApp(args []string) error {
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.leaving = leaving
+	// A QUIT DOES NOT WAIT OUT A RECEIPT'S SCHEDULE (internal/provider's
+	// receipt_hurry.go): Close hurries them, and the process half's close waits
+	// at most [appQuitReceiptWait] for what is still owed.
+	var calmReceipts func()
+	backend.hurryReceipts = func() { calmReceipts = provider.HurryReceipts() }
+	defer func() {
+		if calmReceipts != nil {
+			calmReceipts()
+		}
+	}()
 	backend.useSyncDrives(syncDrives)
 	// A chat's banked pipeline line takes the editor's road while the app
 	// holds the factory (factory_recipe_road.go).
@@ -227,6 +244,9 @@ func runApp(args []string) error {
 		// The process half every conversation shared, closed the way the pipe
 		// engine closes it once its conversation is gone (engine.go).
 		session.CloseUsage()
+		if proc := openedEngineProcess(); proc != nil {
+			proc.quitReceiptWait.Store(int64(appQuitReceiptWait))
+		}
 		closeEngineProcess()
 	}
 	return err
@@ -688,6 +708,11 @@ type appBackend struct {
 	left chan struct{}
 	// leaving is runApp's cancellation, installed before the backend starts.
 	leaving context.CancelFunc
+	// hurryReceipts, when set, is called once as Close begins, so every
+	// conversation's cut stream asks for its price once and is answered rather
+	// than holding the quit through its seventy-second schedule
+	// ([provider.HurryReceipts]). Only the app's own door sets it.
+	hurryReceipts func()
 	// spent is the last figure spend.changed said, so it is said on a change.
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
@@ -4636,6 +4661,9 @@ func (b *appBackend) Close() error {
 	})
 	if already {
 		return nil
+	}
+	if b.hurryReceipts != nil {
+		b.hurryReceipts()
 	}
 	for _, attempt := range pluginAttempts {
 		attempt.cancel()

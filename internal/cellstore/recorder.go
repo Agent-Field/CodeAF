@@ -36,6 +36,11 @@ type Options struct {
 	// carries is true at that moment: the inventory uses it to say which of the
 	// chat's commands are still running.
 	Refresh func()
+	// FolderGone, when set, says the chat's folder is no longer on this
+	// computer; a capture that failed then is not reported as a chat that
+	// could not be saved ([ErrWorkspaceGone]). The seat sets it from the
+	// engine it decorates, which is the one that knows the folder.
+	FolderGone func() bool
 }
 
 // Recorder is the one hook (task 0.7): an executor.Executor that logs each
@@ -354,6 +359,11 @@ func (r *Recorder) outcome(err error) {
 }
 
 func (r *Recorder) report(err error) {
+	// A FOLDER THAT IS GONE IS NOT A CHAT THAT COULD NOT BE SAVED
+	// ([ErrWorkspaceGone]): its calls stay pending and nothing is reported.
+	if errors.Is(err, ErrWorkspaceGone) {
+		return
+	}
 	if err != nil {
 		r.errorMu.Lock()
 		r.lastError = err

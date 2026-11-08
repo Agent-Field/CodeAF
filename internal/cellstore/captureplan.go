@@ -42,6 +42,11 @@ type capturePlan struct {
 // concurrent editor or background writer invalidates the token; every retry
 // obtains a new scope and screens it again (C9/U2).
 func (e Engine) plannedSnapshot(ctx context.Context, c cell.Cell, receipt string, changed []string, calls []Executed) (captureReply, error) {
+	// A folder that is gone has nothing to capture, and every capture road
+	// comes through here, so every one of them says so the same way.
+	if err := e.workspaceThere(c); err != nil {
+		return captureReply{}, err
+	}
 	reply, original := e.plannedSnapshotOnce(ctx, c, receipt, changed, calls)
 	if original == nil || !strings.HasPrefix(original.Error(), "plan capture: ") || !missingPackPlan(original) {
 		return reply, original
