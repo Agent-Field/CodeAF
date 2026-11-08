@@ -268,21 +268,17 @@ func TestSealWatchStartupTurnStillWaitsForPublish(t *testing.T) {
 	}
 }
 
-func TestRetiredSealWatchNeverArmsAnotherTail(t *testing.T) {
-	w := &SealWatch{Quiet: time.Hour, OnTail: func() { t.Error("retired watch sealed a tail") }}
+// A retired watch still seals what is written while the agent waits: retiring
+// ends the delivery of sentences, never the trailing seal a later write is owed.
+func TestARetiredSealWatchStillSealsALaterWrite(t *testing.T) {
+	sealed := make(chan struct{}, 1)
+	w := &SealWatch{Quiet: time.Millisecond, OnTail: func() { sealed <- struct{}{} }}
 	w.Waiting()
-	w.Wrote()
 	w.Retire()
-	defer w.Retire()
 	w.Wrote()
-	w.TurnStarted()
-	w.TurnEnded()
-	w.Waiting()
-	w.Wrote()
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.tail != nil {
-		w.tail.Stop()
-		t.Fatal("retired watch armed a new tail timer")
+	select {
+	case <-sealed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a write after retirement was never sealed")
 	}
 }

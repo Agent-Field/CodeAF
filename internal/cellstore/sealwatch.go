@@ -173,14 +173,18 @@ func (w *SealWatch) Adopt() func() {
 	}
 }
 
-// Retire stops subscriptions and tail work once this seat has no session left.
+// Retire ends this seat's sentence subscriptions once no conversation uses it.
+//
+// RETIRING NEVER TOUCHES THE TRAILING SEAL. The tail belongs to the writes, not
+// to the subscriptions: a conversation still finishing its journal, or a Home
+// errand opened later on the same seat, must seal what it wrote exactly as it
+// did before retirement existed. Only the delivery of sentences ends here.
 func (w *SealWatch) Retire() {
 	w.retired.Do(func() {
 		func() {
 			w.mu.Lock()
 			defer w.mu.Unlock()
 			w.stopped = true
-			w.stopTail()
 			w.wake = nil
 		}()
 		if w.OnRetire != nil {
@@ -218,7 +222,7 @@ func (w *SealWatch) TurnStarted() {
 func (w *SealWatch) Wrote() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.stopped || !w.idle || w.OnTail == nil {
+	if !w.idle || w.OnTail == nil {
 		return
 	}
 	w.stopTail()
@@ -243,7 +247,7 @@ func (w *SealWatch) sealTail() {
 	owed := func() bool {
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		owed := !w.stopped && w.idle && w.tail != nil
+		owed := w.idle && w.tail != nil
 		w.tail = nil
 		return owed
 	}()
