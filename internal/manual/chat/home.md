@@ -1958,10 +1958,14 @@ longest wait at the top of the panel.
 A session that gave no words for what it is waiting on shows no line at all rather than a
 placeholder.
 
-This is read out of a small file each live session keeps in its own folder, refreshed
-when its contents change, touched every ten seconds while unchanged, and believed for
-fifteen seconds after its last write or touch. So a window that was killed, or a laptop that
-closed, stops claiming to need you within a glance.
+This is read out of a small file each live session keeps in its own folder, written the
+moment its contents change. While a session is working, waiting on you or has work out, the
+file is refreshed every seven seconds and believed for fifteen seconds after its last
+refresh, so a window that was killed, or a laptop that closed, stops claiming to need you
+within a glance. An idle session — nothing running, nothing asked — leaves its file alone
+and refreshes it once a minute, and its file is believed for three minutes, so an idle window
+that was killed can still be listed as open for up to three minutes. An older codeaf
+believes every file for fifteen seconds only, so it drops idle sessions between refreshes.
 
 `enter` on the row opens it. **For the ordinary questions you do not have to go at all** —
 see the next section.
@@ -1998,7 +2002,8 @@ into the box, which is a search and a new conversation at the same time.
 **A question raised by _this_ window closes home on its way in**, so the card is on the
 screen you are looking at rather than behind it. Home then says `answered · deny` at the
 foot and the row reads `answered · waiting for it to pick that up` until the other session
-picks it up, on its next heartbeat. **An answer that arrives too late is ignored**, and a
+picks it up — at once, since the session watches its own folder for answers, or on its next
+five-second beat when that watch cannot be kept. **An answer that arrives too late is ignored**, and a
 window that has stopped refreshing for fifteen seconds cannot be answered from here: its
 chips are not drawn.
 

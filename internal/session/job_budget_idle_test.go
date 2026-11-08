@@ -16,13 +16,15 @@ type countingBudget struct {
 
 func (b *countingBudget) Refusal() string { b.looks.Add(1); return b.liveBudgetStub.Refusal() }
 
-// AN IDLE MANAGER LOOKS ONCE A SECOND, NOT TEN TIMES. The fifth live A+B run's engine idled at
+// AN IDLE MANAGER LOOKS ONCE A BEAT, NOT TEN TIMES A SECOND. The fifth live A+B run's engine idled at
 // 21% of a core with 82 jobs on the floor, and one of the busiest stacks was
 // this watch: ten looks a second for every open manager, each a stat of its
 // job's document, and a person's-Stop look that read the whole floor, though
 // the manager owned nothing a Stop or a spent budget could end. The watch now
-// looks ten times a second only while the manager owns work in flight.
-func TestIdleManagerBudgetWatchLooksOnceASecond(t *testing.T) {
+// looks ten times a second only while the manager owns work in flight, and once
+// a maintenance beat ([jobBudgetIdleEvery]) otherwise — the sixth live run's
+// 24 idle chats still cost two stats a second each at once a second.
+func TestIdleManagerBudgetWatchLooksOnceABeat(t *testing.T) {
 	b := &countingBudget{liveBudgetStub: liveBudgetStub{cap: 1}}
 	var stopLooks atomic.Int64
 	a, _ := jobsAgent(t)
@@ -33,8 +35,8 @@ func TestIdleManagerBudgetWatchLooksOnceASecond(t *testing.T) {
 	if n, m := b.looks.Load(), stopLooks.Load(); n > 1 || m > 1 {
 		t.Fatalf("an idle manager looked at its budget %d times and at the person's Stop %d times in under a second, want at most once", n, m)
 	}
-	// It still looks: a budget spent while idle is noticed within a second.
-	waitFor(t, "the idle watch looks again", func() bool { return b.looks.Load() >= 2 })
+	// It still looks: a budget spent while idle is noticed within a beat.
+	waitFor(t, "the idle watch looks", func() bool { return b.looks.Load() >= 1 })
 	// Work in flight is watched as before: a spent budget still ends it.
 	id := startJob(t, a, "sleep 30")
 	before := b.looks.Load()

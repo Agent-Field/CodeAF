@@ -85,6 +85,19 @@ func presenceRequest(name string) bool {
 	return name == takeoverName || name == conversationDeleteRequest || strings.HasPrefix(name, ".task-delete-request-")
 }
 
+// presenceDoorstepEvent says whether one directory event is something the
+// session owning that folder must look at now. An answer from another window
+// counts only once it has been WRITTEN: [deliverAnswer] creates the file and
+// then appends to it, and a drain woken by the creation alone could take the
+// file away between the two, leaving the line in a file nobody reads.
+func presenceDoorstepEvent(event fsnotify.Event) bool {
+	name := filepath.Base(event.Name)
+	if name == answersName {
+		return event.Op&fsnotify.Write != 0
+	}
+	return event.Op&(fsnotify.Create|fsnotify.Write) != 0 && presenceRequest(name)
+}
+
 func (w *presenceDoorWatch) loop(run *presenceDoorRun) {
 	ticker := time.NewTicker(presenceHeartbeat)
 	defer ticker.Stop()
@@ -108,7 +121,7 @@ func (w *presenceDoorWatch) loop(run *presenceDoorRun) {
 			if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 && run.watched[event.Name] {
 				delete(run.watched, event.Name)
 			}
-			if event.Op&(fsnotify.Create|fsnotify.Write) != 0 && presenceRequest(filepath.Base(event.Name)) {
+			if presenceDoorstepEvent(event) {
 				for c := range run.clients {
 					if c.dir == filepath.Dir(event.Name) {
 						select {
@@ -124,8 +137,12 @@ func (w *presenceDoorWatch) loop(run *presenceDoorRun) {
 				errors = nil
 				continue
 			}
-			// Overflow is repaired by the same bounded safety pass as a missed event.
+			// Overflow is repaired by the same bounded safety pass as a missed
+			// event, and every session is told to look at its doorstep now: an
+			// overflow can drop any folder's event, and a quiet session would
+			// otherwise wait out its long pass ([presenceQuietPass]).
 			w.rescan(run, time.Now())
+			w.knockAll(run)
 		case now := <-refresh.C:
 			w.refresh(run, now)
 		case now := <-ticker.C:
@@ -134,6 +151,11 @@ func (w *presenceDoorWatch) loop(run *presenceDoorRun) {
 	}
 }
 
+// rescan is the shared maintenance beat. A session whose folder the kernel is
+// NOT watching — the watcher could not be opened, or the folder is not there
+// yet — is also knocked on, so it looks at its doorstep every beat exactly as
+// it did before the watch existed: a quiet session may skip its own safety
+// pass ([presenceQuietPass]) only because an event will wake it.
 func (w *presenceDoorWatch) rescan(run *presenceDoorRun, now time.Time) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -141,6 +163,24 @@ func (w *presenceDoorWatch) rescan(run *presenceDoorRun, now time.Time) {
 		w.add(run, c.dir)
 		select {
 		case c.beats <- now:
+		default:
+		}
+		if !run.watched[c.dir] {
+			select {
+			case c.requests <- struct{}{}:
+			default:
+			}
+		}
+	}
+}
+
+// knockAll asks every session to look at its doorstep now.
+func (w *presenceDoorWatch) knockAll(run *presenceDoorRun) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for c := range run.clients {
+		select {
+		case c.requests <- struct{}{}:
 		default:
 		}
 	}

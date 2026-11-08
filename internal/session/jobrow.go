@@ -143,6 +143,9 @@ func jobRowState(info jobInfo) (TaskState, bool) {
 // for that work is the node's. Publishing here would be rows on a column nobody
 // is reading, minted from a graph that is not the conversation's.
 func (a *Agent) announceJobRow(info jobInfo) {
+	// A command starting is work in flight; the budget watch must move to its
+	// live cadence now, whether or not this job earns a row.
+	a.wakeWorkWatch()
 	if a.config.InTask {
 		return
 	}
