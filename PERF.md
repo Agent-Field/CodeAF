@@ -601,6 +601,13 @@ a `ListSaved` deep copy of all 86 jobs and a sort, once a second. Three changes:
   and its folder are unchanged (os.SameFile, size, time, mode).
   `TestAnUnchangedJournalIsParsedOnceAndAnAppendedLineIsRead`: eleven reads of
   an unchanged journal parse it once; an appended line is read.
+- **A job chat's budget watch lists no folder while the mirrors are unchanged.**
+  Every open job chat asked `jobChat.holders` where its job's money is every
+  few seconds, and each asking globbed `workers/*/*/<job>.json`. The mirror
+  folders are now listed once per change of `workers/` or a process folder in
+  it, and a named job file is one stat per mirror.
+  `TestAJobChatsHoldersListTheMirrorFoldersOncePerChangeOfThem`: twenty askings
+  list the folders at most once; a new mirror is found on the next.
 
 Rig (scratch `r7rig.py`): `codeaf app` with a local factory, 84 of r7's final
 job documents plus two native jobs whose step holds its lease, about 45 open job
