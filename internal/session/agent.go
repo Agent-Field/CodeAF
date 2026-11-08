@@ -414,6 +414,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// AND THIS PROCESS SAYS IT HOLDS THIS CONVERSATION. It is how a lane knows
 	// somebody is waiting on it, and how the memory pass finds the one room to
 	// say its line in (livesessions.go). Close erases it.
+	// Every conversation using a watch owns its lifetime, including independently running errands.
+	if watch, ok := config.Seals.(interface{ Adopt() func() }); ok {
+		agent.releaseSeals = watch.Adopt()
+	}
 	registerLiveSession(agent)
 	// AND WHAT WAS ANSWERED WHILE NOBODY WAS HOME IS ANSWERED NOW. An answer left
 	// on this conversation's doorstep rides the presence heartbeat
@@ -2410,6 +2414,7 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
 func (a *Agent) Close() (saveErr error) {
+	defer a.releaseSealsAfterClose()
 	defer func() { saveErr = SavingError(a.config.SessionFile, saveErr) }()
 	// WHAT THE RECORD ALREADY HOLDS IS SETTLED BEFORE THE DOOR SHUTS, so an idle
 	// session that read a landing in its last turn does not re-tell it tomorrow.

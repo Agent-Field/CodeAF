@@ -31,6 +31,7 @@ type Refusal struct {
 // within minutes stays quiet for a few of them, because a burst that ended
 // before anyone could act is noise; a longer refusal is said at once.
 var refusals = []Refusal{
+	{Is: wireauth.ErrStorageOff, Say: said(chatlist.RelayStorageOff), Halts: true, RetryStartup: true},
 	// Both decoders preserve a general full match, so shared capacity must come first.
 	{Is: wireauth.ErrRelayFull, Say: said(chatlist.RelayStorageFull), Halts: true, RetryStartup: true},
 	{Is: blobstore.ErrFull, Say: fullLine, Halts: true, RetryStartup: true},
@@ -73,15 +74,19 @@ func (r Refusal) StartupWait(prev, interval time.Duration, err error) (time.Dura
 }
 
 // next is the wait after a failed flush that followed a wait of prev. The relay's
-// own Retry-After is a floor on any wait, and a halt outranks every other.
+// own Retry-After is a floor except for storage permission, whose local gate
+// must retry within a minute. Capacity halts outrank other waits.
 func (r Refusal) next(prev, interval time.Duration, err error) time.Duration {
 	wait := min(2*max(prev, interval), max(MaxBackoff, interval))
 	if r.Flat {
 		wait = interval
 	}
 	wait = max(wait, min(wireauth.After(err), MaxHalt))
-	if r.Halts {
+	if r.Halts && !errors.Is(err, wireauth.ErrStorageOff) {
 		wait = MaxHalt
+	}
+	if errors.Is(err, wireauth.ErrStorageOff) {
+		wait = min(wait, MaxBackoff)
 	}
 	return wait
 }

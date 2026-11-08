@@ -8,6 +8,8 @@ import { HostedIdentity } from './raft/hosted.js';
 import { clusterIngress,clusterRequestLimit } from './raft/ingress.js';
 import { sharedRuntime } from './raft/actor.js';
 import { identityOf } from './verify.js';
+import { Meta } from './meta.js';
+import { StorageAccess } from './storage.js';
 import { b64,unb64 } from './raft/storage.js';
 import { fromBase64Url } from './codec.js';
 import { signedUri } from './base.js';
@@ -21,7 +23,7 @@ import { policyOf } from './rules.js';
 import { Tenant, HAS_WAIT_MS } from './tenant.js';
 import { finishClose, Watchers } from './watch.js';
 import { checkCert, checkRequest } from './verify.js';
-import { gone, ipOf, rateLimited, respond, unwrap, Wire } from './wire.js';
+import { gone, guarded, ipOf, rateLimited, respond, unwrap, Wire } from './wire.js';
 
 const SIGNED = { identity: 'codeaf-identity', cert: 'codeaf-cert', time: 'codeaf-time', sig: 'codeaf-sig' };
 const signedHeaders = (request) => Object.fromEntries(Object.entries(SIGNED).map(([k, h]) => [k, request.headers.get(h)]));
@@ -49,6 +51,21 @@ export class IdentityDO extends DurableObject {
     );
     this.identityRate = new RateLimit(this.limits.requestsPerMinute);
     this.deviceRate = new RateLimit(this.limits.requestsPerMinutePerDevice);
+  }
+
+  // Approval creates only its own small record; first device contact still pays admission.
+  setStorage(approval) {
+    return guarded(() => {
+      new StorageAccess(new Meta(this.ctx.storage.sql), this.limits).set(approval);
+    });
+  }
+
+  inheritStorage(approval) {
+    return guarded(() => {
+      const storage = new StorageAccess(new Meta(this.ctx.storage.sql), this.limits);
+      if (approval) storage.set(approval, true);
+      return storage.state();
+    });
   }
 
   fetch(request) {

@@ -117,7 +117,9 @@ func (a *app) statusItems() []deckItem {
 		}
 		items = append(items, item)
 	}
-	if word := a.syncSpaceWord(); word != "" {
+	if a.relayStorageOff() {
+		items = append(items, deckItem{label: storageLabel, value: "off"})
+	} else if word := a.syncSpaceWord(); word != "" {
 		items = append(items, deckItem{label: "sync space", value: word})
 	}
 	// phone lane: `keeping watch` used to be added HERE and nowhere else, which
@@ -206,6 +208,9 @@ func (a *app) statusFacts(text string) []string {
 	facts := columnFacts(text, false)
 	crew := a.crewWord()
 	space := a.syncSpaceWord()
+	if a.relayStorageOff() {
+		space = "off"
+	}
 	if crew == "" && space == "" {
 		return facts
 	}

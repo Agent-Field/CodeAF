@@ -4693,3 +4693,43 @@ func TestChatTeamSharingSafetyAnswers(t *testing.T) {
 		})
 	}
 }
+
+func TestStorageOptInManualQuestions(t *testing.T) {
+	for _, question := range []string{
+		"how do I turn on sync storage",
+		"why don't my chats sync to my other computer",
+		"request access to sync storage",
+		"does the relay store my chats",
+	} {
+		found := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page == "relay-what-it-stores-and-sees" && strings.Contains(section.Body, "off by default") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q did not reach the hosted storage approval answer", question)
+		}
+	}
+}
+
+func TestStorageOptInSettingsAndTeamsQuestions(t *testing.T) {
+	for _, probe := range []struct{ question, page, heading string }{
+		{"Settings General share teams between paired computers", "settings", "General —"},
+		{"Team sharing and Traffic on another computer", "team-manager", "Team sharing and Traffic"},
+		{"Shared team spending caps and continued members", "team-manager", "Shared team spending caps"},
+	} {
+		t.Run(probe.question, func(t *testing.T) {
+			for _, section := range Chat().Search(probe.question, DefaultResults) {
+				if section.Page == probe.page && strings.HasPrefix(section.Title, probe.heading) {
+					if !strings.Contains(section.Body, "sync storage approval") {
+						t.Fatalf("approval missing: %s", section.Body)
+					}
+					return
+				}
+			}
+			t.Fatalf("%q did not reach %s / %s", probe.question, probe.page, probe.heading)
+		})
+	}
+}

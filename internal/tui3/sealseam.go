@@ -26,6 +26,20 @@ type SealSeam struct {
 	// Notice hands over the next sentence worth saying, and "" when there is
 	// none. It drains, so [app.takeSealNotice] is its only caller.
 	Notice func() string
+	// Listen binds the existing notice bell; only Notice consumes the queue.
+	Listen func(func()) func()
+}
+
+// useSeal detaches the previous window listener when the front conversation changes.
+func (a *app) useSeal(seam SealSeam) {
+	if a.stopSealNotice != nil {
+		a.stopSealNotice()
+		a.stopSealNotice = nil
+	}
+	a.seal = seam
+	if seam.Listen != nil {
+		a.stopSealNotice = seam.Listen(a.noticeBell.ring)
+	}
 }
 
 // sealSegment is the status-line segment: a mark and two words while sealing
@@ -44,7 +58,7 @@ func (a *app) takeSealNotice() {
 	if a.seal.Notice == nil {
 		return
 	}
-	if said := a.seal.Notice(); said != "" {
+	for said := a.seal.Notice(); said != ""; said = a.seal.Notice() {
 		a.note(said)
 	}
 }

@@ -60,6 +60,8 @@ removal of the one-time setup values. Then open `codeaf chat --at build-box`.
 
 ## How saved provider keys, settings and shared memories reach the box
 
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
 The box starts `codeaf serve` with `CODEAF_SERVE_SYNC=1`, so it pulls the identity's saved provider keys,
 settings and shared memories at startup and every five seconds by default,
 the same interval an open terminal uses; without that variable `codeaf serve`
@@ -149,6 +151,8 @@ An unadmitted key with a saved pin is also refused. There is no unattended comma
 to admit another computer yet; use the creating laptop.
 
 ## Send a task to my dev box
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 A dev box also takes tasks. It starts `codeaf serve --take-tasks` whenever its
 installed build lists that option, so a chat on your laptop can run one task on the

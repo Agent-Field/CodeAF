@@ -11,6 +11,7 @@ import { decode } from './frame.js';
 import { hex, sha256 } from './codec.js';
 import { Serial } from './serial.js';
 
+export class StorageOff extends Error {}
 export class Conflict extends Error {}
 export class Damaged extends Error {}
 /** Unsatisfiable is a ranged get whose offset begins past the frame: the caller turns it into a refusal. */
@@ -43,7 +44,8 @@ export async function sealFrame(bytes) {
 export class R2Store {
   #writes = new Serial();
 
-  constructor(bucket, sql, identity) {
+  constructor(bucket, sql, identity, assertStorage = () => { throw new StorageOff(); }) {
+    this.assertStorage = assertStorage;
     this.bucket = bucket;
     this.sql = sql;
     this.prefix = `${identity}/f/`;
@@ -59,9 +61,11 @@ export class R2Store {
    */
   put(frame, admit = () => {}) {
     return this.#writes.run(async () => {
+      this.assertStorage();
       if (this.#indexed(frame.id)) return false;
       await this.#refuseConflicts(frame.objects);
       await admit();
+      this.assertStorage();
       await this.bucket.put(this.prefix + frame.id, frame.bytes);
       this.#index(frame);
       return true;

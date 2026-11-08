@@ -16,6 +16,7 @@ var wireErrors = []struct {
 	status int
 	err    error
 }{
+	{"storage_off", http.StatusForbidden, wireauth.ErrStorageOff},
 	{"bad_frame", http.StatusBadRequest, ErrBadFrame},
 	{"bad_rid", http.StatusBadRequest, ErrBadRID},
 	{"too_many", http.StatusBadRequest, ErrTooMany},
@@ -100,6 +101,7 @@ func LimitOf(err error) int64 {
 
 // statsBody is the answer to GET /v1/store/stats.
 type statsBody struct {
+	Storage           string `json:"storage,omitempty"`
 	Puts              int64  `json:"puts"`
 	Gets              int64  `json:"gets"`
 	Has               int64  `json:"has"`

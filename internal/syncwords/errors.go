@@ -3,6 +3,7 @@ package syncwords
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -113,4 +114,20 @@ func UploadPending(err error) bool {
 func IsStruggling(err error) bool {
 	var response interface{ HTTPStatus() int }
 	return errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, clusterctl.ErrUnavailable) || errors.Is(err, relay.ErrStruggling) || errors.As(err, &response) && response.HTTPStatus() >= 500
+}
+
+// SavedHereWords needs positive local durability before describing a pending upload.
+func SavedHereWords(err error, address string) string {
+	if !UploadPending(err) {
+		return ""
+	}
+	if SavedWithStorageOff(err) {
+		return SavedStorageOff
+	}
+	return fmt.Sprintf(SavedHerePending, Host(address))
+}
+
+// SavedWithStorageOff requires a positive local receipt so a mixed local failure stays a failure.
+func SavedWithStorageOff(err error) bool {
+	return UploadPending(err) && errors.Is(err, wireauth.ErrStorageOff)
 }

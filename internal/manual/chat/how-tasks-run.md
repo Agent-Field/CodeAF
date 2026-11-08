@@ -3230,6 +3230,10 @@ A task handed to a program such as senior-dev cannot wait at all, because it sta
 moment it is approved: its `depends_on` may name only work that has already landed. A
 program's run that ended done may be named by any task; one still going may not.
 
+## Choosing a task's model and tool-call checkpoints — propose_task model and max_steps
+
+These optional arguments choose the task's model and checkpoint size. Bad values return a refusal the model can correct.
+
 **`model`** — which model this task runs on. Set only when you asked for a particular model
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise
 on whatever model the conversation is on at the moment of admission — settled once, then
@@ -3241,6 +3245,8 @@ all), circling gets a landing turn — the task writes the deliverable from what
 and only then a stop with `stopped: 200 steps and no finish`, the number being the
 checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
 be negative`. Zero or absent means the default.
+
+## Which checks can propose_task run — quotes and shell characters
 
 **`checks`** — the repeatable verification, described in *What propose_task needs from you*
 above. Each entry must be ONE rerunnable command, and one that even a permit-everything
@@ -3256,7 +3262,11 @@ that ends the line, refuses it. The refusal names the character and says what pa
 expands commands in "<the check>". Such a character may stand only inside a single-quoted
 argument, where it is text`. The checker's own shell reads a command the same way, so a
 check admitted here is one the checker can run, and what it must never run is stopped at
-both. A check that leads with a directory change
+both.
+
+## Where task checks run and how long a check can be — propose_task checks and divide_work
+
+The optional `checks` argument names rerunnable commands. A check that leads with a directory change
 (`cd <folder> && <command>`) is refused like any other composition, and its refusal ends
 with the form that passes: `A check runs from the root of the task's own copy: leave the
 directory change out and name each file by its path`. It is never quietly repaired, because
@@ -3267,17 +3277,21 @@ rerunnable command: this check is 1001 bytes and a check may be at most 1000`. T
 part declares is taken off all of them and given once to the task that divided them, which
 is the only one that can honestly make it after its parts are home.
 
+## Why does a task say the call was refused — invalid arguments and repeated proposals
+
 Proposals refused side by side in one reply are ONE attempt, and a refusal they share
 counts once: three refused together for one reason are not three repeats, and a refusal
 whose words changed is not the same failure again, so neither earns the note about
 repeating a call.
 
-That refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
+A check refusal, and every `Invalid arguments:` sentence like it, is mail for the model, not
 for you: the row in the conversation reads only `the call was refused`, the task's card
 reads `not started · the call was refused`, and the sentence itself — the field name, the
 quoted command, the repair — stays in the tool's own result, where the model reads it and
 fixes the call, and behind `ctrl+o` on that row for you if you ask. A command that genuinely
 ran and failed is the opposite case, and its row still opens with its own output.
+
+## How many task calls can make no progress — propose_task no_progress and restarts
 
 **`no_progress`** — how many tool calls in a row may teach nothing, ask nothing new, save nothing and leave
 nothing new in its working copy before the task is stopped as spinning. Default **6**. On the
@@ -3289,7 +3303,7 @@ The same number is also **how many calls in a row may produce byte-identical con
 the second look is asked about it** — the repeat checkpoint above. That one stops nothing on
 its own: raising `no_progress` for work that is legitimately repetitive moves both.
 
-Both step limits are recorded in the checkpoint, so they survive a restart along with the
+Both `max_steps` and `no_progress` are recorded in the checkpoint, so they survive a restart along with the
 rest of the task.
 
 ## Does a long request lose requirements when work is checked or handed off?
