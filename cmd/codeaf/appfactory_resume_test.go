@@ -424,8 +424,8 @@ func TestJoiningAListedLocalOriginUsesTheVerifiedCallersSession(t *testing.T) {
 }
 
 // THE CONNECTION OUTLIVES THE LAUNCH. The app keeps a pasted token and hands it
-// back with keys.set before it asks anything else: a launch without it finds
-// setup asking for GitHub again, and the one handed back finds setup done. A
+// back with keys.set before it asks anything else, and the engine's own profile
+// keeps it too, so a launch is connected either way and finds setup done. A
 // yes to gh needs nothing handed back: the factory's profile keeps the yes,
 // and gh is read again.
 func TestTheLocalFactoryKeepsItsGitHubAcrossARestart(t *testing.T) {
@@ -459,8 +459,10 @@ func TestTheLocalFactoryKeepsItsGitHubAcrossARestart(t *testing.T) {
 			w, _ := reopened(t, s.backend.factoryHub())
 			profile := w.backend.localProfile()
 			if source == "token" {
-				if token, _ := factorygithub.TokenAt(context.Background(), profile); token != "" {
-					t.Fatal("a new launch knew the pasted token before the app handed it back")
+				// The engine's own profile kept the pasted token, so a launch
+				// whose app hands nothing back still has it (live e2e round 9).
+				if token, _ := factorygithub.TokenAt(context.Background(), profile); token != setupSecret {
+					t.Fatal("a new launch lost the pasted token before the app handed it back")
 				}
 				w.must("keys.set", map[string]any{"provider": appwire.KeyGitHub, "key": setupSecret}, nil)
 			}

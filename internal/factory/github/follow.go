@@ -336,7 +336,10 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		// nothing stays open to merge. A pull request someone else opened is
 		// never closed from here; its job only reads as nothing to change.
 		closedEmpty := false
-		if fresh.State == factory.PROpen && factory.PRChangesNothing(&fresh) && it.Publish == "pr" && it.Kind != factory.KindPR {
+		// Only a job that reads shipped closes its pull request: a job a
+		// person stopped writes nothing to GitHub, and a draft is still being
+		// worked on.
+		if fresh.State == factory.PROpen && !fresh.Draft && factory.PRChangesNothing(&fresh) && it.Publish == "pr" && it.Kind != factory.KindPR && it.State == factory.StateShipped && !factory.StoppedByPerson(it) {
 			_, _ = f.api.Comment(ctx, owner, name, fresh.Number, factory.EmptyPRComment)
 			if _, err := f.api.Close(ctx, owner, name, fresh.Number); err == nil {
 				fresh.State, closedEmpty = factory.PRClosed, true
