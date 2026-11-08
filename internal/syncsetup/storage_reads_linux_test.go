@@ -59,11 +59,11 @@ func watchStorageReads(t *testing.T, home string) func() map[string]int {
 func TestStorageOptInSharedWaiterWork(t *testing.T) {
 	for _, override := range []bool{false, true} {
 		for _, n := range []int{1, 10, 50} {
-			for _, mode := range []string{"on", "off", "self-hosted"} {
+			for _, mode := range []string{"on", "off", "custom-off", "self-hosted"} {
 				t.Run(fmt.Sprintf("env=%v/%s/%d", override, mode, n), func(t *testing.T) {
 					home := t.TempDir()
 					relay := ProductionRelayURL
-					if mode == "self-hosted" {
+					if mode == "self-hosted" || mode == "custom-off" {
 						relay = "http://own.test"
 					}
 					t.Setenv(URLVar, "")
@@ -83,7 +83,10 @@ func TestStorageOptInSharedWaiterWork(t *testing.T) {
 					}
 					state := mode
 					if state == "self-hosted" {
-						state = "on"
+						state = ""
+					}
+					if mode == "custom-off" {
+						state = "off"
 					}
 					if err := SaveStorage(home, relay, id.ID(), state); err != nil {
 						t.Fatal(err)
@@ -102,7 +105,7 @@ func TestStorageOptInSharedWaiterWork(t *testing.T) {
 						return func() bool { next = nil; return true }
 					}
 					woke := 0
-					if mode == "off" {
+					if mode == "off" || mode == "custom-off" {
 						for i := 0; i < n; i++ {
 							p.waiting[uint64(i)] = func() { woke++ }
 						}
@@ -118,7 +121,7 @@ func TestStorageOptInSharedWaiterWork(t *testing.T) {
 						fn()
 					}
 					wantReads, wantTimers := map[string]int{}, 0
-					if mode == "off" {
+					if mode == "off" || mode == "custom-off" {
 						wantReads[identity.File], wantReads[StorageFile] = 1, 1
 						if !override {
 							wantReads[SavedURLFile] = 1
@@ -130,9 +133,9 @@ func TestStorageOptInSharedWaiterWork(t *testing.T) {
 						t.Fatalf("reads=%v want=%v timers=%d requests=%d", actual, wantReads, timers, requests)
 					}
 					t.Logf("env=%v chats=%d state=%s file-reads/min=%v timer-arms/min=%d relay-requests=%d", override, n, mode, actual, timers, requests)
-					if mode == "off" {
+					if mode == "off" || mode == "custom-off" {
 						// A raw file change models another process sharing this home.
-						raw := fmt.Sprintf(`{"relay":%q,"identity":%q,"storage":"on"}`, relay, id.ID())
+						raw := fmt.Sprintf(`{"relay":%q,"identity":%q,"storage":"on","reports_storage":true}`, relay, id.ID())
 						if err := os.WriteFile(filepath.Join(home, StorageFile), []byte(raw), 0600); err != nil {
 							t.Fatal(err)
 						}

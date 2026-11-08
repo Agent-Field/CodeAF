@@ -23,7 +23,7 @@ func TestStorageOptInDevicesRequestAndStatus(t *testing.T) {
 	code := "id_" + strings.Repeat("a", 32)
 	door := &storageApprovals{fakeApprovals: devicesFake(), code: code, state: "off"}
 	a, r := openSettingsDevices(t, door, time.Now())
-	a.syncService = syncsetup.ProductionRelayURL
+	a.syncService = "http://127.0.0.1:18831"
 	found := false
 	for at, item := range a.sheet.items {
 		if item.dev != nil && item.dev.storage {
@@ -96,7 +96,7 @@ func TestStorageOptInSearchRequestShowsFallbackFrame(t *testing.T) {
 	code := "id_" + strings.Repeat("b", 32)
 	door := &storageApprovals{fakeApprovals: devicesFake(), code: code, state: "off"}
 	a, r := openSettingsDevices(t, door, time.Now())
-	a.syncService = syncsetup.ProductionRelayURL
+	a.syncService = "http://127.0.0.1:18831"
 	old := processOpener
 	processOpener = func(string) error { return errors.New("no browser") }
 	t.Cleanup(func() { processOpener = old })
@@ -119,7 +119,7 @@ func TestStorageOptInRequestFallbackNarrowPendingDevicesFrame(t *testing.T) {
 	code := "id_" + strings.Repeat("c", 32)
 	door := &storageApprovals{fakeApprovals: devicesFake(), code: code, state: "off"}
 	a, r := openSettingsDevices(t, door, time.Now())
-	a.syncService = syncsetup.ProductionRelayURL
+	a.syncService = "http://127.0.0.1:18831"
 	a.Update(tea.WindowSizeMsg{Width: 56, Height: 40})
 	for i, item := range a.sheet.items {
 		if item.dev != nil && item.dev.storage {
@@ -136,5 +136,21 @@ func TestStorageOptInRequestFallbackNarrowPendingDevicesFrame(t *testing.T) {
 	shown := strings.Join(strings.Fields(plain(frame(a))), "")
 	if !strings.Contains(shown, code) || !strings.Contains(shown, syncsetup.StorageRequestLink(code)) {
 		t.Fatalf("narrow request frame: %s", plain(frame(a)))
+	}
+}
+
+func TestStorageOptInStatusPrefersCurrentPermission(t *testing.T) {
+	door := &storageApprovals{fakeApprovals: devicesFake(), code: "id_account", state: "off"}
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.approvals = door
+	a.syncService = "http://127.0.0.1:18831"
+	a.syncSpace = blobstore.Counts{Storage: "on"}
+	if !strings.Contains(a.statusText(), "relay storage") {
+		t.Fatal("cached refusal hidden by earlier usage answer")
+	}
+	door.state = "on"
+	a.syncSpace.Storage = "off"
+	if strings.Contains(a.statusText(), "relay storage") {
+		t.Fatal("cached approval hidden by earlier usage answer")
 	}
 }

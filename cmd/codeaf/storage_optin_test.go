@@ -130,6 +130,53 @@ func TestStorageOptInSettingsOnlyPairedHosted(t *testing.T) {
 	}
 }
 
+func TestStorageOptInSettingsRelayAnswerDecides(t *testing.T) {
+	celltest.Available(t)
+	dir := t.TempDir()
+	t.Setenv(home.EnvVar, dir)
+	id, err := identity.Ensure(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int32
+	var absent atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		answer := `{"storage":"off"}`
+		if absent.Load() {
+			answer = `{"objects":0}`
+		}
+		_, _ = w.Write([]byte(answer))
+	}))
+	defer srv.Close()
+	t.Setenv(syncsetup.URLVar, srv.URL)
+	door := newApprovalsDoor(dir)
+	if code, _ := door.RelayStorage(); code != "" {
+		t.Fatal("unknown custom relay has row")
+	}
+	if _, err := chatSyncStats(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if code, state := door.RelayStorage(); code != id.ID() || state != "off" {
+		t.Fatalf("reported row: %s %s", code, state)
+	}
+	absent.Store(true)
+	if _, err := chatSyncStats(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := door.RelayStorage(); code != "" {
+		t.Fatal("no-field answer retained row")
+	}
+	for range 3 {
+		if _, err := chatSyncStats(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if requests.Load() != 2 {
+		t.Fatalf("no-field requests: %d", requests.Load())
+	}
+}
+
 func TestStorageOptInQuitReceiptAfterRevocation(t *testing.T) {
 	armFinalSaving()
 	retainLocalDurability(func() bool { return true })

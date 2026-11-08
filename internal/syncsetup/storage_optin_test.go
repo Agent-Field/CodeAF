@@ -66,8 +66,8 @@ func TestStorageOptInCacheAndUploadDoors(t *testing.T) {
 		t.Fatal("revoked store made a request")
 	}
 	_ = SaveStorage(home, ProductionRelayURL, id, "")
-	if StorageState(home, ProductionRelayURL, id) != "off" {
-		t.Fatal("missing hosted answer enabled storage")
+	if StorageState(home, ProductionRelayURL, id) != "on" {
+		t.Fatal("no-field hosted answer must enable legacy storage")
 	}
 	_ = os.WriteFile(filepath.Join(home, StorageFile), []byte("{"), 0600)
 	if StorageState(home, ProductionRelayURL, id) != "off" {
@@ -89,9 +89,10 @@ func TestStorageOptInDriveStopsBeforeAnyNetworkOrEngineWork(t *testing.T) {
 }
 
 func TestStorageOptInWireRefusalClosesAllLocalUploaders(t *testing.T) {
+	const relay = "http://127.0.0.1:18831"
 	home := t.TempDir()
 	id := "id_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := SaveStorage(home, ProductionRelayURL, id, "on"); err != nil {
+	if err := SaveStorage(home, relay, id, "on"); err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
@@ -99,8 +100,8 @@ func TestStorageOptInWireRefusalClosesAllLocalUploaders(t *testing.T) {
 		calls++
 		return &http.Response{StatusCode: 403, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"err":"storage_off"}`))}, nil
 	})}
-	first := GateStore(blobstore.NewHTTP(ProductionRelayURL, func(*http.Request, []byte) {}, hc), home, ProductionRelayURL, id)
-	second := GateStore(blobstore.NewHTTP(ProductionRelayURL, func(*http.Request, []byte) {}, hc), home, ProductionRelayURL, id)
+	first := GateStore(blobstore.NewHTTP(relay, func(*http.Request, []byte) {}, hc), home, relay, id)
+	second := GateStore(blobstore.NewHTTP(relay, func(*http.Request, []byte) {}, hc), home, relay, id)
 	_, _ = first.PutFrame(t.Context(), nil)
 	if _, err := second.PutFrame(t.Context(), nil); !errors.Is(err, wireauth.ErrStorageOff) || calls != 1 {
 		t.Fatalf("refusal was not remembered: %v requests=%d", err, calls)
@@ -190,5 +191,24 @@ func TestStorageOptInRotationBindingRelay(t *testing.T) {
 		if env := s.Rotation(cellstore.Engine{}, nil, "", nil); env.HostedRelay != "" {
 			t.Fatalf("self-hosted binding %q", env.HostedRelay)
 		}
+	}
+}
+
+func TestStorageOptInLegacyCustomOnCacheDoesNotInventCapability(t *testing.T) {
+	home := t.TempDir()
+	const relay = "http://127.0.0.1:18831"
+	const id = "id_account"
+	raw := `{"relay":"http://127.0.0.1:18831","identity":"id_account","storage":"on"}`
+	if err := os.WriteFile(filepath.Join(home, StorageFile), []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if StorageGated(home, relay, id) || StorageState(home, relay, id) != "on" || !StorageNeedsRefresh(home, relay, id) {
+		t.Fatal("legacy on cache cannot prove a custom relay reported storage")
+	}
+	if err := SaveStorage(home, relay, id, "on"); err != nil {
+		t.Fatal(err)
+	}
+	if !StorageGated(home, relay, id) || StorageNeedsRefresh(home, relay, id) {
+		t.Fatal("explicit on answer must be gating and idle")
 	}
 }

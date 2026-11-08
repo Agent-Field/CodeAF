@@ -1962,7 +1962,7 @@ the Memories tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
 Devices lists your paired computers, renames this one, removes another, and starts
-`/pair` from `Add another device`. A paired hosted account also has `relay storage`: when off, Enter opens a request and shows its code and link, including from Settings search. Self-hosted storage needs no request.
+`/pair` from `Add another device`. A paired account on a relay that reports storage permission also has `relay storage`: when off, Enter opens a request and shows its code and link, including from Settings search. Self-hosted storage needs no request.
 Privacy holds history, drafts and data-sharing choices.
 
 Old saved keys and values are unchanged. Search accepts old labels and keys,

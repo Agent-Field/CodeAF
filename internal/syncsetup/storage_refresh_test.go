@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -105,4 +108,129 @@ func TestStorageOptInSignedRefreshUpdatesWaitersAndRunningDrives(t *testing.T) {
 			t.Fatal("refresh failed to wake")
 		}
 	}
+}
+
+// Exercise the real signed stats wire at an arbitrary relay address.
+func TestStorageOptInRelayAnswerDecides(t *testing.T) {
+	celltest.Available(t)
+	for _, answer := range []string{`{"storage":"off"}`, `{"storage":"on"}`, `{"objects":0}`} {
+		t.Run(answer, func(t *testing.T) {
+			var requests atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if r.URL.Path != "/v1/store/stats" || r.Header.Get("Codeaf-Sig") == "" {
+					t.Errorf("unexpected stats: %s %s", r.Method, r.URL.Path)
+				}
+				_, _ = w.Write([]byte(answer))
+			}))
+			defer srv.Close()
+			t.Setenv(URLVar, srv.URL)
+			home := t.TempDir()
+			id, err := identity.Ensure(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if StorageState(home, srv.URL, id.ID()) != "on" {
+				t.Fatal("unknown custom relay must start open")
+			}
+			p := storageProcessFor(home)
+			p.users = 1
+			var next func()
+			p.after = func(_ time.Duration, fn func()) func() bool {
+				next = fn
+				return func() bool { next = nil; return true }
+			}
+			defer p.disarm()
+			p.check(true)
+			if requests.Load() != 1 {
+				t.Fatalf("startup requests=%d want 1", requests.Load())
+			}
+			if strings.Contains(answer, `"off"`) {
+				if StorageState(home, srv.URL, id.ID()) != "off" || next == nil {
+					t.Fatal("relay's off answer must close gate and continue refresh")
+				}
+			} else {
+				if StorageState(home, srv.URL, id.ID()) != "on" || next != nil {
+					t.Fatal("no-field answer must leave gate open without a timer")
+				}
+				p.check(true)
+				if requests.Load() != 1 {
+					t.Fatalf("repeated no-field probe: %d", requests.Load())
+				}
+				// A new process reading the persisted answer also remains idle.
+				fresh := &storageProcess{ctx: t.Context(), users: 1, read: p.read, fetch: p.fetch, after: p.after, now: time.Now}
+				fresh.check(true)
+				if requests.Load() != 1 {
+					t.Fatal("no-field answer was not cached")
+				}
+			}
+		})
+	}
+}
+
+func TestStorageOptInUnansweredCustomProbeFailure(t *testing.T) {
+	celltest.Available(t)
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	t.Setenv(URLVar, srv.URL)
+	home := t.TempDir()
+	id, err := identity.Ensure(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := storageProcessFor(home)
+	p.users = 1
+	p.after = func(time.Duration, func()) func() bool {
+		t.Error("failed custom probe armed a timer")
+		return func() bool { return true }
+	}
+	for range 3 {
+		p.check(true)
+	}
+	if requests.Load() != 1 || StorageState(home, srv.URL, id.ID()) != "on" || StorageNeedsRefresh(home, srv.URL, id.ID()) {
+		t.Fatalf("failed discovery requests=%d state=%s", requests.Load(), StorageState(home, srv.URL, id.ID()))
+	}
+}
+
+func TestStorageOptInDiscoveryQuietHomes(t *testing.T) {
+	for _, mode := range []string{"sync-off", "unpaired", "no-identity"} {
+		t.Run(mode, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv(URLVar, "http://127.0.0.1:1")
+			if mode == "sync-off" {
+				t.Setenv(URLVar, "off")
+				if _, err := identity.Ensure(home); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if mode == "unpaired" {
+				if _, err := identity.EnsureSolo(home); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := storageProcessFor(home)
+			p.users = 1
+			p.fetch = func(context.Context) error { t.Error("quiet home requested stats"); return nil }
+			p.after = func(time.Duration, func()) func() bool {
+				t.Error("quiet home armed timer")
+				return func() bool { return true }
+			}
+			p.check(true)
+		})
+	}
+}
+
+func TestStorageOptInCustomProbeSharedByCallers(t *testing.T) {
+ home := t.TempDir()
+ id, err := identity.Ensure(home)
+ if err != nil { t.Fatal(err) }
+ const relay = "http://127.0.0.1:18831"
+ for i:=0;i<50;i++ {
+  want := i==0
+  if got:=StorageNeedsRefresh(home,relay,id.ID());got!=want { t.Fatalf("caller %d requests=%v want=%v",i,got,want) }
+ }
 }

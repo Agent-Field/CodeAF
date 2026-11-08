@@ -8,7 +8,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
-	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // syncSpaceWithin keeps an optional relay reading from outliving its usefulness.
@@ -78,12 +77,13 @@ func (a *app) syncSpaceWord() string {
 
 // Failed readings retain only the previous permission, never stale usage totals.
 func (a *app) relayStorageOff() bool {
-	if !syncsetup.IsHostedRelay(a.syncService) {
+	if a.syncService == "" || a.syncService == "off" {
 		return false
 	}
-	if a.syncSpace.Storage != "" {
-		return a.syncSpace.Storage == "off"
+	// Another local process or a refused upload may have refreshed permission
+	// after the last usage reading was painted.
+	if _, state := a.relayStorageAccount(); state != "" {
+		return state == "off"
 	}
-	_, state := a.relayStorageAccount()
-	return state == "off"
+	return a.syncSpace.Storage == "off"
 }

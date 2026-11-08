@@ -32,6 +32,7 @@ type storageProcess struct {
 	dirty                       bool
 	counts                      blobstore.Counts
 	countsRelay, countsIdentity string
+	probeRelay, probeIdentity   string
 	// These seams count actual scheduled work without relying on elapsed time.
 	after func(time.Duration, func()) func() bool
 	read  func() (string, string, string)
@@ -49,14 +50,18 @@ func storageProcessFor(home string) *storageProcess {
 		p.after = func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop }
 		p.read = func() (string, string, string) {
 			relay := Resolve(home)
-			if !relay.On() || !IsHostedRelay(relay.URL) || identity.Solo(home) {
+			if !relay.On() || identity.Solo(home) {
 				return "", "", ""
 			}
 			id, err := identity.Load(home)
 			if err != nil {
 				return "", "", ""
 			}
-			return relay.URL, id.ID(), StorageState(home, relay.URL, id.ID())
+			state, gating, answered := storagePolicy(home, relay.URL, id.ID())
+			if !answered && !gating {
+				state = ""
+			}
+			return relay.URL, id.ID(), state
 		}
 		p.fetch = func(ctx context.Context) error {
 			s, ok, err := Open(home)
@@ -72,8 +77,9 @@ func storageProcessFor(home string) *storageProcess {
 }
 
 // StartStorageRefresh shares one asynchronous signed reading at startup and
-// every ten minutes while hosted storage is unknown or off. Callers join its
-// lifetime independently; chat opening never waits for a network answer.
+// every ten minutes while a gating relay is unknown or off. Other relays get
+// one discovery request until an answer establishes their storage policy.
+// Callers join its lifetime independently; chat opening never waits for a network answer.
 func StartStorageRefresh(ctx context.Context, home string, initial ...bool) func() {
 	p := storageProcessFor(home)
 	p.mu.Lock()
@@ -115,10 +121,11 @@ func (s *Sync) RefreshStorage(ctx context.Context) (blobstore.Counts, error) {
 	if !ok {
 		return blobstore.Counts{}, nil
 	}
+	p := storageProcessFor(s.Home)
+	p.mu.Lock()
+	p.probeRelay, p.probeIdentity = normalizeStorageURL(s.Relay), s.Identity.ID()
+	p.mu.Unlock()
 	counts, err := store.Stats(ctx)
-	storageProcesses.Lock()
-	p := storageProcesses.homes[s.Home]
-	storageProcesses.Unlock()
 	if p != nil {
 		p.mu.Lock()
 		p.lastRefresh = p.now()
@@ -191,8 +198,14 @@ func (p *storageProcess) check(refresh bool) {
 	p.active = true
 	p.disarm()
 	p.mu.Unlock()
-	relay, _, state := p.read()
-	if relay != "" && state != "on" && refresh {
+	relay, id, state := p.read()
+	p.mu.Lock()
+	ask := state == "off" || state == "" && (p.probeRelay != normalizeStorageURL(relay) || p.probeIdentity != id)
+	if relay != "" && ask && refresh {
+		p.probeRelay, p.probeIdentity = normalizeStorageURL(relay), id
+	}
+	p.mu.Unlock()
+	if relay != "" && ask && refresh {
 		ctx, cancel := context.WithTimeout(p.ctx, requestTimeout)
 		_ = p.fetch(ctx)
 		cancel()
@@ -212,7 +225,7 @@ func (p *storageProcess) check(refresh bool) {
 			delete(p.waiting, id)
 		}
 	}
-	if relay != "" && state != "on" && (p.users > 0 || len(p.waiting) > 0) {
+	if relay != "" && state == "off" && (p.users > 0 || len(p.waiting) > 0) {
 		wait := StorageRefreshEvery
 		if p.users > 0 && !p.lastRefresh.IsZero() {
 			wait = max(time.Millisecond, StorageRefreshEvery-p.now().Sub(p.lastRefresh))
@@ -292,4 +305,26 @@ func StorageCounts(home, relay, identity string) blobstore.Counts {
 	}
 	counts.Storage = "on"
 	return counts
+}
+
+// StorageNeedsRefresh keeps startup and /status on the same request policy.
+// It reserves an unanswered custom relay probe atomically across callers.
+// An unanswered custom relay is probed at most once in this process, even if
+// that request fails. Hosted unknown/off permissions retain approval discovery.
+func StorageNeedsRefresh(home, relay, id string) bool {
+	state, gating, answered := storagePolicy(home, relay, id)
+	if state == "off" {
+		return true
+	}
+	if answered || gating {
+		return false
+	}
+	p := storageProcessFor(home)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.probeRelay == normalizeStorageURL(relay) && p.probeIdentity == id {
+		return false
+	}
+	p.probeRelay, p.probeIdentity = normalizeStorageURL(relay), id
+	return true
 }

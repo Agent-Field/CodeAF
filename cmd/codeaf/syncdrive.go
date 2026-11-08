@@ -232,7 +232,7 @@ func chatSyncStats(ctx context.Context) (blobstore.Counts, error) {
 	if err != nil {
 		return blobstore.Counts{}, err
 	}
-	if syncsetup.IsHostedRelay(s.Relay) && s.StorageAllowed() {
+	if !syncsetup.StorageNeedsRefresh(s.Home, s.Relay, s.Identity.ID()) {
 		return syncsetup.StorageCounts(s.Home, s.Relay, s.Identity.ID()), nil
 	}
 	before := s.StorageAllowed()
@@ -240,7 +240,7 @@ func chatSyncStats(ctx context.Context) (blobstore.Counts, error) {
 	if err == nil && !before && s.StorageAllowed() {
 		syncDrives.storageOpened()
 	}
-	if syncsetup.IsHostedRelay(s.Relay) && counts.Storage != "on" {
+	if syncsetup.StorageGated(s.Home, s.Relay, s.Identity.ID()) && counts.Storage != "on" {
 		counts.Storage = "off"
 	}
 	return counts, err

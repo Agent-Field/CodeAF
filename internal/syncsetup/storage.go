@@ -23,9 +23,10 @@ const StoragePollEvery = time.Minute
 const StorageRequestURL = "https://github.com/Agent-Field/CodeAF/issues/new"
 
 type storageReading struct {
-	Relay    string `json:"relay"`
-	Identity string `json:"identity"`
-	Storage  string `json:"storage"`
+	Relay          string `json:"relay"`
+	Identity       string `json:"identity"`
+	Storage        string `json:"storage"`
+	ReportsStorage *bool  `json:"reports_storage,omitempty"`
 }
 
 // IsHostedRelay recognizes all hosted channels, including an explicitly saved URL.
@@ -39,35 +40,60 @@ func IsHostedRelay(raw string) bool {
 	return false
 }
 
-// StorageState reads only local state. An unknown hosted permission is closed;
-// older and self-hosted relays retain their existing enabled storage policy.
-func StorageState(home, relay, identity string) string {
+// storagePolicy distinguishes a cached answer without storage from no answer.
+// A legacy on reading at a custom address could have come from the old
+// no-field default; it needs one probe before claiming a permission row.
+func storagePolicy(home, relay, identity string) (state string, gating, answered bool) {
 	raw, err := os.ReadFile(filepath.Join(home, StorageFile))
 	var reading storageReading
 	if err == nil && json.Unmarshal(raw, &reading) == nil &&
-		normalizeStorageURL(reading.Relay) == normalizeStorageURL(relay) && reading.Identity == identity &&
-		(reading.Storage == "on" || reading.Storage == "off") {
-		return reading.Storage
+		normalizeStorageURL(reading.Relay) == normalizeStorageURL(relay) && reading.Identity == identity {
+		switch reading.Storage {
+		case "on", "off":
+			if reading.ReportsStorage != nil {
+				if !*reading.ReportsStorage {
+					return "on", false, true
+				}
+				return reading.Storage, true, true
+			}
+			if reading.Storage == "off" || IsHostedRelay(relay) {
+				return reading.Storage, true, true
+			}
+			return "on", false, false
+		case "":
+			return "on", false, true
+		}
 	}
 	if IsHostedRelay(relay) {
-		return "off"
+		return "off", true, false
 	}
-	return "on"
+	return "on", false, false
 }
 
-// SaveStorage remembers a successful stats answer atomically. Missing state
-// means closed on our hosts and enabled on a relay that predates this field.
+// StorageState reads only local state. Before an answer, hosted services are
+// closed and other relays are open; afterwards the relay's answer decides.
+func StorageState(home, relay, identity string) string {
+	state, _, _ := storagePolicy(home, relay, identity)
+	return state
+}
+
+// StorageGated reports whether this relay exposes account storage permission.
+func StorageGated(home, relay, identity string) bool {
+	_, gating, _ := storagePolicy(home, relay, identity)
+	return gating
+}
+
+// SaveStorage remembers a successful stats answer atomically. An empty state
+// records a relay without storage permission, so it need not be probed again.
 func SaveStorage(home, relay, identity, state string) error {
-	if state != "on" && state != "off" {
-		state = "on"
-		if IsHostedRelay(relay) {
-			state = "off"
-		}
+	reports := state != ""
+	if reports && state != "on" {
+		state = "off"
 	}
 	if err := os.MkdirAll(home, 0700); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(storageReading{normalizeStorageURL(relay), identity, state})
+	raw, err := json.Marshal(storageReading{Relay: normalizeStorageURL(relay), Identity: identity, Storage: state, ReportsStorage: &reports})
 	if err != nil {
 		return err
 	}
@@ -86,11 +112,15 @@ func SaveStorage(home, relay, identity, state string) error {
 	if err := os.Rename(f.Name(), filepath.Join(home, StorageFile)); err != nil {
 		return err
 	}
-	storageSaved(home, relay, identity, state)
+	effective := state
+	if effective == "" {
+		effective = "on"
+	}
+	storageSaved(home, relay, identity, effective)
 	return nil
 }
 
-// GateStore keeps every hosted upload door on the same local permission check.
+// GateStore keeps every relay upload door on the same local permission check.
 func GateStore(store *blobstore.HTTP, home, relay, identity string) *blobstore.HTTP {
 	store.CanStore = func() bool { return StorageState(home, relay, identity) == "on" }
 	store.OnStorageOff = func() { _ = SaveStorage(home, relay, identity, "off") }

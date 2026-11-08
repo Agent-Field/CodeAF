@@ -8,9 +8,15 @@ Pairing, seeing your devices and `--at` still work while the other computer is o
 
 After pairing, open **Settings → Devices → relay storage**. When it says **off**, press **enter** (`enter request access`). This opens a pre-filled GitHub issue; the panel also shows the request code and link if no browser opens. The request code is your identity id (`id_` followed by 32 hex digits). It is safe to post publicly and grants nothing by itself.
 
-Serving processes and chat windows check at launch, after `/status` in chat, and every ten minutes while hosted storage is off. Once approval is read, waiting chats and uploads start within a minute without a restart. Opening a chat never waits for a relay reading. `/status` shows the dim line `relay storage  off` while hosted storage is off. Revocation stops new uploads and leaves earlier frames readable.
+Revocation stops new uploads and leaves earlier frames readable. A self-hosted `codeaf relay --store <directory>` keeps storage on and needs no request. Approved hosted accounts still have the limits on *Relay limits and refusals*.
 
-A self-hosted `codeaf relay --store <directory>` keeps storage on and needs no request. Approved hosted accounts still have the limits on *Relay limits and refusals*.
+## How relay storage permission is discovered — custom addresses, startup and status
+
+The relay's answer decides, whatever its hostname. When it reports storage permission, Settings shows the relay storage row and `/status` shows the dim line `relay storage  off` while off. A relay that answers without storage permission, including the self-hosted Go relay and older hosted Workers, keeps storage on and has no row or line.
+
+Before any answer, the three hosted addresses on *Hosted relay or your own relay* start closed; other addresses start open. A paired process probes an unanswered custom address once at startup. A successful answer is remembered for this account and relay, including when the field is absent. Sync off and unpaired homes make no requests.
+
+Serving processes and chat windows check at launch, after `/status` in chat, and every ten minutes while a relay that reports storage is off (or a hosted address is still unknown). Storage on or an answer without the field stops requests. Once approval is read, waiting chats and uploads start within a minute without a restart. Opening a chat never waits for a relay reading.
 
 ## Does the relay store my chats — what is on the relay's disk
 
