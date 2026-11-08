@@ -315,9 +315,7 @@ func mirrorDirs(root string) []string {
 	if err != nil {
 		return nil
 	}
-	mirrorsSeen.mu.Lock()
-	last, ok := mirrorsSeen.last[root]
-	mirrorsSeen.mu.Unlock()
+	last, ok := seenMirrors(root)
 	if ok && sameFolder(last.top, info) && sameProcs(top, last.procs) {
 		return last.dirs
 	}
@@ -338,13 +336,24 @@ func mirrorDirs(root string) []string {
 			}
 		}
 	}
+	rememberMirrors(root, next)
+	return next.dirs
+}
+
+func seenMirrors(root string) (mirrorFolders, bool) {
 	mirrorsSeen.mu.Lock()
+	defer mirrorsSeen.mu.Unlock()
+	last, ok := mirrorsSeen.last[root]
+	return last, ok
+}
+
+func rememberMirrors(root string, next mirrorFolders) {
+	mirrorsSeen.mu.Lock()
+	defer mirrorsSeen.mu.Unlock()
 	if len(mirrorsSeen.last) >= 64 {
 		mirrorsSeen.last = map[string]mirrorFolders{}
 	}
 	mirrorsSeen.last[root] = next
-	mirrorsSeen.mu.Unlock()
-	return next.dirs
 }
 
 func sameProcs(top string, procs map[string]os.FileInfo) bool {
