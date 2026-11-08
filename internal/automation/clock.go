@@ -189,13 +189,7 @@ func (c *Clock) Run(ctx context.Context) error {
 	}
 	defer release()
 	c.inflight = map[int64]*flight{}
-	// A CLOCK IS ONLY EVER TAKEN FROM A PROCESS THAT IS GONE, so a run still
-	// recorded as running is one nobody is running any more.
-	if n, err := c.Store.Abandoned(LineClosed); err != nil {
-		c.log("could not close runs a previous clock left: " + err.Error())
-	} else if n > 0 {
-		c.log(fmt.Sprintf("closed %d run(s) a previous clock left running", n))
-	}
+	c.closeAbandoned()
 	var empty time.Time
 	ticker := time.NewTicker(pollEvery)
 	defer ticker.Stop()
@@ -235,6 +229,17 @@ func (c *Clock) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 		}
+	}
+}
+
+// closeAbandoned closes the runs a previous clock left. A CLOCK IS ONLY EVER
+// TAKEN FROM A PROCESS THAT IS GONE, so a run still recorded as running is one
+// nobody is running any more.
+func (c *Clock) closeAbandoned() {
+	if n, err := c.Store.Abandoned(LineClosed); err != nil {
+		c.log("could not close runs a previous clock left: " + err.Error())
+	} else if n > 0 {
+		c.log(fmt.Sprintf("closed %d run(s) a previous clock left running", n))
 	}
 }
 
