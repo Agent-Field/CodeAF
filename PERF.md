@@ -557,34 +557,75 @@ grows by one set of rows per restart.
 
 `settleJobs` (a hydrated `Store.List`) ran before EVERY request. A runner's own
 requests (`/v1/worker/…`, fifteen pulls re-made each 30 s wait) now settle the
-floor at most once a `workerSettleEvery` (1 s); every other request still
-settles first. `TestARunnersRequestsSettleTheFloorAtMostOnceASecond` counts
-settles (`settles`): twenty runner requests inside one second make one.
+floor at most once a `workerSettleEvery` (1 s), and its beats (every held job's
+lease heartbeat each `lease.HeartbeatEvery`, 2 s, and its presence) at most once
+a `beatSettleEvery` (5 s; at 1 s two holds made a full settle every second). A
+beat reports nothing, so nothing it brings settles late; a report still settles
+within a second, which is how Auto's publish follows its proof. Every other
+request still settles first, and the job timer settles at each deadline it knows.
+`TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow` counts settles
+(`settles`): pulls inside one second make none, beats inside five make none, one
+after each window makes one.
 
-Live, `codeaf app` on linux/arm64 with a GitHub-connected local factory, 79
-jobs on the floor (eight of them the fourth live run's documents, 24–135 KB),
-68 conversations held open (8 managers, 60 step chats), the runner on with 15
-slots and nothing to do; the engine's own CPU from `/proc/<pid>/stat` every
-10 s for 5 minutes (scratch rig `idle_rig.py`):
+### With a hold on the floor (the seventh live A+B run)
 
-| | average | max |
+The seventh live run idled at 20–26% of a core on macOS with 86 jobs, 15 slots
+and two native jobs holding leases. Each held job's runner renews its lease
+every 2 s, which rewrote `leases.json`, which woke every open pull, and with any
+hold present every woken pull looked: fifteen `Desk.Pull` calls, each a flock,
+a `ListSaved` deep copy of all 86 jobs and a sort, once a second. Three changes:
+
+- **A renewal wakes no pull.** The root watch compares the lease document's
+  `lease.RenewalShape` (every hold, signal and receipt, without `heartbeat_at`
+  and `expires_at`); a rewrite that only renewed wakes nobody. Folders under
+  the root (a runner's holds and reports) and `events.jsonl` are no input of a
+  look either. A hold that expires is still requeued by the next look, at most
+  one pull wait (30 s) later, as before.
+  `TestARenewalWakesNoPullAndARealChangeWakesThemAll` publishes thirty renewals
+  by hand and counts no wake.
+- **One reading of a change for every slot.** `Desk.floorQueue` keeps the queue
+  in `runsBefore` order with the file each job came from; a look stats the floor
+  and reuses every job whose file is unchanged, reading only a changed one, and
+  sorts only when one changed. The queue is shared and read-only (the
+  reservation re-reads the job under its lock). `OverLimit` reads the same
+  queue. `TestSlotsWokenByOneChangeShareOneReadingOfIt`: 45 looks at an
+  unchanged 40-job floor read no job; one change reads one job once.
+- **A job already held at its budget is not saved again by a look.** With a
+  reply pending it stays eligible, and each look saved it unchanged as a fresh
+  file, which woke every pull to save it again.
+  `TestALookLeavesAJobAtItsBudgetAsItIsOnDisk` (ten looks; the old code moved
+  its revision from 2 to 12).
+- **A held job's runner parses its manager's journal once per version.** The
+  worker's flush ran `thread.Read` every beat, parsing the manager's whole
+  transcript twice; it now hands back the answer read last while the journal
+  and its folder are unchanged (os.SameFile, size, time, mode).
+  `TestAnUnchangedJournalIsParsedOnceAndAnAppendedLineIsRead`: eleven reads of
+  an unchanged journal parse it once; an appended line is read.
+- **A job chat's budget watch lists no folder while the mirrors are unchanged.**
+  Every open job chat asked `jobChat.holders` where its job's money is every
+  few seconds, and each asking globbed `workers/*/*/<job>.json`. The mirror
+  folders are now listed once per change of `workers/` or a process folder in
+  it, and a named job file is one stat per mirror.
+  `TestAJobChatsHoldersListTheMirrorFoldersOncePerChangeOfThem`: twenty askings
+  list the folders at most once; a new mirror is found on the next.
+
+Rig (scratch `r7rig.py`): `codeaf app` with a local factory, 84 of r7's final
+job documents plus two native jobs whose step holds its lease, about 45 open job
+chats, the runner on with 15 slots, a stub model; the engine's CPU over 120 s
+starting 200 s after start:
+
+| | linux/arm64 | macOS (mac-studio) |
 | --- | --- | --- |
-| before (`2c3805a2e`, idle code as `550796049`) | 5.8% | 23.5% |
-| after | 3.1% | 18.0% |
+| before (`1436ad765`) | 11.12% | 24.09% |
+| after | 1.78% | 6.25% |
 
-Both runs spend their first 20 s settling (13–23%). Then the before engine
-holds about 2% with a 7–8% sample every 30 s, when the fifteen pulls are made
-again and each looks and settles; the after engine holds 1.7–2.6% throughout. A
-CPU profile of an idle minute taken with only the stop-check change applied put
-35% of its samples in `lease.Desk.Pull` → `store.ListSaved` → `encoding/json`
-and 12% in `settleJobs`, which is what the pull and settle changes remove.
+The macOS after is above the 5% bar. Its remaining steady profile (60 s, 6.2%
+of a core) is file-status calls: the floor's hydrated settle every five seconds
+(`settleJobs`, 11%), each held job's flush re-reading its job (10%), and the
+presence beat. With 43 chats that each ran fifteen tool calls the same build
+reads 7.6%. Quit took 1.5–1.7 s on both hosts, before and after; the rig does
+not reproduce the live run's 28–30 s.
 
-`BenchmarkAutomaticRefusal`, six jobs of about 30 KB each, linux/arm64:
-
-| | per check | allocated | allocations |
-| --- | --- | --- | --- |
-| before (list and decode every job) | 8.5 ms | 1.9 MB | 6,420 |
-| after (stat the job's file) | 4.5 µs | 1.7 KB | 21 |
-
-Five idle managers made 50 checks a second, about 0.43 of a core on this floor
-before, growing with jobs × managers; after, about 0.2 ms of CPU a second.
+`CODEAF_DIAGNOSTIC_PROFILE_DELAY` (1..3600 s) opens the developer profile's
+window that long after start, so a steady idle can be profiled; the window
+itself is still at most 60 s.

@@ -580,7 +580,7 @@ func (h *Handler) idleFloor() (string, bool) {
 	var b strings.Builder
 	names := make([]string, 0, len(snap.files))
 	for name := range snap.files {
-		if !lookBookkeeping(name) {
+		if snap.floorInput(name) {
 			names = append(names, name)
 		}
 	}

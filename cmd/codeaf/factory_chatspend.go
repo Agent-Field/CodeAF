@@ -255,12 +255,17 @@ func liveMirrors(floor *store.Store, file string) []*store.Store {
 	if floor == nil {
 		return nil
 	}
-	held, _ := filepath.Glob(filepath.Join(floor.Root(), "workers", "*", "*", file))
 	seen := map[string]bool{}
 	var out []*store.Store
-	for _, path := range held {
-		dir := filepath.Dir(path)
+	for _, dir := range mirrorDirs(floor.Root()) {
 		if seen[dir] {
+			continue
+		}
+		if file == "*" {
+			if entries, err := os.ReadDir(dir); err != nil || len(entries) == 0 {
+				continue
+			}
+		} else if _, err := os.Lstat(filepath.Join(dir, file)); err != nil {
 			continue
 		}
 		seen[dir] = true
@@ -273,6 +278,96 @@ func liveMirrors(floor *store.Store, file string) []*store.Store {
 		}
 	}
 	return out
+}
+
+// ── the mirror folders are listed once per change of them ──────────────────
+//
+// EVERY OPEN JOB CHAT LISTED THE WORKERS' FOLDERS EVERY FEW SECONDS. Each job
+// chat's budget watch asks [jobChat.Refusal] where its job's money is, and that
+// globbed `workers/*/*/<job>.json`: two folder listings and an open of each,
+// for every chat, every watch. The seventh live A+B run's idle profile on
+// macOS put a fifth of the engine there with 43 chats open. A folder's
+// identity (its time moves when an entry is added or removed) says whether the
+// mirror folders listed last are still the folders, so a look stats
+// `workers/` and each process's folder and lists nothing; a named job file is
+// then one stat in each mirror.
+
+type mirrorFolders struct {
+	// top is `workers/` as it was listed; procs each process folder in it.
+	top   os.FileInfo
+	procs map[string]os.FileInfo
+	dirs  []string
+}
+
+var mirrorsSeen = struct {
+	mu   sync.Mutex
+	last map[string]mirrorFolders
+}{last: map[string]mirrorFolders{}}
+
+// mirrorListings counts the times the mirror folders were listed afresh, so a
+// test can say an unchanged set was not listed again.
+var mirrorListings atomic.Int64
+
+// mirrorDirs is every `<root>/workers/<pid>/<factory>` folder, in name order.
+func mirrorDirs(root string) []string {
+	top := filepath.Join(root, "workers")
+	info, err := os.Stat(top)
+	if err != nil {
+		return nil
+	}
+	last, ok := seenMirrors(root)
+	if ok && sameFolder(last.top, info) && sameProcs(top, last.procs) {
+		return last.dirs
+	}
+	mirrorListings.Add(1)
+	next := mirrorFolders{top: info, procs: map[string]os.FileInfo{}}
+	procs, _ := os.ReadDir(top)
+	for _, proc := range procs {
+		dir := filepath.Join(top, proc.Name())
+		pinfo, err := os.Stat(dir)
+		if err != nil || !pinfo.IsDir() {
+			continue
+		}
+		next.procs[proc.Name()] = pinfo
+		folders, _ := os.ReadDir(dir)
+		for _, folder := range folders {
+			if folder.IsDir() {
+				next.dirs = append(next.dirs, filepath.Join(dir, folder.Name()))
+			}
+		}
+	}
+	rememberMirrors(root, next)
+	return next.dirs
+}
+
+func seenMirrors(root string) (mirrorFolders, bool) {
+	mirrorsSeen.mu.Lock()
+	defer mirrorsSeen.mu.Unlock()
+	last, ok := mirrorsSeen.last[root]
+	return last, ok
+}
+
+func rememberMirrors(root string, next mirrorFolders) {
+	mirrorsSeen.mu.Lock()
+	defer mirrorsSeen.mu.Unlock()
+	if len(mirrorsSeen.last) >= 64 {
+		mirrorsSeen.last = map[string]mirrorFolders{}
+	}
+	mirrorsSeen.last[root] = next
+}
+
+func sameProcs(top string, procs map[string]os.FileInfo) bool {
+	for name, was := range procs {
+		now, err := os.Stat(filepath.Join(top, name))
+		if err != nil || !sameFolder(was, now) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameFolder(a, b os.FileInfo) bool {
+	return a != nil && b != nil && os.SameFile(a, b) && a.ModTime().Equal(b.ModTime()) && a.Mode() == b.Mode()
 }
 
 // talkKey is a conversation's file as the job names it: its clean path, and

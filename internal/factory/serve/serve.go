@@ -449,27 +449,47 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !workerPath(r.URL.Path) || h.workerSettleDue() {
+	if !workerPath(r.URL.Path) || h.workerSettleDue(workerSettleWindow(r.URL.Path)) {
 		h.settleJobs(r.Method == http.MethodPost)
 	}
 	h.idempotent(w, r)
 }
 
-// workerSettleEvery is how often a runner's requests settle the floor.
-const workerSettleEvery = time.Second
+// workerSettleEvery is how often a runner's requests settle the floor, and
+// beatSettleEvery how often its beats alone do.
+const (
+	workerSettleEvery = time.Second
+	beatSettleEvery   = 5 * time.Second
+)
+
+// workerSettleWindow is how long a runner's request at path may follow the last
+// settle without settling again. A BEAT SETTLES AT MOST EVERY FIVE SECONDS:
+// every held job's runner renews its lease every two seconds and says it is
+// present, so at one second two holds settled the whole floor every second for
+// as long as they were held, the biggest cost left in the seventh live run's
+// idle engine once the pulls were quiet. A beat reports nothing, so nothing it
+// brings is settled late; a report, a release or a pull that lands work still
+// settles within a second, which is how Auto's publish follows its proof.
+func workerSettleWindow(path string) time.Duration {
+	if strings.HasSuffix(path, "/heartbeat") || path == "/v1/runners/presence" {
+		return beatSettleEvery
+	}
+	return workerSettleEvery
+}
 
 // workerSettleDue says a runner's request settles the floor now. A SETTLE
-// LISTS AND DECODES EVERY JOB, and it ran before every request: each runner
-// slot's pull and each heartbeat. Fifteen idle slots re-pull together every
-// wait, so an idle machine decoded the whole floor fifteen times every thirty
-// seconds to settle nothing. A runner's requests settle at most once per
-// [workerSettleEvery], so a deadline falls due on a runner's request at most
-// that late; every request a person makes still settles first.
-func (h *Handler) workerSettleDue() bool {
+// LISTS AND DEEP-COPIES EVERY JOB, and it ran before every request: each
+// runner slot's pull and each heartbeat. Fifteen idle slots re-pull together
+// every wait, so an idle machine decoded the whole floor fifteen times every
+// thirty seconds to settle nothing. A runner's requests settle at most once per
+// window ([workerSettleWindow]), so a deadline falls due on a runner's request
+// at most that late; every request a person makes still settles first, and the
+// job timer ([Handler.scheduleJobTimer]) settles at each deadline it knows.
+func (h *Handler) workerSettleDue(every time.Duration) bool {
 	now := h.clock()
 	h.workerSettleMu.Lock()
 	defer h.workerSettleMu.Unlock()
-	if !h.workerSettled.IsZero() && now.Sub(h.workerSettled) < workerSettleEvery && !now.Before(h.workerSettled) {
+	if !h.workerSettled.IsZero() && now.Sub(h.workerSettled) < every && !now.Before(h.workerSettled) {
 		return false
 	}
 	h.workerSettled = now

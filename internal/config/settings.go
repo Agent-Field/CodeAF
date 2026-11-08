@@ -1250,6 +1250,7 @@ var OperatorEnvPins = []string{
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
 	"CODEAF_DIAGNOSTIC_PROFILE_SECONDS",
 	"CODEAF_DIAGNOSTIC_PROFILE_HEAP",
+	"CODEAF_DIAGNOSTIC_PROFILE_DELAY",
 	// CODEAF_QUESTION_DEMO names one of the fixture questions the question page
 	// draws itself with (internal/tui3's questiondemo.go), so that a page whose
 	// real questions do not exist yet can be SEEN full rather than only through

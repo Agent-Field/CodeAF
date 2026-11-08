@@ -5,13 +5,16 @@ import (
 	"errors"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/fsnotify/fsnotify"
 )
@@ -41,6 +44,24 @@ type rootWatch struct {
 	due   chan struct{}
 	timer *time.Timer
 	snap  fileSnap
+	// leases is the lease document's [lease.RenewalShape] as the floor last
+	// heard it, so a rewrite that only renewed a hold wakes no pull.
+	leases floorLeases
+}
+
+// floorLeases is one reading of the lease document for the floor.
+type floorLeases struct {
+	shape string
+	ok    bool
+}
+
+func readFloorLeases(root string) floorLeases {
+	data, err := os.ReadFile(filepath.Join(root, lease.File))
+	if err != nil {
+		return floorLeases{ok: os.IsNotExist(err)}
+	}
+	shape, ok := lease.RenewalShape(data)
+	return floorLeases{shape: shape, ok: ok}
 }
 
 // newFSWatcher opens the filesystem watch; tests stand in a host without one.
@@ -60,6 +81,7 @@ func watchRoot(root string) *rootWatch {
 		kick:   make(chan struct{}, 1),
 		due:    make(chan struct{}, 1),
 		snap:   snapshot(root),
+		leases: readFloorLeases(root),
 	}
 	fs, err := newFSWatcher()
 	if err == nil {
@@ -170,41 +192,81 @@ func (w *rootWatch) publish() {
 		return
 	}
 	data := changedData(w.snap.files, next.files)
-	if touchesFloor(w.snap.files, next.files) {
+	if w.floorMoved(next) {
+		floorWakes.Add(1)
 		w.floor.send(data)
 	}
 	w.snap = next
 	w.hub.send(data)
 }
 
-// touchesFloor says whether a change reached a file other than the ones a
-// pull's own bookkeeping writes: the runner registry, where a pull records
-// its heartbeat, and the live record. Neither is read by a look, and waking
-// the open pulls on them made every pull wake every other one, forever.
-func touchesFloor(before, after map[string]string) bool {
+// floorWakes counts the times the open pulls were woken, so a test can say a
+// renewal woke none.
+var floorWakes atomic.Int64
+
+// floorMoved says whether a change reached anything a pull's look reads, and
+// keeps the lease document's shape for the next change to compare with.
+//
+// A RENEWAL IS NOT A CHANGE OF THE FLOOR. Every held job's runner rewrites
+// the lease document every two seconds to say it is still there, and every
+// open pull woke on each rewrite and looked again: fifteen slots, two holds
+// and 86 jobs kept the seventh live run's idle engine at a fifth of a core,
+// re-reading a floor on which nothing had changed. A rewrite whose only
+// difference is when its holds were heard is answered here, once, for every
+// pull. The runner registry, the live record, the sources' poll record, the
+// event log and every folder are no input of a look either.
+func (w *rootWatch) floorMoved(next fileSnap) bool {
+	if touchesFloor(w.snap, next) {
+		if next.files[lease.File] != w.snap.files[lease.File] {
+			w.leases = readFloorLeases(w.root)
+		}
+		return true
+	}
+	if next.files[lease.File] == w.snap.files[lease.File] {
+		return false
+	}
+	was := w.leases
+	w.leases = readFloorLeases(w.root)
+	return !was.ok || !w.leases.ok || was.shape != w.leases.shape
+}
+
+// touchesFloor says whether a change reached a file a look reads, the lease
+// document aside ([rootWatch.floorMoved] compares its shape).
+func touchesFloor(before, after fileSnap) bool {
 	return changedBeyond(before, after) || changedBeyond(after, before)
 }
 
-// changedBeyond says whether a file of from, other than the bookkeeping, is
-// missing from to or differs there.
-func changedBeyond(from, to map[string]string) bool {
-	for name, sig := range from {
-		if lookBookkeeping(name) {
+// changedBeyond says whether a file of from that a look reads is missing from
+// to or differs there.
+func changedBeyond(from, to fileSnap) bool {
+	for name, sig := range from.files {
+		if !from.floorInput(name) || name == lease.File {
 			continue
 		}
-		if other, ok := to[name]; !ok || other != sig {
+		if other, ok := to.files[name]; !ok || other != sig {
 			return true
 		}
 	}
 	return false
 }
 
-// lookBookkeeping is a file under the root that no look reads: the runner
-// registry, the live record, and the sources' poll record, which the intake
-// rewrites on every poll whether or not a job arrived.
-func lookBookkeeping(name string) bool {
-	return name == registryFile || name == live.File || name == sourcesFile
+// floorInput says whether a look reads name: a document under the root, not
+// a folder (a runner's holds and reports live in folders no look opens) and
+// not the bookkeeping ([lookBookkeeping]).
+func (s fileSnap) floorInput(name string) bool {
+	return !s.dirs[name] && !lookBookkeeping(name)
 }
+
+// lookBookkeeping is a file under the root that no look reads: the runner
+// registry, the live record, the sources' poll record, which the intake
+// rewrites on every poll whether or not a job arrived, and the event log.
+func lookBookkeeping(name string) bool {
+	return name == registryFile || name == live.File || name == sourcesFile || name == eventsFile
+}
+
+// eventsFile is the factory's event log ([record.Record]), appended to and
+// never read by a look.
+const eventsFile = "events.jsonl"
 
 // sourcesFile is the sources' poll record ([store.Store.MetaPath]).
 const sourcesFile = "sources.json"
@@ -214,13 +276,15 @@ const sourcesFile = "sources.json"
 type fileSnap struct {
 	sig   string
 	files map[string]string
+	// dirs names the entries of files that are folders.
+	dirs map[string]bool
 }
 
 func snapshot(root string) fileSnap {
 	entries, err := os.ReadDir(root)
-	files := map[string]string{}
+	files, dirs := map[string]string{}, map[string]bool{}
 	if err != nil {
-		return fileSnap{files: files}
+		return fileSnap{files: files, dirs: dirs}
 	}
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
@@ -233,6 +297,9 @@ func snapshot(root string) fileSnap {
 			continue
 		}
 		files[name] = strconv.FormatInt(info.Size(), 10) + " " + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+		if info.IsDir() {
+			dirs[name] = true
+		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -243,7 +310,7 @@ func snapshot(root string) fileSnap {
 		b.WriteString(files[name])
 		b.WriteByte('\n')
 	}
-	return fileSnap{sig: b.String(), files: files}
+	return fileSnap{sig: b.String(), files: files, dirs: dirs}
 }
 
 // worthWatching drops the store's own scratch. A document is written as a
