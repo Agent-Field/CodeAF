@@ -129,6 +129,18 @@ const (
 	// surface may receive one on a turn that goes on to produce no
 	// StreamStarted at all.
 	StreamRowNews
+	// StreamStepsRan carries, in Delta, a JSON array of tool calls the MODEL'S
+	// OWN PROGRAM has already run and finished — each {id, name, arguments,
+	// output, is_error, took_ms}, in codeaf's own tool names. It is raised only
+	// by a transport for a model that works with tools of its own (the
+	// internal/claudemodel transport), whose edits and commands happen inside
+	// one request rather than being handed back for codeaf to run.
+	//
+	// THEY ARE FACTS, NOT INSTRUCTIONS. Nothing downstream may run them again:
+	// the turn loop records each as a call and its result, so the page draws
+	// them as rows and the next model the conversation moves to reads them in
+	// its history, exactly as if codeaf had run them.
+	StreamStepsRan
 )
 
 // StreamEvent carries provider text as it arrives. Delta is populated only

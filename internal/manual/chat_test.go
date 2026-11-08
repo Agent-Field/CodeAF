@@ -34,6 +34,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"can Claude Code make a canvas", "claude-code-provider"},
+		{"does Claude Code see my codeaf skills", "claude-code-provider"},
+		{"Claude Code's edits don't show as rows in the chat", "claude-code-provider"},
+		{"can Claude Code propose a task", "claude-code-provider"},
+		{"use my Claude plan with no API key", "claude-code-provider"},
 		{"where is the token I pasted kept and for how long", "giving-a-password-or-token"},
 		{"can the model see my password", "giving-a-password-or-token"},
 		{"can I send a message to the chat running on my other computer", "desktop-sync"},

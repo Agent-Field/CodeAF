@@ -1071,6 +1071,10 @@ var OperatorEnvPins = []string{
 	"CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP",
 	"CODEAF_PROTOTYPE_TASK_STORAGE",
 	"CODEAF_PROTOTYPE_ARCHIVE_BINARY",
+	// CODEAF_CLAUDE_BIN names the Claude Code program when `claude` on PATH is
+	// a shell alias a child process cannot start (internal/claudeagent). It is
+	// an executable path, so it is plumbing like the archive binary above.
+	"CODEAF_CLAUDE_BIN",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
 	// CODEAF_BASE_URL is.

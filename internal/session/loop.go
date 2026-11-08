@@ -81,7 +81,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/agentdid"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
@@ -719,6 +721,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 				reached.drew()
 				hub.send(formed)
 			}
+		case provider.StreamStepsRan:
+			// STEPS THE MODEL'S OWN PROGRAM ALREADY RAN (its own shell and
+			// edits) are written down as calls and results, in order with the
+			// words around them, and drawn as rows. They are on the page, so
+			// they count as read exactly as a word of the answer does.
+			reached.drew()
+			a.recordStepsRan(ctx, hub, event.Delta)
 		case provider.StreamToolCallReady:
 			// ANNOUNCE FIRST, then decide whether it may start. The order is the
 			// meaning: the person sees every call the moment the model finishes
@@ -728,6 +737,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		}
 	}
 	ctx = provider.WithStreamObserver(ctx, turnObserver)
+	// A MODEL WHOSE OWN PROGRAM RUNS COMMANDS (internal/claudemodel) is handed the
+	// conversation's identity for them, as the commands codeaf runs are.
+	if a.config.actorDID != "" {
+		ctx = claudemodel.WithEnv(ctx, []string{agentdid.AgentDIDEnv + "=" + a.config.actorDID})
+	}
 	// ONE MECHANISM ANSWERS ONE SILENCE, AND IT IS NOT THIS ONE. This loop used
 	// to keep a hedge of its own here: an eight-second timer that, on a request
 	// which had said nothing, sent the whole prompt a second time. The transport
