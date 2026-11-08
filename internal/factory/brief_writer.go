@@ -263,7 +263,7 @@ func BriefInputOf(it Item) BriefInput {
 	in.Steps = []BriefStepInput{}
 	if it.Stream != nil {
 		for _, p := range it.Stream.Phases {
-			in.Steps = append(in.Steps, stepInputs(briefStageOf(it.Stages, p), p)...)
+			in.Steps = append(in.Steps, stepInputs(it, briefStageOf(it.Stages, p), p)...)
 			if p.Name == "plan" && p.Result != nil {
 				in.Plan = clip(p.Result.Output, briefOutputMost)
 			}
@@ -322,8 +322,9 @@ func briefPersonRequests(it Item) []BriefPersonRequest {
 }
 
 // stepInputs is one line per finished try of a phase, then its latest
-// result, which carries the structured fields.
-func stepInputs(st Stage, p Phase) []BriefStepInput {
+// result, which carries the structured fields. A latest try that ended
+// failed with no result says the job's failure as its summary.
+func stepInputs(it Item, st Stage, p Phase) []BriefStepInput {
 	base := BriefStepInput{Step: p.Name, Kind: string(st.Kind), Until: st.Until, State: string(p.State)}
 	if p.State == PhaseSkipped {
 		base.Summary = p.SkipReason
@@ -344,8 +345,23 @@ func stepInputs(st Stage, p Phase) []BriefStepInput {
 	if r := p.Result; r != nil {
 		last.Done, last.Findings, last.Exit, last.Tests = r.Done, r.Findings, r.Exit, r.Tests
 		last.Claims, last.Output = r.Claims, clip(r.Output, briefOutputMost)
+	} else {
+		last.Summary = failedSummary(it, p)
 	}
 	return append(out, last)
+}
+
+// failedSummary is what a phase that ended failed without a result says of
+// its latest try: the job's failure when it names this step, else nothing.
+// A remote step that fails before reporting keeps no round and no result, so
+// its failure is the only record of that try. Without it a brief that cites
+// the try is refused as naming nothing the job has, and the brief is never
+// updated for the job's last outcome (the fifth live A+B run, job 78).
+func failedSummary(it Item, p Phase) string {
+	if p.State != PhaseFailed || p.Result != nil || it.Failure == nil || it.Failure.Step != p.Name {
+		return ""
+	}
+	return clip(it.Failure.Detail, briefOutputMost)
 }
 
 func clip(s string, most int) string {
@@ -631,6 +647,9 @@ func summaryNumbers(e briefEvidence, ref BriefEvidence) ([]int, bool) {
 		if r.Round == ref.Try {
 			return append(textNumbers(r.Summary), ref.Try), true
 		}
+	}
+	if said := failedSummary(e.it, p); said != "" && ref.Try == briefTry(p) {
+		return append(textNumbers(said), ref.Try), true
 	}
 	return nil, false
 }
