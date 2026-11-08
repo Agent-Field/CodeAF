@@ -50,7 +50,7 @@ func followProgressStart(j Job) string {
 			return "Assessing the review feedback against the current code, then verifying any justified repairs before updating this PR."
 		}
 	}
-	return "Inspecting the current PR and the recorded repair request. Any changes will be verified before updating the PR."
+	return "Inspecting the current PR and the recorded repair request. Any changes will be checked before updating the PR."
 }
 
 func followProgressText(text string) string {

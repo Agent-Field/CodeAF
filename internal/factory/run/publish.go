@@ -245,7 +245,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 				mode = "Auto records and pushes checked repairs within the job budget."
 			}
 			if it.PullRequest != nil && it.PullRequest.Number == receipt.pr.Number {
-				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The verified local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
+				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The checked local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
 			} else {
 				if receipt.note != "" {
 					lp.tell(c.id, receipt.note+".")

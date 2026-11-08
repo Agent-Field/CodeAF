@@ -3649,6 +3649,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can a Slack message become a factory job", "factory-agentfield"},
 		{"can a pipeline step run a reasoner on AgentField", "factory-agentfield"},
 		{"approve the plan an AgentField run asks about", "factory-agentfield"},
+		{"why did my AgentField step fail and open no pull request", "factory-agentfield"},
 		{"ask for changes to the AgentField plan", "factory-agentfield"},
 		{"an AgentField step asked a question, who answers it", "factory-agentfield"},
 		{"why do the parallel AgentField steps all have the same name", "factory-agentfield"},

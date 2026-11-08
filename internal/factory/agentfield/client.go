@@ -571,6 +571,25 @@ func (c *Client) Result(ctx context.Context, execution string) (json.RawMessage,
 	return out.Result, err
 }
 
+// Note is one of an execution's notes as GET /api/v1/executions/<id>/notes
+// answers them: a reasoner's own sentence about how its run is going, with
+// the tags it filed the sentence under and when it said it.
+type Note struct {
+	Message   string    `json:"message"`
+	Tags      []string  `json:"tags"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// Notes is GET /api/v1/executions/<id>/notes: every note the execution
+// left, in the order the control plane keeps them.
+func (c *Client) Notes(ctx context.Context, execution string) ([]Note, error) {
+	var out struct {
+		Notes []Note `json:"notes"`
+	}
+	err := c.do(ctx, "read the notes", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution)+"/notes", nil, nil, &out)
+	return out.Notes, err
+}
+
 // Naming is how a reasoner says its calls are named, in its own tags: Label
 // from "label:<words>", the step's label in a person's words, and Fanout from
 // "label_fanout:<field.path>", the input field whose value tells one call from

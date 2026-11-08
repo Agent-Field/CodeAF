@@ -54,6 +54,8 @@ type afFakeCP struct {
 	// results is a call's own result, by execution id, when a test names
 	// one; any other execution answers result.
 	results map[string]json.RawMessage
+	// notes is each execution's notes, as GET …/notes answers them.
+	notes map[string][]agentfield.Note
 	// inputs is each execution's input; inputReads every read of one.
 	inputs     map[string]string
 	inputReads []string
@@ -129,6 +131,14 @@ func (f *afFakeCP) Result(_ context.Context, exec string) (json.RawMessage, erro
 		return raw, nil
 	}
 	return f.result, nil
+}
+
+// Notes is an execution's notes, as GET /api/v1/executions/<id>/notes
+// reports them.
+func (f *afFakeCP) Notes(_ context.Context, exec string) ([]agentfield.Note, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]agentfield.Note(nil), f.notes[exec]...), nil
 }
 
 func (f *afFakeCP) Dispatch(_ context.Context, target string, input any, owner string) (agentfield.Dispatched, error) {

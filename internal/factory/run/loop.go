@@ -125,6 +125,12 @@ type loopCtl struct {
 	phase      int
 	phaseAt    time.Time
 	phaseSpent float64
+	// revived is one more than the phase that was running when a restart's
+	// revive gave the item this control again, 0 for none. ITS FIRST ROUND HERE IS THE SAME
+	// ROUND GOING ON, NOT A NEW START: it keeps the start the round already
+	// had and does not say "<step> started" a second time under "resumed".
+	// Only the item's own goroutine reads it after revive sets it.
+	revived int
 	// inboxMu keeps one step's question at a time with the manager and the
 	// person (inbox.go).
 	inboxMu sync.Mutex
@@ -1082,6 +1088,8 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		resume := c.carry
 		c.carry, c.opened = "", ""
 		lp.mu.Unlock()
+		continuing := c.revived == i+1
+		c.revived = 0
 		var carried []string
 		var before factory.Phase
 		if err := lp.move(c, name, kind, text, func(it *factory.Item) error {
@@ -1107,7 +1115,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// A ROUND BEGINS WHERE ITS CHAT DOES: a fresh chat is a fresh start,
 			// and a round carrying on in the chat a pause cut short keeps the
 			// start it had (one that never recorded one takes this one).
-			if resume == "" || ph.Started.IsZero() {
+			// A ROUND A RESTART CUT SHORT AND REVIVE PICKED UP is the same
+			// round going on, whether or not it has a chat to carry: a step
+			// run off this machine (an AgentField run it follows) has none,
+			// and re-taking its lease must not move the step's start.
+			if continuing && ph.State == factory.PhaseRunning && before.State == factory.PhaseRunning && before.Round == round && !before.Started.IsZero() {
+				ph.Started = before.Started
+			} else if resume == "" || ph.Started.IsZero() {
 				ph.Started = now
 			}
 			// A step that is running again is no longer the failed step.
@@ -1135,7 +1149,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			if cur, err := lp.r.opts.Store.Get(c.id); err == nil && cur.Stream != nil {
 				c.phaseSpent = cur.Stream.Spent
 			}
-			lp.tellStep(c.id, fmt.Sprintf(sayStarted, name), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressStarted})
+			// A REVIVED ROUND ALREADY SAID IT STARTED, before the restart; the
+			// chat reads "resumed" for it and nothing more.
+			if !(continuing && before.State == factory.PhaseRunning && before.Round == round) {
+				lp.tellStep(c.id, fmt.Sprintf(sayStarted, name), &factory.StepProgress{Step: name, Round: round, Event: factory.ProgressStarted})
+			} else if !before.Started.IsZero() {
+				c.phaseAt = before.Started
+			}
 		}
 		if begin, ok := lp.r.stepBegins.Load(c.id); ok {
 			step := factory.StageReport{Name: name, State: factory.PhaseRunning, Round: round}
@@ -1304,7 +1324,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if !readiness && factory.IsCIRepairStage(st) && res.Done && res.Exit == 0 && res.Findings == 0 && verificationReason(res) == "" && res.Repair != nil && res.Repair.Decision == "no_change" {
 			fresh, _ := lp.r.opts.Store.Get(c.id)
 			if fresh.PullRequest == nil || factory.PRHasRepairableCheckFailure(fresh.PullRequest) || fresh.PullRequest.Conflict {
-				lp.parkCI(c, i, "The PR still has failing checks or conflicts and no repair was verified. "+res.Repair.Reason)
+				lp.parkCI(c, i, "The PR still has failing checks or conflicts and no checked repair was made. "+res.Repair.Reason)
 			} else {
 				_ = lp.move(c, "", EventShipped, "Following PR", func(it *factory.Item) error {
 					if it.Question != "" || it.Asking != nil {
@@ -2247,7 +2267,7 @@ func (lp *floorLoop) land(c *loopCtl) {
 				lp.tell(c.id, "Follow PR repair and proof are complete. Auto is preparing the recorded update to the existing PR; merge remains your decision.")
 				return
 			}
-			lp.tell(c.id, fmt.Sprintf("CI repair and proof are complete. Approval needed: push the verified commit to existing PR #%d. Press Approve to update it.", it.PullRequest.Number))
+			lp.tell(c.id, fmt.Sprintf("CI repair and proof are complete. Approval needed: push the checked commit to existing PR #%d. Press Approve to update it.", it.PullRequest.Number))
 		} else {
 			if it, e := lp.r.opts.Store.Get(c.id); e == nil && factory.Automatic(it) {
 				lp.tell(c.id, sayAutoLanded)
@@ -2654,6 +2674,7 @@ func (r *Runner) revive(it factory.Item) error {
 	c := &loopCtl{id: id, ctx: ctx, cancel: func() { cause(nil) }, cause: cause, steer: make(chan string, 16), modelSelections: make(chan ModelSelection, 1), answers: make(chan loopAnswer, 1), phase: -1}
 	if i := nextPhase(it.Stream.Phases); i >= 0 && it.Stream.Phases[i].State == factory.PhaseRunning {
 		c.carry = strings.TrimSpace(it.Stream.Phases[i].Chat)
+		c.revived = i + 1
 	}
 	lp.ctls[id] = c
 	if lp.results[id] == nil {

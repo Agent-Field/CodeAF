@@ -293,16 +293,25 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 		}
 		run = fresh
 		if job.Log != nil {
-			job.Log("started " + target + " on AgentField")
+			job.Log("started its run on AgentField")
 		}
 	}
 	if err := r.follow(ctx, client, it.ID, run.RunID, place); err != nil {
+		// A RUN THAT ENDED BADLY READS AS THE STEP, never as the reasoner's
+		// id: "Build on AgentField failed: …".
+		var ended afRunEnded
+		if ctx.Err() == nil && errors.As(err, &ended) {
+			return factory.StageResult{}, errors.New(ended.step(st))
+		}
 		return factory.StageResult{}, err
 	}
 	if ctx.Err() != nil {
 		return factory.StageResult{}, ctx.Err()
 	}
-	out := "the AgentField run " + target + " finished"
+	// THE STEP'S OUTPUT IS WHAT IT DID, in words: the step's own label
+	// already heads every line a person reads it on ("Build on AgentField ·
+	// done · finished and opened …"), so the reasoner's id never repeats it.
+	out := "finished"
 	// A PULL REQUEST THE RUN OPENED IS THE JOB'S, WHATEVER THE RUN SAYS
 	// AFTER: its link is read off the run's result, wherever the reasoner put
 	// it, and kept before the result's own word on success is weighed, so a
@@ -326,11 +335,20 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 				Summary string `json:"summary"`
 			}
 			if json.Unmarshal(raw, &said) == nil && said.Success != nil && !*said.Success {
-				why := strings.TrimSpace(said.Summary)
-				if why == "" {
-					why = "it did not succeed"
-				}
-				return factory.StageResult{}, errors.New("the AgentField run " + target + " ended: " + why)
+				// THE FAILURE SAYS THE OUTCOME, THE STEP KEEPS THE REPORT. The
+				// failure's detail and headline are the run's own last word
+				// about how it ended — its newest note on the control plane
+				// ("No pull request: the build did not pass verification"),
+				// in plain words — and the reasoner's whole summary, which is
+				// its raw report with any command output, is the step's
+				// output, folded under it.
+				// A run that left no note says how it ended in its summary
+				// ("Plan rejected: not now"); the outcome is read from the
+				// words' shape alone ([factory.AgentFieldOutcome]).
+				outcome := factory.AgentFieldOutcome(afOutcomeNote(ctx, client, run.ExecutionID), said.Summary)
+				words := factory.AgentFieldDidNotSucceed(st, outcome)
+				res := factory.StageResult{Output: strings.TrimSpace(said.Summary), Summary: firstNonEmpty(outcome, words)}
+				return res, errors.New(words)
 			}
 		}
 	}
@@ -645,11 +663,70 @@ func (r *afRemote) syncTo(ctx context.Context, client afClient, jobs *store.Stor
 	if afSucceeded(root.Status) {
 		return true, nil
 	}
-	words := "the AgentField run " + strings.ToLower(root.Status)
-	if root.StatusReason != nil && strings.TrimSpace(*root.StatusReason) != "" {
-		words += ": " + strings.TrimSpace(*root.StatusReason)
+	end := afRunEnded{status: strings.ToLower(root.Status)}
+	if root.StatusReason != nil {
+		end.reason = strings.TrimSpace(*root.StatusReason)
 	}
-	return true, errors.New(words)
+	return true, end
+}
+
+// afRunEnded is a run that ended without succeeding: the control plane's
+// status and its reason. Its Error is the whole-job run's sentence; an
+// agentfield step reads it as the step instead ([afRunEnded.step]).
+type afRunEnded struct{ status, reason string }
+
+func (e afRunEnded) Error() string {
+	words := "the AgentField run " + e.status
+	if e.reason != "" {
+		words += ": " + e.reason
+	}
+	return words
+}
+
+// step is the ended run as its step's failure, in the step's words and the
+// control plane's reason in plain ones.
+func (e afRunEnded) step(st factory.Stage) string {
+	verb := e.status
+	switch e.status {
+	case "cancelled", "canceled":
+		verb = "was cancelled"
+	case "timeout", "timed_out":
+		verb = "timed out"
+	case "":
+		verb = "ended"
+	}
+	words := factory.AgentFieldStepWords(st) + " " + verb
+	if why := factory.AgentFieldOutcomeWords(e.reason); why != "" {
+		words += ": " + why
+	}
+	return words
+}
+
+// afOutcomeNote is the newest note the run's own execution left on the
+// control plane, "" when it left none or the control plane cannot say. THE
+// LAST THING A RUN SAID IS HOW IT ENDED, for every reasoner alike: no tag or
+// pipeline name is read.
+func afOutcomeNote(ctx context.Context, client afClient, execution string) string {
+	notes, ok := client.(interface {
+		Notes(context.Context, string) ([]agentfield.Note, error)
+	})
+	if !ok || strings.TrimSpace(execution) == "" {
+		return ""
+	}
+	all, err := notes.Notes(ctx, execution)
+	if err != nil {
+		return ""
+	}
+	var newest agentfield.Note
+	for _, n := range all {
+		if strings.TrimSpace(n.Message) == "" {
+			continue
+		}
+		if newest.Message == "" || !n.Timestamp.Before(newest.Timestamp) {
+			newest = n
+		}
+	}
+	return newest.Message
 }
 
 // afStep is one execution of the run as a step of the job.

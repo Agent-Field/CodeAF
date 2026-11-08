@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -149,8 +150,13 @@ func TestAnAgentFieldStepRunsTheReasonerThroughItsPlanToAPullRequest(t *testing.
 	if end.PullRequest == nil || end.PullRequest.Number != 31 || end.Publish != "pr" {
 		t.Fatalf("the job does not hold the run's pull request: %+v", end.PullRequest)
 	}
-	if len(logged) == 0 || !strings.Contains(logged[0], "started swe-planner.build_issue") {
+	// THE STEP READS AS ITS LABEL, NEVER AS THE REASONER'S ID: the log and
+	// the output say what happened in words.
+	if len(logged) == 0 || logged[0] != "started its run on AgentField" {
 		t.Fatalf("log = %v", logged)
+	}
+	if result.Output != "finished and opened https://github.com/santoshkumarradha/factory-demo/pull/31" {
+		t.Fatalf("output = %q", result.Output)
 	}
 }
 
@@ -165,9 +171,46 @@ func TestARejectedPlanEndsTheStepWithTheRunsWords(t *testing.T) {
 	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "succeeded", "2026-11-07T12:00:00Z", "2026-11-07T12:00:05Z"),
 		result: json.RawMessage(`{"success":false,"summary":"Plan rejected: not now"}`)}
 	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
-	_, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
-	if err == nil || !strings.Contains(err.Error(), "Plan rejected: not now") {
+	res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
+	if err == nil || err.Error() != "Build with SWE-AF did not succeed: Plan rejected: not now" {
 		t.Fatalf("err = %v", err)
+	}
+	if res.Output != "Plan rejected: not now" || res.Summary != "Plan rejected: not now" {
+		t.Fatalf("result = %+v", res)
+	}
+}
+
+// A RUN THAT DID NOT SUCCEED ENDS ITS STEP WITH THE RUN'S OWN LAST WORD, IN
+// PLAIN WORDS (live e2e round 7, job 85): the control plane's newest note is
+// the failure's detail and headline, the reasoner's raw report is the step's
+// output, and neither the reasoner's id nor a machinery word reaches the
+// person. Nothing here is keyed on the pipeline's names.
+func TestAFailedRunEndsItsStepWithTheRunsOutcomeNoteInPlainWords(t *testing.T) {
+	appDayProfile(t)
+	prev := afRemoteEvery
+	afRemoteEvery = 10 * time.Millisecond
+	t.Cleanup(func() { afRemoteEvery = prev })
+	st, it, stage := afStepJob(t)
+	report := "Partial: 1/1 issues completed, verification: OVERALL: FAIL. The delivered implementation does not satisfy the PRD."
+	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "succeeded", "2026-11-07T12:00:00Z", "2026-11-07T12:00:05Z"),
+		result: json.RawMessage(`{"success":false,"summary":` + strconv.Quote(report) + `}`),
+		notes: map[string][]agentfield.Note{"exec-root": {
+			{Message: "Build completed with issues: 1/1 issues, verification=failed", Tags: []string{"build", "complete"}, Timestamp: afTime("2026-11-07T12:00:03Z")},
+			{Message: "No pull request: the build did not pass verification (" + report + ")", Tags: []string{"build", "github_pr", "skipped"}, Timestamp: afTime("2026-11-07T12:00:04Z")},
+		}}}
+	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
+	const want = "Build with SWE-AF did not succeed: The build did not pass its checks, so no pull request was opened"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	if res.Summary != "The build did not pass its checks, so no pull request was opened" || res.Output != report {
+		t.Fatalf("result = %+v", res)
+	}
+	for _, said := range []string{err.Error(), res.Summary} {
+		if strings.Contains(said, "swe-planner") || strings.Contains(said, "build_issue") || strings.Contains(strings.ToLower(said), "verif") {
+			t.Fatalf("machinery reached the person: %q", said)
+		}
 	}
 }
 
