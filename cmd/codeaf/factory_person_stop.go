@@ -1,19 +1,23 @@
 package main
 
-import "github.com/Agent-Field/codeaf/internal/factory"
-
 // AutomaticRefusal reads the current durable job for every automatic wake.
 // A person opening or reading the conversation does not change that job.
+//
+// Every open job conversation asks this ten times a second, so it reads only
+// what changed: the manager index decodes a job document again only when its
+// file changed, and the job this conversation manages is checked against its
+// file on every ask.
 func (d seamRunDoor) AutomaticRefusal(conversation string) string {
-	it, err := d.managed(conversation)
-	if err == factory.ErrNotManager {
+	want := sameFileKey(conversation)
+	if want == "" || d.st == nil {
 		return ""
 	}
+	stop, ok, err := managerIndexOf(d.st).personStop(d.st, want)
 	if err != nil {
 		return "job could not be read; automatic work stopped"
 	}
-	if err := factory.CheckPersonStop(it); err != nil {
-		return err.Error()
+	if !ok {
+		return ""
 	}
-	return ""
+	return stop
 }

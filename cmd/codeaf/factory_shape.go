@@ -377,12 +377,30 @@ func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory
 	return d.edit(ctx, it.ID, e)
 }
 
-// managed is the item whose conversation is the asking one.
+// managed is the item whose conversation is the asking one. The manager index
+// finds which job that is; the job itself is read fresh, since every caller
+// acts on it.
 func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
 	want := sameFileKey(conversation)
 	if want == "" || d.st == nil {
 		return factory.Item{}, errNotAManager
 	}
+	id, ok, err := managerIndexOf(d.st).managedID(d.st, want)
+	if err != nil {
+		return factory.Item{}, err
+	}
+	if !ok {
+		return factory.Item{}, errNotAManager
+	}
+	if it, err := d.st.Get(id); err == nil && strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
+		return it, nil
+	}
+	// The job changed between the index's look and this read: answer from a
+	// whole read of the floor, as before there was an index.
+	return d.managedFromList(want)
+}
+
+func (d seamRunDoor) managedFromList(want string) (factory.Item, error) {
 	items, err := d.st.List()
 	if err != nil {
 		return factory.Item{}, err
