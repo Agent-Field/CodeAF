@@ -373,7 +373,7 @@ func folderPathish(query string) bool {
 		return false
 	case query == "~", query == ".", query == "..":
 		return true
-	case strings.HasPrefix(query, "/"), strings.HasPrefix(query, "~/"),
+	case filepath.IsAbs(query), strings.HasPrefix(query, "/"), strings.HasPrefix(query, "~/"),
 		strings.HasPrefix(query, "./"), strings.HasPrefix(query, "../"):
 		return true
 	}
@@ -643,7 +643,7 @@ func (f *folderPick) browseSync(resolve func(string) string) {
 		return
 	}
 	dir, leaf := typed, ""
-	if !strings.HasSuffix(typed, "/") {
+	if !os.IsPathSeparator(typed[len(typed)-1]) {
 		dir, leaf = pathHead(typed)
 	}
 	// A NAME BEGINNING WITH A DOT IS SOMEBODY REACHING FOR A HIDDEN FOLDER, and
@@ -655,7 +655,7 @@ func (f *folderPick) browseSync(resolve func(string) string) {
 		f.forget()
 	}
 	want := filepath.Clean(resolve(dir))
-	if want != f.cols.dir {
+	if rel, err := filepath.Rel(want, f.cols.dir); err != nil || rel != "." {
 		f.browseAt(want, "")
 	}
 	// AND THE CURSOR FOLLOWS THE HALF-TYPED NAME. A person typing `~/code/ag`
@@ -679,15 +679,11 @@ func (f *folderPick) browseSync(resolve func(string) string) {
 // after the last separator. A path with no separator at all is all name, under
 // the directory the caller resolves "" to.
 func pathHead(typed string) (string, string) {
-	cut := strings.LastIndex(typed, "/")
-	if cut < 0 {
+	dir, leaf := filepath.Split(typed)
+	if dir == "" {
 		return typed, ""
 	}
-	head := typed[:cut]
-	if head == "" {
-		head = "/"
-	}
-	return head, typed[cut+1:]
+	return filepath.Clean(dir), leaf
 }
 
 // A FILE IS NOT SOMEWHERE TO GO. The right arrow navigates directories; a file
