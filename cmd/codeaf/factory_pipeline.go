@@ -69,6 +69,13 @@ func runFactoryConvert(args []string, out, warnings io.Writer) error {
 	return err
 }
 
+// factoryAfterPoll is what runs after every poll: the start rules, then the
+// go-ahead pass ([intake.Intake.GoAheads]), which starts what a group policy
+// covers once what it waits on has merged. Both read the poll's fresh facts.
+func factoryAfterPoll(in *intake.Intake) func(context.Context) error {
+	return func(ctx context.Context) error { return errors.Join(in.Once(ctx), in.GoAheads(ctx)) }
+}
+
 // factoryIntake reuses the same runner door as a person's Run action: the
 // lease's, which queues the job for whichever worker pulls it.
 func factoryIntake(st *store.Store) *intake.Intake {

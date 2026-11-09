@@ -3539,6 +3539,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A DROP DELETES THE JOB'S LOCAL WORK, asking first when there is some,
 		// and a start checks the one issue on GitHub.
 		{"bring back a dropped factory job", "factory"},
+		{"will my go-ahead start jobs when the app is closed", "factory"},
+		{"why did a job not start after the job it waits on merged", "factory"},
 		{"rules for every repository in the factory", "factory"},
 		{"make the factory ask before it touches auth", "factory"},
 		{"why did Auto stop at the plan saying a rule asks first", "factory"},

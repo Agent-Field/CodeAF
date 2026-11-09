@@ -294,7 +294,7 @@ func (h *appFactoryHost) readLoops() {
 			source = waitForFactoryGitHub(h.ctx, h.floor, token, factoryWatchEvery)
 		}
 		if source != nil {
-			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil, h.intakeFor(h.floor).Once)
+			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, nil, factoryAfterPoll(h.intakeFor(h.floor)))
 		}
 	})
 }
@@ -333,12 +333,18 @@ func (h *appFactoryHost) pollLoop() {
 // the person's "Start on its own" is on. The setting is read again every time,
 // so turning it off stops the next start without a restart, and a rules file
 // that cannot be read starts nothing.
+//
+// THE GO-AHEAD PASS RUNS EITHER WAY ([intake.Intake.GoAheads]): a group
+// policy is a person's own yes for the jobs it names, not a start rule, so
+// "Start on its own" being off does not withhold it.
 func (h *appFactoryHost) startOnItsOwn(ctx context.Context) error {
+	in := h.intakeFor(h.floor)
+	goAheads := in.GoAheads(ctx)
 	house, err := h.floor.HouseRules()
 	if err != nil || !house.StartOnItsOwn {
-		return nil
+		return goAheads
 	}
-	return h.intakeFor(h.floor).Once(ctx)
+	return errors.Join(in.Once(ctx), goAheads)
 }
 
 // intakeFor is the intake over st: the factory's own, or the test seam.
