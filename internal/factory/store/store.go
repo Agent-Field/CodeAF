@@ -67,6 +67,20 @@ type Store struct {
 	// clock is the store's now. A test may hold it still; it is nil in every
 	// real build, which reads as time.Now.
 	clock func() time.Time
+	// reads counts the documents this store has read from disk and decoded.
+	// THE IDLE-COST LAW IS WRITTEN AGAINST IT (PERF.md): a watcher that looks
+	// at the floor ten times a second must not decode the floor ten times a
+	// second, and a counter is how a test proves that without a clock.
+	reads atomic.Int64
+}
+
+// Reads is how many item documents this store has read and decoded since it
+// was opened. It exists so a test can hold an idle caller to a bound.
+func (st *Store) Reads() int64 {
+	if st == nil {
+		return 0
+	}
+	return st.reads.Load()
 }
 
 // Open answers the store at root, creating the directory. It holds no handles.
@@ -599,12 +613,15 @@ func (st *Store) now() time.Time {
 	return st.clock()
 }
 
-func (st *Store) read(path string) (doc, error) { return cachedRead(path, readDocument) }
+func (st *Store) read(path string) (doc, error) { return cachedRead(path, st.readDocument) }
 
 // readDocument reads and decodes the document at path; [Store.read] answers
 // it from the process's cache while the file is unchanged.
-func readDocument(path string) (doc, error) {
+func (st *Store) readDocument(path string) (doc, error) {
 	data, err := os.ReadFile(path)
+	if err == nil {
+		st.reads.Add(1)
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			return doc{}, ErrNotFound

@@ -425,6 +425,19 @@ not the history of a lease. `TestAcknowledgementsLeaveOnlyUnconfirmedDeliveries`
 drives 25,000 receipts through real HTTP, checks failed-heartbeat retention, and
 requires the backlog to drain within 110 successful heartbeats.
 
+## Sync export retries
+
+A chat's export is sealed once per head. While its frames wait in the outbox
+unpublished — a relay that refuses every put, an upload that never finishes —
+each retry answers the kept export (`kept-export.json` beside the frames) and
+seals nothing, as long as the head, keys, ledger size, frame size and every
+frame file are unchanged. A moved head seals again and deletes the frames only
+the older export named. `TestARefusedUploadIsNotSealedAgainOnTheNextPass` drives
+five refused passes and requires one export of 64 objects into 8 frames (before:
+five exports, 320 objects, 40 frames); the engine-tagged
+`TestARepeatedExportKeepsTheWaitingFramesRealEngine` requires the real furrow
+to leave every waiting frame file untouched on a repeat.
+
 ## Idle factory manager checks
 
 Every open job manager and every open step asks whether its job was stopped or
@@ -437,16 +450,25 @@ is checked at its own boundary. An idle watch sleeps that whole interval on one
 timer rather than waking every 100 ms; a turn opening, a command starting and
 every presence nudge wake it onto the live cadence at once (`wakeWorkWatch`).
 `TestIdleManagerBudgetWatchLooksOnceABeat`: an idle manager looks at most once
-in 950 ms, and at least three times in 500 ms once a command runs. Neither check may decode a job document that
-has not changed since it last looked: `seamRunDoor.AutomaticRefusal`
-(`cmd/codeaf/factory_person_stop.go`) and `stageBudget.Refusal` remember the
-answer with the file it came from (`os.SameFile`, size and modification time;
-every store write renames a fresh file into place) and stat the file before
-reading it, so a write landing mid-read is read on the next check. A
-conversation that manages no job is remembered against the floor folder's own
-identity. `TestAnIdleManagersStopCheckDecodesNothingUnchanged` counts the
-decoded documents (`factoryStopCheckDecodes`): fifty unchanged checks decode
-none, and a Stop is seen at the next check.
+in 950 ms, and at least three times in 500 ms once a command runs.
+
+Neither check may decode a job document that has not changed since it last
+looked. `seamRunDoor.AutomaticRefusal` (`cmd/codeaf/factory_person_stop.go`)
+and `stageBudget.Refusal` (`cmd/codeaf/factory_stage_budget.go`) remember the
+answer with the job file it came from (`os.SameFile`, size and modification
+time; every store write renames a fresh file into place), stat the file before
+reading it so a write landing mid-read is read on the next check, and read a
+remembered job by id (`seamRunDoor.managedFrom` in `cmd/codeaf/factory_shape.go`)
+before listing the floor. Two counters hold this without a clock:
+`factoryStopCheckDecodes` counts job documents the stop check asked the store
+for, and `store.(*Store).Reads` counts job documents a store read from disk and
+decoded. `TestAnIdleManagersStopCheckDecodesNothingUnchanged` checks fifty
+unchanged looks (`factoryStopCheckDecodes` = 0 for a manager and for a
+conversation that manages nothing) and sees a Stop on the next check;
+`TestAnIdleManagerWatchReadsNoJobs` checks 100 idle looks over 60 jobs
+(`store.(*Store).Reads` = 0 for both, down from 12,000 before);
+`TestTheManagerWatchSeesEveryChange` pins a person's Stop, a job created after
+the first look and a manager moved to another conversation on the next look.
 
 A conversation that manages no job (every open step chat) is NOT keyed on the
 floor folder: the folder's time moves with every file renamed into it (the
@@ -455,8 +477,20 @@ open step chat list and decode every job every few seconds. It is answered from
 one look at the floor's job files (`floorJobFiles`: one directory read and one
 stat per job, shared by every conversation for `floorLookEvery`, 100 ms) and
 reads only a job document that changed. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
-fifty checks while the registry is rewritten decode none; one changed job costs
-one decode.
+fifty checks while the registry is rewritten decode none (`factoryStopCheckDecodes`);
+one changed job costs one decode, and a job that takes the conversation is seen
+on the next look.
+
+## Idle key vault reads
+
+A local key vault (`internal/keys/vault.go`) whose sealed bytes on disk equal
+the last bytes this process opened under the same key is not decrypted again;
+writes always get their own copy (`readLocked` clones `readShared`). `keys.Opened`
+counts vault decrypts without a clock. `TestAnUnchangedVaultIsDecryptedOnce`:
+400 reads of an unchanged vault across fresh handles decrypted it 400 times
+before, 0 after, while each chat's sync start still captures and pushes once.
+`TestAVaultReadSeesEveryWrite` pins visibility across handles, deletes and
+aborted updates.
 
 ## Idle open conversations
 
