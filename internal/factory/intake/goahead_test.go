@@ -158,6 +158,20 @@ func TestAGoAheadStartsNothingPastItsCap(t *testing.T) {
 	if got := f.get(c); got.State != factory.StateNew || got.Blocked == nil || got.Blocked.By != factory.BlockedByPolicy || got.Blocked.Allowance != "ga_cap" {
 		t.Fatalf("the job past the cap reads %+v", got)
 	}
+	// NOTHING IS SPENT YET, so the cap is held by the running jobs, not spent.
+	if got := f.get(c).Blocked.Reason; got != intake.GoAheadCapHeld {
+		t.Fatalf("with $0 spent the waiting job says %q, want %q", got, intake.GoAheadCapHeld)
+	}
+	// Once what they spent reaches the cap, it says the cap is spent.
+	for id, spent := range map[int]float64{a: 3, b: 2} {
+		if err := f.st.Update(id, func(it *factory.Item) error { it.SpentBefore = spent; return nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.pass()
+	if got := f.get(c).Blocked.Reason; got != intake.GoAheadCapSpent {
+		t.Fatalf("with the cap spent the waiting job says %q, want %q", got, intake.GoAheadCapSpent)
+	}
 }
 
 // ENDING, STOPPING OR WITHDRAWING A GO-AHEAD STARTS NOTHING FURTHER, and a job

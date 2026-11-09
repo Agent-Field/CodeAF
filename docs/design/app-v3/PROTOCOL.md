@@ -385,13 +385,19 @@ characters; at most 50 allowances, each a distinct id of 1–64 of `A–Z a–z 
 allowance started spent its cap, else `active`. `factory.waits_set {factory, job,
 waits_on, expect?}` (`POST /v1/jobs/{id}/waits_on`) replaces the jobs one job waits on
 (0–20 distinct others on the same factory, no circle) and answers `{factory, job,
-waits_on, current?}`. After every poll the factory starts a covered job that never ran
+waits_on, current?}`. After every poll — on a team server (`codeaf factory serve`) every
+tick of its own poll, with or without a GitHub grant and with no app attached; on the
+app's own local factory only while the app runs with its runner on (`factory.local_run`,
+which needs `factory.setup_connect` first), never after the app quits — the factory starts a covered job that never ran
 and sits in Backlog once every job it waits on has merged, while one allowance naming
 it is active and the job is not someone else's; each started job holds its budget
 (lowered to what is left of the cap) until it finishes. A started job carries
 `policy_run` (the allowance id) and its start record `auto_started` with detail
 `allowance <id>`; a covered job not yet started carries `blocked {by: waits_on|policy,
-reason, job?, allowance?, since?}`, and a job read carries `waits_on` and `waiting_on`.
+reason, job?, allowance?, since?}` — a full cap reads "its go-ahead's cap is spent" when
+the allowance's jobs spent it and "its go-ahead's cap is held by jobs already running"
+when running jobs only reserve it — and every job answer, `factory.queue` rows included,
+carries `waits_on` and `waiting_on`.
 Stopping, ending or withdrawing an allowance starts nothing further and stops nothing
 already running.
 

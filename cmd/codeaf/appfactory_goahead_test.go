@@ -115,6 +115,23 @@ func TestADeskGoAheadStartsTheCoveredJobAfterItsParentMerges(t *testing.T) {
 	if len(launched) != 0 || job.State != "backlog" || job.Blocked == nil || job.Blocked.By != "waits_on" || job.Blocked.Job != parent {
 		t.Fatalf("before the merge: launched %v, job %+v", launched, job)
 	}
+	// THE QUEUE'S ROW SAYS WHAT IT WAITS ON as the single-job read does: the
+	// desk reads waits off the queue, and an absent waiting_on there reads as
+	// a job already released.
+	queueRow := func() api.Job {
+		var queue api.Queue
+		w.must("factory.queue", map[string]any{"factory": id}, &queue)
+		for _, row := range queue.Jobs {
+			if row.ID == child {
+				return row
+			}
+		}
+		t.Fatalf("the queue has no job %d", child)
+		return api.Job{}
+	}
+	if row := queueRow(); !slices.Equal(row.WaitsOn, []int{parent}) || !slices.Equal(row.WaitingOn, []int{parent}) {
+		t.Fatalf("before the merge the queue row reads waits_on %v, waiting_on %v", row.WaitsOn, row.WaitingOn)
+	}
 
 	if err := st.Update(parent, func(it *factory.Item) error { it.DoneHow = "merged"; return nil }); err != nil {
 		t.Fatal(err)
@@ -126,6 +143,9 @@ func TestADeskGoAheadStartsTheCoveredJobAfterItsParentMerges(t *testing.T) {
 	w.must("factory.job", map[string]any{"factory": id, "job": child}, &job)
 	if !slices.Equal(launched, []int{child}) || job.State != "queued" || job.PolicyRun != "ga_0c44" || job.Blocked != nil || len(job.WaitingOn) != 0 {
 		t.Fatalf("after the merge: launched %v, job %+v", launched, job)
+	}
+	if row := queueRow(); len(row.WaitingOn) != 0 {
+		t.Fatalf("after the merge the queue row still reads waiting_on %v", row.WaitingOn)
 	}
 
 	// Mark done on the desk stops the group: the policy reads stopped and empty.

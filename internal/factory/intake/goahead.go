@@ -16,6 +16,14 @@ import (
 // the app reads the id back out of it to say which go-ahead started the job.
 func GoAheadDetail(id string) string { return "allowance " + id }
 
+// The two reasons a covered job gives when its go-ahead's cap is full: what
+// the jobs it started have spent reaches the cap, or they have spent less but
+// the ones still running hold their whole budgets against it.
+const (
+	GoAheadCapSpent = "its go-ahead's cap is spent"
+	GoAheadCapHeld  = "its go-ahead's cap is held by jobs already running"
+)
+
 // covering is one allowance that names a job, with the policy that holds it.
 type covering struct {
 	policy    factory.GroupPolicy
@@ -145,8 +153,14 @@ func choose(it factory.Item, list []covering, spend map[string]map[string]factor
 			reason = "its go-ahead was stopped"
 		case !now.Before(c.allowance.Ends()):
 			reason = "its go-ahead ended"
+		case s.Spent >= c.allowance.CapUSD:
+			reason = GoAheadCapSpent
+		// A JOB STILL RUNNING HOLDS ITS WHOLE BUDGET against the cap before
+		// it has spent it, so a cap can be full while little or nothing is
+		// spent. Saying "spent" then is false; the cap is held, and it frees
+		// what a job did not use when that job finishes.
 		case s.Committed >= c.allowance.CapUSD:
-			reason = "its go-ahead's cap is spent"
+			reason = GoAheadCapHeld
 		case c.policy.Owner != "" && it.Person() != "" && it.Person() != c.policy.Owner:
 			reason = "it is @" + it.Person() + "'s, so it waits for them to start it"
 		default:

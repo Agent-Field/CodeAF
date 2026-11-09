@@ -465,6 +465,12 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	// THE WHOLE FLOOR, before any filter, is what a row's waiting_on is read
+	// from: a job it waits on may be one this caller's view leaves out.
+	byID := make(map[int]factory.Item, len(s.Items))
+	for _, it := range s.Items {
+		byID[it.ID] = it
+	}
 	handle, err := h.callerHandle(r)
 	if h.failed(w, err) {
 		return
@@ -499,7 +505,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	operator := h.mode() != api.FactorySolo && h.isOperator(r)
 	issues := factory.IssueJobs(s.Items)
 	for i := range q.Jobs {
-		q.Jobs[i] = h.withVersionKept(q.Jobs[i], retention)
+		q.Jobs[i] = h.withVersionKept(q.Jobs[i], retention, byID)
 		if operator && i < len(issues) {
 			api.AsOperator(&q.Jobs[i].Can, issues[i], handle)
 		}
@@ -570,7 +576,6 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	jobs[0].Can = api.CanFor(it, handle, h.clock())
-	h.waitingOn(&jobs[0], it)
 	if h.mode() != api.FactorySolo && h.isOperator(r) {
 		api.AsOperator(&jobs[0].Can, it, handle)
 	}

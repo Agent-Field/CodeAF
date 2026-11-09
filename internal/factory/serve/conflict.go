@@ -35,7 +35,7 @@ func (h *Handler) guarded(verb string, action jobAction) jobAction {
 // withVersion stamps the store's document revision onto the job the page
 // reads. A handler with no store leaves it zero, and the field stays off the wire.
 func (h *Handler) withVersion(job api.Job) api.Job {
-	return h.withVersionKept(job, h.retention())
+	return h.withVersionKept(job, h.retention(), nil)
 }
 
 // retention is how long a finished job stays on the page. A response that
@@ -48,8 +48,14 @@ func (h *Handler) retention() time.Duration {
 }
 
 // withVersionKept is [Handler.withVersion] with the retention already read.
-func (h *Handler) withVersionKept(job api.Job, retention time.Duration) api.Job {
+// EVERY JOB ANSWER CARRIES ITS WAITING_ON here, the queue's rows as much as the
+// single-job read, because a page that reads waits off the queue takes an
+// absent waiting_on for a job already released. byID is the factory's jobs
+// already in hand, so a list answer does not read the store once per wait;
+// nil reads each job it waits on from the store.
+func (h *Handler) withVersionKept(job api.Job, retention time.Duration, byID map[int]factory.Item) api.Job {
 	api.AreaIn(&job, h.areas.declared())
+	h.waitingOn(&job, byID)
 	job.Display = api.DisplayForRetention(job, h.clock(), retention)
 	if h.config.Store == nil || job.ID == 0 {
 		return job

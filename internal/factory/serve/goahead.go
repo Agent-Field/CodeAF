@@ -157,7 +157,6 @@ func (h *Handler) setWaits(w http.ResponseWriter, r *http.Request, it factory.It
 		return
 	}
 	job := h.withVersion(api.FromItem(cur))
-	h.waitingOn(&job, cur)
 	h.write(w, http.StatusOK, api.WaitsSet{Job: it.ID, WaitsOn: waits, Current: &job})
 }
 
@@ -181,14 +180,20 @@ func reaches(byID map[int]factory.Item, from, to int) bool {
 }
 
 // waitingOn fills a job's waiting_on: the jobs it waits on that have not
-// merged, read from this factory's own jobs.
-func (h *Handler) waitingOn(job *api.Job, it factory.Item) {
-	if h.config.Store == nil || len(it.WaitsOn) == 0 {
+// merged, read from byID when it is given and from the store when it is not.
+// It replaces what was there, so a job answer filled twice says it once.
+func (h *Handler) waitingOn(job *api.Job, byID map[int]factory.Item) {
+	job.WaitingOn = nil
+	if len(job.WaitsOn) == 0 || (byID == nil && h.config.Store == nil) {
 		return
 	}
-	for _, id := range it.WaitsOn {
-		dep, err := h.config.Store.Get(id)
-		if err != nil || !factory.Merged(dep) {
+	for _, id := range job.WaitsOn {
+		dep, ok := byID[id]
+		if !ok && h.config.Store != nil {
+			got, err := h.config.Store.Get(id)
+			dep, ok = got, err == nil
+		}
+		if !ok || !factory.Merged(dep) {
 			job.WaitingOn = append(job.WaitingOn, id)
 		}
 	}
