@@ -102,11 +102,17 @@ JavaScript directory rules serve only source conversion and legacy fixtures.
 
 ## Run it locally
 
+Use Node 22, the version CI uses (`node --version`); wrangler refuses anything older. The build hook
+compiles `src/raft/core.wasm` with Go first, on Linux and macOS alike.
+
 ```sh
 cd relay/hosted
 npm ci
 npm run dev                       # http://127.0.0.1:8787, R2 and Durable Objects simulated in workerd
 ```
+
+If `npm ci` finishes but `npm run dev` then says esbuild or workerd is missing, their install scripts
+did not run; install again with Node 22's npm.
 
 `npm run dev` lifts the new-identity cap (the conformance suite makes one identity per case, all from
 127.0.0.1); a bare `wrangler dev` keeps the default of 200 a day per network. Conformance, against
