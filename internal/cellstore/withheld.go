@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,7 +24,9 @@ import (
 // with no permissions, a folder it may not list) and those whose name this
 // machine's file system cannot keep beside another's (written when a chat is
 // taken here, never by a seal).
-// The harness owns only those four blocks. The first three are rewritten whole
+// A fifth block leaves project entries out when Git ignores the whole folder,
+// so its ignore rules cannot also hide the separately composed conversation.
+// The harness owns only those five blocks. The first three are rewritten whole
 // at every seal, so a path a person has cleaned of its secret, or whose
 // permissions now allow a read, goes back into the next snapshot; the held block
 // is kept exactly as it was read.
@@ -34,6 +37,7 @@ const (
 	// unreadableTag and heldTag open the blocks of paths set apart one by one.
 	unreadableTag = "# codeaf: left out because they cannot be read here (managed block)"
 	heldTag       = "# codeaf: left out because this machine's file system cannot keep both names (managed block)"
+	ignoredTag    = "# codeaf: left out because Git ignores the whole project (managed block)"
 	excludeWord   = "exclude "
 )
 
@@ -42,10 +46,12 @@ var controlDirs = map[string]bool{".git": true, ".furrow": true, ".cell": true}
 
 // policyFile is a tree's .furrowpolicy split at the marker.
 type policyFile struct {
-	gitFenced bool
-	user      []string // lines above the block, kept verbatim
-	withheld  []string // paths the harness withholds because they hold secrets, sorted
-	rebuilt   []string // install folders the harness leaves out, sorted
+	gitFenced           bool
+	ignoredProject      bool
+	ignoredProjectPaths []string
+	user                []string // lines above the block, kept verbatim
+	withheld            []string // paths the harness withholds because they hold secrets, sorted
+	rebuilt             []string // install folders the harness leaves out, sorted
 	// unreadable is the paths this machine cannot read, sorted; a seal recomputes it.
 	unreadable []string
 	// held is the paths whose name this machine cannot keep; only a take writes it.
@@ -63,6 +69,28 @@ func readPolicy(tree, dir string) (policyFile, error) {
 	}
 	if err != nil || dir == tree {
 		return p, err
+	}
+	p.ignoredDirs, err = ignoredDirectories(tree)
+	if err != nil {
+		return p, err
+	}
+	p.ignoredProject = inRules(p.ignoredDirs, ".")
+	p.ignoredProjectPaths = nil
+	if p.ignoredProject {
+		// Only list the project root's names; ignored children are never opened.
+		// Explicit exclusions let the engine retain the separately composed cell.
+		entries, err := os.ReadDir(tree)
+		if err != nil {
+			return p, err
+		}
+		for _, entry := range entries {
+			if !controlDirs[entry.Name()] && entry.Name() != policyName {
+				if strings.TrimSpace(entry.Name()) != entry.Name() || strings.ContainsAny(entry.Name(), "\r\n") {
+					return p, fmt.Errorf("%s: an ignored filename cannot be safely excluded", ignoredReadFailure)
+				}
+				p.ignoredProjectPaths = append(p.ignoredProjectPaths, entry.Name())
+			}
+		}
 	}
 	theirs, err := readPolicyAt(tree)
 	p.outside = theirs.user
@@ -93,6 +121,8 @@ func parsePolicy(text string) policyFile {
 			block = &p.unreadable
 		case heldTag:
 			block = &p.held
+		case ignoredTag:
+			block = &p.ignoredProjectPaths
 		default:
 			*block = append(*block, managedLine(block == &p.user, line))
 		}
@@ -155,7 +185,7 @@ func sorted(paths []string) []string {
 func (p policyFile) String() string {
 	lines := make([]string, 0, len(p.user)+1)
 	for _, line := range p.user {
-		if !p.gitFenced || strings.TrimSpace(line) != "gitignore" {
+		if (!p.gitFenced && !p.ignoredProject) || strings.TrimSpace(line) != "gitignore" {
 			lines = append(lines, line)
 		}
 	}
@@ -163,13 +193,14 @@ func (p policyFile) String() string {
 	for _, line := range lines {
 		hasIgnore = hasIgnore || strings.TrimSpace(line) == "gitignore"
 	}
-	if !hasIgnore && !p.gitFenced {
+	if !hasIgnore && !p.gitFenced && !p.ignoredProject {
 		lines = append(lines, "gitignore")
 	}
 	lines = appendBlock(lines, withheldTag, p.withheld)
 	lines = appendBlock(lines, rebuiltTag, p.rebuilt)
 	lines = appendBlock(lines, unreadableTag, p.unreadable)
 	lines = appendBlock(lines, heldTag, p.held)
+	lines = appendBlock(lines, ignoredTag, p.ignoredProjectPaths)
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
 		return ""
 	}
@@ -225,7 +256,7 @@ func (p policyFile) userRules() []string {
 // inRules is the engine's own test: a rule names a path or a subtree.
 func inRules(rules []string, rel string) bool {
 	for _, rule := range rules {
-		if rel == rule || strings.HasPrefix(rel, rule+"/") {
+		if rule == "." || rel == rule || strings.HasPrefix(rel, rule+"/") {
 			return true
 		}
 	}

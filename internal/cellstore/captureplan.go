@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/keys"
@@ -213,17 +214,11 @@ func (g Guard) screenPlan(c cell.Cell, tree, dir string, plan capturePlan) (Scre
 }
 
 func ignoredFiles(tree string) ([]string, error) {
-	if !hasGitMarker(tree) {
-		return nil, nil
-	}
-	cmd := exec.Command("git", "--no-optional-locks", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Ignored individual secrets still belong in the vault.
-	cmd.Dir = tree
-	raw, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	raw, err := ignoredListing(ctx, tree)
 	if err != nil {
-		if exit, ok := err.(*exec.ExitError); ok && strings.Contains(string(exit.Stderr), "not a git repository") {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("%s: %w", ignoredReadFailure, err)
+		return nil, err
 	}
 	var paths []string
 	var directories []string

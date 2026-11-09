@@ -46,15 +46,9 @@ func gitIgnored(tree, path string) bool {
 func ignoredDirectories(tree string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Git names ignored directories without opening them.
-	cmd.Dir = tree
-	raw, err := cmd.Output()
+	raw, err := ignoredListing(ctx, tree)
 	if err != nil {
-		var exit *exec.ExitError
-		if (errors.As(err, &exit) && strings.Contains(string(exit.Stderr), "not a git repository")) || !hasGitMarker(tree) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("%s: %w", ignoredReadFailure, err)
+		return nil, err
 	}
 	var candidates []string
 	for _, name := range strings.Split(string(raw), "\x00") {
@@ -84,6 +78,32 @@ func ignoredDirectories(tree string) ([]string, error) {
 		}
 	}
 	return dirs, nil
+}
+
+// ignoredListing asks about the project itself before listing its children.
+// Git cannot list below an ignored ancestor, but can answer that the whole
+// project is ignored. The cell is captured separately and keeps its words.
+func ignoredListing(ctx context.Context, tree string) ([]byte, error) {
+	check := exec.CommandContext(ctx, "git", "--no-optional-locks", "check-ignore", "-q", "--", ".") //codeaf:plumbing An ignored project needs no listing of its children.
+	check.Dir = tree
+	_, err := check.Output()
+	if err == nil {
+		return []byte("./\x00"), nil
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		if (exit != nil && strings.Contains(string(exit.Stderr), "not a git repository (or any")) || (errors.Is(err, exec.ErrNotFound) && !hasGitMarker(tree)) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("%s: %w", ignoredReadFailure, err)
+	}
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z") //codeaf:plumbing Git names ignored directories without opening them.
+	cmd.Dir = tree
+	raw, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", ignoredReadFailure, err)
+	}
+	return raw, nil
 }
 
 // hasGitMarker keeps a failed Git call from licensing ignored files, while a
