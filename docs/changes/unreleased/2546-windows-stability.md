@@ -11,7 +11,7 @@ invalidates:
   - "A current spending window could omit calls sharing the clock's current reading. Its default end now includes that reading, while explicit end times remain exclusive."
   - "Permanent conversation deletion and sync, service and task state updates failed on Windows file semantics. They now use the shared fsreplace operations, which replace a held file with a POSIX-semantics rename where Windows supports it."
   - "Fresh app setup omitted its default model and could rank a tiny one first. It now supplies the CLI default; saved model choices remain intact."
-  - "Launch and doctor trusted the presence of an OpenRouter key. Launch now checks it once in the background and reports ok, invalid or unknown; a 401 on a real turn marks it invalid."
+  - "Launch could probe OpenRouter before any setup or health read. The engine now checks it once in the background when setup or health is first read and reports ok, invalid or unknown; reads never wait, key handovers also start the check, and a 401 on a real turn marks it invalid. Doctor still checks directly."
   - "Doctor omitted git identity, gh authentication and Windows shell readiness. Doctor and health.check now report them with bounded probes and fix hints."
   - "Windows could not open the browser for sign-in, and the Git Bash install left codeaf off PATH. The opener now uses the file protocol handler and the installer updates the user PATH or prints the command."
   - "Headless foreground commands loaded a login profile each time, about 300 ms per command on Windows. They now use non-login bash and inherit the launching environment, like chat."

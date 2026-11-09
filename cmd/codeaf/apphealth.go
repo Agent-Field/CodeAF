@@ -11,6 +11,7 @@ import (
 // memory, disk readings, and bounded checks of git and gh in the user's
 // normal environment. It opens no conversation.
 func (b *appBackend) HealthCheck() (appwire.Health, error) {
+	b.refreshKeyHealth()
 	var health appwire.Health
 	b.locked(func() {
 		health.StartedAt = b.startedAt

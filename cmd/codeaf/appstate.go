@@ -347,6 +347,7 @@ func appSetupStepFromFour(step appwire.SetupStep) appwire.SetupStep {
 // step one, offering the app's day cap. A setup a four-step build kept is
 // answered in three steps.
 func (b *appBackend) Setup() (appwire.Setup, error) {
+	b.refreshKeyHealth()
 	// The day cap offered is the profile's limit, whatever the saved step says.
 	base, err := b.dayBase()
 	if err != nil {

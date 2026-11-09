@@ -96,7 +96,16 @@ func (c *keyHealthCache) invalid(key string) {
 
 func (b *appBackend) startKeyHealth() {
 	b.locked(func() { b.monitorKeyHealth = true })
-	address := strings.TrimSpace(config.DefaultBaseURL)
+	// Remember the key without probing so a real turn's refusal can mark it
+	// invalid even before setup or health is first read.
+	address, key := b.keyHealthTarget()
+	b.keyHealth.mu.Lock()
+	b.keyHealth.key, b.keyHealth.address = key, address
+	b.keyHealth.mu.Unlock()
+}
+
+func (b *appBackend) keyHealthTarget() (address, key string) {
+	address = strings.TrimSpace(config.DefaultBaseURL)
 	if settings, err := config.LoadKeyless(); err == nil {
 		address = settings.BaseURL
 	}
@@ -107,14 +116,15 @@ func (b *appBackend) startKeyHealth() {
 	if !handed {
 		key = config.APIKeyAt(config.ProfileDir())
 	}
-	b.keyHealth.start(b.keyClient, address, key)
+	return address, key
 }
 
 func (b *appBackend) refreshKeyHealth() {
 	var enabled bool
 	b.locked(func() { enabled = b.monitorKeyHealth })
 	if enabled {
-		b.startKeyHealth()
+		address, key := b.keyHealthTarget()
+		b.keyHealth.start(b.keyClient, address, key)
 	}
 }
 

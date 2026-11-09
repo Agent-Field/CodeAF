@@ -45,7 +45,6 @@ import (
 )
 
 var flushFinalSaves = cellstore.Flush
-var launchKeyHealth keyHealthCache
 
 func main() {
 	// THE DEVELOPER-ONLY PROFILE STARTS FIRST AND STOPS LAST, and is inert
@@ -59,11 +58,6 @@ func main() {
 	}
 	home.Witness(home.Dir())
 	registerRunningCLI()
-	if startupMaintenanceNeeded(os.Args[1:]) && (len(os.Args) < 2 || (os.Args[1] != "app" && os.Args[1] != "doctor")) {
-		if settings, err := config.LoadKeyless(); err == nil {
-			launchKeyHealth.start(nil, settings.BaseURL, settings.APIKey)
-		}
-	}
 	code := execute()
 	// The teams store folds its WAL back in as it closes (internal/teams).
 	teams.Close()

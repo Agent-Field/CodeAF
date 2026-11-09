@@ -395,12 +395,15 @@ them, because it is the profile's.
 Fresh setup supplies the same default model as the CLI. A saved model remains
 the person's choice. The app wire's
 `setup.get` and `health.check` include `provider_key`: `state` is `ok`, `invalid`, or
-`unknown`, with `checked_at` after a check finishes. Launch checks OpenRouter's key
-auth endpoint once in the background with a two-second deadline, including when
-the app hands over its stored key. Reads and turns do not repeat the check. A key
-change starts a new check. A real-turn 401 also marks that key invalid. An invalid
-key says `Your OpenRouter key stopped working. Sign in again.` Offline or a timeout
-means `unknown` and does not prevent starting.
+`unknown`, with `checked_at` after a check finishes. Starting the engine makes no
+key-check request. codeaf checks it once in the background when setup or health is first read,
+using OpenRouter's key auth endpoint with a two-second deadline. A handover of the
+app's stored key also starts the check. Reads never wait for it and say `unknown`
+until it completes; later reads and turns do not repeat it. A key or address
+change starts a new check. `codeaf doctor` still checks directly.
+A real-turn 401 also marks that key invalid. An invalid key says
+`Your OpenRouter key stopped working. Sign in again.` Offline or a timeout means
+`unknown` and does not prevent starting.
 
 ## Connecting a provider from the app — Ollama, a custom endpoint, Codex, regions
 

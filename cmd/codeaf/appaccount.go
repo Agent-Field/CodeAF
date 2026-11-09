@@ -484,7 +484,7 @@ func appServiceHost(source modelsource.Source, row config.PersistedSource) strin
 	return modelsource.AddressHost(firstNonEmptyString(address, source.Address))
 }
 
-// appCheckKeyAuth shares OpenRouter's cheap auth proof with launch and doctor.
+// appCheckKeyAuth shares OpenRouter's cheap auth proof with setup, health and doctor.
 // Both model listings answer 200 with the public catalog for any
 // bearer, revoked or made up, so a listing proves nothing about a key. The key
 // endpoint answers only for a bearer OpenRouter resolved to a live key: its 200

@@ -905,9 +905,13 @@ folder (`work_folder`) and of codeaf's home (`codeaf_home`), each with an
 status as `factory.local_status` shapes it. `provider_key`, also returned by
 `setup.get`, is the launch-cached OpenRouter auth reading: `state` is `ok`,
 `invalid`, or `unknown`, `checked_at` is present after a probe finishes, and
-`message` gives the reconnect hint for an invalid key. The two-second background
-auth probe runs once per credential per launch; reads do not repeat it. A real
-turn's 401 invalidates the matching cached credential.
+`message` gives the reconnect hint for an invalid key. Starting the engine makes
+no key-check request. codeaf checks it once in the background when setup or health
+is first read, with a two-second deadline. Reads never wait for the auth probe;
+until it completes they say `unknown`. A key handover also starts the check, and
+the cache deduplicates later reads for the same key and address for this launch.
+A real turn's 401 invalidates the matching cached credential. `codeaf doctor`
+continues to check directly.
 
 `checks` contains the same machine readiness rows as doctor: git availability,
 `git config user.name` and `user.email`, gh availability and `gh auth status`,
