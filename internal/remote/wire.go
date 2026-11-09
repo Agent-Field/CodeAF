@@ -455,6 +455,8 @@ type Frame struct {
 	// SyncPending distinguishes an upload failure after the local close succeeded.
 	SyncPending bool `json:"syncPending,omitempty"`
 	StorageOff  bool `json:"storageOff,omitempty"`
+	// SavingNotices arrive with the close reply after live delivery has ended.
+	SavingNotices []string `json:"savingNotices,omitempty"`
 	// UnsavedTranscript preserves a recovery location on a failed saving reply.
 	UnsavedTranscript string `json:"unsavedTranscript,omitempty"`
 

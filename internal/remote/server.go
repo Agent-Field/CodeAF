@@ -423,9 +423,11 @@ type Session struct {
 	localSaved     chan struct{}
 	localSavedOnce sync.Once
 	// closeErr retains the completed saving result for concurrent and repeated departures.
-	closeErr error
+	closeErr     error
+	closeNotices []string
 	// renewalStop ends idle health forwarding when this conversation changes or closes.
 	renewalStop chan struct{}
+	renewalDone chan struct{}
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -893,6 +895,18 @@ func (sess *Session) noteClosed(agent WrappedAgent) error {
 	if sess.engine.Closed != nil {
 		sess.engine.Closed(agent)
 	}
+	var lines []string
+	if source, ok := agent.(interface{ TakeSavingNotices() []string }); ok {
+		lines = append(lines, source.TakeSavingNotices()...)
+	}
+	if source, ok := agent.(interface{ TakeSealNotice() string }); ok {
+		for line := source.TakeSealNotice(); line != ""; line = source.TakeSealNotice() {
+			lines = append(lines, line)
+		}
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	sess.closeNotices = lines
 	return err
 }
 
@@ -2107,6 +2121,9 @@ func (s *server) dispatch(call Frame) {
 	payload, err := s.invoke(call)
 	close(progressDone)
 	result := Frame{Kind: "result", ID: call.ID, Payload: payload}
+	if (call.Method == MethodClose || call.Method == MethodDetach) && s.session != nil {
+		result.SavingNotices = s.session.takeCloseNotices()
+	}
 	if (call.Method == MethodClose || call.Method == MethodDetach) && s.session != nil {
 		select {
 		case <-s.session.localSaved:
@@ -3570,4 +3587,12 @@ func (sess *Session) releasePending() bool {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 	return sess.releaseOnIdle
+}
+
+func (sess *Session) takeCloseNotices() []string {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	lines := sess.closeNotices
+	sess.closeNotices = nil
+	return lines
 }

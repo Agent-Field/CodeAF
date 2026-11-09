@@ -174,6 +174,7 @@ func (b *driveBook) closeAll() {
 	ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
 	defer cancel()
 	for _, d := range drives {
+		defer func() { recordFinalSaveNotices(d.TakeSavingNotices()) }()
 		if err := d.Close(ctx); err != nil {
 			log.Print("sync: closing a chat: ", err)
 			recordFinalSaveFailure(session.SavingError(d.transcript, err))
@@ -290,6 +291,8 @@ type driveNotices struct {
 	mu      sync.Mutex
 	last    string
 	watches map[*cellstore.SealWatch]bool
+	closing bool
+	final   []string
 }
 
 func (n *driveNotices) register(watches ...*cellstore.SealWatch) {
@@ -343,6 +346,10 @@ func (n *driveNotices) clear() {
 func (n *driveNotices) say(line string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if n.closing {
+		n.final = append(n.final, line)
+		return
+	}
 	for watch := range n.watches {
 		watch.Note(line)
 	}

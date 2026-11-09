@@ -234,6 +234,9 @@ func (l *liveDrive) Store(e cellstore.Engine) cellstore.Store {
 
 // Close ends the drive side if one ever started.
 func (l *liveDrive) Close(ctx context.Context) error {
+	if l.notices != nil {
+		l.notices.beginClose()
+	}
 	ready := func() <-chan struct{} {
 		l.mu.Lock()
 		defer l.mu.Unlock()

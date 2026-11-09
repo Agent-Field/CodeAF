@@ -34,11 +34,13 @@ func (sess *Session) watchRenewals() {
 		sess.mu.Unlock()
 		return
 	}
-	sess.renewalStop = stop
+	done := make(chan struct{})
+	sess.renewalStop, sess.renewalDone = stop, done
 	sess.pumps.Add(1)
 	sess.mu.Unlock()
 	guard.Go("chat renewal changes", func() {
 		defer sess.pumps.Done()
+		defer close(done)
 		var tick <-chan time.Time
 		if sealing {
 			timer := time.NewTicker(100 * time.Millisecond)
@@ -77,10 +79,19 @@ func (sess *Session) watchRenewals() {
 }
 
 func (sess *Session) stopRenewals() {
+	done := sess.endRenewals()
+	if done != nil {
+		<-done
+	}
+}
+
+// endRenewals releases the lock before joining a pump that also reads session state.
+func (sess *Session) endRenewals() <-chan struct{} {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 	if sess.renewalStop != nil {
 		close(sess.renewalStop)
 		sess.renewalStop = nil
 	}
+	return sess.renewalDone
 }

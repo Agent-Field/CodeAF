@@ -90,6 +90,8 @@ const callDeadline = 10 * time.Second
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
 type Client struct {
+	savingNotices []string
+
 	// host keeps the typed destination as the fallback until the window chooses
 	// its displayed name. Keeping the two apart preserves the connection route.
 	host string
@@ -978,6 +980,9 @@ func (c *Client) deliver(frame Frame) {
 		// working the whole time, which is why it no longer says the connection
 		// has gone ([Client.late]).
 		return
+	}
+	if len(frame.SavingNotices) > 0 {
+		c.keepSavingNotices(frame.SavingNotices)
 	}
 	if frame.Error != "" {
 		err := errors.New(frame.Error)
@@ -2771,3 +2776,18 @@ func (a *Agent) LocalDurable() bool { a.c.mu.Lock(); defer a.c.mu.Unlock(); retu
 
 // SavingReceipts reports the two-way capability agreed in this connection's hello.
 func (a *Agent) SavingReceipts() bool { return a.c.Welcome().LocalSavingReceipts }
+
+// TakeSavingNotices hands the closing window its final sentences once.
+func (a *Agent) TakeSavingNotices() []string {
+	a.c.mu.Lock()
+	defer a.c.mu.Unlock()
+	lines := a.c.savingNotices
+	a.c.savingNotices = nil
+	return lines
+}
+
+func (c *Client) keepSavingNotices(lines []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.savingNotices = append(c.savingNotices, lines...)
+}
