@@ -12,13 +12,13 @@ import (
 
 type routesEngine struct{ factoryEngine }
 
-func (routesEngine) FactoryRoutes(context.Context, string) (FactoryRoutes, error) {
+func (*routesEngine) FactoryRoutes(context.Context, string) (FactoryRoutes, error) {
 	return FactoryRoutes{}, nil
 }
-func (routesEngine) FactoryRoutesSet(context.Context, FactoryRoutesSetParams) (FactoryRoutes, error) {
+func (*routesEngine) FactoryRoutesSet(context.Context, FactoryRoutesSetParams) (FactoryRoutes, error) {
 	return FactoryRoutes{}, nil
 }
-func (routesEngine) FactoryRoutesTest(context.Context, FactoryRoutesTestParams) (FactoryRoutesTried, error) {
+func (*routesEngine) FactoryRoutesTest(context.Context, FactoryRoutesTestParams) (FactoryRoutesTried, error) {
 	return FactoryRoutesTried{}, nil
 }
 
