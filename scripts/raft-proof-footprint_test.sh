@@ -27,9 +27,8 @@ CODEAF_RAFT_PROOF_PSI="$tmp/calm" sh "$gate" sh -c 'echo ran > "$1"' gate "$tmp/
 
 # A busy reading still holds the command back, exactly as before.
 printf 'some avg10=90.00 avg60=80.00 avg300=70.00 total=1\n' > "$tmp/busy"
-if timeout 3 env CODEAF_RAFT_PROOF_PSI="$tmp/busy" sh "$gate" sh -c 'echo ran > "$1"' gate "$tmp/out-busy" >/dev/null; then
-	fail "a busy reading did not hold the command back"
-fi
+timeout 3 env CODEAF_RAFT_PROOF_PSI="$tmp/busy" sh "$gate" sh -c 'echo ran > "$1"' gate "$tmp/out-busy" >/dev/null && status=0 || status=$?
+[ "$status" = 124 ] || fail "expected timeout status 124 for a busy reading, got $status"
 [ ! -e "$tmp/out-busy" ] || fail "the command ran while the reading was busy"
 
 echo "raft-proof-footprint: ok"
