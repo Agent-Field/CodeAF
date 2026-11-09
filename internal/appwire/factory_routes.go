@@ -30,6 +30,11 @@ import (
 // factory.routes, factory.routes_set and factory.routes_test.
 const FeatureFactoryRoutes = "factory.routes"
 
+// FeatureFactoryRouteRunOn is announced beside [FeatureFactoryRoutes] when a
+// rule's then may name run_on, "<node>.<reasoner>": the AgentField reasoner a
+// matched job is run by, with no repository needed ([route.Action.RunOn]).
+const FeatureFactoryRouteRunOn = "factory.route_run_on"
+
 // FactoryRoutes is the read: the connection and the table as the factory
 // keeps it (`[]` when empty), with changed_by and changed_at when it was ever
 // written.
@@ -107,6 +112,7 @@ func withFactoryRoutesFeature(hello Hello, e Engine) Hello {
 	_, keeps := e.(FactoryRoutesKeeper)
 	if _, tests := e.(FactoryRoutesTester); keeps && tests {
 		hello = withFeature(hello, FeatureFactoryRoutes)
+		hello = withFeature(hello, FeatureFactoryRouteRunOn)
 	}
 	return hello
 }

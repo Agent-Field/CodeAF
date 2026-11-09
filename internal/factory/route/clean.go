@@ -34,7 +34,8 @@ const maxEntryLen = 200
 // names one, of owner/name; and a pipeline, when it names one, spelled as a
 // pipeline of a repository's file and not pr or ci, which are not an issue
 // job's to run; and a question for the judge, when it asks one, of one line
-// of at most [MaxAskLen] characters. Whether the target repository's file
+// of at most [MaxAskLen] characters; and an AgentField reasoner, when it runs
+// on one, spelled node.reasoner and with no pipeline beside it. Whether the target repository's file
 // lists that pipeline is known only when an item is routed there.
 func Clean(rules []Rule) ([]Rule, error) {
 	if len(rules) > MaxRules {
@@ -93,7 +94,7 @@ func cleanRule(r Rule) (Rule, error) {
 		return r, fmt.Errorf("when ask is one line of at most %d characters", MaxAskLen)
 	}
 	t := &r.Then
-	t.Repo, t.Pipeline = strings.TrimSpace(t.Repo), strings.TrimSpace(t.Pipeline)
+	t.Repo, t.Pipeline, t.RunOn = strings.TrimSpace(t.Repo), strings.TrimSpace(t.Pipeline), strings.TrimSpace(t.RunOn)
 	t.Priority = strings.ToLower(strings.TrimSpace(t.Priority))
 	t.Start = Start(strings.ToLower(strings.TrimSpace(string(t.Start))))
 	if t.Repo != "" {
@@ -113,6 +114,16 @@ func cleanRule(r Rule) (Rule, error) {
 		case t.Pipeline == string(factory.KindPR) || t.Pipeline == string(factory.KindCI):
 			return r, fmt.Errorf("then pipeline %q is not an issue job's to run", t.Pipeline)
 		}
+	}
+	if t.RunOn != "" {
+		target, err := factory.AgentFieldTargetWord(t.RunOn)
+		switch {
+		case err != nil:
+			return r, fmt.Errorf("then run_on names an AgentField reasoner as node.reasoner: %s", err.Error())
+		case t.Pipeline != "":
+			return r, fmt.Errorf("then run_on runs the job on an AgentField reasoner in place of a pipeline, so it names no pipeline")
+		}
+		t.RunOn = target
 	}
 	switch t.Start {
 	case StartAuto, StartAsk, StartBacklog:

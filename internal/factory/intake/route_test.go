@@ -398,3 +398,45 @@ func TestAPersonsPriorityWinsOverARules(t *testing.T) {
 		t.Fatalf("routed job's priority is %+v, want ann's low kept", got.Priority)
 	}
 }
+
+// A RULE THAT RUNS ON AN AGENTFIELD REASONER NEEDS NO REPOSITORY. The Jira
+// job names none, and the rule sends it to a reasoner instead: it is started
+// with run_on set and no pipeline's steps, as a job filed with run_on is, and
+// no repository's file is read for it.
+func TestARuleThatRunsOnAReasonerStartsAJobWithNoRepository(t *testing.T) {
+	rule := route.Rule{Name: "to support", When: route.Match{Sources: []string{"jira"}}, Then: route.Action{RunOn: "support-bot.draft_reply", Start: route.StartAuto}}
+	r, job := routedFloor(t, []route.Rule{rule})
+	if err := r.in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.started) != 1 || r.started[0] != job.ID {
+		t.Fatalf("started %v, want job %d", r.started, job.ID)
+	}
+	if len(r.loaded) != 0 {
+		t.Fatalf("read the file of %v; a job run on a reasoner has none", r.loaded)
+	}
+	if got.Route != "to support" || got.RunOn != "support-bot.draft_reply" || got.Repo != "" || len(got.Stages) != 0 || got.Cap <= 0 {
+		t.Fatalf("routed job run_on %q repo %q stages %s cap %v route %q", got.RunOn, got.Repo, stageNames(got.Stages), got.Cap, got.Route)
+	}
+}
+
+// Asked first, the same rule holds the job naming the rule, with run_on
+// already on it so the person's yes starts the reasoner.
+func TestARuleThatRunsOnAReasonerAsksFirst(t *testing.T) {
+	rule := route.Rule{Name: "to support", When: route.Match{Sources: []string{"jira"}}, Then: route.Action{RunOn: "support-bot.draft_reply", Start: route.StartAsk}}
+	r, job := routedFloor(t, []route.Rule{rule})
+	if err := r.in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.started) != 0 || got.QKind != factory.QKindAskFirst || got.RunOn != "support-bot.draft_reply" || len(got.Stages) != 0 {
+		t.Fatalf("asked job qkind %q run_on %q stages %s, started %v", got.QKind, got.RunOn, stageNames(got.Stages), r.started)
+	}
+}

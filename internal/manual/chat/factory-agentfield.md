@@ -162,18 +162,32 @@ now" does, and the issue arrives the ordinary way: same job, same labels,
 Pick up issues, comments and close-on-merge exactly as before. A repository
 the factory does not watch is ignored.
 
-## add a trigger on AgentField — the source catalog and the triggers aimed at the factory
+## add a trigger on AgentField — the source catalog, the triggers aimed at the factory, the webhook address and its secret
 
-`factory.agentfield_sources` lists the control plane's sources, each with its
-kind (`http` posts to AgentField, `loop` is run by it, as cron), whether it
-needs a signing secret, and its config schema. `factory.agentfield_trigger_add`
-creates a trigger for one of them aimed at `<node id>.intake`, with its config,
-the name of the control plane's environment variable that holds the signing
-secret (`secret_env_var`, required by a source that needs one) and an
-optional list of event types. `factory.agentfield_triggers` lists the
-triggers aimed at the factory, each with its `ingest_url` (the control
-plane's `/sources/<id>`, what the outside system posts to), how many events it
-had in a day and when the last one came.
+A trigger can be added from the app; the control plane's own page is not
+needed. `factory.agentfield_triggers` lists the triggers aimed at this
+factory's node only, beside the control plane's catalog of sources. Each
+source has its name in words (`Linear`, `Signed webhook`, `Schedule` for
+cron), its kind (`http` posts to AgentField, `loop` is run by it), whether it
+needs a signing secret, and its config fields, a secret one marked to be drawn
+as a password. Each trigger says the source its jobs carry
+(`agentfield:linear`, what a routing rule names), its event types, whether it
+is on, its `webhook_url` (the control plane's `/sources/<id>`, what the
+outside system posts to; a cron trigger has none) and how many events it had
+in a day.
+
+`factory.agentfield_add_trigger` makes one, aimed at `<node id>.intake`, with
+the source, optional event types and config, and answers the trigger and what
+to set up: the webhook address and the name of the secret's variable. **The
+signing secret is never typed into codeaf**: AgentField reads it from its own
+environment variable, named by `secret_env_var`, and never hands it back. A
+source the catalog lacks answers "AgentField has no source named …"; one that
+needs a secret, given no variable, answers "… needs a signing secret: name the
+control plane's environment variable that holds it (secret_env_var)". Not
+connected answers "this organization is not connected to AgentField; connect
+it first". A config is sent to the control plane and nowhere else, and no
+refusal quotes it. (`factory.agentfield_sources` and
+`factory.agentfield_trigger_add` are the older pair of the same calls.)
 
 ## the AgentField execution — progress, the pull request link and stuck jobs
 
@@ -229,6 +243,24 @@ these methods says `factory.agentfield` in its hello.
 closes the link, stops listening, and forgets the settings, the key and the
 token. Jobs
 already filed stay as they are.
+
+## send jobs to an AgentField reasoner with a routing rule — run_on in a rule, work with no repository
+
+A routing rule's `then` can name `run_on`, `"<node>.<reasoner>"`: every job
+the rule matches is run by that reasoner instead of by a pipeline, exactly as
+a job filed with `run_on` is (below). The job needs no repository, so a Slack
+message, a Sentry issue or a cron tick with no code to change still runs. With
+`start: auto` it starts at once, `ask` holds it for a person's yes, `backlog`
+files it. Such a rule names no `pipeline`; a `repo` beside it is kept as the
+job's repository.
+
+The reasoner is checked when the rules are saved, against the reasoners the
+control plane lists (the same list an agentfield step is picked from): one it
+does not have refuses the table with "routing rule <name>: AgentField has no
+reasoner <node.reasoner>; pick one it lists", and a factory that is not
+connected refuses a rule with `run_on`. A team server's rules are checked for
+spelling only. `when.sources: [agentfield:*]` matches every AgentField source,
+as `agentfield` does.
 
 ## a job run by an AgentField reasoner — run_on, the job's steps are the reasoner's calls
 

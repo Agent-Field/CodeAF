@@ -301,6 +301,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.local_run` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_start` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
 | `factory.local_status` | `in.FactoryLocalParams` | `FactoryLocalStatus` |
+| `factory.agentfield_add_trigger` | `in.FactoryAgentFieldAddTriggerParams` | `FactoryAgentFieldAddedTrigger` |
 | `factory.agentfield_connect` | `in.FactoryAgentFieldConnectParams` | `FactoryAgentFieldStatus` |
 | `factory.agentfield_disconnect` | `in.FactoryRef` | `FactoryAgentFieldStatus` |
 | `factory.agentfield_sources` | `in.FactoryRef` | `FactoryAgentFieldSources` |
@@ -483,6 +484,24 @@ event_types?}` is `POST /api/v1/triggers` targeting `<node_id>.intake` and
 answers the trigger. Every method but connect is `conflict` on a factory that
 is not connected, and every method is `not_found` for a factory other than
 this machine's.
+
+`factory.agentfield_triggers` in hello features says the engine also serves
+the trigger page's two calls. `factory.agentfield_triggers {factory}` then
+carries the catalog beside the triggers, `sources: [{name, label, kind,
+secret_required, config_schema?, config_fields?: [{name, label, secret?}]}]`
+(every source in `factory.agentfield_sources` carries `label` and
+`config_fields?` too), and each trigger adds `entry_source` (the source a job
+it files carries, `agentfield:<source>` with `_` written `-`, what a routing
+rule's `when.sources` names), `label?`, `webhook_url?` (the `ingest_url`,
+absent for a `loop` source such as cron, which nothing posts to) and
+`created_at?`. `factory.agentfield_add_trigger {factory, source,
+event_types?, config?, secret_env_var?}` makes one trigger aimed at
+`<node_id>.intake` and answers `{factory, trigger, setup?: {webhook_url?,
+secret_env_var?}}`. A source the catalog does not have, or one that needs a
+signing secret given no `secret_env_var`, is `bad_params` in words before
+anything is made. `setup.secret` is never filled: AgentField reads a source's
+secret from its own environment variable and never hands one back. A refusal
+of either add never quotes the `config` it was sent.
 
 **A pipeline step that runs on AgentField.** `factory.pipeline_edit_agentfield`
 in hello features says `factory.pipeline_preview` takes an `add_step` of
@@ -721,7 +740,7 @@ An engine whose hello carries the feature `factory.routes` serves
 the factory's routing table, an ordered list where the first rule that
 matches an arriving item decides it. A rule is
 `{"name": "...", "when": {sources?, repos?, labels?, authors?, text?,
-priority?}, "then": {repo?, pipeline?, priority?, start}}`; every `when` list
+priority?}, "then": {repo?, pipeline?, priority?, start, run_on?}}`; every `when` list
 matches when any entry does and an absent one matches anything; `start` is
 `auto`, `ask` or `backlog`; priorities are `p0`..`p3`; repositories are
 `owner/name`. The reply is `{"factory": "...", "rules": [...], "changed_by"?,
@@ -744,6 +763,17 @@ pipeline that repository's file (or the factory's copy of it) does not list,
 when the file can be read; one whose file cannot be read now is kept. A rule
 refused while routing never fails the factory's pass: the job stays unrouted
 and its activity gets one `routed` row in that sentence.
+
+With the feature `factory.route_run_on`, a rule's `then` may name `run_on`,
+`"<node>.<reasoner>"`: a job the rule matches is run by that AgentField
+reasoner in place of the factory's steps, needs no repository, and runs as a
+job filed with `run_on` does. Such a rule names no `pipeline` (`bad_params`).
+On this machine's factory `factory.routes_set` checks every `run_on` against
+the reasoners the control plane lists: one it does not have is `bad_params`
+(`routing rule <name>: AgentField has no reasoner <node.reasoner>; pick one it
+lists`), and a factory not connected to AgentField is `conflict`. A source in
+`when.sources` written `agentfield:*` matches every AgentField source, as
+`agentfield` does.
 
 `factory.job_set_repo` in hello features says the engine serves
 `factory.job_set_repo {factory, job, repo, expect?}`: giving a job that never

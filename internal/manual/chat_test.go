@@ -3630,6 +3630,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// as a comment, the status of a job: none of it is an HTTP door or a
 		// webhook any more, and every one is answered by AgentField's page.
 		{"how do I connect my own tool to the factory", "factory-agentfield"},
+		{"can I add an AgentField trigger from the app", "factory-agentfield"},
+		{"route jobs to an AgentField reasoner with no repository", "factory-agentfield"},
 		{"is there an SDK for the factory", "factory-agentfield"},
 		{"send a comment to a job from outside", "factory-agentfield"},
 		{"how does my tool add more details to a factory job it filed", "factory-agentfield"},
