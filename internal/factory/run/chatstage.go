@@ -257,6 +257,8 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	if e.maker == nil {
 		return factory.StageResult{}, errors.New(stageNoMaker)
 	}
+	// The scratch folder the brief names exists before the step reads it.
+	makeScratch(job.Dir)
 	door := newStageDoor()
 	door.ask, door.stage = job.Ask, job.Stage
 	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && f.Readiness != nil {
@@ -688,7 +690,9 @@ func stageBrief(job Job) string {
 	for _, p := range itemContext(job) {
 		para(p...)
 	}
+	para(firstReadBrief(job))
 	para(stagePlace(job))
+	para(scratchBrief(ScratchDir(job.Dir)))
 	para(factory.StageMethod(job.Stage))
 	para(rulesBrief(job))
 	para(planBrief(job))

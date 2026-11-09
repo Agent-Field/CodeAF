@@ -135,3 +135,30 @@ func TestTheJobReadSaysWhereItsCheckoutComesFrom(t *testing.T) {
 		t.Fatalf("a factory that does not know its checkouts says %q", got)
 	}
 }
+
+// A JOB THAT RUNS ELSEWHERE NEEDS NO CHECKOUT HERE: a job that only follows a
+// run on another machine (run_on, or a pipeline of nothing but AgentField
+// steps and gates) reads no checkout, so the page never says this machine is
+// cloning, and its start is not refused for a repository this machine cannot
+// clone.
+func TestAJobThatRunsElsewhereNeedsNoCheckoutHere(t *testing.T) {
+	f := checkoutFloor(t, map[string]factory.CheckoutState{"acme/web": factory.CheckoutWillClone})
+	remote := []factory.Stage{{Name: "build", Kind: factory.StageAgentField, Target: "builder.build", On: true}}
+	for name, it := range map[string]factory.Item{
+		"run_on":       {Repo: "acme/web", Num: 3, State: factory.StateNew, Assignee: "sam", RunOn: "builder.build"},
+		"agentfield":   {Repo: "acme/web", Num: 4, State: factory.StateNew, Assignee: "sam", Stages: remote},
+		"cannot clone": {Repo: "acme/docs", Num: 5, State: factory.StateNew, Assignee: "sam", Stages: remote, Tier: factory.TierOwner},
+	} {
+		it := f.create(t, it)
+		if got := f.read(t, it).Checkout; got != "" {
+			t.Errorf("%s reads checkout %q, want none", name, got)
+		}
+		if name == "cannot clone" {
+			f.post(t, it, "start_now", `{}`, 200)
+		}
+	}
+	native := f.create(t, factory.Item{Repo: "acme/web", Num: 6, State: factory.StateNew, Assignee: "sam"})
+	if got := f.read(t, native).Checkout; got != "will_clone" {
+		t.Fatalf("a job that runs here reads checkout %q", got)
+	}
+}

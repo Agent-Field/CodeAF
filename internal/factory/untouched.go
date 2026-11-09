@@ -33,7 +33,7 @@ func TouchIssue(it *Item) {
 func RecordIssueTouch(before Item, after *Item) {
 	edited := before.Cap != after.Cap || before.Model != after.Model || before.Effort != after.Effort ||
 		before.Autonomy != after.Autonomy || before.Manual != after.Manual || before.Assignee != after.Assignee ||
-		before.Marked != after.Marked || before.SetupHeld != after.SetupHeld ||
+		before.Marked != after.Marked || before.SetupHeld != after.SetupHeld || before.RepoSetBy != after.RepoSetBy ||
 		!reflect.DeepEqual(before.Followers, after.Followers) || !reflect.DeepEqual(before.BriefSeen, after.BriefSeen) ||
 		(before.SourceClosed && after.SourceClosed && before.DoneHow != after.DoneHow) || before.StopAfterStep != after.StopAfterStep ||
 		!reflect.DeepEqual(before.Stages, after.Stages) || !reflect.DeepEqual(before.Priority, after.Priority) ||

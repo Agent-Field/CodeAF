@@ -81,7 +81,9 @@ func prepRejectPlan(p *FactoryJobRejectPlanParams) error {
 		return Errorf(CodeBadParams, "expect.state must be %s: a plan is sent back only while it waits for its person", api.StateNeedsYou)
 	}
 	var err error
-	p.Words, err = words("words", p.Words, api.MaxRejectPlanWords, true)
+	// Words may be empty here: an AgentField run's Reject takes none. The
+	// engine still refuses a bare no on a plan of its own (appfactory_job_reject_plan.go).
+	p.Words, err = words("words", p.Words, api.MaxRejectPlanWords, false)
 	return err
 }
 

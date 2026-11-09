@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -95,6 +96,13 @@ const appLazyHotWindow = 10 * time.Minute
 // last events to be written before the outbox is shut regardless.
 const appReleaseWait = 5 * time.Second
 
+// appQuitReceiptWait is the longest the app's quit waits for the prices its
+// cut streams still owe, once they are hurried. A hurried receipt answers within
+// about two seconds of the hurry; this is the bound on top of it, so that a
+// router that does not answer at all costs the quit three seconds and not the
+// seventy of [provider.ReceiptWait].
+const appQuitReceiptWait = 3 * time.Second
+
 func runApp(args []string) error {
 	localGUI := consumeAppLocalGUI()
 	flags := commandFlags("app")
@@ -155,6 +163,16 @@ func runApp(args []string) error {
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.leaving = leaving
 	backend.startKeyHealth()
+	// A QUIT DOES NOT WAIT OUT A RECEIPT'S SCHEDULE (internal/provider's
+	// receipt_hurry.go): Close hurries them, and the process half's close waits
+	// at most [appQuitReceiptWait] for what is still owed.
+	var calmReceipts func()
+	backend.hurryReceipts = func() { calmReceipts = provider.HurryReceipts() }
+	defer func() {
+		if calmReceipts != nil {
+			calmReceipts()
+		}
+	}()
 	backend.useSyncDrives(syncDrives)
 	// A chat's banked pipeline line takes the editor's road while the app
 	// holds the factory (factory_recipe_road.go).
@@ -205,6 +223,9 @@ func runApp(args []string) error {
 	services := openAppServices()
 	appServiceDoor.Store(services)
 	backend.attachServices(services)
+	// And the press a job's manager makes Merge and Mark ready through, the
+	// job page's own (factory_manager_press.go).
+	defer installAppLocalPress(backend)()
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
 	// standing orders runs while it is open (apporders.go).
@@ -224,6 +245,9 @@ func runApp(args []string) error {
 		// The process half every conversation shared, closed the way the pipe
 		// engine closes it once its conversation is gone (engine.go).
 		session.CloseUsage()
+		if proc := openedEngineProcess(); proc != nil {
+			proc.quitReceiptWait.Store(int64(appQuitReceiptWait))
+		}
 		closeEngineProcess()
 	}
 	return err
@@ -568,10 +592,13 @@ type appBackend struct {
 	pluginOllama   appPluginOllama
 	pluginAuth     map[string]*appPluginAttempt
 	chats          appChats
-	pair           appPair
-	drives         *driveBook
-	sync           appSync
-	syncPending    map[string][]appSyncFact
+	// credentials is what a door gave this launch to keep, waiting for the
+	// app to take it (appkept_credentials.go).
+	credentials appKeptCredentials
+	pair        appPair
+	drives      *driveBook
+	sync        appSync
+	syncPending map[string][]appSyncFact
 
 	// devices observes existing sync traffic without starting a roster watch.
 	devices            *appDevices
@@ -614,6 +641,8 @@ type appBackend struct {
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
+	// setupGitHub is the first run's browser sign-ins (appfactory_setup_github.go).
+	setupGitHub appSetupGitHub
 	// startedAt is when this backend was made, and lastResume what its start
 	// carried on after the last quit, nil for nothing (apphealth.go). Both
 	// are guarded by mu.
@@ -680,6 +709,11 @@ type appBackend struct {
 	left chan struct{}
 	// leaving is runApp's cancellation, installed before the backend starts.
 	leaving context.CancelFunc
+	// hurryReceipts, when set, is called once as Close begins, so every
+	// conversation's cut stream asks for its price once and is answered rather
+	// than holding the quit through its seventy-second schedule
+	// ([provider.HurryReceipts]). Only the app's own door sets it.
+	hurryReceipts func()
 	// spent is the last figure spend.changed said, so it is said on a change.
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
@@ -1071,6 +1105,10 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	}
 	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
+	// A CREDENTIAL A DOOR GAVE THIS LAUNCH IS HANDED TO THE APP TO KEEP
+	// (config.AppCredentials.Keep, appkept_credentials.go), and comes back
+	// with keys.set at the next.
+	keys.OnKept(b.queueCredential)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
@@ -2422,6 +2460,11 @@ func (b *appBackend) send(id, text, clientID string, shown *appSending) (uint64,
 	if err != nil {
 		return 0, err
 	}
+	// A STEP AN AGENTFIELD NODE IS RUNNING takes the person's words as a note
+	// to that run, not a turn here (factory_agentfield_run.go).
+	if handled, err := b.agentFieldSteer(a, text); handled {
+		return 0, err
+	}
 	// The gate keeps the idle sweep from letting the conversation go between
 	// opening it and starting the turn.
 	a.gate.Lock()
@@ -3665,6 +3708,7 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	if err != nil {
 		return nil, false, appEntriesBusy(err)
 	}
+	appMarkStepBrief(page, transcript)
 	return page, more, nil
 }
 
@@ -4017,6 +4061,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		if entry.Kind == appwire.EntryUser && item.Person != nil {
 			entry.From = item.Person.From
 		}
+		entry.Author = appEntryAuthor(entry, item)
 		entries = append(entries, entry)
 		from = append(from, i)
 	}
@@ -4625,17 +4670,22 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	if b.hurryReceipts != nil {
+		b.hurryReceipts()
+	}
 	for _, attempt := range pluginAttempts {
 		attempt.cancel()
 		if attempt.flow != nil {
 			attempt.flow.Cancel()
 		}
 	}
+	lap := leaveLaps()
 	b.closePair()
 	if b.stopSyncedSettings != nil {
 		b.stopSyncedSettings()
 	}
 	b.closeChats()
+	lap("chats")
 	if stopModelNotices != nil {
 		stopModelNotices()
 	}
@@ -4648,14 +4698,18 @@ func (b *appBackend) Close() error {
 	// the next engine cannot serve the factory until this one has let it go.
 	// Its runner stops here the way a quit has always stopped it.
 	b.closeLocalFactory()
+	lap("local factory")
 	b.stopCloseWatch()
+	lap("close watch")
 	if balances != nil {
 		balances.stop()
 	}
 	b.closeFactories()
+	lap("factories")
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).
 	b.markQuit(agents)
+	lap("mark quit")
 	close(b.sweepStop)
 	<-b.sweepDone
 	if b.stopPhases != nil {
@@ -4670,12 +4724,21 @@ func (b *appBackend) Close() error {
 	if b.briefs != nil {
 		b.briefs.stop()
 	}
+	lap("background loops")
 	if warmed != nil {
 		<-warmed
 	}
+	lap("warm-up")
 	if crews != nil {
 		crews.close()
 	}
+	lap("crews")
+	// EVERY CONVERSATION IS LET GO AT ONCE, each on its own goroutine, so the
+	// quit waits for the slowest of them and never for their sum. Each is
+	// timed in its two halves, the wait for its gate and its own close, and
+	// one slower than [appLeaveSlowLap] is named on stderr: the sixth live
+	// A+B run spent 18 seconds here with about 24 chats open, and nothing it
+	// wrote said which conversation, or which half, it was waiting on.
 	var wg sync.WaitGroup
 	for _, a := range agents {
 		if b.liveOf(a) == nil {
@@ -4691,10 +4754,11 @@ func (b *appBackend) Close() error {
 			if live := b.liveOf(a); live != nil && live.conn.Assembled {
 				live.conn.Conv.Interrupt()
 			}
-			b.letGo(a)
+			b.letGoTimed(a, os.Stderr)
 		})
 	}
 	wg.Wait()
+	lap("conversations")
 	// An unfinished crew open owns its gate but has no held conversation to
 	// release. Optional file cleanup must not join that open; retain its files.
 	var settled []*appAgent
@@ -4712,9 +4776,11 @@ func (b *appBackend) Close() error {
 		b.reapBlank(a)
 	}
 	b.closeCollections()
+	lap("references")
 	// Kept-running processes stay up through a quit; services.stop_all is
 	// how a quit stops them (appservices.go).
 	b.closeServices()
+	lap("services")
 	return nil
 }
 
@@ -4723,6 +4789,34 @@ func (b *appBackend) letGo(a *appAgent) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	b.release(a)
+}
+
+// letGoTimed is letGo at quit, naming on w a conversation whose wait for its
+// gate or whose own close took longer than [appLeaveSlowLap].
+func (b *appBackend) letGoTimed(a *appAgent, w io.Writer) {
+	began := time.Now()
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	gated := time.Now()
+	var id string
+	b.locked(func() { id = a.view.ID })
+	b.release(a)
+	if line := appSlowCloseLine(id, gated.Sub(began), time.Since(gated)); line != "" {
+		fmt.Fprintln(w, line)
+	}
+}
+
+// appSlowCloseLine is the stderr line for one slow conversation at quit, or ""
+// for a quick one. It names the conversation by its id, which is no secret,
+// and says which half was slow: a long wait for the gate is something else
+// holding the conversation (an open still assembling it), and a long close is
+// the conversation's own wrap-up (its turn, its commands, its save).
+func appSlowCloseLine(id string, gate, close time.Duration) string {
+	if gate+close <= appLeaveSlowLap {
+		return ""
+	}
+	return fmt.Sprintf("codeaf app: leaving: conversation %s took %s (waiting for it %s, closing it %s)",
+		id, (gate + close).Round(100*time.Millisecond), gate.Round(100*time.Millisecond), close.Round(100*time.Millisecond))
 }
 
 func (b *appBackend) liveNeedsYou(live *appLive) bool {

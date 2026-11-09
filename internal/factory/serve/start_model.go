@@ -31,6 +31,11 @@ func (h *Handler) startModelRefused(w http.ResponseWriter, it factory.Item) bool
 	if h.mode() != api.FactorySolo || profile == "" {
 		return false
 	}
+	// A JOB AN AGENTFIELD REASONER RUNS calls no model here: its node holds
+	// the key its own run uses.
+	if strings.TrimSpace(it.RunOn) != "" {
+		return false
+	}
 	if _, one := config.TaskOneModelAt(profile); one {
 		return false
 	}

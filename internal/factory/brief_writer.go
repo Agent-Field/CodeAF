@@ -93,6 +93,34 @@ type BriefPersonRequest struct {
 	At   time.Time `json:"at,omitzero"`
 }
 
+// BriefManagerAnswer is a step's question the job's manager answered in the
+// person's place ([Item.KeepManagerAnswer]): never one of the person's own
+// requests, and always something the Brief may say was decided for them.
+type BriefManagerAnswer struct {
+	Step     string    `json:"step,omitempty"`
+	Question string    `json:"question"`
+	Answer   string    `json:"answer"`
+	At       time.Time `json:"at,omitzero"`
+}
+
+// managerAnsweredMark is the middle of the note a manager's answer leaves for
+// the step's later rounds (`plan asked: … · the manager answered: …`, spelled
+// in run/inbox.go). Such a note is the manager's words, never the person's.
+const managerAnsweredMark = " · the manager answered: "
+
+// briefManagerAnswers is every step question the manager answered for the
+// person, oldest first.
+func briefManagerAnswers(it Item) []BriefManagerAnswer {
+	var out []BriefManagerAnswer
+	for _, q := range it.AnsweredQuestions {
+		if q.With != AskedManager || q.Answer == nil {
+			continue
+		}
+		out = append(out, BriefManagerAnswer{Step: clip(q.FromStep, 128), Question: clip(q.Text, 512), Answer: clip(q.Answer.Text, 512), At: q.Answer.At})
+	}
+	return out
+}
+
 // BriefInput is everything the writer reads. Previous is not part of the
 // input's hash: a new version changes it, and that alone is no reason to
 // write another.
@@ -114,6 +142,7 @@ type BriefInput struct {
 	Model                  string                 `json:"model,omitempty"`
 	Plan                   string                 `json:"plan,omitempty"`
 	PersonRequests         []BriefPersonRequest   `json:"person_requests,omitempty"`
+	ManagerAnswers         []BriefManagerAnswer   `json:"manager_answers,omitempty"`
 	Steps                  []BriefStepInput       `json:"steps"`
 	Change                 *ChangeStat            `json:"change,omitempty"`
 	Hunks                  []PatchHunk            `json:"hunks,omitempty"`
@@ -209,6 +238,7 @@ func BriefInputOf(it Item) BriefInput {
 	var in BriefInput
 	in.beforeWork = briefBeforeWork(it)
 	in.PersonRequests = briefPersonRequests(it)
+	in.ManagerAnswers = briefManagerAnswers(it)
 	in.Issue.Title, in.Issue.Body, in.Issue.Labels = it.Title, clip(it.Body, briefOutputMost), it.Labels
 	in.NeedsYou, in.Question, in.Model = JobState(it) == "needs_you", it.Question, it.Model
 	in.State = strings.ReplaceAll(string(it.State), "_", " ")
@@ -233,7 +263,7 @@ func BriefInputOf(it Item) BriefInput {
 	in.Steps = []BriefStepInput{}
 	if it.Stream != nil {
 		for _, p := range it.Stream.Phases {
-			in.Steps = append(in.Steps, stepInputs(briefStageOf(it.Stages, p), p)...)
+			in.Steps = append(in.Steps, stepInputs(it, briefStageOf(it.Stages, p), p)...)
 			if p.Name == "plan" && p.Result != nil {
 				in.Plan = clip(p.Result.Output, briefOutputMost)
 			}
@@ -255,12 +285,12 @@ func BriefInputOf(it Item) BriefInput {
 func briefPersonRequests(it Item) []BriefPersonRequest {
 	var requests []BriefPersonRequest
 	for _, text := range it.Notes {
-		if text = strings.TrimSpace(text); text != "" {
+		if text = strings.TrimSpace(text); text != "" && !strings.Contains(text, managerAnsweredMark) {
 			requests = append(requests, BriefPersonRequest{Text: text})
 		}
 	}
 	for _, q := range it.AnsweredQuestions {
-		if q.Answer == nil {
+		if q.Answer == nil || q.With == AskedManager {
 			continue
 		}
 		text := strings.TrimSpace(q.Answer.Text)
@@ -292,8 +322,9 @@ func briefPersonRequests(it Item) []BriefPersonRequest {
 }
 
 // stepInputs is one line per finished try of a phase, then its latest
-// result, which carries the structured fields.
-func stepInputs(st Stage, p Phase) []BriefStepInput {
+// result, which carries the structured fields. A latest try that ended
+// failed with no result says the job's failure as its summary.
+func stepInputs(it Item, st Stage, p Phase) []BriefStepInput {
 	base := BriefStepInput{Step: p.Name, Kind: string(st.Kind), Until: st.Until, State: string(p.State)}
 	if p.State == PhaseSkipped {
 		base.Summary = p.SkipReason
@@ -314,8 +345,23 @@ func stepInputs(st Stage, p Phase) []BriefStepInput {
 	if r := p.Result; r != nil {
 		last.Done, last.Findings, last.Exit, last.Tests = r.Done, r.Findings, r.Exit, r.Tests
 		last.Claims, last.Output = r.Claims, clip(r.Output, briefOutputMost)
+	} else {
+		last.Summary = failedSummary(it, p)
 	}
 	return append(out, last)
+}
+
+// failedSummary is what a phase that ended failed without a result says of
+// its latest try: the job's failure when it names this step, else nothing.
+// A remote step that fails before reporting keeps no round and no result, so
+// its failure is the only record of that try. Without it a brief that cites
+// the try is refused as naming nothing the job has, and the brief is never
+// updated for the job's last outcome (the fifth live A+B run, job 78).
+func failedSummary(it Item, p Phase) string {
+	if p.State != PhaseFailed || p.Result != nil || it.Failure == nil || it.Failure.Step != p.Name {
+		return ""
+	}
+	return clip(it.Failure.Detail, briefOutputMost)
 }
 
 func clip(s string, most int) string {
@@ -462,9 +508,9 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 	); fault != "" {
 		return BriefVersion{}, nil, fault
 	}
-	done, total := briefProgress(it)
+	done, total := StepCount(it)
 	v := BriefVersion{
-		Issue: it.Title, StepsDone: done, StepsTotal: total, Verdict: d.Verdict, VerdictEvidence: d.VerdictEvidence,
+		Issue: it.Title, StepsDone: done, StepsTotal: total, Verdict: BriefPlainWords(d.Verdict), VerdictEvidence: d.VerdictEvidence,
 		Facts: BriefFacts(it), Blocks: []BriefBlock{},
 	}
 	drops := unread
@@ -473,6 +519,11 @@ func CheckBriefDraft(it Item, raw []byte) (BriefVersion, []BriefDrop, string) {
 		part := fmt.Sprintf("block %d (%s)", i+1, b.Kind)
 		kept, bd := ev.checkBlock(b, part, it.State == StateNeedsYou)
 		drops = append(drops, bd...)
+		// Plain words before the heading is compared, so two headings that
+		// read the same once plain are one block, not two.
+		if kept != nil {
+			briefPlainBlock(kept)
+		}
 		switch {
 		case kept == nil:
 		case seen[kept.Key()]:
@@ -601,6 +652,9 @@ func summaryNumbers(e briefEvidence, ref BriefEvidence) ([]int, bool) {
 		if r.Round == ref.Try {
 			return append(textNumbers(r.Summary), ref.Try), true
 		}
+	}
+	if said := failedSummary(e.it, p); said != "" && ref.Try == briefTry(p) {
+		return append(textNumbers(said), ref.Try), true
 	}
 	return nil, false
 }

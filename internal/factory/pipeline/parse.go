@@ -393,14 +393,23 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 				continue
 			}
 			step.Label = strings.TrimSpace(s)
-		case "prompt":
+		case "prompt", "target":
+			// `target:` is an agentfield step's prompt by its own name: the
+			// reasoner, node.reasoner, that runs it.
 			s, ok := scalar(p.val)
 			if !ok {
-				probs = append(probs, Problem{Line: p.line, Where: "prompt", Why: "a prompt is a sentence"})
+				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a " + p.name + " is a sentence"})
 				continue
 			}
 			step.Prompt = strings.TrimSpace(s)
 			step.wrotePrompt = true
+		case "input":
+			in, bad := inputMap(p.val)
+			if bad != "" {
+				probs = append(probs, Problem{Line: p.line, Where: "input", Why: bad})
+				continue
+			}
+			step.Input = in
 		case "until":
 			s, ok := scalar(p.val)
 			if !ok {
@@ -423,7 +432,7 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 			s, ok := scalar(p.val)
 			k, good := kindWord(s)
 			if !ok || !good {
-				why := "kind is chat, check, gate or post; until it is one, the run holds at this step for a person"
+				why := "kind is chat, check, gate, post or agentfield; until it is one, the run holds at this step for a person"
 				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: why})
 				step.hold = why
 				continue
@@ -449,8 +458,19 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 				continue
 			}
 			step.Who = w
+		case "pass":
+			// AN UNREADABLE PASS WORD IS NEVER "THE MANAGER": the step is read
+			// as a person's alone, and the file says why.
+			s, ok := scalar(p.val)
+			w, good := factory.PassWord(s)
+			if !ok || !good {
+				probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "pass is person, manager, or manager when <a condition the manager judges>; until it is one, only a person passes this step"})
+				step.Pass = factory.PassPerson
+				continue
+			}
+			step.Pass = w
 		default:
-			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until, a max and, for a person, who"})
+			probs = append(probs, Problem{Line: p.line, Where: p.name, Why: "a step is a prompt, a kind, when, effort, fanout, an until, a max, for a person who and pass, and for an agentfield step its target and input"})
 		}
 	}
 	// An unreadable condition costs a chat or a check money when it falls back
@@ -461,7 +481,33 @@ func readStep(n *yaml.Node) (stepRead, []Problem) {
 		probs = append(probs, Problem{Line: badWhen, Where: "when", Why: why})
 		step.hold = why
 	}
+	if len(step.Input) > 0 && step.Kind != string(factory.StageAgentField) {
+		probs = append(probs, Problem{Where: "input", Why: "only an agentfield step takes an input; this one is ignored"})
+		step.Input = nil
+	}
 	return stepRead{step: step}, probs
+}
+
+// inputMap reads an agentfield step's input: a map of the reasoner's field
+// names to text with the job's {placeholders}. It answers why it cannot.
+func inputMap(n *yaml.Node) (map[string]string, string) {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil, "input is a map of the reasoner's field names to text, such as goal: \"{title}\""
+	}
+	out := map[string]string{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i], n.Content[i+1]
+		key, ok := scalar(k)
+		val, vok := scalar(v)
+		if !ok || strings.TrimSpace(key) == "" || !vok {
+			return nil, "input is a map of the reasoner's field names to text, such as goal: \"{title}\""
+		}
+		if bad := factory.AgentFieldInputProblem(val); bad != "" {
+			return nil, "input." + key + ": " + bad
+		}
+		out[strings.TrimSpace(key)] = val
+	}
+	return out, ""
 }
 
 // enumWord reads one runtime word. A word outside the vocabulary is a problem
@@ -539,7 +585,7 @@ func (d draft) file(defaults bool) File {
 				base.Max = step.Max
 				base.wroteMax = true
 			}
-			base.Kind, base.When, base.Effort, base.Fanout, base.Who, base.hold = step.Kind, step.When, step.Effort, step.Fanout, step.Who, step.hold
+			base.Kind, base.When, base.Effort, base.Fanout, base.Who, base.Pass, base.hold, base.Input = step.Kind, step.When, step.Effort, step.Fanout, step.Who, step.Pass, step.hold, step.Input
 			if base.Kind != "" {
 				// A shipped prompt and stop sentence are words for a model. A
 				// check would run the prompt in a shell and a post would read it
@@ -627,6 +673,11 @@ func (f *File) clean(requireStep bool) {
 		if step.Who != "" && !factory.ApproveWord(name) && step.Kind != string(factory.StageGate) {
 			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".who", Why: "only approve or a gate waits on someone"})
 			step.Who = ""
+			f.Steps[name] = step
+		}
+		if step.Pass != "" && !factory.ApproveWord(name) && step.Kind != string(factory.StageGate) {
+			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".pass", Why: "only approve or a gate is passed by someone"})
+			step.Pass = ""
 			f.Steps[name] = step
 		}
 		if factory.ApproveWord(name) {

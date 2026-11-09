@@ -78,6 +78,9 @@ func renameAlone(ops []EditOp) *EditError {
 		}
 	}
 	for i, op := range ops {
+		if pipelineOp(op.Op) {
+			continue // its names are pipelines', not steps'
+		}
 		for _, n := range []string{op.Name, deref(op.After), op.To} {
 			if at, renamed := owner[n]; n != "" && renamed && at != i {
 				return refuseEdit(EditBadOp, i, "%s is renamed in this preview, so no other edit names it", n)

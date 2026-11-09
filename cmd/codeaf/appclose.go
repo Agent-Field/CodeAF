@@ -177,7 +177,7 @@ func (b *appBackend) startCloseWatch() {
 		// out its claim too, so a live foreign holder is never driven.
 		delay := time.Duration(0)
 		if p, ok := session.ReadSessionPresenceAnyAge(pending.dir); ok && p.PID != os.Getpid() {
-			delay = max(delay, p.UpdatedAt.Add(session.PresenceWindow+appClosePresenceMargin).Sub(b.now()))
+			delay = max(delay, p.UpdatedAt.Add(p.Window()+appClosePresenceMargin).Sub(b.now()))
 		}
 		r.stopPending = append(r.stopPending, b.after(delay, func() {
 			defer guard.Recover("app/close-pending")
@@ -223,7 +223,7 @@ func (b *appBackend) watchCloseClaim(dir string) {
 // scheduleCloseLocked only installs a timer; even a due callback runs outside
 // the registry lock. A stopped backend cancels every outstanding timer.
 func (b *appBackend) scheduleCloseLocked(path string, c *appCloseClaim) {
-	delay := max(time.Duration(0), c.presence.UpdatedAt.Add(session.PresenceWindow+appClosePresenceMargin).Sub(b.now()))
+	delay := max(time.Duration(0), c.presence.UpdatedAt.Add(c.presence.Window()+appClosePresenceMargin).Sub(b.now()))
 	c.stop = b.after(delay, func() {
 		defer guard.Recover("app/close-claim")
 		b.checkCloseClaim(path, c)
@@ -257,7 +257,7 @@ func (b *appBackend) closeClaimDue(path string, c *appCloseClaim) (refresh, dead
 	case current.PID != c.presence.PID && current.PID != os.Getpid():
 		delete(r.claims, path)
 		return true, false, false
-	case current.PID != os.Getpid() && b.now().Sub(c.presence.UpdatedAt) <= session.PresenceWindow:
+	case current.PID != os.Getpid() && b.now().Sub(c.presence.UpdatedAt) <= c.presence.Window():
 		b.scheduleCloseLocked(path, c)
 		return false, false, false
 	}

@@ -373,7 +373,12 @@ turns away itself (an OpenRouter management key) says why in codeaf's words. Whi
 app connects, and how, is *Connecting a provider from the app* below. The GitHub token
 pasted while setting up the app's factory is kept the same way and handed back at every
 launch, so the factory stays connected after a restart; choosing gh's own login keeps only
-that choice, and gh keeps its token.
+that choice, and gh keeps its token. The same is true of a Jira token and of an AgentField
+control plane's API key (and the node secret codeaf made for it): codeaf hands each one to
+the app to keep in the keychain when it is connected, the app hands it back at the next
+launch, and disconnecting removes the kept copy too. An app older than this does not keep
+them, and then the factory's Jira or AgentField connection is gone after a restart until it
+is connected again.
 
 The app's day cap is the profile's daily limit, the same one `/budget day` sets: setup,
 Settings and the terminal all read and change that one figure, and a cap an older app
@@ -563,7 +568,14 @@ quitting the app only lets go of it.
 The app waits for local saving, publishes the newest saved turn and releases its
 hold so another computer can continue. Each saving boundary waits up to 30 seconds.
 A successful save is quiet; a definite final-save failure is kept in the engine
-log and leaves unsaved turns on this computer.
+log and leaves unsaved turns on this computer. A chat whose folder was deleted
+while it was open, such as a finished job's checkout, has nothing left to save
+there and is not a failure.
+
+A reply stopped by a quit still has its cost recorded. The app asks the router
+for that call's price once more, for at most two seconds, and waits at most
+three seconds in all; a price the router has not worked out yet is recorded as
+unpriced, with its tokens, instead of holding the quit.
 
 Crew members follow the same quit and resume rules. A member still opening
 does not hold up quitting for optional file cleanup; its files are kept.
@@ -752,7 +764,7 @@ both use the cell the current folder is in.
 
 ## Do moving chats restrict commands, network access or installs
 
-New chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
+New interactive chats declare `host-bound`: shell commands run on this computer with the network and the same access as any program you run. `codeaf chat --once`, `codeaf exec` and factory steps are limited to their own folder instead ("What an unattended run may touch"). Moving chats does not change that access. `/setup` compares the tools a chat used with this machine and can install missing tools or rebuild folders left behind by a move; it is not needed for ordinary network access. A cell already declared sandboxed by an earlier build keeps that class.
 
 ## Your identity — codeaf identity show, export and import
 

@@ -155,6 +155,13 @@ func freshStream(it *factory.Item, now time.Time) *factory.Stream {
 	return &factory.Stream{Started: now, Phases: loopPhases(*it), Spent: spent, Models: models}
 }
 
+// Ran says whether it has run at all: a step of its run started a round, or
+// its steps were reshaped by a plan. A job queued and not yet taken has a run
+// laid out and has not run, so its steps are still a person's to choose.
+func Ran(it factory.Item) bool {
+	return len(it.Adapted) > 0 || (it.Stream != nil && begun(it.Stream))
+}
+
 // begun says whether any step of the stream has started a round.
 func begun(s *factory.Stream) bool {
 	for _, ph := range s.Phases {

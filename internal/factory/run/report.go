@@ -180,6 +180,21 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		it.FollowUp = &f
 	}
 	ensureStream(it, now)
+	if report.AgentField != nil {
+		it.AgentField = reportedAgentFieldRun(it, it.AgentField, *report.AgentField, now)
+	}
+	for name, r := range report.AgentFieldSteps {
+		if r == nil {
+			continue
+		}
+		if it.AgentFieldSteps == nil {
+			it.AgentFieldSteps = map[string]*factory.AgentFieldRun{}
+		}
+		it.AgentFieldSteps[name] = reportedAgentFieldRun(it, it.AgentFieldSteps[name], *r, now)
+	}
+	if report.AgentField != nil || len(report.AgentFieldSteps) > 0 {
+		SyncAgentFieldWait(it, now)
+	}
 	if err := reportRoom(it, report.Room); err != nil {
 		return err
 	}
@@ -282,7 +297,12 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 	if change == nil || len(change.Stages) == 0 {
 		return nil
 	}
+	// A JOB AN AGENTFIELD REASONER RUNS has the run's calls for steps and no
+	// approve gate of this factory's: what it was filed with is replaced.
 	for _, st := range it.Stages {
+		if strings.TrimSpace(it.RunOn) != "" {
+			break
+		}
 		if !st.On || !factory.IsApprove(st) {
 			continue
 		}
@@ -295,8 +315,15 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 		held[ph.Name] = ph
 	}
 	phases := make([]factory.Phase, 0, len(change.Phases))
+	runOn := strings.TrimSpace(it.RunOn) != ""
 	for _, ph := range change.Phases {
 		if kept, ok := held[ph.Name]; ok {
+			if runOn {
+				// The run's step keeps the state the server holds, but its kind
+				// and words are the run's: a phase the factory made from its
+				// stock `plan` must not dress a run step of the same name.
+				kept.Kind, kept.Note = ph.Kind, ph.Note
+			}
 			phases = append(phases, kept)
 			continue
 		}
@@ -308,6 +335,11 @@ func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
 	for i := range stages {
 		if j := factory.StageIndex(it.Stages, stages[i].Name); j >= 0 && stages[i].Model == "" {
 			stages[i].Model = it.Stages[j].Model
+		}
+		// WHO MAY PASS AN APPROVE STEP, AND WHOM IT WAITS ON, ARE THE
+		// SERVER'S: a worker's reshape never widens them.
+		if j := factory.StageIndex(it.Stages, stages[i].Name); j >= 0 && factory.IsApprove(it.Stages[j]) {
+			stages[i].Pass, stages[i].Who = it.Stages[j].Pass, it.Stages[j].Who
 		}
 	}
 	it.Stages = stages
@@ -472,7 +504,14 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 			ph.RoundLimit = max(ph.RoundLimit, step.RoundLimit)
 		}
 	}
-	it.Stream.Cur = i
+	// A QUESTION STANDS WHERE IT WAS ASKED. A later report of another step (a
+	// finished step's cost or chat settling) does not move the run off the
+	// step that waits on the person: the answer reads the current step, and
+	// the owner's #22 had its approval look at the plan, find nothing waiting
+	// and leave the approve step waiting while the run went on.
+	if !waitsElsewhere(it, i) {
+		it.Stream.Cur = i
+	}
 	if step.Result != nil {
 		if step.Result.Edit != nil {
 			return fmt.Errorf("worker reports cannot change the pipeline")
@@ -499,6 +538,16 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		factory.StampFailure(it, f)
 	}
 	return nil
+}
+
+// waitsElsewhere says the job waits on the person at a step other than i: a
+// question stands and the current step is waiting on it.
+func waitsElsewhere(it *factory.Item, i int) bool {
+	s := it.Stream
+	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" || s.Cur == i || s.Cur < 0 || s.Cur >= len(s.Phases) {
+		return false
+	}
+	return s.Phases[s.Cur].State == factory.PhaseWaiting
 }
 
 func addCost(it *factory.Item, usd float64) { it.Stream.Spent += usd }
@@ -614,6 +663,10 @@ func skipPhase(it *factory.Item, ph *factory.Phase, reason string, now time.Time
 // not a new round.
 func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
 	ph.State = state
+	if state != factory.PhaseDone {
+		// Who passed an approve step is true only while it stays passed.
+		ph.Passed = nil
+	}
 	if state != factory.PhaseSkipped {
 		ph.SkipReason = ""
 	}
@@ -646,6 +699,17 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 	case "", factory.StateLanded:
 		landItem(it, now)
 	case factory.StateShipped:
+		// A JOB AN AGENTFIELD REASONER RAN IS DONE WHEN ITS RUN SUCCEEDED: it
+		// has no change here for a person to approve, so there is no proof
+		// to wait on.
+		if strings.TrimSpace(it.RunOn) != "" || factory.AgentFieldPipeline(*it) {
+			it.State = factory.StateShipped
+			it.Question, it.QKind = "", ""
+			it.Asking = nil
+			it.Stream.Ended = now
+			it.Stream.Paused = false
+			return nil
+		}
 		if it.FollowUp != nil && it.FollowUp.State == "healthy" && it.FollowUp.Readiness != nil && it.FollowUp.Readiness.State == "checked" && !ExternalPRHeadChecked(*it) {
 			return fmt.Errorf("checked PR snapshot changed before completion")
 		}
@@ -716,6 +780,14 @@ func landItem(it *factory.Item, now time.Time) bool {
 		if it.PullRequest == nil && it.Stream.Phases[n-1].Name == factory.FollowPRStep && n > 1 {
 			it.Stream.Cur = n - 2
 		}
+	}
+	// THE APPROVE STEP A RUN LANDS AT WAITS FOR ITS ANSWER. The proof approval
+	// passes it ([approveStored]); until then it is the wait the page shows,
+	// on the local runner and on a worker alike (a worker never reports an
+	// approve step, so this is where the service's copy learns it).
+	if g := factory.LandingGate(*it); g >= 0 {
+		setPhaseState(&it.Stream.Phases[g], factory.PhaseWaiting, now)
+		it.Stream.Cur = g
 	}
 	// THE CHANGE IS CHECKED AGAINST THE RULES BEFORE ANYTHING IS PUBLISHED: a
 	// changed file an ask-first or never path names waits for the person, in
@@ -824,4 +896,29 @@ func ChangeRuleHold(it factory.Item) string {
 // protected paths unknown, so the change was not judged against them.
 func changeJudged(it factory.Item) bool {
 	return it.Change != nil && len(it.Change.Files) > 0 && it.StartRules != nil && !it.StartRules.Unread
+}
+
+// reportedAgentFieldRun is the run record a runner reported, kept on the
+// factory's job beside what only the factory knows.
+//
+//   - THE PEOPLE'S DECISIONS ARE THE FACTORY'S: a runner's copy of the run
+//     never carries the ones it was not there to see.
+//   - AN ANSWER ON ITS WAY IS NOT ASKED AGAIN. A person answered the pause on
+//     this factory and the runner has not yet carried it to the control plane,
+//     so the runner's reading still says the run waits; that older reading
+//     does not put the question back in front of the person.
+//   - A REFUSED ANSWER IS SAID. When the control plane would not take the
+//     answer, the question stands again and the job says why, once.
+func reportedAgentFieldRun(it *factory.Item, old *factory.AgentFieldRun, reported factory.AgentFieldRun, now time.Time) *factory.AgentFieldRun {
+	run := reported
+	if old != nil {
+		run.Decisions = old.Decisions
+	}
+	if w := run.Waiting; w != nil && factory.AgentFieldAnswerFor(&run, w.Execution, w.RequestID) != nil {
+		run.Waiting = nil
+	}
+	if f := run.Refused; f != nil && (old == nil || old.Refused == nil || !old.Refused.At.Equal(f.At)) {
+		loopSay(it, now, "said", "the AgentField control plane did not take the answer: "+f.Words)
+	}
+	return &run
 }

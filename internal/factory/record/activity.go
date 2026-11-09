@@ -37,6 +37,10 @@ func enrich(e *Event) {
 			e.Verb = "resumed"
 		case AskedFirst:
 			e.Verb = "asked"
+		case Routed:
+			e.Verb = "routed"
+		case RepoSet:
+			e.Verb = "set repository"
 		case Posted:
 			e.Verb = "published"
 		case RequestChanges:

@@ -421,12 +421,12 @@ func (b *appBackend) FactoryPipelinePreview(ctx context.Context, p appwire.Facto
 			}
 		}
 		out.Steps = append(out.Steps, appwire.FactoryPipelineStepChange{Name: c.Name, Fields: c.Fields,
-			Before: pipelineStepValues(c.Before), After: pipelineStepValues(c.After)})
+			Before: appwire.PipelineStepValues(c.Before), After: appwire.PipelineStepValues(c.After)})
 	}
 	if ed.Budget != nil {
 		out.Budget = &appwire.FactoryPipelineBudgetChange{Before: ed.Budget.Before, After: ed.Budget.After}
 	}
-	out.Structure = pipelineStructure(ed)
+	out.Structure = appwire.PipelineStructureOf(ed)
 	out.Lists = pipelineLists(ed)
 	out.Settings = pipelineSettingChanges(ed)
 	return out, nil
@@ -471,36 +471,8 @@ func pipelineLists(ed pipeline.Edited) *[]appwire.FactoryPipelineListChange {
 	return &out
 }
 
-// pipelineStructure is the structural half of a preview on the wire, every
-// list an array however empty, and nil for a preview with no structural edit:
-// a field edit's answer is byte for byte what it always was.
-func pipelineStructure(ed pipeline.Edited) *appwire.FactoryPipelineStructure {
-	if !ed.Structural {
-		return nil
-	}
-	s := &appwire.FactoryPipelineStructure{Order: []appwire.FactoryPipelineOrderChange{}, Added: append([]string{}, ed.Added...),
-		Counts: []appwire.FactoryPipelineCount{}, Gates: []appwire.FactoryPipelineGateChange{}}
-	for _, o := range ed.Order {
-		s.Order = append(s.Order, appwire.FactoryPipelineOrderChange{Pipeline: o.Pipeline, Before: append([]string{}, o.Before...), After: append([]string{}, o.After...)})
-	}
-	for _, c := range ed.Counts {
-		s.Counts = append(s.Counts, appwire.FactoryPipelineCount{Pipeline: c.Pipeline, Steps: c.Steps})
-	}
-	for _, g := range ed.Gates {
-		s.Gates = append(s.Gates, appwire.FactoryPipelineGateChange{Pipeline: g.Pipeline, Gate: g.Gate, Before: append([]string{}, g.Before...), After: append([]string{}, g.After...)})
-	}
-	for _, rn := range ed.Renamed {
-		s.Renamed = append(s.Renamed, appwire.FactoryPipelineRename{From: rn.From, To: rn.To})
-	}
-	return s
-}
-
 // PipelineLabelEdits attests that this preview applies label edits.
 func (*appBackend) PipelineLabelEdits() {}
-
-func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
-	return appwire.FactoryPipelineStepValues{Label: v.Label, Prompt: v.Prompt, Until: v.Until, Max: v.Max, When: v.When, Effort: v.Effort, Fanout: v.Fanout}
-}
 
 // firstRuntimeEdit is the position of the first edit that names when, effort or
 // fanout, adds a step of a kind other than chat (it writes `kind`), or sets
@@ -518,25 +490,5 @@ func firstRuntimeEdit(edits []appwire.FactoryPipelineEdit) int {
 // pipelineEditRefusal is the wire error for an edit the file cannot take. The
 // words are fixed from the code; the text of the edit or the file is not echoed.
 func pipelineEditRefusal(p appwire.FactoryPipelinePreviewParams, bad *pipeline.EditError) error {
-	words := map[string]string{
-		pipeline.EditBaseInvalid:      "That file does not read cleanly, so it cannot be edited here.",
-		pipeline.EditBadOp:            "That edit is not one this editor makes.",
-		pipeline.EditLocked:           "That step is locked and cannot be edited.",
-		pipeline.EditUnknownStep:      "That is not a step in this pipeline.",
-		pipeline.EditBadValue:         "That value is out of bounds.",
-		pipeline.EditTooLarge:         "The edited file would be too large for a pull request.",
-		pipeline.EditNotRepresentable: "The pipeline file cannot hold that edit as asked.",
-	}[bad.Code]
-	if words == "" {
-		bad = &pipeline.EditError{Code: pipeline.EditBadOp, Op: -1}
-		words = "That edit is not one this editor makes."
-	}
-	detail := appwire.FactoryPipelineEditRefusal{Factory: p.Factory, Repo: p.Repo, Code: bad.Code}
-	if bad.Op >= 0 {
-		op := bad.Op
-		detail.Op = &op
-	}
-	err := appwire.Errorf(appwire.CodeBadParams, "%s", words+" Nothing was written.")
-	err.Detail = detail
-	return err
+	return appwire.PipelineEditRefusal(p.Factory, p.Repo, bad)
 }

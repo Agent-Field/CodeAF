@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -126,6 +127,9 @@ func (e Engine) Prepare(ctx context.Context, c cell.Cell) error {
 // Seal implements Store: compose the harness-owned files, snapshot the folder,
 // record the turn.
 func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, error) {
+	if err := e.workspaceThere(c); err != nil {
+		return Sealed{}, fmt.Errorf("seal: %w", err)
+	}
 	head, err := Head(c)
 	if err != nil {
 		return Sealed{}, fmt.Errorf("seal: read head: %w", err)
@@ -225,6 +229,19 @@ func (e Engine) tree(c cell.Cell) string {
 		return canonicalTree(w)
 	}
 	return canonicalTree(c.Root)
+}
+
+// workspaceThere is [ErrWorkspaceGone] naming c's folder when it is no longer
+// there, and nil for a folder that is there or a chat that seals its own.
+func (e Engine) workspaceThere(c cell.Cell) error {
+	w := e.workspace(c)
+	if w == "" {
+		return nil
+	}
+	if _, err := os.Lstat(w); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: %s", ErrWorkspaceGone, w)
+	}
+	return nil
 }
 
 // workspace is the folder the tools of c work in, "" when c's own folder is
