@@ -64,7 +64,8 @@ func (s homeSigner) Sign(msg []byte) []byte         { return s.dev.Sign(msg) }
 // pullFleet counts what the identity holds, as this computer now sees it.
 func pullFleet(dir string, route pair.Mailbox) func(context.Context) (pair.Fleet, error) {
 	return func(ctx context.Context) (pair.Fleet, error) {
-		samplePairedStorage(ctx, dir, route)
+		waitStorage := startPairedStorage(ctx, dir, route)
+		defer waitStorage()
 		client, id, err := homeDirectory(dir, route)
 		if err != nil {
 			return pair.Fleet{}, err

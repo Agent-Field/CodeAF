@@ -213,8 +213,9 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 	if err != nil {
 		return d.endedByPerson(ctx, err)
 	}
+	waitStorage := startPairedStorage(ctx, d.joining(false).Home, route)
 	d.recordOwnDeviceOrSay(ctx, route)
-	samplePairedStorage(ctx, d.joining(false).Home, route)
+	waitStorage()
 	d.term.say(pair.PairedChatsLine(label))
 	return nil
 }

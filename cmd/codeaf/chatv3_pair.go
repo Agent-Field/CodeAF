@@ -85,8 +85,9 @@ func (chatPairDoor) JoinReplacing(ctx context.Context, typed string, ui pair.Joi
 	}
 	joined, err := pair.Join(ctx, route, pairJoining(true), typed, ui)
 	if err == nil {
-		samplePairedStorage(ctx, home.Dir(), route)
+		waitStorage := startPairedStorage(ctx, home.Dir(), route)
 		err = ownDeviceRecord(ctx, home.Dir(), route)
+		waitStorage()
 	}
 	return joined, explainSyncUnreachable(err, route.URL)
 }
