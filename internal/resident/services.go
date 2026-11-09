@@ -121,7 +121,7 @@ func (*platformServiceRuntime) Healthy(ctx context.Context, service store.Servic
 		if err != nil {
 			return err
 		}
-		return cmd.Run()
+		return processgroup.Run(cmd)
 	default:
 		return fmt.Errorf("unknown health kind %q", service.Health.Kind)
 	}

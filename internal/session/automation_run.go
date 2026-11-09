@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"io"
 	"io/fs"
 	"os"
@@ -183,7 +184,7 @@ func automationLookCommand(ctx context.Context, workspace, command string) (auto
 	if err != nil {
 		return automation.Sight{}, fmt.Errorf("could not run the command: %w", err)
 	}
-	output, err := process.CombinedOutput()
+	output, err := processgroup.CombinedOutput(process)
 	seen := string(output)
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):

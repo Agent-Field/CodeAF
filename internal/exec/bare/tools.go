@@ -538,7 +538,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			cmd.Stdout = acc
 			cmd.Stderr = acc
 
-			if err := cmd.Start(); err != nil {
+			if err := processgroup.Start(cmd); err != nil {
 				return startFailedText(runtime.GOOS, err), true, nil
 			}
 

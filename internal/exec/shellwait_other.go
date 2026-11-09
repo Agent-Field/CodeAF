@@ -19,6 +19,7 @@ func (r *jobRegistry) reapShell(job *backgroundJob) {
 	_ = job.cmd.Wait()
 	if !r.markWaited(job) {
 		terminateLegacyDetachedGroup(job.cmd.Process.Pid)
+		_ = processgroup.WaitEmpty(job.cmd.Process.Pid, 0)
 	}
 }
 

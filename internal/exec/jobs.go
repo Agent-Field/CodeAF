@@ -196,7 +196,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	jobCtx, cancel := context.WithCancel(context.Background())
 	cmd, err := detachedCommand(executor.For(ctx), jobCtx, r.workspace.Root(), command, environment, logFile, 3*time.Second)
 	if err == nil {
-		err = cmd.Start()
+		err = processgroup.Start(cmd)
 	}
 	if err != nil {
 		cancel()
@@ -528,8 +528,7 @@ func (r *jobRegistry) kill(id int) error {
 	if !running {
 		return nil
 	}
-	terminateProcessGroup(group, done)
-	return nil
+	return terminateProcessGroup(group, done)
 }
 
 // markStopped records the stop request and hands back what terminating the
@@ -548,17 +547,17 @@ func (r *jobRegistry) markStopped(id int) (group processgroup.Group, done <-chan
 	return job.group, job.done, true, nil
 }
 
-func terminateProcessGroup(group processgroup.Group, done <-chan struct{}) {
+func terminateProcessGroup(group processgroup.Group, done <-chan struct{}) error {
 	_ = group.Terminate()
 	timer := time.NewTimer(jobTerminateGrace)
 	select {
 	case <-done:
 		timer.Stop()
-		return
+		return nil
 	case <-timer.C:
 	}
 	_ = group.Kill()
-	<-done
+	return waitProcessGroupStop(done)
 }
 
 // terminateDetachedGroup cleans up whatever a job left in its process group

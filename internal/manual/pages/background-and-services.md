@@ -83,3 +83,7 @@ each is still the same process. One that died while it was away is reported
 honestly rather than shown as healthy:
 
 > dev server was not running anymore — say "start it again" to relaunch
+
+## Stopping background processes on Windows
+
+Windows background jobs and services retain ownership of their descendants through `.cmd` shims and after an intermediate parent exits. Stop first asks them to exit, then forces the whole tree after the existing grace. A stop that cannot verify the tree ended returns a failure instead of confirming it stopped. Deliberately kept services still outlive the task that started them.
