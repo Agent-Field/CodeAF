@@ -630,8 +630,26 @@ func PullRequestIn(result []byte) (string, int) {
 // worktree on this factory ever held its commits, so no proof gate here
 // recorded the commit a person approved, and [PinDeliveredHead] records the
 // equivalent from the pull request itself.
+//
+// The factory's own Follow PR step ([IsCIRepairStage]) is not a step of the
+// job's pipeline and does not make the pull request this machine's: a job
+// shipped before the r10 fix carries it, and must still record the head its
+// run delivered rather than refuse Merge forever.
 func RunDeliveredPR(it Item) bool {
-	return it.Kind != KindPR && it.Publish == "pr" && it.PullRequest != nil && it.PullRequest.Number > 0 && RunsElsewhere(it)
+	return it.Kind != KindPR && it.Publish == "pr" && it.PullRequest != nil && it.PullRequest.Number > 0 && RunsElsewhere(withoutCIRepair(it))
+}
+
+// withoutCIRepair is the job with the factory's CI-repair steps left out of
+// its stages, so what remains is the pipeline the job was given.
+func withoutCIRepair(it Item) Item {
+	stages := make([]Stage, 0, len(it.Stages))
+	for _, st := range it.Stages {
+		if !IsCIRepairStage(st) {
+			stages = append(stages, st)
+		}
+	}
+	it.Stages = stages
+	return it
 }
 
 // PinDeliveredHead records head as the job's approved commit when the job

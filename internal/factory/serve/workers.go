@@ -848,6 +848,17 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		if run.ExternalPRHeadChecked(*it) {
 			return run.FinishReport(it, state, now)
 		}
+		// A JOB WHOSE WORK RAN ON ANOTHER MACHINE ENDS AS ITS RUN DID
+		// (factory.RunsElsewhere), whatever the record holds. A route that
+		// asks first writes the person's yes to Start as an approval, and
+		// read as consent to publish here it would ship the job down the
+		// native path below, which gives it the factory's Follow PR step:
+		// the job then no longer reads as one whose pull request a run
+		// delivered, the follow never records the head the run left, and
+		// Merge says "no approved commit is recorded" for good (WorkAF r10).
+		if factory.RunsElsewhere(*it) {
+			return run.FinishReport(it, state, now)
+		}
 		// A WORKER NEVER APPROVES: done as shipped is a publish only beside
 		// the job's recorded approval and a reported PR or comment; anything
 		// else is the proof gate's to decide, as it always has been.

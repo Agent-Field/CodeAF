@@ -396,6 +396,30 @@ when its runs do, with no proof to approve, and needs no checkout on this
 machine: its job never says it is cloning the repository here, and Start is not
 refused because this machine cannot clone it. The same is true of a `run_on` job.
 
+## give an AgentField step its input in the app — the pipeline editor's input fields, plan_review, config, a field the reasoner does not list
+
+In the app's Pipelines editor, **Add a step › Run on AgentField** asks for a
+name and the reasoner (`node.reasoner`, from the reasoners the control plane
+lists). Picking one shows **Input**: one line per field the reasoner lists,
+in its order, marked "needed" where the reasoner requires it. A field whose
+name matches a job fact starts filled with it (`title` with `{title}`,
+`base_branch` with `{base}`, `issue_number` with `{issue_number}`); the rest
+start empty.
+
+Each line takes a job fact in braces, several facts with words around them
+(`{title}: {body}`), or words of your own. A yes/no or an object is written
+as its JSON text: `true`, `{"check_ci": false}`. **An empty line is not
+sent.** **Add a field** names a field the reasoner does not list. A word in
+braces that is not a job fact is refused on the line ("{branch} is not a fact
+of the job") and the step cannot be added until it is fixed; a needed field
+left empty is said ("Nothing fills plan_review; the run may refuse it") but
+does not stop the add.
+
+Add step writes exactly those lines as the step's `input:` in
+`.codeaf/factory.yaml`, through the same preview and pull request as any
+other edit. The input of a step already in the file is not edited in place:
+remove the step and add it again, or edit the file.
+
 ## an AgentField step that did not succeed — why my job failed, no pull request was opened, the project does not build
 
 When an agentfield step's run ends without doing its work, the job reads
@@ -481,6 +505,11 @@ merge is held to exactly that commit, as a native job's merge is held to the
 commit its proof approved. A push to the branch after that is refused with
 "the pull request has commits you did not approve". Checks, conflicts, drafts
 and reviews are read as for any other job.
+
+This is the same whether the job started from the backlog or on a person's
+yes to "Start this job?" from a route that asks first: that yes approves the
+start, not a commit, and the job still ends as its run did, with no Follow PR
+step of its own.
 
 Until the factory has read the pull request once after the run ended (its
 next GitHub read, within a minute) Merge says "no approved commit is recorded
