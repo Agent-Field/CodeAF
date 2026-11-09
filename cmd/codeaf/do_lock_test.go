@@ -70,6 +70,84 @@ func lockedPID(t *testing.T, path string) int {
 	return holder.PID
 }
 
+// Hard isolation is the script's side of the hand-off. `--no-resident` (or
+// CODEAF_NO_RESIDENT=1) promises a machine caller that its verbatim brief is
+// what runs; a live resident would compile it conversationally instead, so the
+// run refuses — and refuses BEFORE the command reaches the journal, because a
+// journaled command is a handed-over command whether this process waits on it
+// or not.
+func TestDoNoResidentRefusesWhileAResidentHoldsTheLock(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		noResident bool
+		env        string
+	}{
+		{name: "flag", noResident: true},
+		{name: "env", env: "1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.env != "" {
+				t.Setenv("CODEAF_NO_RESIDENT", tc.env)
+			}
+			dir := t.TempDir()
+			path := filepath.Join(dir, "graph.db")
+			release, heldBy, err := lease.AcquireResident(path, "chat")
+			if err != nil || release == nil || heldBy != nil {
+				t.Fatalf("could not stand in for the resident: release %v, held %+v, err %v", release != nil, heldBy, err)
+			}
+			defer release()
+
+			var stdout, stderr strings.Builder
+			started := time.Now()
+			err = doErrand(doRequest{
+				task:     "write the release note",
+				database: path,
+				// Every seat is named, so the crew needs no router to reach the lock.
+				model: "test/model", planModel: "test/model", checkModel: "test/model",
+				// The wall is long and the bound is short on purpose: the thing
+				// under test is that the refusal is immediate, not that the run
+				// burns one of them.
+				timeout:      5 * time.Minute,
+				residentWait: 300 * time.Millisecond,
+				noResident:   tc.noResident,
+				stdout:       &stdout,
+				stderr:       &stderr,
+			})
+			elapsed := time.Since(started)
+			if err == nil {
+				t.Fatalf("the errand handed the task to a resident it was told to refuse\nstderr:\n%s", stderr.String())
+			}
+			if elapsed > 30*time.Second {
+				t.Fatalf("the refusal took %s — it must be immediate, not a bound", elapsed)
+			}
+			// The refusal names the resident, the store it was refused for, the
+			// task it would have compiled, and the spelling that refused it.
+			for _, want := range []string{strconv.Itoa(lockedPID(t, path)), path, "write the release note", "--no-resident"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("the refusal does not name %q: %v", want, err)
+				}
+			}
+			if strings.Contains(stderr.String(), "waiting for the resident (pid") {
+				t.Fatalf("the refused run still said it was waiting for the resident:\n%s", stderr.String())
+			}
+			// Nothing was handed over: the journal holds no command for this
+			// task, so there is nothing a resident could pick up.
+			window, err := openChatWindow(path, "no-resident-probe")
+			if err != nil {
+				t.Fatalf("reopen the store: %v", err)
+			}
+			defer window.close()
+			pending, err := window.graph.PendingCommands(10)
+			if err != nil {
+				t.Fatalf("read the pending commands: %v", err)
+			}
+			if len(pending) != 0 {
+				t.Fatalf("the refused run left %d command(s) a resident could pick up: %+v", len(pending), pending)
+			}
+		})
+	}
+}
+
 // The other half of the same failure: a holder that is serving a different
 // database is not slow, it is absent. There is nothing to wait for, and the run
 // says so immediately rather than spending its bound finding out.

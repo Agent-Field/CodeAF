@@ -43,6 +43,7 @@ work done.
 | `--timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `--timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
 | `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `codeaf plan run`. Equivalent to `CODEAF_PREAUTHORIZE_SPEND=1`. It does not lift the per-task limit (`/crew cap task`, $5 unless set). |
+| `--no-resident` | off | Refuse instead of handing the task to a resident that already holds this store. A script must get the run it asked for, byte for byte; a resident would pick the task up and compile it the way a conversation does, so the hand-off is the default for people and this flag is the script's side. Equivalent to `CODEAF_NO_RESIDENT=1`. |
 | `--model slug` | the ladder below | The worker for this run — a one-task pin. |
 | `--plan-model slug` | the ladder below | The planner for this run — a one-task pin: plans, replans, writes contracts, and runs the delivery gate. |
 | `--check-model slug` | the ladder below | The checker for this run — a one-task pin. It never inherits the planner. |
@@ -383,10 +384,19 @@ One thing does change when that happens, and it is the reason to avoid it in a
 measured campaign: the verbatim law above is a fact about the brain that applies
 the command, not about the command itself. A resident that picks it up compiles
 it the way a conversation would — reworded goal, declared assumptions, and a
-question asked into a thread nobody is reading.
+question asked into a thread nobody is reading. For a person at home that is the
+right thing; for a script it is corruption, because the run that comes back is
+silently not the run that was asked for.
 
-For guaranteed isolation from your own resident, give the run its own state
-root with `CODEAF_HOME`.
+So the hand-off is for people, and scripts say so. A campaign whose briefs must
+run verbatim passes `--no-resident` (or sets `CODEAF_NO_RESIDENT=1`): when a
+live resident holds the store, the run refuses — exit 1, naming the resident,
+the store and the task, before a word of the brief reaches the journal — rather
+than handing the brief over. A script that sets it is guaranteed that the text
+it handed to `do` is the text that ran.
+
+For guaranteed isolation from everything on the machine, give the run its own
+state root with `CODEAF_HOME`.
 
 ### Spending consent
 
@@ -778,6 +788,7 @@ The full list is `codeaf help env`. What matters headless:
 | `CODEAF_MODELS` | unset | A panel instead of one model: calls cascade cheapest-first and escalate when a verifier catches a failure. Comma-separated slugs or a JSON path. **Changes what a run costs and how it fails — pin it when measuring.** |
 | `CODEAF_DAILY_BUDGET` | `20.0` | The day's spending limit in dollars; `0` is unlimited. A run that reaches it stops. |
 | `CODEAF_PREAUTHORIZE_SPEND` | unset | `1` is `--yes-spend` for every run. |
+| `CODEAF_NO_RESIDENT` | unset | `1` is `--no-resident` for every `do` run: refuse the resident hand-off, so the brief you handed over is the brief that ran. |
 | `CODEAF_HOME` | `~/.codeaf` | The whole state root — journal, workspace, CAS, craft, profiles, catalog, skills. One word moves everything; this is the isolation seam. |
 | `CODEAF_PROFILE_DIR` | `CODEAF_HOME` | Where measured behaviour is kept. |
 | `CODEAF_CONTEXT_FILL_PCT` | `60` | How full any agent's context window may get before it compacts, in percent; clamped 10–90. One law for head turns, planner passes, leaf workers and judges alike. `--context-fill` sets it per run. **Setting it also moves the chat conversation's own fold line**, which otherwise follows the model's window (`/status` says which rule governs); leaving it unset is not the same as setting it to 60. |

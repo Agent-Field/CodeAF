@@ -340,6 +340,14 @@ func runDo(args []string) error {
 	flags.Var(&wall, "timeout", "hard wall, as a duration such as 15m or 2h (a bare number is seconds, kept for one release)")
 	asJSON := flags.Bool("json", false, jsonFlagHelp)
 	yesSpend := flags.Bool("yes-spend", false, yesSpendFlagHelp)
+	// HARD ISOLATION FOR THE SCRIPT, whose verbatim-brief law is the one guarantee
+	// it has: a resident holding this store would compile the task
+	// conversationally instead of running it verbatim, so this flag refuses the
+	// hand-off outright (HEADLESS.md names the rule). The environment spelling,
+	// CODEAF_NO_RESIDENT=1, is a campaign that never has to remember it.
+	noResident := flags.Bool("no-resident", false,
+		"refuse instead of handing the task to a resident that already holds the store "+
+			"(env CODEAF_NO_RESIDENT=1; see HEADLESS.md)")
 	model := flags.String("model", "", modelFlagHelp)
 	planModel := flags.String("plan-model", "", planModelFlagHelp)
 	checkModel := flags.String("check-model", "", checkModelFlagHelp)
@@ -414,7 +422,8 @@ func runDo(args []string) error {
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel, checkModel: *checkModel,
 		contextFill: *contextFill, completionReserve: *completionReserve, slots: slots,
-		stdout: os.Stdout, stderr: os.Stderr,
+		noResident: *noResident,
+		stdout:     os.Stdout, stderr: os.Stderr,
 	})
 }
 
@@ -471,6 +480,12 @@ type doRequest struct {
 	completionReserve int
 	stdout            io.Writer
 	stderr            io.Writer
+	// noResident is hard isolation: this run refuses to hand its task to a
+	// resident that already holds the store, instead of letting that resident
+	// compile it conversationally. The environment spelling, CODEAF_NO_RESIDENT=1,
+	// is read at the door ([doRequest.hardIsolation]) so a whole campaign gets
+	// the guarantee without every invocation remembering the flag.
+	noResident bool
 	// residentWait bounds how long this run defers to a resident that already
 	// holds the lock for its store. Zero is defaultResidentWait; a test names a
 	// shorter one rather than sitting through it.
@@ -528,6 +543,16 @@ func (r doRequest) residentWaitOrDefault() time.Duration {
 		return r.residentWait
 	}
 	return defaultResidentWait
+}
+
+// hardIsolation is this run's answer to the resident hand-off, read from both
+// spellings: the --no-resident flag for one run, CODEAF_NO_RESIDENT=1 for every
+// run a campaign starts. It is a promise a script makes that its verbatim brief
+// is what runs — a resident that picks the command up compiles it the way a
+// conversation would, reworded goal and all — and the one spelling that is not
+// set is the resident hand-off, which is for a person at home.
+func (r doRequest) hardIsolation() bool {
+	return r.noResident || env.Value("CODEAF_NO_RESIDENT") == "1"
 }
 
 // applyContextLaw puts this run's two window dials where the law reads them.
@@ -818,6 +843,22 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return headlessOutcome{}, fmt.Errorf("create the store directory: %w", err)
+	}
+
+	// HARD ISOLATION IS DECIDED HERE, BEFORE A WORD OF THE TASK IS JOURNALED. The
+	// deferral below (headlessBrain) can only run after the command is in the
+	// journal, because the journal row is what a resident picks up — so a refusal
+	// that lived there would already be too late: a resident serving this store
+	// would have the task. The probe is the same reading the acquire below uses
+	// (lease.ProbeResident and AcquireResident agree on who holds the role), and
+	// headlessBrain carries the same refusal for a resident that takes the role
+	// between the two. A run that asked for isolation gets it or gets nothing.
+	if request.hardIsolation() {
+		if holder, err := lease.ProbeResident(path); err != nil {
+			return headlessOutcome{}, fmt.Errorf("probe the resident lease: %w", err)
+		} else if holder != nil && !holder.Stuck && residentServesThisStore(holder, path) == nil {
+			return headlessOutcome{}, noResidentRefusal(holder, path, request.task)
+		}
 	}
 
 	session := headlessSessionID()
@@ -1227,6 +1268,14 @@ func headlessBrain(window *chatWindow, session string, request doRequest, seats 
 		if err := residentServesThisStore(heldBy, window.path); err != nil {
 			return nil, nil, nil, err
 		}
+		// The refusal at the door probed before the command was journaled; this is
+		// the same refusal for a resident that took the role between that probe
+		// and this acquire. The command is in the journal by now either way, but
+		// this process still must not sit and watch a compile it refused to ask
+		// for.
+		if request.hardIsolation() {
+			return nil, nil, nil, noResidentRefusal(heldBy, window.path, request.task)
+		}
 		fmt.Fprintf(request.stderr,
 			"waiting for the resident (pid %d on %s) to take this task — store %s\n",
 			heldBy.PID, residentHost(heldBy), window.path)
@@ -1287,6 +1336,23 @@ func residentServesThisStore(holder *lease.Resident, path string) error {
 		"that process will never see this task; give this errand its own store with --db in a separate directory, "+
 		"or stop that process",
 		mine, holder.PID, residentHost(holder), served)
+}
+
+// noResidentRefusal is the hard-isolation answer. It names the resident, the
+// store it holds, the task it would compile conversationally, and the way out —
+// a script being refused has to be able to say which of its runs was refused
+// and what to change, without parsing a stack back together. It is returned
+// BEFORE the task is journaled whenever the door can, because a journaled
+// command is a handed-over command whether this process waits on it or not; the
+// one place it is returned after the journal write ([headlessBrain]) is the
+// race where the resident took the role between the probe and the acquire, and
+// there the refusal is still this process's side — it will not sit and watch a
+// compile it refused to ask for.
+func noResidentRefusal(holder *lease.Resident, path, task string) error {
+	return fmt.Errorf("--no-resident is set: the resident (pid %d on %s) serving %s would compile %q "+
+		"conversationally instead of running it verbatim, so this run refuses — "+
+		"unset --no-resident to defer to the resident, or give this errand its own store with --db",
+		holder.PID, residentHost(holder), path, crewTitle(task))
 }
 
 // sameStore compares two store paths as plainly as a diagnostic needs to. It is

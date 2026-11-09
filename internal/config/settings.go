@@ -1210,6 +1210,19 @@ var OperatorEnvPins = []string{
 	"CODEAF_RTK",
 	"CODEAF_RTK_BIN",
 	"CODEAF_PREAUTHORIZE_SPEND",
+	// CODEAF_NO_RESIDENT is the script's answer to the resident hand-off: with
+	// it set, a `do` run refuses to hand its task to a live resident that holds
+	// the store instead of letting that resident compile the task
+	// conversationally (see docs/HEADLESS.md). It is plumbing for the same
+	// reason the preauthorize row above is: it is a property of an invocation's
+	// isolation, named by whoever started it, and a sheet row offering to
+	// persist it would be offering to change what a script runs on.
+	"CODEAF_NO_RESIDENT",
+	// CODEAF_RELAY_ADMIN_KEY is the private seed file the relay admin tool
+	// reads (cmd/codeaf-relay-admin): a secret handed to a maintenance binary
+	// at invocation, with no sheet row because no question a person using
+	// codeaf would ask is answered by persisting it.
+	"CODEAF_RELAY_ADMIN_KEY",
 	// CODEAF_WIRE_LOG names a file the surface appends one line per second of
 	// byte-meter readings to (internal/wirelog): a developer's instrument for
 	// the SSH-smoothness story, with no settings row and no slash command,

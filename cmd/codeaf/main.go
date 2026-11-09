@@ -742,6 +742,10 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_PREAUTHORIZE_SPEND
                        1 spends past the day's limit without stopping a
                        headless run to ask
+  CODEAF_NO_RESIDENT    1 makes codeaf do refuse the resident hand-off (the
+                       --no-resident flag): when a live resident holds the
+                       store, the run exits 1 instead of letting that
+                       resident compile the brief conversationally
   CODEAF_SYNC_URL      sync service for your chats; off disables syncing
   CODEAF_RELAY         sync service override for pairing and remote connections
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,

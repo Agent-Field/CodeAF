@@ -92,6 +92,16 @@ func TestTheTaskDoorKeepsTheRealDoRecordAndItsWholeBill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The child's run records the workspace under its canonical root
+	// (internal/session repositoryRoot resolves symlinks), which on macOS spells
+	// the /var -> /private/var temp link the other way from os.MkdirTemp's
+	// answer. Resolve home the same way beltRepoWorkspace does, so the
+	// executor's relative path for out.txt is "out.txt" on every host instead
+	// of a "../private/..." escape that filepath.IsLocal refuses.
+	home, err = filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer os.RemoveAll(home)
 	t.Setenv("HOME", home)
 	t.Setenv("CODEAF_HOME", home)
