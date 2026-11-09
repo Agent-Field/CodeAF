@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -22,6 +23,11 @@ type stageBudget struct {
 	failed      bool
 	stopped     string
 	reached     bool
+	// seen is the job document's file at the last Refusal that read it. Every
+	// live agent of the round asks Refusal ten times a second, so an
+	// unchanged document answers as it did then instead of being decoded
+	// again (the job's own document can be hundreds of kilobytes).
+	seen os.FileInfo
 }
 
 func (b *stageBudget) FactoryAuto() bool {
@@ -95,12 +101,23 @@ func (b *stageBudget) Refusal() string {
 		b.stopped = "job spending could not be recorded; work stopped"
 		return b.stopped
 	}
+	// The file is stat'd before it is read, so a write landing between the
+	// two leaves the newer document under the older file's identity, and the
+	// next look reads it again.
+	info, statErr := os.Stat(b.floor.ItemPath(b.item.ID))
+	if statErr == nil && sameIndexedFile(b.seen, info) {
+		return b.stopped
+	}
+	b.seen = nil
 	it, err := b.floor.Get(b.item.ID)
 	if err != nil || it.Repo != b.item.Repo {
 		return session.JobBudgetUnreadable
 	}
 	b.stopped = factoryrun.ChatRefusal(it)
 	b.reached = b.stopped != ""
+	if statErr == nil {
+		b.seen = info
+	}
 	return b.stopped
 }
 func (b *stageBudget) total() float64 {
