@@ -135,11 +135,14 @@ func guard(out route.Outcome, it factory.Item) *routing {
 }
 
 // routedTo is it as its rule sends it: on the rule's repository when the rule
-// names one. It changes nothing stored; it is what the pass reads the
-// repository's switch and file for.
+// names one, and on its AgentField reasoner when the rule runs it on one. It
+// changes nothing stored; it is what the pass reads the repository's switch
+// and file for, and a job a rule runs on a reasoner names a repository it
+// does not need ([factory.NamesNoRepo]).
 func routedTo(it factory.Item, r *routing) factory.Item {
 	if r != nil {
 		it.Repo = repoFor(r.rule, it)
+		it.RunOn = r.rule.Then.RunOnFor(it)
 	}
 	return it
 }
@@ -215,7 +218,8 @@ func stage(cur *factory.Item, f pipeline.File, r *routing) error {
 
 // applyRoute writes rule's decision on cur, with f the file of the repository
 // the rule sends it to: the rule's name, its repository, its priority, and
-// the steps of the pipeline it names. An empty field keeps what cur has.
+// the steps of the pipeline it names, or the AgentField reasoner it runs on.
+// An empty field keeps what cur has.
 //
 // A PERSON'S PRIORITY MARK WINS over a rule's, as it wins over a label
 // ([factory.PriorityFor]); the priority a source sent does not, because the
@@ -240,6 +244,12 @@ func applyRoute(cur *factory.Item, rule route.Rule, f pipeline.File) error {
 	}
 	if steps != nil {
 		cur.Stages = factory.CopyStages(steps)
+	}
+	// A JOB A RULE RUNS ON AN AGENTFIELD REASONER HAS THE RUN'S STEPS, NOT A
+	// PIPELINE'S: it waits with none, as a job filed with run_on does, and
+	// its steps are the run's calls once it starts.
+	if rule.Then.RunOn != "" {
+		cur.RunOn, cur.Stages = rule.Then.RunOn, nil
 	}
 	return nil
 }

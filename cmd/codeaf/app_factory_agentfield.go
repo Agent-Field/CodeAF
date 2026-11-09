@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -274,23 +275,30 @@ func (b *appBackend) FactoryAgentFieldDisconnect(_ context.Context, id string) (
 	return agentFieldWireStatus(id, node), nil
 }
 
+// FactoryAgentFieldTriggers is factory.agentfield_triggers: the triggers
+// aimed at this factory's node, and the source catalog a new one is picked
+// from, read together so every trigger can say what its source is.
 func (b *appBackend) FactoryAgentFieldTriggers(ctx context.Context, id string) (appwire.FactoryAgentFieldTriggers, error) {
 	client, settings, err := b.agentFieldClient(id)
 	if err != nil {
 		return appwire.FactoryAgentFieldTriggers{}, err
 	}
+	sources, err := client.Sources(ctx)
+	if err != nil {
+		return appwire.FactoryAgentFieldTriggers{}, agentFieldWireError(err)
+	}
 	triggers, err := client.Triggers(ctx, settings.NodeID)
 	if err != nil {
 		return appwire.FactoryAgentFieldTriggers{}, agentFieldWireError(err)
 	}
-	out := appwire.FactoryAgentFieldTriggers{Factory: id, NodeID: settings.NodeID, Triggers: []appwire.FactoryAgentFieldTrigger{}}
+	out := appwire.FactoryAgentFieldTriggers{Factory: id, NodeID: settings.NodeID, Sources: agentFieldWireSources(sources), Triggers: []appwire.FactoryAgentFieldTrigger{}}
 	for _, t := range triggers {
 		// The control plane filters by node already; a trigger for another
 		// node is never shown even if it did not.
 		if t.TargetNodeID != settings.NodeID {
 			continue
 		}
-		out.Triggers = append(out.Triggers, agentFieldWireTrigger(settings, t))
+		out.Triggers = append(out.Triggers, agentFieldWireTrigger(settings, t, sources))
 	}
 	return out, nil
 }
@@ -304,11 +312,7 @@ func (b *appBackend) FactoryAgentFieldSources(ctx context.Context, id string) (a
 	if err != nil {
 		return appwire.FactoryAgentFieldSources{}, agentFieldWireError(err)
 	}
-	out := appwire.FactoryAgentFieldSources{Factory: id, Sources: []appwire.FactoryAgentFieldSource{}}
-	for _, s := range sources {
-		out.Sources = append(out.Sources, appwire.FactoryAgentFieldSource{Name: s.Name, Kind: s.Kind, SecretRequired: s.SecretRequired, ConfigSchema: s.ConfigSchema})
-	}
-	return out, nil
+	return appwire.FactoryAgentFieldSources{Factory: id, Sources: agentFieldWireSources(sources)}, nil
 }
 
 func (b *appBackend) FactoryAgentFieldTriggerAdd(ctx context.Context, p appwire.FactoryAgentFieldTriggerAddParams) (appwire.FactoryAgentFieldTrigger, error) {
@@ -320,7 +324,93 @@ func (b *appBackend) FactoryAgentFieldTriggerAdd(ctx context.Context, p appwire.
 	if err != nil {
 		return appwire.FactoryAgentFieldTrigger{}, agentFieldWireError(err)
 	}
-	return agentFieldWireTrigger(settings, t), nil
+	return agentFieldWireTrigger(settings, t, nil), nil
+}
+
+var _ appwire.FactoryAgentFieldTriggerAdder = (*appBackend)(nil)
+
+// FactoryAgentFieldAddTrigger is factory.agentfield_add_trigger: one trigger
+// on the control plane aimed at this factory's node and its intake reasoner,
+// so the source's events become jobs. The source is looked up in the
+// catalog first, so a name the control plane does not have, or a source that
+// needs a signing secret and was given no variable for it, is refused in
+// words before anything is made.
+//
+// THE CONFIG IS NEVER WRITTEN DOWN HERE: it goes to the control plane and
+// nowhere else, and a refusal never quotes it.
+func (b *appBackend) FactoryAgentFieldAddTrigger(ctx context.Context, p appwire.FactoryAgentFieldAddTriggerParams) (appwire.FactoryAgentFieldAddedTrigger, error) {
+	none := appwire.FactoryAgentFieldAddedTrigger{}
+	client, settings, err := b.agentFieldClient(p.Factory)
+	if err != nil {
+		return none, err
+	}
+	sources, err := client.Sources(ctx)
+	if err != nil {
+		return none, agentFieldWireError(err)
+	}
+	src, ok := agentFieldSourceNamed(sources, p.Source)
+	switch {
+	case !ok:
+		return none, appwire.Errorf(appwire.CodeBadParams, "AgentField has no source named %q; its sources are %s", p.Source, agentFieldSourceNames(sources))
+	case src.SecretRequired && p.SecretEnvVar == "":
+		return none, appwire.Errorf(appwire.CodeBadParams, "%s needs a signing secret: name the control plane's environment variable that holds it (secret_env_var)", agentfield.SourceLabel(src.Name))
+	}
+	t, err := client.AddTrigger(ctx, agentfield.NewTrigger{SourceName: src.Name, Config: p.Config, SecretEnvVar: p.SecretEnvVar, TargetNodeID: settings.NodeID, TargetReasoner: agentfield.ReasonerIntake, EventTypes: p.EventTypes})
+	if err != nil {
+		return none, agentFieldWireError(err)
+	}
+	wire := agentFieldWireTrigger(settings, t, sources)
+	out := appwire.FactoryAgentFieldAddedTrigger{Factory: p.Factory, Trigger: wire}
+	if wire.WebhookURL != "" || t.SecretEnvVar != "" {
+		out.Setup = &appwire.FactoryAgentFieldTriggerSetup{WebhookURL: wire.WebhookURL, SecretEnvVar: t.SecretEnvVar}
+	}
+	return out, nil
+}
+
+func agentFieldSourceNamed(sources []agentfield.Source, name string) (agentfield.Source, bool) {
+	for _, s := range sources {
+		if strings.EqualFold(s.Name, name) {
+			return s, true
+		}
+	}
+	return agentfield.Source{}, false
+}
+
+func agentFieldSourceNames(sources []agentfield.Source) string {
+	if len(sources) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(sources))
+	for _, s := range sources {
+		names = append(names, s.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// agentFieldEventTypes is a source's event types as the catalog lists them,
+// trimmed and each once; nil when it lists none, so the field is left out.
+func agentFieldEventTypes(in []string) []string {
+	var out []string
+	for _, t := range in {
+		if t = strings.TrimSpace(t); t != "" && !slices.Contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// agentFieldWireSources is the catalog on the wire, each source with its
+// label and the fields of its config.
+func agentFieldWireSources(sources []agentfield.Source) []appwire.FactoryAgentFieldSource {
+	out := make([]appwire.FactoryAgentFieldSource, 0, len(sources))
+	for _, s := range sources {
+		w := appwire.FactoryAgentFieldSource{Name: s.Name, Kind: s.Kind, SecretRequired: s.SecretRequired, ConfigSchema: s.ConfigSchema, Label: agentfield.SourceLabel(s.Name), EventTypes: agentFieldEventTypes(s.EventTypes)}
+		for _, f := range agentfield.ConfigFields(s.ConfigSchema) {
+			w.ConfigFields = append(w.ConfigFields, appwire.FactoryAgentFieldConfigField{Name: f.Name, Label: f.Label, Secret: f.Secret})
+		}
+		out = append(out, w)
+	}
+	return out
 }
 
 // agentFieldClient is a control plane client over the host's kept connection.
@@ -331,7 +421,7 @@ func (b *appBackend) agentFieldClient(id string) (*agentfield.Client, agentfield
 	}
 	client, settings, ok := host.agentFieldNode().Conn.Client()
 	if !ok {
-		return nil, agentfield.Settings{}, appwire.Errorf(appwire.CodeConflict, "this factory is not connected to AgentField")
+		return nil, agentfield.Settings{}, appwire.Errorf(appwire.CodeConflict, "this organization is not connected to AgentField; connect it first")
 	}
 	return client, settings, nil
 }
@@ -358,9 +448,22 @@ func wireTime(t time.Time) *time.Time {
 	return &t
 }
 
-func agentFieldWireTrigger(s agentfield.Settings, t agentfield.Trigger) appwire.FactoryAgentFieldTrigger {
-	return appwire.FactoryAgentFieldTrigger{ID: t.ID, Source: t.SourceName, Reasoner: t.TargetReasoner, EventTypes: t.EventTypes, Enabled: t.Enabled, ManagedBy: t.ManagedBy, SecretEnvVar: t.SecretEnvVar,
-		IngestURL: strings.TrimRight(s.URL, "/") + "/sources/" + t.ID, Events24h: t.EventCount24h, Failed24h: t.Failed24h, LastEventAt: t.LastEventAt}
+// agentFieldWireTrigger is one trigger on the wire. sources is the catalog
+// when it was read, which says whether anything posts to the trigger: a loop
+// source (cron) is run by the control plane and has no webhook address. With
+// no catalog the address is given, as ingest_url always was.
+func agentFieldWireTrigger(s agentfield.Settings, t agentfield.Trigger, sources []agentfield.Source) appwire.FactoryAgentFieldTrigger {
+	ingest := strings.TrimRight(s.URL, "/") + "/sources/" + t.ID
+	out := appwire.FactoryAgentFieldTrigger{ID: t.ID, Source: t.SourceName, Reasoner: t.TargetReasoner, EventTypes: t.EventTypes, Enabled: t.Enabled, ManagedBy: t.ManagedBy, SecretEnvVar: t.SecretEnvVar,
+		IngestURL: ingest, Events24h: t.EventCount24h, Failed24h: t.Failed24h, LastEventAt: t.LastEventAt,
+		EntrySource: agentfield.SourceName(t.SourceName), Label: agentfield.SourceLabel(t.SourceName), WebhookURL: ingest, CreatedAt: t.CreatedAt}
+	if src, ok := agentFieldSourceNamed(sources, t.SourceName); ok && src.Kind == "loop" {
+		out.WebhookURL = ""
+	}
+	if out.CreatedAt != nil && out.CreatedAt.IsZero() {
+		out.CreatedAt = nil
+	}
+	return out
 }
 
 // agentFieldWireError says a refused call in the wire's codes: a control

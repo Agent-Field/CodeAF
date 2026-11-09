@@ -16,8 +16,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -48,6 +50,9 @@ func (b *appBackend) FactoryRoutesSet(ctx context.Context, p appwire.FactoryRout
 	none := appwire.FactoryRoutes{}
 	p, err := appwire.CheckRoutesSet(p)
 	if err != nil {
+		return none, err
+	}
+	if err := b.routeReasonersKnown(ctx, p.Factory, *p.Rules); err != nil {
 		return none, err
 	}
 	h := b.factoryHub()
@@ -99,6 +104,55 @@ func (b *appBackend) FactoryRoutesSet(ctx context.Context, p appwire.FactoryRout
 	}
 	h.touch(p.Factory)
 	return appwire.FactoryRoutes{Factory: p.Factory, Rules: rules, RulesChange: saved.RulesChange}, nil
+}
+
+// routeReasonersKnown refuses a table whose rule runs jobs on an AgentField
+// reasoner the control plane does not know, in words, before anything is
+// sent: the same check a person makes picking a reasoner for an agentfield
+// step from factory.agentfield_reasoners, made on save so a misspelt one is
+// never found by a job that cannot run.
+//
+// ONLY THIS MACHINE'S FACTORY HOLDS AN AGENTFIELD CONNECTION TO ASK. A table
+// for another factory (a team's server) is held to the spelling route.Clean
+// already checked, and a job its rule sends to a reasoner that factory cannot
+// reach waits with the run's own refusal.
+func (b *appBackend) routeReasonersKnown(ctx context.Context, id string, rules []route.Rule) error {
+	var named []route.Rule
+	for _, r := range rules {
+		if r.Then.RunOn != "" {
+			named = append(named, r)
+		}
+	}
+	if len(named) == 0 {
+		return nil
+	}
+	host, err := b.localHostOf(id)
+	if err != nil || host == nil {
+		return nil
+	}
+	client, _, connected := host.agentFieldConn()
+	lister, can := client.(interface {
+		Nodes(context.Context) ([]agentfield.NodeReasoners, error)
+	})
+	if !connected || !can {
+		return appwire.Errorf(appwire.CodeConflict, "routing rule %q runs jobs on AgentField, and this organization is not connected to AgentField; connect it first, or take run_on off the rule", named[0].Name)
+	}
+	nodes, err := lister.Nodes(ctx)
+	if err != nil {
+		return appwire.Errorf(appwire.CodeConflict, "AgentField did not list its agents, so routing rule %q could not be checked; nothing was changed: %s", named[0].Name, err.Error())
+	}
+	known := map[string]bool{}
+	for _, n := range nodes {
+		for _, r := range n.Reasoners {
+			known[strings.ToLower(n.ID+"."+r.ID)] = true
+		}
+	}
+	for _, r := range named {
+		if !known[strings.ToLower(r.Then.RunOn)] {
+			return appwire.Errorf(appwire.CodeBadParams, "routing rule %q: AgentField has no agent %s; pick one it lists", r.Name, r.Then.RunOn)
+		}
+	}
+	return nil
 }
 
 func routesUncertain() error {

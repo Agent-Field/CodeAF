@@ -61,6 +61,11 @@ type Action struct {
 	Pipeline string `json:"pipeline,omitempty" yaml:"pipeline,omitempty"` // a named pipeline in that repo's factory.yaml
 	Priority string `json:"priority,omitempty" yaml:"priority,omitempty"` // p0..p3
 	Start    Start  `json:"start,omitempty" yaml:"start,omitempty"`
+	// RunOn is an AgentField reasoner, "<node>.<reasoner>", that runs the
+	// job in place of the factory's own steps ([factory.Item.RunOn]): the job
+	// needs no repository, and runs exactly as a job filed with run_on does.
+	// A rule that names one names no pipeline.
+	RunOn string `json:"run_on,omitempty" yaml:"run_on,omitempty"`
 }
 
 // Rule is one line of the routing table.
@@ -150,8 +155,14 @@ func anyOf(want []string, holds func(string) bool) bool {
 // sourceIs says whether source names where it came from: its Origin or its
 // SourceRef, either whole or up to a ':' or '/', without regard to case. An
 // inbox job has Origin `inbox:ops` and SourceRef `inbox:ops:A1`, so "inbox"
-// and "inbox:ops" both hold for it and "inbox:op" does not.
+// and "inbox:ops" both hold for it and "inbox:op" does not. A TRAILING `*`
+// AFTER ':' OR '/' IS EVERY NAME UNDER IT: "agentfield:*" is spelled as a
+// person picking "any AgentField source" reads it, and holds as "agentfield"
+// does.
 func sourceIs(it factory.Item, source string) bool {
+	if front, ok := strings.CutSuffix(source, "*"); ok && (strings.HasSuffix(front, ":") || strings.HasSuffix(front, "/")) {
+		source = front[:len(front)-1]
+	}
 	return namesFront(string(it.Origin), source) || namesFront(it.SourceRef, source)
 }
 
@@ -197,6 +208,15 @@ func HeldAnswers(it factory.Item) Answers {
 		v, ok := it.Judged[rule]
 		return Answer{Yes: v.Yes, Why: v.Why, Model: v.Model, Key: v.Key}, ok
 	}
+}
+
+// RunOnFor is the AgentField reasoner the action runs it on: the action's own
+// when it names one, else the one it already has.
+func (a Action) RunOnFor(it factory.Item) string {
+	if a.RunOn != "" {
+		return a.RunOn
+	}
+	return it.RunOn
 }
 
 // RepoFor is the repository the action sends it to: the action's own when it

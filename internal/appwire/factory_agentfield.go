@@ -122,12 +122,25 @@ type FactoryAgentFieldTrigger struct {
 	Events24h   int        `json:"events_24h,omitempty"`
 	Failed24h   int        `json:"failed_24h,omitempty"`
 	LastEventAt *time.Time `json:"last_event_at,omitempty"`
+	// EntrySource is the source a job this trigger files carries,
+	// agentfield:<source> with an underscore written as a hyphen
+	// (agentfield:generic-bearer): what a routing rule's when.sources names.
+	EntrySource string `json:"entry_source"`
+	// Label is the trigger in a person's words: its source's label.
+	Label string `json:"label,omitempty"`
+	// WebhookURL is where the outside system posts its events: the same
+	// address as ingest_url, and absent for a source the control plane runs
+	// itself (kind loop, as cron), which nothing posts to.
+	WebhookURL string     `json:"webhook_url,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
 }
 
-// FactoryAgentFieldTriggers is the triggers that target the factory's node.
+// FactoryAgentFieldTriggers is the triggers that target the factory's node,
+// and the control plane's source catalog a new one is picked from.
 type FactoryAgentFieldTriggers struct {
 	Factory  string                     `json:"factory"`
 	NodeID   string                     `json:"node_id"`
+	Sources  []FactoryAgentFieldSource  `json:"sources"`
 	Triggers []FactoryAgentFieldTrigger `json:"triggers"`
 }
 
@@ -139,6 +152,23 @@ type FactoryAgentFieldSource struct {
 	Kind           string          `json:"kind"`
 	SecretRequired bool            `json:"secret_required"`
 	ConfigSchema   json.RawMessage `json:"config_schema,omitempty"`
+	// Label is the source in a person's words, such as Linear or Signed
+	// webhook.
+	Label string `json:"label"`
+	// ConfigFields is the top-level fields its config schema names, for a
+	// form to draw; absent when it names none.
+	ConfigFields []FactoryAgentFieldConfigField `json:"config_fields,omitempty"`
+	// EventTypes is the event types the source can emit, as the control
+	// plane's catalog lists them; absent when it lists none.
+	EventTypes []string `json:"event_types,omitempty"`
+}
+
+// FactoryAgentFieldConfigField is one field of a source's config. Secret says
+// a form draws it as a password field: its value is never shown again.
+type FactoryAgentFieldConfigField struct {
+	Name   string `json:"name"`
+	Label  string `json:"label"`
+	Secret bool   `json:"secret,omitempty"`
 }
 
 // FactoryAgentFieldSources is the control plane's source catalog.
@@ -159,6 +189,60 @@ type FactoryAgentFieldTriggerAddParams struct {
 	// the source's signing secret; required by a source that needs one.
 	SecretEnvVar string   `json:"secret_env_var,omitempty"`
 	EventTypes   []string `json:"event_types,omitempty"`
+}
+
+// FactoryAgentFieldAddTriggerParams is factory.agentfield_add_trigger: one
+// trigger aimed at the factory's intake. It is factory.agentfield_trigger_add
+// in the shape the desk's trigger page sends.
+type FactoryAgentFieldAddTriggerParams struct {
+	Factory    string          `json:"factory"`
+	Source     string          `json:"source"`
+	EventTypes []string        `json:"event_types,omitempty"`
+	Config     json.RawMessage `json:"config,omitempty"`
+	// SecretEnvVar names the control plane's environment variable holding
+	// the source's signing secret; a source that needs one is refused
+	// without it. The control plane keeps the secret itself, never codeaf.
+	SecretEnvVar string `json:"secret_env_var,omitempty"`
+}
+
+// FactoryAgentFieldAddedTrigger is the trigger made, and what the person does
+// next to make it fire.
+type FactoryAgentFieldAddedTrigger struct {
+	Factory string                         `json:"factory"`
+	Trigger FactoryAgentFieldTrigger       `json:"trigger"`
+	Setup   *FactoryAgentFieldTriggerSetup `json:"setup,omitempty"`
+}
+
+// FactoryAgentFieldTriggerSetup is what the outside system needs: the
+// address it posts to, and the name of the control plane's environment
+// variable its signing secret is read from. Secret is never filled: AgentField
+// reads its secrets from its own environment and never hands one back.
+type FactoryAgentFieldTriggerSetup struct {
+	WebhookURL   string `json:"webhook_url,omitempty"`
+	Secret       string `json:"secret,omitempty"`
+	SecretEnvVar string `json:"secret_env_var,omitempty"`
+}
+
+// FeatureFactoryAgentFieldTriggers is announced in hello when the engine
+// serves factory.agentfield_triggers with its source catalog and
+// factory.agentfield_add_trigger.
+const FeatureFactoryAgentFieldTriggers = "factory.agentfield_triggers"
+
+// FactoryAgentFieldTriggerAdder is the engine's half of
+// factory.agentfield_add_trigger.
+type FactoryAgentFieldTriggerAdder interface {
+	FactoryAgentFieldAddTrigger(ctx context.Context, p FactoryAgentFieldAddTriggerParams) (FactoryAgentFieldAddedTrigger, error)
+}
+
+func withFactoryAgentFieldTriggersFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(Factory); !ok {
+		return hello
+	}
+	_, lists := e.(FactoryAgentField)
+	if _, adds := e.(FactoryAgentFieldTriggerAdder); lists && adds {
+		hello = withFeature(hello, FeatureFactoryAgentFieldTriggers)
+	}
+	return hello
 }
 
 // FactoryAgentField is the engine's half of the six methods.
@@ -224,6 +308,18 @@ func CheckAgentFieldTriggerAdd(p FactoryAgentFieldTriggerAddParams) (FactoryAgen
 			return p, Errorf(CodeBadParams, "config is a JSON object shaped by the source's config_schema")
 		}
 	}
+	var types []string
+	for _, t := range p.EventTypes {
+		t = strings.TrimSpace(t)
+		switch {
+		case t == "":
+			continue
+		case len(t) > 100 || strings.ContainsAny(t, " \t\r\n\x00"):
+			return p, Errorf(CodeBadParams, "an event type is one word of at most 100 characters, such as Issue.create")
+		}
+		types = append(types, t)
+	}
+	p.EventTypes = types
 	return p, nil
 }
 
@@ -266,10 +362,16 @@ func init() {
 		return agentFieldRef(e, "factory.agentfield_sources", p, FactoryAgentField.FactoryAgentFieldSources)
 	})
 	const add = "factory.agentfield_trigger_add"
-	methods[add] = typed(func(e Engine, p FactoryAgentFieldTriggerAddParams) (*FactoryAgentFieldTrigger, error) {
+	methods[add] = shaped[FactoryAgentFieldTriggerAddParams, FactoryAgentFieldTrigger](func(e Engine, raw json.RawMessage) (*FactoryAgentFieldTrigger, error) {
 		a, err := agentFieldEngine(e, add)
 		if err != nil {
 			return nil, err
+		}
+		var p FactoryAgentFieldTriggerAddParams
+		// A config may hold a value meant to stay private, and a decode's
+		// message quotes the bad input, so this one says only the shape.
+		if err := decodeStrict(add, raw, &p); err != nil {
+			return nil, Errorf(CodeBadParams, "%s takes {factory, source, config, secret_env_var, event_types}; config is an object and event_types a list of words", add)
 		}
 		if p, err = CheckAgentFieldTriggerAdd(p); err != nil {
 			return nil, err
@@ -277,6 +379,32 @@ func init() {
 		ctx, cancel := factoryCall()
 		defer cancel()
 		out, err := a.FactoryAgentFieldTriggerAdd(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return &out, nil
+	})
+	const addTrigger = "factory.agentfield_add_trigger"
+	methods[addTrigger] = shaped[FactoryAgentFieldAddTriggerParams, FactoryAgentFieldAddedTrigger](func(e Engine, raw json.RawMessage) (*FactoryAgentFieldAddedTrigger, error) {
+		a, ok := e.(FactoryAgentFieldTriggerAdder)
+		if _, isFactory := e.(Factory); !ok || !isFactory {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve %s", addTrigger)
+		}
+		var p FactoryAgentFieldAddTriggerParams
+		// THE CONFIG NEVER COMES BACK IN A REFUSAL: a decode's message quotes
+		// the bad input, so this one says only what shape was wanted, as
+		// factory.agentfield_connect does for its key.
+		if err := decodeStrict(addTrigger, raw, &p); err != nil {
+			return nil, Errorf(CodeBadParams, "%s takes {factory, source, event_types, config, secret_env_var}; config is an object and event_types a list of words", addTrigger)
+		}
+		checked, err := CheckAgentFieldTriggerAdd(FactoryAgentFieldTriggerAddParams{Factory: p.Factory, Source: p.Source, Config: p.Config, SecretEnvVar: p.SecretEnvVar, EventTypes: p.EventTypes})
+		if err != nil {
+			return nil, err
+		}
+		p.Factory, p.Source, p.SecretEnvVar, p.EventTypes = checked.Factory, checked.Source, checked.SecretEnvVar, checked.EventTypes
+		ctx, cancel := factoryCall()
+		defer cancel()
+		out, err := a.FactoryAgentFieldAddTrigger(ctx, p)
 		if err != nil {
 			return nil, err
 		}

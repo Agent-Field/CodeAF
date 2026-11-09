@@ -201,6 +201,12 @@ func (in *Intake) LabelsGated(on func() bool) *Intake {
 // load is the file job it is decided under: its own ([Options.LoadJob]),
 // else its repository's.
 func (in *Intake) load(it factory.Item) (pipeline.File, error) {
+	// A JOB AN AGENTFIELD REASONER RUNS, WITH NO REPOSITORY, HAS NO FILE TO
+	// READ: its start is decided under the built-in rules, as a job filed
+	// with run_on is budgeted by the factory's own default.
+	if strings.TrimSpace(it.Repo) == "" && strings.TrimSpace(it.RunOn) != "" {
+		return pipeline.Defaults(), nil
+	}
 	if in.opts.LoadJob != nil {
 		return in.opts.LoadJob(it)
 	}
