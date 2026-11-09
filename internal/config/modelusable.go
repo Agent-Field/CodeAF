@@ -16,7 +16,7 @@ func ModelUsable(sources modelsource.Set, model, providerID string) bool {
 	for _, source := range modelsource.Vendored() {
 		// Cloud vendor names can also be OpenRouter author prefixes.
 		// Local runners and the sign-in transport cannot use that fallback.
-		if source.KeyOptional || source.ID == "codex" {
+		if source.KeyOptional || source.ID == "codex" || source.ID == "claude-code" {
 			written = append(written, source.Written)
 		}
 	}

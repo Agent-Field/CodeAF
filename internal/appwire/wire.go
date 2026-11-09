@@ -806,7 +806,7 @@ type Provider struct {
 	// that predates this field assumes of every provider), a browser sign-in
 	// and nothing else (browser), or where the service runs, with a key only if
 	// it wants one (address).
-	Kind string `json:"kind,omitempty" enum:"key,browser,address"`
+	Kind string `json:"kind,omitempty" enum:"key,browser,address,agent"`
 	// KeyOptional says the key may be left blank: the service answers with none.
 	KeyOptional bool `json:"key_optional,omitempty"`
 	// Address is an address provider's address: the one in use when it is
@@ -836,6 +836,10 @@ const (
 	ProviderKey     = "key"
 	ProviderBrowser = "browser"
 	ProviderAddress = "address"
+	// ProviderAgent is a program on the engine's machine that answers on its
+	// own sign-in, such as Claude Code: connecting it asks for nothing, and
+	// codeaf holds no credential for it.
+	ProviderAgent = "agent"
 )
 
 // ProviderRegion is one of a provider's separate hosts.

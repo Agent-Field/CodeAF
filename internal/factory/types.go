@@ -618,6 +618,19 @@ type Item struct {
 	// SourceIssue is a reference only; it never gives this job a forge identity.
 	SourceIssue string `json:",omitempty"`
 
+	// WaitsOn are the jobs this one waits on, by number: a go-ahead starts it
+	// only once every one of them has merged ([Merged]). A person's own start
+	// never reads it.
+	WaitsOn []int `json:",omitempty"`
+	// PolicyRun is the id of the go-ahead allowance that started this job,
+	// and PolicyGroup the group whose policy holds it ([GroupPolicy]); both ""
+	// for a job no go-ahead started. Its spend counts against that allowance.
+	PolicyRun   string `json:",omitempty"`
+	PolicyGroup string `json:",omitempty"`
+	// Blocked is why a go-ahead that covers this job has not started it yet;
+	// nil when nothing covers it or it started.
+	Blocked *JobBlocked `json:",omitempty"`
+
 	// Followers are the people who follow this job, by normalised handle
 	// (followers.go). Each person reads only whether they follow it.
 	Followers []string `json:",omitempty"`

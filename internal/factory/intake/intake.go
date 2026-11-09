@@ -56,6 +56,17 @@ type Options struct {
 	// apply with the switch off. Nil is on, which is what a team server and
 	// the command line have always done.
 	LabelStarts func() bool
+	// Now is the clock the go-ahead pass reads an allowance's end against
+	// ([Intake.GoAheads]). Nil is the wall clock.
+	Now func() time.Time
+}
+
+// now is the intake's clock.
+func (in *Intake) now() time.Time {
+	if in.opts.Now != nil {
+		return in.opts.Now()
+	}
+	return time.Now()
 }
 
 type Intake struct {

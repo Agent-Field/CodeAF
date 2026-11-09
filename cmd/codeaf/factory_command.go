@@ -183,7 +183,11 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	// A JOB A START RULE STARTS ON A TEAM SERVER IS ITS OPERATOR'S.
 	operator := factoryOperatorOwner(factoryTokensPath(configPath))
 	startFactoryTriage(ctx, st, func(st *store.Store) *intake.Intake { return factoryIntakeOwned(st, operator) })
-	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath), limit)
+	// A GO-AHEAD ON A TEAM SERVER IS FOLLOWED BY THE SERVER ITSELF, after every
+	// poll tick, so the jobs it covers start with no app attached.
+	startFactoryServerPoll(ctx, st, factoryTokensPath(configPath), limit, func(ctx context.Context) error {
+		return factoryIntakeOwned(st, operator).GoAheads(ctx)
+	})
 	server, done := service.server, service.done
 	// READY MEANS USABLE: the operator link's row is written before the
 	// address is printed; only naming its GitHub login waits on GitHub.

@@ -92,7 +92,8 @@ func TestAppListsEveryProviderTheTerminalOffers(t *testing.T) {
 	for _, p := range providers {
 		got = append(got, p.ID)
 	}
-	if strings.Join(got, ",") != strings.Join(want, ",") || len(got) != 10 {
+	// Eleven since Claude Code joined as the last row.
+	if strings.Join(got, ",") != strings.Join(want, ",") || len(got) != 11 {
 		t.Fatalf("providers = %v, want the terminal's %v", got, want)
 	}
 	byID := appProvidersByID(t, backend)

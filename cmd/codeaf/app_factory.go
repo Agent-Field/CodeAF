@@ -314,7 +314,7 @@ func (h *appFactoryHost) readLoops() {
 			source = waitForFactoryGitHub(h.ctx, h.floor, token, factoryWatchEvery)
 		}
 		if source != nil {
-			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, factoryPollLog, h.intakeFor(h.floor).Once)
+			factorygithub.Poll(h.ctx, source, h.floor, factoryPollEvery, factoryPollLog, factoryAfterPoll(h.intakeFor(h.floor)))
 		}
 	})
 }
@@ -365,13 +365,19 @@ func (h *appFactoryHost) pollLoop() {
 // with the switch off and an empty table, no pass runs at all, so nothing is
 // read from GitHub or written on a job that the switch used to leave alone.
 // A table that cannot be read runs the pass, whose own read refuses it.
+//
+// THE GO-AHEAD PASS RUNS EITHER WAY ([intake.Intake.GoAheads]), after the
+// routing pass, as [factoryAfterPoll] runs it: a group policy is a person's
+// own yes for the jobs it names, not a start rule, so neither Pick up issues
+// being off nor an empty routing table withholds it.
 func (h *appFactoryHost) routeAndPickUp(ctx context.Context) error {
+	in := h.intakeFor(h.floor)
 	if !h.picksUpIssues() {
 		if rules, err := h.floor.Routes(); err == nil && len(rules) == 0 {
-			return nil
+			return in.GoAheads(ctx)
 		}
 	}
-	return h.intakeFor(h.floor).LabelsGated(h.picksUpIssues).Once(ctx)
+	return errors.Join(in.LabelsGated(h.picksUpIssues).Once(ctx), in.GoAheads(ctx))
 }
 
 // picksUpIssues is the factory's Pick up issues switch as it reads now; off

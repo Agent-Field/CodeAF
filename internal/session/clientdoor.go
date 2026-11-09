@@ -3,11 +3,13 @@ package session
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	account "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -901,6 +903,15 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 		configured.ModelPrice = c.ModelPrice
 	}
 	configured.RouteGate = c.routeGate(model, configured.Model)
+	if strings.EqualFold(strings.TrimSpace(c.serviceFor(model).Source.ID), claudemodel.ID) {
+		// A TURN ON CLAUDE CODE IS CLAUDE CODE WORKING IN THIS FOLDER, so the
+		// transport is told which one (internal/claudemodel's agent.go).
+		kept := ""
+		if c.SessionFile != "" {
+			kept = filepath.Join(filepath.Dir(c.SessionFile), "claude-code-session.json")
+		}
+		configured.HTTPClient = claudemodel.ClientAt(claudemodel.Seat{Dir: c.Workspace, Kept: kept})
+	}
 	return configured
 }
 

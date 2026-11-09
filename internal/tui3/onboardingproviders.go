@@ -2,6 +2,8 @@ package tui3
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/claudeagent"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -50,10 +52,26 @@ func providerCatalog(catalog []modelsource.Source) []modelsource.Source {
 
 func (a *app) setupProviderRows() []setupProviderRow {
 	var rows []setupProviderRow
+	claudeHere := claudeCodeHere()
 	for _, source := range providerCatalog(a.modelCatalog) {
+		// THE CLAUDE PROVIDER IS OFFERED ONLY WHERE IT IS INSTALLED, as the app's first
+		// run offers it: it needs no key, so on a machine without the `claude`
+		// program the row could only ever answer that it is missing. The later
+		// add-a-provider menu follows the same rule; /connect still lists it
+		// everywhere, with that answer.
+		if source.ID == claudemodel.ID && !claudeHere {
+			continue
+		}
 		rows = append(rows, setupProviderRow{source.ID, source.Name})
 	}
 	return rows
+}
+
+// claudeCodeHere says the `claude` program is on this machine. It looks for
+// the program and runs nothing.
+var claudeCodeHere = func() bool {
+	_, err := claudeagent.Binary()
+	return err == nil
 }
 
 func (a *app) setupProviderKey(msg tea.KeyPressMsg) tea.Cmd {

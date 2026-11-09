@@ -434,6 +434,18 @@ type Job struct {
 	// AgentFieldSteps are the runs behind the job's agentfield steps, by
 	// step name; their executions are in steps[] under that step.
 	AgentFieldSteps map[string]*factory.AgentFieldRun `json:"agentfield_steps,omitempty"`
+	// WaitsOn are the jobs this one waits on, by number ([factory.Item.WaitsOn]):
+	// a go-ahead starts it only once each has merged. WaitingOn is those of them
+	// that have not merged yet, read from the factory's own jobs when the job is
+	// read; absent from a job that waits on nothing.
+	WaitsOn   []int `json:"waits_on,omitempty"`
+	WaitingOn []int `json:"waiting_on,omitempty"`
+	// PolicyRun is the id of the go-ahead allowance that started this job; absent
+	// for a job no go-ahead started ([factory.Item.PolicyRun]).
+	PolicyRun string `json:"policy_run,omitempty"`
+	// Blocked is why a go-ahead that covers this job has not started it yet
+	// ([factory.JobBlocked]); absent when nothing covers it or it started.
+	Blocked *factory.JobBlocked `json:"blocked,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
@@ -853,13 +865,15 @@ type JobDesk struct {
 	// ([factory.Item.SourceRef]), as kept; a page reads job.source instead.
 	SourceRef string `json:"source_ref,omitempty"`
 	// EngineState preserves old documents without adding a sixth public state.
-	EngineState   string               `json:"engine_state,omitempty"`
-	Priority      *factory.JobPriority `json:"priority,omitempty"`
-	DoneHow       string               `json:"done_how,omitempty"`
-	Approval      *factory.Approval    `json:"approval,omitempty"`
-	PersonStopped *bool                `json:"person_stopped,omitempty"`
-	Rejection     *factory.Rejection   `json:"rejection,omitempty"`
-	StopUndo      *factory.StopUndo    `json:"stop_undo,omitempty"`
+	EngineState string               `json:"engine_state,omitempty"`
+	Priority    *factory.JobPriority `json:"priority,omitempty"`
+	DoneHow     string               `json:"done_how,omitempty"`
+	Approval    *factory.Approval    `json:"approval,omitempty"`
+	// PolicyGroup is the group whose policy started the job ([factory.Item.PolicyGroup]).
+	PolicyGroup   string             `json:"policy_group,omitempty"`
+	PersonStopped *bool              `json:"person_stopped,omitempty"`
+	Rejection     *factory.Rejection `json:"rejection,omitempty"`
+	StopUndo      *factory.StopUndo  `json:"stop_undo,omitempty"`
 
 	ChangeBase      string    `json:"change_base,omitempty"`
 	Thread          []Message `json:"thread,omitempty"`

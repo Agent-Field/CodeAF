@@ -243,6 +243,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.attach` | `in.FactoryAttachParams` | `FactoryConnection` |
 | `factory.capabilities` | `in.Empty` | `FactoryCapabilities` |
 | `factory.intake_add` | `in.FactoryIntakeParams` | `inbox.Result` |
+| `factory.features` | `in.FactoryRef` | `FactoryFeatures` |
 | `factory.detach` | `in.FactoryRef` | `Empty` |
 | `factory.job` | `in.FactoryJobParams` | `Job` |
 | `factory.job_approve` | `in.FactoryJobApproveParams` | `FactoryJobActed` |
@@ -320,6 +321,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.library_set` | `in.FactoryLibrarySetParams` | `FactoryLibrary` |
 | `factory.me` | `in.FactoryRef` | `FactoryMe` |
 | `factory.people` | `in.FactoryRef` | `People` |
+| `factory.policy_get` | `in.FactoryPolicyGetParams` | `Policy` |
+| `factory.policy_set` | `in.FactoryPolicySetParams` | `Policy` |
 | `factory.pipeline` | `in.FactoryRepoParams` | `FactoryPipeline` |
 | `factory.pipeline_copy_clear` | `in.FactoryPipelineCopyClearParams` | `FactoryPipelineCopyDone` |
 | `factory.pipeline_copy_set` | `in.FactoryPipelineCopySetParams` | `FactoryPipelineCopyDone` |
@@ -373,6 +376,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.spend_by_repo` | `in.FactorySpendByRepoParams` | `FactorySpendByRepo` |
 | `factory.spending` | `in.FactoryRef` | `FactorySpending` |
 | `factory.spending_set` | `in.FactorySpendingSetParams` | `FactorySpending` |
+| `factory.waits_set` | `in.FactoryWaitsSetParams` | `FactoryWaitsSetResult` |
 
 An engine whose hello carries the features `factory.default_budget`,
 `factory.auto_start_cap` and `factory.default_model` serves
@@ -393,6 +397,39 @@ the model. Only the factory's operator may set them (`forbidden` otherwise).
 `expect` is the three values as last read; a factory that keeps others answers
 `stale` and changes nothing. A refused value is `bad_params` before anything is
 sent; an unconfirmed write is `uncertain`.
+
+An engine whose hello carries `factory.group_policy` and `factory.waits_set`
+(and capabilities `group_policy: true`, `waits_on: true`) serves go-aheads the
+factory follows by itself. `factory.features {factory}` answers `{features}`, what
+that one factory keeps (`GET /v1/features`): `group_policy` and `waits_on`, or `[]`
+from a factory older than the route. `factory.policy_get {factory, group}` and
+`factory.policy_set {factory, group, stopped, allowances}` (`GET /v1/policy?group=`,
+`PUT /v1/policy`) answer `{group, version?, stopped, owner?, updated_at?, spent_usd,
+allowances: [{id, jobs, cap_usd, ends_at, spent_usd, state}]}`; a set replaces the
+group's whole policy and its caller becomes its owner (on a team, only the owner or
+the operator may change one someone keeps: `forbidden`). `group` is 1–200 plain
+characters; at most 50 allowances, each a distinct id of 1–64 of `A–Z a–z 0–9 . _ : -`,
+1–200 distinct job numbers, a cap above 0 and at most 10,000, and an RFC 3339
+`ends_at`, kept as sent; anything else is `bad_params` before it is sent. `state` is
+`ended` once the policy is stopped or `ends_at` has come, `spent` once the jobs the
+allowance started spent its cap, else `active`. `factory.waits_set {factory, job,
+waits_on, expect?}` (`POST /v1/jobs/{id}/waits_on`) replaces the jobs one job waits on
+(0–20 distinct others on the same factory, no circle) and answers `{factory, job,
+waits_on, current?}`. After every poll — on a team server (`codeaf factory serve`) every
+tick of its own poll, with or without a GitHub grant and with no app attached; on the
+app's own local factory only while the app runs with its runner on (`factory.local_run`,
+which needs `factory.setup_connect` first), never after the app quits — the factory starts a covered job that never ran
+and sits in Backlog once every job it waits on has merged, while one allowance naming
+it is active and the job is not someone else's; each started job holds its budget
+(lowered to what is left of the cap) until it finishes. A started job carries
+`policy_run` (the allowance id) and its start record `auto_started` with detail
+`allowance <id>`; a covered job not yet started carries `blocked {by: waits_on|policy,
+reason, job?, allowance?, since?}` — a full cap reads "its go-ahead's cap is spent" when
+the allowance's jobs spent it and "its go-ahead's cap is held by jobs already running"
+when running jobs only reserve it — and every job answer, `factory.queue` rows included,
+carries `waits_on` and `waiting_on`.
+Stopping, ending or withdrawing an allowance starts nothing further and stops nothing
+already running.
 
 `factory.job_create` keeps `title` trimmed and separate from literal `text`,
 including details whitespace in the job ask and body; empty details stay empty.

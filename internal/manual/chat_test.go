@@ -34,6 +34,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"can Claude Code make a canvas", "claude-code-provider"},
+		{"does Claude Code see my codeaf skills", "claude-code-provider"},
+		{"Claude Code's edits don't show as rows in the chat", "claude-code-provider"},
+		{"can Claude Code propose a task", "claude-code-provider"},
+		{"use my Claude plan with no API key", "claude-code-provider"},
 		{"where is the token I pasted kept and for how long", "giving-a-password-or-token"},
 		{"can the model see my password", "giving-a-password-or-token"},
 		{"can I send a message to the chat running on my other computer", "desktop-sync"},
@@ -3558,6 +3563,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is there a step called immediately in my job", "factory"},
 		{"the manager refused to add my step, it says it has no name of its own", "factory"},
 		{"I sent the same ticket twice to the factory", "factory"},
+		{"will my go-ahead start jobs when the app is closed", "factory"},
+		{"why did a job not start after the job it waits on merged", "factory"},
 		{"rules for every repository in the factory", "factory"},
 		{"make the factory ask before it touches auth", "factory"},
 		{"why did Auto stop at the plan saying a rule asks first", "factory"},
