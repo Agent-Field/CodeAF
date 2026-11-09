@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/gitidentity"
 )
 
 // PortableEntry records the supported working representation independently of repository filters.
@@ -127,7 +126,7 @@ func portableInspectionIndex(root string) (string, func(), error) {
 		return "", func() {}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(temporary) }
-	if _, err = portableInspectionGit(temporary, gitidentity.PrivateArgs("init", "-q")...); err != nil {
+	if _, err = portableInspectionGit(temporary, "init", "-q"); err != nil {
 		cleanup()
 		return "", func() {}, err
 	}

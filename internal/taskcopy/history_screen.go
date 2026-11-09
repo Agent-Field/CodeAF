@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
@@ -185,7 +184,7 @@ func validPackReceipt(line []byte, hexSize int) bool {
 // configuration variables name another checkout. Executable lookup remains
 // available for the installed process and failure regression tests.
 func historyGitCommand(repository string, args ...string) *exec.Cmd {
-	cmd := exec.Command("git", gitidentity.PrivateArgs(append([]string{"-C", repository}, args...)...)...)
+	cmd := exec.Command("git", append([]string{"-C", repository}, args...)...)
 	for _, entry := range os.Environ() {
 		if !strings.HasPrefix(strings.ToUpper(entry), "GIT_") {
 			cmd.Env = append(cmd.Env, entry)

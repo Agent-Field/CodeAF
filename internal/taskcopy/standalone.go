@@ -16,18 +16,18 @@ func prepareResultCheckout(project, destination, from string, rec record) error 
 		return errors.New("carried task commit identity is malformed")
 	}
 	if project != "" && isRepository(project) {
-		if _, err := privateGit(filepath.Dir(project), "clone", "-q", "--no-checkout", "--no-hardlinks", "--", project, destination); err != nil {
+		if _, err := git(filepath.Dir(project), "clone", "-q", "--no-checkout", "--no-hardlinks", "--", project, destination); err != nil {
 			return err
 		}
 	} else {
-		if _, err := privateGit(filepath.Dir(destination), "init", "-q", destination); err != nil {
+		if _, err := git(filepath.Dir(destination), "init", "-q", destination); err != nil {
 			return err
 		}
 	}
 	if err := unbundle(destination, filepath.Join(from, bundleName)); err != nil {
 		return fmt.Errorf("restore carried task history (its original archive is preserved): %w", err)
 	}
-	if _, err := privateGit(destination, "-c", "core.hooksPath=/dev/null", "checkout", "-q", "--force", "--detach", rec.Head, "--"); err != nil {
+	if _, err := git(destination, "-c", "core.hooksPath=/dev/null", "checkout", "-q", "--force", "--detach", rec.Head, "--"); err != nil {
 		return fmt.Errorf("carried task history lacks its recorded commit (its original archive is preserved): %w", err)
 	}
 	return nil
@@ -49,10 +49,10 @@ func restoreStandaloneCopy(project, destination, from string, rec record) error 
 		return err
 	}
 	if rec.Branch != "" {
-		if _, err := privateGit(checkout, "check-ref-format", "--branch", rec.Branch); err != nil {
+		if _, err := git(checkout, "check-ref-format", "--branch", rec.Branch); err != nil {
 			return err
 		}
-		if _, err := privateGit(checkout, "-c", "core.hooksPath=/dev/null", "checkout", "-q", "-b", rec.Branch, rec.Head); err != nil {
+		if _, err := git(checkout, "-c", "core.hooksPath=/dev/null", "checkout", "-q", "-b", rec.Branch, rec.Head); err != nil {
 			return err
 		}
 	}
