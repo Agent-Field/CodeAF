@@ -284,7 +284,7 @@ func newTestAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Age
 	// lands on a directory the runner has already taken away
 	// (`TempDir RemoveAll cleanup: directory not empty`).
 	//
-	// AND THE USAGE LEDGER IS FLUSHED LAST, after both. Its writer belongs to
+	// AND THE USAGE LEDGER IS JOINED LAST, after both. Its writer belongs to
 	// the process, not to the session, so neither Close nor SettleWrites waits
 	// for it. The program's own exit pays for it with [FlushUsage]
 	// (v3Process.closeAll). A paid turn queues its ledger line, and on a busy disk
@@ -293,8 +293,14 @@ func newTestAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Age
 	// back under RemoveAll's feet. TestBudgetScopeAndLiveConversationRecovery
 	// failed exactly that way in the full check on dev 84c71abc6, and twice in
 	// 2,000 local runs beside a synced disk writer. Registered first, so it runs
-	// after the two below it.
-	t.Cleanup(func() { FlushUsage() })
+	// after the two below it, while a CODEAF_HOME set before this call is still
+	// in force.
+	//
+	// IT JOINS THIS LEDGER ONLY, never every writer. A test in this package
+	// parks a writer on a fifo for the life of the process on purpose, and a
+	// FlushUsage here would wait out its two-second ceiling on that writer in
+	// every later test.
+	t.Cleanup(func() { StopUsageWriter(UsageLedgerPath()) })
 	t.Cleanup(agent.SettleWrites)
 	t.Cleanup(func() { _ = agent.Close() })
 	return agent, workspace
