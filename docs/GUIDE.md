@@ -308,6 +308,20 @@ forgotten or put back. A rule for all future work — `always run the tests befo
 commit` — is a memory like any other. There is no `/forget` command: forget on the tab,
 or ask.
 
+### Attribution in commits and pull requests
+
+By default codeaf signs the commits it writes and the commits a task's workers
+make with `Assisted-by: CodeAF (<model>)` (bare `Assisted-by: CodeAF` on the
+worker harness) and `Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>`,
+adds a `Drafted with CodeAF` footer to pull request and issue bodies, and adds a
+small `<sub>drafted with CodeAF</sub>` line to its first comment in a thread.
+Turn all attribution marks off with the `attribution` row in `/settings` (under
+`General`) or `CODEAF_ATTRIBUTION=off`; turn off only the model name in
+`Assisted-by` with `attribution.model` (**model in commits**) or
+`CODEAF_ATTRIBUTION_MODEL=off`. A `CONTRIBUTING` file in the repository root,
+`.github/` or `docs/` that forbids AI trailers or co-author lines is also obeyed
+automatically.
+
 ## Models, keys, and spending
 
 On the default OpenRouter endpoint, key resolution is `OPENROUTER_API_KEY`, then
