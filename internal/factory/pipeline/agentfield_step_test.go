@@ -85,3 +85,40 @@ func TestAnAgentFieldStepIsAddedByOneEdit(t *testing.T) {
 		}
 	}
 }
+
+// The tenth live A+B run had to set its pipeline through the engine because
+// the app's editor could not give an agentfield step its input. Everything
+// that pipeline holds is reachable by the edits the app sends: a new
+// pipeline (a copy of one the file holds, as the app's New pipeline starts),
+// one agentfield step with its reasoner, the copied step taken out, an input that mixes the
+// job's facts with words the person wrote (a yes/no and an object as their
+// JSON text), and the step's label. Its stage then sends exactly that input.
+func TestAWholeAgentFieldPipelineIsMadeByTheEditorsEdits(t *testing.T) {
+	kind, label := "agentfield", "Build on AgentField"
+	input := map[string]string{
+		"base_branch":  "{base}",
+		"body":         "{body}",
+		"config":       `{"check_ci": false, "agent_timeout_seconds": 5400}`,
+		"issue_number": "{issue_number}",
+		"issue_url":    "{issue_url}",
+		"plan_review":  "true",
+		"repo_url":     "{repo_url}",
+		"title":        "{title}",
+	}
+	step := add("swe-af", "build", "", "swe-planner.build_issue")
+	step.Kind, step.Input, step.Label = &kind, input, &label
+	got := mustApply(t, "pipeline:\n  issue: [plan]\n", EditOp{Op: OpAddPipeline, Name: "swe-af", From: "issue"}, step, remove("swe-af", "plan"))
+	f := reread(t, got.Text)
+	if p := f.Pipeline["swe-af"]; joined(p) != "build" {
+		t.Fatalf("swe-af runs %v from\n%s", p, got.Text)
+	}
+	st := f.Steps["build"]
+	if st.Kind != kind || st.Prompt != "swe-planner.build_issue" || st.Label != label {
+		t.Fatalf("build = %+v from\n%s", st, got.Text)
+	}
+	for k, v := range input {
+		if st.Input[k] != v {
+			t.Fatalf("input %s = %q, want %q, from\n%s", k, st.Input[k], v, got.Text)
+		}
+	}
+}
