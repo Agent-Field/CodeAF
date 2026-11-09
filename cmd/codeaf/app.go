@@ -1246,7 +1246,13 @@ func (b *appBackend) find(id string) (*appAgent, error) {
 	b.remember(row)
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.agents[id], nil
+	if a := b.agents[id]; a != nil {
+		return a, nil
+	}
+	// The folder answered under another id: an old-style chat with a moved
+	// copy ready is read back under its new id. No conversation has this one,
+	// and a nil agent with no error crashed every caller that used it.
+	return nil, appwire.Errorf(appwire.CodeNotFound, "there is no conversation with id %s", id)
 }
 
 // appRowOnDisk finds one conversation folder by id under the places root
