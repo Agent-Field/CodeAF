@@ -12,14 +12,24 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// darwinDoor is one kernel handle: a session folder, or the folder's answers
+// file while one is waiting to be drained.
 type darwinDoor struct {
 	dir   string
 	fd    int
 	token byte
+	// answers is a folder's answers-file handle; folder is set on that handle.
+	answers *darwinDoor
+	folder  *darwinDoor
 }
 
-// Only directory entries matter here. Watching their files would keep a
-// descriptor for every transcript, presence refresh and lock in a held chat.
+// Only directory entries matter here, plus one file. Watching every file would
+// keep a descriptor for each transcript, presence refresh and lock in a held
+// chat. Requests are published by create or rename, which change the folder's
+// entries. An answer is APPENDED to answers.jsonl, which a folder watch cannot
+// see once the file exists, and the doorstep counts an answer only once it is
+// written ([presenceDoorstepEvent]), so that one file is watched while it is
+// there.
 type darwinDoorWatcher struct {
 	mu      sync.Mutex
 	kq      int
@@ -63,6 +73,25 @@ func changeDoorKevent(kq int, change unix.Kevent_t) error {
 	}
 }
 
+// open takes an event-only handle on path and registers it with the kqueue.
+func (w *darwinDoorWatcher) open(path string, flags int, fflags uint32) (*darwinDoor, error) {
+	fd, err := unix.Open(path, unix.O_EVTONLY|unix.O_CLOEXEC|flags, 0)
+	if err != nil {
+		return nil, err
+	}
+	door := &darwinDoor{fd: fd}
+	var change unix.Kevent_t
+	unix.SetKevent(&change, fd, unix.EVFILT_VNODE, unix.EV_ADD|unix.EV_CLEAR)
+	change.Fflags = fflags
+	change.Udata = &door.token
+	if err := changeDoorKevent(w.kq, change); err != nil {
+		unix.Close(fd)
+		return nil, err
+	}
+	w.fds[fd] = door
+	return door, nil
+}
+
 func (w *darwinDoorWatcher) Add(dir string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -75,21 +104,41 @@ func (w *darwinDoorWatcher) Add(dir string) error {
 	if w.dirs[dir] != nil {
 		return nil
 	}
-	fd, err := unix.Open(dir, unix.O_EVTONLY|unix.O_CLOEXEC|unix.O_DIRECTORY, 0)
+	door, err := w.open(dir, unix.O_DIRECTORY, unix.NOTE_WRITE|unix.NOTE_DELETE|unix.NOTE_RENAME|unix.NOTE_REVOKE)
 	if err != nil {
 		return err
 	}
-	door := &darwinDoor{dir: dir, fd: fd}
-	var change unix.Kevent_t
-	unix.SetKevent(&change, fd, unix.EVFILT_VNODE, unix.EV_ADD|unix.EV_CLEAR)
-	change.Fflags = unix.NOTE_WRITE | unix.NOTE_DELETE | unix.NOTE_RENAME | unix.NOTE_REVOKE
-	change.Udata = &door.token
-	if err := changeDoorKevent(w.kq, change); err != nil {
-		unix.Close(fd)
-		return err
+	door.dir = dir
+	w.dirs[dir] = door
+	// An answers file already there is watched from now on. What it holds is
+	// not reported: the session looks at its doorstep right after it subscribes.
+	if _, err := w.watchAnswers(door); err != nil {
+		w.report(err)
 	}
-	w.dirs[dir], w.fds[fd] = door, door
 	return nil
+}
+
+// watchAnswers starts watching folder's answers file if it exists and is not
+// watched yet. It says whether the file already holds something, which a write
+// made before the watch began would otherwise leave unreported. An empty file
+// is not reported: deliverAnswer creates it and only then writes the line.
+func (w *darwinDoorWatcher) watchAnswers(folder *darwinDoor) (bool, error) {
+	if folder.answers != nil {
+		return false, nil
+	}
+	door, err := w.open(filepath.Join(folder.dir, answersName), 0, unix.NOTE_WRITE|unix.NOTE_EXTEND|unix.NOTE_DELETE|unix.NOTE_RENAME|unix.NOTE_REVOKE)
+	if errors.Is(err, unix.ENOENT) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	door.dir, door.folder, folder.answers = folder.dir, folder, door
+	var st unix.Stat_t
+	if err := unix.Fstat(door.fd, &st); err != nil {
+		return false, err
+	}
+	return st.Size > 0, nil
 }
 
 func (w *darwinDoorWatcher) Remove(dir string) error {
@@ -103,13 +152,24 @@ func (w *darwinDoorWatcher) Remove(dir string) error {
 	return nil
 }
 
-// Keep tokens until the next batch is read, so an old event cannot name a
-// different folder that reused its descriptor or its token's address.
+// remove closes one handle; a folder's answers handle goes with it. Tokens are
+// kept until the next batch is read, so an old event cannot name a different
+// handle that reused its descriptor or its token's address.
 func (w *darwinDoorWatcher) remove(door *darwinDoor) error {
-	delete(w.dirs, door.dir)
+	var err error
+	if door.answers != nil {
+		err = w.remove(door.answers)
+	}
+	if door.folder != nil {
+		if door.folder.answers == door {
+			door.folder.answers = nil
+		}
+	} else {
+		delete(w.dirs, door.dir)
+	}
 	delete(w.fds, door.fd)
 	w.retired = append(w.retired, door)
-	return unix.Close(door.fd)
+	return errors.Join(err, unix.Close(door.fd))
 }
 
 func (w *darwinDoorWatcher) wake() error {
@@ -163,6 +223,7 @@ func (w *darwinDoorWatcher) read() {
 		close(w.done)
 	}()
 	events := make([]unix.Kevent_t, 32)
+	gone := uint32(unix.NOTE_DELETE | unix.NOTE_RENAME | unix.NOTE_REVOKE)
 	for {
 		select {
 		case <-w.stop:
@@ -193,7 +254,19 @@ func (w *darwinDoorWatcher) read() {
 				w.report(unix.Errno(event.Data))
 				continue
 			}
-			if event.Fflags&(unix.NOTE_DELETE|unix.NOTE_RENAME|unix.NOTE_REVOKE) != 0 {
+			if door.folder != nil {
+				// The answers file: a write is an answer landing. Drained
+				// (renamed away) or deleted, its handle goes; a new file shows
+				// up as a folder change.
+				if event.Fflags&(unix.NOTE_WRITE|unix.NOTE_EXTEND) != 0 {
+					pending = append(pending, doorEvent{Name: filepath.Join(door.dir, answersName), Op: fsnotify.Write})
+				}
+				if event.Fflags&gone != 0 {
+					w.report(w.remove(door))
+				}
+				continue
+			}
+			if event.Fflags&gone != 0 {
 				w.report(w.remove(door))
 				pending = append(pending, doorEvent{Name: door.dir, Op: fsnotify.Remove})
 				continue
@@ -204,9 +277,18 @@ func (w *darwinDoorWatcher) read() {
 					w.report(err)
 					continue
 				}
+				answers := false
 				for _, name := range names {
 					if presenceRequest(name.Name()) {
 						pending = append(pending, doorEvent{Name: filepath.Join(door.dir, name.Name()), Op: fsnotify.Create})
+					}
+					answers = answers || name.Name() == answersName
+				}
+				if answers {
+					wrote, err := w.watchAnswers(door)
+					w.report(err)
+					if wrote {
+						pending = append(pending, doorEvent{Name: filepath.Join(door.dir, answersName), Op: fsnotify.Write})
 					}
 				}
 			}

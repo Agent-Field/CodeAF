@@ -267,3 +267,74 @@ func TestDarwinPresenceDoorC5CloseWithoutDrainingEvents(t *testing.T) {
 		})
 	}
 }
+
+func waitDoorFDs(t *testing.T, backend *darwinDoorWatcher, want int, what string) {
+	t.Helper()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		got := watchedDoorFDCount(t, backend)
+		if got == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: %d descriptors, want %d", what, got, want)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func noDoorRequest(t *testing.T, requests <-chan struct{}, what string) {
+	t.Helper()
+	select {
+	case <-requests:
+		t.Fatal(what)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// C9: an answer appended to answers.jsonl wakes its folder's session by event,
+// whether the file is new or already waiting, and a created but still empty
+// file does not (deliverAnswer creates it and then writes the line).
+// C10: the answers file costs one handle while it exists, and draining it
+// gives that handle back.
+func TestDarwinPresenceDoorC9C10AnswersWakeAndReleaseTheirHandle(t *testing.T) {
+	dir := t.TempDir()
+	var watch presenceDoorWatch
+	requests, _, _, cancel := watch.subscribe(dir)
+	t.Cleanup(cancel)
+	_, backend := darwinDoorRun(t, &watch)
+	folderOnly := watchedDoorFDCount(t, backend)
+
+	empty, err := os.OpenFile(AnswersPath(dir), os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty.Close()
+	noDoorRequest(t, requests, "C9: an empty answers file woke the session before its line was written")
+	waitDoorFDs(t, backend, folderOnly+1, "C10: answers file present")
+
+	if err := deliverAnswer(dir, Answer{At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	waitDoorRequest(t, requests)
+	if err := deliverAnswer(dir, Answer{At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	waitDoorRequest(t, requests) // C9: an append to a file already there
+
+	if _, err := DrainAnswers(dir); err != nil {
+		t.Fatal(err)
+	}
+	waitDoorFDs(t, backend, folderOnly, "C10: answers drained")
+	// Draining leaves a stray wake at most; take it before the next check.
+	select {
+	case <-requests:
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if err := deliverAnswer(dir, Answer{At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	waitDoorRequest(t, requests) // C9: a fresh file after a drain
+	waitDoorFDs(t, backend, folderOnly+1, "C10: a fresh answers file")
+}

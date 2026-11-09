@@ -190,7 +190,7 @@ func TestPresenceDoorC5CancelClosesOnceAndCanRestart(t *testing.T) {
 	waitDoorRequest(t, requests)
 }
 
-func TestPresenceDoorC6ErrorsRunBoundedSafetyPass(t *testing.T) {
+func TestPresenceDoorC6ErrorsRunBoundedSafetyPassAndKnock(t *testing.T) {
 	fake := newFakeDoorWatcher()
 	dir, missing := t.TempDir(), t.TempDir()
 	fake.addError[missing] = errors.New("folder not yet present")
@@ -224,8 +224,13 @@ func TestPresenceDoorC6ErrorsRunBoundedSafetyPass(t *testing.T) {
 	if !watchingMissing || fake.adds[missing] != 2 {
 		t.Fatal("error safety pass did not retry a failed folder watch")
 	}
-	if len(requests) != 0 || len(refreshes) != 0 {
-		t.Fatal("watcher error changed request or refresh cadence")
+	// An error can have dropped any folder's event, so every session is knocked
+	// once to look at its doorstep now; the knocks coalesce like the beats.
+	if len(requests) != 1 {
+		t.Fatalf("watcher error must knock every session once: %d request(s) pending", len(requests))
+	}
+	if len(refreshes) != 0 {
+		t.Fatal("watcher error changed the refresh cadence")
 	}
 }
 
