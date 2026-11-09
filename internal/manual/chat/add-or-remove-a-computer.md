@@ -334,3 +334,7 @@ Pairing compares service URLs with scheme and host case ignored, default
 ports omitted (`:443` for HTTPS, `:80` for HTTP) and trailing slashes omitted.
 An actual difference in scheme, port, host or path prefix remains a different
 service. A link for a different service is refused before any lookup there.
+
+## The first /status after pairing — sync storage on your own service
+
+Successful pairing asks the sync service once for your account's storage permission and saves its answer on this computer. This applies to `codeaf pair`, `codeaf pair approve`, a link pasted on Home and `/pair`. An already-open window's next `/status` shows `sync storage  off` when that answer is off, including with your own service address. A service that does not report storage permission adds no line; an unavailable service leaves the previous saved answer alone.

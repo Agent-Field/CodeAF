@@ -214,6 +214,7 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 		return d.endedByPerson(ctx, err)
 	}
 	d.recordOwnDeviceOrSay(ctx, route)
+	samplePairedStorage(ctx, d.joining(false).Home, route)
 	d.term.say(pair.PairedChatsLine(label))
 	return nil
 }
