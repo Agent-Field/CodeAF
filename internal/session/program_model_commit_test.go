@@ -172,3 +172,40 @@ func TestProgramFinishLeavesThePersonsCommitOnTheRunBranchAlone(t *testing.T) {
 		t.Fatalf("the person's commit on the run branch was amended: %s -> %s", before, after)
 	}
 }
+
+// A program folder ordered while attribution is off writes its finishing commit
+// without trailers, while a persisted folder record without the field still signs.
+func TestProgramFinishWithUnsignedFolderWritesNoAttribution(t *testing.T) {
+	repo := newTestRepo(t)
+	folder, err := PrepareProgramFolder(ProgramFolderOrder{
+		Program: testPrograms("fake")[0], Dir: repo, Title: "Unsigned work",
+		Holder: "task 9", Keep: t.TempDir(), SignModel: "z-ai/glm-5.3-flash",
+		Unsigned: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(folder.release)
+	if err := os.WriteFile(filepath.Join(folder.Dir, "unsigned.txt"), []byte("work\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetProgramAnswerAttribution(folder, true); err != nil {
+		t.Fatal(err)
+	}
+	end := folder.Finish("completed the change")
+	if !end.Kept {
+		t.Fatalf("expected kept branch work, got %+v", end)
+	}
+	message := gitOut(t, repo, "log", "-1", "--format=%B", folder.Branch)
+	if strings.Contains(message, "Assisted-by") || strings.Contains(message, "Co-Authored-By") {
+		t.Fatalf("unsigned program folder still signed its commit: %q", message)
+	}
+
+	var legacy ProgramFolder
+	if err := json.Unmarshal([]byte(`{"program":"fake","dir":"/tmp/x","title":"Legacy"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Unsigned {
+		t.Fatal("a folder record without the unsigned field decoded as unsigned")
+	}
+}

@@ -1534,6 +1534,13 @@ type Config struct {
 	TaskAudit bool
 	Guardian  bool
 
+	// AttributionOff is the person's `attribution` row turned off
+	// (internal/config's KeyAttribution, env CODEAF_ATTRIBUTION): the model is
+	// told [exec.AttributionOffLaw] on the belt instead of [exec.AttributionLaw],
+	// and the harness adds no trailers to commits it writes or lands itself. It
+	// is spelled as the OFF state so that its zero value signs by default.
+	AttributionOff bool
+
 	// AttributionModelOff is the person's `attribution.model` row turned off
 	// (internal/config's KeyAttributionModel, env CODEAF_ATTRIBUTION_MODEL):
 	// the `Assisted-by` line in the commits codeaf signs is then the bare
@@ -1541,9 +1548,6 @@ type Config struct {
 	// are — the belt fact the model is told (beltfacts.go's
 	// [Config.assistedByModel]) and the mechanical commit a landing writes
 	// without asking anybody ([Agent.signsGitWork]).
-	//
-	// IT NEVER TURNS SIGNING OFF. The `attribution` row that did is gone
-	// (2026-09-23): codeaf signs every commit, pull request and issue it writes.
 	//
 	// IT IS A RESOLVED BOOL AND NOT A PROFILE PATH, for the reason [TaskAudit]
 	// beside it is: a task node is handed no ProfileDir at all, so the row is

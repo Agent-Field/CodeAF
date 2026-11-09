@@ -505,9 +505,14 @@ var settingUI = map[string]settingMeta{
 		tab: tabWorkspace, label: "auto update", widget: widgetToggle,
 		// NO `about`: the registry's own hint is the sentence, said once.
 	},
-	// THE SIGNATURE HAS NO ROW, only the model's name inside it: codeaf always
-	// signs the commits and pull requests it writes, and what a person may
-	// choose is whether the `Assisted-by` line says which model it was.
+	// THE SIGNATURE AND THE MODEL'S NAME INSIDE IT: `attribution` turns signing
+	// commits, pull requests, issues and comments on or off, and
+	// `attribution.model` chooses whether the `Assisted-by` line says which
+	// model it was.
+	config.KeyAttribution: {
+		tab: tabWorkspace, label: "attribution", widget: widgetToggle,
+		about: config.AttributionHint,
+	},
 	config.KeyAttributionModel: {
 		tab: tabWorkspace, label: "model in commits", widget: widgetToggle,
 		about: config.AttributionModelHint,
