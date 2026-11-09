@@ -25,7 +25,10 @@ registers; if that fails ("AgentField did not accept that API key",
 nothing is kept. The API key and internal token are kept the way a pasted
 GitHub token is. In the desktop app they are held in memory only and never
 written to disk: the engine hands them to the app, and the app hands them over
-again each time it starts the engine. Outside the app they are kept in the
+again each time it starts the engine. A key or token the app hands over after
+the factory has started (its keychain answered late) restarts the node with it
+at once, registering as a new instance; the same one handed over again changes
+nothing. Outside the app they are kept in the
 profile, owner-readable only. They never reach a log, Disconnect forgets them,
 and they are never sent back. The desk has no settings screen to connect AgentField yet:
 `factory.agentfield_connect` is the one way in. There is no slash command for

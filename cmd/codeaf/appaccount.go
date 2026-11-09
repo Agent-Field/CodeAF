@@ -669,6 +669,7 @@ func (b *appBackend) setKeptKey(provider, key string) error {
 		return appwire.Errorf(appwire.CodeBadParams, "keys.set %s needs a key", provider)
 	}
 	b.keys.Set(provider, key)
+	b.agentFieldKeyMoved(provider)
 	return nil
 }
 
