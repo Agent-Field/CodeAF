@@ -16,13 +16,26 @@ import (
 var presenceDoors presenceDoorWatch
 
 type presenceDoorWatch struct {
-	mu  sync.Mutex
-	run *presenceDoorRun
+	mu         sync.Mutex
+	run        *presenceDoorRun
+	newWatcher func() (doorWatcher, error)
+}
+
+// Keep fsnotify's event shape so other platforms need no event forwarding loop.
+type doorEvent = fsnotify.Event
+
+type doorWatcher interface {
+	Add(string) error
+	Remove(string) error
+	Close() error
+	Events() <-chan doorEvent
+	Errors() <-chan error
 }
 
 type presenceDoorRun struct {
-	watcher *fsnotify.Watcher
+	watcher doorWatcher
 	stop    chan struct{}
+	done    chan struct{}
 	clients map[*presenceDoorClient]bool
 	watched map[string]bool
 }
@@ -38,8 +51,12 @@ func (w *presenceDoorWatch) subscribe(dir string) (<-chan struct{}, <-chan time.
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.run == nil {
-		watcher, _ := fsnotify.NewWatcher()
-		w.run = &presenceDoorRun{watcher: watcher, stop: make(chan struct{}), clients: map[*presenceDoorClient]bool{}, watched: map[string]bool{}}
+		newWatcher := w.newWatcher
+		if newWatcher == nil {
+			newWatcher = newDoorWatcher
+		}
+		watcher, _ := newWatcher()
+		w.run = &presenceDoorRun{watcher: watcher, stop: make(chan struct{}), done: make(chan struct{}), clients: map[*presenceDoorClient]bool{}, watched: map[string]bool{}}
 		go w.loop(w.run)
 	}
 	run := w.run
@@ -99,14 +116,15 @@ func presenceDoorstepEvent(event fsnotify.Event) bool {
 }
 
 func (w *presenceDoorWatch) loop(run *presenceDoorRun) {
+	defer close(run.done)
 	ticker := time.NewTicker(presenceHeartbeat)
 	defer ticker.Stop()
 	refresh := time.NewTicker(presenceRefresh)
 	defer refresh.Stop()
-	var events <-chan fsnotify.Event
+	var events <-chan doorEvent
 	var errors <-chan error
 	if run.watcher != nil {
-		events, errors = run.watcher.Events, run.watcher.Errors
+		events, errors = run.watcher.Events(), run.watcher.Errors()
 	}
 	for {
 		select {
