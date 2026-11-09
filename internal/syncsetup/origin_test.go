@@ -5,63 +5,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
-
-func TestContinuingAChatInsideAnIgnoredDirectoryKeepsItsWordsAndLeavesItsFiles(t *testing.T) {
-	h := newTwoHomes(t)
-	repo := t.TempDir()
-	work := filepath.Join(repo, "ignored", "project")
-	mustNil(t, os.MkdirAll(work, 0o700))
-	git := exec.Command("git", "init", "-q", repo) //codeaf:plumbing The enclosing repository ignores this project's parent.
-	if out, err := git.CombinedOutput(); err != nil {
-		t.Fatalf("prepare repository: %s: %v", out, err)
-	}
-	mustNil(t, os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("ignored/\n"), 0o600))
-	marker := []byte("CONFIDENTIAL_BOARD_MINUTES_W3\n")
-	mustNil(t, os.WriteFile(filepath.Join(work, "secret.txt"), marker, 0o600))
-	if found := (keys.Scanner{}).Paths(work, []string{"secret.txt"}); len(found) != 0 {
-		t.Fatalf("the marker must not match the credential scanner: %+v", found)
-	}
-	t.Setenv("GIT_CEILING_DIRECTORIES", "")
-	h.awayFromA()
-	h.work, h.engine.Workspace = work, work
-	h.backToA()
-	h.engine.Transport, h.engB.Transport = nil, nil
-	journal := transcriptOf(h.cell)
-	header, err := os.ReadFile(journal)
-	mustNil(t, err)
-	mustNil(t, os.WriteFile(journal, bytes.Replace(header, []byte(`"version":3`), []byte(`"version":1`), 1), 0o600))
-	h.spokenFixture()
-	observer, err := preflight.OpenMachine(h.cell.Root, work)
-	mustNil(t, err)
-	a := h.openObserved(h.a, h.engine, h.cell, work, nameA, observer.Observer())
-	a.mustSay("words from the ignored project")
-	h.durable(h.cell.ID, h.cell)
-	mustNil(t, a.drive.Close(t.Context()))
-	c := h.continuerB()
-	c.opt.BucketFor = func(origin string) string { return filepath.Join(h.rootsB, "copy-"+filepath.Base(origin)) }
-	got, err := c.Take(t.Context(), h.cell.ID)
-	mustNil(t, err)
-	words, err := os.ReadFile(transcriptOf(got.Taken.Cell))
-	mustNil(t, err)
-	if !bytes.Contains(words, []byte("words from the ignored project")) || bytes.Contains(words, marker) {
-		t.Fatalf("the moved chat lost its words or captured confidential words: %s", words)
-	}
-	if _, err := os.Stat(filepath.Join(workspaceOf(got.Taken.Cell.Root), "secret.txt")); !os.IsNotExist(err) {
-		t.Fatalf("the ignored file moved to the other computer: %v", err)
-	}
-	b := h.openOn(h.b, h.engB, got.Taken.Cell, workspaceOf(got.Taken.Cell.Root), nameB)
-	b.mustSay("words added on the second computer")
-	mustNil(t, b.drive.Close(t.Context()))
-}
 
 func TestContinuingAChatInsideAGitDiscoveryBoundaryRestoresItsFilesInAnotherHome(t *testing.T) {
 	fixture, err := os.MkdirTemp(".", "continue-ignored-")

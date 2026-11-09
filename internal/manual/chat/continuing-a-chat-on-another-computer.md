@@ -212,14 +212,6 @@ If the workspace's own `.furrowpolicy` contains `gitignore`, the native capture 
 
 If an older build saved an empty chat and the workspace does not enable `gitignore` in its own `.furrowpolicy`, open the original chat in this build, send another message and close it before trying `continue here` again.
 
-## Saving a chat in a Git-ignored project folder or inside an ignored parent
-
-A chat in an ignored folder can save, close and move to a paired computer. Its conversation still moves even when Git ignores the entire project folder. In that case the project's files stay on this computer, including ordinary ignored files such as `secret.txt`; the chat's own saved words and state travel separately.
-
-A repository inside that folder uses its own ignore rules. A ceiling equal to the project folder still allows Git to discover an enclosing repository. An ancestor ceiling that prevents discovery, or a folder with no repository, leaves ordinary project files eligible to move, subject to the usual secret screening and capture policy.
-
-If Git fails to answer, saving stops with `cannot read which folders Git ignores here` and the cause. It never admits ignored project files to make saving succeed.
-
 ## This chat is not syncing — the sync service is not answering, working offline
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
