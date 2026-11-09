@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // usageIdentityCursor remembers only identities already read from this open
@@ -30,15 +31,17 @@ var errUsageLedgerReplaced = errors.New("usage ledger replaced during append")
 // append holds one ledger generation stable for a bounded batch. Identities
 // supplied by the recorder avoid decoding the rows it just encoded.
 func (c *usageIdentityCursor) append(file *os.File, rows []usageWrite) (int, error) {
-	if err := filelock.Lock(file, true, false); err != nil {
-		return 0, err
-	}
-	defer filelock.Unlock(file)
 	reader, err := usageIdentityReader(file)
 	if err != nil {
 		return 0, err
 	}
 	defer reader.Close()
+	// Windows append-only handles lack the data access LockFileEx requires.
+	// The reader names the same generation and keeps append semantics unchanged.
+	if err := filelock.Lock(reader, true, false); err != nil {
+		return 0, err
+	}
+	defer filelock.Unlock(reader)
 	if err := c.readTail(reader); err != nil {
 		return 0, err
 	}
@@ -153,7 +156,7 @@ func (c *usageIdentityCursor) remember(file *os.File) error {
 // blocked sink retains its ordinary semantics. Both descriptors must name the
 // same inode before any cached identity can suppress this writer's charge.
 func usageIdentityReader(writer *os.File) (*os.File, error) {
-	reader, err := os.Open(writer.Name())
+	reader, err := fsreplace.Open(writer.Name())
 	if err != nil {
 		return nil, err
 	}
