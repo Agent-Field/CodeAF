@@ -8,9 +8,8 @@ import (
 )
 
 // HealthCheck is health.check: what this engine knows about itself, read from
-// memory, the state file it already holds, one filesystem call per disk and
-// the factory status's own small reads. It opens no conversation and starts
-// nothing.
+// memory, disk readings, and bounded checks of git and gh in the user's
+// normal environment. It opens no conversation.
 func (b *appBackend) HealthCheck() (appwire.Health, error) {
 	var health appwire.Health
 	b.locked(func() {
@@ -20,6 +19,8 @@ func (b *appBackend) HealthCheck() (appwire.Health, error) {
 			health.Resume = &resume
 		}
 	})
+	health.ProviderKey = b.keyHealth.read()
+	health.Checks = machineReadiness()
 	health.Version, health.Build = resolvedVersion(), buildinfo.Identity()
 	health.UptimeS = int64(b.now().Sub(health.StartedAt).Seconds())
 	work := ""

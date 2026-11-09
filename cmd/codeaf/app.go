@@ -154,6 +154,7 @@ func runApp(args []string) error {
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.leaving = leaving
+	backend.startKeyHealth()
 	backend.useSyncDrives(syncDrives)
 	// A chat's banked pipeline line takes the editor's road while the app
 	// holds the factory (factory_recipe_road.go).
@@ -713,11 +714,13 @@ type appBackend struct {
 	// for any bearer, so only the key endpoint proves acceptance. The vendored
 	// and codexBegin seams replace the other providers' descriptions and the
 	// ChatGPT sign-in's browser flow.
-	keys       *config.AppCredentials
-	keyClient  *http.Client
-	keyAddress func(provider string) string
-	vendored   func() []modelsource.Source
-	codexBegin func(context.Context) (codexConnectFlow, error)
+	keyHealth        keyHealthCache
+	monitorKeyHealth bool
+	keys             *config.AppCredentials
+	keyClient        *http.Client
+	keyAddress       func(provider string) string
+	vendored         func() []modelsource.Source
+	codexBegin       func(context.Context) (codexConnectFlow, error)
 	// balances is providers.balance's memory and lifetime (appproviderbalance.go),
 	// made by the first ask.
 	balances *appBalances
@@ -2773,6 +2776,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	defer func() {
 		b.locked(func() { live.lastN, live.lastMsgs, live.lastNotices = n, msg, notices })
 	}()
+	turnKey := b.openRouterTurnKey(live.conn.Conv.Model())
 	var reply strings.Builder
 	// replyRun is the run that streamed the reply so far, or empty once two
 	// runs have streamed into it.
@@ -2987,6 +2991,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		case session.EventError:
 			ok = false
 			kind, status, failure = appTurnFailure(event)
+			keyFailure, _ := provider.RouteFailureOf(&provider.APIError{Status: status})
+			if keyFailure == provider.RouteAuth {
+				b.keyHealth.invalid(turnKey)
+			}
 			retryable = !provider.ReasoningUnsupported(status, failure)
 		case session.EventTurnDone:
 			// A turn the person steered ends once per stretch; the last ending

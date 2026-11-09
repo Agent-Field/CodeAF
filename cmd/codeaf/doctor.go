@@ -4,17 +4,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/lease"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
+
+var doctorKeyClient = http.DefaultClient
 
 // doctorSnapshot is everything doctor reports.
 //
@@ -26,6 +30,8 @@ import (
 // about either could only ever read "not installed" and nothing — a reading
 // of machinery that is not there.
 type doctorSnapshot struct {
+	ProviderKey   appwire.ProviderKeyHealth
+	Checks        []appwire.ReadinessCheck
 	BrainPath     string
 	BrainSize     int64
 	BrainExists   bool
@@ -131,6 +137,12 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64) error {
 	// The key is read from the same profile, and for the same reason: `--db`
 	// moves the store and moves nothing about who this machine can talk to.
 	snapshot.Key = readKeyReport(strings.TrimSpace(env.Get(config.ProfileDirEnv)))
+	address := config.DefaultBaseURL
+	if settings, loadErr := config.LoadKeyless(); loadErr == nil {
+		address = settings.BaseURL
+	}
+	snapshot.ProviderKey = probeKeyHealth(doctorKeyClient, address, config.APIKeyAt(config.ProfileDir()))
+	snapshot.Checks = machineReadiness()
 	snapshot.Cells = cellsUsage()
 	snapshot.EngineStore, snapshot.SyncIssues, snapshot.Fixes = inspectAndRepairDoctor(*fix)
 	_, err = io.WriteString(output, formatDoctor(snapshot))
@@ -249,6 +261,16 @@ func formatDoctor(snapshot doctorSnapshot) string {
 		"store", brain,
 		"resident", snapshot.Resident,
 		"spend", spend)
+	if snapshot.ProviderKey.State != "" {
+		block += fmt.Sprintf("%-16s %s", "provider key", snapshot.ProviderKey.State)
+		if snapshot.ProviderKey.Message != "" {
+			block += " · " + snapshot.ProviderKey.Message
+		}
+		block += "\n"
+	}
+	for _, check := range snapshot.Checks {
+		block += fmt.Sprintf("%-16s %s · %s · %s\n", check.Name, check.State, check.Message, check.Fix)
+	}
 	if snapshot.Cells != "" {
 		block += fmt.Sprintf("%-16s %s\n", "cells", snapshot.Cells)
 	}

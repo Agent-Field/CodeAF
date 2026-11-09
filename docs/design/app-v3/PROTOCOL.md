@@ -902,8 +902,20 @@ this start carried on replies or tasks the last quit stopped (`at`,
 `disks` with `free_bytes` and `total_bytes` for the filesystem of the work
 folder (`work_folder`) and of codeaf's home (`codeaf_home`), each with an
 `error` instead when it could not be read, and `factory`, the local factory's
-status as `factory.local_status` shapes it. It reads memory, the app state and
-one filesystem call per disk; it starts nothing. hello says `health.check`.
+status as `factory.local_status` shapes it. `provider_key`, also returned by
+`setup.get`, is the launch-cached OpenRouter auth reading: `state` is `ok`,
+`invalid`, or `unknown`, `checked_at` is present after a probe finishes, and
+`message` gives the reconnect hint for an invalid key. The two-second background
+auth probe runs once per credential per launch; reads do not repeat it. A real
+turn's 401 invalidates the matching cached credential.
+
+`checks` contains the same machine readiness rows as doctor: git availability,
+`git config user.name` and `user.email`, gh availability and `gh auth status`,
+and native Git Bash resolution on Windows. Each row has `name`, `state`
+(`ok`, `error`, `info`, or `unknown`), `message` and `fix`. Missing gh is `info`.
+Each command has a two-second timeout and inherits the user's normal environment;
+the shell resolver bounds its git-shim lookup at three seconds. The method opens
+no conversation. hello says `health.check`.
 
 ## inbox methods
 

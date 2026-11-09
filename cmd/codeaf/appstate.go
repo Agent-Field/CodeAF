@@ -361,11 +361,12 @@ func (b *appBackend) Setup() (appwire.Setup, error) {
 			}
 			return
 		}
-		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}}
+		setup = appwire.Setup{Step: appwire.SetupStep{N: 1}, DefaultModel: appDefaultModel()}
 	})
 	if err != nil {
 		return appwire.Setup{}, appEngineError(err)
 	}
+	setup.ProviderKey = b.keyHealth.read()
 	setup.DayCapUSD = appFigure(base)
 	return setup, nil
 }
@@ -374,6 +375,7 @@ func (b *appBackend) Setup() (appwire.Setup, error) {
 // same step. What it chose is also put in force at once: a default model is the
 // profile's default, and a day cap is the app's day cap.
 func (b *appBackend) SetSetup(setup appwire.Setup) (appwire.Setup, error) {
+	setup.ProviderKey = appwire.ProviderKeyHealth{}
 	setup.Provider = strings.ToLower(strings.TrimSpace(setup.Provider))
 	setup.DefaultModel = strings.TrimSpace(setup.DefaultModel)
 	if setup.DefaultModel != "" && setup.DefaultModel != appDefaultModel() {
@@ -405,6 +407,7 @@ func (b *appBackend) SetSetup(setup appwire.Setup) (appwire.Setup, error) {
 	if setup.DefaultModel != "" || setup.DayCapUSD != nil {
 		b.settingsMoved()
 	}
+	setup.ProviderKey = b.keyHealth.read()
 	return setup, nil
 }
 

@@ -187,7 +187,13 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
+On Windows, run the Bash installer from Git Bash. It installs `codeaf.exe` and
+adds its native bin folder to the Windows user PATH only when missing, preserving
+existing entries. Open a new terminal afterward. If the update fails, or you use
+`--no-modify-path`, the guide prints the exact `powershell.exe -NoProfile -Command`
+line to run from Git Bash, then open a new terminal.
+
+On macOS and Linux the installer writes `~/.codeaf/bin/codeaf`, adds it to your shell profile, and
 when a folder already on `PATH` is writable (`~/.local/bin`, `~/bin`, or
 `/usr/local/bin`) it links `codeaf` there too, so the command works in the same
 terminal with nothing to paste. It never replaces anything there but its own link:
@@ -383,6 +389,18 @@ The app's own settings (new agents' folder, the 12-second proposed-task clock, 7
 days before an agent reads closed) and its setup progress live in `app/state.json` under
 codeaf's home folder, so quitting setup halfway resumes there; the day cap is not among
 them, because it is the profile's.
+
+## Desktop setup model default and provider key health
+
+Fresh setup supplies the same default model as the CLI. A saved model remains
+the person's choice. The app wire's
+`setup.get` and `health.check` include `provider_key`: `state` is `ok`, `invalid`, or
+`unknown`, with `checked_at` after a check finishes. Launch checks OpenRouter's key
+auth endpoint once in the background with a two-second deadline, including when
+the app hands over its stored key. Reads and turns do not repeat the check. A key
+change starts a new check. A real-turn 401 also marks that key invalid. An invalid
+key says `Your OpenRouter key stopped working. Sign in again.` Offline or a timeout
+means `unknown` and does not prevent starting.
 
 ## Connecting a provider from the app — Ollama, a custom endpoint, Codex, regions
 
@@ -1958,7 +1976,7 @@ spend            rail $20.00
 model calls      /home/you/.codeaf/logs/calls.jsonl · 26 KiB
 ```
 
-`key` comes first: whether this machine can reach a model at all, and where the key came
+`key` comes first: whether a default-service key is present, and where it came
 from — never the key itself. `store` names the file the journal and every derived table
 live in, and how big it is — `· not created` on a machine that has not made one yet. `spend`
 is the day against its limit, and `model calls` is where the call log is and what it
@@ -1976,6 +1994,29 @@ machine that counted, which is the opposite of the truth.
 
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.
+
+## Doctor provider key, git identity, gh sign-in and Windows Git Bash checks
+
+`codeaf doctor` checks OpenRouter key auth without making a model call. Its
+`provider key` row reports `ok`, `invalid`, or `unknown`; an offline endpoint or a
+two-second timeout is `unknown`. An invalid key says
+`Your OpenRouter key stopped working. Sign in again.` Connect OpenRouter again.
+The `key` row above it still names the credential's source without printing it.
+
+Doctor and the app wire's `health.check` also report git availability,
+`git config user.name`, `git config user.email`, and `gh auth status`. Each command
+has a two-second deadline. Fix identity with
+`git config --global user.name "Your Name"` and
+`git config --global user.email "you@example.com"`. Fix gh sign-in with
+`gh auth login --web`. Missing gh is information; install GitHub CLI when you need
+GitHub workflows. These probes inherit your normal environment, including
+`GH_TOKEN`; model shells continue to filter credentials.
+
+On Windows the same health checks use codeaf's shell resolver to find native Git
+Bash. Install Git for Windows or set `CODEAF_BASH` to its `bash.exe`. A package
+manager's git shim lookup has its own three-second ceiling. WSL's launcher does
+not count as Git Bash. Windows sign-in links and file opens use the Windows
+file protocol handler.
 
 ## I deleted my codeaf home while the engine was stopping
 
