@@ -398,6 +398,18 @@ type Job struct {
 	RoundCostTables bool   `json:"round_cost_tables,omitempty"`
 	FromJob         int    `json:"from_job,omitempty"`
 	SourceIssue     string `json:"source_issue,omitempty"`
+	// WaitsOn are the jobs this one waits on, by number ([factory.Item.WaitsOn]):
+	// a go-ahead starts it only once each has merged. WaitingOn is those of them
+	// that have not merged yet, read from the factory's own jobs when the job is
+	// read; absent from a job that waits on nothing.
+	WaitsOn   []int `json:"waits_on,omitempty"`
+	WaitingOn []int `json:"waiting_on,omitempty"`
+	// PolicyRun is the id of the go-ahead allowance that started this job; absent
+	// for a job no go-ahead started ([factory.Item.PolicyRun]).
+	PolicyRun string `json:"policy_run,omitempty"`
+	// Blocked is why a go-ahead that covers this job has not started it yet
+	// ([factory.JobBlocked]); absent when nothing covers it or it started.
+	Blocked *factory.JobBlocked `json:"blocked,omitempty"`
 
 	// Following is whether the CALLER follows this job ([ForViewer]); absent
 	// is not following. Nobody else's following is ever answered.
@@ -742,12 +754,14 @@ type NeedsYouGroup struct {
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
 	// EngineState preserves old documents without adding a sixth public state.
-	EngineState   string               `json:"engine_state,omitempty"`
-	Priority      *factory.JobPriority `json:"priority,omitempty"`
-	DoneHow       string               `json:"done_how,omitempty"`
-	Approval      *factory.Approval    `json:"approval,omitempty"`
-	PersonStopped *bool                `json:"person_stopped,omitempty"`
-	StopUndo      *factory.StopUndo    `json:"stop_undo,omitempty"`
+	EngineState string               `json:"engine_state,omitempty"`
+	Priority    *factory.JobPriority `json:"priority,omitempty"`
+	DoneHow     string               `json:"done_how,omitempty"`
+	Approval    *factory.Approval    `json:"approval,omitempty"`
+	// PolicyGroup is the group whose policy started the job ([factory.Item.PolicyGroup]).
+	PolicyGroup   string            `json:"policy_group,omitempty"`
+	PersonStopped *bool             `json:"person_stopped,omitempty"`
+	StopUndo      *factory.StopUndo `json:"stop_undo,omitempty"`
 
 	ChangeBase      string    `json:"change_base,omitempty"`
 	Thread          []Message `json:"thread,omitempty"`

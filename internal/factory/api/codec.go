@@ -144,6 +144,16 @@ var Lost = map[string]string{
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
 }
 
+// cloneBlocked is a copy of a job's block, so a job and the item it came from
+// never share one.
+func cloneBlocked(b *factory.JobBlocked) *factory.JobBlocked {
+	if b == nil {
+		return nil
+	}
+	c := *b
+	return &c
+}
+
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
 	if it.PersonStopped == nil && factory.StoppedByPerson(it) {
@@ -151,6 +161,7 @@ func FromItem(it factory.Item) Job {
 	}
 	j := Job{
 		FromJob: it.FromJob, SourceIssue: it.SourceIssue,
+		WaitsOn: append([]int(nil), it.WaitsOn...), PolicyRun: it.PolicyRun, Blocked: cloneBlocked(it.Blocked),
 		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
@@ -482,6 +493,7 @@ func ToItem(j Job) factory.Item {
 	}
 	it := factory.Item{
 		FromJob: j.FromJob, SourceIssue: j.SourceIssue,
+		WaitsOn: append([]int(nil), j.WaitsOn...), PolicyRun: j.PolicyRun, PolicyGroup: d.PolicyGroup, Blocked: cloneBlocked(j.Blocked),
 		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
 		Owners: append([]string(nil), j.Owners...),
@@ -795,7 +807,7 @@ func toClaim(c Claim) factory.Claim {
 
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
-		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped,
+		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, PolicyGroup: it.PolicyGroup, StopUndo: it.StopUndo, PersonStopped: it.PersonStopped,
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,

@@ -42,6 +42,17 @@ type Options struct {
 	// look changed. A failed look (a limit, no answer) never stops the start.
 	// Nil starts on the arrival read alone.
 	Scout func(ctx context.Context, id int) error
+	// Now is the clock the go-ahead pass reads an allowance's end against
+	// ([Intake.GoAheads]). Nil is the wall clock.
+	Now func() time.Time
+}
+
+// now is the intake's clock.
+func (in *Intake) now() time.Time {
+	if in.opts.Now != nil {
+		return in.opts.Now()
+	}
+	return time.Now()
 }
 
 type Intake struct {

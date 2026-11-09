@@ -272,6 +272,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/spend/repos", h.spendRepos)
 	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
+	h.goAheadRoutes()
 	h.jobScreens()
 	h.scheduleJobTimer()
 	if config.Store != nil {
@@ -569,6 +570,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	jobs[0].Can = api.CanFor(it, handle, h.clock())
+	h.waitingOn(&jobs[0], it)
 	if h.mode() != api.FactorySolo && h.isOperator(r) {
 		api.AsOperator(&jobs[0].Can, it, handle)
 	}

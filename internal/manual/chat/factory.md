@@ -49,7 +49,7 @@ which can be different from the PR created for the job.
 
 ## what is the factory — jobs, runners and a pull request at the end
 
-The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself. Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own.
+The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself. Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own unless you gave it a go-ahead.
 
 Three things make one factory:
 
@@ -280,7 +280,17 @@ The job keeps what each check found: on its Steps panel, **Before it starts** an
 
 ## pick up issues — labelled work starts by itself, its labels, who owns those jobs
 
-**Pick up issues** is the factory's switch for starting new issues by itself. It is not a job's Auto: Auto lets one running job pass its routine approvals, while Pick up issues lets the factory start jobs nobody started. It is off until you turn it on, from the yellow switch on the factory's Jobs tab; Labels beside it lists the labels it picks up. While it is on, the factory starts an issue by itself when it carries one of those labels, or its repository's own `start.labels`, and clears every rule (size, cost, ask first, never). An issue a rule flags waits with "Approval needed: start ·" and the rule. A job started this way belongs to the factory's owner (its operator) unless the issue is assigned to someone, so Auto can carry it and its approvals come to the owner. While it is off, a factory on your own machine starts nothing a person did not start; a team server always runs its repositories' own start labels, and adds the factory's only while it is on. Turning it off stops the next start at once.
+**Pick up issues** is the factory's switch for starting new issues by itself. It is not a job's Auto: Auto lets one running job pass its routine approvals, while Pick up issues lets the factory start jobs nobody started. It is off until you turn it on, from the yellow switch on the factory's Jobs tab; Labels beside it lists the labels it picks up. While it is on, the factory starts an issue by itself when it carries one of those labels, or its repository's own `start.labels`, and clears every rule (size, cost, ask first, never). An issue a rule flags waits with "Approval needed: start ·" and the rule. A job started this way belongs to the factory's owner (its operator) unless the issue is assigned to someone, so Auto can carry it and its approvals come to the owner. While it is off, a factory on your own machine starts nothing a person did not start or give a go-ahead for (below); a team server always runs its repositories' own start labels, and adds the factory's only while it is on. Turning it off stops the next start at once.
+
+## go-aheads — let a group of jobs start on their own when what they wait on merges, a cap and an end date, with the app closed
+
+A go-ahead is your yes, given in advance, for named jobs of one group (a workstream, in the desktop app): the jobs it covers, the most they may spend together, and when it ends. The factory keeps it and follows it itself, with no app attached: a team factory follows it with your laptop shut, and a factory on your own machine follows it while it runs.
+
+A covered job starts on its own only when it has never run and sits in Backlog, nobody stopped it, its repository is on, every job it waits on has merged, it is not someone else's, and its go-ahead is before its end date and inside its cap. It is checked after every GitHub poll, about once a minute. Each job it starts holds its whole budget against the cap until it finishes; the last job that fits gets only what is left of the cap as its budget, and after that nothing more starts. A job that waits on a job that ended without merging stays waiting. A job a go-ahead started becomes the go-ahead giver's when it has no person, and it is recorded as started by that allowance, which is how the app says "Started by go-ahead". A job still waiting says why: what it waits on, or that its go-ahead ended, was stopped or is spent.
+
+Ending a go-ahead, stopping it (Mark done) or taking a job out of it starts nothing further. It does not stop work already running: stop that job yourself. A go-ahead never starts a job again after it failed or was stopped.
+
+It is the factory's `factory.policy_set`, `factory.policy_get` and `factory.waits_set`, served when `factory.features` lists `group_policy`; an older factory lists nothing, and the app then says "This codeaf can't apply go-aheads yet." A team factory lets only the go-ahead's giver or its operator change it.
 
 ## let the plan reshape the steps — adapt, ask, fixed, a pipeline tailored to each job
 
