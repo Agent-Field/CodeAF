@@ -449,6 +449,8 @@ type Options struct {
 	// SaveFailure keeps a close failure for the terminal's restored screen.
 	// The callback may run outside the update loop.
 	SaveFailure func(error)
+	// SavingNotices retains final sentences until the screen is restored on quit.
+	SavingNotices func([]string)
 	// ClosingStarted retains pending cleanup until the restored terminal can report it.
 	ClosingStarted func(<-chan struct{})
 	// SavingDurability retains local-save receipt predicates for chats being closed.

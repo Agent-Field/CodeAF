@@ -87,6 +87,13 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 			previousSaveFailure(err)
 		}
 	}
+	previousNotices := options.SavingNotices
+	options.SavingNotices = func(lines []string) {
+		recordFinalSaveNotices(lines)
+		if previousNotices != nil {
+			previousNotices(lines)
+		}
+	}
 	previousClosing, previousForce := options.ClosingStarted, options.ForceQuit
 	options.ClosingStarted = func(done <-chan struct{}) {
 		retainFinalClose(done)

@@ -31,6 +31,7 @@ const quitSavedHereWord = syncwords.SavedHerePending
 var finalSaving struct {
 	sync.Mutex
 	failure       error
+	notices       []string
 	surface       bool
 	finishing     bool
 	address       string
@@ -52,6 +53,7 @@ func armFinalSaving() chan struct{} {
 	finalSaving.Lock()
 	defer finalSaving.Unlock()
 	finalSaving.surface = true
+	finalSaving.notices = nil
 	finalSaving.finishing = false
 	finalSaving.address = ""
 	finalSaving.durable = nil
@@ -236,6 +238,17 @@ func finishFinalSaving(ctx context.Context) (ok bool) {
 	}
 	err, surface, finishing, address, checks, legacy := takeFinalReport()
 	defer func() { completeFinalReport(done, ok) }()
+	lines := takeFinalSaveNotices()
+	if len(lines) > 0 {
+		stopFinalSaveProgress()
+		terminal := os.Stderr
+		if surface {
+			terminal = os.Stdout
+		}
+		for _, line := range lines {
+			fmt.Fprintln(terminal, line)
+		}
+	}
 	if err == nil && !finishing {
 		return true
 	}
@@ -468,4 +481,30 @@ func setFinalSyncService(address string) {
 	finalSaving.Lock()
 	defer finalSaving.Unlock()
 	finalSaving.address = address
+}
+
+// recordFinalSaveNotices keeps each closing sentence until terminal restoration.
+func recordFinalSaveNotices(lines []string) {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	for _, line := range lines {
+		found := false
+		for _, previous := range finalSaving.notices {
+			if previous == line {
+				found = true
+				break
+			}
+		}
+		if line != "" && !found {
+			finalSaving.notices = append(finalSaving.notices, line)
+		}
+	}
+}
+
+func takeFinalSaveNotices() []string {
+	finalSaving.Lock()
+	defer finalSaving.Unlock()
+	lines := finalSaving.notices
+	finalSaving.notices = nil
+	return lines
 }

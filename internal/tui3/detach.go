@@ -678,6 +678,11 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if joined != nil {
 		cmds = append(cmds, joined)
 	}
+	if a.shared {
+		for _, line := range takeSavingNotices(agent) {
+			a.note(line)
+		}
+	}
 	a.touch()
 	return tea.Batch(cmds...)
 }

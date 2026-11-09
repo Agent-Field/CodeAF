@@ -1263,6 +1263,10 @@ type Config struct {
 	Seals SealState
 	// Renewals reads the local writer's health so the surface can report an outage.
 	Renewals RenewalState
+	// FinishSaving releases the local writer after the conversation has closed.
+	FinishSaving func() error
+	// SavingNotices supplies sentences from that final release to the closing window.
+	SavingNotices func() []string
 	// AuthKeySource explains a refused worker account without supplying routing
 	// settings to a worker whose completer already owns its endpoint and key.
 	// Nil keeps ordinary sessions on their own profile and source ladder.

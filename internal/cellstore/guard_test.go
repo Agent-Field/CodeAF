@@ -105,6 +105,7 @@ func TestScreenWithholdsAnyFileWithASecretAndSaysOnce(t *testing.T) {
 // TestScreenReleasesAFileThatIsCleaned proves D2: the directive stays after secrets are cleared.
 func TestScreenReleasesAFileThatIsCleaned(t *testing.T) {
 	r := newRig(t)
+	fixtureGit(t, r.tree, "init", "-q")
 	r.write("src/config.py", "KEY = '"+fakeKey+"'\n")
 	r.screen()
 	r.write("src/config.py", "KEY = os.environ['KEY']\n")
@@ -143,16 +144,26 @@ func TestScreenKeepsWhatThePersonWrote(t *testing.T) {
 	}
 }
 
-// TestScreenWritesNothingWhenTheTreeIsClean proves D2: a clean tree still carries the ignore directive.
+// A clean tree outside the enclosing Git scope needs no inherited ignore policy.
 func TestScreenWritesNothingWhenTheTreeIsClean(t *testing.T) {
 	r := newRig(t)
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(r.tree))
 	r.write("a.txt", "hello\n")
 	r.screen()
-	if raw, err := os.ReadFile(filepath.Join(r.state(), policyName)); err != nil || strings.TrimSpace(string(raw)) != "gitignore" {
-		t.Fatalf("D2 policy = %q, %v", raw, err)
+	if raw, err := os.ReadFile(filepath.Join(r.state(), policyName)); !os.IsNotExist(err) {
+		t.Fatalf("a separate clean tree inherited policy %q, %v", raw, err)
 	}
 	if keys.Exists(r.guard.Home) {
 		t.Fatal("a clean tree created a vault")
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(filepath.Join(cwd, "..", "..")))
+	policy, err := readPolicy(cwd, r.state())
+	if err != nil || !strings.Contains(policy.String(), "gitignore") {
+		t.Fatalf("a repository inside the boundary lost its ignore policy: %q, %v", policy.String(), err)
 	}
 }
 
