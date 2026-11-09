@@ -206,9 +206,11 @@ name.
 
 ## Moving a chat with GIT_CEILING_DIRECTORIES set — an enclosing checkout and its ignore rules
 
-A chat saves and moves its words and files using the same Git boundary as the project's Git commands. When `GIT_CEILING_DIRECTORIES` keeps an enclosing checkout outside this folder's Git search, that checkout's ignore rules do not hide the chat's saved files. A repository inside the boundary keeps its own ignore rules.
+codeaf's own capture policy follows Git's repository discovery when `GIT_CEILING_DIRECTORIES` is set. A ceiling equal to the workspace does not stop Git from finding an enclosing repository: its ignored files stay out of saved history. When an ancestor ceiling excludes that repository, codeaf's policy does not enable its ignore rules. A repository inside the boundary keeps its own ignore rules.
 
-If an older build saved an empty chat and continuing it failed because its saved files were missing, open the original chat in this build, send another message and close it before trying `continue here` again.
+If the workspace's own `.furrowpolicy` contains `gitignore`, the native capture engine still uses its separate ignore discovery. It can find an enclosing checkout beyond the ceiling and omit the workspace's files. That case needs an engine fix.
+
+If an older build saved an empty chat and the workspace does not enable `gitignore` in its own `.furrowpolicy`, open the original chat in this build, send another message and close it before trying `continue here` again.
 
 ## This chat is not syncing — the sync service is not answering, working offline
 
@@ -390,7 +392,7 @@ If the last upload fails when you quit, for example because the connection dropp
 
 After a chat finishes saving and closes, it no longer checks who holds it. A final save can find that the chat has moved to a different machine. Its sentence appears once in the window when you close one chat, or when `/new` or `/resume` closes the previous chat. On quit it appears once after the screen is restored, including when an earlier individual close was still saving. A sentence already shown in the window is not printed again after quitting. This also applies with `--no-host`.
 
-A window that stops reading does not hold up another window closing the chat. Any sentence still waiting for the closing window comes back with its closing result.
+A window that stops reading does not hold up another window closing the chat. A live saving sentence delivered after the window's last display check joins the restored-terminal report. Taking it for display or for that report consumes it once.
 
 ## I pressed alt+m before the other chat appeared — still arriving, home on a second computer
 

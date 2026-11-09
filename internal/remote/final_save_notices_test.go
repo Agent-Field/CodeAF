@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 type finalNoticeAgent struct {
@@ -165,7 +166,7 @@ func TestClosingAResponsiveWindowFinishesSavingWithABlockedPeer(t *testing.T) {
 			}
 			closed := make(chan error, 1)
 			start := time.Now()
-			go func() { closed <- loop.Client.Agent().Close() }()
+			guard.Go("blocked peer fixture close", func() { closed <- loop.Client.Agent().Close() })
 			select {
 			case err := <-closed:
 				if err != nil {
@@ -193,9 +194,6 @@ func TestClosingAResponsiveWindowFinishesSavingWithABlockedPeer(t *testing.T) {
 				t.Fatal("close exceeded bound")
 			}
 			lines := loop.Client.Agent().TakeSavingNotices()
-			if live := loop.Client.TakeNotice(); live != "" {
-				lines = append(lines, live)
-			}
 			if len(lines) != 1 || lines[0] != chatlist.Superseded("desk") {
 				t.Fatalf("responsive window got %q, want sentence once", lines)
 			}
