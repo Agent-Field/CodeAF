@@ -105,8 +105,26 @@ func (x *managerIndex) managerOfLocked(st *store.Store, want string) (int, bool,
 // forget drops the index, so the next look lists the floor again.
 func (x *managerIndex) forget() {
 	x.mu.Lock()
+	defer x.mu.Unlock()
 	x.folder = nil
-	x.mu.Unlock()
+}
+
+// lastStop is the last answer read for job id.
+func (x *managerIndex) lastStop(id int) (stopRead, bool) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	r, ok := x.stops[id]
+	return r, ok
+}
+
+// keepStop remembers r as the last answer read for job id.
+func (x *managerIndex) keepStop(id int, r stopRead) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	if x.stops == nil {
+		x.stops = map[int]stopRead{}
+	}
+	x.stops[id] = r
 }
 
 // managedItem is the job want manages, read whole. A job whose document no
@@ -147,9 +165,7 @@ func (x *managerIndex) automaticRefusal(st *store.Store, want string) string {
 	}
 	path := st.ItemPath(id)
 	if info, err := os.Stat(path); err == nil {
-		x.mu.Lock()
-		last, seen := x.stops[id]
-		x.mu.Unlock()
+		last, seen := x.lastStop(id)
 		if seen && last.talk == want && sameFile(last.file, info) {
 			return last.refusal
 		}
@@ -167,12 +183,7 @@ func (x *managerIndex) automaticRefusal(st *store.Store, want string) string {
 			refusal = stop.Error()
 		}
 		if it.ID == id {
-			x.mu.Lock()
-			if x.stops == nil {
-				x.stops = map[int]stopRead{}
-			}
-			x.stops[id] = stopRead{file: info, talk: want, refusal: refusal}
-			x.mu.Unlock()
+			x.keepStop(id, stopRead{file: info, talk: want, refusal: refusal})
 		}
 		return refusal
 	}
