@@ -39,3 +39,36 @@ func TestAnAttachForgetsOnlyItsOwnComputersQuietRegistrations(t *testing.T) {
 		}
 	}
 }
+
+// A RESTARTED RUNNER'S OLD ROWS GO. A restart attaches every slot again at
+// once, while the replaced process's rows were heard moments before, so the
+// attach keeps them; nothing looked again, and every restart left a machine's
+// whole set of rows behind (15 became 30). An idle pull forgets them once they
+// are quiet past the runner timeout, and keeps the live process's rows.
+func TestAnIdlePullForgetsARestartedRunnersOldRows(t *testing.T) {
+	now := time.Date(2026, 11, 8, 1, 0, 0, 0, time.UTC)
+	h := &Handler{workers: &workerService{now: func() time.Time { return now }, credentials: map[[32]byte]registeredWorker{}}}
+	s := h.workers
+	row := func(key, id string) [32]byte {
+		k := sha256.Sum256([]byte(key))
+		s.credentials[k] = registeredWorker{Last: now, Worker: lease.Worker{ID: id, Handle: "sam", Machine: "studio"}}
+		return k
+	}
+	old := row("old", "w-old")
+	fresh := row("fresh", "w-fresh")
+	// The pull right after the restart: the old row is still recent.
+	h.sweepQuietRunners(lease.Worker{ID: "w-fresh", Handle: "sam", Machine: "studio"})
+	if len(s.credentials) != 2 {
+		t.Fatalf("a recent row was forgotten: %d rows", len(s.credentials))
+	}
+	// The live process keeps pulling; the old one is never heard again.
+	now = now.Add(lease.OfflineAfter + heardSaveEvery + time.Second)
+	s.heard("w-fresh", now)
+	h.sweepQuietRunners(lease.Worker{ID: "w-fresh", Handle: "sam", Machine: "studio"})
+	if _, ok := s.credentials[old]; ok {
+		t.Fatal("the restarted runner's old row was kept")
+	}
+	if _, ok := s.credentials[fresh]; !ok {
+		t.Fatal("the live runner's row was forgotten")
+	}
+}

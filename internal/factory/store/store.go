@@ -62,6 +62,8 @@ type Store struct {
 	root         string
 	outputPolicy func() (int, int)
 	observer     atomic.Pointer[func(before, after factory.Item)]
+	// shared is the last [Store.ListShared], reused while the floor is unchanged.
+	shared sharedList
 	// clock is the store's now. A test may hold it still; it is nil in every
 	// real build, which reads as time.Now.
 	clock func() time.Time
@@ -611,7 +613,11 @@ func (st *Store) now() time.Time {
 	return st.clock()
 }
 
-func (st *Store) read(path string) (doc, error) {
+func (st *Store) read(path string) (doc, error) { return cachedRead(path, st.readDocument) }
+
+// readDocument reads and decodes the document at path; [Store.read] answers
+// it from the process's cache while the file is unchanged.
+func (st *Store) readDocument(path string) (doc, error) {
 	data, err := os.ReadFile(path)
 	if err == nil {
 		st.reads.Add(1)

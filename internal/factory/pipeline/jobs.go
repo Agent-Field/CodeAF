@@ -22,16 +22,24 @@ type Measured struct {
 // budget still stops a running job, and a new factory would otherwise start
 // nothing until five jobs had finished.
 func (f File) DecideJob(it factory.Item, paths []string, cost Measured) Decision {
+	if !f.candidate(Job{Labels: it.Labels}) {
+		return Decision{}
+	}
+	return f.DecideAdmitted(it, paths, cost)
+}
+
+// DecideAdmitted is [File.DecideJob] for a job something other than a start
+// label already admitted: a routing rule the operator wrote that says start
+// it (internal/factory/route). The rule stands in for the label and nothing
+// else, so size, budget, measured cost and protected paths hold it exactly
+// as they hold a labelled issue.
+func (f File) DecideAdmitted(it factory.Item, paths []string, cost Measured) Decision {
 	budget := it.Cap
 	if budget <= 0 {
 		budget = f.DefaultBudget
 	}
 	if budget <= 0 {
 		budget = factory.DefaultJobBudget
-	}
-	j := Job{ID: it.ID, Kind: it.Kind, Tier: it.Tier, Labels: it.Labels, Size: factory.JobSize(it), Cap: budget, Cost: budget, CostKnown: true, Paths: paths}
-	if !f.candidate(j) {
-		return Decision{}
 	}
 	var reasons []string
 	size := factory.JobSize(it)

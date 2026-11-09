@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"context"
+	"errors"
 	"os"
 	"runtime"
 
@@ -50,7 +51,8 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	if over != nil {
 		store = over(engine)
 	}
-	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs), Async: engine.pipeline})
+	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs), Async: engine.pipeline,
+		FolderGone: func() bool { return errors.Is(engine.workspaceThere(c), ErrWorkspaceGone) }})
 	if err != nil {
 		return executor.Watching(base, obs), err
 	}

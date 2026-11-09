@@ -183,3 +183,24 @@ func TestReplySuggestionLeavesForegroundModelIdentityAlone(t *testing.T) {
 	}
 	a.endModelRequest("vendor/work")
 }
+
+// A DRAFT ADDRESSED TO THE MODEL IS NEVER OFFERED TO THE PERSON: one that
+// tells it to call a tool of its belt, or speaks in codeaf's carry-on voice,
+// is dropped where drafts are made; a person's plain words that happen to
+// share a short tool name stand.
+func TestReplySuggestionNeverOffersWordsAddressedToTheModel(t *testing.T) {
+	tools := []string{"stage_result", "plan_edit", "read", "edit"}
+	for _, raw := range []string{
+		`{"reply":"Please call stage_result with final true and done false."}`,
+		`{"reply":"Use plan_edit to drop the review step."}`,
+		`{"reply":"[carry on] Finish the step."}`,
+		`{"reply":"Call STAGE_RESULT now."}`,
+	} {
+		if got := cleanReplySuggestion(raw, tools...); got != "" {
+			t.Errorf("offered machinery: %q", got)
+		}
+	}
+	if got := cleanReplySuggestion(`{"reply":"Can you read the test file and edit the plan?"}`, tools...); got != "Can you read the test file and edit the plan?" {
+		t.Errorf("a person's words were dropped: %q", got)
+	}
+}

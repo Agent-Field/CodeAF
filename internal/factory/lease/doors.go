@@ -116,6 +116,12 @@ func (d *Doors) Launch(id int) error {
 	if err := factory.CheckPersonStop(it); err != nil {
 		return err
 	}
+	// A JOB WITH NO REPOSITORY WAITS FOR ONE: work filed from outside
+	// (internal/factory/inbox) may arrive before a rule or a person says where
+	// it is done, and a run with nowhere to check out would fail on a worker.
+	if factory.NamesNoRepo(it) {
+		return factory.ErrNoRepo
+	}
 	if run.StoredPaused(it) {
 		return d.Hold(id, false)
 	}
@@ -255,48 +261,55 @@ func (d *Doors) stop(id int, caller *string, receipt bool) error {
 		return err
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		wasStopped := factory.StoppedByPerson(*it)
-		// A RESET OF A RUN THAT ALREADY ENDED CHANGES NOTHING: a failed or
-		// stopped job is reassigned or dropped as it stands, and why it ended
-		// stays. Only a person's Stop of it is refused, as not running.
-		if receipt || !factory.RunEnded(*it) {
-			if err := run.StopItem(it, now); err != nil {
-				return false, err
-			}
-		}
-		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
-		// before intake can see the job back in the backlog.
-		if receipt {
-			factory.MarkPersonStopped(it)
-			it.Asking = nil
-			it.ManagerAnswer = nil
-			if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
-				return false, err
-			}
-		}
-		if !receipt && !wasStopped {
-			stopped := false
-			it.PersonStopped = &stopped
-		}
-		it.Publishing = false
-		_, pendingSignals := doc.Signals[id]
-		delete(doc.Signals, id)
-		if held == nil {
-			return pendingSignals, nil
-		}
-		if held.Publish != "" {
-			// Retain receipt ownership without retaining execution authority or capacity.
-			var live []publisherReceipt
-			for _, receipt := range doc.Receipts {
-				if receipt.Lease.live(now) {
-					live = append(live, receipt)
-				}
-			}
-			doc.Receipts = append(live, publisherReceipt{Lease: *held, Item: *it})
-		}
-		release(doc, id)
-		return true, nil
+		return stopLocked(history, doc, held, id, it, now, caller, receipt)
 	})
+}
+
+// stopLocked is a stop's write, under the desk's lock and the item's: the
+// job stops, a person's stop is recorded as theirs (receipt), and the runner
+// holding it lets go. Callers hold both locks.
+func stopLocked(history *record.Record, doc *document, held *Lease, id int, it *factory.Item, now time.Time, caller *string, receipt bool) (bool, error) {
+	wasStopped := factory.StoppedByPerson(*it)
+	// A RESET OF A RUN THAT ALREADY ENDED CHANGES NOTHING: a failed or
+	// stopped job is reassigned or dropped as it stands, and why it ended
+	// stays. Only a person's Stop of it is refused, as not running.
+	if receipt || !factory.RunEnded(*it) {
+		if err := run.StopItem(it, now); err != nil {
+			return false, err
+		}
+	}
+	// THE PERSON'S STOP WINS: keep it durable while the job is locked,
+	// before intake can see the job back in the backlog.
+	if receipt {
+		factory.MarkPersonStopped(it)
+		it.Asking = nil
+		it.ManagerAnswer = nil
+		if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
+			return false, err
+		}
+	}
+	if !receipt && !wasStopped {
+		stopped := false
+		it.PersonStopped = &stopped
+	}
+	it.Publishing = false
+	_, pendingSignals := doc.Signals[id]
+	delete(doc.Signals, id)
+	if held == nil {
+		return pendingSignals, nil
+	}
+	if held.Publish != "" {
+		// Retain receipt ownership without retaining execution authority or capacity.
+		var live []publisherReceipt
+		for _, receipt := range doc.Receipts {
+			if receipt.Lease.live(now) {
+				live = append(live, receipt)
+			}
+		}
+		doc.Receipts = append(live, publisherReceipt{Lease: *held, Item: *it})
+	}
+	release(doc, id)
+	return true, nil
 }
 
 // Pause holds a running job, or lets a held one go on.

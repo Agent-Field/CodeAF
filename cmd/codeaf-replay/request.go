@@ -273,6 +273,14 @@ var callSiteRoles = map[string]lane.Role{
 	// cmd/codeaf/factory_scout.go: a look closer\'s turns, on the same low
 	// seat as the read. Nobody reads its stream; the answer arrives whole.
 	"factory scout": lane.RoleAuxiliary,
+	// cmd/codeaf/factory_judge.go: an AI filter's one yes/no question about
+	// one arriving item, on the read's model unless the factory names one.
+	"factory filter": lane.RoleAuxiliary,
+	// cmd/codeaf/appfactory_ai_search.go: the job search bar's Ask AI, a
+	// screen read over a batch of items or the judge's question about one,
+	// on the factory's default model. The person waits on the whole answer,
+	// never on a stream.
+	"factory search": lane.RoleAuxiliary,
 	// internal/session/subharness_env.go: one AI step of a saved program, which
 	// runs on the program's own model rather than on any role's. Nobody is
 	// reading its stream and nobody is waiting on its first word.

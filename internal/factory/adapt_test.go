@@ -324,7 +324,8 @@ func TestAdaptAddsOnlyConversationsWithAnAsk(t *testing.T) {
 			t.Fatalf("plan added %+v", add)
 		}
 	}
-	got, _, err := factory.Adapt(it, factory.PlanEdit{Add: []factory.Stage{{Ask: "check the docs say so", OldGate: factory.GateNone}}}, factory.DefaultRecipe())
+	// The plan names the step it adds ([TestAModelsStepNamedOnlyByItsFirstWordIsRefused]).
+	got, _, err := factory.Adapt(it, factory.PlanEdit{Add: []factory.Stage{{Ask: "check: check the docs say so", OldGate: factory.GateNone}}}, factory.DefaultRecipe())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,8 +469,9 @@ func TestStageNamesAreOneWordOnEveryRoad(t *testing.T) {
 	if _, _, err := factory.StageSentence("after review, do through: walk it end to end"); err == nil || err.Error() != want {
 		t.Fatalf("sentence = %v", err)
 	}
-	// A sentence with no name of its own is named by one word of its ask.
-	got, _, err := factory.Adapt(it, factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, check the migration reverses"}}}, factory.DefaultRecipe())
+	// A person's sentence with no name of its own is named by one word of
+	// its ask; a model's is refused ([TestAModelsStepNamedOnlyByItsFirstWordIsRefused]).
+	got, _, err := factory.Edit(it, factory.RunEdit{By: factory.ByYou, Add: []factory.Added{{Stage: factory.Stage{Ask: "after test, check the migration reverses"}}}}, factory.DefaultRecipe(), factory.EditBeforeRun)
 	if err != nil || factory.StageIndex(got.Stages, "check") != 3 {
 		t.Fatalf("unnamed = %+v %v", got.Stages, err)
 	}

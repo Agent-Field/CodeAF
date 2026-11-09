@@ -103,6 +103,15 @@ type Follower interface {
 	Follow(ctx context.Context, it Item) (PullRequest, error)
 }
 
+// MergeOffered is the merge gate as the job page reads it for the person
+// looking at it: the Merge card is offered when it passes, and its Why is
+// what the page says otherwise. EVERY READER OF "IS MERGE OFFERED?" ASKS HERE
+// (the job page's merge block, the manager's status, the manager's press), so
+// the manager can never say merge is not offered while the page offers it.
+func MergeOffered(it Item) MergeVerdict {
+	return MergeGate(it, MergeAsk{By: "you"})
+}
+
 // MergeGate decides whether the job's pull request may be merged now. It reads
 // only the job; the caller is responsible for the facts being fresh enough
 // for the moment it asks.
@@ -125,6 +134,10 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 		return refuseMerge("the pull request is closed")
 	case pr.State != PROpen:
 		return refuseMerge("cannot read whether the pull request is open")
+	case PRChangesNothing(pr):
+		// AN EMPTY PULL REQUEST HAS NOTHING TO MERGE: merging it would put
+		// nothing on the base branch and call the job shipped.
+		return refuseMerge("the pull request changes no files")
 	}
 	if m := it.Merging; m != nil && (m.State == MergeQueued || m.State == MergeMerging) {
 		return refuseMerge("a merge is already on its way")
@@ -137,7 +150,7 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 		return refuseMerge("a merge needs the person who pressed it")
 	}
 	if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running" || it.FollowUp.State == "waiting_approval" || it.FollowUp.State == "needs_you") {
-		return refuseMerge("CI follow-up must finish and its verified changes must be approved")
+		return refuseMerge("CI follow-up must finish and its checked changes must be approved")
 	}
 	approved := strings.TrimSpace(it.HeadCommit)
 	head := strings.TrimSpace(pr.HeadSHA)

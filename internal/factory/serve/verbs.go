@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -25,15 +26,18 @@ func (h *Handler) verbs() {
 	h.postJob("pause", s.Hold != nil, h.guarded("pause", h.holdVerb(true)))
 	h.postJob("resume", s.Hold != nil, h.guarded("resume", h.holdVerb(false)))
 	h.postJob("drop", h.config.Store != nil || s.Dismiss != nil, h.onlyOwner(h.drop))
-	h.postJob("answer", s.Answer != nil, h.answer)
+	h.postJob("answer", s.Answer != nil, h.notRunAnswer(h.answer))
 	h.postJob("spend_answer", s.SpendAnswer != nil, h.spendAnswer)
-	h.postJob("reject_plan", h.config.Store != nil && s.Answer != nil, h.rejectPlan)
+	// AN AGENTFIELD RUN'S PAUSE IS ANSWERED WITH THESE THREE VERBS on every
+	// factory (agentfield_answer.go); each falls through to its own door for
+	// every other job.
+	h.postJob("reject_plan", true, h.agentFieldAnswer(agentfield.DecisionRejected, h.rejectPlan, h.config.Store != nil && s.Answer != nil))
 	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
-	h.postJob("approve", true, h.approve)
+	h.postJob("approve", true, h.agentFieldAnswer(agentfield.DecisionApproved, h.approve, true))
 	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.onlyOwner(h.retryPublish)))
 	h.postJob("merge", h.config.Store != nil, h.onlyOwner(h.mergeJob))
 	h.postJob("pr-ready", h.config.Store != nil, h.onlyOwner(h.prReady))
-	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
+	h.postJob("request_changes", true, h.agentFieldAnswer(agentfield.DecisionRequestChanges, h.recordedWords(s.SendBack, record.RequestChanges), s.SendBack != nil))
 	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
 	// Take and release are the lease desk's own doors, not seam fields. The
 	// desk exists only after the worker routes open it, so the handler checks then.
@@ -838,15 +842,17 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
+		selected = recipe.Named(body.Pipeline)
 		if h.config.Pipeline != nil {
 			f, err := h.config.Pipeline(r.Context(), body.Repo, dir)
 			if h.failed(w, err) {
 				return
 			}
-			recipe = f.Recipe()
+			// The one resolver: the repository's file, the factory's
+			// library, the built-in steps ([pipeline.File.Resolve]).
+			selected = f.Named(body.Pipeline)
 			copied, decided = f.Copy, true
 		}
-		selected = pipelineStages(recipe, body.Pipeline)
 		if len(selected) == 0 {
 			h.fail(w, 422, "pipeline not found")
 			return

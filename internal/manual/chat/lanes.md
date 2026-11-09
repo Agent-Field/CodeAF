@@ -20,7 +20,7 @@ has ever timed — and it tells you which one served you, in the status line:
 via cloudflare · 0.6s · 61 t/s
 ```
 
-## Why a model name starts with ~ — the tilde or squiggle in front of a model name, and whether it is a typo
+## Why a model name starts with ~ — why does this model start with a tilde, the squiggle in front of a model name, and whether it is a typo
 
 Some rows on the model list are prefixed with `~`. The model codeaf ships with is spelled
 `~deepseek/deepseek-v4-flash-latest`, and that is the name on the model picker and on the

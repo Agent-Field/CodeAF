@@ -74,11 +74,13 @@ func wirePipeline(f pipeline.File) api.Pipeline {
 		AskFirst: copyStrings(f.Start.AskFirst),
 	}
 	p.Size = &api.SizeBlock{PRLines: f.Size.PRLines, Issue: f.Size.Issue}
-	noteSentences(p.Steps, f)
+	noteSentences(p.Steps, f.PipelineFile(string(factory.KindIssue)))
 	for kind, steps := range p.ByKind {
-		noteSentences(steps, f)
+		// A library pipeline's sentences are the library's own.
+		noteSentences(steps, f.PipelineFile(kind))
 		p.ByKind[kind] = steps
 	}
+	p.Pipelines = pipelineChoices(f)
 	return p
 }
 

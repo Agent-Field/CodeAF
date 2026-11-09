@@ -92,7 +92,7 @@ func stageFilesField() string {
 
 func planEditSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"add":{"type":"array","items":{"type":"string"},"description":"Stage sentences to add."},` +
+		`"add":{"type":"array","items":{"type":"string"},"description":"Stage sentences to add, each naming its step before a colon, e.g. \"after review, auth: read it for auth holes\"."},` +
 		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off."},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names to switch on."},` +
 		`"why":{"type":"string","description":"One sentence saying why."}` +

@@ -52,6 +52,9 @@ func (b *appBackend) FactoryPipelineCopySet(ctx context.Context, p appwire.Facto
 	if !ok {
 		return appwire.FactoryPipelineCopyDone{}, appwire.Errorf(appwire.CodeBadParams, "these steps do not read as a pipeline file; nothing was saved")
 	}
+	if err := b.ownNodeSteps(p.Factory, p.Text); err != nil {
+		return appwire.FactoryPipelineCopyDone{}, err
+	}
 	body := api.PipelineCopyRequest{Text: p.Text, Expect: &api.PipelineCopyExpect{Version: p.Expect.Version}}
 	return b.pipelineCopyWrite(ctx, p.Factory, p.Repo, http.MethodPut, body, p.Expect.Version, &want)
 }

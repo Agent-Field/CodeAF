@@ -119,6 +119,9 @@ type Source struct {
 	// read on a later Read even though a list asked since the cursor will
 	// not carry them again.
 	owed map[string]map[int]forge.Issue
+	// prFiles is each followed pull request's file list as it was read on
+	// one head ([Source.readPRFiles]); a new head reads it again.
+	prFiles map[string]prFilesRow
 }
 
 const tierLifetime = 15 * time.Minute

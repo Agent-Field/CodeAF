@@ -18,6 +18,9 @@ import (
 // The test hook counts scans without changing the journal or the capture path.
 var knowledgeScanHook atomic.Pointer[func(string)]
 
+// knowledgeReadHook counts the scans that read the journal, for tests.
+var knowledgeReadHook atomic.Pointer[func(string)]
+
 // knowledgeCloseWait caps all scanner and cancelled compiler joins together.
 const knowledgeCloseWait = 10 * time.Second
 
@@ -73,8 +76,18 @@ type knowledgeJournal struct {
 	offset    int64
 	skip      int
 	lastError string
-	cancel    context.CancelFunc
-	done      chan struct{}
+	// read is the journal as a scan that reached its end found it: a look
+	// that finds the file the same has nothing to read ([Agent.scanKnowledge]).
+	read   knowledgeJournalStamp
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+// knowledgeJournalStamp is what a stat says of a journal: its size and when it
+// last changed.
+type knowledgeJournalStamp struct {
+	size int64
+	mod  time.Time
 }
 
 func (a *Agent) initKnowledge() {
@@ -262,6 +275,17 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 			j.lastError = ""
 		}
 	}()
+	// A JOURNAL THAT HAS NOT MOVED SINCE A READ REACHED ITS END HAS NOTHING
+	// TO CAPTURE, whatever consent says now: an idle chat's safety tick costs
+	// one stat, not an open, a read and a consent answer. The ninth live
+	// round's idle desk had dozens of chats doing that every five seconds.
+	var stamp knowledgeJournalStamp
+	if info, statErr := os.Stat(path); statErr == nil {
+		stamp = knowledgeJournalStamp{size: info.Size(), mod: info.ModTime()}
+		if j.offset == stamp.size && j.read == stamp {
+			return nil
+		}
+	}
 	// Idle chats share consent reads instead of each reopening SQLite. The
 	// shared answer only decides whether to look; sources found
 	// below are admitted, or passed over, on consent read afresh.
@@ -284,6 +308,9 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 	history := knowledgeHistory{}
 	journal := knowledge.Journal{ID: path, Session: sessionID, Project: j.project}
 	{
+		if hook := knowledgeReadHook.Load(); hook != nil && *hook != nil {
+			(*hook)(path)
+		}
 		batch, e := history.Read(ctx, journal, cursor)
 		if e != nil {
 			return e
@@ -317,6 +344,11 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 		j.offset = batch.Cursor.Offset
 		j.skip = batch.Cursor.Skip
 		j.scope = batch.Cursor.Scope
+		// The stamp was taken before the read, so a write that landed during
+		// it changes the file from the stamp and the next look reads again.
+		if stamp.size != 0 && j.offset == stamp.size {
+			j.read = stamp
+		}
 	}
 	return nil
 }

@@ -12,6 +12,14 @@ const schemaV = 1
 // ErrReadOnly leaves pending records local when this window may only view the chat.
 var ErrReadOnly = errors.New("this window only shows the chat")
 
+// ErrWorkspaceGone is a seal asked of a chat whose folder is no longer there:
+// a factory job closed locally takes its checkout away while the job's chat is
+// still open. There is nothing on disk to keep, so it is NOT a chat that could
+// not be saved. Its transcript is the session file's, and its pending calls
+// stay in the WAL exactly as [ErrReadOnly] leaves them. The ninth live WorkAF
+// round's idle quit exited 1 with "codeaf could not save this chat" for one.
+var ErrWorkspaceGone = errors.New("the chat's folder is no longer on this computer")
+
 // Cell-relative paths of the files this package persists inside a cell.
 const (
 	ReceiptsDir = cell.StateDir + "/receipts"

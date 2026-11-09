@@ -73,11 +73,82 @@ func WaitingToStart(ph Phase) bool {
 	return ph.Kind != StageGate && ph.State == PhaseWaiting && ph.Round == 0
 }
 
+// StepHold is the step a Manual hold keeps waiting before its first round, by
+// the name a person reads (its label, else its name), and whether the item is
+// standing at such a hold: needs you, an approve question asked, and the
+// current step a work step waiting to start ([WaitingToStart]).
+func StepHold(it Item) (step string, ok bool) {
+	if it.State != StateNeedsYou || it.QKind != QKindApprove || it.Stream == nil {
+		return "", false
+	}
+	s := it.Stream
+	if s.Cur < 0 || s.Cur >= len(s.Phases) || !WaitingToStart(s.Phases[s.Cur]) {
+		return "", false
+	}
+	name := s.Phases[s.Cur].Name
+	if i := StageIndex(it.Stages, name); i >= 0 && strings.TrimSpace(it.Stages[i].Label) != "" {
+		return strings.TrimSpace(it.Stages[i].Label), true
+	}
+	return name, true
+}
+
 // PlanWaiting says the item is a plan waiting for its person: needs you, with
-// an approve question asked, read on the wire as approve_plan. It says nothing
-// about where a no would send the work; [PlanSendsBack] does.
+// an approve question asked, read on the wire as approve_plan, or Manual's
+// hold before a step (approve_step), whose no sends back the step before it
+// the same way. It says nothing about where a no would send the work;
+// [PlanSendsBack] does.
 func PlanWaiting(it Item) bool {
-	return it.State == StateNeedsYou && it.QKind == QKindApprove && strings.TrimSpace(it.Question) != "" && NeedsKind(it) == NeedsApprovePlan
+	if it.State != StateNeedsYou || it.QKind != QKindApprove || strings.TrimSpace(it.Question) == "" {
+		return false
+	}
+	k := NeedsKind(it)
+	return k == NeedsApprovePlan || k == NeedsApproveStep
+}
+
+// LandingGate is the approve step a landed run waits at, or -1: the run's last
+// step, an approve step that is switched on and nobody has passed yet. The
+// proof approval is its answer, a person's or, where Auto may pass it
+// ([AutonomyBlockReason]), Auto's recorded one; until then it is a wait, never
+// a step "to come" behind a publication.
+func LandingGate(it Item) int {
+	if it.Stream == nil || len(it.Stream.Phases) == 0 {
+		return -1
+	}
+	i := len(it.Stream.Phases) - 1
+	if !gateUnpassed(it, i) {
+		return -1
+	}
+	return i
+}
+
+// UnpassedGate is the name of an approve step on the run, other than the one
+// it lands at, that is switched on and nobody has passed, or "". A run that
+// lands past such a step skipped a person's gate, and nothing publishes it.
+func UnpassedGate(it Item) string {
+	if it.Stream == nil {
+		return ""
+	}
+	landing := LandingGate(it)
+	for i, ph := range it.Stream.Phases {
+		if i != landing && gateUnpassed(it, i) {
+			return ph.Name
+		}
+	}
+	return ""
+}
+
+// gateUnpassed says phase i is an approve step whose stage is on (or not on
+// the job's list, as a send-back's is) and that is not finished: passed,
+// skipped by its file condition or skipped by the person.
+func gateUnpassed(it Item, i int) bool {
+	ph := it.Stream.Phases[i]
+	if ph.Kind != StageGate || ph.State == PhaseDone || ph.State == PhaseSkipped || ph.State == PhaseFailed {
+		return false
+	}
+	if j := StageIndex(it.Stages, ph.Name); j >= 0 && !it.Stages[j].On {
+		return false
+	}
+	return true
 }
 
 // PlanGate is the approve step that answers for the plan: the first approve

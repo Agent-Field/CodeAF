@@ -1,12 +1,46 @@
 package factory
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // RepoOffRefusal ends the sentence every door that would work on a job of a
 // repository that is off is refused with, after the repository's name
 // ([RepoOffWords]). It is spelled once, here, so the start, the run, a step's
 // rerun, the publish and the merge all say the same words.
 const RepoOffRefusal = "is off · turn it on in Repos to run its jobs."
+
+// NoRepoRefusal is what a job that names no repository is refused with, at
+// the floor's new-job door and at the launch: work filed from outside may
+// arrive before anyone has said where it is done.
+const NoRepoRefusal = "say which repository the work is on"
+
+// ErrNoRepo is [NoRepoRefusal] as an error: A REFUSAL, NOT A FAILURE. Every
+// door answers it as a conflict in those exact words, never as an error that
+// may have half-happened, because nothing was written.
+var ErrNoRepo = errors.New(NoRepoRefusal)
+
+// NoRepoTitle and NoRepoDetail are what a job that names no repository says
+// while it waits in Backlog ([NamesNoRepo]): the words the job's read carries
+// so a surface can show why it is not starting.
+const (
+	NoRepoTitle  = "Waiting for a repository"
+	NoRepoDetail = "Say which repository the work is on, or add a routing rule that sends it to one."
+)
+
+// NamesNoRepo says the job names no repository at all, the one case
+// [NoRepoRefusal] is for. IT IS NOT [RepoOf] == "": a job typed on a floor with
+// no GitHub names a bare repository ("api") with no owner, which RepoOf
+// answers "" for because no watched list could hold it, and that job is
+// still launched on its own checkout as it always was.
+//
+// A JOB RUN BY AN AGENTFIELD REASONER ([Item.RunOn]) NEEDS NO REPOSITORY: the
+// reasoner does its work on its own node, so nothing is checked out here and
+// the job starts without one.
+func NamesNoRepo(it Item) bool {
+	return strings.TrimSpace(it.Repo) == "" && strings.TrimSpace(it.RunOn) == ""
+}
 
 // RepoOffWords is the refusal for a job of repo, which is off.
 func RepoOffWords(repo string) string { return repo + " " + RepoOffRefusal }
@@ -97,4 +131,19 @@ func UnderWay(it Item) bool {
 		return state == "running"
 	}
 	return false
+}
+
+// RepoName says whether s is `owner/name`: two non-empty parts, no spaces,
+// nothing that could walk out of an API path.
+func RepoName(s string) bool {
+	owner, name, ok := strings.Cut(strings.TrimSpace(s), "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return false
+	}
+	for _, part := range []string{owner, name} {
+		if part == "." || part == ".." || strings.ContainsAny(part, " \t\n?#%\\") {
+			return false
+		}
+	}
+	return true
 }

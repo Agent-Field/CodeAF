@@ -136,6 +136,7 @@ func (h *Handler) readStepEdits(w http.ResponseWriter, r *http.Request) {
 // FS0/FS15 allow only the caller's own.
 func (h *Handler) stepEditsReply(w http.ResponseWriter, r *http.Request, it factory.Item, lines []string) {
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	h.modelsIn(jobs, []factory.Item{it})
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}

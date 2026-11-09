@@ -3,19 +3,21 @@ package session
 // THE FOREMAN'S ONE DOOR: `factory_floor`, THE FLOOR READ WHOLE.
 //
 // The foreman is the floor's own conversation (`m` on the factory floor,
-// cmd/codeaf's factory_foreman.go): the product-level judgment about what to
-// take first, never the runner. It reads the floor through this one tool and
-// proposes by SELECTING items; the person runs what is selected with `L` on
-// the floor. ONLY THE FOREMAN CARRIES IT: cmd/codeaf sets [Config.Floor] on
+// cmd/codeaf's factory_foreman.go, opened from the app by factory.foreman_open):
+// the product-level judgment about what to take first, never the runner. It
+// reads the floor through this one tool, proposes by SELECTING items, and
+// starts or prioritises one job when the person asks ([FloorActor]). ONLY THE FOREMAN CARRIES IT: cmd/codeaf sets [Config.Floor] on
 // the conversation whose session file the floor names as its foreman and on
 // no other, so an ordinary chat proposes through `factory_add` and an item's
 // own conversation through `factory_item`.
 //
 // ── THE LAWS THIS FILE APPLIES ──
 //
-//   - IT READS AND IT MARKS, AND NOTHING ELSE. There is no argument that
-//     launches, stops, ships, posts or changes an item. A selection (the field is `mark`) is a proposal
-//     the person sees on the floor as an accent lead, and takes or leaves.
+//   - IT READS, MARKS, STARTS AND PRIORITISES, AND NOTHING ELSE. There is no
+//     argument that stops, ships, merges, posts or otherwise changes an item.
+//     A start and a priority go through the job page's own doors
+//     ([FloorActor]), only when the person asked. A selection (the field is
+//     `mark`) is a proposal the person sees on the floor, and takes or leaves.
 //
 //   - ONLY A NEW ITEM TAKES A MARK. The door refuses anything else, and the
 //     tool says which items it left alone and why, so the model never believes
@@ -50,6 +52,16 @@ type FloorDoor interface {
 	Mark(ctx context.Context, ids []int, on bool) error
 }
 
+// FloorActor is a [FloorDoor] that may also start a job and set its priority
+// for the person, through the doors the job page's Start and priority take.
+// The foreman uses it only when the person asks; a door that is not one leaves
+// the tool reading and selecting, as before. Each answers the line the model
+// reads back, or a refusal in words.
+type FloorActor interface {
+	StartItem(ctx context.Context, id int) (string, error)
+	SetPriority(ctx context.Context, id int, value string) (string, error)
+}
+
 // mayFloor says whether `factory_floor` belongs on this belt: there is a door
 // behind it.
 func (c Config) mayFloor() bool { return !c.readingTask() && c.Floor != nil }
@@ -70,6 +82,9 @@ const (
 	floorAskOldest   = "oldest"
 	floorAskAll      = "all"
 	floorAskItem     = "item"
+	floorAskRunning  = "running"
+	floorAskQueue    = "queue"
+	floorAskShipped  = "shipped"
 )
 
 // The floor's limits on one answer: how many rows a ranked ask lists, how many
@@ -86,22 +101,25 @@ const (
 // (internal/manual/chat/factory.md, `## the foreman — m`).
 const (
 	// FloorMarkedTail follows the refs a call selected: `selected #1 #4 #6 ·
-	// press L on the floor to run them`.
-	FloorMarkedTail = " · press L in the factory to run them"
+	// the person starts them from the factory, or asks you to start one`.
+	FloorMarkedTail = " · the person starts them from the factory, or asks you to start one"
 	floorNothing    = "the factory has no items yet"
 	floorNoneAsked  = "no items in the factory answer that ask"
 )
 
-const factoryFloorDescription = "Read the factory and propose what to take on by selecting items. " +
-	"You are the factory's foreman: you read, rank and propose; the person runs what is selected with L in the factory; nothing you do here runs, ships or posts. " +
-	"ask: waiting (items that need the person), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, question and body; set item). " +
+const factoryFloorDescription = "Read the whole factory, start or prioritise a job when the person asks, and propose what to take on by selecting items. " +
+	"You are the factory's foreman: you read, rank, propose and sum up. Start a job (start) or set its priority (priority with item) only when the person asks for that job in this conversation; nothing here ships, merges or posts. " +
+	"ask: running (jobs running or queued to run, with their step), queue (jobs not started yet, most urgent then oldest first), waiting (jobs that need the person), shipped (jobs shipped today, with their pull requests and changes, to sum up), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, question and body; set item). " +
+	"start takes one job by the number in its ref and starts it as the job page's Start does. priority is p0 (urgent), p1 (high), p2 (medium) or p3 (low), set on item. " +
 	"item, mark and unmark take items by the number in their ref (#4 is 4). Only a new item can be selected; selections stay until the person runs or unselects them. The fields are named mark and unmark; the person calls them select and unselect. " +
 	"Name items by their ref in everything you say."
 
 func factoryFloorSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"ask":{"type":"string","enum":["` + strings.Join([]string{floorAskWaiting, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}, `","`) + `"],"description":"What to read from the factory."},` +
-		`"item":{"type":"integer","description":"With ask item: the number in the item's ref (#4 is 4)."},` +
+		`"ask":{"type":"string","enum":["` + strings.Join([]string{floorAskRunning, floorAskQueue, floorAskWaiting, floorAskShipped, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}, `","`) + `"],"description":"What to read from the factory."},` +
+		`"item":{"type":"integer","description":"With ask item or priority: the number in the item's ref (#4 is 4)."},` +
+		`"start":{"type":"integer","description":"The number in the ref of one job to start now, only when the person asked."},` +
+		`"priority":{"type":"string","enum":["p0","p1","p2","p3"],"description":"With item: the priority to set on that job, only when the person asked."},` +
 		`"mark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers of new items to select for the person's next run."},` +
 		`"unmark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers whose selection to take off."}` +
 		`},"additionalProperties":false}`
@@ -118,10 +136,12 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 		Schema:      json.RawMessage(factoryFloorSchemaJSON()),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Ask    string `json:"ask"`
-				Item   int    `json:"item"`
-				Mark   []int  `json:"mark"`
-				Unmark []int  `json:"unmark"`
+				Ask      string `json:"ask"`
+				Item     int    `json:"item"`
+				Mark     []int  `json:"mark"`
+				Unmark   []int  `json:"unmark"`
+				Start    int    `json:"start"`
+				Priority string `json:"priority"`
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
@@ -129,13 +149,21 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 				}
 			}
 			ask := strings.ToLower(strings.TrimSpace(parsed.Ask))
-			if ask == "" && len(parsed.Mark)+len(parsed.Unmark) == 0 {
+			priority := strings.ToLower(strings.TrimSpace(parsed.Priority))
+			acts := parsed.Start > 0 || priority != ""
+			if ask == "" && len(parsed.Mark)+len(parsed.Unmark) == 0 && !acts {
 				ask = floorAskAll
 			}
 			switch ask {
-			case "", floorAskWaiting, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem:
+			case "", floorAskRunning, floorAskQueue, floorAskWaiting, floorAskShipped, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem:
 			default:
-				return rejectToolArguments(ctx, "Invalid arguments: ask is one of waiting, risky, cheapest, oldest, all or item."), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: ask is one of running, queue, waiting, shipped, risky, cheapest, oldest, all or item."), true, nil
+			}
+			if priority != "" && parsed.Item <= 0 {
+				return rejectToolArguments(ctx, "Invalid arguments: priority needs item, the number in the job's ref."), true, nil
+			}
+			if acts {
+				return a.floorAct(ctx, parsed.Start, parsed.Item, priority)
 			}
 			if ask == floorAskItem && parsed.Item <= 0 {
 				return rejectToolArguments(ctx, "Invalid arguments: ask item needs item, the number in the item's ref."), true, nil
@@ -143,6 +171,41 @@ func (a *Agent) factoryFloorTool() bare.Tool {
 			return a.floorRun(ctx, ask, parsed.Item, parsed.Mark, parsed.Unmark)
 		},
 	}
+}
+
+// floorAct starts one job, or sets one job's priority, through the door's
+// actor, by the ref the person read. Nothing else is done on the same call.
+func (a *Agent) floorAct(ctx context.Context, start, item int, priority string) (string, bool, error) {
+	actor, ok := a.config.Floor.(FloorActor)
+	if !ok {
+		return "Nothing changed: this window cannot start or prioritise a job; the person can on the job's page.", true, nil
+	}
+	snap, err := a.config.Floor.Snapshot(ctx)
+	if err != nil {
+		return "the factory could not be read: " + oneLine(err.Error()), true, nil
+	}
+	n := start
+	if n <= 0 {
+		n = item
+	}
+	found := floorFind(snap, n)
+	switch {
+	case len(found) == 0:
+		return fmt.Sprintf("Nothing changed: there is no #%d in the factory", n), true, nil
+	case len(found) > 1:
+		return fmt.Sprintf("Nothing changed: #%d is on %d repositories (%s)", n, len(found), floorRepos(found)), true, nil
+	}
+	var line string
+	if start > 0 {
+		line, err = actor.StartItem(ctx, found[0].ID)
+	} else {
+		value, _ := factory.PriorityFromShort(priority)
+		line, err = actor.SetPriority(ctx, found[0].ID, value)
+	}
+	if err != nil {
+		return oneLine(err.Error()), true, nil
+	}
+	return line, false, nil
 }
 
 // floorRun does one call: the marks first, then the ask over the floor as it
@@ -246,9 +309,12 @@ func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
 	if now.IsZero() {
 		now = time.Now()
 	}
+	if ask == floorAskShipped {
+		return floorShippedToday(snap, now)
+	}
 	var open []factory.Item
 	for _, it := range snap.Items {
-		if it.State != factory.StateDismissed && it.State != factory.StateShipped {
+		if it.State != factory.StateDismissed && (it.State != factory.StateShipped || floorFollowing(it)) {
 			open = append(open, it)
 		}
 	}
@@ -271,6 +337,20 @@ func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
 	}
 	rows, head := open, ""
 	switch ask {
+	case floorAskRunning:
+		rows = floorKeep(open, func(it factory.Item) bool {
+			return it.State == factory.StateRunning || it.State == factory.StateQueued || it.State == factory.StateLanded || floorFollowing(it)
+		})
+		head = "running, queued to run, or following an open pull request"
+	case floorAskQueue:
+		rows = floorKeep(open, func(it factory.Item) bool { return it.State == factory.StateNew })
+		sort.SliceStable(rows, func(i, j int) bool {
+			if ri, rj := factory.PriorityRank(rows[i]), factory.PriorityRank(rows[j]); ri != rj {
+				return ri < rj
+			}
+			return rows[i].Created.Before(rows[j].Created)
+		})
+		head = "not started, most urgent then oldest first"
 	case floorAskWaiting:
 		rows = floorKeep(open, func(it factory.Item) bool { return it.State == factory.StateNeedsYou })
 		head = "waiting on the person"
@@ -362,12 +442,48 @@ func FloorRow(it factory.Item, now time.Time) string {
 	if r := it.Triage.Rubric; r != nil {
 		add("complexity " + strconv.Itoa(r.Complexity()) + "/10, " + r.Band() + " (" + r.From + ")")
 	}
-	add(floorPriority(it.Triage))
+	if p := factory.PriorityFor(it); p != nil {
+		add("priority " + factory.PriorityShort(p.Value) + " (" + p.Value + ")")
+	} else {
+		add(floorPriority(it.Triage))
+	}
+	// A JOB FOLLOWING ITS PULL REQUEST IS ONE STATE, IN A PERSON'S WORDS. Its
+	// stored state is shipped, and the row once said `shipped` beside a step
+	// count that was not finished and named no step, so the foreman read back
+	// "One job is active … State: shipped, step 3 of 4 done" to the person.
+	// It is following its pull request, on Follow PR, whether it is resting
+	// (shipped) or running a repair (running, on followpr); a shipped job
+	// that is not following one is done.
+	onFollow := it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) && it.Stream.Phases[it.Stream.Cur].Name == factory.FollowPRStep
+	following := floorFollowing(it) && (it.State == factory.StateShipped || it.State == factory.StateRunning && onFollow)
 	state := string(it.State)
+	switch {
+	case following:
+		state = floorFollowingWords
+	case it.State == factory.StateShipped:
+		state = "done"
+	}
 	if it.Marked && it.State == factory.StateNew {
 		state += ", selected"
 	}
 	add(state)
+	// THE ONE STEP COUNT ([factory.StepCount]) and the step it is on, for a
+	// job that has begun: the count the job's own page shows.
+	if it.Stream != nil {
+		if done, total := factory.StepCount(it); total > 0 {
+			step := fmt.Sprintf("steps %d of %d done", done, total)
+			switch c := it.Stream.Cur; {
+			case following:
+				step += ", on " + floorFollowStep
+			case c >= 0 && c < len(it.Stream.Phases) && it.State != factory.StateShipped:
+				step += ", on " + it.Stream.Phases[c].Name
+			}
+			add(step)
+		}
+	}
+	if pr := it.PullRequest; pr != nil && pr.Number > 0 {
+		add(fmt.Sprintf("PR #%d %s", pr.Number, pr.State))
+	}
 	if age := floorAge(now, it.Created); age != "" {
 		add(age + " old")
 	}
@@ -509,4 +625,60 @@ func floorCut(s string, n int) string {
 		return s
 	}
 	return strings.TrimSpace(string(r[:n])) + "…"
+}
+
+// floorShippedToday is every job that shipped since the start of the floor's
+// day, each with its pull request and its change, for the foreman to sum up;
+// one line says none when none did.
+func floorShippedToday(snap factory.Snapshot, now time.Time) string {
+	y, m, d := now.Date()
+	since := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+	var rows []factory.Item
+	for _, it := range snap.Items {
+		at := it.DoneAt
+		if at.IsZero() && it.PullRequest != nil {
+			at = it.PullRequest.MergedAt
+		}
+		if it.State == factory.StateShipped && !at.Before(since) {
+			rows = append(rows, it)
+		}
+	}
+	if len(rows) == 0 {
+		return "nothing shipped today"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "shipped today · %d %s", len(rows), floorPlural(len(rows), "job", "jobs"))
+	for _, it := range rows {
+		b.WriteString("\n")
+		b.WriteString(FloorRow(it, now))
+		if pr := it.PullRequest; pr != nil && strings.TrimSpace(pr.URL) != "" {
+			b.WriteString(" · " + pr.URL)
+		}
+		if it.Change != nil && it.Change.Stat != nil && it.Change.Stat.Files > 0 {
+			st := it.Change.Stat
+			fmt.Fprintf(&b, " · %d %s, +%d −%d", st.Files, floorPlural(st.Files, "file", "files"), st.Added, st.Removed)
+		}
+		if how := strings.TrimSpace(it.DoneHow); how != "" {
+			b.WriteString(" · " + how)
+		}
+	}
+	return b.String()
+}
+
+// floorFollowing says a published job is still at work on its pull request:
+// the factory follows it (checks, reviews, readiness) and it still waits on
+// Mark ready or Merge. The live audit's foreman called such a job's factory
+// idle twice: first because a published job read as finished, then because
+// the factory had not yet read the pull request's state, so only a pull
+// request known merged or closed ends the following.
+// floorFollowingWords and floorFollowStep are how a job following its pull
+// request reads on the floor: the job page's own name for that step.
+const (
+	floorFollowingWords = "following its pull request (Follow PR)"
+	floorFollowStep     = "Follow PR"
+)
+
+func floorFollowing(it factory.Item) bool {
+	pr := it.PullRequest
+	return pr != nil && pr.Number > 0 && pr.State != factory.PRMerged && pr.State != factory.PRClosed && it.DoneHow == ""
 }

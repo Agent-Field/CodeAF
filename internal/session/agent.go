@@ -169,6 +169,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
+		workWake:           make(chan struct{}, 1),
 		taskComputerPrompt: config.mayNameTaskComputer(),
 		config:             config,
 		receipts:           config.receipts,
@@ -5760,8 +5761,9 @@ const explainingCheckpointCarryOnLead = "[carry on] A reader of a bounded accoun
 // isContinuationContext says whether a user-role message is one the HARNESS
 // wrote to send a stopped turn back to work: the carry-on in each of the
 // spellings journals have held, the two nudges ([checkpointLoadNudgeLead],
-// [checkpointAskNudgeLead]) and the note after a reply was cut off at the
-// output limit ([truncationContinuationNote]).
+// [checkpointAskNudgeLead]), the note after a reply was cut off at the
+// output limit ([truncationContinuationNote]), and a resumed factory step's
+// brief ([ResumedStepBrief]).
 //
 // EVERY ONE OF THEM IS RECORDED AS AN UNMARKED USER MESSAGE, because user-role
 // is the only role the model can be told something in and none of them goes
@@ -5776,6 +5778,7 @@ func isContinuationContext(text string) bool {
 	case strings.HasPrefix(text, checkpointCarryOnLead),
 		strings.HasPrefix(text, explainingCheckpointCarryOnLead),
 		strings.HasPrefix(text, legacyCheckpointCarryOnLead),
+		strings.HasPrefix(text, resumedStepLead),
 		strings.HasPrefix(text, checkpointLoadNudgeOpening) && strings.HasSuffix(text, checkpointLoadNudgeClosing),
 		strings.HasPrefix(text, checkpointAskNudgeOpening) && strings.HasSuffix(text, checkpointAskNudgeClosing):
 		return true

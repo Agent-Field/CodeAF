@@ -92,7 +92,7 @@ func TestFactoryPersonStopLaunchAuthorities(t *testing.T) {
 			}
 			var after api.Job
 			s.must("factory.job", map[string]any{"factory": status.Factory, "job": it.ID}, &after)
-			if after.State != api.StateNeedsYou {
+			if after.State != api.StateBacklog {
 				t.Fatalf("stopped job reads as %s", after.State)
 			}
 			if after.Can.Answer || after.Can.Approve || after.Can.PRReady || after.Can.Stop {
@@ -241,7 +241,7 @@ func TestFactoryPersonStopProofAndDraftPR(t *testing.T) {
 			}
 			var job api.Job
 			s.must("factory.job", map[string]any{"factory": status.Factory, "job": saved.ID}, &job)
-			if job.State != api.StateNeedsYou || job.Can.PRReady || job.Can.Approve || job.Desk == nil || (job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped) {
+			if job.State != api.StateBacklog || job.Can.PRReady || job.Can.Approve || job.Desk == nil || (job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped) {
 				t.Fatalf("wire lost Stop: %+v", job)
 			}
 		})
@@ -280,7 +280,7 @@ func TestFactoryPersonStopLegacyFixtures(t *testing.T) {
 			}
 			var job api.Job
 			s.must("factory.job", map[string]any{"factory": status.Factory, "job": it.ID}, &job)
-			if job.State != api.StateNeedsYou || job.Desk == nil || (job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped) {
+			if job.State != api.StateBacklog || job.Desk == nil || (job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped) {
 				t.Fatalf("legacy wire lost Stop: %+v", job)
 			}
 		})
@@ -475,7 +475,7 @@ func TestFactoryPersonStopGitHubSyncAndIntake(t *testing.T) {
 	pollStoppedJob(t, floor, it.ID)
 	var job api.Job
 	s.must("factory.job", map[string]any{"factory": status.Factory, "job": it.ID}, &job)
-	if job.State != api.StateNeedsYou || job.Desk == nil || (job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped) || !job.Can.StartNow || job.Can.Answer || job.Can.Approve || job.Can.PRReady {
+	if job.State != api.StateBacklog || job.Desk == nil || (job.Desk.PersonStopped == nil || !*job.Desk.PersonStopped) || !job.Can.StartNow || job.Can.Answer || job.Can.Approve || job.Can.PRReady {
 		t.Fatalf("GitHub sync erased or hid Stop: %+v", job)
 	}
 	history, err := record.Open(floor, record.Options{})

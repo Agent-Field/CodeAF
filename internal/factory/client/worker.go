@@ -235,6 +235,14 @@ func (w *WorkerClient) Done(ctx context.Context, lease string, done api.WorkerDo
 	return err
 }
 
+// HandBack gives the lease back because this process is ending cleanly: the
+// factory queues the job again at once, with no failure recorded. An older
+// factory without the door answers an error, and the hold runs out as before.
+func (w *WorkerClient) HandBack(ctx context.Context, lease string) error {
+	_, err := w.send(ctx, http.MethodPost, leasePath(lease, "handback"), w.credential, struct{}{}, nil)
+	return err
+}
+
 func leasePath(lease, verb string) string {
 	return "/v1/workers/leases/" + url.PathEscape(lease) + "/" + verb
 }

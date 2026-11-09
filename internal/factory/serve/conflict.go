@@ -341,7 +341,7 @@ func classify(err error) (int, string) {
 		return http.StatusGatewayTimeout, ""
 	case errors.Is(err, context.Canceled):
 		return http.StatusRequestTimeout, ""
-	case errors.Is(err, run.ErrAlreadyRunning), errors.Is(err, factory.ErrPersonStopped):
+	case errors.Is(err, run.ErrAlreadyRunning), errors.Is(err, factory.ErrPersonStopped), errors.Is(err, factory.ErrNoRepo):
 		return http.StatusConflict, "conflict"
 	}
 	msg := err.Error()

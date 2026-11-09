@@ -163,6 +163,9 @@ func runEditOf(args runArgs) (factory.RunEdit, error) {
 		if factory.ApproveWord(name) {
 			// AN APPROVE STEP HAS NO ASK: the person is the step.
 			st := factory.Approve(nil)
+			// A NEWLY ADDED APPROVE STEP IS A PERSON'S: the manager that adds
+			// one never passes it.
+			st.Pass = factory.PassForNewApprove
 			st.Why, st.By = why, factory.ByManager
 			e.Add = append(e.Add, factory.Added{Stage: st, After: after})
 			if e.Why == "" {
