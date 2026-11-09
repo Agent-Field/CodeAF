@@ -78,11 +78,25 @@ func TestContractWindowsServiceStop(t *testing.T) {
 	if processgroup.Alive(pid) {
 		t.Fatal("stop succeeded while its job was alive")
 	}
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		t.Fatalf("stopped service still holds its port: %v", err)
+	assertServicePortFree(t, address)
+}
+
+func assertServicePortFree(t *testing.T, address string) {
+	t.Helper()
+	// Int-fix contract B: Windows can signal process death before its sockets
+	// finish closing. Poll only after the service has been confirmed dead.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		listener, err := net.Listen("tcp", address)
+		if err == nil {
+			listener.Close()
+			return
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("stopped service still holds its port: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	listener.Close()
 }
 
 // Contract 3: a job waiter that never verifies death must return failure after

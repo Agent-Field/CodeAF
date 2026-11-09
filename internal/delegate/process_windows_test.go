@@ -109,9 +109,23 @@ func TestContractWindowsDelegateStopsOrphanAfterLeaderExit(t *testing.T) {
 	if processgroup.ProcessAlive(receipt.PID) {
 		t.Fatal("delegate reported stopped with a live grandchild")
 	}
-	listener, err := net.Listen("tcp", receipt.Address)
-	if err != nil {
-		t.Fatalf("stopped delegate still holds its port: %v", err)
+	assertDelegatePortFree(t, receipt.Address)
+}
+
+func assertDelegatePortFree(t *testing.T, address string) {
+	t.Helper()
+	// Int-fix contract B: Windows can signal process death before its sockets
+	// finish closing. Poll only after the grandchild has been confirmed dead.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		listener, err := net.Listen("tcp", address)
+		if err == nil {
+			listener.Close()
+			return
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("stopped delegate still holds its port: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	listener.Close()
 }

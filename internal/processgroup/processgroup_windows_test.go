@@ -139,11 +139,20 @@ func assertListenerGone(t *testing.T, receipt helperReceipt) {
 	if ProcessAlive(receipt.PID) {
 		t.Fatalf("listener process %d survived stop", receipt.PID)
 	}
-	listener, err := net.Listen("tcp", receipt.Address)
-	if err != nil {
-		t.Fatalf("stopped process still holds its port: %v", err)
+	// Int-fix contract B: Windows can signal process death just before its
+	// sockets finish closing. Allow that teardown to complete after the PID check.
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		listener, err := net.Listen("tcp", receipt.Address)
+		if err == nil {
+			listener.Close()
+			return
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("stopped process still holds its port: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	listener.Close()
 }
 
 // Contracts 1, 3, 4: the real API owns an orphan through a .cmd shim, retains
