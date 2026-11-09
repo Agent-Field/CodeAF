@@ -117,15 +117,20 @@ func (b *appBackend) agentFieldKeyMoved(provider string) {
 	default:
 		return
 	}
+	if host := b.liveLocalHost(); host != nil {
+		guard.Go("app/factory agentfield key", host.refreshAgentField)
+	}
+}
+
+// liveLocalHost is this machine's factory host while it is started, or nil.
+func (b *appBackend) liveLocalHost() *appFactoryHost {
 	l := &b.local
 	l.mu.Lock()
-	host := l.host
-	live := l.running && !l.closed && host != nil
-	l.mu.Unlock()
-	if !live {
-		return
+	defer l.mu.Unlock()
+	if !l.running || l.closed {
+		return nil
 	}
-	guard.Go("app/factory agentfield key", host.refreshAgentField)
+	return l.host
 }
 
 // refreshAgentField starts the node again when its kept secrets changed.
