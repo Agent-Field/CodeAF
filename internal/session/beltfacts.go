@@ -152,14 +152,9 @@ func (c Config) mayAutomate() bool {
 	return c.automationStore() != nil && c.AutomationRun == nil && !c.InTask
 }
 
-// signsGitWork says whether the attribution law belongs on this belt, and the
-// answer is always yes. It used to be the person's `attribution` row, and that
-// row is gone (2026-09-23): codeaf signs every commit it writes. It used to
-// carry a second half too — a fork's hand was told nothing because its `bash`
-// was rebuilt read-only — and that half went with `fork` itself: every shape
-// this package still builds carries a `bash` that could make a commit. It stays
-// a predicate because the belt-fact table is written in predicates.
-func (c Config) signsGitWork() bool { return true }
+// signsGitWork says whether the attribution law belongs on this belt: true
+// unless the person turned attribution off ([Config.AttributionOff]).
+func (c Config) signsGitWork() bool { return !c.AttributionOff }
 
 // assistedByModel is the model this belt's `Assisted-by` line names: the model
 // the page is rendered for, or nothing when the person turned the model's name
@@ -177,10 +172,12 @@ func (c Config) assistedByModel() string {
 // the same two trailer lines the model is told to write
 // (internal/exec's [exec.AttributionTrailers]).
 //
-// ITS ZERO VALUE STILL SIGNS, with the bare `Assisted-by: CodeAF` line. The
-// repository's CONTRIBUTING rule is checked at the commit door, not represented
-// by a value here. This value carries only whether the line names a model.
+// ITS ZERO VALUE STILL SIGNS, with the bare `Assisted-by: CodeAF` line. When
+// off is true, sign and signOnce leave the message unchanged.
 type gitSignature struct {
+	// off is the person's `attribution` row turned off: no trailer lines are
+	// added at all.
+	off bool
 	// named is the person's `attribution.model` row: whether the line names
 	// the model at all.
 	named bool
@@ -214,17 +211,21 @@ func signedModel(node *TaskNode) string {
 // none — the spelling a record that outlives the agent keeps it in
 // ([ProgramFolder.SignModel]).
 func (s gitSignature) namedModel() string {
-	if !s.named {
+	if s.off || !s.named {
 		return ""
 	}
 	return s.model
 }
 
 // sign is a commit message as the harness leaves it: one blank line, then the
-// two trailer lines. The files where the harness writes its OWN commits import
-// os/exec as `exec`, which is why they reach internal/exec's one spelling of
-// the block through here rather than by name.
+// two trailer lines, or the message unchanged when attribution is off. The
+// files where the harness writes its OWN commits import os/exec as `exec`,
+// which is why they reach internal/exec's one spelling of the block through
+// here rather than by name.
 func (s gitSignature) sign(message string) string {
+	if s.off {
+		return message
+	}
 	model := ""
 	if s.named {
 		model = s.model
@@ -233,8 +234,12 @@ func (s gitSignature) sign(message string) string {
 }
 
 // signOnce preserves lines a worker already wrote and supplies only the
-// missing attribution, through the same model choice as the harness's commits.
+// missing attribution, through the same model choice as the harness's commits,
+// or leaves the message unchanged when attribution is off.
 func (s gitSignature) signOnce(message string) string {
+	if s.off {
+		return message
+	}
 	model := ""
 	if s.named {
 		model = s.model
@@ -243,13 +248,17 @@ func (s gitSignature) signOnce(message string) string {
 }
 
 // signsGitWork is the signature a live agent's own commits carry, off the same
-// two facts the sentence the model is told is rendered from — the model the
-// conversation is on NOW, and the person's model-name row — so that the
-// harness's commits and the model's own read the same. The commits a landing
-// writes are not on any belt; nobody is asked about them (task_run.go's
-// [signed]).
+// facts the sentence the model is told is rendered from — whether attribution
+// is off, the model the conversation is on NOW, and the person's model-name
+// row — so that the harness's commits and the model's own read the same. The
+// commits a landing writes are not on any belt; nobody is asked about them
+// (task_run.go's [signed]).
 func (a *Agent) signsGitWork() gitSignature {
-	return gitSignature{named: !a.config.AttributionModelOff, model: a.Model()}
+	return gitSignature{
+		off:   a.config.AttributionOff,
+		named: !a.config.AttributionModelOff,
+		model: a.Model(),
+	}
 }
 
 // mayDesignHarness says whether the two harness hands belong on this belt
@@ -460,15 +469,13 @@ var beltFacts = []beltFact{{
 	// a landing writes is not the model's and carries the same two lines without
 	// being told (task_run.go's [commitTaskWorkAs]).
 	//
-	// IT HAS NO ABSENT CASE, because signing has no off. The law's own commit
-	// sentence spells both trailer lines in their order, with the `Assisted-by`
-	// one left as a slot the render fills from the model this page is for
-	// ([Config.assistedByModel]) — so the law is the one place both lines are
-	// said, and the page does not say them a second time.
+	// When the person turns attribution off, the absent case carries
+	// [exec.AttributionOffLaw] so a model that has seen AI trailers in training
+	// is explicitly told not to invent any of its own.
 	tools:   []string{"bash"},
 	holds:   Config.signsGitWork,
 	present: "- " + exec.AttributionLaw,
-	absent:  "",
+	absent:  "- " + exec.AttributionOffLaw,
 }}
 
 // handoffFacts is `## Work or words`: the ways work leaves this turn, composed

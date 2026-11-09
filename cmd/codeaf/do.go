@@ -3722,7 +3722,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// are the ones IT changed — the person's own uncommitted edits and untracked
 	// files were there first, still hold what they held, and are none of the
 	// run's business ([session.RunTreeSnapshot]).
-	before := session.SnapshotRunTree(workspace)
+	before := session.SnapshotRunTree(workspace).WithAttribution(config.AttributionAt(settings.ProfileDir))
 	title := topicTitle(request.headline())
 	recordDir, err := doRunStore(request.runStore)
 	if err != nil {

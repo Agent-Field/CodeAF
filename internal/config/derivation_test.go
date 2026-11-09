@@ -125,6 +125,9 @@ var settingReaders = map[string]string{
 	KeyPlanConsent:       "PlanConsentUSD",
 	KeyDocumentEngine:    "DocumentEngine",
 	KeyVisionModel:       "VisionModel",
+	// The attribution row names the resolver every door asks whether this
+	// launch signs what it writes.
+	KeyAttribution: "AttributionAt",
 	// The model-name row names the one resolver every door turns it into a
 	// name through: the leaf loops' doors hand [AssistedByModelAt]'s answer to
 	// the attribution line.
