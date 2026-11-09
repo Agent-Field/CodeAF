@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: Storage-off chats stop tools when they move elsewhere, closing sentences arrive, and moved chats keep their words
+title: Storage-off chats stop tools that moved elsewhere, and moved and closing chats keep what they say
 pr: 2536
 surface: [chat, engine, remote, docs]
 invalidates:
