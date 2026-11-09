@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -81,6 +82,25 @@ func runInMemoryTemp(m *testing.M) int {
 // started it.
 func ownMemoryTemp(base, dir string) bool {
 	return dir != "" && filepath.Dir(filepath.Clean(dir)) == base && strings.HasPrefix(filepath.Base(dir), memoryTempPrefix)
+}
+
+// TestGitHubLinuxRunnersKeepThisPackageOnTmpfs makes the fallback LOUD where it
+// matters. go test shows nothing a passing package printed, so the line above
+// never reaches a CI log, and a runner image without room at /dev/shm would
+// quietly put the relay rigs back on the shared disk, bringing back the
+// cold-router flake while the suite looked fixed. On GitHub's Linux runners the
+// package therefore fails instead.
+func TestGitHubLinuxRunnersKeepThisPackageOnTmpfs(t *testing.T) {
+	if runtime.GOOS != "linux" || os.Getenv("GITHUB_ACTIONS") != "true" {
+		t.Skip("only GitHub's Linux runners are held to this")
+	}
+	shm, ok := memoryTempBase()
+	if !ok {
+		t.Fatal("this runner has no tmpfs with 1 GiB free at /dev/shm, so the relay rigs' fsyncs wait on the shared disk again (#2552)")
+	}
+	if root := os.Getenv("TMPDIR"); !ownMemoryTemp(shm, root) {
+		t.Fatalf("TMPDIR is %q, not one of this package's roots under %s", root, shm)
+	}
 }
 
 // removeStaleMemoryTemp removes this package's roots that no live run can own.
