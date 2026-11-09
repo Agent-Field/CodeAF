@@ -105,6 +105,7 @@ func TestScreenWithholdsAnyFileWithASecretAndSaysOnce(t *testing.T) {
 // TestScreenReleasesAFileThatIsCleaned proves D2: the directive stays after secrets are cleared.
 func TestScreenReleasesAFileThatIsCleaned(t *testing.T) {
 	r := newRig(t)
+	fixtureGit(t, r.tree, "init", "-q")
 	r.write("src/config.py", "KEY = '"+fakeKey+"'\n")
 	r.screen()
 	r.write("src/config.py", "KEY = os.environ['KEY']\n")

@@ -86,35 +86,35 @@ func ignoredDirectories(tree string) ([]string, error) {
 	return dirs, nil
 }
 
+// hasGitMarker keeps a failed Git call from licensing ignored files, while a
+// tree with no surrounding repository still works when Git is unavailable.
 func hasGitMarker(tree string) bool {
-	repository, _ := gitScope(tree)
-	return repository
-}
-
-// gitScope keeps the native capture's ancestor search inside the same boundary
-// as Git's commands, so a surrounding checkout cannot hide a separate chat.
-func gitScope(tree string) (repository, fenced bool) {
-	ceilings := map[string]bool{}
-	for _, path := range filepath.SplitList(env.Value(gitCeilingVar)) {
-		if filepath.IsAbs(path) {
-			ceilings[canonicalTree(path)] = true
-		}
-	}
-	root := canonicalTree(tree)
-	for dir := root; ; dir = filepath.Dir(dir) {
-		if dir != root && ceilings[dir] {
-			return false, true
-		}
+	for dir := canonicalTree(tree); ; dir = filepath.Dir(dir) {
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil || os.IsPermission(err) {
-			return true, false
-		}
-		if ceilings[dir] {
-			return false, true
+			return true
 		}
 		if filepath.Dir(dir) == dir {
-			return false, false
+			return false
 		}
 	}
+}
+
+// gitScope asks Git because ceiling entries, symlinks and the starting directory
+// have discovery rules of their own. An unexpected failure keeps native ignore
+// protection enabled rather than licensing capture of ignored private files.
+func gitScope(tree string) (repository, fenced bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "rev-parse", "--show-toplevel") //codeaf:plumbing Capture must use Git's actual discovery boundary.
+	cmd.Dir = tree
+	if _, err := cmd.Output(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && strings.Contains(string(exit.Stderr), "not a git repository") {
+			return false, env.Value(gitCeilingVar) != ""
+		}
+		return hasGitMarker(tree), false
+	}
+	return true, false
 }
 
 // ignoredPaths reads only the engine's paths. Older counts and newer summary
