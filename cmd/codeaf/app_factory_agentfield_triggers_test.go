@@ -189,7 +189,7 @@ func TestSavingARuleRefusesAReasonerAgentFieldDoesNotHave(t *testing.T) {
 	}
 	err := s.backend.routeReasonersKnown(ctx, id, rule("support-bot.nope"))
 	var wireErr *appwire.Error
-	if !errors.As(err, &wireErr) || wireErr.Code != appwire.CodeBadParams || !strings.Contains(err.Error(), `routing rule "support": AgentField has no reasoner support-bot.nope`) {
+	if !errors.As(err, &wireErr) || wireErr.Code != appwire.CodeBadParams || !strings.Contains(err.Error(), `routing rule "support": AgentField has no agent support-bot.nope`) {
 		t.Fatalf("an unknown reasoner: %v", err)
 	}
 	if err := s.backend.routeReasonersKnown(ctx, "someone-elses-factory", rule("x.y")); err != nil {

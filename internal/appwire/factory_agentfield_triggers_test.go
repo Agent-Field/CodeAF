@@ -95,7 +95,7 @@ func TestRoutesAnnounceRunOnAndCarryIt(t *testing.T) {
 	if !strings.Contains(string(raw), `"run_on":"bot.reply"`) {
 		t.Fatalf("a rule on the wire: %s", raw)
 	}
-	if _, err := CheckRoutesSet(FactoryRoutesSetParams{Factory: "f", Rules: &[]route.Rule{{Name: "support", Then: route.Action{RunOn: "bot", Start: "auto"}}}}); wireCode(t, err) != CodeBadParams || !strings.Contains(err.Error(), "node.reasoner") {
+	if _, err := CheckRoutesSet(FactoryRoutesSetParams{Factory: "f", Rules: &[]route.Rule{{Name: "support", Then: route.Action{RunOn: "bot", Start: "auto"}}}}); wireCode(t, err) != CodeBadParams || !strings.Contains(err.Error(), "node.agent") {
 		t.Fatalf("a bad run_on: %v", err)
 	}
 }

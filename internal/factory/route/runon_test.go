@@ -22,8 +22,8 @@ func TestCleanKeepsARunOnAndRefusesABadOne(t *testing.T) {
 		then route.Action
 		say  string
 	}{
-		"no reasoner":   {route.Action{RunOn: "support-bot", Start: route.StartAuto}, "node.reasoner"},
-		"spaces":        {route.Action{RunOn: "support bot.draft", Start: route.StartAuto}, "node.reasoner"},
+		"no agent":      {route.Action{RunOn: "support-bot", Start: route.StartAuto}, "node.agent"},
+		"spaces":        {route.Action{RunOn: "support bot.draft", Start: route.StartAuto}, "node.agent"},
 		"with pipeline": {route.Action{RunOn: "support-bot.draft", Pipeline: "quick", Start: route.StartAuto}, "names no pipeline"},
 	} {
 		_, err := route.Clean([]route.Rule{{Name: "a", Then: tc.then}})

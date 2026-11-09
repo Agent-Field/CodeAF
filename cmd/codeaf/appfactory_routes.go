@@ -139,7 +139,7 @@ func (b *appBackend) routeReasonersKnown(ctx context.Context, id string, rules [
 	}
 	nodes, err := lister.Nodes(ctx)
 	if err != nil {
-		return appwire.Errorf(appwire.CodeConflict, "AgentField did not list its reasoners, so routing rule %q could not be checked; nothing was changed: %s", named[0].Name, err.Error())
+		return appwire.Errorf(appwire.CodeConflict, "AgentField did not list its agents, so routing rule %q could not be checked; nothing was changed: %s", named[0].Name, err.Error())
 	}
 	known := map[string]bool{}
 	for _, n := range nodes {
@@ -149,7 +149,7 @@ func (b *appBackend) routeReasonersKnown(ctx context.Context, id string, rules [
 	}
 	for _, r := range named {
 		if !known[strings.ToLower(r.Then.RunOn)] {
-			return appwire.Errorf(appwire.CodeBadParams, "routing rule %q: AgentField has no reasoner %s; pick one it lists", r.Name, r.Then.RunOn)
+			return appwire.Errorf(appwire.CodeBadParams, "routing rule %q: AgentField has no agent %s; pick one it lists", r.Name, r.Then.RunOn)
 		}
 	}
 	return nil

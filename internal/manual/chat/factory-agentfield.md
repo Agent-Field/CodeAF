@@ -244,7 +244,7 @@ closes the link, stops listening, and forgets the settings, the key and the
 token. Jobs
 already filed stay as they are.
 
-## send jobs to an AgentField reasoner with a routing rule — run_on in a rule, work with no repository
+## send jobs to an AgentField agent with a routing rule — run_on in a rule, a reasoner, work with no repository
 
 A routing rule's `then` can name `run_on`, `"<node>.<reasoner>"`: every job
 the rule matches is run by that reasoner instead of by a pipeline, exactly as
@@ -257,7 +257,7 @@ job's repository.
 The reasoner is checked when the rules are saved, against the reasoners the
 control plane lists (the same list an agentfield step is picked from): one it
 does not have refuses the table with "routing rule <name>: AgentField has no
-reasoner <node.reasoner>; pick one it lists", and a factory that is not
+agent <node.reasoner>; pick one it lists", and a factory that is not
 connected refuses a rule with `run_on`. A team server's rules are checked for
 spelling only. `when.sources: [agentfield:*]` matches every AgentField source,
 as `agentfield` does.

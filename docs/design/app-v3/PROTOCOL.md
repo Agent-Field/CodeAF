@@ -772,7 +772,7 @@ reasoner in place of the factory's steps, needs no repository, and runs as a
 job filed with `run_on` does. Such a rule names no `pipeline` (`bad_params`).
 On this machine's factory `factory.routes_set` checks every `run_on` against
 the reasoners the control plane lists: one it does not have is `bad_params`
-(`routing rule <name>: AgentField has no reasoner <node.reasoner>; pick one it
+(`routing rule <name>: AgentField has no agent <node.reasoner>; pick one it
 lists`), and a factory not connected to AgentField is `conflict`. A source in
 `when.sources` written `agentfield:*` matches every AgentField source, as
 `agentfield` does.

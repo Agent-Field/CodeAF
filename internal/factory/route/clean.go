@@ -119,9 +119,9 @@ func cleanRule(r Rule) (Rule, error) {
 		target, err := factory.AgentFieldTargetWord(t.RunOn)
 		switch {
 		case err != nil:
-			return r, fmt.Errorf("then run_on names an AgentField reasoner as node.reasoner: %s", err.Error())
+			return r, fmt.Errorf("then run_on names an AgentField agent as node.agent: %s", err.Error())
 		case t.Pipeline != "":
-			return r, fmt.Errorf("then run_on runs the job on an AgentField reasoner in place of a pipeline, so it names no pipeline")
+			return r, fmt.Errorf("then run_on runs the job on an AgentField agent in place of a pipeline, so it names no pipeline")
 		}
 		t.RunOn = target
 	}
