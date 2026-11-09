@@ -56,6 +56,9 @@ codeaf is closed when the moment comes, the reminder is not lost: it is said onc
 codeaf window is next open, marked `late`. A reminder made with nobody there to
 answer the card — inside a task, or a headless `codeaf chat --once` — is not set up at all.
 
+Reminders run on Windows, macOS and Linux while a codeaf window is open. On Windows,
+the reminder appears in codeaf; there is no desktop notification banner.
+
 ## Do something every Monday — scheduled work at a time or on a rhythm
 
 "Every Monday at 9, draft the weekly update from the git log", "at 7 tomorrow run the full

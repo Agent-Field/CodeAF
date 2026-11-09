@@ -3,6 +3,8 @@ package automation
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -146,6 +148,24 @@ func (r *rig) now(t *testing.T, id string) {
 			t.Fatalf("could not queue a run: %v", err)
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Contract 4: registering a held window must let the real clock fire a reminder.
+func TestPublishContract4ReminderFiresAndReleasesItsWindow(t *testing.T) {
+	r := startClock(t, &fakeRunner{})
+	a, err := r.store.Create(reminder(time.Now().Add(-time.Second)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := r.settle(t, a.ID, 1)
+	if runs[0].Outcome != OutcomeDone || runs[0].Line != "time to leave" {
+		t.Fatalf("reminder did not fire: %+v", runs[0])
+	}
+	r.window()
+	entries, err := os.ReadDir(filepath.Join(r.store.Root(), windowsDir))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("released window files = %v, %v", entries, err)
 	}
 }
 
