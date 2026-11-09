@@ -1,17 +1,16 @@
 ---
 kind: fixed
-title: Empty chats can pair, and chats in Git-ignored project folders can save and move
+title: A computer that only opened codeaf can pair, and the local relay stops rebuilding in a loop
 pr: 2540
-surface: [chat, engine, remote, docs]
+surface: [chat, engine, docs]
 invalidates:
-  - "Opening and quitting an empty chat could prevent pairing without --replace; startup inventory and an empty owned working folder now allow code and link pairing while submitted work keeps its refusal."
-  - "A project inside a Git-ignored parent could fail to save or lose the conversation; Git's answer now excludes the project files while the chat's own words still save and move."
+  - "Opening codeaf once and quitting left an empty conversation that made codeaf pair refuse with 'this computer has local work'; a computer with nothing but that empty conversation now pairs by code or link without --replace, while a sent turn, saved memories, settings or any staged or committed file still refuse."
+  - "npm run dev for the hosted relay could rebuild and reload itself in a loop, because its build hook rewrote src/raft/core.wasm inside the watched folder, and its Node process grew to about 9 GB before aborting; an unchanged build now leaves core.wasm untouched and the local wrapper bounds Node's heap."
 ---
-Both pairing roads accept a computer that only opened codeaf. A submitted chat
-still produces the counted refusal, and saved memories and settings retain their
-existing checks.
+A computer that has only been started holds nothing to lose, so it joins
+without being told to replace. Files staged or committed in its own repository,
+including ones whose names are only spaces, still count as work.
 
-When Git ignores the whole project, its entries stay out of saved history and
-the separately saved conversation can move. Nested repositories and Git
-discovery ceilings keep Git's own meaning. A genuine Git failure still stops
-saving instead of admitting private files.
+The local relay's build hook builds the reactor beside the tree and moves it
+into place only when its bytes differ, and `npm run dev` caps Node's heap at
+2 GB unless the caller sets its own limit.
