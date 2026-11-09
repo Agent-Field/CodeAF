@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -386,12 +387,24 @@ func agentFieldSourceNames(sources []agentfield.Source) string {
 	return strings.Join(names, ", ")
 }
 
+// agentFieldEventTypes is a source's event types as the catalog lists them,
+// trimmed and each once; nil when it lists none, so the field is left out.
+func agentFieldEventTypes(in []string) []string {
+	var out []string
+	for _, t := range in {
+		if t = strings.TrimSpace(t); t != "" && !slices.Contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // agentFieldWireSources is the catalog on the wire, each source with its
 // label and the fields of its config.
 func agentFieldWireSources(sources []agentfield.Source) []appwire.FactoryAgentFieldSource {
 	out := make([]appwire.FactoryAgentFieldSource, 0, len(sources))
 	for _, s := range sources {
-		w := appwire.FactoryAgentFieldSource{Name: s.Name, Kind: s.Kind, SecretRequired: s.SecretRequired, ConfigSchema: s.ConfigSchema, Label: agentfield.SourceLabel(s.Name)}
+		w := appwire.FactoryAgentFieldSource{Name: s.Name, Kind: s.Kind, SecretRequired: s.SecretRequired, ConfigSchema: s.ConfigSchema, Label: agentfield.SourceLabel(s.Name), EventTypes: agentFieldEventTypes(s.EventTypes)}
 		for _, f := range agentfield.ConfigFields(s.ConfigSchema) {
 			w.ConfigFields = append(w.ConfigFields, appwire.FactoryAgentFieldConfigField{Name: f.Name, Label: f.Label, Secret: f.Secret})
 		}

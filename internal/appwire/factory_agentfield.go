@@ -158,6 +158,9 @@ type FactoryAgentFieldSource struct {
 	// ConfigFields is the top-level fields its config schema names, for a
 	// form to draw; absent when it names none.
 	ConfigFields []FactoryAgentFieldConfigField `json:"config_fields,omitempty"`
+	// EventTypes is the event types the source can emit, as the control
+	// plane's catalog lists them; absent when it lists none.
+	EventTypes []string `json:"event_types,omitempty"`
 }
 
 // FactoryAgentFieldConfigField is one field of a source's config. Secret says

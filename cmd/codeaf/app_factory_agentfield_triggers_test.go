@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -32,7 +33,7 @@ func newTriggerPlane(t *testing.T) *triggerPlane {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/sources":
 			_, _ = io.WriteString(w, `{"sources":[
-				{"name":"linear","kind":"http","secret_required":true,"config_schema":{"type":"object","properties":{"tolerance_seconds":{"type":"integer"}}}},
+				{"name":"linear","kind":"http","secret_required":true,"event_types":[" Issue.create ","Issue.update","Issue.create",""],"config_schema":{"type":"object","properties":{"tolerance_seconds":{"type":"integer"}}}},
 				{"name":"generic_bearer","kind":"http","secret_required":true,"config_schema":{"type":"object","properties":{"idempotency_header":{"type":"string"},"api_token":{"type":"string"}}}},
 				{"name":"cron","kind":"loop","secret_required":false,"config_schema":{"type":"object","properties":{"expression":{"type":"string","title":"When"}}}}]}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/triggers":
@@ -110,6 +111,12 @@ func TestTheTriggerListCarriesTheCatalogAndOnlyThisNodesTriggers(t *testing.T) {
 	fields := out.Sources[1].ConfigFields
 	if len(fields) != 2 || fields[0].Name != "api_token" || !fields[0].Secret || fields[1].Secret || fields[1].Label != "Idempotency header" {
 		t.Fatalf("generic_bearer's fields %+v", fields)
+	}
+	if got := out.Sources[0].EventTypes; !slices.Equal(got, []string{"Issue.create", "Issue.update"}) {
+		t.Fatalf("linear's event types %v, want the catalog's, trimmed and each once", got)
+	}
+	if raw, _ := json.Marshal(out.Sources[1]); strings.Contains(string(raw), "event_types") {
+		t.Fatalf("a source the catalog lists no events for carries the field: %s", raw)
 	}
 	if f := out.Sources[2].ConfigFields; len(f) != 1 || f[0].Label != "When" {
 		t.Fatalf("a schema's title is the field's label: %+v", f)

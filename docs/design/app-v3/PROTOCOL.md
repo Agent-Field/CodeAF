@@ -488,7 +488,9 @@ this machine's.
 `factory.agentfield_triggers` in hello features says the engine also serves
 the trigger page's two calls. `factory.agentfield_triggers {factory}` then
 carries the catalog beside the triggers, `sources: [{name, label, kind,
-secret_required, config_schema?, config_fields?: [{name, label, secret?}]}]`
+secret_required, config_schema?, config_fields?: [{name, label, secret?}],
+event_types?}]` (`event_types` only when the control plane's catalog lists the
+events a source can emit)
 (every source in `factory.agentfield_sources` carries `label` and
 `config_fields?` too), and each trigger adds `entry_source` (the source a job
 it files carries, `agentfield:<source>` with `_` written `-`, what a routing

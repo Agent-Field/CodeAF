@@ -143,6 +143,9 @@ type Source struct {
 	Kind           string          `json:"kind"`
 	SecretRequired bool            `json:"secret_required"`
 	ConfigSchema   json.RawMessage `json:"config_schema,omitempty"`
+	// EventTypes is the event types the source can emit, when the control
+	// plane's catalog lists them; empty when it does not.
+	EventTypes []string `json:"event_types,omitempty"`
 }
 
 // NewTrigger is POST /api/v1/triggers.
