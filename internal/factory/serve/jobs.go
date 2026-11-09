@@ -1147,27 +1147,7 @@ func (h *Handler) scheduleJobTimer() {
 	if err != nil {
 		return
 	}
-	var next time.Time
-	for _, it := range items {
-		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
-			at := rec.Deadline
-			if rec.State == "waiting" {
-				at = rec.NextAt
-			}
-			if !at.After(h.clock()) {
-				at = h.clock().Add(2 * time.Second)
-			}
-			if next.IsZero() || at.Before(next) {
-				next = at
-			}
-		}
-		if a := it.Approval; a != nil && a.State == "approving" && (next.IsZero() || a.UndoUntil.Before(next)) {
-			next = a.UndoUntil
-		}
-		if m := it.Merging; m != nil && m.State == factory.MergeAsked && (next.IsZero() || m.UndoUntil.Before(next)) {
-			next = m.UndoUntil
-		}
-	}
+	next := jobTimerDue(items, h.clock())
 	h.jobsMu.Lock()
 	defer h.jobsMu.Unlock()
 	if h.jobsClosed {
@@ -1179,6 +1159,41 @@ func (h *Handler) scheduleJobTimer() {
 	if !next.IsZero() {
 		h.jobsTimer = time.AfterFunc(max(next.Sub(h.clock()), time.Millisecond), h.runJobTimer)
 	}
+}
+
+// jobTimerDue is when the job timer should next look: the soonest recovery,
+// approval or merge deadline among items, or zero for none.
+//
+// A deadline already past is looked at again in two seconds, never at once: a
+// settle that could not move the job (a refused merge, an approval still
+// waiting on its door) would otherwise re-arm the timer at a millisecond and
+// settle the whole floor a thousand times a second.
+func jobTimerDue(items []factory.Item, now time.Time) time.Time {
+	var next time.Time
+	soonest := func(at time.Time) {
+		if !at.After(now) {
+			at = now.Add(2 * time.Second)
+		}
+		if next.IsZero() || at.Before(next) {
+			next = at
+		}
+	}
+	for _, it := range items {
+		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
+			at := rec.Deadline
+			if rec.State == "waiting" {
+				at = rec.NextAt
+			}
+			soonest(at)
+		}
+		if a := it.Approval; a != nil && a.State == "approving" {
+			soonest(a.UndoUntil)
+		}
+		if m := it.Merging; m != nil && m.State == factory.MergeAsked {
+			soonest(m.UndoUntil)
+		}
+	}
+	return next
 }
 
 func approvalWords(it factory.Item) string {
