@@ -50,7 +50,7 @@ func newTriggerPlane(t *testing.T) *triggerPlane {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(agentfield.Trigger{ID: "t-new", SourceName: nt.SourceName, TargetNodeID: nt.TargetNodeID, TargetReasoner: nt.TargetReasoner, EventTypes: nt.EventTypes, SecretEnvVar: nt.SecretEnvVar, Enabled: true})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/nodes":
-			_, _ = io.WriteString(w, `{"nodes":[{"id":"support-bot","health_status":"active","reasoners":[{"id":"draft_reply"}]}]}`)
+			_, _ = io.WriteString(w, `{"nodes":[{"id":"support-bot","health_status":"active","reasoners":[{"id":"draft_reply"}]},{"id":"codeaf-factory","health_status":"active","reasoners":[{"id":"intake"},{"id":"status"}]}]}`)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = io.WriteString(w, `{"error":"not found"}`)
@@ -201,5 +201,43 @@ func TestSavingARuleRefusesAReasonerAgentFieldDoesNotHave(t *testing.T) {
 	}
 	if err := bare.backend.routeReasonersKnown(ctx, bareID, rule("support-bot.draft_reply")); !errors.As(err, &wireErr) || wireErr.Code != appwire.CodeConflict || !strings.Contains(err.Error(), "not connected to AgentField") {
 		t.Fatalf("run_on with no connection: %v", err)
+	}
+}
+
+// THIS ORGANIZATION'S OWN NODE IS A LOOP, NEVER A TARGET. A rule that runs
+// jobs on it is refused when it is saved, in words that say "agent"; a
+// pipeline step that runs on it is refused before its file is sent; and the
+// reasoners a picker offers leave it out.
+func TestTheOrganizationsOwnNodeIsNeverAnAgentToRunOn(t *testing.T) {
+	plane := newTriggerPlane(t)
+	s, id := agentFieldKept(t, plane.URL)
+	ctx := context.Background()
+	rules := []route.Rule{{Name: "self loop", When: route.Match{Sources: []string{"agentfield:execute"}}, Then: route.Action{RunOn: "Codeaf-Factory.intake", Start: route.StartBacklog}}}
+	err := s.backend.routeReasonersKnown(ctx, id, rules)
+	var wireErr *appwire.Error
+	if !errors.As(err, &wireErr) || wireErr.Code != appwire.CodeBadParams || !strings.Contains(err.Error(), `routing rule "self loop": that agent is this organization itself; pick another`) {
+		t.Fatalf("a rule on the own node: %v", err)
+	}
+	listed, err := s.backend.FactoryAgentFieldReasoners(ctx, appwire.FactoryAgentFieldReasonersParams{Factory: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var targets []string
+	for _, r := range listed.Reasoners {
+		targets = append(targets, r.Target)
+	}
+	if !slices.Equal(targets, []string{"support-bot.draft_reply"}) {
+		t.Fatalf("offered %v, want only the other agent", targets)
+	}
+	self := "pipeline:\n  issue: [loop]\nsteps:\n  loop:\n    kind: agentfield\n    target: codeaf-factory.intake\n"
+	if err := s.backend.ownNodeSteps(id, self); !errors.As(err, &wireErr) || wireErr.Code != appwire.CodeBadParams || !strings.Contains(err.Error(), `step "loop": that agent is this organization itself`) {
+		t.Fatalf("a step on the own node: %v", err)
+	}
+	other := strings.Replace(self, "codeaf-factory.intake", "support-bot.draft_reply", 1)
+	if err := s.backend.ownNodeSteps(id, other); err != nil {
+		t.Fatalf("a step on another agent: %v", err)
+	}
+	if _, err := s.backend.FactoryPipelineCopySet(ctx, appwire.FactoryPipelineCopySetParams{Factory: id, Repo: "acme/demo", Text: self, Expect: &appwire.FactoryPipelineCopyExpect{Version: 1}}); !errors.As(err, &wireErr) || !strings.Contains(err.Error(), "this organization itself") {
+		t.Fatalf("saving a copy with a step on the own node: %v", err)
 	}
 }

@@ -331,6 +331,9 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 		// (appFactoryHost.routeAndPickUp): off, no label starts a job here.
 		host.pollLoop()
 		guard.Go("app/factory local runner", func() { defer close(done); host.workers() })
+		// Jobs filed while the runner was off are routed now, not on the
+		// next poll or entry: a factory with no watched repository has none.
+		host.routeSoon()
 	}
 	return b.localStatusLocked(), nil
 }

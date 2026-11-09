@@ -104,6 +104,9 @@ func (b *appBackend) FactoryPipelinePR(ctx context.Context, p appwire.FactoryPip
 	if err != nil || len(raw) > appwire.PipelinePRRequestMax {
 		return appwire.FactoryPipelinePRDone{}, appwire.Errorf(appwire.CodeBadParams, "that request is too large to send (at most %d bytes encoded)", appwire.PipelinePRRequestMax)
 	}
+	if err := b.ownNodeSteps(p.Factory, p.Text); err != nil {
+		return appwire.FactoryPipelinePRDone{}, err
+	}
 	h := b.factoryHub()
 	release, err := h.claimPipelinePR(p.Factory, p.Repo)
 	if err != nil {

@@ -262,6 +262,18 @@ connected refuses a rule with `run_on`. A team server's rules are checked for
 spelling only. `when.sources: [agentfield:*]` matches every AgentField source,
 as `agentfield` does.
 
+A rule may not run jobs on this organization's own node (its `intake`,
+`message` or `status`): that would file every run here as a new job the same
+rule runs again. Saving one is refused with "routing rule <name>: that agent
+is this organization itself; pick another". An agentfield step on it is
+refused the same way when its pipeline is saved ("step <name>: …"), and the
+list of agents a rule or a step is picked from leaves it out.
+
+Saving the rules routes the jobs already waiting at once, and so does turning
+the runner on: a job filed while the runner was off, or before its rule
+existed, does not wait for the next entry to arrive. A job the rule runs on a
+reasoner drops its "waiting for a repository" line when it is routed.
+
 ## a job run by an AgentField reasoner — run_on, the job's steps are the reasoner's calls
 
 A job filed with `"run_on": "<node>.<reasoner>"` in its intake payload (for
@@ -674,6 +686,12 @@ does every question of a job in Manual.
 
 - Only the factory on this machine connects; a team factory (`codeaf factory
   serve`) does not run the node.
+- The runner still needs GitHub, even when every job comes from AgentField.
+  Turning it on without a GitHub sign-in is refused with "connect GitHub
+  before turning the runner on: the factory needs to know whose jobs these
+  are": every job the runner takes is held under a person's GitHub login.
+  AgentField entries are still filed while the runner is off, and are routed
+  and started once it is on.
 - No DID or verifiable-credential signing: the node does not sign or check
   AgentField DIDs; the link's key and the HTTP bearer are its protection, and
   both are the control plane's global values, not one per node.

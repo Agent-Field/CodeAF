@@ -3668,6 +3668,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how is the AgentField node protected, does it check a secret", "factory-agentfield"},
 		{"add an AgentField trigger that targets the factory", "factory-agentfield"},
 		{"disconnect AgentField", "factory-agentfield"},
+		{"can a routing rule run jobs on the organization's own agent", "factory-agentfield"},
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 		{"ask the manager for changes to a waiting plan", "factory-stage-conversations"},

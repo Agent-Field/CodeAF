@@ -424,6 +424,38 @@ func TestARuleThatRunsOnAReasonerStartsAJobWithNoRepository(t *testing.T) {
 	}
 }
 
+// A JOB A RULE RUNS ON A REASONER NEVER SAYS IT WAITS FOR A REPOSITORY. The
+// inbox filed it before the table was read and wrote the waiting line; the
+// rule that routes it withdraws that line, and keeps every other row.
+func TestARuleThatRunsOnAReasonerWithdrawsTheWaitingLine(t *testing.T) {
+	rule := route.Rule{Name: "to support", When: route.Match{Sources: []string{"jira"}}, Then: route.Action{RunOn: "support-bot.draft_reply", Start: route.StartAuto}}
+	r, job := routedFloor(t, []route.Rule{rule})
+	if err := r.st.Update(job.ID, func(cur *factory.Item) error {
+		cur.Note(time.Unix(100, 0), "arrived from jira")
+		cur.Note(time.Unix(100, 0), inbox.WaitingWords)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.st.Get(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arrived := false
+	for _, ev := range got.Activity {
+		if ev.What == inbox.WaitingWords {
+			t.Fatalf("a job run on a reasoner still says %q: %+v", ev.What, got.Activity)
+		}
+		arrived = arrived || ev.What == "arrived from jira"
+	}
+	if !arrived || got.RunOn != "support-bot.draft_reply" {
+		t.Fatalf("activity %+v run_on %q, want the arrival kept and run_on set", got.Activity, got.RunOn)
+	}
+}
+
 // Asked first, the same rule holds the job naming the rule, with run_on
 // already on it so the person's yes starts the reasoner.
 func TestARuleThatRunsOnAReasonerAsksFirst(t *testing.T) {

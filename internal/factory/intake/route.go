@@ -251,5 +251,27 @@ func applyRoute(cur *factory.Item, rule route.Rule, f pipeline.File) error {
 	if rule.Then.RunOn != "" {
 		cur.RunOn, cur.Stages = rule.Then.RunOn, nil
 	}
+	withdrawWaiting(cur)
 	return nil
+}
+
+// withdrawWaiting takes the inbox's "waiting for a repository" line off cur
+// once routing gave it somewhere to run: a repository, or an AgentField
+// reasoner. THE INBOX FILES BEFORE THE TABLE IS READ, so it writes that line
+// on every job that arrives with neither; a rule that then routes the job in
+// the same instant left a row saying the opposite of what happened, and a
+// job run on a reasoner never waits for a repository at all.
+func withdrawWaiting(cur *factory.Item) {
+	if strings.TrimSpace(cur.Repo) == "" && strings.TrimSpace(cur.RunOn) == "" {
+		return
+	}
+	kept := cur.Activity[:0:0]
+	for _, ev := range cur.Activity {
+		if ev.What != inbox.WaitingWords {
+			kept = append(kept, ev)
+		}
+	}
+	if len(kept) != len(cur.Activity) {
+		cur.Activity = kept
+	}
 }

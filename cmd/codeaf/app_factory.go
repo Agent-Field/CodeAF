@@ -382,7 +382,8 @@ func (h *appFactoryHost) picksUpIssues() bool {
 }
 
 // routeNow runs the intake pass the running read loops run, at once, for a
-// person's door that just gave a job what routing needs (its repository). A
+// person's door that just gave a job what routing needs (its repository, or a
+// rule that routes it), or a runner that just came on ([routeSoon]). A
 // host whose loops are not running routes nothing: its jobs start nowhere.
 func (h *appFactoryHost) routeNow(ctx context.Context) error {
 	after := h.readAfter()
@@ -390,6 +391,23 @@ func (h *appFactoryHost) routeNow(ctx context.Context) error {
 		return nil
 	}
 	return after(ctx)
+}
+
+// routeSoon runs one intake pass in the background, under the host, for a
+// change that may route jobs ALREADY WAITING: the runner turning on, or a
+// routing table being saved. A FACTORY FED ONLY BY AGENTFIELD HAS NO POLL to
+// run the pass for it (no watched repository), so without this a job filed
+// while the runner was off, or before the rule that routes it existed, waits
+// until some unrelated entry arrives. A host whose loops are off routes
+// nothing ([appFactoryHost.routeNow]); a pass already running is not doubled
+// (the store's intake lock), and a failed pass says why in the log, as a
+// failed poll does.
+func (h *appFactoryHost) routeSoon() {
+	h.chore("app/factory route now", func() {
+		if err := h.routeNow(h.ctx); err != nil && h.ctx.Err() == nil {
+			log.Printf("factory: routing waiting jobs: %v", err)
+		}
+	})
 }
 
 // readAfter is [appFactoryHost.afterRead] under the loops' lock.
