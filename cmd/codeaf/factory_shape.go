@@ -377,22 +377,15 @@ func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory
 	return d.edit(ctx, it.ID, e)
 }
 
-// managed is the item whose conversation is the asking one.
+// managed is the item whose conversation is the asking one, found through the
+// floor's manager index (factory_manager_index.go) rather than a read of every
+// job on the floor.
 func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
 	want := sameFileKey(conversation)
 	if want == "" || d.st == nil {
 		return factory.Item{}, errNotAManager
 	}
-	items, err := d.st.List()
-	if err != nil {
-		return factory.Item{}, err
-	}
-	for _, it := range items {
-		if strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
-			return it, nil
-		}
-	}
-	return factory.Item{}, errNotAManager
+	return managerIndexOf(d.st).managedItem(d.st, want)
 }
 
 // sameFileKey is a path as one spelling, links resolved.

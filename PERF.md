@@ -437,3 +437,31 @@ five refused passes and requires one export of 64 objects into 8 frames (before:
 five exports, 320 objects, 40 frames); the engine-tagged
 `TestARepeatedExportKeepsTheWaitingFramesRealEngine` requires the real furrow
 to leave every waiting frame file untouched on a repeat.
+
+## Idle cost: watches read only what changed
+
+A watch that runs on a timer for as long as something is open pays only for
+what changed since its last look; an idle look is a few `stat` calls, never a
+read of every record. Two counters hold this without a clock:
+`store.(*Store).Reads` counts factory job documents decoded, `keys.Opened`
+counts vault decrypts.
+
+- **The person-Stop watch.** `session.watchJobBudget` still looks every 100 ms
+  per job chat, so a person's Stop or a spent budget acts within one tick plus
+  one read, as before. The answer comes from a per-floor manager index
+  (`cmd/codeaf/factory_manager_index.go`) rebuilt only when the floor folder's
+  identity, size or modification time changes, and trusted only once that time
+  is 2 s older than the listing (a folder clock can be that coarse); the job's
+  own document is read again only when it was replaced.
+  `TestAnIdleManagerWatchReadsNoJobs`: 100 idle looks over 60 jobs read 12,000
+  documents before, 0 after, for a manager and for a conversation that manages
+  nothing. `TestTheManagerWatchSeesEveryChange` pins the Stop, a late manager
+  and a moved manager on the next look.
+- **The vault.** A vault whose sealed bytes equal the last bytes this process
+  opened under the same key is not decrypted again; writes always get their
+  own copy. `TestAnUnchangedVaultIsDecryptedOnce`: 400 reads of an unchanged
+  vault decrypted it 400 times before, 0 after. Each chat's sync start still
+  captures and pushes once.
+
+Still O(jobs) per request, not per tick: every factory HTTP request lists the
+floor in `settleJobs`, and every worker pull lists it in `lease.(*Desk).Pull`.
