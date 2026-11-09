@@ -103,6 +103,12 @@ func (b *appBackend) FactoryRoutesSet(ctx context.Context, p appwire.FactoryRout
 		return none, routesUncertain()
 	}
 	h.touch(p.Factory)
+	// THE NEW TABLE ROUTES WHAT IS ALREADY WAITING, at once: on this
+	// machine's factory one pass runs now, so a job filed before its rule
+	// existed does not wait for the next entry or poll.
+	if host, err := b.localHostOf(p.Factory); err == nil && host != nil {
+		host.routeSoon()
+	}
 	return appwire.FactoryRoutes{Factory: p.Factory, Rules: rules, RulesChange: saved.RulesChange}, nil
 }
 
@@ -111,6 +117,9 @@ func (b *appBackend) FactoryRoutesSet(ctx context.Context, p appwire.FactoryRout
 // sent: the same check a person makes picking a reasoner for an agentfield
 // step from factory.agentfield_reasoners, made on save so a misspelt one is
 // never found by a job that cannot run.
+//
+// A RULE MAY NOT RUN JOBS ON THIS ORGANIZATION'S OWN NODE ([isOwnNode]): the
+// run would file a new job here that matches the same rule, and run again.
 //
 // ONLY THIS MACHINE'S FACTORY HOLDS AN AGENTFIELD CONNECTION TO ASK. A table
 // for another factory (a team's server) is held to the spelling route.Clean
@@ -130,7 +139,7 @@ func (b *appBackend) routeReasonersKnown(ctx context.Context, id string, rules [
 	if err != nil || host == nil {
 		return nil
 	}
-	client, _, connected := host.agentFieldConn()
+	client, self, connected := host.agentFieldConn()
 	lister, can := client.(interface {
 		Nodes(context.Context) ([]agentfield.NodeReasoners, error)
 	})
@@ -148,6 +157,9 @@ func (b *appBackend) routeReasonersKnown(ctx context.Context, id string, rules [
 		}
 	}
 	for _, r := range named {
+		if isOwnNode(r.Then.RunOn, self) {
+			return appwire.Errorf(appwire.CodeBadParams, "routing rule %q: %s", r.Name, afOwnNodeRefusal)
+		}
 		if !known[strings.ToLower(r.Then.RunOn)] {
 			return appwire.Errorf(appwire.CodeBadParams, "routing rule %q: AgentField has no agent %s; pick one it lists", r.Name, r.Then.RunOn)
 		}

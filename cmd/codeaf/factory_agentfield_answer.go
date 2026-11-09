@@ -184,13 +184,14 @@ func (b *appBackend) answerStepQuestion(ctx context.Context, id string, job int,
 
 // FactoryAgentFieldReasoners is factory.agentfield_reasoners: the reasoners
 // of every node this factory's control plane knows, for an agentfield step to
-// name. Only this machine's factory has the connection to ask.
+// name, except this organization's own node. Only this machine's factory has
+// the connection to ask.
 func (b *appBackend) FactoryAgentFieldReasoners(ctx context.Context, p appwire.FactoryAgentFieldReasonersParams) (appwire.FactoryAgentFieldReasoners, error) {
 	host, err := b.localHostOf(p.Factory)
 	if err != nil {
 		return appwire.FactoryAgentFieldReasoners{}, err
 	}
-	client, _, ok := host.agentFieldConn()
+	client, self, ok := host.agentFieldConn()
 	lister, can := client.(interface {
 		Nodes(context.Context) ([]agentfield.NodeReasoners, error)
 	})
@@ -203,6 +204,11 @@ func (b *appBackend) FactoryAgentFieldReasoners(ctx context.Context, p appwire.F
 	}
 	out := appwire.FactoryAgentFieldReasoners{Reasoners: []appwire.FactoryAgentFieldReasoner{}, Placeholders: append([]string(nil), factory.AgentFieldPlaceholders...)}
 	for _, n := range nodes {
+		// THIS ORGANIZATION'S OWN NODE IS NEVER OFFERED: a step or a rule
+		// that ran on it would file a job here that runs it again.
+		if isOwnNode(n.ID+".", self) {
+			continue
+		}
 		for _, r := range n.Reasoners {
 			out.Reasoners = append(out.Reasoners, appwire.FactoryAgentFieldReasoner{Node: n.ID, Reasoner: r.ID, Target: n.ID + "." + r.ID,
 				Description: r.Description, Online: n.HealthStatus == "active", Input: afSchemaFields(r.InputSchema)})
