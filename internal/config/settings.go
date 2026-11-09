@@ -1062,8 +1062,10 @@ var OperatorEnvPins = []string{
 	"CODEAF_PROTOTYPE_ARCHIVE_BINARY",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
-	// CODEAF_BASE_URL is.
+	// CODEAF_BASE_URL is. CODEAF_RELAY_ADMIN_KEY names the operator seed file
+	// for the standalone relay-admin tool (cmd/codeaf-relay-admin).
 	"CODEAF_RELAY",
+	"CODEAF_RELAY_ADMIN_KEY",
 	// CODEAF_FURROW names a furrow to use instead of the one codeaf carries
 	// (internal/furrow). A path to a program is plumbing.
 	"CODEAF_FURROW",
