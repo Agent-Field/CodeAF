@@ -78,6 +78,7 @@ func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(er
 		return startDriveNotifying(c, engine, report, notices.say, changed)
 	}, notices)
 	d.transcript = (session.Place{Dir: c.Root}).Transcript()
+	d.localGate = &localToolGate{cell: c, say: notices.say}
 	if d != nil {
 		if b.drive == nil {
 			b.drive = map[string]*liveDrive{}

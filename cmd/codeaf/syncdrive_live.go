@@ -31,6 +31,7 @@ type liveDrive struct {
 	notices *driveNotices
 	// transcript identifies the retained turns if this writer's final publish fails.
 	transcript string
+	localGate  *localToolGate
 
 	mu             sync.Mutex
 	drive          *syncsetup.Drive
@@ -199,7 +200,7 @@ func (l *liveDrive) current() *syncsetup.Drive {
 	return l.drive
 }
 
-// Gate is the drive side's gate: nothing is refused until a drive side exists.
+// Gate checks shared ownership even while account storage has no uploading writer.
 func (l *liveDrive) Gate() error {
 	// A failed service startup falls back to this call's local writer. Retrying
 	// belongs to the next call, or an outage would trap this one in a retry loop.
@@ -214,6 +215,9 @@ func (l *liveDrive) Gate() error {
 			return err
 		}
 		return d.Gate()
+	}
+	if l.localGate != nil {
+		return l.localGate.Gate()
 	}
 	return nil
 }
@@ -236,6 +240,9 @@ func (l *liveDrive) Store(e cellstore.Engine) cellstore.Store {
 func (l *liveDrive) Close(ctx context.Context) error {
 	if l.notices != nil {
 		l.notices.beginClose()
+	}
+	if l.localGate != nil {
+		l.localGate.Close()
 	}
 	ready := func() <-chan struct{} {
 		l.mu.Lock()
@@ -269,7 +276,7 @@ const holdsLeaseWithin = 5 * time.Second
 func (l *liveDrive) superseded() bool {
 	d := l.started()
 	if d == nil {
-		return false
+		return l.localGate != nil && l.localGate.superseded()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), holdsLeaseWithin)
 	defer cancel()
