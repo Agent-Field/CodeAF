@@ -93,6 +93,18 @@ adds the content to the end of the file instead of replacing it and reports
 `Appended N lines to <path>; the file now has M lines.` — appending to a file
 that does not exist yet simply creates it.
 
+## UTF-16 files, PowerShell text, BOM and CRLF line endings
+
+`read` decodes UTF-16 little-endian and big-endian files that start with a byte
+order mark (BOM), including files written by Windows PowerShell 5.1. `edit` and
+`write`, including `append:true`, keep that encoding and BOM. Files without a
+UTF-16 BOM retain their existing interpretation; UTF-8 needs no conversion.
+Malformed UTF-16 with an incomplete code unit or an unpaired surrogate is refused.
+
+Edits, rewrites and appends keep an existing file's line-ending style: CRLF
+stays CRLF, and LF stays LF. These rules apply on Windows, Linux and macOS,
+including headless `codeaf do`, `exec` and `run` file tools.
+
 ## Why is a written or edited file missing from Files — deliverables in a plain folder
 
 Successful `write` and `edit` calls record files inside the conversation's

@@ -26,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/rtk"
 	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/textfile"
 )
 
 // The base tool set is five tools, and the count is the design. Pull-only
@@ -1596,9 +1597,8 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
 	defer cancel()
 	var environment []string
-	// The login shell may rewrite inherited PATH while reading its profile.
-	// Export inside that shell so a shelf is added without changing the rest of
-	// the environment; the bare path still runs without a shelf.
+	// Like chat StreamingEnv, JobShellEnv starts with the inherited process
+	// environment. Add command shelves without reloading the login profile.
 	if t.history != nil {
 		if bin, err := store.SkillsBinDir(); err == nil {
 			environment = os.Environ()
@@ -1647,7 +1647,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// the notice that ends up in context names a command that actually works.
 	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
 	res, err := executor.For(runCtx).In(t.workspace.Root()).Exec(runCtx, executor.ExecRequest{
-		Argv: append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...), Env: environment,
+		Argv: append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-c"}, command)...), Env: environment,
 		WaitDelay: 3 * time.Second, Combined: true, Stream: true,
 	}, func(c executor.Chunk) { _, _ = collected.Write(c.Data) })
 	if res.Status != "" {
@@ -1686,7 +1686,15 @@ func (t *Toolbox) write(args map[string]any) Result {
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return errorf("could not create directory: %v", err)
 	}
-	if err := os.WriteFile(full, []byte(text), 0o644); err != nil {
+	original, err := os.ReadFile(full)
+	if err != nil && !os.IsNotExist(err) {
+		return errorf("could not read %s: %v", path, err)
+	}
+	content, err := textfile.WriteContent(original, text)
+	if err != nil {
+		return errorf("could not write %s: %v", path, err)
+	}
+	if err := os.WriteFile(full, content, 0o644); err != nil {
 		return errorf("could not write %s: %v", path, err)
 	}
 	t.workspace.Record(t.leaf, full)
@@ -1740,7 +1748,16 @@ func (t *Toolbox) edit(args map[string]any) Result {
 	if err != nil {
 		return errorf("could not read %s: %v", path, err)
 	}
-	body := string(data)
+	body, encoding, err := textfile.Decode(data)
+	if err != nil {
+		return errorf("could not read %s: %v", path, err)
+	}
+	ending := textfile.DetectLineEnding(body)
+	body = textfile.NormalizeToLF(body)
+	for i := range edits {
+		edits[i].old = textfile.NormalizeToLF(edits[i].old)
+		edits[i].new = textfile.NormalizeToLF(edits[i].new)
+	}
 	// Every span is located in the original before any of them is applied, which
 	// is what makes the edits independent and what lets an overlap be a refusal
 	// rather than a race between two Replace calls.
@@ -1775,7 +1792,7 @@ func (t *Toolbox) edit(args map[string]any) Result {
 		at = s.end
 	}
 	updated.WriteString(body[at:])
-	if err := os.WriteFile(full, []byte(updated.String()), 0o644); err != nil {
+	if err := os.WriteFile(full, encoding.Encode(textfile.RestoreLineEndings(updated.String(), ending)), 0o644); err != nil {
 		return errorf("could not write %s: %v", path, err)
 	}
 	t.workspace.Record(t.leaf, full)

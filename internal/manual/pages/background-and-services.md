@@ -7,6 +7,9 @@ a build, a test suite, a dev server — and get on with something else. Each one
 writes to its own log under `.codeaf/jobs/`, so a chatty build can never block
 anything, and the worker reads that log incrementally as it goes.
 
+Background shells use login bash (`bash -lc`) with pipefail, so login profiles
+can supply PATH.
+
 Background groups get **900 seconds** by default, are reniced to **+10** so they
 yield your machine, and are killed cleanly when the task that started them ends.
 That last part is deliberate: nothing survives its task by accident.
@@ -27,6 +30,11 @@ asked — you already said so. On yes, the receipt tells you how to end it:
 `dev server keeps running · port 5173 — say 'stop the dev server' to end it`.
 
 ## Health checks
+
+Command checks and service launches use login bash (`bash -lc`) with pipefail.
+They inherit the environment codeaf was started with, then load login profiles,
+which can supply or change PATH. This applies on every OS; on Windows, codeaf
+selects Git Bash or another MSYS2-family bash.
 
 Every service declares how it can be checked: a **port**, a **URL** that must
 return 200, or a **command** that must exit clean. codeaf probes it roughly

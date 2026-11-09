@@ -1,5 +1,19 @@
 # Running commands on Windows
 
+## Login profiles, PATH and command output
+
+Chat shell commands and headless foreground commands run without a login shell.
+They inherit the environment codeaf was started with, including PATH, and retain
+their usual credential and tmux filtering. Set up tools in that launching
+environment.
+
+Detached background jobs launched by headless commands use a login bash
+(`bash -lc`). Their login profiles can supply or change PATH. This shell policy
+also applies on Linux and macOS.
+
+Command results shown to the model use LF in place of native CRLF line endings.
+A lone carriage return used for progress output keeps its existing meaning.
+
 ## Which bash does codeaf use on Windows? (Git Bash)
 
 On Windows, codeaf runs commands in Git for Windows' bash (or another MSYS2-family bash). It looks in this order:

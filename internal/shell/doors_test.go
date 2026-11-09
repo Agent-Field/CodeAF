@@ -11,15 +11,18 @@ import (
 	"testing"
 )
 
-// I0 and N3 pin unchanged argv through the executor at every shell door. Together with the
-// injected Unix preference tests, this does not require an installed /bin/bash.
+// I0 and N3 pin argv through the executor at every shell door. Text contract
+// C1 keeps headless commands non-login and detached/health commands login.
+// Injected Unix preference tests do not require an installed /bin/bash.
 func TestUnixDoorArgv(t *testing.T) {
 	// Bash doors run under PipefailArgs so a failed pipeline stage cannot look
 	// successful while a reader that stopped early is not a failure.
 	for _, tc := range []struct{ file, function, call string }{
-		{"exec/tools.go", "runShell", `append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...)`},
+		{"exec/tools.go", "runShell", `append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-c"}, command)...)`},
 		{"exec/jobs.go", "startBackground", `detachedCommand(executor.For(ctx), jobCtx, r.workspace.Root(), command, environment, logFile, 3*time.Second)`},
 		{"exec/services.go", "detachedCommand", `append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, command)...)`},
+		{"resident/services.go", "Healthy", `commandshell.Bash()`},
+		{"resident/services.go", "Healthy", `append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, service.Health.Value)...)`},
 		{"exec/bare/tools.go", "getShellConfig", `shell.Preferred()`},
 		{"exec/bare/tools.go", "getShellConfig", `shell.PipefailArgs(program, flags, command)`},
 		{"exec/bare/tools.go", "newBashTool", `append([]string{shell}, shellArgs...)`},

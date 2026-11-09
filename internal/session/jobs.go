@@ -2271,7 +2271,7 @@ func (s *jobSink) tail(n int) string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	text := strings.TrimRight(string(s.ring), "\n")
+	text := strings.TrimRight(shell.OutputText(string(s.ring)), "\n")
 	if text == "" {
 		return ""
 	}

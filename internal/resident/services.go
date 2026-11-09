@@ -15,6 +15,7 @@ import (
 	executor "github.com/Agent-Field/codeaf/internal/exec"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
+	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/thread"
 )
@@ -114,8 +115,12 @@ func (*platformServiceRuntime) Healthy(ctx context.Context, service store.Servic
 	case store.ServiceHealthCmd:
 		// Health checks discard output, so inherited pipes cannot turn a clean
 		// exit into a failure or accumulate an unbounded output buffer.
+		bash, err := commandshell.Bash()
+		if err != nil {
+			return err
+		}
 		cmd, err := procexec.Host.In(service.Dir).Command(ctx, procexec.ExecRequest{
-			Argv:  []string{"bash", "-lc", service.Health.Value},
+			Argv:  append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-lc"}, service.Health.Value)...),
 			Group: procexec.GroupInherit,
 		})
 		if err != nil {
