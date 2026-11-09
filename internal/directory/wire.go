@@ -31,6 +31,7 @@ var wireErrors = []wireError{
 	{ErrHeadMoved, "head_moved", http.StatusConflict},
 	{ErrCAS, "cas", http.StatusConflict},
 	{ErrUnauthorized, "unauthorized", http.StatusUnauthorized},
+	{wireauth.ErrUnauthorized, "unauthorized", http.StatusUnauthorized},
 	{ErrRevoked, "revoked", http.StatusUnauthorized},
 	{ErrSelfRevoke, "self_revoke", http.StatusBadRequest},
 	{ErrRotated, "rotated", http.StatusGone},

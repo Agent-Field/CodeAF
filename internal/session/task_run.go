@@ -7902,12 +7902,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// audited by a different rule than the conversation would be the setting
 		// meaning two things (task_audit.go).
 		TaskAudit: parent.TaskAudit,
-		// AND SO DOES WHETHER THE SIGNATURE NAMES THE MODEL. A node commits —
-		// its landing writes one ([commitTaskWorkAs]) and its worker may write
-		// more with `bash` — and the `attribution.model` row is the person's
-		// answer for their whole machine. A node is handed no ProfileDir
-		// (Config.ProfileDir says why), so a child that did not carry this
-		// would name the model for somebody who had turned the name off.
+		// AND SO DOES WHETHER THE WORK IS SIGNED AND WHETHER THE SIGNATURE NAMES
+		// THE MODEL. A node commits — its landing writes one ([commitTaskWorkAs])
+		// and its worker may write more with `bash` — and both attribution rows
+		// are the person's answer for their whole machine. A node is handed no
+		// ProfileDir (Config.ProfileDir says why), so a child that did not carry
+		// these would sign or name the model for somebody who had turned them off.
+		AttributionOff:      parent.AttributionOff,
 		AttributionModelOff: parent.AttributionModelOff,
 		// And so does who decides a landing nobody could check. A parent node's
 		// own agent is the reader of its children's landing notes, so a family
@@ -9294,7 +9295,7 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, ba
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
-	if !repositoryRefusesTrailers(dir) {
+	if !sign.off && !repositoryRefusesTrailers(dir) {
 		message = signed(message, sign)
 	}
 	if out, err := git(dir, append(codeafGitIdentity(),

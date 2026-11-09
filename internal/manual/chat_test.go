@@ -390,10 +390,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop adding a co-author trailer to my commits", "permissions"},
 		{"does it sign every comment it leaves on my pull request", "permissions"},
 		{"what is the small drafted with line under its comment", "permissions"},
-		// the user’s rulings on #1410 (2026-09-24): signing has no off, a
-		// person who had turned it off is told so, and a task landed on the
-		// worker harness, the belt tasks run on by default, names no model.
+		// Attribution can be turned off with the attribution row or
+		// CODEAF_ATTRIBUTION=off, and a task landed on the worker harness, the
+		// belt tasks run on by default, names no model.
 		{"I turned attribution off before, why are my commits signed again", "permissions"},
+		{"how do I remove Co-Authored-By CodeAF from my commits", "permissions"},
+		{"turn off attribution", "permissions"},
+		{"stop codeaf signing my commits", "permissions"},
+		{"remove the drafted with CodeAF footer from my pull requests", "permissions"},
+		{"can I disable the Assisted-by trailer", "permissions"},
+		{"what does CODEAF_ATTRIBUTION do", "permissions"},
 		{"why does the commit my task landed not name the model", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the

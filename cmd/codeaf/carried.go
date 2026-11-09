@@ -130,6 +130,7 @@ type carriedRoad struct {
 	modelPrice    func(model string) (input, output float64, known bool)
 	seat          string
 	defaultSeat   func() (string, error)
+	unsigned      bool
 	signNamed     bool
 	// warmCatalog waits, within ctx, for the named models' service catalogs
 	// to be resolved and written down. Nil for a road with no catalog.
@@ -181,6 +182,7 @@ func profileRoad() (carriedRoad, error) {
 			}
 			return seats.Work.Model, nil
 		},
+		unsigned:  !config.AttributionAt(settings.ProfileDir),
 		signNamed: config.AttributionModelAt(settings.ProfileDir),
 		warmCatalog: func(ctx context.Context, models []string) bool {
 			// The child reads each service's own cache without provider keys.
@@ -364,7 +366,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// refusal — another program's run in a plain folder — before a cent is
 	// spent. A plain folder is no longer the program's first-line failure:
 	// codeaf says so on the program's line.
-	folder, err := carriedFolder(inv, record)
+	folder, err := carriedFolder(inv, record, road.unsigned)
 	if err != nil {
 		fmt.Fprintln(carriedStderr, "error:", err)
 		return exitCannotRun
@@ -531,14 +533,15 @@ var carriedAPIClose = (*modelapi.Server).Close
 // carriedFolder readies the folder a shell run's program works in
 // (internal/session's PrepareProgramFolder); nil for a program that edits no
 // files, which reads the folder where it is.
-func carriedFolder(inv *delegate.Invocation, record string) (*session.ProgramFolder, error) {
+func carriedFolder(inv *delegate.Invocation, record string, unsigned bool) (*session.ProgramFolder, error) {
 	if !inv.Program.LandsTree() {
 		return nil, nil
 	}
 	return session.PrepareProgramFolder(session.ProgramFolderOrder{
 		Program: inv.Program, Dir: inv.Workspace, Brief: inv.Brief(),
 		Holder: "a run started at a shell", Keep: record,
-		Instead: "run it in the project's folder, or name that folder with --dir",
+		Instead:  "run it in the project's folder, or name that folder with --dir",
+		Unsigned: unsigned,
 	})
 }
 

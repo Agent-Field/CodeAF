@@ -1287,7 +1287,12 @@ func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
 	desk := a.outsideDesk
 	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted, func(err error) {
 		desk.Say(name + ": " + closeSaveWords(err, false, address))
-	}, address)), true
+	}, address, func(lines []string) {
+		for i, line := range lines {
+			lines[i] = name + ": " + line
+		}
+		desk.saving(lines)
+	})), true
 }
 
 // stepBackFront is the same act for a window that is NOT ending anything: another
@@ -1398,6 +1403,7 @@ func (a *app) leaveEverything() {
 // leavingWork captures surface state before any engine work leaves the loop.
 // The returned work owns only the captured agents and thread-safe callbacks.
 func (a *app) leavingWork() func() {
+	a.outsideDesk.finishSaving(a.savingNotices)
 	if a.stopSealNotice != nil {
 		a.stopSealNotice()
 		a.stopSealNotice = nil
@@ -1431,7 +1437,7 @@ func (a *app) leavingWork() func() {
 		errandsDone[i] = a.retainSavingDurability([]Agent{ex.agent})
 	}
 	a.exchanges, a.home.exchanges = nil, nil
-	waitForRelease, report := a.waitForRelease, a.saveFailure
+	waitForRelease, report, savingNotices := a.waitForRelease, a.saveFailure, a.savingNotices
 	return func() {
 		waitRelease := waitForRelease != nil && waitForRelease()
 		var wg sync.WaitGroup
@@ -1439,6 +1445,9 @@ func (a *app) leavingWork() func() {
 			wg.Add(1)
 			go func(agent Agent) {
 				complete := func(err error) {
+					if savingNotices != nil {
+						savingNotices(takeSavingNotices(agent))
+					}
 					if len(departures) > i {
 						departures[i](err)
 					}
@@ -1492,13 +1501,13 @@ func leaveAgentError(agent Agent) error {
 		return hosted.Detach()
 	}
 	agent.InterruptFor(session.StopByLeaving)
-	return agent.Close()
+	return finishAgentSaving(agent, agent.Close())
 }
 
 // Permanent deletion closes the owner rather than detaching its view.
 func leaveAgentFor(agent Agent, door session.StopDoor) error {
 	agent.InterruptFor(door)
-	return agent.Close()
+	return finishAgentSaving(agent, agent.Close())
 }
 
 // leaveOffFrame is [leaveAgent] started away from the caller. Detach and

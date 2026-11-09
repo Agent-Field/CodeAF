@@ -150,18 +150,26 @@ func TestDoOnTheRunEngineNeverCommitsThePersonsOwnWork(t *testing.T) {
 }
 
 // Contract 6: the real do door signs a worker's in-place git commit, names its
-// file in the envelope, and obeys a repository ban without changing exit 0.
+// file in the envelope, and obeys a repository ban or CODEAF_ATTRIBUTION=off
+// without changing exit 0.
 func TestDoOnTheRunEngineSignsWorkerCommitsUnlessContributingForbids(t *testing.T) {
-	for _, banned := range []bool{false, true} {
-		name := "signed"
-		if banned {
-			name = "CONTRIBUTING ban"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		banned         bool
+		attributionOff bool
+	}{
+		{name: "signed"},
+		{name: "CONTRIBUTING ban", banned: true},
+		{name: "attribution off", attributionOff: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			beltRunEnv(t)
+			if tc.attributionOff {
+				t.Setenv("CODEAF_ATTRIBUTION", "off")
+			}
 			t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
 			workspace := beltRepoWorkspace(t)
-			if banned {
+			if tc.banned {
 				if err := os.WriteFile(filepath.Join(workspace, "CONTRIBUTING.md"), []byte("Do not add AI co-author trailers to commits.\n"), 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -199,9 +207,9 @@ func TestDoOnTheRunEngineSignsWorkerCommitsUnlessContributingForbids(t *testing.
 				t.Fatalf("person's earlier commit moved: %s -> %s", base, got)
 			}
 			message := doGitIn(t, workspace, "log", "-1", "--format=%B")
-			if banned {
+			if tc.banned || tc.attributionOff {
 				if message != "add hello" {
-					t.Fatalf("CONTRIBUTING did not preserve worker message: %q", message)
+					t.Fatalf("unsigned run did not preserve worker message: %q", message)
 				}
 			} else if strings.Count(message, "Assisted-by: CodeAF") != 1 || strings.Count(message, "Co-Authored-By: CodeAF") != 1 || strings.Contains(message, "CodeAF (") {
 				t.Fatalf("worker message was not signed once with bare lines: %q", message)

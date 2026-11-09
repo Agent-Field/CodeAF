@@ -10,10 +10,11 @@ package inventory
 
 import (
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/inventory/layout"
 )
 
 // Path is the cell-relative location of the inventory file.
-const Path = cell.EnvPath + "/inventory.json"
+const Path = cell.EnvPath + "/" + layout.File
 
 const schemaV = 1
 

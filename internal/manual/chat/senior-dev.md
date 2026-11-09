@@ -719,8 +719,10 @@ touched`.
 
 The finishing commit codeaf makes when senior-dev ends names only models recorded as
 answering a call in that run, including a model that answered in place of the one asked
-for. If no model answered, there is no `Assisted-by` trailer. The attribution setting
-still decides whether answered model names are shown.
+for. If no model answered, or if `attribution` (`CODEAF_ATTRIBUTION`) is off,
+there is no `Assisted-by` or co-author trailer; while attribution is on,
+`attribution.model` (`CODEAF_ATTRIBUTION_MODEL`) decides whether answered model
+names are shown.
 If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
 than your Git identity. The `Assisted-by` credit is added only to a finishing
 commit codeaf makes when there is something left to stage, and that holds for a run you
