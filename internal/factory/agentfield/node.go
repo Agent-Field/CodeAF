@@ -115,6 +115,9 @@ type Node struct {
 	// Clock replaces time.Now; tests only.
 	Clock func() time.Time
 
+	// startMu serialises Start and Refresh, so two starts racing never
+	// leave two nodes running (two links, two instances).
+	startMu  sync.Mutex
 	mu       sync.Mutex
 	health   Health
 	running  *running
@@ -176,6 +179,34 @@ func (n *Node) Running() bool {
 // then registers and keeps the lease in the background. A node already
 // running is stopped first, so a connect with new settings takes effect.
 func (n *Node) Start(ctx context.Context) error {
+	n.startMu.Lock()
+	defer n.startMu.Unlock()
+	return n.start(ctx)
+}
+
+// Refresh starts the node again when what is kept now differs from what it
+// is running with, and starts it when it is connected and not running. A
+// node already running on exactly the kept settings and secrets is left as
+// it is, so handing over a key it already holds starts nothing. It is how a
+// secret that arrives after the node started (the app hands its keys over
+// late) reaches the registration, the link and the listener's bearer.
+func (n *Node) Refresh(ctx context.Context) error {
+	n.startMu.Lock()
+	defer n.startMu.Unlock()
+	s, sec, ok := n.Conn.Kept()
+	if !ok {
+		return ErrNotConnected
+	}
+	n.mu.Lock()
+	r := n.running
+	n.mu.Unlock()
+	if r != nil && r.settings == s && r.secrets == sec {
+		return nil
+	}
+	return n.start(ctx)
+}
+
+func (n *Node) start(ctx context.Context) error {
 	n.Stop()
 	s, sec, ok := n.Conn.Kept()
 	if !ok {

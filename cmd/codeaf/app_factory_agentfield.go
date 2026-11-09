@@ -33,10 +33,12 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/inbox"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // appAgentField is the host's AgentField state.
@@ -95,6 +97,49 @@ func (h *appFactoryHost) startAgentField() {
 		return
 	}
 	_ = node.Start(h.ctx)
+}
+
+// agentFieldKeyMoved restarts this machine's node with an AgentField secret
+// the app handed over after the factory started. THE DESK WAITS ONLY A FEW
+// SECONDS FOR ITS KEYCHAIN AT LAUNCH, so a factory that starts connected can
+// start with no key, and its registration is refused until one arrives; the
+// node read its secrets when it started, so without this it would go on
+// registering keyless until the next launch. Refresh is a no-op for a node
+// already running on the secret handed over, so the launch's own hand-back
+// (which arrives before the factory starts, or with what it holds) starts
+// nothing twice. It runs off the wire's thread: stopping the old node tells
+// the control plane it is offline, which may take a few seconds. A factory
+// not started yet, or not connected, has nothing to restart; its own start
+// reads the key.
+func (b *appBackend) agentFieldKeyMoved(provider string) {
+	switch provider {
+	case config.AppAgentFieldProvider, config.AppAgentFieldTokenProvider, config.AppAgentFieldNodeProvider:
+	default:
+		return
+	}
+	l := &b.local
+	l.mu.Lock()
+	host := l.host
+	live := l.running && !l.closed && host != nil
+	l.mu.Unlock()
+	if !live {
+		return
+	}
+	guard.Go("app/factory agentfield key", host.refreshAgentField)
+}
+
+// refreshAgentField starts the node again when its kept secrets changed.
+func (h *appFactoryHost) refreshAgentField() {
+	node := h.agentFieldNode()
+	if _, _, ok := node.Conn.Kept(); !ok || h.ctx.Err() != nil {
+		return
+	}
+	_ = node.Refresh(h.ctx)
+	// A host that closed while the node restarted already stopped it once;
+	// the node outlives no host.
+	if h.ctx.Err() != nil {
+		node.Stop()
+	}
 }
 
 // agentFieldCancel is the Stop a cancel from AgentField makes of a job: the
