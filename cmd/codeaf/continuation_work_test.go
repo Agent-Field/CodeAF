@@ -108,6 +108,8 @@ func TestC31AStartupSaveIsNotAChoice(t *testing.T) {
 			}
 			if strings.HasPrefix(action, "git-") {
 				git("init", "-q")
+				git("config", "--local", "maintenance.auto", "false")
+				git("config", "--local", "gc.auto", "0")
 				git("add", "work.txt")
 				git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "initial")
 				if action == "git-private" {

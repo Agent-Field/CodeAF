@@ -160,7 +160,7 @@ func TestALandedCommitCarriesTheExactTrailerBytes(t *testing.T) {
 				t.Fatalf("prepareTaskTree: %v", err)
 			}
 			writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
-			if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, row.sign, false); problem != "" {
+			if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, row.sign, false, true); problem != "" {
 				t.Fatalf("the landing could not commit: %s", problem)
 			}
 			// The commit object itself: headers, one blank line, and the message

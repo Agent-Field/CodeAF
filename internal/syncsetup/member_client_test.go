@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -208,6 +209,13 @@ func (r *memberRig) home(id *identity.Identity) *Sync {
 }
 func waitMember(t *testing.T, s *Sync, predicate func(*personalMember) bool) {
 	t.Helper()
+	waitMemberWithClock(t, s, predicate, nil, nil)
+}
+
+// Recovery can need a Raft tick after bounded transport queues fill. A rig
+// using a fake relay clock must dispatch those timers as well as socket changes.
+func waitMemberWithClock(t *testing.T, s *Sync, predicate func(*personalMember) bool, clock *directorytest.FakeClock, ticks <-chan struct{}) {
+	t.Helper()
 	timer := time.NewTimer(requestTimeout)
 	defer timer.Stop()
 	for {
@@ -231,6 +239,8 @@ func waitMember(t *testing.T, s *Sync, predicate func(*personalMember) bool) {
 		}
 		select {
 		case <-changed:
+		case <-ticks:
+			clock.Advance(time.Duration(cs.TickEveryMillis) * time.Millisecond)
 		case <-timer.C:
 			t.Fatal("R9 learner did not reach its applied state")
 		}
@@ -717,7 +727,21 @@ func TestR9R23PersonalLearnerRefreshesColdRouterGeneration(t *testing.T) {
 	old := recordOf(t, s)
 	s.stopMember()
 	mustNil(t, r.svc.Close())
-	r.svc = relayserve.New(relayserve.Config{Store: r.storage, Now: r.clock.Now, After: r.clock.After})
+	// A cold router can discard deliveries while the learner catches up. Its
+	// recovery scheduler belongs to this fake clock, so a real wait alone cannot
+	// dispatch a heartbeat after transport backpressure pauses append progress.
+	ticks := make(chan struct{}, 1)
+	after := func(delay time.Duration, fn func()) func() bool {
+		stop := r.clock.After(delay, fn)
+		if delay == time.Duration(cs.TickEveryMillis)*time.Millisecond {
+			select {
+			case ticks <- struct{}{}:
+			default:
+			}
+		}
+		return stop
+	}
+	r.svc = relayserve.New(relayserve.Config{Store: r.storage, Now: r.clock.Now, After: after})
 	readyMember(t, s)
 	current := recordOf(t, s)
 	if current.Store != old.Store || current.Grant.Node != old.Grant.Node || current.Grant.Generation <= old.Grant.Generation {
@@ -727,7 +751,26 @@ func TestR9R23PersonalLearnerRefreshesColdRouterGeneration(t *testing.T) {
 	mustNil(t, s.SyncState(t.Context()))
 	want, e := s.Dir.List(t.Context())
 	mustNil(t, e)
-	waitMember(t, s, func(m *personalMember) bool { return m.idle && appliedVault(m) == want.Identity.Vault })
+	waitMemberWithClock(t, s, func(m *personalMember) bool { return m.idle && appliedVault(m) == want.Identity.Vault }, r.clock, ticks)
+
+	t.Run("bounded peer queue", func(t *testing.T) {
+		// Prevent application acknowledgments while public writes fill the
+		// learner's bounded lane. Voters still commit without waiting for it.
+		m := s.member
+		vault := want.Identity.Vault
+		func() {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			for round := range 2 * rafttransport.MaxInflight {
+				next := fmt.Sprintf("cold-router-vault-%d", round)
+				mustNil(t, s.Dir.SetVault(t.Context(), vault, next))
+				vault = next
+			}
+		}()
+		waitMemberWithClock(t, s, func(m *personalMember) bool {
+			return m.idle && appliedVault(m) == vault
+		}, r.clock, ticks)
+	})
 }
 
 // H3/R23 prohibits discovery, enrollment, SQLite creation or delayed callbacks

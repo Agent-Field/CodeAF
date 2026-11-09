@@ -37,7 +37,7 @@ func ImportCopyHistory(original, prepared string) error {
 	if !info.Mode().IsRegular() {
 		return errors.New("the task copy's repository link is not a file")
 	}
-	_, err = git(original, "-c", "core.hooksPath=/dev/null", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", prepared, "HEAD")
+	_, err = privateGit(original, "-c", "core.hooksPath=/dev/null", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", prepared, "HEAD")
 	return err
 }
 

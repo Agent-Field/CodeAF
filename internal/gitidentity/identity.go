@@ -18,6 +18,13 @@ const (
 	Email = "agentfield-bot@users.noreply.github.com"
 )
 
+// PrivateArgs keeps commands in disposable copies from leaving a detached Git
+// maintenance process writing after their owner starts walking or removing them.
+// Callers must keep the person's working repository on its ordinary Git path.
+func PrivateArgs(args ...string) []string {
+	return append([]string{"-c", "maintenance.auto=false", "-c", "gc.auto=0"}, args...)
+}
+
 // Environment makes Git attribute a model-written commit to the run even
 // when the repository carries the person's user.name and user.email.
 func Environment() []string {
