@@ -31,6 +31,7 @@ func (st *Store) ForgetPRJob(id int) error {
 			if err := writeAtomic(filepath.Join(st.root, "mint-high-water"), []byte(strconv.Itoa(high)+"\n")); err != nil {
 				return err
 			}
+			defer noteWritten(st.ItemPath(id))
 			return os.Remove(st.ItemPath(id))
 		})
 	})
@@ -57,6 +58,7 @@ func (st *Store) ForgetUnstartedCopy(id int) error {
 			if err := writeAtomic(filepath.Join(st.root, "mint-high-water"), []byte(strconv.Itoa(high)+"\n")); err != nil {
 				return err
 			}
+			defer noteWritten(st.ItemPath(id))
 			return os.Remove(st.ItemPath(id))
 		})
 	})

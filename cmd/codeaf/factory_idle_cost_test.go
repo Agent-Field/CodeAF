@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,5 +113,98 @@ func TestTheManagerWatchSeesEveryChange(t *testing.T) {
 	}
 	if door.Manages(later) || !door.Manages(moved) {
 		t.Fatal("a manager's move to another conversation was not seen on the next look")
+	}
+}
+
+// THE BUSY-FOLDER CASE, by reads alone: a folder whose clock moves under every
+// look must not make the watch read the floor. It read every job on every look
+// before the index stopped trusting the folder's clock.
+func TestABusyFloorFolderReadsNoJobs(t *testing.T) {
+	const jobs, ticks = 60, 100
+	st, talk, _ := idleFloor(t, jobs)
+	door := seamRunDoor{st: st}
+	door.AutomaticRefusal(talk)
+	before := st.Reads()
+	for i := range ticks {
+		if err := st.SetBusyAll(fmt.Sprintf("tick %d", i)); err != nil {
+			t.Fatal(err)
+		}
+		door.AutomaticRefusal(talk)
+	}
+	got := st.Reads() - before
+	t.Logf("%d looks over %d jobs in a busy folder read %d documents", ticks, jobs, got)
+	if got != 0 {
+		t.Fatalf("%d looks over %d jobs in a busy folder read %d documents, want 0", ticks, jobs, got)
+	}
+}
+
+// THE BUSY-FOLDER CASE. A live engine rewrites the floor folder's busy, poll
+// and runner records every second or two, so the folder is never still. The
+// first manager index trusted the folder's clock and was built again, from a
+// full read of the floor, on every look of every job chat; on the owner's
+// machine that was a fifth of an idle engine's time. Now an idle look reads no
+// job and checks the floor at most once a managerRecheck, while a write this
+// process makes is still seen on the next look and one another process makes
+// within managerRecheck.
+func TestABusyFloorFolderCostsTheManagerWatchNothing(t *testing.T) {
+	const jobs, ticks = 60, 100
+	st, talk, id := idleFloor(t, jobs)
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	managerClock = func() time.Time { return now }
+	t.Cleanup(func() { managerClock = time.Now })
+	door := seamRunDoor{st: st}
+	if got := door.AutomaticRefusal(talk); got != "" {
+		t.Fatalf("a running job refused automatic work: %q", got)
+	}
+	x := managerIndexOf(st)
+	reads, checks := st.Reads(), x.checks
+	for i := range ticks {
+		// The folder moves under every look, as the factory's own records do.
+		if err := st.SetBusyAll(fmt.Sprintf("tick %d", i)); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(st.Root(), now, now); err != nil {
+			t.Fatal(err)
+		}
+		door.AutomaticRefusal(talk)
+		now = now.Add(100 * time.Millisecond)
+	}
+	gotReads, gotChecks := st.Reads()-reads, x.checks-checks
+	t.Logf("%d looks over %d jobs in a busy folder: %d documents read, %d checks of the floor", ticks, jobs, gotReads, gotChecks)
+	if gotReads != 0 {
+		t.Fatalf("%d idle looks over %d jobs in a busy folder read %d documents, want 0", ticks, jobs, gotReads)
+	}
+	if limit := ticks/10 + 1; gotChecks > limit {
+		t.Fatalf("%d idle looks over ten seconds checked the floor %d times, want at most %d", ticks, gotChecks, limit)
+	}
+
+	// Another process names this conversation's job elsewhere: seen once the
+	// recheck window has passed, without any write by this process.
+	path := st.ItemPath(id)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere.jsonl")
+	moved := strings.Replace(string(data), strconv.Quote(talk), strconv.Quote(elsewhere), 1)
+	if moved == string(data) {
+		t.Fatal("the fixture's document does not name its manager")
+	}
+	if err := os.WriteFile(path+".tmp", []byte(moved), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(path+".tmp", path); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(managerRecheck)
+	if door.Manages(talk) || !door.Manages(elsewhere) {
+		t.Fatal("a manager moved by another process was not seen after the recheck window")
+	}
+	// And a Stop written here is seen on the very next look.
+	if err := st.Update(id, func(it *factory.Item) error { factory.MarkPersonStopped(it); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if got := door.AutomaticRefusal(elsewhere); got != factory.PersonStopReason {
+		t.Fatalf("the look after a person's Stop answered %q", got)
 	}
 }

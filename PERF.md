@@ -449,19 +449,52 @@ counts vault decrypts.
 - **The person-Stop watch.** `session.watchJobBudget` still looks every 100 ms
   per job chat, so a person's Stop or a spent budget acts within one tick plus
   one read, as before. The answer comes from a per-floor manager index
-  (`cmd/codeaf/factory_manager_index.go`) rebuilt only when the floor folder's
-  identity, size or modification time changes, and trusted only once that time
-  is 2 s older than the listing (a folder clock can be that coarse); the job's
-  own document is read again only when it was replaced.
-  `TestAnIdleManagerWatchReadsNoJobs`: 100 idle looks over 60 jobs read 12,000
-  documents before, 0 after, for a manager and for a conversation that manages
-  nothing. `TestTheManagerWatchSeesEveryChange` pins the Stop, a late manager
-  and a moved manager on the next look.
+  (`cmd/codeaf/factory_manager_index.go`) shared by every chat. It does NOT
+  trust the floor folder's clock: that folder also holds the busy, poll and
+  runner records a live engine rewrites every second or two, so on a real
+  machine it never settles (the first index rebuilt from a full read on every
+  look of every chat). A look answers from the index unless this process has
+  written a job document since (`store.(*Store).Written`) or the index is
+  `managerRecheck` (1 s) old; a recheck lists the folder and `stat`s each job
+  (`store.(*Store).Managers`) and reads only a document that changed. A job
+  another process rewrites is seen within that second; the job's own document
+  is still `stat`ed on every look, so its Stop is seen on the next.
+  `TestAnIdleManagerWatchReadsNoJobs`, `TestABusyFloorFolderReadsNoJobs`
+  (100 looks over 60 jobs in a folder rewritten every look: 6,000 documents
+  before, 0 after) and `TestABusyFloorFolderCostsTheManagerWatchNothing`
+  (at most one floor check per 1 s of looks). `TestTheManagerWatchSeesEveryChange`
+  pins the Stop, a late manager and a moved manager on the next look.
+- **Every read of a job document.** The factory store keeps each decoded
+  document beside the identity (`fstat` device, inode, size, modification
+  time) of the file it was read from, per floor folder and shared by every
+  store over it (`internal/factory/store/doccache.go`), and hands out a deep
+  copy. A read whose `stat` still names that file decodes nothing. Every write
+  renames a fresh file into place, so a write always changes the identity. So
+  `settleJobs` on each factory request and `lease.(*Desk).Pull` on each worker
+  poll cost a folder listing, a `stat` and a copy per job, never an open or a
+  decode. `List` no longer reads each document a second time unless a tier
+  lookup could have written it. `TestAnUnchangedFloorIsListedWithoutReadingAJob`:
+  50 looks at 60 unchanged jobs decoded 3,000 documents before, 0 after;
+  `TestEveryChangeToAJobIsSeenOnTheNextRead` pins a store write, an edit in
+  place dated back, a same-size same-time replacement and a removal;
+  `TestEveryDocumentTypeCanBeCopiedDeeply` holds the copy to sharing nothing.
 - **The vault.** A vault whose sealed bytes equal the last bytes this process
   opened under the same key is not decrypted again; writes always get their
   own copy. `TestAnUnchangedVaultIsDecryptedOnce`: 400 reads of an unchanged
   vault decrypted it 400 times before, 0 after. Each chat's sync start still
   captures and pushes once.
 
-Still O(jobs) per request, not per tick: every factory HTTP request lists the
-floor in `settleJobs`, and every worker pull lists it in `lease.(*Desk).Pull`.
+Still O(jobs) per request, though no longer O(bytes): every factory HTTP
+request lists the floor in `settleJobs`, and every worker pull lists it in
+`lease.(*Desk).Pull`, each a `stat` and a copy per job.
+
+Measured on the owner's Mac (371 jobs, ~100 chats, `codeaf app` with nobody
+typing; CPU over 10 s windows at 1, 2, 3 and 5 minutes): 142/121/59/53% at
+`32747af4d`, 28/45/21/14% after the two items above, about 20% at 7 to 9
+minutes. What is left is mostly the desktop's own reads (`ListAgents`'s walk
+of every conversation, `OpenCollection`, `KnowledgeSnapshot`, `ListInbox`),
+the knowledge pass every 2 s, and chat publication.
+
+To see what an idle process costs after its startup, profile a window that
+opens late: `CODEAF_DIAGNOSTIC_PROFILE_AFTER=150` (seconds, 0..3600) with
+`CODEAF_DIAGNOSTIC_PROFILE_DIR` and `_SECONDS` (`internal/diagprofile`).

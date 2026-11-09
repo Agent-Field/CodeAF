@@ -38,21 +38,31 @@ func sameTierAuthor(it factory.Item, r *tierRead) bool {
 }
 
 func (st *Store) readHydrated(it factory.Item) (factory.Item, error) {
-	st.hydrateTier(it)
-	// Lookup runs without the item lock. Atomic document replacement lets
-	// us reload the latest saved snapshot without acquiring that lock.
-	d, err := st.read(st.ItemPath(it.ID))
-	if err != nil {
-		return factory.Item{}, err
+	// Only a lookup can have written the document since the caller read it,
+	// so only an item that needed one is read again: every other item would
+	// read back the very bytes the caller just decoded.
+	if needsTierLookup(it) {
+		st.hydrateTier(it)
+		// Lookup runs without the item lock. Atomic document replacement lets
+		// us reload the latest saved snapshot without acquiring that lock.
+		d, err := st.read(st.ItemPath(it.ID))
+		if err != nil {
+			return factory.Item{}, err
+		}
+		it = d.Item
 	}
-	it = d.Item
 	st.tierDetail(&it)
 	st.retainOutput(&it)
 	return it, nil
 }
 
+// needsTierLookup is whether an item's tier is still to be looked up.
+func needsTierLookup(it factory.Item) bool {
+	return it.Tier == "" && it.RefusesWrite() && it.Author != "" && factory.RepoOf(it) != ""
+}
+
 func (st *Store) hydrateTier(it factory.Item) {
-	if it.Tier != "" || !it.RefusesWrite() || it.Author == "" || factory.RepoOf(it) == "" {
+	if !needsTierLookup(it) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

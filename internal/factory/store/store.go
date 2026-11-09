@@ -267,6 +267,8 @@ func (st *Store) list(hydrate bool) ([]factory.Item, error) {
 	items := make([]factory.Item, 0, len(entries))
 	var ids repositoryIDs
 	loadedIDs := false
+	listed := make(map[string]bool, len(entries))
+	defer func() { st.cache().keepOnly(listed) }()
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -278,6 +280,7 @@ func (st *Store) list(hydrate bool) ([]factory.Item, error) {
 		if _, err := strconv.Atoi(strings.TrimSuffix(entry.Name(), ".json")); err != nil {
 			continue
 		}
+		listed[entry.Name()] = true
 		d, err := st.read(filepath.Join(st.root, entry.Name()))
 		if err != nil {
 			continue
@@ -611,31 +614,18 @@ func (st *Store) now() time.Time {
 	return st.clock()
 }
 
-func (st *Store) read(path string) (doc, error) {
-	data, err := os.ReadFile(path)
-	if err == nil {
-		st.reads.Add(1)
-	}
-	if err != nil {
-		if os.IsNotExist(err) {
-			return doc{}, ErrNotFound
-		}
-		return doc{}, err
-	}
-	var d doc
-	if err := json.Unmarshal(data, &d); err != nil {
-		return doc{}, fmt.Errorf("factory store: cannot read %s: %w", filepath.Base(path), err)
-	}
+// finishDoc is the repair every read applies to a decoded document.
+func finishDoc(name string, d doc) (doc, error) {
 	if d.Item.PersonStopped == nil && factory.StoppedByPerson(d.Item) {
 		factory.MarkPersonStopped(&d.Item)
 	}
 	if d.Schema > Schema {
-		return doc{}, fmt.Errorf("%w: %s", ErrNewer, filepath.Base(path))
+		return doc{}, fmt.Errorf("%w: %s", ErrNewer, name)
 	}
 	// THE FILE NAME IS THE ID. A document whose body lost its id, or never had
 	// one, is still the item its name says, so a read cannot answer an item
 	// that a later write would file under a different name.
-	if n, err := strconv.Atoi(strings.TrimSuffix(filepath.Base(path), ".json")); err == nil {
+	if n, err := strconv.Atoi(strings.TrimSuffix(name, ".json")); err == nil {
 		d.Item.ID = n
 	}
 	// Older documents have no budget history. Their observed revision is the
@@ -750,7 +740,11 @@ func writeAtomic(path string, data []byte) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(name, path)
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	noteWritten(path)
+	return nil
 }
 
 // checkID refuses an id the store could not have minted. Ids are positive

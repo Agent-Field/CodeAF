@@ -95,6 +95,9 @@ func TestBadEnvironmentRefusesWithoutEchoingValues(t *testing.T) {
 		"space":       {EnvDir: good, EnvSeconds: " 5"},
 		"secret":      {EnvDir: good, EnvSeconds: secret},
 		"heap secret": {EnvDir: good, EnvHeap: secret},
+		"after unit":  {EnvDir: good, EnvAfter: "90s"},
+		"after long":  {EnvDir: good, EnvAfter: "3601"},
+		"after neg":   {EnvDir: good, EnvAfter: "-1"},
 	}
 	for name, env := range cases {
 		before := listing(t, good)
@@ -115,6 +118,50 @@ func TestBadEnvironmentRefusesWithoutEchoingValues(t *testing.T) {
 			t.Fatalf("%s: %v", ok, err)
 		}
 	}
+}
+
+func TestTheDelayIsParsedAndBounded(t *testing.T) {
+	good := privateDir(t)
+	for raw, want := range map[string]time.Duration{"": 0, "0": 0, "90": 90 * time.Second, "3600": time.Hour} {
+		cfg, err := ParseConfig(mapLookup(map[string]string{EnvDir: good, EnvAfter: raw}))
+		if err != nil || cfg.After != want {
+			t.Fatalf("%q: %+v %v", raw, cfg, err)
+		}
+	}
+}
+
+// TestADelayedWindowOpensLateAndAnEarlyEndLeavesNothing: a delay that runs out
+// opens a real profile; a process that ends inside the delay leaves no file.
+func TestADelayedWindowOpensLateAndAnEarlyEndLeavesNothing(t *testing.T) {
+	dir := privateDir(t)
+	s, err := start(context.Background(), Config{Dir: dir, Duration: 20 * time.Millisecond, After: 10 * time.Millisecond}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-s.done
+	got := listing(t, dir)
+	if len(got) != 1 {
+		t.Fatalf("files=%v", got)
+	}
+	if info, err := os.Stat(filepath.Join(dir, got[0])); err != nil || info.Size() == 0 {
+		t.Fatalf("the delayed profile is empty: %v %v", info, err)
+	}
+
+	early := privateDir(t)
+	s, err = start(context.Background(), Config{Dir: early, Duration: time.Hour, After: time.Hour}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Stop()
+	if got := listing(t, early); len(got) != 0 {
+		t.Fatalf("an end inside the delay left %v", got)
+	}
+	// The profiler was never started, so the next one may start.
+	next, err := start(context.Background(), Config{Dir: privateDir(t), Duration: time.Hour}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next.Stop()
 }
 
 func TestDefaultsAreBounded(t *testing.T) {

@@ -12,11 +12,18 @@
 // two lines and none of them knows this package exists. Nothing here is an app
 // API, a port, or a protocol field.
 //
-// The knobs are three environment variables, all read once, at start:
+// The knobs are four environment variables, all read once, at start:
 //
 //	CODEAF_DIAGNOSTIC_PROFILE_DIR      absolute path of a private directory
 //	CODEAF_DIAGNOSTIC_PROFILE_SECONDS  optional, whole seconds 1..60, default 30
 //	CODEAF_DIAGNOSTIC_PROFILE_HEAP     optional, exactly "1" to also write a heap profile
+//	CODEAF_DIAGNOSTIC_PROFILE_AFTER    optional, whole seconds 0..3600 to wait before the window opens
+//
+// The delay exists because a process's first minute is its startup, and the
+// question "what does it cost while nobody touches it" is about the minutes
+// after that. The file is still created exclusively at start, so a refusal is
+// still synchronous; a process that ends inside the delay removes the empty
+// file it made rather than leaving a profile of nothing.
 //
 // A variable that is set and wrong is REFUSED ([Start] returns an *Error whose
 // text is a fixed sentence): a developer who asked for a profile and silently
@@ -52,6 +59,7 @@ const (
 	EnvDir     = "CODEAF_DIAGNOSTIC_PROFILE_DIR"
 	EnvSeconds = "CODEAF_DIAGNOSTIC_PROFILE_SECONDS"
 	EnvHeap    = "CODEAF_DIAGNOSTIC_PROFILE_HEAP"
+	EnvAfter   = "CODEAF_DIAGNOSTIC_PROFILE_AFTER"
 
 	// DefaultSeconds is the interval when EnvSeconds is unset; MinSeconds and
 	// MaxSeconds bound it. A profile is a measurement of a window, and an
@@ -59,6 +67,8 @@ const (
 	DefaultSeconds = 30
 	MinSeconds     = 1
 	MaxSeconds     = 60
+	// MaxAfterSeconds bounds the delay: an hour is long past any startup.
+	MaxAfterSeconds = 3600
 
 	// FilePrefix and FileSuffix make the files findable: codeaf-cpu-*.pprof and
 	// codeaf-heap-*.pprof.
@@ -87,6 +97,8 @@ type Config struct {
 	Dir      string
 	Duration time.Duration
 	Heap     bool
+	// After is how long the process runs before the window opens.
+	After time.Duration
 }
 
 // Enabled reports whether any profiling was asked for.
@@ -110,6 +122,13 @@ func ParseConfig(lookup Lookup) (Config, error) {
 		}
 		cfg.Duration = time.Duration(n) * time.Second
 	}
+	if raw, _ := lookup(EnvAfter); raw != "" {
+		n, ok := parseBounded(raw, 0, MaxAfterSeconds)
+		if !ok {
+			return Config{}, refuse(fmt.Sprintf("the delay must be a whole number of seconds from 0 to %d", MaxAfterSeconds))
+		}
+		cfg.After = time.Duration(n) * time.Second
+	}
 	switch raw, _ := lookup(EnvHeap); raw {
 	case "", "0":
 	case "1":
@@ -121,8 +140,11 @@ func ParseConfig(lookup Lookup) (Config, error) {
 }
 
 // parseSeconds accepts plain ASCII digits only: no sign, no space, no unit.
-func parseSeconds(raw string) (int, bool) {
-	if len(raw) > 2 {
+func parseSeconds(raw string) (int, bool) { return parseBounded(raw, MinSeconds, MaxSeconds) }
+
+// parseBounded accepts plain ASCII digits from lo to hi inclusive.
+func parseBounded(raw string, lo, hi int) (int, bool) {
+	if raw == "" || len(raw) > len(strconv.Itoa(hi)) {
 		return 0, false
 	}
 	for _, r := range raw {
@@ -131,7 +153,7 @@ func parseSeconds(raw string) (int, bool) {
 		}
 	}
 	n, err := strconv.Atoi(raw)
-	if err != nil || n < MinSeconds || n > MaxSeconds {
+	if err != nil || n < lo || n > hi {
 		return 0, false
 	}
 	return n, true
@@ -187,10 +209,12 @@ func start(ctx context.Context, cfg Config, warn func(string)) (*Session, error)
 	if err != nil {
 		return nil, err
 	}
-	if err := pprof.StartCPUProfile(cpu); err != nil {
-		cpu.Close()
-		removeOwn(cpu)
-		return nil, refuse("a CPU profile is already running in this process")
+	if cfg.After <= 0 {
+		if err := pprof.StartCPUProfile(cpu); err != nil {
+			cpu.Close()
+			removeOwn(cpu)
+			return nil, refuse("a CPU profile is already running in this process")
+		}
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Session{cfg: cfg, warn: warn, cancel: cancel, cpu: cpu, done: make(chan struct{})}
@@ -198,11 +222,39 @@ func start(ctx context.Context, cfg Config, warn func(string)) (*Session, error)
 	return s, nil
 }
 
+// wait opens the window after the configured delay. It answers false, having
+// removed the empty file, when the process ended first or the profiler could
+// not start.
+func (s *Session) wait(ctx context.Context) bool {
+	if s.cfg.After <= 0 {
+		return true
+	}
+	delay := time.NewTimer(s.cfg.After)
+	defer delay.Stop()
+	select {
+	case <-delay.C:
+	case <-ctx.Done():
+		s.cpu.Close()
+		removeOwn(s.cpu)
+		return false
+	}
+	if err := pprof.StartCPUProfile(s.cpu); err != nil {
+		s.cpu.Close()
+		removeOwn(s.cpu)
+		s.warn("diagnostic profile: a CPU profile was already running when the delay ended")
+		return false
+	}
+	return true
+}
+
 // run is the single goroutine. It waits for the interval or a cancellation,
 // then finishes once. The expensive CPU stop therefore happens here, never on
 // the caller's goroutine unless the caller chose to wait in Stop.
 func (s *Session) run(ctx context.Context, nonce string) {
 	defer close(s.done)
+	if !s.wait(ctx) {
+		return
+	}
 	timer := time.NewTimer(s.cfg.Duration)
 	defer timer.Stop()
 	select {
