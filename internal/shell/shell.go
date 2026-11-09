@@ -332,5 +332,5 @@ func PromptFact() string {
 	if err != nil {
 		return "- Shell commands are unavailable; there is no shell tool in this call. " + err.Error() + "\n"
 	}
-	return "- Shell: Git Bash (" + bash + "); Windows drives are /c/…, /d/…\n" + PathConversionFact
+	return "- Shell: Git Bash (" + bash + "); Windows drives are /c/…, /d/…\n" + "- On Windows, python3 may be the Microsoft Store stub; use python or py. npm/npx/yarn are .cmd shims. Start long-running servers with the jobs tool instead of & and stop them with jobs: Git Bash kill cannot stop native Windows processes.\n" + PathConversionFact
 }

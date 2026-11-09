@@ -62,3 +62,13 @@ Yes. Run the Linux build of codeaf inside WSL and its commands use Linux bash, b
 ## How do I read the rest of a long command output on Windows
 
 When a command prints more than fits, the notice offers an exact `sh` command to read the saved output. It uses Git Bash paths and quotes Windows scratch folders, including folders with spaces or an apostrophe. Run that offered command to read the saved bytes instead of running the original command again.
+
+## Windows .cmd package launchers: npm, npx, yarn and jobs kill
+
+npm, npx and yarn use `.cmd` shims on Windows. Ask codeaf to start long-running servers with the jobs tool instead of shell `&`, then stop them with `jobs kill N` or the process panel's Stop action. Git Bash's `kill` cannot stop native Windows processes.
+
+A Windows launch owns its descendants even when an intermediate shell exits. Stop first asks the tree to exit, then forces it after the grace period. A stop is confirmed only after the whole tree ends; if its ending cannot be checked, the answer says the job had not ended and its row remains running. Deliberately kept services and detached helpers keep their existing lifetimes.
+
+## Why does python3 open the Microsoft Store on Windows?
+
+`python3` may resolve to the Microsoft Store stub. Use `python` or `py` for an installed Windows Python interpreter.
