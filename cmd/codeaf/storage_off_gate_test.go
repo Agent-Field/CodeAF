@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -143,6 +145,46 @@ func TestStorageOffSeatedTurnStopsWhenAnotherComputerContinuesIt(t *testing.T) {
 				if err := d.Gate(); err == nil {
 					t.Error("displaced window resumed tools")
 				}
+				turns, err := cellstore.Turns(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				eng := cellstore.EngineFor(cfg.Workspace)
+				if _, err := d.Store(eng).Seal(t.Context(), c, cellstore.TurnInfo{}); !errors.Is(err, cellstore.ErrReadOnly) {
+					t.Errorf("viewer seal = %v, want read only", err)
+				}
+				after, err := cellstore.Turns(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(after) != len(turns) {
+					t.Errorf("viewer admitted a new seal: %d -> %d", len(turns), len(after))
+				}
+				s, ok, err := syncsetup.Open(home.Dir())
+				if err != nil || !ok {
+					t.Fatalf("sync: %v", err)
+				}
+				continued, err := s.Continuer(eng, syncsetup.TakeOptions{RootFor: func(string) string { return c.Root }}).Take(t.Context(), c.ID)
+				if err != nil || !continued.LocalOnly {
+					t.Fatalf("continue: %+v, %v", continued, err)
+				}
+				if err := d.Close(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				cfg = v3Seated(cfg)
+				resumed := syncDrives.renewalsOf(c.ID)
+				startupFinished(resumed)
+				if err := resumed.Gate(); err != nil {
+					t.Fatalf("continued writer refused tools: %v", err)
+				}
+				if _, err := resumed.Store(eng).Seal(t.Context(), c, cellstore.TurnInfo{}); err != nil {
+					t.Fatalf("continued writer refused seal: %v", err)
+				}
+				after, err = cellstore.Turns(c)
+				if err != nil || len(after) <= len(turns) {
+					t.Fatalf("continuing did not resume sealing: %d -> %d, %v", len(turns), len(after), err)
+				}
+
 			} else if secondErr != nil {
 				t.Errorf("allowed second command did not run: %v; %s", secondErr, said.String())
 			}

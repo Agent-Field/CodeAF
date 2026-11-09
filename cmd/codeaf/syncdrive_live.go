@@ -333,6 +333,11 @@ func (s lateStore) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInf
 	if err != nil {
 		return cellstore.Sealed{}, err
 	}
+	// Admission ends when the local window becomes a viewer. A seal already
+	// admitted still finishes, preserving work accepted before the refusal.
+	if used == nil && s.live.localGate != nil && s.live.localGate.superseded() {
+		return cellstore.Sealed{}, cellstore.ErrReadOnly
+	}
 	sealed, err := store.Seal(ctx, c, info)
 	if err == nil {
 		s.live.catchUpAfter(used)

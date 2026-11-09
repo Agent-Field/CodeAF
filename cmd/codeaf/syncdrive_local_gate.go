@@ -16,6 +16,7 @@ import (
 )
 
 const localOwnershipFreshFor = 2 * time.Second
+const localOwnershipFeedFreshFor = 15 * time.Second
 
 // localToolGate checks shared local writers without acquiring or renewing a hold.
 // The feed invalidates cached readings; the bound covers missing or disconnected updates.
@@ -64,13 +65,23 @@ func (g *localToolGate) Gate() error {
 		state = g.feed.State()
 	}
 	version := state.Version
-	if !g.checked.IsZero() && version <= g.version && (state.Up && g.available || time.Since(g.checked) < localOwnershipFreshFor) {
+	freshFor := localOwnershipFreshFor
+	if state.Up && g.available {
+		freshFor = localOwnershipFeedFreshFor
+	}
+	if !g.checked.IsZero() && version <= g.version && time.Since(g.checked) < freshFor {
 		return nil
 	}
-	g.checked, g.version = time.Now(), version
+	g.version = version
 	ctx, cancel := context.WithTimeout(context.Background(), holdsLeaseWithin)
 	defer cancel()
+	started := time.Now()
 	view, err := g.sync.Dir.Cell(ctx, remote)
+	// Queued tools share the completed attempt even when a failed request was slow.
+	g.checked = started
+	if err != nil {
+		g.checked = time.Now()
+	}
 	g.available = err == nil
 	// An unavailable reading cannot establish another holder, so offline work continues.
 	if err != nil || view.Cell.Lease.Device == "" || view.Cell.Lease.Device == g.sync.Device.ID() || view.Cell.Lease.Expires <= view.Now {
