@@ -424,3 +424,16 @@ the reply still carries them. Deduplication retains only outstanding deliveries,
 not the history of a lease. `TestAcknowledgementsLeaveOnlyUnconfirmedDeliveries`
 drives 25,000 receipts through real HTTP, checks failed-heartbeat retention, and
 requires the backlog to drain within 110 successful heartbeats.
+
+## Sync export retries
+
+A chat's export is sealed once per head. While its frames wait in the outbox
+unpublished — a relay that refuses every put, an upload that never finishes —
+each retry answers the kept export (`kept-export.json` beside the frames) and
+seals nothing, as long as the head, keys, ledger size, frame size and every
+frame file are unchanged. A moved head seals again and deletes the frames only
+the older export named. `TestARefusedUploadIsNotSealedAgainOnTheNextPass` drives
+five refused passes and requires one export of 64 objects into 8 frames (before:
+five exports, 320 objects, 40 frames); the engine-tagged
+`TestARepeatedExportKeepsTheWaitingFramesRealEngine` requires the real furrow
+to leave every waiting frame file untouched on a repeat.
