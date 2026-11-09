@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
@@ -19,11 +20,13 @@ const pairedStorageWithin = 1500 * time.Millisecond
 func startPairedStorage(ctx context.Context, dir string, route pair.Mailbox) func() {
 	ctx, cancel := context.WithTimeout(ctx, pairedStorageWithin)
 	done := make(chan struct{})
-	go func() {
+	// A fault in this optional reading must never take pairing or the surface
+	// down, and done still closes so the pairing that waits on it finishes.
+	guard.Go("pair/storage", func() {
 		defer close(done)
 		defer cancel()
 		samplePairedStorage(ctx, dir, route)
-	}()
+	})
 	return func() { <-done }
 }
 
