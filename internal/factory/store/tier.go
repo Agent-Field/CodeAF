@@ -37,23 +37,30 @@ func sameTierAuthor(it factory.Item, r *tierRead) bool {
 	return it.Author == r.author && factory.RepoOf(it) == r.repo
 }
 
+// readHydrated is it, as just read from its document, with its author's tier.
 func (st *Store) readHydrated(it factory.Item) (factory.Item, error) {
-	st.hydrateTier(it)
 	// Lookup runs without the item lock. Atomic document replacement lets
-	// us reload the latest saved snapshot without acquiring that lock.
-	d, err := st.read(st.ItemPath(it.ID))
-	if err != nil {
-		return factory.Item{}, err
+	// us reload the latest saved snapshot without acquiring that lock. Only a
+	// lookup, or a wait on another reader's, can have changed the document:
+	// otherwise it is the snapshot already in hand, and reading every document
+	// twice doubled the cost of each floor read.
+	if st.hydrateTier(it) {
+		d, err := st.read(st.ItemPath(it.ID))
+		if err != nil {
+			return factory.Item{}, err
+		}
+		it = d.Item
 	}
-	it = d.Item
 	st.tierDetail(&it)
 	st.retainOutput(&it)
 	return it, nil
 }
 
-func (st *Store) hydrateTier(it factory.Item) {
+// hydrateTier looks up the author's tier when the document has none, and says
+// whether the saved document may now differ from it.
+func (st *Store) hydrateTier(it factory.Item) bool {
 	if it.Tier != "" || !it.RefusesWrite() || it.Author == "" || factory.RepoOf(it) == "" {
-		return
+		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -61,7 +68,7 @@ func (st *Store) hydrateTier(it factory.Item) {
 	resolve := st.tierResolver
 	if resolve == nil {
 		st.tierMu.Unlock()
-		return
+		return false
 	}
 	if st.tierReads == nil {
 		st.tierReads = make(map[int]*tierRead)
@@ -75,11 +82,11 @@ func (st *Store) hydrateTier(it factory.Item) {
 			case <-done:
 			case <-ctx.Done():
 			}
-			return
+			return true
 		}
 		if st.now().Before(r.retryAt) {
 			st.tierMu.Unlock()
-			return
+			return false
 		}
 	} else {
 		r = &tierRead{author: it.Author, repo: factory.RepoOf(it)}
@@ -89,7 +96,7 @@ func (st *Store) hydrateTier(it factory.Item) {
 	current, err := st.read(st.ItemPath(it.ID))
 	if err != nil || current.Item.Tier != "" || !sameTierAuthor(current.Item, r) {
 		st.tierMu.Unlock()
-		return
+		return true
 	}
 	r.done = make(chan struct{})
 	done := r.done
@@ -128,6 +135,7 @@ func (st *Store) hydrateTier(it factory.Item) {
 	}
 	r.done = nil
 	close(done)
+	return true
 }
 
 // tierDetail projects transient lookup state through the existing failure view.
