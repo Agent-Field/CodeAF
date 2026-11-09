@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 )
 
 const reasonGitIgnored = "git ignores them"
 const ignoredReadFailure = "cannot read which folders Git ignores here"
+const gitCeilingVar = "GIT_CEILING_DIRECTORIES"
 
 // gitIgnored keeps a rebuild instruction from naming a lockfile that will not
 // arrive. Tracked exceptions are deliberately honored by Git's default check.
@@ -85,12 +87,32 @@ func ignoredDirectories(tree string) ([]string, error) {
 }
 
 func hasGitMarker(tree string) bool {
-	for dir := filepath.Clean(tree); ; dir = filepath.Dir(dir) {
+	repository, _ := gitScope(tree)
+	return repository
+}
+
+// gitScope keeps the native capture's ancestor search inside the same boundary
+// as Git's commands, so a surrounding checkout cannot hide a separate chat.
+func gitScope(tree string) (repository, fenced bool) {
+	ceilings := map[string]bool{}
+	for _, path := range filepath.SplitList(env.Value(gitCeilingVar)) {
+		if filepath.IsAbs(path) {
+			ceilings[canonicalTree(path)] = true
+		}
+	}
+	root := canonicalTree(tree)
+	for dir := root; ; dir = filepath.Dir(dir) {
+		if dir != root && ceilings[dir] {
+			return false, true
+		}
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil || os.IsPermission(err) {
-			return true
+			return true, false
+		}
+		if ceilings[dir] {
+			return false, true
 		}
 		if filepath.Dir(dir) == dir {
-			return false
+			return false, false
 		}
 	}
 }
