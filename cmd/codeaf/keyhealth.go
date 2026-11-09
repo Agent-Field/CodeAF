@@ -99,9 +99,15 @@ func (b *appBackend) startKeyHealth() {
 	// Remember the key without probing so a real turn's refusal can mark it
 	// invalid even before setup or health is first read.
 	address, key := b.keyHealthTarget()
-	b.keyHealth.mu.Lock()
-	b.keyHealth.key, b.keyHealth.address = key, address
-	b.keyHealth.mu.Unlock()
+	b.keyHealth.remember(address, key)
+}
+
+// remember records the key and address a later check and a real turn's refusal
+// refer to, without probing.
+func (c *keyHealthCache) remember(address, key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.key, c.address = key, address
 }
 
 func (b *appBackend) keyHealthTarget() (address, key string) {
