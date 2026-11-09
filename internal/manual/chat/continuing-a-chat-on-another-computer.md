@@ -77,7 +77,7 @@ After a live `--at` session, come back to the original computer and choose `1 co
 
 Keeping turns made here that another computer lacks waits for storage access only when they must be saved separately before replacing this copy. If those turns diverge from newer stored history, codeaf preserves them and says `cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here`. Your typed message stays in the box. Request access in Settings → Devices → sync storage before continuing this divergent copy.
 
-## Tools and saved turns when another computer continues a storage-off chat
+## Tools stop when the chat moves away while sync storage is off — a running turn, its tools and saved turns
 
 Before tools run in a shared chat while storage is off, codeaf checks who holds it. A reading is reused for at most 15 seconds with live updates, or two seconds without them. A change announced by the service refreshes it at once, even within those bounds. A failed reading is also reused for two seconds after it finishes.
 
@@ -204,7 +204,7 @@ Removing this computer from your devices does not change those project
 labels. Switching away and back keeps the same copy label or ordinary project
 name.
 
-## Continue a chat with GIT_CEILING_DIRECTORIES set
+## Moving a chat with GIT_CEILING_DIRECTORIES set — an enclosing checkout and its ignore rules
 
 A chat saves and moves its words and files using the same Git boundary as the project's Git commands. When `GIT_CEILING_DIRECTORIES` keeps an enclosing checkout outside this folder's Git search, that checkout's ignore rules do not hide the chat's saved files. A repository inside the boundary keeps its own ignore rules.
 
@@ -388,7 +388,7 @@ If the last upload fails when you quit, for example because the connection dropp
 
 ## Final saving sentences when closing a chat, quitting, /new or /resume
 
-After a chat finishes saving and closes, it no longer checks whether another computer is holding it. A final save can discover that another computer continued the chat. Its sentence appears once in the window when you close one chat, or when `/new` or `/resume` closes the previous chat. On quit it appears once after the screen is restored, including when an earlier individual close was still saving. A sentence already shown in the window is not printed again after quitting. This also applies with `--no-host`.
+After a chat finishes saving and closes, it no longer checks who holds it. A final save can find that the chat has moved to a different machine. Its sentence appears once in the window when you close one chat, or when `/new` or `/resume` closes the previous chat. On quit it appears once after the screen is restored, including when an earlier individual close was still saving. A sentence already shown in the window is not printed again after quitting. This also applies with `--no-host`.
 
 A window that stops reading does not hold up another window closing the chat. Any sentence still waiting for the closing window comes back with its closing result.
 
