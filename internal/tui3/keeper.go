@@ -1288,9 +1288,10 @@ func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
 	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted, func(err error) {
 		desk.Say(name + ": " + closeSaveWords(err, false, address))
 	}, address, func(lines []string) {
-		for _, line := range lines {
-			desk.Say(name + ": " + line)
+		for i, line := range lines {
+			lines[i] = name + ": " + line
 		}
+		desk.saving(lines)
 	})), true
 }
 
@@ -1402,6 +1403,7 @@ func (a *app) leaveEverything() {
 // leavingWork captures surface state before any engine work leaves the loop.
 // The returned work owns only the captured agents and thread-safe callbacks.
 func (a *app) leavingWork() func() {
+	a.outsideDesk.finishSaving(a.savingNotices)
 	if a.stopSealNotice != nil {
 		a.stopSealNotice()
 		a.stopSealNotice = nil

@@ -73,9 +73,17 @@ these are Home's listing sentences. a message left unsent by a failed send check
 
 Reading history already stored for your account needs no storage approval. With no local work to keep, `1 continue here` brings that recorded history here, even if this computer has no copy yet or its clean copy is older.
 
-After a live `--at` session, come back to the original computer and choose `1 continue here`. If its local history contains the last shared turn and any later local turns, or no turn was shared yet, the chat continues in place. Every local turn stays, the continue card goes away, and you can send messages and use tools immediately. Nothing is uploaded while storage is off. Before tools run in a shared chat, codeaf checks who holds it. Once another computer holds it, this window only shows the chat and refuses further tools, including commands and file edits. Readings refresh when the service reports a change. Without live updates, readings are reused for up to two seconds. An expired hold belonging to this computer or a free chat still allows tools. An unreachable service also allows local work; a chat never shared makes no ownership request. Quit and reopen normally; after approval, opening the chat on this same computer publishes the preserved turns even if its earlier hold expired.
+After a live `--at` session, come back to the original computer and choose `1 continue here`. If its local history contains the last shared turn and any later local turns, or no turn was shared yet, the chat continues in place. Every local turn stays, the continue card goes away, and you can send messages and use tools immediately. Nothing is uploaded while storage is off. Quit and reopen normally; after approval, opening the chat on this same computer publishes the preserved turns even if its earlier hold expired.
 
 Keeping turns made here that another computer lacks waits for storage access only when they must be saved separately before replacing this copy. If those turns diverge from newer stored history, codeaf preserves them and says `cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here`. Your typed message stays in the box. Request access in Settings → Devices → sync storage before continuing this divergent copy.
+
+## Tools and saved turns when another computer continues a storage-off chat
+
+Before tools run in a shared chat while storage is off, codeaf checks who holds it. A reading is reused for at most 15 seconds with live updates, or two seconds without them. A change announced by the service refreshes it at once, even within those bounds. A failed reading is also reused for two seconds after it finishes.
+
+When a reading finds another computer holding the chat, this window only shows the chat and refuses further tools, including commands and file edits. It stops saving new turns; saving work already accepted can finish. Choose `continue here` explicitly to resume writing.
+
+An expired hold belonging to this computer or a free chat still allows tools. An unreachable service also allows local work; a chat never shared makes no ownership request. No uploads start while storage is off.
 
 ## Why does continue here say this chat was last held here — my only computer asks to continue
 
@@ -369,6 +377,12 @@ A save wait lasts at most 30 seconds. After the screen closes, a pending sync sa
 If the turns are saved locally but not uploaded, the final sentence is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service’s host. If that pending upload was refused because storage is off, the successful receipt is `saved here; sync storage is off for this account, so it stays on this computer`. That is a successful exit. Ctrl+c during this wait leaves promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`; that failure may include the local recovery path.
 
 If the last upload fails when you quit, for example because the connection dropped, this computer does not let the chat go. Your other computer keeps showing it as running here and does not open the older save by itself; the unsent turns stay on this computer until an upload succeeds.
+
+## Final saving sentences when closing a chat, quitting, /new or /resume
+
+A final save can discover that another computer continued the chat. Its sentence appears once in the window when you close one chat, or when `/new` or `/resume` closes the previous chat. On quit it appears once after the screen is restored, including when an earlier individual close was still saving. A sentence already shown in the window is not printed again after quitting. This also applies with `--no-host`.
+
+A window that stops reading does not hold up another window closing the chat. Any sentence still waiting for the closing window comes back with its closing result.
 
 ## I pressed alt+m before the other chat appeared — still arriving, home on a second computer
 

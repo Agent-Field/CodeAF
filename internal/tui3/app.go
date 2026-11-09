@@ -3876,6 +3876,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case conversationClosedMsg:
 		a.conversationClosing = false
+		a.saidNotices()
 		for _, line := range msg.notices {
 			a.note(line)
 		}

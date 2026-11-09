@@ -53,7 +53,9 @@ func (sess *Session) watchRenewals() {
 				if !open {
 					return
 				}
-				sess.announce()
+				if !sess.announceRenewal(stop) {
+					return
+				}
 			case <-tick:
 				sess.mu.Lock()
 				if sess.closed || sess.generation != generation {
@@ -65,10 +67,31 @@ func (sess *Session) watchRenewals() {
 				if len(watching) == 0 {
 					continue
 				}
-				for line := seals.TakeSealNotice(); line != ""; line = seals.TakeSealNotice() {
-					sess.announce()
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					line := seals.TakeSealNotice()
+					if line == "" {
+						break
+					}
+					// Each window keeps its sentence until its own write or closing receipt succeeds.
+					func() {
+						sess.mu.Lock()
+						defer sess.mu.Unlock()
+						for _, surface := range watching {
+							surface.renewalNotices = append(surface.renewalNotices, line)
+						}
+					}()
+					if !sess.announceRenewal(stop) {
+						return
+					}
 					for _, surface := range watching {
-						_ = surface.send(Frame{Kind: "notice", Payload: mustJSON(line)})
+						if !surface.sendRenewal(stop, Frame{}, true) {
+							return
+						}
 					}
 				}
 			case <-stop:
@@ -94,4 +117,114 @@ func (sess *Session) endRenewals() <-chan struct{} {
 		sess.renewalStop = nil
 	}
 	return sess.renewalDone
+}
+
+// announceRenewal can leave a blocked writer behind when the conversation closes.
+// Ordinary turn broadcasts retain their existing delivery contract.
+func (sess *Session) announceRenewal(stop <-chan struct{}) bool {
+	push, watching := func() (*FactsPush, []*server) {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		return sess.factsLocked(), sess.watchingLocked()
+	}()
+	if push == nil {
+		return true
+	}
+	for _, surface := range watching {
+		if !surface.sendRenewal(stop, Frame{Kind: "facts", Payload: mustJSON(push)}, false) {
+			return false
+		}
+	}
+	return true
+}
+
+// sendRenewal lets the pump stop even when a window's writer cannot be cancelled.
+// A closing reply takes the same writer lock before draining undelivered sentences,
+// so a completed live write and its receipt can never both claim a sentence.
+func (s *server) sendRenewal(stop <-chan struct{}, frame Frame, notices bool) bool {
+	done := make(chan struct{})
+	// Repeated swaps share an outstanding write instead of parking another
+	// writer behind a window that has stopped reading.
+	for {
+		busy := func() <-chan struct{} {
+			s.session.mu.Lock()
+			defer s.session.mu.Unlock()
+			if s.renewalWrite != nil {
+				select {
+				case <-s.renewalWrite:
+				default:
+					return s.renewalWrite
+				}
+			}
+			s.renewalWrite = done
+			return nil
+		}()
+		if busy == nil {
+			break
+		}
+		select {
+		case <-stop:
+			return false
+		case <-busy:
+		}
+	}
+	go func() {
+		defer close(done)
+		s.write.Lock()
+		defer s.write.Unlock()
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		if !notices {
+			_ = s.sendLocked(frame)
+			return
+		}
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			line := func() string {
+				s.session.mu.Lock()
+				defer s.session.mu.Unlock()
+				if len(s.renewalNotices) == 0 {
+					return ""
+				}
+				return s.renewalNotices[0]
+			}()
+			if line == "" {
+				return
+			}
+			if err := s.sendLocked(Frame{Kind: "notice", Payload: mustJSON(line)}); err != nil {
+				return
+			}
+			func() {
+				s.session.mu.Lock()
+				defer s.session.mu.Unlock()
+				s.renewalNotices = s.renewalNotices[1:]
+			}()
+		}
+	}()
+	select {
+	case <-stop:
+		return false
+	case <-done:
+		return true
+	}
+}
+
+func (s *server) sendSavingResult(frame Frame) error {
+	s.write.Lock()
+	defer s.write.Unlock()
+	frame.SavingNotices = s.session.takeCloseNotices()
+	func() {
+		s.session.mu.Lock()
+		defer s.session.mu.Unlock()
+		frame.SavingNotices = append(frame.SavingNotices, s.renewalNotices...)
+		s.renewalNotices = nil
+	}()
+	return s.sendLocked(frame)
 }

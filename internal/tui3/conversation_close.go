@@ -43,7 +43,7 @@ func quitAfterClosing(work func(), started func(<-chan struct{})) tea.Cmd {
 
 // Closing releases the keyboard after a bounded wait. The close method has no
 // cancellation door, so it can finish later without holding the update loop.
-func closeConversationLater(agent Agent, door session.StopDoor, report func(error), started func(<-chan struct{}), lateFailure func(error), address string, lateNotices ...func([]string)) tea.Cmd {
+func closeConversationLater(agent Agent, door session.StopDoor, report func(error), started func(<-chan struct{}), lateFailure func(error), address string, savingNotices ...func([]string)) tea.Cmd {
 	done, finished := make(chan conversationClosedMsg, 1), make(chan struct{})
 	var mu sync.Mutex
 	late := false
@@ -57,19 +57,19 @@ func closeConversationLater(agent Agent, door session.StopDoor, report func(erro
 			report(err)
 		}
 		lines := takeSavingNotices(agent)
+		if len(savingNotices) > 0 && savingNotices[0] != nil {
+			savingNotices[0](lines)
+			lines = nil
+		}
 		notifyLate := func() bool {
 			mu.Lock()
 			defer mu.Unlock()
 			done <- conversationClosedMsg{err: err, address: address, notices: lines}
 			return late
 		}()
-		notifyLines := notifyLate && len(lines) > 0
 		notify := notifyLate && err != nil && !errors.Is(err, session.ErrSavingUnanswered) && lateFailure != nil
 		if notify {
 			lateFailure(err)
-		}
-		if notifyLines && len(lateNotices) > 0 && lateNotices[0] != nil {
-			lateNotices[0](lines)
 		}
 	}()
 	return func() tea.Msg {

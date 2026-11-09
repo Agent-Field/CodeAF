@@ -906,7 +906,7 @@ func (sess *Session) noteClosed(agent WrappedAgent) error {
 	}
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
-	sess.closeNotices = lines
+	sess.closeNotices = append(sess.closeNotices, lines...)
 	return err
 }
 
@@ -1667,6 +1667,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	if next == nil {
 		return nil, errors.New("engine: the session swap opened no conversation")
 	}
+	sess.stopRenewals()
 	sess.mu.Lock()
 	previous := sess.agent
 	sess.agent = next
@@ -1734,6 +1735,10 @@ type server struct {
 	encoding            string
 	localSavingReceipts bool
 	syncNoticeWords     bool
+	// renewalNotices remain owned by this window until a live write or saving reply.
+	// The session mutex protects the queue; the writer serializes its delivery.
+	renewalNotices []string
+	renewalWrite   <-chan struct{}
 
 	open    func(Hello) (*Session, error)
 	session *Session
@@ -2122,9 +2127,6 @@ func (s *server) dispatch(call Frame) {
 	close(progressDone)
 	result := Frame{Kind: "result", ID: call.ID, Payload: payload}
 	if (call.Method == MethodClose || call.Method == MethodDetach) && s.session != nil {
-		result.SavingNotices = s.session.takeCloseNotices()
-	}
-	if (call.Method == MethodClose || call.Method == MethodDetach) && s.session != nil {
 		select {
 		case <-s.session.localSaved:
 			if s.localSavingReceipts {
@@ -2147,7 +2149,11 @@ func (s *server) dispatch(call Frame) {
 			result.UnsavedTranscript = unsaved.Transcript
 		}
 	}
-	_ = s.send(result)
+	if s.session != nil && (call.Method == MethodClose || call.Method == MethodDetach || call.Method == MethodSessionNew || call.Method == MethodSessionOpen) {
+		_ = s.sendSavingResult(result)
+	} else {
+		_ = s.send(result)
+	}
 	// And only now does a turn opened by that call begin to speak.
 	// ONLY A TURN EVER OPENS A STREAM, so only a turn releases one: two calls
 	// of any other class running at once would race the one slot, and one of
