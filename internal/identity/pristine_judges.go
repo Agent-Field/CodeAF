@@ -3,14 +3,17 @@ package identity
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite" // reads the memory graph, which is a SQLite file
 )
@@ -71,6 +74,43 @@ func pickerCache(path string) (bool, error) {
 
 // unknown is the judge of a name nobody declared, and it is always use.
 func unknown(string) (bool, error) { return true, nil }
+
+// startupInventory admits the platform and locations recorded before any call.
+// Observed tools, notes and all other fields still count as work.
+func startupInventory(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return true, err
+	}
+	var inv struct {
+		V         uint16
+		Platform  struct{ OS, Arch string }
+		Workspace string
+		ChatDir   string `json:"chat_dir"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&inv) != nil || inv.V != 1 {
+		return true, nil
+	}
+	return decoder.Decode(new(json.RawMessage)) != io.EOF, nil
+}
+
+// unopenedRepository keeps even deleted or staged project work from being
+// mistaken for the empty repository made when an owned chat first opens.
+func unopenedRepository(path string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, args := range [][]string{{"log", "--all", "--format=", "--name-only"}, {"ls-files", "--cached"}} {
+		cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...) //codeaf:plumbing An empty owned repository contains no saved or staged files.
+		cmd.Dir = filepath.Dir(path)
+		raw, err := cmd.Output()
+		if err != nil || len(bytes.TrimSpace(raw)) > 0 {
+			return true, err
+		}
+	}
+	return false, nil
+}
 
 // empty is for what holds the person's words and bytes when it holds any: a
 // file with no bytes, or a folder of such files.

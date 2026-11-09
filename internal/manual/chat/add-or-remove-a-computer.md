@@ -93,6 +93,12 @@ With a self-hosted address (`CODEAF_SYNC_URL=<url>` or `--via <address>`), the l
 
 A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair` on the new device again. Ctrl+c while it waits ends with `Cancelled. Nothing was paired.`
 
+## I only opened codeaf and quit — can this computer pair without --replace
+
+Yes. Skipping setup and quitting an empty chat counts as starting codeaf, with either a pairing code or a link. Its empty transcript, draft, command history, inventory and empty working folder do not require `--replace`.
+
+Once you send a message, that chat belongs to this computer. With one such chat, pairing says `this computer already has 1 chat of its own, so nothing was changed.` The rest of the message explains `--replace`: local chats stay here but stop syncing, and shared memories and settings are cleared. Saved knowledge, automations, project work, chat memories and unknown local files keep their existing protection.
+
 ## The four-digit check — how I know the right computer is asking
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
