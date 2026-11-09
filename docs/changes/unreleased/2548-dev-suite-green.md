@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: Five tests that failed dev's full suite now and then are fixed at the cause, and codeaf's own copies no longer leave git maintenance running
+title: Five tests that sometimes failed dev's full suite are fixed at the cause
 pr: 2548
 surface: [build, engine]
 invalidates:
