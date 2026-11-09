@@ -388,7 +388,7 @@ var beltFacts = []beltFact{{
 	holds: Config.fenced,
 	// It is one short line because every byte of it is in the widest prefix
 	// (prefixbudget_test.go); the refusal sentence itself says the rest.
-	present: "- Shell fenced here: no brew, docker.",
+	present: "- No brew/docker here.",
 }, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
