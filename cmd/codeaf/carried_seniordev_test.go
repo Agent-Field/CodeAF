@@ -226,6 +226,8 @@ func seniorDevWorkspace(t *testing.T) string {
 	}
 	for _, args := range [][]string{
 		{"init", "-q", "-b", "main"},
+		{"config", "--local", "maintenance.auto", "false"},
+		{"config", "--local", "gc.auto", "0"},
 		{"add", "README.md", "Makefile"},
 		{"-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "-m", "base"},
 	} {
