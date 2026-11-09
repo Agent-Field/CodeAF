@@ -51,7 +51,7 @@ func TestProgramFinishLeavesSignedTipUntouched(t *testing.T) {
 func TestProgramFinishLeavesDirectURLPushUntouched(t *testing.T) {
 	repo := newTestRepo(t)
 	remote := filepath.Join(t.TempDir(), "remote.git")
-	if out, err := exec.Command("git", "init", "--bare", "-q", remote).CombinedOutput(); err != nil {
+	if out, err := fixtureGit(filepath.Dir(remote), "init", "--bare", "-q", remote); err != nil {
 		t.Fatalf("bare remote: %v: %s", err, out)
 	}
 	folder, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "Pushed work", Holder: "task 9", Keep: t.TempDir(), SignModel: "fixture/vendor-model"})

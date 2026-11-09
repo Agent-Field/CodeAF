@@ -6432,7 +6432,7 @@ func keptWork(tree taskTree, title string, changed []string, sign gitSignature) 
 	case problem != "":
 		return mergeAborted, changed
 	}
-	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt, true)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -8841,7 +8841,7 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt); problem != "" {
+	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt, true); problem != "" {
 		return mergeAborted, unsavedSentence(t.dir, problem), nil, why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
@@ -9246,8 +9246,8 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal) {
-	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
+func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt, ownedCopy)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
 	}
@@ -9279,7 +9279,7 @@ func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBe
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal, error) {
+func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal, error) {
 	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
@@ -9298,7 +9298,13 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, ba
 	if !sign.off && !repositoryRefusesTrailers(dir) {
 		message = signed(message, sign)
 	}
-	if out, err := git(dir, append(codeafGitIdentity(),
+	// The run engine also uses this commit road in a person's own folder.
+	// Only a caller that owns the copy can suppress detached maintenance.
+	runGit := git
+	if ownedCopy {
+		runGit = privateGit
+	}
+	if out, err := runGit(dir, append(codeafGitIdentity(),
 		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —

@@ -59,7 +59,7 @@ func landRunTreeWithSignature(dir, base, title string, sign gitSignature) (branc
 	if _, err := signRunCommits(dir, base, sign); err != nil {
 		log.Printf("codeaf: could not sign the run's commits: %v", err)
 	}
-	saved, problem, why := commitTaskWork(dir, title, nil, sign, true)
+	saved, problem, why := commitTaskWork(dir, title, nil, sign, true, false)
 	if problem != "" {
 		if why == refusedByTheTree {
 			// The place itself would not take the write, and asking again would

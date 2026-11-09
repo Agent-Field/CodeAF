@@ -767,7 +767,7 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		message = gitSignature{named: f.SignModel != "", model: f.SignModel}.signOnce(message)
 	}
 	args = append(args, "commit", "-q", "--no-verify", "-m", message)
-	if out, err := git(f.Dir, args...); err != nil {
+	if out, err := privateGit(f.Dir, args...); err != nil {
 		return "git commit: " + firstLine(out)
 	}
 	return ""

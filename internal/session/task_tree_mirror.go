@@ -116,7 +116,7 @@ func openFamilyRepository(dir string) string {
 }
 
 func openFamilyRepositoryWithPolicy(dir string, withheld []string) string {
-	if out, err := git(dir, "init", "--quiet"); err != nil {
+	if out, err := privateGit(dir, "init", "--quiet"); err != nil {
 		return familyTreeProblem(out, err)
 	}
 	// EVERYTHING IN THE COPY GOES IN, ignore rules included (`--force`). A
@@ -148,7 +148,7 @@ func openFamilyRepositoryWithPolicy(dir string, withheld []string) string {
 	// commit somebody's global settings would sign is a passphrase prompt on a
 	// terminal nobody is watching — neither is a thing to lose a family tree
 	// over, and neither commit is the person's to answer for.
-	if out, err := git(dir, append(codeafGitIdentity(),
+	if out, err := privateGit(dir, append(codeafGitIdentity(),
 		"-c", "commit.gpgsign=false",
 		"commit", "--quiet", "--no-verify", "--allow-empty",
 		"-m", familyTreeCommitMessage)...); err != nil {

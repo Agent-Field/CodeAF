@@ -51,7 +51,7 @@ func revertRepo(t *testing.T, workspace string) {
 		{"config", "user.email", "test@example.com"},
 		{"config", "user.name", "test"},
 	} {
-		if out, err := git(workspace, args...); err != nil {
+		if out, err := fixtureGit(workspace, args...); err != nil {
 			t.Fatalf("git %v: %v (%s)", args, err, out)
 		}
 	}
