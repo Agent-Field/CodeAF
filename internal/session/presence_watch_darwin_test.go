@@ -12,13 +12,20 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// doorFDCount counts this process's descriptors by name only. os.ReadDir would
+// stat every entry, and on macOS some of /dev/fd cannot be stat'ed (EBADF).
 func doorFDCount(t *testing.T) int {
 	t.Helper()
-	fds, err := os.ReadDir("/dev/fd")
+	dir, err := os.Open("/dev/fd")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return len(fds)
+	defer dir.Close()
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(names)
 }
 
 func watchedDoorFDCount(t *testing.T, backend *darwinDoorWatcher) int {
