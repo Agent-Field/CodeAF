@@ -198,9 +198,17 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place. An unknown origin is left unnamed.
 
+The same label appears with `codeaf chat --no-host`. The copy's own working folder does not change its label to `codeaf`.
+
 Removing this computer from your devices does not change those project
 labels. Switching away and back keeps the same copy label or ordinary project
 name.
+
+## Continue a chat with GIT_CEILING_DIRECTORIES set
+
+A chat saves and moves its words and files using the same Git boundary as the project's Git commands. When `GIT_CEILING_DIRECTORIES` keeps an enclosing checkout outside this folder's Git search, that checkout's ignore rules do not hide the chat's saved files. A repository inside the boundary keeps its own ignore rules.
+
+If an older build saved an empty chat and continuing it failed because its saved files were missing, open the original chat in this build, send another message and close it before trying `continue here` again.
 
 ## This chat is not syncing — the sync service is not answering, working offline
 
@@ -380,7 +388,7 @@ If the last upload fails when you quit, for example because the connection dropp
 
 ## Final saving sentences when closing a chat, quitting, /new or /resume
 
-A final save can discover that another computer continued the chat. Its sentence appears once in the window when you close one chat, or when `/new` or `/resume` closes the previous chat. On quit it appears once after the screen is restored, including when an earlier individual close was still saving. A sentence already shown in the window is not printed again after quitting. This also applies with `--no-host`.
+After a chat finishes saving and closes, it no longer checks whether another computer is holding it. A final save can discover that another computer continued the chat. Its sentence appears once in the window when you close one chat, or when `/new` or `/resume` closes the previous chat. On quit it appears once after the screen is restored, including when an earlier individual close was still saving. A sentence already shown in the window is not printed again after quitting. This also applies with `--no-host`.
 
 A window that stops reading does not hold up another window closing the chat. Any sentence still waiting for the closing window comes back with its closing result.
 
