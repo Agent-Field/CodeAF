@@ -67,6 +67,16 @@ func (d *Desk) ReconcileReport(id int, worker Worker, originalLease, digest stri
 		if held == nil || held.ID != originalLease {
 			return false, nil
 		}
+		// A HOLD LET GO HERE ON A JOB STILL RUNNING IS AN INTERRUPTED STEP,
+		// exactly as one that expired ([Desk.queueJob]). A runner that quits
+		// mid-step settles the step's last spending through this door with
+		// the hold it still has; releasing that hold alone left the job
+		// "running" with nobody holding it, which expiry never sees and no
+		// pull offers again. A retained result applied above already queued
+		// the job, and a paused one stays paused, so neither is touched.
+		if err := d.queueJob(id, d.now(), held.Machine); err != nil {
+			return false, err
+		}
 		// Publication/merge cannot enter reconciliation, so no carried approval
 		// may survive release and turn this result acknowledgment into an action.
 		release(doc, id)

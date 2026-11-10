@@ -105,6 +105,10 @@ type Result struct {
 type Vault struct {
 	root, profile string
 	calls         func(context.Context) (context.Context, error)
+	// passSeen is what the last build pass found, written and read only by
+	// the one goroutine running [Vault.Run], which backs off while it is the
+	// same from pass to pass.
+	passSeen string
 }
 
 func hash(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }

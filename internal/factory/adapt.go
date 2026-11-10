@@ -490,6 +490,19 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			refuse("only the person may add an issue Test conversation that stops on %s", UntilNoNewFailures)
 			continue
 		}
+		// A MODEL NAMES THE STEP IT ADDS. A sentence with no `name:` is named
+		// by its first meaningful word ([StageSentence]), which is a fair
+		// guess under a person's own typing and a junk step under a model's:
+		// the manager's "Immediately after write, run go vet" became a step
+		// called Immediately, placed before proof, on factory-demo#168. So a
+		// manager or plan add whose only name is that guess, and the guess is
+		// no step codeaf ships or the job's recipe has, is refused in words
+		// the model reads and can act on.
+		if who != ByYou && st.Kind == StageChat && !IsApprove(st) && strings.TrimSpace(add.Stage.Name) == "" &&
+			!StageNameGiven(add.Stage.Ask) && !KnownStepName(st.Name, recipe, kind) {
+			refuse("the step %q has no name of its own, and %q, its first word, is not a step; give it one word before a colon, as \"vet: run go vet ./...\"", oneLine(add.Stage.Ask), st.Name)
+			continue
+		}
 		// THE PLACE IS RESOLVED THROUGH THE SAME UNIQUE LOOKUP AS EVERY OTHER
 		// NAME, and [PlaceStage] is handed the STORED spelling: its own lookup is
 		// byte-exact, so a lowercased `tidy` would miss a legacy `Tidy` and drop
@@ -934,6 +947,8 @@ func plannedStage(add Stage) (st Stage, when string, bad error) {
 	rest = strings.TrimSuffix(rest, " step")
 	if add.Kind == StageGate || ApproveWord(strings.ToLower(strings.TrimSpace(add.Name))) || ApproveWord(rest) {
 		a := Approve(nil)
+		// A NEWLY ADDED APPROVE STEP IS A PERSON'S ([PassForNewApprove]).
+		a.Pass = PassForNewApprove
 		a.When = add.When
 		a.Label = strings.TrimSpace(add.Label)
 		a.Why, a.By = add.Why, add.By

@@ -28,6 +28,7 @@ package pipeline
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -107,6 +108,10 @@ type File struct {
 	// Problems are lines that did not load. The rest of the file did.
 	Problems []Problem
 
+	// library is the factory's pipeline library this read was given
+	// ([WithLibrary]); nil for none. It is never written into the file.
+	library *File
+
 	// set records which keys a personal file wrote. A repo file leaves it unused.
 	set presence
 	// markdownAdapt preserves the older section-wide constraint until conversion
@@ -155,6 +160,16 @@ type Step struct {
 	// Who is who a person step waits on ([factory.ApproverWord]): "" the job's
 	// person. Only approve and a gate take one.
 	Who string
+	// Pass is who may pass a person step ([factory.PassWord]): "" (a person
+	// or the manager, as before the key), person, manager, or `manager when
+	// <condition>`. Only approve and a gate take one.
+	Pass string
+	// Input is an agentfield step's input, by the reasoner's own field names,
+	// each value a string with the job's {placeholders}
+	// ([factory.AgentFieldInput]); nil sends the default mapping. An
+	// agentfield step's Prompt is its reasoner, "<node>.<reasoner>" (the file
+	// may spell it `target:`).
+	Input map[string]string
 
 	wrotePrompt bool
 	wroteUntil  bool
@@ -173,6 +188,12 @@ func (s Step) holdWhy() string {
 	if !textRun(s.Kind) {
 		return ""
 	}
+	if s.Kind == string(factory.StageAgentField) {
+		if _, err := factory.AgentFieldTargetWord(s.Prompt); err != nil {
+			return "an agentfield step names its reasoner as node.reasoner (target: swe-planner.build); " + err.Error() + "; the run holds here for a person"
+		}
+		return ""
+	}
 	if strings.TrimSpace(s.Prompt) == "" {
 		return "a " + s.Kind + " runs its own prompt as written and this one has none; the run holds here for a person"
 	}
@@ -185,7 +206,7 @@ func (s Step) holdWhy() string {
 // textRun says whether a kind hands its prompt to something other than a
 // model: a check's shell, a post's verb. Neither may be given extra words.
 func textRun(kind string) bool {
-	return kind == string(factory.StageCheck) || kind == string(factory.StagePost)
+	return kind == string(factory.StageCheck) || kind == string(factory.StagePost) || kind == string(factory.StageAgentField)
 }
 
 // isGate says whether a step is a person: a gate by kind, or a step that holds.
@@ -208,7 +229,7 @@ func kindWord(s string) (string, bool) {
 // vocabulary documents on [factory.Stage]; a count or a free "per x" is a
 // markdown spelling the YAML does not take.
 var (
-	StepKinds   = []string{string(factory.StageChat), string(factory.StageCheck), string(factory.StageGate), string(factory.StagePost)}
+	StepKinds   = []string{string(factory.StageChat), string(factory.StageCheck), string(factory.StageGate), string(factory.StagePost), string(factory.StageAgentField)}
 	StepFanouts = []string{"one", "per-file", "per-finding", "per-claim"}
 )
 
@@ -392,16 +413,19 @@ func (f File) Recipe() factory.Recipe {
 	for _, problem := range f.Problems {
 		r.Problems = append(r.Problems, problem.Error())
 	}
-	for kind, names := range f.Pipeline {
-		stages := f.stages(names)
+	// EVERY NAME IS RESOLVED THE ONE WAY ([File.Resolve]): the file's own
+	// list, else the library's, else the built-in steps.
+	for _, name := range f.pipelineNames() {
+		res, _ := f.Resolve(name)
+		kind := factory.Kind(name)
 		if kind == factory.KindIssue {
-			r.Stages = stages
+			r.Stages = res.Stages
 			continue
 		}
-		if len(stages) == 0 {
+		if len(res.Stages) == 0 {
 			continue
 		}
-		r.ByKind[kind] = stages
+		r.ByKind[kind] = res.Stages
 	}
 	if r.Stages == nil {
 		r.Stages = []factory.Stage{}
@@ -418,7 +442,7 @@ func (f File) stages(names []string) []factory.Stage {
 				continue
 			}
 			used[raw] = true
-			out = append(out, factory.Stage{Name: raw, Label: strings.TrimSpace(f.Steps[raw].Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who})
+			out = append(out, factory.Stage{Name: raw, Label: strings.TrimSpace(f.Steps[raw].Label), Kind: factory.StageGate, On: true, Fixed: listed(f.Fixed, raw), Who: f.Steps[raw].Who, Pass: f.Steps[raw].Pass})
 			continue
 		}
 		step, ok := f.Steps[raw]
@@ -456,14 +480,24 @@ func (f File) stages(names []string) []factory.Stage {
 		if free && kind == factory.StageChat {
 			ask = withStop(ask, step.Until)
 		}
-		who := ""
+		who, pass := "", ""
 		if kind == factory.StageGate {
-			who = step.Who
+			who, pass = step.Who, step.Pass
 		}
-		out = append(out, factory.Stage{
+		st := factory.Stage{
 			Name: name, Label: strings.TrimSpace(step.Label), Kind: kind, Ask: ask, When: step.When, Effort: step.Effort,
-			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who,
-		})
+			Fanout: step.Fanout, Until: word, Max: step.Max, On: true, Fixed: listed(f.Fixed, raw), Who: who, Pass: pass,
+		}
+		if kind == factory.StageAgentField {
+			// AN AGENTFIELD STEP'S PROMPT IS ITS REASONER: what runs it is a
+			// run on the control plane, so there is no model to hand words to.
+			st.Target, _ = factory.AgentFieldTargetWord(step.Prompt)
+			st.Ask = st.Target
+			if len(step.Input) > 0 {
+				st.Input = maps.Clone(step.Input)
+			}
+		}
+		out = append(out, st)
 	}
 	return out
 }
@@ -558,8 +592,8 @@ func (f File) adaptByKind() map[factory.Kind]factory.AdaptMode {
 		return copyAdapt(f.markdownAdapt)
 	}
 	out := map[factory.Kind]factory.AdaptMode{factory.KindIssue: f.Adapt}
-	for kind := range f.Pipeline {
-		out[kind] = f.Adapt
+	for _, kind := range f.pipelineNames() {
+		out[factory.Kind(kind)] = f.Adapt
 	}
 	return out
 }

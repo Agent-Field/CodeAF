@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -217,7 +218,7 @@ func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) To
 				return fmt.Sprintf("Failed to run ripgrep: %s", err.Error()), true, nil
 			}
 
-			if err := cmd.Start(); err != nil {
+			if err := processgroup.Start(cmd); err != nil {
 				return fmt.Sprintf("Failed to run ripgrep: %s", err.Error()), true, nil
 			}
 

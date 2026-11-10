@@ -749,6 +749,10 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// A PROGRAM'S RUN THAT ENDED DONE IS A DEPENDENCY MET, and the graph knows
 	// no node by its id (program_depends.go).
 	spec.dependsOn = a.withoutEndedProgramRuns(spec.dependsOn)
+	// A WORKER SEAT ON CLAUDE CODE HANDS THE TASK TO CLAUDE CODE ITSELF
+	// (claudeseat.go): the person chose who does the work, and on that seat
+	// it is an agent with its own tools rather than a model under codeaf's.
+	spec = a.seatOnClaudeCode(spec)
 	// A DELEGATE IS RESOLVED BEFORE THE CARD, so a name this machine has no
 	// delegate for is answered with the names it has and nobody is asked to
 	// approve work that could not start (delegate_door.go).

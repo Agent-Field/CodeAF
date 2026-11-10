@@ -51,7 +51,7 @@ func TestPR2294NewWorkerNormalReportsKeepTable(t *testing.T) {
 	}
 	current.Stream.Phases[0].Result = &factory.StageResult{Spent: .01, Output: "progress"}
 	report, _ := run.Diff(previous, current)
-	if err := run.ApplyReport(&it, api.ToWorkerReport(api.FromRunReport(report, true)), time.Now()); err != nil {
+	if err := run.ApplyReport(&it, api.ToWorkerReport(api.FromRunReport(report, api.ReportAdmits{RoundCostTables: true})), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	checkTableCost(t, it, .2)

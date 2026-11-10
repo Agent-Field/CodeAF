@@ -29,6 +29,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -76,7 +77,7 @@ func guardHost(t testing.TB, stateRoot string) hostGuard {
 	dir := filepath.Clean(root) + ".host"
 	g := hostGuard{dir: dir, bin: filepath.Join(dir, "bin"), login: filepath.Join(dir, "login"), log: filepath.Join(dir, "host.log")}
 	if err := os.Mkdir(dir, 0o700); err == nil {
-		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		t.Cleanup(func() { removeWritable(dir) })
 	} else if !os.IsExist(err) {
 		t.Fatalf("host guard directory: %v", err)
 	}
@@ -95,6 +96,24 @@ func guardHost(t testing.TB, stateRoot string) hostGuard {
 		}
 	}
 	return g
+}
+
+// removeWritable removes a guard's folder even when the launch left read-only
+// files in it.
+//
+// THE LOGIN IS A REAL HOME TO WHATEVER RUNS UNDER IT, so a factory step that
+// runs `go` fills $HOME/go/pkg/mod, which Go writes read-only. A plain RemoveAll
+// then leaves the tree behind, and t.TempDir's own cleanup fails the test with
+// "permission denied" after every assertion has passed — a failure that depends
+// only on whether the model chose to fetch a module.
+func removeWritable(dir string) {
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			_ = os.Chmod(path, 0o700)
+		}
+		return nil
+	})
+	_ = os.RemoveAll(dir)
 }
 
 // shellQuote keeps a fixture path with an apostrophe from escaping the stub's
@@ -518,5 +537,32 @@ func TestTheOldTimersComeOffOnlyTheThrowawayLogin(t *testing.T) {
 	run("the same login again")
 	if again := g.calls(t); len(again) != len(calls) {
 		t.Errorf("a second start asked the scheduler again: %v", again[len(calls):])
+	}
+}
+
+// A launch that fetched a Go module leaves a read-only tree under the login;
+// the guard still takes its folder away, so t.TempDir's cleanup has nothing
+// to fail on.
+func TestTheGuardRemovesAReadOnlyModuleCache(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "state")
+	var dir string
+	t.Run("launch", func(t *testing.T) {
+		g := guardHost(t, root)
+		dir = g.dir
+		mod := filepath.Join(g.login, "go", "pkg", "mod", "golang.org", "x", "tools@v0.0.0")
+		if err := os.MkdirAll(mod, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(mod, "go.mod"), []byte("module x\n"), 0o444); err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range []string{mod, filepath.Dir(mod)} {
+			if err := os.Chmod(d, 0o555); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the guard folder %s survived its cleanup: %v", dir, err)
 	}
 }

@@ -95,20 +95,9 @@ func (st *Store) SetRepos(repos []string) error {
 	})
 }
 
-// RepoName says whether s is `owner/name`: two non-empty parts, no spaces,
-// nothing that could walk out of an API path.
-func RepoName(s string) bool {
-	owner, name, ok := strings.Cut(strings.TrimSpace(s), "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return false
-	}
-	for _, part := range []string{owner, name} {
-		if part == "." || part == ".." || strings.ContainsAny(part, " \t\n?#%\\") {
-			return false
-		}
-	}
-	return true
-}
+// RepoName says whether s is `owner/name` ([factory.RepoName], which the
+// router shares without depending on the store).
+func RepoName(s string) bool { return factory.RepoName(s) }
 
 // CleanRepos trims, drops what is not `owner/name`, deduplicates without
 // regard to case (GitHub's own rule) and sorts.

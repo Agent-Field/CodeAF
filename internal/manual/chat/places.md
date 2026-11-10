@@ -604,6 +604,7 @@ The confirmation defaults to `cancel`; `delete` permanently deletes the selected
 A conversation deletes its transcript and every task underneath it. A task deletes only
 its own records and descendants. Deleting a leaf subtask deletes only that subtask.
 Surviving siblings and their conversations remain. Deleted records cannot be recovered by search or reopened.
+Permanent deletion is available on Windows, macOS and Linux.
 
 `n new in project`, `o open folder`, and `p copy project` use the selected task's owner project.
 Folder actions are local. Permanent deletion is also available over a connection when
@@ -653,7 +654,9 @@ and saved task reports.
 **Building knowledge base… You can keep chatting.** shows that work continues
 in the background. You can leave Memory, change chats, and return later; pages
 appear after the initial history has been processed and organized. New chats
-can continue arriving while that initial collection is built.
+can continue arriving while that initial collection is built. While nothing
+new arrives the background build looks for new chats less and less often, at
+most every 30 seconds; pressing **Build knowledge base** looks at once.
 
 ## Closing a chat waits for knowledge capture
 
@@ -880,6 +883,9 @@ one`, and the foot is `tab next place · esc`.
 What this machine has cost, by the day, by the model, and by what it was for. `alt+5` opens
 it. It reads one machine-wide ledger — a line per model call — so the figures are the bill
 and not an estimate.
+
+Windows records the same per-call history and enforces the same daily spending limit
+as macOS and Linux. Opening Spend does not pause recording new calls.
 
 **It is the whole machine and not this session**, which is why a figure here can be larger
 than anything this conversation did: every window, every task and every automation run on

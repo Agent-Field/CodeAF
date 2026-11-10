@@ -245,6 +245,7 @@ func (h *Handler) soloJob(job *api.Job, stored factory.Item, caller string) {
 	// that the shape older workers stored is recognised by.
 	if !decisionPaused {
 		_, job.Can.RejectPlan = factory.PlanSendsBack(stored)
+		job.Can.RejectPlan = job.Can.RejectPlan || factory.AgentFieldPause(stored)
 		job.Can.SpendAnswer = stored.State == factory.StateNeedsYou && stored.QKind == factory.QKindSpendStopped
 	}
 	if job.Desk != nil {

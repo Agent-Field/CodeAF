@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"net"
 	"net/http"
 	"net/netip"
@@ -46,6 +47,10 @@ type JobFolders interface {
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// PassJudge answers the condition of a `manager when …` approve step for
+	// Auto ([factory.PassOf]): the factory's AI filter, on its default model.
+	// Nil leaves every such approval to a person, with the reason said.
+	PassJudge route.Judge
 	// Scout is Look closer on this factory (scout.Door.Look): nil when the
 	// factory has no model to look with, and the route then says so.
 	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
@@ -63,6 +68,11 @@ type Config struct {
 	// for the queue's `model`. Nil when this factory does not know it: a
 	// runner elsewhere decides with its own settings.
 	DefaultModel func() string
+	// RunnerModels answers what this factory's own runner knows about models
+	// (its effort models, its person's worker model, its launch model, whether
+	// it runs every task on one), for each read job's and step's runs_on
+	// ([factory.StepModel]). Nil when this factory's runners are elsewhere.
+	RunnerModels func() factory.RunnerModels
 	// ProfileDir resolves the solo factory's existing GitHub connection for setup reads.
 	ProfileDir string
 	// OperatorLogin names a solo host; team identity comes from the persisted claim.
@@ -93,6 +103,10 @@ type Config struct {
 	PersonKnown func(string) (factory.GitHubPerson, bool)
 	// CodeOwners reads a watched repository's cached default-branch ownership.
 	CodeOwners func(context.Context, string) ([]factory.CodeOwner, error)
+	// Route runs the factory's routing over its new jobs now (the intake
+	// pass), so a job a person just gave a repository is routed without
+	// waiting for the next poll. Nil leaves it to that poll, which is nudged.
+	Route func(context.Context) error
 	// Pipeline reads the same repository rules as intake, including personal limits.
 	Pipeline func(context.Context, string, string) (pipeline.File, error)
 	// JobPipeline reads the pipeline one job is bounded by, with the same
@@ -162,9 +176,13 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
-	setupMu     sync.Mutex
-	setupBusy   bool
-	setupClosed bool
+	// workerSettled is when a runner's request last settled the floor
+	// ([Handler.workerSettleDue]).
+	workerSettleMu sync.Mutex
+	workerSettled  time.Time
+	setupMu        sync.Mutex
+	setupBusy      bool
+	setupClosed    bool
 	// setupContinuing is held by a Continue from the moment it decides to stop
 	// the reader until it saves its own step, so nothing starts reading again
 	// in between.
@@ -188,6 +206,10 @@ type Handler struct {
 	jobsTimer  *time.Timer
 	jobsClosed bool
 	jobsBusy   sync.WaitGroup
+	// judging holds the manager-when approvals being judged now, by job and
+	// key, so one approval is never judged twice at once.
+	judgingMu sync.Mutex
+	judging   map[int]string
 
 	seam    factory.Seam
 	areas   repoAreas
@@ -272,6 +294,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/spend/repos", h.spendRepos)
 	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
+	h.goAheadRoutes()
 	h.jobScreens()
 	h.scheduleJobTimer()
 	if config.Store != nil {
@@ -426,8 +449,51 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	h.settleJobs(r.Method == http.MethodPost, held)
+	if !workerPath(r.URL.Path) || h.workerSettleDue(workerSettleWindow(r.URL.Path)) {
+		h.settleJobs(r.Method == http.MethodPost, held)
+	}
 	h.idempotent(w, r)
+}
+
+// workerSettleEvery is how often a runner's requests settle the floor, and
+// beatSettleEvery how often its beats alone do.
+const (
+	workerSettleEvery = time.Second
+	beatSettleEvery   = 5 * time.Second
+)
+
+// workerSettleWindow is how long a runner's request at path may follow the last
+// settle without settling again. A BEAT SETTLES AT MOST EVERY FIVE SECONDS:
+// every held job's runner renews its lease every two seconds and says it is
+// present, so at one second two holds settled the whole floor every second for
+// as long as they were held, the biggest cost left in the seventh live run's
+// idle engine once the pulls were quiet. A beat reports nothing, so nothing it
+// brings is settled late; a report, a release or a pull that lands work still
+// settles within a second, which is how Auto's publish follows its proof.
+func workerSettleWindow(path string) time.Duration {
+	if strings.HasSuffix(path, "/heartbeat") || path == "/v1/runners/presence" {
+		return beatSettleEvery
+	}
+	return workerSettleEvery
+}
+
+// workerSettleDue says a runner's request settles the floor now. A SETTLE
+// LISTS AND DEEP-COPIES EVERY JOB, and it ran before every request: each
+// runner slot's pull and each heartbeat. Fifteen idle slots re-pull together
+// every wait, so an idle machine decoded the whole floor fifteen times every
+// thirty seconds to settle nothing. A runner's requests settle at most once per
+// window ([workerSettleWindow]), so a deadline falls due on a runner's request
+// at most that late; every request a person makes still settles first, and the
+// job timer ([Handler.scheduleJobTimer]) settles at each deadline it knows.
+func (h *Handler) workerSettleDue(every time.Duration) bool {
+	now := h.clock()
+	h.workerSettleMu.Lock()
+	defer h.workerSettleMu.Unlock()
+	if !h.workerSettled.IsZero() && now.Sub(h.workerSettled) < every && !now.Before(h.workerSettled) {
+		return false
+	}
+	h.workerSettled = now
+	return true
 }
 
 func (h *Handler) read(pattern string, handler http.HandlerFunc) {
@@ -463,6 +529,12 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	// THE WHOLE FLOOR, before any filter, is what a row's waiting_on is read
+	// from: a job it waits on may be one this caller's view leaves out.
+	byID := make(map[int]factory.Item, len(s.Items))
+	for _, it := range s.Items {
+		byID[it.ID] = it
+	}
 	handle, err := h.callerHandle(r)
 	if h.failed(w, err) {
 		return
@@ -497,7 +569,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	operator := h.mode() != api.FactorySolo && h.isOperator(r)
 	issues := factory.IssueJobs(s.Items)
 	for i := range q.Jobs {
-		q.Jobs[i] = h.withVersionKept(q.Jobs[i], retention)
+		q.Jobs[i] = h.withVersionKept(q.Jobs[i], retention, byID)
 		if operator && i < len(issues) {
 			api.AsOperator(&q.Jobs[i].Can, issues[i], handle)
 		}
@@ -512,6 +584,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			h.soloJob(&q.Jobs[i], s.Items[i], handle)
 		}
 	}
+	h.modelsIn(q.Jobs, issues)
 	h.judgeProtected(r.Context(), s.Items, q.Jobs)
 	q.Reason = reason
 	if reason != "" {
@@ -561,6 +634,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	h.modelsIn(jobs, []factory.Item{it})
 	if h.config.CodeOwners != nil && len(itemFiles(it)) > 0 {
 		rules, err := h.config.CodeOwners(r.Context(), itemRepo(it))
 		if err == nil {
@@ -580,8 +654,8 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	}
 	// HOW A RUN GETS ITS CHECKOUT is said before anyone presses Start, in the
 	// words the start itself would act on ([factory.Seam.CheckoutOf]), and
-	// never as a path.
-	if h.seam.CheckoutOf != nil {
+	// never as a path. A job that runs elsewhere has none to say.
+	if h.seam.CheckoutOf != nil && !factory.RunsElsewhere(it) {
 		state, _ := h.seam.CheckoutOf(r.Context(), it.Repo)
 		jobs[0].Checkout = string(state)
 	}

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // PortableEntry records the supported working representation independently of repository filters.
@@ -125,7 +126,7 @@ func portableInspectionIndex(root string) (string, func(), error) {
 	if err != nil {
 		return "", func() {}, err
 	}
-	cleanup := func() { _ = os.RemoveAll(temporary) }
+	cleanup := func() { _ = fsreplace.RemoveAll(temporary) }
 	if _, err = portableInspectionGit(temporary, "init", "-q"); err != nil {
 		cleanup()
 		return "", func() {}, err
@@ -517,7 +518,7 @@ func WritePortableBaseline(root string, state PortableState) (string, error) {
 	if err != nil {
 		return digest, err
 	}
-	err = errors.Join(directory.Sync(), directory.Close())
+	err = errors.Join(fsreplace.SyncDirFile(directory), directory.Close())
 	return digest, err
 }
 

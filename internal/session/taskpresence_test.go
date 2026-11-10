@@ -91,8 +91,8 @@ func TestPresenceHeartbeatMovesTheStamp(t *testing.T) {
 	desk := &presenceDesk{agent: agent, path: filepath.Join(dir, presenceName)}
 	desk.write()
 	first := waitForPresence(t, dir)
-	desk.refresh(desk.refreshed.Add(presenceRefresh))
-	later, ok := ReadSessionPresence(dir, first.UpdatedAt.Add(presenceWindow))
+	desk.refresh(desk.refreshed.Add(presenceIdleRefresh))
+	later, ok := ReadSessionPresence(dir, first.UpdatedAt.Add(presenceIdleWindow))
 	if !ok || !later.UpdatedAt.After(first.UpdatedAt) {
 		t.Fatal("a JSON heartbeat did not preserve presence freshness")
 	}

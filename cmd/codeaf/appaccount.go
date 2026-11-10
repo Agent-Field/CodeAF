@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -149,6 +150,8 @@ func appProviderOf(source modelsource.Source) appProvider {
 		p.check = strings.TrimRight(config.DefaultBaseURL, "/")
 	case strings.EqualFold(source.ID, "codex"):
 		p.kind, p.signIn = appwire.ProviderBrowser, true
+	case strings.EqualFold(source.ID, claudemodel.ID):
+		p.kind = appwire.ProviderAgent
 	case source.AddressOwned || modelsource.IsCustomID(source.ID):
 		p.kind = appwire.ProviderAddress
 	}
@@ -202,6 +205,15 @@ func (b *appBackend) providerView(p appProvider, sources modelsource.Set, rows m
 		key = service.Key
 	}
 	switch p.kind {
+	case appwire.ProviderAgent:
+		// CONNECTED IS THE ROW BEING KEPT; THE PLAN IS CLAUDE CODE'S OWN WORD.
+		// Whether it is still signed in is read on the machine the engine runs
+		// on, which over the relay is not the machine the desk is drawn on. Its
+		// key is a sentinel, so no hint is drawn from it.
+		_, held := rows[p.id]
+		view.SignedIn = found && held
+		view.KeyOptional = true
+		view.Plan = claudeCodeRowPlan(b.claudeStatus())
 	case appwire.ProviderBrowser:
 		// The sign-in's key is a word naming where its tokens live, never a
 		// key a person could recognise, so no hint is drawn from it.
@@ -296,6 +308,9 @@ func (b *appBackend) CheckKey(provider, key string) (appwire.KeyCheck, error) {
 // the person gave.
 func (b *appBackend) CheckProvider(params appwire.KeyParams) (appwire.KeyCheck, error) {
 	p, ok := b.appProviderNamed(params.Provider)
+	if ok && p.kind == appwire.ProviderAgent {
+		return claudeCodeCheck(b.claudeStatusNow()), nil
+	}
 	if !ok {
 		return appwire.KeyCheck{}, appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", params.Provider)
 	}
@@ -332,6 +347,8 @@ func appKeyAsked(p appProvider, key string) error {
 	switch {
 	case p.kind == appwire.ProviderBrowser:
 		return appwire.Errorf(appwire.CodeBadParams, "%s signs in through the browser and takes no key", p.name)
+	case p.kind == appwire.ProviderAgent && key != "":
+		return appwire.Errorf(appwire.CodeBadParams, "%s uses its own sign-in and takes no key", p.name)
 	case p.kind == appwire.ProviderKey && key == "":
 		return appwire.Errorf(appwire.CodeBadParams, "%s needs a key", p.name)
 	}
@@ -467,16 +484,16 @@ func appServiceHost(source modelsource.Source, row config.PersistedSource) strin
 	return modelsource.AddressHost(firstNonEmptyString(address, source.Address))
 }
 
-// appCheckKey proves OpenRouter accepts the key, then lists the models it
-// reaches. Both model listings answer 200 with the public catalog for any
+// appCheckKeyAuth shares OpenRouter's cheap auth proof with setup, health and doctor.
+// Both model listings answer 200 with the public catalog for any
 // bearer, revoked or made up, so a listing proves nothing about a key. The key
 // endpoint answers only for a bearer OpenRouter resolved to a live key: its 200
 // carries that key's own row (label, limit, usage), and an unknown key is a 401.
 // So the key's row is asked first (and the older /auth/key when /key is not
-// there, as the balance reader does), and the listing only after it answered.
+// there, as the balance reader does).
 // A management key has a row too, but OpenRouter lets it manage keys and never
 // run a model, so its row is a refusal. One deadline covers every request.
-func appCheckKey(ctx context.Context, client *http.Client, address, provider, key string) appwire.KeyCheck {
+func appCheckKeyAuth(ctx context.Context, client *http.Client, address, key string) appwire.KeyCheck {
 	address = strings.TrimRight(address, "/")
 	host := address
 	if parsed, err := url.Parse(address); err == nil && parsed.Host != "" {
@@ -516,7 +533,25 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 		}
 	}
 
-	status, raw, failed = get("/models/user")
+	return appwire.KeyCheck{OK: true}
+}
+
+// appCheckKey adds setup's model list only after the shared auth proof succeeds.
+func appCheckKey(ctx context.Context, client *http.Client, address, provider, key string) appwire.KeyCheck {
+	check := appCheckKeyAuth(ctx, client, address, key)
+	if !check.OK {
+		return check
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	local := *client
+	local.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	host := address
+	if parsed, err := url.Parse(address); err == nil && parsed.Host != "" {
+		host = parsed.Hostname()
+	}
+	status, raw, failed := appKeyGet(ctx, &local, strings.TrimRight(address, "/")+"/models/user", host, key)
 	if failed != nil {
 		return *failed
 	}
@@ -532,7 +567,7 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 	if err := json.Unmarshal(raw, &listing); err != nil || listing.Data == nil {
 		return appwire.KeyCheck{Status: status, Message: "the provider answered, but not with a list of models"}
 	}
-	check := appwire.KeyCheck{OK: true, Models: []appwire.Model{}}
+	check = appwire.KeyCheck{OK: true, Models: []appwire.Model{}}
 	for _, row := range listing.Data {
 		id := strings.TrimSpace(row.ID)
 		if id == "" {
@@ -614,6 +649,9 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 	if params.Provider == appwire.KeyGitHub {
 		return b.setGitHubKey(params.Key)
 	}
+	if config.AppKept(params.Provider) {
+		return b.setKeptKey(params.Provider, params.Key)
+	}
 	p, ok := b.appProviderNamed(params.Provider)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "codeaf cannot connect %s with a key", params.Provider)
@@ -621,6 +659,16 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 	key := strings.TrimSpace(params.Key)
 	if err := appKeyAsked(p, key); err != nil {
 		return err
+	}
+	if p.kind == appwire.ProviderAgent {
+		if _, err := config.ConnectClaudeCode(context.Background(), config.ProfileDir()); err != nil {
+			return appwire.Errorf(appwire.CodeBadParams, "%s", err.Error())
+		}
+		b.forgetClaudeStatus()
+		b.keysMoved(p.id)
+		b.providerChanged(p, "")
+		b.warmProviderModels()
+		return nil
 	}
 	if p.id != modelsource.DefaultID {
 		if err := b.keepConnection(p, params, key); err != nil {
@@ -651,6 +699,22 @@ func (b *appBackend) setGitHubKey(key string) error {
 		return appwire.Errorf(appwire.CodeBadParams, "keys.set %s needs a token", appwire.KeyGitHub)
 	}
 	b.keys.Set(appwire.KeyGitHub, key)
+	return nil
+}
+
+// setKeptKey holds a credential a door kept with the app at an earlier
+// launch (config.AppKept: the Jira token, the AgentField key and node
+// secret), handed back now. It is no model provider, so no conversation,
+// model list or profile row hears of it; its readers find it in the app's
+// credentials first. It is held with Set, which does not tell the app to keep
+// it again.
+func (b *appBackend) setKeptKey(provider, key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return appwire.Errorf(appwire.CodeBadParams, "keys.set %s needs a key", provider)
+	}
+	b.keys.Set(provider, key)
+	b.agentFieldKeyMoved(provider)
 	return nil
 }
 
@@ -741,6 +805,9 @@ func (b *appBackend) RemoveKey(provider string) error {
 // ([openAppEngineProcess]) and reads this key then; an open one is updated
 // here, whoever opened it.
 func (b *appBackend) keysMoved(provider string) {
+	if provider == modelsource.DefaultID {
+		b.refreshKeyHealth()
+	}
 	proc := openedEngineProcess()
 	if proc == nil {
 		return

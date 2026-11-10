@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/inbox"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -44,6 +45,13 @@ func (s *Source) noWorkflows(ctx context.Context, owner, repo, head string, stat
 // FollowPR reads one pull request the factory opened, including after GitHub
 // has merged or closed it. The open list never carries those.
 func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (factory.PullRequest, error) {
+	return s.followPR(ctx, owner, repo, number, nil)
+}
+
+// followPR is [Source.FollowPR] knowing what the job last stored for this
+// pull request, prev (nil when nothing), so a head whose file list is already
+// on the job costs no read.
+func (s *Source) followPR(ctx context.Context, owner, repo string, number int, prev *factory.PullRequest) (factory.PullRequest, error) {
 	p, err := s.api.Pull(ctx, owner, repo, number)
 	if err != nil {
 		return factory.PullRequest{}, err
@@ -55,9 +63,14 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, HeadBranch: p.Head, Mergeable: mergeableWord(p.Mergeable),
 	}
 	// Terminal metadata is authoritative even when optional APIs are unavailable.
+	// A merged or closed pull request costs no file read, but keeps the list
+	// the job already holds for that same head: what the merge put on the
+	// base branch stays said.
 	if out.State != factory.PROpen {
+		keepPRFiles(prev, &out)
 		return out, nil
 	}
+	s.readPRFiles(ctx, owner, repo, p, prev, &out)
 	if p.HeadSHA != "" {
 		state, runs, e := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
 		if e != nil {
@@ -287,7 +300,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if !ok {
 			continue
 		}
-		fresh, err := f.FollowPR(ctx, owner, name, it.PullRequest.Number)
+		fresh, err := f.followPR(ctx, owner, name, it.PullRequest.Number, it.PullRequest)
 		if err != nil {
 			// A failed feedback read must not leave an old all-clear on screen.
 			// Do not replace an active repair or facts for a newer head.
@@ -316,6 +329,22 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if fresh.URL == "" {
 			fresh.URL = it.PullRequest.URL
 		}
+		// AN EMPTY PULL REQUEST THE FACTORY OPENED IS CLOSED, with a word on
+		// it and a plain note on the job (live e2e round 9, #315: a run whose
+		// work was already on the base branch opened one with 0 files, and
+		// the job read shipped with Merge offered). Nothing went out, so
+		// nothing stays open to merge. A pull request someone else opened is
+		// never closed from here; its job only reads as nothing to change.
+		closedEmpty := false
+		// Only a job that reads shipped closes its pull request: a job a
+		// person stopped writes nothing to GitHub, and a draft is still being
+		// worked on.
+		if fresh.State == factory.PROpen && !fresh.Draft && factory.PRChangesNothing(&fresh) && it.Publish == "pr" && it.Kind != factory.KindPR && it.State == factory.StateShipped && !factory.StoppedByPerson(it) {
+			_, _ = f.api.Comment(ctx, owner, name, fresh.Number, factory.EmptyPRComment)
+			if _, err := f.api.Close(ctx, owner, name, fresh.Number); err == nil {
+				fresh.State, closedEmpty = factory.PRClosed, true
+			}
+		}
 		factory.SettleNoChecks(it.PullRequest, &fresh, f.now())
 		checkpointRecovered := false
 		if !held[it.ID] && f.verificationRecovered != nil && len(fresh.Problems) == 0 && it.PullRequest.HeadSHA == fresh.HeadSHA {
@@ -330,7 +359,14 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			factory.ReleaseVerificationPause(&probe, f.now())
 		}
 		probe.PullRequest = &fresh
-		initialWatch := probe.FollowUp == nil && probe.State == factory.StateShipped && probe.Publish == "pr" && probe.HeadCommit != ""
+		// A pull request a run on another machine delivered is followed for
+		// its state and checks, never repaired from here: there is no
+		// checkout on this factory to carry a CI follow-up out in.
+		initialWatch := probe.FollowUp == nil && probe.State == factory.StateShipped && probe.Publish == "pr" && probe.HeadCommit != "" && !factory.RunDeliveredPR(probe)
+		// pin records, once, the head a run delivered as the job's approved
+		// commit ([factory.PinDeliveredHead]); it is a change worth writing
+		// even when the pull request itself read exactly as before.
+		pin := factory.PinDeliveredHead(&probe, fresh.HeadSHA)
 		if initialWatch {
 			factory.WatchPublishedPR(&probe)
 		}
@@ -338,7 +374,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		if !held[it.ID] || fresh.State == factory.PRMerged || fresh.State == factory.PRClosed {
 			followChanged = factory.QueueCIFollowUp(&probe, f.now())
 		}
-		followChanged = followChanged || initialWatch || checkpointRecovered
+		followChanged = followChanged || initialWatch || checkpointRecovered || pin || closedEmpty
 		if reflect.DeepEqual(*it.PullRequest, fresh) && !followChanged {
 			continue
 		}
@@ -381,6 +417,14 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 				factory.ReleaseVerificationPause(item, f.now())
 			}
 			item.PullRequest = &cp
+			if closedEmpty {
+				words := factory.EmptyPRClosedWords(cp.Number)
+				item.Note(f.now(), words)
+				if item.Stream != nil {
+					item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: f.now(), Tone: "said", Text: words})
+				}
+			}
+			factory.PinDeliveredHead(item, cp.HeadSHA)
 			if initialWatch && item.FollowUp == nil {
 				factory.WatchPublishedPR(item)
 			}
@@ -395,7 +439,7 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			}
 			applied = true
 			return nil
-		}); err != nil || !applied || rec == nil {
+		}); err != nil || !applied {
 			continue
 		}
 		kind := ""
@@ -415,8 +459,16 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 		handle := ""
 		if kind == record.PRMerged {
 			handle = next.MergedBy
+			// A MERGE A PERSON MADE ON GITHUB is seen here and nowhere else;
+			// one the factory made arrives in the worker's report and is told
+			// there ([inbox.Mark.Moments]), so this job was not yet merged.
+			if it.SourceRef != "" {
+				inbox.Notify(ctx, st, it.ID, inbox.Merged(next.URL))
+			}
 		}
-		_, _ = rec.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: handle, Detail: "pr · " + next.URL})
+		if rec != nil {
+			_, _ = rec.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: handle, Detail: "pr · " + next.URL})
+		}
 	}
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // sessionRow keeps public session facts beside an authenticated encryption of
@@ -222,7 +223,7 @@ func (h *Handler) saveSessions() error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
+	defer fsreplace.Remove(f.Name())
 	defer f.Close()
 	if _, err := f.Write(append(body, '\n')); err != nil {
 		return err
@@ -233,15 +234,10 @@ func (h *Handler) saveSessions() error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(f.Name(), h.sessions.path); err != nil {
+	if err := fsreplace.Rename(f.Name(), h.sessions.path); err != nil {
 		return err
 	}
-	dir, err := os.Open(root)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	if err := dir.Sync(); err != nil {
+	if err := fsreplace.SyncDir(root); err != nil {
 		return fmt.Errorf("sync factory sessions: %w", err)
 	}
 	return nil

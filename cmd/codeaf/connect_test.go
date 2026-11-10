@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -283,5 +284,34 @@ func TestFirstRunStillBuildsItsOpenRouterBrowserRoad(t *testing.T) {
 	settings := config.Config{BaseURL: config.DefaultBaseURL}
 	if v3OpenRouterConnection(settings, true) == nil {
 		t.Fatal("first-run OpenRouter browser connection disappeared")
+	}
+}
+
+// `codeaf connect claude-code` asks for no key: it finds the signed-in Claude
+// Code, keeps the row and seeds its three models with Claude's window, so a
+// conversation on one is not measured against a stranger's default.
+func TestConnectClaudeCodeAsksForNoKeyAndSeedsItsModels(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.ProfileDirEnv, dir)
+	fake := filepath.Join(t.TempDir(), "claude")
+	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo '2.1.9 (Claude Code)';;\nauth) echo '{\"loggedIn\":true,\"authMethod\":\"claude.ai\",\"subscriptionType\":\"max\"}';;\nesac\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_CLAUDE_BIN", fake)
+	output, restore := captureConnect(t)
+	defer restore()
+	if err := runConnect([]string{"claude-code"}); err != nil {
+		t.Fatalf("connect: %v (%q)", err, output.String())
+	}
+	if !strings.Contains(output.String(), "claude-code is connected · Claude Code 2.1.9 · Claude Max plan") {
+		t.Fatalf("connect said %q", output.String())
+	}
+	output.Reset()
+	if err := runConnect(nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "claude-code · connected · your Claude Code sign-in") {
+		t.Fatalf("the list said %q", output.String())
 	}
 }

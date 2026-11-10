@@ -489,7 +489,7 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 			// NOTHING IS LOGGED TO THE SCREEN: in the window the surface owns it,
 			// and in the engine stdout is the protocol. A failure is the facts
 			// line's `github · not reachable`, read off the store.
-			factorygithub.Poll(ctx, src, st, factoryPollEvery, nil, factoryIntake(st).Once)
+			factorygithub.Poll(ctx, src, st, factoryPollEvery, factoryPollLog, factoryAfterPoll(factoryIntake(st)))
 		})
 	})
 }

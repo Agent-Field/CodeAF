@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"sort"
 	"strings"
 	"time"
@@ -176,6 +177,15 @@ func taskModelRowsWith(ctx context.Context, profileDir string, health crewHealth
 		if err := ctx.Err(); err != nil {
 			return nil, ErrTaskModelsRead
 		}
+		if p.ID == claudemodel.ID {
+			// CLAUDE CODE IS THREE CHOICES, NOT A COPY OF THE CATALOG. It
+			// answers to Opus, Sonnet and Haiku whatever dated ids the shared
+			// catalog lists, and it is offered whether or not that catalog was
+			// ever read, so a person with only a Claude plan still has rows.
+			// A pin seats it; the router never does on its own.
+			out = append(out, claudeCodeRows(p, rule, health)...)
+			continue
+		}
 		for _, entry := range models {
 			if built++; built%taskModelRowCheck == 0 && ctx.Err() != nil {
 				return nil, ErrTaskModelsRead
@@ -221,6 +231,32 @@ func taskModelRowsWith(ctx context.Context, profileDir string, health crewHealth
 		}
 	}
 	return out, nil
+}
+
+// claudeCodeRows are the Claude Code service's rows: one per model it answers
+// to, seatable in every seat, on the person's plan and never weighed by Auto.
+func claudeCodeRows(p CrewProvider, rule crewroute.Allowed, health crewHealth) []TaskModelRow {
+	var out []TaskModelRow
+	for _, m := range claudemodel.Models() {
+		model := crewroute.Model{ID: claudemodel.ID + "/" + m.ID, Context: m.ContextLength, Tools: true}
+		row := TaskModelRow{Model: model, Name: m.Name, Provider: p.ID, Kind: crewroute.Plan, Send: m.ID, Seats: map[crewroute.Seat]bool{}}
+		for _, seat := range crewroute.Seats {
+			row.Seats[seat] = true
+		}
+		row.Allowed = rule.AdmitsOn(model, p.ID)
+		providerDown := !p.On || health.disconnected[p.ID]
+		row.Available = !providerDown
+		switch {
+		case !row.Allowed:
+			row.Reason = crewroute.RejectNotAllowed
+		case providerDown:
+			row.Reason = crewroute.RejectProviderUnavailable
+		default:
+			row.Reason = crewroute.RejectRouteUnavailable
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // taskCatalogModel is one model of the catalog, once per lineage.
@@ -324,7 +360,7 @@ func taskModelProviders(profileDir string, rows []TaskModelRow, health crewHealt
 	candidates := append([]modelsource.Source{modelsource.DefaultSource(DefaultBaseURL)}, modelsource.Vendored()...)
 	for _, source := range candidates {
 		id := strings.ToLower(source.ID)
-		if seen[id] || source.KeyOptional || modelsource.IsCustomID(source.ID) || id == "codex" {
+		if seen[id] || source.KeyOptional || modelsource.IsCustomID(source.ID) || id == "codex" || id == "claude-code" {
 			continue
 		}
 		seen[id] = true

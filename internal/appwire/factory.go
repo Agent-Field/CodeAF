@@ -165,7 +165,15 @@ type FactoryCapabilities struct {
 	// RepoRead: factory.repo_read is served (feature factory.repo_read). True
 	// only for an engine that implements [FactoryRepoReader]; whether the
 	// factory has a checkout of a repository is answered by the call.
-	RepoRead       bool `json:"repo_read"`
+	RepoRead bool `json:"repo_read"`
+	// GroupPolicy: factory.policy_get and factory.policy_set are served (feature
+	// factory.group_policy). True only for an engine that implements
+	// [FactoryGoAheads]; whether ONE factory keeps policies is its
+	// factory.features answer.
+	GroupPolicy bool `json:"group_policy"`
+	// WaitsOn: factory.waits_set is served (feature factory.waits_set), on the
+	// same terms as GroupPolicy.
+	WaitsOn        bool `json:"waits_on"`
 	MaxConnections int  `json:"max_connections"`
 	MaxFlows       int  `json:"max_flows"`
 }

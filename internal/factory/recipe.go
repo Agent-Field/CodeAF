@@ -218,6 +218,23 @@ func stageName(ask string) string {
 // rather than the colon quietly becoming part of the ask.
 var stageNamed = regexp.MustCompile(`^([\pL\pN]+(?:\s+[\pL\pN]+)?)\s*:(?:\s+|$)`)
 
+// StageNameGiven says the stage sentence words names its stage itself, with a
+// `name:` after any place clause, rather than leaving [StageSentence] to take
+// the ask's first meaningful word.
+func StageNameGiven(words string) bool {
+	_, rest := stagePlacementOf(words)
+	return stageNamed.MatchString(rest)
+}
+
+// KnownStepName says name is a step that exists apart from the sentence that
+// asked for it: one codeaf ships, or one of the recipe this job runs under.
+func KnownStepName(name string, recipe Recipe, kind Kind) bool {
+	if _, ok := ShippedStage(name); ok {
+		return true
+	}
+	return len(stageMatches(recipe.For(kind), name)) > 0
+}
+
 // StageSentence reads a typed stage sentence: an optional place
 // (`after review,`, `before proof,`, `first,`, `last,`), an optional one-word
 // name with a colon (`arch:`), and the ask. `after review, arch: read it for
@@ -419,6 +436,9 @@ type StageResult struct {
 	// one, from its brief, its last message and its change. It is judged like
 	// any other, and [RoundSummary] says whose words it is.
 	Inferred bool `json:",omitempty"`
+	// Summary is the step's own one-line account of how it ended, for a
+	// failure's headline ([Failure.Summary]); "" when it gave none.
+	Summary string `json:",omitempty"`
 }
 
 // Met says whether a round's result meets the stage's until. An empty until

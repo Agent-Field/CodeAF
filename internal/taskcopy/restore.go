@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/mirror"
 	"github.com/Agent-Field/codeaf/internal/taskstorage"
 )
@@ -230,7 +231,7 @@ func removeAll(dest string, rels []string) error {
 		if !filepath.IsLocal(rel) {
 			return fmt.Errorf("carried path %q leaves the task copy", rel)
 		}
-		if err := os.Remove(filepath.Join(dest, rel)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := fsreplace.Remove(filepath.Join(dest, rel)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}

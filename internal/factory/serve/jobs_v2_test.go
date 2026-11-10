@@ -186,7 +186,7 @@ func TestV2RunStopUndoAndStartNow(t *testing.T) {
 	}
 	// A queued job has no failed step, but Stop still withdraws its authority.
 	f.post(t, it, "stop", "", 200)
-	if j := f.read(t, it); j.State != "needs_you" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Stopped by you" || !j.Can.StartNow || j.Desk == nil || (j.Desk.PersonStopped == nil || !*j.Desk.PersonStopped) || !j.Can.Undo || j.Can.Stop {
+	if j := f.read(t, it); j.State != "backlog" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Stopped by you" || !j.Can.StartNow || j.Desk == nil || (j.Desk.PersonStopped == nil || !*j.Desk.PersonStopped) || !j.Can.Undo || j.Can.Stop {
 		t.Fatalf("stop %+v", j)
 	}
 	f.post(t, it, "undo", "", 200)

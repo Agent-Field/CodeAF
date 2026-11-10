@@ -66,7 +66,7 @@ None of that is your deliverable and none of it follows you home. You do not
 stage anything, you do not commit anything, and you never run `git add`.
 
 YOU WRITE IN YOUR OWN FOLDER AND NOWHERE ELSE ON THE MACHINE. Read whatever you
-like, anywhere — other repositories included, with `read`, `grep` and `git log`,
+like, anywhere except keys and sign-ins — other repositories included, with `read`, `grep` and `git log`,
 `show`, `diff`, `status` — but a `write`, an `edit`, a `cd` and then a change, a
 `git -C` or a `GIT_DIR=` aimed at another directory is refused before it runs,
 even when your brief names that directory. If work is needed out there, say so

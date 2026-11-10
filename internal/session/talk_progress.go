@@ -397,6 +397,26 @@ func CarryOn(text string) string { return carryOnLead + strings.TrimSpace(text) 
 
 func isCarryOn(text string) bool { return strings.HasPrefix(text, carryOnLead) }
 
+// resumedStepLead opens the brief a factory step's conversation is given again
+// when a restart cut the step short and its chat carries on
+// ([ResumedStepBrief]). It is matched WHOLE, so a person's own words that open
+// with "[carry on]" stay theirs.
+const resumedStepLead = carryOnLead + "This step was cut short by a restart and carries on in this conversation. Its brief again, for reference:\n"
+
+// ResumedStepBrief is brief as a resumed factory step's first message: the
+// model reads the brief again in the person's seat, as every carry-on is, and
+// the conversation's display leaves it out ([isContinuationContext]). THE
+// PERSON NEVER SEES THE ENGINE'S RESUME PROMPT AS A LINE THEY TYPED: a
+// reopened step chat once showed "[carry on] write: … You are the write step
+// of a codeaf run …" in the person's bubble (live e2e round 9).
+func ResumedStepBrief(brief string) string { return resumedStepLead + strings.TrimSpace(brief) }
+
+// IsCarryOn says whether a user message is codeaf's own carry-on in the
+// person's seat ([CarryOn], the checkpoint's nudge, a factory step's reminder
+// to report) rather than words a person typed: the producer's lead, which a
+// surface reads to say who wrote the line.
+func IsCarryOn(text string) bool { return isCarryOn(strings.TrimLeft(text, " \t\r\n")) }
+
 // ClosedSignal closes as soon as Close refuses further work. A view subscribes
 // under the same lock as Close, so even a previously closed agent is observed.
 func (a *Agent) ClosedSignal() <-chan struct{} {

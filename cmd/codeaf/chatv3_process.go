@@ -35,6 +35,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
@@ -68,6 +69,11 @@ type v3Process struct {
 	processCtx    context.Context
 	processStop   context.CancelFunc
 	knowledgeDone chan struct{}
+	// quitReceiptWait, when set, replaces [v3ReceiptWait] for every receipt
+	// wait from then on. The app sets it as it leaves, when its receipts have
+	// been hurried ([provider.HurryReceipts]) and the desk kills an engine that
+	// is still leaving after thirty seconds (app.go's [appQuitReceiptWait]).
+	quitReceiptWait atomic.Int64
 	// Shelf holds Models until somebody asks /model for today's list, and the
 	// refreshed catalog after (chatv3_modelshelf.go). The picker and the two
 	// session readers that answer about a model somebody may have just picked
@@ -397,7 +403,7 @@ func (p *v3Process) forget(agent *session.Agent) {
 	// Closed chats leave broadcasts immediately but remain owned until their
 	// admitted receipts settle. The reaper bounds retention in a long-lived host.
 	guard.Go("chatv3/retired-receipts", func() {
-		waitV3Receipts(agent)
+		p.waitReceipts(agent)
 		p.forgetReceiptAgent(agent)
 	})
 }
@@ -637,8 +643,18 @@ func (p *v3Process) warmModels(scope string, agent *session.Agent, started strin
 // variable so deadline tests need not wait through the provider retry schedule.
 var v3ReceiptWait = provider.ReceiptWait
 
-func waitV3Receipts(agent *session.Agent) {
-	ctx, cancel := context.WithTimeout(context.Background(), v3ReceiptWait)
+// waitReceipts waits on this process's own bound: the app's shorter quit wait
+// once it is leaving, [v3ReceiptWait] otherwise.
+func (p *v3Process) waitReceipts(agent *session.Agent) {
+	wait := v3ReceiptWait
+	if quit := time.Duration(p.quitReceiptWait.Load()); quit > 0 && quit < wait {
+		wait = quit
+	}
+	waitV3ReceiptsWithin(agent, wait)
+}
+
+func waitV3ReceiptsWithin(agent *session.Agent, wait time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	if err := agent.WaitReceipts(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "codeaf: receipt settlement timed out; spending may be incomplete")
@@ -718,7 +734,7 @@ func (p *v3Process) closeAll() {
 			// A pending save has a bounded wait. Its failure must remain visible
 			// after the terminal is restored, rather than disappearing with the surface.
 			closeV3Agent(agent)
-			waitV3Receipts(agent)
+			p.waitReceipts(agent)
 		})
 	}
 	waiting.Wait()

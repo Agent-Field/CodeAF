@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/mirror"
 )
@@ -90,7 +91,7 @@ func dropCarriedExcept(root string, live []string) error {
 	}
 	for _, e := range entries {
 		if !keep[e.Name()] {
-			if err := os.RemoveAll(filepath.Join(root, e.Name())); err != nil {
+			if err := fsreplace.RemoveAll(filepath.Join(root, e.Name())); err != nil {
 				return err
 			}
 		}
@@ -168,7 +169,7 @@ func carryCommits(tree, branch, head, dest string, full bool) error {
 	if full {
 		return writeScreenedFullHistory(tree, path)
 	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := fsreplace.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	_, err := bundleOwnCommits(tree, branch, path)

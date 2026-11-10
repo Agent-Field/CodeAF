@@ -10,8 +10,12 @@ import (
 // here and to TestNeedsYouKindsContractTwo in the same commit. The queue groups
 // jobs by this list, in this order.
 const (
-	NeedsApproveStart  = "approve_start"
-	NeedsApprovePlan   = "approve_plan"
+	NeedsApproveStart = "approve_start"
+	NeedsApprovePlan  = "approve_plan"
+	// NeedsApproveStep is Manual's hold before a step's first round: the step
+	// is next and waits for the person to go on ([StepHold]). It is not a plan
+	// approval, so it has a kind of its own.
+	NeedsApproveStep   = "approve_step"
 	NeedsApproveProof  = "approve_proof"
 	NeedsQuestion      = "question"
 	NeedsRunnerOffline = "runner_offline"
@@ -19,7 +23,10 @@ const (
 	NeedsOutOfAttempts = "out_of_rounds"
 	NeedsPublishFailed = "publish_failed"
 	// Persisted question kinds keep their bytes across wire contracts.
-	QKindSpendStopped     = "spend_stopped"
+	QKindSpendStopped = "spend_stopped"
+	// QKindStep is a step's question the person holds, and the wire's kind
+	// for it (appwire's factory.job_answer answers it by that kind).
+	QKindStep             = "step"
 	QKindOutOfAttempts    = "out_of_attempts"
 	NeedsFailed           = "failed"
 	NeedsChangesRequested = "changes_requested"
@@ -64,6 +71,7 @@ const (
 var NeedsYouKinds = []string{
 	NeedsApproveStart,
 	NeedsApprovePlan,
+	NeedsApproveStep,
 	NeedsApproveProof,
 	NeedsQuestion,
 	NeedsSpendingLimit,
@@ -103,13 +111,18 @@ type SourceRef struct {
 // when the step itself errored. Attempts is how many tries that step had
 // already made. Machine is the one that was holding the work.
 type Failure struct {
-	Step     string    `json:",omitempty"`
-	Code     string    `json:",omitempty"`
-	Detail   string    `json:",omitempty"`
-	Attempts int       `json:",omitempty"`
-	Machine  string    `json:",omitempty"`
-	Next     string    `json:",omitempty"`
-	At       time.Time `json:",omitempty"`
+	Step     string `json:",omitempty"`
+	Code     string `json:",omitempty"`
+	Detail   string `json:",omitempty"`
+	Attempts int    `json:",omitempty"`
+	Machine  string `json:",omitempty"`
+	Next     string `json:",omitempty"`
+	// Summary is the failure in one line a person reads first, at most
+	// [FailureSummaryMost] characters: the step's own when it gave one
+	// ([StageResult.Summary]), else one the job's manager wrote from Detail
+	// ([FailureSummary]). "" until either exists; Detail stays whole.
+	Summary string    `json:",omitempty"`
+	At      time.Time `json:",omitempty"`
 }
 
 // RoundLine is one finished try of a loop step. The step keeps one line per
@@ -261,6 +274,11 @@ func NeedsKind(it Item) string {
 	case it.QKind == NeedsRunnerOffline:
 		return NeedsRunnerOffline
 	case it.QKind == QKindApprove:
+		// A MANUAL HOLD BETWEEN STEPS IS NOT A PLAN. Reading it as one put
+		// "Plan ready" over "RunVetAndTest is next" in Needs you.
+		if _, ok := StepHold(it); ok {
+			return NeedsApproveStep
+		}
 		return NeedsApprovePlan
 	case it.QKind == "cap":
 		return NeedsSpendingLimit
@@ -289,7 +307,7 @@ func publishFailed(it Item) bool {
 // A free question is anyone who can see the repository.
 func JobPersonOnly(kind string) bool {
 	switch kind {
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline, NeedsFailed, NeedsChangesRequested, NeedsConflict:
 		return true
 	default:
 		return false
@@ -321,6 +339,16 @@ func QuestionForm(it Item) (kind string, options []string, who string) {
 	case NeedsQuestion:
 		who = WhoAnyoneWithRepo
 		var opts []string
+		// A STEP'S QUESTION IS KIND STEP, WITH ITS OPTIONS AS ITS ANSWERS,
+		// however many there are and whatever they say: the answer door and
+		// every desk read it by that kind. It went out as "options" (or
+		// "yes_no", or "text") and its buttons were never drawn.
+		if it.QKind == QKindStep {
+			if it.Asking != nil {
+				opts = append(opts, it.Asking.Options...)
+			}
+			return QKindStep, opts, who
+		}
 		if it.Asking != nil {
 			opts = it.Asking.Options
 		}
@@ -550,7 +578,7 @@ func MayAct(it Item, caller string) Acts {
 	switch NeedsKind(it) {
 	case NeedsQuestion:
 		answer = true
-	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
 		answer = owner
 	}
 	if it.QKind == QKindSpendStopped {

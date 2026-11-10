@@ -37,6 +37,13 @@ type RunReport struct {
 	Room string
 	// Merge is what the runner's merge did, nil when it carried none out.
 	Merge *MergeReport
+	// AgentField is the AgentField run behind a run_on job as the runner last
+	// recorded it, nil for no change. The factory keeps it, so a runner that
+	// takes the job again follows the same run rather than starting another.
+	AgentField *AgentFieldRun
+	// AgentFieldSteps are the runs behind the job's agentfield steps as the
+	// runner last recorded them, by step, each one whole; nil for no change.
+	AgentFieldSteps map[string]*AgentFieldRun `json:",omitempty"`
 	// Models is the priced calls recorded since the previous report, by model.
 	// It rides a header, not the report body: a factory older than the field
 	// refuses an unknown JSON field and would drop the whole report.

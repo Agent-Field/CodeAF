@@ -45,7 +45,14 @@ func factoryServerSeam(st *store.Store, tokensPath string, limit *githubLimit) f
 }
 
 // startFactoryServerPoll rebuilds the read source per tick so replacing a grant takes effect.
-func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath string, limit *githubLimit) {
+//
+// AFTER RUNS ON EVERY TICK, with or without a GitHub source: it is the
+// go-ahead pass ([intake.Intake.GoAheads]), which reads nothing from GitHub,
+// and a team server is the factory whose go-aheads must hold with every app
+// closed. Its error is never the poll's: a launch the factory refused is
+// written on the job and tried again next tick, and counting it as a failed
+// read would back GitHub reads off for up to ten minutes.
+func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath string, limit *githubLimit, after func(context.Context) error) {
 	guard.Go("factory/server-read", func() {
 		waker := factorygithub.NewWaker(st)
 		cursor := ""
@@ -64,6 +71,9 @@ func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath str
 				} else {
 					failed = 0
 				}
+			}
+			if after != nil && ctx.Err() == nil {
+				_ = after(ctx)
 			}
 			if !waker.Wait(ctx, factorygithub.Backoff(factoryPollEvery, failed)) {
 				return

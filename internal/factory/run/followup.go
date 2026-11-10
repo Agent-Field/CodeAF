@@ -180,7 +180,7 @@ func (lp *floorLoop) checkCIScope(it factory.Item) error {
 			return err
 		}
 		if strings.TrimSpace(ahead) == "0" {
-			return errors.New("No verified repair was produced. Take over or tell the manager what to try next.")
+			return errors.New("No checked repair was produced. Take over or tell the manager what to try next.")
 		}
 	}
 	return nil
@@ -303,7 +303,7 @@ func (lp *floorLoop) finishReadiness(c *loopCtl, i int, res factory.StageResult)
 		cur.FollowUp.Readiness = &a
 		cur.FollowUp.State = "ready_approval"
 		cur.FollowUp.Reason = factory.ReadinessApprovalWords(*cur)
-		cur.Proof = mergeClaim(cur.Proof, factory.Claim{Text: "Final readiness review: diff and PR description match the verified result; feedback addressed; no unfinished work", OK: true, Medium: "inspection", Evidence: res.Repair.Reason})
+		cur.Proof = mergeClaim(cur.Proof, factory.Claim{Text: "Final readiness review: diff and PR description match the checked result; feedback addressed; no unfinished work", OK: true, Medium: "inspection", Evidence: res.Repair.Reason})
 		cur.State = factory.StateLanded
 		cur.Approval = nil
 		cur.Question, cur.QKind = "", ""

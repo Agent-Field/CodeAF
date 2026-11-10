@@ -127,7 +127,7 @@ func (a *Agent) stopJob(ctx context.Context, jobs *jobRegistry, target *job) (st
 	// one ([jobRegistry.settleExit]). Without the mark the release happened from
 	// inside the kill below, while the line this stop owes the model was still
 	// unwritten, and a worker parked on the command woke to an empty queue.
-	target.markPersonStopped()
+	target.markPersonStopped(true)
 	line, result := jobs.killFor(ctx, number)
 	if result == killRefusedSaving {
 		// A COMMITTED RENDER WAS NOT STOPPED, AND NOTHING SAYS IT WAS. Its death
@@ -135,6 +135,15 @@ func (a *Agent) stopJob(ctx context.Context, jobs *jobRegistry, target *job) (st
 		// reads it), its debt and its note are its own ending's to settle, and
 		// the line is the kill's own sentence naming the file still coming.
 		return line, jobStopRefused
+	}
+	if result == killUnproven {
+		// No completion note is owed for an unverified stop. Hand a later
+		// confirmed ending back to the reaper, including a concurrent ending.
+		target.markPersonStopped(false)
+		if target.settledKilled() {
+			jobs.payDebt(target)
+		}
+		return line, jobStopUnproven
 	}
 	if result == killNotClaimed {
 		// The job ended between the running check and the kill: same news as

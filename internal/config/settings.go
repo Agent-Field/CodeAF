@@ -1045,6 +1045,11 @@ var OperatorEnvPins = []string{
 	// editable profile preferences.
 	"CODEAF_FACTORY_BENCHES",
 	"CODEAF_FACTORY_POSTURE",
+	// The fence widening a launcher hands an unattended run (jailallow.go).
+	"CODEAF_JAIL_ALLOW",
+	// What a fenced command is told about itself; codeaf sets it, nobody reads
+	// it back as a preference.
+	"CODEAF_FENCED",
 	"CODEAF_FACTORY_NO_WORKER",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
@@ -1071,6 +1076,10 @@ var OperatorEnvPins = []string{
 	"CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP",
 	"CODEAF_PROTOTYPE_TASK_STORAGE",
 	"CODEAF_PROTOTYPE_ARCHIVE_BINARY",
+	// CODEAF_CLAUDE_BIN names the Claude Code program when `claude` on PATH is
+	// a shell alias a child process cannot start (internal/claudeagent). It is
+	// an executable path, so it is plumbing like the archive binary above.
+	"CODEAF_CLAUDE_BIN",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
 	// CODEAF_BASE_URL is.
@@ -1232,11 +1241,20 @@ var OperatorEnvPins = []string{
 	// (internal/githubcalls). It is for measuring one run's rate-limit spend, so
 	// it is not a setting anyone keeps.
 	"CODEAF_GITHUB_LOG",
+	// CODEAF_GITHUB_CLIENT_ID names the GitHub app the factory's browser
+	// sign-in asks for a device code (internal/factory/github). It is a
+	// build-time identity the release normally bakes in, so it is not a
+	// setting a person keeps.
+	"CODEAF_GITHUB_CLIENT_ID",
+	// CODEAF_GITHUB_LOGIN_URL points that same sign-in at a stand-in GitHub for
+	// tests. It is test plumbing, never a preference.
+	"CODEAF_GITHUB_LOGIN_URL",
 	// Opt-in developer profiling output and its bounded capture controls. These
 	// are process instrumentation, not persisted model or user preferences.
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
 	"CODEAF_DIAGNOSTIC_PROFILE_SECONDS",
 	"CODEAF_DIAGNOSTIC_PROFILE_HEAP",
+	"CODEAF_DIAGNOSTIC_PROFILE_DELAY",
 	// CODEAF_QUESTION_DEMO names one of the fixture questions the question page
 	// draws itself with (internal/tui3's questiondemo.go), so that a page whose
 	// real questions do not exist yet can be SEEN full rather than only through

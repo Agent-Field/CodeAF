@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -98,8 +99,9 @@ Write these blocks in this order, leaving out one only when the issue gives noth
 - {"kind":"bullets","heading":"Done when","bullets":[{"text","evidence"}]}: how a person would know it is done.
 - {"kind":"open_question","heading":"Unclear","questions":[{"text","evidence"}]}: at most %d things the issue does not settle.
 At most %d bullets a block, at most %d words each. Plain text only, no markdown.
-Say nothing about the code, its files or its causes unless the issue says it: no one has read the code yet. EVERY NUMBER YOU WRITE MUST BE IN THAT CLAIM'S ref; a claim that breaks this is thrown away. Unsure is a line under Unclear, never a guess.`,
-		BriefWordsMost, BriefWordsMost, BriefQuestionsMost, BriefBulletsMost, BriefWordsMost)
+Say nothing about the code, its files or its causes unless the issue says it: no one has read the code yet. EVERY NUMBER YOU WRITE MUST BE IN THAT CLAIM'S ref; a claim that breaks this is thrown away. Unsure is a line under Unclear, never a guess.
+%s`,
+		BriefWordsMost, BriefWordsMost, BriefQuestionsMost, BriefBulletsMost, BriefWordsMost, BriefPlainWordsRule)
 }
 
 // briefFirstReadInput is the input of a read before work: the issue and what a
@@ -213,4 +215,49 @@ func briefRepeatsFault(v BriefVersion, it Item) string {
 		}
 	}
 	return ""
+}
+
+// ── THE READ A JOB STARTS WITH ─────────────────────────────────────────────
+//
+// A read written before work is kept like any version, and it is not only for
+// the person: every step of the job is given it (internal/factory/run's
+// firstReadBrief), so a person who pressed "Write the brief" before starting
+// pays for a read the work then uses. Versions written after a step reported
+// are reports on that work and are never handed to a step.
+
+// FirstReadOf is the job's newest kept read before work, and false when it
+// has none.
+func FirstReadOf(it Item) (BriefVersion, bool) {
+	for i := len(it.Briefs) - 1; i >= 0; i-- {
+		if v := it.Briefs[i]; v.BeforeWork && !v.Stub {
+			return v, true
+		}
+	}
+	return BriefVersion{}, false
+}
+
+// BriefReadable says a write now would be a paid read before work: the job
+// has not worked, has not ended and its issue is not too thin to read.
+func BriefReadable(it Item) bool {
+	return briefBeforeWork(it) && !briefIssueThin(it) && !StoppedByPerson(it)
+}
+
+// FirstReadPrice is what one read before work typically costs on this
+// factory: the median of every kept read's cost, 0 when none has run.
+// MEASURED, NOT GUESSED, like the Look closer button's price: a factory that
+// has written no read quotes nothing.
+func FirstReadPrice(items []Item) float64 {
+	var costs []float64
+	for _, it := range items {
+		for _, v := range it.Briefs {
+			if v.BeforeWork && v.CostUSD > 0 {
+				costs = append(costs, v.CostUSD)
+			}
+		}
+	}
+	if len(costs) == 0 {
+		return 0
+	}
+	slices.Sort(costs)
+	return costs[(len(costs)-1)/2]
 }

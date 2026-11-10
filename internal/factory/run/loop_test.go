@@ -271,12 +271,15 @@ func TestAnApproveStepHoldsYesGoesOnNoSendsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	g.asked(first, "ready to start · continue?")
-	if err := g.r.Answer(first, false, ""); err != nil {
+	if err := g.r.Answer(first, false, "not this one"); err != nil {
 		t.Fatal(err)
 	}
-	it = g.waitState(first, factory.StateNew)
-	if it.Stream == nil || !logHas(it, "stopped · branch kept") || it.Question != "" {
-		t.Fatalf("a no with nothing before did not stop: %+v", it)
+	// A NO WITH NOTHING BEFORE IT IS A REJECTION: the job ends, done, with
+	// the words, and offers no carry-on from the approval it was refused at.
+	it = g.wait(first, "rejected", func(it factory.Item) bool { return it.Rejection != nil })
+	if it.Stream == nil || !logHas(it, "stopped · branch kept") || it.Question != "" || factory.JobState(it) != "done" ||
+		it.Rejection.Words != "not this one" || it.Stream.Ended.IsZero() {
+		t.Fatalf("a no with nothing before did not end the job: %+v", it)
 	}
 
 	// AN APPROVE STEP WITH NOTHING AFTER IT IS THE LANDING: no question
@@ -631,7 +634,7 @@ func TestStopBeforeAnyStepBeganKeepsPersonStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	it, _ := g.st.Get(id)
-	if it.State != factory.StateNew || it.Failure != nil || factory.JobState(it) != "needs_you" || !factory.RunEnded(it) || !factory.StoppedByPerson(it) || !logHas(it, "stopped · branch kept") {
+	if it.State != factory.StateNew || it.Failure != nil || factory.JobState(it) != "backlog" || !factory.RunEnded(it) || !factory.StoppedByPerson(it) || !logHas(it, "stopped · branch kept") {
 		t.Fatalf("stopped before any step = %s %+v", factory.JobState(it), it.Failure)
 	}
 	for _, ph := range it.Stream.Phases {
@@ -657,7 +660,7 @@ func assertStoppedByYou(t *testing.T, it factory.Item, step string) {
 			t.Fatalf("the cut step = %+v", ph)
 		}
 	}
-	if factory.JobState(it) != "needs_you" || !factory.RunEnded(it) {
+	if factory.JobState(it) != "backlog" || !factory.RunEnded(it) {
 		t.Fatalf("a stopped job reads %s", factory.JobState(it))
 	}
 }

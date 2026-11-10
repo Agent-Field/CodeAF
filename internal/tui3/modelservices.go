@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"net/url"
 	"sort"
 	"strings"
@@ -215,6 +216,8 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 		if source.ID == modelsource.DefaultID {
 			need = "browser · key"
 		}
+	case source.ID == claudemodel.ID:
+		need = "your Claude Code sign-in · no key"
 	case modelsource.IsCustomID(source.ID):
 		need = "address · key"
 	case len(source.Regions) > 0:
@@ -237,7 +240,7 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 		ID: modelConnectionID(source.ID), Name: name, Blurb: need,
 		Auth: connect.AuthKey, Category: "models",
 	}
-	if source.ID == "ollama" {
+	if source.ID == "ollama" || source.ID == claudemodel.ID {
 		service.Auth = "none"
 	} else if source.ID == "codex" || source.ID == modelsource.DefaultID {
 		service.Auth = connect.AuthBrowser
@@ -325,6 +328,11 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 			a.connPanel.close()
 		}
 		return a.beginCodexConnect(*draft)
+	case source.ID == claudemodel.ID:
+		// NO KEY IS ASKED FOR: codeaf never holds the `claude` program's
+		// sign-in, so connecting is checking it is here and signed in.
+		a.modelDraft = nil
+		return a.beginClaudeCodeConnect(*draft)
 	default:
 		draft.step = modelConnectKey
 		a.showModelEntry(newModelEntry(row.ID, source.Name, "key", nil, true), fromSheet)
@@ -445,6 +453,39 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 		return modelConnectResultMsg{
 			service: "codex", name: "Codex", written: "codex", outcome: outcome,
 			models: models, err: err, browser: true, word: word, setupAttempt: attempt,
+		}
+	}
+}
+
+// beginClaudeCodeConnect connects the person's own `claude` program through the
+// same door the app and `codeaf connect claude-code` use, and keeps its three
+// models with their window, so a conversation on one is measured against
+// Claude's window and not a stranger's default.
+func (a *app) beginClaudeCodeConnect(draft modelConnectDraft) tea.Cmd {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if draft.setupAttempt != nil {
+		ctx = draft.setupAttempt.ctx
+		a.setup.providerBusy = true
+		a.touch()
+	}
+	dir := a.profileDir
+	return func() tea.Msg {
+		outcome, err := config.ConnectClaudeCode(ctx, dir)
+		var models []Model
+		if err == nil {
+			for _, m := range claudemodel.Models() {
+				models = append(models, Model{ID: m.ID, ContextLength: m.ContextLength})
+			}
+			if connected, found := config.ResolveSources(dir, "", "").ByID(claudemodel.ID); found {
+				_ = WriteModelCacheFor(connected.Source.ID, connected.Address, models)
+			}
+		}
+		return modelConnectResultMsg{
+			service: claudemodel.ID, name: claudemodel.Name, written: claudemodel.ID,
+			outcome: outcome, models: models, err: err, setupAttempt: draft.setupAttempt,
 		}
 	}
 }

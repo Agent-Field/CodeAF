@@ -27,8 +27,11 @@ package main
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -38,5 +41,26 @@ var _ appwire.FactoryPlanRejecter = (*appBackend)(nil)
 const factoryVerbRejectPlan = "reject_plan"
 
 func (b *appBackend) FactoryJobRejectPlan(ctx context.Context, p appwire.FactoryJobRejectPlanParams) (appwire.FactoryJobActed, error) {
+	if out, handled, err := b.answerAgentField(ctx, p.Factory, p.Job, appwire.JobActRejectPlan, agentfield.DecisionRejected, p.Words, p.Expect); handled {
+		return out, err
+	}
+	// A PLAN OF THIS FACTORY'S OWN IS SENT BACK WITH WORDS: a bare no would
+	// only rewind the run. (An AgentField run's Reject, above, takes none.)
+	// An AgentField run's Reject takes no words, on another machine's factory
+	// too: that factory's job is read first, and blank words go only to a job
+	// waiting on a run's pause.
+	if strings.TrimSpace(p.Words) == "" && !b.waitsOnRunPause(ctx, p.Factory, p.Job) {
+		return appwire.FactoryJobActed{}, appwire.Errorf(appwire.CodeBadParams, "words is required")
+	}
 	return b.jobWrite(ctx, p.Factory, appwire.JobActRejectPlan, p.Job, factoryVerbRejectPlan, api.RejectPlan{Words: p.Words, Expect: p.Expect})
+}
+
+// waitsOnRunPause says another machine's factory shows job waiting on an
+// AgentField run's pause. This machine's own factory answered that above.
+func (b *appBackend) waitsOnRunPause(ctx context.Context, id string, job int) bool {
+	if host, _ := b.localHostOf(id); host != nil {
+		return false
+	}
+	j, err := b.FactoryJob(ctx, id, job)
+	return err == nil && j.NeedsYou != nil && j.NeedsYou.Question != nil && j.NeedsYou.Question.Kind == factory.QKindAgentField
 }

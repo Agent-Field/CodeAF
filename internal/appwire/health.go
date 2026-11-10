@@ -4,7 +4,8 @@ import "time"
 
 // health.check: plain facts about this engine an assistant can cite when the
 // person asks whether something is wrong. Every fact is read, never inferred,
-// and the call is cheap: no network and no child process.
+// and provider key health is checked lazily and cached on every OS. Only Windows
+// desk reads run command readiness probes, with short deadlines.
 
 // The roles a disk reading is taken for.
 const (
@@ -12,18 +13,35 @@ const (
 	DiskCodeafHome = "codeaf_home"
 )
 
+// ProviderKeyHealth is a launch-cached auth reading, with no credential in its payload.
+type ProviderKeyHealth struct {
+	State     string     `json:"state" enum:"ok,invalid,unknown"`
+	Message   string     `json:"message,omitempty"`
+	CheckedAt *time.Time `json:"checked_at,omitempty"`
+}
+
+// ReadinessCheck names a machine prerequisite and its one-line remedy.
+type ReadinessCheck struct {
+	Name    string `json:"name"`
+	State   string `json:"state" enum:"ok,error,info,unknown"`
+	Message string `json:"message"`
+	Fix     string `json:"fix"`
+}
+
 // Health is the engine as it stands. Resume is the replies and tasks this
 // start set to carry on after the last quit, absent when there were none;
 // Factory is this machine's local factory as factory.local_status shapes it,
 // absent from an engine that does not say.
 type Health struct {
-	Version   string              `json:"version"`
-	Build     string              `json:"build,omitempty"`
-	StartedAt time.Time           `json:"started_at"`
-	UptimeS   int64               `json:"uptime_s"`
-	Resume    *HealthResume       `json:"resume,omitempty"`
-	Disks     []HealthDisk        `json:"disks"`
-	Factory   *FactoryLocalStatus `json:"factory,omitempty"`
+	ProviderKey ProviderKeyHealth   `json:"provider_key,omitzero"`
+	Checks      []ReadinessCheck    `json:"checks,omitempty"`
+	Version     string              `json:"version"`
+	Build       string              `json:"build,omitempty"`
+	StartedAt   time.Time           `json:"started_at"`
+	UptimeS     int64               `json:"uptime_s"`
+	Resume      *HealthResume       `json:"resume,omitempty"`
+	Disks       []HealthDisk        `json:"disks"`
+	Factory     *FactoryLocalStatus `json:"factory,omitempty"`
 }
 
 // HealthResume is what a start carried on after a quit: when, and how many
@@ -69,6 +87,7 @@ func init() {
 			return nil, err
 		}
 		health.Disks = nonNil(health.Disks)
+		health.Checks = nonNil(health.Checks)
 		return &HealthResult{Health: health}, nil
 	})
 }

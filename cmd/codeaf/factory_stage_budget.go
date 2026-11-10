@@ -23,10 +23,9 @@ type stageBudget struct {
 	failed      bool
 	stopped     string
 	reached     bool
-	// seen is the job document's file at the last Refusal that read it. Every
-	// live agent of the round asks Refusal ten times a second, so an
-	// unchanged document answers as it did then instead of being decoded
-	// again (the job's own document can be hundreds of kilobytes).
+	// seen is the job file the last Refusal read found nothing in. A step's
+	// budget is asked ten times a second while it is open, and an unchanged
+	// file is not decoded again ([sameFileInfo]).
 	seen os.FileInfo
 }
 
@@ -101,23 +100,21 @@ func (b *stageBudget) Refusal() string {
 		b.stopped = "job spending could not be recorded; work stopped"
 		return b.stopped
 	}
-	// The file is stat'd before it is read, so a write landing between the
-	// two leaves the newer document under the older file's identity, and the
-	// next look reads it again.
+	// Stat'd before it is read, so a write between the two is read next time.
 	info, statErr := os.Stat(b.floor.ItemPath(b.item.ID))
-	if statErr == nil && sameIndexedFile(b.seen, info) {
-		return b.stopped
+	if statErr == nil && sameFileInfo(b.seen, info) {
+		return ""
 	}
-	b.seen = nil
 	it, err := b.floor.Get(b.item.ID)
 	if err != nil || it.Repo != b.item.Repo {
+		b.seen = nil
 		return session.JobBudgetUnreadable
 	}
 	b.stopped = factoryrun.ChatRefusal(it)
-	b.reached = b.stopped != ""
-	if statErr == nil {
+	if b.stopped == "" && statErr == nil {
 		b.seen = info
 	}
+	b.reached = b.stopped != ""
 	return b.stopped
 }
 func (b *stageBudget) total() float64 {

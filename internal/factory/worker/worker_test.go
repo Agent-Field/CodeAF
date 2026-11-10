@@ -36,6 +36,9 @@ type rig struct {
 	record *record.Record
 	mirror *store.Store
 	seen   *reportLog
+	// quit ends the worker's process, as quitting the app does, and waits
+	// for it to return.
+	quit func()
 }
 
 func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
@@ -152,8 +155,9 @@ func newRigWithDelivery(t *testing.T, keepLocal func(string, api.WorkerLease), t
 			BeatEvery:   20 * time.Millisecond,
 		})
 	}()
-	t.Cleanup(func() { cancel(); <-done })
-	return rig{base: server.URL, st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r, record: history, mirror: mirror, seen: seen}
+	quit := func() { cancel(); <-done }
+	t.Cleanup(quit)
+	return rig{base: server.URL, st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r, record: history, mirror: mirror, seen: seen, quit: quit}
 }
 
 func TestWorkerLocalReceiptFollowsPullHeartbeatAndRelease(t *testing.T) {
@@ -320,6 +324,60 @@ func TestAStopTakesTheLeaseAndTheWorkerLetsGo(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("the worker kept running a stopped job")
 		}
+	}
+}
+
+// A WORKER THAT ENDS LETS GO OF ITS STEPS; ONLY A STOP STOPS THEM. Quitting
+// the app ends the worker's process: a step it was running is let go, so
+// work that runs elsewhere (an AgentField run on a control plane) goes on and
+// the next start follows it again (run.StoppedHere is false). A person's Stop
+// on the factory still stops the step as theirs (StoppedHere is true).
+func TestAWorkerThatEndsLetsGoAndOnlyAStopStops(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		stopped bool
+	}{{"the worker quits", false}, {"the person stops it", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ended, began := make(chan bool, 1), make(chan struct{}, 1)
+			g := newRigWith(t, nil, func(o *run.Options) {
+				o.Exec[factory.StageCheck] = run.ExecutorFunc(func(ctx context.Context, _ run.Job) (factory.StageResult, error) {
+					began <- struct{}{}
+					<-ctx.Done()
+					ended <- run.StoppedHere(ctx)
+					return factory.StageResult{}, ctx.Err()
+				})
+			})
+			id := g.add(t, check("elsewhere"))
+			if err := g.floor.Launch(id); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-began:
+			case <-time.After(5 * time.Second):
+				it, _ := g.st.Get(id)
+				t.Fatalf("the worker never began the step: %s %+v", it.State, it.Stream)
+			}
+			if tc.stopped {
+				if err := g.floor.Stop(id); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				go g.quit()
+			}
+			select {
+			case got := <-ended:
+				if got != tc.stopped {
+					t.Fatalf("the step's end read as a person's stop = %t, want %t", got, tc.stopped)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the step never ended")
+			}
+			if !tc.stopped {
+				if local, _ := g.mirror.Get(id); factory.StoppedByPerson(local) {
+					t.Fatal("quitting marked the job as stopped by its person")
+				}
+			}
+		})
 	}
 }
 

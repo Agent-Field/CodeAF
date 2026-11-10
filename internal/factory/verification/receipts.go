@@ -148,6 +148,13 @@ func Prepare(transcript, command string) (string, error) {
 	return PrepareIn(transcript, "", command)
 }
 
+// ReceiptRoot is the folder a step's check receipts are written in, beside
+// its transcript. THE FENCE AROUND A STEP MUST LET IT WRITE HERE
+// ([executor.FenceOptions.Receipts]): the wrapped check makes its receipt
+// from inside the fenced shell, and the transcript lives in codeaf's home,
+// outside the job's checkout.
+func ReceiptRoot(transcript string) string { return transcript + ".checks" }
+
 // PrepareIn assigns an explicit canonical worktree boundary to this tool call.
 // Descendant fixtures may still emit diagnostics, but cannot create obligations
 // for a different worktree. Compatibility callers without an owner retain every
@@ -163,7 +170,7 @@ func PrepareCallIn(transcript, ownerDir, command, callID string) (string, error)
 	if transcript == "" {
 		return command, nil
 	}
-	root := transcript + ".checks"
+	root := ReceiptRoot(transcript)
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return "", err
 	}

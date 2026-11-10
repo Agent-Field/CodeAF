@@ -58,3 +58,42 @@ func (d *Doors) Close(id int, revision *int, who string) error {
 		return held != nil, nil
 	})
 }
+
+// RejectRefusal is the sentence Reject refuses a job with that waits on no
+// approval: there is nothing for the person to reject.
+const RejectRefusal = "is not waiting on an approval · Stop or Close end it instead"
+
+// Reject is a person's rejection of what a job waits on them to approve: its
+// run ends, and the job is closed as rejected with their words
+// ([factory.Item.EndRejected]). It is Close's write with the decision on it,
+// in the same lock, so an old worker report cannot bring the job back either.
+//
+// ANY APPROVAL, ANY STEP KIND. The job need only be waiting on a person's
+// approval: an approve step, a start that asked first, or a step whose run
+// paused for an approval somewhere else. Nothing here reads a pipeline's or a
+// step's name.
+func (d *Doors) Reject(id int, revision *int, who, words string) error {
+	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if factory.JobState(*it) == "done" {
+			return false, CloseRefusal(fmt.Sprintf("%s is already closed", it.Ref()))
+		}
+		if !factory.WaitsOnApproval(*it) {
+			return false, CloseRefusal(it.Ref() + " " + RejectRefusal)
+		}
+		if factory.UnderWay(*it) {
+			if err := run.StopItem(it, now); err != nil {
+				return false, err
+			}
+		}
+		it.EndRejected(who, words, now)
+		if d.desk.record != nil {
+			if _, err := d.desk.record.Append(context.Background(), record.Event{Kind: record.ClosedLocally, Job: id, Handle: who, Detail: factory.RejectedWords(words)}); err != nil {
+				return false, err
+			}
+		}
+		if held != nil {
+			release(doc, id)
+		}
+		return held != nil, nil
+	})
+}

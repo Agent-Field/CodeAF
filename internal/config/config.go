@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -1049,6 +1050,16 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		configured.BillingDoor = ""
 		// A sign-in is not a plan statement: until the plan claim is read and
 		// verified, a codex call's billing is nobody's word.
+		configured.Billing = provider.BillingFact{}
+		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
+	}
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), claudemodel.ID) {
+		// Claude Code answers through its own program on the person's own
+		// sign-in; a session that knows its folder replaces this client with
+		// one that works there (internal/session's clientConfig).
+		configured.APIKey = claudemodel.Sentinel
+		configured.HTTPClient = claudemodel.Client()
+		configured.BillingDoor = ""
 		configured.Billing = provider.BillingFact{}
 		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
 	}

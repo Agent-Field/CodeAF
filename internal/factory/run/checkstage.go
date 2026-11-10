@@ -92,7 +92,7 @@ func runCheck(ctx context.Context, opts CheckOptions, job Job) (factory.StageRes
 	processgroup.Configure(cmd)
 	cmd.Cancel = func() error {
 		// The group, not the shell alone: a test's children die with it. On Windows
-		// processgroup kills the tree with taskkill, since there is no group signal.
+		// processgroup kills the launch's Job Object.
 		if cmd.Process == nil {
 			return nil
 		}
@@ -101,7 +101,7 @@ func runCheck(ctx context.Context, opts CheckOptions, job Job) (factory.StageRes
 	// A child that escaped the group may hold the pipe open; do not wait on it.
 	cmd.WaitDelay = 2 * time.Second
 
-	err := cmd.Run()
+	err := processgroup.Run(cmd)
 	took := time.Since(start).Round(time.Second)
 	if ctx.Err() != nil {
 		return factory.StageResult{}, ctx.Err()

@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -96,7 +97,7 @@ func checkStructure(i int, op EditOp) (EditOp, *EditError) {
 		return op, refuseEdit(EditBadOp, i, "%s names a pipeline", op.Op)
 	}
 	if !stepNamed(op.Pipeline) {
-		return op, refuseEdit(EditUnknownStep, i, "that is not a pipeline name")
+		return op, refusePipeline(EditUnknownStep, i, "that is not a pipeline name")
 	}
 	if !stepNamed(op.Name) {
 		return op, refuseEdit(EditUnknownStep, i, "that is not a step name")
@@ -140,10 +141,13 @@ func checkAnchor(i int, op EditOp) *EditError {
 func checkAddStep(i int, op EditOp) (EditOp, *EditError) {
 	if op.Kind != nil {
 		k, ok := kindWord(*op.Kind)
-		if !ok || (k != "" && k != string(factory.StageCheck) && k != string(factory.StageGate)) {
-			return op, refuseEdit(EditBadValue, i, "a step added here is a chat, a check or a gate")
+		if !ok || (k != "" && k != string(factory.StageCheck) && k != string(factory.StageGate) && k != string(factory.StageAgentField)) {
+			return op, refuseEdit(EditBadValue, i, "a step added here is a chat, a check, a gate or an agentfield step")
 		}
 		op.Kind = &k
+	}
+	if bad := checkAgentFieldWords(i, &op); bad != nil {
+		return op, bad
 	}
 	if op.Prompt == nil && !addsGate(op) {
 		return op, refuseEdit(EditBadValue, i, "add_step needs a prompt")
@@ -189,6 +193,44 @@ func checkCheckWords(i int, op EditOp) *EditError {
 	return nil
 }
 
+// checkAgentFieldWords holds an added agentfield step to what it is: a
+// reasoner (its prompt, node.reasoner) and an input of the job's facts; no
+// model reads it, so it takes no until, rounds, effort or fanout.
+func checkAgentFieldWords(i int, op *EditOp) *EditError {
+	if op.Kind == nil || *op.Kind != string(factory.StageAgentField) {
+		return nil
+	}
+	if op.Prompt == nil {
+		return refuseEdit(EditBadValue, i, "an agentfield step names its reasoner as its prompt: node.reasoner")
+	}
+	target, err := factory.AgentFieldTargetWord(*op.Prompt)
+	if err != nil {
+		return refuseEdit(EditBadValue, i, "an agentfield step names its reasoner as node.reasoner: %s", err.Error())
+	}
+	op.Prompt = &target
+	if op.Until != nil || op.Max != nil || (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
+		return refuseEdit(EditBadValue, i, "an agentfield step runs a reasoner, not a model; it takes no until, max, effort or fanout")
+	}
+	if len(op.Input) > 40 {
+		return refuseEdit(EditTooLarge, i, "an agentfield step's input names at most 40 fields")
+	}
+	clean := make(map[string]string, len(op.Input))
+	for k, v := range op.Input {
+		k = strings.TrimSpace(k)
+		if k == "" || len(k) > 64 || len(v) > 4000 {
+			return refuseEdit(EditBadValue, i, "an input field is a name of at most 64 characters with text of at most 4000")
+		}
+		if bad := factory.AgentFieldInputProblem(v); bad != "" {
+			return refuseEdit(EditBadValue, i, "input.%s: %s", k, bad)
+		}
+		clean[k] = v
+	}
+	if op.Input != nil {
+		op.Input = clean
+	}
+	return nil
+}
+
 // addsGate says whether an add_step adds a person.
 func addsGate(op EditOp) bool {
 	return op.Kind != nil && *op.Kind == string(factory.StageGate)
@@ -202,7 +244,17 @@ func checkGateWords(i int, op EditOp) (EditOp, *EditError) {
 		if op.Who != nil {
 			return op, refuseEdit(EditBadOp, i, "only a gate added here names who it waits on")
 		}
+		if op.Pass != nil {
+			return op, refuseEdit(EditBadOp, i, "only a gate added here says who may pass it")
+		}
 		return op, nil
+	}
+	if op.Pass != nil {
+		w, ok := factory.PassWord(*op.Pass)
+		if !ok {
+			return op, refuseEdit(EditBadValue, i, "pass is person, manager, or manager when <a condition of at most %d characters>", factory.PassWhenMost)
+		}
+		op.Pass = &w
 	}
 	if op.Until != nil || op.Max != nil || (op.Effort != nil && *op.Effort != "") || (op.Fanout != nil && *op.Fanout != "") {
 		return op, refuseEdit(EditBadValue, i, "a gate is a person; it takes no until, rounds, effort or fanout")
@@ -229,7 +281,7 @@ func (st *editState) structure(i int, op EditOp) *EditError {
 	kind := factory.Kind(op.Pipeline)
 	list, ok := st.out.Pipeline[kind]
 	if !ok {
-		return refuseEdit(EditUnknownStep, i, "%s is not a pipeline in this file", op.Pipeline)
+		return refusePipeline(EditUnknownStep, i, "%s is not a pipeline in this file", op.Pipeline)
 	}
 	row := op.Pipeline + "\x00" + op.Name
 	if st.placed[row] {
@@ -301,6 +353,17 @@ func (st *editState) define(i int, op EditOp) *EditError {
 	if op.Who != nil {
 		want.Who = *op.Who
 	}
+	if op.Input != nil {
+		want.Input = maps.Clone(op.Input)
+	}
+	switch {
+	case op.Pass != nil:
+		want.Pass = *op.Pass
+	case !exists && addsGate(op):
+		// A NEWLY ADDED APPROVE STEP IS A PERSON'S unless the edit says
+		// otherwise: neither Auto nor the manager passes it.
+		want.Pass = factory.PassForNewApprove
+	}
 	setStepWords(&want, op)
 	if !exists {
 		st.out.Steps[op.Name] = want
@@ -308,8 +371,10 @@ func (st *editState) define(i int, op EditOp) *EditError {
 		return nil
 	}
 	if want.Label != have.Label || want.Kind != have.Kind || want.Prompt != have.Prompt || want.Until != have.Until || want.Max != have.Max ||
-		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who {
-		return refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
+		want.When != have.When || want.Effort != have.Effort || want.Fanout != have.Fanout || want.Who != have.Who || want.Pass != have.Pass || !maps.Equal(want.Input, have.Input) {
+		bad := refuseEdit(EditBadValue, i, "%s is already a step with other words; pick another name or add it as it is", op.Name)
+		bad.Clash = op.Name
+		return bad
 	}
 	return nil
 }
@@ -524,8 +589,18 @@ func (st *editState) structureFacts(res *Edited) {
 	res.Order, res.Counts, res.Gates = []OrderChange{}, []KindCount{}, []GateChange{}
 	res.Added = append([]string{}, st.newSteps...)
 	res.Renamed = append([]Rename{}, st.renames...)
+	res.Pipelines = append([]PipelineChange{}, st.kinds...)
 	for _, kind := range sortedKinds(st.out) {
-		before, after := st.base.Pipeline[factory.Kind(kind)], st.out.Pipeline[factory.Kind(kind)]
+		// A renamed pipeline is compared with its list under its old name, so
+		// a rename alone moves no step.
+		was := kind
+		if from, ok := st.renamedKinds[kind]; ok {
+			was = from
+		}
+		before, after := st.base.Pipeline[factory.Kind(was)], st.out.Pipeline[factory.Kind(kind)]
+		if before == nil {
+			before = []string{}
+		}
 		res.Counts = append(res.Counts, KindCount{Pipeline: kind, Steps: len(after)})
 		if strings.Join(before, "\n") == strings.Join(after, "\n") {
 			continue

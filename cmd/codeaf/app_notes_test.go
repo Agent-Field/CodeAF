@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -87,5 +88,52 @@ func TestAMessageSentToAChatElsewhereIsWaitingThenDeliveredOnItsRow(t *testing.T
 	}
 	if got := notes(); len(got) != 1 || got[0].State != appwire.ChatNoteDelivered {
 		t.Fatalf("row notes after the drop = %+v; delivered stays on the row", got)
+	}
+}
+
+// A message this computer cannot leave, because its relay does not answer,
+// is refused in the person's words and with the unreachable code, never the
+// transport's; and the full outbox says the limit is this computer's across
+// every chat, spelled from directory.MaxNotes.
+func TestAMessageToAChatElsewhereSaysWhyItDidNotGo(t *testing.T) {
+	celltest.Available(t)
+	relay := e2WireRelay(t)
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	towerDir, deskDir := t.TempDir(), t.TempDir()
+	id, err := identity.Ensure(towerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = identity.Adopt(deskDir, id, false); err != nil {
+		t.Fatal(err)
+	}
+	tower := appDeviceSync(t, towerDir)
+	if err = syncsetup.PutOwnDevice(t.Context(), tower.Dir, tower.Identity, tower.Device, "tower"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.FilesOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tower.Dir.Create(t.Context(), c.ID, directory.CellInit{Head: "sealed-head"}); err != nil {
+		t.Fatal(err)
+	}
+	desk := appDeviceSync(t, deskDir)
+	if err = syncsetup.PutOwnDevice(t.Context(), desk.Dir, desk.Identity, desk.Device, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, w := appDeviceBackend(t, deskDir)
+	for i := range directory.MaxNotes {
+		machineCall[appwire.ChatSendResult](t, w, "chats.send", appwire.ChatSendParams{Cell: c.ID, Text: "note " + string(rune('a'+i))})
+	}
+	_, full := w.call("chats.send", appwire.ChatSendParams{Cell: c.ID, Text: "one too many"})
+	if full == nil || full.Message != appNoteWords[syncsetup.ErrOutboxFull] || !strings.HasPrefix(full.Message, "Eight messages sent from this computer, in this chat or others") {
+		t.Fatalf("full outbox = %+v; want the limit across every chat", full)
+	}
+	relay.CloseClientConnections()
+	relay.Close()
+	_, down := w.call("chats.send", appwire.ChatSendParams{Cell: c.ID, Text: "while the relay is down"})
+	if down == nil || down.Code != appwire.CodeUnreachable || down.Message != appNoteUnreachable {
+		t.Fatalf("relay down = %+v; want %q with the unreachable code", down, appNoteUnreachable)
 	}
 }
