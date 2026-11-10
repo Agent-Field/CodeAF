@@ -3536,6 +3536,44 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}
 }
 
+func TestMemoryTabNameAndMemoriesQuestions(t *testing.T) {
+	for _, name := range Chat().Pages() {
+		page, _ := Chat().Page(name)
+		page = strings.Join(strings.Fields(page), " ")
+		if strings.Contains(page, "Memories tab") || strings.Contains(page, "memories tab") {
+			t.Errorf("%s calls the Memory tab Memories", name)
+		}
+	}
+	for _, question := range []string{"where are my memories", "how do I see what codeaf remembers about me"} {
+		found := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page == "what-i-remember" && strings.Contains(section.Body, "Memory") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q did not reach the Memory answer", question)
+		}
+	}
+}
+
+func TestTaskLandingManualMatchesFoldedPresentation(t *testing.T) {
+	page, ok := Chat().Page("tasks")
+	if !ok {
+		t.Fatal("missing tasks page")
+	}
+	for _, obsolete := range []string{"✓ 3 tasks done", "✕ N tasks landed", "? N tasks landed", "report under the second card", "a **second** card"} {
+		if strings.Contains(page, obsolete) {
+			t.Errorf("task manual still promises %q", obsolete)
+		}
+	}
+	for _, fact := range []string{"background work · N tasks · ctrl+e", "named task row", "branch kept · <branch>"} {
+		if !strings.Contains(page, fact) {
+			t.Errorf("task manual does not explain %q", fact)
+		}
+	}
+}
+
 // #1454: task.parallel is on the Tasks tab as `tasks at once`, not under
 // Spending. This checks the retrieved section's answer rather than only its
 // page, so restoring the former category cannot leave the retrieval gate green.

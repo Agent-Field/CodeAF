@@ -2441,8 +2441,8 @@ inside a conversation, and `/home` opens it too.
 the top line, `home  chats  AI teams  activity  memory  automations  spend  settings`, and
 `alt+1` opens it. **The other numbers do not follow the bar's order** — they kept the
 destinations they had before the bar was regrouped: `alt+2` AI teams, `alt+3` chats,
-`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` memories. So
-memories is the fifth word on the bar and `alt+8`, and automations, the sixth, is `alt+7`.
+`alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` Memory. So
+Memory is the fifth word on the bar and `alt+8`, and automations, the sixth, is `alt+7`.
 `alt+.` draws every place with its number, and `/help` lists them the same way, digit by
 digit. `alt+3` is `chats`, the way back to the conversation in front (a new chat when none
 is open); it is not a room, so `tab` steps over it. Hold

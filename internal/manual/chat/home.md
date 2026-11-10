@@ -917,16 +917,16 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing and memory go on the tab bar — automations is alt+7, memories alt+8, and the eight words
+## Where did standing and memory go on the tab bar — automations is alt+7, Memory alt+8, and the eight words
 
 The top line reads `home  chats  AI teams  activity  memory  automations  spend  settings`. Each place
 has a digit of its own: `alt+1` home, `alt+2` AI teams, `alt+3` chats (back to your
 conversation), `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations and
-`alt+8` memories. **The numbers are not the bar's order**: each place kept the number it had
-before the bar was regrouped, so memories, the fifth word, is `alt+8`.
+`alt+8` Memory. **The numbers are not the bar's order**: each place kept the number it had
+before the bar was regrouped, so Memory, the fifth word, is `alt+8`.
 
 - **Standing is gone, and automations replaced it.** `/automations` and `alt+7` open the
-  automations place, and its word is always on the bar, between `memories` and `spend`. On a
+  automations place, and its word is always on the bar, between `memory` and `spend`. On a
   frame under 86 columns the bar has no room for all eight words, and `spend` and
   `settings` fold behind `more ▾`. `/standing` and `/orders` are not commands any more — `/standing` answers
   `there is no command called /standing · / lists them`.

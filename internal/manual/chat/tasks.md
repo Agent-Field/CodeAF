@@ -1915,12 +1915,12 @@ git's: `a branch of your repository`, `its own copy of the folder`, or `your own
 the same labels the settled card uses, listed under *Does a task touch my working copy?* in
 *how tasks run*. A landing whose copy codeaf has no record of falls back to `branch`.
 
-Two or more landings in a row become one folded rollup — `✓ 3 tasks done · 9m14s` on one line. Click it or select it and press `ctrl+o` to show a compact
-row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
-`your call` swaps it to `? N tasks landed`. A task you answered straight after it landed is
-counted once, by what became of it — the `?` goes with the answer. A delivery that did not land also keeps a
-warning on the batch and its individual row. The header's span is wall-clock, first
-spawn to last landing, not the sum of the parts, because tasks run at the same time.
+Routine completions fold into `background work · N tasks · ctrl+e` (or `1 task`).
+Click the disclosure or press `ctrl+e` to see each named task row with its current
+state, such as `done` or `incomplete`, and `open result` to read its report. A task
+you answered is counted once, with its settled state. A landing that still needs
+your call stays visible, as does a landing whose work remains on a kept branch:
+`branch kept · <branch>` names where to find it.
 
 ## What an expanded landing card shows — why is the task answer in asterisks, Markdown, the delivery warning, the facts
 
@@ -4816,15 +4816,16 @@ stopped being a question — the card draws them beside an answer or not at all.
 line every question leaves, `✓ <the card's head> → accept · you · 14:02 · c change`:
 the pick in the card's own words (`accept`, `not right`, `resolve it`, `drop it`), who
 decided — `you`, `codeaf, on your settings` when the model settled it, `another window`
-when somebody else got there first — and when. The report under the second card then
+when somebody else got there first — and when. The task's retained report then
 leads `you took this as done` or `incomplete — you said it is not finished`. After `[d]`
 nothing is decided yet: the answers stay drawn and the reason row reads `codeaf is
 deciding`.
 
-The card's own head is **not** rewritten — it is the record of how the work came home, kept
-branch and all. What follows is a **second** card, when the task re-settles into `done` or
-`incomplete`, saying what became of the work. The transcript then reads as what happened:
-this landed as your call → you took it as done → `task 7 done · merged`.
+The decision receipt stays visible. When the task settles into `done` or
+`incomplete`, its routine completion folds into `background work`. Open that
+disclosure with `ctrl+e` to read the named task row and its settled state, then
+`open result` to read the report, including the reason it was refused. A landing
+whose work remains on a kept branch stays visible with `branch kept · <branch>`.
 
 **You can also just say so.** "accept task 7", "that one isn't finished" both work: codeaf
 holds the same door through its `tasks` tool, and whichever of the two is used first wins.
