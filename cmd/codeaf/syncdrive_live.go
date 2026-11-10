@@ -366,9 +366,7 @@ const holdsLeaseWithin = 5 * time.Second
 // publishes under. A closed writer must also be replaced, even if its failed
 // final save left a live lease. An open drive still waiting for identity is not.
 func (l *liveDrive) superseded() bool {
-	l.mu.Lock()
-	d, closed := l.drive, l.closed
-	l.mu.Unlock()
+	d, closed := l.driveAndClosed()
 	if closed {
 		return true
 	}
@@ -378,6 +376,13 @@ func (l *liveDrive) superseded() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), holdsLeaseWithin)
 	defer cancel()
 	return !d.HoldsLease(ctx)
+}
+
+// driveAndClosed reads the drive side and whether it was closed under one lock.
+func (l *liveDrive) driveAndClosed() (*syncsetup.Drive, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.drive, l.closed
 }
 
 // started is the drive side if one ever started, without trying to start it.
