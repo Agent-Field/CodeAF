@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
@@ -304,11 +305,11 @@ func (r *PreparedResult) Install(ctx context.Context) error {
 		return err
 	}
 	// Some filesystems reject renaming over even the empty reservation.
-	if err := os.Remove(previous); err != nil {
+	if err := fsreplace.Remove(previous); err != nil {
 		return err
 	}
 	moved := false
-	if err := os.Rename(r.path, previous); err == nil {
+	if err := fsreplace.Rename(r.path, previous); err == nil {
 		moved = true
 		r.previous = previous
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -327,7 +328,7 @@ func (r *PreparedResult) Install(ctx context.Context) error {
 			return r.rollback(previous, moved, err)
 		}
 	}
-	if err := os.Rename(r.prepared, r.path); err != nil {
+	if err := fsreplace.Rename(r.prepared, r.path); err != nil {
 		return r.rollback(previous, moved, errors.Join(err, undo()))
 	}
 	r.measure.Restore = time.Since(r.restoreStarted)
@@ -339,7 +340,7 @@ func (r *PreparedResult) rollback(previous string, moved bool, cause error) erro
 	if !moved {
 		return cause
 	}
-	if err := os.Rename(previous, r.path); err != nil {
+	if err := fsreplace.Rename(previous, r.path); err != nil {
 		r.keep = true
 		return fmt.Errorf("could not put the result in place; the earlier copy is kept at %s: %w", previous, errors.Join(cause, err))
 	}
@@ -351,10 +352,10 @@ func (r *PreparedResult) rollback(previous string, moved bool, cause error) erro
 func (r *PreparedResult) Close() {
 	if !r.keep {
 		if r.stage != "" {
-			_ = os.RemoveAll(r.stage)
+			_ = fsreplace.RemoveAll(r.stage)
 		}
 		if r.previous != "" {
-			_ = os.RemoveAll(r.previous)
+			_ = fsreplace.RemoveAll(r.previous)
 		}
 	}
 	if r.unlock != nil {

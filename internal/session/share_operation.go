@@ -552,12 +552,7 @@ func replaceShareReceipt(dir string, raw []byte) error {
 }
 
 func syncShareOpDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	if err := d.Sync(); err != nil && !errors.Is(err, os.ErrInvalid) {
+	if err := fsreplace.SyncDir(dir); err != nil && !errors.Is(err, os.ErrInvalid) {
 		return err
 	}
 	return nil

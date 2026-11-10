@@ -104,7 +104,7 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer fsreplace.Remove(tmp.Name())
 	_, writeErr := tmp.Write(raw)
 	closeErr := tmp.Close()
 	if writeErr != nil {
@@ -144,7 +144,7 @@ func (s *Sync) forgetSendLease(id string, expected sendLease) error {
 	if held != expected {
 		return nil
 	}
-	err = os.Remove(path)
+	err = fsreplace.Remove(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}

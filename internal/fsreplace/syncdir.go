@@ -17,12 +17,18 @@ func SyncDir(path string) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, dir.Close()) }()
+	return SyncDirFile(dir)
+}
+
+// SyncDirFile persists entries through an already-open directory, preserving
+// an os.Root caller's boundary. The caller retains ownership of the handle.
+func SyncDirFile(dir *os.File) error {
 	info, err := dir.Stat()
 	if err != nil {
 		return err
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("sync directory %s: not a directory", path)
+		return fmt.Errorf("sync directory %s: not a directory", dir.Name())
 	}
 	if runtime.GOOS == "windows" {
 		return nil

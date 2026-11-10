@@ -292,7 +292,7 @@ func landReadInputEnv(ctx context.Context, dir string, max int, input []byte, en
 	processgroup.Configure(command)
 	command.Cancel = func() error { return processgroup.Kill(command.Process.Pid) }
 	command.WaitDelay = time.Second
-	err := command.Run()
+	err := processgroup.Run(command)
 	code, ran := gitExit(err)
 	switch {
 	case capture.over, diagnostics.over:
@@ -1077,7 +1077,7 @@ func landMerge(plan TaskBranchLandPlan) (TaskBranchLanded, error) {
 	processgroup.Configure(command)
 	command.Cancel = func() error { return processgroup.Kill(command.Process.Pid) }
 	command.WaitDelay = 2 * time.Second
-	runErr := command.Run()
+	runErr := processgroup.Run(command)
 	timedOut := ctx.Err() != nil
 
 	facts := readLandFacts(plan)

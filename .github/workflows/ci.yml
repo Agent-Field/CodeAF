@@ -231,6 +231,57 @@ jobs:
           path: ${{ steps.cache-paths.outputs.modules }}
           key: ${{ steps.module-cache.outputs.cache-primary-key }}
 
+  # NATIVE WINDOWS, ADVISORY FOR NOW. Until November 2026 no test ever ran on
+  # Windows: the engine cross-built for it and nothing more, and shared code that
+  # assumed POSIX (rename over an open file, process groups, login shells, `/`
+  # paths) went unnoticed while the Windows desk failed every session. This job
+  # runs, on a real Windows runner, the named tests in
+  # .github/windows-native-tests.txt that pass there: process trees stopped as a
+  # whole, state files replaced while held, reminders, spending, native paths,
+  # UTF-16 and line endings. It is not yet part of `check`; once it has stayed
+  # green for a while it should be.
+  windows:
+    name: windows native tests
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Stage furrow for windows/amd64
+        run: go run ./internal/furrowbin/cmd/fetch -goos=windows -goarch=amd64
+      - name: Native tests
+        env:
+          CODEAF_TELEMETRY: "off"
+          DO_NOT_TRACK: "1"
+          CODEAF_NO_UPDATE_CHECK: "1"
+          CODEAF_MODEL_POOL: "off"
+          CODEAF_SYNC_URL: "off"
+        run: |
+          set -uo pipefail
+          # A home, profile and temp folder of the run's own, short enough for
+          # Windows paths, so no test reads the runner's real profile.
+          root="$RUNNER_TEMP/w"
+          mkdir -p "$root/home/AppData/Local" "$root/home/AppData/Roaming" "$root/codeaf" "$root/tmp"
+          export HOME="$root/home"
+          USERPROFILE="$(cygpath -w "$root/home")"; export USERPROFILE
+          LOCALAPPDATA="$(cygpath -w "$root/home/AppData/Local")"; export LOCALAPPDATA
+          APPDATA="$(cygpath -w "$root/home/AppData/Roaming")"; export APPDATA
+          CODEAF_HOME="$(cygpath -w "$root/codeaf")"; export CODEAF_HOME
+          TMP="$(cygpath -w "$root/tmp")"; TEMP="$TMP"; export TMP TEMP
+          failed=""
+          while read -r pkg pattern; do
+            case "$pkg" in ''|'#'*) continue ;; esac
+            echo "::group::$pkg"
+            go test -count=1 -p 2 -timeout 15m -run "$pattern" "./$pkg" || failed="$failed $pkg"
+            echo "::endgroup::"
+          done < .github/windows-native-tests.txt
+          if [ -n "$failed" ]; then echo "::error::failed on Windows:$failed"; exit 1; fi
+
   # The selector does no compilation unless module files changed. A docs-only
   # change creates no test runner; the light gate and the aggregate still run.
   select:

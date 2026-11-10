@@ -1,5 +1,22 @@
 # Running commands on Windows
 
+## Login profiles, PATH and command output
+
+On Windows, chat shell commands and headless foreground commands run without a login shell.
+They inherit the environment codeaf was started with, including PATH, and retain
+their usual credential and tmux filtering. Set up tools in that launching
+environment.
+
+Detached background jobs launched by headless commands use a login bash
+(`bash -lc`). Their login profiles can supply or change PATH. This shell policy
+also applies on Linux and macOS. Headless foreground commands on Linux and macOS
+also retain login bash (`bash -lc`), so existing cron and systemd environments
+can continue to use their login profiles. Chat commands keep their non-login shell.
+
+On Windows, command results shown to the model use LF in place of native CRLF line endings.
+Linux and macOS preserve command output bytes, including CRLF.
+A lone carriage return used for progress output keeps its existing meaning.
+
 ## Which bash does codeaf use on Windows? (Git Bash)
 
 On Windows, codeaf runs commands in Git for Windows' bash (or another MSYS2-family bash). It looks in this order:
@@ -62,3 +79,13 @@ Yes. Run the Linux build of codeaf inside WSL and its commands use Linux bash, b
 ## How do I read the rest of a long command output on Windows
 
 When a command prints more than fits, the notice offers an exact `sh` command to read the saved output. It uses Git Bash paths and quotes Windows scratch folders, including folders with spaces or an apostrophe. Run that offered command to read the saved bytes instead of running the original command again.
+
+## Windows .cmd package launchers: npm, npx, yarn and jobs kill
+
+npm, npx and yarn use `.cmd` shims on Windows. Ask codeaf to start long-running servers with the jobs tool instead of shell `&`, then stop them with `jobs kill N` or the process panel's Stop action. Git Bash's `kill` cannot stop native Windows processes.
+
+A Windows launch owns its descendants even when an intermediate shell exits. Stop first asks the tree to exit, then forces it after the grace period. A stop is confirmed only after the whole tree ends; if its ending cannot be checked, the answer says the job had not ended and its row remains running. Deliberately kept services and detached helpers keep their existing lifetimes.
+
+## Why does python3 open the Microsoft Store on Windows?
+
+`python3` may resolve to the Microsoft Store stub. Use `python` or `py` for an installed Windows Python interpreter.

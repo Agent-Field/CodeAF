@@ -4,8 +4,10 @@ package processgroup
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"syscall"
+	"time"
 )
 
 func Configure(cmd *exec.Cmd) {
@@ -59,3 +61,14 @@ func ReapExitedChild(pid int) bool {
 func SetPriority(pid, priority int) {
 	_ = syscall.Setpriority(syscall.PRIO_PGRP, pid, priority)
 }
+
+// Start launches the configured command. Windows assigns ownership before the
+// first instruction runs; POSIX already installs its group during fork/exec.
+func Start(cmd *exec.Cmd) error { return cmd.Start() }
+
+// WaitEmpty is a Windows ownership barrier. POSIX callers retain their existing
+// process-group and waiter rules.
+func WaitEmpty(int, time.Duration) error { return nil }
+
+// KillChild preserves child-only cancellation for inherited POSIX groups.
+func KillChild(process *os.Process) error { return process.Kill() }

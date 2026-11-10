@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
@@ -431,15 +432,10 @@ func writeWorkspaceSetPreparation(place Place, id uint64, title string, request 
 	if err != nil {
 		return err
 	}
-	if err := os.Rename(name, filepath.Join(base, workspaceSetPreparationFile)); err != nil {
+	if err := fsreplace.Rename(name, filepath.Join(base, workspaceSetPreparationFile)); err != nil {
 		return err
 	}
-	directory, err := os.Open(base)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
+	return fsreplace.SyncDir(base)
 }
 
 func readWorkspaceSetPreparation(place Place, id uint64) (workspaceSetPreparation, error) {
