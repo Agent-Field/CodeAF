@@ -6,7 +6,8 @@ surface: [chat, engine, app, remote, docs]
 invalidates:
   - "An open idle chat previously kept renewing its computer's hold. In a paired set it now releases after all saved state has reached the sync service."
   - "Selecting a released or lapsed remote chat previously required Continue here. Paired opens now acquire it automatically on terminal Home and through agents.open without displacing a live holder."
-  - "The first Home open of a local copy after restart could bypass free acquisition while the shared listing caught up. It now resolves current ownership before opening the chat."
+  - "The first Home open of a local copy after restart could bypass free acquisition while the shared listing caught up. Ambiguous paired readings now get a short ownership check, with local opening preserved on failure."
+  - "Every paired local Home open briefly required a successful sync-service read. Answered display rows now open without that read, and an ambiguous reading waits at most two seconds before falling back locally."
   - "A desktop take previously blamed another device for every ownership conflict. A newer hold by the same computer now says that computer picked the chat up again."
 ---
 
@@ -29,10 +30,14 @@ Ordinary messages in the original released window reacquire in place, preserving
 local ignored install folders without a restore or setup card. Opening a free
 chat refreshes an already-open stale viewer too. Repeated moves keep an existing
 local root and use bounded, stable copy-folder names on first arrival.
-Home also resolves a persisted local copy through a fresh ownership read before
-opening it, including the first open after a restart while the display still
-shows this computer's previous hold. Released and lapsed paired chats restore
-the latest head through conditional automatic acquisition at a new fence.
+When this window has no open copy and Home has no reading for a local chat or
+still shows this computer's old live hold, a paired home checks ownership for
+up to two seconds. A failed or timed-out check opens the local chat as usual.
+Answered display rows need no extra read, including a listed free chat or a
+chat already open in this window. Released and lapsed paired chats restore the
+latest head through conditional automatic acquisition at a new fence, including
+the first open after a restart. Unpaired, sync-off and single-device homes add
+no ownership read for local opening.
 
 Terminal certification obtains a complete workspace scope while the warm engine
 keeps sealing turns. Saved conversation choices retake the idle hold before

@@ -148,8 +148,8 @@ func TestIdleOpen_R5_LocalRowKeepsLiveConsentAndUnpairedOpening(t *testing.T) {
 					t.Fatal("unpaired local opening changed")
 				}
 			case "unreachable":
-				if taker.opens != 0 || !a.at(pageHome) || a.file != "" {
-					t.Fatal("unavailable ownership opened a stale local viewer")
+				if taker.opens != 0 || a.at(pageHome) || a.file != file {
+					t.Fatal("unavailable ownership prevented ordinary local opening")
 				}
 			case "own free":
 				rows, _ := fresh.Rows(t.Context())

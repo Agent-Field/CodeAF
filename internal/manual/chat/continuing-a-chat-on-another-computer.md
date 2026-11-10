@@ -465,14 +465,18 @@ Yes. Directory requests from older builds keep the existing 1 MiB request limit,
 
 ## Opening a free chat from Home after restarting
 
-On paired computers, selecting a released or lapsed chat on Home reads its
-current hold before opening it. This includes this computer's original local
-copy on the first open after a restart, while Home's listing is still catching
-up. The chat opens directly with the latest saved history and a new ownership
-fence; it does not need **Continue here**. A live hold still asks before moving
-the chat. Unpaired homes keep their local opening behavior.
-If the sync service cannot answer the ownership check, Home stays open with
-its connection explanation. Select the row again once the service answers.
+On paired computers, selecting a released or lapsed chat on Home brings its
+latest saved history here with a new hold, without **Continue here**. This also
+works on the first open of this computer's local copy after a restart.
+
+Home uses its shared listing when it already answers. If this window has no
+open copy and the listing is missing the chat or still shows this computer's
+old live hold, Home checks its current hold for up to two seconds. If that
+check fails or times out, the locally saved chat opens as usual, without a
+connection refusal. A chat already open in this window needs no extra check.
+A listed free chat still refreshes an older viewer with its latest history.
+A live hold elsewhere keeps the existing **Continue here** choice. Unpaired,
+sync-off and single-device homes keep their local opening behavior.
 
 ## Why did Enter show Continue here instead of sending my message
 

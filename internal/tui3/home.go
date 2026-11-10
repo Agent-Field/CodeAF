@@ -3126,10 +3126,10 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 			return nil
 		}
 	}
-	// A local copy can precede the first directory display after a restart.
-	// Resolve ownership before any shortcut can reuse its old history.
+	// A missing reading or stale own hold can hide a free chat after restart.
+	// An open window or an answered display needs no ownership round trip.
 	if !a.homeTakeOpening && a.taker != nil && !a.hosted() && !a.machineRead.computerRemoved {
-		if source, ok := a.machines.(chatlist.SendSource); ok {
+		if source, ok := a.machines.(chatlist.SendSource); ok && a.homeLocalReadNeeded(line) {
 			if _, available := a.taker.(availableTaker); available {
 				return a.homeResolveLocal(line, source)
 			}
@@ -3144,7 +3144,7 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 	return a.homeOpenLocalLine(line)
 }
 
-// homeOpenLocalLine opens only after Home has resolved any shared ownership.
+// homeOpenLocalLine is the ordinary local door, including offline opening.
 func (a *app) homeOpenLocalLine(line homeLine) tea.Cmd {
 	h := &a.home
 	if line.row.Transcript == a.file {
