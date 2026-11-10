@@ -4930,6 +4930,13 @@ are kept in `COLLISION.txt.yours`. If that name already exists, your copy takes
 the next free name, such as `COLLISION.txt.yours.2`. `n drop it` takes nothing
 and keeps the task's branch.
 
+The task's room and main card both say `your call` until the landing is settled.
+Resolving keeps your bytes even when the workspace and system temporary folder
+live on different filesystems. If a file cannot move, the refusal names the
+filesystem's reason after `could not move your copies:`. If putting a copy back
+fails, `remaining copies are kept in <folder>` names where it is held; keep that
+folder until you have recovered your copy.
+
 ## Tell it something instead of answering — s tell it, and why saying looks good does not accept
 
 `s tell it` is the third chip on **every** `your call` card, and it is not a third answer.
