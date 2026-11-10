@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
@@ -31,17 +30,19 @@ var errUsageLedgerReplaced = errors.New("usage ledger replaced during append")
 // append holds one ledger generation stable for a bounded batch. Identities
 // supplied by the recorder avoid decoding the rows it just encoded.
 func (c *usageIdentityCursor) append(file *os.File, rows []usageWrite) (int, error) {
+	if err := lockUsageIdentityWriter(file); err != nil {
+		return 0, err
+	}
+	defer unlockUsageIdentityWriter(file)
 	reader, err := usageIdentityReader(file)
 	if err != nil {
 		return 0, err
 	}
 	defer reader.Close()
-	// Windows append-only handles lack the data access LockFileEx requires.
-	// The reader names the same generation and keeps append semantics unchanged.
-	if err := filelock.Lock(reader, true, false); err != nil {
+	if err := lockUsageIdentityReader(reader); err != nil {
 		return 0, err
 	}
-	defer filelock.Unlock(reader)
+	defer unlockUsageIdentityReader(reader)
 	if err := c.readTail(reader); err != nil {
 		return 0, err
 	}

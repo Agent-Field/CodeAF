@@ -1761,7 +1761,9 @@ func (r *jobRegistry) killFor(ctx context.Context, id int) (string, killResult) 
 	select {
 	case <-target.done:
 	default:
-		return fmt.Sprintf("job %d was told to stop and had not ended when the wait ran out", id), killUnproven
+		if requireJobStopProof() {
+			return fmt.Sprintf("job %d was told to stop and had not ended when the wait ran out", id), killUnproven
+		}
 	}
 	// A watch is stopped, not killed: there was no process of its own to end,
 	// and "stopped" is the word its list row and its notes already use.

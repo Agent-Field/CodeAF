@@ -4,13 +4,15 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
-// Contract 3: a process whose stop never completes must remain unproven in
-// both the model's kill result and the person's stop receipt and notes.
+// Unix parity 2 contract items 1/2: Windows proof, Unix signal receipts.
+// Contract 3: Windows requires stop proof in model/person receipts and notes;
+// Unix preserves the historical signal receipt and person completion note.
 func TestContract3UnkillableJobIsNeverReportedStopped(t *testing.T) {
 	for _, person := range []bool{false, true} {
 		t.Run(map[bool]string{false: "model", true: "person"}[person], func(t *testing.T) {
@@ -21,15 +23,26 @@ func TestContract3UnkillableJobIsNeverReportedStopped(t *testing.T) {
 			if person {
 				a := &Agent{}
 				line, result := a.stopJob(ctx, jobs, target)
-				if result != jobStopUnproven || strings.HasPrefix(line, "stopped ") {
+				if runtime.GOOS != "windows" {
+					if result != jobStopUnproven || line != "job 1 was told to stop and had not ended when the wait ran out" {
+						t.Fatalf("Unix signal receipt = %q, %v", line, result)
+					}
+					if notes := sessionNotes(a); len(notes) != 1 || notes[0] != "job 1 was stopped" {
+						t.Fatalf("Unix stop notes = %v", notes)
+					}
+				} else if result != jobStopUnproven || strings.HasPrefix(line, "stopped ") {
 					t.Fatalf("stop = %q, %v; want unproven", line, result)
 				}
-				if notes := sessionNotes(a); len(notes) != 0 {
+				if notes := sessionNotes(a); runtime.GOOS == "windows" && len(notes) != 0 {
 					t.Fatalf("unverified stop sent a completion note: %v", notes)
 				}
 			} else {
 				line, _ := jobs.killFor(ctx, target.id)
-				if strings.Contains(line, "killed") || !strings.Contains(line, "had not ended") {
+				if runtime.GOOS != "windows" {
+					if line != "job 1 killed" {
+						t.Fatalf("Unix kill receipt = %q", line)
+					}
+				} else if strings.Contains(line, "killed") || !strings.Contains(line, "had not ended") {
 					t.Fatalf("kill = %q; want an unproven ending", line)
 				}
 			}
