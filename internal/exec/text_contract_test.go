@@ -5,19 +5,23 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
-// Text contract C1: foreground commands keep the inherited PATH without a login
-// shell; detached jobs and services retain a login shell and pipefail.
+// Unix parity 2 contract items 1/2: gated bytes, shell or status expectations.
+// Text contract C1: Unix foreground commands load login profiles; Windows
+// inherits PATH without a login shell. Detached commands retain login/pipefail.
 func TestTextContractShellEnvironment(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 	t.Setenv("CODEAF_TEXT_TEST", "inherited")
 	t.Setenv("PATH", os.Getenv("PATH")+string(os.PathListSeparator)+"codeaf-text-inherited")
-	command := `shopt -q login_shell && exit 9; [[ "$PATH" == *codeaf-text-inherited* ]] || exit 8; printf '%s' "$CODEAF_TEXT_TEST"`
+	command := `shopt -q login_shell || exit 9; printf '%s' "$CODEAF_TEXT_TEST"`
+	if runtime.GOOS == "windows" {
+		command = `shopt -q login_shell && exit 9; [[ "$PATH" == *codeaf-text-inherited* ]] || exit 8; printf '%s' "$CODEAF_TEXT_TEST"`
+	}
 	tools := NewToolbox(workspace(t), "1", nil)
 	got := tools.Execute(t.Context(), "sh", textContractArgs(map[string]any{"cmd": command}))
 	if got.IsError || got.Content != "inherited" {
@@ -41,7 +45,9 @@ func TestTextContractShellEnvironment(t *testing.T) {
 	}
 }
 
-// Text contract C2/C4: the headless edit/write tools preserve UTF-16 and CRLF.
+// Unix parity 2 contract items 1/2: gated bytes, shell or status expectations.
+// Text contract C2/C4: UTF-16 preserves its encoding on all OSes. Ordinary
+// Unix edits and rewrites use literal bytes; Windows preserves EOL style.
 func TestTextContractHeadlessEditWrite(t *testing.T) {
 	for _, fixture := range []struct {
 		name                   string
@@ -67,6 +73,21 @@ func TestTextContractHeadlessEditWrite(t *testing.T) {
 				{"write", map[string]any{"path": "file.txt", "text": "x\ny\n"}, fixture.rewritten},
 			} {
 				got := tools.Execute(t.Context(), step.tool, textContractArgs(step.args))
+				if runtime.GOOS != "windows" && fixture.name == "utf8" && step.tool == "edit" {
+					if !got.IsError {
+						t.Fatal("Unix literal edit accepted LF against CRLF")
+					}
+					raw, err := os.ReadFile(path)
+					if err != nil || !bytes.Equal(raw, fixture.raw) {
+						t.Fatalf("refused edit changed file: %x, %v", raw, err)
+					}
+					// The original Unix exact CRLF match still works, with literal replacement bytes.
+					got = tools.Execute(t.Context(), "edit", textContractArgs(map[string]any{"path": "file.txt", "old": "a\r\nb\r\n", "new": "a\nb\nc\n"}))
+					step.want = []byte("a\nb\nc\n")
+				}
+				if runtime.GOOS != "windows" && fixture.name == "utf8" && step.tool == "write" {
+					step.want = []byte("x\ny\n")
+				}
 				if got.IsError {
 					t.Fatalf("%s = %+v", step.tool, got)
 				}
@@ -79,12 +100,17 @@ func TestTextContractHeadlessEditWrite(t *testing.T) {
 	}
 }
 
-// Text contract C3: model-visible headless output normalizes CRLF only.
+// Unix parity 2 contract items 1/2: gated bytes, shell or status expectations.
+// Text contract C3: only Windows normalizes CRLF in headless output.
 func TestTextContractHeadlessOutput(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 	tools := NewToolbox(workspace(t), "1", nil)
 	got := tools.Execute(t.Context(), "sh", textContractArgs(map[string]any{"cmd": `printf 'version\r\nprogress\rnext\r\n'`}))
-	if got.IsError || strings.Contains(got.Content, "\r\n") || got.Content != "version\nprogress\rnext\n" {
+	want := "version\r\nprogress\rnext\r\n"
+	if runtime.GOOS == "windows" {
+		want = "version\nprogress\rnext\n"
+	}
+	if got.IsError || got.Content != want {
 		t.Fatalf("sh = %+v", got)
 	}
 }

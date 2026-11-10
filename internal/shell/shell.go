@@ -287,6 +287,15 @@ func Reading() (string, error) {
 	return exec.LookPath("bash")
 }
 
+// ForegroundArgs keeps headless Unix login profiles and Windows' inherited PATH.
+func ForegroundArgs(bash, command string) []string {
+	flag := "-lc"
+	if runtime.GOOS == "windows" {
+		flag = "-c"
+	}
+	return PipefailArgs(bash, []string{flag}, command)
+}
+
 // ListPath converts only paths bash interprets itself. Values passed to native
 // programs, such as PLANDB_DB, must keep their native Windows spelling.
 func ListPath(native string) string { return listPath(runtime.GOOS, native, filepath.Abs) }

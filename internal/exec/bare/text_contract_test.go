@@ -5,13 +5,15 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"testing"
 	"unicode/utf16"
 )
 
+// Unix parity 2 contract items 1/2: gated bytes, shell or status expectations.
 // Text contract C2/C4: tool text is decoded, while file bytes keep their BOM,
-// encoding and line endings, including replacements that append lines.
+// encoding. Chat edits preserve line endings on every OS; ordinary rewrites
+// preserve EOL style only on Windows.
 func TestTextContractReadEditWriteEncoding(t *testing.T) {
 	for _, encoding := range []string{"utf8", "utf8bom", "le", "be"} {
 		t.Run(encoding, func(t *testing.T) {
@@ -43,7 +45,11 @@ func TestTextContractReadEditWriteEncoding(t *testing.T) {
 			if encoding == "utf8bom" {
 				writeEncoding = "utf8"
 			}
-			assertTextContractBytes(t, path, textContractBytes("rewritten 🌍\r\nlast\r\n", writeEncoding))
+			wantWrite := "rewritten 🌍\r\nlast\r\n"
+			if runtime.GOOS != "windows" && (encoding == "utf8" || encoding == "utf8bom") {
+				wantWrite = "rewritten 🌍\nlast\n"
+			}
+			assertTextContractBytes(t, path, textContractBytes(wantWrite, writeEncoding))
 		})
 	}
 }
@@ -77,6 +83,7 @@ func assertTextContractBytes(t *testing.T, path string, want []byte) {
 	}
 }
 
+// Unix parity 2 contract items 1/2: gated bytes, shell or status expectations.
 // Text contract C2: no UTF-16 BOM means the read tool keeps its byte behavior.
 func TestTextContractReadWithoutUTF16BOM(t *testing.T) {
 	dir := t.TempDir()
@@ -88,11 +95,16 @@ func TestTextContractReadWithoutUTF16BOM(t *testing.T) {
 	}
 }
 
-// Text contract C3: native CRLF becomes LF; lone progress CR stays a CR.
+// Unix parity 2 contract items 1/2: gated bytes, shell or status expectations.
+// Text contract C3: only Windows changes CRLF to LF; lone CR stays a CR.
 func TestTextContractBashOutput(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 	got, bad := runTool(t, newBashTool(t.TempDir(), DefaultCaps()), map[string]any{"command": `printf 'version\r\nprogress\rnext\r\n'`})
-	if bad || strings.Contains(got, "\r\n") || got != "version\nprogress\rnext\n" {
+	want := "version\r\nprogress\rnext\r\n"
+	if runtime.GOOS == "windows" {
+		want = "version\nprogress\rnext\n"
+	}
+	if bad || got != want {
 		t.Fatalf("bash = %q, error=%v", got, bad)
 	}
 }

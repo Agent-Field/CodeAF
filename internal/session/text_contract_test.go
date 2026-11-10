@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// Unix parity 2 contract items 1/2: gated bytes, shell or status expectations.
 // Text contract C3: jobs output and the completion note use the same command
 // text rule as a foreground result, including CRLF split across writes.
 func TestTextContractBackgroundOutput(t *testing.T) {
@@ -19,13 +21,19 @@ func TestTextContractBackgroundOutput(t *testing.T) {
 	id := startJob(t, agent, `printf 'version\r'; printf '\nprogress\rnext\r\n'`)
 	waitExited(t, agent, id)
 	got, bad := runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"output","id":%d}`, id))
-	if bad || strings.Contains(got, "\r\n") || !strings.HasPrefix(got, "version\nprogress\rnext\n\n[job ") {
+	want := "version\r\nprogress\rnext\r\n\n[job "
+	if runtime.GOOS == "windows" {
+		want = "version\nprogress\rnext\n\n[job "
+	}
+	if bad || !strings.HasPrefix(got, want) {
 		t.Fatalf("jobs output = %q, error=%v", got, bad)
 	}
 }
 
+// Unix parity 2 contract items 1/2: gated bytes, shell or status expectations.
 // Text contract C2/C4: append decodes the original before combining text and
-// keeps its UTF-16 BOM and CRLF; the receipt counts decoded lines.
+// keeps its UTF-16 BOM and CRLF; ordinary Unix append keeps supplied bytes.
+// The receipt counts decoded lines.
 func TestTextContractAppendEncoding(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -58,6 +66,9 @@ func TestTextContractAppendEncoding(t *testing.T) {
 			}
 			collect(t, mustSubmit(t, agent, "append one line"))
 			got, err := os.ReadFile(path)
+			if runtime.GOOS != "windows" && tc.name == "utf8" {
+				tc.after = "first\r\nnext\n"
+			}
 			if err != nil || string(got) != tc.after {
 				t.Fatalf("appended bytes = %x, %v; want %x", got, err, tc.after)
 			}

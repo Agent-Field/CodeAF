@@ -1006,7 +1006,7 @@ func newWriteTool(cwd string) Tool {
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
 				}
-				original, err := os.ReadFile(absPath)
+				original, err := textfile.ReadForWrite(absPath)
 				if err != nil && !os.IsNotExist(err) {
 					return err.Error(), true, nil
 				}

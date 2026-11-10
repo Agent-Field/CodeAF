@@ -4,6 +4,9 @@ package textfile
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
+	"os"
+	"runtime"
 	"strings"
 	"unicode/utf16"
 )
@@ -74,14 +77,46 @@ func (e Encoding) Encode(content string) []byte {
 	return raw
 }
 
-// WriteContent preserves an existing file's encoding and line-ending style.
+// PreserveLineEndings applies Windows text conventions or fixes UTF-16 files.
+// Ordinary Unix file writes and headless edits retain their literal bytes.
+func (e Encoding) PreserveLineEndings() bool {
+	return runtime.GOOS == "windows" || e != unchanged
+}
+
+// ReadForWrite only reads Unix files further when they have a UTF-16 BOM.
+// Unix replacement never required read permission or the old UTF-8 contents.
+func ReadForWrite(path string) ([]byte, error) {
+	if runtime.GOOS == "windows" {
+		return os.ReadFile(path)
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, nil
+	}
+	defer file.Close()
+	var bom [2]byte
+	if _, err := io.ReadFull(file, bom[:]); err != nil || (bom != [2]byte{0xff, 0xfe} && bom != [2]byte{0xfe, 0xff}) {
+		return nil, nil
+	}
+	rest, err := io.ReadAll(file)
+	return append(bom[:], rest...), err
+}
+
+// WriteContent preserves UTF-16 encoding and Windows line-ending style.
 // A file with no line endings supplies no style to impose on new content.
 func WriteContent(original []byte, content string) ([]byte, error) {
 	before, encoding, err := Decode(original)
 	if err != nil {
+		if runtime.GOOS != "windows" {
+			return []byte(content), nil
+		}
 		return nil, err
 	}
-	if strings.Contains(before, "\n") {
+	if encoding.PreserveLineEndings() && strings.Contains(before, "\n") {
 		content = RestoreLineEndings(NormalizeToLF(content), DetectLineEnding(before))
 	}
 	return encoding.Encode(content), nil

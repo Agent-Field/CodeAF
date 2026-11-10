@@ -1597,8 +1597,8 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second)
 	defer cancel()
 	var environment []string
-	// Like chat StreamingEnv, JobShellEnv starts with the inherited process
-	// environment. Add command shelves without reloading the login profile.
+	// The Unix login shell may rewrite PATH while reading its profile. Export
+	// shelves inside that shell; Windows inherits PATH without a login profile.
 	if t.history != nil {
 		if bin, err := store.SkillsBinDir(); err == nil {
 			environment = os.Environ()
@@ -1647,7 +1647,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// the notice that ends up in context names a command that actually works.
 	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
 	res, err := executor.For(runCtx).In(t.workspace.Root()).Exec(runCtx, executor.ExecRequest{
-		Argv: append([]string{bash}, commandshell.PipefailArgs(bash, []string{"-c"}, command)...), Env: environment,
+		Argv: append([]string{bash}, commandshell.ForegroundArgs(bash, command)...), Env: environment,
 		WaitDelay: 3 * time.Second, Combined: true, Stream: true,
 	}, func(c executor.Chunk) { _, _ = collected.Write(c.Data) })
 	if res.Status != "" {
@@ -1686,7 +1686,7 @@ func (t *Toolbox) write(args map[string]any) Result {
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return errorf("could not create directory: %v", err)
 	}
-	original, err := os.ReadFile(full)
+	original, err := textfile.ReadForWrite(full)
 	if err != nil && !os.IsNotExist(err) {
 		return errorf("could not read %s: %v", path, err)
 	}
@@ -1753,10 +1753,12 @@ func (t *Toolbox) edit(args map[string]any) Result {
 		return errorf("could not read %s: %v", path, err)
 	}
 	ending := textfile.DetectLineEnding(body)
-	body = textfile.NormalizeToLF(body)
-	for i := range edits {
-		edits[i].old = textfile.NormalizeToLF(edits[i].old)
-		edits[i].new = textfile.NormalizeToLF(edits[i].new)
+	if encoding.PreserveLineEndings() {
+		body = textfile.NormalizeToLF(body)
+		for i := range edits {
+			edits[i].old = textfile.NormalizeToLF(edits[i].old)
+			edits[i].new = textfile.NormalizeToLF(edits[i].new)
+		}
 	}
 	// Every span is located in the original before any of them is applied, which
 	// is what makes the edits independent and what lets an overlap be a refusal
@@ -1792,7 +1794,11 @@ func (t *Toolbox) edit(args map[string]any) Result {
 		at = s.end
 	}
 	updated.WriteString(body[at:])
-	if err := os.WriteFile(full, encoding.Encode(textfile.RestoreLineEndings(updated.String(), ending)), 0o644); err != nil {
+	content := updated.String()
+	if encoding.PreserveLineEndings() {
+		content = textfile.RestoreLineEndings(content, ending)
+	}
+	if err := os.WriteFile(full, encoding.Encode(content), 0o644); err != nil {
 		return errorf("could not write %s: %v", path, err)
 	}
 	t.workspace.Record(t.leaf, full)
