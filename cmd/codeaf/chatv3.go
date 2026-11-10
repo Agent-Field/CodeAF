@@ -919,15 +919,22 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// launch therefore leaves this optional scoring to an ordinary launch;
 	// it must neither judge new landings nor sweep earlier pending work.
 	if !opts.OneModel {
-		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
-			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+		if config.ModelPoolAt(settings.ProfileDir).CanRead() {
+			held := poolErrandsStart(settings.ProfileDir)
+			hook := poolJudgeHookContext(held.ctx, settings, settings.ProfileDir,
+				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+			taskLanded = func(landing session.TaskLanding) {
+				held.goCtx("pool/judge", func(context.Context) { hook(landing) })
+			}
+		}
 		// The runs a live process would have judged but a process death left unjudged,
 		// and the headless doors that never had this hook: at start, on a goroutine
 		// nobody waits on, judge the resumed session's own final-state nodes and the
 		// pending file's rows, each exactly once, bounded so it never holds the prompt. The
 		// process tracker cancels and joins it at close.
+		poolProfile := config.ProfilePath(settings.ProfileDir, "")
 		poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
-			poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
+			poolJudgeSweepRun(ctx, settings, poolProfile, found.Place.Tasks(),
 				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
 		})
 	}

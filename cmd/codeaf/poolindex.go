@@ -49,6 +49,9 @@ type poolErrands struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+	mu     sync.Mutex
+	closed bool
+	done   chan struct{}
 }
 
 // poolErrandSet holds the errands of each wired profile, so [stopPoolErrands]
@@ -79,8 +82,8 @@ func poolErrandsStart(profileDir string) *poolErrands {
 }
 
 // stopPoolErrands cancels the profile's start-up errands and waits for them to
-// return, so that once a process closes nothing it started is still writing
-// under the profile.
+// return, up to poolCloseBudget. Cancelled model answers are discarded before
+// they can write, even when a provider ignores cancellation beyond that bound.
 //
 // IT IS THE HALF THE ERRANDS' OWN BUDGETS DO NOT KEEP. A budget bounds one
 // fetch, not the life of the goroutine: an unstopped refresh whose relay does
@@ -92,8 +95,7 @@ func stopPoolErrands(profileDir string) {
 	if held == nil {
 		return
 	}
-	held.cancel()
-	held.wg.Wait()
+	held.stop()
 }
 
 // takePoolErrands removes and returns the profile's tracker under the lock, so
@@ -119,29 +121,70 @@ func poolErrandGo(profileDir, scope string, fn func()) {
 // the tracker's cancellation rather than only be waited for: the one argument
 // is the context [stopPoolErrands] cancels, so a long wait of the errand's own
 // (the model warm's catalog resolve) ends at the close instead of running past
-// it. An errand that ignores the context is still joined by the wait.
+// it. An errand that ignores the context gets at most poolCloseBudget to join.
 func poolErrandGoCtx(profileDir, scope string, fn func(context.Context)) {
-	held := joinPoolErrands(profileDir)
+	held := poolErrandsOf(profileDir)
 	if held == nil {
 		poolRefreshGo(scope, func() { fn(context.Background()) })
 		return
 	}
+	held.goCtx(scope, fn)
+}
+
+// poolErrandsOf reads the profile's tracker under its lock. It is its own
+// function so the unlock is a defer: a panic inside the section must not leave
+// the lock held (internal/guard's lock-defer law).
+func poolErrandsOf(profileDir string) *poolErrands {
+	poolErrandsMu.Lock()
+	defer poolErrandsMu.Unlock()
+	return poolErrandSet[profileDir]
+}
+
+// goCtx refuses work after shutdown, including a late landing from an agent
+// whose reporting goroutine had not reached the hook when the owner closed.
+func (held *poolErrands) goCtx(scope string, fn func(context.Context)) {
+	held.mu.Lock()
+	defer held.mu.Unlock()
+	if held.closed {
+		return
+	}
+	held.wg.Add(1)
 	poolRefreshGo(scope, func() {
 		defer held.wg.Done()
 		fn(held.ctx)
 	})
 }
 
-// joinPoolErrands counts one more errand on the profile's tracker under the
-// lock and returns the tracker, or nil when the profile was wired without one.
-func joinPoolErrands(profileDir string) *poolErrands {
-	poolErrandsMu.Lock()
-	defer poolErrandsMu.Unlock()
-	held := poolErrandSet[profileDir]
-	if held != nil {
-		held.wg.Add(1)
+// poolCloseBudget keeps quitting prompt even if a provider ignores cancellation.
+// Such a response is discarded before any score or sweep record is written.
+const poolCloseBudget = time.Second
+
+func (held *poolErrands) stop() {
+	done := held.beginStop()
+	timer := time.NewTimer(poolCloseBudget)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
 	}
-	return held
+}
+
+// beginStop closes the tracker once, cancels its errands and starts the one
+// joiner, and answers the channel that joiner closes. The locked section is its
+// own function so the unlock is a defer (internal/guard's lock-defer law).
+func (held *poolErrands) beginStop() chan struct{} {
+	held.mu.Lock()
+	defer held.mu.Unlock()
+	if !held.closed {
+		held.closed = true
+		held.cancel()
+		held.done = make(chan struct{})
+		guard.Go("pool/close", func() {
+			held.wg.Wait()
+			close(held.done)
+		})
+	}
+	return held.done
 }
 
 // startPoolIndexRefresh is the loader's own tail: it starts the background
@@ -211,12 +254,18 @@ func wirePoolIndex(profileDir string) {
 	// The errands below run on this profile's tracker so the process that
 	// seated them can join them when it closes ([stopPoolErrands]).
 	held := poolErrandsStart(profileDir)
-	startPoolIndexRefresh(held.ctx, profileDir, cfg, poolTrustedKeys(cfg))
+	// Resolve the default profile before starting workers so their paths cannot
+	// move to a later caller's home while a response is in flight.
+	profileDir = config.ProfilePath(profileDir, "")
+	keys := poolTrustedKeys(cfg)
+	if cfg.CanRead() && len(keys) > 0 {
+		held.goCtx("pool/index", func(ctx context.Context) { refreshPoolIndex(ctx, profileDir, cfg, keys) })
+	}
 	// The rows a previous run judged and could not hand over leave at once,
 	// on their own goroutine behind the same guard the refresh uses: a
 	// start-up errand, bounded by its own budget, and never on the run's
 	// path.
 	if cfg.CanSend() {
-		poolErrandGo(profileDir, "pool/push", func() { poolPush(held.ctx, profileDir, cfg, poolPushBudget) })
+		held.goCtx("pool/push", func(ctx context.Context) { poolPush(ctx, profileDir, cfg, poolPushBudget) })
 	}
 }
