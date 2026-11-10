@@ -299,6 +299,14 @@ The current working files are checked separately. A `.env` or source file that t
 
 Before each seal, codeaf asks which files will be captured and screens those candidates, including a full candidate list for a first reply or a capture that needs a full scan. If a file changes between screening and capture, saving plans and screens again. If repeated edits prevent a stable capture, it says `files kept changing while saving this chat; try again` and keeps the calls for a later save. A wholly git-ignored directory is neither entered nor screened unless it holds tracked files. An ignored file in an ordinary directory is still screened: root `.env`, `config/.env.local` and a private key in a `*.pem` file travel through the encrypted vault to paired computers. A withheld file stays out of local saved packs and the uploaded workspace capture. The chat does not mention a file withheld for a secret: the engine's log names it with its rule, and the cell's `.furrowpolicy` lists every withheld path. Tools still see a `.env` file's variables through the vault. An unreadable folder stays out until its permissions recover; its newly eligible files are then screened with a fresh capture plan. Restores and arrivals also screen before an automatic safety capture.
 
+## A large file that looks like a secret did not arrive — the key vault's size limit
+
+The encrypted key vault carries secrets, not files of any size. A withheld file — one the guard kept out of the chat's saved files because it looks like it holds a key or a token — travels to your paired computers only when it is at most about 768 KiB, which encodes to the vault's limit of 1 MiB per entry. A `.env`, a credentials file or a private key is far below that.
+
+A larger withheld file, such as a database, a git pack or a built binary that happens to contain a key-shaped string, is still kept out of every save. It stays on the computer that has it and does not travel. The engine's log says `it is too large for the key vault, so it stays on this computer` when it is first withheld. A copy of the same path from another computer never writes over it, and a removal on another computer never deletes it.
+
+A vault that already held such a file from an earlier build drops that entry the next time it is opened and shrinks. The file itself is left where it is on every computer.
+
 ## Why does home appear while my chats are still syncing
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.

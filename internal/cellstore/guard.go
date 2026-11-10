@@ -3,6 +3,7 @@ package cellstore
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -98,7 +99,7 @@ func (g Guard) Look(c cell.Cell, tree, policyDir string, changed, locks []string
 	if err := next.write(policyDir); err != nil {
 		return Screened{}, fmt.Errorf("screen for secrets: %w", err)
 	}
-	g.announce(policy, secrets)
+	g.announce(tree, policy, secrets)
 	g.announceUnreadable(policy, unreadable)
 	g.vault(c, tree, secrets)
 	left.Apart = next.apart()
@@ -152,12 +153,20 @@ func pathsOf(found []keys.Finding) []string {
 
 // announce logs once each path newly withheld. It names the file and the rule,
 // never the value.
-func (g Guard) announce(before policyFile, found []keys.Finding) {
+func (g Guard) announce(tree string, before policyFile, found []keys.Finding) {
 	for _, f := range found {
 		if !before.isWithheld(f.Path) {
-			g.kept(noticeFor(f))
+			g.kept(noticeFor(f, tooLargeToTravel(tree, f.Path)))
 		}
 	}
+}
+
+// tooLargeToTravel says whether the file at rel is larger than the key vault
+// carries (keys.MaxSlotValue): it is still withheld from every seal, but it
+// stays on this computer, and the notice must not promise otherwise.
+func tooLargeToTravel(tree, rel string) bool {
+	info, err := os.Stat(filepath.Join(tree, filepath.FromSlash(rel)))
+	return err == nil && info.Size() > keys.MaxSlotValue
 }
 
 func (g Guard) kept(line string) {
@@ -178,7 +187,10 @@ func (g Guard) announceUnreadable(before policyFile, found []keys.Finding) {
 	}
 }
 
-func noticeFor(f keys.Finding) string {
+func noticeFor(f keys.Finding, tooLarge bool) string {
+	if tooLarge {
+		return f.Path + " looks like it holds a secret (" + f.Rule + "), so it is kept out of the saved history; it is too large for the key vault, so it stays on this computer"
+	}
 	if f.Rule == keys.RuleDotenv {
 		return f.Path + " is kept out of the saved history; its variables are kept locally for your tools, and the file travels through the key vault only to paired computers"
 	}

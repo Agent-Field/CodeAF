@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
 // fileScopePrefix keeps the withheld files apart from the variables of a
@@ -139,6 +141,12 @@ func (m fileMedium) Read() (string, time.Time, error) {
 	if !info.Mode().IsRegular() {
 		return "", time.Time{}, ErrDamaged
 	}
+	// A FILE TOO LARGE FOR ONE VAULT SLOT IS NEVER READ. It stays withheld
+	// from the seals and stays on this computer; the size is known before a
+	// byte is read, so a withheld database or git pack costs one stat a look.
+	if fileSlotLen(info.Size()) > keys.MaxSlotValue {
+		return "", time.Time{}, keys.ErrTooLarge
+	}
 	raw, err := io.ReadAll(f)
 	return encodeFile(info.Mode().Perm(), raw), info.ModTime(), err
 }
@@ -178,6 +186,11 @@ func (m fileMedium) recorded(content, previous string) string {
 }
 
 func (m fileMedium) Clear() error {
+	// A file too large to travel was never in the vault, so a removal that
+	// came through the vault cannot be about this copy of it.
+	if _, _, err := m.Read(); errors.Is(err, keys.ErrTooLarge) {
+		return nil
+	}
 	parent, name, close, err := m.parent(false)
 	if err != nil {
 		return ignoreMissing(err)
@@ -192,7 +205,14 @@ func (m fileMedium) Write(content string) error {
 	if err != nil {
 		return ErrDamaged
 	}
-	if have, _, err := m.Read(); err == nil && have == m.Realized(content) {
+	have, _, err := m.Read()
+	if err == nil && have == m.Realized(content) {
+		return nil
+	}
+	// NEVER WRITE OVER A FILE TOO LARGE TO TRAVEL. Its edits here were never
+	// captured, so the slot's stamp says nothing about which copy is newer,
+	// and a small copy from another machine would silently replace it.
+	if errors.Is(err, keys.ErrTooLarge) {
 		return nil
 	}
 	parent, name, close, err := m.parent(true)
@@ -286,6 +306,12 @@ func (m fileMedium) parent(create bool) (*os.Root, string, func(), error) {
 }
 
 // encodeFile keeps the mode and binary bytes together in one vault slot.
+// fileSlotLen is the length of the slot value [encodeFile] makes from a file
+// of size bytes: four octal digits, a colon, and the bytes in base64.
+func fileSlotLen(size int64) int64 {
+	return int64(len("0644:")) + (size+2)/3*4
+}
+
 func encodeFile(mode fs.FileMode, data []byte) string {
 	return fmt.Sprintf("%04o:%s", mode, base64.StdEncoding.EncodeToString(data))
 }
