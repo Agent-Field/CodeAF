@@ -123,14 +123,21 @@ func poolErrandGo(profileDir, scope string, fn func()) {
 // (the model warm's catalog resolve) ends at the close instead of running past
 // it. An errand that ignores the context gets at most poolCloseBudget to join.
 func poolErrandGoCtx(profileDir, scope string, fn func(context.Context)) {
-	poolErrandsMu.Lock()
-	held := poolErrandSet[profileDir]
-	poolErrandsMu.Unlock()
+	held := poolErrandsOf(profileDir)
 	if held == nil {
 		poolRefreshGo(scope, func() { fn(context.Background()) })
 		return
 	}
 	held.goCtx(scope, fn)
+}
+
+// poolErrandsOf reads the profile's tracker under its lock. It is its own
+// function so the unlock is a defer: a panic inside the section must not leave
+// the lock held (internal/guard's lock-defer law).
+func poolErrandsOf(profileDir string) *poolErrands {
+	poolErrandsMu.Lock()
+	defer poolErrandsMu.Unlock()
+	return poolErrandSet[profileDir]
 }
 
 // goCtx refuses work after shutdown, including a late landing from an agent
@@ -153,7 +160,21 @@ func (held *poolErrands) goCtx(scope string, fn func(context.Context)) {
 const poolCloseBudget = time.Second
 
 func (held *poolErrands) stop() {
+	done := held.beginStop()
+	timer := time.NewTimer(poolCloseBudget)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+	}
+}
+
+// beginStop closes the tracker once, cancels its errands and starts the one
+// joiner, and answers the channel that joiner closes. The locked section is its
+// own function so the unlock is a defer (internal/guard's lock-defer law).
+func (held *poolErrands) beginStop() chan struct{} {
 	held.mu.Lock()
+	defer held.mu.Unlock()
 	if !held.closed {
 		held.closed = true
 		held.cancel()
@@ -163,14 +184,7 @@ func (held *poolErrands) stop() {
 			close(held.done)
 		})
 	}
-	done := held.done
-	held.mu.Unlock()
-	timer := time.NewTimer(poolCloseBudget)
-	defer timer.Stop()
-	select {
-	case <-done:
-	case <-timer.C:
-	}
+	return held.done
 }
 
 // startPoolIndexRefresh is the loader's own tail: it starts the background
