@@ -126,8 +126,8 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	case workUncertain:
 		return false, d.Gate()
 	case workConsent:
-		// A free higher fence still records a takeover. Retiring publication
-		// here also prevents a subsequent heartbeat from reviving that writer.
+		// A free higher fence still records a takeover. Retiring renewal beats
+		// here prevents a subsequent heartbeat from reviving that writer.
 		if lease.Device == d.sync.Device.ID() {
 			d.availableAfter(held, lease)
 		} else {

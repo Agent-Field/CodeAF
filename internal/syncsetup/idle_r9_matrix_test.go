@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory/directorytest"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/handoff"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // The table enumerates the Cartesian product before filtering unreachable
@@ -28,6 +29,7 @@ import (
 type r9Cell struct {
 	relay, local, service, turn, unpublished string
 	impossible, want                         string
+	ordering, inFlight, observer             string
 }
 
 func r9Matrix() []r9Cell {
@@ -35,12 +37,23 @@ func r9Matrix() []r9Cell {
 	for _, relay := range []string{"live", "revived", "lapsed", "released", "other_live", "other_released", "other_lapsed"} {
 		for _, local := range []string{"holding", "expired", "self_released", "release_uncertain", "release_undone", "stopped", "acquire_uncertain"} {
 			for _, service := range []string{"answering", "refusing", "hanging"} {
-				for _, turn := range []string{"idle", "working"} {
+				for _, turn := range []string{"idle", "working", "call_in_flight_at_expiry"} {
 					for _, unpublished := range []string{"none", "some"} {
 						c := r9Cell{relay: relay, local: local, service: service, turn: turn, unpublished: unpublished}
 						switch {
+						case turn == "call_in_flight_at_expiry":
+							switch {
+							case local != "expired":
+								c.impossible = "This call starts under a held fence and finishes after observed expiry."
+							case unpublished != "some":
+								c.impossible = "The finished in-flight call produces one unpublished seal."
+							case relay != "lapsed" && relay != "other_live":
+								c.impossible = "The late-call axis selects an unchanged expired fence or a live newer holder."
+							default:
+								c.want = "late_seal"
+							}
 						case turn == "working" && local != "holding" && local != "release_undone":
-							c.impossible = "A retired, releasing, stopped or acquiring writer cannot start a working turn."
+							c.impossible = "A retired writer cannot start a new turn; an earlier call finishing after expiry has its own axis."
 						case local == "expired" && relay == "live":
 							c.impossible = "A live original fence after observed expiry is the revived row."
 						case local == "self_released" && relay == "live":
@@ -68,20 +81,26 @@ func r9Matrix() []r9Cell {
 			}
 		}
 	}
-	return table
+	return append(table, r10OrderingMatrix()...)
 }
 
 func (c r9Cell) name() string {
+	if c.ordering != "" {
+		name := "ordering/" + c.relay + "/" + c.turn + "/" + c.unpublished + "/" + c.inFlight + "/" + c.ordering
+		if c.observer != "" {
+			name += "/" + c.observer
+		}
+		return name
+	}
 	return c.relay + "/" + c.local + "/" + c.service + "/" + c.turn + "/" + c.unpublished
 }
 
 type r9Directory struct {
 	directory.Client
-	failure   error
-	reads     int
-	takes     []directory.AcquireOpts
-	notices   chan string
-	publishes []directory.Publish
+	failure error
+	reads   int
+	takes   []directory.AcquireOpts
+	notices chan string
 }
 
 func (d *r9Directory) Cell(ctx context.Context, id string) (directory.CellView, error) {
@@ -104,13 +123,22 @@ func (d *r9Directory) Publish(ctx context.Context, id string, in directory.Publi
 	if d.failure != nil {
 		return directory.CellView{}, d.failure
 	}
-	d.publishes = append(d.publishes, in)
 	return d.Client.Publish(ctx, id, in)
 }
 
-func r9Fixture(t *testing.T, c r9Cell) (*Drive, *r9Directory) {
+func (d *r9Directory) Create(ctx context.Context, id string, in directory.CellInit) (directory.CellView, error) {
+	if d.failure != nil {
+		return directory.CellView{}, d.failure
+	}
+	return d.Client.Create(ctx, id, in)
+}
+
+func r9Fixture(t *testing.T, c r9Cell, clocks ...*directorytest.FakeClock) (*Drive, *r9Directory) {
 	t.Helper()
 	clock := directorytest.NewFakeClock()
+	if len(clocks) != 0 {
+		clock = clocks[0]
+	}
 	d, memory := sameComputerDriveWithDirectory(t, clock.Now)
 	d.idleNotices.Store(true)
 	d.devices = &DeviceObserver{home: d.sync.Home, binding: deviceBindingFor(Resolve(d.sync.Home).URL, d.sync.Identity, d.sync.Device), state: DeviceSnapshot{Complete: true, Devices: map[string]directory.Device{"A": {}, "B": {}}}}
@@ -131,7 +159,7 @@ func r9Fixture(t *testing.T, c r9Cell) (*Drive, *r9Directory) {
 	raw := d.sync.Dir
 	dir := &r9Directory{Client: raw, notices: make(chan string, 8)}
 	d.opt.OnNotice = func(line string) { dir.notices <- line }
-	d.sync.Dir, d.batcher.Publisher.Dir = dir, dir
+	d.sync.Dir, d.batcher.Publisher.Dir, d.batcher.Brancher.Dir = dir, dir, dir
 	switch c.local {
 	case "expired":
 		clock.Advance(directory.LeaseTTL + time.Second)
@@ -223,8 +251,18 @@ func TestIdleRelease_R9_RevivalRequiresANewFence(t *testing.T) {
 func TestIdleRelease_R9_StateMatrix(t *testing.T) {
 	for _, c := range r9Matrix() {
 		t.Run(c.name(), func(t *testing.T) {
+			if c.ordering != "" {
+				r10Ordering(t, c)
+				return
+			}
 			if c.impossible != "" {
 				t.Skip(c.impossible)
+			}
+			if c.want == "late_seal" {
+				for _, observation := range []string{"confirm", "check"} {
+					t.Run(observation, func(t *testing.T) { r9LateSeal(t, c, observation) })
+				}
+				return
 			}
 			d, dir := r9Fixture(t, c)
 			if c.want == "reopen" {
@@ -298,36 +336,151 @@ func TestIdleRelease_R9_StateMatrix(t *testing.T) {
 				dir.failure = nil
 				before, readErr := dir.Client.Cell(t.Context(), d.cell.ID)
 				mustNil(t, readErr)
-				closeErr := d.batcher.Close(t.Context())
-				if c.want == "reopen" || c.local == "expired" && !strings.HasPrefix(c.relay, "other_") {
-					if !errors.Is(closeErr, cellstore.ErrReadOnly) || d.batcher.Pending() != 1 {
-						t.Fatalf("retired writer must honestly retain its pending save: error=%v pending=%d", closeErr, d.batcher.Pending())
-					}
-					r9TakePending(t, d, dir, head.Turn.ID)
-				} else {
-					mustNil(t, closeErr)
-				}
+				mustNil(t, d.batcher.Close(t.Context()))
 				after, readErr := dir.Client.Cell(t.Context(), d.cell.ID)
 				mustNil(t, readErr)
 				other := c.relay == "other_live" || c.relay == "other_released" || c.relay == "other_lapsed"
-				if other {
+				if other || c.local == "expired" {
 					kept, keptErr := dir.Client.Cell(t.Context(), "kept-chat")
 					if keptErr != nil || kept.Cell.Head != head.Turn.ID || kept.Cell.ParentCell != d.cell.ID || after.Cell.Head != before.Cell.Head || after.Cell.Lease != before.Cell.Lease {
 						t.Fatalf("takeover lost kept turns or changed the winner: kept=%+v error=%v after=%+v", kept, keptErr, after)
 					}
-				} else if c.want != "reopen" && c.local != "expired" && after.Cell.Head != head.Turn.ID {
+				} else if after.Cell.Head != head.Turn.ID {
 					t.Fatalf("unpublished turns stranded: relay=%s local=%s", after.Cell.Head, head.Turn.ID)
 				}
-				if c.want != "reopen" && c.local != "expired" && d.batcher.Pending() != 0 {
+				if d.batcher.Pending() != 0 {
 					t.Fatal("completed preservation left turns pending")
 				}
-				for _, in := range dir.publishes {
-					if (c.want == "acquire" || c.local == "expired" || c.local == "self_released" || c.local == "release_uncertain" || c.local == "acquire_uncertain") && in.Fence == 1 {
-						t.Fatal("retired fence published pending turns")
+				if c.want == "reopen" || c.local == "expired" {
+					if confirmed, err := d.ConfirmWork(t.Context()); err != nil || confirmed || d.Gate() == nil {
+						t.Fatalf("draining a late seal restored admission: confirmed=%v error=%v gate=%v", confirmed, err, d.Gate())
 					}
 				}
 			}
 		})
+	}
+	t.Run("pending_reopen/expired/refusing/idle/some", func(t *testing.T) {
+		d, dir := r9Fixture(t, r9Cell{relay: "lapsed", local: "expired", service: "refusing", turn: "idle", unpublished: "some"})
+		head, err := cellstore.Head(d.cell)
+		mustNil(t, err)
+		if err := d.batcher.Close(t.Context()); !syncwords.UploadPending(err) || d.batcher.Pending() != 1 {
+			t.Fatalf("outage did not retain the seal before reopen: error=%v pending=%d", err, d.batcher.Pending())
+		}
+		dir.failure = nil
+		r9TakePending(t, d, dir, head.Turn.ID)
+	})
+}
+
+// r9LateSeal expires the hold inside a real recorded call, before its output
+// and seal exist. Ownership checks and publication use the ordinary drive doors.
+func r9LateSeal(t *testing.T, c r9Cell, observation string) {
+	t.Helper()
+	r := newDriveRig(t)
+	ctx := t.Context()
+	r.spokenFixture()
+	first, err := r.engine.Seal(ctx, r.cell, cellstore.TurnInfo{})
+	mustNil(t, err)
+	_, err = r.a.Dir.Create(ctx, r.cell.ID, directory.CellInit{Head: first.Turn.ID})
+	mustNil(t, err)
+	mustNil(t, cellstore.NotePublished(r.cell, first.Turn.ID))
+	d, err := r.a.Drive(ctx, r.engine, r.cell, DriveOptions{})
+	mustNil(t, err)
+	t.Cleanup(func() { mustNil(t, d.Close(context.Background())) })
+	// Stop maintenance so the callback alone chooses the loss observation.
+	d.cancel()
+	<-d.done
+	dir := &r9Directory{Client: r.a.Dir}
+	d.sync.Dir, d.batcher.Publisher.Dir, d.batcher.Brancher.Dir = dir, dir, dir
+	confirmed, err := d.ConfirmWork(ctx)
+	if err != nil || !confirmed || d.Gate() != nil {
+		t.Fatalf("call did not start under an admitted hold: confirmed=%v error=%v gate=%v", confirmed, err, d.Gate())
+	}
+	before, err := dir.Client.Cell(ctx, r.cell.ID)
+	mustNil(t, err)
+	rec, err := cellstore.NewRecorder(executor.Local{}, d.Store(r.engine), r.cell, r.engine.WALPath(r.cell), cellstore.Options{Async: true, Now: r.clock.Now})
+	mustNil(t, err)
+	t.Cleanup(func() { _ = rec.Drain(context.Background()) })
+	ran := 0
+	mustNil(t, rec.Around(ctx, executor.Call{Tool: "external", Deferred: true}, executor.EffectExternal, cellstore.AgentRun, func() ([]byte, bool) {
+		ran++
+		r.clock.Advance(directory.LeaseTTL + time.Second)
+		if c.relay == "other_live" {
+			_, err := r.b.Dir.Acquire(ctx, r.cell.ID, directory.AcquireOpts{RequireConditional: true, Expect: &directory.LeaseExpectation{Device: before.Cell.Lease.Device, Fence: before.Cell.Lease.Fence}})
+			mustNil(t, err)
+			_, err = r.b.Dir.Publish(ctx, r.cell.ID, directory.Publish{Fence: before.Cell.Lease.Fence + 1, OldHead: first.Turn.ID, Head: strings.Repeat("b", 64)})
+			mustNil(t, err)
+		}
+		if observation == "check" {
+			mustNil(t, d.CheckLease(ctx))
+		} else if ok, err := d.ConfirmWork(ctx); err != nil || ok {
+			t.Fatalf("loss admitted another call: confirmed=%v error=%v", ok, err)
+		}
+		if d.Gate() == nil {
+			t.Fatal("loss left the new-work gate open inside the earlier call")
+		}
+		mustNil(t, os.WriteFile(filepath.Join(r.work, "late-call.txt"), []byte("finished once"), 0600))
+		appendTo(t, transcriptOf(r.cell), "{\"type\":\"message\",\"role\":\"tool\",\"content\":\"finished once\"}\n")
+		return []byte("finished once"), false
+	}))
+	mustNil(t, rec.Drain(ctx))
+	sealed, err := cellstore.Head(r.cell)
+	mustNil(t, err)
+	if sealed == nil || sealed.Turn.Fence != before.Cell.Lease.Fence || len(sealed.Receipt.Calls) != 1 || sealed.Receipt.Calls[0].Started >= sealed.Receipt.Calls[0].Ended || d.batcher.Pending() != 1 || ran != 1 {
+		t.Fatalf("late call was lost or sealed at a new fence: head=%+v pending=%d runs=%d", sealed, d.batcher.Pending(), ran)
+	}
+	output, err := os.ReadFile(filepath.Join(r.cell.Root, cellstore.BlobsDir, sealed.Receipt.Calls[0].StdoutHash))
+	if err != nil || string(output) != "finished once" {
+		t.Fatalf("late call lost its recorded output: output=%q error=%v", output, err)
+	}
+	winner, err := dir.Client.Cell(ctx, r.cell.ID)
+	mustNil(t, err)
+	if c.service != "answering" {
+		dir.failure = directory.ErrUnreachable
+		if c.service == "hanging" {
+			dir.failure = context.DeadlineExceeded
+		}
+		closeErr := d.batcher.Close(ctx)
+		if closeErr == nil || !syncwords.UploadPending(closeErr) || d.batcher.Pending() != 1 {
+			t.Fatalf("outage lost the local seal: error=%v pending=%d", closeErr, d.batcher.Pending())
+		}
+		local, err := cellstore.Head(r.cell)
+		mustNil(t, err)
+		if local == nil || local.Turn.ID != sealed.Turn.ID || len(local.Receipt.Calls) != 1 {
+			t.Fatal("outage removed the completed call from local history")
+		}
+		dir.failure = nil
+	}
+	mustNil(t, d.batcher.Close(ctx))
+	after, err := dir.Client.Cell(ctx, r.cell.ID)
+	mustNil(t, err)
+	branches, err := branchMapOf(r.homeA)
+	mustNil(t, err)
+	id := branches.Resolve(r.cell.ID)
+	if c.relay == "lapsed" && observation == "confirm" {
+		if id != r.cell.ID || after.Cell.Head != sealed.Turn.ID || after.Cell.Lease.Fence != before.Cell.Lease.Fence || after.Cell.Lease.Expires <= after.Now {
+			t.Fatal("late seal did not publish at the unchanged expired fence")
+		}
+	} else {
+		if id == r.cell.ID || after.Cell.Head != winner.Cell.Head || after.Cell.Lease != winner.Cell.Lease {
+			t.Fatal("late seal lost its branch or changed the winner's head or lease")
+		}
+		kept, err := dir.Client.Cell(ctx, id)
+		mustNil(t, err)
+		if kept.Cell.Head != sealed.Turn.ID || kept.Cell.ParentCell != r.cell.ID || kept.Cell.OrphanTurns != 1 {
+			t.Fatal("kept branch did not preserve the completed call")
+		}
+	}
+	if d.batcher.Pending() != 0 {
+		t.Fatal("successful preservation left the call pending")
+	}
+	if ok, err := d.ConfirmWork(ctx); err != nil || ok || d.Gate() == nil || len(dir.takes) != 0 {
+		t.Fatalf("late publish restored new-work admission: confirmed=%v error=%v gate=%v takes=%+v", ok, err, d.Gate(), dir.takes)
+	}
+	if _, _, held := d.RenewalStatus(); held {
+		t.Fatal("late publish restored the drive's retired renewal state")
+	}
+	if _, _, err := d.sync.SendLease(r.cell.ID); !os.IsNotExist(err) {
+		t.Fatalf("late publish restored a send receipt: %v", err)
 	}
 }
 
@@ -406,10 +559,17 @@ func TestIdleRelease_R9_RevivedFenceReopensThroughTheRealContinuer(t *testing.T)
 				_, err := d.Store(h.engine).Seal(t.Context(), h.cell, cellstore.TurnInfo{Calls: []cellstore.Executed{{Call: cellstore.Call{Tool: "earlier", Started: 0}}}})
 				mustNil(t, err)
 			}
-			closeErr := d.Close(t.Context())
+			wire := &r9Directory{Client: d.batcher.Publisher.Dir}
 			if unpublished == "some" {
-				if closeErr == nil {
-					t.Fatal("retired close did not report its pending save")
+				// A real outage retains the seal for the pending-turn reopen road.
+				wire.failure = directory.ErrUnreachable
+			}
+			d.batcher.Publisher.Dir, d.batcher.Brancher.Dir = wire, wire
+			closeErr := d.Close(t.Context())
+			wire.failure = nil
+			if unpublished == "some" {
+				if !syncwords.UploadPending(closeErr) || d.batcher.Pending() != 1 {
+					t.Fatalf("unreachable close did not retain its pending save: error=%v pending=%d", closeErr, d.batcher.Pending())
 				}
 			} else {
 				mustNil(t, closeErr)

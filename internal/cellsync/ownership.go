@@ -18,7 +18,8 @@ func (b *Batcher) Lease() (id string, fence uint64) {
 	return d.ID(), d.Fence
 }
 
-// RetireFence stops future publication and renewal under an observed old hold.
+// RetireFence stops renewal beats under an observed old hold, leaving sealed turns
+// to publish or branch through the directory's ordinary fencing checks.
 // It is safe inside ownership callbacks that already hold the publisher lock.
 // Requests already in flight remain fenced by the directory; their replies
 // cannot restore permission or change the expectation of the next acquisition.

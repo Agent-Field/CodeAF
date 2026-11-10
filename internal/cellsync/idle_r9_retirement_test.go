@@ -5,12 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
-func TestIdleRelease_R9_RetiredFenceNeverRenewsOrPublishes(t *testing.T) {
+func TestIdleRelease_R9_RetiredFenceDrainsSealsWithoutRenewalBeats(t *testing.T) {
 	for _, takeover := range []bool{false, true} {
 		t.Run(map[bool]string{false: "own expiry", true: "other computer acquired"}[takeover], func(t *testing.T) {
 			r := newRig(t)
@@ -30,45 +29,68 @@ func TestIdleRelease_R9_RetiredFenceNeverRenewsOrPublishes(t *testing.T) {
 			if _, _, holding := b.RenewalStatus(); holding {
 				t.Fatal("retired writer claimed a live hold")
 			}
-			note(b, r.seal(map[string]string{"journal": "unsent"}))
+			sealed := r.seal(map[string]string{"journal": "finished after retirement"})
+			note(b, sealed)
 			err := b.drain(t.Context())
-			if takeover {
-				if err != nil || b.Pending() != 0 || b.Driving.ID() == cellID {
-					t.Fatalf("retired takeover did not keep its turns on a branch: error=%v pending=%d drive=%+v", err, b.Pending(), b.Driving)
-				}
-			} else if !errors.Is(err, cellstore.ErrReadOnly) || !syncwords.UploadPending(err) || b.Pending() != 1 {
-				t.Fatalf("retired publication must wait for reopen: error=%v pending=%d", err, b.Pending())
+			if err != nil || b.Pending() != 0 {
+				t.Fatalf("retired writer stranded a sealed turn: error=%v pending=%d", err, b.Pending())
 			}
-			if after := r.head(cellID); after.Head != before.Head || after.Lease != before.Lease {
-				t.Fatal("old fence changed the published chat")
+			after := r.head(cellID)
+			if takeover {
+				if b.Driving.ID() == cellID || r.head(b.Driving.ID()).Head != sealed || after.Head != before.Head || after.Lease != before.Lease {
+					t.Fatal("retired takeover lost its branch or changed the winner")
+				}
+			} else if after.Head != sealed || after.Lease.Fence != before.Lease.Fence || after.Lease.Expires <= before.Lease.Expires {
+				t.Fatal("late publish did not renew the unchanged expired fence")
+			}
+			b.beat(t.Context())
+			if r.dirA.beats.Load() != beats {
+				t.Fatal("draining a late seal restored renewal beats")
+			}
+			if _, _, holding := b.RenewalStatus(); holding {
+				t.Fatal("draining a late seal restored the retired hold")
 			}
 		})
 	}
 }
 
-func TestIdleRelease_R9_RetiredCloseReportsOnlyPendingWork(t *testing.T) {
+func TestIdleRelease_R9_RetiredCloseDrainsSealedWork(t *testing.T) {
 	for _, pending := range []bool{false, true} {
 		t.Run(map[bool]string{false: "none", true: "some"}[pending], func(t *testing.T) {
 			r := newRig(t)
 			r.publishFirst(map[string]string{"journal": "saved"})
 			b := r.batcher()
 			b.RetireFence(cellID, 1)
-			if pending {
-				note(b, r.seal(map[string]string{"journal": "pending"}))
-			}
 			before := r.head(cellID)
-			err := b.Close(t.Context())
+			sealed := before.Head
 			if pending {
-				if !errors.Is(err, cellstore.ErrReadOnly) || !syncwords.UploadPending(err) || b.Pending() != 1 {
-					t.Fatalf("pending save must remain waiting: error=%v pending=%d", err, b.Pending())
-				}
-			} else if err != nil {
-				t.Fatalf("empty retired close reported a failed save: %v", err)
+				sealed = r.seal(map[string]string{"journal": "pending"})
+				note(b, sealed)
 			}
-			if after := r.head(cellID); after.Head != before.Head || after.Lease != before.Lease {
-				t.Fatal("retired close changed its old fence")
+			err := b.Close(t.Context())
+			if err != nil || b.Pending() != 0 {
+				t.Fatalf("retired close did not drain its sealed work: error=%v pending=%d", err, b.Pending())
+			}
+			if after := r.head(cellID); after.Head != sealed || after.Lease.Fence != before.Lease.Fence {
+				t.Fatal("retired close lost its head or changed its fence")
 			}
 		})
+	}
+}
+
+func TestIdleRelease_R9_RetiredCloseRetainsSealsDuringOutage(t *testing.T) {
+	r := newRig(t)
+	r.publishFirst(map[string]string{"journal": "saved"})
+	b := r.batcher()
+	b.RetireFence(cellID, 1)
+	note(b, r.seal(map[string]string{"journal": "pending"}))
+	r.store.set(directory.ErrUnreachable, nil)
+	if err := b.Close(t.Context()); !errors.Is(err, directory.ErrUnreachable) || !syncwords.UploadPending(err) || b.Pending() != 1 {
+		t.Fatalf("unreachable close must retain the pending seal: error=%v pending=%d", err, b.Pending())
+	}
+	r.store.set(nil, nil)
+	if err := b.Close(t.Context()); err != nil || b.Pending() != 0 {
+		t.Fatalf("recovered close did not drain the pending seal: error=%v pending=%d", err, b.Pending())
 	}
 }
 

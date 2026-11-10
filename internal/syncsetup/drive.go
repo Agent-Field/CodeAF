@@ -696,7 +696,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		return nil
 	}
 	if err == nil && v.Cell.Lease.Expires <= v.Now {
-		if !d.released.Load() && (v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != fence) {
+		if !d.released.Load() {
 			d.retireHold(ctx, held)
 		}
 		d.availableAfter(held, v.Cell.Lease)
