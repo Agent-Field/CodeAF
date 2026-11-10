@@ -348,7 +348,7 @@ func MaybeParseApplyPatch(argv []string) MaybeResult {
 			Args: &ApplyPatchArgs{Patch: argv[1], Hunks: parsed.Hunks},
 		}
 	}
-	if len(argv) == 3 && argv[0] == "bash" && (argv[1] == "-lc" || argv[1] == "-c") {
+	if len(argv) == 3 && argv[0] == "bash" && argv[1] == "-lc" {
 		if content, ok := extractApplyPatchHeredoc(argv[2]); ok {
 			parsed, err := ParsePatch(content)
 			if err != nil {
