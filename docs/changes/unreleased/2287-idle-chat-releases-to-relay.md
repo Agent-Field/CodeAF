@@ -29,16 +29,6 @@ local ignored install folders without a restore or setup card. Opening a free
 chat refreshes an already-open stale viewer too. Repeated moves keep an existing
 local root and use bounded, stable copy-folder names on first arrival.
 
-An installed writer that idle-releases after a take-back keeps its startup
-status while reporting that it holds no lease. The first send can finish
-Home's startup wait, check ownership and conditionally acquire a new fence;
-it no longer repeatedly waits for a writer that has already started.
-
-Rebuildable folders such as `node_modules` are excluded only when Git ignores
-them. A lockfile alone does not exclude a folder. Outside a Git repository, the
-existing rule copies all files, subject to secret screening and explicit
-exclusions; the manual no longer promises a separate rebuildable-folder filter.
-
 Terminal certification obtains a complete workspace scope while the warm engine
 keeps sealing turns. Saved conversation choices retake the idle hold before
 acknowledging a change, or retain the requested choice on a held-elsewhere

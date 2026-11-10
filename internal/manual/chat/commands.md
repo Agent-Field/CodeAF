@@ -2316,10 +2316,8 @@ machine and lists three kinds of line: what is already here, what the agent can 
 ("needs jq — agent can set it up"), and what is impossible on this machine (a GPU, a
 Mac-only toolchain, a service on another network). Impossible lines are shown and never
 attempted. For a chat that moved here from another machine it also lists `not brought along:`
-Git-ignored install folders a lockfile rebuilds (`node_modules`, `.venv`) with the command that brings
-each back (see "What a moved chat left behind" in home). Rebuildable folders are left out only
-when Git ignores them. Outside a Git repository, all files are copied, subject to secret
-screening and explicit exclusions. When nothing is installable and
+the install folders a lockfile rebuilds (`node_modules`, `.venv`) with the command that brings
+each back (see "What a moved chat left behind" in home). When nothing is installable and
 nothing was left behind, `/setup` says so and does nothing.
 
 ## /setup now — install missing tools after a move, with ordinary network access

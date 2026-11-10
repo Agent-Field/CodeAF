@@ -371,9 +371,7 @@ on, byte for byte: text and binary files, files that were never in a git reposit
 executable bit, links. Git history, branches and settings travel too, sealed to your paired
 devices even when an old commit holds a key. A working file the guard withholds travels
 through the vault instead. Rebuildable install folders such as `node_modules` stay out of the
-workspace copy only when Git ignores them, and are listed on the arrival card. Outside a Git
-repository, all files are copied, subject to secret screening and explicit exclusions (see
-"What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
+workspace copy and are listed on the arrival card (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
 the machine that continues; everything comes from your relay. The copy lives in a folder of
 its own under this machine's chats, and the chat works in a `work` folder inside it. Your
 project folder on the other machine is not touched. If this machine already has the chat and
@@ -441,7 +439,7 @@ A chat that moves to another computer brings, from the relay and sealed on the w
 
 The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
 
-It leaves behind, and lists on the card under `not brought along:`: untracked files and folders Git ignores (including install folders such as `node_modules`, `.venv`, `target`, `vendor` or `Pods` when ignored), files this computer cannot read, and one of two names that differ only in letter case or accent. Outside a Git repository, all files are copied, subject to secret screening and explicit exclusions. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.
+It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.
 
 ## Does dist or other gitignored output move — ignored files and secret files
 
@@ -449,15 +447,16 @@ Untracked Git-ignored output stays on the computer that made it and is named on 
 
 ## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
 
-A chat that moves brings its conversation and saved working files. Rebuildable install
-folders such as `node_modules`, `.venv`, `target`, `vendor` and `Pods` are left out only when
-Git ignores them. Tracked files travel even when an ignore rule matches them. A lockfile
-alone does not exclude a folder; ignored build output such as `.next` or `dist` stays behind
-whether or not a lockfile exists. Outside a Git repository, all files are copied, including
-install folders, subject to secret screening and explicit `.furrowpolicy` exclusions.
-When an omitted install folder has a supported lockfile, the arrival card can suggest a
-command to rebuild it. Rebuilding from the lock gives the same packages, and a `node_modules`
-made on a Mac holds Mac programs that would be wrong on Linux.
+A chat that moves brings its conversation and every file it worked on, except an install
+folder that a lockfile rebuilds: `node_modules` (with a `package-lock.json`,
+`npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), `.venv` or
+`venv` (with `uv.lock`, `poetry.lock`, `pdm.lock`, `Pipfile.lock`, or a `requirements.txt`
+that pins every version with `==`), `target` (with a `Cargo.lock` beside its `Cargo.toml`),
+`vendor` (with a `composer.lock` or `Gemfile.lock`) and `Pods` (with a `Podfile.lock`). A
+folder is left out only when its lockfile travels too, git tracks nothing inside it, and your
+own `.furrowpolicy` does not already exclude it. A folder with no lockfile, build output such
+as `.next` or `dist`, and data folders always travel. Rebuilding from the lock gives the same
+packages, and a `node_modules` made on a Mac holds Mac programs that would be wrong on Linux.
 A copy of the folder that a machine already has is never deleted: taking a chat back, or
 rewinding, leaves it alone.
 
@@ -509,9 +508,8 @@ over a fresh copy on the same branch, in this machine's own folder for that chat
 `the working copy of a task came along: <task>`, or `working copies of tasks came along:
 <task>, <task>` for several. A task that has finished has no copy, but the branch it kept is put back in your project on this machine at the same commit, so it does come.
 What the repository's own `.gitignore` names (build output, a `.env`) and any file that looks
-like it holds a secret stay behind. A task's installed `node_modules` stays behind when Git
-ignores it; the card in "What a moved chat left behind" lists omitted paths as `trees/<task>/…`.
-Copies the other machine registered in the repository are
+like it holds a secret stay behind, and so does a task's own installed `node_modules`, which the
+card in "What a moved chat left behind" lists as `trees/<task>/…`. Copies the other machine registered in the repository are
 forgotten here, so `git worktree list` shows only what this machine has. If a copy cannot be set
 up again (say its branch is checked out somewhere else), the sentence `a task's working copy
 could not be set up again here` names why, and the task's files are still in its folder under

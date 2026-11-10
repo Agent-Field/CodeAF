@@ -35,7 +35,7 @@ No. Turns, tool output and files are sealed on your computer before they are sen
 
 Your saved keys are sealed too, as said above.
 
-Continuing a chat on another computer brings its saved workspace files with its conversation, tool output and task journals. Rebuildable install folders are left out only when Git ignores them; omitted and withheld files are listed on the arrival card. Outside a Git repository, all files are copied, subject to secret screening and explicit exclusions. Secret files travel separately in the sealed vault between paired devices. See *Continuing a chat that one of your machines holds* and "What comes with a continued chat" on *Home*. It does not keep two arbitrary project folders mirrored while you edit them.
+Continuing a chat on another computer brings its saved workspace files with its conversation, tool output and task journals. Rebuildable install folders and withheld files are listed on the arrival card. Secret files travel separately in the sealed vault between paired devices. See *Continuing a chat that one of your machines holds* and "What comes with a continued chat" on *Home*. It does not keep two arbitrary project folders mirrored while you edit them.
 
 ## Optional warm-transfer frame hints and relay compatibility
 
