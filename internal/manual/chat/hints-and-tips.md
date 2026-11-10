@@ -204,10 +204,8 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Memory, accounts and the rest**
 
-- The hint beginning `/remember carries a fact forward` points to the Memory tab
-  to forget it. It is retired when `/remember` is typed.
-  It is the only row that names two commands as a pair: the fact, and the way back out of
-  it.
+- `/remember carries a fact forward, and the Memory tab forgets it` — retired
+  when `/remember` is typed. The Memory tab lets you forget the saved fact.
 - `/connect links Notion, Slack and other accounts` — retired when the connect panel
   is reached for.
 - `/autonomy sets how questions are handled while you are away` — after the first
