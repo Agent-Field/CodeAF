@@ -79,7 +79,7 @@ func TestKnowledgePaidAnswersReachLedgerAndReceipts(t *testing.T) {
 					return moneyReply(model, "stop", `{"claims":[],"notes":[],"relations":[],"aliases":[],"subjects":[]}`, 3), nil
 				}
 			})
-			ctx := knowledgeCalls(context.Background(), session.Config{ProfileDir: profile})
+			ctx := knowledgeCalls(context.Background(), profile, false)
 			err := v.Flush(ctx, "fixture", true)
 			if shape == "valid" && err != nil {
 				t.Fatal(err)
@@ -136,7 +136,7 @@ func TestKnowledgeDailyLimitPausesAndResumesAndPreauthorizationLiftsIt(t *testin
 				calls.Add(1)
 				return moneyReply(knowledge.Model, "stop", "not JSON", 3), nil
 			})
-			ctx, cancel := context.WithTimeout(knowledgeCalls(context.Background(), session.Config{ProfileDir: profile, SpendPreauthorized: authorized}), 2*time.Minute)
+			ctx, cancel := context.WithTimeout(knowledgeCalls(context.Background(), profile, authorized), 2*time.Minute)
 			defer cancel()
 			done := make(chan error, 1)
 			go func() { done <- v.Run(ctx, moneyHistory{}, func() string { return "fixture" }) }()
@@ -196,7 +196,7 @@ func TestKnowledgeChecksDailyLimitBetweenCompilerCalls(t *testing.T) {
 		}
 		return moneyReply(knowledge.Model, "stop", "not JSON", 3), nil
 	})
-	err := v.Flush(knowledgeCalls(context.Background(), session.Config{ProfileDir: profile}), "fixture", true)
+	err := v.Flush(knowledgeCalls(context.Background(), profile, false), "fixture", true)
 	if calls != 1 || err == nil || !strings.Contains(err.Error(), "daily limit reached") {
 		t.Fatalf("calls=%d, err=%v; want the next compiler call refused", calls, err)
 	}
@@ -219,7 +219,7 @@ func TestKnowledgeDailyLimitBlocksTransportRetry(t *testing.T) {
 		}
 		return moneyReply(knowledge.Model, "stop", "not JSON", 3), nil
 	})
-	ctx, cancel := context.WithTimeout(knowledgeCalls(context.Background(), session.Config{ProfileDir: profile}), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(knowledgeCalls(context.Background(), profile, false), 2*time.Minute)
 	defer cancel()
 	err := v.Flush(ctx, "fixture", true)
 	if calls != 1 || err == nil || !strings.Contains(err.Error(), "daily limit reached") {

@@ -73,6 +73,12 @@ func (c Config) dailyCeilingUSD() float64 {
 	return 0
 }
 
+// DailyLimitReachedAt gives process-owned calls the shared gate without
+// requiring their caller to construct a session configuration.
+func DailyLimitReachedAt(profileDir string, preauthorized bool) error {
+	return DailyLimitReached(Config{ProfileDir: profileDir, SpendPreauthorized: preauthorized})
+}
+
 // DailyLimitReached checks the same live daily ceiling for turns and background
 // calls. Held spend includes completed calls not yet visible in the ledger.
 // Preauthorization lifts only this ceiling; task and conversation limits remain.
