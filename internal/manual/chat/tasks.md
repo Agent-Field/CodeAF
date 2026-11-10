@@ -3194,6 +3194,9 @@ the outcome sentence; the conversation it came out of; what it ran on and what i
 how many files it changed; where it left the work and where the story is; and then **the
 last thing the task itself said** — the whole report, read off that task's own journal, of
 which the outcome above is the first sentence.
+For a task that just settled in this conversation, `open result` shows its full
+report and changed-file count immediately, including before the saved task list
+refreshes. Reopening the conversation shows the same report and files.
 
 - **`out of <conversation>` names where the work came from**, spelled the way the row on the
   list spells it, so the page is never a smaller answer than the row that opened it. It is
