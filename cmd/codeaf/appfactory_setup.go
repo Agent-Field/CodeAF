@@ -524,10 +524,7 @@ func (b *appBackend) closeLocalFactory() {
 		return
 	}
 	defer func() {
-		l := &b.local
-		l.mu.Lock()
-		l.closingDone = nil
-		l.mu.Unlock()
+		b.clearLocalClosing()
 		close(done)
 	}()
 	if host != nil {
@@ -563,12 +560,23 @@ func (b *appBackend) closeLocalFactory() {
 // takeLocal marks the local factory closed and hands over what it held. A
 // second caller while the first is still tearing down waits for the first.
 func (b *appBackend) takeLocal() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone, done chan struct{}) {
+	var wait chan struct{}
+	server, host, id, running, runnerDone, done, wait = b.takeLocalLocked()
+	if wait != nil {
+		<-wait
+	}
+	return
+}
+
+// takeLocalLocked is takeLocal's critical section: it either claims the
+// teardown and hands over what the factory held, or answers the channel of the
+// teardown already under way.
+func (b *appBackend) takeLocalLocked() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone, done, wait chan struct{}) {
 	l := &b.local
 	l.mu.Lock()
-	if wait := l.closingDone; wait != nil {
-		l.mu.Unlock()
-		<-wait
-		return
+	defer l.mu.Unlock()
+	if l.closingDone != nil {
+		return nil, nil, "", false, nil, nil, l.closingDone
 	}
 	done = make(chan struct{})
 	l.closingDone = done
@@ -576,8 +584,15 @@ func (b *appBackend) takeLocal() (server *http.Server, host *appFactoryHost, id 
 	server, host, id, running, runnerDone = l.server, l.host, l.id, l.running, l.runnerDone
 	l.server, l.host, l.running, l.id, l.origin = nil, nil, false, "", ""
 	l.runner, l.runnerDone = false, nil
-	l.mu.Unlock()
 	return
+}
+
+// clearLocalClosing ends a teardown's claim once it has finished.
+func (b *appBackend) clearLocalClosing() {
+	l := &b.local
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.closingDone = nil
 }
 
 // ── the CLI's attachment ───────────────────────────────────────────────────

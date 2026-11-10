@@ -163,19 +163,11 @@ func profileRoad() (carriedRoad, error) {
 	settings.Models = sharedCatalog(settings)
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
-	var catalogMu sync.Mutex
-	serviceCatalogs := map[string]*catalog.Catalog{}
+	opened := &roadCatalogs{}
 	return carriedRoad{
 		close: func() {
 			settings.Models.Close()
-			catalogMu.Lock()
-			opened := make([]*catalog.Catalog, 0, len(serviceCatalogs))
-			for _, c := range serviceCatalogs {
-				opened = append(opened, c)
-			}
-			clear(serviceCatalogs)
-			catalogMu.Unlock()
-			for _, c := range opened {
+			for _, c := range opened.take() {
 				c.Close()
 			}
 			stopPoolErrands(settings.ProfileDir)
@@ -207,7 +199,6 @@ func profileRoad() (carriedRoad, error) {
 			// Waiting only for the default cache leaves a fresh custom service's
 			// known window invisible to senior-dev.
 			catalogs := map[string]*catalog.Catalog{}
-			catalogMu.Lock()
 			for _, model := range models {
 				model = strings.TrimPrefix(strings.TrimSpace(model), modelsource.DefaultID+"/")
 				if model == "" {
@@ -220,14 +211,8 @@ func profileRoad() (carriedRoad, error) {
 				}
 				options := config.CatalogOptionsFor(service, settings.ProfileDir)
 				key := catalog.CacheKey(options.Source, options.BaseURL)
-				c := serviceCatalogs[key]
-				if c == nil {
-					c = catalog.LoadLazy(context.Background(), options)
-					serviceCatalogs[key] = c
-				}
-				catalogs[key] = c
+				catalogs[key] = opened.forKey(key, options)
 			}
-			catalogMu.Unlock()
 			ready := true
 			for _, models := range catalogs {
 				ready = models.Warmed(ctx) && ready
@@ -235,6 +220,44 @@ func profileRoad() (carriedRoad, error) {
 			return ready
 		},
 	}, nil
+}
+
+// roadCatalogs holds the per-service catalogs a profile road opened. THEY
+// LIVE AS LONG AS THE ROAD, NOT AS LONG AS ONE READINESS WAIT: a stale cache's
+// background refresh keeps running after the wait answers, and the road's close
+// is what cancels and joins it. A second wait reuses the catalog already open
+// for a cache key rather than opening another.
+type roadCatalogs struct {
+	mu   sync.Mutex
+	open map[string]*catalog.Catalog
+}
+
+// forKey answers the catalog open for key, opening it on first use.
+func (r *roadCatalogs) forKey(key string, options catalog.Options) *catalog.Catalog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c := r.open[key]; c != nil {
+		return c
+	}
+	if r.open == nil {
+		r.open = map[string]*catalog.Catalog{}
+	}
+	c := catalog.LoadLazy(context.Background(), options)
+	r.open[key] = c
+	return c
+}
+
+// take hands over every catalog the road opened and forgets them, so the
+// caller closes each exactly once.
+func (r *roadCatalogs) take() []*catalog.Catalog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*catalog.Catalog, 0, len(r.open))
+	for _, c := range r.open {
+		out = append(out, c)
+	}
+	r.open = nil
+	return out
 }
 
 // carriedModelPrice prices the same service and bare id the adapter calls.

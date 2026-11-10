@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -262,33 +263,44 @@ func (d *briefDebounce) stop() {
 	if d == nil {
 		return
 	}
-	d.mu.Lock()
-	d.closing = true
-	cancel := d.cancel
-	for job, t := range d.timers {
-		t.Stop()
-		delete(d.timers, job)
-		delete(d.pending, job)
-	}
-	d.mu.Unlock()
-	if cancel != nil {
+	if cancel := d.beginStop(); cancel != nil {
 		cancel()
 	}
 	done := make(chan struct{})
-	go func() {
+	guard.Go("app/brief-stop", func() {
+		defer close(done)
 		d.wg.Wait()
-		close(done)
-	}()
+	})
 	timer := time.NewTimer(briefStopWait)
 	defer timer.Stop()
 	select {
 	case <-done:
 	case <-timer.C:
 	}
+	d.rearm()
+}
+
+// beginStop refuses new writes, drops every waiting trigger and hands back the
+// cancel of the writes in flight.
+func (d *briefDebounce) beginStop() context.CancelFunc {
 	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.closing = true
+	for job, t := range d.timers {
+		t.Stop()
+		delete(d.timers, job)
+		delete(d.pending, job)
+	}
+	return d.cancel
+}
+
+// rearm gives the debounce a fresh context once a stop has waited, so a factory
+// started again writes briefs again.
+func (d *briefDebounce) rearm() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 	d.closing = false
-	d.mu.Unlock()
 }
 
 // briefNews turns a progress line of a job on this machine's factory into a

@@ -1578,15 +1578,21 @@ func openedEngineProcess() *v3Process {
 // road has returned. In particular, closeAll cancels and joins model discovery
 // before the engine process can exit or its profile can be reused.
 func closeEngineProcess() {
+	if proc := takeEngineProcess(); proc != nil {
+		proc.closeAll()
+	}
+}
+
+// takeEngineProcess empties the process slot and hands back what it held, so
+// the next open starts afresh and only one caller closes the old one.
+func takeEngineProcess() *v3Process {
 	engineProcess.mu.Lock()
+	defer engineProcess.mu.Unlock()
 	proc := engineProcess.proc
 	engineProcess.tried = false
 	engineProcess.proc = nil
 	engineProcess.err = nil
-	engineProcess.mu.Unlock()
-	if proc != nil {
-		proc.closeAll()
-	}
+	return proc
 }
 
 // engineWorkspace resolves the directory the surface asked for.

@@ -121,17 +121,11 @@ func newAppFactoryHost(ctx context.Context, root, address, token string, credent
 	return h, nil
 }
 func (h *appFactoryHost) close() {
-	h.loopMu.Lock()
-	if h.closeDone != nil {
-		wait := h.closeDone
-		h.loopMu.Unlock()
-		<-wait
+	done, first := h.claimClose()
+	if !first {
+		<-done
 		return
 	}
-	done := make(chan struct{})
-	h.closeDone = done
-	h.loopsClosed = true
-	h.loopMu.Unlock()
 	defer close(done)
 
 	h.cancel()
@@ -169,6 +163,22 @@ func (h *appFactoryHost) close() {
 		h.release = nil
 	}
 }
+
+// claimClose makes the first caller of close the one that tears the host down,
+// and hands every later caller the channel that closes when it has. The read
+// loops are forbidden in the same critical section, so none starts after the
+// first close began.
+func (h *appFactoryHost) claimClose() (done chan struct{}, first bool) {
+	h.loopMu.Lock()
+	defer h.loopMu.Unlock()
+	if h.closeDone != nil {
+		return h.closeDone, false
+	}
+	h.closeDone = make(chan struct{})
+	h.loopsClosed = true
+	return h.closeDone, true
+}
+
 func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -198,26 +198,7 @@ func stopFactoryLoaders(profileDir string) {
 	if def := factoryProfile(""); def != keys[0] {
 		keys = append(keys, def)
 	}
-	var people []*factorygithub.PeopleLoader
-	factoryPeopleCaches.Lock()
-	for _, key := range keys {
-		if loader := factoryPeopleCaches.profiles[key]; loader != nil {
-			delete(factoryPeopleCaches.profiles, key)
-			people = append(people, loader)
-		}
-	}
-	factoryPeopleCaches.Unlock()
-
-	var rules []*factorygithub.PipelineLoader
-	factoryRuleCaches.Lock()
-	for _, key := range keys {
-		if loader := factoryRuleCaches.profiles[key]; loader != nil {
-			delete(factoryRuleCaches.profiles, key)
-			rules = append(rules, loader)
-		}
-	}
-	factoryRuleCaches.Unlock()
-
+	people, rules := detachFactoryLoaders(keys)
 	var wg sync.WaitGroup
 	for _, loader := range people {
 		wg.Add(1)
@@ -234,6 +215,37 @@ func stopFactoryLoaders(profileDir string) {
 		})
 	}
 	wg.Wait()
+}
+
+// detachFactoryLoaders removes the profiles' loaders from both caches and
+// hands them back, so a later reader opens fresh ones and only the caller
+// closes these.
+func detachFactoryLoaders(keys []string) ([]*factorygithub.PeopleLoader, []*factorygithub.PipelineLoader) {
+	return detachPeopleLoaders(keys), detachRuleLoaders(keys)
+}
+
+func detachPeopleLoaders(keys []string) (people []*factorygithub.PeopleLoader) {
+	factoryPeopleCaches.Lock()
+	defer factoryPeopleCaches.Unlock()
+	for _, key := range keys {
+		if loader := factoryPeopleCaches.profiles[key]; loader != nil {
+			delete(factoryPeopleCaches.profiles, key)
+			people = append(people, loader)
+		}
+	}
+	return people
+}
+
+func detachRuleLoaders(keys []string) (rules []*factorygithub.PipelineLoader) {
+	factoryRuleCaches.Lock()
+	defer factoryRuleCaches.Unlock()
+	for _, key := range keys {
+		if loader := factoryRuleCaches.profiles[key]; loader != nil {
+			delete(factoryRuleCaches.profiles, key)
+			rules = append(rules, loader)
+		}
+	}
+	return rules
 }
 
 // factoryPipelineRead is one repository's pipeline as THIS FACTORY runs it,
