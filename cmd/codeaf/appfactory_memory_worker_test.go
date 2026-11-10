@@ -74,7 +74,6 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	stop, quit := end == "stop" || end == "stop tail" || settlingQuit, end == "quit" || end == "quit tail" || settlingQuit
 	detachedTail := pauseTail || end == "stop tail" || end == "quit tail"
 	quitDone := make(chan struct{})
-	s := newLocalSetup(t)
 	release := make(chan struct{})
 	releaseReceipt := sync.OnceFunc(func() { close(release) })
 	cancelled := make(chan struct{}, 1)
@@ -83,10 +82,8 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	chargeReceipt := sync.OnceFunc(func() { providerUnits.Add(2) })
 	learning, finishTurn := make(chan struct{}), make(chan struct{})
 	finishLearning := sync.OnceFunc(func() { close(finishTurn) })
-	t.Cleanup(finishLearning)
 	finishMemory := make(chan struct{})
 	finishPaidCall := sync.OnceFunc(func() { close(finishMemory) })
-	t.Cleanup(finishPaidCall)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			select {
@@ -168,7 +165,6 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", raw)
 	}))
 	t.Cleanup(server.Close)
-	t.Cleanup(releaseReceipt)
 	original := http.DefaultClient
 	http.DefaultClient = &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
 		clone := r.Clone(r.Context())
@@ -182,6 +178,7 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		return http.DefaultTransport.RoundTrip(clone)
 	})}
 	t.Cleanup(func() { http.DefaultClient = original })
+	s := newLocalSetup(t)
 	profile := v3Profile(t, map[string]any{config.KeyTaskModelsMode: "one", config.KeyTaskModelsOne: knowledge.Model, "models.tiers.low": knowledge.Model, "models.tiers.reflex": knowledge.Model, "models.roles": ""})
 	t.Setenv(config.ProfileDirEnv, profile)
 	t.Setenv("OPENROUTER_API_KEY", "fixture")
@@ -193,6 +190,11 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 		t.Fatal(err)
 	}
 	t.Cleanup(proc.closeAll)
+	t.Cleanup(func() { _ = s.backend.Close() })
+	t.Cleanup(func() { s.backend.closeLocalFactory() })
+	t.Cleanup(releaseReceipt)
+	t.Cleanup(finishLearning)
+	t.Cleanup(finishPaidCall)
 	launch, err := openV3Launch(proc, v3Options{Model: knowledge.Model, OneModel: true, Workspace: g.workspace})
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +232,6 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.backend.closeLocalFactory() })
 	var job api.Job
 	s.must("factory.job", map[string]any{"factory": st.Factory, "job": id}, &job)
 	var acted appwire.FactoryJobActed

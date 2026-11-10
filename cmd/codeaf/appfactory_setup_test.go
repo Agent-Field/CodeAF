@@ -76,6 +76,7 @@ func (g *setupGitHub) seen() []string {
 // login instead of a call to /user.
 func offlineLocal(b *appBackend, g *setupGitHub, t *testing.T) {
 	b.local.githubHTTP = g.client(t)
+	b.local.pollSource = noPoll
 	b.local.rules = func(context.Context, string, string) (pipeline.File, error) { return pipeline.File{}, os.ErrNotExist }
 	b.local.seamHook = func(seam factory.Seam) factory.Seam {
 		seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "owner"}, nil }
@@ -97,7 +98,7 @@ type localSetup struct {
 // the process only git on its PATH.
 func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	t.Helper()
-	appHome, userHome, decoy = t.TempDir(), t.TempDir(), t.TempDir()
+	appHome, userHome, decoy = testHome(t), testHome(t), testHome(t)
 	// The unix socket of a solo host is short-pathed; t.TempDir can be long.
 	t.Setenv(home.EnvVar, appHome)
 	t.Setenv("HOME", userHome)

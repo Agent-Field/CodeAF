@@ -56,7 +56,9 @@ func wireOver(t *testing.T, backend *appBackend) *factoryWire {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	server := appwire.NewServer(outW)
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		_ = server.Serve(context.Background(), inR, appwire.Hello{Version: "test"}, backend)
 		outW.Close()
 	}()
@@ -73,7 +75,10 @@ func wireOver(t *testing.T, backend *appBackend) *factoryWire {
 		}
 		close(w.answers)
 	}()
-	t.Cleanup(func() { inW.Close() })
+	t.Cleanup(func() {
+		inW.Close()
+		<-done
+	})
 	hello := <-w.answers
 	w.hello = string(hello)
 	if !strings.Contains(string(hello), appwire.FeatureFactory) {
@@ -148,7 +153,7 @@ func (w *factoryWire) neverSaid(secrets ...string) {
 func testFactoryHub(t *testing.T) *appFactoryHub {
 	t.Helper()
 	hub := newAppFactoryHub()
-	hub.dir = func() string { return filepath.Join(t.TempDir(), "app") }
+	hub.dir = func() string { return filepath.Join(testHome(t), "app") }
 	dir := hub.dir()
 	hub.dir = func() string { return dir }
 	return hub

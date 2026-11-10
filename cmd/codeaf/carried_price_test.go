@@ -43,6 +43,9 @@ func pricedProfileRoad(t *testing.T) carriedRoad {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if road.close != nil {
+		t.Cleanup(road.close)
+	}
 	return road
 }
 

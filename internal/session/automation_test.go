@@ -479,6 +479,8 @@ func TestWorkOutcomesComeFromTheReport(t *testing.T) {
 func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	ledger := UsageLedgerPath()
+	t.Cleanup(func() { StopUsageWriter(ledger) })
 	store := automationStoreFor(t)
 	item, err := store.Create(automation.Automation{Title: "weekly", Workspace: t.TempDir(), Schedule: automation.Schedule{Every: "1d"}, Action: automation.Action{Do: "draft it"}})
 	if err != nil {
@@ -601,6 +603,8 @@ func TestAWatchesCheckUsesAReplacedKey(t *testing.T) {
 func TestWatchModelCheckObeysDailyLimitAndPreauthorization(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	ledger := UsageLedgerPath()
+	t.Cleanup(func() { StopUsageWriter(ledger) })
 	profile := t.TempDir()
 	if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
 		t.Fatal(err)

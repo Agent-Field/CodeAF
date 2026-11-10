@@ -24,7 +24,6 @@ import (
 // The provider's own counter is independent of the knowledge receipts and the
 // Spending ledger. Both compilation and reading use their exported interfaces.
 func TestMemorySpendAndLifecycle(t *testing.T) {
-	s := newLocalSetup(t)
 	t.Run("funnel law", checkMemoryFunnel)
 	var calls atomic.Int64
 	var blockNext atomic.Bool
@@ -97,7 +96,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"model": model, "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": result}}}, "usage": map[string]any{"prompt_tokens": 4400, "completion_tokens": 100, "cost": 0.01}})
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 	original := http.DefaultTransport
 	originalClient := http.DefaultClient
 	http.DefaultClient = &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
@@ -112,6 +111,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		return original.RoundTrip(copy)
 	})}
 	t.Cleanup(func() { http.DefaultClient = originalClient })
+	s := newLocalSetup(t)
 	vault := knowledge.Open(filepath.Join(s.home, "profile"))
 	if err := vault.StartBuild(); err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			meter := &stageBudget{floor: floor, item: item}
-			workspace := t.TempDir()
+			workspace := testHome(t)
 			if err := os.MkdirAll(filepath.Join(workspace, "bucket"), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -426,7 +426,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		}
 	})
 	t.Run("captured job migration", func(t *testing.T) {
-		v := knowledge.Open(t.TempDir())
+		v := knowledge.Open(testHome(t))
 		if err := v.StartBuild(); err != nil {
 			t.Fatal(err)
 		}
@@ -474,7 +474,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 		}
 	})
 	t.Run("unchanged failed input", func(t *testing.T) {
-		v := knowledge.Open(t.TempDir())
+		v := knowledge.Open(testHome(t))
 		if err := v.StartBuild(); err != nil {
 			t.Fatal(err)
 		}
@@ -496,7 +496,7 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 	t.Run("unchanged refinement", func(t *testing.T) {
 		richModel.Store(true)
 		defer richModel.Store(false)
-		v := knowledge.Open(t.TempDir())
+		v := knowledge.Open(testHome(t))
 		if err := v.StartBuild(); err != nil {
 			t.Fatal(err)
 		}

@@ -31,9 +31,11 @@ func (f moneyTransport) RoundTrip(r *http.Request) (*http.Response, error) { ret
 
 func moneyVault(t *testing.T) (*knowledge.Vault, string) {
 	t.Helper()
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", testHome(t))
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
-	profile := t.TempDir()
+	ledger := session.UsageLedgerPath()
+	t.Cleanup(func() { session.StopUsageWriter(ledger) })
+	profile := testHome(t)
 	if err := config.WriteDailyBudgetUSD(profile, 100); err != nil {
 		t.Fatal(err)
 	}
