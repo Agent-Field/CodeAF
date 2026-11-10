@@ -593,6 +593,7 @@ func doErrand(request doRequest) error {
 		settings, err = config.LoadKeyless()
 	}
 	if err == nil {
+		defer stopPoolErrands(settings.ProfileDir)
 		useAutoSeats(settings)
 	}
 	profileDir := config.ProfileDir()

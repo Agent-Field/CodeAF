@@ -1213,6 +1213,10 @@ that lands just after you paste a key into first-run setup is scored with that k
 A task that lands while there is no key at all is not judged. It is not marked
 judged either, so the next start scores it once a key exists.
 
+Quitting cancels unfinished scoring and waits at most one second for the pool's
+background work to stop. A cancelled score is left pending; the next ordinary launch retries
+it. Scores saved before you quit stay saved.
+
 With `model_pool` on, the rows leave for the relay after each judged run and
 once more at start-up, under this install's own nonce and nothing else. The
 index is fetched once a day, checked against the key built into the binary —
