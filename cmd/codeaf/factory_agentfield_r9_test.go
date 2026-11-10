@@ -95,7 +95,7 @@ func TestARunThatEndedJustBeforeAQuitIsReadAfterTheRestartNotRunAgain(t *testing
 				[]byte(`{"type":"session","version":1,"id":"nodecoder","cwd":"/node","model":"m","timestamp":"2026-11-08T15:00:01Z"}`),
 				[]byte(`{"type":"message","role":"user","content":"add HasPositive","timestamp":"2026-11-08T15:00:01Z"}`),
 			}, false)
-			r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+			r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 
 			// The first session starts the run and follows it.
 			ctx, quit := context.WithCancel(context.Background())
@@ -192,7 +192,7 @@ func TestAStoppedRunsOwedEndIsNotReadByAReopenedRound(t *testing.T) {
 	}
 	it, _ = st.Get(it.ID)
 	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "succeeded", "2026-11-08T16:00:00Z", "2026-11-08T16:01:00Z"), result: json.RawMessage(`{"success":true}`)}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	if _, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage, Round: 1}); err != nil {
 		t.Fatal(err)
 	}

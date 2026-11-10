@@ -60,14 +60,13 @@ func TestAnAnsweredHarnessQuestionIsNotAskedAgain(t *testing.T) {
 		[]byte(`{"type":"session","version":1,"id":"nodecoder","cwd":"/node","model":"m","timestamp":"2026-11-07T12:00:01Z"}`),
 		[]byte(`{"type":"ask","id":"ask-1","question":"Count a zero entry?","options":["Yes","No"],"timestamp":"2026-11-07T12:00:02Z"}`),
 	}, false)
-	workspace := t.TempDir()
 	var asks atomic.Int32
 	ask := func(context.Context, factory.Asked) (string, error) {
 		asks.Add(1)
 		return "the person answered: No", nil
 	}
 	start := func() (context.CancelFunc, chan struct{}) {
-		r := &afRemote{items: st, floor: st, workspace: workspace, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+		r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 		cur, _ := st.Get(it.ID)
 		ctx, cancel := context.WithCancel(context.Background())
 		stepped := make(chan struct{})
@@ -123,7 +122,7 @@ func TestAWithdrawnHarnessQuestionLeavesTheJobAndTheRunsEndLands(t *testing.T) {
 		[]byte(`{"type":"session","version":1,"id":"nodecoder","cwd":"/node","model":"m","timestamp":"2026-11-07T12:00:01Z"}`),
 		[]byte(`{"type":"ask","id":"ask-1","question":"Count a zero entry?","options":["Yes","No"],"timestamp":"2026-11-07T12:00:02Z"}`),
 	}, false)
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	// The job's ask as the floor's inbox writes it: the person holds it, and
 	// it waits until it is answered or withdrawn.
 	ask := func(ctx context.Context, q factory.Asked) (string, error) {

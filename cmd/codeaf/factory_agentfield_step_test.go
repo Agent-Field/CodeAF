@@ -69,7 +69,7 @@ func TestAnAgentFieldStepRunsTheReasonerThroughItsPlanToAPullRequest(t *testing.
 	waiting := afWaitingForApproval
 	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "running", "2026-11-07T12:00:00Z", "",
 		afNode("e-plan", "plan", "running", "2026-11-07T12:00:01Z", ""))}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	var logged []string
 	done := make(chan error, 1)
 	var result factory.StageResult
@@ -170,7 +170,7 @@ func TestARejectedPlanEndsTheStepWithTheRunsWords(t *testing.T) {
 	st, it, stage := afStepJob(t)
 	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "succeeded", "2026-11-07T12:00:00Z", "2026-11-07T12:00:05Z"),
 		result: json.RawMessage(`{"success":false,"summary":"Plan rejected: not now"}`)}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
 	if err == nil || err.Error() != "Build with SWE-AF did not succeed: Plan rejected: not now" {
 		t.Fatalf("err = %v", err)
@@ -198,7 +198,7 @@ func TestAFailedRunEndsItsStepWithTheRunsOutcomeNoteInPlainWords(t *testing.T) {
 			{Message: "Build completed with issues: 1/1 issues, verification=failed", Tags: []string{"build", "complete"}, Timestamp: afTime("2026-11-07T12:00:03Z")},
 			{Message: "No pull request: the build did not pass verification (" + report + ")", Tags: []string{"build", "github_pr", "skipped"}, Timestamp: afTime("2026-11-07T12:00:04Z")},
 		}}}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
 	const want = "Build with SWE-AF did not succeed: The build did not pass its checks, so no pull request was opened"
 	if err == nil || err.Error() != want {
@@ -228,7 +228,7 @@ func TestAPullRequestACallOpenedIsTheJobsAtOnceWhateverTheRunsEnd(t *testing.T) 
 		afNode("e-open", "open_pull_request", "succeeded", "2026-11-07T12:00:01Z", "2026-11-07T12:00:02Z"),
 		afNode("e-check", "check_work", "running", "2026-11-07T12:00:03Z", "")),
 		results: map[string]json.RawMessage{"e-open": json.RawMessage(`{"pr_url":"https://github.com/santoshkumarradha/factory-demo/pull/33","pr_number":33}`)}}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	done := make(chan error, 1)
 	go func() {
 		_, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
@@ -269,7 +269,7 @@ func TestAPullRequestACallReportedIsKeptWhenThatCallFailed(t *testing.T) {
 	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "failed", "2026-11-07T12:00:00Z", "2026-11-07T12:00:05Z",
 		afNode("e-ship", "ship_work", "failed", "2026-11-07T12:00:01Z", "2026-11-07T12:00:04Z")),
 		results: map[string]json.RawMessage{"e-ship": json.RawMessage(`{"pr_url":"https://github.com/santoshkumarradha/factory-demo/pull/34","pr_number":34,"error":"one check did not pass"}`)}}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	if _, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage}); err == nil {
 		t.Fatal("a failed run ended its step as done")
 	}
@@ -302,7 +302,7 @@ func TestAHarnessStepsQuestionIsAnsweredOverSteer(t *testing.T) {
 			cp.held["e-code"] = append(cp.held["e-code"], agentfield.RelayEntry{Seq: 100, Kind: "ended", Data: json.RawMessage(`{}`)})
 		})
 	}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	asked := make(chan factory.Asked, 1)
 	ask := func(_ context.Context, q factory.Asked) (string, error) {
 		asked <- q

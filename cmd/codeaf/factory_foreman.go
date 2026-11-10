@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -190,7 +189,18 @@ func foremanMaker(st *store.Store, workspace, profileDir string, load func() (fa
 		}
 		where := strings.TrimSpace(workspace)
 		if where == "" {
-			return "", errors.New("codeaf does not know which folder the foreman's conversation belongs in")
+			// A HOST WITH NO FOLDER OF ITS OWN (the desk's factory, or an
+			// engine started in the codeaf home) gives the foreman an empty
+			// folder under the floor: it reads the floor through its door,
+			// never through files (factory_chat_folder.go).
+			own, err := factoryForemanFolder(st)
+			if err != nil {
+				return "", err
+			}
+			where = own
+		}
+		if err := factoryFolderRefusal(st, where); err != nil {
+			return "", err
 		}
 		bucket, err := v3ProjectDir(where)
 		if err != nil {

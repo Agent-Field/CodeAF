@@ -32,7 +32,7 @@ func TestAFailedBuildsHeadlineIsTheNoPullRequestNoteNotTheNewerTidyUp(t *testing
 			{Message: "No pull request: the build did not pass verification (" + report + ")", Tags: []string{"build", "github_pr", "skipped"}, Timestamp: afTime("2026-11-08T12:21:37.464Z")},
 			{Message: "Repo finalized: Surveyed the repository: it is a small Go project (go.mod, ledger.go…). Removed the two untracked directories this run created.", Tags: []string{"build", "finalize", "complete"}, Timestamp: afTime("2026-11-08T12:21:37.472Z")},
 		}}}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
 	// The failing command is named, never what it printed (live e2e round 9).
 	const why = "The build did not pass its checks (go build ./... failed), so no pull request was opened"
@@ -67,7 +67,7 @@ func TestARunThatChangedNothingEndsWithNothingToChangeNotShipped(t *testing.T) {
 			{Message: "PR creation failed: No pull request could be created: the integration branch 'feature/x' has no commits ahead of the base branch 'main'", Timestamp: afTime("2026-11-08T12:10:31.780Z")},
 			{Message: "Opening the PR with gh failed: pull request create failed: GraphQL: No commits between main and feature/x (createPullRequest)", Timestamp: afTime("2026-11-08T12:10:31.781Z")},
 		}}}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage})
 	if err != nil || !res.Done {
 		t.Fatalf("a run that changed nothing is not a failure: %+v, %v", res, err)
@@ -103,7 +103,7 @@ func TestTheRoundARestartPicksUpReadsItsRunsEndInsteadOfStartingAnother(t *testi
 	it, _ = st.Get(it.ID)
 	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "succeeded", "2026-11-08T12:01:27Z", "2026-11-08T12:18:25Z"),
 		result: json.RawMessage(`{"success":true,"pr_url":"https://github.com/santoshkumarradha/factory-demo/pull/298","pr_number":298}`)}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	res, err := r.Step(context.Background(), factoryrun.Job{Item: it, Stage: stage, Round: 1, Continuing: true})
 	if err != nil || !res.Done || !strings.Contains(res.Output, "pull/298") {
 		t.Fatalf("the finished run did not end its step: %+v, %v", res, err)
@@ -142,7 +142,7 @@ func TestTheDrainAfterARunsEndStopsWhenTheEngineCloses(t *testing.T) {
 		[]byte(`{"type":"session","version":1,"id":"nodecoder","cwd":"/node","model":"m","timestamp":"2026-11-08T12:00:01Z"}`),
 		[]byte(`{"type":"message","role":"user","content":"add Len","timestamp":"2026-11-08T12:00:01Z"}`),
 	}, false)
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)

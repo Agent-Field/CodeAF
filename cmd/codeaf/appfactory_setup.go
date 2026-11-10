@@ -389,7 +389,12 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 	done := make(chan struct{})
 	close(done)
 	address := "http://" + listener.Addr().String()
-	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: home.Dir(), profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent, pollSource: l.pollSource, newIntake: l.newIntake,
+	// THE DESK'S FACTORY HAS NO WORKSPACE. It named the codeaf home here once,
+	// and every chat of a job with no checkout — each AgentField step, the
+	// foreman — worked in ~/.codeaf and swept codeaf's own state on every
+	// save. Those chats now work in their job's own empty folder
+	// (factory_chat_folder.go).
+	host := &appFactoryHost{ctx: hostCtx, cancel: cancel, done: done, floor: floor, address: address, token: token, workspace: "", profile: b.localProfile(), credentials: newFactorySessions(), quiet: true, githubHTTP: l.githubHTTP, rules: l.rules, seamHook: l.seamHook, parent: l.parent, pollSource: l.pollSource, newIntake: l.newIntake,
 		// A runner, once asked for, serves THIS factory with this launch's own bearer.
 		defaultTarget: func() (factoryTarget, error) { return factoryTarget{address, token}, nil }}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))

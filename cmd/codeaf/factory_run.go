@@ -114,7 +114,7 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 				// The session `codeaf runner join` kept for this machine.
 				credentials.SetFactorySession(a.URL, a.Token)
 			}
-			host := &appFactoryHost{ctx: ctx, floor: st, workspace: workspace, profile: profileDir, credentials: credentials, parent: factoryWorkerParent, defaultTarget: func() (factoryTarget, error) { return resolveFactory(st, factorySeam(st, workspace, profileDir)) }}
+			host := &appFactoryHost{ctx: ctx, floor: st, workspace: factoryHostWorkspace(workspace), profile: profileDir, credentials: credentials, parent: factoryWorkerParent, defaultTarget: func() (factoryTarget, error) { return resolveFactory(st, factorySeam(st, workspace, profileDir)) }}
 			host.workers()
 		})
 	})
