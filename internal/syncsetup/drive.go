@@ -696,7 +696,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 		return nil
 	}
 	if err == nil && v.Cell.Lease.Expires <= v.Now {
-		if !d.released.Load() {
+		if !d.released.Load() && (v.Cell.Lease.Device != d.sync.Device.ID() || v.Cell.Lease.Fence != fence) {
 			d.retireHold(ctx, held)
 		}
 		d.availableAfter(held, v.Cell.Lease)
@@ -752,11 +752,11 @@ func (d *Drive) Gate() error {
 	if stopped {
 		return cellstore.ErrReadOnly
 	}
-	if d.released.Load() && d.batcher != nil && d.batcher.AcquireUncertain() {
-		return &executor.WorkRefusal{Line: executor.TakeBackRetryLine, Retryable: true}
-	}
-	if d.released.Load() && d.retakeOffline.Load() && viewer.Line == chatlist.Available {
+	if d.retakeOffline.Load() && (d.released.Load() || viewer.Line == chatlist.Available) {
 		return &executor.WorkRefusal{Line: chatlist.TakeBackUnreachable, Retryable: true}
+	}
+	if d.released.Load() && d.batcher != nil && d.batcher.AcquireUncertain() && viewer.ID == "" {
+		return &executor.WorkRefusal{Line: executor.TakeBackRetryLine, Retryable: true}
 	}
 	if viewer.Line != "" {
 		return &executor.WorkRefusal{Line: viewer.Line, HolderID: viewer.ID, HolderName: viewer.Name}

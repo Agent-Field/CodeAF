@@ -18,6 +18,27 @@ func (b *Batcher) Lease() (id string, fence uint64) {
 	return d.ID(), d.Fence
 }
 
+// RetireFence stops future publication and renewal under an observed old hold.
+// It is safe inside ownership callbacks that already hold the publisher lock.
+// Requests already in flight remain fenced by the directory; their replies
+// cannot restore permission or change the expectation of the next acquisition.
+// The caller owns public notices after its admission and receipt retirement.
+func (b *Batcher) RetireFence(id string, fence uint64) {
+	changed := func() bool {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if b.Driving.ID() != id || b.Driving.Fence != fence {
+			return false
+		}
+		changed := !b.released || !b.renewalEnded
+		b.released, b.renewalEnded = true, true
+		return changed
+	}()
+	if changed {
+		b.leaseChanged.fire()
+	}
+}
+
 // Reacquire resumes an unchanged saved chat after its lease became free. The
 // conditional acquisition cannot displace a winner that arrived after the read.
 // Serializing with publishes keeps an old flush from replacing the new fence.

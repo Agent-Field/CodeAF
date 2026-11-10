@@ -69,7 +69,7 @@ type Batcher struct {
 	working   bool       // a turn is running here now
 	toldWork  bool       // the working flag the directory last heard from a beat
 	closing   bool       // The closing caller owns subsequent publishes and release.
-	released  bool       // An idle reader must reacquire before publishing or renewing.
+	released  bool       // A retired writer must reacquire before publishing or renewing.
 	// acquireUncertain keeps this released window read-only until a fresh
 	// conditional acquisition returns. Device identity cannot prove a window.
 	acquireUncertain bool
@@ -556,6 +556,24 @@ func (b *Batcher) drain(ctx context.Context) error {
 	}
 	if _, _, stale := b.view(); stale {
 		return b.resolve(ctx)
+	}
+	released := func() bool {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		return b.released
+	}()
+	if released {
+		d, _, _ := b.view()
+		seen, err := b.Publisher.Dir.Cell(ctx, d.ID())
+		if err != nil {
+			return syncwords.UploadFailure(err)
+		}
+		if seen.Cell.Lease.Fence != d.Fence || seen.Cell.Head != d.Head {
+			// A later owner or changed base keeps these turns on the existing branch road.
+			b.setStale()
+			return b.resolve(ctx)
+		}
+		return syncwords.UploadFailure(cellstore.ErrReadOnly)
 	}
 	return b.publish(ctx, head)
 }

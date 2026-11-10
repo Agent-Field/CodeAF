@@ -92,13 +92,17 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 			return false, err
 		}
 		defer d.workMu.Unlock()
-		stopped := func() bool { d.mu.Lock(); defer d.mu.Unlock(); return d.stopped }()
-		if stopped {
-			return false, cellstore.ErrReadOnly
-		}
 	}
 	held := d.sendLeaseSnapshot()
-	if d.batcher == nil || !d.released.Load() && d.displaced() {
+	stopped := func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.stopped
+	}()
+	if stopped {
+		return false, cellstore.ErrReadOnly
+	}
+	if d.batcher == nil {
 		return false, nil
 	}
 	id, fence := d.batcher.Lease()
@@ -108,16 +112,9 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	v, err := d.sync.Dir.Cell(ctx, id)
-	if idleAdmission {
-		d.retakeOffline.Store(syncwords.NetworkFailure(err) || errors.Is(err, context.DeadlineExceeded))
-	}
+	d.retakeOffline.Store(syncwords.NetworkFailure(err) || errors.Is(err, context.DeadlineExceeded))
 	if err != nil {
 		return false, err
-	}
-	if idleAdmission && d.batcher.AcquireUncertain() && v.Cell.Lease.Expires > v.Now {
-		// A newer own-device fence cannot identify this window. Do not renew
-		// or adopt it; a retry can conditionally acquire once it lapses.
-		return false, d.Gate()
 	}
 	lease := v.Cell.Lease
 	// A first publish or branch can change the lease during the read. That
@@ -125,27 +122,34 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	if currentID, currentFence := d.batcher.Lease(); currentID != id || currentFence != fence {
 		return false, nil
 	}
-	// Once this drive entered idle release, a stray heartbeat or lost release
-	// reply at the old fence never revives it: retaking acquires a new fence.
-	if lease.Expires <= v.Now || d.released.Load() && lease.Device == d.sync.Device.ID() && lease.Fence == fence {
-		if !d.released.Load() {
+	switch d.workOwnership(v, fence) {
+	case workUncertain:
+		return false, d.Gate()
+	case workConsent:
+		// A free higher fence still records a takeover. Retiring publication
+		// here also prevents a subsequent heartbeat from reviving that writer.
+		if lease.Device == d.sync.Device.ID() {
 			d.availableAfter(held, lease)
-			return false, nil
+		} else {
+			d.confirmHolder(ctx, lease)
 		}
+		d.batcher.RetireFence(id, fence)
+		return false, nil
+	case workReopen:
 		d.availableAfterWithin(ctx, held, lease)
-		// Never resume an older tree over work saved by another computer.
+		d.batcher.RetireFence(id, fence)
+		return false, nil
+	case workAcquire:
+		d.batcher.RetireFence(id, fence)
+		d.availableAfterWithin(ctx, held, lease)
+		// Only a self-initiated release can retake in place. Its saved head
+		// must still match, and release requires all local turns published.
 		if err := cellstore.Captured(ctx, d.cell); err != nil {
 			return false, err
 		}
 		head, err := cellstore.Head(d.cell)
 		if err != nil || head == nil || head.Turn.ID != v.Cell.Head {
-			if err == nil && lease.Device != d.sync.Device.ID() {
-				d.confirmHolder(ctx, lease)
-			}
 			return false, err
-		}
-		if func() bool { d.mu.Lock(); defer d.mu.Unlock(); return d.lost }() {
-			return false, nil
 		}
 		resumed, err := d.batcher.Reacquire(ctx, v)
 		if errors.Is(err, directory.ErrLeaseHeld) || errors.Is(err, directory.ErrFenceStale) {
@@ -170,34 +174,47 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 			return false, err
 		}
 		return d.finishIdleAcquire(ctx)
-	}
-	if lease.Device == d.sync.Device.ID() && lease.Fence == fence {
-		wasReleased := d.released.Load()
-		if d.released.Load() && !d.batcher.ResumeHeld(ctx, v) {
-			return false, nil
-		}
-		d.released.Store(false)
+	default:
 		d.releaseDone.Store(false)
 		d.resumeViewerWithin(ctx)
-		if wasReleased {
-			if err := d.recordSendLeaseWithin(ctx); err != nil {
-				d.availableAfterWithin(ctx, sendLease{}, directory.Lease{})
-				return false, err
-			}
-		}
 		return true, nil
 	}
-	if lease.Device == d.sync.Device.ID() {
-		if idleAdmission {
-			d.availableAfterWithin(ctx, held, lease)
-		} else {
-			d.availableAfter(held, lease)
-		}
-		return false, nil
-	}
+}
 
-	d.confirmHolder(ctx, lease)
-	return false, nil
+type workOwnership uint8
+
+const (
+	workHeld workOwnership = iota
+	workAcquire
+	workConsent
+	workUncertain
+	workReopen
+)
+
+// workOwnership is the drive's admission decision for both direct engine work
+// and the terminal's CheckWork door. A fresh listing alone cannot restore a
+// retired fence, and a higher fence remembers a takeover even after release.
+func (d *Drive) workOwnership(v directory.CellView, fence uint64) workOwnership {
+	lease := v.Cell.Lease
+	if lease.Device != d.sync.Device.ID() {
+		return workConsent
+	}
+	if lease.Fence != fence {
+		if d.released.Load() && d.batcher.AcquireUncertain() {
+			if lease.Expires > v.Now {
+				return workUncertain
+			}
+			return workAcquire
+		}
+		return workConsent
+	}
+	if d.released.Load() {
+		return workAcquire
+	}
+	if lease.Expires <= v.Now || d.displaced() {
+		return workReopen
+	}
+	return workHeld
 }
 
 func (d *Drive) confirmHolder(ctx context.Context, lease directory.Lease) {
@@ -281,6 +298,9 @@ func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
 	changed := d.viewer != viewer
 	d.viewer = viewer
 	d.mu.Unlock()
+	if d.batcher != nil && held.Fence != 0 && reading.Device == d.sync.Device.ID() && reading.Fence == held.Fence {
+		d.batcher.RetireFence(d.directoryID, held.Fence)
+	}
 	if held.Fence != 0 {
 		if err := d.sync.forgetSendLease(d.cell.ID, held); err != nil {
 			d.notice(err.Error())
@@ -314,7 +334,10 @@ func (d *Drive) availableAfterWithin(ctx context.Context, held sendLease, readin
 		version = d.noticeVersion.Add(1)
 	}
 	d.mu.Unlock()
-	if held.Fence != 0 && (reading.Device != d.sync.Device.ID() || reading.Fence != held.Fence) {
+	if d.batcher != nil && held.Fence != 0 && reading.Device == d.sync.Device.ID() && reading.Fence == held.Fence {
+		d.batcher.RetireFence(d.directoryID, held.Fence)
+	}
+	if held.Fence != 0 {
 		if err := d.sync.forgetSendLeaseWithin(ctx, d.cell.ID, held); err != nil {
 			d.notice(err.Error())
 		}
@@ -327,8 +350,7 @@ func (d *Drive) availableAfterWithin(ctx context.Context, held sendLease, readin
 	}
 }
 
-// An ordinary lapsed writer retains its original receipt path. The idle door
-// uses the bounded writer because it also retires receipts at release.
+// confirmSendLease uses bounded receipt I/O for idle-certified writers.
 func (d *Drive) confirmSendLease(ctx context.Context) error {
 	if d.idleNotices.Load() {
 		return d.recordSendLeaseWithin(ctx)
@@ -347,8 +369,8 @@ func (d *Drive) uncertainAcquire(ctx context.Context) {
 	d.ownershipNotice(ctx, version, viewer)
 }
 
-// finishIdleAcquire records authority before opening the work door. The caller
-// holds workMu on the idle path; ordinary lapsed writers retain their old path.
+// finishIdleAcquire records authority before opening the work door.
+// The caller holds workMu for this self-initiated retake.
 func (d *Drive) finishIdleAcquire(ctx context.Context) (bool, error) {
 	version := func() uint64 {
 		d.mu.Lock()

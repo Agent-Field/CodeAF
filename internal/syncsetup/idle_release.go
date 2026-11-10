@@ -26,6 +26,7 @@ func (d *Drive) SetIdleCheck(check func() bool) {
 
 // BeginWork cancels preparation immediately. Only the short final release can
 // be in flight, in which case admission must bypass its cached confirmation.
+// A retired viewer also bypasses that cache to reconsider fresh ownership.
 func (d *Drive) BeginWork() bool {
 	d.activity.Add(1)
 	d.idleMu.Lock()
@@ -33,7 +34,7 @@ func (d *Drive) BeginWork() bool {
 		d.idleStop()
 	}
 	d.idleMu.Unlock()
-	return d.released.Load() || d.committing.Load()
+	return d.released.Load() || d.committing.Load() || d.displaced()
 }
 
 // SavedMetadata resumes a paired chat's requested idle certification. It does

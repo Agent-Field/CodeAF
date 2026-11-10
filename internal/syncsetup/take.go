@@ -258,7 +258,17 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if err != nil {
 		return Continued{}, err
 	}
-	if !branchOnly && known && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID() && lease.Expires > view.Now {
+	heldHere := !branchOnly && known && view.Cell.ParentCell == "" && lease.Device == c.sync.Device.ID() && lease.Expires > view.Now
+	if heldHere {
+		// A revived own-device fence cannot restore a retired writer. Only
+		// its matching send receipt allows the active-session shortcut.
+		remote, fence, err := c.sync.SendLease(id)
+		if err != nil && !os.IsNotExist(err) {
+			return Continued{}, err
+		}
+		heldHere = err == nil && remote == id && fence == lease.Fence
+	}
+	if heldHere {
 		opened, err := cell.OpenAt(root, id)
 		if err != nil {
 			return Continued{}, err
