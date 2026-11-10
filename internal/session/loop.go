@@ -5703,6 +5703,6 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.
-	a.file.appendUsage(aux, model, true, role)
+	a.file.appendUsage(aux, model, true, role, !ledger)
 	a.stampSpend()
 }
