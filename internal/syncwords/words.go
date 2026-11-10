@@ -2,6 +2,7 @@
 package syncwords
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -96,3 +97,12 @@ func Asking(address string) string { return "asking the sync service at " + Host
 func IsOutage(text string) bool {
 	return text == UnknownOutage || text == LegacyOutage || strings.HasPrefix(text, outagePrefix) && strings.HasSuffix(text, outageSuffix)
 }
+
+// SavedHerePending names the same pending upload at app quit and individual close.
+const SavedHerePending = "saved here; it reaches your other devices when the sync service at %s answers"
+
+// SavedStorageOff is shared by app quit and the close of an individual chat.
+const SavedStorageOff = "saved here; sync storage is off for this account, so it stays on this computer"
+
+// ErrContinueStorageOff preserves local turns when the recorded history is missing here.
+var ErrContinueStorageOff = errors.New("cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here")

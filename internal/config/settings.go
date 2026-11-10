@@ -122,6 +122,7 @@ const (
 	// key the binary carries. The environment pin CODEAF_MODEL_POOL_PUBLIC_KEY
 	// outranks it, through the same resolver.
 	KeyModelPoolPublicKey = "models.pool.public_key"
+	KeyAttribution        = "attribution"
 	KeyAttributionModel   = "attribution.model"
 	KeySplitPct           = "split_pct"
 
@@ -1082,8 +1083,10 @@ var OperatorEnvPins = []string{
 	"CODEAF_CLAUDE_BIN",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
-	// CODEAF_BASE_URL is.
+	// CODEAF_BASE_URL is. CODEAF_RELAY_ADMIN_KEY names the operator seed file
+	// for the standalone relay-admin tool (cmd/codeaf-relay-admin).
 	"CODEAF_RELAY",
+	"CODEAF_RELAY_ADMIN_KEY",
 	// CODEAF_FURROW names a furrow to use instead of the one codeaf carries
 	// (internal/furrow). A path to a program is plumbing.
 	"CODEAF_FURROW",
@@ -1444,11 +1447,14 @@ const (
 	// would genuinely want to see priced first. 0 never asks.
 	DefaultPlanConsentUSD = 100.0
 
+	// DefaultAttribution signs commits, pull requests, issues and comments by
+	// default so work the person did not type is readable as such unless they
+	// turn attribution off.
+	DefaultAttribution = true
+
 	// DefaultAttributionModel names the model in the `Assisted-by` line by
 	// default, because the line is provenance and the model is the part of it
-	// somebody auditing the history later actually wants. The signature itself
-	// has no row and no off: work the person did not type is always readable as
-	// such (internal/exec's AttributionLaw).
+	// somebody auditing the history later actually wants.
 	DefaultAttributionModel = true
 
 	// The divider clamps so neither pane can be set into uselessness. The TUI
@@ -2765,11 +2771,17 @@ func (s *Settings) build() []Setting {
 			},
 		},
 		Setting{
+			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
+			Label: "attribution", Env: "CODEAF_ATTRIBUTION",
+			Hint:  AttributionHint,
+			read:  func() string { return formatBool(AttributionAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
+		},
+		Setting{
 			Key: KeyAttributionModel, Category: CategoryInterface, Kind: SettingBool,
 			Label: "model in commits", Env: "CODEAF_ATTRIBUTION_MODEL",
-			// ONE SHORT SENTENCE, AND IT IS THE TWO LINES. The signature itself is
-			// not a row any more — codeaf always signs what it writes — so the only
-			// thing left to choose is whether the `Assisted-by` line names the
+			// ONE SHORT SENTENCE, AND IT IS THE TWO LINES. When attribution is
+			// on, this row chooses whether the `Assisted-by` line names the
 			// model, and the hint shows both answers rather than describing them.
 			// internal/exec's test holds these bytes to the line exec writes.
 			Hint:  AttributionModelHint,
@@ -3224,6 +3236,26 @@ func PlanConsentUSDAt(profileDir string) (float64, error) {
 // it does, and the fix for a knob with no reader is to delete the knob, not to
 // leave it turning. When the learning loop that wants them lands it brings its
 // own rows, and the completeness gate will make sure of it.
+
+// AttributionHint is the `attribution` row's hint: what codeaf signs when the
+// row is on, and what it leaves unmarked when the row is off.
+const AttributionHint = "On, codeaf signs the commits, pull requests, issues and comments it writes; off, it adds no marks."
+
+// AttributionAt resolves whether codeaf signs the commits, pull requests,
+// issues and comments it writes. A malformed pin reads as the default rather
+// than refusing a launch over a toggle.
+func AttributionAt(profileDir string) bool {
+	if raw := strings.TrimSpace(env.Get("CODEAF_ATTRIBUTION")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultAttribution
+	}
+	if value, ok := persistedBool(profileDir, KeyAttribution); ok {
+		return value
+	}
+	return DefaultAttribution
+}
 
 // AttributionModelHint is the `attribution.model` row's hint: what the line
 // says with the row on, and what it says with the row off.

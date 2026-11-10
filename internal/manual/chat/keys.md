@@ -51,13 +51,15 @@ already explains that the chat stays on this computer until you pair it again.
 
 ## Quitting while the sync service is slow — waiting for a final save
 
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
 A removed computer quits quietly; it no longer says it is saving to your other devices.
 
 The screen closes after at most one second while a slow close finishes. The
 launcher keeps its connection open for the final publish and release before it exits.
 A successful quit with nothing waiting stays quiet. While a sync save waits, the restored terminal says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without that confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 
-The launcher waits up to 30 seconds for the final saving reply. If only upload is outstanding, the successful receipt is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service's host. Ctrl+c during this restored-terminal wait exits promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`.
+The launcher waits up to 30 seconds for the final saving reply. If only upload is outstanding, the successful receipt is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service's host. If that pending upload was refused because storage is off, the successful receipt is `saved here; sync storage is off for this account, so it stays on this computer`. Ctrl+c during this restored-terminal wait exits promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`.
 
 ## One Enter sends — checking which computer holds this chat
 

@@ -90,11 +90,17 @@ func (a *Agent) finishCloseWhenStopped() {
 		if file != nil {
 			_ = file.Close()
 		}
+		if a.releaseSeals != nil {
+			a.releaseSeals()
+		}
 		return
 	default:
 		a.beltMu.Unlock()
 	}
 	guard.Go("finishing a conversation deletion stop", func() {
+		if a.releaseSeals != nil {
+			defer a.releaseSeals()
+		}
 		<-done
 		if file != nil {
 			_ = file.Close()

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/filememo"
 	"github.com/Agent-Field/codeaf/internal/shell"
 )
@@ -322,6 +323,10 @@ func renderSystemAt(config Config, now time.Time) string {
 			out.WriteString("You are codeaf. Shell commands are unavailable here. Explain the shell requirement from Project, and do not claim to run commands. The manual tool can explain Windows setup.\n")
 		} else {
 			out.WriteString(bashWorkerPage())
+			if config.AttributionOff {
+				out.WriteString("\n\n")
+				out.WriteString(exec.AttributionOffLaw)
+			}
 		}
 		out.WriteString(workerFooter(config, now))
 		return out.String()

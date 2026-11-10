@@ -29,10 +29,12 @@ restores the ordinary prompt. Combined stdout/stderr appears as plain text while
 the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
 control sequences are removed for safe display. The command and output remain in
 history after reopening. The model waits for your next message before responding.
-In a chat that can move between computers, file changes from `!` are included in
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage). In a chat that can move between computers, file changes from `!` are included in
 its next saved turn, just like changes from the model's shell commands.
 A failed command keeps its output and exit status too. Shell paths, `@` names and
 slash words remain literal, not mentions or send tags.
+
+## What can ! shell commands do — input, timeouts, approvals and workspace permissions
 
 Commands receive no interactive input or terminal. Use non-interactive flags;
 editors, prompts and terminal apps are not supported. Each command starts a fresh
@@ -334,6 +336,8 @@ command).
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan` |
 
 ## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
@@ -1961,7 +1965,7 @@ the Memories tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
 Devices lists your paired computers, renames this one, removes another, and starts
-`/pair` from `Add another device`.
+`/pair` from `Add another device`. A paired account on a relay that reports storage permission also has `sync storage`: when off, Enter opens a request and shows its code and link, including from Settings search. Self-hosted storage needs no request.
 Privacy holds history, drafts and data-sharing choices.
 
 Old saved keys and values are unchanged. Search accepts old labels and keys,
@@ -2325,3 +2329,7 @@ nothing was left behind, `/setup` says so and does nothing.
 `/setup now` starts a **setup turn**: the agent installs the installable items and brings back what a move left behind, into user space. A new chat's commands already have the network and this computer's ordinary access; `/setup` is not needed to open the network or to install outside the workspace. Each setup call asks first unless approvals are open (`--yolo` or the allow posture), or the arrival card already approved that exact listed command. The setup approval floor still applies in a host-bound chat. Calls are recorded as external and the turn says `Setup` in `codeaf cell log`.
 
 Limits: a setup turn is never replayed on another machine (the agent does it again there), never attempts impossible items, and can be rewound like any turn. When it ends, codeaf looks at what is now on this machine and updates the record. Existing cells keep their declared class: an older sandboxed cell still has its folder limits and opens its network for the setup turn only. Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. A compatible furrow engine is required. Without a cell there is nothing to set up.
+
+## Why pairing commands do not turn on sync storage — request access in Devices
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

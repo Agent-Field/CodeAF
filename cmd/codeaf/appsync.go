@@ -44,7 +44,7 @@ func (*appBackend) ChatLocationsKnown() bool { return true }
 // keeps the default desk, including its home notices and FirstRun marker.
 func (b *appBackend) useSyncDrives(book *driveBook) {
 	b.locked(func() { b.drives = book })
-	book.notices = &driveNotices{
+	book.notices = &appDriveNotices{
 		firstRun: b.syncStarted,
 		say:      func(c cell.Cell, line string) { b.syncFact(c, appSyncFact{line: line}) },
 		viewer: func(c cell.Cell, viewer syncsetup.Viewer) {

@@ -644,11 +644,15 @@ one line on a failed row is the whole of what it says.
 
 ## Are my memories shared across computers? Does /remember work on my other computer — hand edited memories follow my paired computers, memory missing on the new laptop
 
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
 Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memories place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
 
 Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. A solo computer with submitted chats requires confirmed replacement to pair. A startup-only computer can pair directly and merge its memory and preferences. Explicit `--replace` clears shared memory and preferences. Chat-written memory still rides in each chat's own saved ledger as well.
 
 ## Memory in older local conversations and new moving chats
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Memories use the local store on each computer. After pairing, an older conversation gets an independent movable copy with its earlier memory history sealed into `.cell/memories.jsonl`; the original is untouched. Person and project memory also sync independently through the encrypted vault.
 

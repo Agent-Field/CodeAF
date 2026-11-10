@@ -99,6 +99,12 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 	var stateBackoff time.Duration
 	sharing := newHomeSharing(b.relayHome())
 	defer sharing.release()
+	var stopStorage func()
+	defer func() {
+		if stopStorage != nil {
+			stopStorage()
+		}
+	}()
 	said := ""
 	say := func() {
 		line := ""
@@ -167,6 +173,9 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 				return true
 			}()
 			if ready && ctx.Err() == nil {
+				if stopStorage == nil && !source.StorageAllowed() {
+					stopStorage = syncsetup.StartStorageRefresh(ctx, source.Home)
+				}
 				shareState()
 				say()
 				// One process publishes for the home (homesharing.go). Every

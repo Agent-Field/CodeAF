@@ -423,6 +423,14 @@ func (a *Agent) stampMeta() {
 	})
 }
 
+// userStampHeld lets a test hold [Agent.stampUserLocked]'s deferred write
+// before it reaches the disk, and metaStampSettling tells the same test that
+// [Agent.stampMeta] is about to wait for it. Both are nil in production.
+var (
+	userStampHeld     func()
+	metaStampSettling func()
+)
+
 // stampSpend records the conversation's running total — what the talking has
 // cost so far, and what it weighed — on the session's own meta.json.
 //
@@ -464,14 +472,6 @@ func (a *Agent) stampSpend() { a.stampTurnEnd(false) }
 // does one that ends on a partial reply a stop cut short or on a line the
 // harness wrote in the model's place ([Agent.answeredLocked]).
 func (a *Agent) stampSealed() { a.stampTurnEnd(true) }
-
-// userStampHeld lets a test hold [Agent.stampUserLocked]'s deferred write
-// before it reaches the disk, and metaStampSettling tells the same test that
-// [Agent.stampMeta] is about to wait for it. Both are nil in production.
-var (
-	userStampHeld     func()
-	metaStampSettling func()
-)
 
 // spendStampCaptured lets a test hold a stamp between capture and write.
 // It is nil in production and runs outside a.mu, under spendStampMu.

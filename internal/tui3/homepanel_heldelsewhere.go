@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // ── A WINDOW ON A CHAT ANOTHER MACHINE NOW HOLDS ────────────────────────────
@@ -62,6 +63,7 @@ type ownershipReadMsg struct {
 	fence           uint64
 	proof           bool
 	local           bool
+	extends         bool
 	// notHeld prevents a saved receipt from reviving a displaced writer offline.
 	notHeld       bool
 	writerStopped bool
@@ -189,8 +191,12 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		}
 		for _, row := range rows {
 			if row.Cell == remote && (row.Status == chatlist.Idle || row.Status == chatlist.Off) {
-				if head, _ := cellstore.Head(cell.Cell{ID: id, Root: session.DirOf(file)}); head != nil {
+				at := cell.Cell{ID: id, Root: session.DirOf(file)}
+				if head, _ := cellstore.Head(at); head != nil {
 					msg.head = head.Turn.ID
+				}
+				if msg.local && row.Mine && row.Head != "" {
+					msg.extends, _ = cellstore.Extends(at, row.Head)
 				}
 				break
 			}
@@ -255,7 +261,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 }
 
 // resumeOwnedSend spends only the submitted gesture after its fresh ownership
-// reading. A free chat can resume silently only from the same saved turn.
+// reading. A storage-off return can include later local turns when every saved turn is here.
 func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 	if msg.writerDisplaced {
 		return nil
@@ -308,7 +314,10 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 			}
 			return msg.resume()
 		}
-		if !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && row.Head != "" && row.Head == msg.head {
+		// Local-only work can be ahead of the last shared turn. Missing turns
+		// still need a choice, and the conditional take checks ancestry again.
+		localHead := row.Head != "" && row.Head == msg.head || row.Mine && (row.Head == "" || msg.local && msg.extends)
+		if !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && localHead {
 			if _, ok := a.taker.(conditionalTaker); ok {
 				draft := a.mainComposer()
 				return a.takeRemoteState(homeTakenMsg{row: row, draft: &draft, send: msg.resume})
@@ -422,6 +431,8 @@ func (a *app) failedTake(msg homeTakenMsg) string {
 // safety reading has not started a take and must not cancel one already running.
 func (a *app) continueFailure(msg homeTakenMsg) string {
 	switch {
+	case errors.Is(msg.err, syncwords.ErrContinueStorageOff):
+		return syncwords.ErrContinueStorageOff.Error()
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return lostRaceWord
 	case errors.Is(msg.err, ErrMoveStalled):

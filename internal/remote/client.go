@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"os"
 	"path/filepath"
@@ -89,6 +90,8 @@ const callDeadline = 10 * time.Second
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
 type Client struct {
+	savingNotices []string
+
 	// host keeps the typed destination as the fallback until the window chooses
 	// its displayed name. Keeping the two apart preserves the connection route.
 	host string
@@ -130,6 +133,9 @@ type Client struct {
 	// redial can discover that a person must not be left to guess at. See
 	// [Client.TakeNotice].
 	notice string
+	// Live saving sentences keep their own queue so either the surface or the
+	// closing report can claim them without consuming unrelated redial news.
+	liveSavingNotices []string
 	// stop is closed by Close, and it is what takes a roaming client out of its
 	// backoff without waiting for the timer it is sitting on.
 	stop     chan struct{}
@@ -700,15 +706,18 @@ func (c *Client) LinkNote() string {
 // news about something that just happened to this connection, not a condition
 // that stays true, so a second reading answers nothing.
 //
-// Only a redial writes one, and only for the two things a redial can discover
-// that a person must not be left to work out from the screen: the engine did not
-// keep the turn, and the engine came back with a different conversation open.
+// Redial news and live saving sentences share this display door. Taking a live
+// sentence here removes it from the closing report's ownership at the same time.
 func (c *Client) TakeNotice() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	said := c.notice
+	lines := c.liveSavingNotices
+	if c.notice != "" {
+		lines = append([]string{c.notice}, lines...)
+	}
 	c.notice = ""
-	return said
+	c.liveSavingNotices = nil
+	return strings.Join(lines, " — ")
 }
 
 // note puts one sentence where [Client.TakeNotice] will find it. Two notices
@@ -722,6 +731,12 @@ func (c *Client) note(sentence string) {
 		return
 	}
 	c.notice += " — " + sentence
+}
+
+func (c *Client) noteSaving(sentence string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.liveSavingNotices = append(c.liveSavingNotices, sentence)
 }
 
 // Close ends the connection, which ends the ssh process. It is NOT what the
@@ -950,7 +965,7 @@ func (c *Client) read() {
 		case "notice":
 			var line string
 			if json.Unmarshal(frame.Payload, &line) == nil && line != "" {
-				c.note(line)
+				c.noteSaving(line)
 			}
 		case "fatal":
 			c.bury(spokenError{reason: frame.Error})
@@ -987,6 +1002,9 @@ func (c *Client) deliver(frame Frame) {
 		// has gone ([Client.late]).
 		return
 	}
+	if len(frame.SavingNotices) > 0 {
+		c.keepSavingNotices(frame.SavingNotices)
+	}
 	if frame.Error != "" {
 		var err error = errors.New(frame.Error)
 		// Resident context errors can arrive before the caller's own context
@@ -1002,6 +1020,9 @@ func (c *Client) deliver(frame Frame) {
 			err = frame.WorkRefusal
 		}
 		if c.Welcome().LocalSavingReceipts && frame.SyncPending && frame.LocalSaved {
+			if frame.StorageOff {
+				err = errors.Join(wireauth.ErrStorageOff, err)
+			}
 			err = syncwords.UploadFailure(err)
 		}
 		if frame.UnsavedTranscript != "" {
@@ -3023,3 +3044,21 @@ func (a *Agent) LocalDurable() bool { a.c.mu.Lock(); defer a.c.mu.Unlock(); retu
 
 // SavingReceipts reports the two-way capability agreed in this connection's hello.
 func (a *Agent) SavingReceipts() bool { return a.c.Welcome().LocalSavingReceipts }
+
+// TakeSavingNotices also claims live sentences the window has not displayed.
+// The wire reader queues them before the closing reply, so they cannot arrive
+// after a successful close has handed this report to the restored terminal.
+func (a *Agent) TakeSavingNotices() []string {
+	a.c.mu.Lock()
+	defer a.c.mu.Unlock()
+	lines := append(a.c.liveSavingNotices, a.c.savingNotices...)
+	a.c.liveSavingNotices = nil
+	a.c.savingNotices = nil
+	return lines
+}
+
+func (c *Client) keepSavingNotices(lines []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.savingNotices = append(c.savingNotices, lines...)
+}

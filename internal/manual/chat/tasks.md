@@ -2415,7 +2415,7 @@ record for you with its `tasks` tool; just ask.
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
-## The column comes back after a restart — tasks reappear on resume or a switch back
+## The column comes back after a restart — all my tasks disappeared after a restart, tasks reappear on resume or a switch back
 
 **Reopening a conversation re-draws its own tasks, and the jobs it ran.** `/resume`,
 `codeaf resume`, and switching back behind home all rebuild the column from the record:

@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { generateKeyPairSync, createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto';
 
 const sha=b=>createHash('sha256').update(b).digest('hex');
-export async function hostedFixture({fixture=false,base='',go=false,rootLabel,now,entryPoint}={}) {
+export async function hostedFixture({fixture=false,base='',go=false,rootLabel,now,entryPoint,storageOpen=true,adminKeys='',limits={}}={}) {
   const prefix=prefixOf({BASE_PATH:base});
   const out=process.env.CODEAF_RAFT_PROOF_DIR;assert(out,'build the native/WASI proof first');
   const dir=await mkdtemp(join(tmpdir(),'p17b-'));
@@ -47,7 +47,7 @@ export async function hostedFixture({fixture=false,base='',go=false,rootLabel,no
   };
   const start=async(cut)=>{
     if(mf)await mf.dispose();await compile(cut);
-    const worker={name:'hosted-proof',modulesRoot:dir,modules:[{type:'ESModule',path:join(dir,'worker.js')},{type:'CompiledWasm',path:join(dir,'core.wasm')}],compatibilityDate:'2026-09-01',durableObjects:Object.fromEntries(Object.entries({IDENTITY:'IdentityDO',RAFT_MEMBERS:'RaftMemberDO',NEWCOMERS:'NewcomerGate',PAIR_GATE:'PairGate',MAILBOX:'Mailbox',LINK_GATE:'LinkGate',LINK_REQUEST:'LinkRequest'}).map(([binding,className])=>[binding,{className,useSQLite:true}])),r2Buckets:['FRAMES'],bindings:{BASE_PATH:base,LEASE_POLICY:'amended',CAF_LIMITS:JSON.stringify({requestsPerMinute:100000,requestsPerMinutePerDevice:100000,minGraceMs:2000})},outboundService:()=>{throw Error('H4 outbound network forbidden');}};
+    const worker={name:'hosted-proof',modulesRoot:dir,modules:[{type:'ESModule',path:join(dir,'worker.js')},{type:'CompiledWasm',path:join(dir,'core.wasm')}],compatibilityDate:'2026-09-01',durableObjects:Object.fromEntries(Object.entries({IDENTITY:'IdentityDO',RAFT_MEMBERS:'RaftMemberDO',NEWCOMERS:'NewcomerGate',PAIR_GATE:'PairGate',MAILBOX:'Mailbox',LINK_GATE:'LinkGate',LINK_REQUEST:'LinkRequest',MACHINE:'MachineDO'}).map(([binding,className])=>[binding,{className,useSQLite:true}])),r2Buckets:['FRAMES'],bindings:{BASE_PATH:base,LEASE_POLICY:'amended',CAF_ADMIN_KEYS:adminKeys,CAF_LIMITS:JSON.stringify({storageOpen,requestsPerMinute:100000,requestsPerMinutePerDevice:100000,minGraceMs:2000,...limits})},outboundService:()=>{throw Error('H4 outbound network forbidden');}};
     mf=new Miniflare(convertV4MiniflareOptions({log:diagnostics,handleStructuredLogs:entry=>diagnostics.capture(entry.level,entry.message),host:'127.0.0.1',inspectorPort:0,resourcePersistencePath:join(dir,'persist'),telemetry:{enabled:false},cf:false,workers:[worker]}));
     await mf.ready;return mf;
   };

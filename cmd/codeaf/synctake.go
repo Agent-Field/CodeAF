@@ -185,7 +185,8 @@ func (s surfaceMachines) RowsForChatSend(ctx context.Context, file string, offli
 		return nil, 0, false, directory.ErrUnreachable
 	}
 	rows, version, err := s.RowsForSend(ctx)
-	return rows, version, false, err
+	// Storage-off chats save locally without an uploading writer, even after their hold expires.
+	return rows, version, !s.StorageAllowed(), err
 }
 
 func (s surfaceMachines) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64, error) {
@@ -365,7 +366,7 @@ func (t takeover) OpenBranch(ctx context.Context, id string) (tui3.Taken, error)
 }
 
 func surfaceTaken(got syncsetup.Continued, elapsed time.Duration) tui3.Taken {
-	return tui3.Taken{Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head, AlreadyHere: got.AlreadyHere, Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
+	return tui3.Taken{Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head, AlreadyHere: got.AlreadyHere, LocalOnly: got.LocalOnly, Kept: got.Taken.Kept, KeptTurns: got.KeptTurns, Device: got.Device, TaskCopies: got.TaskCopies, Resume: got.Resume, Transcript: filepath.Join(got.Taken.Cell.Root, cell.TranscriptPath), Elapsed: elapsed}
 }
 
 // takeRootFor is where this machine keeps the chat with an id: the folder it

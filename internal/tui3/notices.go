@@ -25,16 +25,71 @@ import (
 // Notices is the desk. The zero value is not usable; make one with
 // [NewNotices]. It is safe from any goroutine.
 type Notices struct {
-	mu    sync.Mutex
-	lines []outsideNotice
-	said  map[string]bool // sentences SayOnce has put on the desk
-	bell  *doorbell
+	mu          sync.Mutex
+	lines       []outsideNotice
+	said        map[string]bool // sentences SayOnce has put on the desk
+	bell        *doorbell
+	restoring   bool
+	finalReport func([]string)
 }
 
 // outsideNotice keeps urgent account news visible on home as well as in chat.
 type outsideNotice struct {
-	text string
-	home bool
+	text  string
+	home  bool
+	final bool
+}
+
+// saving keeps final sentences on the desk until the loop displays them or
+// quitting hands them to the restored-terminal report. Both roads share this owner.
+func (n *Notices) saving(lines []string) {
+	if n == nil || len(lines) == 0 {
+		return
+	}
+	report, bell, restoring := func() (func([]string), *doorbell, bool) {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		if !n.restoring {
+			for _, line := range lines {
+				n.lines = append(n.lines, outsideNotice{text: line, final: true})
+			}
+		}
+		return n.finalReport, n.bell, n.restoring
+	}()
+	if restoring {
+		if report != nil {
+			report(lines)
+		}
+	} else {
+		bell.ring()
+	}
+}
+
+// finishSaving transfers only sentences the loop has not shown, and redirects
+// later completions before any close work leaves the update loop.
+func (n *Notices) finishSaving(report func([]string)) {
+	if n == nil {
+		return
+	}
+	lines := func() []string {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		n.restoring, n.finalReport = true, report
+		var lines []string
+		kept := n.lines[:0]
+		for _, line := range n.lines {
+			if line.final {
+				lines = append(lines, line.text)
+			} else {
+				kept = append(kept, line)
+			}
+		}
+		n.lines = kept
+		return lines
+	}()
+	if len(lines) > 0 && report != nil {
+		report(lines)
+	}
 }
 
 // NewNotices makes an empty desk that no surface listens to yet.

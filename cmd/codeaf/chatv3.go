@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -37,6 +37,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -1500,6 +1501,14 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	}
 	cfg, claim := v3SeatedPending(v3Migrated(cfg))
 	defer claim(false)
+	constructed := false
+	defer func() {
+		if !constructed {
+			if seals, ok := cfg.Seals.(interface{ Retire() }); ok {
+				seals.Retire()
+			}
+		}
+	}()
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
 	// conversation must not inherit this one's saved override.
@@ -1547,9 +1556,15 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 		if savedEffort != "" {
 			agent.SetConversationEffort(savedEffort)
 		}
+		constructed = true
 		return agent, cfg, modelNotice, nil
 	}
 	if !errors.Is(err, session.ErrSessionLocked) {
+		// With account storage off, startup is purely local and makes no relay
+		// writes, so retaining the drive lets callers observe watch retirement.
+		if syncsetup.StorageForHome(home.Dir()) == "off" {
+			claim(true)
+		}
 		return nil, cfg, "", err
 	}
 	return nil, cfg, "", &sessionHeldElsewhere{
@@ -1823,16 +1838,16 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// law; taskaudit_law_test.go now makes a second reader or an unwired door fail
 	// on the day it lands.
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
-	// AND WHETHER THE SIGNATURE ON THE GIT WORK codeaf DOES NAMES THE MODEL,
-	// read here for the reason the audit row above it is read here: every v3
-	// door comes through this function, and a row honoured in the conversation
-	// but not in an automation's run is a row the person cannot trust. The
-	// signature itself has no row: codeaf always signs. PROFILE-ONLY — a
-	// repository that could change what a visitor's commits say about them by
-	// being cloned would be writing into somebody else's provenance. The
-	// CONTRIBUTING file a repository writes still wins over the signature, but
-	// it wins by being read and obeyed, not by rewriting somebody's profile
-	// (internal/exec's AttributionLaw).
+	// AND WHETHER THE SIGNATURE ON THE GIT WORK codeaf DOES IS WRITTEN AT ALL,
+	// OR NAMES THE MODEL, read here for the reason the audit row above it is
+	// read here: every v3 door comes through this function, and a row honoured
+	// in the conversation but not in an automation's run is a row the person
+	// cannot trust. PROFILE-ONLY — a repository that could change what a
+	// visitor's commits say about them by being cloned would be writing into
+	// somebody else's provenance. The CONTRIBUTING file a repository writes
+	// still wins over the signature, but it wins by being read and obeyed, not
+	// by rewriting somebody's profile (internal/exec's AttributionLaw).
+	cfg.AttributionOff = !config.AttributionAt(profileDir)
 	cfg.AttributionModelOff = !config.AttributionModelAt(profileDir)
 	// Whether a reply that comes apart is cut and asked again. PROFILE-ONLY, and
 	// the reason is not trust this time but taste: it is a judgement about

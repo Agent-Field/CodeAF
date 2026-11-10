@@ -2,6 +2,8 @@
 
 ## How do I add another computer — the Add another device card (add another machine), codeaf pair, a link to paste, and pairing a server with no browser
 
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. The original files stay untouched and remain usable in older codeaf builds.
@@ -44,6 +46,8 @@ Approving a self-hosted page's link in a terminal keeps that page's service when
 The card goes away once you have two devices. After that, `/pair` or Settings → Devices → Add another device still offers a place to paste the new device’s link, alongside the code command. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 
 ## Do older chats move after pairing?
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 Older chats move through an independent copy. Once paired, the terminal chat prepares chats active in the last 30 days in the background while it is open, one at a time; the desktop app does not. Opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
@@ -95,6 +99,12 @@ With a self-hosted address (`CODEAF_SYNC_URL=<url>` or `--via <address>`), the l
 
 A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair` on the new device again. Ctrl+c while it waits ends with `Cancelled. Nothing was paired.`
 
+## I only opened codeaf and quit — can this computer pair without --replace
+
+Yes. Skipping setup and quitting an empty chat counts as starting codeaf, with either a pairing code or a link. Its empty transcript, draft, command history, inventory and empty working folder do not require `--replace`.
+
+Once you send a message, that chat belongs to this computer. With one such chat, pairing says `this computer already has 1 chat of its own, so nothing was changed.` The rest of the message explains `--replace`: local chats stay here but stop syncing, and shared memories and settings are cleared. Saved knowledge, automations, project work, chat memories and unknown local files keep their existing protection.
+
 ## The four-digit check — how I know the right computer is asking
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
@@ -107,7 +117,7 @@ On the approving screen the number reads `Check number 4821. Approve only if the
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-When you open a link on a device that is already in (paste it, or type `/pair <link>`), the screen says who is asking:
+On an already paired device, paste a link or type `/pair <link>` to see who is asking:
 
 ```
 A new device wants to pair.
@@ -238,7 +248,9 @@ this device was removed by another of your devices, so this chat stays here only
 
 ## Can a removed computer rejoin — /devices, pairing again and retained local chats
 
-`/devices` on a removed computer says the removal notice in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair --replace to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. Removal is shown in an open window and after restarting. Your local chats stay usable while this computer is removed.
+Pairing again restores device access; sending new chats, keys or shared state through the hosted sync service needs sync storage approval (Settings → Devices → sync storage).
+
+`/devices` on a removed computer says the removal notice in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair --replace to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. Removal appears immediately in an open window and on Home, and after restarting, once only. Your local chats stay usable while this computer is removed, and no longer follow your other devices.
 
 In the desktop app, choose Pair a computer and enter a current device's code or ask to join by link. After approval from a device still in your devices, this computer keeps the same identity, its local chats, shared memories and settings, and receives a fresh device key. Its chats can sync again. No replacement confirmation is needed. A computer that was never removed reports that nothing changed.
 
@@ -256,7 +268,7 @@ chats no longer sync under the replaced membership.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-These are the sentences a link pairing says when it stops, in the words the screen uses. Nothing was changed on either device when you read one of them.
+These are the screen's sentences when link pairing stops. Nothing was changed on either device when you read one of them.
 
 - `that is not a codeaf pairing link or code; it looks like https://codeaf.agentfield.ai/p/k7m2q9xd#... or k7m2q9xd.<key>`: what was pasted is neither shape. Paste the whole link or the whole `<code>.<key>` token. Links from your own sync service are accepted too.
 - `the link ran out before anyone approved it; run `codeaf pair` again for a new one`: a link is good for 10 minutes.
@@ -270,6 +282,8 @@ These are the sentences a link pairing says when it stops, in the words the scre
 Too many requests from one network are refused too: at most 10 new links in an hour and 3 waiting at once from one network. See *Pairing your chats with a second computer* for the code route and its own limit `too many pairings from this network; wait 7 min`.
 
 ## I quit on my laptop and opened my desktop after pairing
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. A sleeping or disconnected laptop still needs `alt+c` on Home. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
 
@@ -353,3 +367,7 @@ Pairing compares service URLs with scheme and host case ignored, default
 ports omitted (`:443` for HTTPS, `:80` for HTTP) and trailing slashes omitted.
 An actual difference in scheme, port, host or path prefix remains a different
 service. A link for a different service is refused before any lookup there.
+
+## The first /status after pairing — sync storage on your own service
+
+Successful pairing asks the sync service once for your account's storage permission and saves its answer on this computer. This applies to `codeaf pair`, `codeaf pair approve`, a link pasted on Home and `/pair`. An already-open window's next `/status` shows `sync storage  off` when that answer is off, including with your own service address. A service that does not report storage permission adds no line; an unavailable service leaves the previous saved answer alone.

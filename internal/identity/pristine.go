@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+
+	"github.com/Agent-Field/codeaf/internal/inventory/layout"
 )
 
 // Pristine says whether the home holds nothing but what starting codeaf makes:
@@ -74,8 +76,11 @@ var started = within(startupRules)
 // its transcript and memories are the chat itself.
 var withinSession = within(rules{
 	"meta.json": never, "meta.lock": never, "presence.json": never,
+	// An owned chat starts with an empty repository before any request is sent.
+	"work": within(rules{".git": unopenedRepository}),
 	".cell": within(rules{
-		"meta.json": never, "session.json": never, ".furrowpolicy": never, "env": empty,
+		"meta.json": never, "session.json": never, ".furrowpolicy": never,
+		"env":            within(rules{layout.File: startupInventory}),
 		"memories.jsonl": empty, "transcript.jsonl": noTurns,
 	}),
 })

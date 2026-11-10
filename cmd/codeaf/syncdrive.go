@@ -6,12 +6,15 @@ import (
 	"log"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // driveCloseWithin bounds the quit path's last publish and lease release, so a
@@ -31,10 +34,10 @@ type driveBook struct {
 	claims map[*liveDrive]int
 	// notices is installed by an app assembly before any drive starts. Nil
 	// retains the terminal's desk and its marking first-run behaviour.
-	notices *driveNotices
+	notices *appDriveNotices
 }
 
-type driveNotices struct {
+type appDriveNotices struct {
 	firstRun func(*syncsetup.Sync)
 	say      func(cell.Cell, string)
 	viewer   func(cell.Cell, syncsetup.Viewer)
@@ -47,14 +50,14 @@ type driveNotices struct {
 // A computer with no identity yet gets a drive side that starts by itself the
 // moment one is made (see liveDrive). A nil book answers nil, which is how a
 // door that never syncs asks.
-func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(error)) *liveDrive {
-	d, claim := b.pendingDriveOf(c, engine, report)
+func (b *driveBook) driveOf(c cell.Cell, engine cellstore.Engine, report func(error), watches ...*cellstore.SealWatch) *liveDrive {
+	d, claim := b.pendingDriveOf(c, engine, report, watches...)
 	claim(true)
 	return d
 }
 
 // pendingDriveOf reserves a drive until one opener owns the journal.
-func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report func(error)) (*liveDrive, func(bool)) {
+func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report func(error), watches ...*cellstore.SealWatch) (*liveDrive, func(bool)) {
 	noop := func(bool) {}
 	if b == nil {
 		return nil, noop
@@ -66,6 +69,12 @@ func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report 
 	defer b.mu.Unlock()
 	if d := b.drive[c.ID]; d != nil {
 		if !d.superseded() {
+			if d.notices != nil {
+				if syncsetup.StorageForHome(home.Dir()) == "on" {
+					d.notices.clearStorageOff()
+				}
+				d.notices.register(watches...)
+			}
 			return d, b.claim(d, c.ID)
 		}
 		// Settle the displaced writer before the replacement reads its branch map
@@ -83,10 +92,21 @@ func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report 
 	// tool call in it would be refused as superseded.
 	workAdmissions.Delete(b.drive[c.ID])
 	delete(b.drive, c.ID)
+	notices := &driveNotices{}
+	notices.register(watches...)
+	appNotices := b.notices
+	sayNotice := notices.say
+	if appNotices != nil {
+		sayNotice = func(line string) { appNotices.say(c, line) }
+	}
 	d := newAdmissionDrive(func(changed func()) (*syncsetup.Drive, error) {
-		return startDriveWith(c, engine, report, b.notices, changed)
-	})
+		return startLiveDrive(c, engine, report, appNotices, sayNotice, changed)
+	}, notices)
+	if appNotices != nil {
+		d.say = sayNotice
+	}
 	d.transcript = (session.Place{Dir: c.Root}).Transcript()
+	d.localGate = &localToolGate{cell: c, say: sayNotice}
 	if d != nil {
 		if b.drive == nil {
 			b.drive = map[string]*liveDrive{}
@@ -125,14 +145,27 @@ func (b *driveBook) claim(d *liveDrive, id string) func(bool) {
 	}
 }
 
-// startDrive opens the drive side of c. The error it answers is already
-// reported; it is returned so a caller can tell a computer that has no identity
-// yet (which /pair will change) from one that cannot sync at all.
+// startDrive opens the drive side of c. Local failures are reported here;
+// liveDrive owns refusal notices and waits across startup attempts.
 func startDrive(c cell.Cell, engine cellstore.Engine, report func(error), changed ...func()) (*syncsetup.Drive, error) {
 	return startDriveWith(c, engine, report, nil, changed...)
 }
 
-func startDriveWith(c cell.Cell, engine cellstore.Engine, report func(error), notices *driveNotices, changed ...func()) (*syncsetup.Drive, error) {
+func startDriveWith(c cell.Cell, engine cellstore.Engine, report func(error), notices *appDriveNotices, changed ...func()) (*syncsetup.Drive, error) {
+	say := surfaceNotices.Say
+	refuse := surfaceNotices.SayHomeOnce
+	if notices != nil {
+		say = func(line string) { notices.say(c, line) }
+		refuse = say
+	}
+	d, err := startLiveDrive(c, engine, report, notices, say, changed...)
+	sayRefusalTo(refuse, err)
+	return d, err
+}
+
+// startLiveDrive keeps every drive sentence on the conversation's own notice road,
+// leaving startup refusal announcements to liveDrive so retry waits say each once.
+func startLiveDrive(c cell.Cell, engine cellstore.Engine, report func(error), notices *appDriveNotices, say func(string), changed ...func()) (*syncsetup.Drive, error) {
 	s, ok, err := syncsetup.Open(home.Dir())
 	if errors.Is(err, syncsetup.ErrNoIdentity) {
 		// Waiting for an identity is not a seal failing: the live drive starts by itself once one
@@ -150,12 +183,12 @@ func startDriveWith(c cell.Cell, engine cellstore.Engine, report func(error), no
 	if syncsetup.Quiet(home.Dir()) {
 		return nil, syncsetup.ErrQuiet // a fleet of one has nothing to sync with yet
 	}
-	say, refuse := surfaceNotices.Say, surfaceNotices.SayHomeOnce
+	if !s.StorageAllowed() {
+		return nil, wireauth.ErrStorageOff
+	}
 	var viewer func(syncsetup.Viewer)
 	var driving func()
 	if notices != nil {
-		say = func(line string) { notices.say(c, line) }
-		refuse = say
 		viewer = func(v syncsetup.Viewer) { notices.viewer(c, v) }
 		driving = func() { notices.driving(c) }
 		notices.firstRun(s)
@@ -177,7 +210,7 @@ func startDriveWith(c cell.Cell, engine cellstore.Engine, report func(error), no
 		OnViewer:  viewer,
 		OnDriving: driving,
 	})
-	if sayRefusalTo(refuse, err) {
+	if _, refused := cellsync.RefusalOf(err); refused {
 		return nil, err
 	}
 	report(err)
@@ -220,6 +253,7 @@ func (b *driveBook) closeAll() {
 	ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
 	defer cancel()
 	for _, d := range drives {
+		defer func() { recordFinalSaveNotices(d.TakeSavingNotices()) }()
 		if err := d.Close(ctx); err != nil {
 			log.Print("sync: closing a chat: ", err)
 			recordFinalSaveFailure(session.SavingError(d.transcript, err))
@@ -310,4 +344,129 @@ func chatSyncService() string {
 		return ""
 	}
 	return syncsetup.Resolve(home.Dir()).URL
+}
+
+// chatSyncStats uses the sync client's signed store wire without starting a driver.
+// A quiet or disabled identity must not make a request just to open /status.
+func chatSyncStats(ctx context.Context) (blobstore.Counts, error) {
+	if chatSyncService() == "" {
+		return blobstore.Counts{}, nil
+	}
+	s, err := syncOf()
+	if err != nil {
+		return blobstore.Counts{}, err
+	}
+	if !syncsetup.StorageNeedsRefresh(s.Home, s.Relay, s.Identity.ID()) {
+		return syncsetup.StorageCounts(s.Home, s.Relay, s.Identity.ID()), nil
+	}
+	before := s.StorageAllowed()
+	counts, err := s.RefreshStorage(ctx)
+	if err == nil && !before && s.StorageAllowed() {
+		syncDrives.storageOpened()
+	}
+	if syncsetup.StorageGated(s.Home, s.Relay, s.Identity.ID()) && counts.Storage != "on" {
+		counts.Storage = "off"
+	}
+	return counts, err
+}
+
+// storageOpened wakes both running batchers and local startup waits for open chats.
+func (b *driveBook) storageOpened() {
+	if b == nil {
+		return
+	}
+	for _, d := range b.openDrives() {
+		d.storageOpened()
+	}
+}
+
+// openDrives copies the open drives under the lock, so waking them happens
+// outside it.
+func (b *driveBook) openDrives() []*liveDrive {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	drives := make([]*liveDrive, 0, len(b.drive))
+	for _, d := range b.drive {
+		drives = append(drives, d)
+	}
+	return drives
+}
+
+// driveNotices fans out to each seat sharing a writer, including an idle engine seat.
+// Only a current startup refusal is replayed while no drive is running.
+type driveNotices struct {
+	mu      sync.Mutex
+	last    string
+	watches map[*cellstore.SealWatch]bool
+	closing bool
+	final   []string
+}
+
+func (n *driveNotices) register(watches ...*cellstore.SealWatch) {
+	for _, watch := range watches {
+		if watch != nil {
+			watch.OnRetire = n.add(watch)
+		}
+	}
+}
+
+func (n *driveNotices) add(watches ...*cellstore.SealWatch) func() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.watches == nil {
+		n.watches = make(map[*cellstore.SealWatch]bool)
+	}
+	for _, watch := range watches {
+		if watch == nil || n.watches[watch] {
+			continue
+		}
+		n.watches[watch] = true
+		if n.last != "" {
+			watch.Note(n.last)
+		}
+	}
+	return func() {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		for _, watch := range watches {
+			delete(n.watches, watch)
+		}
+	}
+}
+
+// refuse caches only startup conditions, never first-run or running-drive announcements.
+func (n *driveNotices) refuse(line string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.last = line
+	for watch := range n.watches {
+		watch.Note(line)
+	}
+}
+
+func (n *driveNotices) clear() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.last = ""
+}
+
+func (n *driveNotices) say(line string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closing {
+		n.final = append(n.final, line)
+		return
+	}
+	for watch := range n.watches {
+		watch.Note(line)
+	}
+}
+
+// clearStorageOff keeps a later seat from replaying a refusal that approval ended.
+func (n *driveNotices) clearStorageOff() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.last == chatlist.RelayStorageOff {
+		n.last = ""
+	}
 }

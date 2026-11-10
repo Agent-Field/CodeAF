@@ -18,6 +18,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/atlas"
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
@@ -2157,7 +2158,8 @@ type app struct {
 	link LinkSeam
 	// seal is what the door can tell this surface about the sealing of the
 	// conversation's calls (sealseam.go). Its zero value draws nothing.
-	seal SealSeam
+	seal           SealSeam
+	stopSealNotice func()
 	// newsSilenceSaid is whether this window has already said that its engine
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
@@ -2399,7 +2401,8 @@ type app struct {
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
 	// as for the keyboard. Closed, it costs the frame nothing.
-	sheet sheet
+	sheet       sheet
+	storageRead storageSampling
 	// deck is the phone tier's status sheet (statusdeck.go): the SECOND
 	// fullscreen thing, and the only one that exists at one size class only —
 	// under sixty columns the status row is a two-row deck, and this is where
@@ -2750,6 +2753,8 @@ type app struct {
 	cellsUnavailable string
 	pairing          Pairing
 	syncService      string
+	syncStats        func(context.Context) (blobstore.Counts, error)
+	syncSpace        blobstore.Counts
 	pair             pairPanel
 
 	// approvals answers a new device's request and revokes devices, and
@@ -2890,7 +2895,8 @@ type app struct {
 	// quitting keeps new input out of teardown while allowing another interrupt to leave.
 	quitting bool
 	// saveFailure retains closing errors for the report after the screen is restored.
-	saveFailure func(error)
+	saveFailure   func(error)
+	savingNotices func([]string)
 	// closingStarted retains pending engine replies after the terminal is restored.
 	closingStarted      func(<-chan struct{})
 	savingDurability    func(func() bool)
@@ -3111,6 +3117,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		pairing:             opts.Pairing,
 		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
+		syncStats:           opts.SyncStats,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
 		taskComputers:       opts.TaskComputers,
@@ -3141,6 +3148,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		movedName:           movedName,
 		deviceID:            opts.DeviceID,
 		saveFailure:         opts.SaveFailure,
+		savingNotices:       opts.SavingNotices,
 		closingStarted:      opts.ClosingStarted,
 		savingDurability:    opts.SavingDurability,
 		savingCompatibility: opts.SavingCompatibility,
@@ -3491,6 +3499,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		opts.Notices = NewNotices()
 	}
 	a.useNotices(opts.Notices)
+	a.useSeal(opts.Seal)
 	return a
 }
 
@@ -3701,6 +3710,12 @@ func (a *app) Init() tea.Cmd {
 	// (delegate.go). The list is the engine's, so a switch asks again
 	// ([app.attachConversation]).
 	standing = append(standing, a.installDelegates())
+	// The relay's sync-space reading is asked for once here, off the loop, so the
+	// first /status can answer at once instead of waiting on the network
+	// (syncspace.go). Nil when sync is off or no relay can report it.
+	if read := a.refreshSyncSpace(); read != nil {
+		standing = append(standing, read)
+	}
 	return tea.Batch(standing...)
 }
 
@@ -3865,12 +3880,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case conversationClosedMsg:
 		a.conversationClosing = false
-		if errors.Is(msg.err, session.ErrSavingUnanswered) {
-			a.note(closeStillFinishingWord)
-		} else if msg.err != nil {
-			a.note(closeSaveFailedWord)
-		} else if msg.finishing {
-			a.note(closeStillFinishingWord)
+		a.saidNotices()
+		for _, line := range msg.notices {
+			a.note(line)
+		}
+		if line := closeSaveWords(msg.err, msg.finishing, msg.address); line != "" {
+			a.note(line)
 		}
 		a.touch()
 		return a, nil
@@ -5941,6 +5956,29 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (cachecmd.go).
 		a.toldNote(msg.line)
 		return a, nil
+
+	case storageAccountMsg:
+		if msg.serial <= a.storageRead.applied || msg.serial != a.storageRead.pending {
+			return a, nil
+		}
+		a.storageRead.pending = 0
+		a.storageRead.applied = msg.serial
+		a.storageRead.code, a.storageRead.state = msg.code, msg.state
+		if a.at(pageSettings) && (a.sheet.storageCode != msg.code || a.sheet.storageState != msg.state) {
+			a.sheet.storageCode, a.sheet.storageState = msg.code, msg.state
+			a.sheet.build()
+			a.touch()
+		}
+		return a, nil
+
+	case syncSpaceMsg:
+		// The reading is the identity's, not one chat's, so it is kept whichever
+		// chat is on screen. It is only ever read by the next /status.
+		if msg.counts.Storage == "" {
+			msg.counts.Storage = a.syncSpace.Storage
+		}
+		a.syncSpace = msg.counts
+		return a, a.sampleStorageAccount(true)
 
 	case spelledMsg:
 		// The expansion, or nothing at all — a failure, a timeout and a model that
@@ -8626,13 +8664,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// serialized object would corrupt the JSON. Any other words after the
 		// name fall through to the bare form, the route this command has always
 		// answered on.
-		if rest == "--json" {
-			a.note(a.statusJSON())
-			return nil
-		}
-		text := a.statusText()
-		a.noteFacts(text, a.statusFacts(text)...)
-		return nil
+		return a.runStatusCommand(rest)
 
 	case "cost":
 		// THE FIGURE IS THE PAYLOAD AND THE LABEL IS THE FURNITURE (payload.go).
@@ -8867,7 +8899,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	a.history = conv.History
 	// AND THE SEALS ARE THIS CONVERSATION'S OWN, cleared by a zero for the same
 	// reason: one chat's failed seal is not another's (sealseam.go).
-	a.seal = conv.Seal
+	a.useSeal(conv.Seal)
 	a.saveApproval = conv.SaveApproval
 	a.saveBashApproval = conv.SaveBashApproval
 	a.applyApprovals = conv.ApplyApprovals

@@ -27,6 +27,8 @@ func gitTestRepo(t *testing.T) *pipeline {
 		}
 	}
 	git("init", "-q")
+	git("config", "--local", "maintenance.auto", "false")
+	git("config", "--local", "gc.auto", "0")
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("base\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

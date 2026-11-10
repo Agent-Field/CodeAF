@@ -592,7 +592,7 @@ func (a *app) takeOver() tea.Cmd {
 		a.dropParked()
 		a.writeDraftsNow(a.leavingDraft())
 		a.retainSavingDurability([]Agent{a.agent})
-		return closeConversationLater(a.agent, session.StopByTakeover, a.saveFailure, a.closingStarted, nil)
+		return closeConversationLater(a.agent, session.StopByTakeover, a.saveFailure, a.closingStarted, nil, a.syncService)
 	}
 	a.dropParked()
 	if a.draftFile != "" {

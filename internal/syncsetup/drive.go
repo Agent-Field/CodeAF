@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 // unknownDevice is said for the machine that took a chat when the directory
@@ -94,6 +95,9 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if Quiet(s.Home) {
 		return nil, ErrQuiet
 	}
+	if !s.StorageAllowed() {
+		return nil, wireauth.ErrStorageOff
+	}
 	files, err := s.files(eng, c)
 	if err != nil {
 		return nil, err
@@ -133,6 +137,8 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 		defer close(d.done)
 		var work sync.WaitGroup
 		work.Go(func() { d.followOwnership(run) })
+		stopStorage := OnStorageOpened(s.Home, d.StorageOpened)
+		defer stopStorage()
 		_ = d.batcher.Run(run)
 		work.Wait()
 	}()
@@ -195,6 +201,9 @@ func (d *Drive) note(sealed cellstore.Sealed) {
 // see. It is best effort and says nothing when it fails: the fingerprint is then
 // not recorded, so the next flush tries again, and a seal never waits on it.
 func (d *Drive) syncVault(ctx context.Context) {
+	if !d.sync.StorageAllowed() {
+		return
+	}
 	err := d.sync.withVault(func(v vaultsync.Syncer) error {
 		if err := v.Capture(); err != nil {
 			return err
@@ -274,7 +283,9 @@ func PutOwnDevice(ctx context.Context, dir directory.Client, id identity.Identit
 // the same upsert every chat start makes ([Sync.putDevice]): a device may only
 // ever write its own record, the name travels sealed under the identity's key,
 // and the relay never learns it.
-func (s *Sync) Rename(ctx context.Context, name string) error { return s.putDevice(ctx, name) }
+func (s *Sync) Rename(ctx context.Context, name string) error {
+	return PutOwnDevice(ctx, s.Dir, s.Identity, s.Device, name)
+}
 
 // driving finds where this chat stands in the directory: no record yet (fence
 // 0), a record this device now holds, or a record another device holds, in
@@ -320,6 +331,11 @@ func (s *Sync) driving(ctx context.Context, c cell.Cell) (cellsync.Driving, stri
 		extends, err := cellstore.Extends(c, view.Cell.Head)
 		if err != nil {
 			return drv, "", err
+		}
+		// An empty head has no stored turns to require from this device's own
+		// expired hold; other devices retain the ordinary ancestry decision.
+		if view.Cell.Head == "" && view.Cell.Lease.Device == s.Device.ID() {
+			extends = true
 		}
 		if !extends {
 			return drv, nonemptyHolder(view.Cell.Lease.Device), nil
@@ -431,7 +447,13 @@ func (d *Drive) loseHold() {
 func (d *Drive) displaced() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.lost || d.viewer.Line != ""
+	return d.stopped || d.lost || d.viewer.Line != ""
+}
+
+func (d *Drive) isStopped() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.stopped
 }
 
 // becomeViewer is the Batcher's word that another device took the chat over:
@@ -603,7 +625,7 @@ func (d *Drive) CheckLease(ctx context.Context) error {
 	if err := cellstore.WaitCapture(ctx, d.cell); err != nil {
 		return err
 	}
-	if d.batcher == nil {
+	if d.isStopped() || d.batcher == nil {
 		return nil
 	}
 	id, fence := d.batcher.Lease()
@@ -809,4 +831,11 @@ func (d *Drive) Close(ctx context.Context) error {
 		}
 	})
 	return d.closeErr
+}
+
+// StorageOpened wakes capacity-halted publication without replacing ownership.
+func (d *Drive) StorageOpened() {
+	if d.batcher != nil {
+		d.batcher.Freed()
+	}
 }

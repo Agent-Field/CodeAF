@@ -64,7 +64,7 @@ func prepareTaskTreeForNode(ctx context.Context, place Place, workspace, session
 		return taskTree{}, err
 	}
 	for _, branch := range branches[1:] {
-		if _, err := git(tree.dir, append(codeafGitIdentity(),
+		if _, err := privateGit(tree.dir, append(codeafGitIdentity(),
 			"merge", "--no-edit", branch)...); err == nil {
 			continue
 		}

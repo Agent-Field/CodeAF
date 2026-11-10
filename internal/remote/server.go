@@ -60,6 +60,7 @@ import (
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"path/filepath"
 	"sort"
@@ -437,9 +438,11 @@ type Session struct {
 	localSaved     chan struct{}
 	localSavedOnce sync.Once
 	// closeErr retains the completed saving result for concurrent and repeated departures.
-	closeErr error
+	closeErr     error
+	closeNotices []string
 	// renewalStop ends idle health forwarding when this conversation changes or closes.
 	renewalStop chan struct{}
+	renewalDone chan struct{}
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -907,6 +910,18 @@ func (sess *Session) noteClosed(agent WrappedAgent) error {
 	if sess.engine.Closed != nil {
 		sess.engine.Closed(agent)
 	}
+	var lines []string
+	if source, ok := agent.(interface{ TakeSavingNotices() []string }); ok {
+		lines = append(lines, source.TakeSavingNotices()...)
+	}
+	if source, ok := agent.(interface{ TakeSealNotice() string }); ok {
+		for line := source.TakeSealNotice(); line != ""; line = source.TakeSealNotice() {
+			lines = append(lines, line)
+		}
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	sess.closeNotices = append(sess.closeNotices, lines...)
 	return err
 }
 
@@ -1764,6 +1779,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	if next == nil {
 		return nil, errors.New("engine: the session swap opened no conversation")
 	}
+	sess.stopRenewals()
 	sess.mu.Lock()
 	previous := sess.agent
 	sess.agent = next
@@ -1832,6 +1848,10 @@ type server struct {
 	encoding            string
 	localSavingReceipts bool
 	syncNoticeWords     bool
+	// renewalNotices remain owned by this window until a live write or saving reply.
+	// The session mutex protects the queue; the writer serializes its delivery.
+	renewalNotices []string
+	renewalWrite   <-chan struct{}
 
 	open    func(Hello) (*Session, error)
 	session *Session
@@ -2261,12 +2281,17 @@ func (s *server) dispatch(call Frame) {
 			result.WorkRefusal = refusal
 		}
 		result.SyncPending = result.LocalSaved && syncwords.UploadPending(err)
+		result.StorageOff = result.SyncPending && errors.Is(err, wireauth.ErrStorageOff)
 		var unsaved *session.UnsavedChatError
 		if errors.As(err, &unsaved) {
 			result.UnsavedTranscript = unsaved.Transcript
 		}
 	}
-	_ = s.send(result)
+	if s.session != nil && (call.Method == MethodClose || call.Method == MethodDetach || call.Method == MethodSessionNew || call.Method == MethodSessionOpen) {
+		_ = s.sendSavingResult(result)
+	} else {
+		_ = s.send(result)
+	}
 	// And only now does a turn opened by that call begin to speak.
 	// ONLY A TURN EVER OPENS A STREAM, so only a turn releases one: two calls
 	// of any other class running at once would race the one slot, and one of
@@ -3889,4 +3914,12 @@ func (sess *Session) releasePending() bool {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 	return sess.releaseOnIdle
+}
+
+func (sess *Session) takeCloseNotices() []string {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	lines := sess.closeNotices
+	sess.closeNotices = nil
+	return lines
 }

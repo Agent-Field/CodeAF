@@ -66,6 +66,8 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeyHints:
 		p.Label = "show hints"
 		p.Description = "Show contextual tips while you work."
+	case KeyAttribution:
+		p.Label = "sign commits, pull requests and issues"
 	case KeyAttributionModel:
 		p.Label = "include model in commit attribution"
 	case KeyHistoryEnabled:
@@ -196,7 +198,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	}
 	switch s.Key {
 	case KeyEffort, KeyModelFallbacks, KeyTaskAutoApprove, KeyBashBackgroundAfter,
-		KeyTaskModel, KeyTaskAudit, KeyAttributionModel, KeyReplyGuard,
+		KeyTaskModel, KeyTaskAudit, KeyAttribution, KeyAttributionModel, KeyReplyGuard,
 		KeyPromptProfile, KeyTaskSettle, KeyTaskRepairRounds, KeyTaskParallel,
 		KeyHistoryEnabled, KeyDraftPersist, KeyDocumentEngine, KeyTaskColumn,
 		KeyGoogleOAuthClient, KeyGoogleOAuthSecret, KeySlackOAuthClient,

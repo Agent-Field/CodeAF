@@ -1070,3 +1070,11 @@ limit, codeaf turns saved file history off for that chat and says once:
 Tools keep working and the conversation still saves normally. Reopening the chat
 does not repeat the sentence. Restart codeaf to try saving file history again.
 Ordinary project chats with a usable saving connection keep their history.
+
+## Closing one open chat while sync storage is off
+
+Closing a chat with `/quit` or its close action can leave your other chats open. Only when an upload is refused because sync storage is off after a successful local save, codeaf says `saved here; sync storage is off for this account, so it stays on this computer`. The same words appear when quitting the app with that saving result.
+
+When local saving succeeds but another upload is still pending, the sentence is `saved here; it reaches your other devices when the sync service at <address> answers`. It names the service used by the chat you closed.
+
+If saving here fails, closing one chat still says `this chat could not be saved; its unsaved turns stay on this computer for the next start`. An unanswered save remains finishing in the background until its result arrives. Storage being off alone does not mean the local save failed.

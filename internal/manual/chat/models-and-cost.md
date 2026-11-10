@@ -4583,6 +4583,8 @@ a chain ends after ten requests rather than waiting forever.
 
 ## Do my crew settings follow me to my other computer?
 
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+
 After pairing, crew seat model pins, allowed-model choices, the crew daily cap,
 per-task cap and free-route choice follow synced preferences within a few seconds,
 even with no chat open. Both computers need to be running codeaf and able to reach

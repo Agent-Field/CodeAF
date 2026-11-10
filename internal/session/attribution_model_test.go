@@ -86,4 +86,17 @@ func TestASwitchBackRestoresThePageByteForByte(t *testing.T) {
 	if pageNow(unnamed) != before {
 		t.Fatal("a page that names no model was re-rendered by a switch")
 	}
+
+	unsigned, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.System = ""
+		config.AttributionOff = true
+	})
+	beforeUnsigned := pageNow(unsigned)
+	unsigned.SetModel("qwen/qwen3-coder")
+	if pageNow(unsigned) != beforeUnsigned {
+		t.Fatal("a page with attribution off was re-rendered by a switch")
+	}
+	if got := unsigned.signsGitWork().sign("task: x"); got != "task: x" {
+		t.Fatalf("an agent with attribution off signed as %q", got)
+	}
 }

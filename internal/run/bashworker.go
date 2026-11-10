@@ -84,8 +84,10 @@ type BashWorker struct {
 	// Zero is no ceiling. spendPreauthorized is the person's `--yes-spend` /
 	// `CODEAF_PREAUTHORIZE_SPEND=1` standing permission to spend past it, lifting
 	// that one limit the same way `doSpendGuard` lifts it from the crew guard.
-	dailyBudgetUSD     float64
-	spendPreauthorized bool
+	dailyBudgetUSD      float64
+	spendPreauthorized  bool
+	attributionOff      bool
+	attributionModelOff bool
 	// seat carries the cell execution boundary into every worker call.
 	seat         procexec.Seat
 	workspaceURI string
@@ -195,6 +197,8 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		DailyBudgetResolved: true,
 		SpendPreauthorized:  w.spendPreauthorized,
 		WorkerDID:           workerDID(w.store, task, w.agentDID),
+		AttributionOff:      w.attributionOff,
+		AttributionModelOff: w.attributionModelOff,
 	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err

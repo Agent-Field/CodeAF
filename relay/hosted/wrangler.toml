@@ -54,6 +54,7 @@ new_sqlite_classes = ["LinkGate", "LinkRequest"]
 command = "sh ../../scripts/raft-hosted-build.sh"
 
 [vars]
+CAF_ADMIN_KEYS = "aTuSKJXUX8oeetqpxdDIqyB7tHfetea0dmlHJzEfreQ"
 # "amended": 90-second leases, renewed by publish; "stage1": 30-second leases.
 LEASE_POLICY = "amended"
 

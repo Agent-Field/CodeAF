@@ -327,13 +327,16 @@ func (a *app) placeWord(path string) string {
 // the one spelling the home screen's project rows share, so the two surfaces
 // cannot drift into disagreeing about the same chat.
 func movedWord(workspace string, owned bool) string {
-	if owned || !session.OwnsFolder(workspace) {
+	if !session.OwnsFolder(workspace) {
 		return ""
 	}
-	name := session.TitleOf(workspace)
 	if origin := session.OriginOf(workspace); origin != "" {
 		return filepath.Base(origin) + session.MovedCopyWord
 	}
+	if owned {
+		return ""
+	}
+	name := session.TitleOf(workspace)
 	if name == "" {
 		name = "this chat"
 	}
