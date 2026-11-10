@@ -1897,6 +1897,8 @@ each its own fact, so a task you ended reads `stopped · branch kept · <branch>
 on a protected branch, was on a different branch than when the work was cut, moved
 to a different commit by your own work after the cut, or was detached. The branch
 named there holds the finished work; the how-tasks-run page explains the exact reason.
+This landing stays visible with `branch kept · <branch>` even when routine
+completed work is folded into `background work`.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
 does not by itself request a merge or a checkout change.
 
