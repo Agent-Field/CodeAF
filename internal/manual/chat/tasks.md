@@ -1842,6 +1842,8 @@ or switching tabs does not announce old completions again.
 Recognizable older standalone receipts also group on reopening, without rewriting
 or deleting the journal. When the original request cannot be established, a collapsed
 background-work group retains the receipt instead of assigning it to a later request.
+A task and its parts share one `background work` group even when their results
+arrive during different turns. Unrelated completions still group by their arrival turn.
 Ambiguous mixed messages and requested alerts remain visible. A pending `your call`
 decision stays visible with its reason and working answer controls until resolved.
 

@@ -243,6 +243,7 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 	byTurn := map[int]*group{}
 	unknown := map[int]*group{}
 	unknownIdentity := map[string]*group{}
+	unknownFamily := map[uint64]*group{}
 	add := func(c workCompletion, at int) {
 		c.at = at
 		if c.owner == 0 && c.task != 0 {
@@ -254,10 +255,33 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 			return
 		}
 		var g *group
+		var family uint64
 		if c.owner != 0 {
 			g = byTurn[c.owner]
 		} else {
+			// A family's landings share background work even when accepting a part starts a later turn.
+			family = c.task
+			seen := map[uint64]bool{}
+			for family != 0 {
+				if seen[family] {
+					family = 0
+					break
+				}
+				seen[family] = true
+				node := a.tasks[family]
+				if node == nil {
+					break
+				}
+				parent, err := strconv.ParseUint(node.parent, 10, 64)
+				if err != nil || parent == 0 {
+					break
+				}
+				family = parent
+			}
 			g = unknownIdentity[workCompletionKey(c)]
+			if g == nil && family != 0 {
+				g = unknownFamily[family]
+			}
 			if g == nil {
 				g = unknown[d.entries[at].turn]
 			}
@@ -274,6 +298,9 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 		key := workCompletionKey(c)
 		if c.owner == 0 {
 			unknownIdentity[key] = g
+			if family != 0 {
+				unknownFamily[family] = g
+			}
 		}
 		if prev, ok := g.keys[key]; ok {
 			old := &g.items[prev]
