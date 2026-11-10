@@ -66,6 +66,9 @@ func (a *Agent) stampUserLocked(text string) {
 	at := time.Now()
 	title := placeholderTitle(text)
 	a.metaStamp().Owe(func() {
+		if userStampHeld != nil {
+			userStampHeld()
+		}
 		a.updateMeta(dir, snapshot, func(meta *Meta) {
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
@@ -378,13 +381,34 @@ func (a *Agent) stampTrees() { a.stampMeta() }
 // share. The transaction reads the latest title and spending from disk and
 // preserves them; this snapshot owns only model, effort, approval, places and trees.
 // EVERY FAILURE IS SILENCE, for this file's stated reason.
+//
+// AN EARLIER DEFERRED STAMP LANDS FIRST. [Agent.stampUserLocked] captures the
+// model, effort, approval, places and trees when a person speaks, and writes
+// them behind the path. If that write were still owed when this one ran, it
+// would land afterwards and put the older values back. An effort set just after
+// a conversation opened read back empty after a restart (#2549), and a tree cut
+// in the same window would have been forgotten. [Agent.stampModel] settles for
+// the same reason. The settle comes before the snapshot, so whatever lands
+// second is the newer state.
 func (a *Agent) stampMeta() {
+	if metaStampSettling != nil {
+		metaStampSettling()
+	}
+	a.metaStamp().settle()
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 	})
 }
+
+// userStampHeld lets a test hold [Agent.stampUserLocked]'s deferred write
+// before it reaches the disk, and metaStampSettling tells the same test that
+// [Agent.stampMeta] is about to wait for it. Both are nil in production.
+var (
+	userStampHeld     func()
+	metaStampSettling func()
+)
 
 // stampSpend records the conversation's running total — what the talking has
 // cost so far, and what it weighed — on the session's own meta.json.
