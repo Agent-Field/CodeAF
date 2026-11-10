@@ -674,6 +674,8 @@ type (
 		call *hostCall
 		ch   <-chan session.Event
 		err  error
+		// refused keeps the submitted words until the engine accepts them.
+		refused string
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -6411,6 +6413,16 @@ func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
 	if msg.err != nil {
+		if msg.refused != "" {
+			a.atMainComposer(func(state *composerState) {
+				words := msg.refused
+				if !state.box.empty() {
+					words += "\n" + unfoldPastes(state.box.String(), state.pastes)
+				}
+				state.box.setText(words)
+				state.pastes = nil
+			})
+		}
 		// A MESSAGE THE ENGINE REFUSED NEVER HAPPENED, so the line the surface
 		// drew for it comes off the page and the refusal is put where it was
 		// (echo.go). The sentence is the engine's own, unchanged: it knows why —
@@ -7548,7 +7560,7 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call, refused: text}
 	}, a.wake())
 }
 

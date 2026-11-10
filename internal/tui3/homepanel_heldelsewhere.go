@@ -51,10 +51,12 @@ func (a *app) heldElsewhere() (chatlist.Row, bool) {
 type ownershipReadMsg struct {
 	retryIdle    bool
 	admissionErr error
-	file, draft  string
-	host         string
-	chips        []chip
-	pastes       []pasteChip
+	// reopen records a drive refusal that requires a fresh conditional take.
+	reopen      bool
+	file, draft string
+	host        string
+	chips       []chip
+	pastes      []pasteChip
 	// A local startup timeout is not a failed Home directory listing.
 	writerWaitFailed bool
 	// Displacement has already been explained by the notice that ended this wait.
@@ -301,7 +303,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 }
 
 // resumeOwnedSend spends only the submitted gesture after its fresh ownership
-// reading. A free chat can resume silently only from the same saved turn.
+// reading. The taker preserves pending turns before replacing an unheld writer.
 func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 	if msg.writerDisplaced || a.refuseIdleSend(msg) {
 		return nil
@@ -347,7 +349,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 		if msg.proof {
 			fence = msg.fence
 		}
-		if row.Status == chatlist.Here && row.Fence == fence && !(msg.notHeld && (held.awaitingWriter || msg.writerStopped) && !msg.local) && (!held.blocked || held.seen && row.Mine && !held.failed) {
+		if !msg.reopen && row.Status == chatlist.Here && row.Fence == fence && !(msg.notHeld && (held.awaitingWriter || msg.writerStopped) && !msg.local) && (!held.blocked || held.seen && row.Mine && !held.failed) {
 			if held.blocked {
 				held.blocked, held.seen = false, false
 				a.machineRead.sendHolds[id] = held
@@ -358,7 +360,7 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 			}
 			return msg.resume()
 		}
-		if !row.AutoOpen && !held.blocked && (row.Status == chatlist.Idle || row.Status == chatlist.Off) && row.Head != "" && row.Head == msg.head {
+		if row.Mine && (msg.ownFence == 0 || row.Fence == msg.ownFence) && !held.blocked && (msg.reopen || !row.AutoOpen && (row.Status == chatlist.Idle || row.Status == chatlist.Off)) && row.Head != "" {
 			if _, ok := a.taker.(conditionalTaker); ok {
 				draft := a.mainComposer()
 				return a.takeRemoteState(homeTakenMsg{row: row, draft: &draft, send: msg.resume})

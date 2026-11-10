@@ -9,10 +9,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // resumeIdleSend asks this open writer to confirm or reacquire in place.
-// Released rows require a matching saved head; the writer checks live ownership.
+// The drive checks ownership and its saved head before an in-place retake.
+// An ordinary retired writer instead requires a conditional reopen.
 func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, msg ownershipReadMsg, blocked bool) ownershipReadMsg {
 	if blocked || msg.reading.err != nil {
 		return msg
@@ -32,7 +34,10 @@ func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, ms
 		if !row.Mine {
 			continue
 		}
-		if !msg.ownLiveRow(row) && (msg.head == "" || row.Head != msg.head || !msg.retryIdle && (!row.AutoOpen || row.Status != chatlist.Idle && row.Status != chatlist.Off)) {
+		if msg.ownFence != 0 && row.Fence != msg.ownFence && !msg.retryIdle {
+			continue
+		}
+		if !msg.ownLiveRow(row) && !(row.Released && row.AutoOpen) && (msg.head == "" || row.Head != msg.head || !msg.retryIdle && (!row.AutoOpen || row.Status != chatlist.Idle && row.Status != chatlist.Off)) {
 			continue
 		}
 		// The directory read is complete. Taking the hold back is a separate,
@@ -52,6 +57,24 @@ func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, ms
 			// typed refusal. This window was taking back its released chat;
 			// keep that uncertainty across Enter and later ownership readings.
 			var refusal *executor.WorkRefusal
+			if errors.As(err, &refusal) && refusal.Line == chatlist.Available && refusal.HolderID == "" && !refusal.Retryable {
+				// A lapsed or outside-released drive stays closed. The taker
+				// preserves pending turns and installs its replacement session.
+				msg.reopen = true
+				if msg.local && row.DeviceID == "" {
+					// A receipt-only row names no observed holder. Read that
+					// expectation before taking, after the drive retired its hold.
+					probe, cancel := context.WithTimeout(context.Background(), idleSendProbeTimeout)
+					defer cancel()
+					msg.reading.rows, msg.reading.version, msg.reading.err = chatlist.RowsForSend(probe, source)
+					msg.reading.readWithin = idleSendProbeTimeout
+					msg.local, msg.notHeld, msg.fresh = false, true, msg.reading.err == nil
+					if syncwords.NetworkFailure(msg.reading.err) || readTimedOut(msg.reading.err) {
+						msg.admissionErr = &executor.WorkRefusal{Line: chatlist.TakeBackUnreachable, Retryable: true}
+					}
+				}
+				return msg
+			}
 			if !errors.As(err, &refusal) {
 				err = &executor.WorkRefusal{Line: executor.TakeBackRetryLine, Retryable: true}
 			}
@@ -91,11 +114,10 @@ func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, ms
 	return msg
 }
 
-// ownLiveRow sends an own-device live row through work admission.
-// A known newer fence stays on the continuation road. When no receipt or cached
-// fence survived, only the writer's CheckWork can establish this window's hold.
+// ownLiveRow routes an unheld window or a receipt-only local row through the
+// drive's admission decision before any words leave the box.
 func (msg ownershipReadMsg) ownLiveRow(row chatlist.Row) bool {
-	return msg.notHeld && row.Mine && row.Status == chatlist.Here && row.Fence != 0 && (msg.ownFence == 0 || row.Fence == msg.ownFence)
+	return (msg.notHeld || msg.local && row.DeviceID == "") && row.Mine && row.Status == chatlist.Here && row.Fence != 0 && (msg.ownFence == 0 || row.Fence == msg.ownFence)
 }
 
 func (a *app) refuseIdleSend(msg ownershipReadMsg) bool {

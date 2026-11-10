@@ -13,6 +13,9 @@ invalidates:
   - "Automatic open briefly included lapsed holds. Lapsed holds now retain Continue here, including a holder last known to be working; an absent working advertisement cannot reliably prove idle."
   - "Opening a chat could claim it was asking again before checking whether a reply was owed. Refused owed replies now keep their question and show only the refusal."
   - "A released window's offline send could report that the chat was available without explaining why it could not send. It now names the unreachable sync service and keeps the words."
+  - "An idle release attempted while the sync service was down could leave a live chat unable to send after a short outage. A release that never reached the service is now undone, and the chat sends on its own hold."
+  - "After an outage in which this computer's own hold lapsed, the chat's window could refuse every Enter until restart. The first Enter now takes it back into a fresh writer at a new fence, with no card, when no other computer holds it."
+  - "A send refused by the engine cleared the message box. The refused words now go back into the box."
 ---
 
 Running turns, queued or steering work, tasks, jobs, deferred writes and unsent
@@ -99,3 +102,11 @@ A desktop take that loses to the same computer reclaiming an idle release now
 says that computer picked the chat up again, retaining the existing conflict
 code and holder-changed detail. A different holder keeps the existing refusal;
 neither refusal takes the chat.
+
+A lapsed or outside-released hold on this computer never resumes in place: its
+fence stops renewing and publishing once the lapse is observed, and the next
+Enter makes a conditional take, expecting the holder and fence it observed,
+into a fresh writer that sends the kept words. Unpublished turns carry over or
+branch exactly as an ordinary take does. A window that released its own hold
+still reacquires in place. Another computer's hold, or any newer fence, keeps
+the Continue-here card.

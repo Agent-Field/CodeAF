@@ -959,7 +959,7 @@ func (a *app) submitImagesShown(text, shown string, plain []segment) tea.Cmd {
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark}
+		return submittedMsg{ch: ch, err: err, echo: mark, refused: text}
 	}, a.wake())
 }
 
