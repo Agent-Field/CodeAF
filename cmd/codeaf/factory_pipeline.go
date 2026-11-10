@@ -142,7 +142,11 @@ var factoryPeopleCaches = struct {
 }{profiles: map[string]*factorygithub.PeopleLoader{}}
 
 func factoryPeople() *factorygithub.PeopleLoader {
-	profile := factoryProfile("")
+	return factoryPeopleAt("")
+}
+
+func factoryPeopleAt(profileDir string) *factorygithub.PeopleLoader {
+	profile := factoryProfile(profileDir)
 	factoryPeopleCaches.Lock()
 	defer factoryPeopleCaches.Unlock()
 	if loader := factoryPeopleCaches.profiles[profile]; loader != nil {
@@ -150,6 +154,9 @@ func factoryPeople() *factorygithub.PeopleLoader {
 	}
 	loader := factorygithub.NewPeopleLoader(func(ctx context.Context) factorygithub.PeopleAPI {
 		token, _ := factorygithub.TokenAt(ctx, profile)
+		if token == "" {
+			return nil
+		}
 		return forge.NewClient(token)
 	}, nil)
 	factoryPeopleCaches.profiles[profile] = loader
@@ -164,7 +171,11 @@ var factoryRuleCaches = struct {
 }{profiles: map[string]*factorygithub.PipelineLoader{}}
 
 func factoryRules() *factorygithub.PipelineLoader {
-	profile := factoryProfile("")
+	return factoryRulesAt("")
+}
+
+func factoryRulesAt(profileDir string) *factorygithub.PipelineLoader {
+	profile := factoryProfile(profileDir)
 	factoryRuleCaches.Lock()
 	defer factoryRuleCaches.Unlock()
 	if loader := factoryRuleCaches.profiles[profile]; loader != nil {
@@ -179,6 +190,38 @@ func factoryRules() *factorygithub.PipelineLoader {
 	})
 	factoryRuleCaches.profiles[profile] = loader
 	return loader
+}
+
+func stopFactoryLoaders(profileDir string) {
+	keys := []string{factoryProfile(profileDir)}
+	if def := factoryProfile(""); def != keys[0] {
+		keys = append(keys, def)
+	}
+	var people []*factorygithub.PeopleLoader
+	factoryPeopleCaches.Lock()
+	for _, key := range keys {
+		if loader := factoryPeopleCaches.profiles[key]; loader != nil {
+			delete(factoryPeopleCaches.profiles, key)
+			people = append(people, loader)
+		}
+	}
+	factoryPeopleCaches.Unlock()
+	for _, loader := range people {
+		loader.Close()
+	}
+
+	var rules []*factorygithub.PipelineLoader
+	factoryRuleCaches.Lock()
+	for _, key := range keys {
+		if loader := factoryRuleCaches.profiles[key]; loader != nil {
+			delete(factoryRuleCaches.profiles, key)
+			rules = append(rules, loader)
+		}
+	}
+	factoryRuleCaches.Unlock()
+	for _, loader := range rules {
+		loader.Close()
+	}
 }
 
 // factoryPipelineRead is one repository's pipeline as THIS FACTORY runs it,

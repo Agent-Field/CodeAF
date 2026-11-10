@@ -399,6 +399,7 @@ func (s *factoryService) close() {
 		_ = s.door.Close()
 	}
 	s.handler.Close()
+	stopFactoryLoaders("")
 }
 
 // factoryFileLock coordinates service discovery and token writes across
