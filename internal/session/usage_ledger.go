@@ -111,8 +111,14 @@ const UsageLedgerName = "usage.jsonl"
 
 // ChargeID names the paid event independently of its ledger row. Remote events
 // retain this identity in old ledgers whose row IDs were unrelated or absent.
+//
+// It IS [UsageCallID], written out here so the explicit-id path reads the three
+// fields in place and copies the row only when it must fingerprint it.
 func (line UsageLine) ChargeID() string {
-	return UsageCallID(line)
+	if id := usageExplicitID(line.CallID, line.RemoteEvent, line.ID); id != "" {
+		return id
+	}
+	return UsageFingerprint(line)
 }
 
 // usageDayLayout is the LOCAL calendar day a line belongs to, as an ISO date.

@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
@@ -20,16 +21,34 @@ const UsageLedgerLockSuffix = ".remote-lock"
 // UsageExplicitID returns the explicit call identity on line when one is set:
 // CallID, a remote-event key, or ID.
 func UsageExplicitID(line UsageLine) string {
-	if id := strings.TrimSpace(line.CallID); id != "" {
-		return id
+	return usageExplicitID(line.CallID, line.RemoteEvent, line.ID)
+}
+
+// usageExplicitID is [UsageExplicitID] over the three fields it reads.
+//
+// THE LEDGER'S IDENTITY SCAN CALLS THIS ONCE PER ROW, so it takes strings rather
+// than the whole row: a writer opening a million-row ledger runs it a million
+// times inside the two-second flush contract (PERF.md, "Usage writer identity
+// startup"), and copying the row twice per call cost that scan about 3% against
+// the build that had no shared identity rule.
+func usageExplicitID(callID, remoteEvent, id string) string {
+	if callID = trimmedUsageID(callID); callID != "" {
+		return callID
 	}
-	if ev := strings.TrimSpace(line.RemoteEvent); ev != "" {
-		return "remote:" + ev
+	if remoteEvent = trimmedUsageID(remoteEvent); remoteEvent != "" {
+		return "remote:" + remoteEvent
 	}
-	if id := strings.TrimSpace(line.ID); id != "" {
-		return id
+	return trimmedUsageID(id)
+}
+
+// trimmedUsageID is strings.TrimSpace with the common case answered first: an
+// id that begins and ends with a visible ASCII byte has nothing to trim, and
+// every id this program mints is one.
+func trimmedUsageID(s string) string {
+	if n := len(s); n == 0 || (s[0] > ' ' && s[0] < utf8.RuneSelf && s[n-1] > ' ' && s[n-1] < utf8.RuneSelf) {
+		return s
 	}
-	return ""
+	return strings.TrimSpace(s)
 }
 
 // UsageFingerprint hashes the eight call facts when both At and Session are present.
@@ -56,10 +75,7 @@ func UsageFingerprint(line UsageLine) string {
 // folder or parent that later carries it. Older worker rows need no rewrite:
 // the task transport computes the same identity from their original facts.
 func UsageCallID(line UsageLine) string {
-	if id := UsageExplicitID(line); id != "" {
-		return id
-	}
-	return UsageFingerprint(line)
+	return line.ChargeID()
 }
 
 // usageIdentityCursor remembers only identities already read from this open
