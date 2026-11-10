@@ -228,10 +228,15 @@ A factory that last ran on a build that registered a new instance per start
 adopts the instance AgentField holds when it first starts with executions
 open, so the upgrade itself loses none.
 
-The limit is AgentField's own stale timeout (30 minutes by default): an
-execution nothing has touched for that long is failed by the control plane,
-and an engine that stays down that long cannot touch it. Once failed, it stays
-failed; the job itself goes on in the factory.
+An engine down for hours (the Mac asleep overnight) is covered too, by a
+control plane that holds an offline node's executions: the factory registers
+saying its work outlives its engine, so while its lease is expired its
+executions stay running, up to the control plane's offline ceiling (7 days by
+default), and its next lease picks them up again. An older control plane
+ignores that and keeps its stale timeout (30 minutes by default): an
+execution nothing touched for that long is failed, and an engine that is down
+cannot touch it. Once failed, it stays failed; the job itself goes on in the
+factory.
 
 ## why didn't my AgentField trigger make a job
 

@@ -152,3 +152,22 @@ func TestAChangedInstanceIsOrphanedByThePlane(t *testing.T) {
 		t.Fatalf("an orphaned execution is still open here")
 	}
 }
+
+// THE REGISTRATION SAYS THE FACTORY HOLDS ITS EXECUTIONS WHILE OFFLINE, under
+// "custom", the one metadata key the control plane keeps besides deployment
+// and performance; the factory's own metadata rides inside it.
+func TestTheRegistrationHoldsExecutionsOfflineUnderCustom(t *testing.T) {
+	w := newWorld(t, factory.TierOwner)
+	reg := w.plane.registrations()[0]
+	if len(reg.Metadata) != 1 {
+		t.Fatalf("metadata keys %v, want only custom", reg.Metadata)
+	}
+	custom, _ := reg.Metadata["custom"].(map[string]any)
+	if custom["holds_executions_offline"] != true {
+		t.Fatalf("custom %v does not hold executions offline", custom)
+	}
+	own, _ := custom["codeaf"].(map[string]any)
+	if own["kind"] != "factory" || own["build"] != "test" || own["trust_ceiling"] != string(factory.TierOwner) {
+		t.Fatalf("custom.codeaf %v", own)
+	}
+}
