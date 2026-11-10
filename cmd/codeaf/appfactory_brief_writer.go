@@ -182,18 +182,29 @@ type briefDebounce struct {
 	wait    time.Duration
 	fire    func(job int, trigger string)
 	mu      sync.Mutex
+	closing bool
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
 	pending map[int]string
 	timers  map[int]*time.Timer
 }
 
 func newBriefDebounce(wait time.Duration, fire func(job int, trigger string)) *briefDebounce {
-	return &briefDebounce{wait: wait, fire: fire, pending: map[int]string{}, timers: map[int]*time.Timer{}}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &briefDebounce{
+		wait: wait, fire: fire, ctx: ctx, cancel: cancel,
+		pending: map[int]string{}, timers: map[int]*time.Timer{},
+	}
 }
 
 // note is one trigger for a job: the job's wait starts again.
 func (d *briefDebounce) note(job int, trigger string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.closing {
+		return
+	}
 	d.pending[job] = strongerTrigger(d.pending[job], trigger)
 	if t := d.timers[job]; t != nil {
 		t.Stop()
@@ -202,9 +213,12 @@ func (d *briefDebounce) note(job int, trigger string) {
 }
 
 func (d *briefDebounce) take(job int) {
-	if trigger := d.claim(job); trigger != "" {
-		d.fire(job, trigger)
+	trigger := d.claim(job)
+	if trigger == "" {
+		return
 	}
+	defer d.wg.Done()
+	d.fire(job, trigger)
 }
 
 // claim takes a job's waiting trigger off the debounce, so the write fires
@@ -212,27 +226,71 @@ func (d *briefDebounce) take(job int) {
 func (d *briefDebounce) claim(job int) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.closing {
+		delete(d.pending, job)
+		delete(d.timers, job)
+		return ""
+	}
 	trigger := d.pending[job]
 	delete(d.pending, job)
 	delete(d.timers, job)
+	if trigger != "" {
+		d.wg.Add(1)
+	}
 	return trigger
 }
 
-// stop drops every trigger still waiting.
-func (d *briefDebounce) stop() {
+func (d *briefDebounce) context() context.Context {
+	if d == nil {
+		return context.Background()
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.ctx != nil {
+		return d.ctx
+	}
+	return context.Background()
+}
+
+// stop drops every trigger still waiting, cancels any write in flight, and
+// waits up to [poolCloseBudget] for it to finish.
+func (d *briefDebounce) stop() {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	d.closing = true
+	cancel := d.cancel
 	for job, t := range d.timers {
 		t.Stop()
 		delete(d.timers, job)
 		delete(d.pending, job)
 	}
+	d.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	done := make(chan struct{})
+	go func() {
+		d.wg.Wait()
+		close(done)
+	}()
+	timer := time.NewTimer(poolCloseBudget)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+	}
+	d.mu.Lock()
+	d.ctx, d.cancel = context.WithCancel(context.Background())
+	d.closing = false
+	d.mu.Unlock()
 }
 
 // briefNews turns a progress line of a job on this machine's factory into a
 // trigger of its brief.
 func (b *appBackend) briefNews(news session.ProgressNews) {
-	if news.Step == nil || b.briefs == nil {
+	if news.Step == nil || b.briefs == nil || b.isClosing() {
 		return
 	}
 	trigger := briefTriggerOf[news.Step.Event]
@@ -266,19 +324,21 @@ func (b *appBackend) localJobOfTalk(path string) int {
 // writeBriefLater is a debounced write, on the factory this engine serves.
 func (b *appBackend) writeBriefLater(job int, trigger string) {
 	_, id, running := b.localNow()
-	if !running {
+	if !running || b.isClosing() {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), appwire.BriefWriteBudget)
+	ctx, cancel := context.WithTimeout(b.briefs.context(), appwire.BriefWriteBudget)
 	defer cancel()
 	written, err := b.writeBrief(ctx, id, job, trigger)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "codeaf app: job %d brief not written: %v\n", job, err)
+		if ctx.Err() == nil && !b.isClosing() {
+			fmt.Fprintf(os.Stderr, "codeaf app: job %d brief not written: %v\n", job, err)
+		}
 		return
 	}
 	// A forced transition still matters when an earlier model call holds the
 	// writer. Keep it in the debounce until that call lets the next one begin.
-	if written.Skip == factory.BriefSkipWriting && factory.BriefForced(trigger) && b.briefs != nil {
+	if written.Skip == factory.BriefSkipWriting && factory.BriefForced(trigger) && b.briefs != nil && !b.isClosing() {
 		b.briefs.note(job, trigger)
 	}
 }
@@ -299,7 +359,7 @@ func (b *appBackend) localNow() (*appFactoryHost, string, bool) {
 // briefEdited is a person's change to a job's steps or model, a trigger of
 // the brief when the job is this machine's factory's.
 func (b *appBackend) briefEdited(factoryID string, job int) {
-	if _, id, running := b.localNow(); running && id == factoryID && b.briefs != nil {
+	if _, id, running := b.localNow(); running && id == factoryID && b.briefs != nil && !b.isClosing() {
 		b.briefs.note(job, factory.BriefTriggerEdit)
 	}
 }
@@ -307,7 +367,7 @@ func (b *appBackend) briefEdited(factoryID string, job int) {
 // briefJobChanged hears lifecycle facts at the common committed-write seam,
 // separately from step progress so landing and publish lines keep their shape.
 func (b *appBackend) briefJobChanged(before, after factory.Item) {
-	if b.briefs == nil {
+	if b.briefs == nil || b.isClosing() {
 		return
 	}
 	if end := factory.BriefEndOf(after); end != "" && end != factory.BriefEndOf(before) {

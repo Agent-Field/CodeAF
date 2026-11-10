@@ -696,6 +696,7 @@ type appBackend struct {
 	referenceN   int // in-flight and staged reference snapshots, under mu
 	agents       map[string]*appAgent
 	closing      bool
+	closedDone   chan struct{}
 
 	// lineSays is when each working agent's live line was last said, under mu
 	// (appliveline.go).
@@ -1097,11 +1098,12 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 			t := time.AfterFunc(d, fn)
 			return func() { t.Stop() }
 		},
-		agents:    map[string]*appAgent{},
-		sweepStop: make(chan struct{}),
-		sweepDone: make(chan struct{}),
-		left:      make(chan struct{}),
-		mint:      appMint,
+		agents:     map[string]*appAgent{},
+		closedDone: make(chan struct{}),
+		sweepStop:  make(chan struct{}),
+		sweepDone:  make(chan struct{}),
+		left:       make(chan struct{}),
+		mint:       appMint,
 	}
 	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
@@ -4628,6 +4630,7 @@ func (b *appBackend) Close() error {
 		b.leaving()
 	}
 	already := false
+	var waitClosed chan struct{}
 	var crews *appCrewRun
 	var agents []*appAgent
 	var warmed chan struct{}
@@ -4635,6 +4638,10 @@ func (b *appBackend) Close() error {
 	var stopModelNotices func()
 	var pluginAttempts []*appPluginAttempt
 	b.locked(func() {
+		if b.closedDone == nil {
+			b.closedDone = make(chan struct{})
+		}
+		waitClosed = b.closedDone
 		if already = b.closing; already {
 			return
 		}
@@ -4668,8 +4675,10 @@ func (b *appBackend) Close() error {
 		}
 	})
 	if already {
+		<-waitClosed
 		return nil
 	}
+	defer close(waitClosed)
 	if b.hurryReceipts != nil {
 		b.hurryReceipts()
 	}
@@ -4728,6 +4737,16 @@ func (b *appBackend) Close() error {
 	if warmed != nil {
 		<-warmed
 	}
+	// THE WARM-UPS THIS BACKEND STARTED END HERE, NOT AFTER IT. The provider
+	// model fetch runs as a pool errand on the engine's profile
+	// ([appBackend.warmProviderModels]), so stopping that profile's errands
+	// cancels it and joins it within the pool's own close budget; the factory's
+	// GitHub readers are detached and closed the same way.
+	stopPoolErrands(b.profileDir)
+	if proc := openedEngineProcess(); proc != nil {
+		stopPoolErrands(proc.ProfileDir)
+	}
+	stopFactoryLoaders(b.localProfile())
 	lap("warm-up")
 	if crews != nil {
 		crews.close()
@@ -4780,6 +4799,12 @@ func (b *appBackend) Close() error {
 	// Kept-running processes stay up through a quit; services.stop_all is
 	// how a quit stops them (appservices.go).
 	b.closeServices()
+	if b.assembled.Load() {
+		if proc := openedEngineProcess(); proc != nil {
+			proc.quitReceiptWait.Store(int64(appQuitReceiptWait))
+		}
+		closeEngineProcess()
+	}
 	lap("services")
 	return nil
 }

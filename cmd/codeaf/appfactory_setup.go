@@ -147,8 +147,9 @@ type appLocalFactory struct {
 	server    *http.Server
 	// runner is true once factory.local_run started the worker loop, and
 	// runnerDone closes when that loop has returned.
-	runner     bool
-	runnerDone chan struct{}
+	runner      bool
+	runnerDone  chan struct{}
+	closingDone chan struct{}
 	// githubHTTP, rules, seamHook and parent are test seams set before the
 	// first start. parent, when set, is the conversation config the runner
 	// opens its stages from, as a terminal launch hands one to its worker.
@@ -176,7 +177,7 @@ func (b *appBackend) startLocal(ctx context.Context) error {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed {
+	if l.closed || b.isClosing() {
 		return appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
 	if !l.running || l.host == nil {
@@ -232,7 +233,7 @@ func (b *appBackend) resumeLocalServe(ctx context.Context) bool {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || l.running {
+	if l.closed || l.running || b.isClosing() {
 		return false
 	}
 	rows, err := b.factoryHub().snapshot()
@@ -302,7 +303,7 @@ func (b *appBackend) localRunnable() (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	switch {
-	case l.closed:
+	case l.closed || b.isClosing():
 		return "", appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	case !l.running:
 		return "", appwire.Errorf(appwire.CodeNotFound, "the factory on this machine is not started")
@@ -317,7 +318,7 @@ func (b *appBackend) startLocalRunner() (appwire.FactoryLocalStatus, error) {
 	l := &b.local
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || !l.running || l.host == nil {
+	if l.closed || !l.running || l.host == nil || b.isClosing() {
 		return appwire.FactoryLocalStatus{}, appwire.Errorf(appwire.CodeClosed, "the engine is stopping")
 	}
 	if !l.runner {
@@ -515,10 +516,24 @@ func (h *appFactoryHub) releaseLocal(id string) {
 // closeLocalFactory ends what start began. It is idempotent and runs before
 // the registry is closed, so the bearer it held is let go with the service.
 func (b *appBackend) closeLocalFactory() {
-	server, host, id, running, runnerDone := b.takeLocal()
+	if b.briefs != nil {
+		b.briefs.stop()
+	}
+	server, host, id, running, runnerDone, done := b.takeLocal()
+	if done == nil {
+		return
+	}
+	defer func() {
+		l := &b.local
+		l.mu.Lock()
+		l.closingDone = nil
+		l.mu.Unlock()
+		close(done)
+	}()
 	if host != nil {
 		// THE RUNNER STOPS FIRST, so no worker is dialling a service that is
 		// going away; and it is waited for only so long.
+		host.forbidLoops()
 		host.cancel()
 		if runnerDone != nil {
 			select {
@@ -545,15 +560,23 @@ func (b *appBackend) closeLocalFactory() {
 	}
 }
 
-// takeLocal marks the local factory closed and hands over what it held.
-func (b *appBackend) takeLocal() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone chan struct{}) {
+// takeLocal marks the local factory closed and hands over what it held. A
+// second caller while the first is still tearing down waits for the first.
+func (b *appBackend) takeLocal() (server *http.Server, host *appFactoryHost, id string, running bool, runnerDone, done chan struct{}) {
 	l := &b.local
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	if wait := l.closingDone; wait != nil {
+		l.mu.Unlock()
+		<-wait
+		return
+	}
+	done = make(chan struct{})
+	l.closingDone = done
 	l.closed = true
 	server, host, id, running, runnerDone = l.server, l.host, l.id, l.running, l.runnerDone
 	l.server, l.host, l.running, l.id, l.origin = nil, nil, false, "", ""
 	l.runner, l.runnerDone = false, nil
+	l.mu.Unlock()
 	return
 }
 

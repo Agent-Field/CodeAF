@@ -836,9 +836,30 @@ func (b *appBackend) warmProviderModels() {
 		return
 	}
 	done := make(chan struct{})
-	b.locked(func() { b.providerWarm = done })
+	var prev chan struct{}
+	stopped := false
+	b.locked(func() {
+		if b.closing {
+			stopped = true
+			return
+		}
+		prev = b.providerWarm
+		b.providerWarm = done
+	})
+	if stopped {
+		close(done)
+		return
+	}
 	poolErrandGoCtx(proc.ProfileDir, "app/provider-models", func(ctx context.Context) {
-		defer close(done)
+		defer func() {
+			if prev != nil {
+				select {
+				case <-prev:
+				case <-ctx.Done():
+				}
+			}
+			close(done)
+		}()
 		proc.Shelf.warmAll(ctx, true, proc.noteServiceModels)
 	})
 }

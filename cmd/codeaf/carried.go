@@ -164,7 +164,10 @@ func profileRoad() (carriedRoad, error) {
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
 	return carriedRoad{
-		close:         func() { stopPoolErrands(settings.ProfileDir) },
+		close: func() {
+			settings.Models.Close()
+			stopPoolErrands(settings.ProfileDir)
+		},
 		completerFor:  adapters.forModel,
 		authKeySource: func(model string) string { return config.APIKeySourceForModel(settings.ProfileDir, sources, model) },
 		serves:        func(model string) bool { return session.ServesModel(sources, model) },
@@ -205,7 +208,9 @@ func profileRoad() (carriedRoad, error) {
 				options := config.CatalogOptionsFor(service, settings.ProfileDir)
 				key := catalog.CacheKey(options.Source, options.BaseURL)
 				if catalogs[key] == nil {
-					catalogs[key] = catalog.LoadLazy(ctx, options)
+					c := catalog.LoadLazy(ctx, options)
+					defer c.Close()
+					catalogs[key] = c
 				}
 			}
 			ready := true

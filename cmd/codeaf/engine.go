@@ -1578,7 +1578,13 @@ func openedEngineProcess() *v3Process {
 // road has returned. In particular, closeAll cancels and joins model discovery
 // before the engine process can exit or its profile can be reused.
 func closeEngineProcess() {
-	if proc := openedEngineProcess(); proc != nil {
+	engineProcess.mu.Lock()
+	proc := engineProcess.proc
+	engineProcess.tried = false
+	engineProcess.proc = nil
+	engineProcess.err = nil
+	engineProcess.mu.Unlock()
+	if proc != nil {
 		proc.closeAll()
 	}
 }

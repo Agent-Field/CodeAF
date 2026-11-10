@@ -382,16 +382,7 @@ func openV3ClockProcess() (*v3Process, func(), error) {
 		LaunchDir:         workspace,
 	}
 	proc.Skills, proc.skillsDir = v3SkillShelf(proc.Memory)
-	stop := func() {
-		processStop()
-		if memory != nil {
-			_ = memory.Close()
-		}
-		if search != nil && search != memory {
-			_ = search.Close()
-		}
-	}
-	return proc, stop, nil
+	return proc, proc.closeAll, nil
 }
 
 // retireWhenReplaced ends the clock when its own binary has been replaced and

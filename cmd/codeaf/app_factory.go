@@ -83,6 +83,7 @@ type appFactoryHost struct {
 	loopMu               sync.Mutex
 	loopsOn, loopsClosed bool
 	loops                sync.WaitGroup
+	closeDone            chan struct{}
 	// afterRead is the intake pass the running read loops run after each
 	// poll, nil while none run; a person's door that wants a job routed now
 	// ([appFactoryHost.routeNow]) runs the same one.
@@ -120,6 +121,19 @@ func newAppFactoryHost(ctx context.Context, root, address, token string, credent
 	return h, nil
 }
 func (h *appFactoryHost) close() {
+	h.loopMu.Lock()
+	if h.closeDone != nil {
+		wait := h.closeDone
+		h.loopMu.Unlock()
+		<-wait
+		return
+	}
+	done := make(chan struct{})
+	h.closeDone = done
+	h.loopsClosed = true
+	h.loopMu.Unlock()
+	defer close(done)
+
 	h.cancel()
 	<-h.done
 	// THE READ LOOPS END BEFORE THE FLOOR IS LET GO, so no poll or triage
@@ -133,6 +147,7 @@ func (h *appFactoryHost) close() {
 	// would break the no-write-after-close law.
 	h.stopLoops()
 	h.stopAgentField()
+	stopFactoryLoaders(h.profile)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.handler != nil {
@@ -143,12 +158,15 @@ func (h *appFactoryHost) close() {
 		if json.Unmarshal(body, &saved) == nil && saved.URL == h.address && saved.PID == os.Getpid() {
 			_ = os.Remove(path)
 		}
+		h.handler = nil
 	}
 	if h.closeDiscovery != nil {
 		h.closeDiscovery()
+		h.closeDiscovery = nil
 	}
 	if h.release != nil {
 		h.release()
+		h.release = nil
 	}
 }
 func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
@@ -156,6 +174,9 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	defer h.mu.Unlock()
 	if h.handler != nil {
 		return h.handler, nil
+	}
+	if h.ctx.Err() != nil {
+		return nil, errors.New("the solo factory is closing")
 	}
 	trace := filepath.Join(h.floor.Root(), "startup.log")
 	began := time.Now()
@@ -208,7 +229,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		// A drop deletes the job's local branch and folder on this machine,
 		// and its conversations and crew.
 		Folders: newFactoryJobFolders(h.floor), DeleteChats: factoryDeleteJobChats(h.profile, h.floor),
-		PersonProfile: factoryPeople().Profile, PersonKnown: factoryPeople().Known, CodeOwners: factoryPeople().Owners})
+		PersonProfile: factoryPeopleAt(h.profile).Profile, PersonKnown: factoryPeopleAt(h.profile).Known, CodeOwners: factoryPeopleAt(h.profile).Owners})
 	closeDiscovery, err := serveAppFactoryDiscovery(h.floor.Root(), factoryTarget{h.address, h.token})
 	if err != nil {
 		handler.Close()
