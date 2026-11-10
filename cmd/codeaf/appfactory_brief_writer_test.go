@@ -239,3 +239,29 @@ func TestABriefEndNeedsWorkOnTheJob(t *testing.T) {
 		t.Fatal("a job with work wrote no end brief")
 	}
 }
+
+func TestABriefWriteThatIgnoresCancellationCannotHoldStop(t *testing.T) {
+	was := briefStopWait
+	briefStopWait = 20 * time.Millisecond
+	t.Cleanup(func() { briefStopWait = was })
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(unblock)
+
+	d := newBriefDebounce(time.Millisecond, func(job int, trigger string) {
+		close(entered)
+		<-release
+	})
+	d.note(7, factory.BriefTriggerStep)
+	<-entered
+
+	start := time.Now()
+	d.stop()
+	if elapsed := time.Since(start); elapsed >= 500*time.Millisecond {
+		t.Fatalf("briefDebounce.stop waited %s with briefStopWait=%s", elapsed, briefStopWait)
+	}
+	unblock()
+}

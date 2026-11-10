@@ -19,7 +19,15 @@ const FirstWait = 150 * time.Millisecond
 const askWait = 30 * time.Second
 
 // closeWait bounds how long Close waits for a cancelled background read to finish.
-const closeWait = time.Second
+var closeWait = time.Second
+
+// ShortenCloseWait lets a test outside the package bound Close without waiting
+// the full second.
+func ShortenCloseWait(bound time.Duration) (restore func()) {
+	was := closeWait
+	closeWait = bound
+	return func() { closeWait = was }
+}
 
 // behind runs at most one ask per key in the background, so the reads that
 // need the same answer share one ask instead of each waiting on GitHub.
@@ -84,7 +92,7 @@ func (b *behind) close(bound time.Duration) {
 		pending = append(pending, a)
 	}
 	b.mu.Unlock()
-	if len(pending) == 0 {
+	if len(pending) == 0 || bound <= 0 {
 		return
 	}
 	timer := time.NewTimer(bound)

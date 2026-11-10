@@ -196,8 +196,10 @@ func (l *PeopleLoader) read(ctx context.Context, handle string, seen profileRead
 		return seen.profile, err
 	}
 	l.mu.Lock()
-	seen.until = l.now().Add(ProfileTTL)
-	l.profiles[handle] = seen
+	if !l.closed && ctx.Err() == nil {
+		seen.until = l.now().Add(ProfileTTL)
+		l.profiles[handle] = seen
+	}
 	l.mu.Unlock()
 	return seen.profile, nil
 }
@@ -286,7 +288,13 @@ func (l *PeopleLoader) readOwners(ctx context.Context, repo string) ownerRead {
 		return ownerRead{}
 	}
 	for _, path := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
+		if ctx.Err() != nil {
+			return ownerRead{err: ctx.Err()}
+		}
 		text, _, _, err := l.absent.contents(ctx, api, l.now(), owner, name, path, "")
+		if ctx.Err() != nil {
+			return ownerRead{err: ctx.Err()}
+		}
 		if missing(err) {
 			continue
 		}

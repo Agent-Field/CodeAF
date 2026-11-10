@@ -175,6 +175,9 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 		tag = previous.tag
 	}
 	text, sha, tag, err := l.absent.contents(ctx, api, l.now(), owner, name, pipeline.RepoFile, tag)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return pipelineRead{err: ctx.Err()}
+	}
 	if errors.Is(err, forge.ErrNotModified) {
 		return previous
 	}
@@ -186,12 +189,18 @@ func (l *PipelineLoader) read(ctx context.Context, repo, dir string) pipelineRea
 			tag = previous.tag
 		}
 		text, sha, tag, err = l.absent.contents(ctx, api, l.now(), owner, name, factory.RecipeFile, tag)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return pipelineRead{err: ctx.Err()}
+		}
 		if errors.Is(err, forge.ErrNotModified) {
 			return previous
 		}
 		if missing(err) {
 			if err := l.absent.repoAnswers(ctx, api, l.now(), owner, name); err != nil {
 				return l.failure(dir, err)
+			}
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return pipelineRead{err: ctx.Err()}
 			}
 			f := pipeline.Defaults()
 			f.Source = pipeline.SourceDefaults

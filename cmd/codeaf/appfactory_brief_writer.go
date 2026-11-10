@@ -252,8 +252,12 @@ func (d *briefDebounce) context() context.Context {
 	return context.Background()
 }
 
+// briefStopWait bounds how long briefDebounce.stop waits for an in-flight write
+// to finish after cancelling its context.
+var briefStopWait = poolCloseBudget
+
 // stop drops every trigger still waiting, cancels any write in flight, and
-// waits up to [poolCloseBudget] for it to finish.
+// waits up to [briefStopWait] for it to finish.
 func (d *briefDebounce) stop() {
 	if d == nil {
 		return
@@ -275,7 +279,7 @@ func (d *briefDebounce) stop() {
 		d.wg.Wait()
 		close(done)
 	}()
-	timer := time.NewTimer(poolCloseBudget)
+	timer := time.NewTimer(briefStopWait)
 	defer timer.Stop()
 	select {
 	case <-done:

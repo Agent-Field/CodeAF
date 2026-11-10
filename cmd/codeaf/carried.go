@@ -163,9 +163,21 @@ func profileRoad() (carriedRoad, error) {
 	settings.Models = sharedCatalog(settings)
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
+	var catalogMu sync.Mutex
+	serviceCatalogs := map[string]*catalog.Catalog{}
 	return carriedRoad{
 		close: func() {
 			settings.Models.Close()
+			catalogMu.Lock()
+			opened := make([]*catalog.Catalog, 0, len(serviceCatalogs))
+			for _, c := range serviceCatalogs {
+				opened = append(opened, c)
+			}
+			clear(serviceCatalogs)
+			catalogMu.Unlock()
+			for _, c := range opened {
+				c.Close()
+			}
 			stopPoolErrands(settings.ProfileDir)
 		},
 		completerFor:  adapters.forModel,
@@ -195,6 +207,7 @@ func profileRoad() (carriedRoad, error) {
 			// Waiting only for the default cache leaves a fresh custom service's
 			// known window invisible to senior-dev.
 			catalogs := map[string]*catalog.Catalog{}
+			catalogMu.Lock()
 			for _, model := range models {
 				model = strings.TrimPrefix(strings.TrimSpace(model), modelsource.DefaultID+"/")
 				if model == "" {
@@ -207,12 +220,14 @@ func profileRoad() (carriedRoad, error) {
 				}
 				options := config.CatalogOptionsFor(service, settings.ProfileDir)
 				key := catalog.CacheKey(options.Source, options.BaseURL)
-				if catalogs[key] == nil {
-					c := catalog.LoadLazy(ctx, options)
-					defer c.Close()
-					catalogs[key] = c
+				c := serviceCatalogs[key]
+				if c == nil {
+					c = catalog.LoadLazy(context.Background(), options)
+					serviceCatalogs[key] = c
 				}
+				catalogs[key] = c
 			}
+			catalogMu.Unlock()
 			ready := true
 			for _, models := range catalogs {
 				ready = models.Warmed(ctx) && ready

@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -53,6 +54,9 @@ func (a *absences) repoAnswers(ctx context.Context, api PipelineAPI, now time.Ti
 	if _, err := reader.DefaultBranch(ctx, owner, name); err != nil {
 		return err
 	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return ctx.Err()
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.answered == nil {
@@ -73,6 +77,9 @@ func (a *absences) contents(ctx context.Context, api PipelineAPI, now time.Time,
 		return "", "", "", errMissing
 	}
 	text, sha, newTag, err = api.Contents(ctx, owner, name, path, "", tag)
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return "", "", "", ctx.Err()
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.at == nil {

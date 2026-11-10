@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
@@ -206,9 +207,6 @@ func stopFactoryLoaders(profileDir string) {
 		}
 	}
 	factoryPeopleCaches.Unlock()
-	for _, loader := range people {
-		loader.Close()
-	}
 
 	var rules []*factorygithub.PipelineLoader
 	factoryRuleCaches.Lock()
@@ -219,9 +217,23 @@ func stopFactoryLoaders(profileDir string) {
 		}
 	}
 	factoryRuleCaches.Unlock()
-	for _, loader := range rules {
-		loader.Close()
+
+	var wg sync.WaitGroup
+	for _, loader := range people {
+		wg.Add(1)
+		guard.Go("factory/people-close", func() {
+			defer wg.Done()
+			loader.Close()
+		})
 	}
+	for _, loader := range rules {
+		wg.Add(1)
+		guard.Go("factory/pipeline-close", func() {
+			defer wg.Done()
+			loader.Close()
+		})
+	}
+	wg.Wait()
 }
 
 // factoryPipelineRead is one repository's pipeline as THIS FACTORY runs it,
