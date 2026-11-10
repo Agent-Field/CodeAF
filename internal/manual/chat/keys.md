@@ -49,6 +49,12 @@ A computer removed from your paired devices keeps saving this chat locally.
 Quitting stays quiet and does not try a final relay save; the removal notice
 already explains that the chat stays on this computer until you pair it again.
 
+## Quitting after another computer continued the chat
+
+If codeaf learns while closing that another computer continued the chat, the
+restored terminal says `<device> continued this chat; this window now only shows it`
+once. It keeps this notice even when the full-screen chat has already closed.
+
 ## Quitting while the sync service is slow — waiting for a final save
 
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

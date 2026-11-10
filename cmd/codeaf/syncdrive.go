@@ -453,7 +453,9 @@ func (n *driveNotices) clear() {
 func (n *driveNotices) say(line string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.closing {
+	// The last watch retires during agent close, before the drive's Close.
+	// Keep news from that gap for the closing receipt instead of dropping it.
+	if n.closing || n.watches != nil && len(n.watches) == 0 {
 		n.final = append(n.final, line)
 		return
 	}

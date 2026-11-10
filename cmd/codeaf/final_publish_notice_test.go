@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,6 +28,38 @@ import (
 )
 
 func TestFinalPublishDisplacementReachesTheRestoredWindowOnce(t *testing.T) {
+	t.Run("retired-watch", func(t *testing.T) {
+		first, last := &cellstore.SealWatch{}, &cellstore.SealWatch{}
+		notices := &driveNotices{}
+		drive := &liveDrive{notices: notices}
+		notices.say("before subscription")
+		if got := drive.TakeSavingNotices(); len(got) != 0 {
+			t.Fatalf("unobserved startup announcement became a closing notice: %q", got)
+		}
+		notices.register(first, last)
+		first.Retire()
+		notices.say("still live")
+		if got := first.Take(); got != "" {
+			t.Fatalf("retired watch received %q", got)
+		}
+		if got := last.Take(); got != "still live" {
+			t.Fatalf("remaining live watch received %q", got)
+		}
+		if got := drive.TakeSavingNotices(); len(got) != 0 {
+			t.Fatalf("live notice also reached the closing receipt: %q", got)
+		}
+		last.Retire()
+		// Agent close retires the last watch before the drive's Close begins.
+		line := chatlist.Superseded("desk")
+		notices.say(line)
+		if got := drive.TakeSavingNotices(); len(got) != 1 || got[0] != line {
+			t.Fatalf("notice between retirement and writer close: %q", got)
+		}
+		notices.beginClose()
+		if got := drive.TakeSavingNotices(); len(got) != 0 {
+			t.Fatalf("writer close repeated its notice: %q", got)
+		}
+	})
 	for _, road := range []string{"engine", "no-host"} {
 		for _, displaced := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/displaced=%t", road, displaced), func(t *testing.T) {
@@ -54,8 +87,14 @@ func TestFinalPublishDisplacementReachesTheRestoredWindowOnce(t *testing.T) {
 				frames := blobstore.NewMemory()
 				mux.Handle("/", blobstore.Handler(auth, func(string) (blobstore.Store, error) { return frames, nil }))
 				var closing, discovered atomic.Bool
+				finalPublish := make(chan struct{})
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if displaced && closing.Load() && strings.HasSuffix(r.URL.Path, "/publish") && discovered.CompareAndSwap(false, true) {
+						select {
+						case <-finalPublish:
+						case <-r.Context().Done():
+							return
+						}
 						if _, err := dir.For("other-device").Acquire(r.Context(), c.ID, directory.AcquireOpts{Force: true}); err != nil {
 							t.Error(err)
 						}
@@ -133,10 +172,34 @@ func TestFinalPublishDisplacementReachesTheRestoredWindowOnce(t *testing.T) {
 				case <-ctx.Done():
 					t.Fatal("window never painted")
 				}
+				releasePublish := sync.OnceFunc(func() { close(finalPublish) })
+				defer releasePublish()
 				closing.Store(true)
 				if _, err := io.WriteString(typed, "/quit\r"); err != nil {
 					t.Fatal(err)
 				}
+				if displaced {
+					// Successful background publishes ignore the retry interval. Wait for
+					// the actual close so this notice belongs to the restored receipt.
+					tick := time.NewTicker(5 * time.Millisecond)
+					defer tick.Stop()
+					for {
+						started := func() bool {
+							d.notices.mu.Lock()
+							defer d.notices.mu.Unlock()
+							return d.notices.closing
+						}()
+						if started {
+							break
+						}
+						select {
+						case <-ctx.Done():
+							t.Fatal("writer did not start closing")
+						case <-tick.C:
+						}
+					}
+				}
+				releasePublish()
 				if err := <-done; err != nil {
 					t.Fatal(err)
 				}
