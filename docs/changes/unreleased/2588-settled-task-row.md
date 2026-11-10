@@ -10,6 +10,7 @@ invalidates:
   - "A task that landed quietly as done and then landed again (for example a conflict answered with drop it, its branch kept) showed both a `done` row and the newer `incomplete` card. A task now shows its current state once: a visible card takes the place of its row, and a dismissed card leaves the row with the newest state."
   - "Opening the result of a task node that had just settled showed no report and no files until a restart (v0.8.2 behaved the same). It now shows the node's report and changed files at once."
   - "Settings → Tasks → review task results described the check as an `auditor`. It now says in plain words what the check does and that with it off a task lands done without it."
+  - "A task and its parts whose request could not be established could split into two `background work` groups, depending on when each one landed. They now share one group."
 ---
 
 Found by the pre-release hand test of dev, where the tmux suite's refused and nested landing subtests failed on it.
