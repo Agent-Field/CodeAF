@@ -46,7 +46,7 @@ const (
 	startingHostPause = 10 * time.Millisecond
 )
 
-// hostLockHeld reports whether some process holds this workspace's host lock.
+// hostLockHeld reports whether a host holds this workspace's exclusive lock.
 // The probe is a non-blocking flock released immediately, so it is a question
 // and never a wait, and because it reads the file rather than a pid it is correct
 // across pid namespaces. A missing lock file means no host has taken it.
@@ -63,7 +63,8 @@ func hostLockHeld(workspace string) bool {
 		return false
 	}
 	defer file.Close()
-	if err := filelock.Lock(file, true, true); err != nil {
+	// Readers share their probes so one cannot mistake another for a host.
+	if err := filelock.Lock(file, false, true); err != nil {
 		return filelock.IsBusy(err)
 	}
 	_ = filelock.Unlock(file)
