@@ -1406,7 +1406,8 @@ and your own model rows answer for them (*Automations*).
 `--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than
 `auto`, and `/status` answers its crew line with `one model · every call rides the model
 you are talking to`. The model picker's hint field and the welcome line under the wordmark say
-the same word. All of them read one answer, so none of them can disagree with another.
+the same word. All of them read one answer, including windows attached to an engine or
+opened with `--host` or `--at`, so none of them can disagree with another.
 
 **Your crew is not gone, it is overridden.** Your pins are untouched on disk — this flag
 writes nothing — and the next session started without it draws `crew auto` again exactly as
@@ -2344,7 +2345,21 @@ which is the whole machine's ledger rather than this conversation's — it was a
 
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
 conversation that has started no tasks prints `spend` alone. When they are there they add
-up to the line above them, always — that is the whole point of printing them.
+up to the line above them, always — that is the whole point of printing them. The
+same split is shown in a new conversation and after resuming it.
+
+Paid workers from `/task solo` and other local tasks count under `tasks` as
+they spend. Their calls contribute once to `spend`; attributing them to this
+conversation adds no second charge. Both split lines appear when both halves
+have spent money and their sum matches `spend`.
+
+## Reopening a task-only conversation — each model call is counted once
+
+Reopening a conversation whose first paid work was a task does not add those
+worker charges again to the machine's spending ledger. The conversation's total
+includes its tasks, but restoring that total is not another model call. This also
+holds when a task finished before a restart left its saved run marked running,
+and when the conversation already had paid turns of its own.
 
 ## Why do the tokens on the status line jump instead of counting up
 
@@ -2478,7 +2493,9 @@ Every cost line written into a conversation's transcript is also appended to one
 whole machine, `~/.codeaf/v3/usage.jsonl`, moved by `CODEAF_HOME` like everything else codeaf
 keeps. **One line per model call, written the moment that call's bill comes back** — the
 requests of a turn, and the calls made beside a turn such as naming a session or judging a
-route. Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
+route, and background knowledge compilation. Knowledge calls appear in Spend
+under the model that served them, even if an answer was empty or unusable.
+Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
 one.
 
 **That is why the figure moves while a reply is still being written.** The line is written as
@@ -4158,7 +4175,7 @@ Lean changes four things:
 - Your memories still ride: the `<memory>` block is in front of every
   request, bounded the same as on any window. What is missing is the
   `remember` and `forget` verbs, so the model cannot keep or forget a line
-  itself — it tells you to use `/remember` or the Memories tab, which work as
+  itself — it tells you to use `/remember` or the Memory tab, which work as
   always, and noticing still runs after a turn you typed. The record of what
   was said is untouched, and still searchable.
 
@@ -4232,14 +4249,24 @@ list than on the conversation.
 
 ## Does the daily budget apply to chat and team tasks?
 
-The daily budget blocks a new chat call when today's recorded spending reaches
-the limit. Task crews and their helpers use it when checking the next call's
-estimated cost. Other conversations' completed usage receipts are read on each
+The daily budget blocks new chat turns and every new background or helper
+model call when today's recorded spending reaches the limit. This includes
+knowledge compilation, task summaries, names, captions, memory updates and
+automation checks. Task crews also check the next call's estimated cost. Other
+conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. Calls already
 in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately. The default profile and home errands follow the saved
-or environment daily limit too; `/budget day` changes apply on the next turn.
+or environment daily limit too; `/budget day` changes apply on the next check.
+The refusal says `daily limit reached · $1 spent of $1 · /budget day changes it`
+with your actual figures. A task stopped by this limit keeps that same refusal in its
+report and ending card, ahead of any `nothing to land` explanation.
+Knowledge builds retain progress and resume
+automatically after a limit increase or the local day changes; a skipped task
+summary keeps its last reading. `--yes-spend` (or
+`CODEAF_PREAUTHORIZE_SPEND=1`) lifts the daily gate for work started with that
+spending permission.
 Task checks use the same selected daily limit and spending permission as the work
 they check.
 
@@ -4247,7 +4274,7 @@ they check.
 
 **Both limits apply; neither overrides the other.** New chat turns stop when
 either limit is reached. The daily limit counts all of today's spending on this
-machine — every conversation and every task, not only this conversation. The
+machine — every conversation, task, helper and knowledge compilation. The
 conversation limit counts that conversation's recorded spending, including
 earlier days.
 
@@ -4285,7 +4312,7 @@ you paste in. It cannot open files, run commands or look anything up, and it wil
 if you ask it to. It is also given a **short chat page** as its instructions instead of
 codeaf's working page — about 2,000 characters rather than 20,000 or more, because the
 working page is almost all about tools — with your memories in front of it as on any
-other page, and no verbs to keep or forget one (`/remember` and the Memories tab still work). Your
+other page, and no verbs to keep or forget one (`/remember` and the Memory tab still work). Your
 project's instruction files (AGENTS.md, CLAUDE.md) are not sent to it. The request-size
 check counts only what is really sent. Pick a model that takes tools (`/model`) when you
 need it to work in your files: the next message goes out with the working page and every
@@ -4347,3 +4374,9 @@ Choose those separately there. A seat model pin still needs an available provide
 and its credentials on the receiving computer; pairing does not install a provider.
 The **share teams** switch does not change which crew choices follow preferences.
 Desktop app crews are separate.
+
+## Why a tiny crew cost has four decimal places
+
+A known positive crew cost below one cent keeps four decimal places, such as
+`$0.0003`. An amount below the shared display floor reads `<$0.0001`. Unknown
+or zero costs add no figure to the crew line.

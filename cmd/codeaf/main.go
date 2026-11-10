@@ -617,7 +617,7 @@ Housekeeping — changes state on disk or on the network
       an always-on computer of yours on your own Railway account
   codeaf serve [--workspace path] [--via url] [--take-tasks]
       be reachable from your other devices without ssh, with a pairing code
-  codeaf devices | codeaf cluster status | lead
+  codeaf devices | codeaf cluster status
       list your devices and the ones that can use this machine
   codeaf devices revoke <name> [--all] | rename <name>
       remove one (cannot undo what a device holds), or name this one

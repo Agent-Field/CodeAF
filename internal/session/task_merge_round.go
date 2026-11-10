@@ -517,6 +517,9 @@ func (n *TaskNode) releaseResolving(gen uint64) {
 func (a *Agent) ResolveConflict(id uint64) error {
 	node := a.taskNode(id)
 	if node == nil {
+		if _, found, err := a.resolveCompletedRun(context.Background(), id, TaskAccept, "", TaskAskOwnerPerson); found {
+			return err
+		}
 		return fmt.Errorf("no task %d in this session", id)
 	}
 	// THE ROUND IN FLIGHT IS ASKED ABOUT FIRST, and it is not tidiness: the

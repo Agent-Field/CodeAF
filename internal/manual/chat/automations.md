@@ -204,7 +204,7 @@ refused: `the rhythm "0 0 30 2 *" never happens`. A rhythm under a minute is ref
 ## /automations — see every automation, when it runs next, how it last went, and what its mark or dot means
 
 `/automations` opens the list — so does `alt+7`, the `Automations` word on the tab bar
-(between `Memories` and `Spend`), or the `automations` heading on home. One row per
+(between `Memory` and `Spend`), or the `automations` heading on home. One row per
 automation: its mark, its title, and one dim sentence — its kind, its schedule, where it is
 now, and its last run:
 
@@ -509,10 +509,9 @@ typed `time` and `usd`. Work that reaches its money stops as
 (`couldn't check · ran out of time` for a watch).
 
 **Your daily spending limit holds over work too.** Once today's spending has reached it, a
-run of work does not start, and nothing is spent on it: it reads `your call · today's
-spending limit is reached · $512 spent of $500 · /budget day changes it`. A watch's looks are
-not held to it — each one costs a fraction of a cent, and a refused look would be news every
-few minutes — but work a watch would run is.
+run of work does not start, and nothing is spent on it: it reads `your call · daily
+limit reached · $512 spent of $500 · /budget day changes it`. A watch's model
+checks obey the same limit: no new paid check starts once it is reached.
 
 On `/spend` the automations have a table of their own, `by automation`: each one with how
 many calls it made, what one call cost (`$0.01 a call`) and its total. The Spending tab of
@@ -620,7 +619,7 @@ separate "rule" kind.
 
 `/remember <text>` (or `/always <text>`, the same command) keeps one; bare `/always` lists
 every line kept here. Said in a conversation, I keep one with `remember`, and the
-conversation says `remembered · <the line> · <where>`, and the Memories tab forgets it.
+conversation says `remembered · <the line> · <where>`, and the Memory tab forgets it.
 *What I remember* has the rest: where a line holds, how many ride along, and forgetting
 one.
 
@@ -656,10 +655,9 @@ What a standing order did is now one of two things:
   `/automations`, or say it;
 - **a rule** — "always run the tests before you commit" — is a **memory**: `/remember`.
 
-**Standing orders were not carried over.** None of them is listed or changed anywhere in
-codeaf any more: make again, as automations or rules, the ones you still want. Their old
-folder, `~/.codeaf/v3/standing/`, is left on disk. The standing card's
-answers went too: its `3 just once` is `2 Save and run it now`, which saves it as well, its
+**Standing orders were not carried over.** The upgrade report lists the old items;
+recreate the ones you still want. Their old folder, `~/.codeaf/v3/standing/`, is left
+on disk. The standing card's answers went too: its `3 just once` is `2 Save and run it now`, which saves it as well, its
 `2 change when or where` is typing the change under the card, and every no is
 `0 Don't save`.
 
@@ -667,6 +665,24 @@ answers went too: its `3 just once` is `2 Save and run it now`, which saves it a
 timer — `ai.agentfield.codeaf.tick` under launchd, `codeaf-tick.timer` under systemd, and
 the older `ai.agentfield.codeaf.wake` — that ran `codeaf tick` with no window open. This
 version removes them, whoever installed them, on every start.
+
+## Where did my standing orders go — the earlier version's upgrade notice and list
+
+Standing orders and rules from an earlier version of codeaf were not carried over.
+On the first interactive launch for a home containing those items, Home and the
+conversation show a notice once, for example:
+
+`Found 1 standing order and 1 rule from an earlier version of codeaf. They were not carried over. Recreate schedules in /automations and rules with /remember. Your list is in ~/.codeaf/v3/standing-upgrade-report.txt.`
+
+The report lists each item's words, instruction, workspace, schedule, status and
+source file. Paused and retired items are counted separately; unreadable or unknown
+formats are called out without guessing their counts. The old `v3/standing/` folder
+is untouched. `CODEAF_HOME` moves both the old folder and the report. A remote
+home keeps its own report and remembers its own notice. Headless work does not
+consume it; an empty home says nothing.
+
+Recreate schedules in `/automations` and rules with `/remember`, checking the old
+scope and limits before saving. Nothing from the report runs automatically.
 
 ## What automations cannot do
 
@@ -685,3 +701,9 @@ version removes them, whoever installed them, on every start.
 - **No exception for one conversation or one project** — an automation is one thing in one
   place, and pausing it pauses it everywhere.
 - **No undo for delete**, and no moving an automation to another machine.
+
+## Why editing an automation offers only Save and Don't save
+
+On Automations, press `→`, then `e`, change the moment in the command and press
+`enter`. The `save this change?` card has exactly `1 Save` and `0 Don't save`.
+It does not offer `something else…`. Nothing changes until you save.

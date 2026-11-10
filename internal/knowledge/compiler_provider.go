@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -20,6 +21,11 @@ import (
 
 //go:embed compiler_prompts.json
 var compilerPromptJSON []byte
+
+const (
+	compilerAnswerTokens = 8000
+	compilerRetryPause   = 30 * time.Second
+)
 
 var compilerPrompts = func() map[string]string {
 	var prompts map[string]string
@@ -35,7 +41,7 @@ type compilerModel struct {
 	db               *sql.DB
 }
 
-func (m compilerModel) call(role string, payload document) (document, error) {
+func (m compilerModel) call(role string, payload document) (result document, err error) {
 	prompt, ok := compilerPrompts[role]
 	if !ok {
 		return nil, fmt.Errorf("unknown knowledge role %q", role)
@@ -56,7 +62,13 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	settings := config.ClientConfigFor(sources, m.model)
 	settings.Timeout = 240 * time.Second
 	settings.HTTPClient = http.DefaultClient
+	calls := callsFrom(m.ctx)
 	settings.RouteGate = func(ctx context.Context, model, tag string) error {
+		if calls.before != nil {
+			if err := calls.before(); err != nil {
+				return err
+			}
+		}
 		if model != m.model {
 			return fmt.Errorf("knowledge requested model %q; refusing fallback %q", m.model, model)
 		}
@@ -71,10 +83,41 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	ctx = provider.WithCacheKey(ctx, "knowledge:"+identity([]any{m.root, m.model, role}))
 	ctx = provider.WithServedEndpoint(ctx, served)
 	ctx = provider.WithCallTag(ctx, "memory")
-	ctx = provider.WithRequiredReasoningEffort(ctx, provider.Effort("none"))
+	ctx = provider.WithRequiredReasoningEffort(ctx, provider.EffortOff)
 	messages := []ai.Message{{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}, {Role: "user", Content: []ai.ContentPart{{Type: "text", Text: mustJSON(wire.payload)}}}}
 	started := time.Now()
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithTemperature(0), ai.WithMaxTokens(8000), ai.WithJSONMode())
+	var receiptsMu sync.Mutex
+	var receiptIDs []string
+	var receiptErr error
+	ctx = provider.WithBilling(ctx, func(b provider.Billed) {
+		if reported := strings.TrimSpace(b.ReportedModel); reported != "" {
+			b.Model = reported
+		}
+		if calls.record != nil {
+			calls.record(b)
+		}
+		receiptsMu.Lock()
+		defer receiptsMu.Unlock()
+		id := identity([]any{requestID, started.UnixNano(), len(receiptIDs)})
+		receiptIDs = append(receiptIDs, id)
+		receipt := document{"started_at": started.UTC().Format(time.RFC3339Nano), "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "model": b.Model, "role": role, "request_id": requestID, "reasoning_requested": reasoning, "max_tokens": compilerAnswerTokens, "usage": document{"cost": b.Cost, "prompt_tokens": b.PromptTokens, "completion_tokens": b.CompletionTokens}, "transport": "provider_funnel"}
+		if _, writeErr := m.db.Exec("INSERT INTO receipts(id,model,role,cost,payload) VALUES(?,?,?,?,?)", id, b.Model, role, b.Cost, mustJSON(receipt)); writeErr != nil && receiptErr == nil {
+			receiptErr = writeErr
+		}
+	})
+	defer func() {
+		receiptsMu.Lock()
+		defer receiptsMu.Unlock()
+		if receiptErr != nil && err == nil {
+			err = receiptErr
+		}
+		if err != nil && len(receiptIDs) > 0 {
+			// Persist the pause so reopening the vault cannot immediately buy
+			// the same unusable answer again.
+			_ = saveState(m.db, "retry:"+requestID, document{"after": time.Now().Add(compilerRetryPause).UnixNano(), "reason": err.Error()})
+		}
+	}()
+	response, err := client.CompleteWithMessages(ctx, messages, ai.WithTemperature(0), ai.WithMaxTokens(compilerAnswerTokens), ai.WithJSONMode())
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +150,6 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 		}
 		return nil, fmt.Errorf("knowledge %s response incomplete (%s); cached progress retained", role, reason)
 	}
-	var result document
 	if err = json.Unmarshal([]byte(textValue(object(choices[0]["message"])["content"])), &result); err != nil || result == nil {
 		return nil, errors.New("knowledge provider returned invalid result JSON")
 	}
@@ -120,8 +162,16 @@ func (m compilerModel) call(role string, payload document) (document, error) {
 	if err = validateCompilerReferences(role, payload, result); err != nil {
 		return nil, err
 	}
-	receipt := document{"started_at": started.UTC().Format(time.RFC3339Nano), "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "model": m.model, "role": role, "request_id": requestID, "provider": data["provider"], "reasoning_requested": reasoning, "max_tokens": 8000, "generation_id": data["id"], "usage": data["usage"], "transport": "provider_funnel", "seconds": time.Since(started).Seconds(), "result": result}
-	if _, err = m.db.Exec("INSERT OR IGNORE INTO receipts(id,model,role,cost,payload) VALUES(?,?,?,?,?)", requestID, m.model, role, number(object(data["usage"])["cost"]), mustJSON(receipt)); err != nil {
+	receipt := document{"started_at": started.UTC().Format(time.RFC3339Nano), "completed_at": time.Now().UTC().Format(time.RFC3339Nano), "model": m.model, "role": role, "request_id": requestID, "provider": data["provider"], "reasoning_requested": reasoning, "max_tokens": compilerAnswerTokens, "generation_id": data["id"], "usage": data["usage"], "transport": "provider_funnel", "seconds": time.Since(started).Seconds(), "result": result}
+	receiptsMu.Lock()
+	if len(receiptIDs) > 0 {
+		// A usable answer becomes the cache entry without counting its bill twice.
+		_, err = m.db.Exec("UPDATE receipts SET id=?,payload=? WHERE id=?", requestID, mustJSON(receipt), receiptIDs[len(receiptIDs)-1])
+	} else {
+		_, err = m.db.Exec("INSERT OR IGNORE INTO receipts(id,model,role,cost,payload) VALUES(?,?,?,?,?)", requestID, m.model, role, number(object(data["usage"])["cost"]), mustJSON(receipt))
+	}
+	receiptsMu.Unlock()
+	if err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -139,7 +189,7 @@ func compilerRequestID(model, role string, payload document) string {
 	}
 	requestID := identity([]any{model, requestVersion, prompt, payload})
 	requestID = identity([]any{requestID, document{"effort": "none"}})
-	requestID = identity([]any{requestID, document{"max_tokens": 8000}})
+	requestID = identity([]any{requestID, document{"max_tokens": compilerAnswerTokens}})
 	return requestID
 }
 
@@ -164,6 +214,13 @@ func (m compilerModel) cached(role string, payload document) (document, bool, er
 		return result, true, nil
 	} else if cacheErr != sql.ErrNoRows {
 		return nil, false, cacheErr
+	}
+	retry, err := stateDocument(m.db, "retry:"+compilerRequestID(m.model, role, payload))
+	if err != nil {
+		return nil, false, err
+	}
+	if float64(time.Now().UnixNano()) < number(retry["after"]) {
+		return nil, false, fmt.Errorf("knowledge retry paused: %s", textValue(retry["reason"]))
 	}
 	return nil, false, nil
 }

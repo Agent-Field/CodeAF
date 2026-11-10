@@ -565,6 +565,110 @@ func bContinued(t *testing.T) *twoHomes {
 	return h
 }
 
+func TestTwoHomesTakeBackRunsToolsAfterRetainedBranchAndRestart(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := context.Background()
+	a := h.openA()
+	a.mustSay("A published")
+	h.durable(h.cell.ID, h.cell)
+	h.block.set(true)
+	a.mustSay("A retained turn")
+	orphanHead := headOf(t, h.cell)
+
+	took, err := h.continuerB().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.block.set(false)
+	waitFor(t, "A's persisted retained-branch redirect", func() bool {
+		branches, err := branchMapOf(h.homeA)
+		return err == nil && branches.Resolve(h.cell.ID) != h.cell.ID
+	})
+	branch, ok := branchRowOf(t, h.a, h.cell.ID)
+	if !ok || branch.OrphanTurns != 1 {
+		t.Fatalf("retained branch = %+v, %v", branch, ok)
+	}
+	branches, err := branchMapOf(h.homeA)
+	mustNil(t, err)
+	mustNil(t, branches.Set("unrelated-chat", "unrelated-branch"))
+	b := h.openOn(h.b, h.engB, took.Taken.Cell, workspaceOf(took.Taken.Cell.Root), nameB)
+	b.mustSay("B unique work")
+	h.durable(h.cell.ID, took.Taken.Cell)
+
+	back, err := h.continuerA().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	returned := h.openOn(h.a, h.engine, back.Taken.Cell, h.work, nameA)
+	assertToolSentinel(t, returned, "before-restart")
+	mustNil(t, returned.drive.Close(ctx))
+
+	// Reopen the saved home and native store through fresh sync and engine values.
+	h.a = openSync(t, h.homeA)
+	eng := cellstore.EngineFor(h.work)
+	eng.DataRoot, eng.Binary, eng.Transport = h.engine.DataRoot, h.bin, cellstore.Spawn{Binary: h.bin}
+	reopened := h.openOn(h.a, eng, h.cell, h.work, nameA)
+	assertToolSentinel(t, reopened, "after-restart")
+	branches, err = branchMapOf(h.homeA)
+	mustNil(t, err)
+	if branches.Resolve(h.cell.ID) != h.cell.ID || branches.Resolve("unrelated-chat") != "unrelated-branch" {
+		t.Fatal("take-back did not persist only the requested chat's redirect removal")
+	}
+	raw, err := os.ReadFile(transcriptOf(h.cell))
+	if err != nil || !strings.Contains(string(raw), "B unique work") {
+		t.Fatalf("B's unique work is missing after take-back: %v", err)
+	}
+	rec, err := h.a.Dir.Cell(ctx, branch.Cell)
+	if err != nil || rec.Cell.Archived || rec.Cell.Head != orphanHead {
+		t.Fatalf("retained branch no longer reachable: %+v, %v", rec.Cell, err)
+	}
+	kept := h.fetchInto(orphanHead)
+	if kept["turn-"+h.cell.ID[len(h.cell.ID)-4:]+"-2.txt"].body != "A retained turn" {
+		t.Fatal("the retained branch lost A's unpublished turn")
+	}
+}
+
+func TestTwoHomesAlreadyHereRepairsRetainedRedirect(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := context.Background()
+	a := h.openA()
+	a.mustSay("A published")
+	h.durable(h.cell.ID, h.cell)
+	branches, err := branchMapOf(h.homeA)
+	mustNil(t, err)
+	mustNil(t, branches.Set(h.cell.ID, "retained-branch"))
+	mustNil(t, branches.Set("unrelated-chat", "unrelated-branch"))
+	back, err := h.continuerA().Take(ctx, h.cell.ID)
+	if err != nil || !back.AlreadyHere {
+		t.Fatalf("take = %+v, %v; want AlreadyHere", back, err)
+	}
+	reopened := h.openOn(h.a, h.engine, back.Taken.Cell, h.work, nameA)
+	assertToolSentinel(t, reopened, "already-here")
+	branches, err = branchMapOf(h.homeA)
+	mustNil(t, err)
+	if branches.Resolve(h.cell.ID) != h.cell.ID || branches.Resolve("unrelated-chat") != "unrelated-branch" {
+		t.Fatal("AlreadyHere did not persist only the requested chat's redirect removal")
+	}
+}
+
+func assertToolSentinel(t *testing.T, chat *openChat, name string) {
+	t.Helper()
+	path := filepath.Join(chat.work, name+".sentinel")
+	ran := false
+	var writeErr error
+	err := chat.seat.Around(context.Background(), executor.Call{Tool: "bash", Args: []byte(`{"command":"write sentinel"}`)}, func() ([]byte, bool) {
+		ran = true
+		writeErr = os.WriteFile(path, []byte(name), 0o600)
+		return nil, writeErr != nil
+	})
+	if err != nil || !ran || writeErr != nil {
+		t.Fatalf("tool callback %s: ran=%v, gate=%v, write=%v", name, ran, err, writeErr)
+	}
+	if raw, err := os.ReadFile(path); err != nil || string(raw) != name {
+		t.Fatalf("tool sentinel %s missing: %v", name, err)
+	}
+}
+
 // sameFolder asserts a path is still the very directory it was: editors and git
 // hold a project folder open, so it is never renamed or replaced.
 func sameFolder(t *testing.T, path string, before os.FileInfo) {

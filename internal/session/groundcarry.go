@@ -52,10 +52,14 @@ package session
 // cleanly, and the person is told the branch was kept.
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -201,36 +205,59 @@ func (t taskTree) carryUntrackedGround(blocked []string) (bool, string, []string
 		return false, said, clashing, refusedByYourFiles
 	}
 	stood = strings.TrimSpace(stood)
-	hold, err := os.MkdirTemp("", "codeaf-your-copies-")
+	gitDir, err := git(t.root, "rev-parse", "--absolute-git-dir")
 	if err != nil {
-		said, clashing := t.refuseMerge(blocked, "")
-		return false, said, clashing, refusedByYourFiles
+		return false, "could not locate storage for your copies: " + err.Error() + ": " + strings.TrimSpace(gitDir), blocked, refusedByYourFiles
+	}
+	// The repository's own storage avoids crossing from a workspace mount to
+	// system temp. Linked worktrees can still cross mounts, so moves also copy
+	// safely when rename reports EXDEV.
+	hold, err := os.MkdirTemp(strings.TrimSpace(gitDir), "codeaf-your-copies-")
+	if err != nil {
+		return false, "could not make storage for your copies: " + err.Error(), blocked, refusedByYourFiles
 	}
 	moved, problem := holdYourCopies(t.root, hold, blocked)
+	// Only copies actually moved belong to this restore, including when a
+	// later move refused. No missing source is guessed from the blocked list.
+	restore := func() ([]string, error) {
+		beside, err := putYourCopiesBack(t.root, moved)
+		if err != nil {
+			return beside, fmt.Errorf("%w; remaining copies are kept in %s", err, hold)
+		}
+		return beside, os.RemoveAll(hold)
+	}
 	if problem != "" {
-		putYourCopiesBack(t.root, moved)
-		_ = os.RemoveAll(hold)
+		_, restoreErr := restore()
 		said, clashing := t.refuseMerge(blocked, "")
+		said += "; could not move your copies: " + problem
+		if restoreErr != nil {
+			said += "; " + restoreErr.Error()
+		}
 		return false, said, clashing, refusedByYourFiles
 	}
 	if out, err := mergeTaskBranch(t.root, t.branch); err != nil {
-		// The names are read while the conflicted index still holds them, exactly
-		// as every other road here reads them ([conflictSentence]).
 		clashing := conflictedPaths(t.root)
 		abandonMerge(t.root)
 		_, _ = git(t.root, "reset", "--hard", stood)
-		putYourCopiesBack(t.root, moved)
-		_ = os.RemoveAll(hold)
-		return false, conflictSentence(t.branch, clashing, out), conflictNames(clashing, out), refusedByTheWork
+		_, restoreErr := restore()
+		said := conflictSentence(t.branch, clashing, out)
+		if restoreErr != nil {
+			said += "; " + restoreErr.Error()
+		}
+		return false, said, conflictNames(clashing, out), refusedByTheWork
 	}
-	beside := putYourCopiesBack(t.root, moved)
-	_ = os.RemoveAll(hold)
+	beside, err := restore()
+	if err != nil {
+		return false, "the task's branch landed, but could not put your copies back: " + err.Error(), blocked, refusedByYourFiles
+	}
 	return true, carriedAsideSentence(t.branch, blocked, beside), nil, refusedNothing
 }
 
 // heldCopy is one of the person's own untracked files while it is out of the
 // tree: where it belongs, and where it is being kept.
 type heldCopy struct{ path, held string }
+
+var renameGroundCopy = os.Rename
 
 // holdYourCopies moves each named file out of the tree into the holding
 // directory, answering what it moved and the first thing that would not go. The
@@ -241,11 +268,13 @@ func holdYourCopies(root, hold string, paths []string) ([]heldCopy, string) {
 	for i, path := range paths {
 		from := filepath.Join(root, filepath.FromSlash(path))
 		if _, err := os.Lstat(from); err != nil {
-			// Not there any more: nothing of theirs is at risk and nothing is owed.
-			continue
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return moved, err.Error()
 		}
 		held := filepath.Join(hold, strconv.Itoa(i)+"-"+filepath.Base(path))
-		if err := os.Rename(from, held); err != nil {
+		if err := moveGroundCopy(from, held); err != nil {
 			return moved, err.Error()
 		}
 		moved = append(moved, heldCopy{path: path, held: held})
@@ -259,23 +288,77 @@ func holdYourCopies(root, hold string, paths []string) ([]heldCopy, string) {
 // IT NEVER OVERWRITES AND NEVER DELETES. A path the merge has since written is
 // the task's answer, so the person's copy takes the next free `.yours` name
 // under it; a path the merge left alone takes the person's copy straight back.
-func putYourCopiesBack(root string, moved []heldCopy) []string {
+func putYourCopiesBack(root string, moved []heldCopy) ([]string, error) {
 	var beside []string
 	for _, one := range moved {
 		home := filepath.Join(root, filepath.FromSlash(one.path))
-		if _, err := os.Lstat(home); err != nil {
-			_ = os.MkdirAll(filepath.Dir(home), 0o755)
-			if os.Rename(one.held, home) == nil {
-				continue
-			}
+		destination := home
+		if _, err := os.Lstat(home); err == nil {
+			destination = freeYoursName(home)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return beside, err
 		}
-		spare := freeYoursName(home)
-		_ = os.MkdirAll(filepath.Dir(spare), 0o755)
-		if os.Rename(one.held, spare) == nil {
-			beside = append(beside, one.path+groundYoursSuffix)
+		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+			return beside, err
+		}
+		if err := moveGroundCopy(one.held, destination); err != nil {
+			return beside, err
+		}
+		if destination != home {
+			beside = append(beside, filepath.ToSlash(strings.TrimPrefix(destination, root+string(os.PathSeparator))))
 		}
 	}
-	return beside
+	return beside, nil
+}
+
+// moveGroundCopy removes the source only after a complete copy is closed. A
+// failed move leaves the original available, including when mounts differ.
+func moveGroundCopy(from, to string) error {
+	if err := renameGroundCopy(from, to); !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+	info, err := os.Lstat(from)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(from)
+		if err != nil {
+			return err
+		}
+		if err := os.Symlink(target, to); err != nil {
+			return err
+		}
+	} else {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("cannot carry %s across filesystems: not a regular file or symlink", from)
+		}
+		source, err := os.Open(from)
+		if err != nil {
+			return err
+		}
+		defer source.Close()
+		target, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
+		if err != nil {
+			return err
+		}
+		// Creation applies the process umask; the saved copy keeps the person's
+		// permissions as well as their bytes.
+		copyErr := target.Chmod(info.Mode().Perm())
+		if copyErr == nil {
+			_, copyErr = io.Copy(target, source)
+		}
+		closeErr := target.Close()
+		if err := errors.Join(copyErr, closeErr); err != nil {
+			_ = os.Remove(to)
+			return err
+		}
+	}
+	if err := os.Remove(from); err != nil {
+		_ = os.Remove(to)
+		return err
+	}
+	return nil
 }
 
 // groundYoursSuffix is what a person's own copy wears when the task's version

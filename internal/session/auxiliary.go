@@ -291,6 +291,9 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 			called = rung.Model
 		}
 		releaseRung()
+		if errors.Is(callErr, ErrSpendRail) {
+			return nil, called, callErr
+		}
 		if callErr == nil && response != nil {
 			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
 			// turn does (loop.go's [Agent.addUsage]). Without it the journal's

@@ -32,6 +32,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
+	"github.com/Agent-Field/codeaf/internal/upgradenotice"
 )
 
 // frameInterval is the repaint ceiling: at most one frame is BUILT per 33ms,
@@ -3418,7 +3419,14 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
-		eachLine(notice, a.note)
+		if upgradenotice.IsRecovery(notice) {
+			if opts.Notices == nil {
+				opts.Notices = NewNotices()
+			}
+			eachLine(notice, opts.Notices.SayHomeOnce)
+		} else {
+			eachLine(notice, a.note)
+		}
 	}
 	if from := strings.TrimSpace(opts.UpdatedFrom); from != "" {
 		a.note(updatedFromNote(from, a.updateRunning))

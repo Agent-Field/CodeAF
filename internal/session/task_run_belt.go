@@ -303,6 +303,8 @@ type RunSummary struct {
 	StorageSafe bool
 	Outcome     string
 	Result      string
+	// Failure preserves the worker's account when the run did not finish.
+	Failure string
 	// Limit is empty on every run that did not end on a bound its person set.
 	Limit RunLimit
 	// Program is how a delegated run's program ended when it did not finish,
@@ -328,6 +330,9 @@ type RunLanding struct {
 	Branch  string
 	Changed []string
 	Refused string
+	// Conflicts and GroundHeld preserve what the person's landing decision moves.
+	Conflicts  []string
+	GroundHeld bool
 	// Home is how the work came home, in the landing road's own outcome words
 	// ([mergeMerged] and its kin), set by this door once the run's copy has been
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
@@ -414,13 +419,13 @@ type beltRun struct {
 	// take beltMu before copying membership onto live plan rows.
 	machineHeld map[string]bool
 	workers     map[string]chan struct{}
-	// cut ends the context the run's workers and every call they have out run
-	// under, and stopped and stopReason say a PERSON ended it and in what words
-	// (stoprun.go). cut is set once before the run starts; the other two are
-	// written and read under [Agent.beltMu].
+	// cut ends the workers and their calls. Cancellation keeps its reason and
+	// typed ending so a time limit remains distinct from the person's Stop.
+	// cut is set before dispatch; cancellation fields use [Agent.beltMu].
 	cut        context.CancelFunc
 	stopped    bool
 	stopReason string
+	stopEnding TaskEnding
 	// bringingHome linearizes Stop against the existing main-checkout merge.
 	// quiet suppresses model narration after a stop arrives beyond that point.
 	// deliveryMu serializes page Stop with final receipt admission.
@@ -1464,6 +1469,8 @@ func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, k
 func interruptedProgramEnding(store *plandb.Store, root *plandb.Task, record delegate.ProgramRecord) (string, TaskEnding, bool) {
 	report := strings.TrimSpace(root.Error)
 	switch {
+	case report == conversationTimeLimitReason:
+		return report, TaskEndingTimeLimit, false
 	case root.Status == plandb.StatusCancelled:
 		return report, TaskEndingStopped, true
 	case report == runLimitSentence:
@@ -1678,10 +1685,10 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 	a.publishJoinedRunRows(g, run)
 	// Setup admitted before a stop inherits its closed admission gate.
 	a.mu.Lock()
-	stopped, why := a.workStopped, a.workStopReason
+	stopped, why, ending := a.workStopped, a.workStopReason, a.workStopEnding
 	a.mu.Unlock()
 	if stopped {
-		_, _, _ = a.stopBeltRow(run.row, why)
+		_, _, _ = a.stopBeltRowForEnding(run.row, why, ending)
 	}
 }
 
@@ -2286,7 +2293,8 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 	if run.tree.dir == "" {
 		return landing
 	}
-	merge, said, _, _ := run.tree.comeHome(run.title, landing.Changed, a.signsGitWork())
+	merge, said, conflicts, refusal := run.tree.comeHome(run.title, landing.Changed, a.signsGitWork())
+	landing.Conflicts, landing.GroundHeld = conflicts, refusal == refusedByYourFiles
 	if landing.Refused != "" {
 		// NOTHING TO LAND IS STILL AN ENDING: the copy was given back above, and
 		// the sentence the engine answered is the whole account.
@@ -2458,9 +2466,8 @@ func owedLandingDocument(task *plandb.Task, result string) userMessage {
 func owedLandingCallCeiling() int { return settleCallCeiling }
 func owedLandingTier() roles.Tier { return roles.TierLow }
 
-// settleBeltRun ends the row the run was published under: done when the run
-// finished whole, failed on every other ending, with the result and the branch
-// a surface draws.
+// settleBeltRun records the work's ending and its landing together, so a
+// finished run whose branch conflicts still asks the person what to do.
 func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLanding) {
 	notice := a.beltRunNotice(run, summary, landing)
 	notice.EndedAt = a.beltRunEndedAt(run)
@@ -2598,13 +2605,7 @@ func cancelledByRunEnding(store *plandb.Store, id uint64) bool {
 // the row and the conversation's note are built from, so the two cannot name
 // two different endings.
 func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLanding) TaskNotice {
-	state, report := beltRunResultWords(summary, landing)
-	if run.remoteEngine != nil && summary.NeedsDecision {
-		state = TaskUnverified
-	}
-	if run.remoteEngine != nil && summary.Outcome == "interrupted" {
-		state = TaskInterrupted
-	}
+	state, report := run.noticeResultWords(summary, landing)
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: state,
 		// A LIMIT ITS PERSON SET IS THE ROW'S ENDING, so the reason a surface
@@ -2614,7 +2615,7 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// the outcome sentence.
 		Ending: beltRunEnding(summary),
 		Report: report, Result: summary.Result,
-		Changed: landing.Changed,
+		Changed: landing.Changed, Conflicts: landing.Conflicts, GroundHeld: landing.GroundHeld,
 		// THE CREW THAT DID IT AND WHAT IT COST, beside the estimate it was
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
@@ -2643,6 +2644,23 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	return notice
+}
+
+// noticeResultWords resolves the outcome and landing before the shared
+// snapshot adds its crew, cost and branch facts.
+func (run *beltRun) noticeResultWords(summary RunSummary, landing RunLanding) (TaskState, string) {
+	state, report := beltRunResultWords(summary, landing)
+	if run.remoteEngine != nil && summary.NeedsDecision {
+		state = TaskUnverified
+	}
+	if run.remoteEngine == nil && run.delegate == nil && summary.Outcome == beltRunOutcomeDone && landing.Home == mergeConflicted {
+		state = TaskUnverified
+		report = withYourCallLead(TaskFacts{Merge: landing.Home, Conflicts: landing.Conflicts, GroundHeld: landing.GroundHeld}, report)
+	}
+	if run.remoteEngine != nil && summary.Outcome == "interrupted" {
+		state = TaskInterrupted
+	}
+	return state, report
 }
 
 // A remote landing keeps the executor with its final reading, since this
@@ -2682,11 +2700,14 @@ func beltRunEnding(summary RunSummary) TaskEnding {
 
 // runEndingWords is a run's ending in the two parts every drawing of it reads:
 // the one sentence, and the account under it. A program that ended its run
-// unfinished speaks for itself; every other run answers the engine's outcome
-// word and the root's result.
+// unfinished speaks for itself; otherwise a worker's failure leads the
+// root's result, with the generic outcome used only when no reason was given.
 func runEndingWords(summary RunSummary) (string, string) {
 	if ended := summary.Program; ended != nil && summary.Outcome != beltRunOutcomeDone {
 		return strings.TrimSpace(ended.Reason), strings.TrimSpace(ended.Result)
+	}
+	if failure := strings.TrimSpace(summary.Failure); failure != "" && summary.Outcome != beltRunOutcomeDone {
+		return failure, strings.TrimSpace(summary.Result)
 	}
 	return summary.Outcome, strings.TrimSpace(summary.Result)
 }
@@ -2894,9 +2915,9 @@ func beltRunResultWords(summary RunSummary, landing RunLanding) (TaskState, stri
 	outcome, result := runEndingWords(summary)
 	report := result
 	if summary.Outcome != beltRunOutcomeDone {
-		if summary.Program != nil {
-			// THE PROGRAM'S OWN SENTENCE LEADS, and its account follows: the
-			// reason line a surface draws is the report's first line.
+		if summary.Program != nil || strings.TrimSpace(summary.Failure) != "" {
+			// The reason leads so the ending card names what stopped the work;
+			// any partial result follows on its own line.
 			report = strings.TrimSpace(outcome + "\n" + result)
 		} else if report == "" {
 			report = outcome

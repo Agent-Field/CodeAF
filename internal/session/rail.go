@@ -60,13 +60,46 @@ func (a *Agent) spendRailUSD() float64 {
 // [Config.DailyBudgetResolved] distinguishes that authority from an unset root
 // field; neither an empty path nor a zero amount can make that distinction.
 func (a *Agent) dailyCeilingUSD() float64 {
-	if a.config.DailyBudgetResolved {
-		return a.config.DailyBudgetUSD
+	return a.config.dailyCeilingUSD()
+}
+
+func (c Config) dailyCeilingUSD() float64 {
+	if c.DailyBudgetResolved {
+		return c.DailyBudgetUSD
 	}
-	if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil {
+	if daily, err := config.DailyBudgetUSDAt(c.ProfileDir); err == nil {
 		return daily
 	}
 	return 0
+}
+
+// DailyLimitReachedAt gives process-owned calls the shared gate without
+// requiring their caller to construct a session configuration.
+func DailyLimitReachedAt(profileDir string, preauthorized bool) error {
+	return DailyLimitReached(Config{ProfileDir: profileDir, SpendPreauthorized: preauthorized})
+}
+
+// DailyLimitReached checks the same live daily ceiling for turns and background
+// calls. Held spend includes completed calls not yet visible in the ledger.
+// Preauthorization lifts only this ceiling; task and conversation limits remain.
+func DailyLimitReached(c Config, held ...float64) error {
+	if c.SpendPreauthorized {
+		return nil
+	}
+	daily := c.dailyCeilingUSD()
+	if daily <= 0 {
+		return nil
+	}
+	spent := spentTodayOnLedger()
+	for _, amount := range held {
+		spent = max(spent, amount)
+	}
+	if spent < daily {
+		return nil
+	}
+	return spendRailReached{said: fmt.Sprintf(
+		"daily limit reached · %s spent of %s · /budget day changes it",
+		railMoney(spent), railMoney(daily))}
 }
 
 // ErrSpendRail is what a refused turn carries in its EventError. It is a named
@@ -96,18 +129,12 @@ func (a *Agent) railBlockLocked() error {
 	// it lifts THIS limit and nothing else, the same authority `doSpendGuard`
 	// lifts from the crew guard (cmd/codeaf's do.go). A per-conversation or
 	// per-task limit stays in force below.
-	if !a.config.SpendPreauthorized {
-		if daily := a.dailyCeilingUSD(); daily > 0 {
-			spentToday := spentTodayOnLedger()
-			if a.crewDayHeld != nil {
-				spentToday = max(spentToday, a.crewDayHeld.Total())
-			}
-			if spentToday >= daily {
-				return spendRailReached{said: fmt.Sprintf(
-					"daily limit reached · %s spent of %s · /budget day changes it",
-					railMoney(spentToday), railMoney(daily))}
-			}
-		}
+	var held float64
+	if a.crewDayHeld != nil {
+		held = a.crewDayHeld.Total()
+	}
+	if err := DailyLimitReached(a.config, held); err != nil {
+		return err
 	}
 	rail := a.spendRailUSD()
 	if rail <= 0 {

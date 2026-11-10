@@ -23,10 +23,6 @@ const clusterVerboseFlag = "verbose"
 
 const clusterHelp = `codeaf cluster status [--` + clusterVerboseFlag + `]
   Show the computers coordinating, deciding changes and keeping copies.
-codeaf cluster lead [--` + clusterVerboseFlag + `]
-  Ask this joined computer to coordinate through the sync service.
-  Persistent storage is required; keep codeaf open while this computer leads.
-  Three deciding computers tolerate one unavailable computer.
 `
 
 type clusterDoor interface {
@@ -47,8 +43,11 @@ func runCluster(args []string) error {
 		return err
 	}
 	args = flags.Args()
-	if len(args) != 1 || args[0] != "status" && args[0] != "lead" {
-		return errors.New("usage: codeaf cluster status | lead")
+	if len(args) != 1 {
+		return errors.New("usage: codeaf cluster status")
+	}
+	if args[0] != "status" {
+		return unknownCommand("cluster " + args[0])
 	}
 	if syncsetup.Quiet(home.Dir()) {
 		return syncsetup.ErrQuiet
@@ -81,7 +80,8 @@ func clusterCommandMode(ctx context.Context, c clusterDoor, verb string, out io.
 	return clusterCommand(ctx, c, verb, out, options)
 }
 
-// clusterCommand answers `codeaf cluster status` and `codeaf cluster lead`. The
+// clusterCommand answers status and retains the dormant leadership client for
+// restoration after #2559; runCluster exposes only status in this release. The
 // whole answer is written into a buffer by work bounded by one ceiling, so a
 // store open that ignores its context cannot hold the terminal past it, and an
 // answer that arrives late never reaches the terminal at all. Errors are explained

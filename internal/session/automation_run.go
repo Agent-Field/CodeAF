@@ -41,7 +41,6 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/automation"
-	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -446,6 +445,9 @@ func (r *automationRunner) Judge(ctx context.Context, item automation.Automation
 	var response *ai.Response
 	var model string
 	for _, candidate := range models {
+		if err := DailyLimitReached(cfg); err != nil {
+			return automation.Judgment{}, err
+		}
 		var client Completer
 		client, model, err = r.judgeClient(cfg, candidate)
 		if err != nil {
@@ -695,12 +697,8 @@ func (r *automationRunner) setUpWork(item automation.Automation, run automation.
 	// task, which that check passes over because the conversation that started
 	// the task asked first; nothing asked before an automation's run, so it is
 	// asked here, before anything — a worktree included — is made for it.
-	//
-	// A WATCH'S JUDGMENT IS NOT HELD TO IT. A look costs a fraction of a cent,
-	// and a refused look is news, so holding looks to the limit would raise a
-	// notification every few minutes until midnight to save pennies.
-	if line, reached := automationDailyLimitReached(cfg.ProfileDir); reached {
-		setup.refused = line
+	if err := DailyLimitReached(cfg); err != nil {
+		setup.refused = err.Error()
 		return setup, nil
 	}
 	if item.Worktree {
@@ -716,27 +714,6 @@ func (r *automationRunner) setUpWork(item automation.Automation, run automation.
 		ID: place.ID(), Title: item.Title, Workspace: item.Workspace, Model: setup.cfg.Model, Created: time.Now(),
 	})
 	return setup, nil
-}
-
-// automationSpentToday is what the machine has spent today, read off the usage
-// ledger. It is a variable so a test can stand in a figure without writing to a
-// ledger every other test in the package reads.
-var automationSpentToday = spentTodayOnLedger
-
-// automationDailyLimitReached answers the line a run of work stops on when the
-// person's daily spending limit is reached, the same reading a conversation's
-// turn makes. No limit, or one that cannot be read, is no refusal.
-func automationDailyLimitReached(profileDir string) (string, bool) {
-	daily, err := config.DailyBudgetUSDAt(profileDir)
-	if err != nil || daily <= 0 {
-		return "", false
-	}
-	spent := automationSpentToday()
-	if spent < daily {
-		return "", false
-	}
-	return fmt.Sprintf("today's spending limit is reached · %s spent of %s · /budget day changes it",
-		railMoney(spent), railMoney(daily)), true
 }
 
 // workEnd is how a run's turn ended, read off its events.

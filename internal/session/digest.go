@@ -28,9 +28,10 @@ type Digest struct {
 	// LastUserAt is when the person last spoke; the session's own notes do not
 	// count, as in [Meta.LastUserAt].
 	LastUserAt time.Time
-	// Usage is one row per journaled usage line, in file order.
+	// Usage is one row per directly billed usage line, in file order.
 	Usage []UsageLine
 
+	folded      Usage
 	placeholder string
 }
 
@@ -107,6 +108,14 @@ func foldUsage(d *Digest, _ []byte, e sessionEntry) {
 		return
 	}
 	u := e.Usage
+	// A fold summarizes calls already billed by workers. Older run journals
+	// carried these as cost-only auxiliary lines, before the explicit marker.
+	if u.Folded || (u.Aux && u.Model == "" && u.Calls == 0 && u.Input == 0 && u.Output == 0) {
+		d.folded.CostUSD += u.CostUSD
+		d.folded.Input += u.Input
+		d.folded.Output += u.Output
+		return
+	}
 	d.Usage = append(d.Usage, UsageLine{
 		At: parseStamp(e.Timestamp), Model: u.Model, Role: u.Role, Calls: u.Calls,
 		Input: u.Input, Output: u.Output, USD: u.CostUSD, Empty: u.Empty,
@@ -132,6 +141,7 @@ func parseStamp(s string) time.Time {
 // Spend is the transcript's own total: money and input plus output tokens, the
 // two figures [Meta] stamps.
 func (d Digest) Spend() (usd float64, tokens int) {
+	usd, tokens = d.folded.CostUSD, d.folded.Input+d.folded.Output
 	for _, u := range d.Usage {
 		usd += u.USD
 		tokens += u.Input + u.Output

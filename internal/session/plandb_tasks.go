@@ -477,7 +477,7 @@ func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
 		if notice.State == TaskInterrupted {
 			row.Interrupted = true
 		}
-		if notice.RecoveredCompletion {
+		if notice.RecoveredCompletion || localRunConflict(notice) {
 			row.Status = string(notice.State)
 			row.Ended = notice.EndedAt
 			if notice.CostUSD > row.USD {

@@ -654,7 +654,7 @@ the same stream and its recorded events.
 ## Are saved memories available on the default engine launch?
 
 Yes. Plain `codeaf` holds the conversation in this machine's engine and reads
-its memories. `/memory` or `alt+8` opens the Memories tab; `/remember <text>`
+its memories. `/memory` or `alt+8` opens the Memory tab; `/remember <text>`
 keeps one line, `/memories` lists them, and the tab forgets one. The page and commands use the same engine store. A demo
 home's seeded lines are available on this road too.
 
