@@ -283,8 +283,7 @@ func testNestedGate(t *testing.T) {
 	pressLandingKey(r, "a")
 	r.waitFor(20*time.Second,
 		say(t, "taskDoneGlyph")+" Port the parser"+say(t, "settleAcceptReceipt"))
-	// Accepting hands the report back to the chat, which reads it before settling.
-	r.waitFor(modelPatience, " "+say(t, "idleWord"))
+	// These ownerless completions stay readable in background work while the resumed turn runs.
 	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
 	// A newer worked chip can take ctrl+e, so open the task history by name.
 	clickLineContaining(t, r, say(t, "backgroundWorkWord"))
