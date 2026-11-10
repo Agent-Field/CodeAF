@@ -99,6 +99,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		StorageSafe: storage.safe() && spec.Delegate == nil,
 		Outcome:     string(outcome),
 		Result:      summary.Result,
+		Failure:     summary.Failure,
 		// WHICH LIMIT FIRED IS A FACT AND NOT A WORD IN THE OUTCOME SENTENCE:
 		// the run's own typed answer crosses the seam here, mapped one for one,
 		// so the session draws the ending out of the fact and never parses the

@@ -303,6 +303,8 @@ type RunSummary struct {
 	StorageSafe bool
 	Outcome     string
 	Result      string
+	// Failure preserves the worker's account when the run did not finish.
+	Failure string
 	// Limit is empty on every run that did not end on a bound its person set.
 	Limit RunLimit
 	// Program is how a delegated run's program ended when it did not finish,
@@ -2689,11 +2691,14 @@ func beltRunEnding(summary RunSummary) TaskEnding {
 
 // runEndingWords is a run's ending in the two parts every drawing of it reads:
 // the one sentence, and the account under it. A program that ended its run
-// unfinished speaks for itself; every other run answers the engine's outcome
-// word and the root's result.
+// unfinished speaks for itself; otherwise a worker's failure leads the
+// root's result, with the generic outcome used only when no reason was given.
 func runEndingWords(summary RunSummary) (string, string) {
 	if ended := summary.Program; ended != nil && summary.Outcome != beltRunOutcomeDone {
 		return strings.TrimSpace(ended.Reason), strings.TrimSpace(ended.Result)
+	}
+	if failure := strings.TrimSpace(summary.Failure); failure != "" && summary.Outcome != beltRunOutcomeDone {
+		return failure, strings.TrimSpace(summary.Result)
 	}
 	return summary.Outcome, strings.TrimSpace(summary.Result)
 }
@@ -2901,9 +2906,9 @@ func beltRunResultWords(summary RunSummary, landing RunLanding) (TaskState, stri
 	outcome, result := runEndingWords(summary)
 	report := result
 	if summary.Outcome != beltRunOutcomeDone {
-		if summary.Program != nil {
-			// THE PROGRAM'S OWN SENTENCE LEADS, and its account follows: the
-			// reason line a surface draws is the report's first line.
+		if summary.Program != nil || strings.TrimSpace(summary.Failure) != "" {
+			// The reason leads so the ending card names what stopped the work;
+			// any partial result follows on its own line.
 			report = strings.TrimSpace(outcome + "\n" + result)
 		} else if report == "" {
 			report = outcome
