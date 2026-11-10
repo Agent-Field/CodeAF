@@ -50,6 +50,9 @@ type Billed struct {
 	// Model is who actually served the call — the rung a panel picked or an
 	// escalation moved to — rather than the name the caller asked for.
 	Model string
+	// ReportedModel is the model ID in the answer, when the provider supplied
+	// one. Strict callers retain this evidence even when rejecting a substitution.
+	ReportedModel string
 	// The four figures the usage table holds. CachedTokens is the share of
 	// PromptTokens the provider billed at the cached rate.
 	PromptTokens     int
@@ -219,6 +222,7 @@ func (c *Client) bill(ctx context.Context, model string, response *ai.Response) 
 	billed := Billed{
 		Node:             callNode(ctx),
 		Model:            model,
+		ReportedModel:    response.Model,
 		PromptTokens:     response.Usage.PromptTokens,
 		CompletionTokens: response.Usage.CompletionTokens,
 		CachedTokens:     response.Usage.CacheReadTokens(),
