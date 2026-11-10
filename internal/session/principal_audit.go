@@ -47,6 +47,7 @@ package session
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -265,7 +266,7 @@ func runOneCheck(ctx context.Context, tree, check string, windows ...time.Durati
 	if err != nil {
 		return CheckRun{Command: check, Tail: err.Error()}
 	}
-	output, err := command.CombinedOutput()
+	output, err := processgroup.CombinedOutput(command)
 	// A COMMAND THAT RAN AND A COMMAND THAT COULD NOT BE RUN ARE DIFFERENT NEWS.
 	// An exit status — whatever it was — is the shell having executed the thing
 	// and answered; anything else is the command not being there, the window

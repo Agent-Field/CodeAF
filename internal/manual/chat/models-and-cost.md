@@ -4596,6 +4596,15 @@ and its credentials on the receiving computer; pairing does not install a provid
 The **share teams** switch does not change which crew choices follow preferences.
 Desktop app crews are separate.
 
+## Windows spending history updates while the file is open
+
+On Windows 10 version 1709 or newer with NTFS, saved spending history can be
+replaced while a reader or the spending writer holds it open. Readers finish
+with their earlier view; later charges go to the current history without losing
+earlier charges. Older Windows versions and filesystems that do not support
+this keep Windows' native replacement limits. A persistent file error is still
+reported.
+
 ## Are queued spending records saved when I close a conversation?
 
 Closing a conversation waits for spending records already queued to its ledger,

@@ -1,11 +1,11 @@
 package taskdoor
 
 import (
-	"errors"
-	"os"
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // MaxFinishedAttempts bounds durable replay protection after copy cleanup.
@@ -38,11 +38,7 @@ func (s *attemptStore) rememberFinished(id string) error {
 		return err
 	}
 	// The tombstone's directory entry must survive before the bulky attempt is removed.
-	directory, err := os.Open(s.root)
-	if err != nil {
-		return err
-	}
-	if err = errors.Join(directory.Sync(), directory.Close()); err != nil {
+	if err := fsreplace.SyncDir(s.root); err != nil {
 		return err
 	}
 	s.finished = next

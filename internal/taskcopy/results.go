@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/mirror"
 )
 
@@ -65,7 +66,7 @@ func restoreSelectedResult(c cell.Cell, project, destination string, selection R
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(scratch)
+	defer fsreplace.RemoveAll(scratch)
 	project, err = historicalParentCheckout(c, project, selection.ID, parents, scratch)
 	if err != nil {
 		return "", err
@@ -92,7 +93,7 @@ func restoreSelectedResult(c cell.Cell, project, destination string, selection R
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", err
 	}
-	if err := os.Rename(output, final); err != nil {
+	if err := fsreplace.Rename(output, final); err != nil {
 		return "", err
 	}
 	return final, nil

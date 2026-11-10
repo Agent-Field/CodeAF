@@ -497,12 +497,12 @@ func (j *job) stillOwed() bool {
 	return j.owed
 }
 
-// markPersonStopped records that the kill about to be asked for is a person's.
-// It is called BEFORE [job.requestKill]; see the field.
-func (j *job) markPersonStopped() {
+// markPersonStopped claims the completion note before a person requests a
+// kill, or returns that ending to the reaper when the stop remains unproven.
+func (j *job) markPersonStopped(stopped bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.personStopped = true
+	j.personStopped = stopped
 }
 
 // stoppedByPerson reports whether this job's requested death is a person's stop.
@@ -523,6 +523,10 @@ func (j *job) settledKilled() bool {
 	return j.state == jobKilled
 }
 
+// waitJobTree is the platform completion barrier, replaceable by the contract
+// test so a leader exit and a still-live launch can be presented independently.
+var waitJobTree = processgroup.WaitEmpty
+
 // settle makes a job final: the log is closed, the status fields stop moving,
 // and done is released. It reports whether the death was REQUESTED, which is
 // the one thing the caller needs to decide whether to say anything about it.
@@ -531,6 +535,11 @@ func (j *job) settledKilled() bool {
 // job's middle — the reaper for a process, the timer loop for a watch — which
 // is what makes the close of done safe without a second flag guarding it.
 func (j *job) settle(code int) bool {
+	if j.cmd != nil && j.cmd.Process != nil {
+		// A managed Windows launch stays running after its leader exits while
+		// any descendant remains. Foreground command returns are separate.
+		_ = waitJobTree(j.cmd.Process.Pid, 0)
+	}
 	// The log file closes before the status is final, so a reader that sees a
 	// finished job sees a complete file. Closing it only ASKS the registry for
 	// a folder pass ([jobRegistry.askRetention]); the sweep itself never runs
@@ -1272,7 +1281,7 @@ func (r *jobRegistry) startInUnder(ctx context.Context, command, want string, no
 		started.sink.close()
 		return nil, err
 	}
-	if err := process.Start(); err != nil {
+	if err := processgroup.Start(process); err != nil {
 		started.sink.close()
 		return nil, jobStartError(runtime.GOOS, err)
 	}
@@ -1711,6 +1720,8 @@ const (
 	killRefusedSaving
 	// killSignalled is a job this kill claimed and signalled.
 	killSignalled
+	// killUnproven means neither signal round proved that the job ended.
+	killUnproven
 )
 
 // killFor is [jobRegistry.kill] with its actual result, for a caller that must
@@ -1746,6 +1757,13 @@ func (r *jobRegistry) killFor(ctx context.Context, id int) (string, killResult) 
 		// uninterruptible sleep is not something a tool call can fix, and
 		// hanging the turn on it would be worse than reporting the SIGKILL.
 		waitDoneUnder(ctx, target.done, jobTermGrace)
+	}
+	select {
+	case <-target.done:
+	default:
+		if requireJobStopProof() {
+			return fmt.Sprintf("job %d was told to stop and had not ended when the wait ran out", id), killUnproven
+		}
 	}
 	// A watch is stopped, not killed: there was no process of its own to end,
 	// and "stopped" is the word its list row and its notes already use.
@@ -2255,7 +2273,7 @@ func (s *jobSink) tail(n int) string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	text := strings.TrimRight(string(s.ring), "\n")
+	text := strings.TrimRight(shell.OutputText(string(s.ring)), "\n")
 	if text == "" {
 		return ""
 	}

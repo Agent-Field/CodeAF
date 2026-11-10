@@ -3,6 +3,8 @@ package exec
 import (
 	"bytes"
 	"io"
+
+	commandshell "github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // cappedOutput collects a subprocess's merged output in the shape the result is
@@ -325,7 +327,7 @@ func (c *cappedOutput) truncated() bool {
 // String renders what boundResult would have rendered from the whole output.
 func (c *cappedOutput) String() string {
 	c.finish()
-	held := string(c.ordered())
+	held := commandshell.OutputText(string(c.ordered()))
 	if !c.truncated() {
 		// Nothing was lost: the ring holds every byte that was written.
 		return held

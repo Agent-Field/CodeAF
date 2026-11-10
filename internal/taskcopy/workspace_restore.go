@@ -16,6 +16,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 
@@ -145,7 +146,7 @@ func (Carry) PrepareWorkspace(c cell.Cell, plan WorkspacePlan) (*WorkspaceRestor
 			continue
 		}
 		// The exact journaled stage grants ownership of this partial root only.
-		if err = os.RemoveAll(destination); err != nil {
+		if err = fsreplace.RemoveAll(destination); err != nil {
 			return nil, err
 		}
 		if err = os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
@@ -262,13 +263,13 @@ func (r *WorkspaceRestore) Promote() ([]WorkspaceBinding, error) {
 			if len(entries) != 0 {
 				return nil, errors.New("workspace destination is occupied; preserved existing copies")
 			}
-			if err = os.Remove(dest); err != nil {
+			if err = fsreplace.Remove(dest); err != nil {
 				return nil, err
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
-		if err = os.Rename(stage, dest); err != nil {
+		if err = fsreplace.Rename(stage, dest); err != nil {
 			return nil, err
 		}
 	}
@@ -818,7 +819,7 @@ func RestoreCompletedWorkspaceResults(c cell.Cell, plan WorkspacePlan, destinati
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(stage)
+	defer fsreplace.RemoveAll(stage)
 	output := filepath.Join(stage, "output")
 	if err = os.Mkdir(output, 0700); err != nil {
 		return nil, err
@@ -916,7 +917,7 @@ func RestoreCompletedWorkspaceResults(c cell.Cell, plan WorkspacePlan, destinati
 			return nil, err
 		}
 		expected.Roots[selection.CopyURI] = result
-		if err = os.RemoveAll(checkout); err != nil {
+		if err = fsreplace.RemoveAll(checkout); err != nil {
 			return nil, err
 		}
 	}
@@ -927,7 +928,7 @@ func RestoreCompletedWorkspaceResults(c cell.Cell, plan WorkspacePlan, destinati
 	if err = writeWorkspaceJSON(filepath.Join(metadata, "workspace-results.json"), expected); err != nil {
 		return nil, err
 	}
-	if err = os.Rename(output, destination); err != nil {
+	if err = fsreplace.Rename(output, destination); err != nil {
 		return nil, err
 	}
 	return workspaceResultPaths(destination, expected), nil
@@ -1014,7 +1015,7 @@ func prepareWorkspaceResultStage(c cell.Cell, destination string) (string, error
 		if err != nil {
 			return "", err
 		}
-		if err = os.RemoveAll(path); err != nil {
+		if err = fsreplace.RemoveAll(path); err != nil {
 			return "", err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -1173,7 +1174,7 @@ func finishWorkspaceDirectories(destination string, directories map[string]fs.Fi
 			return err
 		}
 		if len(entries) == 0 {
-			if err = os.Remove(target); err != nil {
+			if err = fsreplace.Remove(target); err != nil {
 				return err
 			}
 		} else {

@@ -205,7 +205,7 @@ func canceller(cmd *exec.Cmd, g Group) func() error {
 		case cmd.Process == nil:
 			return os.ErrProcessDone
 		case g == GroupInherit:
-			return cmd.Process.Kill()
+			return processgroup.KillChild(cmd.Process)
 		}
 		return processgroup.Kill(cmd.Process.Pid)
 	}
@@ -285,7 +285,7 @@ func run(ctx context.Context, cmd *exec.Cmd, req ExecRequest, root string, onOut
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = sinks(req, &out, &errb, serialized(onOutput))
 	start := time.Now()
-	if err := cmd.Start(); err != nil {
+	if err := processgroup.Start(cmd); err != nil {
 		return ExecResult{}, err
 	}
 	waitErr := cmd.Wait()

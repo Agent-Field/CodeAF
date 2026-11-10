@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // The store is one small JSON file beside one lock and one logs folder:
@@ -175,7 +176,7 @@ func writeStore(dir string, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer fsreplace.Remove(tmp.Name())
 	if err := tmp.Chmod(0o600); err != nil {
 		_ = tmp.Close()
 		return err
@@ -186,7 +187,7 @@ func writeStore(dir string, raw []byte) error {
 	if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp.Name(), filepath.Join(dir, storeFile)); err != nil {
+	if err := fsreplace.Rename(tmp.Name(), filepath.Join(dir, storeFile)); err != nil {
 		return err
 	}
 	return syncDir(dir)
@@ -196,12 +197,7 @@ func writeStore(dir string, raw []byte) error {
 // power can come back with the previous file — and with it a previous id
 // allocator, which would hand an archived service's output id out again.
 func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	if err := d.Sync(); err != nil && !errors.Is(err, os.ErrInvalid) {
+	if err := fsreplace.SyncDir(dir); err != nil && !errors.Is(err, os.ErrInvalid) {
 		return err
 	}
 	return nil

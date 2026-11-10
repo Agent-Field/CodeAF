@@ -202,7 +202,7 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	}
 	cmd.Stdout = stdoutWrite
 	started := time.Now()
-	if err := cmd.Start(); err != nil {
+	if err := processgroup.Start(cmd); err != nil {
 		_ = stdoutRead.Close()
 		_ = stdoutWrite.Close()
 		return Result{ExitCode: -1}, fmt.Errorf("start %s: %w", launch.Name, err)
@@ -228,18 +228,33 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	if grace <= 0 {
 		grace = DefaultGrace
 	}
-	var waitErr error
+	var waitErr, stopErr error
 	select {
 	case waitErr = <-waitDone:
 	case <-ctx.Done():
 		result.Stopped = true
 		_ = group.Terminate()
-		select {
-		case waitErr = <-waitDone:
-		case <-time.After(grace):
+		deadline := time.Now().Add(grace)
+		hardStop := func() {
 			result.Killed = true
 			_ = group.Kill()
-			waitErr = <-waitDone
+			stopErr = processgroup.WaitEmpty(cmd.Process.Pid, grace)
+			if stopErr != nil {
+				result.Stopped = false
+			}
+		}
+		select {
+		case waitErr = <-waitDone:
+			// A leader's exit does not end its Windows Job Object. Preserve
+			// the remaining soft grace, then stop any orphaned descendants.
+			if processgroup.WaitEmpty(cmd.Process.Pid, max(time.Until(deadline), time.Nanosecond)) != nil {
+				hardStop()
+			}
+		case <-time.After(grace):
+			hardStop()
+			if stopErr == nil {
+				waitErr = <-waitDone
+			}
 		}
 	}
 	result.Elapsed = time.Since(started)
@@ -272,6 +287,9 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	}
 	_ = stdoutRead.Close()
 	result.Reading = r.reading
+	if stopErr != nil {
+		return result, fmt.Errorf("stop %s: %w", launch.Name, stopErr)
+	}
 	if result.Stopped {
 		return result, ctx.Err()
 	}
