@@ -645,7 +645,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		articleHits[len(article)] = hits
 		article = append(article, actions, "")
 		if n.HumanEdited {
-			article = append(article, a.pal.dim("Edited by you · additions are not source-verified"), "")
+			article = append(article, a.pal.dim("Edited by you · your additions have no source"), "")
 		}
 		if n.NeedsEditorialUpdate {
 			message := "New evidence is available in Sources; guide integration is pending."
