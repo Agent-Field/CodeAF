@@ -7,7 +7,6 @@ invalidates:
   - "An open idle chat previously kept renewing its computer's hold. In a paired set it now releases after all saved state has reached the sync service."
   - "Selecting a released or lapsed remote chat previously required Continue here. Paired opens now acquire it automatically on terminal Home and through agents.open without displacing a live holder."
   - "A desktop take previously blamed another device for every ownership conflict. A newer hold by the same computer now says that computer picked the chat up again."
-  - "Home previously offered released or lapsed chats even when presence said their computer was online. Fresh online presence now suppresses that offer."
 ---
 
 Running turns, queued or steering work, tasks, jobs, deferred writes and unsent
@@ -73,6 +72,4 @@ replicated lease record changes are included.
 A desktop take that loses to the same computer reclaiming an idle release now
 says that computer picked the chat up again, retaining the existing conflict
 code and holder-changed detail. A different holder keeps the existing refusal;
-neither refusal takes the chat. Home's latest-chat offer follows fresh presence:
-an online computer's chats are not offered, including idle-released chats.
-Without the feed, lapsed and released holds still stand in for being away.
+neither refusal takes the chat.
