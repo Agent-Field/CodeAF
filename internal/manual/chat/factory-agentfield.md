@@ -426,6 +426,21 @@ the record then shows it as your steer. Refusals, word for word:
 Only codeaf harness steps can be steered. A plain reasoner's step has no chat
 at all, so there is no box to type in.
 
+## which folder an AgentField job's chat works in — not ~/.codeaf, an empty folder of the job's own
+
+A job AgentField runs — a `run_on` job, or a pipeline whose steps all run on
+AgentField — never runs its code on this machine, so its chats need no project.
+Each step's chat, and the job's own conversation, work in the job's own empty
+folder under the factory (`~/.codeaf/v3/factory/chats/<job>`), whatever folder
+the desk or engine was started in and whatever checkout this machine knows.
+
+No factory chat ever works in codeaf's own folder (`~/.codeaf`), a folder above
+it, or a folder inside it that is not one job's own worktree, clone or empty
+folder. A chat that would is refused: "a factory chat cannot work in codeaf's own
+folder", with the folder named. A local job is unchanged: its chats work in its
+checkout or worktree. The foreman, on a factory started with no project folder,
+works in an empty `chats/foreman` folder of its own.
+
 ## run a step on AgentField — an agentfield step in a pipeline, a reasoner that builds an issue, node.reasoner and its input
 
 A pipeline step can be a run on AgentField: `kind: agentfield` in

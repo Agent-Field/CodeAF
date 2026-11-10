@@ -249,7 +249,28 @@ func managerMaker(st *store.Store, workspace, profileDir string) func(context.Co
 // fell back to the folder its window was opened in worked in the app's own
 // home, and a manager there with no checkout cloned the repository into it.
 // The runner clones the repository when the job starts ([talkBlockBrief]).
+// AND NEVER CODEAF'S OWN FOLDER: whatever it answers passes
+// [factoryFolderRefusal] first.
 func talkFolder(st *store.Store, dirs func(string) string, it factory.Item) (string, error) {
+	// A JOB AGENTFIELD RUNS WORKS IN ITS OWN EMPTY FOLDER, whatever is checked
+	// out here: its code runs on the node, so its manager has nothing on this
+	// machine to work in, and a checkout it does not need is only more to
+	// sweep on every save.
+	if factory.RunsElsewhere(it) {
+		return factoryJobFolder(st, it.ID)
+	}
+	where, err := talkCheckoutFolder(st, dirs, it)
+	if err != nil {
+		return "", err
+	}
+	if err := factoryFolderRefusal(st, where); err != nil {
+		return "", err
+	}
+	return where, nil
+}
+
+// talkCheckoutFolder is [talkFolder] for a job that runs on this machine.
+func talkCheckoutFolder(st *store.Store, dirs func(string) string, it factory.Item) (string, error) {
 	if where := strings.TrimSpace(dirs(it.Repo)); where != "" {
 		return where, nil
 	}
@@ -262,11 +283,7 @@ func talkFolder(st *store.Store, dirs func(string) string, it factory.Item) (str
 	if st.Root() == "" || it.ID <= 0 {
 		return "", errors.New("codeaf does not know which folder this item's conversation belongs in")
 	}
-	own := filepath.Join(st.Root(), "chats", strconv.Itoa(it.ID))
-	if err := os.MkdirAll(own, 0o700); err != nil {
-		return "", fmt.Errorf("the item's conversation has no folder: %w", err)
-	}
-	return own, nil
+	return factoryJobFolder(st, it.ID)
 }
 
 // sessionTalk is the runner's [factoryrun.Talk] over internal/session's

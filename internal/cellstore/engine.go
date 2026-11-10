@@ -315,6 +315,15 @@ func (e Engine) markOwnFolder(c cell.Cell) error {
 // filesystem root: the places a person opens a general chat, which are not a
 // project and whose files are everything they own.
 //
+// THE CODEAF HOME COUNTS AS A HOME FOLDER TOO, with every folder above it. It
+// is codeaf's own state — the graph database, the factory's clones, the key
+// vault this very guard writes into — and never anybody's project. A desk
+// whose factory named it as its jobs' folder had twenty-three chats sweep it
+// on every save, and the vault they fed grew to gigabytes. A chat opened there
+// keeps its conversation and its own folder, exactly as a chat opened in the
+// person's home does; a folder INSIDE the codeaf home (a factory job's own
+// checkout) is a project like any other and is still saved.
+//
 // IT IS DECIDED BY WHERE THE FOLDER IS, NEVER BY WHAT IS IN IT. Counting files
 // or bytes to find a folder too big to save is itself the walk this rule
 // exists to avoid, and a cap would draw its line through somebody's real
@@ -327,6 +336,12 @@ func holdsHome(dir string) bool {
 	if filepath.Dir(tree) == tree {
 		return true
 	}
+	return holdsCodeafHome(dir) || holdsUserHome(tree)
+}
+
+// holdsUserHome reports whether tree, already canonical, is the person's own
+// home folder or a folder above it.
+func holdsUserHome(tree string) bool {
 	house, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(house) == "" {
 		login, err := user.Current()
@@ -335,7 +350,21 @@ func holdsHome(dir string) bool {
 		}
 		house = login.HomeDir
 	}
-	absolute, err := filepath.Abs(house)
+	return treeHolds(tree, house)
+}
+
+// holdsCodeafHome reports whether dir is the codeaf home or a folder above it
+// (see [holdsHome]). A seat says a sentence of its own for it, because "your
+// home folder" would name the wrong folder.
+func holdsCodeafHome(dir string) bool {
+	state := strings.TrimSpace(home.Dir())
+	return state != "" && treeHolds(canonicalTree(dir), state)
+}
+
+// treeHolds reports whether tree, already canonical, is target or a folder
+// above it.
+func treeHolds(tree, target string) bool {
+	absolute, err := filepath.Abs(target)
 	if err != nil {
 		return false
 	}
