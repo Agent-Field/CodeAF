@@ -137,12 +137,44 @@ func TestDismissedTaskLandingKeepsCurrentRow(t *testing.T) {
 	}
 }
 
-func TestTaskCurrentLandingCombinesHistoricalReceipts(t *testing.T) {
+// TestTaskRevisionsAllSpeakTheCurrentState pins the contract where #1893 and the
+// one-current-state rule meet: a task's recorded revisions keep their own rows
+// (TestWorkedGroupKeepsTaskRevisionsDistinctAndMergesLatestSnapshot), and no row
+// may carry an older state than the task's newest landing — an older `incomplete`
+// beside a newer `done` was the same contradiction as a stale row beside a card.
+func TestTaskRevisionsAllSpeakTheCurrentState(t *testing.T) {
 	a, notice := currentLandingApp(t, "node", true, session.TaskFailed)
-	// Journal revisions retain separate receipts, but still describe one task's current state.
 	blocks, _ := a.replayBlocks([]session.DisplayEntry{{Role: "aside", Text: "Latest landing report", RoutineCompletion: true,
 		CompletionTasks: []session.TaskReplyTag{{ID: 7, Title: currentLandingTitle, State: session.TaskDone, Revision: 2}}}}, chatReplay(a.turn))
 	a.entries = append(a.entries, blocks...)
 	a.taskUpdate(update(7, currentLandingTitle, session.TaskDone, notice))
-	checkCurrentLanding(t, a, "done", true)
+	for {
+		opened := false
+		d := a.conversation()
+		for _, r := range a.visible(a.bodyWidth()) {
+			if r.hit == hitWorkFold && !a.workFoldOpen(d, r.turn) {
+				a.openWorkfold(r.turn)
+				opened = true
+			}
+		}
+		if !opened {
+			break
+		}
+		a.touch()
+	}
+	rows := 0
+	for _, r := range a.visible(a.bodyWidth()) {
+		if r.hit == hitWorkCompletion && r.completion.task == 7 {
+			rows++
+			if text := plain(r.text); !strings.Contains(text, currentLandingTitle+" · done · open result") {
+				t.Errorf("a revision row speaks an older state: %q", text)
+			}
+		}
+		if r.hit == hitDone && a.entries[r.entry].done.id == 7 {
+			t.Errorf("a quiet current landing drew a card beside its rows:\n%s", taskText(a))
+		}
+	}
+	if rows == 0 {
+		t.Errorf("the task has no reachable row:\n%s", taskText(a))
+	}
 }

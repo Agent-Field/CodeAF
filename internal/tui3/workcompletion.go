@@ -320,17 +320,23 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 					continue
 				}
 				c.title, c.state = card.title, card.status.Word
-				// Journal revisions share the current landing and its admission owner.
+				// EACH RECORDED REVISION KEEPS ITS OWN ROW (an attempt is its own piece of
+				// history, #1893), but none of them may speak an older state than the
+				// task's newest landing: every row of a task says where it stands now.
 				// An owner the session cannot name keeps the one the journal carried,
 				// rather than turning a known request into background work.
-				c.key = latestTaskKey[c.task]
 				if owner, ok := a.workCompletionTurn(c.task); ok {
 					c.owner = owner
 				}
 			}
 			add(c, i)
 		}
-		if e.done == nil || latestLanding[e.done.id] != i || !e.done.hidden() {
+		if e.done == nil || !e.done.hidden() {
+			continue
+		}
+		// Only a task's newest landing projects a row. A card with no task behind
+		// it is a notification: dismissing it leaves nothing, not an empty fold.
+		if e.done.id != 0 && latestLanding[e.done.id] != i || e.done.id == 0 && !e.done.quiet {
 			continue
 		}
 		owner, ok := a.workCompletionTurn(e.done.id)
