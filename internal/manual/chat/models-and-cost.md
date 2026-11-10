@@ -1406,7 +1406,8 @@ and your own model rows answer for them (*Automations*).
 `--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than
 `auto`, and `/status` answers its crew line with `one model · every call rides the model
 you are talking to`. The model picker's hint field and the welcome line under the wordmark say
-the same word. All of them read one answer, so none of them can disagree with another.
+the same word. All of them read one answer, including windows attached to an engine or
+opened with `--host` or `--at`, so none of them can disagree with another.
 
 **Your crew is not gone, it is overridden.** Your pins are untouched on disk — this flag
 writes nothing — and the next session started without it draws `crew auto` again exactly as
@@ -2344,7 +2345,8 @@ which is the whole machine's ledger rather than this conversation's — it was a
 
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
 conversation that has started no tasks prints `spend` alone. When they are there they add
-up to the line above them, always — that is the whole point of printing them.
+up to the line above them, always — that is the whole point of printing them. The
+same split is shown in a new conversation and after resuming it.
 
 ## Why do the tokens on the status line jump instead of counting up
 
@@ -4245,7 +4247,9 @@ Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately. The default profile and home errands follow the saved
 or environment daily limit too; `/budget day` changes apply on the next check.
 The refusal says `daily limit reached · $1 spent of $1 · /budget day changes it`
-with your actual figures. Knowledge builds retain progress and resume
+with your actual figures. A task stopped by this limit keeps that same refusal in its
+report and ending card, ahead of any `nothing to land` explanation.
+Knowledge builds retain progress and resume
 automatically after a limit increase or the local day changes; a skipped task
 summary keeps its last reading. `--yes-spend` (or
 `CODEAF_PREAUTHORIZE_SPEND=1`) lifts the daily gate for work started with that
