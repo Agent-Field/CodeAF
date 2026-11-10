@@ -256,7 +256,15 @@ func planRoomTick(gen int) tea.Cmd {
 // planRoomPoll reads the page again while its work can still move.
 func (a *app) planRoomPoll(gen int) tea.Cmd {
 	room := a.room
-	if room == nil || room.gen != gen || room.plan == nil || room.done {
+	if room == nil || room.gen != gen || room.plan == nil {
+		return nil
+	}
+	// A PENDING DECISION IS ENDED WORK THAT CAN STILL MOVE. A task that ended
+	// `your call` counts as ended for every other reading on the page, but the
+	// person's answer settles it, and a room that stopped reading at `your call`
+	// went on saying it beside the person's own `resolve it · you` receipt. So
+	// the beat keeps reading such a page until the store says it settled.
+	if room.done && room.plan.page.Row.Status != string(session.TaskUnverified) {
 		return nil
 	}
 	return tea.Batch(a.planRoomRead(), a.planRoomWorkRead(false), planRoomTick(gen))
