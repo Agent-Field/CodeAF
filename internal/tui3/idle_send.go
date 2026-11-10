@@ -11,10 +11,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// resumeIdleSend asks this open writer to reacquire in place. A matching head
-// is evidence for admission, never permission to restore over its workspace.
+// resumeIdleSend asks this open writer to confirm or reacquire in place.
+// Released rows require a matching saved head; the writer checks live ownership.
 func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, msg ownershipReadMsg, blocked bool) ownershipReadMsg {
-	if blocked || msg.head == "" || msg.reading.err != nil {
+	if blocked || msg.reading.err != nil {
 		return msg
 	}
 	receipts, ok := source.(sendLeaseSource)
@@ -29,7 +29,10 @@ func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, ms
 		if row.Cell != id {
 			continue
 		}
-		if !row.Mine || row.Head != msg.head || !msg.retryIdle && (!row.AutoOpen || row.Status != chatlist.Idle && row.Status != chatlist.Off) {
+		if !row.Mine {
+			continue
+		}
+		if !msg.ownLiveRow(row) && (msg.head == "" || row.Head != msg.head || !msg.retryIdle && (!row.AutoOpen || row.Status != chatlist.Idle && row.Status != chatlist.Off)) {
 			continue
 		}
 		// The directory read is complete. Taking the hold back is a separate,
@@ -86,6 +89,13 @@ func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, ms
 		return msg
 	}
 	return msg
+}
+
+// ownLiveRow sends an own-device live row through work admission.
+// A known newer fence stays on the continuation road. When no receipt or cached
+// fence survived, only the writer's CheckWork can establish this window's hold.
+func (msg ownershipReadMsg) ownLiveRow(row chatlist.Row) bool {
+	return msg.notHeld && row.Mine && row.Status == chatlist.Here && row.Fence != 0 && (msg.ownFence == 0 || row.Fence == msg.ownFence)
 }
 
 func (a *app) refuseIdleSend(msg ownershipReadMsg) bool {

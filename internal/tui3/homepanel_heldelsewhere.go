@@ -64,6 +64,7 @@ type ownershipReadMsg struct {
 	first           *composerState
 	head, leaseCell string
 	fence           uint64
+	ownFence        uint64
 	proof           bool
 	local           bool
 	// fresh records the directory answer even when admission then proves a local hold.
@@ -220,6 +221,10 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 			msg.proof = true
 			msg.leaseCell, msg.fence, _ = local.SendLease(id)
 			msg.reading.holdCell, msg.reading.holdFence = id, msg.fence
+		}
+		msg.ownFence = hold.fence
+		if msg.ownFence == 0 {
+			msg.ownFence = msg.fence
 		}
 		if msg.notHeld {
 			msg.leaseCell = ""
