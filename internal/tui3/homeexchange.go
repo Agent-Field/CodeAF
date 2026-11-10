@@ -1712,7 +1712,10 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 	if ex.working || ex.sending || ex.stream != nil {
 		ex.parks = append(ex.parks, parked{text: text, chips: ex.chips})
 		ex.chips = nil
-		return nil
+		// Pending work keeps the pane moving even if the previous turn has
+		// settled before its stream closes or Submit returns.
+		ex.working = true
+		return a.wake()
 	}
 	ex.startTurn(a.now())
 	return tea.Batch(errandSend(ex, text), a.wake())

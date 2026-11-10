@@ -254,7 +254,9 @@ exactly as they do with no exchange on screen. **The pane follows the cursor.**
 Type in the pane's `type a follow-up` box and press `enter`. If the reply is
 still being written, your message waits for that reply to finish, then runs as
 the next turn. Several follow-ups run in the order you sent them. The current
-reply keeps streaming once, without repeated or interleaved words.
+reply keeps streaming once, without repeated or interleaved words. Sending a
+follow-up keeps the spinner and clock moving before its reply arrives, even
+while the previous reply is finishing.
 
 A follow-up sent after the reply finishes starts at once. Its automation card
 appears in this same pane and is answerable here, including when the session
