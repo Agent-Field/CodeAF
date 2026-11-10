@@ -132,7 +132,7 @@ computer's name. An online dot appears only when the engine knows its presence.
 Finished movable chats saved before pairing are shared after pairing and when
 the paired app engine starts. This does not open the chat or start a new turn.
 An open, idle chat another computer still holds says `open on <name>` (`held on <name>` in the terminal); this says where it is open, not that a reply is running. On current paired builds an idle chat lets go about 2 seconds after going idle once saved to the sync service, so rows stay `open on <name>` only before release, while unsaved work keeps the hold, or on older builds. While a reply runs, the engine advertises `working: true` (`working on <name>`), including right after a move, and clears it once the reply finishes and its last saved turn reaches the sync service. Closing a chat does not make its computer offline; `<name> offline` appears only when that computer is known to be offline, and unknown presence omits both dot and offline line. The saved time is the newest shared saved turn's time in your local time, not upload time, and is omitted when unknown. The engine's takeover sentence adds holder or pending-work facts without repeating a date or age. After the sync service starts or restarts, computers it has not heard from have unknown presence (no offline line) for up to 75 seconds; an observed connection that lapses can still be marked offline.
-For a shared chat no computer holds (released or lapsed), its row advertises `can_open: true` and `agents.open` pulls and opens it directly with no Continue-here step. Select a held chat (or use a preview-only client) to see its title, saved time and engine sentence: **Move here** or **Continue here** moves it through the engine and opens the returned local chat, using the same continuation path as the terminal.
+For a shared chat explicitly released by its holder, its row advertises `can_open: true` and `agents.open` pulls and opens it directly with no Continue-here step. A lapsed hold does not advertise `can_open`, including when its holder was working or its last working state is unknown. Select a held or lapsed chat (or use a preview-only client) to see its title, saved time and engine sentence: **Move here** or **Continue here** moves it through the engine and opens the returned local chat, using the same continuation path as the terminal.
 
 ## Continuing a desktop chat here — fences, retries and local copies
 
@@ -191,7 +191,7 @@ Limits and refusals:
 - A message is at most 2000 characters: `Messages to another computer are limited to 2000 characters.`
 - A sync service that does not carry messages says `This sync service can't carry a message to another computer yet. Bring the chat here to write to it.`
 - Only an app engine (the desktop app, or `codeaf app`) on the holding computer takes messages. A terminal chat there does not; the message waits.
-- A chat whose holding computer is offline with a live hold stays read-only until you continue it here; a chat no computer holds (released or lapsed) opens here directly through `agents.open` on `can_open` rows, and new work in the window that released its own idle hold takes it back in place.
+- A chat whose holding computer is offline with a live hold or a lapsed hold stays read-only until you continue it here, including when its holder was working. An explicitly released chat opens here directly through `agents.open` on `can_open` rows, and new work in the window that released its own idle hold takes it back in place.
 
 ## Does an idle desktop chat keep its hold on the sync service
 
@@ -210,9 +210,10 @@ admits nothing until you continue it. A released window stays read-only when
 ownership cannot be confirmed. Unpaired, sync-off and single-device homes keep
 their existing hold and renewal behavior.
 
-Through `agents.open` and `can_open` rows, the engine opens a released or
-lapsed shared chat on another paired computer directly with no Continue-here
-step. App versions that only preview shared chats still offer Continue here in
+Through `agents.open` and `can_open` rows, the engine opens an explicitly
+released shared chat on another paired computer directly with no Continue-here
+step. A lapsed hold keeps Continue here, including when its holder was working
+or its last working state is unknown. App versions that only preview shared chats still offer Continue here in
 that preview. A chat another computer still holds (`held on <device>` /
 `working on <device>`, including idle chats on older builds) continues to ask
 with **Move here** or **Continue here** as your choice.

@@ -465,9 +465,10 @@ including teams and encrypted copies in the vault. Unpaired computers are unaffe
 
 Opening a remote member from terminal Teams raises `Continue this chat here?`
 on Home (`continue here` moves and opens it; `leave it there` changes nothing).
-Selecting a released or lapsed chat on terminal Home (`enter`), or opening a
+Selecting a released chat on terminal Home (`enter`), or opening a
 `can_open` row via `agents.open` in the app, opens it directly with no
-Continue-here step; a held chat still asks. Unshared chats, or members under
+Continue-here step; a live hold or a lapsed hold still asks, including when its holder
+was working. Unshared chats, or members under
 `--host` / `--at`, name the other computer (`the other computer` until known):
 open them there. Local members open like Home without an extra ownership lookup.
 
@@ -508,8 +509,9 @@ its ordinary log rotation.
 
 A send only to chats known to be elsewhere is refused. A send with local
 recipients is written once and names those not reached. Bring a remote chat
-here first (a released or lapsed chat opens directly on Home or through
-`agents.open`; a held chat asks for **continue here**) before sending to it. Under `--host` or `--at`,
+here first (a released chat opens directly on Home or through
+`agents.open`; a live hold or a lapsed hold asks for **continue here**, including when
+its holder was working) before sending to it. Under `--host` or `--at`,
 open it on its computer. Decision details, spending records and working copies
 do not travel with Traffic. A decision or escalation whose recipient is
 elsewhere is refused before it changes anything. An unpaired computer or one

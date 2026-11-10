@@ -5,11 +5,14 @@ pr: 2287
 surface: [chat, engine, app, remote, docs]
 invalidates:
   - "An open idle chat previously kept renewing its computer's hold. In a paired set it now releases after all saved state has reached the sync service."
-  - "Selecting a released or lapsed remote chat previously required Continue here. Paired opens now acquire it automatically on terminal Home and through agents.open without displacing a live holder."
+  - "Selecting a released remote chat previously required Continue here. Paired opens now acquire it automatically on terminal Home and through agents.open without displacing a live holder."
   - "The first Home open of a local copy after restart could bypass free acquisition while the shared listing caught up. Ambiguous paired readings now get a short ownership check, with local opening preserved on failure."
   - "Every paired local Home open briefly required a successful sync-service read. Answered display rows now open without that read, and an ambiguous reading waits at most two seconds before falling back locally."
   - "A listed free local chat could still require a reachable sync service to open. Home now opens the saved local copy when the listing or free-open ownership read is unreachable; remote-only chats explain the failure."
   - "A desktop take previously blamed another device for every ownership conflict. A newer hold by the same computer now says that computer picked the chat up again."
+  - "Automatic open briefly included lapsed holds. Lapsed holds now retain Continue here, including a holder last known to be working; an absent working advertisement cannot reliably prove idle."
+  - "Opening a chat could claim it was asking again before checking whether a reply was owed. Refused owed replies now keep their question and show only the refusal."
+  - "A released window's offline send could report that the chat was available without explaining why it could not send. It now names the unreachable sync service and keeps the words."
 ---
 
 Running turns, queued or steering work, tasks, jobs, deferred writes and unsent
@@ -35,10 +38,26 @@ When this window has no open copy and Home has no reading for a local chat or
 still shows this computer's old live hold, a paired home checks ownership for
 up to two seconds. A failed or timed-out check opens the local chat as usual.
 Answered display rows need no extra read, including a listed free chat or a
-chat already open in this window. Released and lapsed paired chats restore the
+chat already open in this window. Released paired chats restore the
 latest head through conditional automatic acquisition at a new fence, including
 the first open after a restart. Unpaired, sync-off and single-device homes add
 no ownership read for local opening.
+
+A lapsed hold on another computer retains the Continue-here card on terminal
+Home and the app's chat row. Only explicitly released holds advertise `can_open`
+or use automatic acquisition. This build keeps consent for all lapsed holds:
+the optional working advertisement cannot distinguish idle from an older
+holder that never advertised its working state. A confirmed continuation still
+acquires conditionally at a new fence; stale publishes cannot move that head,
+and the former holder keeps its local turns separately.
+
+Opening a conversation that owes no stopped reply never checks resume work
+admission or prints the asking-again line. An owed reply refused by admission
+shows the refusal once without claiming to resume, and retains the question.
+A new send in a self-released window whose ownership read cannot reach sync
+says `the sync service is not answering, so this chat cannot be taken back yet;
+your words are still in the box`. It records nothing and calls no model; the
+same words can be retried at a new fence when the service returns.
 
 An unreachable Home listing opens saved local chats directly, including this
 computer's released chats. A free take's initial directory read has the same
