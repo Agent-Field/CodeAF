@@ -2327,11 +2327,10 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTaskAudit, Category: CategoryTasks, Kind: SettingChoice,
 			Label: "task audit", Choices: TaskAuditModes,
-			Hint: "when on, every task node's work is checked by an independent read-only " +
-				"auditor — it runs the repo's own verification and reads the diff — before " +
-				"anything may merge into your branch. Off trusts the node's own report and " +
-				"merges unaudited. On is the default: the audit is what 'done' means, and it " +
-				"roughly doubles a small task's model cost.",
+			Hint: "when on, a separate read-only checker runs the repository's checks and reads " +
+				"the diff before a task's work may merge into your branch. When off, codeaf " +
+				"trusts the task's own report, merges its work and lands done without this check. " +
+				"On is the default and roughly doubles a small task's model cost.",
 			read:  func() string { return TaskAuditAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTaskAudit, raw, TaskAuditModes) },
 		},

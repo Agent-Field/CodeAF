@@ -1271,8 +1271,8 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	return fitPainted(head, width)
 }
 
-// supersededIn reports whether the card at i lands again LATER IN THE SAME RUN:
-// the first landing of a node that asked `your call` and was then decided.
+// supersededIn reports whether a later landing replaces the card at i.
+// A task's current state replaces earlier cards across turn boundaries too.
 //
 // A BATCH COUNTS WORK, NOT LANDINGS. A decision lands a node a second time, and
 // when the answer comes straight under the question both cards fall into one
@@ -1285,6 +1285,7 @@ func supersededIn(d deck, i, to int) bool {
 	if card == nil || card.id == 0 {
 		return false
 	}
+	to = len(d.entries)
 	for j := i + 1; j < to; j++ {
 		if next := d.entries[j].done; next != nil && next.id == card.id {
 			return true

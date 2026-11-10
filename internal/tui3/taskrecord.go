@@ -315,6 +315,13 @@ func taskSameRecord(a, b session.TaskIndexEntry) bool {
 // where the report would have gone.
 func (a *app) readTaskTail(entry session.TaskIndexEntry) tea.Cmd {
 	path, key := taskURIPath(entry.TranscriptURI), tasksKeyOf(entry)
+	// A NODE THAT JUST SETTLED HAS NO SAVED TRANSCRIPT YET, but it already holds its
+	// own report. Without a transcript to read, that report is the page's answer;
+	// with one, the transcript stays the source, as it is after a restart.
+	if node := a.taskSheetNodeFor(&entry); path == "" && node != nil && !entry.Live() && strings.TrimSpace(node.report) != "" {
+		a.taskTailRead(taskTailMsg{path: path, key: key, at: entry.EndedAt, tail: node.report, kept: true})
+		return nil
+	}
 	if path == "" {
 		// THE READ THAT NEVER HAPPENS IS STILL AN ANSWER, and both readers are
 		// told it: the card so its report slot stops waiting, the pane so it does

@@ -99,7 +99,7 @@ func (a *app) currentTaskEntry(entry session.TaskIndexEntry) session.TaskIndexEn
 	if node != nil && node.crew != nil {
 		entry.Crew = node.crew
 	}
-	if node != nil && node.crew != nil {
+	if node != nil {
 		entry.Status, entry.Ending = string(node.state), node.ending
 		entry.Parent = node.parent
 		if node.report != "" {
