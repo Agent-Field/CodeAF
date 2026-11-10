@@ -90,6 +90,7 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 	if !ok {
 		t.Skip("senior-dev is unavailable in this build")
 	}
+	home := testHome(t)
 	workspace := seniorDevWorkspace(t)
 	previousCatalog := sharedCatalog
 	catalogFor := newSharedCatalog()
@@ -107,7 +108,7 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", home)
 	if tc.noKey {
 		t.Setenv("OPENROUTER_API_KEY", "")
 	} else {

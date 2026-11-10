@@ -10,7 +10,7 @@ import (
 
 // Contract J23.2 gives copied chats separate draft keys that survive folder moves.
 func TestCopiedChatDoorsKeepDistinctStableDraftKeys(t *testing.T) {
-	profile := t.TempDir()
+	profile := testHome(t)
 	t.Setenv("CODEAF_HOME", profile)
 	t.Setenv("CODEAF_PROFILE_DIR", profile)
 	fleet := onePipeFleet("", hostedClient(t))

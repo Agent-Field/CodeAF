@@ -190,6 +190,7 @@ func runGraph(name string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer stopPoolErrands(settings.ProfileDir)
 	useAutoSeats(settings)
 	seats := doorSeats(settings, *model, *planModel, graph.Goal)
 	applySeats(&settings, seats)

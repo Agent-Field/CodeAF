@@ -175,6 +175,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	})
 	seatCrewRows(modelCatalog.ModelsNow)
 	wirePoolIndex(settings.ProfileDir)
+	brain.closing(func() { stopPoolErrands(settings.ProfileDir) })
 	if opts.seats != nil {
 		applySeats(&settings, *opts.seats)
 	} else {

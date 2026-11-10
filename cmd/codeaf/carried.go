@@ -123,6 +123,8 @@ func carriedSignals() (context.Context, context.CancelFunc) {
 // model goes out through, whether this person's services can take a call on a
 // model, and the work seat a call nothing here can serve is answered on.
 type carriedRoad struct {
+	close func()
+
 	completerFor  func(model string) modelapi.Completer
 	authKeySource func(model string) string
 	serves        func(model string) bool
@@ -162,6 +164,7 @@ func profileRoad() (carriedRoad, error) {
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
 	return carriedRoad{
+		close:         func() { stopPoolErrands(settings.ProfileDir) },
 		completerFor:  adapters.forModel,
 		authKeySource: func(model string) string { return config.APIKeySourceForModel(settings.ProfileDir, sources, model) },
 		serves:        func(model string) bool { return session.ServesModel(sources, model) },
@@ -300,6 +303,9 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 			return session.ProgramShellModelRefusal(word)
 		}
 		return err
+	}
+	if road.close != nil {
+		defer road.close()
 	}
 	var modelsToWarm []string
 	if asked != "" {

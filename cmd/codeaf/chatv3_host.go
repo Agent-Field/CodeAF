@@ -695,6 +695,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// The pool's errands start beside it, against the same profile the catalog
 	// was read from.
 	wirePoolIndex(profileDir)
+	fleet.own(func() { stopPoolErrands(profileDir) })
 	// The refresh key in /model asks the same router THIS machine's list came
 	// from, and refills the same shelf — the list is this laptop's list of
 	// names on both doors (chatv3_modelshelf.go).

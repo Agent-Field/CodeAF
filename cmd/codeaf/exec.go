@@ -120,6 +120,7 @@ func runExec(args []string) error {
 	// that took the flag and then resolved it differently from every other door
 	// would be the parity it claims in name only. Only the work seat is printed,
 	// because only the work seat runs anything.
+	defer stopPoolErrands(settings.ProfileDir)
 	useAutoSeats(settings)
 	seats := doorSeats(settings, *model, *planModel, prompt)
 	applySeats(&settings, seats)
