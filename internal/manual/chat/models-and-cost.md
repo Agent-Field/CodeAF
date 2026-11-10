@@ -2348,6 +2348,19 @@ conversation that has started no tasks prints `spend` alone. When they are there
 up to the line above them, always — that is the whole point of printing them. The
 same split is shown in a new conversation and after resuming it.
 
+Paid workers from `/task solo` and other local tasks count under `tasks` as
+they spend. Their calls contribute once to `spend`; attributing them to this
+conversation adds no second charge. Both split lines appear when both halves
+have spent money and their sum matches `spend`.
+
+## Reopening a task-only conversation — each model call is counted once
+
+Reopening a conversation whose first paid work was a task does not add those
+worker charges again to the machine's spending ledger. The conversation's total
+includes its tasks, but restoring that total is not another model call. This also
+holds when a task finished before a restart left its saved run marked running,
+and when the conversation already had paid turns of its own.
+
 ## Why do the tokens on the status line jump instead of counting up
 
 They count up. While a turn is running, the money and the token figures on the status
