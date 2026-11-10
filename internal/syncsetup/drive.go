@@ -636,7 +636,16 @@ func (d *Drive) Viewer() (string, bool) {
 
 // RenewalStatus reads this writer's cached renewal health without network work.
 func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
-	if d.displaced() || d.batcher == nil || d.sync.removed.Load() {
+	if d.batcher == nil || d.sync.removed.Load() {
+		return time.Time{}, 0, false
+	}
+	d.mu.Lock()
+	// A voluntary idle release stops renewals, not this writer's installation.
+	// Home must finish its startup wait so the first send can check ownership
+	// and conditionally acquire a new fence through ConfirmWork.
+	inactive := d.stopped || d.lost || d.viewer.Line != "" && !(d.released.Load() && d.viewer.Line == chatlist.Available)
+	d.mu.Unlock()
+	if inactive {
 		return time.Time{}, 0, false
 	}
 	return d.batcher.RenewalStatus()

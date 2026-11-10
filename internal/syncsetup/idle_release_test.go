@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,7 +25,9 @@ func idleContractChat(t *testing.T, h *twoHomes) *openChat {
 	t.Helper()
 	mustNil(t, h.b.putDevice(t.Context(), nameB))
 	c := h.openA()
-	appendTo(t, transcriptOf(h.cell), `{"type":"message","role":"user","content":"save this chat"}`+"\n")
+	// Knowledge capture needs a complete timestamp to advance past this seed
+	// instead of retrying an invalid journal record during idle certification.
+	appendTo(t, transcriptOf(h.cell), fmt.Sprintf(`{"type":"message","role":"user","content":"save this chat","timestamp":%q}`+"\n", h.clock.Now().UTC().Format(time.RFC3339Nano)))
 	_, err := c.drive.Store(h.engine).Seal(t.Context(), h.cell, cellstore.TurnInfo{})
 	mustNil(t, err)
 	h.durable(h.cell.ID, h.cell)
