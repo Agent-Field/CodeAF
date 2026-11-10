@@ -1852,6 +1852,8 @@ or switching tabs does not announce old completions again.
 Recognizable older standalone receipts also group on reopening, without rewriting
 or deleting the journal. When the original request cannot be established, a collapsed
 background-work group retains the receipt instead of assigning it to a later request.
+A task and its parts share one `background work` group even when their results
+arrive during different turns. Unrelated completions still group by their arrival turn.
 Ambiguous mixed messages and requested alerts remain visible. A pending `your call`
 decision stays visible with its reason and working answer controls until resolved.
 
@@ -1931,6 +1933,10 @@ state, such as `done` or `incomplete`, and `open result` to read its report. A t
 you answered is counted once, with its settled state. A landing that still needs
 your call stays visible, as does a landing whose work remains on a kept branch:
 `branch kept · <branch>` names where to find it.
+Each task has one current state: a visible landing card takes the place of its
+completion row. If you dismiss that card, the row remains in `background work`
+or the request's worked disclosure with the newest state and `open result`.
+The same rule applies after reopening the conversation.
 
 ## What an expanded landing card shows — why is the task answer in asterisks, Markdown, the delivery warning, the facts
 
@@ -3200,6 +3206,9 @@ the outcome sentence; the conversation it came out of; what it ran on and what i
 how many files it changed; where it left the work and where the story is; and then **the
 last thing the task itself said** — the whole report, read off that task's own journal, of
 which the outcome above is the first sentence.
+For a task that just settled in this conversation, `open result` shows its full
+report and changed-file count immediately, including before the saved task list
+refreshes. Reopening the conversation shows the same report and files.
 
 - **`out of <conversation>` names where the work came from**, spelled the way the row on the
   list spells it, so the page is never a smaller answer than the row that opened it. It is

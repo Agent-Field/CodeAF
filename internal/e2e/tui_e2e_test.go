@@ -283,8 +283,8 @@ func testNestedGate(t *testing.T) {
 	pressLandingKey(r, "a")
 	r.waitFor(20*time.Second,
 		say(t, "taskDoneGlyph")+" Port the parser"+say(t, "settleAcceptReceipt"))
-	// These ownerless completions stay readable in background work while the resumed turn runs.
-	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
+	r.waitFor(runPatience, " "+say(t, "idleWord"))
+	showBackgroundWork(t, r)
 	// A newer worked chip can take ctrl+e, so open the task history by name.
 	clickLineContaining(t, r, say(t, "backgroundWorkWord"))
 	settled := r.waitFor(20*time.Second,
@@ -334,8 +334,8 @@ func testRefusedLanding(t *testing.T) {
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
 		t.Errorf("the refused landing still says failed:\n%s", screen)
 	}
-	// The resumed model may be slow; check the task history as soon as it appears.
-	r.waitFor(runPatience, say(t, "backgroundWorkWord"))
+	r.waitFor(runPatience, " "+say(t, "idleWord"))
+	showBackgroundWork(t, r)
 	// A newer worked chip can take ctrl+e, so open the task history by name.
 	clickLineContaining(t, r, say(t, "backgroundWorkWord"))
 	row := "Review the pull request diff" + say(t, "taskIncompleteWord") + say(t, "taskOpenResultWord")
@@ -352,6 +352,20 @@ func testRefusedLanding(t *testing.T) {
 	}
 	t.Logf("the refused result keeps the refusal and original reason:\n%s", result)
 	r.quit()
+}
+
+// showBackgroundWork brings the settled task history back after a resumed turn scrolled it away.
+func showBackgroundWork(t *testing.T, r *rig) {
+	t.Helper()
+	for step := 0; step < 120; step++ {
+		if strings.Contains(r.capture(), say(t, "backgroundWorkWord")) {
+			return
+		}
+		// The suite's SGR wheel gesture stays in the conversation, away from the task rail.
+		r.lit("\x1b[<64;10;10M")
+		time.Sleep(pollEvery)
+	}
+	t.Fatalf("background work was not visible after 120 scroll steps:\n%s", r.capture())
 }
 
 // pressLandingKey clears the first-run greeting before spending one answer.

@@ -1502,7 +1502,10 @@ files. Staging happens once, so every look judges the same tree. In a workspace 
 not a repository the checker is told
 `This workspace is not a repository, so there is no diff to read: check the files themselves.`
 
-This is controlled by `task.audit`, **on by default**, and settable in your profile only.
+This is controlled by `task.audit`, **on by default**, shown in Settings under Tasks
+as `review task results`. When on, a separate read-only checker runs the repository's
+checks and reads the diff before work may merge. When off, the task `lands done`
+without that check.
 With it off, the gate stands open, the task's own account merges, the task lands done, and
 the report is marked `nothing checked this work: the task.audit setting is off` above the
 task's own words. There are no correction rounds at all.
