@@ -78,7 +78,9 @@ func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report 
 		cancel()
 		if err != nil {
 			report(err)
-			return d, b.claim(d, c.ID)
+			// Close stops the writer even when its last save fails. Retain that
+			// failure for the final receipt, then give the reopened chat a writer.
+			recordFinalSaveFailure(session.SavingError(d.transcript, err))
 		}
 	}
 	// A drive side that no longer holds the chat's lease (another machine took it, or it was moved

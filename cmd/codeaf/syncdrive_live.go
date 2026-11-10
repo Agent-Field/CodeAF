@@ -363,9 +363,15 @@ const holdsLeaseWithin = 5 * time.Second
 
 // superseded says a drive side was running and the chat has since been taken from it, by
 // another machine or by a move back to this one, so that it no longer holds the lease it
-// publishes under. A drive side that still waits for an identity, or that drives, is not.
+// publishes under. A closed writer must also be replaced, even if its failed
+// final save left a live lease. An open drive still waiting for identity is not.
 func (l *liveDrive) superseded() bool {
-	d := l.started()
+	l.mu.Lock()
+	d, closed := l.drive, l.closed
+	l.mu.Unlock()
+	if closed {
+		return true
+	}
 	if d == nil {
 		return false
 	}
