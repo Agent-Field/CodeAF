@@ -2605,17 +2605,7 @@ func cancelledByRunEnding(store *plandb.Store, id uint64) bool {
 // the row and the conversation's note are built from, so the two cannot name
 // two different endings.
 func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLanding) TaskNotice {
-	state, report := beltRunResultWords(summary, landing)
-	if run.remoteEngine != nil && summary.NeedsDecision {
-		state = TaskUnverified
-	}
-	if run.remoteEngine == nil && run.delegate == nil && summary.Outcome == beltRunOutcomeDone && landing.Home == mergeConflicted {
-		state = TaskUnverified
-		report = withYourCallLead(TaskFacts{Merge: landing.Home, Conflicts: landing.Conflicts, GroundHeld: landing.GroundHeld}, report)
-	}
-	if run.remoteEngine != nil && summary.Outcome == "interrupted" {
-		state = TaskInterrupted
-	}
+	state, report := run.noticeResultWords(summary, landing)
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: state,
 		// A LIMIT ITS PERSON SET IS THE ROW'S ENDING, so the reason a surface
@@ -2654,6 +2644,23 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		}
 	}
 	return notice
+}
+
+// noticeResultWords resolves the outcome and landing before the shared
+// snapshot adds its crew, cost and branch facts.
+func (run *beltRun) noticeResultWords(summary RunSummary, landing RunLanding) (TaskState, string) {
+	state, report := beltRunResultWords(summary, landing)
+	if run.remoteEngine != nil && summary.NeedsDecision {
+		state = TaskUnverified
+	}
+	if run.remoteEngine == nil && run.delegate == nil && summary.Outcome == beltRunOutcomeDone && landing.Home == mergeConflicted {
+		state = TaskUnverified
+		report = withYourCallLead(TaskFacts{Merge: landing.Home, Conflicts: landing.Conflicts, GroundHeld: landing.GroundHeld}, report)
+	}
+	if run.remoteEngine != nil && summary.Outcome == "interrupted" {
+		state = TaskInterrupted
+	}
+	return state, report
 }
 
 // A remote landing keeps the executor with its final reading, since this
