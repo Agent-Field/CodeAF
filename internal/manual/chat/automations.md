@@ -509,10 +509,9 @@ typed `time` and `usd`. Work that reaches its money stops as
 (`couldn't check · ran out of time` for a watch).
 
 **Your daily spending limit holds over work too.** Once today's spending has reached it, a
-run of work does not start, and nothing is spent on it: it reads `your call · today's
-spending limit is reached · $512 spent of $500 · /budget day changes it`. A watch's looks are
-not held to it — each one costs a fraction of a cent, and a refused look would be news every
-few minutes — but work a watch would run is.
+run of work does not start, and nothing is spent on it: it reads `your call · daily
+limit reached · $512 spent of $500 · /budget day changes it`. A watch's model
+checks obey the same limit: no new paid check starts once it is reached.
 
 On `/spend` the automations have a table of their own, `by automation`: each one with how
 many calls it made, what one call cost (`$0.01 a call`) and its total. The Spending tab of

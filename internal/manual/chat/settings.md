@@ -189,7 +189,12 @@ A saved change applies to the next compilation without restarting your chats.
 A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
-setting. Knowledge capture must still be enabled from Memory for each project.
+setting. A new profile whose first saved-chat inventory is empty enables
+capture automatically. A profile with existing eligible history waits for
+**Build knowledge base** in Memory before importing it; capture is profile-wide.
+Compilation is paid model work recorded in Spend, including unusable answers.
+It pauses at the daily limit and resumes automatically after you raise the
+limit with `/budget day` or the local day changes.
 
 ## Devices — sync storage, off or on, and request access
 

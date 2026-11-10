@@ -4739,3 +4739,33 @@ func TestStorageOptInSettingsAndTeamsQuestions(t *testing.T) {
 		})
 	}
 }
+
+func TestKnowledgeSpendingAndAutomaticCaptureManual(t *testing.T) {
+	for page, phrases := range map[string][]string{
+		"settings":        {"capture automatically", "existing eligible history waits", "paid model work recorded in Spend", "/budget day"},
+		"models-and-cost": {"background knowledge compilation", "task summaries", "daily limit reached", "summary keeps its last reading"},
+		"places":          {"Each\npaid call appears in Spend", "Knowledge build paused: daily limit reached", "retained-progress and automatic-retry"},
+		"automations":     {"no new paid check starts once it is reached"},
+	} {
+		text, ok := Chat().Page(page)
+		if !ok {
+			t.Fatalf("missing page %s", page)
+		}
+		for _, phrase := range phrases {
+			if !strings.Contains(text, phrase) {
+				t.Errorf("%s does not explain %q", page, phrase)
+			}
+		}
+	}
+	for _, query := range []string{"knowledge compilation Spend daily limit", "new profile knowledge capture automatically"} {
+		found := false
+		for _, section := range Chat().Search(query, DefaultResults) {
+			if section.Page == "settings" || section.Page == "models-and-cost" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("knowledge question missed its settings/cost answer: %q", query)
+		}
+	}
+}

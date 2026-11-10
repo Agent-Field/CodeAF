@@ -2478,7 +2478,9 @@ Every cost line written into a conversation's transcript is also appended to one
 whole machine, `~/.codeaf/v3/usage.jsonl`, moved by `CODEAF_HOME` like everything else codeaf
 keeps. **One line per model call, written the moment that call's bill comes back** — the
 requests of a turn, and the calls made beside a turn such as naming a session or judging a
-route. Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
+route, and background knowledge compilation. Knowledge calls appear in Spend
+under the model that served them, even if an answer was empty or unusable.
+Each line carries `calls: 1`, so a turn that used three tools is four lines rather than
 one.
 
 **That is why the figure moves while a reply is still being written.** The line is written as
@@ -4232,14 +4234,22 @@ list than on the conversation.
 
 ## Does the daily budget apply to chat and team tasks?
 
-The daily budget blocks a new chat call when today's recorded spending reaches
-the limit. Task crews and their helpers use it when checking the next call's
-estimated cost. Other conversations' completed usage receipts are read on each
+The daily budget blocks new chat turns and every new background or helper
+model call when today's recorded spending reaches the limit. This includes
+knowledge compilation, task summaries, names, captions, memory updates and
+automation checks. Task crews also check the next call's estimated cost. Other
+conversations' completed usage receipts are read on each
 check, and completed spending resets at the local date boundary. Calls already
 in flight may finish; this is not an atomic reservation across processes.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately. The default profile and home errands follow the saved
-or environment daily limit too; `/budget day` changes apply on the next turn.
+or environment daily limit too; `/budget day` changes apply on the next check.
+The refusal says `daily limit reached · $1 spent of $1 · /budget day changes it`
+with your actual figures. Knowledge builds retain progress and resume
+automatically after a limit increase or the local day changes; a skipped task
+summary keeps its last reading. `--yes-spend` (or
+`CODEAF_PREAUTHORIZE_SPEND=1`) lifts the daily gate for work started with that
+spending permission.
 Task checks use the same selected daily limit and spending permission as the work
 they check.
 
@@ -4247,7 +4257,7 @@ they check.
 
 **Both limits apply; neither overrides the other.** New chat turns stop when
 either limit is reached. The daily limit counts all of today's spending on this
-machine — every conversation and every task, not only this conversation. The
+machine — every conversation, task, helper and knowledge compilation. The
 conversation limit counts that conversation's recorded spending, including
 earlier days.
 

@@ -750,7 +750,12 @@ view over `--host` is not supported.
 
 Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
 model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
-The compiler checks the returned model ID and rejects substitutions.
+The compiler checks the returned model ID and rejects substitutions. Each
+paid call appears in Spend, including empty and unusable answers. At the daily
+limit the job line says `Knowledge build paused: daily limit reached · $1 spent
+of $1 · /budget day changes it` with your actual figures, followed by the
+retained-progress and automatic-retry message. No new compiler call starts
+until the limit is raised or the local day changes; retries back off.
 
 Failures retain pending work and retry automatically, with backoff up to 120
 seconds. Stable source IDs prevent duplicate records during retry or journal
