@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -18,6 +19,15 @@ var readinessRun = func(ctx context.Context, name string, args ...string) (strin
 	command.WaitDelay = 100 * time.Millisecond
 	raw, err := command.Output()
 	return strings.TrimSpace(string(raw)), err
+}
+
+// Desk reads avoid git/gh probes on Unix because gh can prompt for Keychain
+// access. The explicit doctor command uses machineReadiness on every OS.
+func deskReadiness() []appwire.ReadinessCheck {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	return machineReadiness()
 }
 
 func machineReadiness() []appwire.ReadinessCheck {

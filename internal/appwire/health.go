@@ -4,7 +4,8 @@ import "time"
 
 // health.check: plain facts about this engine an assistant can cite when the
 // person asks whether something is wrong. Every fact is read, never inferred,
-// and key health is cached; readiness probes have short deadlines.
+// and provider key health is checked lazily and cached on every OS. Only Windows
+// desk reads run command readiness probes, with short deadlines.
 
 // The roles a disk reading is taken for.
 const (
@@ -12,7 +13,7 @@ const (
 	DiskCodeafHome = "codeaf_home"
 )
 
-// ProviderKeyHealth is a launch auth reading, with no credential in its payload.
+// ProviderKeyHealth is a launch-cached auth reading, with no credential in its payload.
 type ProviderKeyHealth struct {
 	State     string     `json:"state" enum:"ok,invalid,unknown"`
 	Message   string     `json:"message,omitempty"`
@@ -32,8 +33,8 @@ type ReadinessCheck struct {
 // Factory is this machine's local factory as factory.local_status shapes it,
 // absent from an engine that does not say.
 type Health struct {
-	ProviderKey ProviderKeyHealth   `json:"provider_key"`
-	Checks      []ReadinessCheck    `json:"checks"`
+	ProviderKey ProviderKeyHealth   `json:"provider_key,omitzero"`
+	Checks      []ReadinessCheck    `json:"checks,omitempty"`
 	Version     string              `json:"version"`
 	Build       string              `json:"build,omitempty"`
 	StartedAt   time.Time           `json:"started_at"`

@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,7 @@ type setupHealthTransport func(*http.Request) (*http.Response, error)
 
 func (f setupHealthTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// Unix parity 2 contract items 1/2 (shared key health and doctor).
 // keyhealth-fix contract 1, 2 and 4: launch stays quiet; the first setup or
 // health read starts one check without waiting, and both share its result.
 func TestSetupContractLaunchKeyHealth(t *testing.T) {
@@ -134,6 +136,7 @@ func TestSetupContractLaunchKeyHealth(t *testing.T) {
 	}
 }
 
+// Unix parity 2 contract items 1/2 (shared key health and doctor).
 // keyhealth-fix contract 2: a hung auth endpoint becomes unknown with a checked timestamp.
 func TestSetupContractKeyHealthTimeout(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
@@ -150,6 +153,7 @@ func TestSetupContractKeyHealthTimeout(t *testing.T) {
 	}
 }
 
+// Unix parity 2 contract items 1/2 (shared key health and doctor).
 // keyhealth-fix contract 3: doctor still probes auth directly without a model
 // call. Setup contract 4 reports command failures with actionable hints while
 // retaining the normal GH_TOKEN.
@@ -209,7 +213,7 @@ func TestSetupContractDoctorReadiness(t *testing.T) {
 	healthBackend := newFakeBackend(newAppRecorder(), nil)
 	defer healthBackend.Close()
 	health, err := healthBackend.HealthCheck()
-	if err != nil || len(health.Checks) < 3 {
+	if err != nil || (runtime.GOOS == "windows" && len(health.Checks) < 3) || (runtime.GOOS != "windows" && len(health.Checks) != 0) {
 		t.Fatalf("app health readiness = %+v, %v", health, err)
 	}
 	healthy.Store(true)
@@ -232,6 +236,7 @@ func TestSetupContractDoctorReadiness(t *testing.T) {
 	}
 }
 
+// Unix parity 2 contract items 1/2 (shared key health and doctor).
 // keyhealth-fix contract 2: a real turn's auth refusal invalidates the cached reading
 // without a second probe.
 func TestSetupContractTurnAuthRefusal(t *testing.T) {
@@ -284,6 +289,7 @@ func TestSetupContractTurnAuthRefusal(t *testing.T) {
 	}
 }
 
+// Unix parity 2 contract items 1/2 (shared key health and doctor).
 // keyhealth-fix contract 2: a handover starts the check even before a read;
 // unchanged keys dedupe, while a new key or address gets a fresh check.
 func TestSetupContractKeyHealthHandover(t *testing.T) {
@@ -348,6 +354,7 @@ func TestSetupContractKeyHealthHandover(t *testing.T) {
 	}
 }
 
+// Unix parity 2 contract items 1/2 (shared key health and doctor).
 // keyhealth-fix contract 1, 2 and 4 through a real app process and wire reads.
 // A daemon owns its process globals, so each launch gets a fresh process too.
 func TestSetupContractAppLaunchWire(t *testing.T) {

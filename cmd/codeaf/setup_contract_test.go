@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// Unix parity 2 contract items 1/2: shared fresh default and saved choices.
 // Contract 1: fresh setup supplies the CLI default; explicit and previously
 // saved model choices survive another setup read.
 func TestSetupContractFreshDefaultsAndSavedChoices(t *testing.T) {

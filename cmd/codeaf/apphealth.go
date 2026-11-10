@@ -8,8 +8,8 @@ import (
 )
 
 // HealthCheck is health.check: what this engine knows about itself, read from
-// memory, disk readings, and bounded checks of git and gh in the user's
-// normal environment. It opens no conversation.
+// memory, disk and cached provider auth. Only Windows desk reads run bounded
+// git/gh checks in the user's normal environment. It opens no conversation.
 func (b *appBackend) HealthCheck() (appwire.Health, error) {
 	b.refreshKeyHealth()
 	var health appwire.Health
@@ -21,7 +21,7 @@ func (b *appBackend) HealthCheck() (appwire.Health, error) {
 		}
 	})
 	health.ProviderKey = b.keyHealth.read()
-	health.Checks = machineReadiness()
+	health.Checks = deskReadiness()
 	health.Version, health.Build = resolvedVersion(), buildinfo.Identity()
 	health.UptimeS = int64(b.now().Sub(health.StartedAt).Seconds())
 	work := ""

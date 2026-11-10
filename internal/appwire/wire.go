@@ -878,7 +878,7 @@ type Connection struct {
 // Setup is how far the person has come through first-run setup, kept by
 // codeaf so quitting halfway resumes at the same step.
 type Setup struct {
-	ProviderKey  ProviderKeyHealth `json:"provider_key"`
+	ProviderKey  ProviderKeyHealth `json:"provider_key,omitzero"`
 	Step         SetupStep         `json:"step"`
 	Provider     string            `json:"provider,omitempty"`
 	DefaultModel string            `json:"default_model,omitempty"`
