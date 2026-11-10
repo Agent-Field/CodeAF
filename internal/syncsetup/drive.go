@@ -43,7 +43,7 @@ type DriveOptions struct {
 	OnDriving func()
 	// OnRenewalChange wakes local readers after a renewal or ownership change.
 	OnRenewalChange func()
-	// Sleep replaces real time between flushes; tests inject a fake.
+	// Sleep replaces real time between background attempts; tests inject a fake.
 	Sleep func(ctx context.Context, d time.Duration) error
 }
 

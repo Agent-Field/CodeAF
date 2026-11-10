@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // Lease names the directory record and fence this batcher publishes under.
@@ -109,33 +110,48 @@ func (b *Batcher) ReleaseIdle(ctx context.Context, head string, beforeRelease fu
 	if err := beforeRelease(); err != nil {
 		return false, err
 	}
-	b.mu.Lock()
-	b.released = true
-	b.mu.Unlock()
+	wasReleased := func() bool {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		before := b.released
+		b.released = true
+		return before
+	}()
 	b.leaseChanged.fire()
-	if err := b.release(ctx); err != nil {
-		return false, err
+	// Idle retries belong to the caller's backoff. Retrying inside close's
+	// release loop could hide an unsent dial failure behind a later timeout.
+	if err := b.Publisher.Dir.Release(ctx, d.ID(), d.Fence); err != nil && !errors.Is(err, directory.ErrFenceStale) {
+		if !wasReleased && syncwords.RequestNotSent(err) {
+			func() { b.mu.Lock(); defer b.mu.Unlock(); b.released = false }()
+			b.leaseChanged.fire()
+		}
+		return false, syncwords.UploadFailure(err)
 	}
 	b.endRenewals()
 	return true, nil
 }
 
-// ResumeHeld confirms that a failed release left this fence live. It cannot
-// resume a changed head or a later writer, and sends no acquisition request.
+// ResumeHeld confirms a retained fence is live without an acquisition request.
+// It cannot resume a possibly committed release, a changed head or a later writer.
 func (b *Batcher) ResumeHeld(ctx context.Context, seen directory.CellView) bool {
 	if lockOwnership(ctx, &b.flushMu) != nil {
 		return false
 	}
 	defer b.flushMu.Unlock()
-	b.mu.Lock()
-	d := b.Driving
-	if b.closing || b.stale || len(b.noted) != 0 || d.Fence != seen.Cell.Lease.Fence || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires <= seen.Now {
-		b.mu.Unlock()
+	resumed := func() bool {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		d := b.Driving
+		if b.closing || b.stale || b.released || b.renewalEnded || len(b.noted) != 0 || d.Fence != seen.Cell.Lease.Fence || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires <= seen.Now {
+			return false
+		}
+		b.released, b.renewalEnded = false, false
+		b.renewalSince = time.Time{}
+		return true
+	}()
+	if !resumed {
 		return false
 	}
-	b.released, b.renewalEnded = false, false
-	b.renewalSince = time.Time{}
-	b.mu.Unlock()
 	b.leaseChanged.fire()
 	b.renewalChanged()
 	return true

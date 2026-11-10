@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // idleReleaseWithin bounds the final, upload-free ownership boundary.
@@ -101,15 +102,21 @@ func (d *Drive) releaseWhenIdle(ctx context.Context, activity uint64) {
 				continue
 			}
 		}
-		timer := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-d.done:
-			timer.Stop()
-			return
-		case <-timer.C:
+		if d.opt.Sleep != nil {
+			if d.opt.Sleep(ctx, wait) != nil {
+				return
+			}
+		} else {
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-d.done:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
 		}
 		finished, err := d.releaseIdle(ctx, activity)
 		if finished {
@@ -244,11 +251,15 @@ func (d *Drive) releaseIdle(parent context.Context, activity uint64) (bool, erro
 	if err != nil || head == nil || head.Turn.ID != proof.Head || !proof.Unchanged(ctx) {
 		return false, err
 	}
+	wasReleased := d.released.Load()
+	held := d.sendLeaseSnapshot()
+	previous := func() Viewer { d.mu.Lock(); defer d.mu.Unlock(); return d.viewer }()
 	released, err := d.batcher.ReleaseIdle(ctx, proof.Head, func() error {
 		if err := d.sync.forgetSendLeaseWithin(ctx, d.cell.ID, d.sendLeaseSnapshot()); err != nil {
 			return err
 		}
 		d.mu.Lock()
+		defer d.mu.Unlock()
 		d.recordedFence = 0
 		notify = d.viewer != (Viewer{Line: chatlist.Available})
 		d.viewer = Viewer{Line: chatlist.Available}
@@ -257,15 +268,45 @@ func (d *Drive) releaseIdle(parent context.Context, activity uint64) (bool, erro
 		if notify {
 			version = d.noticeVersion.Add(1)
 		}
-		d.mu.Unlock()
 		d.released.Store(true)
 		return nil
 	})
+	if err != nil && !wasReleased && d.released.Load() && syncwords.RequestNotSent(err) {
+		// A canceled admission budget must still put back the receipt it retired.
+		// Keep the work gate closed if local restoration itself fails.
+		restore, cancel := context.WithTimeout(context.WithoutCancel(parent), idleReleaseWithin)
+		defer cancel()
+		if restoreErr := d.undoUnsentRelease(restore, held, previous, version); restoreErr != nil {
+			return false, errors.Join(err, restoreErr)
+		}
+		notify = false
+	}
 	if err != nil || !released {
 		return false, err
 	}
 	d.releaseDone.Store(true)
 	return true, nil
+}
+
+func (d *Drive) undoUnsentRelease(ctx context.Context, held sendLease, previous Viewer, version uint64) error {
+	if err := lockDrive(ctx, &d.receiptMu); err != nil {
+		return err
+	}
+	defer d.receiptMu.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// Ownership news can arrive while the dial fails. It must still win over
+	// the saved viewer, and no later writer's receipt may be replaced here.
+	if d.stopped || d.lost || d.noticeVersion.Load() != version {
+		return nil
+	}
+	if err := d.sync.recordSendLeaseWithin(ctx, d.cell.ID, held); err != nil {
+		return err
+	}
+	d.viewer, d.recordedFence = previous, held.Fence
+	d.released.Store(false)
+	d.noticeVersion.Add(1)
+	return nil
 }
 
 func (d *Drive) paired() bool {
