@@ -58,7 +58,6 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 		used := Usage{Input: b.PromptTokens, Output: b.CompletionTokens, CacheRead: b.CachedTokens, CostUSD: b.Cost, Calls: 1}
 		a.bank(bankedCall{libraryActivity: knowledge.LibraryActivity(ctx), generationID: b.GenerationID, used: used, model: b.Model, role: string(lane.RoleMemory), ledger: true, late: true, billing: b.Billing, price: usagePriceProvider})
 		a.file.appendUsage(used, b.Model, true, string(lane.RoleMemory))
-		a.stampSpend()
 	}
 	ctx = provider.WithBilling(ctx, bill)
 	if a.config.JobPendingSpend != nil {
@@ -71,7 +70,6 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 			a.bank(bankedCall{generationID: r.Ref, model: r.Model, role: string(lane.RoleMemory),
 				libraryActivity: knowledge.LibraryActivity(ctx), used: Usage{Calls: 1},
 				ledger: true, late: true, unpriced: true, billing: r.Billing})
-			a.stampSpend()
 		}
 	})
 	return a.withReceiptTracking(provider.WithUnmeteredReceipts(ctx)), nil

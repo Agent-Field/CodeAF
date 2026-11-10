@@ -4593,8 +4593,15 @@ func (a *Agent) bank(call bankedCall) {
 			}
 		}
 	}
-	// Every bill changes the figure Home reads, including bills after a turn sealed.
-	a.stampSpend()
+	// EVERY BILL OUTSIDE A LIVE TURN STAMPS THE FIGURE HOME READS, HERE AND
+	// NOWHERE ELSE. A late receipt, an errand's call, memory work or a remote
+	// task's money can arrive after the turn sealed, and Home must not read less
+	// than /cost (dev #2577). A step of the conversation is stamped once, when
+	// its turn seals, so a turn saves its spend once however many calls it made
+	// (app/v3's TestLateRecoveredCancellationSavesCumulativeSpendOnce).
+	if !call.turn {
+		a.stampSpend()
+	}
 }
 
 // reconciled receives the one late answer for a call whose stream ended before
@@ -4640,9 +4647,8 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 	// half was missing. The row is evidence and never spend; the money moved
 	// through the door above and nowhere else.
 	a.file.appendCall(armCall(receipt))
-	// A cancelled turn has already sealed. Save the meter now rather than
-	// leaving its late charge out of every reader of meta.json until another turn.
-	a.stampSpend()
+	// A cancelled turn has already sealed, so its late charge is saved by
+	// [Agent.bank]'s stamp above rather than waiting for another turn.
 }
 
 // addUsage folds one response's accounting into the turn and the session, and
