@@ -133,6 +133,8 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
+	// CallID follows a paid call through worker, mirrored and reconstructed rows.
+	CallID string `json:"call_id,omitempty"`
 	// Computer and RemoteEvent identify a mirrored call independently of cursor
 	// checkpoints, so a replay cannot charge the same call twice.
 	Computer    string `json:"computer,omitempty"`
@@ -998,8 +1000,10 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 		seat, _ = SeatOfAgent(a.agentKind())
 	}
 	line = TagUsage(line, roles.Role(call.role), seat)
+	line.CallID = UsageCallID(line)
 	if remote := call.remote; remote != nil {
 		line.Task, line.Computer, line.RemoteEvent = remote.Task, remote.Computer, remote.Event
+		line.CallID = remote.CallID
 		line.Seat = remote.Seat
 		return appendRemoteUsage(path, line)
 	}
@@ -1238,7 +1242,7 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 // from the seat that seals the turn it was made in.
 func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
 	return procexec.ModelCall{
-		Model: line.Model, Role: line.Role,
+		CallID: line.CallID, Model: line.Model, Role: line.Role,
 		TokensIn: line.Input, TokensOut: line.Output, TokensCached: used.CacheRead,
 		CostMicroUSD: int64(math.Round(line.USD * microPerUSD)),
 	}

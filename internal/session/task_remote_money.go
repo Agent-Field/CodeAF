@@ -14,6 +14,7 @@ import (
 )
 
 type remoteUsage struct {
+	CallID                string
 	Task, Computer, Event string
 	Seat                  Seat
 }
@@ -35,7 +36,7 @@ func appendRemoteUsage(path string, line UsageLine) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(path+".remote-lock", os.O_CREATE|os.O_RDWR, 0600)
+	lock, err := os.OpenFile(path+UsageLedgerLockSuffix, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
@@ -62,7 +63,7 @@ func appendRemoteUsage(path string, line UsageLine) error {
 	if err != nil {
 		return err
 	}
-	if memo.seen[line.RemoteEvent] {
+	if memo.seen["remote:"+line.RemoteEvent] || (line.CallID != "" && memo.seen[line.CallID]) {
 		return nil
 	}
 	raw, err := json.Marshal(line)
@@ -78,7 +79,10 @@ func appendRemoteUsage(path string, line UsageLine) error {
 	if err = f.Sync(); err != nil {
 		return err
 	}
-	memo.seen[line.RemoteEvent] = true
+	memo.seen["remote:"+line.RemoteEvent] = true
+	if line.CallID != "" {
+		memo.seen[line.CallID] = true
+	}
 	// Leave offset at the last read boundary: another process or the ordinary
 	// asynchronous ledger writer may have appended while this call was written.
 	return nil
@@ -101,8 +105,13 @@ func (memo *remoteLedgerCursor) readTail(f *os.File) (bool, error) {
 		}
 		var old UsageLine
 		readable := json.Unmarshal(raw, &old) == nil
-		if readable && old.RemoteEvent != "" {
-			memo.seen[old.RemoteEvent] = true
+		if readable {
+			if id := UsageCallID(old); id != "" {
+				memo.seen[id] = true
+			}
+			if old.RemoteEvent != "" {
+				memo.seen["remote:"+old.RemoteEvent] = true
+			}
 		}
 		if err == io.EOF {
 			if readable {
@@ -122,7 +131,7 @@ func (a *Agent) foldRemoteCharge(event string, charge RunCharge) error {
 	}
 	used := Usage{Input: charge.TokensIn, Output: charge.TokensOut, CacheRead: charge.Cached, Calls: 1, CostUSD: charge.USD}
 	if a.file != nil {
-		added, err := a.file.appendRemoteCharge(event, charge.Model, used)
+		added, err := a.file.appendRemoteCharge(event, charge.Model, used, charge.CallID)
 		if err != nil {
 			return err
 		}
@@ -133,7 +142,7 @@ func (a *Agent) foldRemoteCharge(event string, charge RunCharge) error {
 	a.bank(bankedCall{used: used, model: charge.Model, late: true})
 	return nil
 }
-func (s *sessionFile) appendRemoteCharge(event, model string, used Usage) (bool, error) {
+func (s *sessionFile) appendRemoteCharge(event, model string, used Usage, identity ...string) (bool, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -146,7 +155,11 @@ func (s *sessionFile) appendRemoteCharge(event, model string, used Usage) (bool,
 		s.mu.Unlock()
 		return false, nil
 	}
-	raw, err := json.Marshal(sessionEntry{Type: "usage", Timestamp: stamp(), Usage: &journalUsage{RemoteEvent: event, Model: model, Input: used.Input, Output: used.Output, CacheRead: used.CacheRead, CostUSD: used.CostUSD, Calls: used.Calls, Aux: true}})
+	callID := ""
+	if len(identity) > 0 {
+		callID = identity[0]
+	}
+	raw, err := json.Marshal(sessionEntry{Type: "usage", Timestamp: stamp(), Usage: &journalUsage{CallID: callID, RemoteEvent: event, Model: model, Input: used.Input, Output: used.Output, CacheRead: used.CacheRead, CostUSD: used.CostUSD, Calls: used.Calls, Aux: true}})
 	if err == nil {
 		_, err = s.file.Write(append(trace.ScrubRegistered(raw), '\n'))
 	}

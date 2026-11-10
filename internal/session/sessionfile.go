@@ -870,6 +870,7 @@ type journalDivision struct {
 // counts every request to the provider, Turns only the ones a turn of the
 // person's made (see [Agent.addAuxiliaryUsage]).
 type journalUsage struct {
+	CallID string `json:"call_id,omitempty"`
 	// Folded keeps a worker's already-billed share in the conversation's books
 	// without reconstructing it as another model call on the machine ledger.
 	Folded bool `json:"folded,omitempty"`
