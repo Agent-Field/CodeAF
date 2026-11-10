@@ -2,16 +2,19 @@
 
 ## Login profiles, PATH and command output
 
-Chat shell commands and headless foreground commands run without a login shell.
+On Windows, chat shell commands and headless foreground commands run without a login shell.
 They inherit the environment codeaf was started with, including PATH, and retain
 their usual credential and tmux filtering. Set up tools in that launching
 environment.
 
 Detached background jobs launched by headless commands use a login bash
 (`bash -lc`). Their login profiles can supply or change PATH. This shell policy
-also applies on Linux and macOS.
+also applies on Linux and macOS. Headless foreground commands on Linux and macOS
+also retain login bash (`bash -lc`), so existing cron and systemd environments
+can continue to use their login profiles. Chat commands keep their non-login shell.
 
-Command results shown to the model use LF in place of native CRLF line endings.
+On Windows, command results shown to the model use LF in place of native CRLF line endings.
+Linux and macOS preserve command output bytes, including CRLF.
 A lone carriage return used for progress output keeps its existing meaning.
 
 ## Which bash does codeaf use on Windows? (Git Bash)

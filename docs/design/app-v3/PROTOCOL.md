@@ -1234,8 +1234,9 @@ this start carried on replies or tasks the last quit stopped (`at`,
 `disks` with `free_bytes` and `total_bytes` for the filesystem of the work
 folder (`work_folder`) and of codeaf's home (`codeaf_home`), each with an
 `error` instead when it could not be read, and `factory`, the local factory's
-status as `factory.local_status` shapes it. `provider_key`, also returned by
-`setup.get`, is the launch-cached OpenRouter auth reading: `state` is `ok`,
+status as `factory.local_status` shapes it. On every OS, the optional
+`provider_key`, also returned by `setup.get`, is the launch-cached OpenRouter auth
+reading: `state` is `ok`,
 `invalid`, or `unknown`, `checked_at` is present after a probe finishes, and
 `message` gives the reconnect hint for an invalid key. Starting the engine makes
 no key-check request. codeaf checks it once in the background when setup or health
@@ -1243,15 +1244,22 @@ is first read, with a two-second deadline. Reads never wait for the auth probe;
 until it completes they say `unknown`. A key handover also starts the check, and
 the cache deduplicates later reads for the same key and address for this launch.
 A real turn's 401 invalidates the matching cached credential. `codeaf doctor`
-continues to check directly.
+checks directly on every OS, only when explicitly invoked.
 
-`checks` contains the same machine readiness rows as doctor: git availability,
+On Windows, optional `checks` contains the same machine readiness rows as doctor:
+git availability,
 `git config user.name` and `user.email`, gh availability and `gh auth status`,
 and native Git Bash resolution on Windows. Each row has `name`, `state`
 (`ok`, `error`, `info`, or `unknown`), `message` and `fix`. Missing gh is `info`.
 Each command has a two-second timeout and inherits the user's normal environment;
 the shell resolver bounds its git-shim lookup at three seconds. The method opens
-no conversation. hello says `health.check`.
+no conversation. Linux and macOS omit `checks` and run no git or gh commands
+on desk setup/health reads, avoiding gh login Keychain prompts. Explicit
+`codeaf doctor` runs machine checks on every OS. Existing wire fields, events and
+saved setup retain their meanings; new fields are optional and old payloads still
+decode. Fresh setup on every OS proposes the CLI default without replacing a
+saved model. Provider health is transient and is not saved in setup. hello says
+`health.check`.
 
 ## inbox methods
 

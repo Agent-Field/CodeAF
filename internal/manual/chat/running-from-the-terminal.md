@@ -397,15 +397,17 @@ them, because it is the profile's.
 
 ## Desktop setup model default and provider key health
 
-Fresh setup supplies the same default model as the CLI. A saved model remains
-the person's choice. The app wire's
-`setup.get` and `health.check` include `provider_key`: `state` is `ok`, `invalid`, or
-`unknown`, with `checked_at` after a check finishes. Starting the engine makes no
-key-check request. codeaf checks it once in the background when setup or health is first read,
-using OpenRouter's key auth endpoint with a two-second deadline. A handover of the
-app's stored key also starts the check. Reads never wait for it and say `unknown`
-until it completes; later reads and turns do not repeat it. A key or address
-change starts a new check. `codeaf doctor` still checks directly.
+On every OS, fresh setup supplies the same default model as the CLI. A saved
+model remains the person's choice. The app wire's `setup.get` and `health.check`
+include optional `provider_key`: `state` is `ok`, `invalid`, or `unknown`, with
+`checked_at` after a check finishes. Starting the engine makes no key-check
+request. codeaf checks it once in the background when setup or health is first
+read, using OpenRouter's key auth endpoint with a two-second deadline. A handover
+of the app's stored key also starts the check. Reads never wait for it and say
+`unknown` until it completes; later reads and turns do not repeat it. A key or
+address change starts a new check. `codeaf doctor` checks directly on every OS.
+Linux and macOS desk reads run no git or gh commands; Windows health reads also
+report machine readiness.
 A real-turn 401 also marks that key invalid. An invalid key says
 `Your OpenRouter key stopped working. Sign in again.` Offline or a timeout means
 `unknown` and does not prevent starting.
@@ -2012,13 +2014,13 @@ are in. They are related and they are not the same reading.
 
 ## Doctor provider key, git identity, gh sign-in and Windows Git Bash checks
 
-`codeaf doctor` checks OpenRouter key auth without making a model call. Its
+On every OS, `codeaf doctor` checks OpenRouter key auth without making a model call. Its
 `provider key` row reports `ok`, `invalid`, or `unknown`; an offline endpoint or a
 two-second timeout is `unknown`. An invalid key says
 `Your OpenRouter key stopped working. Sign in again.` Connect OpenRouter again.
 The `key` row above it still names the credential's source without printing it.
 
-Doctor and the app wire's `health.check` also report git availability,
+Doctor on every OS, and the app wire's `health.check` on Windows, report git availability,
 `git config user.name`, `git config user.email`, and `gh auth status`. Each command
 has a two-second deadline. Fix identity with
 `git config --global user.name "Your Name"` and
@@ -2026,6 +2028,11 @@ has a two-second deadline. Fix identity with
 `gh auth login --web`. Missing gh is information; install GitHub CLI when you need
 GitHub workflows. These probes inherit your normal environment, including
 `GH_TOKEN`; model shells continue to filter credentials.
+
+On Linux and macOS, desk setup and health reads run no git or gh commands,
+so they cannot prompt for access to gh credentials in the login Keychain. These
+command checks run only when you explicitly run `codeaf doctor`. Missing gh
+does not change its exit code.
 
 On Windows the same health checks use codeaf's shell resolver to find native Git
 Bash. Install Git for Windows or set `CODEAF_BASH` to its `bash.exe`. A package

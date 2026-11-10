@@ -31,10 +31,11 @@ asked — you already said so. On yes, the receipt tells you how to end it:
 
 ## Health checks
 
-Command checks and service launches use login bash (`bash -lc`) with pipefail.
-They inherit the environment codeaf was started with, then load login profiles,
-which can supply or change PATH. This applies on every OS; on Windows, codeaf
-selects Git Bash or another MSYS2-family bash.
+Command checks and service launches use login bash (`bash -lc`). They inherit
+the launching environment, then load login profiles, which can supply PATH.
+Service launches use pipefail on every OS. Command health checks retain bash
+pipeline exit status on Linux and macOS; Windows checks select Git Bash or
+another MSYS2-family bash and enable pipefail.
 
 Every service declares how it can be checked: a **port**, a **URL** that must
 return 200, or a **command** that must exit clean. codeaf probes it roughly

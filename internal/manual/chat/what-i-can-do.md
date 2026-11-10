@@ -99,11 +99,17 @@ that does not exist yet simply creates it.
 order mark (BOM), including files written by Windows PowerShell 5.1. `edit` and
 `write`, including `append:true`, keep that encoding and BOM. Files without a
 UTF-16 BOM retain their existing interpretation; UTF-8 needs no conversion.
-Malformed UTF-16 with an incomplete code unit or an unpaired surrogate is refused.
+Keeping an existing encoding requires a readable file. Linux and macOS still
+allow a write-only file to be replaced with the exact supplied bytes.
+Reads, edits and appends refuse malformed UTF-16 with an incomplete code unit or
+an unpaired surrogate. Windows also refuses rewriting malformed UTF-16; Linux
+and macOS allow a full rewrite to replace its old bytes.
 
-Edits, rewrites and appends keep an existing file's line-ending style: CRLF
-stays CRLF, and LF stays LF. These rules apply on Windows, Linux and macOS,
-including headless `codeaf do`, `exec` and `run` file tools.
+UTF-16 edits, rewrites and appends keep the file's line-ending style on every OS.
+For other files, chat edits preserve the existing style. Windows rewrites, appends
+and headless edits also preserve that style. On Linux and macOS, `write` keeps
+the supplied bytes exactly, and headless `codeaf do`, `exec` and `run` edits
+continue to match and replace literal text, including CRLF.
 
 ## Why is a written or edited file missing from Files — deliverables in a plain folder
 
