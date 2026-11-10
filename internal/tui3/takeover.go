@@ -639,11 +639,12 @@ type turnResumer interface {
 	ResumeStoppedTurn(ctx context.Context) (<-chan session.Event, bool)
 }
 
-// resumedTurnMsg is that door's answer on its way back to the loop, and it is
-// sent only when a turn really started.
+// resumedTurnMsg is that door's answer on its way back to the loop. It carries
+// either an admitted turn or the refusal of an owed turn.
 type resumedTurnMsg struct {
-	gen int
-	ch  <-chan session.Event
+	gen     int
+	ch      <-chan session.Event
+	resumed bool
 }
 
 // resumeStoppedTurn is the one line [app.attachConversation] spends on this: ask
@@ -668,10 +669,10 @@ func (a *app) resumeStoppedTurn() tea.Cmd {
 	gen, ctx := a.gen, a.ctx
 	return func() tea.Msg {
 		events, resumed := door.ResumeStoppedTurn(ctx)
-		if !resumed {
+		if events == nil {
 			return nil
 		}
-		return resumedTurnMsg{gen: gen, ch: events}
+		return resumedTurnMsg{gen: gen, ch: events, resumed: resumed}
 	}
 }
 
@@ -691,7 +692,9 @@ func (a *app) tookResumedTurn(msg resumedTurnMsg) tea.Cmd {
 	if msg.ch == nil || msg.gen != a.gen || a.stream != nil {
 		return nil
 	}
-	a.note(session.ResumedWord)
+	if msg.resumed {
+		a.note(session.ResumedWord)
+	}
 	return a.takeStream(msg.ch)
 }
 
