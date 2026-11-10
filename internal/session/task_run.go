@@ -6432,7 +6432,7 @@ func keptWork(tree taskTree, title string, changed []string, sign gitSignature) 
 	case problem != "":
 		return mergeAborted, changed
 	}
-	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt)
+	saved, problem, _ := commitTaskWork(tree.dir, title, changed, sign, tree.bashBelt, true)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
 	// at a merge (groundladder.go): what the sentence offers the person is the
@@ -7902,12 +7902,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// audited by a different rule than the conversation would be the setting
 		// meaning two things (task_audit.go).
 		TaskAudit: parent.TaskAudit,
-		// AND SO DOES WHETHER THE SIGNATURE NAMES THE MODEL. A node commits —
-		// its landing writes one ([commitTaskWorkAs]) and its worker may write
-		// more with `bash` — and the `attribution.model` row is the person's
-		// answer for their whole machine. A node is handed no ProfileDir
-		// (Config.ProfileDir says why), so a child that did not carry this
-		// would name the model for somebody who had turned the name off.
+		// AND SO DOES WHETHER THE WORK IS SIGNED AND WHETHER THE SIGNATURE NAMES
+		// THE MODEL. A node commits — its landing writes one ([commitTaskWorkAs])
+		// and its worker may write more with `bash` — and both attribution rows
+		// are the person's answer for their whole machine. A node is handed no
+		// ProfileDir (Config.ProfileDir says why), so a child that did not carry
+		// these would sign or name the model for somebody who had turned them off.
+		AttributionOff:      parent.AttributionOff,
 		AttributionModelOff: parent.AttributionModelOff,
 		// And so does who decides a landing nobody could check. A parent node's
 		// own agent is the reader of its children's landing notes, so a family
@@ -8840,7 +8841,7 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 	// they are — what is on that disk is the only copy of the work there is
 	// (task_land_unsaved.go). Going on used to merge a branch holding nothing and
 	// then remove the directory the work was in.
-	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt); problem != "" {
+	if _, problem, why := commitTaskWork(t.dir, title, wrote, sign, t.bashBelt, true); problem != "" {
 		return mergeAborted, unsavedSentence(t.dir, problem), nil, why
 	}
 	// THE INHERITANCE GOES BACK OUT BEFORE THE WORK COMES IN. A branch carved
@@ -9245,8 +9246,8 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal) {
-	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
+func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal) {
+	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt, ownedCopy)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
 	}
@@ -9278,7 +9279,7 @@ func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBe
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal, error) {
+func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt, ownedCopy bool) ([]string, string, landingRefusal, error) {
 	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
@@ -9294,10 +9295,16 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, ba
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
-	if !repositoryRefusesTrailers(dir) {
+	if !sign.off && !repositoryRefusesTrailers(dir) {
 		message = signed(message, sign)
 	}
-	if out, err := git(dir, append(codeafGitIdentity(),
+	// The run engine also uses this commit road in a person's own folder.
+	// Only a caller that owns the copy can suppress detached maintenance.
+	runGit := git
+	if ownedCopy {
+		runGit = privateGit
+	}
+	if out, err := runGit(dir, append(codeafGitIdentity(),
 		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —

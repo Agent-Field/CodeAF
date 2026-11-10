@@ -65,12 +65,18 @@ func runTests(m *testing.M) int {
 	// directory of its own runs here. See hermetic_checkout_test.go.
 	tree := watchTheCheckout()
 
+	// AND GO KEEPS THE DEVELOPER'S OWN MODULE CACHE, pinned before HOME moves.
+	// Unset, Go's module cache follows HOME, so a test that ran go made Go fetch
+	// the module's toolchain into the throwaway home on every run: half a
+	// gigabyte of read-only files that the cleanup below could not remove.
+	keepModuleCache()
+
 	root, err := os.MkdirTemp("", "codeaf-session-test-home-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "session tests: no temporary home: %v\n", err)
 		return 1
 	}
-	defer os.RemoveAll(root)
+	defer removeTestHome(root)
 	if err := os.Setenv("HOME", root); err != nil {
 		fmt.Fprintf(os.Stderr, "session tests: could not move HOME: %v\n", err)
 		return 1
@@ -181,4 +187,34 @@ func grew(before, after map[string]bool) []string {
 	}
 	sort.Strings(added)
 	return added
+}
+
+// keepModuleCache pins GOMODCACHE to where this machine already keeps it, as Go
+// itself would compute it from the original GOPATH or home, unless it is set.
+func keepModuleCache() {
+	if os.Getenv("GOMODCACHE") != "" {
+		return
+	}
+	base := ""
+	if paths := filepath.SplitList(os.Getenv("GOPATH")); len(paths) > 0 && paths[0] != "" {
+		base = paths[0]
+	} else if dir, err := os.UserHomeDir(); err == nil {
+		base = filepath.Join(dir, "go")
+	}
+	if base != "" {
+		_ = os.Setenv("GOMODCACHE", filepath.Join(base, "pkg", "mod"))
+	}
+}
+
+// removeTestHome makes the throwaway home's folders writable before removing
+// it. Go and git leave read-only trees behind, and os.RemoveAll alone cannot
+// delete a file from a folder it may not write.
+func removeTestHome(root string) {
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && entry.IsDir() {
+			_ = os.Chmod(path, 0o700)
+		}
+		return nil
+	})
+	_ = os.RemoveAll(root)
 }

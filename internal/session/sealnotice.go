@@ -63,3 +63,19 @@ func (a *Agent) releaseSealsAfterClose() {
 		a.releaseSeals()
 	}
 }
+
+// FinishSaving joins the writer's final save only for the conversation that owns it.
+func (a *Agent) FinishSaving() error {
+	if a == nil || a.config.InTask || a.config.Errand || a.config.FinishSaving == nil {
+		return nil
+	}
+	return a.config.FinishSaving()
+}
+
+// TakeSavingNotices retains final-save news independently of the live notice pump.
+func (a *Agent) TakeSavingNotices() []string {
+	if a == nil || a.config.InTask || a.config.Errand || a.config.SavingNotices == nil {
+		return nil
+	}
+	return a.config.SavingNotices()
+}

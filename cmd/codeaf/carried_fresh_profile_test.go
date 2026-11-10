@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -91,7 +92,15 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 	}
 	workspace := seniorDevWorkspace(t)
 	previousCatalog := sharedCatalog
-	sharedCatalog = newSharedCatalog()
+	catalogFor := newSharedCatalog()
+	var ownCatalog *catalog.Catalog
+	sharedCatalog = func(settings config.Config) *catalog.Catalog {
+		ownCatalog = catalogFor(settings)
+		return ownCatalog
+	}
+	// The lazy catalog can still be replacing a cache in CODEAF_HOME after the
+	// shell child exits. Join this fixture's catalog before TempDir cleanup.
+	defer func() { ownCatalog.Close() }()
 	t.Cleanup(func() { sharedCatalog = previousCatalog })
 	if tc.plain {
 		if err := os.RemoveAll(workspace + "/.git"); err != nil {

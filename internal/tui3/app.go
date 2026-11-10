@@ -2892,7 +2892,8 @@ type app struct {
 	// quitting keeps new input out of teardown while allowing another interrupt to leave.
 	quitting bool
 	// saveFailure retains closing errors for the report after the screen is restored.
-	saveFailure func(error)
+	saveFailure   func(error)
+	savingNotices func([]string)
 	// closingStarted retains pending engine replies after the terminal is restored.
 	closingStarted      func(<-chan struct{})
 	savingDurability    func(func() bool)
@@ -3143,6 +3144,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		movedName:           movedName,
 		deviceID:            opts.DeviceID,
 		saveFailure:         opts.SaveFailure,
+		savingNotices:       opts.SavingNotices,
 		closingStarted:      opts.ClosingStarted,
 		savingDurability:    opts.SavingDurability,
 		savingCompatibility: opts.SavingCompatibility,
@@ -3874,6 +3876,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case conversationClosedMsg:
 		a.conversationClosing = false
+		a.saidNotices()
+		for _, line := range msg.notices {
+			a.note(line)
+		}
 		if line := closeSaveWords(msg.err, msg.finishing, msg.address); line != "" {
 			a.note(line)
 		}

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // RunTreeSnapshot is what a working copy held before a run touched it: the
@@ -37,13 +39,30 @@ type RunTreeSnapshot struct {
 	// held is every path git saw as changed before the run, by absolute path,
 	// and what it held then: a digest of its bytes, or empty when it was gone.
 	held map[string]string
+	// unsigned turns off commit signing for this snapshot when set via
+	// [RunTreeSnapshot.WithAttribution].
+	unsigned       bool
+	attributionSet bool
+}
+
+// WithAttribution sets whether [RunTreeSnapshot.SignRunCommits] signs commits
+// made since this snapshot. When unset, SignRunCommits reads the active
+// profile's attribution row ([config.AttributionAt]).
+func (s RunTreeSnapshot) WithAttribution(on bool) RunTreeSnapshot {
+	s.unsigned = !on
+	s.attributionSet = true
+	return s
 }
 
 // SignRunCommits signs commits made since this snapshot in an in-place run.
 // A snapshot on an unborn branch can sign the run's first commits; a snapshot
 // outside git has no branch whose new history belongs to the run.
 func (s RunTreeSnapshot) SignRunCommits(model string) (int, error) {
-	sign := gitSignature{named: model != "", model: model}
+	off := s.unsigned
+	if !s.attributionSet {
+		off = !config.AttributionAt(config.ProfileDir())
+	}
+	sign := gitSignature{off: off, named: model != "", model: model}
 	if s.unborn {
 		return signUnbornRunCommits(s.root, sign)
 	}

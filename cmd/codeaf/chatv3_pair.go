@@ -39,6 +39,9 @@ func (chatPairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) 
 		return "", explainSyncUnreachable(err, route.URL)
 	}
 	label, err := pair.Offer(ctx, route, grant, chatOfferUI{OfferUI: ui, service: route.Shown})
+	if err == nil {
+		samplePairedStorage(ctx, home.Dir(), route)
+	}
 	return label, explainSyncUnreachable(err, route.URL)
 }
 
@@ -82,7 +85,9 @@ func (chatPairDoor) JoinReplacing(ctx context.Context, typed string, ui pair.Joi
 	}
 	joined, err := pair.Join(ctx, route, pairJoining(true), typed, ui)
 	if err == nil {
+		waitStorage := startPairedStorage(ctx, home.Dir(), route)
 		err = ownDeviceRecord(ctx, home.Dir(), route)
+		waitStorage()
 	}
 	return joined, explainSyncUnreachable(err, route.URL)
 }

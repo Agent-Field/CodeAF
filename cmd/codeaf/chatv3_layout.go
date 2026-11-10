@@ -789,6 +789,12 @@ func v3Seated(cfg session.Config) session.Config {
 	seat, machine, seals := v3SeatWith(cfg.Place, nil, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	cfg.Renewals = syncDrives.renewalsOf(cfg.Place.ID())
+	cfg.FinishSaving, cfg.SavingNotices = nil, nil
+	if drive := syncDrives.renewalsOf(cfg.Place.ID()); drive != nil {
+		book, id := syncDrives, cfg.Place.ID()
+		cfg.FinishSaving = func() error { return book.closeCell(id) }
+		cfg.SavingNotices = drive.TakeSavingNotices
+	}
 	if machine != nil {
 		cfg.Machine = machine
 	}

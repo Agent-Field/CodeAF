@@ -18,6 +18,8 @@ Before any answer, the three hosted addresses on *Hosted relay or your own relay
 
 Eligible serving processes check after their first home-state round; chat windows check at launch and after `/status` in chat, and every ten minutes while a relay that reports storage is off (or a hosted address is still unknown). Storage on or an answer without the field stops requests. Once approval is read, waiting chats and uploads start within a minute without a restart. Opening a chat never waits for a relay reading. A revoked or removed device stops approval polling.
 
+Pairing asks for the storage answer once alongside its other finishing work, with a best-effort budget of about 1.5 seconds. A timely on or off answer is saved for other open windows before pairing finishes. A timeout, failed ask or absent field leaves the saved answer untouched and adds no sentence.
+
 ## Does the relay store my chats — what is on the relay's disk
 
 The relay holds two things for each identity, kept apart from every other identity: a **directory** (one record for each chat, one for each of your computers) and a **store** of chat content. New content uploads need sync storage, which is off by default until approval (Settings → Devices → sync storage); directory records can remain while storage is off.

@@ -211,6 +211,12 @@ func TestTheLinkNoticeIsShownOnceAndAskedForOnce(t *testing.T) {
 	if notes != 1 {
 		t.Fatalf("the sentence is in the conversation %d times, wanted exactly 1", notes)
 	}
+	before := asked
+	a.quitting = true
+	drive(t, a, key("d"))
+	if asked != before {
+		t.Fatal("a quitting window consumed news owed to the closing report")
+	}
 }
 
 // AND A CONNECTION WITH NOTHING TO SAY WRITES NOTHING. A seam that answers the

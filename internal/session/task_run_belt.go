@@ -1012,7 +1012,7 @@ func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskSt
 	return PrepareProgramFolder(ProgramFolderOrder{
 		Program: *via, Dir: stand.dir, Title: title, Holder: taskStopName(id, title),
 		Keep: plandb.TaskDir(sessionDir, strconv.FormatUint(id, 10)), Instead: "say which folder the work is in, as ground",
-		Place: a.config.Place, SignModel: a.signsGitWork().namedModel(), Carry: carry,
+		Place: a.config.Place, SignModel: a.signsGitWork().namedModel(), Unsigned: a.signsGitWork().off, Carry: carry,
 	})
 }
 

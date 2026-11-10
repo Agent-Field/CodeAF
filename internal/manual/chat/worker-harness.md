@@ -955,8 +955,10 @@ with 0.
 `codeaf do` works in the directory you hand it with `-w` / `--dir` (the current
 directory by default), **edited in place, on whatever branch is checked out there**.
 codeaf makes no commit of its own. Its workers can commit their changes; when
-the run ends, codeaf adds the bare `Assisted-by: CodeAF` and co-author lines to
-those commits once. Any work still uncommitted is left for you to read, commit
+the run ends and attribution is on, codeaf adds the bare `Assisted-by: CodeAF`
+and co-author lines to those commits once (turn `attribution` off in `/settings`
+or set `CODEAF_ATTRIBUTION=off` to leave them unsigned). Any work still
+uncommitted is left for you to read, commit
 or throw away.
 
 Your own work is never touched by the run's accounting: an edit you had not

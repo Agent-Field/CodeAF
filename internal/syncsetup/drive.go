@@ -387,7 +387,7 @@ func (d *Drive) loseHold() {
 func (d *Drive) displaced() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.lost || d.line != ""
+	return d.stopped || d.lost || d.line != ""
 }
 
 // becomeViewer is the Batcher's word that another device took the chat over:

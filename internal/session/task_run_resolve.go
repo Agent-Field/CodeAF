@@ -101,7 +101,10 @@ func (a *Agent) acceptCompletedRun(ctx context.Context, g *TaskGraph, kept TaskN
 	if err := ctx.Err(); err != nil {
 		return "", true, err
 	}
-	branch, changed, refused, err := LandRunTree(tree.dir, tree.checkBase, kept.Title, kept.Model)
+	// THE LANDING NAMES ONLY THE MODEL THE RUN RECORDED, as [LandRunTree] always
+	// has, and is left unsigned when the person turned attribution off.
+	sign := gitSignature{off: a.config.AttributionOff, named: kept.Model != "", model: kept.Model}
+	branch, changed, refused, err := landRunTreeWithSignature(tree.dir, tree.checkBase, kept.Title, sign)
 	if err != nil {
 		return "", true, err
 	}

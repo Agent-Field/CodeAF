@@ -77,6 +77,14 @@ After a live `--at` session, come back to the original computer and choose `1 co
 
 Keeping turns made here that another computer lacks waits for storage access only when they must be saved separately before replacing this copy. If those turns diverge from newer stored history, codeaf preserves them and says `cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here`. Your typed message stays in the box. Request access in Settings → Devices → sync storage before continuing this divergent copy.
 
+## Tools stop when the chat moves away while sync storage is off — a running turn, its tools and saved turns
+
+Before tools run in a shared chat while storage is off, codeaf checks who holds it. A reading is reused for at most 15 seconds with live updates, or two seconds without them. A change announced by the service refreshes it at once, even within those bounds. A failed reading is also reused for two seconds after it finishes.
+
+When a reading finds another computer holding the chat, this window only shows the chat and refuses further tools, including commands and file edits. It stops saving new turns; saving work already accepted can finish. Choose `continue here` explicitly to resume writing.
+
+An expired hold belonging to this computer or a free chat still allows tools. An unreachable service also allows local work; a chat never shared makes no ownership request. No uploads start while storage is off.
+
 ## Why does continue here say this chat was last held here — my only computer asks to continue
 
 A chat this computer held last can resume sending after its hold expires when nobody else holds it. While sync storage is off, Enter sends without a question if the local history contains every shared turn, including when later turns stayed only here or nothing was shared yet. The conversation stays open and the storage-off sentence is not repeated after idle time. After approval, opening the chat here sends its preserved turns to your other computers.
@@ -190,9 +198,19 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 A chat arriving here for the first time works in its own copy. It is filed under the folder it came from, apart from conversations in this computer's own folder of the same name. Home and the keys-row label say `proj-a (copy from another machine)`. This remains a copy even if a folder with the original path happens to exist on this computer. Taking back a chat that already works in your own project restores that project in place. An unknown origin is left unnamed.
 
+The same label appears with `codeaf chat --no-host`. The copy's own working folder does not change its label to `codeaf`.
+
 Removing this computer from your devices does not change those project
 labels. Switching away and back keeps the same copy label or ordinary project
 name.
+
+## Moving a chat with GIT_CEILING_DIRECTORIES set — an enclosing checkout and its ignore rules
+
+codeaf's own capture policy follows Git's repository discovery when `GIT_CEILING_DIRECTORIES` is set. A ceiling equal to the workspace does not stop Git from finding an enclosing repository: its ignored files stay out of saved history. When an ancestor ceiling excludes that repository, codeaf's policy does not enable its ignore rules. A repository inside the boundary keeps its own ignore rules.
+
+If the workspace's own `.furrowpolicy` contains `gitignore`, the native capture engine still uses its separate ignore discovery. It can find an enclosing checkout beyond the ceiling and omit the workspace's files. That case needs an engine fix.
+
+If an older build saved an empty chat and the workspace does not enable `gitignore` in its own `.furrowpolicy`, open the original chat in this build, send another message and close it before trying `continue here` again.
 
 ## This chat is not syncing — the sync service is not answering, working offline
 
@@ -369,6 +387,12 @@ A save wait lasts at most 30 seconds. After the screen closes, a pending sync sa
 If the turns are saved locally but not uploaded, the final sentence is `saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers`, using your service’s host. If that pending upload was refused because storage is off, the successful receipt is `saved here; sync storage is off for this account, so it stays on this computer`. That is a successful exit. Ctrl+c during this wait leaves promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`; that failure may include the local recovery path.
 
 If the last upload fails when you quit, for example because the connection dropped, this computer does not let the chat go. Your other computer keeps showing it as running here and does not open the older save by itself; the unsent turns stay on this computer until an upload succeeds.
+
+## Final saving sentences when closing a chat, quitting, /new or /resume
+
+After a chat finishes saving and closes, it no longer checks who holds it. A final save can find that the chat has moved to a different machine. Its sentence appears once in the window when you close one chat, or when `/new` or `/resume` closes the previous chat. On quit it appears once after the screen is restored, including when an earlier individual close was still saving. A sentence already shown in the window is not printed again after quitting. This also applies with `--no-host`.
+
+A window that stops reading does not hold up another window closing the chat. A live saving sentence delivered after the window's last display check joins the restored-terminal report. Taking it for display or for that report consumes it once.
 
 ## I pressed alt+m before the other chat appeared — still arriving, home on a second computer
 

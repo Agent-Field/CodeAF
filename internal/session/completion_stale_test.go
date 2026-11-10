@@ -443,8 +443,11 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 	}
 	agent = finishedAgent(t, completer, path)
 	graph := stubbedGraph(agent, func(*TaskNode) {})
+	// The second claim needs the mark's drawing before the finite script ends.
+	// Hold ordinary responses until that reading lands, as the checkpoint rig does.
+	watchReadings(t, agent)
 
-	events, err := agent.Submit(context.Background(), theAsk)
+	events, err := agent.Submit(watchedContext(agent), theAsk)
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -453,6 +456,9 @@ func TestANewDirectionArrivesWithTheClaimUnspent(t *testing.T) {
 
 	if !queued.Load() {
 		t.Fatal("the forced ordering never queued the revision")
+	}
+	if got := claims.Load(); got != 2 {
+		t.Fatalf("the revision reached %d claims, want the original and the revision", got)
 	}
 	if count := admitted(graph); count != 0 {
 		t.Fatalf("%d tasks were admitted; a revision inherited the claim spent on the sentence before it", count)
