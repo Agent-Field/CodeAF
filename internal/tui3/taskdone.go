@@ -1271,8 +1271,8 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	return fitPainted(head, width)
 }
 
-// supersededIn reports whether the card at i lands again LATER IN THE SAME RUN:
-// the first landing of a node that asked `your call` and was then decided.
+// supersededIn reports whether a later landing replaces the card at i.
+// Pending decisions can be answered beyond their original batch.
 //
 // A BATCH COUNTS WORK, NOT LANDINGS. A decision lands a node a second time, and
 // when the answer comes straight under the question both cards fall into one
@@ -1284,6 +1284,11 @@ func supersededIn(d deck, i, to int) bool {
 	card := d.entries[i].done
 	if card == nil || card.id == 0 {
 		return false
+	}
+	// A quick resumed turn can separate a decision from its final landing.
+	// The obsolete question must stay hidden across that turn boundary too.
+	if card.status.Tier == session.TaskTierYourCall {
+		to = len(d.entries)
 	}
 	for j := i + 1; j < to; j++ {
 		if next := d.entries[j].done; next != nil && next.id == card.id {

@@ -347,7 +347,7 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 		}
 		if at >= 0 {
 			f := folds[at]
-			f.completions = g.items
+			f.completions = append(f.completions, g.items...)
 			folds[at] = f
 			continue
 		}
@@ -369,7 +369,10 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 		if anchor >= len(d.entries) {
 			anchor = len(d.entries) - 1
 		}
-		if _, exists := folds[anchor]; exists {
+		if f, exists := folds[anchor]; exists {
+			// Another owner's fold at this anchor must keep both groups.
+			f.completions = append(f.completions, g.items...)
+			folds[anchor] = f
 			continue
 		}
 		folds[anchor] = workfold{key: key, turn: g.owner, start: anchor, answer: anchor, virtual: true, background: g.unknown, completions: g.items}
