@@ -13,9 +13,9 @@ package tui3
 // presence, each time either moves. A device that still looks online when the
 // window opens (a lid shut without goodbye stays online until the relay's
 // offline debounce, 15 s, runs out) is offered the moment the feed says it is
-// gone; a device that comes back, or a chat that is let go of, withdraws the
-// card. What the person answered stays answered: a device they took up or put
-// off is not offered again in this opening.
+// gone; a device that comes back withdraws the card. What the person answered
+// stays answered: a device they took up or put off is not offered again in
+// this opening.
 //
 // THE TIME BOUND. With the feed up, the card stands within one feed frame of
 // the relay's offline word: the debounce plus the frame. With the feed down,
@@ -23,10 +23,10 @@ package tui3
 // it lapsed.
 //
 // THE OFFER STANDS WHEN THE DEVICE IS AWAY: the change feed says it is not
-// online (presence is keyed by device id, never by name), OR the chat's lease
-// has lapsed ([chatlist.Off]). Without the feed (socket down, or a source that
-// has none) the lapsed lease stands in for it. A device that is online and
-// busy is never offered: a chat running on it is its own to finish.
+// online (presence is keyed by device id, never by name). An online device's
+// chats are never offered, even when their leases have lapsed or been released
+// while idle. Without the feed (socket down, or a source that has none), a
+// lapsed or released lease stands in for the device being away.
 //
 // A card that cannot work is absent: with no [Taker] there is no takeover to
 // lead into, and the offer is never made.
@@ -109,14 +109,13 @@ func (s resumeState) offered(row chatlist.Row) bool {
 	return live && !row.Mine && !row.HolderRemoved && (s.self == "" || row.DeviceID != s.self) && row.Device != "" && !s.answered[row.Device] && row.DurableAgo <= resumeRecent && s.away(row)
 }
 
-// away says the chat's device has let go of it or is gone: its lease lapsed,
-// or the feed, when it can speak and the row names the device, does not list it
-// as online.
+// away follows presence when the feed is up. Without it, a lapsed or released
+// lease stands in for the device being away.
 func (s resumeState) away(row chatlist.Row) bool {
-	if row.Status == chatlist.Off || (row.Status == chatlist.Idle && !row.Mine) {
-		return true
+	if s.feedUp {
+		return row.DeviceID != "" && !slices.Contains(s.online, row.DeviceID)
 	}
-	return s.feedUp && row.DeviceID != "" && !slices.Contains(s.online, row.DeviceID)
+	return row.Status == chatlist.Off || (row.Status == chatlist.Idle && !row.Mine)
 }
 
 // considerResume decides the offer afresh from the newest good listing and the
