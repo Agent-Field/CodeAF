@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf exec and run no longer leave their turn trace untracked in the person's repository
-pr: 1758
+pr: 2587
 surface: [engine]
 invalidates:
   - "`codeaf exec` wrote its turn-by-turn recorder and `.obs/` spills into `.codeaf/` beside the work, so a `git add -A` in a clean checkout published the whole transcript. The harness's own files now land in codeaf's state root (one directory per workspace name), never in the workspace; after an `exec`, `git status` shows only what the worker changed."
