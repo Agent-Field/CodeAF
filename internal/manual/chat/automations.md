@@ -204,7 +204,7 @@ refused: `the rhythm "0 0 30 2 *" never happens`. A rhythm under a minute is ref
 ## /automations — see every automation, when it runs next, how it last went, and what its mark or dot means
 
 `/automations` opens the list — so does `alt+7`, the `Automations` word on the tab bar
-(between `Memories` and `Spend`), or the `automations` heading on home. One row per
+(between `Memory` and `Spend`), or the `automations` heading on home. One row per
 automation: its mark, its title, and one dim sentence — its kind, its schedule, where it is
 now, and its last run:
 
@@ -619,7 +619,7 @@ separate "rule" kind.
 
 `/remember <text>` (or `/always <text>`, the same command) keeps one; bare `/always` lists
 every line kept here. Said in a conversation, I keep one with `remember`, and the
-conversation says `remembered · <the line> · <where>`, and the Memories tab forgets it.
+conversation says `remembered · <the line> · <where>`, and the Memory tab forgets it.
 *What I remember* has the rest: where a line holds, how many ride along, and forgetting
 one.
 
@@ -701,3 +701,9 @@ scope and limits before saving. Nothing from the report runs automatically.
 - **No exception for one conversation or one project** — an automation is one thing in one
   place, and pausing it pauses it everywhere.
 - **No undo for delete**, and no moving an automation to another machine.
+
+## Why editing an automation offers only Save and Don't save
+
+On Automations, press `→`, then `e`, change the moment in the command and press
+`enter`. The `save this change?` card has exactly `1 Save` and `0 Don't save`.
+It does not offer `something else…`. Nothing changes until you save.

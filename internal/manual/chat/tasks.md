@@ -5773,3 +5773,16 @@ answer, report, crew models, cost and retry actions in one place. Use `o open fu
 or click that action to open the existing task transcript room. Tasks without routed
 crew details keep their ordinary room door. An old record with no crew details does not
 invent them; reopening its owning conversation restores the details its checkpoint kept.
+
+## A conversation time limit ended my task — incomplete versus stopped
+
+A time limit you set ends the conversation's tasks as `incomplete`, with the reason
+`a time limit you set stopped it`. Pressing Stop yourself ends them as `stopped`.
+This applies to tasks and runs already underway when the conversation reaches its limit.
+
+## A saved run asks me to accept it or say it is not right
+
+If a plan finished before a restart but its final checks and landing were not
+recorded, inspect the saved working copy. On the task page, accept it or say it
+is not right, or ask the conversation to do so. The saved result alone does not
+say that the final checks passed.

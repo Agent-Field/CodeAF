@@ -4162,7 +4162,7 @@ Lean changes four things:
 - Your memories still ride: the `<memory>` block is in front of every
   request, bounded the same as on any window. What is missing is the
   `remember` and `forget` verbs, so the model cannot keep or forget a line
-  itself — it tells you to use `/remember` or the Memories tab, which work as
+  itself — it tells you to use `/remember` or the Memory tab, which work as
   always, and noticing still runs after a turn you typed. The record of what
   was said is untouched, and still searchable.
 
@@ -4299,7 +4299,7 @@ you paste in. It cannot open files, run commands or look anything up, and it wil
 if you ask it to. It is also given a **short chat page** as its instructions instead of
 codeaf's working page — about 2,000 characters rather than 20,000 or more, because the
 working page is almost all about tools — with your memories in front of it as on any
-other page, and no verbs to keep or forget one (`/remember` and the Memories tab still work). Your
+other page, and no verbs to keep or forget one (`/remember` and the Memory tab still work). Your
 project's instruction files (AGENTS.md, CLAUDE.md) are not sent to it. The request-size
 check counts only what is really sent. Pick a model that takes tools (`/model`) when you
 need it to work in your files: the next message goes out with the working page and every
@@ -4361,3 +4361,9 @@ Choose those separately there. A seat model pin still needs an available provide
 and its credentials on the receiving computer; pairing does not install a provider.
 The **share teams** switch does not change which crew choices follow preferences.
 Desktop app crews are separate.
+
+## Why a tiny crew cost has four decimal places
+
+A known positive crew cost below one cent keeps four decimal places, such as
+`$0.0003`. An amount below the shared display floor reads `<$0.0001`. Unknown
+or zero costs add no figure to the crew line.
