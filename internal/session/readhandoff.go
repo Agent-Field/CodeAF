@@ -240,6 +240,12 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 			text = sweepHandoffWord(id) + "\n\n" + answer
 		}
 		byID[call.ID] = a.finishToolResult(ep, call, toolResult{text: text, harness: true})
+		if hub != nil {
+			hub.send(Event{
+				Kind: EventToolEnd, Tool: call.Function.Name, CallID: call.ID,
+				Args: rendered[index], Output: byID[call.ID].text,
+			})
+		}
 	}
 	for index, call := range rest {
 		byID[call.ID] = restResults[index]
