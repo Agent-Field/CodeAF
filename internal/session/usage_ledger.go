@@ -1000,7 +1000,6 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 		seat, _ = SeatOfAgent(a.agentKind())
 	}
 	line = TagUsage(line, roles.Role(call.role), seat)
-	line.CallID = UsageCallID(line)
 	if remote := call.remote; remote != nil {
 		line.Task, line.Computer, line.RemoteEvent = remote.Task, remote.Computer, remote.Event
 		line.CallID = remote.CallID
@@ -1242,7 +1241,9 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 // from the seat that seals the turn it was made in.
 func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
 	return procexec.ModelCall{
-		CallID: line.CallID, Model: line.Model, Role: line.Role,
+		// Local ledger rows keep their original schema; their recorded facts
+		// yield the same portable identity the worker transport derives.
+		CallID: UsageCallID(line), Model: line.Model, Role: line.Role,
 		TokensIn: line.Input, TokensOut: line.Output, TokensCached: used.CacheRead,
 		CostMicroUSD: int64(math.Round(line.USD * microPerUSD)),
 	}
