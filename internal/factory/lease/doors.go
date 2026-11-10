@@ -116,6 +116,9 @@ func (d *Doors) Launch(id int) error {
 	if err := factory.CheckPersonStop(it); err != nil {
 		return err
 	}
+	if factory.RecoveryPaused(it) {
+		return run.StepControlRefusal(factory.DecisionPauseDetail(it))
+	}
 	if run.StoredPaused(it) {
 		return d.Hold(id, false)
 	}
@@ -156,6 +159,9 @@ func (d *Doors) Launch(id int) error {
 	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := factory.CheckPersonStop(*it); err != nil {
 			return false, err
+		}
+		if factory.RecoveryPaused(*it) {
+			return false, run.StepControlRefusal(factory.DecisionPauseDetail(*it))
 		}
 		if held != nil {
 			return false, run.AlreadyRunning(it.Ref())
@@ -366,6 +372,9 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 	if err != nil {
 		return err
 	}
+	if factory.RecoveryPaused(it) {
+		return run.StepControlRefusal(factory.DecisionPauseDetail(it))
+	}
 	if it.Publishing && it.State == factory.StateNeedsYou && it.QKind == factory.NeedsRunnerOffline {
 		if factory.OutOfAttemptsChoice(yes, words) == factory.ChoiceTryOnceMore {
 			return d.Launch(id)
@@ -387,6 +396,9 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 // a job no worker holds is answered on the document, and a held job has its
 // question taken down and hears the answer through its lease.
 func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool, words string, now time.Time) (bool, error) {
+	if factory.RecoveryPaused(*it) {
+		return false, run.StepControlRefusal(factory.DecisionPauseDetail(*it))
+	}
 	if err := factory.CheckPersonStop(*it); err != nil {
 		return false, err
 	}
@@ -394,6 +406,11 @@ func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool
 		if err := factory.CheckAutomaticApproval(*it); err != nil {
 			return false, err
 		}
+	}
+	// ACCEPT IS ANSWERED ONLY WHERE THE JOB OFFERS IT. Anywhere else the word
+	// would fall through to the stuck step's last choice, which stops the job.
+	if it.QKind == factory.QKindOutOfAttempts && factory.OutOfAttemptsChoice(yes, words) == factory.ChoiceAccept && !factory.OffersAccept(*it) {
+		return false, run.AcceptRefusal()
 	}
 	if held == nil {
 		return false, run.AnswerUnheld(it, yes, words, now)

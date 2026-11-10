@@ -6,6 +6,7 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 const StepRuntimeHeader = factory.StepRuntimeHeader
 
 type StepRuntime struct {
-	RoundLimit   int                       `json:"round_limit,omitempty"`
-	Verification *factory.StepVerification `json:"verification"`
+	VerificationFailureKey string                    `json:"verification_failure_key,omitempty"`
+	RoundLimit             int                       `json:"round_limit,omitempty"`
+	Verification           *factory.StepVerification `json:"verification"`
 }

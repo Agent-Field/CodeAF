@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,6 +69,12 @@ type ConversationSpec struct {
 	VerifyRepair      bool
 	VerifyChecks      bool
 	VerificationStage string
+	// BaselineCommit is the pinned issue base when the Test policy allows a comparison.
+	BaselineCommit string
+	// AcceptedFailures are the shortfalls the owner accepted on earlier steps
+	// ([factory.AcceptedFailures]), word for word. The step's guard does not
+	// count a check that fails in exactly these words against it.
+	AcceptedFailures []string
 
 	Item factory.Item
 	// Team is the item's team id (its Stream's Room), "" when the item has none
@@ -108,6 +115,8 @@ type ConversationSpec struct {
 	// reach. The maker sets it as the conversation's session door
 	// (session.Config.Stage) and on nothing else.
 	Stage StageDoor
+	// SyncPRBase is available only on the existing PR's repair conversation.
+	SyncPRBase func(context.Context) (string, error)
 	// Progress receives committed model prose, not tool captions or reasoning.
 	Progress     func(line string)
 	Verification func(*factory.StepVerification)
@@ -284,10 +293,24 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		StepEffort:        job.Stage.Effort,
 		Stage:             door,
 		VerificationStage: job.Stage.Name,
+		BaselineCommit:    testBaselineCommit(job),
+		AcceptedFailures:  factory.AcceptedFailures(job.Item),
 		VerifyChecks:      checksVerification(job.Stage),
 		VerifyRepair:      factory.IsCIRepairStage(job.Stage) && (job.Item.FollowUp == nil || job.Item.FollowUp.Kind != "readiness"),
 		Progress:          job.Progress,
 		Verification:      job.Verification,
+	}
+	if job.SyncPRBase != nil {
+		spec.SyncPRBase = func(toolCtx context.Context) (string, error) {
+			actionCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			stop := context.AfterFunc(toolCtx, cancel)
+			defer stop()
+			if err := toolCtx.Err(); err != nil {
+				return "", err
+			}
+			return job.SyncPRBase(actionCtx)
+		}
 	}
 	var conv Conversation
 	var err error
@@ -413,8 +436,8 @@ loop:
 			}
 			if (door.empty() || door.result().Checkpoint) && checksVerification(job.Stage) {
 				if receipts, ok := conv.(executionReporter); ok {
-					notes, _ := reportExecutionNotes(receipts, door.result())
-					if exit, failed := terminalCheckFailure(notes); failed {
+					notes, _, _ := reportExecutionNotes(receipts, door.result())
+					if exit, failed := terminalCheckFailure(notes, spec.BaselineCommit); failed {
 						idleFailure = &factory.StageResult{Done: false, Exit: exit, Output: "A required check failed; its measured result is retained."}
 						break loop
 					}
@@ -422,12 +445,15 @@ loop:
 			}
 			if !door.empty() && !door.result().Checkpoint && ctx.Err() == nil && corrections < stageVerificationCorrections {
 				if receipts, ok := conv.(executionReporter); ok && checksVerification(job.Stage) {
-					notes, _ := reportExecutionNotes(receipts, door.result())
+					notes, _, _ := reportExecutionNotes(receipts, door.result())
 					if reason := verificationReason(factory.StageResult{Notes: notes}); reason != "" {
 						res := door.result()
 						if res.Done && (res.Repair == nil || (res.Repair.Decision != "needs_you" && res.Repair.Decision != "needs_repair")) {
 							corrections++
 							words := "The execution guard found an unresolved check, not a user decision: " + reason + ". Correct the command or environment and re-run the same relevant check. Inspect real check exits independently of output-counting grep. Preserve this step's purpose and report again through stage_result; do not invent a code change to satisfy the guard."
+							if spec.BaselineCommit != "" {
+								words += " If the failing Go test may predate the change, measure the same direct go test -json -count=1 invocation in the job checkout and a clean worktree at " + spec.BaselineCommit + "."
+							}
 							priorReports := door.result().Reports
 							if err := conv.Note(ctx, words); err == nil {
 								door.invalidateCompletion(priorReports)
@@ -523,15 +549,44 @@ loop:
 		res.Reports, res.Inferred = 0, false
 		res.Done, res.Exit, res.Output = false, 1, stop.Error()
 	}
+	res.VerificationFailureKey = ""
 	if receipts, ok := conv.(executionReporter); ok {
-		notes, tests := reportExecutionNotes(receipts, res)
+		notes, tests, failureKey := reportExecutionNotes(receipts, res)
+		// RED CHECKS ARE COMPARED WITH THE BASE BEFORE ANYONE IS ASKED ABOUT
+		// THEM. Where the step's rule allows failures the base already has, the
+		// factory runs each failing Go test itself on the checkout and on the
+		// base (the maker's MeasureBase). What it clears no longer blocks the
+		// step, whatever the step managed to show by itself.
+		measured := 0
+		_, spendCut := spendStopOf(waitErr)
+		if m, ok := conv.(baseMeasurer); ok && checksVerification(job.Stage) && spec.BaselineCommit != "" && !spendCut && !res.JobBudgetStopped && notesBlock(notes) {
+			log("comparing the failing checks with the base commit")
+			if n, err := m.MeasureBase(ctx, spec.BaselineCommit); err != nil {
+				log("the base comparison did not finish: " + oneLine(err.Error()))
+			} else if n > 0 {
+				measured = n
+				notes, tests, failureKey = reportExecutionNotes(receipts, res)
+			}
+			if ctx.Err() != nil {
+				return factory.StageResult{}, ctx.Err()
+			}
+		}
 		res.Notes = append(res.Notes, notes...)
+		if measured > 0 && checksVerification(job.Stage) && verificationReason(res) == "" && res.ExecutionBlocked == "" && res.Findings == 0 && (!res.Done || res.Exit != 0) {
+			// The step said not done because of checks the comparison has now
+			// accounted for. Its rule is the gate's, and the gate is satisfied.
+			res.Done, res.Exit = true, 0
+			res.Output = sayBaseCleared + "\n" + res.Output
+		}
 		if checksVerification(job.Stage) {
 			if reason := verificationReason(res); reason != "" {
 				// A missing final assessment must not hide concrete failing evidence.
 				// The legacy guard cannot safely reclassify assertion failures as machinery.
-				if _, failed := terminalCheckFailure(notes); res.ExecutionBlocked == "report_incomplete" && failed {
+				if _, failed := terminalCheckFailure(notes, spec.BaselineCommit); res.ExecutionBlocked == "report_incomplete" && failed {
 					res.ExecutionBlocked = ""
+				}
+				if res.ExecutionBlocked == "" && !res.JobBudgetStopped {
+					res.VerificationFailureKey = failureKey
 				}
 				res.Done = false
 				if res.Repair != nil && res.Repair.Decision == "fixed" {
@@ -542,6 +597,11 @@ loop:
 				}
 				res.Exit = 1
 				res.Output = "Verification blocked: " + reason + ". The completion guard only reads saved results; it does not run tests. Reuse current passing evidence; rerun only unresolved scope after the repair, or report what remains blocked.\n" + res.Output
+			} else if res.Done && spec.BaselineCommit != "" {
+				note := verification.BaselineNotePrefix + spec.BaselineCommit + "."
+				if slices.Contains(notes, note) {
+					res.Output = note + "\n" + res.Output
+				}
 			}
 		}
 		if tests != nil {
@@ -736,7 +796,7 @@ func stageBrief(job Job) string {
 // converged, because no round was ever asked to change anything.
 //
 // EVERY ROUND IS A FRESH CONVERSATION, SO THIS IS ALL IT KNOWS OF THE LAST.
-// Until 2026-10-20 only a stage that runs until clean, green or proven was told,
+// Until 2026-10-20 only a stage with a verification condition was told,
 // and only the first line of what it said: a plan or a write that went round
 // again started from nothing, and a review lost the findings it had listed.
 func fixThenCheck(job Job) string {
@@ -752,7 +812,7 @@ func fixThenCheck(job Job) string {
 		return head + "\nCorrect the specific execution or reporting problem and finish the same read-only final check. Report needs_repair for an actual code finding; do not invent edits or repeat unrelated tests."
 	}
 	switch strings.TrimSpace(job.Stage.Until) {
-	case factory.UntilClean, factory.UntilGreen, factory.UntilProven:
+	case factory.UntilClean, factory.UntilGreen, factory.UntilProven, factory.UntilNoNewFailures:
 		return head + "\nUse current passing evidence. Correct the unresolved check or changed code, then " + name + " only the affected behaviour and report what remains open."
 	}
 	return head + "\nIt did not finish. Carry on from what it left in the checkout, and report done once the ask is carried out."
@@ -1348,20 +1408,49 @@ func verificationReason(res factory.StageResult) string {
 	return strings.Join(reasons, "; ")
 }
 
+// baseMeasurer is a conversation whose maker can compare its failing checks
+// with the job's base by running them (cmd/codeaf's stageConversation). It
+// answers how many failing checks the comparison cleared.
+type baseMeasurer interface {
+	MeasureBase(ctx context.Context, base string) (int, error)
+}
+
+// sayBaseCleared opens the report of a step the factory's comparison passed.
+const sayBaseCleared = "The factory ran the failing tests on the base commit too: every failure is already there, so none is new."
+
+// notesBlock says whether these execution notes hold a verification failure.
+func notesBlock(notes []string) bool {
+	for _, n := range notes {
+		if strings.HasPrefix(n, verification.FailurePrefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // terminalCheckFailure reads only current measured check receipts, after Wait
 // has established quiescence. A missing exit, presentation failure or prose is
 // not an assertion failure and still gets bounded report recovery.
-func terminalCheckFailure(notes []string) (int, bool) {
+func terminalCheckFailure(notes []string, baselineCommit string) (int, bool) {
 	for _, note := range notes {
 		raw, ok := strings.CutPrefix(note, "Check receipt: ")
 		if !ok {
 			continue
 		}
 		var check struct {
-			Exit    *int   `json:"exit"`
-			Outcome string `json:"outcome"`
+			Exit          *int   `json:"exit"`
+			Outcome       string `json:"outcome"`
+			BaseCommit    string `json:"base_commit"`
+			BaseReceiptID string `json:"base_receipt_id"`
+			Accepted      bool   `json:"accepted"`
 		}
 		if json.Unmarshal([]byte(raw), &check) == nil && check.Exit != nil && *check.Exit != 0 && check.Outcome == "failed" {
+			if check.Accepted {
+				continue
+			}
+			if baselineCommit != "" && check.BaseCommit == baselineCommit && check.BaseReceiptID != "" {
+				continue
+			}
 			return *check.Exit, true
 		}
 	}
@@ -1377,20 +1466,27 @@ type executionReporter interface {
 }
 
 func checksVerification(st factory.Stage) bool {
-	return strings.EqualFold(st.Name, "proof") || strings.EqualFold(st.Name, "test") || st.Until == factory.UntilGreen || st.Until == factory.UntilProven || factory.IsCIRepairStage(st)
+	return strings.EqualFold(st.Name, "proof") || strings.EqualFold(st.Name, "test") || st.Until == factory.UntilGreen || st.Until == factory.UntilProven || st.Until == factory.UntilNoNewFailures || factory.IsCIRepairStage(st)
 }
 
 // New owners provide strict, checkout-bound repair evidence. Existing adapters
 // keep their old execution contract; no fabricated receipts fill a missing door.
-func reportExecutionNotes(owner executionReporter, r factory.StageResult) ([]string, *factory.TestCounts) {
+func reportExecutionNotes(owner executionReporter, r factory.StageResult) ([]string, *factory.TestCounts, string) {
 	if r.Repair != nil && r.Repair.Decision == "fixed" {
 		if strict, ok := owner.(interface {
 			RepairExecutionNotes() ([]string, *factory.TestCounts)
 		}); ok {
-			return strict.RepairExecutionNotes()
+			notes, tests := strict.RepairExecutionNotes()
+			return notes, tests, ""
 		}
 	}
-	return owner.ExecutionNotes()
+	if observed, ok := owner.(interface {
+		VerificationEvidence() ([]string, *factory.TestCounts, string)
+	}); ok {
+		return observed.VerificationEvidence()
+	}
+	notes, tests := owner.ExecutionNotes()
+	return notes, tests, ""
 }
 
 // Reopening restores the stage's purpose and completion ownership as well as

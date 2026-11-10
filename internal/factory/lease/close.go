@@ -37,6 +37,7 @@ func (d *Doors) Close(id int, revision *int, who string) error {
 		it.State, it.Marked, it.Manual = factory.StateNew, false, true
 		it.Publishing, it.Approval, it.StopUndo, it.Recovery = false, nil, nil, nil
 		it.Question, it.QKind, it.Asking = "", "", nil
+		it.PausedRecoveryQuestion = ""
 		for i := range it.Thread {
 			if it.Thread[i].State == "pending" {
 				it.Thread[i].State = "cancelled"

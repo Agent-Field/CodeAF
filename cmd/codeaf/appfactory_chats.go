@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── A JOB'S CONVERSATIONS, ON THE JOB'S OWN PAGE ───────────────────────────
@@ -64,7 +65,8 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 	return out, nil
 }
 
-// holdJobManager binds future opens to the job's current effort without saving it.
+// holdJobManager binds future opens to the job's current effort without saving
+// it, and a first open to the job's model.
 func (b *appBackend) holdJobManager(host *appFactoryHost, job int, id string) error {
 	a, err := b.find(id)
 	if err != nil {
@@ -78,6 +80,13 @@ func (b *appBackend) holdJobManager(host *appFactoryHost, job int, id string) er
 				return ""
 			}
 			return it.Effort
+		}
+		a.jobModel = func() string {
+			it, err := floor.Get(job)
+			if err != nil {
+				return ""
+			}
+			return jobModelOf(it, host.defaultModel)
 		}
 	})
 	_, err = b.holdJobChat(id)
@@ -163,6 +172,44 @@ func (b *appBackend) localHostOf(id string) (*appFactoryHost, error) {
 	return l.host, nil
 }
 
+// jobModelOf is the one model a job's sessions run on: the job's own when a
+// person chose one, else the factory's default (def), which is also what a
+// step with no effort word opens on ([stageOpenModel]) and what the queue tells
+// the app as its `model`. "" is none known: the launch's own stands.
+func jobModelOf(it factory.Item, def func() string) string {
+	if model := strings.TrimSpace(it.Model); model != "" {
+		return model
+	}
+	if def == nil {
+		return ""
+	}
+	return strings.TrimSpace(def())
+}
+
+// jobManagerOpenModels is the pair a job's manager is first opened on, nil for
+// no model known.
+//
+// A JOB'S SESSIONS RUN ON THE JOB'S MODEL (the owner, 2026-11-09): the page
+// names one model for a job, its steps open on it, and so does its manager.
+// The manager was opened on the app's own chat default instead, so a job
+// showed two models, and a model chosen before the manager existed never
+// reached it ([appBackend.jobAgentModel] moves only a manager already made).
+//
+// IT IS ONLY WHAT THE CONVERSATION STARTS WITH. A pair saved on the
+// conversation wins on every later open ([enableAppConversationModels]), so a
+// model a person then picks in the manager's own composer stands. The fallback
+// is the app's, as for any conversation, unless it is the same model.
+func jobManagerOpenModels(model, fallback string) *session.ConversationModels {
+	model, fallback = strings.TrimSpace(model), strings.TrimSpace(fallback)
+	if model == "" {
+		return nil
+	}
+	if fallback == model {
+		fallback = ""
+	}
+	return &session.ConversationModels{Main: model, Fallback: fallback}
+}
+
 // jobAgentModel puts a job's agent on the job's model after a person chose it:
 // the job's own, or the factory's default when they went back to it. It
 // touches only an agent this factory made and only on this machine.
@@ -175,10 +222,7 @@ func (b *appBackend) jobAgentModel(factoryID string, job int) {
 	if err != nil || strings.TrimSpace(it.Talk) == "" {
 		return
 	}
-	model := strings.TrimSpace(it.Model)
-	if model == "" {
-		model = host.defaultModel()
-	}
+	model := jobModelOf(it, host.defaultModel)
 	if model != "" {
 		if it.AutomaticModels != nil {
 			_ = b.SetAutomaticModels(appAgentID(it.Talk), *it.AutomaticModels)

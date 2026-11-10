@@ -28,7 +28,7 @@ was chosen for the job (the desktop app's model chip on the job); a model chosen
 runs is picked up at that step's next turn. Your words while it runs reach it, and what it is doing shows in
 the item's stream.
 
-It is given two tools that no other conversation has:
+Every stage is given these two tools:
 
 - `stage_result` ends the stage's work: done or not, how many findings are still open, its
   claims with their evidence, notes for the stages after it, and what it did and found (a plan
@@ -39,7 +39,12 @@ It is given two tools that no other conversation has:
   `proposed · the runner applies it within the recipe's bounds`; nothing changes from the
   call itself, and proof and your gates are never skipped.
 
-**Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
+**Nothing posts.** Neither tool writes to GitHub, and neither raises a card.
+A write-capable Follow PR round also has `factory_sync_pr_base`. When asked to
+update the branch, or when repairing a conflict with the PR base, it can merge
+the authenticated base commit into the job's local branch. Resolve any
+conflicts and verify the actual updated checkout before reporting the result.
+The factory publishes the tested commit through its usual approval.
 
 ## shipped step methods — planning, implementation, diagnosis, review and proof
 
@@ -66,10 +71,9 @@ Every step hands over what changed, each command actually run and its result,
 unrun checks and why, and open work. Only proof and Follow PR are asked for
 publication bullets. Test and bisect preserve the checkout; when revision
 movement is refused, bisect uses history and recorded runs and states which
-revisions it did not run. Follow PR reproduces CI failures before repairs. The service merges the PR's
-remote head into the checkout; Follow PR resolves conflicts left there, keeping
-the intent of both sides and other people's work. Publication stays with the
-service; the step does not push or force-push.
+revisions it did not run. Follow PR reproduces CI failures before repairs. The
+service reconciles the existing PR head into the checkout. Follow PR resolves
+conflicts while preserving both sides' work. Publication stays with the service.
 
 ## plan file list — structured files, unknown paths and Auto approval
 
@@ -102,8 +106,11 @@ the `stage_result` it reported, and only a report that says done can pass:
 - `until proven`: done, at least one claim, and every claim `ok` with its evidence filled in.
   Every claim needs `evidence` (what shows it: the command and its result, the file, the
   screenshot); a claim whose evidence is blank is not proven.
-- `until green`: done, and a check step's command exited 0. A conversation step has no exit
-  code of its own, so for it green is the same as done: it reports done once the tests pass.
+- `until green`: done, and a check step's command exited 0. A Test conversation
+  with this setting requires passing checks.
+- `until no new failures`: the built-in Test conversation can finish when all
+  checks pass or the engine confirms the same named Go test failures on the
+  job's original base commit.
 
 A `write` step's done also needs a change in the job's checkout. With none, the round reads
 `the checkout has no change from where the run began` and does not pass, so later steps never
@@ -287,7 +294,8 @@ as the manager's own message and marked as the run's (a surface may draw them as
 - `trying test again` after **Try again**, or `trying write again` after **Send back to Write**;
 - `stopped` after **Stop job** or **Stop step**, and `paused` or `resumed` when pausing or continuing.
 
-Pause and Resume still apply if the job progressed after the page was read.
+Ordinary Pause and Resume still apply if the job progressed after the page was read.
+Closing a decision to pause the job requires a current job read.
 Stop wins if it finishes before Resume arrives: Resume says the job “is not paused”,
 and Pause says it “is not running”. Neither refusal changes the job, adds an
 activity receipt or starts spending. Pause also refuses a finished job.
@@ -827,6 +835,29 @@ stage's own time and money bounds still apply. These bounds do not shorten the
 initial test run. The job retains local changes,
 explains the specific problem and waits for a retry instead of opening another
 paid repair round automatically. A successful correction cancels that stop.
+
+When consecutive Test or Proof rounds retain the same measured failures on the
+same checkout, the job waits for your decision before spending another automatic
+round. Open the step results to see the failed checks. **Try again** runs another
+round and keeps the existing round limit. **Send back** is available when an
+earlier step can address the problem. If the checkout or failing checks change,
+the configured automatic round limit applies. An unresolved failure still
+blocks completion.
+
+## Test failures that also reproduce on the base branch
+
+The built-in Test stage uses `until: no new failures`. To require green checks
+in a repository pipeline, set `until: green` for Test. A saved pipeline keeps
+its recorded rule until you change it.
+
+To establish a base match, run the same foreground `go test -json -count=1`
+command in the job checkout and in a clean linked worktree at the original
+base commit. Use separate tool calls with the same arguments, relative
+directory and target settings. Factory compares completed receipts and the
+named failing tests and their diagnostics. It keeps the nonzero check exits
+and records which base commit reproduced the failures. A changed checkout,
+a new or different failure, or a comparison without complete evidence still
+blocks. Review, Proof and publication approval keep their own rules.
 
 ## Recovering old test history and corrected Go checks
 

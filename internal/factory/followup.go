@@ -31,6 +31,7 @@ type PRFollowUp struct {
 	State           string            `json:"state"`
 	BlockedBy       string            `json:"blocked_by,omitempty"`
 	HeadSHA         string            `json:"head_sha,omitempty"`
+	BaseSyncSHA     string            `json:"base_sync_sha,omitempty"`
 	ObservedFrom    string            `json:"observed_from,omitempty"`
 	Attempt         int               `json:"attempt"`
 	Limit           int               `json:"limit"`
@@ -62,7 +63,7 @@ func legacyFollowStep(name string) bool {
 }
 func IsCIRepairStage(st Stage) bool { return st.Name == FollowPRStep || legacyFollowStep(st.Name) }
 
-const followPRAsk = "Maintain this issue's existing PR: diagnose CI failures, assess feedback and repair blockers; verify the candidate for publication."
+const followPRAsk = "Maintain this issue's existing PR: diagnose CI failures, assess feedback, update its branch when asked and repair blockers; verify the candidate for publication."
 
 // One step, repeated rounds. Legacy phase transcripts remain in the history.
 func EnsureFollowPR(it *Item) int {
@@ -122,6 +123,7 @@ func WatchPublishedPR(it *Item) {
 	AcknowledgeReview(it)
 	f := *it.FollowUp
 	f.Request = ""
+	f.BaseSyncSHA = ""
 	f.BlockedBy = ""
 	f.State, f.Reason = "watching", "Watching CI, reviews and merge conflicts automatically. Merge remains your decision."
 	if !it.PullRequest.Draft {
@@ -179,6 +181,7 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 			f.Reason = "PR merged."
 		}
 		it.State = StateShipped
+		it.PausedRecoveryQuestion = ""
 		it.Question, it.QKind = "", ""
 		it.Asking, it.Failure = nil, nil
 		i := EnsureFollowPR(it)
@@ -187,6 +190,9 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 		it.Stream.Phases[i].At = now
 		it.Stream.Ended = now
 		return true
+	}
+	if PausedDecision(*it) {
+		return false
 	}
 	if ReadinessPending(*it) && !it.Publishing && !it.Manual && it.Question == "" && it.Asking == nil {
 		a := f.Readiness

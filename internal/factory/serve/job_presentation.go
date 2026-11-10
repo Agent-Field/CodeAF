@@ -14,8 +14,21 @@ import (
 // reply goes through here; only the worker pull skips the withholding.
 func (h *Handler) presentJob(r *http.Request, j *api.Job) {
 	h.presentWorkerJob(r, j)
+	if decisionPaused(j) {
+		var answered []api.Question
+		for _, question := range j.Questions {
+			if question.Answer != nil {
+				answered = append(answered, question)
+			}
+		}
+		j.Questions = answered
+	}
 	withholdChats(j)
 	withholdTalk(j)
+}
+
+func decisionPaused(j *api.Job) bool {
+	return j.State == api.StateNeedsYou && j.StatePresentation.Kind == "paused"
 }
 
 // withholdTalk drops the manager conversation's session FILE PATH from the
@@ -79,6 +92,11 @@ func stepNamesChat(s api.Step) bool {
 	return false
 }
 
+func (h *Handler) recoveryPauseAvailable() bool {
+	return h.config.ServedBy == "app" && h.mode() == api.FactorySolo && h.seam.Hold != nil &&
+		h.workers != nil && h.workers.desk != nil
+}
+
 // presentWorkerJob runs after solo permissions and presence have narrowed the
 // job. A button appears only when its engine door can handle the current facts.
 func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
@@ -104,14 +122,14 @@ func (h *Handler) presentWorkerJob(r *http.Request, j *api.Job) {
 	publishing := j.Publishing != nil && (j.Publishing.State == "queued" || j.Publishing.State == "pushing")
 	mutable := j.State != api.StateDone && !publishing
 	j.Controls.StopStep = owner && active && stoppable && mutable && h.workers != nil && h.workers.desk != nil
-	j.Controls.RerunStep = owner && step && rerunnable && mutable && h.workers != nil && h.workers.desk != nil
-	j.Controls.EditSteps = owner && mutable && !j.Ready && h.seam.Edit != nil
+	j.Controls.RerunStep = owner && step && rerunnable && mutable && !decisionPaused(j) && h.workers != nil && h.workers.desk != nil
+	j.Controls.EditSteps = owner && mutable && !j.Ready && h.seam.Edit != nil && !decisionPaused(j)
 	j.Controls.ChangeAssignee = j.Can.ChangeAssignee && h.config.Store != nil
 	// The plan's target and the caller's right to answer are the job's own
 	// facts (api.CanFor); whether this factory takes the revision is its own.
 	j.Can.RejectPlan = j.Can.RejectPlan && h.servesPlanRevision()
 	j.Can.SpendAnswer = j.Can.SpendAnswer && h.seam.SpendAnswer != nil
-	j.Can.Hold = j.Can.Hold && h.seam.Hold != nil
+	j.Can.Hold = j.Can.Hold && h.seam.Hold != nil && (j.State != api.StateNeedsYou || h.recoveryPauseAvailable())
 	j.Can.Resume = j.Can.Resume && h.seam.Hold != nil
 	local := j.Desk != nil && j.Desk.Origin != string(factory.OriginForge)
 	session, _ := h.credential(r)

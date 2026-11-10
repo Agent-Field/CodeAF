@@ -348,3 +348,31 @@ func TestRecoveryABudgetRaisedUnderAHeldWorkerResumesTheWait(t *testing.T) {
 		t.Fatalf("a raised budget ended the recovery: %+v", rec)
 	}
 }
+
+func TestRecoveryDoesNotRetryAgainWhenNoRunnerTookTheQueuedAttempt(t *testing.T) {
+	f := setup(t)
+	it := recoveryJob()
+	it.State = factory.StateNeedsYou
+	factory.StampFailure(&it, factory.NewFailure(factory.FollowPRStep, factory.CodeMachineLost, "Runner went offline mid-step", "", factory.FailureStopped, 1, f.now))
+	it = f.add(t, it)
+	doors := lease.NewDoors(f.desk)
+	if _, err := doors.RecoverAutomatic(it.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.now = readRecovery(t, f, it.ID).Recovery.NextAt
+	if _, err := doors.RecoverAutomatic(it.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.now = readRecovery(t, f, it.ID).Recovery.Deadline
+	if _, err := doors.RecoverAutomatic(it.ID); err != nil {
+		t.Fatal(err)
+	}
+	ended := readRecovery(t, f, it.ID)
+	if ended.State != factory.StateNeedsYou || ended.Recovery.State != "exhausted" || ended.Recovery.Attempts != 1 {
+		t.Fatalf("the queued attempt did not stop when the runner failed to return: %+v", ended.Recovery)
+	}
+	f.now = f.now.Add(time.Second)
+	if changed, err := doors.RecoverAutomatic(it.ID); err != nil || changed {
+		t.Fatalf("another attempt was started without a runner: changed=%v err=%v", changed, err)
+	}
+}

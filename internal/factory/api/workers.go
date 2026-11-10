@@ -136,18 +136,19 @@ type StepReport struct {
 
 // StepResult preserves the evidence that later steps need after a restart.
 type StepResult struct {
-	Files          []string                `json:"files,omitzero"`
-	PublishSummary []string                `json:"publish_summary,omitempty"`
-	Repair         *factory.CIRepairResult `json:"repair,omitempty"`
-	Tests          *factory.TestCounts     `json:"tests,omitempty"`
-	Done           bool                    `json:"done"`
-	Findings       int                     `json:"findings,omitempty"`
-	Claims         []Claim                 `json:"claims,omitempty"`
-	Output         string                  `json:"output,omitempty"`
-	Exit           int                     `json:"exit,omitempty"`
-	Notes          []string                `json:"notes,omitempty"`
-	Cost           float64                 `json:"cost,omitempty"`
-	Chat           string                  `json:"chat,omitempty"`
+	VerificationFailureKey string                  `json:"verification_failure_key,omitempty"`
+	Files                  []string                `json:"files,omitzero"`
+	PublishSummary         []string                `json:"publish_summary,omitempty"`
+	Repair                 *factory.CIRepairResult `json:"repair,omitempty"`
+	Tests                  *factory.TestCounts     `json:"tests,omitempty"`
+	Done                   bool                    `json:"done"`
+	Findings               int                     `json:"findings,omitempty"`
+	Claims                 []Claim                 `json:"claims,omitempty"`
+	Output                 string                  `json:"output,omitempty"`
+	Exit                   int                     `json:"exit,omitempty"`
+	Notes                  []string                `json:"notes,omitempty"`
+	Cost                   float64                 `json:"cost,omitempty"`
+	Chat                   string                  `json:"chat,omitempty"`
 }
 
 // stepResultWire is one step's report in the wire's words, both ways a
@@ -160,13 +161,13 @@ type StepResult struct {
 // the round ran, and that line crosses (steps[].rounds). A field added here is
 // one a factory older than it refuses a worker's whole report for.
 func stepResultWire(r factory.StageResult) *StepResult {
-	return &StepResult{Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
+	return &StepResult{VerificationFailureKey: r.VerificationFailureKey, Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, fromClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Cost: r.Spent, Chat: r.Chat}
 }
 
 // stageResultItem is [stepResultWire] read back.
 func stageResultItem(r StepResult) factory.StageResult {
-	return factory.StageResult{Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
+	return factory.StageResult{VerificationFailureKey: r.VerificationFailureKey, Files: r.Files, Repair: r.Repair, PublishSummary: r.PublishSummary, Tests: r.Tests, Done: r.Done, Findings: r.Findings, Claims: mapList(r.Claims, toClaim),
 		Output: r.Output, Exit: r.Exit, Notes: r.Notes, Spent: r.Cost, Chat: r.Chat}
 }
 

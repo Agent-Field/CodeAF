@@ -268,6 +268,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.job_restore` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_resume` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_publish_anyway` | `in.FactoryJobActionParams` | `FactoryJobActed` |
+| `factory.job_accept_step` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_retry_publish` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_run_as_new` | `in.FactoryJobRunAsNewParams` | `FactoryJobActed` |
 | `factory.job_run_again` | `in.FactoryJobActionParams` | `FactoryJobActed` |
@@ -1821,6 +1822,24 @@ receives this decision on the existing answer signal and validates the identity
 before resuming. Its `words` carries the server-minted approval trailer; a post
 checks its head and person before using it without a local copy of the ledger.
 Skipped checks stay unmeasured and the PR lists each reason and the person decision.
+
+### factory.job_accept_step
+
+Hello feature `factory.accept_step` advertises this person action. Params:
+`factory`, `job`, and `expect.version`. The result is `FactoryJobActed` with
+`action: "accept_step"` and the current job. The desk shows **Accept** on a
+stuck step only when `can.accept_step` is true.
+
+It is the answer `accept` to an `out_of_rounds` wait: the step counts as
+finished as it stands and the run goes on. The factory offers it only on a step
+that judges the work and reported what it found (Test, Review, Proof), before
+anything is published. A step that makes the work, one that never reported, a
+check the machine could not finish and every wait after publish refuse it.
+
+Each check that was still failing is kept on the step's result as accepted. A
+later step is not blocked by the same check failing in the same words, a new or
+different failure still blocks, and the pull request lists what was accepted.
+Only the person who may answer the job can accept; a manager cannot.
 
 ## plugins methods
 

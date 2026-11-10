@@ -12,7 +12,7 @@ const AutonomyManual = "manual"
 // Automatic is deliberately false for old records without a saved mode and
 // while Take over has suspended the pipeline. A mode never resumes Take over.
 func Automatic(it Item) bool {
-	return !StoppedByPerson(it) && it.Autonomy == AutonomyAuto && !it.Manual
+	return !StoppedByPerson(it) && it.Autonomy == AutonomyAuto && !it.Manual && !RecoveryPaused(it)
 }
 
 // AsksBeforeStep says Manual holds phase i for the person's word before its
@@ -56,6 +56,9 @@ func answeredByApprove(it Item, i int) bool {
 func CheckAutomaticApproval(it Item) error {
 	if err := CheckPersonStop(it); err != nil {
 		return err
+	}
+	if RecoveryPaused(it) {
+		return fmt.Errorf("%s", DecisionPauseDetail(it))
 	}
 	if it.Approval == nil || !it.Approval.Automatic || it.Approval.State == "approved" {
 		return nil

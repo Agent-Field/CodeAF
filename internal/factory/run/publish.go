@@ -323,6 +323,17 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if it.PullRequest == nil || fresh.Number != it.PullRequest.Number || fresh.State != factory.PROpen || fresh.HeadSHA != it.FollowUp.HeadSHA {
 			return published{}, errors.New("the existing PR closed or its head moved; review it before publishing the repair")
 		}
+		if base := it.FollowUp.BaseSyncSHA; base != "" {
+			if !publish.ValidCommit(base) || fresh.BaseSHA != base {
+				return published{}, errors.New("the PR base moved before publication; update the branch and verify the new head")
+			}
+			if fresh.HeadBranch == "" {
+				return published{}, errors.New("cannot confirm the existing PR branch for the base update")
+			}
+			if it.HeadCommit == "" || TrailerCommit(trailer) == "" {
+				return published{}, errors.New("the PR base update requires approval for an exact verified head")
+			}
+		}
 		existingPR = &fresh
 	}
 	body := PublishBody(it, trailer)
@@ -371,12 +382,20 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 			}
 			return published{}, publish.ErrCommitChanged
 		}
+		if existingPR != nil && it.FollowUp.BaseSyncSHA != "" {
+			if _, err := git.Run(dir, "merge-base", "--is-ancestor", it.FollowUp.BaseSyncSHA, approvedHead); err != nil {
+				return published{}, errors.New("the approved head does not include the verified PR base")
+			}
+		}
 	} else if err := commitApproved(git, dir, it, trailer); err != nil {
 		return published{}, err
 	}
-	mode, err := publishMode(git, dir)
-	if err != nil {
-		return published{}, fmt.Errorf("could not compare %s's branch: %w", it.Ref(), err)
+	mode := "pr"
+	if existingPR == nil {
+		mode, err = publishMode(git, dir)
+		if err != nil {
+			return published{}, fmt.Errorf("could not compare %s's branch: %w", it.Ref(), err)
+		}
 	}
 	if mode == "comment" {
 		if err := r.publishBoundary(ctx, it.ID); err != nil {
@@ -597,7 +616,7 @@ func publishBase(git Git, dir string) (string, error) {
 // publishPreview is the worker's proof-gate hint. Publishing measures again
 // after committing, because work can change while the person reads the proof.
 func (r *Runner) publishPreview(it factory.Item) string {
-	if isPull(it) {
+	if isPull(it) || it.PullRequest != nil && it.FollowUp != nil && it.FollowUp.Kind == "pr" {
 		return "pr"
 	}
 	if r.opts.Workdir == nil {

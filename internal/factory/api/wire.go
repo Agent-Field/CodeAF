@@ -333,7 +333,7 @@ type StepDef struct {
 	Ask   string `json:"ask,omitempty"`
 	Until string `json:"until,omitempty"`
 	// UntilSentence is the file's until line before it is folded into the
-	// runner's word (done, clean, green, proven). The pipeline route sets it.
+	// runner's mechanical rule. The pipeline route sets it.
 	UntilSentence string `json:"until_sentence,omitempty"`
 	Max           int    `json:"max,omitempty"`
 	Fixed         bool   `json:"fixed,omitempty"`
@@ -696,6 +696,10 @@ type Can struct {
 	// serves the route. A factory from before the route never sends it, which
 	// reads as false: no plan revision is offered.
 	RejectPlan bool `json:"reject_plan"`
+	// AcceptStep is the answer `accept` to the stuck step this job waits on,
+	// for this caller right now: the step reported, fell short of its rule,
+	// and may be taken as it stands ([factory.OffersAccept]).
+	AcceptStep bool `json:"accept_step,omitempty"`
 	// Merge is the merge gate passing for the caller now: Merge would go.
 	Merge bool `json:"merge"`
 	// PRReady lets the job's person mark its open draft ready for review.

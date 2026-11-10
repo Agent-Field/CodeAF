@@ -126,6 +126,9 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 	case pr.State != PROpen:
 		return refuseMerge("cannot read whether the pull request is open")
 	}
+	if PausedDecision(it) {
+		return refuseMerge(DecisionPauseWords)
+	}
 	if m := it.Merging; m != nil && (m.State == MergeQueued || m.State == MergeMerging) {
 		return refuseMerge("a merge is already on its way")
 	}

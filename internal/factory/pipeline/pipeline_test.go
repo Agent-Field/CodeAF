@@ -225,7 +225,7 @@ func TestRecipeCarriesFreeUntilsInTheAsk(t *testing.T) {
 		t.Fatalf("approve = %+v", approve)
 	}
 	test := r.Stages[3]
-	if test.Name != "test" || test.Until != factory.UntilGreen || strings.Contains(test.Ask, "Stop when") {
+	if test.Name != "test" || test.Until != factory.UntilNoNewFailures || strings.Contains(test.Ask, "Stop when") {
 		t.Fatalf("test = %+v", test)
 	}
 	proof := r.Stages[len(r.Stages)-1]
@@ -245,7 +245,7 @@ func TestRecipeCarriesFreeUntilsInTheAsk(t *testing.T) {
 
 func TestFormatStepsPrintsTheBuiltins(t *testing.T) {
 	text := pipeline.FormatSteps()
-	if !strings.Contains(text, "approve:\n  a person\n") || !strings.Contains(text, "until: green") {
+	if !strings.Contains(text, "approve:\n  a person\n") || !strings.Contains(text, "until: "+factory.UntilNoNewFailures) {
 		t.Fatalf("steps =\n%s", text)
 	}
 }

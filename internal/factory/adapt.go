@@ -486,6 +486,10 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			refuse("%s", bad.Error())
 			continue
 		}
+		if st.Until == UntilNoNewFailures && (who != ByYou || !AllowsBaselineFailures(st, it)) {
+			refuse("only the person may add an issue Test conversation that stops on %s", UntilNoNewFailures)
+			continue
+		}
 		// THE PLACE IS RESOLVED THROUGH THE SAME UNIQUE LOOKUP AS EVERY OTHER
 		// NAME, and [PlaceStage] is handed the STORED spelling: its own lookup is
 		// byte-exact, so a lowercased `tidy` would miss a legacy `Tidy` and drop

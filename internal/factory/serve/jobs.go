@@ -129,6 +129,10 @@ func pipelineStages(recipe factory.Recipe, kind string) []factory.Stage {
 // startRefused answers every refusal a start makes before it writes, and true
 // when it refused.
 func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if factory.RecoveryPaused(it) {
+		h.refuse(w, http.StatusConflict, factory.DecisionPauseDetail(it), "conflict", "", nil, factory.JobState(it))
+		return true
+	}
 	if it.QKind == factory.QKindAskFirst {
 		h.refuse(w, 409, "Approval needed: start", "conflict", "", nil, factory.JobState(it))
 		return true
@@ -226,6 +230,9 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		}
 		if factory.StoppedByPerson(cur) || mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
+				if factory.RecoveryPaused(*cur) {
+					return run.StepControlRefusal(factory.DecisionPauseDetail(*cur))
+				}
 				factory.ClearPersonStop(cur)
 				if also != nil {
 					also(cur)
@@ -472,18 +479,27 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 
 // restoreJob is POST /v1/jobs/{id}/restore, Bring back: the one way out of a
 // drop. The job goes back to Backlog AS IF IT HAD NEVER RUN, and nothing
-// starts; starting it is the person's own start. The drop threw its work on
-// this machine away (its local branch and folder, its conversations and its
-// crew), so its next run begins on a fresh branch, from the first step, with
-// its lifetime money kept, and makes an agent and a crew of its own.
+// starts; starting it is the person's own start ([intake.Intake] passes a job
+// that was brought back). The drop threw its work on this machine away (its
+// local branch and folder, its conversations and its crew), so its next run
+// begins on a fresh branch, from the first step, with $0 spent and its whole
+// budget ahead of it, and makes an agent and a crew of its own.
 //
-// FRESH MEANS FRESH (the owner's decision of 2026-10-19): no earlier
-// conversation reaches the job again. Its agent's conversation, what the
-// person said there and what the runner took from it, the person's notes to
-// the steps, and every change made to its steps go, and the steps are the
-// repository's recipe again. What the job is stays: its identity, the issue's
-// own words, who it is assigned to, its priority, budget and model, and its
+// FRESH MEANS FRESH (the owner's decision of 2026-10-19, and of 2026-11-09:
+// drop and bring back is trying the issue again from the very beginning, as if
+// it had just been loaded). No earlier conversation reaches the job again. Its
+// agent's conversation, what the person said there and what the runner took
+// from it, the person's notes to the steps, its briefs, and every change made
+// to its steps go, and the steps are the repository's recipe again. A person's
+// Stop of the old run goes with the run: kept, the job came back in Needs you
+// as stopped and never reached Backlog. Its money starts again from nothing
+// ([factory.ForgetJobSpend]); the factory's own spending totals still count
+// what the old run cost. What the job is stays: its identity, the issue's own
+// words, who it is assigned to, its priority, budget, mode and model, and its
 // activity, the history of what happened to it.
+//
+// AN ISSUE CLOSED SINCE STAYS DROPPED ([Handler.closedSince]): there is
+// nothing left to try again, and the person is told so in one sentence.
 //
 // WHAT IS STILL HERE GOES FIRST, WHILE THE JOB IS STILL DROPPED
 // ([Handler.throwAway]): a folder or branch something re-created after the
@@ -507,6 +523,9 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 
 	if factory.JobDoneHow(it) != "dropped" {
 		h.refuse(w, http.StatusConflict, "only a dropped job can be brought back", "conflict", "", nil, factory.JobState(it))
+		return
+	}
+	if h.closedSince(w, r, it) {
 		return
 	}
 	// The recipe is read before anything changes, so a pipeline file that
@@ -533,22 +552,53 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 	}))
 }
 
+// closedSince answers the refusal and true when a dropped job's issue or pull
+// request was closed or merged on GitHub since: the job stays dropped, and
+// nothing of it is touched. So does one whose number now names a different
+// issue.
+//
+// BRING BACK NEVER DEPENDS ON GITHUB BEING UP. A read that fails, times out or
+// has no token to read with answers nothing, and the job comes back on what
+// the floor already knows; its start reads GitHub again
+// ([Handler.endedOnGitHub]).
+func (h *Handler) closedSince(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if h.config.Recheck == nil || it.Origin != factory.OriginForge || it.Num <= 0 {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), recheckWait)
+	answer, err := h.config.Recheck(ctx, it)
+	cancel()
+	if errors.Is(err, factory.ErrSourceIdentityChanged) || (err == nil && !answer.Matches(it)) {
+		h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d now identifies a different GitHub issue, so it stays dropped.", it.Num), "conflict", "", nil, factory.JobState(it))
+		return true
+	}
+	if err != nil || (answer.How != factorygithub.StandingClosed && answer.How != factorygithub.StandingMerged) {
+		return false
+	}
+	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it stays dropped.", it.Num, answer.How), "conflict", "", nil, factory.JobState(it))
+	return true
+}
+
 // forgetRun takes every trace of a run off the job: its state and ending, its
-// steps, its question, failure, approval and stop, its
-// proof, its change and the commits and machine it was made on, and what it
-// published; and every trace of what was said about it: its conversations
-// ([forgetChats]), the notes for its steps, and the changes made to its
-// steps, which are the recipe's for its kind again, with the pipeline file
-// it was decided on. Everything else on the job is the job's own and stays.
+// steps, its question, failure, recovery, approval and stop (the person's Stop
+// of that run among them), its money, its proof, its change and the commits
+// and machine it was made on, and what it published; and every trace of what
+// was said about it: its conversations ([forgetChats]), its briefs, the notes
+// for its steps, and the changes made to its steps, which are the recipe's for
+// its kind again, with the pipeline file it was decided on. Everything else on
+// the job is the job's own and stays.
 func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	forgetChats(it)
 	it.State = factory.StateNew
 	it.DoneHow, it.DoneAt = "", time.Time{}
-	factory.ClearJobRun(it)
-	it.Failure = nil
-	it.Approval, it.StopUndo = nil, nil
-	it.Question, it.QKind = "", ""
-	it.Asking, it.AnsweredQuestions = nil, nil
+	factory.ForgetJobSpend(it)
+	factory.ClearPersonStop(it)
+	it.Failure, it.Recovery, it.LastRecoveryResume = nil, nil, ""
+	it.Approval, it.StopUndo, it.PublishAnyway = nil, nil, nil
+	it.Question, it.QKind, it.AskedFirstReason = "", "", ""
+	it.Asking, it.AnsweredQuestions, it.ManagerAnswer = nil, nil, nil
+	it.Marked, it.OverLimit = false, false
+	it.Briefs, it.BriefWriting, it.BriefSeen = nil, nil, nil
 	it.Proof, it.Policy = nil, nil
 	it.PlannedFiles = nil
 	it.Change, it.ChangeBase, it.HeadCommit = nil, "", ""
@@ -857,7 +907,7 @@ func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
 // A person's Stop requires their explicit Start even after a raise.
 func capResumes(it factory.Item) bool {
 	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
-	return asksCap && it.Cap > factory.JobLifetimeSpent(it) && !it.Manual && !it.Publishing && !factory.StoppedByPerson(it)
+	return asksCap && it.Cap > factory.JobLifetimeSpent(it) && !it.Manual && !it.Publishing && !factory.StoppedByPerson(it) && !factory.RecoveryPaused(it)
 }
 
 // jobModelMost is the longest model id a job keeps.
@@ -943,7 +993,9 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 					restored = &stream
 				}
 			}
+			paused := cur.PausedRecoveryQuestion
 			factory.ClearPersonStop(cur)
+			cur.PausedRecoveryQuestion = paused
 			cur.Stream = restored
 			cur.Failure = u.Failure
 			cur.Question = u.Question
@@ -1036,7 +1088,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 
 // settleJobs is run at deadlines, before reads and after a restart. Consent is
 // locked across processes so two servers cannot open the same decision twice.
-func (h *Handler) settleJobs(approvalsOnly ...bool) {
+func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 	if h.config.Store == nil {
 		return
 	}
@@ -1048,10 +1100,9 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	if err != nil {
 		return
 	}
-	pending = h.prepareStepRecoveries(pending)
+	pending = h.prepareStepRecoveries(pending, held)
 	pending = h.prepareAutomaticApprovals(pending)
-	sweep := len(approvalsOnly) == 0 || !approvalsOnly[0]
-	h.settleMerges(sweep, pending)
+	h.settleMerges(!approvalsOnly, pending)
 	due := false
 	for _, it := range pending {
 		if a := it.Approval; a != nil && a.State == "approving" && !h.clock().Before(a.UndoUntil) {
@@ -1179,7 +1230,7 @@ func jobTimerDue(items []factory.Item, now time.Time) time.Time {
 		}
 	}
 	for _, it := range items {
-		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
+		if rec := it.Recovery; rec != nil && !factory.RecoveryPaused(it) && (rec.State == "waiting" || rec.State == "queued") {
 			at := rec.Deadline
 			if rec.State == "waiting" {
 				at = rec.NextAt
@@ -1235,6 +1286,7 @@ func (h *Handler) runJobTimer() {
 	h.jobsBusy.Add(1)
 	h.jobsMu.Unlock()
 	defer h.jobsBusy.Done()
-	h.settleJobs()
+	held, _ := h.leases()
+	h.settleJobs(false, held)
 	h.scheduleJobTimer()
 }

@@ -268,7 +268,13 @@ func JobDoneHow(it Item) string {
 
 // JobReason is a finite vocabulary for Needs you and Running.
 func JobReason(it Item) string {
+	if PausedDecision(it) {
+		return "decision_paused"
+	}
 	if JobState(it) == "needs_you" {
+		if RecoveryPaused(it) {
+			return "paused"
+		}
 		if it.PublishError != "" || (it.PublishStatus != nil && it.PublishStatus.State == "failed") {
 			return "publish_failed"
 		}
@@ -364,7 +370,7 @@ func JobApproval(it Item) *Approval {
 // a hold nobody has answered goes back; a job a person declined, approved or
 // ran stays where they put it. It reports whether it changed the job.
 func ReaskStart(it *Item) bool {
-	if it.State != StateNeedsYou || it.QKind != QKindAskFirst || it.AskedFirstReason == "" || it.Stream != nil {
+	if it.State != StateNeedsYou || it.QKind != QKindAskFirst || it.AskedFirstReason == "" || it.Stream != nil || PausedDecision(*it) {
 		return false
 	}
 	if it.Approval != nil && it.Approval.State != "waiting" {

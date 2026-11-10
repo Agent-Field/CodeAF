@@ -25,5 +25,5 @@ func CheckAgainFrom(stages []Stage, phases []Phase, cur int) int {
 // checksWork says whether a stage is one whose pass a person's commits undo:
 // a check, or a conversation that runs until clean or green.
 func checksWork(s Stage) bool {
-	return s.Kind == StageCheck || s.Until == UntilClean || s.Until == UntilGreen
+	return s.Kind == StageCheck || s.Until == UntilClean || s.Until == UntilGreen || s.Until == UntilNoNewFailures
 }

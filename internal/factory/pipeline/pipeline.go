@@ -487,11 +487,20 @@ func mechanicalUntil(sentence string) (word string, free bool) {
 		return factory.UntilClean, false
 	case "green":
 		return factory.UntilGreen, false
+	case factory.UntilNoNewFailures:
+		return factory.UntilNoNewFailures, false
 	case "proven", "every claim has evidence":
 		return factory.UntilProven, false
 	default:
 		return factory.UntilDone, true
 	}
+}
+
+const baselinePolicyScope = "until: " + factory.UntilNoNewFailures + " is only available on the Test conversation"
+
+func unsupportedBaselinePolicy(name, kind, until string) bool {
+	word, _ := mechanicalUntil(until)
+	return word == factory.UntilNoNewFailures && !factory.IsTestConversation(factory.Stage{Name: name, Kind: factory.StageKind(kind)})
 }
 
 func withStop(prompt, until string) string {

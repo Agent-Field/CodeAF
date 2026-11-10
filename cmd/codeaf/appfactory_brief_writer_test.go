@@ -216,6 +216,21 @@ func TestBriefNewsTriggersTheJobsWrite(t *testing.T) {
 	}
 }
 
+func TestPersistedRecoveryQuestionTriggersBrief(t *testing.T) {
+	b := &appBackend{briefs: newBriefDebounce(time.Hour, func(_ int, _ string) {})}
+	t.Cleanup(b.briefs.stop)
+	before := factory.Item{ID: 1, State: factory.StateRunning}
+	after := factory.Item{ID: before.ID, State: factory.StateNeedsYou, QKind: factory.QKindOutOfAttempts, Question: "Test could not verify the change."}
+	b.briefJobChanged(before, after)
+	if got := b.briefs.claim(after.ID); got != factory.BriefTriggerAsk {
+		t.Fatalf("saved recovery question triggered %q, want %q", got, factory.BriefTriggerAsk)
+	}
+	b.briefJobChanged(after, after)
+	if got := b.briefs.claim(after.ID); got != "" {
+		t.Fatalf("unchanged question triggered a second brief: %q", got)
+	}
+}
+
 // A job that ended with no work on it has nothing to brief: a closed issue a
 // poll or a start finishes must not buy a model call. Work on it still does.
 func TestABriefEndNeedsWorkOnTheJob(t *testing.T) {

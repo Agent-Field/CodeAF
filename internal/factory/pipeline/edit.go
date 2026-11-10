@@ -571,6 +571,9 @@ func (st *editState) setStep(i int, op EditOp) *EditError {
 		return refuseEdit(EditUnknownStep, i, "%s is not a step in this pipeline", op.Name)
 	}
 	k := st.base.Steps[op.Name].Kind
+	if op.Until != nil && unsupportedBaselinePolicy(op.Name, k, *op.Until) {
+		return refuseEdit(EditBadValue, i, "%s", baselinePolicyScope)
+	}
 	if k != "" && k != string(factory.StageCheck) && !factory.ApproveWord(op.Name) {
 		return refuseEdit(EditLocked, i, "%s is a %s step and is changed only in the file itself", op.Name, k)
 	}

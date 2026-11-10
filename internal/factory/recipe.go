@@ -78,7 +78,7 @@ var shippedStages = []Stage{
 	{Name: "plan", Kind: StageChat, Ask: "understand the issue and relevant code; write a plan and the list of files it will touch", Until: UntilDone, Max: 2, On: true},
 	{Name: ApproveName, Kind: StageGate, On: true},
 	{Name: "write", Kind: StageChat, Ask: "make the change in the checkout", Until: UntilDone, Max: 2, On: true},
-	{Name: "test", Kind: StageChat, Ask: "run the tests the change implies; fix what fails", Until: UntilGreen, Max: 3, On: true},
+	{Name: "test", Kind: StageChat, Ask: "run the tests the change implies; fix failures introduced by the change", Until: UntilNoNewFailures, Max: 3, On: true},
 	{Name: "review", Kind: StageChat, Ask: "review the diff against the issue and repository standards; fix substantive findings", Until: UntilClean, Max: 3, On: true},
 	{Name: "security", Kind: StageChat, Ask: "review for injection, authz, secrets handling", Until: UntilClean, Max: 3, On: true},
 	{Name: "proof", Kind: StageChat, Ask: "show each claim in its own medium", Until: UntilProven, Max: 3, On: true, Fixed: true},
@@ -327,8 +327,8 @@ func AddStageWords(stages []Stage, words string) []Stage {
 }
 
 // The until words are a stage's exit contract: the condition a runner checks
-// after each round before it lets the item go on to the next stage. THESE FOUR
-// ARE THE WHOLE VOCABULARY. The recipe file accepts no other word after
+// after each round before it lets the item go on to the next stage. The
+// recipe file accepts no other word after
 // `until`, so every word a person can write maps to a check in [Met] from the
 // day it is written, and a word nobody taught the runner can never be banked.
 //
@@ -336,15 +336,28 @@ func AddStageWords(stages []Stage, words string) []Stage {
 //   - clean: the stage reported done with zero findings.
 //   - proven: every claim on the item has evidence, and there is at least one.
 //   - green: the check stage's command ran to an exit, and the exit was 0.
+//   - no new failures: Test's verification gate accepted the check receipts.
 const (
-	UntilDone   = "done"
-	UntilClean  = "clean"
-	UntilProven = "proven"
-	UntilGreen  = "green"
+	UntilDone          = "done"
+	UntilClean         = "clean"
+	UntilProven        = "proven"
+	UntilGreen         = "green"
+	UntilNoNewFailures = "no new failures"
 )
 
 // untilWords is the until vocabulary in the order the manual names it.
-var untilWords = []string{UntilDone, UntilClean, UntilProven, UntilGreen}
+var untilWords = []string{UntilDone, UntilClean, UntilProven, UntilGreen, UntilNoNewFailures}
+
+// IsTestConversation identifies the Test step that can use UntilNoNewFailures.
+func IsTestConversation(s Stage) bool {
+	return strings.EqualFold(s.Name, "test") && (s.Kind == StageChat || s.Kind == "")
+}
+
+// AllowsBaselineFailures limits baseline comparison to issue work before publish.
+func AllowsBaselineFailures(s Stage, it Item) bool {
+	return s.Until == UntilNoNewFailures && IsTestConversation(s) && IsIssueJob(it) &&
+		it.PullRequest == nil && it.FollowUp == nil && !it.Publishing && it.PublishStatus == nil
+}
 
 // StageResult is what one round of a stage hands back to the runner, which
 // fills it and asks [Met] whether the stage may stop. There is no runner yet;
@@ -361,6 +374,9 @@ type StageResult struct {
 	Checkpoint bool `json:"-"`
 	// ExecutionBlocked names a mechanical interruption, not a failed assertion.
 	ExecutionBlocked string `json:"-"`
+	// VerificationFailureKey identifies measured blockers on the current checkout.
+	// It is collected by the engine and carries no authority to pass a step.
+	VerificationFailureKey string `json:",omitempty"`
 
 	PublishSummary []string        `json:",omitempty"`
 	Repair         *CIRepairResult `json:",omitempty"`
@@ -492,6 +508,8 @@ func judge(s Stage, r StageResult) (met bool, fault string) {
 		return r.Done && r.Findings == 0, ""
 	case UntilGreen:
 		return r.Done && r.Exit == 0, ""
+	case UntilNoNewFailures:
+		return IsTestConversation(s) && r.Done && r.Exit == 0, ""
 	case UntilProven:
 		// A CLAIM MARKED OK WITH NOTHING SHOWING IT is at fault whatever done
 		// says: it is the one claim that reads as shown and is not, and the
