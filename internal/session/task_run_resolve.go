@@ -9,7 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
-const completedRunReview = "the plan finished before the restart, but its final checks and landing were not recorded; inspect the saved working copy, then accept or refute it on the task page or ask this conversation to do so"
+const completedRunReview = "the plan finished before the restart, but its final checks and landing were not recorded; inspect the saved working copy, then accept it or say it is not right on the task page or ask this conversation to do so"
 
 // localRunConflict identifies a completed local landing whose retained copy
 // still needs the person's decision, independently of a live worker graph.
