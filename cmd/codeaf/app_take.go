@@ -141,7 +141,7 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 		return appwire.Agent{}, appAvailableRefusal(ctx, s, view.Cell.Lease)
 	}
 	if !seen.Matches(view.Cell) {
-		return appwire.Agent{}, appTakeError(directory.ErrLeaseHeld)
+		return appwire.Agent{}, appTakeRefusal(ctx, s, p.Cell, seen, directory.ErrLeaseHeld)
 	}
 	if view.Cell.Archived || view.Cell.ParentCell != "" {
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeNotFound, "that chat is not available")
@@ -191,14 +191,14 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 				return appwire.Agent{}, appAvailableRefusal(ctx, s, fresh.Cell.Lease)
 			}
 		}
-		return appwire.Agent{}, err
+		return appwire.Agent{}, appTakeRefusal(ctx, s, p.Cell, seen, err)
 	}
 	// The chat is this computer's from here on, even if opening it fails.
 	b.chats.landTake(p.Cell, got.Taken.Driving.Fence)
 	// The continuer's already-here shortcut may observe a local acquisition
 	// that happened after our preflight read. It must not accept older consent.
 	if got.AlreadyHere && (p.Seen.Device != s.Device.ID() || !seen.Matches(directory.Cell{Head: got.Taken.Driving.Head, Lease: directory.Lease{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence}})) {
-		return appwire.Agent{}, appTakeError(directory.ErrLeaseHeld)
+		return appwire.Agent{}, appTakeRefusal(ctx, s, p.Cell, seen, directory.ErrLeaseHeld)
 	}
 	root := got.Taken.Cell.Root
 	meta, err := session.LoadMeta(root)
@@ -250,12 +250,30 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 	return agent, nil
 }
 
-func appAvailableRefusal(ctx context.Context, s *syncsetup.Sync, lease directory.Lease) error {
-	name := chatlist.DeviceName(nil, lease.Device, nil)
+// appTakeRefusal reads ownership again because the observed computer may have
+// reclaimed its own idle release while this take was on the way.
+func appTakeRefusal(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, err error) error {
+	if !errors.Is(err, directory.ErrLeaseHeld) && !errors.Is(err, directory.ErrFenceStale) {
+		return err
+	}
+	wire := appTakeError(err).(*appwire.Error)
+	if fresh, readErr := s.Dir.Cell(ctx, id); readErr == nil && fresh.Cell.Lease.Device == seen.Device && fresh.Cell.Lease.Fence > seen.Fence {
+		wire.Message = fmt.Sprintf(chatlist.PickedUpAgain, appHolderName(ctx, s, fresh.Cell.Lease.Device))
+	}
+	return wire
+}
+
+func appHolderName(ctx context.Context, s *syncsetup.Sync, device string) string {
+	name := chatlist.DeviceName(nil, device, nil)
 	if listing, err := s.Dir.List(ctx); err == nil {
 		key := directory.MetadataKey(s.Identity.CellKey())
-		name = chatlist.DeviceName(listing.Devices, lease.Device, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
+		name = chatlist.DeviceName(listing.Devices, device, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
 	}
+	return name
+}
+
+func appAvailableRefusal(ctx context.Context, s *syncsetup.Sync, lease directory.Lease) error {
+	name := appHolderName(ctx, s, lease.Device)
 	return appLocationRefusal(&appwire.Location{Holder: &appwire.LocationHolder{ID: lease.Device, Name: name}, Line: chatlist.Superseded(name)})
 }
 

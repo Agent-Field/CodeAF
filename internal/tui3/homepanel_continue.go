@@ -851,7 +851,7 @@ func (a *app) continueConflictRead(msg continueConflictMsg) tea.Cmd {
 			}
 			sameHolder := row.DeviceID != "" && row.DeviceID == failed.row.DeviceID || row.DeviceID == "" && failed.row.DeviceID == "" && row.Device == failed.row.Device
 			if sameHolder && row.Fence != failed.row.Fence && row.Device != "" {
-				failure = fmt.Sprintf("%s picked this chat up again; press enter to continue it here", nonemptyDevice(row.Device))
+				failure = fmt.Sprintf(chatlist.PickedUpAgain+"; press enter to continue it here", nonemptyDevice(row.Device))
 			} else if !sameHolder && !row.Mine {
 				failure = lostRaceWord
 			}

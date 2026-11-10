@@ -16,16 +16,17 @@ const (
 	OfferContinue = "continue here"
 	// MoveHere is the verb for a chat another device is running right now, and
 	// ContinueVerb for one it let go of; the devices row offers them by name.
-	MoveHere     = "Move here"
-	ContinueVerb = "Continue here"
-	LostRace     = "another device continued this chat first"
-	NoIdentity   = "this machine has no identity yet: codeaf identity import"
-	SyncOff      = "sync is off: set CODEAF_SYNC_URL to your sync service's address"
-	Unreachable  = "the sync service is not answering"
-	ReadTimedOut = "the sync service did not answer in time"
-	SyncPaused   = syncwords.UnknownOutage
-	SyncRestored = "this chat is syncing again"
-	ClockOff     = "this computer's clock is off by more than 5 minutes"
+	MoveHere      = "Move here"
+	ContinueVerb  = "Continue here"
+	LostRace      = "another device continued this chat first"
+	PickedUpAgain = "%s picked this chat up again"
+	NoIdentity    = "this machine has no identity yet: codeaf identity import"
+	SyncOff       = "sync is off: set CODEAF_SYNC_URL to your sync service's address"
+	Unreachable   = "the sync service is not answering"
+	ReadTimedOut  = "the sync service did not answer in time"
+	SyncPaused    = syncwords.UnknownOutage
+	SyncRestored  = "this chat is syncing again"
+	ClockOff      = "this computer's clock is off by more than 5 minutes"
 
 	DevicesQuiet  = "Only this computer is here. Add another computer by pairing from a terminal with `codeaf pair`."
 	RemoveSelf    = "that is this device — remove it from another of your devices instead"
