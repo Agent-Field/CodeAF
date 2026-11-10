@@ -4916,6 +4916,20 @@ This road used to read `conflicts with your branch`, which was untrue — there 
 of yours in it — and `[a]` spent a merge round, which merges *branches* and cannot see an
 untracked file at all, so it refused a second time in exactly the same words.
 
+## Resolving a local task's untracked file conflict after restarting
+
+A finished local task whose landing meets your untracked file stays `your call`,
+with its branch kept. Reopening the same conversation after a restart keeps the
+question: `your folder already has files the task wrote: <files>`. It does not
+run the task again or merge anything until you answer.
+
+Choose `a resolve it`, or ask the conversation to accept that task through
+`tasks` with its `id` and `resolve: "accept"`. For example, if both wrote
+`COLLISION.txt`, the task's version lands as `COLLISION.txt` and your exact bytes
+are kept in `COLLISION.txt.yours`. If that name already exists, your copy takes
+the next free name, such as `COLLISION.txt.yours.2`. `n drop it` takes nothing
+and keeps the task's branch.
+
 ## Tell it something instead of answering — s tell it, and why saying looks good does not accept
 
 `s tell it` is the third chip on **every** `your call` card, and it is not a third answer.

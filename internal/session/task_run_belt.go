@@ -328,6 +328,9 @@ type RunLanding struct {
 	Branch  string
 	Changed []string
 	Refused string
+	// Conflicts and GroundHeld preserve what the person's landing decision moves.
+	Conflicts  []string
+	GroundHeld bool
 	// Home is how the work came home, in the landing road's own outcome words
 	// ([mergeMerged] and its kin), set by this door once the run's copy has been
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
@@ -2286,7 +2289,8 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 	if run.tree.dir == "" {
 		return landing
 	}
-	merge, said, _, _ := run.tree.comeHome(run.title, landing.Changed, a.signsGitWork())
+	merge, said, conflicts, refusal := run.tree.comeHome(run.title, landing.Changed, a.signsGitWork())
+	landing.Conflicts, landing.GroundHeld = conflicts, refusal == refusedByYourFiles
 	if landing.Refused != "" {
 		// NOTHING TO LAND IS STILL AN ENDING: the copy was given back above, and
 		// the sentence the engine answered is the whole account.
@@ -2458,9 +2462,8 @@ func owedLandingDocument(task *plandb.Task, result string) userMessage {
 func owedLandingCallCeiling() int { return settleCallCeiling }
 func owedLandingTier() roles.Tier { return roles.TierLow }
 
-// settleBeltRun ends the row the run was published under: done when the run
-// finished whole, failed on every other ending, with the result and the branch
-// a surface draws.
+// settleBeltRun records the work's ending and its landing together, so a
+// finished run whose branch conflicts still asks the person what to do.
 func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLanding) {
 	notice := a.beltRunNotice(run, summary, landing)
 	notice.EndedAt = a.beltRunEndedAt(run)
@@ -2602,6 +2605,10 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 	if run.remoteEngine != nil && summary.NeedsDecision {
 		state = TaskUnverified
 	}
+	if run.remoteEngine == nil && run.delegate == nil && summary.Outcome == beltRunOutcomeDone && landing.Home == mergeConflicted {
+		state = TaskUnverified
+		report = withYourCallLead(TaskFacts{Merge: landing.Home, Conflicts: landing.Conflicts, GroundHeld: landing.GroundHeld}, report)
+	}
 	if run.remoteEngine != nil && summary.Outcome == "interrupted" {
 		state = TaskInterrupted
 	}
@@ -2614,7 +2621,7 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// the outcome sentence.
 		Ending: beltRunEnding(summary),
 		Report: report, Result: summary.Result,
-		Changed: landing.Changed,
+		Changed: landing.Changed, Conflicts: landing.Conflicts, GroundHeld: landing.GroundHeld,
 		// THE CREW THAT DID IT AND WHAT IT COST, beside the estimate it was
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
