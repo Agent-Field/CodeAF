@@ -1003,6 +1003,10 @@ a browser.
 
 Your unsent sentence, caret and attachments stay with the conversation. The
 conversation remains in `alt+k` and Home, and reopening restores its tab and draft.
+After a restart, opening from Home or the switcher also restores the saved composer.
+An empty composer cannot replace a saved draft it has not restored; clearing the
+restored words yourself still saves your deliberate clear. A blocked save includes
+`saved draft has not been restored` in its explanation.
 
 Closing the active tab selects the most recently used remaining open tab. With
 none left, the window goes **Home** with the current session behind it.

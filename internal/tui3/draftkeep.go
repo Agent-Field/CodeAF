@@ -536,6 +536,7 @@ func draftSendsIn(keep draftKeep) map[string]bool {
 // draftSave is one save of one conversation: the record, and the plain-text
 // export beside it.
 type draftSave struct {
+	unread   bool
 	keepPath string
 	textPath string
 	keep     draftKeep
@@ -591,6 +592,9 @@ func (s draftSave) commit() error {
 	// older record back over the newer one.
 	if draftOvertaken(s.keepPath, s.rev) {
 		return errDraftSuperseded
+	}
+	if s.unread {
+		return errors.New("saved draft has not been restored")
 	}
 	if err := putDraftKeep(s.keepPath, s.keep); err != nil {
 		return err
@@ -1026,13 +1030,42 @@ func (a *app) everyComposer() map[recipient]composerState {
 // here — so that whichever goroutine eventually writes it, the saves land in the
 // order the person made them ([draftWrites]).
 func (a *app) draftSaveOf(text string) draftSave {
+	key := a.draftFile + "\x00" + a.draftKeepOwner()
+	if !a.draftLoaded[key] && !a.hasUnreadDraft() {
+		if a.draftLoaded == nil {
+			a.draftLoaded = map[string]bool{}
+		}
+		a.draftLoaded[key] = true
+	}
 	return draftSave{
+		unread:   !a.draftLoaded[key],
 		keepPath: draftKeepPath(a.draftFile),
 		textPath: a.draftFile,
 		keep:     a.draftKeepBuild(text),
 		text:     text,
 		rev:      claimDraftRev(draftKeepPath(a.draftFile)),
 	}
+}
+
+// hasUnreadDraft protects a saved composer until this conversation has read it.
+// A fresh window must also respect orphaned records it has not reunited yet.
+func (a *app) hasUnreadDraft() bool {
+	if readDraft(a.draftFile) != "" {
+		return true
+	}
+	if keep, how := readDraftKeep(draftKeepPath(a.draftFile)); how == draftKeepStrange || (how == draftKeepFound && !keep.empty()) {
+		return true
+	}
+	paths, _ := filepath.Glob(filepath.Join(filepath.Dir(a.draftFile), "draft-*.json"))
+	for _, path := range paths {
+		if path == draftKeepPath(a.draftFile) || draftWindowAlive(path) {
+			continue
+		}
+		if keep, how := readDraftKeep(path); how == draftKeepFound && a.speaksFor(keep) && !keep.empty() {
+			return true
+		}
+	}
+	return false
 }
 
 // keepDrafts is the whole write, off the event loop.
@@ -1052,6 +1085,11 @@ func (s draftSave) command() tea.Cmd {
 	return func() tea.Msg {
 		return draftKeptMsg{path: s.keepPath, rev: s.rev, err: s.commit()}
 	}
+}
+
+func fileHasDraftSlots(path string) bool {
+	keep, how := readDraftKeep(path)
+	return how == draftKeepStrange || (how == draftKeepFound && !keep.empty()) || readDraft(draftExportPath(path)) != ""
 }
 
 // stowDrafts is the crash insurance for a conversation this window is HOLDING
@@ -1109,6 +1147,7 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 	}
 	sortKeptSlots(keep.Slots)
 	save := draftSave{
+		unread:   !a.draftLoaded[conv.DraftFile+"\x00"+owner] && fileHasDraftSlots(path),
 		keepPath: path,
 		textPath: conv.DraftFile,
 		keep:     keep,
@@ -1120,6 +1159,11 @@ func (a *app) stowDrafts(conv Conversation, side *aside) {
 	}
 	if err := save.commit(); err != nil {
 		a.noteDraftKeepFailed(err)
+	} else {
+		if a.draftLoaded == nil {
+			a.draftLoaded = map[string]bool{}
+		}
+		a.draftLoaded[conv.DraftFile+"\x00"+owner] = true
 	}
 }
 
@@ -1182,6 +1226,10 @@ func (a *app) layKeptDrafts(allowUnowned bool) {
 		a.keepComposer(who, state)
 	}
 
+	if a.draftLoaded == nil {
+		a.draftLoaded = map[string]bool{}
+	}
+	a.draftLoaded[a.draftFile+"\x00"+a.draftKeepOwner()] = true
 	if err := a.draftSaveOf(a.mainDraftText()).commit(); err != nil {
 		// The words are on the screen and this window is holding them; what failed
 		// is the promise that they would outlive it. Nothing is pruned — every line
