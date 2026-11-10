@@ -142,7 +142,7 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 		// legal shape. The references travel with it because the journal write
 		// happens then, not now.
 		a.steering = append(a.steering, user)
-		events := a.hub.subscribe()
+		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
 		return events, nil
 	}

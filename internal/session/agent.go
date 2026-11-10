@@ -982,8 +982,8 @@ func (a *Agent) SetContextWindow(tokens int) {
 // EVERY call returns a live channel, steering included. The in-flight turn
 // owns an event hub, and a steering Submit subscribes a fresh channel to it:
 // the caller sees the turn's events from its own subscribe point onward and
-// the close at EventTurnDone. There is no replay — a surface that submits per
-// message is watching the turn from where it spoke, not re-reading it — and a
+// the close at EventTurnDone. Only still-waiting cards are replayed, so the
+// caller can answer a question already on the turn; reply text is not replayed. A
 // surface holding both channels sees each event on each, which is what a
 // per-message caller wants and what a whole-session reader must de-duplicate.
 func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
@@ -1063,7 +1063,7 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 		// returned channel live rather than a coin flip: the turn's goroutine
 		// clears running under this same lock BEFORE it closes the hub, so
 		// running == true here means the hub cannot already be closed.
-		events := a.hub.subscribe()
+		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
 		return events, nil
 	}
@@ -4312,6 +4312,25 @@ func (h *eventHub) subscribe() <-chan Event {
 	}
 	h.subscribers = append(h.subscribers, stream)
 	h.mu.Unlock()
+	return stream.out
+}
+
+// subscribePending joins the live tail and replays only questions still waiting
+// for an answer, so a late sender can answer a card without repeating the reply.
+func (h *eventHub) subscribePending(asking map[string]bool) <-chan Event {
+	stream := newEventStream()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		stream.close()
+		return stream.out
+	}
+	for _, event := range h.backlog {
+		if key, asks := questionAsked(event); asks && asking[key] {
+			stream.send(event)
+		}
+	}
+	h.subscribers = append(h.subscribers, stream)
 	return stream.out
 }
 
