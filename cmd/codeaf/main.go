@@ -30,9 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
-	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
-	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -254,16 +252,13 @@ func execute() (code int) {
 	// log's close and therefore runs before it, so a compaction that had to be
 	// deferred still has somewhere to say so.
 	beliefs, stopBeliefs := context.WithCancel(context.Background())
-	defer func() {
-		stopBeliefs()
-		lanes.Flush()
-	}()
+	beliefsDone := startLaneSaving(beliefs)
+	defer finishLaneSaving(stopBeliefs, beliefsDone)
 	// AND THE LANE-SHEET BEAT RIDES THE SAME LIFETIME. It is started later, at
 	// the one seam every surface measures through (lanebeat.go), and it is a
 	// goroutine of exactly this shape: process-wide, nobody's request, stopped
 	// at the same exit.
 	laneBeatCtx = beliefs
-	guard.Go("lanes/persist", func() { lanes.Persist(beliefs) })
 	err := run()
 	var status exitStatus
 	switch {
@@ -646,7 +641,7 @@ Housekeeping — changes state on disk or on the network
       list your devices and the ones that can use this machine
   codeaf devices revoke <name> [--all] | rename <name>
       remove one (cannot undo what a device holds), or name this one
-  codeaf factory [serve|name|steps|convert|token|revoke|revoke-sessions]
+  codeaf factory [serve|add|name|steps|convert|token|revoke|revoke-sessions]
   codeaf attach <url> | codeaf detach | codeaf runner join <link>
       a team factory: host it (` + factoryDefaultListen + `), use it, or run its jobs here
   codeaf notebook [--db path]

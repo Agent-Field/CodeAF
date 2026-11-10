@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"strings"
 	"sync"
 
@@ -162,6 +163,9 @@ func runEditOf(args runArgs) (factory.RunEdit, error) {
 		if factory.ApproveWord(name) {
 			// AN APPROVE STEP HAS NO ASK: the person is the step.
 			st := factory.Approve(nil)
+			// A NEWLY ADDED APPROVE STEP IS A PERSON'S: the manager that adds
+			// one never passes it.
+			st.Pass = factory.PassForNewApprove
 			st.Why, st.By = why, factory.ByManager
 			e.Add = append(e.Add, factory.Added{Stage: st, After: after})
 			if e.Why == "" {
@@ -277,7 +281,9 @@ func (a *Agent) SubmitRunnerNote(ctx context.Context, text string) (<-chan Event
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
-	return a.submitUser(ctx, runnerNote(text))
+	user := runnerNote(text)
+	user.factoryWork = a.config.FactoryRun != nil
+	return a.submitUser(ctx, user)
 }
 
 // runnerNote is the factory runner's words for an item's manager: the
@@ -346,6 +352,7 @@ func (a *Agent) SubmitRunnerNoteThrough(ctx context.Context, text string, door R
 		return nil, errors.New("session: empty message")
 	}
 	user := runnerNote(text)
+	user.factoryWork = door != nil
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
@@ -373,6 +380,9 @@ func (a *Agent) SubmitRunnerNoteThrough(ctx context.Context, text string, door R
 		default:
 			stream.close()
 		}
+	}
+	if door != nil {
+		ctx = provider.WithRefusedEffortRecovery(ctx)
 	}
 	events := a.startTurnLocked(ctx, user, nil, watchers...)
 	if door != nil {

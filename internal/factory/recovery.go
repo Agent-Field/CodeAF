@@ -43,13 +43,15 @@ func TransientStepFailure(f *Failure) bool {
 // starting another attempt, and by lease admission before a worker can take it.
 func RecoveryBlockReason(it Item) string {
 	switch {
+	case StoppedByPerson(it):
+		return PersonStopReason
 	case !Automatic(it):
 		return "Automatic retry paused because the job is in Manual. Try again when ready."
 	case it.Publishing:
 		return "Publication may have started. Check its outcome before retrying publication."
 	case JobState(it) == "done" || it.Stream == nil:
 		return "This run has ended."
-	case it.Cap <= 0 || JobSpent(it) >= it.Cap:
+	case it.Cap <= 0 || JobLifetimeSpent(it) >= it.Cap:
 		return "Job budget reached. Raise Budget before trying again."
 	}
 	return ""
@@ -58,6 +60,9 @@ func RecoveryBlockReason(it Item) string {
 // PlanStepRecovery records a wait once per failure. It never starts execution;
 // the lease door does that after checking ownership, the lease and current mode.
 func PlanStepRecovery(it *Item, now time.Time) bool {
+	if StoppedByPerson(*it) {
+		return false
+	}
 	f, rec := it.Failure, it.Recovery
 	if !IsIssueJob(*it) || JobState(*it) == "done" || it.State == StateDismissed {
 		if rec != nil {
@@ -68,7 +73,7 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 	}
 	if rec != nil && rec.State == "running" && it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
-			if ph.Name == rec.Step && ph.State == PhaseDone {
+			if ph.Name == rec.Step && (ph.State == PhaseDone || ph.State == PhaseSkipped) {
 				it.Recovery = nil
 				return true
 			}
@@ -97,7 +102,7 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 				why = "The runner did not return within the automatic retry window. Try again when ready."
 			}
 			cp.State, cp.Reason = "exhausted", why
-			if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+			if it.Cap <= 0 || JobLifetimeSpent(*it) >= it.Cap {
 				cp.BlockedBy, cp.BlockedAt = "budget", now
 			}
 			it.Recovery, it.State = &cp, StateNeedsYou
@@ -127,7 +132,7 @@ func PlanStepRecovery(it *Item, now time.Time) bool {
 	cp.LastAt, cp.Reason = f.At, f.Detail
 	if why := RecoveryBlockReason(*it); why != "" {
 		cp.State, cp.Reason = "exhausted", why
-		if it.Cap <= 0 || JobSpent(*it) >= it.Cap {
+		if it.Cap <= 0 || JobLifetimeSpent(*it) >= it.Cap {
 			cp.BlockedBy, cp.BlockedAt = "budget", now
 		}
 	} else if cp.Attempts >= cp.Limit {

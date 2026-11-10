@@ -75,7 +75,7 @@ func TestTheSendProofNamesTheDrivesActualFence(t *testing.T) {
 	}
 }
 
-func TestFenceF1ReleasedHoldCannotAuthorizeTools(t *testing.T) {
+func TestAnExpiredHoldCannotAuthorizeTools(t *testing.T) {
 	r := newDriveRig(t)
 	sealed, err := r.engine.Seal(t.Context(), r.cell, cellstore.TurnInfo{})
 	mustNil(t, err)
@@ -84,11 +84,16 @@ func TestFenceF1ReleasedHoldCannotAuthorizeTools(t *testing.T) {
 	drive, err := r.a.Drive(t.Context(), r.engine, r.cell, DriveOptions{})
 	mustNil(t, err)
 	defer drive.Close(t.Context())
+	// Freeze renewal traffic so only the ownership check can act on expiry.
+	drive.cancel()
+	<-drive.done
 	r.clock.Advance(directory.LeaseTTL + time.Second)
-	mustNil(t, r.a.Dir.Release(t.Context(), r.cell.ID, drive.batcher.Fence()))
 	mustNil(t, drive.CheckLease(t.Context()))
 	if drive.Gate() == nil {
-		t.Fatal("released ownership still authorizes tools")
+		t.Fatal("expired ownership still authorizes tools")
+	}
+	if confirmed, err := drive.ConfirmWork(t.Context()); err != nil || confirmed {
+		t.Fatalf("expired ownership admitted app work: %v, %v", confirmed, err)
 	}
 }
 
@@ -128,6 +133,10 @@ func TestOwnershipCheckThatFindsAnotherHolderKeepsUnsentTurns(t *testing.T) {
 	if _, err := h.continuerB().Take(ctx, h.cell.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Keeping the turn uploads it as a branch, so the store must answer; A's
+	// heartbeats stay refused so only the check can learn of the move.
+	h.quiet.Store(true)
+	h.block.set(false)
 	// The check alone, not a later flush, keeps the turn: it is kept by the
 	// time the check returns.
 	mustNil(t, a.drive.CheckLease(ctx))
@@ -137,5 +146,4 @@ func TestOwnershipCheckThatFindsAnotherHolderKeepsUnsentTurns(t *testing.T) {
 	if a.drive.Gate() == nil {
 		t.Fatal("a displaced window still admits work")
 	}
-	h.block.set(false)
 }

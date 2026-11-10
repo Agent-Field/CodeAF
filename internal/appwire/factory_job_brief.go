@@ -50,11 +50,18 @@ type FactoryJobBrief struct {
 	Job              int                  `json:"job"`
 	Status           string               `json:"status" enum:"ready,generating,failed,stub"`
 	Failure          string               `json:"failure,omitempty"`
+	FailureKind      string               `json:"failure_kind,omitempty"`
 	FailedAfter      string               `json:"failed_after,omitempty"`
 	Since            int                  `json:"since,omitempty"`
 	Brief            factory.BriefVersion `json:"brief"`
 	VerdictBehind    bool                 `json:"verdict_behind"`
 	ChangedSinceSeen []string             `json:"changed_since_seen"`
+	// ReadDue says a write now would be a paid read of the issue before work:
+	// the job has not worked and its issue is not too thin to read.
+	ReadDue bool `json:"read_due,omitempty"`
+	// ReadPrice is what one such read typically costs on this factory, while
+	// ReadDue and once one has run.
+	ReadPrice float64 `json:"read_price,omitempty"`
 }
 
 // FactoryJobBriefer is the engine's half of factory.job_brief.

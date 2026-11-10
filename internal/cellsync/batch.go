@@ -47,6 +47,10 @@ type Batcher struct {
 	OnLost  func()
 	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
 	Now     func() time.Time // default time.Now; tests inject a fake clock
+	// BeforeResolve settles finished calls before displacement chooses the head
+	// to keep. The recorder's hook is best effort: unsaved calls stay in its
+	// local WAL while resolution keeps the turns already noted.
+	BeforeResolve func(context.Context) error
 	// OnRenewalChange wakes local readers when renewal health or ownership changes.
 	OnRenewalChange func()
 	// Liveness, when set, is a watch socket that can vouch for the lease, so
@@ -60,6 +64,10 @@ type Batcher struct {
 	stale     bool       // the lease was lost and the orphans are not branched yet
 	published bool       // a publish renewed the lease since the last heartbeat tick
 	beatSent  uint32     // the pending count the directory last heard, from a beat or a publish
+	upload    uploaded   // how far the upload of pending turns has got
+	beatUp    uploaded   // the upload progress the directory last heard
+	working   bool       // a turn is running here now
+	toldWork  bool       // the working flag the directory last heard from a beat
 	closing   bool       // The closing caller owns subsequent publishes and release.
 	released  bool       // An idle reader must reacquire before publishing or renewing.
 	// acquireUncertain keeps this released window read-only until a fresh
@@ -77,6 +85,7 @@ type Batcher struct {
 	idle         wakeup // asks the flush loop to upload now: the agent stopped to wait for the person
 	freed        wakeup // ends a halt: something the relay refused for has changed
 	leaseChanged wakeup // wakes the heartbeat loop to drop a released socket hold
+	turns        wakeup // a turn started or ended, so the directory hears it now and not at the next tick
 
 	flushMu sync.Mutex // one flush, branch or close at a time
 	renewMu sync.Mutex // a heartbeat already in flight finishes before idle release
@@ -141,6 +150,20 @@ func (b *Batcher) Note(t cellstore.Turn) {
 // moment the person is likeliest to pick the chat up on another machine. It
 // never waits, so it is safe to call from the turn's own goroutine.
 func (b *Batcher) Idle() { b.idle.fire() }
+
+// Working says whether a turn is running here. The directory hears it with the
+// next beat, which goes at once when it changes, so another computer can say
+// the chat is working here rather than merely open. It never waits, so it is
+// safe to call from the turn's own goroutine.
+func (b *Batcher) Working(on bool) {
+	b.mu.Lock()
+	changed := b.working != on
+	b.working = on
+	b.mu.Unlock()
+	if changed {
+		b.turns.fire()
+	}
+}
 
 // Freed says something a refusal waited on has changed (space was freed on the
 // relay, say), so a halted chat tries again now instead of waiting for a
@@ -267,6 +290,10 @@ func (b *Batcher) beats(ctx context.Context) {
 		case <-held.changes():
 			b.socketMoved(ctx, &held)
 		case <-b.leaseChanged.ch():
+		case <-b.turns.ch():
+			if !b.toldWorking() {
+				b.beat(ctx)
+			}
 		case <-ctx.Done():
 			return
 		}
@@ -302,7 +329,7 @@ func (b *Batcher) tick(ctx context.Context, held *holding) {
 	if b.takePublished() {
 		return
 	}
-	if !held.covers(b.renewalView, b.toldPending) {
+	if !held.covers(b.renewalView, b.toldPending) || !b.toldWorking() {
 		b.beat(ctx)
 	}
 }
@@ -316,17 +343,57 @@ func (b *Batcher) socketMoved(ctx context.Context, held *holding) {
 	}
 }
 
-// toldPending says whether n is what the directory last heard as pending.
+// toldPending says whether n, and the upload's progress, is what the
+// directory last heard.
 func (b *Batcher) toldPending(n uint32) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.beatSent == n
+	return b.beatSent == n && b.beatUp == b.uploadFor(n)
+}
+
+// toldWorking says whether the directory has heard all it should of the working
+// flag. A turn starting is told at once. A turn ending is told only once its
+// last turns are published: ANOTHER COMPUTER READS "NOT WORKING" AS "TAKE IT
+// NOW", and a take that names the save point before the turn's own publish is
+// refused as superseded the moment that publish lands. Until then the flag
+// stays on, and the publish that ends pending wakes the beat that clears it.
+func (b *Batcher) toldWorking() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.toldWork == b.working || !b.working && len(b.noted) > 0
 }
 
 func (b *Batcher) tell(n uint32) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.beatSent = n
+	b.beatUp = b.uploadFor(n)
+}
+
+// uploaded is how far one upload has got, in frame bytes.
+type uploaded struct{ sent, total int64 }
+
+// Uploading is the Publisher's OnUpload: the next beat tells the directory
+// how far the upload of the pending turns has got, so another computer can
+// say it. Called with b.mu not held.
+func (b *Batcher) Uploading(sent, total int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.upload = uploaded{sent, total}
+}
+
+// uploadFor is the progress a beat with n pending carries. Called with b.mu held.
+func (b *Batcher) uploadFor(n uint32) uploaded {
+	if n == 0 || b.upload.total <= 0 {
+		return uploaded{}
+	}
+	return b.upload
+}
+
+func (b *Batcher) beatUpload(n uint32) uploaded {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.uploadFor(n)
 }
 
 // takePublished says whether a publish renewed the lease since the last call,
@@ -512,6 +579,7 @@ func (b *Batcher) publish(ctx context.Context, head string) error {
 	b.tell(0) // a publish always carries the newest turn, so nothing is pending
 	b.recovered()
 	turns := b.durable(head)
+	b.turns.fire() // a turn's end waits for this publish before it is told
 	b.emit(Flush{Head: head, Turns: turns, Frames: len(ex.Frames), Objects: ex.Objects, Bytes: ex.Bytes})
 	return nil
 }
@@ -528,12 +596,20 @@ func (b *Batcher) beat(ctx context.Context) {
 		b.renewMu.Unlock()
 		return
 	}
-	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending})
+	up := b.beatUpload(pending)
+	b.mu.Lock()
+	// Progress and lease beats must preserve the same end-of-turn ordering
+	// as turn-change beats while the final publication is still pending.
+	working := b.working || b.toldWork && len(b.noted) > 0
+	b.mu.Unlock()
+	_, err := b.Publisher.Dir.Heartbeat(ctx, d.ID(), directory.Beat{Fence: d.Fence, Pending: pending, UploadSent: uint64(up.sent), UploadTotal: uint64(up.total), Working: working})
 	b.renewMu.Unlock()
 	b.renewalResult(d, err)
 	switch {
 	case err == nil:
-		b.tell(pending)
+		b.mu.Lock()
+		b.beatSent, b.beatUp, b.toldWork = pending, up, working
+		b.mu.Unlock()
 		b.recovered()
 	case errors.Is(err, directory.ErrFenceStale):
 		b.lost(ctx, d)
@@ -546,10 +622,10 @@ func (b *Batcher) beat(ctx context.Context) {
 // work is refused immediately and any pending turns are resolved under flushMu
 // so an in-flight publish and a watch wakeup never announce displacement twice.
 func (b *Batcher) Displaced(ctx context.Context) {
-	seen, _, stale := b.view()
-	if stale {
-		return
-	}
+	// A stale hold may still be saving its kept branch under flushMu.
+	// Joining lost waits for that resolution; the stale flag only retires
+	// ownership and cannot acknowledge that preservation has finished.
+	seen, _, _ := b.view()
 	b.lost(ctx, seen)
 }
 
@@ -575,6 +651,11 @@ func (b *Batcher) lost(ctx context.Context, seen Driving) {
 // resolve turns the orphaned turns into a branch, or, when there are none,
 // just tells the caller the chat is now a viewer. The caller holds flushMu.
 func (b *Batcher) resolve(ctx context.Context) error {
+	if b.BeforeResolve != nil {
+		if err := b.BeforeResolve(ctx); err != nil {
+			return err
+		}
+	}
 	head, n := b.newest()
 	by := b.holder(ctx)
 	if local, ok := b.Publisher.Engine.(interface {

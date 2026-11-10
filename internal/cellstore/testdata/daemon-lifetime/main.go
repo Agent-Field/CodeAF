@@ -27,6 +27,8 @@ func main() {
 		cellstore.SetAppDaemonLifetime(ctx)
 	}
 	d := cellstore.Daemon{Socket: os.Getenv("CODEAF_TEST_IDLE_SOCKET"), Binary: os.Getenv("CODEAF_TEST_IDLE_BINARY")}
+	// A running turn is the saving work that keeps an app's helper warm.
+	var chat cellstore.SealWatch
 	fmt.Println("ready")
 	lines := bufio.NewScanner(os.Stdin)
 	for lines.Scan() {
@@ -42,6 +44,9 @@ func main() {
 				panic(err)
 			}
 			fmt.Println(health.PID)
+		case "turn":
+			chat.TurnStarted()
+			fmt.Println("turn")
 		case "quiet":
 			cancel()
 			fmt.Println("quiet")

@@ -16,6 +16,9 @@ var ErrNotManager = errors.New("this conversation is not the manager of any item
 // PendingQuestionID identifies the decision, not the frequently changing job
 // document. Polling or spending updates cannot expire it; a new ask or round can.
 func PendingQuestionID(it Item) string {
+	if StoppedByPerson(it) {
+		return ""
+	}
 	if it.State != StateNeedsYou || strings.TrimSpace(it.Question) == "" || (it.QKind == "step" && it.Asking == nil) {
 		return ""
 	}
@@ -51,6 +54,12 @@ func PendingQuestionID(it Item) string {
 	return fmt.Sprintf("step-%x", sha256.Sum256(body))
 }
 
+// ManagerActionsMarker begins the part of a status only the manager reads: how
+// to act on a decision through its tools. A status read straight to the person
+// ([session.Agent.ReadFactoryStatus]) stops before it, as before the pending
+// question's id.
+const ManagerActionsMarker = "\nManager actions: "
+
 // ManagerStatus is a read of saved runner facts, never a model's reconstruction
 // from old chat prose. It does not start a worker, extend budget or answer an ask.
 type ManagerStatus struct {
@@ -80,18 +89,21 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	if it.Stream != nil {
 		for _, ph := range it.Stream.Phases {
 			if ph.State == PhaseDone {
-				done = append(done, ph.Name)
+				done = append(done, StepWords(it, ph.Name))
 			}
 		}
 		if it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
 			current = &it.Stream.Phases[it.Stream.Cur]
-			step = current.Name
+			step = StepWords(it, current.Name)
 		}
 	}
 	if len(done) > 0 {
 		out.Text = "Completed: " + strings.Join(done, ", ") + ".\n"
 	}
 	switch {
+	case StoppedByPerson(it):
+		out.QuestionID = ""
+		out.Text += PersonStopReason
 	case it.DoneHow == "closed_locally":
 		out.Text += "Job closed locally. Work and spending are kept. Reopen to continue; nothing is running."
 	case it.DoneHow == "dropped":
@@ -130,11 +142,23 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	if current != nil && !current.At.IsZero() {
 		out.Text += "\nLast recorded step progress: " + current.At.UTC().Format(time.RFC3339) + "."
 	}
+	facts, guide := managerFactsLines(it)
+	for _, line := range facts {
+		out.Text += "\n" + line
+	}
+	decisions, actions := managerPRDecision(it)
+	actions = append(guide, actions...)
+	for _, line := range decisions {
+		out.Text += "\n" + line
+	}
 	if out.QuestionID != "" {
 		out.Text += "\nPending question ID: " + out.QuestionID + ". Use factory_answer with this question_id to save the person's decision, including a delegated choice. Report only the saved outcome the tool confirms. On refusal, explain that the action did not happen. If the outcome is unconfirmed, read status before retrying."
 	}
 	if back, ok := PlanSendsBack(it); ok && out.QuestionID != "" {
 		out.Text += " To request changes, call factory_answer with action=reject_plan, this question_id and the person's words in answer. This sends the plan back to " + back + "; that step runs again with the words and approval is requested again afterward. Report only the outcome the tool confirms."
+	}
+	if len(actions) > 0 {
+		out.Text += ManagerActionsMarker + strings.Join(actions, " ")
 	}
 	return out
 }

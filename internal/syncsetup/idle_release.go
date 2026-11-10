@@ -160,6 +160,13 @@ func (d *Drive) prepareIdle(ctx context.Context, activity uint64) (*cellstore.Sa
 	if !ready || d.batcher.Pending() != 0 {
 		return nil, false, nil
 	}
+	if err := cellstore.Captured(ctx, d.cell); err != nil {
+		return nil, false, err
+	}
+	if d.batcher.Pending() != 0 {
+		d.batcher.Idle()
+		return nil, false, nil
+	}
 	d.idlePrepared.Store(true)
 	if err := lockDrive(ctx, &d.sealMu); err != nil {
 		return nil, false, err
@@ -230,6 +237,9 @@ func (d *Drive) releaseIdle(parent context.Context, activity uint64) (bool, erro
 		return false, nil
 	}
 	defer d.sealMu.Unlock()
+	if cellstore.Unsaved(d.cell) != 0 {
+		return false, nil
+	}
 	head, err := cellstore.Head(d.cell)
 	if err != nil || head == nil || head.Turn.ID != proof.Head || !proof.Unchanged(ctx) {
 		return false, err

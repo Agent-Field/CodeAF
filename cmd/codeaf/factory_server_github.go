@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -19,6 +20,7 @@ func factoryServerSeam(st *store.Store, tokensPath string, limit *githubLimit) f
 		token, _, _ := factorygithub.ReadTokenAt(ctx, home.Dir(), grantPath)
 		return token
 	}
+	registerFactoryTierResolver(st, home.Dir(), grantPath)
 	seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(st), factory.WithRepoDirs(st.CheckoutDir),
 		factory.WithRepoLister(func(ctx context.Context) ([]factory.RepoInfo, error) {
 			token, _, err := factorygithub.ReadTokenAt(ctx, home.Dir(), grantPath)
@@ -35,10 +37,6 @@ func factoryServerSeam(st *store.Store, tokensPath string, limit *githubLimit) f
 		if err != nil || token == "" {
 			return factory.GitHubLink{}, err
 		}
-		if via == "grant" {
-			grant, err := factorygithub.LoadReadGrant(grantPath)
-			return factory.GitHubLink{Login: grant.Login, Via: via}, err
-		}
 		login, err := forge.NewClient(token).Me(ctx)
 		limit.saw(err)
 		return factory.GitHubLink{Login: login, Via: via}, err
@@ -47,7 +45,14 @@ func factoryServerSeam(st *store.Store, tokensPath string, limit *githubLimit) f
 }
 
 // startFactoryServerPoll rebuilds the read source per tick so replacing a grant takes effect.
-func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath string, limit *githubLimit) {
+//
+// AFTER RUNS ON EVERY TICK, with or without a GitHub source: it is the
+// go-ahead pass ([intake.Intake.GoAheads]), which reads nothing from GitHub,
+// and a team server is the factory whose go-aheads must hold with every app
+// closed. Its error is never the poll's: a launch the factory refused is
+// written on the job and tried again next tick, and counting it as a failed
+// read would back GitHub reads off for up to ten minutes.
+func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath string, limit *githubLimit, after func(context.Context) error) {
 	guard.Go("factory/server-read", func() {
 		waker := factorygithub.NewWaker(st)
 		cursor := ""
@@ -67,9 +72,27 @@ func startFactoryServerPoll(ctx context.Context, st *store.Store, tokensPath str
 					failed = 0
 				}
 			}
+			if after != nil && ctx.Err() == nil {
+				_ = after(ctx)
+			}
 			if !waker.Wait(ctx, factorygithub.Backoff(factoryPollEvery, failed)) {
 				return
 			}
 		}
+	})
+}
+
+// registerFactoryTierResolver runs before page reads, even without a usable poll.
+// Resolve the read grant per attempt so replacing it takes effect on retry.
+func registerFactoryTierResolver(st *store.Store, profileDir, grantPath string) {
+	if st == nil {
+		return
+	}
+	st.SetTierResolver(func(ctx context.Context, it factory.Item) (factory.Tier, time.Time, error) {
+		token, _, err := factorygithub.ReadTokenAt(ctx, profileDir, grantPath)
+		if err != nil || token == "" {
+			return "", time.Time{}, errors.New("factory read credential is unavailable")
+		}
+		return factorygithub.New(forge.NewClient(token), nil, nil).ResolveTier(ctx, it)
 	})
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
+	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
@@ -182,10 +184,9 @@ func TestV2RunStopUndoAndStartNow(t *testing.T) {
 	if j := f.read(t, it); j.State != "queued" || j.Budget != 4 {
 		t.Fatalf("run %+v", j)
 	}
-	// A QUEUED JOB HAD NO STEP TO CUT: its stop takes it out of the queue and
-	// back to Backlog, with no stop mark, where Start picks it up.
+	// A queued job has no failed step, but Stop still withdraws its authority.
 	f.post(t, it, "stop", "", 200)
-	if j := f.read(t, it); j.State != "backlog" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Backlog" || !j.Can.Run || !j.Can.Undo || j.Can.Stop {
+	if j := f.read(t, it); j.State != "backlog" || j.Failure != nil || j.NeedsYou != nil || j.StatePresentation.Title != "Stopped by you" || !j.Can.StartNow || j.Desk == nil || (j.Desk.PersonStopped == nil || !*j.Desk.PersonStopped) || !j.Can.Undo || j.Can.Stop {
 		t.Fatalf("stop %+v", j)
 	}
 	f.post(t, it, "undo", "", 200)
@@ -503,7 +504,7 @@ func TestV2BringBackDiscardsWhatCameBackFirst(t *testing.T) {
 // no drop left on it, a start works, and the poll treats it as any other item.
 func TestV2RestoreBringsADroppedJobBackToBacklog(t *testing.T) {
 	f := newV2Jobs(t)
-	it := f.create(t, factory.Item{Num: 8, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	it := f.create(t, factory.Item{Tier: factory.TierOwner, Num: 8, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
 	if f.read(t, it).Can.Restore {
 		t.Fatal("a job that was never dropped offers Bring back")
 	}
@@ -581,7 +582,7 @@ func TestV2RestoreGivesAFreshBacklogJob(t *testing.T) {
 	})
 	f.post(t, it, "restore", "", 200)
 	j := f.read(t, it)
-	if j.State != "backlog" || j.Cost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
+	if j.State != "backlog" || j.Desk == nil || (j.Desk.PersonStopped == nil || !*j.Desk.PersonStopped) || !j.Can.StartNow || j.Cost != 0 || j.Failure != nil || j.Change != nil || j.HeadCommit != "" || j.Runner != "" || j.PR != nil || len(j.Claims) != 0 || j.DoneHow != "" {
 		t.Fatalf("not fresh: state %s cost %v failure %+v change %+v head %q runner %q pr %+v claims %+v", j.State, j.Cost, j.Failure, j.Change, j.HeadCommit, j.Runner, j.PR, j.Claims)
 	}
 	recipe := pipeline.Defaults().Recipe().For(factory.KindIssue)
@@ -671,12 +672,12 @@ func TestV2StartRechecksTheItemOnGitHub(t *testing.T) {
 	f := newV2Jobs(t)
 	f.h.Close()
 	standing, reads := map[int]string{}, map[int]int{}
-	f.cfg.Recheck = func(_ context.Context, it factory.Item) (string, error) {
+	f.cfg.Recheck = func(_ context.Context, it factory.Item) (factory.SourceStanding, error) {
 		reads[it.Num]++
 		if it.Num == 404 {
-			return "", fmt.Errorf("dial tcp: no route")
+			return factory.SourceStanding{}, fmt.Errorf("dial tcp: no route")
 		}
-		return standing[it.Num], nil
+		return factory.SourceStanding{How: standing[it.Num]}, nil
 	}
 	f.h = serve.New(f.seam, f.cfg)
 
@@ -1201,5 +1202,107 @@ func TestAPersonsContinueAtTheCapQueuesAnUnheldJobAgain(t *testing.T) {
 	got, _ := f.st.Get(it.ID)
 	if got.State != factory.StateQueued || got.Question != "" || got.QKind != "" || got.Asking != nil {
 		t.Fatalf("a person's continue left the job %s with question %q kind %q asking %v", got.State, got.Question, got.QKind, got.Asking != nil)
+	}
+}
+
+func TestClosedStartReportsConcurrentRowState(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.cfg.Recheck = func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		if err := f.st.Update(it.ID, func(cur *factory.Item) error { cur.State = factory.StateQueued; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		return factory.SourceStanding{How: github.StandingClosed}, nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	w := f.post(t, it, "start_now", "", 409)
+	var refusal struct {
+		NowState string `json:"now_state"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &refusal); err != nil {
+		t.Fatal(err)
+	}
+	if refusal.NowState != "queued" {
+		t.Fatalf("refusal reports %q, want current queued state", refusal.NowState)
+	}
+	if got, _ := f.st.Get(it.ID); got.State != factory.StateQueued {
+		t.Fatal("start check moved concurrent work")
+	}
+}
+
+func TestReviewStartRejectsChangedIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam", GitHubIssueID: 1001})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":9001,"number":12,"state":"closed"}`)
+	}))
+	defer srv.Close()
+	client := forge.NewClient("fixture").WithBaseURL(srv.URL)
+	f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
+		return github.Standing(ctx, client, row)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	w := f.post(t, it, "start_now", "", 409)
+	if !strings.Contains(w.Body.String(), "now identifies a different GitHub issue") {
+		t.Fatalf("untrue mismatch refusal: %s", w.Body)
+	}
+	got, _ := f.st.Get(it.ID)
+	if got.State != factory.StateNew {
+		t.Fatalf("different issue identity finished row: pinned=1001 answer=9001 state=%s", got.State)
+	}
+}
+
+func TestReviewStartPinsFirstDirectIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	f.cfg.Recheck = func(context.Context, factory.Item) (factory.SourceStanding, error) {
+		return factory.SourceStanding{How: github.StandingClosed, IssueID: 1001}, nil
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	f.post(t, it, "start_now", "", 409)
+	got, _ := f.st.Get(it.ID)
+	if got.GitHubIssueID != 1001 {
+		t.Fatalf("Start lost first direct identity: got=%d want=1001", got.GitHubIssueID)
+	}
+	replacement := got
+	replacement.GitHubIssueID, replacement.Title, replacement.DoneHow = 9001, "replacement issue", ""
+	if err := github.Merge(f.st, github.Name, []factory.Item{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.st.Get(it.ID)
+	if after.GitHubIssueID != 1001 || after.Title != got.Title {
+		t.Fatal("replacement listing overwrote Start's pinned row")
+	}
+}
+
+func TestReviewOpenStartKeepsFirstIdentity(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	it := f.create(t, factory.Item{Num: 12, Origin: factory.OriginForge, State: factory.StateNew, Assignee: "sam"})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":1001,"number":12,"state":"open"}`)
+	}))
+	defer srv.Close()
+	client := forge.NewClient("fixture").WithBaseURL(srv.URL)
+	f.cfg.Recheck = func(ctx context.Context, row factory.Item) (factory.SourceStanding, error) {
+		return github.Standing(ctx, client, row)
+	}
+	f.h = serve.New(f.seam, f.cfg)
+	f.post(t, it, "run", "", 200)
+	got, _ := f.st.Get(it.ID)
+	if got.GitHubIssueID != 1001 {
+		t.Errorf("open Start lost first direct identity: got=%d want=1001", got.GitHubIssueID)
+	}
+	replacement := got
+	replacement.GitHubIssueID, replacement.Title, replacement.DoneHow = 9001, "replacement issue", ""
+	if err := github.Merge(f.st, github.Name, []factory.Item{replacement}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.st.Get(it.ID)
+	if after.GitHubIssueID != 1001 || after.Title != got.Title {
+		t.Errorf("replacement listing overwrote started row: id=%d title=%q", after.GitHubIssueID, after.Title)
 	}
 }

@@ -3,12 +3,14 @@ package serve
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -112,24 +115,29 @@ func (h *Handler) setupTokenRefused(ctx context.Context, token string) bool {
 
 // setupJSON follows only fixed GitHub API paths; no client-supplied host receives a credential.
 func (h *Handler) setupJSON(ctx context.Context, path, token string, out any) (*http.Response, error) {
+	resp, _, err := h.setupJSONChanged(ctx, path, token, out)
+	return resp, err
+}
+
+func (h *Handler) setupJSONChanged(ctx context.Context, path, token string, out any) (*http.Response, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com"+path, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "codeaf-factory")
 	client := h.githubClient()
-	resp, err := client.Do(req)
+	resp, changed, err := forge.ReadHTTP(&client, req, "")
 	if err != nil {
-		return nil, errors.New("GitHub is unavailable")
+		return nil, false, errors.New("GitHub is unavailable")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return resp, githubStatusError(resp.StatusCode)
+		return resp, false, githubStatusError(resp.StatusCode)
 	}
 	err = json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(out)
-	return resp, err
+	return resp, changed, err
 }
 
 // setupGraphQL posts one GraphQL payload as the setup's token and answers the
@@ -203,6 +211,7 @@ func (h *Handler) reconnectSetupIfNeeded(ctx context.Context, out *setupState) {
 }
 
 func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
+	previousIdentity := out.View.GitHub.Handle
 	clearSetupConnection(out)
 	out.View.GitHub.GH = nil
 	if h.seam.GHLogin != nil && h.mode() == api.FactorySolo {
@@ -231,7 +240,11 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 	// A source already learned for a repository survives rediscovery. It is
 	// carried over, never re-fetched: discovery makes no per-repository call.
 	known := map[string]*string{}
+	counts := map[string]api.SetupRepo{}
 	for _, r := range out.View.Repos {
+		if strings.EqualFold(previousIdentity, user.Login) {
+			counts[r.ID] = r
+		}
 		if r.Pipeline != nil {
 			known[r.ID] = r.Pipeline
 		}
@@ -245,27 +258,27 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 	if err != nil {
 		return err
 	}
+	allUnchanged := true
+	var available []factory.RepoInfo
 	for page := 1; page <= 100; page++ {
 		var rows []struct {
-			FullName string `json:"full_name"`
-			Open     int    `json:"open_issues_count"`
-			Archived bool   `json:"archived"`
-			SizeKB   int    `json:"size"`
+			FullName string    `json:"full_name"`
+			Private  bool      `json:"private"`
+			Pushed   time.Time `json:"pushed_at"`
+			Open     int       `json:"open_issues_count"`
+			Archived bool      `json:"archived"`
+			SizeKB   int       `json:"size"`
 		}
-		if _, err = h.setupJSON(ctx, fmt.Sprintf("/user/repos?per_page=100&sort=pushed&page=%d", page), token, &rows); err != nil {
-			return err
+		_, changed, readErr := h.setupJSONChanged(ctx, fmt.Sprintf("/user/repos?per_page=100&sort=pushed&page=%d", page), token, &rows)
+		allUnchanged = allUnchanged && !changed
+		if readErr != nil {
+			return readErr
 		}
-		// ONE GraphQL request per page counts issues apart from pull
-		// requests; a repository it does not count keeps open_issues_count,
-		// marked not exact, because a desk needs the number.
-		names := make([]string, len(rows))
-		for i, row := range rows {
-			names[i] = row.FullName
-		}
-		exact := forge.OpenIssueCounts(ctx, names, func(ctx context.Context, payload any) ([]byte, error) {
-			return h.setupGraphQL(ctx, token, payload)
-		})
-		for i, row := range rows {
+
+		for _, row := range rows {
+			if _, ok := counts[row.FullName]; !ok {
+				allUnchanged = false
+			}
 			if !store.RepoName(row.FullName) {
 				continue
 			}
@@ -274,8 +287,8 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 				return err
 			}
 			repo := api.SetupRepo{ID: row.FullName, FullName: row.FullName, OpenIssues: row.Open, Archived: row.Archived, Selected: slices.Contains(watched, row.FullName), Read: "next", Clone: "missing", CloneMB: (row.SizeKB + githubKBPerMB - 1) / githubKBPerMB, SuggestedCheckout: filepath.Join(userHome, "code", strings.ReplaceAll(row.FullName, "/", "-"))}
-			if n := exact[i]; n != nil {
-				repo.OpenIssues, repo.OpenIssuesExact = *n, true
+			if previous, ok := counts[row.FullName]; ok && !changed {
+				repo.OpenIssues, repo.OpenIssuesExact = previous.OpenIssues, previous.OpenIssuesExact
 			}
 			if dir := dirs[strings.ToLower(row.FullName)]; dir != "" {
 				repo.Checkout = &dir
@@ -287,6 +300,8 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 			// never "defaults".
 			repo.Pipeline = known[row.FullName]
 			out.View.Repos = append(out.View.Repos, repo)
+			owner, name, _ := strings.Cut(row.FullName, "/")
+			available = append(available, factory.RepoInfo{Full: row.FullName, Name: name, Owner: owner, Private: row.Private, Pushed: row.Pushed, Open: row.Open})
 		}
 		if len(rows) < 100 {
 			break
@@ -294,6 +309,29 @@ func (h *Handler) discoverSetup(ctx context.Context, out *setupState) error {
 		if page == 100 {
 			return errors.New("GitHub repository list exceeds the setup limit")
 		}
+	}
+	if !allUnchanged {
+		names := make([]string, len(out.View.Repos))
+		for i, repo := range out.View.Repos {
+			names[i] = repo.ID
+		}
+		exact := forge.OpenIssueCounts(ctx, names, func(ctx context.Context, payload any) ([]byte, error) { return h.setupGraphQL(ctx, token, payload) })
+		for i, n := range exact {
+			out.View.Repos[i].OpenIssues, out.View.Repos[i].OpenIssuesExact = available[i].Open, false
+			if n != nil {
+				out.View.Repos[i].OpenIssues, out.View.Repos[i].OpenIssuesExact = *n, true
+			}
+		}
+	}
+	for i, repo := range out.View.Repos {
+		if repo.OpenIssuesExact {
+			n := repo.OpenIssues
+			available[i].OpenIssues = &n
+		}
+	}
+	factory.AttachCheckouts(available, func(repo string) string { return dirs[strings.ToLower(repo)] })
+	if err := h.config.Store.SetAvailableRepos(store.AvailableRepos{Identity: strings.ToLower(user.Login), Credential: fmt.Sprintf("%x", sha256.Sum256([]byte(token))), ReadAt: h.clock().UTC(), Repos: available}); err != nil {
+		return err
 	}
 	out.View.GitHub.VisibleRepos = len(out.View.Repos)
 	out.View.GitHub.Organization = commonOwner(out.View.Repos)
@@ -485,7 +523,13 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 					return errors.New("codeaf could not keep this GitHub connection")
 				}
 			}
-			credentials.Set("github", token)
+			// A pasted token is handed to the app to keep (Keep); gh's own
+			// token is held for this launch only, since gh keeps it.
+			if body.Source == "gh" {
+				credentials.Set("github", token)
+			} else {
+				credentials.Keep("github", token)
+			}
 		} else {
 			if token != "" {
 				if err := h.setupScope(ctx, token); err != nil {
@@ -589,7 +633,7 @@ func (h *Handler) setupAction(ctx context.Context, out *setupState, body api.Fac
 }
 
 func (h *Handler) keepSetupCheckout(ctx context.Context, repo, path string) error {
-	out, err := exec.CommandContext(ctx, "git", "-C", path, "remote", "get-url", "origin").Output()
+	out, err := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("-C", path, "remote", "get-url", "origin")...).Output()
 	if err != nil {
 		return errors.New("Choose an existing GitHub checkout")
 	}
@@ -801,7 +845,7 @@ func (h *Handler) cloneSetupRepo(ctx context.Context, repo, path string) error {
 		return err
 	}
 	// Git obtains credentials from the person's credential helper; no token enters argv or a remote URL.
-	cmd := exec.CommandContext(ctx, "git", "clone", "--", "https://github.com/"+repo+".git", path)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("clone", "--", "https://github.com/"+repo+".git", path)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	token, err := h.setupToken(ctx)
 	if err != nil {
@@ -828,6 +872,7 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 		return nil, errors.New("GitHub is not connected")
 	}
 	count := repo.ReadCount
+	tiers := setupTiers{h: h, token: token, repo: repo.ID, seen: map[string]factory.Tier{}}
 	for page := max(1, cursor); page <= 1000; page++ {
 		var rows []struct {
 			Number  int             `json:"number"`
@@ -873,7 +918,7 @@ func (h *Handler) ingestSetupRepo(ctx context.Context, repo *api.SetupRepo, curs
 			for _, label := range row.Labels {
 				labels = append(labels, label.Name)
 			}
-			item := factory.Item{Repo: repo.ID, Num: row.Number, Title: row.Title, Body: row.Body, URL: row.URL, Created: row.Created, Kind: factory.KindIssue, Origin: factory.OriginForge, Author: row.User.Login, Labels: labels, SetupHeld: true}
+			item := factory.Item{Repo: repo.ID, Num: row.Number, Title: row.Title, Body: row.Body, URL: row.URL, Created: row.Created, Kind: factory.KindIssue, Origin: factory.OriginForge, Author: row.User.Login, Tier: tiers.of(ctx, row.User.Login), Labels: labels, SetupHeld: true}
 			if row.Assignees != nil {
 				item.SourceAssignees = []string{}
 				for _, a := range *row.Assignees {
@@ -1000,4 +1045,50 @@ func (h *Handler) scheduleSetupDeadline(out setupState) {
 			h.startSetup(saved)
 		}
 	})
+}
+
+// setupTiers records, for each issue read in at setup, whether its author
+// may write to the repository, as the GitHub source does on every poll:
+// the signed-in person is the owner, write, maintain or admin access is a
+// collaborator, and anything else, or no answer, is a stranger.
+type setupTiers struct {
+	h     *Handler
+	token string
+	repo  string
+	me    *string
+	seen  map[string]factory.Tier
+}
+
+func (s *setupTiers) of(ctx context.Context, login string) factory.Tier {
+	if login == "" {
+		return factory.TierStranger
+	}
+	key := strings.ToLower(login)
+	if t, ok := s.seen[key]; ok {
+		return t
+	}
+	if s.me == nil {
+		var user struct {
+			Login string `json:"login"`
+		}
+		_, _ = s.h.setupJSON(ctx, "/user", s.token, &user)
+		s.me = &user.Login
+	}
+	t := factory.TierStranger
+	if *s.me != "" && strings.EqualFold(*s.me, login) {
+		t = factory.TierOwner
+	} else {
+		var p struct {
+			Permission string `json:"permission"`
+			RoleName   string `json:"role_name"`
+		}
+		if _, err := s.h.setupJSON(ctx, "/repos/"+s.repo+"/collaborators/"+url.PathEscape(login)+"/permission", s.token, &p); err == nil {
+			switch {
+			case p.RoleName == "maintain", p.Permission == "admin", p.Permission == "maintain", p.Permission == "write":
+				t = factory.TierCollab
+			}
+		}
+	}
+	s.seen[key] = t
+	return t
 }

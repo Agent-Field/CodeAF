@@ -11,9 +11,14 @@ package orchestrate
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"unicode"
 )
+
+// ErrPlannerReplyCutOff means the planner could not return a complete
+// amendment. It must not be presented as a deliberate empty plan or no change.
+var ErrPlannerReplyCutOff = errors.New("the planner's reply was cut off")
 
 // NameWords is how many words a node's [Node.Title] may run to.
 //
@@ -57,7 +62,8 @@ type Node struct {
 	Goal  string   `json:"goal"`            // self-contained: no "see above"
 	Needs []string `json:"needs,omitempty"` // ids that must be Done before this may run
 	Kind  string   `json:"kind,omitempty"`  // subharness node kind; empty is agent.loop
-	// WriteScope is the set of repo paths this node may write (law 10). Two
+	// WriteScope names root-relative files, directories or segment globs
+	// (*, ?, [...]), without ** or .. segments. Two
 	// nodes whose scopes intersect are not independent, and the scheduler
 	// serializes them by force of an added Needs edge. Read-only nodes leave
 	// this empty.
@@ -224,6 +230,21 @@ type Snapshot struct {
 	// every node the tank pays for — so a gauge drawn without it says how much
 	// is being spent and not whose judgement is spending it.
 	Planner string `json:"planner,omitempty"`
+}
+
+// EmptyPlanReason describes an ended run with no work or answer. It derives
+// the display from existing snapshot facts so saved snapshots keep their format.
+// Retry admission additionally checks that no worker was ever created.
+func (s Snapshot) EmptyPlanReason() string {
+	if !s.Done || s.Stopped || len(s.Nodes) != 0 || s.Answer != "" {
+		return ""
+	}
+	if len(s.Notes) > 0 {
+		if reason := strings.TrimSpace(s.Notes[len(s.Notes)-1]); reason != "" {
+			return reason
+		}
+	}
+	return "The crew didn't plan any work for this goal."
 }
 
 // View is what the planner sees on each call: the goal, condensed results,

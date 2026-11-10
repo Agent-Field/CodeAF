@@ -809,15 +809,30 @@ func (b *appBackend) PipelineCheckEdits() {}
 // rename_step, which is what lets hello announce factory.pipeline_edit_rename.
 func (b *appBackend) PipelineRenameEdits() {}
 
+// PipelinePipelineEdits marks this backend as one whose preview applies
+// add_pipeline, remove_pipeline and rename_pipeline, which is what lets hello
+// announce factory.pipeline_edit_pipelines.
+func (b *appBackend) PipelinePipelineEdits() {}
+
 // PipelineGateEdits marks this backend as one whose preview applies an
 // add_step of kind gate, which is what lets hello announce
 // factory.pipeline_edit_gates.
 func (b *appBackend) PipelineGateEdits() {}
 
+// PipelineAgentFieldEdits marks this backend as one whose preview applies an
+// add_step of kind agentfield, which is what lets hello announce
+// factory.pipeline_edit_agentfield.
+func (b *appBackend) PipelineAgentFieldEdits() {}
+
 // PipelineApproverEdits marks this backend as one whose preview applies
 // set_approver, which is what lets hello announce
 // factory.pipeline_edit_approvers.
 func (b *appBackend) PipelineApproverEdits() {}
+
+// PipelinePassEdits marks this backend as one whose preview applies set_pass
+// and pass on an added gate, which is what lets hello announce
+// factory.pipeline_edit_pass.
+func (b *appBackend) PipelinePassEdits() {}
 
 // PipelineAdaptKindEdits marks this backend as one whose preview applies
 // set_adapt for one pipeline and whose source carries each pipeline's word.
@@ -828,7 +843,7 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
 		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, SpendByModel: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, GroupPolicy: true, WaitsOn: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 
@@ -1045,20 +1060,30 @@ func (b *appBackend) FactoryMe(ctx context.Context, id string) (appwire.FactoryM
 func (b *appBackend) FactoryQueue(ctx context.Context, id string) (api.Queue, error) {
 	var q api.Queue
 	err := b.factoryHub().read(ctx, id, "/v1/queue", appFactoryBody, &q)
+	if err == nil {
+		for i := range q.Jobs {
+			j := &q.Jobs[i]
+			j.LifetimeCost = max(j.Cost, j.LifetimeCost)
+		}
+	}
 	return q, err
 }
 
 func (b *appBackend) FactoryJob(ctx context.Context, id string, job int) (api.Job, error) {
 	var out api.Job
 	err := b.factoryHub().read(ctx, id, "/v1/jobs/"+strconv.Itoa(job), appFactoryBody, &out)
+	if err == nil {
+		out.LifetimeCost = max(out.Cost, out.LifetimeCost)
+	}
 	return out, err
 }
 
 func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.FactoryRepos, error) {
 	var body struct {
-		Factory   api.Factory `json:"factory"`
-		Watched   []string    `json:"watched"`
-		Available []struct {
+		AvailableReadAt time.Time   `json:"available_read_at"`
+		Factory         api.Factory `json:"factory"`
+		Watched         []string    `json:"watched"`
+		Available       []struct {
 			Full    string    `json:"full"`
 			Name    string    `json:"name"`
 			Owner   string    `json:"owner"`
@@ -1072,7 +1097,7 @@ func (b *appBackend) FactoryRepos(ctx context.Context, id string) (appwire.Facto
 	if err := b.factoryHub().read(ctx, id, "/v1/repos", appFactoryBody, &body); err != nil {
 		return appwire.FactoryRepos{}, err
 	}
-	out := appwire.FactoryRepos{Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}
+	out := appwire.FactoryRepos{AvailableReadAt: body.AvailableReadAt, Factory: body.Factory, Watched: body.Watched, Available: make([]appwire.FactoryRepo, len(body.Available))}
 	if out.Watched == nil {
 		out.Watched = []string{}
 	}

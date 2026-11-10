@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -41,6 +42,9 @@ type SealWatch struct {
 	OnTurnEnd func()
 	// OnMetadataWrite is installed only by the paired idle ownership door.
 	OnMetadataWrite func()
+	// OnTurnStart, when set, hears each time a turn begins. The door sets it to
+	// the sync side's working call, so other computers can say a turn runs here.
+	OnTurnStart func()
 	// OnTail, when set, is called once the record has been quiet for Quiet after
 	// writes that came behind the turn-end seal. The door seals the tree and asks
 	// the sync side to upload, exactly as it does at the end of a turn, so there
@@ -159,14 +163,24 @@ func (w *SealWatch) Waiting() {
 	}
 }
 
+// liveTurns counts this process's watches with a turn running. The desktop
+// app keeps its saving helpers warm only while one is (daemon_app.go).
+var liveTurns atomic.Int64
+
 // TurnStarted is the session's word that a turn began: the turn writes the
 // record itself and every call seals it, so no tail seal is owed.
 func (w *SealWatch) TurnStarted() {
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	if !w.started || w.idle {
+		liveTurns.Add(1)
+	}
 	w.started = true
 	w.idle = false
 	w.stopTail()
+	w.mu.Unlock()
+	if w.OnTurnStart != nil {
+		w.OnTurnStart()
+	}
 }
 
 // Wrote is the session's word that something the chat owns was written: a line
@@ -247,6 +261,9 @@ func (w *SealWatch) IdleReady() bool {
 // forwards, so a watch without a listener costs nothing.
 func (w *SealWatch) TurnEnded() {
 	w.mu.Lock()
+	if w.started && !w.idle {
+		liveTurns.Add(-1)
+	}
 	w.started = true
 	w.idle = true
 	w.requireTranscript()

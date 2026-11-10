@@ -213,3 +213,23 @@ func TestTaskWorkerCommandsSeeTheWorkerDID(t *testing.T) {
 		t.Fatalf("the worker's command saw %q, want %q", raw, want)
 	}
 }
+
+// EVERY TASK UPDATE NAMES WHO THE TASK ACTS AS. A surface that keeps something
+// under a worker's name (a writer's lease) has to know what to let go of when
+// the task ends, and the name on the update is the one the worker's commands
+// carry: the agent's DID with the task's fragment.
+func TestTaskUpdatesNameTheWorkerTheTaskActsAs(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	place := identityPlace(t, "6666666666666666")
+	agent := openIdentityAgent(t, place, nil)
+	events := watched(agent)
+	agent.emitTaskUpdate(TaskNotice{ID: 4, Title: "Opening scene", State: TaskDone})
+	select {
+	case event := <-events:
+		if event.Task == nil || event.Task.Worker != agent.AgentDID()+"#w4" {
+			t.Fatalf("the update names %+v, want %q", event.Task, agent.AgentDID()+"#w4")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no task update")
+	}
+}

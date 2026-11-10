@@ -327,6 +327,19 @@ var tuiWords = map[string]tuiWord{
 		pkg:    tui3Pkg,
 		why:    "the tail on any row — an errand or another window's conversation — that is stopped on a person",
 	},
+	"conversationOpeningPage": {
+		screen: "opening conversation",
+		why: "the placeholder page a first message once waited on (conversation_open.go's conversationOpeningWord); " +
+			"the chat-start suite asserts the first message never lands on it",
+	},
+	"conversationOpeningState": {
+		screen: "opening chat",
+		why:    "the state the ordinary chat wears under a first message while its engine is still opening",
+	},
+	"chatTurnWorkingWord": {
+		screen: "working",
+		why:    "the state the ordinary chat wears once the first message's turn is in flight",
+	},
 	"homeAskWorkingWord": {
 		screen: "working",
 		why:    "the tail an errand's row wears while its turn is in flight",
@@ -1233,6 +1246,18 @@ var tuiWords = map[string]tuiWord{
 		screen: "Pick up your work anywhere, exactly where you left it.",
 		why: "the pitch on home's add-another-device card (homeband_addmachine.go's addMachinePitch), " +
 			"read by the pairing journey so a respelled card fails the untagged word gate before tmux runs",
+	},
+
+	"secretDeclineWord": {
+		screen: "Decline",
+		pkg:    "internal/session",
+		why: "the one answer a request_secret card offers besides its masked box (secret_request.go's " +
+			"SecretDeclineLabel): a card wearing it is the credential question, up and waiting",
+	},
+	"secretGivenReceipt": {
+		screen: "given, kept out of chat",
+		why: "what a secret question's receipt says was answered (question.go's questionSecretGiven). " +
+			"It said `with: <the token>` until the live run that found it",
 	},
 }
 

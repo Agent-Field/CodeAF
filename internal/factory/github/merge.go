@@ -43,6 +43,11 @@ func (s *Source) mergePull(ctx context.Context, owner, name string, a factory.Ac
 		}
 		method = allowed[0]
 	}
+	if a.BeforeWrite != nil {
+		if err := a.BeforeWrite(ctx); err != nil {
+			return forge.Posted{}, err
+		}
+	}
 	merged, err := m.MergePullRequest(ctx, owner, name, pr.Number, a.Commit, method)
 	if err != nil {
 		return forge.Posted{}, err
@@ -59,7 +64,7 @@ func (s *Source) Follow(ctx context.Context, it factory.Item) (factory.PullReque
 	if !ok {
 		return factory.PullRequest{}, fmt.Errorf("cannot tell which repository %s is on", it.Ref())
 	}
-	fresh, err := s.FollowPR(ctx, owner, name, it.PullRequest.Number)
+	fresh, err := s.followPR(ctx, owner, name, it.PullRequest.Number, it.PullRequest)
 	if err != nil {
 		return factory.PullRequest{}, err
 	}

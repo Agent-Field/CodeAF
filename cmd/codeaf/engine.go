@@ -1089,6 +1089,16 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// and it is the one fact the shared assembly cannot know for itself.
 	cfg := launch.Config
 	cfg.AskConsent = !hello.Headless
+	// A HEADLESS HELLO IS --once THROUGH A HOST, and is fenced as --once is
+	// (fence.go). A later hello that is not headless cannot join it: the
+	// server refuses a mismatch (internal/remote's server.go).
+	if hello.Headless {
+		fence, err := unattendedFence(launch.Workspace, launch.Settings.ProfileDir)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Fence = fence
+	}
 	// The app's one supervisor of kept-running processes, when this process
 	// is the app's (appservices.go); every other engine has none.
 	cfg.Services = appServiceDoor.Load()
@@ -1151,7 +1161,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	}
 	// `factory_floor`, now that the hello has settled which conversation this
 	// is: on the foreman's belt and no other (factory_foreman.go).
-	cfg.Floor = foremanFloorDoor(floorStore, workspace, cfg.SessionFile)
+	cfg.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, cfg.SessionFile)
 
 	// THE THREE ROAD-DEPENDENT CAPABILITIES ARE DECIDED IN ONE PLACE, and this
 	// door no longer keeps its own answer to any of them (chatv3_lanes.go). Each
@@ -1243,6 +1253,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		TeamsPaired: teamPaired,
 		SyncService: chatSyncService(),
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
 			built, ok := current.(*session.Agent)
@@ -1323,7 +1334,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			if err != nil {
 				return nil, "", err
 			}
-			fresh.Floor = foremanFloorDoor(floorStore, workspace, fresh.SessionFile)
+			fresh.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, fresh.SessionFile)
 			// THROUGH THE SAME BUILDER THE BOOT CONVERSATION WAS OPENED WITH, so
 			// a conversation started by /new over a connection is not a lesser
 			// one than the conversation it replaced: the adaptive runner is
@@ -1350,7 +1361,7 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 			if err != nil {
 				return nil, false, err
 			}
-			earlier.Floor = foremanFloorDoor(floorStore, workspace, earlier.SessionFile)
+			earlier.Floor = foremanFloorDoor(floorStore, workspace, proc.ProfileDir, earlier.SessionFile)
 			// Whether the file was found is asked BEFORE it is opened, because
 			// opening it creates it: a path nobody has written yet is a new
 			// conversation, and the surface says so on its first line.

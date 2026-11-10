@@ -2,6 +2,7 @@ package factory
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -94,3 +95,13 @@ const (
 	DefaultKeepOutputDays       = 7
 	DefaultKeepOutputMB         = 10
 )
+
+// AttachCheckouts attaches this machine's registered folders to a discovered list.
+func AttachCheckouts(repos []RepoInfo, dir func(string) string) {
+	if dir == nil {
+		return
+	}
+	for i := range repos {
+		repos[i].Dir = strings.TrimSpace(dir(repos[i].Full))
+	}
+}

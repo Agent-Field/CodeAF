@@ -18,7 +18,7 @@ test('C7 the Worker states conditional takes on the cell read', async () => {
   assert.equal(dir.cell('c7').cell.lease.device, 'dev_a');
 });
 
-test('F2 a same-holder fence bump is harmless only with the same saved head', () => {
+test('conditional takes refuse stale fences even with the same saved head', () => {
   for (const change of ['fence', 'head', 'holder']) {
     const dir = new Directory(memorySql(), 'id_f2', () => 1_000_000, AMENDED);
     dir.create('f2', init(), 'dev_a');
@@ -29,7 +29,6 @@ test('F2 a same-holder fence bump is harmless only with the same saved head', ()
       const current = dir.cell('f2').cell;
       dir.publish('f2', 'dev_a', { fence: current.lease.fence, old_head: current.head, head: 'new-head' });
     }
-    if (change === 'fence') assert.equal(dir.acquire('f2', 'dev_b', true, seen).cell.lease.device, 'dev_b');
-    else assert.throws(() => dir.acquire('f2', 'dev_b', true, seen), (e) => e.code === 'lease_held');
+    assert.throws(() => dir.acquire('f2', 'dev_b', true, seen), (e) => e.code === 'lease_held');
   }
 });

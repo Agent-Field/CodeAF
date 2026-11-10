@@ -35,6 +35,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
@@ -43,6 +44,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/history"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -67,6 +69,11 @@ type v3Process struct {
 	processCtx    context.Context
 	processStop   context.CancelFunc
 	knowledgeDone chan struct{}
+	// quitReceiptWait, when set, replaces [v3ReceiptWait] for every receipt
+	// wait from then on. The app sets it as it leaves, when its receipts have
+	// been hurried ([provider.HurryReceipts]) and the desk kills an engine that
+	// is still leaving after thirty seconds (app.go's [appQuitReceiptWait]).
+	quitReceiptWait atomic.Int64
 	// Shelf holds Models until somebody asks /model for today's list, and the
 	// refreshed catalog after (chatv3_modelshelf.go). The picker and the two
 	// session readers that answer about a model somebody may have just picked
@@ -127,14 +134,14 @@ type v3Process struct {
 	// project is still a conversation this door opened from here.
 	LaunchDir string
 
-	// mu guards everything below: the lazily opened history file and the list of
-	// agents this process has built. Both are touched from the surface's
-	// goroutine and from the door's defer, which are not the same one.
-	mu          sync.Mutex
-	recall      *history.Store
-	agents      []*session.Agent
-	sweepCancel context.CancelFunc
-	sweepDone   chan struct{}
+	// mu guards Settings.APIKey, Settings.Sources and everything below.
+	// Provider handoffs, launches and process cleanup run on different goroutines.
+	mu            sync.Mutex
+	recall        *history.Store
+	agents        []*session.Agent
+	receiptAgents map[*session.Agent]struct{}
+	sweepCancel   context.CancelFunc
+	sweepDone     chan struct{}
 	// catalogs are the lazy catalogs this process opened beside Models — a
 	// direct service's own listing, asked for when a conversation is opened on
 	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
@@ -371,9 +378,12 @@ func (p *v3Process) forget(agent *session.Agent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	kept := p.agents[:0]
+	found := false
 	for _, held := range p.agents {
 		if held != agent {
 			kept = append(kept, held)
+		} else {
+			found = true
 		}
 	}
 	// The tail is cleared rather than left pointing at what was dropped: the
@@ -383,6 +393,25 @@ func (p *v3Process) forget(agent *session.Agent) {
 		p.agents[i] = nil
 	}
 	p.agents = kept
+	if p.closed || !found {
+		return
+	}
+	if p.receiptAgents == nil {
+		p.receiptAgents = make(map[*session.Agent]struct{})
+	}
+	p.receiptAgents[agent] = struct{}{}
+	// Closed chats leave broadcasts immediately but remain owned until their
+	// admitted receipts settle. The reaper bounds retention in a long-lived host.
+	guard.Go("chatv3/retired-receipts", func() {
+		p.waitReceipts(agent)
+		p.forgetReceiptAgent(agent)
+	})
+}
+
+func (p *v3Process) forgetReceiptAgent(agent *session.Agent) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.receiptAgents, agent)
 }
 
 // setAPIKey is the key arriving after the door: the first-run screen or the
@@ -546,6 +575,14 @@ func (p *v3Process) sourceSeeds() (profileDir, key, base string) {
 	return p.ProfileDir, p.Settings.APIKey, p.Settings.BaseURL
 }
 
+// launchSettings copies the profile while provider handoffs hold the same lock.
+// Model source sets replace their backing slice, so the copy keeps its sources.
+func (p *v3Process) launchSettings() config.Config {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.Settings
+}
+
 func (p *v3Process) currentAccount() (string, modelsource.Set) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -564,6 +601,10 @@ func (p *v3Process) takeForClose() (agents []*session.Agent, recall *history.Sto
 	}
 	p.closed = true
 	agents, recall = p.agents, p.recall
+	for agent := range p.receiptAgents {
+		agents = append(agents, agent)
+	}
+	p.receiptAgents = nil
 	p.agents, p.recall = nil, nil
 	return agents, recall, true
 }
@@ -596,6 +637,28 @@ func (p *v3Process) warmModels(scope string, agent *session.Agent, started strin
 	poolErrandGoCtx(p.ProfileDir, scope, func(ctx context.Context) {
 		warmV3Models(ctx, models, agent, started)
 	})
+}
+
+// v3ReceiptWait follows the provider's bounded receipt lifetime. It is a
+// variable so deadline tests need not wait through the provider retry schedule.
+var v3ReceiptWait = provider.ReceiptWait
+
+// waitReceipts waits on this process's own bound: the app's shorter quit wait
+// once it is leaving, [v3ReceiptWait] otherwise.
+func (p *v3Process) waitReceipts(agent *session.Agent) {
+	wait := v3ReceiptWait
+	if quit := time.Duration(p.quitReceiptWait.Load()); quit > 0 && quit < wait {
+		wait = quit
+	}
+	waitV3ReceiptsWithin(agent, wait)
+}
+
+func waitV3ReceiptsWithin(agent *session.Agent, wait time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	if err := agent.WaitReceipts(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "codeaf: receipt settlement timed out; spending may be incomplete")
+	}
 }
 
 // closeAll closes every conversation this process opened and then the stores
@@ -671,6 +734,7 @@ func (p *v3Process) closeAll() {
 			// A pending save has a bounded wait. Its failure must remain visible
 			// after the terminal is restored, rather than disappearing with the surface.
 			closeV3Agent(agent)
+			p.waitReceipts(agent)
 		})
 	}
 	waiting.Wait()

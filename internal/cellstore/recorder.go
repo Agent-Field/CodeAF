@@ -15,9 +15,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
+// saveInterval limits full-workspace captures during a running turn. A finished
+// call is already in the WAL, so saving can wait for a pause between commands.
+const saveInterval = 30 * time.Second
+
 // Options tune a Recorder; every field has a working zero value.
 type Options struct {
-	// Async pipelines capture after the durable completion, never the command.
+	// Async pipelines capture at pauses after durable completions.
 	Async bool
 	// Tool names the calls in receipts; "exec" when empty.
 	Tool string
@@ -32,6 +36,11 @@ type Options struct {
 	// carries is true at that moment: the inventory uses it to say which of the
 	// chat's commands are still running.
 	Refresh func()
+	// FolderGone, when set, says the chat's folder is no longer on this
+	// computer; a capture that failed then is not reported as a chat that
+	// could not be saved ([ErrWorkspaceGone]). The seat sets it from the
+	// engine it decorates, which is the one that knows the folder.
+	FolderGone func() bool
 }
 
 // Recorder is the one hook (task 0.7): an executor.Executor that logs each
@@ -44,10 +53,13 @@ type Recorder struct {
 	opts      Options
 	asyncMu   sync.Mutex
 	running   chan struct{}
+	stepOpen  bool
 	requested bool
 	warming   bool
 	errorMu   sync.Mutex
 	lastError error
+
+	daemonGeneration uint64
 
 	mu      sync.Mutex // serialises seals; guards pending and models
 	pending []Executed
@@ -70,8 +82,12 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 	}
 	wal.owner = c.Root
 	reapOrphans(rec.Incomplete, reapGrace)
-	return &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
-		pending: rec.Completed, incomplete: rec.Incomplete}, nil
+	r := &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
+		pending: rec.Completed, incomplete: rec.Incomplete, daemonGeneration: daemonClock.Load()}
+	if opts.Async && len(r.pending) > 0 {
+		r.hold()
+	}
+	return r, nil
 }
 
 // Wrap leaves the executor unchanged when this build cannot move chats, so
@@ -90,7 +106,7 @@ func Wrap(inner executor.Executor, c cell.Cell) (executor.Executor, error) {
 // Exec implements executor.Executor. A call whose intent cannot be made
 // durable does not run: an unlogged external call could never be recovered.
 func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput func(executor.Chunk)) (executor.ExecResult, error) {
-	if err := r.wait(ctx); err != nil {
+	if err := r.enter(ctx); err != nil {
 		return executor.ExecResult{}, err
 	}
 	intent := r.intent(req)
@@ -104,10 +120,10 @@ func (r *Recorder) Exec(ctx context.Context, req executor.ExecRequest, onOutput 
 
 // Around records one whole tool call, whatever it did inside: a process through
 // Exec, one owned by the tool through Command, or a file written directly. The
-// call is the boundary the tree is sealed at, so this is what a session uses;
-// Exec is the same record for a caller that has only an executor.
+// call is the boundary the WAL records, so this is what a session uses; Exec
+// is the same record for a caller that has only an executor.
 func (r *Recorder) Around(ctx context.Context, call executor.Call, effect executor.SideEffect, trigger Trigger, run func() ([]byte, bool)) error {
-	if err := r.wait(ctx); err != nil {
+	if err := r.enter(ctx); err != nil {
 		return err
 	}
 	intent := Intent{V: walV, Tool: call.Tool, ArgsHash: hashHex(call.Args), Started: r.now().UnixMilli(),
@@ -138,6 +154,9 @@ func (r *Recorder) NoteModelCall(m executor.ModelCall) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.models = append(r.models, modelCallOf(m))
+	if r.opts.Async {
+		r.hold()
+	}
 }
 
 // Incomplete lists the calls that were started and never finished, oldest first.
@@ -201,11 +220,12 @@ func argsHash(req executor.ExecRequest) string {
 	return hashHex(raw)
 }
 
-// complete logs the call's completion and, unless the caller deferred it,
-// seals. It runs on the call's way out whatever the call did, and seals under a
-// context the caller cannot cancel: a cancelled call may still have changed
-// files. A deferred call is already durable in the WAL, so a death before the
-// Settle loses nothing the next start does not carry.
+// complete logs the call's completion before deciding whether to seal. Pipeline
+// calls with unknown effects wait for a pause or the save interval; exact paths
+// can still seal immediately when no full capture is owed. A cancelled call may
+// have changed files, so seals use a context the caller cannot cancel. A held
+// call is already durable in the WAL, so a death before Settle loses nothing
+// the next start does not carry.
 func (r *Recorder) complete(ctx context.Context, i Intent, e Executed, seal bool) {
 	r.mu.Lock()
 	if err := r.wal.Finish(i, e); err != nil {
@@ -213,6 +233,7 @@ func (r *Recorder) complete(ctx context.Context, i Intent, e Executed, seal bool
 	}
 	r.pending = append(r.pending, e)
 	if r.opts.Async {
+		seal = seal && (e.Trigger == Setup || r.captureDue())
 		r.mu.Unlock()
 		if seal {
 			r.schedule(ctx)
@@ -225,14 +246,38 @@ func (r *Recorder) complete(ctx context.Context, i Intent, e Executed, seal bool
 	}
 }
 
-// Settle implements executor.Settler. It seals what deferred calls left pending,
-// and, with nothing pending, the transcript lines written since the last seal
-// (the closing answer of a turn), so that a process killed after either loses
-// neither. A seal with no call in it looks at the state directory only: nothing
-// but the transcript changed.
+// captureDue keeps exact captures cheap until an unknown-effect call needs the
+// whole workspace. The oldest completion starts the interval, even when later
+// calls know their changed paths. Callers hold r.mu.
+func (r *Recorder) captureDue() bool {
+	for _, e := range r.pending {
+		if e.Changed == nil {
+			return r.now().Sub(time.UnixMilli(r.pending[0].Call.Ended)) >= saveInterval
+		}
+	}
+	return true
+}
+
+// Settle implements executor.Settler. Step settles may hold a young full-workspace
+// batch in the WAL unless it contains setup calls; every other settle forces
+// pending calls and the transcript tail into a seal. Both kinds close the step
+// because its results are written.
+// A seal with no call looks at the state directory only: nothing but the
+// transcript changed.
 func (r *Recorder) Settle(ctx context.Context) {
 	if r.opts.Async {
-		r.schedule(ctx)
+		due := true
+		if executor.Stepping(ctx) {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			due = triggerOfBatch(r.pending) == Setup || r.captureDue()
+		}
+		r.asyncMu.Lock()
+		defer r.asyncMu.Unlock()
+		r.stepOpen = false
+		if due {
+			r.scheduleLocked(ctx)
+		}
 		return
 	}
 	r.mu.Lock()
@@ -285,6 +330,7 @@ func lastEnd(head *Sealed) int64 {
 // seal takes everything pending into one turn. On failure the batch stays
 // pending and the next call's seal carries it. Callers hold r.mu.
 func (r *Recorder) seal(ctx context.Context) {
+	ctx = context.WithValue(ctx, daemonOwnerKey{}, r.daemonGeneration)
 	if r.opts.Refresh != nil {
 		r.opts.Refresh()
 	}
@@ -299,6 +345,7 @@ func (r *Recorder) seal(ctx context.Context) {
 	// explicit boundaries make both stores durable before work leaves this computer (C28/U1).
 	r.pending, r.models = nil, nil
 	r.outcome(r.wal.Sealed(batch))
+	r.releaseHeld()
 }
 
 // outcome tells Report how a seal ended, nil included.
@@ -312,6 +359,11 @@ func (r *Recorder) outcome(err error) {
 }
 
 func (r *Recorder) report(err error) {
+	// A FOLDER THAT IS GONE IS NOT A CHAT THAT COULD NOT BE SAVED
+	// ([ErrWorkspaceGone]): its calls stay pending and nothing is reported.
+	if errors.Is(err, ErrWorkspaceGone) {
+		return
+	}
 	if err != nil {
 		r.errorMu.Lock()
 		r.lastError = err

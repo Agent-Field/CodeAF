@@ -686,13 +686,13 @@ const (
 	MemoryOn  = "on"
 )
 
-// MemoryModes lists off first, the default until a person opts in.
-var MemoryModes = []string{MemoryOff, MemoryOn}
+// MemoryModes lists the default first; saved choices remain authoritative.
+var MemoryModes = []string{MemoryOn, MemoryOff}
 
-const DefaultMemory = MemoryOff
+const DefaultMemory = MemoryOn
 
 // MemoryCostNote is the cost disclosure shared by settings surfaces.
-const MemoryCostNote = "Off by default. When on, it learns from your chats and jobs so later work can use it, and makes extra model calls on your key. On one small test job, memory was 39% of the cost ($0.0124 of $0.0315); it varies by job."
+const MemoryCostNote = "Learns from chats and jobs so later work can use what you learned. On by default; uses extra model calls on your key. See actual costs in Spending."
 
 // The prompt profile's three answers, and they are three rather than two
 // because the honest default is not a size at all: it is "work it out". A row
@@ -1045,6 +1045,11 @@ var OperatorEnvPins = []string{
 	// editable profile preferences.
 	"CODEAF_FACTORY_BENCHES",
 	"CODEAF_FACTORY_POSTURE",
+	// The fence widening a launcher hands an unattended run (jailallow.go).
+	"CODEAF_JAIL_ALLOW",
+	// What a fenced command is told about itself; codeaf sets it, nobody reads
+	// it back as a preference.
+	"CODEAF_FENCED",
 	"CODEAF_FACTORY_NO_WORKER",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
@@ -1071,6 +1076,10 @@ var OperatorEnvPins = []string{
 	"CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP",
 	"CODEAF_PROTOTYPE_TASK_STORAGE",
 	"CODEAF_PROTOTYPE_ARCHIVE_BINARY",
+	// CODEAF_CLAUDE_BIN names the Claude Code program when `claude` on PATH is
+	// a shell alias a child process cannot start (internal/claudeagent). It is
+	// an executable path, so it is plumbing like the archive binary above.
+	"CODEAF_CLAUDE_BIN",
 	// CODEAF_RELAY points a headless peer at the relay this host pairs through
 	// (internal/pair). It is an address, so it is plumbing for the same reason
 	// CODEAF_BASE_URL is.
@@ -1232,11 +1241,20 @@ var OperatorEnvPins = []string{
 	// (internal/githubcalls). It is for measuring one run's rate-limit spend, so
 	// it is not a setting anyone keeps.
 	"CODEAF_GITHUB_LOG",
+	// CODEAF_GITHUB_CLIENT_ID names the GitHub app the factory's browser
+	// sign-in asks for a device code (internal/factory/github). It is a
+	// build-time identity the release normally bakes in, so it is not a
+	// setting a person keeps.
+	"CODEAF_GITHUB_CLIENT_ID",
+	// CODEAF_GITHUB_LOGIN_URL points that same sign-in at a stand-in GitHub for
+	// tests. It is test plumbing, never a preference.
+	"CODEAF_GITHUB_LOGIN_URL",
 	// Opt-in developer profiling output and its bounded capture controls. These
 	// are process instrumentation, not persisted model or user preferences.
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
 	"CODEAF_DIAGNOSTIC_PROFILE_SECONDS",
 	"CODEAF_DIAGNOSTIC_PROFILE_HEAP",
+	"CODEAF_DIAGNOSTIC_PROFILE_DELAY",
 	// CODEAF_QUESTION_DEMO names one of the fixture questions the question page
 	// draws itself with (internal/tui3's questiondemo.go), so that a page whose
 	// real questions do not exist yet can be SEEN full rather than only through
@@ -2311,7 +2329,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTeamsShare, Category: CategoryInterface, Kind: SettingChoice,
 			Label: "share teams", Choices: teamsShareChoices,
-			Hint: "Share teams, their members and settings, and recent Traffic as read-only history; off until turned on, and both computers must turn it on (pairing required).",
+			Hint: "Share teams, their members and settings, and recent Traffic as read-only history with your other computers (pairing required). On by default; turning it off on either computer stops sharing.",
 			read: func() string {
 				if TeamsShareAt(dir) {
 					return "on"
@@ -3670,7 +3688,10 @@ func knownDocumentEngine(engine string) bool {
 // absent setting uses YOLO; an unrecognised persisted value still asks, so a
 // garbled setting does not widen a previously selected posture.
 func ToolApprovalModeAt(profileDir string) string {
-	values, _ := readProfileConfig(profileDir)
+	values, err := ReadProfileApprovalConfig(profileDir)
+	if err != nil {
+		return "prompt"
+	}
 	return toolApprovalMode(values, DefaultToolApprovalMode)
 }
 
@@ -3700,7 +3721,7 @@ func HeadlessToolApprovalModeAt(workspace, profileDir string) (string, error) {
 	} else if found {
 		return project.ResolveString(profileDir, KeyToolApprovalMode)
 	}
-	values, err := readProfileConfig(profileDir)
+	values, err := ReadProfileApprovalConfig(profileDir)
 	if err != nil {
 		return "", err
 	}
@@ -3905,7 +3926,7 @@ func TaskStartAt(profileDir string) string {
 	return DefaultTaskStart
 }
 
-// MemoryAt resolves the one automatic-memory switch, absent means off.
+// MemoryAt resolves the learning switch, retaining an explicit saved choice.
 func MemoryAt(profileDir string) string {
 	enabled, _ := MemorySettingAt(profileDir)
 	if enabled {
@@ -3916,16 +3937,28 @@ func MemoryAt(profileDir string) string {
 
 // MemorySettingAt reads saved words and booleans, and whether one was saved.
 func MemorySettingAt(profileDir string) (enabled, saved bool) {
-	if value, ok := persistedString(profileDir, KeyMemoryEnabled); ok {
-		switch strings.TrimSpace(value) {
+	values, err := readProfileConfigStrict(profileDir)
+	if err != nil {
+		return false, false
+	}
+	raw, present := values[KeyMemoryEnabled]
+	if !present {
+		return DefaultMemory == MemoryOn, false
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return false, false
+	}
+	switch choice := value.(type) {
+	case string:
+		switch strings.TrimSpace(choice) {
 		case MemoryOn:
 			return true, true
 		case MemoryOff:
 			return false, true
 		}
-	}
-	if value, ok := persistedBool(profileDir, KeyMemoryEnabled); ok {
-		return value, true
+	case bool:
+		return choice, true
 	}
 	return false, false
 }

@@ -111,11 +111,13 @@ The card still says `this chat was last held here; last saved turn 2h ago` when 
 
 If unpublished work needs to be kept separately, the number of kept turns counts conversation turns. Intermediate saves and tool records within one question and answer do not become extra turns.
 
-## What does held on tower mean — a row on home and the verb it offers
+## What does held on tower or working on tower mean — a row on home and the verb it offers
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Home lists chats from your other devices. On paired computers, press enter on a released or lapsed chat to bring its latest saved copy here and open it directly. There is no Continue-here card. A fully saved idle chat releases within a few seconds; older builds may keep their idle hold.
+Home lists chats from your other devices. On paired computers, a chat no computer holds opens here directly: press enter on a released or lapsed chat to bring its latest saved copy here and open it directly. There is no Continue-here card. A fully saved idle chat releases within a few seconds; older builds may keep their idle hold.
+
+A chat another device still holds says `held on <device>`: it is open there, and nothing is running in it right now. While that device is in the middle of a turn the row says `working on <device>` instead; it changes back as soon as the turn ends. A sync service too old to carry that word never shows it, so its rows say `held on <device>` either way. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
 
 A live hold says `held on <device>` and still asks before a move. The hold alone does not establish that work is running there. For a chat running on that computer, the card offers **Move here**. A device that has stopped answering may say `<device> offline` while its hold remains live: offline alone does not make the chat free. Enter offers the existing Continue-here choice and explains how fresh the copy is and how many turns may still be there. `esc` leaves it there. Watching never takes a live hold.
 
@@ -295,6 +297,12 @@ Press enter on the kept turns' row. The card offers `1 open separately`, `2 disc
 
 Turns already shared do not become kept edits. Usage, reconciled task cost, naming failures and memory bookkeeping alone create no extra branch, kept-turns row or “kept as” notice. Their recorded usage stays in this computer's usage ledger. Opening an unchanged chat adds no empty turn, including when another computer holds it.
 
+## Spending after a move
+
+Saved calls missing from this computer’s ledger are added once. Shared call identities distinguish separate calls with identical prices and tokens. Remote charges keep their event identities alongside ordinary saved calls. Late receipts stay in the home where the chat opened.
+
+Old unidentified calls use settled ledger rows as an ordered prefix. New live rows and remote events cannot cover that prefix. Unrelated unmarked rows, queued receipts and out-of-order old calls cannot be matched exactly. Old files load without migration.
+
 ## The chat is arriving on this computer — why it waits to open
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
@@ -350,6 +358,8 @@ If Git cannot read the project's ignore rules, saving stops with `cannot read wh
 A command's result returns after its call log is written, while its file capture finishes in the background. The next tool call waits until the previous capture has finished reading files. Continuing the chat on this computer, uploading it, closing it, quitting codeaf and `codeaf cell gc` also wait for both the call log and the saved files to reach durable storage. A storage failure is reported and stops that boundary. Opening a chat screens its folder in the background without sealing an empty turn. A command submitted before that screen finishes waits for it. A window that only views a chat held elsewhere does not seal turns. A failed capture keeps the finished call in its local log for the next save; codeaf never runs that command again to recover it.
 
 ## Quitting while saving — local confirmation and a slow upload
+
+Quitting another chat does not invalidate a chat's earlier confirmed local save.
 
 A save wait lasts at most 30 seconds. After the screen closes, a pending sync save says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 
@@ -458,7 +468,7 @@ raises that question without running a turn or making a branch. A saved hold
 from an earlier process cannot bypass the question. A window whose writer
 still holds the chat sends with one Enter without asking the service first.
 
-A new chat can send its first message normally. A sleeping computer can also resume sending when nobody else has taken the chat and its local saved turn is still current. That safe return happens without another question. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
+A new chat can send its first message normally. A sleeping computer whose ownership check finds an expired hold must use Continue here before sending again. Reopening the chat acquires a new ownership fence. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
 
 ## A move that failed partway — are my typed words safe, can the old copy still send
 

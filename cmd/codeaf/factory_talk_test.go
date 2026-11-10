@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -241,7 +242,7 @@ func TestFactoryTalkMarker(t *testing.T) {
 	if got := talkMarker(factory.Item{ID: 1}); got != "[factory item #1]" {
 		t.Errorf("a floor-numbered item = %q", got)
 	}
-	if got := talkMarker(factory.Item{ID: 7, Num: 1540}); got != "[factory item #1540 · 7]" {
+	if got := talkMarker(factory.Item{Tier: factory.TierOwner, ID: 7, Num: 1540}); got != "[factory item #1540 · 7]" {
 		t.Errorf("a forge-numbered item = %q", got)
 	}
 	brief := talkBrief(factory.Item{ID: 3, Repo: "web", Title: "t", Notes: []string{"the fixture is flaky"}}, factory.DefaultRecipe())
@@ -318,5 +319,51 @@ func TestFactoryItemDoorLaysARemovedOrMovedStepOutOfTheRun(t *testing.T) {
 				t.Fatalf("a budget change = %s %v (%v)", phases(got), got.Cap, err)
 			}
 		})
+	}
+}
+
+// One manager per job: asks that race, as the runner and the app's job chats do
+// when a job starts, all get the same conversation, and no other is made to join
+// the job's team and wake on its replies.
+func TestRacingAsksMakeOneManager(t *testing.T) {
+	st, web, profile := talkLab(t)
+	id, err := st.Create(factory.Item{Repo: "web", Kind: factory.KindIssue, Title: "fix the ledger", State: factory.StateNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	maker := talkMaker(st, web, profile)
+	var wg sync.WaitGroup
+	chats := make([]string, 3)
+	begin := make(chan struct{})
+	for i := range chats {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-begin
+			chat, err := maker(context.Background(), id)
+			if err != nil {
+				t.Error(err)
+			}
+			chats[i] = chat
+		}()
+	}
+	close(begin)
+	wg.Wait()
+	if chats[0] == "" || chats[0] != chats[1] || chats[1] != chats[2] {
+		t.Fatalf("three asks made %q", chats)
+	}
+	got, err := st.Get(id.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Talk != chats[0] {
+		t.Fatalf("the job holds %q, the asks got %q", got.Talk, chats[0])
+	}
+	made, err := os.ReadDir(filepath.Dir(filepath.Dir(chats[0])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(made) != 1 {
+		t.Fatalf("%d conversations on disk, want 1", len(made))
 	}
 }

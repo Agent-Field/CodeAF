@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/agentdid"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -57,9 +58,10 @@ import (
 // CODEAF_TASK_BELT names the older belt, so on that road not one byte of any
 // prompt, belt or landing changes — nothing constructs this worker.
 type BashWorker struct {
-	store     *plandb.Store
-	workspace string
-	model     string
+	profileDir string
+	store      *plandb.Store
+	workspace  string
+	model      string
 	// always is the memory section over this place — every line kept for the
 	// person, this machine and this project — rendered by the door
 	// ([session.MemoryWorld]) and closed on by the worker's brief. It is the
@@ -88,6 +90,9 @@ type BashWorker struct {
 	seat         procexec.Seat
 	workspaceURI string
 	workspaceSet *session.WorkspaceSet
+	// agentDID is the conversation's agent DID; each worker acts as
+	// `<agentDID>#w<n>` ([workerDID]). Empty leaves workers with no identity.
+	agentDID string
 	// The task door carries the settled task's controls into this child run.
 	taskEffort effort.Rung
 	noProgress int
@@ -110,6 +115,12 @@ func WithWorkspaceURI(uri string) WorkerOption {
 // WithWorkspaceSet carries the prototype's explicitly admitted root routes.
 func WithWorkspaceSet(set *session.WorkspaceSet) WorkerOption {
 	return func(w *BashWorker) { w.workspaceSet = set.Clone() }
+}
+
+// WithAgentDID names the conversation whose run this is, so each worker acts
+// as that conversation's worker for its task rather than as nobody.
+func WithAgentDID(did string) WorkerOption {
+	return func(w *BashWorker) { w.agentDID = strings.TrimSpace(did) }
 }
 
 // WithSeat runs the worker's tool calls on seat.
@@ -167,6 +178,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	}
 	agent, err := session.NewBeltWorker(session.Config{
 		Effort:           w.taskEffort,
+		ApprovalGate:     session.BeltWorkerApprovalGate(w.profileDir),
 		Workspace:        w.workspace,
 		WorkspaceURI:     w.workspaceURI,
 		WorkspaceSet:     w.workspaceSet.Clone(),
@@ -182,6 +194,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		DailyBudgetUSD:      w.dailyBudgetUSD,
 		DailyBudgetResolved: true,
 		SpendPreauthorized:  w.spendPreauthorized,
+		WorkerDID:           workerDID(w.store, task, w.agentDID),
 	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err
@@ -1173,4 +1186,27 @@ func holdWhileHeld(ctx context.Context, store *plandb.Store, taskID string) {
 		case <-time.After(heldPoll):
 		}
 	}
+}
+
+// workerDID is who the worker on task acts as: the conversation's DID with the
+// number of the row the person and the conversation know this work by. A task
+// handed to a run keeps its row's number as its store id, so that number is
+// the task's own; a task the run split off under one has no number of its own
+// and acts as the row it was split from, which is the only task anybody
+// outside the run asked for.
+func workerDID(store *plandb.Store, task plandb.Task, did string) string {
+	if did == "" {
+		return ""
+	}
+	seen := map[string]bool{}
+	for at := &task; at != nil && !seen[at.ID]; at = store.Task(at.ParentID) {
+		seen[at.ID] = true
+		if n, err := strconv.ParseUint(strings.TrimPrefix(at.ID, "t-"), 10, 64); err == nil && n > 0 {
+			return agentdid.Worker(did, n)
+		}
+		if at.ParentID == "" {
+			break
+		}
+	}
+	return ""
 }

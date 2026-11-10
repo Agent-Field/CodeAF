@@ -32,8 +32,10 @@ type liveDrive struct {
 	published atomic.Pointer[syncsetup.Drive]
 	mu        sync.Mutex
 	drive     *syncsetup.Drive
-	parked    bool // Startup awaits a journal owner.
-	waiting   bool // sync is on and only an identity, or the end of solo, is missing
+	working   bool   // A turn may start before asynchronous startup finishes.
+	turn      uint64 // A newer turn retires the previous capture waiter.
+	parked    bool   // Startup awaits a journal owner.
+	waiting   bool   // sync is on and only an identity, or the end of solo, is missing
 	ready     chan struct{}
 	attempted bool
 	closed    bool
@@ -138,6 +140,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
 	l.published.Store(d)
 	if d != nil {
+		d.Working(l.working)
 		d.SetIdleCheck(l.idleReady)
 		d.CatchUp()
 		l.retryWait = 0
@@ -265,6 +268,54 @@ func (l *liveDrive) SavedMetadata() {
 	if d := l.published.Load(); d != nil {
 		d.SavedMetadata()
 	}
+}
+
+// Working retains the turn state while startup runs, so a first send cannot
+// lose its start beat. Installing and changing it share the lock to prevent
+// startup from replaying an older state after the turn has ended.
+func (l *liveDrive) Working(on bool) {
+	l.try()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.turn++
+	l.working = on
+	if l.drive != nil {
+		l.drive.Working(on)
+	}
+}
+
+// TurnEnded waits off the turn goroutine so the final capture can include the
+// closing bookkeeping as before. A newer turn invalidates this notification:
+// an older capture must never clear the newer turn's working flag.
+func (l *liveDrive) TurnEnded(c cell.Cell, report func(error)) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	turn := l.turn
+	guard.Go("chat sync turn end", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		if err := cellstore.WaitCapture(ctx, c); err != nil {
+			report(err)
+		}
+		if l.finishTurn(turn) {
+			l.Idle()
+		}
+	})
+}
+
+// finishTurn changes the flag under one lock so a newer start cannot race
+// between the generation check and the end notification.
+func (l *liveDrive) finishTurn(turn uint64) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed || l.turn != turn {
+		return false
+	}
+	l.working = false
+	if l.drive != nil {
+		l.drive.Working(false)
+	}
+	return true
 }
 
 // Idle uploads what is sealed, once a drive side exists.

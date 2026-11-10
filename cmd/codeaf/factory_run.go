@@ -179,6 +179,12 @@ func setFactoryProcess(change func()) {
 // is handed no ledger: what a round spent goes on the item (its spend, its
 // cap, today's rail) and nowhere else.
 func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns) *factoryrun.Runner {
+	return buildFactoryRunnerWith(items, floor, workspace, profileDir, maker, turns, nil, nil, nil)
+}
+
+// buildFactoryRunnerWith is [buildFactoryRunner] with the run a job filed
+// with run_on is handed to (factory_agentfield_run.go); nil refuses one.
+func buildFactoryRunnerWith(items, floor *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, turns *shapeTurns, remote func(context.Context, int) error, step factoryrun.Executor, answer func(context.Context, int, factory.AgentFieldDecision) error) *factoryrun.Runner {
 	dirs := factoryRepoDirs(floor, workspace)
 	// EVERY BOUND ON A JOB IS THE FILE IT WAS DECIDED ON at its first start:
 	// the factory's copy it carries, else main's file here
@@ -231,8 +237,11 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		// AND A REPOSITORY WITH NO CHECKOUT HERE IS CLONED FIRST, into this
 		// machine's factory folder, over the token the push uses
 		// (factory_clone.go).
-		Workdir:   factoryRunWorkdir(floor, dirs, workdirs, factoryTokenOf(profileDir)),
-		Recipe:    recipe,
+		Workdir: factoryRunWorkdir(floor, dirs, workdirs, factoryTokenOf(profileDir)),
+		Recipe:  recipe,
+		RulesAfterClone: func(ctx context.Context, it factory.Item) (pipeline.File, error) {
+			return factoryJobRead(ctx, floor, it, dirs(it.Repo))
+		},
 		Source:    source,
 		Publisher: factoryPublisher(profileDir),
 		// APPROVING PUBLISHES (internal/factory/run's publish.go): the job's
@@ -259,6 +268,15 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 	// it none.
 	if turns != nil {
 		opts.Inbox = turns.Inbox
+		opts.FailureSummary = turns.FailureSummary
+	}
+	opts.Remote = remote
+	opts.AgentFieldAnswer = answer
+	// AN AGENTFIELD STEP RUNS OVER THE SAME CONNECTION AS A run_on JOB: a
+	// runner with no AgentField connection has no executor for it, and the
+	// step fails with the runner's sentence for a kind it cannot run.
+	if step != nil {
+		opts.Exec[factory.StageAgentField] = step
 	}
 	return factoryrun.New(opts)
 }

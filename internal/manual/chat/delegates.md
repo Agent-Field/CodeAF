@@ -2,16 +2,16 @@
 
 ## What is a delegate
 
-A delegate is a program built into codeaf that takes a whole task and works on it inside your conversation's time and spending limits. The delegates are senior-dev, sec and review. Give one a brief with its slash command or `codeaf <name> <brief>`. Each delegate's own manual page describes its work and limits.
+A delegate is a program built into codeaf that takes a whole task and works on it inside your conversation's time and spending limits. The delegates are senior-dev, sec, review and claude. Give one a brief with its slash command or `codeaf <name> <brief>`. Each delegate's own manual page describes its work and limits.
 
 ## What a program codeaf carries is — a delegate, another coding agent, an agent of its own for a whole task, which programs there are
 
 codeaf carries programs of its own that take one whole task and do it alone, for as
-long as an hour or more. People call them delegates. There are three: **senior-dev**, a
+long as an hour or more. People call them delegates. There are four: **senior-dev**, a
 coding agent for one large, well-specified change; **sec**, which audits
 the repository or its changes for security problems and changes nothing; and **review**,
-which reviews a GitHub pull request and changes and posts nothing (each one's own page
-says how). You hand one a task the way codeaf hands a task to its own worker. A program
+which reviews a GitHub pull request and changes and posts nothing; and **claude**, which
+hands the task to your own signed-in Claude Code (each one's own page says how). You hand one a task the way codeaf hands a task to its own worker. A program
 that edits code, as senior-dev does, works in a private copy of its own in a git
 repository and leaves its work on a branch of its own when it ends; in a folder with no
 git history it works in the folder itself. One that answers, as sec and review do,

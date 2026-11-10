@@ -85,7 +85,7 @@ func TestCopyBucket_D3_TenNativeMovesKeepExistingRoots(t *testing.T) {
 			t.Fatalf("unpublished or held move: %+v", view)
 		}
 		t.Setenv(home.EnvVar, dst.Home)
-		got, err := chatContinuer(dst, nil).TakeSeen(t.Context(), c.ID, nil)
+		got, err := chatContinuer(dst, nil, nil).TakeSeen(t.Context(), c.ID, nil)
 		if err != nil {
 			t.Fatalf("D3 hop %d: %v", hop, err)
 		}

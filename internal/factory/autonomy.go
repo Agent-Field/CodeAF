@@ -11,7 +11,9 @@ const AutonomyManual = "manual"
 
 // Automatic is deliberately false for old records without a saved mode and
 // while Take over has suspended the pipeline. A mode never resumes Take over.
-func Automatic(it Item) bool { return it.Autonomy == AutonomyAuto && !it.Manual }
+func Automatic(it Item) bool {
+	return !StoppedByPerson(it) && it.Autonomy == AutonomyAuto && !it.Manual
+}
 
 // AsksBeforeStep says Manual holds phase i for the person's word before its
 // first round. Only an explicit Manual asks: a record with no saved mode keeps
@@ -52,13 +54,16 @@ func answeredByApprove(it Item, i int) bool {
 // A settled ("approved") automatic approval is history, not a queued decision:
 // it must not refuse a person's later answer after a switch to Manual.
 func CheckAutomaticApproval(it Item) error {
+	if err := CheckPersonStop(it); err != nil {
+		return err
+	}
 	if it.Approval == nil || !it.Approval.Automatic || it.Approval.State == "approved" {
 		return nil
 	}
 	if !Automatic(it) {
 		return fmt.Errorf("Auto approval stopped: the job is no longer in Auto")
 	}
-	if it.Cap <= 0 || JobSpent(it) >= it.Cap {
+	if it.Cap <= 0 || JobLifetimeSpent(it) >= it.Cap {
 		return fmt.Errorf("Auto approval stopped: job budget reached")
 	}
 	return nil
@@ -70,10 +75,19 @@ func AutonomyBlockReason(it Item) string {
 	if !Automatic(it) || (it.State != StateNeedsYou && it.State != StateLanded) {
 		return ""
 	}
+	// A ROUTING RULE'S START HOLD IS NOT AUTO STOPPING: nothing ran, so there
+	// is nothing Auto stopped. The job's own question ("Approval needed:
+	// start · routing rule …") is the whole of what it waits on, and a
+	// surface that prefixes this reason with "Auto stopped" would say
+	// something that did not happen. A hold the start labels and factory.yaml
+	// made (a GitHub issue no rule routed) reads exactly as it always has.
+	if it.QKind == QKindAskFirst && it.Route != "" {
+		return ""
+	}
 	if it.Cap <= 0 {
 		return "A job budget is required. Set Budget before continuing."
 	}
-	if JobSpent(it) >= it.Cap {
+	if JobLifetimeSpent(it) >= it.Cap {
 		return "Job budget reached. Choose a higher Budget to continue."
 	}
 	if it.PublishError != "" {
@@ -86,6 +100,11 @@ func AutonomyBlockReason(it Item) string {
 	// the person the pipeline asked by name.
 	if NamesOtherApprover(it) {
 		return "This approval waits on " + WaitingApprover(it) + ", whom the pipeline names."
+	}
+	// AN APPROVE STEP SAYS WHO MAY PASS IT: only a person, or the manager
+	// when a condition it judged false ([PassBlockReason]).
+	if why := PassBlockReason(it); why != "" {
+		return why
 	}
 	// A PLAN THAT TOUCHES WHAT A RULE GUARDS IS NEVER ROUTINE: the person said
 	// to be asked, so Auto asks.

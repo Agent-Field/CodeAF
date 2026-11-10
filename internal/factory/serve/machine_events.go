@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"slices"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -32,6 +33,14 @@ func (h *Handler) machineEvents() {
 	for _, row := range rows {
 		key := row.Handle + "\x00" + row.Name
 		old := h.machines[key]
+		// A MACHINE BUSY ON SEVERAL JOBS STAYS BUSY ON THE ONE IT WAS
+		// ANNOUNCED WITH. Its slots beat in turn and the roster names the job
+		// heard from last, so without this every beat announced the machine
+		// again, and rewrote the live record, for a machine whose work had not
+		// changed (the ninth live round's idle engine).
+		if old.Status == row.Status && old.Job != 0 && old.Job != row.Job && slices.Contains(row.held, old.Job) {
+			row.Job = old.Job
+		}
 		if old.Status != row.Status || old.Job != row.Job {
 			e := live.New("machine", row.Job, api.LiveEvent{Name: row.Name, Status: row.Status})
 			e.Handle = row.Handle

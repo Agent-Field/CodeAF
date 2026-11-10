@@ -118,13 +118,14 @@ func TestAppFactoryManagerGateSendBack(t *testing.T) {
 			if scenario == "wrong_gate" {
 				item.QKind = "cap"
 			}
-			item.Repo, item.Num, item.Kind, item.Title = "acme/api", 7, factory.KindIssue, "Revise the plan"
+			item.Repo, item.Num, item.Kind, item.Title, item.Tier = "acme/api", 7, factory.KindIssue, "Revise the plan", factory.TierOwner
 			item.Asking = &factory.Asked{Stage: "approve", With: factory.AskedYou, Question: item.Question, At: time.Now()}
 			item.Stages = []factory.Stage{{Name: "plan", Kind: factory.StageChat, On: true, Until: factory.UntilDone}, {Name: "approve", Kind: factory.StageGate, On: true}, {Name: "build", Kind: factory.StageChat, On: true, Until: factory.UntilDone}}
 			job, err := floor.Create(item)
 			if err != nil {
 				t.Fatal(err)
 			}
+			makeJobManager(t, s, job.ID)
 			var chats appwire.FactoryJobChats
 			s.must("factory.job_chats", map[string]any{"factory": local.Factory, "job": job.ID}, &chats)
 			read := func() api.Job {

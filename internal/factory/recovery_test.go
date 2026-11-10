@@ -50,3 +50,13 @@ func TestRecoveryCountsAttemptsNotMinutes(t *testing.T) {
 		t.Fatalf("out of attempts: %+v", it.Recovery)
 	}
 }
+
+func TestSkippedStepEndsRecoveryWithoutPassing(t *testing.T) {
+	it := Item{Kind: KindIssue, State: StateRunning, Cap: 10, Stream: &Stream{Phases: []Phase{{Name: "test", State: PhaseSkipped, SkipReason: "no matching files"}}}, Recovery: &StepRecovery{Step: "test", State: "running"}}
+	if !PlanStepRecovery(&it, time.Now()) || it.Recovery != nil {
+		t.Fatal("skipped step kept its retry window")
+	}
+	if BriefStub(it).StepsDone != 0 {
+		t.Fatal("recovered skip counted as done work")
+	}
+}

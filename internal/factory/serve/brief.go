@@ -28,7 +28,16 @@ func (h *Handler) readJobBrief(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.write(w, http.StatusOK, jobBrief(h.factory, it, since))
+	out := jobBrief(h.factory, it, since)
+	// The price is read from every job only while it is worth quoting: a job
+	// whose next write is a paid read of its issue.
+	if factory.BriefReadable(it) && out.Status != factory.BriefGenerating {
+		out.ReadDue = true
+		if items, err := h.config.Store.List(); err == nil {
+			out.ReadPrice = factory.FirstReadPrice(items)
+		}
+	}
+	h.write(w, http.StatusOK, out)
 }
 
 // jobBrief is the answer for one job, read whole from the item.
@@ -39,6 +48,10 @@ func jobBrief(f api.Factory, it factory.Item, since int) api.JobBrief {
 	}
 	if w := it.BriefWriting; out.Status == factory.BriefStatusFailed && w != nil {
 		out.Failure, out.FailedAfter = w.Failure, w.AfterStep
+	}
+	if factory.StoppedByPerson(it) {
+		out.Failure = factory.PersonStopReason
+		out.FailureKind = factory.CodeStopped
 	}
 	return out
 }
@@ -61,7 +74,7 @@ func (h *Handler) beginBrief(w http.ResponseWriter, r *http.Request, it factory.
 		in := factory.BriefInputOf(*cur)
 		out.Hash = factory.BriefInputHash(in)
 		if out.Skip = cur.BeginBrief(body.Trigger, out.Hash, h.clock()); out.Skip == "" {
-			out.System, out.Input = factory.BriefSystem(), factory.BriefInputText(in)
+			out.System, out.Input = factory.BriefPrompt(*cur, in)
 		}
 		return nil
 	})

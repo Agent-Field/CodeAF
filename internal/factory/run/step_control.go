@@ -28,6 +28,9 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 // for the one it had. The log line names a new model, and a step moving to one
 // never resumes a conversation the old model held.
 func stepControl(it *factory.Item, name string, rerun bool, words, model string, now time.Time) error {
+	if err := factory.CheckPersonStop(*it); err != nil && (rerun || it.State != factory.StateRunning) {
+		return err
+	}
 	if factory.JobState(*it) == "done" || it.Publishing {
 		return StepControlRefusal("finished or publishing jobs cannot change steps")
 	}
@@ -52,18 +55,23 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 	if rerun && s.Phases[index].State == factory.PhasePending && !failedClaim {
 		return StepControlRefusal("step has not run yet")
 	}
-	if rerun && it.Cap > 0 && factory.JobSpent(*it) >= it.Cap {
+	if rerun && it.Cap > 0 && factory.JobLifetimeSpent(*it) >= it.Cap {
 		return StepControlRefusal("job budget reached; raise Budget before trying again")
 	}
 	if rerun {
 		if err := unchangedFollowRefusal(*it, s.Phases[index]); err != nil {
 			return err
 		}
+		it.PublishAnyway = nil
 		it.Recovery = nil
 		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
 			p := s.Phases[i]
-			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending}
+			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending,
+				RoundCosts: p.RoundCosts, Result: p.Result}
+			if len(p.RoundCosts) > 0 {
+				s.Phases[i].Round = p.Round + 1
+			}
 		}
 		// A fresh round retains this step's history and identity. Its nonzero
 		// round marks the stream begun, even when retrying the first step, so
@@ -72,7 +80,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		if previous.Result != nil && refusedCheckout(*previous.Result) != nil {
 			target.Result = previous.Result
 		}
-		target.Round = max(previous.Round+1, 1)
+		target.Round = max(previous.Round+1, target.Round, 1)
 		grantFreshLoop(it, target)
 		target.Rounds = append([]factory.RoundLine(nil), previous.Rounds...)
 		if previous.Chat != "" {
@@ -105,6 +113,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		}
 		s.Ended = time.Time{}
 	} else {
+		factory.MarkPersonStopped(it)
 		it.State = factory.StateNew
 		failure := stoppedByYou(name, s.Phases[index].Round, now)
 		it.Failure = failure

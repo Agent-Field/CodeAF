@@ -51,6 +51,8 @@ already explains that the chat stays on this computer until you pair it again.
 
 ## Quitting while the sync service is slow — waiting for a final save
 
+A removed computer quits quietly; it no longer says it is saving to your other devices.
+
 The screen closes after at most one second while a slow close finishes. The
 launcher keeps its connection open for the final publish and release before it exits.
 A successful quit with nothing waiting stays quiet. While a sync save waits, the restored terminal says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without that confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
@@ -594,7 +596,7 @@ by then, so a turn nobody waited for is never a turn nobody can account for. Wha
 is already on your spending page either way: codeaf counts money as each request is
 answered rather than when a turn ends.
 
-**You should almost never see this.** Ten seconds is well above the longest ordinary
+**You should almost never see this happen.** Ten seconds is well above the longest ordinary
 letting-go, so the deadline only fires on a turn that was genuinely not going to end. If
 something is wedged even further down, `ctrl+c` at rest still quits and takes the whole
 process with it — but you no longer have to reach for that just to get your prompt back.
@@ -1326,8 +1328,6 @@ With history not wired up (`--no-history`), `up` takes nothing and keeps its oth
 meanings.
 
 ## What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder
-
-To make this one chat think harder, choose a higher effort with `alt+e` or `/effort`.
 
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
@@ -3849,6 +3849,7 @@ Its usage counts toward the conversation and any owning factory job budget.
 It stops at the budget limit or when the conversation closes, and falls back
 quietly if generation fails or the connected engine lacks this capability.
 This is a desktop composer feature; terminal Tab behavior is unchanged.
+
 ## Quitting before local saving finishes — no upload receipt yet
 
 The successful `saved here` receipt requires the chat engine to acknowledge that its local transcript and captured work finished saving. A network error alone, or an unanswered closing call, does not prove that. If local closing still has no receipt after about three seconds, it says `still saving on this computer — ctrl+c leaves the written turns here`. If you leave before local saving is confirmed, codeaf says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. A confirmed local save that is still uploading uses the successful sync-service receipt instead. A failed local write keeps the `codeaf could not save this chat` sentence.

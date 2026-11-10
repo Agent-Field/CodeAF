@@ -20,7 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
-	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/devname"
@@ -46,8 +46,7 @@ type e2App struct {
 	log    string
 }
 
-// e2TempDir retains native evidence and avoids deleting state still held by
-// the shared daemon, which outlives the app processes until its idle shutdown.
+// e2TempDir optionally retains native evidence for inspecting failed app tests.
 func e2TempDir(t *testing.T) string {
 	t.Helper()
 	if os.Getenv("CODEAF_E2_KEEP_FAILED") != "1" {
@@ -78,6 +77,7 @@ func e2StartApp(t *testing.T, dir string, daemon ...bool) *e2App {
 
 func e2StartAppWithSetup(t *testing.T, dir string, setup func(*e2App), daemon ...bool) *e2App {
 	t.Helper()
+	cleanupAppChildDaemons(t, dir)
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +290,7 @@ func appTakeRoundTrip(t *testing.T, daemon bool, missingWorkspace ...bool) {
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	t.Setenv(syncsetup.IntervalVar, "50")
 	dirA, dirB := home.Dir(), e2TempDir(t)
-	t.Cleanup(cellstore.StopSpawned)
+	cellstoretest.EngineDir(t)
 	id, err := identity.Ensure(dirA)
 	if err != nil {
 		t.Fatal(err)
@@ -380,6 +380,9 @@ func appTakeRoundTrip(t *testing.T, daemon bool, missingWorkspace ...bool) {
 			if r.Cell == row.Cell {
 				if r.Seen.Fence > taken.Location.Seen.Fence {
 					t.Fatalf("F1 take returned fence %d, next row has %d", taken.Location.Seen.Fence, r.Seen.Fence)
+				}
+				if r.Here && r.Seen.Fence == taken.Location.Seen.Fence && r.Taking {
+					t.Fatalf("a finished take still reads as running: %+v", r)
 				}
 				return r.Seen.Fence == taken.Location.Seen.Fence
 			}

@@ -217,12 +217,19 @@ jobs:
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
           CGO_ENABLED: "0"
+          # The GitHub OAuth app of the first run's browser sign-in; not a
+          # secret. Unset leaves that sign-in out of the build.
+          CODEAF_GITHUB_CLIENT_ID: ${{ vars.CODEAF_GITHUB_CLIENT_ID }}
         run: |
           set -euo pipefail
           mkdir -p dist
           go generate ./internal/manual
           built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           buildinfo_package="$(go list -m)/internal/buildinfo"
+          github_stamp=""
+          if [ -n "${CODEAF_GITHUB_CLIENT_ID:-}" ]; then
+            github_stamp="-X $(go list -m)/internal/factory/github.clientID=${CODEAF_GITHUB_CLIENT_ID}"
+          fi
           targets=(
             "darwin amd64"
             "darwin arm64"
@@ -242,7 +249,7 @@ jobs:
             GOOS="$goos" GOARCH="$goarch" go build \
               -tags=codeaf_packed_manual \
               -trimpath \
-              -ldflags="-s -w -X ${buildinfo_package}.rev=${TAG} -X ${buildinfo_package}.dirty=false -X ${buildinfo_package}.builtAt=${built_at}" \
+              -ldflags="-s -w -X ${buildinfo_package}.rev=${TAG} -X ${buildinfo_package}.dirty=false -X ${buildinfo_package}.builtAt=${built_at} ${github_stamp}" \
               -o "dist/codeaf-${goos}-${goarch}${extension}" \
               ./cmd/codeaf
           done

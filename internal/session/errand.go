@@ -92,6 +92,10 @@ type ErrandMessage struct {
 
 // ErrandAsk is one errand. It travels as JSON to a remote owner unchanged.
 type ErrandAsk struct {
+	// DropRefusedEffort scopes explicit reasoning-refusal recovery to this errand,
+	// including when the ask travels to a remote owner.
+	DropRefusedEffort bool `json:"drop_refused_effort,omitempty"`
+
 	// Purpose labels the receipt and keys the one-in-flight slot.
 	Purpose string `json:"purpose"`
 	// Role is any role this build has a tier for; empty is the naming role.
@@ -271,6 +275,9 @@ func (ask ErrandAsk) cacheKey() [32]byte {
 // answering — closed, stopped, over budget, busy, deadline, a failed or
 // unusable answer — is an empty text with a Reason.
 func (a *Agent) RunErrand(ctx context.Context, ask ErrandAsk) (ErrandAnswer, error) {
+	if ask.DropRefusedEffort {
+		ctx = provider.WithRefusedEffortRecovery(ctx)
+	}
 	ask, err := ask.Normalize()
 	if err != nil {
 		return ErrandAnswer{}, err
@@ -346,6 +353,9 @@ func (a *Agent) runErrand(ctx context.Context, ask ErrandAsk, check func(string)
 // errandRefusal is why no errand may start now, or "". The job budget is
 // asked outside the agent's lock, as its watcher asks it.
 func (a *Agent) errandRefusal() string {
+	if why := a.automaticFactoryRefusal(); why != "" {
+		return why
+	}
 	a.mu.Lock()
 	closed, stopped, railed := a.closed, a.workStopped, a.railBlockLocked() != nil
 	a.mu.Unlock()
@@ -579,21 +589,31 @@ type ErrandRoute struct {
 // promise a call would read, and under one-model mode that one model. A role
 // with no model anywhere is left out.
 func (a *Agent) ErrandRoutes() (routes []ErrandRoute, oneModel string) {
-	a.mu.Lock()
-	source, floor := roles.Source(a.config.RolesSource), a.model
-	if a.config.OneModel {
-		oneModel = a.model
+	reader := a.roleModels()
+	if reader.one {
+		oneModel = reader.model
 	}
-	a.mu.Unlock()
-	return ErrandRoutesFrom(source, floor), oneModel
+	return reader.routes(reader.model), oneModel
 }
 
 // ErrandRoutesFrom is [Agent.ErrandRoutes] for a settings source and floor
 // model with no agent behind them.
 func ErrandRoutesFrom(source roles.Source, floor string) []ErrandRoute {
+	return roleReader{source: source}.routes(floor)
+}
+
+// ConfigRoutes is [Agent.ErrandRoutes] for a config no agent has opened yet:
+// what each role would resolve to on a session built from cfg, the one-model
+// promise included. A door can check what it is about to hand over.
+func ConfigRoutes(cfg Config) []ErrandRoute {
+	return readerFor(cfg, cfg.Model).routes(cfg.Model)
+}
+
+// routes lists every registered role this reader can name a model for.
+func (r roleReader) routes(floor string) []ErrandRoute {
 	var routes []ErrandRoute
 	for _, role := range roles.Registered() {
-		call, err := roles.ResolveCall(source, role, floor)
+		call, err := r.ResolveCall(role, floor)
 		if err != nil {
 			continue
 		}

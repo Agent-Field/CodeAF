@@ -396,7 +396,7 @@ func TestAppFactoryJobActionsTwoPeopleAgainstTheRealServer(t *testing.T) {
 		}
 		alice.act(t, "factory.job_stop", n, nil)
 		if alice.job(t, n).State != api.StateBacklog {
-			t.Fatal("stop did not return the job to the backlog")
+			t.Fatal("a stopped job is not in Backlog")
 		}
 		// Undo is the stopper's alone.
 		bob.w.mustFail("factory.job_undo", bob.params(t, n, nil), appwire.CodeConflict)

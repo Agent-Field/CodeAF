@@ -770,6 +770,32 @@ the connection to devbox is gone — run the same command to pick the conversati
 That is not advice dressed up: the conversation is on that machine's disk and the same
 command opens it again. Running the session elsewhere with `--host` has its own page.
 
+## When the work folder is saved between commands and at pauses
+
+The desktop's background recorder writes each finished tool call to its local call
+ledger immediately. A shell command can change any file, so its full-folder save can
+wait for a pause. After each tool batch, codeaf first writes its result lines.
+The batch can then stay in the call ledger until turn end or a save boundary between
+steps, such as moving or continuing the chat elsewhere, uploading it or closing
+it. A boundary encountered during an open step leaves that step in the call ledger;
+it does not wait for the running tool or save work without its result lines.
+
+While commands keep running, the next batch boundary saves all pending calls once
+the oldest completion is at least 30 seconds old. There is no timer that saves
+underneath a running tool. A batch with exact changed paths can save immediately
+while no shell or other unknown-effect call is pending; transcript-only batches
+also save immediately. Setup calls and synchronous recorders keep their existing
+saves. Turn end and explicit forced settles still save pending calls immediately.
+
+A failed save during displacement leaves completed calls in the local call ledger
+for take-back; saved turns can still be kept as a separate chat. When calls remain
+unsaved, the notice says `kept <K> turns from <device> as a separate chat`.
+A crash also leaves finished calls in the local call ledger for the next save to
+carry. File seals support moving, taking over and recovering a chat. Ordinary
+conversation rewind leaves files changed. The separate cell file-rewind path
+refuses an open tool step with “rewind refused: a tool step is open; settle it
+first” rather than save or restore underneath it.
+
 ## A command was running when codeaf was killed — what the chat says when you come back, and whether it runs again
 
 When the codeaf process is killed hard (`kill -9`, a crash) while a command is running,
@@ -813,6 +839,11 @@ there without a single character of the secret surviving.
 **The model never gets the characters, and never needs them.** A command that has to *use*
 a credential already has it in its own environment — that is what `TOKEN=$(gh auth token)`
 does — so nothing on the belt is worse off for this.
+
+**A credential you hand over goes through a masked box, not a message.** When the chat
+needs a token or password from you it asks with `request_secret`; the value goes to a
+private file its commands read, and the conversation only ever holds the path. The page
+on giving a password, token or API key has the whole of it.
 
 **Inside a task the read itself is refused.** A token never has to be shown to be spent, and
 a task runs unattended in a copy of its own and holds no login of yours, so `gh

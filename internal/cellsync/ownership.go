@@ -66,10 +66,13 @@ func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool,
 	if v.Cell.Head != d.Head {
 		return false, b.Publisher.Dir.Release(ctx, d.ID(), v.Cell.Lease.Fence)
 	}
-	d.Fence, d.Frames = v.Cell.Lease.Fence, v.Cell.Frames
+	d.Fence, d.Frames, d.Size = v.Cell.Lease.Fence, v.Cell.Frames, v.Cell.Size
 	b.mu.Lock()
 	*b.Driving = d
 	b.stale, b.released, b.renewalEnded = false, false, false
+	// Acquiring a fresh fence clears the lease's pending, upload and working
+	// state on the directory, so the next beat reports any change from zero.
+	b.beatSent, b.beatUp, b.toldWork = 0, uploaded{}, false
 	if idle {
 		// Ownership readers must see the confirmed fence before uncertainty
 		// clears, so an in-flight reading cannot revive an older fence.

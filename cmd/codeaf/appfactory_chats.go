@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -24,53 +29,32 @@ import (
 var _ appwire.FactoryJobChatter = (*appBackend)(nil)
 
 // FactoryJobChats answers one job's conversations on this machine's factory,
-// making the job's agent when it has none yet. It starts no job and asks no
-// model.
+// returning only conversations already recorded on the job. It writes no job.
 func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobChatsParams) (appwire.FactoryJobChats, error) {
 	host, err := b.localHostOf(p.Factory)
 	if err != nil {
 		return appwire.FactoryJobChats{}, err
 	}
-	if host.seam.Talk == nil {
-		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeEngine, "this factory cannot make a job's conversation here")
-	}
-	item, err := host.floor.Get(p.Job)
-	if err != nil || !factory.IsIssueJob(item) {
+	it, err := host.floor.Get(p.Job)
+	if err != nil || !factory.IsIssueJob(it) {
 		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "issue job not found")
 	}
-	talk, err := host.seam.Talk(ctx, p.Job)
-	if err != nil {
-		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "the job's conversation could not be opened: %s", err.Error())
+	if err := factory.RefuseDropped(it); err != nil {
+		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "%s", err)
 	}
-	it, err := host.floor.Get(p.Job)
-	if err != nil {
-		return appwire.FactoryJobChats{}, appwire.Errorf(appwire.CodeNotFound, "there is no job %d in this factory", p.Job)
+	out := appwire.FactoryJobChats{Factory: p.Factory, Job: p.Job, Steps: []appwire.FactoryJobStepChat{}}
+	if talk := strings.TrimSpace(it.Talk); talk != "" {
+		out.Agent = appAgentID(talk)
 	}
-	out := appwire.FactoryJobChats{Factory: p.Factory, Job: p.Job, Agent: appAgentID(talk), Steps: []appwire.FactoryJobStepChat{}}
-	// Whenever the job's agent is opened, by this read or later by a send or
-	// Reopen, it takes the job's effort as the job then has it.
-	if a, err := b.find(out.Agent); err == nil && a != nil {
-		floor, job := host.floor, p.Job
-		b.locked(func() {
-			a.jobEffort = func() string {
-				it, err := floor.Get(job)
-				if err != nil {
-					return ""
-				}
-				return it.Effort
-			}
-		})
+	if out.Agent != "" {
+		if err := b.holdJobManager(host, p.Job, out.Agent); err != nil {
+			return appwire.FactoryJobChats{}, err
+		}
 	}
-	held, err := b.holdJobChat(out.Agent)
-	if err != nil {
-		return appwire.FactoryJobChats{}, err
-	}
-	// A held agent takes it now; a closed one keeps its own until it is opened.
-	if held && it.Effort != "" {
-		_, _ = b.SetEffort(out.Agent, it.Effort)
-	}
-	if it.Stream != nil {
-		for _, ph := range it.Stream.Phases {
+	{
+		// Every step's chat: the job's own, and those of the run under each
+		// agentfield step ([factory.AllPhases]).
+		for _, ph := range factory.AllPhases(it) {
 			chat := strings.TrimSpace(ph.Chat)
 			if chat == "" {
 				continue
@@ -80,11 +64,31 @@ func (b *appBackend) FactoryJobChats(ctx context.Context, p appwire.FactoryJobCh
 			if id := appAgentID(chat); jobChatErr(b.holdJobChat(id)) == nil {
 				// Execution history is evidence, not a model preference. Opening a
 				// finished stage must preserve its saved Main/Fallback pair too.
-				out.Steps = append(out.Steps, appwire.FactoryJobStepChat{Step: ph.Name, Agent: id, Rounds: b.roundChats(ph.Rounds)})
+				out.Steps = append(out.Steps, appwire.FactoryJobStepChat{Step: ph.Name, Agent: id, WorkspaceRoot: chatWorkspaceRoot(chat), Rounds: b.roundChats(ph.Rounds)})
 			}
 		}
 	}
 	return out, nil
+}
+
+// holdJobManager binds future opens to the job's current effort without saving it.
+func (b *appBackend) holdJobManager(host *appFactoryHost, job int, id string) error {
+	a, err := b.find(id)
+	if err != nil {
+		return err
+	}
+	floor := host.floor
+	b.locked(func() {
+		a.jobEffort = func() string {
+			it, err := floor.Get(job)
+			if err != nil {
+				return ""
+			}
+			return it.Effort
+		}
+	})
+	_, err = b.holdJobChat(id)
+	return err
 }
 
 // roundChats is each finished round's chat that can be opened, held open as
@@ -188,4 +192,31 @@ func (b *appBackend) jobAgentModel(factoryID string, job int) {
 		}
 		_, _ = b.SetModel(appAgentID(it.Talk), model)
 	}
+}
+
+// chatWorkspaceRoot is the folder a step's chat writes its paths against:
+// for a chat relayed from another machine, that machine's folder as its
+// record named it (afRelayState.OriginCwd); else the cwd the record's own
+// header names; "" when neither is known. A sealed cell names none.
+func chatWorkspaceRoot(file string) string {
+	if raw, err := os.ReadFile(filepath.Join(filepath.Dir(file), afRelayFile)); err == nil {
+		var st afRelayState
+		if json.Unmarshal(raw, &st) == nil && strings.TrimSpace(st.OriginCwd) != "" {
+			return st.OriginCwd
+		}
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	line, _ := bufio.NewReaderSize(f, 64<<10).ReadBytes('\n')
+	var h struct {
+		Type string `json:"type"`
+		Cwd  string `json:"cwd"`
+	}
+	if json.Unmarshal(bytes.TrimSpace(line), &h) != nil || h.Type != "session" || strings.TrimSpace(h.Cwd) == "" {
+		return ""
+	}
+	return filepath.Clean(strings.TrimSpace(h.Cwd))
 }

@@ -45,6 +45,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
@@ -139,7 +140,8 @@ type ConversationMaker interface {
 	Open(ctx context.Context, spec ConversationSpec) (Conversation, error)
 }
 
-// spender is what a conversation may also answer: what its round cost.
+// spender reports spending since this conversation was opened. A conversation
+// with SpendRecorded instead supplies the live meter's whole round receipt.
 type spender interface {
 	Spent() float64
 }
@@ -255,6 +257,8 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	if e.maker == nil {
 		return factory.StageResult{}, errors.New(stageNoMaker)
 	}
+	// The scratch folder the brief names exists before the step reads it.
+	makeScratch(job.Dir)
 	door := newStageDoor()
 	door.ask, door.stage = job.Ask, job.Stage
 	if f := job.Item.FollowUp; f != nil && f.Kind == "readiness" && f.Readiness != nil {
@@ -274,7 +278,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		Name:              stageChatName(job),
 		Handle:            stageHandle(job),
 		Dir:               job.Dir,
-		Brief:             stageBrief(job) + ciFollowUpBrief(job.Item) + followProgressBrief(job),
+		Brief:             stageBrief(job) + ciFollowUpBrief(job) + followProgressBrief(job),
 		Model:             stageModel(job),
 		AutomaticModels:   stageAutomatic(job),
 		FactoryModel:      strings.TrimSpace(job.Item.FactoryModel),
@@ -401,6 +405,11 @@ loop:
 			// one that is idle with nothing reported is asked again (stagereport.go)
 			// until there is nothing left to ask. A spending limit is never asked
 			// past: the turn it would start is refused before it begins.
+			var refused *approval.ProfileReadFailure
+			if errors.As(waitErr, &refused) {
+				idleFailure = &factory.StageResult{Exit: 1, Output: refused.Error()}
+				break loop
+			}
 			if _, stopped := spendStopOf(waitErr); stopped {
 				break loop
 			}
@@ -548,6 +557,17 @@ loop:
 		if live, ok := conv.(interface{ SpendRecorded() bool }); ok {
 			res.SpendRecorded = live.SpendRecorded()
 		}
+		if !res.SpendRecorded && job.Item.Stream != nil {
+			// Open starts a new spending segment, even when it reopens the same
+			// transcript. Add its saved round base once here; report replay only
+			// sees the resulting cumulative receipt, including after a restart.
+			for _, ph := range job.Item.Stream.Phases {
+				if ph.Name == job.Stage.Name {
+					res.Spent += ph.RoundCosts[max(1, job.Round)]
+					break
+				}
+			}
+		}
 	}
 	if m, ok := conv.(modeler); ok {
 		res.Model = m.Model()
@@ -670,7 +690,10 @@ func stageBrief(job Job) string {
 	for _, p := range itemContext(job) {
 		para(p...)
 	}
+	para(firstReadBrief(job))
 	para(stagePlace(job))
+	para(scratchBrief(ScratchDir(job.Dir)))
+	para(factory.StageMethod(job.Stage))
 	para(rulesBrief(job))
 	para(planBrief(job))
 	var notes []string
@@ -690,7 +713,10 @@ func stageBrief(job Job) string {
 	para(untilSays(job))
 	para(briefNoTeamPost)
 	para(briefAsk)
-	para("\nEvidence rules: test claims must cite commands that exercise that exact behavior. Code inspection is inspection evidence, not a passing test. Preserve command exit codes; do not hide failures behind a pipe or a printed exit marker. Numeric totals come from command receipts, not guesses. Before a final proof or Follow PR result, supply publish_summary: up to three complete PR-ready change bullets describing the final implementation including review fixes, with accurate names and no personal names.\n")
+	para("Evidence rules: report a check as run only when its tool output shows execution; label refusals and skipped commands as unrun. Label inspection as inspection. Preserve real command exits, including through pipes; a printed exit marker is not a receipt. Numeric totals come from command receipts. Your output is the handover later steps and the person read: what changed, each command run with its actual result, what was not run and why, and what remains open.")
+	if factory.IsProofStage(job.Stage) || factory.IsCIRepairStage(job.Stage) {
+		para("Supply publish_summary: up to three complete PR-ready bullets describing the final implementation including review fixes, with accurate names and no personal names.")
+	}
 	para(briefClosing)
 
 	return b.String()
@@ -703,7 +729,7 @@ func stageBrief(job Job) string {
 //	the refund is counted twice in Export
 //	1 finding still open
 //	not shown: refunds count once
-//	Fix what it left in the checkout first, run the tests, then review again and report only what is still wrong.
+//	Use current passing evidence. Correct the unresolved check or changed code, then review only the affected behaviour and report what remains open.
 //
 // A stage that runs until done is told it did not finish and to carry on from
 // what is in the checkout instead. "" on round 1 and when nothing came back.
@@ -731,7 +757,7 @@ func fixThenCheck(job Job) string {
 	}
 	switch strings.TrimSpace(job.Stage.Until) {
 	case factory.UntilClean, factory.UntilGreen, factory.UntilProven:
-		return head + "\nFix what it left in the checkout first, run the tests, then " + name + " again and report only what is still wrong."
+		return head + "\nUse current passing evidence. Correct the unresolved check or changed code, then " + name + " only the affected behaviour and report what remains open."
 	}
 	return head + "\nIt did not finish. Carry on from what it left in the checkout, and report done once the ask is carried out."
 }
@@ -1376,5 +1402,5 @@ func reportExecutionNotes(owner executionReporter, r factory.StageResult) ([]str
 // proof, and a saved decision rides beside the existing draft rather than
 // asking the worker to rediscover it.
 func resumedStageBrief(job Job) string {
-	return stageAsk(job) + "\n\n" + stageRole(job) + "\n\n" + planBrief(job) + "\n\n" + carryOnBrief(job.CarryOn) + ciFollowUpBrief(job.Item) + followProgressBrief(job)
+	return stageAsk(job) + "\n\n" + stageRole(job) + "\n\n" + planBrief(job) + "\n\n" + carryOnBrief(job.CarryOn) + ciFollowUpBrief(job) + followProgressBrief(job)
 }

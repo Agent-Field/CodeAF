@@ -265,9 +265,31 @@ func TestM1M4M8M9M10AppPair(t *testing.T) {
 	}
 }
 
+func TestAppPairCopyRetainedWordsM9(t *testing.T) {
+	for _, words := range []string{"shale ledger reef", "shale cello reef"} {
+		t.Run(words, func(t *testing.T) {
+			rec := newAppRecorder()
+			op := &appPairOperation{backend: &appBackend{emit: rec}}
+			op.Waiting(words)
+			op.finish("done", "", nil, false)
+			assertAppPairCopyM9(t, rec)
+			for _, kind := range []string{"three words", "check number"} {
+				t.Run(kind, func(t *testing.T) {
+					rec := newAppRecorder()
+					rec.Emit(appwire.EventPairChanged, appwire.PairResult{Pairing: appwire.Pairing{
+						Lines: []string{"Pair only if your other computer shows the same " + kind + ": " + words + "."},
+					}})
+					assertAppPairCopyM9(t, rec)
+				})
+			}
+		})
+	}
+}
+
 func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 	t.Helper()
-	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
+	inlineWords := regexp.MustCompile(`^(?:Waiting for approval on your other computer\. It should show|Pair only if your other computer shows the same (?:three words|check number)): (.+)\.$`)
+	allowed := regexp.MustCompile(`^(Paired with your other device\. Run codeaf to open your chats\.|Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	for i, name := range rec.events {
@@ -293,8 +315,16 @@ func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 				t.Errorf("L3 unexpected app copy: %q", line)
 			}
 
+			// The three check words are drawn at random from a word list that holds
+			// "ledger" and "cello", so only the copy around them is held to this list.
+			// Finished events clear Words but retain the earlier lines.
+			copyOnly := strings.ReplaceAll(line, "Paired with your other device. Run codeaf to open your chats.", "")
+			if match := inlineWords.FindStringSubmatch(copyOnly); match != nil {
+				copyOnly = strings.Replace(copyOnly, match[1], "", 1)
+			}
+			copyOnly = strings.ToLower(copyOnly)
 			for _, banned := range []string{"codeaf pair", "--replace", "device", "identity", "cell", "lease", "fence", "ledger", "vault"} {
-				if strings.Contains(strings.ToLower(line), banned) {
+				if strings.Contains(copyOnly, banned) {
 					t.Errorf("L3 terminal copy: %q", line)
 				}
 			}
@@ -318,10 +348,36 @@ func TestAppPairEP4(t *testing.T) {
 	if failed.Error == nil || failed.Error.Message != "That code did not work, or it timed out. Ask for a new one." {
 		t.Fatalf("failure: %+v", failed)
 	}
+	if slices.Contains(failed.Lines, failed.Error.Message) {
+		t.Fatalf("B2: failure sentence shown twice: %+v", failed)
+	}
 	if got := appDeviceList(t, wa); len(got.Devices) != 1 {
 		t.Fatal(got)
 	}
 	machineCall[appwire.PairResult](t, wa, "pair.cancel", appwire.IDParams{ID: offer.ID})
+}
+
+// B3a: a finished pairing keeps no check number on screen.
+func TestAppPairFinishClearsCheckB3(t *testing.T) {
+	celltest.Available(t)
+	relay := e2Relay(t)
+	t.Setenv(syncsetup.URLVar, relay.URL)
+	_, rec, w := appDeviceBackend(t, t.TempDir())
+	request := machineCall[appwire.PairResult](t, w, "pair.start", appwire.PairStartParams{Mode: "request_link", Name: "B"}).Pairing
+	if waiting := e2PairWait(t, w, request.ID, "waiting"); waiting.Words == "" {
+		t.Fatalf("no check number while waiting: %+v", waiting)
+	}
+	got := machineCall[appwire.PairResult](t, w, "pair.cancel", appwire.IDParams{ID: request.ID}).Pairing
+	if got.State != "cancelled" || got.Words != "" {
+		t.Fatalf("B3a: finished pairing kept its check number: %+v", got)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for i, event := range rec.events {
+		if p := rec.data[i]; event == appwire.EventPairChanged && p.(appwire.PairResult).Pairing.State == "cancelled" && p.(appwire.PairResult).Pairing.Words != "" {
+			t.Fatalf("B3a: final event kept its check number: %+v", p)
+		}
+	}
 }
 
 // E-P1's link counterparts: the advertisement includes all four modes.

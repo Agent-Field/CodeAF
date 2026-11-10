@@ -464,6 +464,8 @@ type Options struct {
 	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
 	// sentence while the first-run screen leaves its code field out.
 	Pairing Pairing
+	// TeamsPaired supplies this computer's pairing gate at preference adoption.
+	TeamsPaired func() bool
 	// SyncService names the service selected for this chat's sync notices.
 	SyncService string
 	// Approvals answers a new device's request to join and revokes devices
@@ -475,6 +477,10 @@ type Options struct {
 	// (homeband_addmachine.go). Nil is a connection that cannot count, and the
 	// card is then absent.
 	Fleet Fleet
+	// NotShared reads how many of this computer's chats the other computers
+	// cannot list yet (notshared.go), and false while it is not known. Nil
+	// draws no sentence.
+	NotShared func() (NotShared, bool)
 	// Branches is what a branch row can do. A nil verb is absent from the row.
 	Branches BranchActions
 	// Notices is the desk a goroutine outside the surface puts a sentence on

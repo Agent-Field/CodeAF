@@ -70,12 +70,7 @@ func BenchmarkCrewScale(b *testing.B) {
 		backend.profileDir = profile
 		backend.factoryRooms.Do(func() {})
 		// The watch as the app runs it, without its beat goroutine.
-		run := &appCrewRun{
-			ready: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{}),
-			prints: map[string]string{}, members: map[string]string{}, cursors: map[string]string{},
-			acted: map[string]bool{}, packets: map[string]teamstore.Packet{}, asks: map[string]appwire.Ask{},
-			held: map[string][]string{}, opening: map[string]bool{},
-		}
+		run := newAppCrewRun()
 		backend.crewTick(run, true)
 		b.Run(fmt.Sprintf("crewTick/%d", n), func(b *testing.B) {
 			for range b.N {

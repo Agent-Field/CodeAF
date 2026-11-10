@@ -40,10 +40,30 @@ func (h *Handler) reopenJob(w http.ResponseWriter, r *http.Request, it factory.I
 			if cur.DoneHow != "closed_locally" {
 				return lease.CloseRefusal("job is no longer closed locally")
 			}
-			cur.DoneHow, cur.DoneAt = "", time.Time{}
+			cur.DoneHow, cur.DoneAt, cur.Rejection = "", time.Time{}, nil
 			cur.Manual = cur.Stream != nil
 			cur.Note(h.clock(), "Reopened; work and spending kept. Resume the pipeline to continue.")
 			return nil
 		})
 	}))
+}
+
+// rejectJob is POST /v1/jobs/{id}/reject: the person's rejection of what the
+// job waits on them to approve, with their words. The job ends, closed here as
+// rejected ([lease.Doors.Reject]); it is the answer that a job's approval
+// offers beside Approve and Ask for changes, for an approval of any kind.
+func (h *Handler) rejectJob(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	var body api.Reject
+	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "reject", body.Expect) || !h.approves(w, r, it) || !h.workerReady(w) {
+		return
+	}
+	var revision *int
+	if body.Expect != nil {
+		revision = body.Expect.Version
+	}
+	who, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return
+	}
+	h.finish(w, lease.NewDoors(h.workers.desk).Reject(it.ID, revision, who, body.Words))
 }

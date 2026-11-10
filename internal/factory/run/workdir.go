@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // ── WHERE AN ITEM'S WORK LIVES: A WORKTREE AND A BRANCH PER ITEM ───────────
@@ -56,7 +57,7 @@ type ExecGit struct {
 
 // Run runs `git -C dir args...`. A failure's error is gits last line.
 func (g ExecGit) Run(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.Command("git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	cmd.Env = append(gitEnv(g.Token), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))
@@ -429,13 +430,18 @@ var ErrNoRemote = errors.New("no remote to push to")
 // GitPush is the post stage's push over git: `git push -u origin <branch>`
 // from dir, after checking there is an `origin` at all. NEVER A FORCE-PUSH:
 // a remote branch that moved refuses the push, and [placeRejected] decides.
-func GitPush(git Git) func(dir, branch string) error {
+func GitPush(git Git) func(dir, branch string, before ...func() error) error {
 	if git == nil {
 		git = ExecGit{}
 	}
-	return func(dir, branch string) error {
+	return func(dir, branch string, before ...func() error) error {
 		if _, err := git.Run(dir, "remote", "get-url", "origin"); err != nil {
 			return ErrNoRemote
+		}
+		for _, check := range before {
+			if err := check(); err != nil {
+				return err
+			}
 		}
 		output, err := git.Run(dir, "push", "-u", "origin", branch)
 		if err != nil && strings.TrimSpace(output) != "" {
@@ -605,6 +611,10 @@ func (w *Workdirs) Discard(it factory.Item, checkout string) error {
 		if _, err := w.git.Run(repo, "worktree", "remove", "--force", dir); err != nil {
 			return fmt.Errorf("could not delete the folder of %s: %s", it.Ref(), lastLine(err.Error()))
 		}
+	}
+	// The scratch folder beside it goes with it (scratch.go).
+	if scratch := ScratchDir(dir); scratch != "" {
+		_ = os.RemoveAll(scratch)
 	}
 	if it.Kind == factory.KindPR {
 		return nil

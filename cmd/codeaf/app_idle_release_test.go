@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
@@ -44,6 +47,18 @@ func TestAppBackgroundE13B2QueuedTaskAcquiresAndSettlesAtStartup(t *testing.T) {
 	a, rec, _, workspace := appSyncBackend(t)
 	homeA, _ := outageHomes(t, relay.URL)
 	t.Cleanup(func() { _ = a.Close() })
+	// A busy machine holds a queued task until it quiets, which says nothing about
+	// recovery. This test proves recovery, so it turns the host's pressure off.
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: homeA})
+	for _, key := range []string{config.KeyTaskMaxLoad, config.KeyTaskMinFreeMB} {
+		row, found := settings.Row(key)
+		if !found {
+			t.Fatalf("no settings row %q", key)
+		}
+		if err := row.Apply("0"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	agent, err := mustCreate(t, a, appwire.CreateAsk{Workspace: workspace})
 	if err != nil {
 		t.Fatal(err)
@@ -164,13 +179,17 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Naming a vague opener may finish after its turn and publish another head.
+	// Give this idle-release fixture its name before the turn starts.
+	if _, err := a.Rename(agent.ID, "Idle release fixture"); err != nil {
+		t.Fatal(err)
+	}
 	turn, err := a.Send(agent.ID, "! echo before-idle", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	appTurnDoneFor(t, rec, turn)
 	own := appSyncOwn(t)
-	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head != "" })
 	appSyncWait(t, "I1 idle turn settled", func() bool {
 		var idle bool
 		a.locked(func() { idle = a.agents[agent.ID].live != nil && !a.agents[agent.ID].live.running })
@@ -180,8 +199,22 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 		view, err := own.Dir.Cell(t.Context(), agent.ID)
 		return err == nil && view.Cell.Lease.Expires == 0
 	})
-	row = idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Status == "idle" })
 	var transcript string
+	a.locked(func() { transcript = a.agents[agent.ID].transcript })
+	chat, err := cell.OpenAt(session.DirOf(transcript), agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A completed turn can still be saving. Baseline the peer only after that
+	// capture is finished and its exact head has reached the directory.
+	if err := cellstore.WaitCapture(t.Context(), chat); err != nil {
+		t.Fatal(err)
+	}
+	head, err := cellstore.Head(chat)
+	if err != nil || head == nil {
+		t.Fatalf("idle setup head = %v, %v", head, err)
+	}
+	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head == head.Turn.ID && r.Status == "idle" })
 	if leftover {
 		// Model the old engine's mismatch after its final checkpoint: the
 		// stopped job is in tasks.json, but its process file still says running.
@@ -218,6 +251,14 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	}
 	acquires.Store(0)
 	releases.Store(0)
+	if leftover {
+		// The two device feeds can report the chat before the asynchronous
+		// lease-holder watch arrives. Include all three startup watches in the
+		// baseline so a late initial dial is not mistaken for an idle restart.
+		appSyncWait(t, "device feeds and initial lease-holder watch", func() bool {
+			return watches.Load() >= 3
+		})
+	}
 	network := [3]int32{watches.Load(), devices.Load(), vaults.Load()}
 	for period := 0; period < 2; period++ {
 		if leftover {

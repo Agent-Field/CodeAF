@@ -75,7 +75,7 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 				manager = agent
 				return &appConn{Conv: agent, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
 			}
-			it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1,
+			it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Fix retries", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1,
 				Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}}}}})
 			if err != nil {
 				t.Fatal(err)
@@ -84,6 +84,7 @@ func TestAppFactoryBriefChargesEachProviderCallOnce(t *testing.T) {
 			var held api.WorkerPull
 			var baseline factory.Item
 			if outcome == "remote worker" {
+				makeJobManager(t, s, it.ID)
 				var chats appwire.FactoryJobChats
 				s.must("factory.job_chats", map[string]any{"factory": st.Factory, "job": it.ID}, &chats)
 				// local_start also runs this app's worker. Only the simulated

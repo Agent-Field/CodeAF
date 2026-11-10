@@ -206,6 +206,27 @@ func (r *memberRig) home(id *identity.Identity) *Sync {
 	r.homes = append(r.homes, s)
 	return s
 }
+
+// runClock advances the rig's clock at the real rate until the returned stop.
+func runClock(clock *directorytest.FakeClock) (stop func()) {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				clock.Advance(time.Second)
+			}
+		}
+	}()
+	return func() { close(done); <-finished }
+}
+
 func waitMember(t *testing.T, s *Sync, predicate func(*personalMember) bool) {
 	t.Helper()
 	timer := time.NewTimer(requestTimeout)
@@ -433,6 +454,7 @@ func TestR23PersonalLearnerStopsAtEveryUse(t *testing.T) {
 // H4/H5/R26/R27/C30 drive ten virtual idle minutes on the REAL native relay
 // and real open home state rounds, then require remote and local state changes
 // to pass the normal quorum-backed read/write doors and arrive within a round.
+// F1 preserves the existing sharing fixture and history contract.
 func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 	r := newMemberRig(t)
 	a := r.home(nil)
@@ -567,6 +589,11 @@ func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 	mustNil(t, brain.Close())
 	mustNil(t, b.SyncState(t.Context()))
 	want, _ := b.Dir.List(t.Context())
+	// The clock runs at its real rate from here. A message carrying the new commit
+	// can be lost to a full transport lane, and then the next heartbeat delivers it;
+	// with the clock frozen, as it is for the idle count above, none would come.
+	stopClock := runClock(r.clock)
+	defer stopClock()
 	waitMember(t, a, func(m *personalMember) bool { return appliedVault(m) == want.Identity.Vault && m.idle })
 	rid, local, e := a.memberVault(t.Context())
 	mustNil(t, e)
@@ -598,6 +625,8 @@ func TestR26R27C30OpenLearnerIdleAndStateWake(t *testing.T) {
 
 // H6/R23/C30 pins the hosted capability boundary and its unchanged polling
 // behavior. A relay with no control/enrollment door never opens a member store.
+// C9 pins off explicitly so team carriers cannot affect the hosted polling budget.
+// F1 preserves the existing sharing fixture and history contract.
 func TestR23C30HostedStateKeepsExistingPolling(t *testing.T) {
 	server := relay(t)
 	s, ok, e := Open(machine(t, server.URL))
@@ -605,6 +634,8 @@ func TestR23C30HostedStateKeepsExistingPolling(t *testing.T) {
 	if !ok {
 		t.Fatal("open")
 	}
+	sharing, _ := config.NewSettings(config.SettingsOptions{ProfileDir: s.Home}).Row(config.KeyTeamsShare)
+	mustNil(t, sharing.Apply("off"))
 	s.memberRound(t.Context())
 	s.memberRound(t.Context())
 	if s.member != nil || !s.memberUnsupported {

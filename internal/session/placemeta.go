@@ -67,6 +67,9 @@ func (a *Agent) stampUserLocked(text string) {
 	at := time.Now()
 	title := placeholderTitle(text)
 	a.metaStamp().Owe(func() {
+		if userStampHeld != nil {
+			userStampHeld()
+		}
 		a.updateMeta(dir, snapshot, func(meta *Meta) {
 			meta.AutomaticModels = snapshot.AutomaticModels
 			meta.ModelIdentity = snapshot.ModelIdentity
@@ -272,10 +275,11 @@ func (a *Agent) metaSnapshotAt() (string, Meta) {
 // across every Agent and process that writes this conversation folder.
 // Each patch owns its fields; a spend snapshot made before naming cannot write
 // an old title back afterward. Snapshot collection must never run inside patch.
-func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
+// The answer says whether the patched metadata reached disk.
+func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) bool {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
-		return
+		return false
 	}
 	err := withMetaLock(dir, func() error {
 		meta, err := LoadMeta(dir)
@@ -319,6 +323,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			watch.MetadataWrote()
 		}
 	}
+	return err == nil
 }
 
 // fillMetaLocked fills in everything about a session that does not change while
@@ -409,7 +414,20 @@ func (a *Agent) stampTrees() { a.stampMeta() }
 // share. The transaction reads the latest title and spending from disk and
 // preserves them; this snapshot owns only model, effort, approval, places and trees.
 // EVERY FAILURE IS SILENCE, for this file's stated reason.
+//
+// AN EARLIER DEFERRED STAMP LANDS FIRST. [Agent.stampUserLocked] captures the
+// model, effort, approval, places and trees when a person speaks, and writes
+// them behind the path. If that write were still owed when this one ran, it
+// would land afterwards and put the older values back. An effort set just after
+// a conversation opened read back empty after a restart (#2549), and a tree cut
+// in the same window would have been forgotten. [Agent.stampModel] settles for
+// the same reason. The settle comes before the snapshot, so whatever lands
+// second is the newer state.
 func (a *Agent) stampMeta() {
+	if metaStampSettling != nil {
+		metaStampSettling()
+	}
+	a.metaStamp().settle()
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.AutomaticModels = snapshot.AutomaticModels
@@ -423,11 +441,9 @@ func (a *Agent) stampMeta() {
 // stampSpend records the conversation's running total — what the talking has
 // cost so far, and what it weighed — on the session's own meta.json.
 //
-// IT RIDES THE END OF A TURN AND NOTHING ELSE. [Agent.sealTurn] is the one
-// place a turn's cost reaches the journal, for the reason stated there: every
-// turn shape in the package ends through it. So it is also the one place the
-// total can be written down without a shape of turn silently keeping no record,
-// and stamping anywhere else would be a second answer to "what has this cost".
+// It rides the end of a turn and a receipt recovered after one ended. Both
+// stamps copy the same cumulative meter: the late receipt entered through
+// [Agent.bank] already, so neither the ledger nor call lines are added here.
 //
 // THE FIGURE IS THE SESSION'S OWN AND NEVER ITS TASKS'. [Agent.usage] is this
 // agent's talking: its turns, and the auxiliary calls beside them (the namer,
@@ -443,10 +459,10 @@ func (a *Agent) stampMeta() {
 // scans it, and what a run has spent is its own row's answer
 // (internal/automation) and not this one.
 //
-// ONE SMALL ATOMIC WRITE PER TURN. There is no other end-of-turn write to a
-// session's meta.json to ride — [Agent.stampUserLocked] runs at the START of a
-// turn, before the cost exists — so this is a read and a temp-and-rename of a
-// file of a few hundred bytes, once per turn of a conversation, beside a
+// There is no other end-of-turn write to a session's meta.json to ride:
+// [Agent.stampUserLocked] runs at the start of a turn, before the cost exists.
+// So this is a read and a temp-and-rename of a
+// file of a few hundred bytes, once per turn or recovered receipt, beside a
 // provider call that took seconds. EVERY FAILURE IS SILENCE, for this file's
 // stated reason: the total is a citation and the transcript is the record.
 func (a *Agent) stampSpend() { a.stampTurnEnd(false) }
@@ -464,17 +480,22 @@ func (a *Agent) stampSpend() { a.stampTurnEnd(false) }
 // harness wrote in the model's place ([Agent.answeredLocked]).
 func (a *Agent) stampSealed() { a.stampTurnEnd(true) }
 
+// userStampHeld lets a test hold [Agent.stampUserLocked]'s deferred write
+// before it reaches the disk, and metaStampSettling tells the same test that
+// [Agent.stampMeta] is about to wait for it. Both are nil in production.
+var (
+	userStampHeld     func()
+	metaStampSettling func()
+)
+
+// spendStampCaptured lets a test hold a stamp between capture and write.
+// It is nil in production and runs outside a.mu, under spendStampMu.
+var spendStampCaptured func(*Agent, float64)
+
 func (a *Agent) stampTurnEnd(sealed bool) {
-	a.mu.Lock()
-	dir := a.config.Place.Dir
-	snapshot := a.fillMetaLocked(Meta{})
-	spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
-	replied := false
-	if sealed {
-		replied = a.answeredSinceSeal && len(a.messages) > 0 && a.answeredLocked(a.messages[len(a.messages)-1])
-		a.answeredSinceSeal = false
-	}
-	a.mu.Unlock()
+	a.spendStampMu.Lock()
+	defer a.spendStampMu.Unlock()
+	dir, snapshot, spent, tokens, replied := a.captureSpendStamp(sealed)
 	if !replied {
 		if spent <= 0 && tokens <= 0 {
 			return
@@ -483,12 +504,32 @@ func (a *Agent) stampTurnEnd(sealed bool) {
 		return
 	}
 	at := time.Now()
-	a.updateMeta(dir, snapshot, func(meta *Meta) {
+	if a.updateMeta(dir, snapshot, func(meta *Meta) {
 		if spent > 0 || tokens > 0 {
 			meta.SpentUSD, meta.Tokens = spent, tokens
 		}
 		meta.LastReplyAt = at
-	})
+	}) && (spent > 0 || tokens > 0) {
+		announceSpendSaved(SpendSaved{Dir: dir, SpentUSD: spent})
+	}
+}
+
+// captureSpendStamp keeps the capture and its test seam together, so moving
+// capture outside spendStampMu is observable before any metadata is written.
+func (a *Agent) captureSpendStamp(sealed bool) (dir string, snapshot Meta, spent float64, tokens int, replied bool) {
+	a.mu.Lock()
+	dir = a.config.Place.Dir
+	snapshot = a.fillMetaLocked(Meta{})
+	spent, tokens = a.usage.CostUSD, a.usage.Input+a.usage.Output
+	if sealed {
+		replied = a.answeredSinceSeal && len(a.messages) > 0 && a.answeredLocked(a.messages[len(a.messages)-1])
+		a.answeredSinceSeal = false
+	}
+	a.mu.Unlock()
+	if spendStampCaptured != nil {
+		spendStampCaptured(a, spent)
+	}
+	return
 }
 
 // answeredLocked says a recorded message answered the person: [isAnswer], and
@@ -520,6 +561,8 @@ func isAnswer(message ai.Message) bool {
 // keeps it true from here on, and a rewrite per open would be a file touched by
 // every window that merely looked.
 func (a *Agent) stampRestoredSpend(restored Usage) {
+	a.spendStampMu.Lock()
+	defer a.spendStampMu.Unlock()
 	dir, _ := a.metaSnapshotAt()
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -547,7 +590,9 @@ func (a *Agent) writeSpend(dir string, spent float64, tokens int) {
 
 // The snapshot can predate a title commit; only the spend belongs to this patch.
 func (a *Agent) writeSpendSnapshot(dir string, snapshot Meta, spent float64, tokens int) {
-	a.updateMeta(dir, snapshot, func(meta *Meta) {
+	if a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.SpentUSD, meta.Tokens = spent, tokens
-	})
+	}) {
+		announceSpendSaved(SpendSaved{Dir: dir, SpentUSD: spent})
+	}
 }

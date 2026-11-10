@@ -112,10 +112,13 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Bind settlement ownership before construction can publish the child.
+	config.receipts = a.receiptTracker()
 	child, err := newAgent(config, client)
 	if err != nil {
 		return nil, err
 	}
+	child.approvalReadParent = a
 	child.managedClient = managed
 	child.clientAccount = account
 	child.clientPool = pool
@@ -125,6 +128,9 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 // newAgent is the seam New and the tests share: everything except which
 // Completer the turns run against.
 func newAgent(config Config, client Completer) (*Agent, error) {
+	// Accounting can outlive quit. Bind its destination before any producer
+	// starts, so a late receipt cannot follow a later change of home.
+	config.bindUsageLedger()
 	if strings.TrimSpace(config.Workspace) == "" {
 		return nil, errors.New("session: workspace is required")
 	}
@@ -163,8 +169,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
+		workWake:           make(chan struct{}, 1),
 		taskComputerPrompt: config.mayNameTaskComputer(),
 		config:             config,
+		receipts:           config.receipts,
 		system:             system,
 		// STAMPED ONLY WHERE WE RENDERED IT. A prompt handed in by a caller is
 		// theirs, and re-rendering ours over the top of it later would be this
@@ -1389,6 +1397,8 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// factoryWork marks a runtime manager turn, never the person's chat.
+	factoryWork bool
 	// answer continues an existing question, including a replacement or
 	// clarification, so ownership is checked at its tools rather than admission.
 	answer bool
@@ -2032,6 +2042,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.rebindClientLocked(a.model)
 	a.stopJobWakeLocked()
 	a.running = true
+	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++
 	a.lastTurnTruncated = false
@@ -3007,6 +3018,12 @@ func (a *Agent) Close() (saveErr error) {
 	// IT IS SAFE HERE AND ONLY HERE: `a.mu` was released above, and everything
 	// this waits on takes that lock.
 	a.SettleWrites()
+	// THE SPENDING ROWS GO LAST AND ONCE, after the close's own rows, and only
+	// here: a close is not on a person's input path, and a stalled ledger costs
+	// it one [usageFlushLimit].
+	if a.config.usageLedger != "" {
+		drainUsage(a.config.usageLedger)
+	}
 
 	a.mu.Lock()
 	deleting, deletionGrace := a.deleting, a.deletionGrace
@@ -3107,6 +3124,13 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		}
 		if user.authored {
 			mark = &messagePresentation{Audience: "operational", RoutineCompletion: user.completionOnly, Attention: user.attention, CompletionTasks: append([]TaskReplyTag(nil), user.replyTags...)}
+			// AN OWED LANDING SHOWS ITS OUTCOME, NOT THE QUESTION. The model is
+			// handed the person's question above the report so it can answer it
+			// (owedLandingDocument), but the question is the person's earlier
+			// words, and a receipt drawn whole would show them saying it twice.
+			if outcome := strings.TrimSpace(user.landingOutcome); outcome != "" && strings.TrimSpace(user.landingQuestion) != "" {
+				mark.Text = &outcome
+			}
 		} else if mark == nil {
 			mark = &messagePresentation{Audience: "human"}
 		} else {
@@ -3725,7 +3749,9 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	if news := a.teamBoundary(); news != "" {
 		a.enqueueNote(userText(news))
 	}
+	sharing := a.config.teamProfile() != "" && a.teamsSharing()
 	a.mu.Lock()
+	a.adoptTeamDigestSharingLocked(sharing)
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
 	// drain itself is here: this seam runs immediately before the next request
@@ -4572,6 +4598,16 @@ func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "", fals
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
 func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, answer bool) bool {
+	if why := a.automaticFactoryRefusal(); !answersPerson && !answer && why != "" {
+		kept := a.steering[:0]
+		for _, note := range a.steering {
+			if !note.wake {
+				kept = append(kept, note)
+			}
+		}
+		a.steering = kept
+		return false
+	}
 	if !answer {
 		if err := a.CheckWork(); err != nil {
 			return false
@@ -5626,6 +5662,9 @@ func shapeInto(messages []ai.Message, journal *sessionFile, steps *map[int]facto
 		}
 		if mark := presentation.of(msg); mark != nil && msg.Role == "user" && mark.RoutineCompletion {
 			role, routineCompletion = "aside", true
+			if mark.Text != nil {
+				displayText = *mark.Text
+			}
 		}
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			run = mark.RunID
@@ -5763,8 +5802,9 @@ const explainingCheckpointCarryOnLead = "[carry on] A reader of a bounded accoun
 // isContinuationContext says whether a user-role message is one the HARNESS
 // wrote to send a stopped turn back to work: the carry-on in each of the
 // spellings journals have held, the two nudges ([checkpointLoadNudgeLead],
-// [checkpointAskNudgeLead]) and the note after a reply was cut off at the
-// output limit ([truncationContinuationNote]).
+// [checkpointAskNudgeLead]), the note after a reply was cut off at the
+// output limit ([truncationContinuationNote]), and a resumed factory step's
+// brief ([ResumedStepBrief]).
 //
 // EVERY ONE OF THEM IS RECORDED AS AN UNMARKED USER MESSAGE, because user-role
 // is the only role the model can be told something in and none of them goes
@@ -5779,6 +5819,7 @@ func isContinuationContext(text string) bool {
 	case strings.HasPrefix(text, checkpointCarryOnLead),
 		strings.HasPrefix(text, explainingCheckpointCarryOnLead),
 		strings.HasPrefix(text, legacyCheckpointCarryOnLead),
+		strings.HasPrefix(text, resumedStepLead),
 		strings.HasPrefix(text, checkpointLoadNudgeOpening) && strings.HasSuffix(text, checkpointLoadNudgeClosing),
 		strings.HasPrefix(text, checkpointAskNudgeOpening) && strings.HasSuffix(text, checkpointAskNudgeClosing):
 		return true

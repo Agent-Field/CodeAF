@@ -10,9 +10,9 @@ engine reports it. Check the running work before starting the same brief again.
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works in a copy of its own — a working copy of your repository, or
-a copy of the folder when the work is about a folder — and reports back when it lands. It
-never inherits the conversation: what it reads is one written brief — your own message, word
+conversation carries on. It works in a folder of its own and reports back when it lands.
+Projects may be copied; a task that would copy your home folder reads it in place and
+starts with an empty folder. It never inherits the conversation: what it reads is one written brief — your own message, word
 for word, then the work, what to produce and what done means, and a pointer at the
 journal path and line of your original turn so it can read those words in full when the
 restatement was cut. How that is assembled is on the *how tasks run* page, under *What the
@@ -76,7 +76,7 @@ A task can also break its own brief into smaller tasks when it finds independent
 it, and those are rows of their own on the column, each under what it is doing (see *When a
 task splits its own work*).
 
-**And a copy of its own is the ordinary task, not every task.** The other kind is the
+**And a folder of its own is the ordinary task, not every task.** The other kind is the
 **quick task**: no copy of the folder, no branch, no check and no merge — it works in the
 folder you are already in, and its last message is its answer. It is the next several
 sections, starting with *What a quick task is*. Everything below about briefs, cards,
@@ -165,6 +165,15 @@ and next item move as it does.
 ticks a box. The items belong to the worker; the words belong to you.
 
 ## Why it said waits for task 5 — two quick tasks that would write the same file
+
+File claims accept workspace-relative files, directories and segment globs
+(`*`, `?`, `[...]`), for example `crew-0-*.md`. Wildcards never cross `/` and never match a leading `.` (`*` skips `.git` and
+`.env`; `.env*` names them); a matched
+directory covers its subtree. `**`, `..` segments, absolute glob patterns and
+malformed patterns return a tool refusal so the model can correct the claim.
+Exact absolute paths inside the workspace still normalize to relative paths.
+Symlinks cannot extend a claim outside the workspace. Potentially overlapping
+glob claims wait for each other, even without a concrete matching file name.
 
 A quick task may name the files it intends to write. When it does, and another quick task
 that is running or queued in the same folder has already claimed one of those paths, the
@@ -275,7 +284,7 @@ task; a quick task is now allowed the blank it is supposed to have.
 
 The rule is written once, in the words the model itself reads:
 
-> A task gets its own copy of the folder, is checked, and lands. A quick task works where
+> A task gets a folder of its own, is checked, and lands. A quick task works where
 > you are and its last message is its answer. If you will read the result and carry on,
 > it is quick. If it must be checked and merged on its own, or survive the window
 > closing, it is a task. One edit, one read, one command is a step: do it yourself.
@@ -293,7 +302,7 @@ inside once it has opened the material, and a wide **read** never comes down tha
 
 **And the model is told what each one costs**, rather than given a list of which kinds of
 work go where. Its own instructions describe a quick task as a copy of its abilities
-working where it stands and a task as a worker in a copy of the folder that is checked and
+working where it stands and a task as a worker in a folder of its own that is checked and
 merged, and then the arithmetic: pieces it keeps cost their sum, independent pieces handed
 out in one breath cost the longest of them. Everything on this page follows from that, and
 so does anything this page did not think to list.
@@ -872,7 +881,7 @@ when the row goes `done`. It is on the rail like any other task, so it can be op
 and stopped from there.
 
 **If the reply had written anything at all, none of this applies.** One edit is enough: the
-answer takes the ordinary road above — a task in its own copy of the folder, briefed, checked
+answer takes the ordinary road above — a task in a folder of its own, briefed, checked
 and landed — and its result stays in Tasks.
 
 ## Can it keep what it read — does the moved work start over, why did it stop reading and start a task, inherit
@@ -3843,7 +3852,7 @@ That is why coordination over pieces YOU handed out is not moved into a task (*W
 pieces you handed out does not move your answer*).
 
 Nothing asks you about those. **A sub-task starts without a card:** the countdown card is
-how a person redirects work, and there is nobody inside a task's own copy to show one to, so a
+how a person redirects work, and there is nobody inside a task's own folder to show one to, so a
 task's own proposals begin the moment they are made. What you see instead is the tree.
 
 Where they show up:
@@ -4276,13 +4285,13 @@ The plan store allows up to 256 tasks in one added batch and 1024 tasks in one r
 A composite worker can wake at most four times to integrate its children. The node
 tree's 3/20 bounds do not apply to that run.
 
-## How many tasks run at once — can I have it do two things at the same time, can you work on several parts of my answer at once
+## How many tasks run at once, where is task.parallel, where is the tasks at once setting, can I have it do two things at the same time, can you work on several parts of my answer at once
 
 **There is no limit by default.** codeaf does not cap the number of tasks running at the
 same time.
 
 The setting `task.parallel` exists for anyone who wants a number anyway — settings panel
-(`ctrl+,` or `/settings`), category "spending". Blank means no limit. A cap is a queue and
+(`ctrl+,` or `/settings`), under Tasks as `tasks at once`. Blank means no limit. A cap is a queue and
 never a refusal: work past the cap waits and starts when a slot frees, and while it waits
 its roster row says `waiting · slot` on its hint line, and it sits under `Queued`, which
 starts folded to its heading.

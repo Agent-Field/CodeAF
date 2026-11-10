@@ -24,6 +24,8 @@ const FailurePrefix = "Unresolved verification command failed:"
 // observer could not be fitted. A model's later success claim cannot erase it.
 const SetupFailurePrefix = "Could not record verification:"
 
+var checkContextNames = [...]string{"GOOS", "GOARCH", "GOFLAGS", "CGO_ENABLED", "GOWORK", "GORACE", "NODE_ENV", "PYTEST_ADDOPTS"}
+
 const originalCommandPrefix = "# codeaf-check-original:"
 const observerShellGuard = `if [ -n "${BASH_VERSION-}" ]; then`
 
@@ -96,10 +98,10 @@ func (c Check) Key() string {
 	if len(c.Args) == 0 {
 		return "incomplete:" + c.Source + ":" + c.ID
 	}
-	args := c.Args
+	args := portableCheckArgs(c.Args)
 	if len(args) > 1 && args[0] == "go" && args[1] == "test" {
 		args = make([]string, 0, len(c.Args))
-		for i, arg := range c.Args {
+		for i, arg := range portableCheckArgs(c.Args) {
 			if arg == "-args" {
 				args = append(args, c.Args[i:]...)
 				break
@@ -121,15 +123,15 @@ func (c Check) Key() string {
 func (c Check) Label() string {
 	if len(c.Args) == 0 {
 		if c.Command != "" {
-			return c.Command
+			return OwedCommand(c.Command)
 		}
 		return "incomplete recorded check"
 	}
 	parts := make([]string, len(c.Args))
-	for i, arg := range c.Args {
+	for i, arg := range portableCheckArgs(c.Args) {
 		parts[i] = quote(arg)
 	}
-	return strings.Join(parts, " ") + " (in " + c.Cwd + ")"
+	return strings.Join(parts, " ") + " (in " + c.Cwd + ")" + missingCheckPath(portableCheckArgs(c.Args))
 }
 
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
@@ -142,6 +144,13 @@ func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") +
 func Prepare(transcript, command string) (string, error) {
 	return PrepareIn(transcript, "", command)
 }
+
+// ReceiptRoot is the folder a step's check receipts are written in, beside
+// its transcript. THE FENCE AROUND A STEP MUST LET IT WRITE HERE
+// ([executor.FenceOptions.Receipts]): the wrapped check makes its receipt
+// from inside the fenced shell, and the transcript lives in codeaf's home,
+// outside the job's checkout.
+func ReceiptRoot(transcript string) string { return transcript + ".checks" }
 
 // PrepareIn assigns an explicit canonical worktree boundary to this tool call.
 // Descendant fixtures may still emit diagnostics, but cannot create obligations
@@ -158,7 +167,7 @@ func PrepareCallIn(transcript, ownerDir, command, callID string) (string, error)
 	if transcript == "" {
 		return command, nil
 	}
-	root := transcript + ".checks"
+	root := ReceiptRoot(transcript)
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return "", err
 	}
@@ -190,6 +199,10 @@ func PrepareCallIn(transcript, ownerDir, command, callID string) (string, error)
 	// settings distinguish checks that happen to have identical argv.
 	// The Unix shell resolver also permits sh without Bash. That shell keeps
 	// its original execution path and journal evidence; export -f is Bash-only.
+	var contextFields []string
+	for _, name := range checkContextNames {
+		contextFields = append(contextFields, `"${`+name+`-}"`)
+	}
 	prefix := observerShellGuard + "\n" + shell.CargoPathSetup() + worktreeStateFunction + `
 _codeaf_check() {
  local _codeaf_file _codeaf_status _codeaf_cwd _codeaf_root _codeaf_scope
@@ -205,7 +218,7 @@ _codeaf_check() {
   fi
  fi
  printf '%s\n' "$_codeaf_scope" > "$_codeaf_file.scope.tmp" && ` + atomicMoveCommand() + ` "$_codeaf_file.scope.tmp" "$_codeaf_file.scope" || return 125
- printf '%s\0' "$_codeaf_cwd" "${GOOS-}" "${GOARCH-}" "${GOFLAGS-}" "${CGO_ENABLED-}" "${GOWORK-}" "${GORACE-}" "${NODE_ENV-}" "${PYTEST_ADDOPTS-}" "$@" > "$_codeaf_file.tmp" && ` + atomicMoveCommand() + ` "$_codeaf_file.tmp" "$_codeaf_file" || return 125
+ printf '%s\0' "$_codeaf_cwd" ` + strings.Join(contextFields, " ") + ` "$@" > "$_codeaf_file.tmp" && ` + atomicMoveCommand() + ` "$_codeaf_file.tmp" "$_codeaf_file" || return 125
  if ! _codeaf_worktree_state > "$_codeaf_file.before.tmp"; then : > "$_codeaf_file.before.tmp"; fi
  ` + atomicMoveCommand() + ` "$_codeaf_file.before.tmp" "$_codeaf_file.before" || return 125
  if ( export -nf ` + observerNames() + `; command "$@" ); then _codeaf_status=0; else _codeaf_status=$?; fi
@@ -327,7 +340,7 @@ func Read(transcript string) ([]Check, error) {
 				c.Problem = err.Error()
 			} else {
 				fields := strings.Split(string(raw), "\x00")
-				if len(fields) < 11 || fields[len(fields)-1] != "" {
+				if len(fields) < len(checkContextNames)+3 || fields[len(fields)-1] != "" {
 					// Legacy writers can expose a partial argument file. It is a running
 					// record until a terminal commit makes malformed metadata an error.
 					if terminal {
@@ -335,8 +348,8 @@ func Read(transcript string) ([]Check, error) {
 					}
 				} else {
 					c.Cwd = fields[0]
-					c.Context = fields[1:9]
-					c.Args = fields[9 : len(fields)-1]
+					c.Context = fields[1 : 1+len(checkContextNames)]
+					c.Args = fields[1+len(checkContextNames) : len(fields)-1]
 				}
 			}
 			if c.OwnerRoot != "" {

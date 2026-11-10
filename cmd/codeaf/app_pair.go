@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 const appJoinBusy = "Finish the work on this computer before joining another computer."
@@ -235,6 +236,7 @@ func (o *appPairOperation) finish(state, line string, err error, restart bool) {
 	o.view.Question = nil
 	o.view.Code = ""
 	o.view.Link = ""
+	o.view.Words = ""
 	o.view.ExpiresAt = time.Time{}
 	if line != "" {
 		o.view.Lines = append(o.view.Lines, strings.Split(line, "\n")...)
@@ -265,7 +267,8 @@ func (o *appPairOperation) run(p appwire.PairStartParams) {
 	case errors.Is(err, pair.ErrRefused):
 		o.finish("cancelled", appPairDeclined, nil, false)
 	default:
-		o.finish("failed", appPairFailure(err), errors.New(appPairFailure(err)), false)
+		// The failure sentence is the error alone; repeating it as a line showed it twice.
+		o.finish("failed", "", errors.New(appPairFailure(err)), false)
 	}
 }
 func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
@@ -307,6 +310,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return nil, false
 	case "use_code":
 		joining := pairJoiningAt(dir)(false)
+		joining.Revoked = ownDeviceRevoked(o.ctx, dir, route)
 		if p.Name != "" {
 			joining.Label = p.Name
 		}
@@ -321,6 +325,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return nil, !joined.Already
 	case "request_link":
 		joining := linkJoining(dir)(route, false)
+		joining.Revoked = ownDeviceRevoked(o.ctx, dir, route)
 		if p.Name != "" {
 			joining.Label = p.Name
 		}
@@ -342,7 +347,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		if err != nil {
 			return err, false
 		}
-		who, err := linkApprover(dir)(route)
+		who, err := appLinkApprover(dir)(route)
 		if err != nil {
 			return err, false
 		}
@@ -351,6 +356,15 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			return nil
 		}
 		asking, err := who.Look(o.ctx, ref)
+		if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
+			// An approval whose reply was lost: the device is in, so this computer is shared.
+			if err := identity.EndSolo(dir); err != nil {
+				return err, false
+			}
+			record()
+			o.line(tui3.ErrAlreadyPaired.Error())
+			return nil, false
+		}
 		if err != nil {
 			return err, false
 		}
@@ -367,7 +381,9 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			return pair.ErrRefused, false
 		}
 		if err := who.Approve(o.ctx, asking); err != nil {
-			return err, false
+			if err = settleApproval(who, asking, err); err != nil {
+				return err, false
+			}
 		}
 		if err := identity.EndSolo(dir); err != nil {
 			return err, false
@@ -378,6 +394,10 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 	}
 	return errors.New("unknown pairing mode"), false
 }
+
+// appLinkApprover is this computer as the device that approves a link from the app.
+var appLinkApprover = linkApprover
+
 func (o *appPairOperation) Show(code *pair.Code, lines string) {
 	o.update(func(p *appwire.Pairing) {
 		p.State = "waiting"

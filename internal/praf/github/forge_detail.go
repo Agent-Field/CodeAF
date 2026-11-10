@@ -8,7 +8,9 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -47,9 +49,20 @@ type CheckRun struct {
 // first. A pull request touching more is still read in one page of a hundred.
 const FilesMost = 20
 
+type noIssueRedirect struct{}
+
+var errIssueRedirect = errors.New("GitHub issue redirected")
+
 // Issue reads one issue (or the issue side of a pull request) by its number.
 func (c *client) Issue(ctx context.Context, owner, repo string, number int) (Issue, error) {
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/issues/"+strconv.Itoa(number)), "")
+	headers, err := c.headersForRepo(ctx, owner, repo)
+	if err != nil {
+		return Issue{}, err
+	}
+	body, _, err := c.requestTagged(context.WithValue(ctx, noIssueRedirect{}, true), http.MethodGet, c.repoURL(owner, repo, "/issues/"+strconv.Itoa(number)), headers, nil, 30*time.Second, "")
+	if errors.Is(err, errIssueRedirect) {
+		return Issue{Redirected: true}, nil
+	}
 	if err != nil {
 		return Issue{}, err
 	}
@@ -58,6 +71,7 @@ func (c *client) Issue(ctx context.Context, owner, repo string, number int) (Iss
 		return Issue{}, err
 	}
 	return Issue{
+		ID:     r.ID,
 		Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 		Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
 		URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,
@@ -117,6 +131,55 @@ func (c *client) IssueComments(ctx context.Context, owner, repo string, number, 
 		got = got[len(got)-most:]
 	}
 	return got, nil
+}
+
+// PullFile is one file of a pull request's change as GitHub lists it: its
+// path, GitHub's status word (added, modified, removed, renamed, copied,
+// changed or unchanged), its line counts, and the path it had before a rename
+// or copy.
+type PullFile struct {
+	Path      string
+	Status    string
+	Additions int
+	Deletions int
+	Previous  string
+}
+
+// PullFileList reads a pull request's changed files in GitHub's own order, at
+// most most of them, a page of a hundred at a time. Unlike [client.PullFiles]
+// it keeps each file's status, because a reader deciding whether to merge
+// must see what a change removes. GitHub itself stops listing at 3000 files;
+// the pull request's own count ([Pull.Files]) is the whole change's size.
+func (c *client) PullFileList(ctx context.Context, owner, repo string, number, most int) ([]PullFile, error) {
+	const page = 100
+	out := []PullFile{}
+	for n := 1; len(out) < most; n++ {
+		body, _, err := c.read(ctx, c.repoURL(owner, repo, "/pulls/"+strconv.Itoa(number)+"/files?per_page="+strconv.Itoa(page)+"&page="+strconv.Itoa(n)), "")
+		if err != nil {
+			return nil, err
+		}
+		var rows []fileResp
+		if err := json.Unmarshal(body, &rows); err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			f := PullFile{Path: r.Filename, Status: "modified", Additions: r.Additions, Deletions: r.Deletions}
+			if r.Status != nil && *r.Status != "" {
+				f.Status = *r.Status
+			}
+			if r.PreviousFilename != nil {
+				f.Previous = *r.PreviousFilename
+			}
+			out = append(out, f)
+		}
+		if len(rows) < page {
+			break
+		}
+	}
+	if len(out) > most {
+		out = out[:most]
+	}
+	return out, nil
 }
 
 // PullFiles reads a pull request's changed files, the most changed first, at

@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/http"
@@ -52,6 +53,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -93,6 +95,13 @@ const appLazyHotWindow = 10 * time.Minute
 // appReleaseWait bounds how long closing one conversation waits for its turn's
 // last events to be written before the outbox is shut regardless.
 const appReleaseWait = 5 * time.Second
+
+// appQuitReceiptWait is the longest the app's quit waits for the prices its
+// cut streams still owe, once they are hurried. A hurried receipt answers within
+// about two seconds of the hurry; this is the bound on top of it, so that a
+// router that does not answer at all costs the quit three seconds and not the
+// seventy of [provider.ReceiptWait].
+const appQuitReceiptWait = 3 * time.Second
 
 func runApp(args []string) error {
 	localGUI := consumeAppLocalGUI()
@@ -153,6 +162,16 @@ func runApp(args []string) error {
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.leaving = leaving
+	// A QUIT DOES NOT WAIT OUT A RECEIPT'S SCHEDULE (internal/provider's
+	// receipt_hurry.go): Close hurries them, and the process half's close waits
+	// at most [appQuitReceiptWait] for what is still owed.
+	var calmReceipts func()
+	backend.hurryReceipts = func() { calmReceipts = provider.HurryReceipts() }
+	defer func() {
+		if calmReceipts != nil {
+			calmReceipts()
+		}
+	}()
 	backend.useSyncDrives(syncDrives)
 	// A chat's banked pipeline line takes the editor's road while the app
 	// holds the factory (factory_recipe_road.go).
@@ -179,6 +198,7 @@ func runApp(args []string) error {
 		backend.turnLong = *turnLong
 	}
 	defer backend.watchSpendRows()()
+	defer backend.watchAgentSpend()()
 	// The crews are watched from the start: a manager's start or a member
 	// woken by its manager must not wait for the window to ask for crews.
 	backend.memoryStore = func() (*store.Store, error) {
@@ -202,6 +222,9 @@ func runApp(args []string) error {
 	services := openAppServices()
 	appServiceDoor.Store(services)
 	backend.attachServices(services)
+	// And the press a job's manager makes Merge and Mark ready through, the
+	// job page's own (factory_manager_press.go).
+	defer installAppLocalPress(backend)()
 	guard.Go("app/crews-start", func() { backend.crews() })
 	// THE APP IS AN OPEN WINDOW for as long as it runs, so the clock that runs
 	// standing orders runs while it is open (apporders.go).
@@ -221,6 +244,9 @@ func runApp(args []string) error {
 		// The process half every conversation shared, closed the way the pipe
 		// engine closes it once its conversation is gone (engine.go).
 		session.CloseUsage()
+		if proc := openedEngineProcess(); proc != nil {
+			proc.quitReceiptWait.Store(int64(appQuitReceiptWait))
+		}
 		closeEngineProcess()
 	}
 	return err
@@ -320,6 +346,9 @@ type appConn struct {
 	// Assembled says this process built the conversation itself, so the shared
 	// engine half must be closed when the app leaves.
 	Assembled bool
+	// OlderModels says a host from before the main/fallback pair holds this
+	// conversation, so its models cannot be set from here.
+	OlderModels bool
 	// Lent says this is a factory stage the factory owns, lent as a view
 	// (app_lend.go): its model, posture and budget are not the app's to set.
 	Lent bool
@@ -344,6 +373,11 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
 		if err == nil {
 			err = enableAppConversationModels(conn.Conv)
+			// AN OLDER HOST LOSES THE PAIR, NOT THE CONVERSATION: it stays
+			// open and readable, and the person is told ([appBackend.openingNotices]).
+			if appOlderHost(err) {
+				conn.OlderModels, err = true, nil
+			}
 		}
 		return conn, err
 	}
@@ -551,7 +585,15 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
-	chats       appChats
+	libraryWatch   sync.Once
+	libraryInboxMu sync.Mutex
+	pluginPauses   map[string]appPluginPause
+	pluginOllama   appPluginOllama
+	pluginAuth     map[string]*appPluginAttempt
+	chats          appChats
+	// credentials is what a door gave this launch to keep, waiting for the
+	// app to take it (appkept_credentials.go).
+	credentials appKeptCredentials
 	pair        appPair
 	drives      *driveBook
 	sync        appSync
@@ -582,6 +624,9 @@ type appBackend struct {
 	// stopProgress the factory runner's progress news (appfactory_progress.go).
 	stopPhases   func()
 	stopProgress func()
+	// stopStages and stepStreams: the factory steps' events (appfactory_stepstream.go).
+	stopStages  func()
+	stepStreams map[string]*appStepStream
 	// briefs takes the progress news of this machine's factory's jobs as
 	// writes of their briefs (appfactory_brief_writer.go).
 	briefs *briefDebounce
@@ -595,6 +640,8 @@ type appBackend struct {
 	// local is the factory this engine serves or joined for its own person,
 	// only once a window asks (appfactory_setup.go).
 	local appLocalFactory
+	// setupGitHub is the first run's browser sign-ins (appfactory_setup_github.go).
+	setupGitHub appSetupGitHub
 	// startedAt is when this backend was made, and lastResume what its start
 	// carried on after the last quit, nil for nothing (apphealth.go). Both
 	// are guarded by mu.
@@ -623,8 +670,8 @@ type appBackend struct {
 	turns         atomic.Uint64
 	assembled     atomic.Bool
 
-	// unreadSay is held from working an agent's unread out to saying it,
-	// so the last unread the window hears is the last one worked out
+	// unreadSay is held from working an agent's unread and saved spend out
+	// to saying them, so the last readings the window hears are the latest
 	// (appunread.go). It is taken before mu and the app file's lock, never
 	// under them.
 	unreadSay sync.Mutex
@@ -649,6 +696,10 @@ type appBackend struct {
 	agents       map[string]*appAgent
 	closing      bool
 
+	// lineSays is when each working agent's live line was last said, under mu
+	// (appliveline.go).
+	lineSays map[*appAgent]*appLineSay
+
 	sweepStop chan struct{}
 	sweepDone chan struct{}
 	// left closes when Close begins, whatever started the leaving: the app's
@@ -657,6 +708,11 @@ type appBackend struct {
 	left chan struct{}
 	// leaving is runApp's cancellation, installed before the backend starts.
 	leaving context.CancelFunc
+	// hurryReceipts, when set, is called once as Close begins, so every
+	// conversation's cut stream asks for its price once and is answered rather
+	// than holding the quit through its seventy-second schedule
+	// ([provider.HurryReceipts]). Only the app's own door sets it.
+	hurryReceipts func()
 	// spent is the last figure spend.changed said, so it is said on a change.
 	spent float64
 	// mint makes a new conversation's folder and answers its transcript path:
@@ -720,6 +776,9 @@ type appBackend struct {
 	// spendRowsPending holds one read of today's figure for rows written
 	// together (watchSpendRows).
 	spendRowsPending atomic.Bool
+	// spendRestates hands saved-spend news off without taking mu or waiting
+	// for the window (appspendsaved.go).
+	spendRestates appSpendRestates
 	// turnLong is how long a reply runs before turn.long ([appTurnLong]).
 	turnLong time.Duration
 	// inbox is every open ask as one list (appinbox.go); emit is its tap.
@@ -765,6 +824,10 @@ type appAgent struct {
 	repliedAt      time.Time
 	askedElsewhere time.Time
 	saidUnread     bool
+	// saidSpend is the saved figure last said in a dressed open/list answer or
+	// agent.changed, never a cache for a later view. mu guards it; unreadSay
+	// orders sayings.
+	saidSpend float64
 
 	// listening is when this light record began watching crew traffic.
 	listening time.Time
@@ -806,6 +869,9 @@ type appAgent struct {
 	// ([appBackend.FactoryJobChats]).
 	jobEffort func() string
 	opening   bool
+	// openDone closes after initialization, including live publication and watchers.
+	// Waiters can abandon an open without leaving a goroutine on the gate.
+	openDone chan struct{}
 	// starting says agents.create took a first message whose turn has not
 	// started yet: the conversation is still being opened (bootAgent). While
 	// it lasts the agent reads starting, and nothing waits on the gate the
@@ -1036,11 +1102,16 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	}
 	b.startedAt = b.now()
 	b.emit = b.newAppInbox(emit)
+	// A CREDENTIAL A DOOR GAVE THIS LAUNCH IS HANDED TO THE APP TO KEEP
+	// (config.AppCredentials.Keep, appkept_credentials.go), and comes back
+	// with keys.set at the next.
+	keys.OnKept(b.queueCredential)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
 	b.briefs = newBriefDebounce(appBriefDebounce, b.writeBriefLater)
 	b.stopProgress = b.listenProgress()
+	b.stopStages = b.listenStages()
 	guard.Go("app/sweep", b.sweep)
 	b.startLocalChatPublication()
 	return b
@@ -1243,10 +1314,12 @@ func appRowOnDisk(id string) (session.SessionRow, bool) {
 		// A folder minted and never spoken in is still a conversation the app
 		// may have created; its meta names the workspace.
 		meta, err := session.LoadMeta(dir)
-		if err != nil || strings.TrimSpace(meta.ID) == "" {
+		if err != nil || meta.ID != id {
 			continue
 		}
-		return session.SessionRow{ID: id, AgentDID: meta.AgentDID(), Dir: dir, Transcript: transcript, Title: meta.Title, Workspace: meta.Workspace, Created: meta.Created}, true
+		return session.SessionRow{ID: id, AgentDID: meta.AgentDID(), Dir: dir, Transcript: transcript,
+			Title: meta.Title, Workspace: meta.Workspace, Owned: meta.Owned, Model: meta.Model,
+			Archived: meta.Archived, Spend: meta.SpentUSD, At: meta.Created, Created: meta.Created}, true
 	}
 	return session.SessionRow{}, false
 }
@@ -1511,6 +1584,7 @@ func (b *appBackend) createAgentHeld(prep appCreatePrep, minted string) (appwire
 			a.dials = &appDials{effort: ask.Effort, posture: ask.ApprovalPosture}
 		}
 		a.opening, a.minted = true, true
+		a.openDone = make(chan struct{})
 		a.users, a.counted = 0, true
 		view = a.view
 	})
@@ -1540,7 +1614,7 @@ func (b *appBackend) bootOpen(a *appAgent, first appFirst) bool {
 	defer a.gate.Unlock()
 	view, opened, err := b.ensureLocked(a)
 	stopped := false
-	b.locked(func() { a.opening, stopped = false, a.stopAsked })
+	b.locked(func() { stopped = a.stopAsked })
 	if err != nil {
 		b.bootFailed(a, first, err)
 		return false
@@ -1748,6 +1822,7 @@ func (b *appBackend) openAgent(id string, warm bool) (appwire.Agent, error) {
 		}
 	})
 	if busy {
+		view.SpentUSD = b.savedSpendOf(view.ID)
 		return view, nil
 	}
 	a.gate.Lock()
@@ -1778,6 +1853,15 @@ func (b *appBackend) ensure(a *appAgent) (appwire.Agent, bool, error) {
 
 // ensureLocked is [appBackend.ensure] for a caller already holding a.gate.
 func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
+	// Opening includes initialization after b.open returns. Readers must not
+	// queue on the gate in the gap before the live owner is ready.
+	defer b.locked(func() {
+		a.opening = false
+		if a.openDone != nil {
+			close(a.openDone)
+			a.openDone = nil
+		}
+	})
 	var moved bool
 	b.locked(func() { moved = a.windowMoved })
 	if moved {
@@ -1835,10 +1919,13 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	// OPENING IS SAID WHILE IT LASTS, so a caller that only reads or stops
 	// (agents.open, agents.stop, processes.list) does not queue on the gate
 	// behind it ([appBackend.findCrewOwner]).
-	wasOpening := false
-	b.locked(func() { wasOpening, a.opening = a.opening, true })
+	b.locked(func() {
+		a.opening = true
+		if a.openDone == nil {
+			a.openDone = make(chan struct{})
+		}
+	})
 	conn, err := b.open(ask)
-	b.locked(func() { a.opening = wasOpening })
 	if err != nil {
 		var wire *appwire.Error
 		if errors.As(err, &wire) && wire.Code == appwire.CodeUnreachable {
@@ -1994,14 +2081,18 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	return view
 }
 
-// appAskID is the stable id of one ask: the engine's own question key.
-func appAskID(q session.Question) string {
-	return string(q.Kind) + ":" + q.Token()
+// appAskID scopes connection questions to their agent because plugin completion events carry only this id.
+func appAskID(agent string, q session.Question) string {
+	id := string(q.Kind) + ":" + q.Token()
+	if q.Kind == session.QuestionConnect {
+		return agent + "/" + id
+	}
+	return id
 }
 
 // appAskOf is the engine's question as the app's ask.
 func appAskOf(agent string, q session.Question) appwire.Ask {
-	ask := appwire.Ask{ID: appAskID(q), Agent: agent, Kind: appwire.AskQuestion, Title: strings.TrimSpace(q.Head), Detail: strings.TrimSpace(q.Reason)}
+	ask := appwire.Ask{ID: appAskID(agent, q), Agent: agent, Kind: appwire.AskQuestion, Title: strings.TrimSpace(q.Head), Detail: strings.TrimSpace(q.Reason)}
 	if q.Kind == session.QuestionConsent {
 		ask.Kind, ask.Subkind = appwire.AskApproval, appwire.SubkindPermission
 		ask.Irreversible = q.Stakes == session.StakesIrreversible
@@ -2018,6 +2109,15 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	ask.Subject = appAskSubject(agent, q.Subject)
+	if q.SecretAnswer() {
+		ask.Secret = &appwire.AskSecret{Placeholder: strings.TrimSpace(q.Input.Prompt)}
+		// Only the model's own question keeps what was typed in a file
+		// (session's secret_request.go); every other secret box hands it to its
+		// lane.
+		if q.Kind == session.QuestionAsk {
+			ask.Secret.KeepsForS = int(session.SecretKeepFor / time.Second)
+		}
+	}
 	return ask
 }
 
@@ -2159,7 +2259,7 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			q.ConsentScopes, q.AlwaysAsk = nil, "critical"
 		}
 	}
-	askID := appAskID(q)
+	askID := appAskID(id, q)
 	switch event.Kind {
 	case session.EventQuestion:
 		if q.Subject.Kind == session.SubjectCall {
@@ -2194,6 +2294,9 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			return
 		}
 		live.box.Event(appwire.EventAskOpened, appwire.AskOpened{Ask: ask})
+		if q.Kind == session.QuestionConnect {
+			live.box.Event(appwire.EventPluginsNeeded, appwire.PluginsNeeded{Agent: id, Plugin: q.Subject.Name, Why: q.Reason, AskID: askID})
+		}
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 		}
@@ -2242,7 +2345,10 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			var task appwire.Task
 			known := false
 			b.locked(func() { task, known = live.tasks[appTaskID(id, q.ID)] })
-			if known && !task.Proposed && task.State != appwire.TaskFailed {
+			// THE WITHDRAWAL'S OWN WORD WINS: the task lane is read apart from
+			// the question lane, so the task's update may not be here yet.
+			started := q.Withdrawn != nil && q.Withdrawn.Started
+			if started || known && !task.Proposed && task.State != appwire.TaskFailed {
 				// THE RECEIPT SAYS HOW LONG THE CLOCK WAS, so a person reading it
 				// later knows what they had to answer in.
 				clock := appProposedClockS
@@ -2251,6 +2357,9 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 			}
 		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: id, ID: askID, By: by, Option: option, At: at})
+		if q.Kind == session.QuestionConnect {
+			live.box.Event(appwire.EventPluginsNeededDone, appwire.PluginsNeededDone{AskID: askID})
+		}
 		receipt := appwire.Entry{ID: appReceiptEntryID(askID), Agent: id, Kind: appwire.EntryReceipt, At: at, Text: words}
 		if scope != "" {
 			receipt.Text = "Always allowed · " + scope + " · you · " + at.Local().Format("15:04")
@@ -2306,6 +2415,7 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 	mine := false
 	var view appwire.Agent
 	var asks []appwire.Ask
+	pluginAsks := map[string]bool{}
 	b.locked(func() {
 		if mine = a.live == live; !mine {
 			return
@@ -2315,6 +2425,11 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 		a.view.State = appwire.StateStopped
 		view = a.view
 		asks = live.asks
+		for id, q := range live.questions {
+			if q.Kind == session.QuestionConnect {
+				pluginAsks[id] = true
+			}
+		}
 		live.asks, live.questions = nil, map[string]session.Question{}
 	})
 	if !mine {
@@ -2322,6 +2437,9 @@ func (b *appBackend) died(a *appAgent, live *appLive) {
 	}
 	at := b.now()
 	for _, ask := range asks {
+		if pluginAsks[ask.ID] {
+			live.box.Event(appwire.EventPluginsNeededDone, appwire.PluginsNeededDone{AskID: ask.ID})
+		}
 		live.box.Event(appwire.EventAskClosed, appwire.AskClosed{Agent: view.ID, ID: ask.ID, By: appwire.ClosedByStopped, At: at})
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
 			ID: appReceiptEntryID(ask.ID), Agent: view.ID, Kind: appwire.EntryReceipt, At: at, Text: appReceipt(appwire.ClosedByStopped, "", nil, at),
@@ -2360,6 +2478,11 @@ func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
 func (b *appBackend) send(id, text, clientID string, shown *appSending) (uint64, error) {
 	a, err := b.find(id)
 	if err != nil {
+		return 0, err
+	}
+	// A STEP AN AGENTFIELD NODE IS RUNNING takes the person's words as a note
+	// to that run, not a turn here (factory_agentfield_run.go).
+	if handled, err := b.agentFieldSteer(a, text); handled {
 		return 0, err
 	}
 	// The gate keeps the idle sweep from letting the conversation go between
@@ -2675,6 +2798,9 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 		b.pump(a, id, live, turn, n, text, shown, events)
 		b.sendQueued(a, live)
 	})
+	if err := b.touchJobConversation(a.transcript); err != nil {
+		return turn, &appUnsureSend{err: appEngineError(err)}
+	}
 	return turn, nil
 }
 
@@ -2857,7 +2983,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			sayReply(appwire.EntryUpdate)
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
-			b.locked(func() { a.step = title })
+			b.stepMoved(a, live, title)
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
 			live.box.Event(appwire.EventTurnTool, row)
@@ -2993,6 +3119,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		live.running = false
 		live.lastUse = b.now()
 		a.step = ""
+		b.lineSettledLocked(a)
 		// Let go or closed while the turn ran: that road has said the state.
 		if held = a.live == live; held {
 			a.view.State = live.restingState()
@@ -3020,6 +3147,20 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 func appUserEntryID(n int) string { return "u" + strconv.Itoa(n) }
 
 func appAnswerEntryID(n, m int) string { return "a" + strconv.Itoa(n) + "." + strconv.Itoa(m) }
+
+// appEntryMessage is the person's message an entry id of those two is under.
+func appEntryMessage(id string) (n int, ok bool) {
+	at, found := strings.CutPrefix(id, "u")
+	if !found {
+		answer, isAnswer := strings.CutPrefix(id, "a")
+		at, _, found = strings.Cut(answer, ".")
+		if !isAnswer {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(at)
+	return n, found && err == nil
+}
 
 func appToolEntryID(call string) string { return "t" + call }
 
@@ -3365,6 +3506,18 @@ func (b *appBackend) AnswerAsk(id, askID, option, text string) error {
 
 // answerAskScope validates the chosen rule before writing or resolving anything.
 func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error {
+	return b.answerAskThrough(id, askID, option, text, scope, false)
+}
+
+// answerAskThrough is answerAskScope told which door the words came by.
+//
+// A SECRET ASK'S WORDS COME ONLY BY asks.answer_secret. The engine would keep
+// them out of the conversation whichever door they took, but a client's trace
+// of this wire drops a credential by the METHOD that carries it, so words sent
+// to a secret ask by asks.answer are a key in plain text in that trace (the
+// app's UI2_WIRE_LOG). Refused here, every ordinary door refuses them at once:
+// asks.answer, its scoped and batched forms, and anything added beside them.
+func (b *appBackend) answerAskThrough(id, askID, option, text, scope string, secretDoor bool) error {
 	b.resetCloseResumes(id)
 	if handled, err := b.answerOrderAsk(askID, option); handled {
 		return err
@@ -3393,6 +3546,11 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 		}
 		if !open {
 			refused = appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open; it may have been answered elsewhere", askID)
+			return
+		}
+		q = b.connectedPluginQuestion(q)
+		if q.SecretAnswer() && !secretDoor && strings.TrimSpace(text) != "" {
+			refused = appwire.Errorf(appwire.CodeBadParams, "the ask %s takes a secret; send it by %s, never as an answer's text", askID, appwire.MethodAnswerSecret)
 			return
 		}
 		key, refused = appValidateQuestionAnswer(askID, q, option, text, scope)
@@ -3565,6 +3723,7 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	if err != nil {
 		return nil, false, appEntriesBusy(err)
 	}
+	appMarkStepBrief(page, transcript)
 	return page, more, nil
 }
 
@@ -3917,6 +4076,7 @@ func appEntryShapes(agent string, items []session.DisplayEntry, at time.Time, ma
 		if entry.Kind == appwire.EntryUser && item.Person != nil {
 			entry.From = item.Person.From
 		}
+		entry.Author = appEntryAuthor(entry, item)
 		entries = append(entries, entry)
 		from = append(from, i)
 	}
@@ -4505,11 +4665,16 @@ func (b *appBackend) Close() error {
 	var warmed chan struct{}
 	var balances *appBalances
 	var stopModelNotices func()
+	var pluginAttempts []*appPluginAttempt
 	b.locked(func() {
 		if already = b.closing; already {
 			return
 		}
 		b.closing = true
+		for id, attempt := range b.pluginAuth {
+			pluginAttempts = append(pluginAttempts, attempt)
+			delete(b.pluginAuth, id)
+		}
 		if b.left != nil {
 			close(b.left)
 		}
@@ -4537,11 +4702,22 @@ func (b *appBackend) Close() error {
 	if already {
 		return nil
 	}
+	if b.hurryReceipts != nil {
+		b.hurryReceipts()
+	}
+	for _, attempt := range pluginAttempts {
+		attempt.cancel()
+		if attempt.flow != nil {
+			attempt.flow.Cancel()
+		}
+	}
+	lap := leaveLaps()
 	b.closePair()
 	if b.stopSyncedSettings != nil {
 		b.stopSyncedSettings()
 	}
 	b.closeChats()
+	lap("chats")
 	if stopModelNotices != nil {
 		stopModelNotices()
 	}
@@ -4554,18 +4730,25 @@ func (b *appBackend) Close() error {
 	// the next engine cannot serve the factory until this one has let it go.
 	// Its runner stops here the way a quit has always stopped it.
 	b.closeLocalFactory()
+	lap("local factory")
 	b.stopCloseWatch()
+	lap("close watch")
 	if balances != nil {
 		balances.stop()
 	}
 	b.closeFactories()
+	lap("factories")
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).
 	b.markQuit(agents)
+	lap("mark quit")
 	close(b.sweepStop)
 	<-b.sweepDone
 	if b.stopPhases != nil {
 		b.stopPhases()
+	}
+	if b.stopStages != nil {
+		b.stopStages()
 	}
 	if b.stopProgress != nil {
 		b.stopProgress()
@@ -4573,12 +4756,21 @@ func (b *appBackend) Close() error {
 	if b.briefs != nil {
 		b.briefs.stop()
 	}
+	lap("background loops")
 	if warmed != nil {
 		<-warmed
 	}
+	lap("warm-up")
 	if crews != nil {
 		crews.close()
 	}
+	lap("crews")
+	// EVERY CONVERSATION IS LET GO AT ONCE, each on its own goroutine, so the
+	// quit waits for the slowest of them and never for their sum. Each is
+	// timed in its two halves, the wait for its gate and its own close, and
+	// one slower than [appLeaveSlowLap] is named on stderr: the sixth live
+	// A+B run spent 18 seconds here with about 24 chats open, and nothing it
+	// wrote said which conversation, or which half, it was waiting on.
 	var wg sync.WaitGroup
 	for _, a := range agents {
 		if b.liveOf(a) == nil {
@@ -4594,10 +4786,11 @@ func (b *appBackend) Close() error {
 			if live := b.liveOf(a); live != nil && live.conn.Assembled {
 				live.conn.Conv.Interrupt()
 			}
-			b.letGo(a)
+			b.letGoTimed(a, os.Stderr)
 		})
 	}
 	wg.Wait()
+	lap("conversations")
 	// An unfinished crew open owns its gate but has no held conversation to
 	// release. Optional file cleanup must not join that open; retain its files.
 	var settled []*appAgent
@@ -4615,9 +4808,11 @@ func (b *appBackend) Close() error {
 		b.reapBlank(a)
 	}
 	b.closeCollections()
+	lap("references")
 	// Kept-running processes stay up through a quit; services.stop_all is
 	// how a quit stops them (appservices.go).
 	b.closeServices()
+	lap("services")
 	return nil
 }
 
@@ -4626,6 +4821,34 @@ func (b *appBackend) letGo(a *appAgent) {
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	b.release(a)
+}
+
+// letGoTimed is letGo at quit, naming on w a conversation whose wait for its
+// gate or whose own close took longer than [appLeaveSlowLap].
+func (b *appBackend) letGoTimed(a *appAgent, w io.Writer) {
+	began := time.Now()
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	gated := time.Now()
+	var id string
+	b.locked(func() { id = a.view.ID })
+	b.release(a)
+	if line := appSlowCloseLine(id, gated.Sub(began), time.Since(gated)); line != "" {
+		fmt.Fprintln(w, line)
+	}
+}
+
+// appSlowCloseLine is the stderr line for one slow conversation at quit, or ""
+// for a quick one. It names the conversation by its id, which is no secret,
+// and says which half was slow: a long wait for the gate is something else
+// holding the conversation (an open still assembling it), and a long close is
+// the conversation's own wrap-up (its turn, its commands, its save).
+func appSlowCloseLine(id string, gate, close time.Duration) string {
+	if gate+close <= appLeaveSlowLap {
+		return ""
+	}
+	return fmt.Sprintf("codeaf app: leaving: conversation %s took %s (waiting for it %s, closing it %s)",
+		id, (gate + close).Round(100*time.Millisecond), gate.Round(100*time.Millisecond), close.Round(100*time.Millisecond))
 }
 
 func (b *appBackend) liveNeedsYou(live *appLive) bool {
@@ -4734,6 +4957,10 @@ func appEngineError(err error) error {
 	}
 	if appMissingKey(err) {
 		return &appwire.Error{Code: appwire.CodeEngine, Message: appNoProvider}
+	}
+	// A removed computer reads the removal and its remedy, never the wire's sentinel.
+	if errors.Is(err, directory.ErrRevoked) {
+		return &appwire.Error{Code: appwire.CodeEngine, Message: appRemoved}
 	}
 	return &appwire.Error{Code: appwire.CodeEngine, Message: redact.Secrets(plainWords(err.Error()))}
 }

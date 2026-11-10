@@ -17,6 +17,7 @@ func BriefSystem() string {
 	return fmt.Sprintf(`You write the brief of one factory job: its state in one screen, for the person who owns it.
 You are given the job as JSON: the issue, person_requests, the plan, each step's result per try, the change's stats and hunk index, the rule checks, the facts row and the brief before.
 What was asked is the issue plus person_requests, oldest first. A later request wins over the issue and the plan where they disagree.
+manager_answers are questions a step asked that the job's manager answered in the person's place; they are never the person's requests. When one shaped the work, say so in a block, as "Manager answered for you: " and the answer, so the person can override it.
 Work that follows a person's request is never reported as a fault, a surprise or scope creep. The verdict names the request as asked. A real miss against a request is still reported. Judge the work against those requests using the recorded evidence.
 Answer ONE JSON object and nothing else:
 {"verdict": string, "verdict_evidence": [evidence], "blocks": [block]}
@@ -32,10 +33,11 @@ Pick 2 to %d blocks. Every block has "kind" and a short "heading". Kinds and the
 - open_question: "questions": [{"text","evidence","action":{"label","step","ask"}}] at most %d, for what the evidence does not cover.
 - your_call: "options": 2-%d short answers; only while needs_you is true; "evidence".
 - screenshots: "shots": [{"label","ref","evidence"}] at most %d.
-EVERY NUMBER YOU WRITE MUST BE ONE ITS EVIDENCE SHOWS; a claim or block that breaks this, or names a step or try the job does not have, is thrown away. Never restate the facts row. Say nothing you cannot point at.`,
+EVERY NUMBER YOU WRITE MUST BE ONE ITS EVIDENCE SHOWS; a claim or block that breaks this, or names a step or try the job does not have, is thrown away. Never restate the facts row. Say nothing you cannot point at.
+%s`,
 		strings.Join(BriefEvidenceKinds, ", "), BriefWordsMost, BriefBlocksMost, BriefBulletsMost, BriefWordsMost,
 		BriefFlowNodesMost, BriefDiagramMost, BriefTableColsMost, BriefTableRowsMost, BriefSpotsMost,
-		BriefQuestionsMost, BriefOptionsMost, BriefShotsMost)
+		BriefQuestionsMost, BriefOptionsMost, BriefShotsMost, BriefPlainWordsRule)
 }
 
 // BriefInputText is the input as the writer reads it, cut to
@@ -110,6 +112,9 @@ func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDr
 		it.BriefWriting = &BriefWriting{State: BriefFailed, AfterStep: after, Failure: why, At: now, Hash: w.Hash}
 		return BriefVersion{}, nil, false
 	}
+	if StoppedByPerson(*it) {
+		return fail(PersonStopReason)
+	}
 	if w.Failure != "" {
 		return fail(w.Failure)
 	}
@@ -118,5 +123,6 @@ func (it *Item) EndBrief(w BriefWritten, now time.Time) (BriefVersion, []BriefDr
 		return fail("the brief did not pass its check: " + fault)
 	}
 	v.AfterStep, v.MadeAt, v.Model, v.CostUSD, v.InputHash, v.Dropped = after, now, w.Model, w.CostUSD, w.Hash, len(drops)
+	v.BeforeWork = briefBeforeWork(*it)
 	return it.KeepBrief(v), drops, true
 }

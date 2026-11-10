@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"context"
+	"errors"
 	"os"
 	"runtime"
 
@@ -13,9 +14,8 @@ import (
 )
 
 // SeatFor builds the executor a session owns: every call runs under the class
-// the cell declared and each tool call is logged and the
-// workspace sealed when it returns. This is the one place a session's
-// executor is made.
+// the cell declared and each tool call is logged before the workspace's next
+// seal. This is the one place a session's executor is made.
 //
 // obs, when set, sees every process the seat ran and every tool a shell call's
 // command line started (the inventory's observer).
@@ -51,7 +51,8 @@ func SeatOver(class executor.Class, c cell.Cell, workspace string, obs executor.
 	if over != nil {
 		store = over(engine)
 	}
-	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs), Async: engine.pipeline})
+	rec, err := recorderFor(base.In(workspace), store, c, Options{Report: report, Refresh: refreshOf(obs), Async: engine.pipeline,
+		FolderGone: func() bool { return errors.Is(engine.workspaceThere(c), ErrWorkspaceGone) }})
 	if err != nil {
 		return executor.Watching(base, obs), err
 	}
@@ -79,8 +80,8 @@ func (e Engine) notifyHistoryOff(c cell.Cell) {
 // SeatOption adjusts the engine a seat seals through.
 type SeatOption func(*Engine)
 
-// WithPipeline returns command results while their capture finishes. Every next
-// call and close still drains the same recorder, with a bounded wait (D3).
+// WithPipeline returns command results before saving at a pause. The next call
+// waits for any capture already running, and close settles held calls too (D3).
 func WithPipeline() SeatOption { return func(e *Engine) { e.pipeline = true } }
 
 // WithWarmCapture screens the folder as soon as the seat opens without adding

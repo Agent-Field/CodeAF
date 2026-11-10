@@ -119,6 +119,21 @@ func TestIdleOpen_C6_D2_AppExistingViewerPullsNewestHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Reopening acquires a new fence rather than renewing the take's
+	// (TestStartupAcquiresNewHold), so the row that frees up is the one at the
+	// fence this reopened writer holds, read from the directory before it closes.
+	dirID := got.Taken.Driving.Remote
+	if dirID == "" {
+		dirID = got.Taken.Driving.Cell.ID
+	}
+	writer, err := peer.Dir.Cell(t.Context(), dirID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writerFence := writer.Cell.Lease.Fence
+	if writer.Cell.Lease.Device != peer.Device.ID() || writerFence <= got.Taken.Driving.Fence {
+		t.Fatalf("reopened writer holds %+v; want this device at a fence newer than the take's %d", writer.Cell.Lease, got.Taken.Driving.Fence)
+	}
 	sealed, sealErr := drive.Store(engine).Seal(t.Context(), got.Taken.Cell, cellstore.TurnInfo{})
 	closeErr = drive.Close(context.Background())
 	if sealErr != nil || closeErr != nil {
@@ -131,7 +146,7 @@ func TestIdleOpen_C6_D2_AppExistingViewerPullsNewestHead(t *testing.T) {
 		}
 		for _, r := range rows.Chats {
 			if r.Cell == f.agent.ID {
-				return r.CanOpen && !r.Here && r.Seen.Fence == got.Taken.Driving.Fence
+				return r.CanOpen && !r.Here && r.Seen.Fence == writerFence
 			}
 		}
 		return false

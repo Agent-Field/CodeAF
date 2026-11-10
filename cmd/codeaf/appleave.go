@@ -27,6 +27,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -112,3 +113,25 @@ func appLeaveNow() {
 // (`producer | head` would never end). The channel is never read; Notify
 // drops a signal its channel has no room for.
 func surviveBrokenPipes() { signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE) }
+
+// appLeaveSlowLap is how long one part of the wrap-up may take before the
+// engine says so on stderr.
+const appLeaveSlowLap = time.Second
+
+// leaveLaps times the parts of the wrap-up, and names on stderr each one that
+// took longer than [appLeaveSlowLap]. A WRAP-UP THAT IS SLOW SAYS WHERE. The
+// fifth live A+B run's engine took about 45 seconds to leave after SIGTERM,
+// and nothing it wrote said which part it was waiting on; the same shape on a
+// rig (a step mid-command, cells on) left in under half a second.
+func leaveLaps() func(part string) { return leaveLapsTo(os.Stderr, time.Now) }
+
+func leaveLapsTo(w io.Writer, now func() time.Time) func(part string) {
+	last := now()
+	return func(part string) {
+		at := now()
+		if took := at.Sub(last); took > appLeaveSlowLap {
+			fmt.Fprintf(w, "codeaf app: leaving: %s took %s\n", part, took.Round(100*time.Millisecond))
+		}
+		last = at
+	}
+}

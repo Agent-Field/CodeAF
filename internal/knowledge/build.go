@@ -4,13 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
+
+const ordinaryBuildAttemptLimit = 3
 
 type BuildPhase string
 
@@ -90,6 +94,7 @@ func (v *Vault) StartBuild() error {
 		return err
 	}
 	v.forgetConsent()
+	wakeBuild(v.root)
 	return nil
 }
 
@@ -120,11 +125,22 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 	defer filelock.Unlock(lock)
 	delay := time.Second
 	lastInventory := ""
+	wake := buildWake(v.root)
+	// A Build pressed before this loop began is answered by its first pass.
+	select {
+	case <-wake:
+	default:
+	}
+	seen, quiet := "", false
 	for {
 		if err = ctx.Err(); err != nil {
 			return err
 		}
+		before := seen
+		v.passSeen = ""
 		err = v.runPass(ctx, history, key, &lastInventory)
+		seen = v.passSeen
+		quiet = err == nil && seen != "" && seen == before
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -139,21 +155,73 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 				return loadErr
 			}
 			job["phase"] = string(BuildFailed)
-			job["error"] = "Knowledge build paused: " + err.Error() + ". Completed progress is retained; use Build to retry or add new sources."
+			job["error"] = "Knowledge build paused: " + err.Error() + ". " + buildRetryNotice(number(job["build_attempts"]))
 			saveErr := saveState(db, "job", job)
 			db.Close()
 			if saveErr != nil {
 				return saveErr
 			}
 			delay = min(120*time.Second, max(5*time.Second, delay*2))
+		} else if quiet {
+			// A PASS THAT FOUND THE SAME CHATS AS THE LAST ONE BACKS OFF. Each
+			// pass lists every saved chat and opens the database, and an idle
+			// engine has nothing new for it; a new chat is still found within
+			// buildQuietMax, and a person's Build wakes the loop at once.
+			delay = min(buildQuietMax, max(buildEvery, delay*2))
 		} else {
-			delay = 2 * time.Second
+			delay = buildEvery
 		}
-		if err = waitBuild(ctx, delay); err != nil {
+		if err = waitBuildOrWake(ctx, delay, wake); err != nil {
 			return err
 		}
 	}
 }
+
+// buildEvery is how soon a pass follows one that found something new;
+// buildQuietMax is the longest a quiet vault waits between passes. A test
+// shortens both.
+var (
+	buildEvery    = 2 * time.Second
+	buildQuietMax = 30 * time.Second
+)
+
+// buildWakes is each vault folder's wake, shared by every [Vault] opened on
+// it: the one running the loop and the one a person's Build was pressed on
+// are separate values.
+var buildWakes sync.Map
+
+func buildWake(root string) chan struct{} {
+	w, _ := buildWakes.LoadOrStore(filepath.Clean(root), make(chan struct{}, 1))
+	return w.(chan struct{})
+}
+
+// wakeBuild asks the loop running on root for a pass now. It never blocks: a
+// wake already waiting is the same ask.
+func wakeBuild(root string) {
+	select {
+	case buildWake(root) <- struct{}{}:
+	default:
+	}
+}
+
+func waitBuildOrWake(ctx context.Context, delay time.Duration, wake <-chan struct{}) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	case <-wake:
+	}
+	return nil
+}
+func buildRetryNotice(attempts float64) string {
+	if attempts >= ordinaryBuildAttemptLimit {
+		return fmt.Sprintf("Completed progress is retained; automatic retries stopped after %d attempts; use Build or add new sources.", ordinaryBuildAttemptLimit)
+	}
+	return "Completed progress is retained; retrying automatically."
+}
+
 func waitBuild(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
@@ -164,23 +232,40 @@ func waitBuild(ctx context.Context, delay time.Duration) error {
 		return nil
 	}
 }
+
+// markJobEvents marks one job session's saved events, so the compiler leaves them out. It runs on every pass with
+// Memory on, so it seeks through profile_session_lookup, which holds only events not marked yet.
+const markJobEvents = "UPDATE events SET payload=json_set(payload,'$.job',json('true')) WHERE partition='profile' AND json_extract(payload,'$.session')=? AND coalesce(json_extract(payload,'$.job'),0)=0"
+
+// profileSessionLookup is built here rather than with the schema: an open must not wait for it, and it is needed only
+// with Memory on. On an existing large database it holds the write lock while it builds (busyWaitMillis).
+const profileSessionLookup = "CREATE INDEX IF NOT EXISTS profile_session_lookup ON events(json_extract(payload,'$.session')) WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0"
+
+func markJobSessions(db *sql.DB, journals []Journal) error {
+	if _, err := db.Exec(profileSessionLookup); err != nil {
+		return err
+	}
+	for _, journal := range journals {
+		if journal.Job {
+			if _, err := db.Exec(markJobEvents, journal.Session); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (v *Vault) runPass(ctx context.Context, history History, key func() string, lastInventory *string) error {
 	journals, err := history.Inventory(ctx)
 	if err != nil {
 		return err
 	}
+	v.passSeen = identity([]any{journals, v.Enabled()})
 	db, err := v.database()
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	for _, journal := range journals {
-		if journal.Job {
-			if _, err = db.Exec("UPDATE events SET payload=json_set(payload,'$.job',json('true')) WHERE partition='profile' AND json_extract(payload,'$.session')=? AND coalesce(json_extract(payload,'$.job'),0)=0", journal.Session); err != nil {
-				return err
-			}
-		}
-	}
 	job, err := stateDocument(db, "job")
 	if err != nil {
 		return err
@@ -226,6 +311,10 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		return nil
+	}
+
+	if err = markJobSessions(db, journals); err != nil {
+		return err
 	}
 
 	imported := int(number(job["imported"]))
@@ -320,9 +409,21 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
 		return err
 	}
-	attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
-	if job["failed_input"] == attemptInput {
-		return nil
+	// An empty vault has no build input or retry budget to persist.
+	if total > 0 {
+		attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
+		if job["build_input"] != attemptInput {
+			job["build_input"] = attemptInput
+			job["build_attempts"] = 0
+		}
+		if number(job["build_attempts"]) >= ordinaryBuildAttemptLimit {
+			if job["phase"] != string(BuildFailed) {
+				job["phase"] = string(BuildFailed)
+				job["error"] = "Knowledge build interrupted. " + buildRetryNotice(number(job["build_attempts"]))
+				return saveState(db, "job", job)
+			}
+			return nil
+		}
 	}
 	job["problems"] = problems
 	job["sources"] = total
@@ -349,6 +450,8 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			}
 		}
 		job["phase"] = string(BuildRunning)
+		// Reserve the attempt durably before compilation can spend money.
+		job["build_attempts"] = number(job["build_attempts"]) + 1
 		if err = saveState(db, "job", job); err != nil {
 			return err
 		}
@@ -356,10 +459,10 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			if errors.Is(err, ErrDisabled) {
 				return nil
 			}
-			job["failed_input"] = attemptInput
-			if saveErr := saveState(db, "job", job); saveErr != nil {
-				return saveErr
-			}
+			return err
+		}
+		job["build_attempts"] = 0
+		if err = saveState(db, "job", job); err != nil {
 			return err
 		}
 		var remaining int

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -37,6 +38,10 @@ const knowledgeSchema = `
  CREATE TABLE IF NOT EXISTS wakes(partition TEXT,id TEXT,source TEXT,reason TEXT,PRIMARY KEY(partition,id,source));
 `
 
+// busyWaitMillis is how long a write waits for another writer before it fails. The longest holder is the build of
+// profile_session_lookup, once per database: 1.5 s at 1 GB on a fast Mac, so about 5 s on a laptop three times slower.
+const busyWaitMillis = 15_000
+
 var schemaLocks sync.Map
 var schemaReady sync.Map
 
@@ -50,7 +55,7 @@ var consentViews sync.Map
 type consentView struct {
 	mu             sync.Mutex
 	checked        time.Time
-	enabled        bool
+	readable       bool
 	since          time.Time
 	readGeneration uint64
 	generation     atomic.Uint64
@@ -90,9 +95,11 @@ func (v *Vault) ConfirmConsent() (enabled bool, since time.Time) {
 // consent answers from the shared view while it is younger than maxAge and no
 // consent write of this process came after it; maxAge 0 always reads.
 func (v *Vault) consent(maxAge time.Duration) (enabled bool, since time.Time) {
-	// The setting is read for every memory step, independently of cached metadata.
+	// A failed metadata read must not admit sources or advance their cursors.
+	// Successful reads still check the live setting on every memory step.
 	defer func() {
-		enabled = v.Enabled()
+		learning := v.Enabled()
+		enabled = enabled && learning
 		if !enabled {
 			since = time.Time{}
 		} else if since.IsZero() {
@@ -105,15 +112,15 @@ func (v *Vault) consent(maxAge time.Duration) (enabled bool, since time.Time) {
 	now := consentNow()
 	generation := view.generation.Load()
 	if maxAge > 0 && !view.checked.IsZero() && view.readGeneration == generation && now.Sub(view.checked) < maxAge {
-		return view.enabled, view.since
+		return view.readable, view.since
 	}
 	// Keep the lock across the read so simultaneous tickers share failures too.
 	value, err := v.state("config")
 	if err == nil {
-		enabled = flag(value["enabled"])
+		enabled = true
 		since, _ = time.Parse(time.RFC3339Nano, textValue(value["created_at"]))
 	}
-	view.checked, view.enabled, view.since = now, enabled, since
+	view.checked, view.readable, view.since = now, enabled, since
 	view.readGeneration = generation
 	return enabled, since
 }
@@ -143,7 +150,7 @@ func (v *Vault) database() (*sql.DB, error) {
 	}
 	uri := sqliteuri.File(path)
 	q := uri.Query()
-	q.Add("_pragma", "busy_timeout(1000)")
+	q.Add("_pragma", "busy_timeout("+strconv.Itoa(busyWaitMillis)+")")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Set("_txlock", "immediate")
 	uri.RawQuery = q.Encode()

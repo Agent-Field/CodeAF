@@ -98,6 +98,9 @@ func answerNote(text string) userMessage {
 // for now" is what it MEANS, and a provisional decision the model reads as a
 // settled one is a model that never mentions it again.
 func askAnswerText(q Question, answer Answer, theirs map[string]string, prior *Answer) string {
+	if q.SecretAnswer() {
+		return secretAnswerText(q, answer)
+	}
 	return askAnswerLead(q, answer, prior) + "\n" + answerJSON(askInTheirKeys(answer, q, theirs))
 }
 
@@ -209,8 +212,10 @@ func (a *Agent) startAskClock(open *askOpen) {
 		return
 	}
 	id := open.q.ID
+	// A surface's clock waits for its card to be drawn (tools_ask.go), with no
+	// bound: [Agent.StartQuestionClock] is what starts it.
 	a.mu.Lock()
-	if a.closed {
+	if a.closed || open.deferred {
 		a.mu.Unlock()
 		return
 	}

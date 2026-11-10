@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -72,10 +73,10 @@ func (d *Drive) ConfirmPreparedWork(ctx context.Context) error {
 	return d.Gate()
 }
 
-// ConfirmWork checks only this chat's directory record. Unlike CheckLease it
-// never waits for a capture before reading ownership. The caller bounds ctx
-// and decides how to degrade a failed read. True confirms the current fence;
-// false means either a viewer or a drive that cannot confirm ownership yet.
+// ConfirmWork checks only this chat's directory record without waiting for
+// capture before reading ownership. The caller bounds ctx and decides how to
+// degrade a failed read. True confirms the current fence; false means either a
+// viewer or a drive that cannot confirm ownership yet.
 func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	idleAdmission := d.BeginWork()
 	if idleAdmission {
@@ -96,7 +97,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		}
 	}
 	held := d.sendLeaseSnapshot()
-	if d.batcher == nil {
+	if d.batcher == nil || !d.released.Load() && d.displaced() {
 		return false, nil
 	}
 	id, fence := d.batcher.Lease()
@@ -114,10 +115,6 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		// or adopt it; a retry can conditionally acquire once it lapses.
 		return false, d.Gate()
 	}
-	v, err = d.renewIdleLease(ctx, v, fence)
-	if err != nil {
-		return false, err
-	}
 	lease := v.Cell.Lease
 	// A first publish or branch can change the lease during the read. That
 	// answer confirms neither a takeover nor the batcher's new lease.
@@ -125,21 +122,27 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	if lease.Expires <= v.Now {
-		if idleAdmission {
-			d.availableAfterWithin(ctx, held, lease)
-		} else {
+		if !d.released.Load() {
 			d.availableAfter(held, lease)
+			return false, nil
 		}
+		d.availableAfterWithin(ctx, held, lease)
 		// Never resume an older tree over work saved by another computer.
+		if err := cellstore.Captured(ctx, d.cell); err != nil {
+			return false, err
+		}
 		head, err := cellstore.Head(d.cell)
 		if err != nil || head == nil || head.Turn.ID != v.Cell.Head {
-			if idleAdmission && err == nil && lease.Device != d.sync.Device.ID() {
+			if err == nil && lease.Device != d.sync.Device.ID() {
 				d.confirmHolder(ctx, lease)
 			}
 			return false, err
 		}
+		if func() bool { d.mu.Lock(); defer d.mu.Unlock(); return d.lost }() {
+			return false, nil
+		}
 		resumed, err := d.batcher.Reacquire(ctx, v)
-		if idleAdmission && (errors.Is(err, directory.ErrLeaseHeld) || errors.Is(err, directory.ErrFenceStale)) {
+		if errors.Is(err, directory.ErrLeaseHeld) || errors.Is(err, directory.ErrFenceStale) {
 			// A send can lose to an automatic open after the free reading.
 			// Learn the winner before returning the ordinary moved refusal.
 			fresh, readErr := d.sync.Dir.Cell(ctx, id)
@@ -155,7 +158,7 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 			return false, nil
 		}
 		if err != nil || !resumed {
-			if idleAdmission && d.batcher.AcquireUncertain() {
+			if d.batcher.AcquireUncertain() {
 				d.uncertainAcquire(ctx)
 			}
 			return false, err
@@ -258,8 +261,8 @@ func (d *Drive) available() {
 
 // availableAfter closes the work gate before receipt I/O can block and retires
 // only the receipt held before the reading, so a concurrent reacquisition survives.
-// An unchanged owner and fence keeps its receipt even when released, because a
-// heartbeat can still renew it. Readers hear the change after retirement finishes.
+// Expiry and release retire the receipt too. Readers hear the change after
+// retirement finishes; continuation must acquire a new hold.
 func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
 	if d.idleNotices.Load() {
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
@@ -272,7 +275,7 @@ func (d *Drive) availableAfter(held sendLease, reading directory.Lease) {
 	changed := d.viewer != viewer
 	d.viewer = viewer
 	d.mu.Unlock()
-	if held.Fence != 0 && (reading.Device != d.sync.Device.ID() || reading.Fence != held.Fence) {
+	if held.Fence != 0 {
 		if err := d.sync.forgetSendLease(d.cell.ID, held); err != nil {
 			d.notice(err.Error())
 		}

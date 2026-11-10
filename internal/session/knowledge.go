@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,12 @@ import (
 
 // The test hook counts scans without changing the journal or the capture path.
 var knowledgeScanHook atomic.Pointer[func(string)]
+
+// knowledgeReadHook counts the scans that read the journal, for tests.
+var knowledgeReadHook atomic.Pointer[func(string)]
+
+// knowledgeCloseWait caps all scanner and cancelled compiler joins together.
+const knowledgeCloseWait = 10 * time.Second
 
 // knowledgeSafetyTick bounds discovery of journal lines this process did not
 // write, such as a session host's or terminal's writes. With consentRecheck,
@@ -58,8 +65,10 @@ func (a *Agent) KnowledgeCaptureError() string {
 }
 
 type knowledgeJournal struct {
-	ctx       context.Context
-	compile   *jobKnowledgeCompile
+	ctx context.Context
+	// Compilation is published separately because scanning holds mu during SQLite I/O.
+	compile   atomic.Pointer[jobKnowledgeCompile]
+	path      string
 	vault     *knowledge.Vault
 	project   string
 	scope     string
@@ -67,8 +76,18 @@ type knowledgeJournal struct {
 	offset    int64
 	skip      int
 	lastError string
-	cancel    context.CancelFunc
-	done      chan struct{}
+	// read is the journal as a scan that reached its end found it: a look
+	// that finds the file the same has nothing to read ([Agent.scanKnowledge]).
+	read   knowledgeJournalStamp
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+// knowledgeJournalStamp is what a stat says of a journal: its size and when it
+// last changed.
+type knowledgeJournalStamp struct {
+	size int64
+	mod  time.Time
 }
 
 func (a *Agent) initKnowledge() {
@@ -102,7 +121,7 @@ func (a *Agent) startKnowledge() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	j := &knowledgeJournal{ctx: ctx, cancel: cancel, done: make(chan struct{}), vault: vault, project: a.config.Workspace}
+	j := &knowledgeJournal{path: path, ctx: ctx, cancel: cancel, done: make(chan struct{}), vault: vault, project: a.config.Workspace}
 	a.knowledgeMu.Lock()
 	a.knowledgeJournal = j
 	a.knowledgeMu.Unlock()
@@ -199,20 +218,42 @@ func (a *Agent) stopKnowledge() {
 		workers = append(workers, a.knowledgeJournal)
 	}
 	a.knowledgeMu.RUnlock()
+	started := time.Now()
+	limit := a.knowledgeCloseWait
+	if limit == 0 {
+		limit = knowledgeCloseWait
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), started.Add(limit))
+	defer cancel()
+	joinCompiler := a.config.JobContext == nil || a.config.JobContext.Err() != nil
+	// Cancel every writer before waiting for any one of them.
 	for _, j := range workers {
 		j.cancel()
-		if a.config.JobContext == nil {
-			a.cancelJobKnowledge()
+		if work := j.compile.Load(); work != nil && joinCompiler {
+			work.cancel()
 		}
 	}
-	timer := time.NewTimer(closeGrace)
-	defer timer.Stop()
-	for _, j := range workers {
+	wait := func(j *knowledgeJournal, kind string, done <-chan struct{}) {
+		// Prefer an already finished writer even after the shared deadline expired.
 		select {
-		case <-j.done:
-		case <-timer.C:
-			log.Printf("knowledge: capture shutdown deadline; journal recovery will retry")
+		case <-done:
 			return
+		default:
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			// Hash identities so a miss is traceable without exposing private paths.
+			journal := sha256.Sum256([]byte(j.path))
+			profile := sha256.Sum256([]byte(a.config.ProfileDir))
+			log.Printf("knowledge: close timeout: writer=%s journal=%x profile=%x waited=%s", kind, journal[:8], profile[:8], time.Since(started))
+		}
+	}
+	for _, j := range workers {
+		wait(j, "scanner", j.done)
+		// Active jobs retain ownership across stage closes.
+		if work := j.compile.Load(); work != nil && joinCompiler {
+			wait(j, "compiler", work.done)
 		}
 	}
 }
@@ -234,6 +275,17 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 			j.lastError = ""
 		}
 	}()
+	// A JOURNAL THAT HAS NOT MOVED SINCE A READ REACHED ITS END HAS NOTHING
+	// TO CAPTURE, whatever consent says now: an idle chat's safety tick costs
+	// one stat, not an open, a read and a consent answer. The ninth live
+	// round's idle desk had dozens of chats doing that every five seconds.
+	var stamp knowledgeJournalStamp
+	if info, statErr := os.Stat(path); statErr == nil {
+		stamp = knowledgeJournalStamp{size: info.Size(), mod: info.ModTime()}
+		if j.offset == stamp.size && j.read == stamp {
+			return nil
+		}
+	}
 	// Idle chats share consent reads instead of each reopening SQLite. The
 	// shared answer only decides whether to look; sources found
 	// below are admitted, or passed over, on consent read afresh.
@@ -256,6 +308,9 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 	history := knowledgeHistory{}
 	journal := knowledge.Journal{ID: path, Session: sessionID, Project: j.project}
 	{
+		if hook := knowledgeReadHook.Load(); hook != nil && *hook != nil {
+			(*hook)(path)
+		}
 		batch, e := history.Read(ctx, journal, cursor)
 		if e != nil {
 			return e
@@ -289,6 +344,11 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 		j.offset = batch.Cursor.Offset
 		j.skip = batch.Cursor.Skip
 		j.scope = batch.Cursor.Scope
+		// The stamp was taken before the read, so a write that landed during
+		// it changes the file from the stamp and the next look reads again.
+		if stamp.size != 0 && j.offset == stamp.size {
+			j.read = stamp
+		}
 	}
 	return nil
 }

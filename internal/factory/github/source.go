@@ -97,8 +97,8 @@ type Source struct {
 	meDone bool
 	// issueTags holds each repository's last issue-list ETag.
 	issueTags map[string]string
-	// tiers is each repository and login's standing, for the process.
-	tiers map[string]factory.Tier
+	// Positive permissions expire after fifteen minutes; refusals stay cached.
+	tiers map[string]tierEntry
 	// comments is each item's last comments and the count they were read at.
 	// THE COMMENTS ARE READ ONLY WHEN THE COUNT MOVES: the list already says
 	// how many an issue has, so an item whose count is the one this process
@@ -119,6 +119,16 @@ type Source struct {
 	// read on a later Read even though a list asked since the cursor will
 	// not carry them again.
 	owed map[string]map[int]forge.Issue
+	// prFiles is each followed pull request's file list as it was read on
+	// one head ([Source.readPRFiles]); a new head reads it again.
+	prFiles map[string]prFilesRow
+}
+
+const tierLifetime = 15 * time.Minute
+
+type tierEntry struct {
+	tier factory.Tier
+	at   time.Time
 }
 
 type seenComments struct {
@@ -137,7 +147,7 @@ func New(api API, repos []string, now func() time.Time) *Source {
 	return &Source{
 		api: api, now: now, repos: append([]string(nil), repos...),
 		issueTags: map[string]string{},
-		tiers:     map[string]factory.Tier{}, comments: map[string]seenComments{},
+		tiers:     map[string]tierEntry{}, comments: map[string]seenComments{},
 		budget: commentBudget,
 		owed:   map[string]map[int]forge.Issue{},
 	}
@@ -341,20 +351,36 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 	issueTag := s.issueTags[full]
 	s.mu.Unlock()
 
-	issues, newIssueTag, err := s.api.ListIssues(ctx, owner, name, mark, issueTag)
+	list := s.api.ListIssues
+	changes, hasChanges := s.api.(interface {
+		ListIssueChanges(context.Context, string, string, time.Time, string) ([]forge.Issue, string, error)
+	})
+	if hasChanges && !mark.IsZero() {
+		list = changes.ListIssueChanges
+	}
+	issues, newIssueTag, err := list(ctx, owner, name, mark, issueTag)
 	switch {
 	case errors.Is(err, forge.ErrNotModified):
 		issues, newIssueTag = nil, issueTag
 	case err != nil:
 		return nil, mark, err
 	}
-	var listed []factory.Item
-	var listedIssues []forge.Issue
 	for _, is := range issues {
 		if is.Updated.After(newest) {
 			newest = is.Updated
 		}
+	}
+	var listed []factory.Item
+	var listedIssues []forge.Issue
+	for _, is := range issues {
 		if is.Pull {
+			continue
+		}
+		if strings.EqualFold(is.State, "closed") {
+			items = append(items, factory.Item{Product: owner, Repo: name, Num: is.Number, Kind: factory.KindIssue, GitHubIssueID: is.ID, Origin: factory.OriginForge, Changed: is.Updated, DoneHow: StandingClosed})
+			s.mu.Lock()
+			delete(s.owed[full], is.Number)
+			s.mu.Unlock()
 			continue
 		}
 		listed = append(listed, s.issueItem(ctx, owner, name, is))
@@ -363,6 +389,7 @@ func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full s
 	// THE ROWS FIRST: the issues as listed, comments not read yet, so the
 	// floor has them while their comments are read.
 	run.items += len(listed)
+	run.hand(items)
 	run.hand(listed)
 	run.tell(full)
 	s.mu.Lock()
@@ -457,7 +484,7 @@ func (s *Source) issueItem(ctx context.Context, owner, name string, is forge.Iss
 	body := clip(is.Body, bodyLimit)
 	return factory.Item{
 		Repo: name, Product: owner, Places: []string{name},
-		Num: is.Number, Kind: factory.KindIssue,
+		Num: is.Number, Kind: factory.KindIssue, GitHubIssueID: is.ID,
 		Title: is.Title, Body: body, Author: is.User,
 		Tier:   s.tier(ctx, owner, name, is.User),
 		Origin: factory.OriginForge, Synced: true,
@@ -621,7 +648,16 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 		if err != nil {
 			return factory.Item{}, err
 		}
+		if is.Redirected || is.Number != it.Num || (it.GitHubIssueID != 0 && is.ID != it.GitHubIssueID) {
+			return factory.Item{}, errors.New("GitHub issue identity changed or redirected")
+		}
+
 		out := s.issueItem(ctx, owner, name, is)
+		// A transferred issue answers with its new number, which here would be
+		// some other issue, so only the issue asked about can read as closed.
+		if strings.EqualFold(is.State, "closed") && is.Number == it.Num {
+			out.DoneHow = StandingClosed
+		}
 		if out.Comments, err = s.lastComments(ctx, owner, name, is.Number, is.Comments, true); err != nil {
 			return factory.Item{}, err
 		}
@@ -650,7 +686,7 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 	return out, nil
 }
 
-// tier is an author's standing on one repository, asked once per process.
+// tier is an author's standing on one repository, with bounded positive caching.
 // Write access makes a collaborator, and the token's own login with write
 // access is the owner; read access, none, a 404 or a refusal is a stranger. A
 // failure to ask is a stranger for this Read and is asked again next time.
@@ -660,12 +696,13 @@ func (s *Source) tier(ctx context.Context, owner, name, login string) factory.Ti
 	}
 	key := strings.ToLower(owner + "/" + name + "|" + login)
 	s.mu.Lock()
-	t, ok := s.tiers[key]
+	cached, ok := s.tiers[key]
 	me := s.me
 	s.mu.Unlock()
-	if ok {
-		return t
+	if ok && (cached.tier == factory.TierStranger || s.now().Before(cached.at.Add(tierLifetime))) {
+		return cached.tier
 	}
+	var t factory.Tier
 	perm, err := s.api.Permission(ctx, owner, name, login)
 	if err != nil {
 		return factory.TierStranger
@@ -680,7 +717,7 @@ func (s *Source) tier(ctx context.Context, owner, name, login string) factory.Ti
 		t = factory.TierStranger
 	}
 	s.mu.Lock()
-	s.tiers[key] = t
+	s.tiers[key] = tierEntry{tier: t, at: s.now()}
 	s.mu.Unlock()
 	return t
 }
@@ -752,6 +789,9 @@ func clip(s string, n int) string {
 // `open-pr`) and `close`. Anything else is refused as this source not having
 // that verb, and so is an item on a repository nobody watches.
 func (s *Source) Write(ctx context.Context, a factory.Action) (factory.Receipt, error) {
+	if err := factory.CheckPersonStop(a.Item); err != nil {
+		return factory.Receipt{}, err
+	}
 	a.Body = factory.PublicText(a.Body)
 	if (a.Verb == "comment" || a.Verb == "pr" || a.Verb == "open-pr") && !strings.HasPrefix(a.Body, forge.PublicationMarker) && strings.TrimSpace(a.Body) != "" {
 		a.Body = forge.PublicationMarker + "\n" + a.Body
@@ -761,6 +801,13 @@ func (s *Source) Write(ctx context.Context, a factory.Action) (factory.Receipt, 
 	full := owner + "/" + name
 	if !s.watching(full) {
 		return factory.Receipt{}, fmt.Errorf("github writes only to a watched repository, and %s is not one: %w", full, factory.ErrReadOnly)
+	}
+	if a.Verb == "comment" || a.Verb == "label" || a.Verb == "close" {
+		if a.BeforeWrite != nil {
+			if err := a.BeforeWrite(ctx); err != nil {
+				return factory.Receipt{}, err
+			}
+		}
 	}
 	var (
 		posted forge.Posted
@@ -816,13 +863,23 @@ func (s *Source) openPull(ctx context.Context, owner, name string, a factory.Act
 	} else if n > 0 {
 		// A retry carries the approved proof again, including its trailer;
 		// merely returning the old URL could leave a different commit's body.
-		return s.api.UpdatePullRequest(ctx, owner, name, n, title, a.Body)
+		if a.BeforeWrite != nil {
+			if err := a.BeforeWrite(ctx); err != nil {
+				return forge.Posted{}, err
+			}
+		}
+		return s.api.UpdatePullRequest(context.WithoutCancel(ctx), owner, name, n, title, a.Body)
 	}
 	base, err := s.api.DefaultBranch(ctx, owner, name)
 	if err != nil {
 		return forge.Posted{}, err
 	}
-	return s.api.CreatePullRequest(ctx, owner, name, branch, base, title, a.Body, a.Draft)
+	if a.BeforeWrite != nil {
+		if err := a.BeforeWrite(ctx); err != nil {
+			return forge.Posted{}, err
+		}
+	}
+	return s.api.CreatePullRequest(context.WithoutCancel(ctx), owner, name, branch, base, title, a.Body, a.Draft)
 }
 
 func (s *Source) watching(full string) bool {

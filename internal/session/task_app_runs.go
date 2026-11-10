@@ -112,7 +112,8 @@ func (a *Agent) appRunViewIn(row TaskNotice, cap float64, read *planTaskRead) Ap
 		row.Paused = true
 	}
 	view := AppTaskView{
-		ID: strconv.FormatUint(row.ID, 10), Title: row.Title, Brief: row.Brief, State: appRunRowState(row),
+		Retryable: row.Retryable,
+		ID:        strconv.FormatUint(row.ID, 10), Title: row.Title, Brief: row.Brief, State: appRunRowState(row),
 		Model: row.Model, Cap: cap, Spent: row.CostUSD, Result: row.Report, Files: append([]string{}, row.Changed...),
 		Elapsed: int64(row.Elapsed.Seconds()), Deadline: row.Deadline, Held: row.Paused, Version: 1, Origin: "asked",
 	}
@@ -210,6 +211,8 @@ func appTrajectoryLines(steps []AppTaskStep) []string {
 // appRunAction is a person's verb on a run row.
 func (a *Agent) appRunAction(row TaskNotice, intent AppTaskIntent) (SteerReceipt, error) {
 	switch intent.Action {
+	case "retry":
+		return SteerReceipt{}, a.RetryTask(row.ID)
 	case "note", "brief":
 		if strings.TrimSpace(intent.Text) == "" {
 			return SteerReceipt{}, errors.New("words required")

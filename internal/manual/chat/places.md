@@ -653,7 +653,20 @@ and saved task reports.
 **Building knowledge base… You can keep chatting.** shows that work continues
 in the background. You can leave Memory, change chats, and return later; pages
 appear after the initial history has been processed and organized. New chats
-can continue arriving while that initial collection is built.
+can continue arriving while that initial collection is built. While nothing
+new arrives the background build looks for new chats less and less often, at
+most every 30 seconds; pressing **Build knowledge base** looks at once.
+
+## Closing a chat waits for knowledge capture
+
+Closing a chat cancels its knowledge scanners and learning from stopped jobs
+before waiting up to 10 seconds total for them to finish. If a writer misses
+that deadline, close logs its kind (scanner or compiler), journal and profile
+identities, and elapsed wait, then returns. The identities are hashes of paths.
+A database write already in progress can finish later as a whole transaction.
+Saved journals remain available for later recovery. Learning owned by an active
+job keeps running across stage chat closes under that job's existing budget
+and cancellation rules.
 
 ## Knowledge build progress and concurrency
 
@@ -672,8 +685,8 @@ and completed publications are saved together. Opening another window does not
 start a duplicate compiler for the same profile.
 
 If there is no chat history, the reader says **Knowledge will populate as you
-chat.** Automatic learning is off by default. Turn **learn from chats and jobs**
-on in Settings or use **Build knowledge base** to populate it from saved chats. A profile has one knowledge base; changing project does not change vaults.
+chat.** Automatic learning is on by default unless you saved off. Use
+**Build knowledge base** to populate it from saved chats; this also saves on. A profile has one knowledge base; changing project does not change vaults.
 
 ## Reading knowledge pages, links and sources
 
@@ -791,17 +804,24 @@ characters.
 
 Search runs against the database index. Idle background checks do not launch
 refinement without pending sources. Failed ordinary-chat requests retain pending
-work. The same failed input does not spend again automatically; choose Build
-to retry or add new saved sources. Unreadable chats do not prevent other chats
-from being processed; their incomplete status remains visible. The Knowledge
-view over `--host` is not supported.
+work and completed progress. For unchanged input, the background build allows
+three compilation attempts in total, including the first attempt. The count
+survives quitting and restarting. While attempts remain, the failure says
+`Completed progress is retained; retrying automatically.` After three failed
+attempts, automatic retries stop; use **Build** or add new sources to start a new
+count. A successful compilation clears the count. One compilation attempt can
+make several model requests, so this is an attempt limit rather than a
+three-request spending cap. Jobs keep their own retry and accounting rules.
+
+Unreadable chats do not prevent other chats from being processed; their
+incomplete status remains visible. The Knowledge view over `--host` is not
+supported.
 
 Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
 model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
 The compiler checks the returned model ID and rejects substitutions.
 
-Stable source IDs prevent duplicate records during an explicit retry or
-journal recovery. A failed or interrupted provider request can still incur charges;
+Stable source IDs prevent duplicate records during retries and journal recovery. A failed or interrupted provider request can still incur charges;
 retry safety does not mean every network request is billed only once.
 
 ## Updating existing knowledge pages and sections
@@ -1172,3 +1192,13 @@ the model list, and Enter applies the selected model.
 ## Where the Settings search cursor appears
 
 Settings draws its search field above the rows. The cursor follows your query there; model pickers use their own visible filter, and a connection key entry keeps its cursor inside the key field. The bottom row remains the navigation hints.
+
+## Cancelled model calls, missing charges and provider receipts
+
+Stopping a model call does not undo work the provider has already charged for.
+codeaf asks for a final receipt when the provider supplies a generation ID and
+supports receipt lookup. If lookup fails, measured usage received before the stop
+is retained. A receipt and that fallback cannot charge the same attempt twice.
+Helper calls retain their generation IDs too. Without measured usage or a
+retrievable receipt, the charge stays unknown. Text token estimates are approximate
+telemetry; they are not booked as money.

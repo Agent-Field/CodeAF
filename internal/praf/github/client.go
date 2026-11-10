@@ -178,7 +178,13 @@ func (c *client) requestTagged(ctx context.Context, method, rawurl string, heade
 		req.Header.Set("If-None-Match", etag)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	hc := c.httpClient
+	if ctx.Value(noIssueRedirect{}) != nil {
+		copy := *hc
+		copy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		hc = &copy
+	}
+	resp, err := hc.Do(req)
 	if err != nil {
 		return nil, "", &transportError{err: err}
 	}
@@ -186,6 +192,9 @@ func (c *client) requestTagged(ctx context.Context, method, rawurl string, heade
 	data, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
 		return nil, "", &transportError{err: readErr}
+	}
+	if ctx.Value(noIssueRedirect{}) != nil && resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		return nil, "", errIssueRedirect
 	}
 	if resp.StatusCode == http.StatusNotModified {
 		return nil, etag, ErrNotModified

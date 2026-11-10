@@ -28,7 +28,7 @@ A question with more behind it than the block draws **opens out into a page of
 its own** — `O` opens it, `esc` closes it, and the sections below say what you
 can do in there.
 
-## The squiggly line at the start of a card — the squiggle, tick and amber mark
+## The squiggle (a squiggly line), the tick and the amber mark at the start of a card
 
 Every question opens with **one cell**, and it says whether the card in front of
 you is waiting for you at all:
@@ -771,6 +771,12 @@ a run whose output you are piping somewhere still says what was taken in your
 absence. Where the asker recommended nothing there is nothing to take: the line
 reads `your call: <what was asked> (nobody to ask)` and the work stops there
 rather than guessing.
+
+One `--once` run does have somebody to ask: `codeaf chat --once` with both
+`--events` and `--steer`, which is how an AgentField node runs a WorkAF step.
+There a question is written on the events file and the run waits for its
+answer on the steer file, so the factory watching the step puts it to the job's
+manager and person and the step goes on with their answer.
 
 ## What stays behind after you answer
 

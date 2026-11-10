@@ -16,7 +16,7 @@ func TestAppFactoryJobBriefSpotReadsTheSpotsHunks(t *testing.T) {
 	if !strings.Contains(s.hello, appwire.FeatureFactoryJobBriefSpot) {
 		t.Fatalf("hello does not announce %s", appwire.FeatureFactoryJobBriefSpot)
 	}
-	it := factory.Item{Repo: "acme/api", Num: 7, Title: "Fix", Kind: factory.KindIssue, State: factory.StateRunning, Change: &factory.Change{
+	it := factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Fix", Kind: factory.KindIssue, State: factory.StateRunning, Change: &factory.Change{
 		Patch: "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1,2 +1,3 @@ func Send() {\n x\n+y\n@@ -9 +10,2 @@ func Other() {\n+z\n",
 	}}
 	it.KeepBrief(factory.BriefVersion{Verdict: "Fixed.", Blocks: []factory.BriefBlock{{Kind: factory.BlockWhereToLook, Heading: "Where to look", Rest: "nothing else",

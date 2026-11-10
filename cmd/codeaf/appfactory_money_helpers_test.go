@@ -28,11 +28,12 @@ func TestAppFactoryDebouncedEndMoney(t *testing.T) {
 				return &appConn{Conv: agent, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
 			}
 			floor := s.backend.local.host.floor
-			it, err := floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Final brief accounting", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}}}}})
+			it, err := floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Final brief accounting", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Tests: &factory.TestCounts{Passed: 3}}}}}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			params := map[string]any{"factory": st.Factory, "job": it.ID}
+			makeJobManager(t, s, it.ID)
 			var chats appwire.FactoryJobChats
 			s.must("factory.job_chats", params, &chats)
 			// Keep the production lifecycle callback and debounce, shortening only
@@ -64,12 +65,9 @@ func TestAppFactoryDebouncedEndMoney(t *testing.T) {
 			}
 			want := .01
 			if stopped {
-				want = float64(calls.Load()) * .01
-				if calls.Load() == 0 && brief.Status != factory.BriefStatusFailed {
-					t.Errorf("refused brief must state its failure: %+v", brief)
-				}
-				if calls.Load() > 1 {
-					t.Errorf("stopped brief made %d provider calls, want at most one", calls.Load())
+				want = 0
+				if brief.Status != factory.BriefStatusFailed || brief.Failure != factory.PersonStopReason || calls.Load() != 0 {
+					t.Errorf("stopped brief must settle unpaid: calls=%d brief=%+v", calls.Load(), brief)
 				}
 			}
 			moneyTotals(t, s, st.Factory, it, &calls, want)
@@ -86,7 +84,7 @@ func TestAppFactoryPageAIMoneyStaysOutsideJob(t *testing.T) {
 		agent := moneyAgent(t, s, ask, server.URL)
 		return &appConn{Conv: agent, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() { _ = agent.Close() }}, nil
 	}
-	it, err := s.backend.local.host.floor.Create(factory.Item{Repo: "acme/api", Num: 7, Title: "Viewed job", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1})
+	it, err := s.backend.local.host.floor.Create(factory.Item{Tier: factory.TierOwner, Repo: "acme/api", Num: 7, Title: "Viewed job", Kind: factory.KindIssue, State: factory.StateNeedsYou, Cap: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -199,8 +199,10 @@ type Agent struct {
 	Line string `json:"line,omitempty"`
 	// ClosedAt is when it was moved to Closed and ArchivedAt when it was put
 	// away; LastActiveAt is when the person last spoke in it, absent for one
-	// they never spoke in (a crew member a manager started), and SpentUSD
-	// what it has spent in all.
+	// they never spoke in (a crew member a manager started). SpentUSD is the
+	// cumulative spend saved in meta.json: the disk row's figure in list answers,
+	// read from disk for open (and take, which answers through open) and when
+	// every agent.changed is said. Other method answers omit it. The live meter belongs to agents.budget.get.
 	ClosedAt     *time.Time `json:"closed_at,omitempty"`
 	ArchivedAt   *time.Time `json:"archived_at,omitempty"`
 	LastActiveAt time.Time  `json:"last_active_at,omitzero"`
@@ -329,6 +331,13 @@ type Task struct {
 	Program string `json:"program,omitempty"`
 	Ending  string `json:"ending,omitempty"`
 	Branch  string `json:"branch,omitempty"`
+	// Worker is who this task's commands act as: the agent's DID with the
+	// task's fragment, `<did>#w<n>`, the value its commands see as
+	// $CODEAF_AGENT_DID. Once the task has ended (done, failed, your_call, or a
+	// declined or withdrawn proposal) nothing runs under that name any more,
+	// so whatever an app keeps under it (a writer's lease) is the app's to let
+	// go. Absent when the agent has no DID.
+	Worker string `json:"worker,omitempty"`
 }
 
 // TaskSource is [workgraph.TaskSource]: one spelling on both wires.
@@ -349,6 +358,18 @@ const (
 	ClosedByElsewhere = "elsewhere"
 	ClosedByStopped   = "stopped"
 )
+
+// AskSecret is the masked box of an ask whose answer is a credential.
+//
+// KeepsForS is how many seconds the engine keeps what was typed in a private
+// file the agent's commands can read, and 0 where the value goes somewhere
+// else (a connection's key goes to that connection). It is the engine's own
+// figure, so the line the app draws under the box can never promise a day the
+// engine does not keep.
+type AskSecret struct {
+	Placeholder string `json:"placeholder,omitempty"`
+	KeepsForS   int    `json:"keeps_for_s,omitempty"`
+}
 
 // Ask is one thing an agent is waiting on the person for: a tool call waiting
 // to be allowed, or a question the agent put. Options are the engine's own
@@ -393,8 +414,12 @@ type Ask struct {
 	// as waiting. An empty HoldingUp never says false: a parked reply waits
 	// on no task.
 	Blocking *bool `json:"blocking,omitempty"`
-	SayWhy   bool  `json:"say_why,omitempty"`
-	Later    bool  `json:"later,omitempty"`
+	// Secret says the answer is a CREDENTIAL: the app draws one masked box and
+	// sends what was typed as the answer's text, and never shows it back. Nil
+	// on every other ask.
+	Secret *AskSecret `json:"secret,omitempty"`
+	SayWhy bool       `json:"say_why,omitempty"`
+	Later  bool       `json:"later,omitempty"`
 	// Path is the crews a crew's decision climbed through to the person,
 	// "Backend → Release → you".
 	Path []string `json:"path,omitempty"`
@@ -477,6 +502,16 @@ type Entry struct {
 	Turn  uint64    `json:"turn,omitempty"`
 	Kind  string    `json:"kind" enum:"user,answer,tool,receipt,notice,error,update,steer,note,summary,footer"`
 	At    time.Time `json:"at"`
+	// Author is who wrote the entry's words: the person, the engine (codeaf's
+	// own words in the conversation — a factory step's opening instructions,
+	// a "[carry on]" nudge, the runner's progress lines, a session note) or
+	// the agent (the model's answers and calls). IT IS THE PRODUCER'S FACT,
+	// so a client folds the engine's lines without reading their words. A
+	// user entry the engine wrote is still kind user, because it sits in the
+	// person's seat for the model; its author says it is not the person's.
+	// Absent where an older engine never said, and on entry kinds the engine
+	// builds outside the transcript. Hello word `agents.entry_author`.
+	Author string `json:"author,omitempty" enum:"person,engine,agent"`
 	// Text is the words of a user, answer, receipt, notice or error entry.
 	Text     string `json:"text,omitempty"`
 	Thinking string `json:"thinking,omitempty"`
@@ -599,6 +634,28 @@ type EntryOp struct {
 // OpCrewFormed is a crew made under this conversation's agent as its manager.
 const OpCrewFormed = "crew.formed"
 
+// Who wrote an entry's words ([Entry.Author]).
+const (
+	AuthorPerson = "person"
+	AuthorEngine = "engine"
+	AuthorAgent  = "agent"
+)
+
+// FeatureEntryAuthor is announced in hello when an engine says
+// [Entry.Author] on the entries it reads out of a conversation's transcript.
+const FeatureEntryAuthor = "agents.entry_author"
+
+// EntryAuthorSayer is an engine whose transcript entries carry
+// [Entry.Author]; it is the only thing [FeatureEntryAuthor] is announced on.
+type EntryAuthorSayer interface{ SaysEntryAuthor() bool }
+
+func withEntryAuthorFeature(hello Hello, e Engine) Hello {
+	if a, ok := e.(EntryAuthorSayer); ok && a.SaysEntryAuthor() {
+		hello = withFeature(hello, FeatureEntryAuthor)
+	}
+	return hello
+}
+
 // The kinds of entry.
 const (
 	EntryUser    = "user"
@@ -672,16 +729,18 @@ type MemorySettings struct {
 }
 
 type Settings struct {
-	Memory             MemorySettings `json:"memory"`
-	DefaultModel       string         `json:"default_model"`
-	BudgetUSD          *float64       `json:"budget_usd"`
-	AsksBefore         string         `json:"asks_before"`
-	DayCapUSD          *float64       `json:"day_cap_usd"`
-	WorkFolder         string         `json:"work_folder"`
-	TaskCapUSD         *float64       `json:"task_cap_usd"`
-	ProposedTaskClockS int            `json:"proposed_task_clock_s"`
-	IdleCloseDays      int            `json:"idle_close_days"`
-	Effort             string         `json:"effort,omitempty" enum:"low,medium,high"`
+	KnowledgeModel     string            `json:"knowledge_model,omitempty"`
+	WhenPlanPaused     map[string]string `json:"when_plan_paused"`
+	Memory             MemorySettings    `json:"memory"`
+	DefaultModel       string            `json:"default_model"`
+	BudgetUSD          *float64          `json:"budget_usd"`
+	AsksBefore         string            `json:"asks_before"`
+	DayCapUSD          *float64          `json:"day_cap_usd"`
+	WorkFolder         string            `json:"work_folder"`
+	TaskCapUSD         *float64          `json:"task_cap_usd"`
+	ProposedTaskClockS int               `json:"proposed_task_clock_s"`
+	IdleCloseDays      int               `json:"idle_close_days"`
+	Effort             string            `json:"effort,omitempty" enum:"low,medium,high"`
 	// The General rows the window draws by (Wave 8): kept here so every window
 	// reads the same answer.
 	Appearance  string `json:"appearance" enum:"system,light,dark"`
@@ -705,6 +764,8 @@ type Settings struct {
 // money figure sent as null is cleared, which the settings that always have a
 // figure refuse.
 type SettingsPatch struct {
+	KnowledgeModel     *string
+	WhenPlanPaused     map[string]string
 	MemoryEnabled      *bool
 	DefaultModel       *string
 	BudgetUSD          *Figure
@@ -745,7 +806,7 @@ type Provider struct {
 	// that predates this field assumes of every provider), a browser sign-in
 	// and nothing else (browser), or where the service runs, with a key only if
 	// it wants one (address).
-	Kind string `json:"kind,omitempty" enum:"key,browser,address"`
+	Kind string `json:"kind,omitempty" enum:"key,browser,address,agent"`
 	// KeyOptional says the key may be left blank: the service answers with none.
 	KeyOptional bool `json:"key_optional,omitempty"`
 	// Address is an address provider's address: the one in use when it is
@@ -775,6 +836,10 @@ const (
 	ProviderKey     = "key"
 	ProviderBrowser = "browser"
 	ProviderAddress = "address"
+	// ProviderAgent is a program on the engine's machine that answers on its
+	// own sign-in, such as Claude Code: connecting it asks for nothing, and
+	// codeaf holds no credential for it.
+	ProviderAgent = "agent"
 )
 
 // ProviderRegion is one of a provider's separate hosts.

@@ -53,7 +53,7 @@ const (
 
 	// qkindStep is the QKind of a step's question the person holds. It takes
 	// words, so any line typed into the manager conversation answers it.
-	qkindStep = "step"
+	qkindStep = factory.QKindStep
 )
 
 var errEmptyQuestion = errors.New("the question is empty")
@@ -95,7 +95,16 @@ func (lp *floorLoop) inbox(ctx context.Context, c *loopCtl, i int, stage string,
 	}
 	lp.tell(c.id, asks)
 
-	reply := lp.managerAnswers(ctx, c, q)
+	// A JOB IN MANUAL, AND A QUESTION THE STEP SAID ONLY A PERSON CAN ANSWER,
+	// GO STRAIGHT TO THE PERSON ([factory.PersonFirst]): the manager is not
+	// given a turn on either, in any mode.
+	var reply InboxReply
+	if cur, err := lp.r.opts.Store.Get(c.id); err == nil {
+		reply.Why = factory.PersonFirst(cur, q)
+	}
+	if reply.Why == "" {
+		reply = lp.managerAnswers(ctx, c, q)
+	}
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
@@ -103,6 +112,7 @@ func (lp *floorLoop) inbox(ctx context.Context, c *loopCtl, i int, stage string,
 		line := fmt.Sprintf(sayManagerAnswered, stage, answer)
 		if err := lp.write(c, func(it *factory.Item) error {
 			it.Asking = nil
+			it.KeepManagerAnswer(q, answer, lp.r.now())
 			loopSay(it, lp.r.now(), "said", line)
 			return nil
 		}); err != nil {
@@ -262,11 +272,39 @@ func askingPhase(s *factory.Stream, stage string) int {
 		return s.Cur
 	}
 	for i, ph := range s.Phases {
-		if ph.Name == stage && ph.State != factory.PhaseDone && ph.State != factory.PhaseFailed {
+		if ph.Name == stage && ph.State != factory.PhaseDone && ph.State != factory.PhaseSkipped && ph.State != factory.PhaseFailed {
 			return i
 		}
 	}
 	return -1
+}
+
+// WithdrawAsk takes a step's question off the item when whoever asked it has
+// taken it down unanswered while the step goes on: a harness step's own
+// default answered it, or its run ended first. It is the question asked with
+// these words only (a newer one stands), and the item waits on nothing then:
+// running again, its step with it. It says whether anything changed.
+//
+// A QUESTION NOBODY ASKS ANY MORE IS NOT A JOB WAITING ON YOU. Left on the
+// item, it kept the job in Needs you after its AgentField run had moved on,
+// and a factory that restarted then never followed the run to its end (live
+// A+B run 2, job 78).
+func WithdrawAsk(it *factory.Item, question string, now time.Time) bool {
+	q := it.Asking
+	if q == nil || it.QKind != qkindStep || oneLine(q.Question) != oneLine(question) {
+		return false
+	}
+	it.Asking = nil
+	it.Question, it.QKind = "", ""
+	if it.State == factory.StateNeedsYou {
+		it.State = factory.StateRunning
+	}
+	if s := it.Stream; s != nil {
+		if i := askingPhase(s, q.Stage); i >= 0 && s.Phases[i].State == factory.PhaseWaiting {
+			setPhaseState(&s.Phases[i], factory.PhaseRunning, now)
+		}
+	}
+	return true
 }
 
 // dropStaleAsk takes a step's question off an item whose round is starting

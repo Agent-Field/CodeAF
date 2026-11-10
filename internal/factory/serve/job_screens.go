@@ -136,6 +136,7 @@ func (h *Handler) readStepEdits(w http.ResponseWriter, r *http.Request) {
 // FS0/FS15 allow only the caller's own.
 func (h *Handler) stepEditsReply(w http.ResponseWriter, r *http.Request, it factory.Item, lines []string) {
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	h.modelsIn(jobs, []factory.Item{it})
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}
@@ -166,7 +167,7 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, 409, "finished or publishing jobs cannot edit steps")
 		return
 	}
-	edit := factory.RunEdit{Ask: body.Ask, Thinking: body.Thinking, Max: body.Max, Model: body.Model, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
+	edit := factory.RunEdit{Label: body.Label, Ask: body.Ask, Thinking: body.Thinking, Max: body.Max, Model: body.Model, On: body.On, Skip: body.Skip, Remove: body.Remove, Why: body.Why, By: factory.ByYou}
 	for _, mv := range body.Move {
 		// A MOVE SAYS WHERE IT GOES: "" is first, and no place at all is refused
 		// rather than guessed.
@@ -179,11 +180,11 @@ func (h *Handler) editSteps(w http.ResponseWriter, r *http.Request) {
 	for _, addition := range body.Add {
 		d := addition.Step
 		// A CHECK MAY SAY ITS ROUNDS; nothing else added here may.
-		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.When != "" || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" || d.UseModel != "" {
-			h.fail(w, 422, "new steps accept name, kind, ask, until and effort, and a check its max")
+		if (d.Max != 0 && d.Kind != string(factory.StageCheck)) || d.Fixed || d.Off || d.Custom || d.Fanout != "" || len(d.Proof) > 0 || d.By != "" || d.Why != "" || d.UntilSentence != "" || d.UseModel != "" {
+			h.fail(w, 422, "new steps accept name, label, kind, ask, until, when and effort, and a check its max")
 			return
 		}
-		edit.Add = append(edit.Add, factory.Added{Stage: factory.Stage{Name: d.Name, Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, Effort: d.Effort, Max: d.Max, On: true}, After: addition.After})
+		edit.Add = append(edit.Add, factory.Added{Stage: factory.Stage{Name: d.Name, Label: strings.TrimSpace(d.Label), Kind: factory.StageKind(d.Kind), Ask: d.Ask, Until: d.Until, When: d.When, Effort: d.Effort, Max: d.Max, On: true}, After: addition.After})
 	}
 	var updated factory.Item
 	var lines []string

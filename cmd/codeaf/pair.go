@@ -80,6 +80,24 @@ func ownDeviceRecord(ctx context.Context, dir string, route pair.Mailbox) error 
 	return syncsetup.PutOwnDevice(ctx, client, id, dev, devname.Name(dir))
 }
 
+// ownDeviceRevoked says the directory refuses this computer's own device: it
+// was removed, and pairing again must give it a new device key.
+func ownDeviceRevoked(ctx context.Context, dir string, route pair.Mailbox) bool {
+	if identity.Solo(dir) {
+		return false
+	}
+	client, _, err := homeDirectory(dir, route)
+	if err != nil {
+		return false
+	}
+	dev, err := identity.Device(dir)
+	if err != nil {
+		return false
+	}
+	listing, err := client.List(ctx)
+	return errors.Is(err, directory.ErrRevoked) || err == nil && listing.Devices[dev.ID()].Revoked
+}
+
 // recordOwnDeviceOrSay is what a finished pairing does about its record: the
 // pairing itself succeeded, so a record that did not land is one line on the
 // screen and a clean exit — the next chat start writes the record anyway.
@@ -234,6 +252,9 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	if _, err := pair.ReadJoinCode(typed); err != nil {
 		return err
 	}
+	if !d.confirmReplacement(ctx, replace) {
+		return nil
+	}
 	route, err := d.mailbox(relay)
 	if err != nil {
 		return err
@@ -247,6 +268,9 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	}
 	joined, err := pair.Join(ctx, route, joining, typed, joinScreen{d.term})
 	if err != nil {
+		if line := pair.TeamsAsideLine(joined.TeamsAside); line != "" {
+			d.term.say(line)
+		}
 		return d.endedByPerson(ctx, err)
 	}
 	if !joined.Already && d.name != "" {
@@ -261,13 +285,8 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 		d.recordOwnDeviceOrSay(ctx, route)
 	}
 	d.term.say(joinedSentence(joined))
-	if !joined.Already {
-		d.term.say(terminalSharingLine)
-	}
 	return nil
 }
-
-const terminalSharingLine = "Sharing finishes the next time codeaf runs."
 
 // joinedSentence is how a finished join reads.
 func joinedSentence(joined pair.Joined) string { return joined.Sentence() }
@@ -293,5 +312,28 @@ func asksForHelp(args []string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// confirmReplacement asks before either terminal joining flow changes local state.
+func (d pairDoor) confirmReplacement(ctx context.Context, replace bool) bool {
+	// A non-terminal --replace already authorizes replacement, as it did
+	// before the interactive question included teams.
+	if !replace || !d.asksName {
+		return true
+	}
+	j := d.joining(true)
+	profile := j.ProfileDir
+	if profile == "" {
+		profile = j.Home
+	}
+	_, err := identity.Load(j.Home)
+	if err != nil && !pair.HasTeams(profile) {
+		return true
+	}
+	if d.term.confirm(ctx, pair.ReplaceAskLine) {
+		return true
+	}
+	d.term.say("nothing was replaced: this computer's chats stay.")
 	return false
 }

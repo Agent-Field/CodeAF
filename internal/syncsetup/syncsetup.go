@@ -64,9 +64,14 @@ var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
-	publicationMu     sync.Mutex
-	publication       map[string]*pendingPublication
-	publicationSeen   map[string]struct{}
+	publicationMu   sync.Mutex
+	publication     map[string]*pendingPublication
+	publicationSeen map[string]struct{}
+	// BetweenChats, when set, runs after each chat a PublishLocalChats pass
+	// offers, with the pass's lock released: a pass lasts as long as its
+	// uploads keep moving, and the caller counts (CountUnshared) and does its
+	// other sharing work between chats instead of after the whole backlog.
+	BetweenChats      func()
 	teamsCache        *teamIdentityCache // Guarded by stateMu across vault rounds.
 	teamsShared       bool               // Enabling sharing must restore an already-known vault.
 	removed           atomic.Bool
@@ -235,20 +240,28 @@ func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
 
 // RowsAt is Rows and the directory version the listing was read at.
 func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	rows, _, version, err := s.RowsMailAt(ctx)
+	return rows, version, err
+}
+
+// RowsMailAt is [Sync.RowsAt] with what the same read says about messages
+// between computers ([MailOf]), so a screen that lists chats delivers and
+// clears messages without reading the directory twice.
+func (s *Sync) RowsMailAt(ctx context.Context) ([]chatlist.Row, Mail, uint64, error) {
 	current, err := s.currentDisplaySync()
 	if err != nil {
-		return nil, 0, err
+		return nil, Mail{}, 0, err
 	}
 	if current != s {
-		return current.RowsAt(ctx)
+		return current.RowsMailAt(ctx)
 	}
 	l, err := s.list(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, Mail{}, 0, err
 	}
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
-	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
+	return chatlist.Rows(l, s.Device.ID(), open), MailOf(l, s.Device.ID(), key), l.Version, nil
 }
 
 // Follow joins this process's change feed for the identity on this relay, so a

@@ -1,6 +1,7 @@
 package keys
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -67,6 +69,14 @@ type vaultDoc struct {
 	Secrets map[string]record `json:"secrets"`
 	Updated int64             `json:"updated"` // unix ms
 }
+
+// opened counts the local vault documents this process has decrypted.
+var opened atomic.Int64
+
+// Opened is how many times this process has decrypted a vault file from disk.
+// THE IDLE-COST LAW IS WRITTEN AGAINST IT (PERF.md): reading a vault whose
+// bytes have not changed must not pay for the cipher and the decode again.
+func Opened() int64 { return opened.Load() }
 
 // ErrNotFound reports an unknown secret id.
 var ErrNotFound = errors.New("keys: no such secret")
@@ -336,10 +346,39 @@ func (v *Vault) read() (*vaultDoc, error) {
 		return nil, err
 	}
 	defer unlock()
-	return v.readLocked()
+	return v.readShared()
 }
 
+// readLocked is the stored document as the caller's own copy, free to change
+// and write back. The caller holds the lock.
 func (v *Vault) readLocked() (*vaultDoc, error) {
+	d, err := v.readShared()
+	if err != nil {
+		return nil, err
+	}
+	return d.clone(), nil
+}
+
+// lastOpened is the last vault document this process decrypted from each
+// path: the sealed bytes, the key that opened them, and what they said.
+var lastOpened sync.Map // path -> *openedVault
+
+type openedVault struct {
+	key, blob []byte
+	doc       *vaultDoc
+}
+
+// readShared is the stored document, decrypted again only when the sealed
+// bytes on disk differ from the last bytes this process opened under this
+// key. THE ANSWER IS SHARED AND READ-ONLY: only the read accessors take it,
+// and anything that changes a document goes through readLocked's copy.
+//
+// The comparison is of the bytes themselves, not of a modification time, so
+// no write can hide from it: a document is reused only when it is exactly the
+// document a fresh decrypt would produce. Every chat's sync start captures the
+// vault slot by slot, twice, and paying the cipher and the decode for every
+// slot kept an idle machine busy for minutes after launch (PERF.md).
+func (v *Vault) readShared() (*vaultDoc, error) {
 	blob, err := os.ReadFile(v.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return &vaultDoc{V: 1, Secrets: map[string]record{}}, nil
@@ -347,11 +386,33 @@ func (v *Vault) readLocked() (*vaultDoc, error) {
 	if err != nil {
 		return nil, err
 	}
+	if last, ok := lastOpened.Load(v.path); ok {
+		o := last.(*openedVault)
+		if bytes.Equal(o.key, v.key) && bytes.Equal(o.blob, blob) {
+			return o.doc, nil
+		}
+	}
+	opened.Add(1)
 	d, err := openDoc(v.key, blob)
 	if errors.Is(err, ErrOtherKey) && v.adoptStaged() {
-		return v.readLocked()
+		return v.readShared()
 	}
-	return d, err
+	if err != nil {
+		return nil, err
+	}
+	lastOpened.Store(v.path, &openedVault{key: bytes.Clone(v.key), blob: blob, doc: d})
+	return d, nil
+}
+
+// clone is a copy of d whose secrets can change without changing d's. A
+// record holds only values, so copying the map copies everything.
+func (d *vaultDoc) clone() *vaultDoc {
+	c := *d
+	c.Secrets = make(map[string]record, len(d.Secrets))
+	for id, r := range d.Secrets {
+		c.Secrets[id] = r
+	}
+	return &c
 }
 
 // adoptStaged finishes a reseal that stopped between the identity changing and

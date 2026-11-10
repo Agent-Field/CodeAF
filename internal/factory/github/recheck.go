@@ -25,38 +25,44 @@ const (
 // else (no comments, files or checks): the poll keeps those, and a start must
 // not wait on four reads to learn one fact.
 //
-// THE LISTS THE POLL READS ARE OF OPEN ITEMS ONLY, so an item closed after it
-// arrived is never seen leaving them. This read is how a job learns it, item
-// by item, at the one moment it matters: when it is chosen to run.
-func Standing(ctx context.Context, api API, it factory.Item) (string, error) {
+// The poll reconciles untouched backlog rows. This check also protects a
+// person's start between polls and jobs the poll deliberately leaves alone.
+func Standing(ctx context.Context, api API, it factory.Item) (factory.SourceStanding, error) {
 	if api == nil || it.Origin != factory.OriginForge || it.Num <= 0 {
-		return "", factory.ErrNotOnSource
+		return factory.SourceStanding{}, factory.ErrNotOnSource
 	}
 	owner, name, ok := pullRepo(it)
 	if !ok {
-		return "", factory.ErrNotOnSource
+		return factory.SourceStanding{}, factory.ErrNotOnSource
 	}
 	if it.Kind == factory.KindPR {
 		p, err := api.Pull(ctx, owner, name, it.Num)
 		if err != nil {
-			return "", err
+			return factory.SourceStanding{}, err
 		}
 		switch {
 		case p.Merged:
-			return StandingMerged, nil
+			return factory.SourceStanding{How: StandingMerged}, nil
 		case strings.EqualFold(p.State, "closed"):
-			return StandingClosed, nil
+			return factory.SourceStanding{How: StandingClosed}, nil
 		}
-		return "", nil
+		return factory.SourceStanding{}, nil
 	}
 	is, err := api.Issue(ctx, owner, name, it.Num)
 	if err != nil {
-		return "", err
+		return factory.SourceStanding{}, err
+	}
+	if is.ID == 0 {
+		return factory.SourceStanding{}, errors.New("GitHub issue identity missing")
+	}
+	answer := factory.SourceStanding{IssueID: is.ID}
+	if is.Redirected || is.Number != it.Num || !answer.Matches(it) {
+		return answer, factory.ErrSourceIdentityChanged
 	}
 	if strings.EqualFold(is.State, "closed") {
-		return StandingClosed, nil
+		answer.How = StandingClosed
 	}
-	return "", nil
+	return answer, nil
 }
 
 // Rechecker is [Standing] over the token at the moment of asking, for the
@@ -64,14 +70,14 @@ func Standing(ctx context.Context, api API, it factory.Item) (string, error) {
 // as [Refetcher] is, because a token connected a minute ago is the one to
 // use. With no token there is nothing to read with, which the caller treats
 // as GitHub not reachable.
-func Rechecker(token func(context.Context) string) func(context.Context, factory.Item) (string, error) {
-	return func(ctx context.Context, it factory.Item) (string, error) {
+func Rechecker(token func(context.Context) string) func(context.Context, factory.Item) (factory.SourceStanding, error) {
+	return func(ctx context.Context, it factory.Item) (factory.SourceStanding, error) {
 		if token == nil {
-			return "", errNoToken
+			return factory.SourceStanding{}, errNoToken
 		}
 		tok := token(ctx)
 		if tok == "" {
-			return "", errNoToken
+			return factory.SourceStanding{}, errNoToken
 		}
 		return Standing(ctx, forge.NewClient(tok), it)
 	}

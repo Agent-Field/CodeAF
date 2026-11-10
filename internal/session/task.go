@@ -749,6 +749,10 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// A PROGRAM'S RUN THAT ENDED DONE IS A DEPENDENCY MET, and the graph knows
 	// no node by its id (program_depends.go).
 	spec.dependsOn = a.withoutEndedProgramRuns(spec.dependsOn)
+	// A WORKER SEAT ON CLAUDE CODE HANDS THE TASK TO CLAUDE CODE ITSELF
+	// (claudeseat.go): the person chose who does the work, and on that seat
+	// it is an agent with its own tools rather than a model under codeaf's.
+	spec = a.seatOnClaudeCode(spec)
 	// A DELEGATE IS RESOLVED BEFORE THE CARD, so a name this machine has no
 	// delegate for is answered with the names it has and nobody is asked to
 	// approve work that could not start (delegate_door.go).
@@ -1613,6 +1617,11 @@ func (w *taskWait) run(ctx context.Context, expiry <-chan time.Time, stopTimer f
 			// nothing, so nothing is appended to the brief.
 			silent := TaskAnswer{Approved: true}
 			w.decided(silent)
+			// AND THE QUESTION CLOSES SAYING THE WORK STARTED, before the turn is
+			// handed the yes. The card above already says so, but on the task
+			// lane; a surface reading the question lane would otherwise see a
+			// bare withdrawal first and call a starting task no longer needed.
+			w.agent.withdrawStarted(w.proposed)
 			w.settled <- taskSettled{answer: silent}
 			return
 		case <-ctx.Done():
@@ -1841,14 +1850,19 @@ func taskWhereNotice(place Place, workspace string, id uint64, where string, mod
 		}
 		return "task folder"
 	}
-	if strings.EqualFold(where, "in place") {
-		return workspace
-	}
 	if where != "" {
-		if resolved, err := resolveTaskWhere(where, workspace); err == nil {
-			return resolved
+		target := workspace
+		if !strings.EqualFold(where, "in place") {
+			resolved, err := resolveTaskWhere(where, workspace)
+			if err != nil {
+				return where
+			}
+			target = resolved
 		}
-		return where
+		if trees := place.Trees(); mode == TaskModeReference && trees != "" && HoldsHomeFolder(target) {
+			return filepath.Join(trees, strconv.FormatUint(id, 10))
+		}
+		return target
 	}
 	if trees := place.Trees(); trees != "" {
 		return filepath.Join(trees, strconv.FormatUint(id, 10))
@@ -1957,6 +1971,7 @@ func (a *Agent) proposalAsk(id uint64, notice TaskNotice) Question {
 
 // A proposal stays visible after its originating turn ends, like a running task.
 func (a *Agent) broadcastTaskProposal(hub *eventHub, notice TaskNotice) {
+	notice = a.withWorker(notice)
 	event := Event{Kind: EventTaskProposal, Tool: "propose_task", Task: &notice}
 	if hub != nil {
 		hub.send(event)

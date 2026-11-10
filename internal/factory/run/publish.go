@@ -120,6 +120,9 @@ func ShipPublished(it *factory.Item, now time.Time) error {
 // already recorded stays valid for that same commit, and retrying does not
 // ask for a second one.
 func (r *Runner) Publish(id int, trailer string) error {
+	if err := r.refuseWrite(id, "publish"); err != nil {
+		return err
+	}
 	trailer = strings.TrimSpace(trailer)
 	if !ValidTrailer(trailer) {
 		return ErrNoApproval
@@ -131,11 +134,14 @@ func (r *Runner) Publish(id int, trailer string) error {
 		return r.notLanded(id)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 1), answers: make(chan loopAnswer, 1), phase: -1}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 1), answers: make(chan loopAnswer, 1), phase: -1, reverify: true}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
 	err := lp.write(c, func(it *factory.Item) error {
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return err
+		}
 		if err := factory.RequireIssueJob(*it); err != nil {
 			return err
 		}
@@ -186,7 +192,8 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 		}
 		return
 	}
-	if lp.write(c, func(it *factory.Item) error {
+	if lp.r.opts.Store.Update(c.id, func(it *factory.Item) error {
+		stopped := it.State == factory.StateNew || c.ctx.Err() != nil
 		it.PullRequest, it.CommentURL = receipt.pr, receipt.comment
 		it.Publish = "comment"
 		url := receipt.comment
@@ -212,11 +219,15 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 				a.State, a.At = "ready", now
 				it.FollowUp.Readiness = &a
 				it.Note(now, "PR marked ready for review · head "+a.Head+" · "+a.Summary)
-				loopSay(it, now, "ok", fmt.Sprintf("PR #%d marked ready for review · reviewed head %s · %s", receipt.pr.Number, a.Head, a.Summary))
+				loopSay(it, now, "ok", fmt.Sprintf("PR #%d marked ready for review · reviewed commit %s · %s", receipt.pr.Number, shortCommit(a.Head), a.Summary))
 			}
 			factory.WatchPublishedPR(it)
 		}
 		it.MarkPublishing("opened", "", "", now)
+		if stopped && receipt.pr != nil {
+			it.Failure = nil
+			loopSay(it, now, "said", stoppedPRWords(receipt.pr.URL))
+		}
 		if receipt.note != "" {
 			loopSay(it, now, "said", receipt.note)
 		}
@@ -226,7 +237,9 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 		lp.emit(c.id, "", EventShipped, "shipped")
 		if receipt.pr != nil {
 			if factory.ReadinessPending(it) && !receipt.pr.Draft {
-				lp.tell(c.id, fmt.Sprintf("PR #%d is ready for review. Final review passed on head %s. Follow PR continues monitoring CI, feedback and conflicts; merge remains your decision.", receipt.pr.Number, it.HeadCommit))
+				// A PERSON READS A COMMIT BY ITS SHORT NAME, as GitHub shows it,
+				// never by its 40 characters.
+				lp.tell(c.id, fmt.Sprintf("PR #%d is ready for review. Final review passed on commit %s. Follow PR continues monitoring CI, feedback and conflicts; merge remains your decision.", receipt.pr.Number, shortCommit(it.HeadCommit)))
 				return
 			}
 			mode := "Manual asks before pushing repairs; enable Auto for automatic checked updates within the job budget."
@@ -234,7 +247,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 				mode = "Auto records and pushes checked repairs within the job budget."
 			}
 			if it.PullRequest != nil && it.PullRequest.Number == receipt.pr.Number {
-				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The verified local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
+				lp.tell(c.id, "PR updated: "+receipt.pr.URL+". The checked local repair was pushed. Waiting for GitHub CI on the updated PR; Follow PR continues watching review feedback and conflicts.")
 			} else {
 				if receipt.note != "" {
 					lp.tell(c.id, receipt.note+".")
@@ -285,7 +298,15 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if !ok {
 			return published{}, errors.New("this factory source does not support ready for review")
 		}
-		pr, e := ready.Ready(ctx, it)
+		var pr factory.PullRequest
+		var e error
+		if checked, ok := src.(interface {
+			ReadyChecked(context.Context, factory.Item, func(context.Context) error) (factory.PullRequest, error)
+		}); ok {
+			pr, e = checked.ReadyChecked(ctx, it, func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) })
+		} else if e = r.publishBoundary(ctx, it.ID); e == nil {
+			pr, e = ready.Ready(ctx, it)
+		}
 		if e != nil {
 			return published{}, e
 		}
@@ -308,7 +329,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	}
 	body := PublishBody(it, trailer)
 	if isPull(it) {
-		rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body})
+		if err := r.publishBoundary(ctx, it.ID); err != nil {
+			return published{}, err
+		}
+		rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 		if err != nil {
 			return published{}, err
 		}
@@ -357,7 +381,10 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		return published{}, fmt.Errorf("could not compare %s's branch: %w", it.Ref(), err)
 	}
 	if mode == "comment" {
-		rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body})
+		if err := r.publishBoundary(ctx, it.ID); err != nil {
+			return published{}, err
+		}
+		rcpt, err := src.Write(ctx, factory.Action{Verb: "comment", Item: it, Body: body, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 		if err != nil {
 			return published{}, err
 		}
@@ -376,7 +403,16 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	if existingPR != nil && existingPR.HeadBranch != "" {
 		branch = existingPR.HeadBranch
 	}
-	pushed, moved, err := pushApproved(remote, pushBranch, dir, it, branch, existingPR != nil)
+	guardedPush := func(dir, ref string, before ...func() error) error {
+		if err := r.publishBoundary(ctx, it.ID); err != nil {
+			return err
+		}
+		return pushBranch(dir, ref, func() error { return r.publishBoundary(ctx, it.ID) })
+	}
+	if err := r.publishBoundary(ctx, it.ID); err != nil {
+		return published{}, err
+	}
+	pushed, moved, err := pushApproved(publishGuardGit{Git: remote, check: func() error { return r.publishBoundary(ctx, it.ID) }}, guardedPush, dir, it, branch, existingPR != nil)
 	if err != nil {
 		return published{}, publish.Wrap(err, "push")
 	}
@@ -384,6 +420,9 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if updater, ok := src.(interface {
 			UpdatePRBody(context.Context, factory.Item, string) error
 		}); ok {
+			if err := r.publishBoundary(ctx, it.ID); err != nil {
+				return published{}, err
+			}
 			if err := updater.UpdatePRBody(ctx, it, body); err != nil {
 				return published{}, fmt.Errorf("repair pushed, but could not update the PR description: %w", err)
 			}
@@ -401,7 +440,11 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		pr.ReadinessKey, pr.ReadinessContext = "", ""
 		return published{pr: &pr}, nil
 	}
-	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: pushed, Body: body, Draft: true})
+	if err := r.publishBoundary(ctx, it.ID); err != nil {
+		return published{}, err
+	}
+	// Once sent, preserve the forge answer even when Stop cancels the run.
+	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: pushed, Body: body, Draft: true, BeforeWrite: func(ctx context.Context) error { return r.publishBoundary(ctx, it.ID) }})
 	if err != nil {
 		return published{}, publish.Wrap(err, "pr")
 	}
@@ -423,7 +466,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 // ended up on, with a line for the job when that is another name. A push a
 // remote refused as behind goes to [placeRejected], except a repair: the PR's own
 // branch moved, so the person reads what landed there first.
-func pushApproved(git Git, pushBranch func(dir, ref string) error, dir string, it factory.Item, branch string, repair bool) (pushed, moved string, err error) {
+func pushApproved(git Git, pushBranch func(dir, ref string, before ...func() error) error, dir string, it factory.Item, branch string, repair bool) (pushed, moved string, err error) {
 	head := it.HeadCommit
 	if head == "" {
 		out, err := git.Run(dir, "rev-parse", "HEAD")
@@ -459,8 +502,24 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 	if strings.TrimSpace(status) == "" {
 		return nil
 	}
-	if _, err := git.Run(dir, "add", "-A"); err != nil {
+	// A COPY OF THE REPOSITORY LEFT IN THE CHECKOUT IS NEVER PUBLISHED
+	// (scratch.go): it is left out of what is staged, and one a step already
+	// committed is taken out of the commit's tree, so the pull request holds
+	// the change alone. The folder stays on disk.
+	copies, err := checkoutCopies(git, dir, it.ChangeBase)
+	if err != nil {
+		return fmt.Errorf("could not read %s's worktree: %w", it.Ref(), err)
+	}
+	if _, err := git.Run(dir, append([]string{"add", "-A", "--"}, excludeCopies(copies)...)...); err != nil {
 		return fmt.Errorf("could not stage %s's work: %w", it.Ref(), err)
+	}
+	for _, top := range copies {
+		if _, err := git.Run(dir, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", top); err != nil {
+			return fmt.Errorf("could not leave %s out of %s's work: %w", top, it.Ref(), err)
+		}
+	}
+	if staged, err := git.Run(dir, "diff", "--cached", "--name-only"); err == nil && strings.TrimSpace(staged) == "" {
+		return nil
 	}
 	title := strings.TrimSpace(it.Title)
 	if title == "" {
@@ -579,4 +638,59 @@ var publishHomePath = regexp.MustCompile(`/((Users)|(home))/[^/\s` + "`" + `]+`)
 
 func portablePublishText(s string) string {
 	return publishHomePath.ReplaceAllStringFunc(s, func(string) string { return "$HOME" })
+}
+
+// SetPublishCheck binds the service's current permission to writing rounds,
+// manager replies and external writes.
+// Nil removes the binding after the worker has settled its publication receipt.
+func (r *Runner) SetPublishCheck(id int, check func(context.Context) error) {
+	if check == nil {
+		r.publishChecks.Delete(id)
+	} else {
+		r.publishChecks.Store(id, check)
+	}
+}
+
+// publishBoundary reads Stop and permission under the row lock before a write.
+func (r *Runner) publishBoundary(ctx context.Context, id int) error {
+	var refusal error
+	err := r.opts.Store.Update(id, func(it *factory.Item) error {
+		if factory.StoppedByPerson(*it) {
+			return factory.ErrPersonStopped
+		}
+		if ctx.Err() != nil || it.State == factory.StateNew || it.State == factory.StateDismissed {
+			return errLoopStopped
+		}
+		err := r.allowWrite(ctx, *it, factory.Stage{Name: "publish", Kind: factory.StagePost})
+		var refused WriteAccessRefusal
+		if errors.As(err, &refused) {
+			factory.StampFailure(it, refused.Failure(*it, r.now()))
+			refusal = err
+			return nil
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return refusal
+}
+
+func stoppedPRWords(url string) string {
+	return "PR opened: " + url + ". Stop arrived after the PR request was sent; the PR was not closed. Review it on GitHub."
+}
+
+// Rejected pushes may use a lease-protected replacement through Git directly.
+type publishGuardGit struct {
+	Git
+	check func() error
+}
+
+func (g publishGuardGit) Run(dir string, args ...string) (string, error) {
+	if len(args) > 0 && args[0] == "push" {
+		if err := g.check(); err != nil {
+			return "", err
+		}
+	}
+	return g.Git.Run(dir, args...)
 }

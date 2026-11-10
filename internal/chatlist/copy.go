@@ -35,13 +35,14 @@ const (
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
 	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
-	Removed        = removedChatStart + "run codeaf pair to bring it back"
+	Removed        = removedChatStart + "run codeaf pair --replace to bring it back"
 	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
 	tooManyNewIn   = "too many new identities from this network today — try again in about %s"
 	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
 	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
 	heldOn         = "held on %s"
+	workingOn      = "working on %s"
 	deviceOff      = "%s offline"
 	branchLine     = "%s from %s: merge / discard"
 	branchKeep     = "%s from %s: discard"
@@ -50,6 +51,7 @@ const (
 	lastHeldHere   = "this chat was last held here"
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
+	keptTurns      = "kept %s from %s as a separate chat"
 	supersededLine = "%s continued this chat; this window now only shows it"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
@@ -154,6 +156,9 @@ func nameList(names []string) string {
 func StatusLine(r Row) string {
 	switch r.Status {
 	case Running:
+		if r.Working {
+			return fmt.Sprintf(workingOn, r.Device)
+		}
 		return fmt.Sprintf(heldOn, r.Device)
 	case Off:
 		return fmt.Sprintf(deviceOff, r.Device)
@@ -294,6 +299,11 @@ func KeptEdits(n uint32, device string) string {
 	return fmt.Sprintf(keptEdits, turns(n), device)
 }
 
+// KeptTurns names only the saved turns when unsaved calls remain on this device.
+func KeptTurns(n uint32, device string) string {
+	return fmt.Sprintf(keptTurns, turns(n), device)
+}
+
 // CopiesCame is said after a takeover brought the working copies of tasks that
 // had not landed, named by task. It says nothing when none came (the emptiness
 // law), so the caller can join it to other sentences without a test.
@@ -387,7 +397,7 @@ func Moved(from string, elapsed time.Duration, hadRunning bool) string {
 // IsRemovedNotice accepts the wire spelling from earlier engines as well as
 // each current reading place, so removal keeps its recovery behavior.
 func IsRemovedNotice(text string) bool {
-	return text == Removed || text == RemovedChat || text == LegacyRemoved
+	return text == Removed || text == RemovedChat || text == LegacyRemoved || text == earlierRemoved
 }
 
 // LegacySyncNotice preserves the vocabulary an older surface recognizes.
@@ -412,4 +422,38 @@ const (
 	RemovedChat = removedChatStart + "/pair brings it back"
 	// LegacyRemoved is retained for old surfaces that recognize terminal guidance by text.
 	LegacyRemoved = removedChatStart + "run `codeaf pair` to bring it back"
+	// earlierRemoved is Removed as engines before --replace wrote it into notices.
+	earlierRemoved = removedChatStart + "run codeaf pair to bring it back"
 )
+
+// BigMoveBytes is the size of chat folder over which moving it asks first: a
+// copy that large takes minutes, so the person decides before it starts.
+const BigMoveBytes = 100 << 20
+
+// MoveSize reads a move's size the way the warning says it: "1.4 GB", "412 MB".
+func MoveSize(bytes uint64) string {
+	if bytes >= 1<<30 {
+		return fmt.Sprintf("%.1f GB", float64(bytes)/(1<<30))
+	}
+	return fmt.Sprintf("%d MB", (bytes+(1<<19))>>20)
+}
+
+// BigMoveLine is the warning before a big move, "" for a chat small enough to
+// move without one, or one this computer already holds (r.Mine).
+func BigMoveLine(r Row) string {
+	if r.Mine || r.Size <= BigMoveBytes {
+		return ""
+	}
+	where := "a folder"
+	if r.Folder != "" {
+		where = "the " + r.Folder + " folder"
+	}
+	return fmt.Sprintf("this chat works in %s on %s; moving it copies that folder too: %s, which can take several minutes", where, nonempty(r.Device), MoveSize(r.Size))
+}
+
+func nonempty(device string) string {
+	if device == "" {
+		return "the other computer"
+	}
+	return device
+}

@@ -177,24 +177,6 @@ func TestPolicyShapes(t *testing.T) {
 	}
 }
 
-func TestPolicyAllowsStage(t *testing.T) {
-	pol := []string{"A stranger's PR never runs write."}
-	st := item()
-	st.Tier = factory.TierStranger
-	if ok, why := PolicyAllowsStage(pol, st, factory.Stage{Name: "write"}); ok || why != pol[0] {
-		t.Fatal(ok, why)
-	}
-	if ok, _ := PolicyAllowsStage(pol, st, factory.Stage{Name: "test"}); !ok {
-		t.Fatal("test refused")
-	}
-	if ok, _ := PolicyAllowsStage(pol, item(), factory.Stage{Name: "write"}); !ok {
-		t.Fatal("owner refused")
-	}
-	if ok, _ := PolicyAllowsStage(nil, st, factory.Stage{Name: "write"}); !ok {
-		t.Fatal("no policy refused")
-	}
-}
-
 func TestUnknownPolicy(t *testing.T) {
 	got := UnknownPolicy([]string{"never close an issue", "keep it kind", "", "Tests pass before anything posts."})
 	if len(got) != 1 || got[0] != "keep it kind" {
@@ -213,7 +195,7 @@ func TestPostStageWithoutRecordedApprovalRefusesBeforePush(t *testing.T) {
 	}
 	src := &fakeSource{}
 	pushed := false
-	ex := NewPostExecutorWith(PostOptions{Record: rec, Source: func(string) factory.Source { return src }, Push: func(string, string) error { pushed = true; return nil }})
+	ex := NewPostExecutorWith(PostOptions{Record: rec, Source: func(string) factory.Source { return src }, Push: func(string, string, ...func() error) error { pushed = true; return nil }})
 	_, err = ex.Run(context.Background(), Job{Item: item(), Stage: factory.Stage{Ask: "pr"}, Dir: t.TempDir()})
 	if err == nil || pushed || len(src.got) != 0 {
 		t.Fatalf("unapproved post: pushed=%t writes=%+v error=%v", pushed, src.got, err)

@@ -49,6 +49,10 @@ func newStageModel(t *testing.T) *stageModel {
 }
 
 func newScriptedStageModel(t *testing.T, script ...stageCall) *stageModel {
+	return newStageModelFixture(t, false, script...)
+}
+
+func newStageModelFixture(t *testing.T, refuseEffort bool, script ...stageCall) *stageModel {
 	t.Helper()
 	m := &stageModel{}
 	m.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +61,17 @@ func newScriptedStageModel(t *testing.T, script ...stageCall) *stageModel {
 			return
 		}
 		raw, _ := io.ReadAll(r.Body)
+		var knobs map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &knobs); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if refuseEffort && (knobs["reasoning"] != nil || knobs["reasoning_effort"] != nil || knobs["thinking"] != nil) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":{"message":"This model does not support reasoning","code":400}}`)
+			return
+		}
 		var req struct {
 			recordedRequest
 			Model string `json:"model"`
@@ -401,5 +416,64 @@ func TestTheStagePosturePinIsRegisteredAndRead(t *testing.T) {
 		if got := factoryStagePosture(); got != want {
 			t.Errorf("%s=%q gives %q, want %q", factoryPostureEnv, value, got, want)
 		}
+	}
+}
+
+func TestFactoryStageRecoversUnsupportedEffort(t *testing.T) {
+	root := resolvedTempDir(t)
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv(home.EnvVar, filepath.Join(root, "state"))
+	t.Setenv(config.ProfileDirEnv, "")
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	model := newStageModelFixture(t, true, stageCall{"stage_result", stageModelReport})
+	t.Setenv("CODEAF_BASE_URL", model.server.URL)
+	workspace := filepath.Join(root, "work")
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(workspace)
+	freshEngineProcess(t)
+	stageSettle = 20 * time.Millisecond
+	t.Cleanup(func() { stageSettle = unattendedRunSettleTick })
+
+	proc, err := openEngineProcess()
+	if err != nil {
+		t.Fatal(err)
+	}
+	launch, err := openV3Launch(proc, engineLaunchOptions(remote.Hello{Version: remote.Version, Workspace: workspace}, workspace, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(root, "factory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := st.Add(context.Background(), factory.Item{
+		Title: "tidy the ledger", Repo: "work", Tier: factory.TierOwner, Model: "openai/gpt-4.1", Effort: "high",
+		Stages: []factory.Stage{{Name: "review", Kind: factory.StageChat, Ask: "look it over", Until: "done", On: true}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(id, func(it *factory.Item) error { it.Stream = &factory.Stream{}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	it, _ := st.Get(id)
+
+	parent := launch.Config
+	parent.Model = "profile/default"
+	parent.OneModel = true
+	parent.SupportsParameter = nil
+	parent.ReasoningProfile = nil
+	maker := factoryStageMaker(st, workspace, "", parent)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conv, err := maker.Open(ctx, factoryrun.ConversationSpec{Item: it, Name: "review", Dir: workspace, Model: it.Model, Effort: "high", Brief: "Look it over."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conv.Close()
+	if err := conv.Wait(ctx); err != nil {
+		t.Fatalf("Factory stage conversation failed on unsupported effort: %v", err)
 	}
 }

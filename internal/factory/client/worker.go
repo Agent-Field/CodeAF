@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -104,9 +105,21 @@ func (w *WorkerClient) Pull(ctx context.Context) (api.WorkerPull, bool, error) {
 }
 
 // Heartbeat renews the lease and collects the verbs waiting for it.
-func (w *WorkerClient) Heartbeat(ctx context.Context, lease string) (api.WorkerHeartbeat, error) {
+func (w *WorkerClient) Heartbeat(ctx context.Context, lease string, acknowledged ...[]string) (api.WorkerHeartbeat, error) {
 	var out api.WorkerHeartbeat
-	_, err := w.send(ctx, http.MethodPost, leasePath(lease, "heartbeat"), w.credential, struct{}{}, &out)
+	var extra http.Header
+	if len(acknowledged) > 0 {
+		ids := acknowledged[0]
+		if ids == nil {
+			ids = []string{}
+		}
+		raw, err := json.Marshal(ids)
+		if err != nil {
+			return out, err
+		}
+		extra = http.Header{api.SignalAcksHeader: {string(raw)}}
+	}
+	_, err := w.sendWith(ctx, http.MethodPost, leasePath(lease, "heartbeat"), w.credential, extra, struct{}{}, &out)
 	return out, err
 }
 
@@ -222,6 +235,14 @@ func (w *WorkerClient) Done(ctx context.Context, lease string, done api.WorkerDo
 	return err
 }
 
+// HandBack gives the lease back because this process is ending cleanly: the
+// factory queues the job again at once, with no failure recorded. An older
+// factory without the door answers an error, and the hold runs out as before.
+func (w *WorkerClient) HandBack(ctx context.Context, lease string) error {
+	_, err := w.send(ctx, http.MethodPost, leasePath(lease, "handback"), w.credential, struct{}{}, nil)
+	return err
+}
+
 func leasePath(lease, verb string) string {
 	return "/v1/workers/leases/" + url.PathEscape(lease) + "/" + verb
 }
@@ -273,6 +294,9 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 	case resp.StatusCode == http.StatusUnauthorized && path != "/v1/workers/attach":
 		return resp.StatusCode, ErrNotAttached
 	case resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound:
+		if resp.StatusCode == http.StatusConflict && sentence(raw).Error() == factory.WriteAccessRefusalWords {
+			return resp.StatusCode, Refusal{error: sentence(raw), Status: resp.StatusCode}
+		}
 		if resp.Header.Get(api.LeaseWithdrawnHeader) == "1" {
 			return resp.StatusCode, ErrLeaseWithdrawn
 		}
@@ -308,6 +332,38 @@ func (w *WorkerClient) StopAfterStep(ctx context.Context, lease string) (bool, e
 	var out struct {
 		On bool `json:"on"`
 	}
-	_, err := w.send(ctx, http.MethodGet, leasePath(lease, "stop-after-step"), w.credential, nil, &out)
+	status, err := w.send(ctx, http.MethodGet, leasePath(lease, "stop-after-step"), w.credential, nil, &out)
+	if status == http.StatusMethodNotAllowed || status == http.StatusNotFound && !errors.Is(err, ErrLeaseWithdrawn) {
+		return false, nil
+	}
 	return out.On, err
+}
+
+// CheckPublish confirms publication is still authorized on the factory's current row.
+func (w *WorkerClient) CheckPublish(ctx context.Context, lease string) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		var status int
+		status, err = w.send(ctx, http.MethodGet, leasePath(lease, "publish-check"), w.credential, nil, nil)
+		// Older factories have no endpoint and cannot confirm Stop at this boundary.
+		if status == http.StatusNotFound && errors.Is(err, ErrLeaseGone) && !errors.Is(err, ErrLeaseWithdrawn) {
+			return nil
+		}
+		if err == nil {
+			return nil
+		}
+		if status >= 400 && status < 500 {
+			return err
+		}
+		if attempt < 2 {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("could not confirm Stop before publishing; press Approve again: %w", ctx.Err())
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}
+	return fmt.Errorf("could not confirm Stop before publishing; press Approve again: %w", err)
 }

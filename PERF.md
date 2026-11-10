@@ -193,8 +193,8 @@ same commit; derive repeated values from constants.
 
 ## Paired team history
 
-These sharing budgets apply only when **share teams** is on in Settings → Devices.
-Sharing is off by default on each computer; off rounds run no team carriers,
+These sharing budgets apply only when **share teams** is on in Settings → General.
+Sharing is on by default for paired computers; off rounds run no team carriers,
 identity discovery, mirror writes or ownership lookups and retain existing polling.
 
 `teams.TrafficSyncLines` limits each writing computer's window to 32 lines per
@@ -202,7 +202,7 @@ team, and `teams.TrafficSyncBytes` limits encoded lines to 16 KiB per team.
 `teams.TrafficSyncTextBytes` shortens text beyond 2 KiB at a rune boundary.
 `teams.TrafficSyncDeviceBytes` caps each device's encoded Traffic share at 64 KiB
 across teams, newest local activity first. `teams.TrafficSyncEvery` permits a
-publication at most once every 30 seconds; team record edits are not delayed.
+publication at most once every 2 minutes; team record edits are not delayed.
 Capture reads the bounded backward tail across the current and rotated logs. Received windows replace a
 separate display mirror and are never republished. An unchanged round on 500
 chats and 5 teams performs zero world scans and opens zero cell metadata files;
@@ -212,8 +212,11 @@ compare deterministic values, and verify quiet rounds leave the vault unchanged.
 Mirror filtering makes zero directory requests per vault round, using only an
 already-held local roster, or every other writer when none is available. A send
 shares one ownership reading across its recipients, with a 3-second timeout and
-a 5-second process cache (including failures). Cursor saves stat identity files
-but decode them only after a stamp changes. Mirror refresh never acknowledges
+a 5-second process cache (including failures). With effective sharing, cursor saves stat identity files
+but decode them only after a stamp changes. Unpaired computers retain legacy
+cursors, repairing reads and completion catalogs, with no sharing refresh clock
+or mirror reads. The first team capture preserves the original file once as
+`teams.before-sharing.json` before creating its ledger. Mirror refresh never acknowledges
 local news and each hosted window carries its own mirror version.
 
 ## Binary size
@@ -334,10 +337,21 @@ A change to any of them changes this section in the same commit.
 | --- | --- | --- |
 | `appwire.ProcessStopAllCeiling` | 10 s | The ONE deadline of a `processes.stop_all`, from the moment it is asked. Jobs and services run at once beneath it, and both are joined before the answer. |
 | `session.ProcessStopAllWait` | 5 s (2 × 2 s grace + 1 s) | The shared deadline of every job a stop-all signals. They are stopped concurrently, never 4 s each in turn. |
+| `appStopAllOpenWait` | 5 s (the ceiling less the jobs' wait) | How long a stop-all waits for a cold kept owner or an open under way before its jobs' side answers `remaining_unknown`. Services do not wait. |
 | `session.ProcessStopAllMax` | 256 | Running jobs one stop-all signals. More are counted in `unenumerated` and left running. |
 | `session.ProcessStopAllScan` | 4096 | Registry entries and live marks one stop-all examines. A scan cut short answers `remaining_unknown`. |
 | `appwire.ProcessStopAllIDs` | 256 | Each id list in a receipt. A cut list answers `remaining_unknown` and keeps its counts whole. |
 | `service.LogCapBytes` | 2 MiB | A service's live log, cut back only while a codeaf runs. It is stated as `cap_bytes`. |
+
+Stop-all looks up the record without opening before admission. Its jobs side
+opens a cold owner only when a crew keeps it, it is not held or closing, and the
+person has not closed or archived it. Non-kept conversations stay cold.
+An open has one completion channel from admission through initialization and
+publication, shared by all stop-all attempts. Timed-out attempts leave no waiter
+goroutine on the gate; retries join the same open instead of starting another
+opener. A timeout makes no job call and reports zero jobs stopped,
+`remaining_unknown` and `partial`, even if an owner was published before the open
+finished. Services start independently of this wait.
 
 The services of a stop-all are the agent's own (`StopOwnerWait`). They are bounded by the supervisor's 64-service store, and they wait out each service's 5 s stop grace under the 10 s ceiling. `processes.actions` and `processes.log_target` share `processes.page`'s 4-read admission and its 2 s deadline.
 
@@ -379,6 +393,369 @@ always coordinate through it, so no build leaves it out. On linux/amd64 it adds
 3,379,200 bytes to the stripped binary (75,755,785 to 79,134,985 on the same dev
 base), and the cap moves by the same amount, from 75,811,848 to 79,191,048, so
 the 56,063 bytes of headroom the base had are kept.
+
+## Usage writer identity startup
+
+`TestUsageMillionRowLedgerFlush` constructs 1,000,000 unique historical call
+identities in 185,000,000 bytes before measuring the public writer. Initialization
+streams valid full rows and retains their identities rather than a decoded row
+slice. Enqueue through flush has a 256 MiB allocation budget. The existing
+two-second flush contract must complete the new $0.002 call; replaying that call
+and historical identities adds no rows. An independent public ledger walk checks
+1,000,001 records, exact consumed bytes and $1000.002 total after the measurement.
+Elapsed times are diagnostic. The retained identity set still grows with history.
+
+
+## Usage writer overflow draining
+
+`BenchmarkLedgerWriter20K` times 20,000 distinct charges from `RecordUsage` to
+the last completed writer callback. Outside the timer it checks the flush,
+20,000 public ledger rows, $200 total and no drops. Compare the same harness
+on both revisions, with and without race instrumentation; run with `-run '^$'`.
+The writer batches at most 128 already admitted rows per ledger lock. A quiet
+queue flushes immediately, and flush/close barriers follow completed writes.
+Identity generation checks and duplicate suppression still run under that lock.
+
+## Factory signal acknowledgement bounds
+
+Each worker heartbeat sends at most 256 unconfirmed signal delivery IDs. A failed
+heartbeat retains its receipts; a successful heartbeat retires sent IDs unless
+the reply still carries them. Deduplication retains only outstanding deliveries,
+not the history of a lease. `TestAcknowledgementsLeaveOnlyUnconfirmedDeliveries`
+drives 25,000 receipts through real HTTP, checks failed-heartbeat retention, and
+requires the backlog to drain within 110 successful heartbeats.
+
+## Sync export retries
+
+A chat's export is sealed once per head. While its frames wait in the outbox
+unpublished — a relay that refuses every put, an upload that never finishes —
+each retry answers the kept export (`kept-export.json` beside the frames) and
+seals nothing, as long as the head, keys, ledger size, frame size and every
+frame file are unchanged. A moved head seals again and deletes the frames only
+the older export named. `TestARefusedUploadIsNotSealedAgainOnTheNextPass` drives
+five refused passes and requires one export of 64 objects into 8 frames (before:
+five exports, 320 objects, 40 frames); the engine-tagged
+`TestARepeatedExportKeepsTheWaitingFramesRealEngine` requires the real furrow
+to leave every waiting frame file untouched on a repeat.
+
+## Idle factory manager checks
+
+Every open job manager and every open step asks whether its job was stopped or
+its budget reached (`watchJobBudget` in `internal/session/job_budget.go`): ten
+times a second (`jobBudgetLiveEvery`) while it owns work in flight — a turn, a
+running background command, an unfinished task — and once every five seconds
+(`jobBudgetIdleEvery`, the presence beat) while it owns none, since there is
+then nothing a Stop or a spent budget could cut short and the next model call
+is checked at its own boundary. An idle watch sleeps that whole interval on one
+timer rather than waking every 100 ms; a turn opening, a command starting and
+every presence nudge wake it onto the live cadence at once (`wakeWorkWatch`).
+`TestIdleManagerBudgetWatchLooksOnceABeat`: an idle manager looks at most once
+in 950 ms, and at least three times in 500 ms once a command runs.
+
+Neither check may decode a job document that has not changed since it last
+looked. `seamRunDoor.AutomaticRefusal` (`cmd/codeaf/factory_person_stop.go`)
+and `stageBudget.Refusal` (`cmd/codeaf/factory_stage_budget.go`) remember the
+answer with the job file it came from (`os.SameFile`, size and modification
+time; every store write renames a fresh file into place), stat the file before
+reading it so a write landing mid-read is read on the next check, and read a
+remembered job by id (`seamRunDoor.managedFrom` in `cmd/codeaf/factory_shape.go`)
+before listing the floor. Two counters hold this without a clock:
+`factoryStopCheckDecodes` counts job documents the stop check asked the store
+for, and `store.(*Store).Reads` counts job documents a store read from disk and
+decoded. `TestAnIdleManagersStopCheckDecodesNothingUnchanged` checks fifty
+unchanged looks (`factoryStopCheckDecodes` = 0 for a manager and for a
+conversation that manages nothing) and sees a Stop on the next check;
+`TestAnIdleManagerWatchReadsNoJobs` checks 100 idle looks over 60 jobs
+(`store.(*Store).Reads` = 0 for both, down from 12,000 before);
+`TestTheManagerWatchSeesEveryChange` pins a person's Stop, a job created after
+the first look and a manager moved to another conversation on the next look.
+
+A conversation that manages no job (every open step chat) is NOT keyed on the
+floor folder: the folder's time moves with every file renamed into it (the
+runner registry, a lease heartbeat, the sources' poll record), which made every
+open step chat list and decode every job every few seconds. It is answered from
+one look at the floor's job files (`floorJobFiles`: one directory read and one
+stat per job, shared by every conversation for `floorLookEvery`, 100 ms) and
+reads only a job document that changed. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
+fifty checks while the registry is rewritten decode none (`factoryStopCheckDecodes`);
+one changed job costs one decode, and a job that takes the conversation is seen
+on the next look.
+
+## Idle key vault reads
+
+A local key vault (`internal/keys/vault.go`) whose sealed bytes on disk equal
+the last bytes this process opened under the same key is not decrypted again;
+writes always get their own copy (`readLocked` clones `readShared`). `keys.Opened`
+counts vault decrypts without a clock. `TestAnUnchangedVaultIsDecryptedOnce`:
+400 reads of an unchanged vault across fresh handles decrypted it 400 times
+before, 0 after, while each chat's sync start still captures and pushes once.
+`TestAVaultReadSeesEveryWrite` pins visibility across handles, deletes and
+aborted updates.
+
+## Idle open conversations
+
+An open conversation that is idle — nothing running, nothing asked — costs no
+system call between its heartbeats (`internal/session/taskpresence.go`):
+
+- Its presence file is rewritten when its contents change and otherwise once a
+  minute (`presenceIdleRefresh`), under a lease written into it
+  (`leaseSeconds`, `presenceIdleWindow`, three minutes) that readers believe
+  instead of the 15-second busy window (`SessionPresence.Window`). A working
+  or waiting session keeps the seven-second refresh and the short window.
+- Its doorstep — answers and requests from other windows — is read when the
+  shared directory watch reports a write there (`presenceDoorstepEvent`), and
+  otherwise once a minute (`presenceQuietPass`); a folder the watch cannot see
+  is knocked on every five-second beat as before.
+- Its job's budget watch (above) sleeps five seconds at a time.
+
+`TestAnIdleChatWritesNothingBetweenHeartbeats` drives one desk on fake shared
+clocks through a minute of beats and refreshes and fails on any rewrite before
+the heartbeat; `TestQuietDoorstepIsWokenByTheWatchOrKnockedWhereItIsBlind`.
+
+The sixth live A+B run (macOS, ~24 idle job and step chats) measured the engine
+at 6.9–9.1% of a core. Rig: `codeaf app` with 24 conversations, each made a
+job's own chat (r6's job documents, Talk pointed at it), opened and left idle,
+a stub model, CPU from `/proc/<pid>/stat` or `ps` over 90–120 s after 20 s
+settling; system calls by `strace -f` over 40 s on Linux:
+
+| | Linux CPU | Linux syscalls/s | macOS (mac-studio) CPU | presence rewrites/s |
+| --- | --- | --- | --- | --- |
+| before (`78aca0491`) | 2.07% | 1,426 | 5.46% | 3.6 |
+| after | 0.58% | 201 | 0.53% | 0.3–0.4 |
+
+At quit every conversation is let go on its own goroutine, and one slower than
+a second is named on stderr with its two halves:
+`codeaf app: leaving: conversation <id> took 18s (waiting for it 12s, closing it 6s)`.
+
+## Factory floor reads
+
+`store.Store.read` (every `Get`, `List`, `ListSaved` and update of a job
+document) decodes a document only when its file changed since the process last
+read it (`internal/factory/store/readcache.go`): one stat, compared on
+`os.SameFile`, size, modification time and mode — every store write renames a
+fresh file into place — answers an unchanged document from a process-wide
+cache, deep-copied (`deepCopy`) so no caller shares anything with the next. The
+cache is the process's, not a `Store`'s, since many doors open their own store
+on one root, and holds at most `readCacheMost` (8,192) documents.
+`TestListingAnUnchangedFloorDecodesNothing`: ten listings of an unchanged
+40-job floor through two stores decode none (`documentDecodes`); one write
+costs one decode. `TestDeepCopySharesNoStorageWithTheDocument` fills every
+exported field of a document and fails if any slice, map or pointer of the copy
+shares storage with it.
+
+The knowledge vault's build loop (`knowledge.Vault.Run`) passed every 2 s for
+the engine's life — listing every saved chat, stat'ing each, opening the
+database. A pass that finds the same chats as the last now doubles the wait up
+to `buildQuietMax` (30 s); anything new, or a person's Build (`StartBuild`
+wakes the loop), starts it again from `buildEvery` (2 s).
+`TestQuietVaultBacksOffAndBuildWakesIt`.
+
+The fifth live A+B run (macOS, 82 jobs, a step chat, a manager and the Factory
+manager open) measured the engine at 21.4% average and 66.6% max, with libc
+`open`, `stat` and `getdirentries` the busiest leaves. Live on linux/arm64:
+`codeaf app` with a GitHub-connected local factory, 82 jobs on the floor (the
+fifth run's eleven documents, 15–178 KB, repeated), 6 job managers opened and
+idle, the runner on with 15 slots and nothing to do; the engine's own CPU from
+`/proc/<pid>/stat` every 10 s for 5 minutes, after 20 s settling (scratch rig
+`rig.py`):
+
+| | average | max | bytes read in the run |
+| --- | --- | --- | --- |
+| before (`0838f42a6` plus the E10 change) | 5.8% | 6.6% | 1.7 GB |
+| after | 1.6% | 2.1% | 8.3 MB |
+
+Linux stats and opens files far more cheaply than macOS, which is why the
+same floor cost 21% there; what was removed is the reading itself.
+
+## Idle runner pulls and the runner registry
+
+Every runner slot holds a pull open (`pullWorker`) and makes a fresh one each
+wait (30 s); a look (`lease.Desk.Pull`) decodes every job on the floor. While
+NO LEASE IS HELD a pull does not look again at a floor none of whose files
+changed since its last empty look (`Handler.idleFloor`: one directory read and
+one stat per file, the pull's own bookkeeping — `runners.json`, the live
+record, `sources.json` — left out; the worker's slots and consent are part of
+the key). With any lease held every pull looks, because a hold expires by the
+clock and a look is what requeues it. The sources' poll record no longer wakes
+open pulls either. `TestAnIdlePullDoesNotLookAgainAtAnUnchangedFloor` counts
+looks (`pullLooks`): ten idle pulls of an unchanged floor make none.
+
+A worker's presence (`Last`) moves on every request it makes and is saved to
+`runners.json` at most every `heardSaveEvery` (a quarter of
+`lease.OfflineAfter`, 15 s); the rows a page reads are in memory. It was saved
+on every request, rewriting the registry every ~4 s on an idle machine. A
+runner's rows from before a restart (same machine, a new runner id) are dropped
+by the next idle pull once quiet past the runner timeout and holding no lease
+(`TestAnIdlePullForgetsARestartedRunnersOldRows`), so the registry no longer
+grows by one set of rows per restart.
+
+`settleJobs` (a hydrated `Store.List`) ran before EVERY request. A runner's own
+requests (`/v1/worker/…`, fifteen pulls re-made each 30 s wait) now settle the
+floor at most once a `workerSettleEvery` (1 s), and its beats (every held job's
+lease heartbeat each `lease.HeartbeatEvery`, 2 s, and its presence) at most once
+a `beatSettleEvery` (5 s; at 1 s two holds made a full settle every second). A
+beat reports nothing, so nothing it brings settles late; a report still settles
+within a second, which is how Auto's publish follows its proof. Every other
+request still settles first, and the job timer settles at each deadline it knows.
+`TestARunnersRequestsSettleTheFloorAtMostOnceASettleWindow` counts settles
+(`settles`): pulls inside one second make none, beats inside five make none, one
+after each window makes one.
+
+### With a hold on the floor (the seventh live A+B run)
+
+The seventh live run idled at 20–26% of a core on macOS with 86 jobs, 15 slots
+and two native jobs holding leases. Each held job's runner renews its lease
+every 2 s, which rewrote `leases.json`, which woke every open pull, and with any
+hold present every woken pull looked: fifteen `Desk.Pull` calls, each a flock,
+a `ListSaved` deep copy of all 86 jobs and a sort, once a second. Three changes:
+
+- **A renewal wakes no pull.** The root watch compares the lease document's
+  `lease.RenewalShape` (every hold, signal and receipt, without `heartbeat_at`
+  and `expires_at`); a rewrite that only renewed wakes nobody. Folders under
+  the root (a runner's holds and reports) and `events.jsonl` are no input of a
+  look either. A hold that expires is still requeued by the next look, at most
+  one pull wait (30 s) later, as before.
+  `TestARenewalWakesNoPullAndARealChangeWakesThemAll` publishes thirty renewals
+  by hand and counts no wake.
+- **One reading of a change for every slot.** `Desk.floorQueue` keeps the queue
+  in `runsBefore` order with the file each job came from; a look stats the floor
+  and reuses every job whose file is unchanged, reading only a changed one, and
+  sorts only when one changed. The queue is shared and read-only (the
+  reservation re-reads the job under its lock). `OverLimit` reads the same
+  queue. `TestSlotsWokenByOneChangeShareOneReadingOfIt`: 45 looks at an
+  unchanged 40-job floor read no job; one change reads one job once.
+- **A job already held at its budget is not saved again by a look.** With a
+  reply pending it stays eligible, and each look saved it unchanged as a fresh
+  file, which woke every pull to save it again.
+  `TestALookLeavesAJobAtItsBudgetAsItIsOnDisk` (ten looks; the old code moved
+  its revision from 2 to 12).
+- **A held job's runner parses its manager's journal once per version.** The
+  worker's flush ran `thread.Read` every beat, parsing the manager's whole
+  transcript twice; it now hands back the answer read last while the journal
+  and its folder are unchanged (os.SameFile, size, time, mode).
+  `TestAnUnchangedJournalIsParsedOnceAndAnAppendedLineIsRead`: eleven reads of
+  an unchanged journal parse it once; an appended line is read.
+- **A job chat's budget watch lists no folder while the mirrors are unchanged.**
+  Every open job chat asked `jobChat.holders` where its job's money is every
+  few seconds, and each asking globbed `workers/*/*/<job>.json`. The mirror
+  folders are now listed once per change of `workers/` or a process folder in
+  it, and a named job file is one stat per mirror.
+  `TestAJobChatsHoldersListTheMirrorFoldersOncePerChangeOfThem`: twenty askings
+  list the folders at most once; a new mirror is found on the next.
+
+Rig (scratch `r7rig.py`): `codeaf app` with a local factory, 84 of r7's final
+job documents plus two native jobs whose step holds its lease, about 45 open job
+chats, the runner on with 15 slots, a stub model; the engine's CPU over 120 s
+starting 200 s after start:
+
+| | linux/arm64 | macOS (mac-studio) |
+| --- | --- | --- |
+| before (`1436ad765`) | 11.12% | 24.09% |
+| after | 1.78% | 6.25% |
+
+The macOS after is above the 5% bar. Its remaining steady profile (60 s, 6.2%
+of a core) is file-status calls: the floor's hydrated settle every five seconds
+(`settleJobs`, 11%), each held job's flush re-reading its job (10%), and the
+presence beat. With 43 chats that each ran fifteen tool calls the same build
+reads 7.6%. Quit took 1.5–1.7 s on both hosts, before and after; the rig does
+not reproduce the live run's 28–30 s.
+
+### The settle and the held-job flush (the eighth live A+B round)
+
+After the seventh run's changes the macOS idle still spent about a fifth of its
+profile re-reading jobs that had not changed. Two changes:
+
+- **The settle lists the floor from memory.** `settleJobs` and
+  `scheduleJobTimer` use `Store.ListShared`: one directory read, and every job
+  whose file is the one read last (`os.SameFile`, size, time, mode) is answered
+  from memory with no stat, decode or copy; only an edited file is read again,
+  whatever wrote it. Hydration (author access, output retention) is applied to
+  every listing on a copy, with the retention read once per listing rather than
+  once per job. The items are shared and read-only; every settle re-reads a
+  candidate under its lock before acting.
+  `TestASharedListingOfAnUnchangedFloorReadsNothingAndSeesAnEdit` (five
+  listings of 30 jobs read none; an in-place edit reads one and matches `List`)
+  and `TestASettleOfAnUnchangedFloorReadsNoJob`.
+- **A held job's quiet flush is not repeated.** A flush (every 500 ms per held
+  job) that found nothing to send keeps the mirror file's `store.Stamp` and the
+  journal's `thread.Version`; later flushes stat both and read nothing while
+  both are unchanged, for at most `quietTrust` (one minute, because retention
+  depends on the clock). A send forgets the quiet; an accepted reply not yet
+  acknowledged always reports. `TestAHeldJobWhoseMirrorIsUnchangedIsNotReadAgain`
+  (fake clock: twenty flushes read nothing; an edit, a journal change and a
+  minute each read once).
+
+Same rig and window as above (`r7rig.py`, 84 + 2 held jobs, 37–38 open chats,
+15 slots, 120 s from 200 s after start):
+
+| | linux/arm64 | macOS (mac-studio) |
+| --- | --- | --- |
+| before (`5a4402f65`) | 1.57% | 6.05% |
+| after | 1.02% | 4.62% |
+
+The 60 s steady profile on macOS fell from 5.21% to 3.68% of a core;
+`settleJobs` (14% of it) and the flush (8%) are gone. What remains is the chat
+presence beat (`presenceDesk.writeAt`, 10%), `Agent.scanKnowledge` (7%) and the
+root watch's poll `snapshot` (5%). Quit took 1.3–1.4 s on both hosts, and now
+leaves no hold behind: a clean quit hands each lease back (`Desk.HandBack`), so
+`leases.json` reads `[]` after it instead of the two holds running out.
+
+`CODEAF_DIAGNOSTIC_PROFILE_DELAY` (1..3600 s) opens the developer profile's
+window that long after start, so a steady idle can be profiled; the window
+itself is still at most 60 s.
+
+### Quit and idle, the ninth live round
+
+The ninth live WorkAF round quit with jobs running in 30 s (the desk's kill,
+exit 143) two times in three, an idle quit exited 1 with "codeaf could not save
+this chat", the old `codeaf clock` stayed about 30 s after its engine, and the
+idle engine read 6.3–7.4% of a core on macOS.
+
+- **A quit hurries cut streams' receipts.** A goroutine dump of a 41 s rig quit
+  showed every conversation's close waiting in `provider.reconcile`'s pauses
+  (1, 4, 15, 20 s; `ReceiptWait` 70 s) for the price of the call the quit cut.
+  `appBackend.Close` now calls `provider.HurryReceipts`: a pause ends, each owed
+  receipt asks once more within `receiptHurryAsk` (2 s) and is then recorded
+  unpriced with its tokens, and the app's close waits at most
+  `appQuitReceiptWait` (3 s) per conversation. `receipt_hurry_test.go`.
+- **A gone checkout is not a failed save.** A job chat whose folder was deleted
+  failed its next capture, and `Flush` reported it at exit (exit 1). A capture
+  or seal of a missing folder is `cellstore.ErrWorkspaceGone`, which is nothing
+  to save. Rig: a turn after the checkout is removed exits 1 three times in
+  three before, 0 in three after. `workspace_gone_test.go`.
+- **An orphaned clock with no window leaves at once**, not after its 30 s
+  `closingGrace` (`TestAnOrphanedClockWithNoWindowOpenLeavesWithoutTheGrace`).
+- **Idle writes that said nothing new are gone.** Every write under the factory
+  root wakes its watchers, and on macOS a kqueue directory event re-lists the
+  root (`fsnotify.(*kqueue).dirChange`, 13% of the before profile):
+  - a lease renewal is written once the stored one is `lease.RenewalSettles`
+    (10 s) old, not every 2 s (`TestARenewalRewritesTheLeasesOnlyOnceTheStoredOneHasAged`);
+  - a machine busy on two jobs keeps the job it was announced with, instead of
+    two live events and a `live-events.json` rewrite per beat
+    (`TestAMachineBusyOnTwoJobsAnnouncesNothingAsTheyBeatInTurn`: 18 → 0);
+  - a followed AgentField run whose reading changes nothing does not write its
+    job, which it did every 500 ms (`TestAFollowedRunThatIsNotMovingDoesNotRewriteItsJob`: 50 → 0);
+  - a watched root is re-read every 30 s (`changePollWatched`), not 2 s;
+  - an idle chat's knowledge tick whose journal is unchanged since a read that
+    reached its end reads nothing
+    (`TestAnIdleChatsSafetyTickDoesNotReadAJournalThatHasNotMoved`).
+
+Rig (scratch `rig9.py`, `r7rig.py` with a stub that can hold a reply open):
+84 + 2 held jobs, 35 open chats, 15 slots; idle is the engine's CPU over 120 s
+from 200 s after start. The quit has 6 held step streams and 14 chats
+mid-reply on a stub dribbling a token a second.
+
+| | linux/arm64 before (`a27f3abd5`) | linux after | macOS before | macOS after |
+| --- | --- | --- | --- | --- |
+| idle CPU | 0.97% | 0.60% | 4.19% | 2.60% |
+| `leases.json` rewrites | 0.90/s | 0.17/s | 1.00/s | 0.18/s |
+| quit, 20 streams mid-reply | 41.3 s | 1.7 s, exit 0 | 40.6 s | 2.2 s, exit 0 |
+| clock after the engine exits | 33 s | 2 s | 28 s | 1 s |
+
+The macOS 60 s steady profile fell from 3.03% to 2.10% of a core. What remains
+is the factory's lease reads on runner requests (17%) and the chat presence
+beat (13%). The rig does not follow a live AgentField run, which the live
+round's idle did; the AgentField write above is that path's share.
 
 ## Paired idle save certification
 

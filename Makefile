@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check build-cross app-sidecar app-sidecars debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross app-sidecar app-sidecar-reverse app-sidecars debug demo-home clean-run embed manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws test-carried-help test-belt-pages fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -18,6 +18,14 @@ BUILD_DIRTY := $(shell if test -n "$$(git status --porcelain --untracked-files=n
 BUILD_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BUILDINFO := github.com/Agent-Field/codeaf/internal/buildinfo
 BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DIRTY) -X $(BUILDINFO).builtAt=$(BUILD_AT)
+# The GitHub OAuth app the first run's browser sign-in uses. Its client ID is
+# not a secret; a build without one simply has no browser sign-in (the gh
+# login and a pasted token still work). Set it from the environment or the
+# command line: make app-sidecar CODEAF_GITHUB_CLIENT_ID=Ov23li...
+CODEAF_GITHUB_CLIENT_ID ?=
+ifneq ($(strip $(CODEAF_GITHUB_CLIENT_ID)),)
+BUILD_STAMP += -X github.com/Agent-Field/codeaf/internal/factory/github.clientID=$(strip $(CODEAF_GITHUB_CLIENT_ID))
+endif
 MANUAL_TAG := codeaf_packed_manual
 
 # The packed corpora — the two manuals. Each folder is the source of truth and
@@ -141,8 +149,10 @@ SHARDS ?= $(shell count=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null ||
 # (scripts/one-suite.sh says why): each heavy package holds it for its whole
 # sharded run, and a `./...` run holds it for the rest of the tree as well, so
 # two sessions' tree runs still cannot stack. Focused and lighter runs stay
-# independent.
-HEAVY_PKGS := internal/tui3 internal/session
+# independent. cmd/codeaf joined them on 2026-11-05: run whole, it passed the
+# fifteen-minute package ceiling on the four-vCPU runner once pull requests into
+# app/v3 began running the gate (#2432 timed out at 900s), so it is sharded too.
+HEAVY_PKGS := internal/tui3 internal/session cmd/codeaf
 LOCKED_PKGS := ./... $(addprefix ./,$(HEAVY_PKGS)) $(addsuffix /,$(addprefix ./,$(HEAVY_PKGS)))
 FRESH_FLAG := $(if $(filter $(LOCKED_PKGS),$(PKGS)),-count=1)
 SUITE_LOCK := ./scripts/one-suite.sh
@@ -466,6 +476,15 @@ check: vet fmt-check test test-packed-manual size build-cross
 # requires Go 1.27 and this module is on 1.26, so v0.17 is the newest that
 # builds here; move both together when the module's Go line moves.
 #
+# A CRASH MUST BE READABLE. garble's -tiny removes everything the runtime prints,
+# so a panic or a fatal error ends the engine with exit status 2 and no words at
+# all, and the desktop app's log has nothing to keep. Without it a report names
+# hashed functions and files; `make app-sidecar-reverse` turns those back. That
+# needs the build's own seed, so each build makes one and keeps it in APP_SEED_DIR,
+# named for the commit, the target and the start of the checksum of the binary as built
+# (signing changes that checksum, so find it by commit). The seed is what undoes the hashing:
+# it goes in neither the repository nor anything that ships.
+#
 #   make app-sidecar APP_GOOS=darwin APP_GOARCH=arm64   # one triple
 #   make app-sidecars                                   # all four
 #
@@ -481,6 +500,8 @@ GARBLE := bin/tools/garble-$(GARBLE_VERSION)
 APP_GOOS ?= $(shell go env GOOS)
 APP_GOARCH ?= $(shell go env GOARCH)
 APP_DIST := dist/app
+GARBLE_FLAGS := -literals
+APP_SEED_DIR ?= $(HOME)/.codeaf-build-seeds
 
 $(GARBLE):
 	@mkdir -p $(@D)/garble-$(GARBLE_VERSION).d
@@ -499,15 +520,36 @@ app-sidecar: embed $(if $(filter windows,$(APP_GOOS)),,$(GARBLE))
 		*) printf 'app-sidecar: no desktop target for %s/%s\n' "$(APP_GOOS)" "$(APP_GOARCH)" >&2; exit 1 ;; \
 	esac; \
 	env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch -goos=$(APP_GOOS) -goarch=$(APP_GOARCH); \
-	ext=""; build="$(GARBLE) -literals -tiny build"; \
+	ext=""; seed=""; \
 	if [ "$(APP_GOOS)" = windows ]; then \
 		ext=".exe"; build="go build"; \
+	else \
+		case " $${GOFLAGS:-} " in *" -x "*|*" -n "*) \
+			echo 'app-sidecar: -x and -n print the seed; unset them' >&2; exit 1 ;; esac; \
+		seed=$$(head -c 8 /dev/urandom | base64 | tr -d '=\n'); \
+		build="$(GARBLE) -seed=$$seed $(GARBLE_FLAGS) build"; \
 	fi; \
 	mkdir -p $(APP_DIST); \
 	CGO_ENABLED=0 GOOS=$(APP_GOOS) GOARCH=$(APP_GOARCH) $$build \
 		-tags=$(MANUAL_TAG) -trimpath -ldflags="-s -w $(BUILD_STAMP)" \
 		-o $(APP_DIST)/codeaf-$$triple$$ext ./cmd/codeaf; \
+	if [ -n "$$seed" ]; then \
+		sum=$$(shasum -a 256 $(APP_DIST)/codeaf-$$triple 2>/dev/null || sha256sum $(APP_DIST)/codeaf-$$triple); \
+		sum=$$(printf '%s' "$$sum" | cut -c1-16); \
+		umask 077; mkdir -p "$(APP_SEED_DIR)"; \
+		printf 'seed=%s\nrev=%s\ntarget=%s/%s\n' "$$seed" "$(BUILD_REV)" "$(APP_GOOS)" "$(APP_GOARCH)" \
+			> "$(APP_SEED_DIR)/$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum.seed"; \
+		printf 'app-sidecar: seed kept as %s.seed\n' "$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum"; \
+	fi; \
 	printf 'app-sidecar: %s\n' "$(APP_DIST)/codeaf-$$triple$$ext"
+
+# Reads a crash report from a shipped build, in a checkout of that build's commit:
+#   make app-sidecar-reverse SEED=<seed file> LOG=<file holding the report>
+app-sidecar-reverse: $(GARBLE)
+	@seed=$$(sed -n 's/^seed=//p' "$(SEED)"); \
+	target=$$(sed -n 's/^target=//p' "$(SEED)"); \
+	CGO_ENABLED=0 GOOS=$${target%/*} GOARCH=$${target#*/} $(GARBLE) -seed=$$seed $(GARBLE_FLAGS) reverse \
+		-tags=$(MANUAL_TAG) ./cmd/codeaf "$(LOG)"
 
 app-sidecars:
 	@for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do \

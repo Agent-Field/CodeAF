@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 const setupSecret = "setup-secret-token-0123456789"
@@ -108,6 +109,15 @@ func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	}
 	restore := config.UseAppCredentials(config.NewAppCredentials())
 	t.Cleanup(restore)
+	ledger := session.UsageLedgerPath()
+	// Later backend cleanups release their agents before this shared writer stops.
+	t.Cleanup(func() {
+		if !session.StopUsageWriter(ledger) {
+			t.Error("factory usage writer did not stop before home cleanup")
+		}
+	})
+	// Errand catalog reads can start the shared process and its profile writers.
+	freshEngineProcess(t)
 	return appHome, userHome, decoy
 }
 

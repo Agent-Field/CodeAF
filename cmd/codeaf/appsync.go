@@ -24,6 +24,8 @@ type appSync struct {
 	owed    *syncsetup.Sync
 	last    appwire.Sync
 	sharing string
+	// unshared is the publisher's last count, nil while sync is not on.
+	unshared *appwire.SyncUnshared
 }
 
 type appSyncFact struct {
@@ -198,6 +200,7 @@ func (b *appBackend) syncStatusLocked() appwire.Sync {
 	case syncsetup.MayTalk(b.relayHome()):
 		state.Mode = appwire.SyncOn
 		state.Reason = b.sync.sharing
+		state.Unshared = b.sync.unshared
 	}
 	if b.sync.owed != nil {
 		if line, owed := b.sync.owed.PeekFirstRun(); owed {
@@ -218,6 +221,24 @@ func (b *appBackend) sharingStatus(line string) {
 	b.syncChangedLocked()
 }
 
+// noteUnshared files the publisher's count of the chats not shared yet; nil
+// says sync is not on. A count that did not change emits nothing.
+func (b *appBackend) noteUnshared(u *syncsetup.Unshared) {
+	var wire *appwire.SyncUnshared
+	if u != nil {
+		wire = &appwire.SyncUnshared{Total: u.Total(), Waiting: u.Waiting, Failing: u.Failing, KeptHere: u.KeptHere}
+	}
+	b.sync.mu.Lock()
+	defer b.sync.mu.Unlock()
+	if reflect.DeepEqual(b.sync.unshared, wire) {
+		// Nothing of its own to say: the status is not checked here, so a
+		// count that stayed absent does not emit an unrelated change first.
+		return
+	}
+	b.sync.unshared = wire
+	b.syncChangedLocked()
+}
+
 func (b *appBackend) SyncStatus() (appwire.Sync, error) {
 	b.sync.mu.Lock()
 	defer b.sync.mu.Unlock()
@@ -228,7 +249,7 @@ func (b *appBackend) syncChangedLocked() appwire.Sync {
 	state := b.syncStatusLocked()
 	old := b.sync.last
 	sameDisclosure := old.Disclosure == nil && state.Disclosure == nil || old.Disclosure != nil && state.Disclosure != nil && *old.Disclosure == *state.Disclosure
-	if old.Mode != state.Mode || old.Reason != state.Reason || !sameDisclosure || !reflect.DeepEqual(old.Relay, state.Relay) {
+	if old.Mode != state.Mode || old.Reason != state.Reason || !sameDisclosure || !reflect.DeepEqual(old.Relay, state.Relay) || !reflect.DeepEqual(old.Unshared, state.Unshared) {
 		b.sync.last = state
 		b.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: state})
 	}
@@ -383,6 +404,9 @@ func (b *appBackend) openingNotices(a *appAgent, conn *appConn) {
 	}
 	for i, line := range strings.Split(note, "\n") {
 		b.sayLocalNotice(a, "", fmt.Sprintf("%d:%s", i, line), line)
+	}
+	if conn.OlderModels {
+		b.sayLocalNotice(a, "", "older-host-models", appOlderHostModels)
 	}
 }
 

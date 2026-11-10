@@ -57,7 +57,14 @@ type Local struct {
 func (l Local) resolve(req ExecRequest) ExecRequest {
 	req.Class = l.Class
 	req.Setup = req.Setup || l.Setup
-	req.Net = PolicyFor(l.Class, req.Setup)
+	// A FENCED SEAT'S CALL IN A HOST-BOUND WORKSPACE IS FENCED. A sandboxed
+	// workspace keeps its own jail, which already keeps the network out.
+	if req.Fence != nil && (l.Class == HostBound || l.Class == Fenced) {
+		req.Class = Fenced
+	} else if l.Class != Fenced {
+		req.Fence = nil
+	}
+	req.Net = PolicyFor(req.Class, req.Setup)
 	return req
 }
 
@@ -74,7 +81,10 @@ func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) 
 		return ExecResult{}, err
 	}
 	res, err := run(ctx, cmd, req, l.Root, onOutput)
-	res.JailDegraded = degraded(l.Jail, req)
+	res.JailDegraded = l.degraded(req)
+	if err == nil && req.Class == Fenced && req.Fence != nil && res.Exit != 0 {
+		res = withFenceNote(res, req, onOutput)
+	}
 	if err == nil && l.Observer != nil {
 		l.Observer.Observe(req, res)
 	}
@@ -84,6 +94,41 @@ func (l Local) Exec(ctx context.Context, req ExecRequest, onOutput func(Chunk)) 
 func degraded(j Jail, req ExecRequest) bool {
 	d, ok := j.(Degrader)
 	return ok && req.Class == Sandboxed && d.Degraded(req)
+}
+
+// degraded is whether this call ran with fewer limits than its class asks:
+// the jail's own answer for a sandboxed call, the fence's for a fenced one.
+func (l Local) degraded(req ExecRequest) bool {
+	if req.Class == Fenced {
+		return req.Fence != nil && fenceLimit() != ""
+	}
+	return degraded(l.Jail, req)
+}
+
+// withFenceNote adds [FenceLine] to a failed call whose output reads as the
+// fence refusing it, on the stream the call's own error went to, so the model
+// and the person read why in the same place they read the failure.
+func withFenceNote(res ExecResult, req ExecRequest, onOutput func(Chunk)) ExecResult {
+	if !FenceRefused(res.Stderr) && !FenceRefused(res.Stdout) {
+		return res
+	}
+	line := []byte("\n" + FenceLine + "\n")
+	if req.Combined {
+		if !req.Stream {
+			res.Stdout = append(res.Stdout, line...)
+		}
+		if onOutput != nil {
+			onOutput(Chunk{Stream: Stdout, Data: line})
+		}
+		return res
+	}
+	if !req.Stream {
+		res.Stderr = append(res.Stderr, line...)
+	}
+	if onOutput != nil {
+		onOutput(Chunk{Stream: Stderr, Data: line})
+	}
+	return res
 }
 
 // Command builds the one confined, unstarted command for a request: class and
@@ -103,10 +148,18 @@ func (l Local) Command(ctx context.Context, req ExecRequest) (*exec.Cmd, error) 
 	configureGroup(cmd, req.Group)
 	cmd.Cancel = canceller(cmd, req.Group)
 	cmd.WaitDelay = max(req.WaitDelay, 0)
+	if req.Class == Fenced && req.Fence != nil {
+		cmd.Env = mergeEnvironment(cmd.Env, req.Fence.Env)
+		if len(req.Writable) > 0 {
+			widened := *req.Fence
+			widened.Writable = dedupe(append(append([]string(nil), req.Fence.Writable...), canonicalAll(req.Writable)...))
+			req.Fence = &widened
+		}
+	}
 	if err := l.confine(cmd, req); err != nil {
 		return nil, err
 	}
-	if degraded(l.Jail, req) {
+	if l.degraded(req) {
 		if notice, ok := ctx.Value(degradedNoticeKey{}).(func()); ok {
 			notice()
 		}
@@ -168,7 +221,7 @@ func (l Local) check(req ExecRequest) (string, error) {
 	}
 	// Host work has no sealed state to protect, and ordinary shell text may
 	// name .cell. Only a cell workspace keeps that directory out of tools.
-	if req.Class != HostBound {
+	if req.Class != HostBound && req.Class != Fenced {
 		if info, err := os.Stat(filepath.Join(l.Root, ".cell")); err == nil && info.IsDir() {
 			if arg, hit := cellArg(req.Argv); hit {
 				return "", fmt.Errorf("executor: argument %q reaches into the harness-owned .cell directory", arg)
@@ -178,9 +231,12 @@ func (l Local) check(req ExecRequest) (string, error) {
 	return resolve(l.Root, req.Dir)
 }
 
-// confine applies the jail to sandboxed calls only.
+// confine applies the jail to sandboxed calls and the fence to fenced ones.
 func (l Local) confine(cmd *exec.Cmd, req ExecRequest) error {
-	if req.Class != Sandboxed {
+	switch {
+	case req.Class == Fenced && req.Fence != nil:
+		return confineFence(cmd, req.Fence)
+	case req.Class != Sandboxed:
 		return nil
 	}
 	return l.jail().Confine(cmd, req)

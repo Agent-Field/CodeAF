@@ -390,6 +390,7 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	cfg.Automations = nil
 	cfg.Memory = nil
 	cfg.automationID = item.ID
+	cfg.bindUsageLedger()
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
@@ -535,7 +536,7 @@ func (r *automationRunner) judgeClient(cfg Config, model string) (Completer, str
 // one they did; the check used to stop there with `no API key`, every fifteen
 // minutes, while the model they talk to could have answered it.
 func automationJudgeModels(cfg Config) ([]string, error) {
-	rungs, err := roles.Ladder(roles.Source(cfg.RolesSource), roles.RoleSentinel, cfg.Model)
+	rungs, err := readerFor(cfg, cfg.Model).Ladder(roles.RoleSentinel, cfg.Model)
 	if err != nil {
 		return nil, err
 	}

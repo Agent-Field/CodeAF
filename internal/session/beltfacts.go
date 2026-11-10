@@ -94,6 +94,11 @@ func (c Config) mayWatch() bool {
 // agent, so the belt and the page cannot disagree about the verb).
 func (c Config) mayAsk() bool { return !c.readingTask() && !c.mayBashBelt() }
 
+// mayRequestSecret says whether `request_secret` belongs on this belt: where
+// `ask` does, and only when somebody is there to type into its box
+// (secret_request.go).
+func (c Config) mayRequestSecret() bool { return c.mayAsk() && c.Interactive }
+
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,
 // and in a node only when it was handed the conversation's graph and is not
@@ -376,6 +381,15 @@ var beltFacts = []beltFact{{
 	holds:   Config.mayAsk,
 	shelved: "- `ask` waits in the `questions` group; `load_capability` fetches it.",
 }, {
+	// THE FENCE IS SAID BEFORE IT IS MET (internal/executor's fence.go). A
+	// fenced run that is not told reaches for `brew install` or `docker pull`,
+	// is refused, and spends turns finding out; an unfenced one is told
+	// nothing, because nothing is different for it.
+	holds: Config.fenced,
+	// It is one short line because every byte of it is in the widest prefix
+	// (prefixbudget_test.go); the refusal sentence itself says the rest.
+	present: "- No brew/docker here.",
+}, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
 	// the `Project` footer is rendered for all of them — and the second would be
@@ -393,7 +407,7 @@ var beltFacts = []beltFact{{
 }, {
 	tools: []string{"propose_task", "tasks"},
 	holds: Config.mayProposeTask,
-	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
+	present: "- ON `propose_task` NEVER NAME THE METHOD: a task gets a folder of its own, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
 		// AND THE TWO TRIGGERS THAT LOST THEIR HOME when the tool descriptions
 		// gave up their routing prose.
@@ -566,8 +580,8 @@ var handoffFacts = []beltFact{{
 	present: "You are one mind with a clock, and two ways to put more minds on the work run\n" +
 		"beside you. A `quick_task` is a copy of your abilities working where you stand:\n" +
 		"it starts the instant you ask, reads and writes in this same folder, and its\n" +
-		"last message comes back to you as a note. A `propose_task` is a worker in a copy\n" +
-		"of the folder, checked and merged when it finishes, that outlives this window.\n" +
+		"last message comes back to you as a note. A `propose_task` is a worker in a folder\n" +
+		"of its own, checked and merged when it finishes, that outlives this window.\n" +
 		"Both are yours to steer and to stop, and both wake you when they land.\n" +
 		"\n" +
 		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
@@ -593,7 +607,7 @@ var handoffFacts = []beltFact{{
 		"so fold them as they arrive. When nothing independent of what you handed out\n" +
 		"remains, end your turn. That is how you wait.",
 	oneRoad: "You are one mind with a clock, and ONE way to put more minds on the work:\n" +
-		"`propose_task`. Each is a worker in a copy of the folder, checked when it\n" +
+		"`propose_task`. Each is a worker in a folder of its own, checked when it\n" +
 		"finishes, that outlives this window. The first opens a run; every one after it\n" +
 		"while that run lives joins the same run as another task of it, and so does a\n" +
 		"`/task` the person types. SEVERAL PROPOSALS IN ONE MESSAGE ARE HOW YOU WORK IN\n" +
@@ -628,7 +642,7 @@ var handoffFacts = []beltFact{{
 	// A STAGE IS TOLD THE ONE ROAD IT HAS, in the goal paragraph's own words, and
 	// no picture of a quick task it does not carry.
 	stage: "You are one mind with a clock, and one way to put more minds on the work beside\n" +
-		"you: `propose_task`, a worker in a copy of the folder, checked and merged when it\n" +
+		"you: `propose_task`, a worker in a folder of its own, checked and merged when it\n" +
 		"finishes. It is yours to steer and to stop, and it wakes you when it lands. This\n" +
 		"conversation is one step of a factory job, so it has no quick tasks: what you\n" +
 		"would read and carry on with, you read yourself.\n" +

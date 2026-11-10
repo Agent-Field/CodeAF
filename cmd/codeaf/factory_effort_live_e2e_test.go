@@ -83,7 +83,7 @@ func TestLiveFactoryCheapStepRunsOnTheSmallWorkModel(t *testing.T) {
 	if home.Join() != profile {
 		t.Fatalf("the factory's profile %q is not the launch's %q", home.Join(), profile)
 	}
-	if got := factoryStepModel(profile, factoryrun.ConversationSpec{StepEffort: "cheap"}, false); got != liveFactoryModel {
+	if got := factoryOpenModel(profile, session.Config{}, factoryrun.ConversationSpec{StepEffort: "cheap"}); got != liveFactoryModel {
 		t.Fatalf("a cheap step would open on %q, want the small work pin %q", got, liveFactoryModel)
 	}
 	stageSettle = 300 * time.Millisecond

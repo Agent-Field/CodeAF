@@ -88,6 +88,7 @@ type Moved struct {
 //   - Add is new conversation stages, each placed after a named stage, or
 //     an approve step (named approve, or of kind gate), where the run holds
 //     for the person.
+//   - Label is a new display label for a stage, by name; empty clears it.
 //   - Ask is a new ask for a stage, by name.
 //   - Thinking is a stage's thinking, by name: "", cheap or strong.
 //   - Max is how many tries a conversation stage gets, by name: 1 to
@@ -104,6 +105,7 @@ type Moved struct {
 //   - By is who edits: manager, plan or you; "" is plan.
 type RunEdit struct {
 	Add      []Added
+	Label    map[string]string
 	Ask      map[string]string
 	Thinking map[string]string
 	Max      map[string]int
@@ -119,7 +121,7 @@ type RunEdit struct {
 // Empty says the edit changes nothing. A reason with no change is nothing to
 // record.
 func (e RunEdit) Empty() bool {
-	return len(e.Add) == 0 && len(e.Ask) == 0 && len(e.Thinking) == 0 && len(e.Max) == 0 && len(e.Model) == 0 && len(e.On) == 0 && len(e.Skip) == 0 &&
+	return len(e.Add) == 0 && len(e.Label) == 0 && len(e.Ask) == 0 && len(e.Thinking) == 0 && len(e.Max) == 0 && len(e.Model) == 0 && len(e.On) == 0 && len(e.Skip) == 0 &&
 		len(e.Remove) == 0 && len(e.Move) == 0
 }
 
@@ -342,6 +344,27 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		return -1
 	}
 
+	for _, name := range sortedKeys(e.Label) {
+		i := find(name, "set")
+		if i < 0 {
+			continue
+		}
+		label, err := CleanStepLabel(e.Label[name])
+		switch {
+		case err != nil:
+			refuse("%s", err.Error())
+		case fixed(i) && label != stages[i].Label:
+			errs = append(errs, FixedRefusal(stages[i].Name))
+		case started[stages[i].Name]:
+			refuse("%s may not change %s, which has already run", who, stages[i].Name)
+		case workAfterProof(i) && label != stages[i].Label:
+			refuse("%s may not change %s, which comes after proof", who, stages[i].Name)
+		case label != stages[i].Label:
+			stages[i].Label = label
+			mark(i, "")
+			say("set " + stages[i].Name + " label: " + label)
+		}
+	}
 	for _, name := range sortedKeys(e.Ask) {
 		i := find(name, "set")
 		if i < 0 {
@@ -461,6 +484,19 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 		st, when, bad := plannedStage(add.Stage)
 		if bad != nil {
 			refuse("%s", bad.Error())
+			continue
+		}
+		// A MODEL NAMES THE STEP IT ADDS. A sentence with no `name:` is named
+		// by its first meaningful word ([StageSentence]), which is a fair
+		// guess under a person's own typing and a junk step under a model's:
+		// the manager's "Immediately after write, run go vet" became a step
+		// called Immediately, placed before proof, on factory-demo#168. So a
+		// manager or plan add whose only name is that guess, and the guess is
+		// no step codeaf ships or the job's recipe has, is refused in words
+		// the model reads and can act on.
+		if who != ByYou && st.Kind == StageChat && !IsApprove(st) && strings.TrimSpace(add.Stage.Name) == "" &&
+			!StageNameGiven(add.Stage.Ask) && !KnownStepName(st.Name, recipe, kind) {
+			refuse("the step %q has no name of its own, and %q, its first word, is not a step; give it one word before a colon, as \"vet: run go vet ./...\"", oneLine(add.Stage.Ask), st.Name)
 			continue
 		}
 		// THE PLACE IS RESOLVED THROUGH THE SAME UNIQUE LOOKUP AS EVERY OTHER
@@ -733,14 +769,28 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 const ProofName = "proof"
 
 // IsProofStage says whether a stage is a proof conversation: the one named
-// proof, a send-back's prove*, or any stage that runs until proven, whatever
-// it is called. Checks and posts are NOT proof here, though their claims reach
+// proof, a name starting with prove other than [proveWordsNotProof], or any
+// stage that runs until proven, whatever it is called.
+// Checks and posts are NOT proof here, though their claims reach
 // the sheet: they can precede legitimate work, so they never freeze an edit.
 // The run loop's sheet maker asks this same question so the two cannot drift.
 func IsProofStage(st Stage) bool {
 	name := strings.ToLower(strings.TrimSpace(st.Name))
-	return name == ProofName || strings.HasPrefix(name, "prove") ||
-		strings.TrimSpace(st.Until) == UntilProven
+	if name == ProofName || strings.TrimSpace(st.Until) == UntilProven {
+		return true
+	}
+	return strings.HasPrefix(name, "prove") && !proveWordsNotProof[name]
+}
+
+// proveWordsNotProof are ordinary words that start with prove. It is a stopgap:
+// explicit step roles replace it. Any other name starting with prove stays
+// proof, because a pipeline's stored names have lost their hyphens, so prove-it
+// arrives here as proveit, and an unknown word on the safe side stays locked.
+var proveWordsNotProof = map[string]bool{
+	"provenance": true,
+	"proved":     true,
+	"prover":     true,
+	"provers":    true,
 }
 
 // firstProof is the index of the earliest proof stage, or -1.
@@ -880,6 +930,10 @@ func plannedCheck(add Stage, place string) (Stage, string, error) {
 const CheckRoundsMost = 9
 
 func plannedStage(add Stage) (st Stage, when string, bad error) {
+	add.When = strings.ToLower(strings.TrimSpace(add.When))
+	if add.When != "" && !oneOf(add.When, WhenWords) {
+		return Stage{}, "", fmt.Errorf("when is one of %s", strings.Join(WhenWords, ", "))
+	}
 	// AN APPROVE STEP IS ADDED BY ITS NAME OR ITS KIND, and has no ask: the
 	// person is the step. Its place is the ask's time word or the edit's
 	// after, as any stage's is.
@@ -889,9 +943,10 @@ func plannedStage(add Stage) (st Stage, when string, bad error) {
 	rest = strings.TrimSuffix(rest, " step")
 	if add.Kind == StageGate || ApproveWord(strings.ToLower(strings.TrimSpace(add.Name))) || ApproveWord(rest) {
 		a := Approve(nil)
-		if w := strings.ToLower(strings.TrimSpace(add.When)); w != "" && oneOf(w, WhenWords) {
-			a.When = w
-		}
+		// A NEWLY ADDED APPROVE STEP IS A PERSON'S ([PassForNewApprove]).
+		a.Pass = PassForNewApprove
+		a.When = add.When
+		a.Label = strings.TrimSpace(add.Label)
 		a.Why, a.By = add.Why, add.By
 		return a, place, nil
 	}

@@ -82,10 +82,14 @@ positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.
 
-**Settings → General → share teams** is off until turned on. Both paired computers
-must turn it on to share teams, their members and settings, and recent Traffic as
-read-only history. The choice stays on each computer. Turning it off stops sharing
-and keeps teams already received.
+**Settings → General → share teams** is on by default for paired computers. It
+shares teams, their members and settings, and recent Traffic as read-only history.
+The choice stays on each computer. Turning it off on either computer stops sharing
+between them: that computer stops sending and receiving teams and Traffic. What
+was already exchanged stays, including encrypted copies in the vault. Received
+history is hidden while sharing is off and is kept for when it is turned back
+on. Unpaired computers are unaffected. A missing or empty choice reads on; a
+damaged configuration or invalid value reads off, as shown in Settings.
 
 ## AI teams settings versus an individual AI team
 
@@ -100,27 +104,26 @@ when a subteam is created; it does not redistribute existing budgets.
 
 ## Memory settings — turn memory on, why isn't it learning, what does memory cost
 
-Memory is **off by default**. Turn it on in Settings → Memory: set **learn from
-chats and jobs** to **on** (`memory.enabled`). In the desktop app you can also do
+Memory is **on by default** when no choice has been saved. In Settings → Memory,
+**learn from chats and jobs** controls `memory.enabled`. An explicit saved off
+choice stays off. In the desktop app you can also do
 it from a Factory job's spend area, under Spent: "Memory is off · Turn on…". This
 one switch per home covers noticing useful lines, learning from saved chats, and
 job memory, whose calls count in the job's cost. A saved on or off choice is kept.
 Terminal **Build knowledge base** also saves on and imports saved chats.
 
 When on, memory learns from your chats and jobs so later work can use it, and
-makes extra model calls on your key. On one small test job, memory was **39% of
-the cost ($0.0124 of $0.0315)**, measured live on DeepSeek V4.1 Flash; earlier runs
-of that same job measured **27%** and **38%**. It varies by job, so read these as
-examples and not a forecast for your work. Memory requests appear in Spending.
+makes extra model calls on your key. Costs vary with your chats and jobs;
+Spending shows actual recorded costs rather than a forecast or a percentage
+from an unrelated example.
 
 Off stops automatic memory model calls from the next memory step, with no restart.
 A call already in flight finishes and is billed. Saved knowledge stays readable;
 reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`
 or `/memories` to inspect, fix or forget saved lines.
 
-An older home with no saved choice now reads off, even if automatic capture was
-previously armed. Nothing saved is deleted. Older terminal Builds with no saved
-choice also read off: they cannot be distinguished from automatic opt-ins.
+Older homes with no saved choice also default on. An explicit saved off choice
+stays off. Invalid saved values read off. Nothing saved is deleted.
 
 ## Permissions, task timers and automatic work
 
@@ -199,3 +202,19 @@ A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
 setting. Turn automatic learning on with the shared Memory setting.
+
+## Unreadable profile settings and saved spending limits
+
+If an existing `config.json` cannot be read, changing a setting refuses with
+`write config: preserve existing file:` followed by the read error. The file is
+left unchanged. Daily spending-limit reads return the read error instead of
+substituting the default limit. Restore read access to resume these operations.
+A missing file still uses new-profile defaults.
+
+Preference and saved-provider-key sharing also refuses unreadable profile data.
+An unreadable profile does not by itself block interactive startup: tool approvals
+fall back to prompting, with saved profile exceptions withheld. Headless approval
+resolution also falls back to prompting. A missing profile keeps its usual defaults;
+malformed JSON still reports an error. Spending-limit reads and settings writes
+continue to refuse unreadable files unless an explicit daily-limit override supplies
+the spending authority.

@@ -41,10 +41,41 @@ It is given two tools that no other conversation has:
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
+## shipped step methods — planning, implementation, diagnosis, review and proof
+
+After the stage placement and before repository rules, an unchanged shipped chat
+step receives a short engineering method. It describes the goal, handover,
+completion and when to ask. Plan follows relevant code and tests without edits;
+write implements slices with a failing test first; test reuses passing evidence
+for unchanged code, runs missing coverage once and diagnoses failures;
+review checks scope and standards and repairs substantive findings. Security
+traces attack paths; proof challenges promises with current observations; read
+inspects without edits; checks runs claim-specific checks; bisect narrows the
+first failure; fix reproduces and repairs the cause.
+
+The method is selected only when both the name and ask match the shipped step.
+A person's own ask carries only their words for the method; the common brief,
+repository rules and reporting contract still apply. Resuming the same chat does
+not repeat the method already in its history. The editable ask stays short.
+
+Later rounds correct unresolved checks or changed code and check the affected
+behaviour using current passing evidence. A check is reported as run from its
+tool output; refused and skipped commands are reported as unrun.
+
+Every step hands over what changed, each command actually run and its result,
+unrun checks and why, and open work. Only proof and Follow PR are asked for
+publication bullets. Test and bisect preserve the checkout; when revision
+movement is refused, bisect uses history and recorded runs and states which
+revisions it did not run. Follow PR reproduces CI failures before repairs. The service merges the PR's
+remote head into the checkout; Follow PR resolves conflicts left there, keeping
+the intent of both sides and other people's work. Publication stays with the
+service; the step does not push or force-push.
+
 ## plan file list — structured files, unknown paths and Auto approval
 
 A plan's `stage_result` answer includes `files`, an array of every file it will
-change or add, relative to the repository root. `output` carries the plan's prose.
+change or add, relative to the repository root. `output` carries the plan's prose. New plans are asked for this one structured
+list, without a second prose `Files:` declaration.
 The plan schema requires `files`; code validates the paths before using them.
 The list allows at most 200 entries and each path at most 512 bytes. Absolute
 paths, traversal, folders, globs and any other invalid entry make the whole list
@@ -146,7 +177,10 @@ round ran for two hours (or an idle Plan could not finish reporting within its t
 - `write did not finish: the checkout has no change from where the run began · …` when write
   reported done but changed nothing;
 - `test is not proven: 1 of 2 claims shown · …` for a step that runs once;
-- `review is not clean after 3 rounds: 1 finding · …` only for a step that loops.
+- `review is not clean after 3 rounds: 1 finding · …` only for a step that loops;
+- `test is not green after 3 rounds: 2 checks it ran were not confirmed to pass · …` when its
+  checks never measured green. The question counts them in a sentence; the commands themselves
+  are on the step's record and in its chat, never in the Needs you row.
 
 Rounds are named only for a step that loops. `send it back` is offered only when a finished
 step before this one can take the work back; plan, the first step, never offers it. Try again
@@ -212,6 +246,10 @@ with no report and no line in its traffic; its conversations still open from the
 When the job comes back (you reopen it or run it again, or its pull request is reopened) its team
 opens again and its next round joins it. A team you closed or archived yourself stays as you left it.
 
+A step whose chat carries on after a restart is given its brief again. That resume note goes to
+the model only: the chat never shows it as a line you typed (an older chat may still show one
+written before this, opening `[carry on]`).
+
 ## what a stage may do — edit files and run commands, the allow posture
 
 A stage conversation runs with the allow posture, the same open gate `--yolo` gives, inside the
@@ -232,6 +270,14 @@ through stage_result only.`
 To run stages narrower, set `CODEAF_FACTORY_POSTURE` to another posture (`ask`, `guardian`,
 `deny`, or `auto` for your own settings rows) in the environment codeaf's host starts in; under
 any of them a call that would ask is refused the same way.
+
+The allow posture is not your full permissions. A stage's commands, and its own `read`, `write`
+and `edit`, are kept inside its worktree, the repository's git folder and the stage's own temp and
+cache folders, plus the one folder of codeaf's own where its check receipts are kept (beside the
+step's conversation), so a `go test` or `npm test` it runs is measured wherever codeaf's home is. It cannot write the rest of the computer (no `brew install`), read keys and
+sign-ins such as `~/.ssh`, or use docker. A blocked command reads `codeaf blocked this: …`.
+`"jail.allow"` in the repository's `.codeaf/config.json` allows more. "What an unattended run may
+touch" has the whole list.
 
 ## what the manager hears — the progress lines in the item's chat
 
@@ -282,7 +328,9 @@ or while another codeaf has the chat open, the line waits and is written afterwa
 
 After you Stop a running step or job and carry on from that step, its earlier
 round says `stopped`. A round cut by a lost runner, including an engine
-restart, says `interrupted` when retried. Neither means the work failed its
+restart, says `interrupted` when retried. A step that was running when codeaf
+quit is always such an interrupted step and is offered again: it never sits
+reading "running" with no runner until you Pause and Resume it. Neither means the work failed its
 completion rule, so neither says "didn't pass" or "fixing them". A real step
 error remains a failed round and says `failed` when retried. Reported results
 still use their rule's words, such as `clean`, `not clean` or `green`.
@@ -301,7 +349,10 @@ waits on it and no card stands between the press and the plan.
 
 To change the steps, tell the manager in the item's chat. Its `factory_run` changes them at
 once before a run, and only the steps not yet started during one (see change one job's steps,
-on the factory page). What it set is one line, the same one the Adapted row of the item page
+on the factory page). AN EDIT DURING A RUN KEEPS THE JOB RUNNING: the runner hands the job back
+and takes it up again at the step it was on, with the finished steps kept and the work so far
+in its checkout, then runs the edited steps after it. It never goes back to Backlog and never
+starts again from plan. What it set is one line, the same one the Adapted row of the item page
 shows, one clause for each change and the reason last:
 `manager set review: thorough on security, code and architecture · added arch after review ·
 skipped neaten · why: touches the call row`. It also removes a step from the job (`removed
@@ -337,6 +388,23 @@ runner gives it no second turn on the same words. Say `start` and the manager st
 with `factory_start`; it starts the job only when you ask. It never clones the repository
 itself: the runner clones it when the job starts.
 
+## step cost across rounds, resumed work and the job total
+
+A step's cost includes every priced round once. Resuming an interrupted round
+keeps its earlier spending; a repeated result does not add another charge.
+Retrying a step keeps its earlier cost. A new run or Run as new starts from zero.
+The job total also includes the manager's calls and other work outside steps,
+so it can exceed the sum of step costs. Unpriced calls add no dollar amount.
+Worker reports retain every round even when several rounds finish between reports.
+The factory keeps the largest reported total for each round. Delayed or partial
+reports cannot remove a round or lower its cost; increases still count. Once a step
+has round receipts, reports without a table keep those receipts and update their
+round without charging the job twice. Steps that never had round receipts show
+the last reported round cost. There is no migration; earlier round costs absent
+from saved receipts cannot be recovered.
+Workers use round receipts only when the factory advertises support. With an
+older factory, all new spending travels in the established job-spend report.
+
 ## the job's chat is its manager — where it works, and its spend counts toward the job's budget
 
 A job's own chat (`T` on the floor, or the job's chat on its page) is the job's manager. What
@@ -355,8 +423,11 @@ from the job's budget like the job's steps: everything done for the job spends f
   both completed calls count toward the job, including the answer that was discarded.
 - **At the budget** new model calls and tools are refused. The job's owned agent families
   stop promptly, including delegated tasks, background commands and adaptive runs. This
-  applies while the manager is idle too. Calls already sent can still report charges afterward;
-  stopping work cannot reverse a provider charge already incurred.
+  applies while the manager is idle too. Once its work finishes stopping, the owning chat
+  records the job budget refusal once, even if its own reply had already finished.
+  Pressing Stop yourself does not add a budget notice. Calls already sent can still report charges afterward;
+  stopping work cannot reverse a provider charge already incurred. Approved publication
+  and merge writes can finish at the cap; they make no model calls. Stop remains available.
 - **Change Budget** by clicking its sidebar value or through Actions. Both menus offer $5,
   $10, $20 and $30 and share the confirmed value. Decreasing $10 back to $5 is allowed when
   recorded spend is at most $5. The server rechecks spend while writing the new cap.
@@ -371,7 +442,14 @@ from the job's budget like the job's steps: everything done for the job spends f
 
 ## Which model and branch does a factory step use?
 
-A step opens on the model selected for its job. A finished step's chat shows
+A step opens on the first that is set: a pick for that step on this job, a pick
+for the whole job, one model for every task (Task models or `--one-model`), the
+step's effort word (`cheap`: small work, `strong`: checks), the factory's
+default (Spending › Default model), your worker seat (Settings › Models ›
+worker), then the runner's own. With no factory default, steps run on your
+worker seat, never on a built-in default. The job page shows the choice and
+which rung made it, for the next step and each step still to run (`runs_on`).
+A finished step's chat shows
 the model recorded for that step when it is reopened, rather than the current
 profile default. New branches made by the app use the job person's GitHub
 login as their namespace; existing jobs keep their recorded branches.
@@ -390,7 +468,9 @@ Actions. Auto uses the shared yellow switch; Manual is grey. The saved mode foll
 the job across views and restarts. Older jobs with no saved mode stay Manual until
 you explicitly enable Auto; upgrading cannot publish an already waiting job.
 
-Auto passes optional routine plan gates, keeps bounded stage retries, and publishes
+In Auto the manager passes the approve steps it may pass — those whose **Who may pass** is
+"A person or the manager", and "The manager when …" ones whose condition it judges true —
+never an "Only a person" one (see "who may pass an approve step"). Auto keeps bounded stage retries, and publishes
 passing proof as a draft PR through the same recorded, exact-commit approval door.
 It repairs and updates that same PR within the job's budget and retry limits. The
 service records each approved publication; a worker cannot manufacture consent.
@@ -406,6 +486,19 @@ when that finishes. Start answers for the first step and an approve step answers
 step after it, so neither asks twice. Retries and send-backs of a step that already ran do
 not ask. Switching to Manual applies from the next step not yet run; switching to Auto passes
 an ask that is standing. Older jobs with no saved mode keep only their approve steps.
+
+In Needs you the ask is its own kind, `approve_step` (gate `step`), never a plan: it reads
+"RunVetAndTest is next · waiting for you to go on", naming the step by its label.
+
+## switching to Auto never skips an approve step — the last approve step waits for the proof approval
+
+Switching to Auto passes only the standing ask. An approve step still ahead stays a wait. One
+that is the pipeline's last step is where the run lands: it shows as waiting, and the proof
+approval answers it. That is your approval, or the manager's recorded one where the step lets
+the manager pass it. The proof approval card shows what you approve: the proof's claims, the
+files changed and how many lines.
+A job whose run went past an approve step nobody passed is refused with `has an approve step
+nobody has passed yet: <step>`, and nothing is published, in Auto or Manual.
 
 ## Retry a failed step or a failed message
 
@@ -457,8 +550,32 @@ A running step publishes its chat identity immediately, so the desktop can show 
 open that conversation while it works. Provider turn errors are recovery events; only the
 runner announces the final stage outcome. Progress uses paths relative to the checkout.
 Completed stage results carry command receipts in their notes: the command, starting folder,
-outcome and explicit test outcomes when the output has them. A final PASS summary is not a test.
+outcome and named test counts only when a measured exit establishes passed or failed.
+A final PASS summary is not a test.
 Later steps receive these receipts instead of rediscovering the working directory and flags.
+## Execution notes, command outcomes and background checks
+
+The journal records the tool producer’s outcome separately from command output.
+Printed launch or timeout text cannot override that outcome. Background launch
+identity comes from the tool call or its recorded process.
+A command refused for approval or policy reads `refused` with the actual reason;
+it did not run. Interrupted commands read `cancelled` or `timed out`, even if partial
+output includes PASS. These outcomes remain unresolved until a later measured
+covering pass qualifies for the completion guard. A background launch without a
+measured exit reads `started`; its measured check exit decides verification later.
+Literal quoted Go test filters, such as `-run '^TestProbe$'`, can be covered by a
+later measured wider pass; a refused check without covering evidence still holds.
+For older journals without producer status, printed cancellation or timeout words
+are command output and do not establish an interruption.
+Measured check exits bound to the call and its exact command decide before
+producer status or output:
+any non-zero exit reads `failed`; otherwise any unmeasured check reads `completed`,
+even with PASS output. Only a measured exit of 0 for every check reads `passed`.
+Producer failures, refusals, cancellations and timeouts can lower that outcome.
+Shell success alone cannot hide a failed check. Without measured exits, PASS or
+`ok  ` output reads `completed`, never `passed`. A later passing rerun can clear
+the guard. Publication uses each command's last outcome: a later failed or
+unmeasured rerun removes that command from passing validation.
 
 In Manual, Approve at the final gate pushes the approved commit and creates a draft PR.
 Auto records and carries out that routine approval automatically. Its description
@@ -511,6 +628,9 @@ review feedback and merge conflicts can queue another round in that same step.
 Repeated observations do not start duplicate repairs. Healthy checks leave the job
 watching until GitHub reports merge or closure. General PR discussion comments are
 not a repair trigger. Closing the app pauses local polling and workers.
+
+Fresh and resumed Follow PR rounds keep the repair decision, untrusted-evidence
+and no-push/no-merge rules even before a follow-up record is queued.
 
 The original changed-file list is context, not a publish restriction. Necessary
 dependency and test changes are allowed within the issue objective. The repair receives
@@ -579,6 +699,20 @@ spend/attempt limits and human merge authority continue to apply.
 
 
 ## public PR descriptions and private command receipts
+
+A local command publishes as passed only when every measured check exit is zero
+and its shell form cannot hide an unobserved failure. A compound with unquoted
+`;` or `||` publishes nothing. Single `&`, newlines, command substitutions and
+backticks also prevent a passing command claim. Quoted literal separators are
+allowed. `&&` chains and `|` pipes remain eligible, including `cd sub && go test
+./...`, `go test ./a && go test ./b` and `go test ./... | tail -5`.
+`bash -c 'go test ./...'`, `sh script.sh` and `make test` publish nothing, as on
+app/v3. This is an existing observation limit, not a check failure.
+A measured-zero command with a refused shell form reads `completed`; that outcome
+does not itself hold completion. An unfinished background shell still holds unless
+the guard accepts its measured checks as covering the command.
+Rerunning the identical compound on the current checkout with every measured exit
+zero clears its earlier failure, even when it uses `;` and publishes nothing.
 
 Factory publication renders known local factory checkout prefixes as repo-relative
 paths, and other local home prefixes as `[local home]`. The preview and final
@@ -662,7 +796,8 @@ and observed head after the write. It sends the mutation once; if its outcome
 is uncertain, a retry first observes GitHub and does not repeat a successful
 transition. Access/refusal/read errors keep a specific recoverable reason.
 A PR marked ready externally is recognized too. Overview and the conversation
-show the ready milestone and reviewed head. Follow PR keeps watching afterward;
+show the ready milestone and the reviewed commit by its seven-character short
+id ("Final review passed on commit 23ba8fc."). Follow PR keeps watching afterward;
 ready is not job completion and Auto never grants merge authority.
 
 ## Follow PR explains its current work in the job conversation
@@ -743,7 +878,9 @@ extra tests. A new or resumed job uses the same checkout boundary. Historical
 checks outside that checkout (including deleted negative-test fixtures and base
 probes) remain diagnostic records, not obligations for the job. Unknown paths,
 corrupt owned records and actual failures inside the checkout remain unresolved.
-Original histories, exits and timestamps are not rewritten.
+Original histories, exits and timestamps are not rewritten. A shell failure whose
+measured checks are all outside-checkout diagnostics does not recreate an obligation
+for those checks, even after the scratch directory is deleted.
 
 A later measured Go test pass can cover an earlier failed invocation on the
 current checkout. Output verbosity, JSON formatting and build parallelism do
@@ -753,7 +890,22 @@ settings, race mode, build tags and other semantic flags must still match.
 Unknown options remain exact. A newer actual failure still blocks completion;
 changing source invalidates old successful evidence. These rules also apply
 when a saved round is resumed or its results are carried into the next round.
+A refused, cancelled or timed-out literal Go test attempt remains owed until a
+later measured pass covers it on the current checkout with matching environment
+and test scope. A refusal is never evidence that a test passed. Unknown compound
+commands retain their obligation. Holds name every owed check on one line; three
+unchanged refusals or six total refusals stop recovery with an incomplete result.
 The agent should reuse valid passes and rerun only unresolved scope.
+
+## Owed commands from another machine — absolute executable paths
+
+Owed literal checks name known tools through PATH, such as `go test ./...`,
+rather than retaining another machine's installation path. A measured rerun
+with that name can resolve a saved absolute invocation with the same scope.
+Raw receipts retain the original argv. Unknown tools or shell text that cannot
+be safely simplified keep their command and name any executable path missing
+on this machine. An unmeasured absolute invocation remains an obligation;
+changing its displayed command does not turn it into a pass.
 
 ## An already-fixed published PR does not need another commit
 
@@ -799,9 +951,9 @@ problem instead. Retry the same `question_id` and answer to confirm/redeliver it
 a newer question stays intact and never receives the old answer. Readiness
 completion also preserves a critical decision arriving during its final checks.
 
-## Request changes to a waiting plan through its manager
+## Ask for changes to a waiting plan through its manager — send the plan back with your words
 
-When you ask for changes at a plan approval gate, the manager reads saved status
+When you press **Ask for changes…** at a plan approval gate (or tell the manager to), the manager reads saved status
 and sends the plan back with your words. The finished step before the gate runs
 again in a new round, with your words in its brief. Approval is requested again
 after that step finishes. This does not approve the plan or publish anything.
@@ -843,7 +995,11 @@ ordinary conversation processes stop for sleep or turn an interrupted check gree
 
 Worker result delivery retains one exact per-lease request and retry identity
 before sending. A lost reply retries that request before reporting newer work;
-only a confirmed response advances its baseline. Retryable delivery uses a
+only a confirmed response advances its baseline. A step waits for the factory's
+admission answer before starting. During a running job, a stalled report does
+not delay heartbeats or Stop and other signals; Stop cancels an admission wait.
+Heartbeats themselves still run serially with signals and can wait up to five
+seconds for their own request. Retryable delivery uses a
 two-minute window with bounded request waits. Deterministic rejection stops work,
 retains the unsent results privately and asks for reporting-problem reconciliation,
 without claiming that the tests failed. It does not release the job as complete.
@@ -854,6 +1010,22 @@ This delivery bridge does not automatically replay old leases after a restart.
 The server's response cache still has a gap between applying results and saving
 the replay response; it is not transactional accounting. Retained artifacts need
 reconciliation before retry, and do not restore execution or publication authority.
+
+## Admission report stalls, retries and shutdown accounting
+
+Each admission waits at most 5.5 seconds total, including any report ahead of
+it and both spending flushes. A transient refusal retries the same unspent round
+one second after the reporter and previous drive finish, for up to two minutes
+from the first refusal. Pending result delivery keeps its 2, 5, then 15-second
+backoff. No paid round or attempt is consumed by admission refusal. During this
+wait the job remains running, with no new question or stall log line; the factory
+continues to show its last acknowledged step and spend. A retry keeps the round
+number. Lease loss and Stop end the wait.
+Cancellation and lease loss join the reporter before cleanup. The initial empty
+report's receipt reconciles cumulative late spend through the accounting-only
+recovery door; acknowledged deltas and repeated recovery responses count once.
+Unaccepted execution results remain in the private delivery artifact; accounting
+recovery does not restore their execution authority.
 
 
 ## Checkpoints and essential checks
@@ -918,6 +1090,13 @@ cap and only optional memory crosses it, the finished step stays done. The next
 step asks before starting, using the full job spend. On the last step, the job
 finishes with its true spend shown and no question for work it will not run.
 
+## Job budget read unavailable — existing work and new paid calls
+
+If a job budget cannot be read, new paid calls wait with
+`job budget could not be read; new work held`. The read error alone does not
+cancel work already running. A later successful read can admit work again;
+confirmed budget exhaustion and unrecorded spending still stop owned work.
+
 ## Stop spending after this step in a job's Spend menu
 
 **Stop spending after this step** lets the current step finish before you
@@ -940,8 +1119,12 @@ spending choice stays armed for the next step boundary. After the final step,
 the job holds before landing, so automatic publication cannot pass this hold.
 The choice adds no dollar limit and does not interrupt a model call already
 under way. A leased worker checks the saved choice before each step and landing.
-If that read fails, it keeps the last saved choice, including an armed hold,
-and tries again at the next boundary. The read failure does not fail the job.
+If that read fails, it retries up to three times within two seconds while the
+run is active. If the choice remains unknown, the worker holds before the next
+paid step and says `could not confirm Stop before the next step; work held:`
+with the read error. The job is not marked failed. Answer yes to retry the
+authority read when the factory is reachable, or no to stop the job. A missing route on an older factory keeps the existing behavior.
+Unconfirmed delivery still follows the ordinary recovery cutoff.
 
 ## Follow PR — comments that need no code change
 
@@ -965,3 +1148,19 @@ Attempt exhaustion alone never opens Merge or acknowledges a requested change.
 When the refusal concerns local checkout changes, Try again first rereads the
 checkout without calling a model. An unchanged checkout remains refused without
 spending; restoring the clean published checkout permits a fresh assessment.
+
+## a step's question — the manager answered for you, override it, Manual sends every question to you, only a person can answer
+
+When a step asks a question, the job's manager is given it first and answers from the issue, the pipeline and the steps. Its answer goes back to the step at once, and the job keeps a record of it: the question, the step that asked and `Manager answered for you` with the answer. The record is in the job's questions beside your own answers (`with: manager`), and the job's Brief can say the manager decided it. The manager's answer is never counted as one of your requests. To override it, send the step that asked a message with your answer while it runs; once the step has ended, your message reaches the next step.
+
+The manager is skipped, and the question comes straight to you in Needs you, in two cases:
+
+- the job is in **Manual**: every step question comes to you, with `Manual: every step question comes to you`;
+- the step marked the question as one only a person can answer (the `ask` tool's `judgement` kind), in every mode, with `the step said only a person can answer this`.
+
+A question the manager sends on comes to you the same way, with the manager's reason. The step waits until you answer.
+
+## a message to a step that is ending — is it lost?
+
+No. A message sent while a step runs is kept on the job's notes as well as handed to the step. If the step ends before it reads it, every later step's brief carries it, so it reaches the run either way. A message sent once the job is no longer running is refused in words: `#12 is not running`.
+

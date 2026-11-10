@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
@@ -199,7 +202,9 @@ func TestProviderChooserShowsEverySupportedProviderInOneFlatList(t *testing.T) {
 	a, _, _ := setupProviderApp(t, nil)
 	pageCounter := regexp.MustCompile(`\bof \d+\b`)
 	rows := a.setupProviderRows()
-	if len(rows) != len(modelsource.Vendored())+1 {
+	// Every registry provider and OpenRouter, less Claude Code, which is
+	// offered only where it is installed (the helper makes it absent).
+	if len(rows) != len(modelsource.Vendored()) {
 		t.Fatalf("registry providers=%v", rows)
 	}
 	for _, size := range []struct{ width, height int }{{120, 40}, {80, 24}, {40, 18}, {40, 12}, {40, 10}} {
@@ -285,5 +290,43 @@ func TestAllBrowserWaitingCardsUseOneShortLinkWithTheCompleteTarget(t *testing.T
 		if len(rows) != 2 || !strings.Contains(rows[1], linkOpen(target)) || !strings.Contains(plain(rows[1]), signInLinkWord) || strings.Contains(plain(rows[1]), "accounts.example") {
 			t.Fatalf("waiting card: %q", rows)
 		}
+	}
+}
+
+func TestSetupOffersClaudeCodeOnlyWhereItIsInstalled(t *testing.T) {
+	a, _, _ := setupProviderApp(t, nil)
+	// laterOffers says the add-a-provider menu opened after setup lists it.
+	laterOffers := func() bool {
+		a.openAddProvider(false)
+		defer a.addPanel.close()
+		for _, item := range a.addPanel.items {
+			if item.sourceID == claudemodel.ID {
+				return true
+			}
+		}
+		return false
+	}
+	for _, row := range a.setupProviderRows() {
+		if row.id == claudemodel.ID {
+			t.Fatal("setup offered Claude Code on a machine without it")
+		}
+	}
+	if laterOffers() {
+		t.Fatal("the add-a-provider menu offered Claude Code on a machine without it")
+	}
+	fake := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_CLAUDE_BIN", fake)
+	found := false
+	for _, row := range a.setupProviderRows() {
+		found = found || row.id == claudemodel.ID
+	}
+	if !found {
+		t.Fatal("setup hid Claude Code on a machine that has it")
+	}
+	if !laterOffers() {
+		t.Fatal("the add-a-provider menu hid Claude Code on a machine that has it")
 	}
 }

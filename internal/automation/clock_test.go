@@ -502,3 +502,83 @@ func TestAClockLeavesForANewerWindowsEnvironment(t *testing.T) {
 		t.Fatalf("the newest window is %+v, %v", newest, ok)
 	}
 }
+
+// A CLOCK LEAVES WITH THE WINDOW THAT STARTED IT. The seventh live A+B run's
+// desk restarted its engine and the new engine found the old one's clock
+// still running beside it, a process of the build it had replaced, kept alive
+// by the new window's presence. With another window still open, the clock
+// stays while its parent does and leaves, with nothing in hand, once it has
+// gone; that window starts the next clock.
+// TestAnOrphanedClockWithNoWindowOpenLeavesWithoutTheGrace: the engine that
+// started the clock has gone and took its window with it, so the clock leaves
+// on its next look rather than after [closingGrace].
+func TestAnOrphanedClockWithNoWindowOpenLeavesWithoutTheGrace(t *testing.T) {
+	fast(t)
+	closingGrace = time.Hour
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var gone atomic.Bool
+	done := make(chan error, 1)
+	clock := &Clock{Store: s, Presence: NewPresence(s.Root()), Runner: &fakeRunner{}, Orphaned: gone.Load, Log: func(line string) { t.Log("clock: " + line) }}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { done <- clock.Run(ctx) }()
+	select {
+	case err := <-done:
+		t.Fatalf("the clock left while the window that started it was still there (%v)", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	gone.Store(true)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the clock left with %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("an orphaned clock with no window open waited out the closing grace")
+	}
+	if Held(s.Root()) {
+		t.Fatal("the clock that left still holds the lock")
+	}
+}
+
+func TestAClockLeavesWithTheWindowThatStartedIt(t *testing.T) {
+	fast(t)
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	presence := NewPresence(s.Root())
+	other, err := presence.Hold("the window that restarted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other()
+	var gone atomic.Bool
+	done := make(chan error, 1)
+	clock := &Clock{Store: s, Presence: presence, Runner: &fakeRunner{}, Orphaned: gone.Load, Log: func(line string) { t.Log("clock: " + line) }}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { done <- clock.Run(ctx) }()
+	select {
+	case err := <-done:
+		t.Fatalf("the clock left while the window that started it was open (%v)", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	gone.Store(true)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the clock left with %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the clock outlived the window that started it while another window was open")
+	}
+	if Held(s.Root()) {
+		t.Fatal("the clock that left still holds the lock, so no open window can start the next")
+	}
+}

@@ -166,3 +166,21 @@ func TestTaskWorkspaceEarlierCallerDeadlineStopsResidentOperation(t *testing.T) 
 		t.Fatal("resident operation outlived earlier caller deadline")
 	}
 }
+
+// A resident reply can beat the caller's cancellation notification. Keep the
+// caller live so this test always exercises the error received over the wire.
+func TestTaskWorkspaceResidentContextErrorsPreserveSentinels(t *testing.T) {
+	for _, cause := range []error{context.DeadlineExceeded, context.Canceled} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			far := &workspaceFar{fakeAgent: &fakeAgent{}, refuse: cause}
+			loop := workspaceLoop(t, far, false)
+			agent := loop.Client.Agent()
+			if _, err := agent.ApplyTaskWorkspaceRoot(context.Background(), 7, "work"); !errors.Is(err, cause) {
+				t.Fatalf("resident apply lost %v: %v", cause, err)
+			}
+			if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), 7, "work"); !errors.Is(err, cause) {
+				t.Fatalf("resident review lost %v: %v", cause, err)
+			}
+		})
+	}
+}

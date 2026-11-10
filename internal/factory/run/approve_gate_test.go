@@ -126,14 +126,17 @@ func TestAnswerUnheldNoSendsBackWithTheWords(t *testing.T) {
 			t.Fatalf("phases %+v state %s notes %q", p, it.State, it.Notes)
 		}
 	})
-	t.Run("no step before the gate stops, as the runner does", func(t *testing.T) {
+	t.Run("no step before the gate ends the job rejected, as the runner does", func(t *testing.T) {
 		it := gateWaiting()
 		it.Stream.Phases[0].State = factory.PhasePending
-		if err := AnswerUnheld(&it, false, "", now); err != nil {
+		if err := AnswerUnheld(&it, false, " not this ", now); err != nil {
 			t.Fatal(err)
 		}
 		if it.State != factory.StateNew || it.Asking != nil || it.Question != "" || it.QKind != "" || it.Stream.Phases[1].State != factory.PhasePending {
 			t.Fatalf("stopped job retained its question: state %s asking %+v phases %+v", it.State, it.Asking, it.Stream.Phases)
+		}
+		if factory.JobState(it) != "done" || it.Rejection == nil || it.Rejection.Words != "not this" || it.Stream.Ended.IsZero() || factory.EverRan(it) == false {
+			t.Fatalf("a rejection did not end the job: state %s rejection %+v", factory.JobState(it), it.Rejection)
 		}
 	})
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // maxFileBytes is how large a pipeline file may be. A recipe is a page, not a
@@ -129,6 +130,9 @@ func readCheckout(dir string) (text, from, kind string, err error) {
 	if strings.TrimSpace(dir) == "" {
 		return "", "", "", errors.New("no checkout")
 	}
+	if err := gitWorks(dir); err != nil {
+		return "", factory.FromMainBranch, "", err
+	}
 	if ref := defaultBranch(dir); ref != "" {
 		if t, ok, err := show(dir, ref, RepoFile); err != nil {
 			return "", factory.FromMainBranch, "", err
@@ -160,11 +164,16 @@ func show(dir, ref, rel string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	spec := ref + ":" + rel
-	if _, err := gitOut(dir, "cat-file", "-e", spec); err != nil {
+	// ls-tree answers nothing for a path that isn't there and fails when git
+	// can't read the tree: only the first is a repository with no file.
+	listed, err := gitOut(dir, "ls-tree", ref, "--", rel)
+	if err != nil {
+		return "", false, fmt.Errorf("git could not read %s: %w", rel, err)
+	}
+	if strings.TrimSpace(listed) == "" {
 		return "", false, nil
 	}
-	out, err := gitOut(dir, "show", spec)
+	out, err := gitOut(dir, "show", ref+":"+rel)
 	if err != nil {
 		return "", false, err
 	}
@@ -206,6 +215,23 @@ func cleanRel(rel string) (string, error) {
 	return rel, nil
 }
 
+// gitWorks refuses a checkout whose git folder no longer answers, which would
+// otherwise read as a folder with no branch and so no file. A plain folder has
+// no git to ask, and neither has a .git folder holding no repository.
+func gitWorks(dir string) error {
+	info, err := os.Stat(filepath.Join(dir, ".git"))
+	if err != nil {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git", "objects")); info.IsDir() && err != nil {
+		return nil
+	}
+	if _, err := gitOut(dir, "rev-parse", "--git-dir"); err != nil {
+		return fmt.Errorf("git could not read this checkout: %w", err)
+	}
+	return nil
+}
+
 // defaultBranch is the checkout's main branch as a ref git can read, or ""
 // when there is none: origin/HEAD's target, else main, else master.
 func defaultBranch(dir string) string {
@@ -230,7 +256,7 @@ func gitOut(dir string, args ...string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), gitWait)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	for _, kv := range os.Environ() {
 		if strings.HasPrefix(kv, "GIT_DIR=") || strings.HasPrefix(kv, "GIT_WORK_TREE=") || strings.HasPrefix(kv, "GIT_INDEX_FILE=") {
 			continue

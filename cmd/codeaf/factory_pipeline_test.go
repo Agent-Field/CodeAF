@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -215,6 +216,28 @@ func TestEveryDoorBoundsAJobByTheCopyItCarries(t *testing.T) {
 	}
 	if _, _, err := managerEdit(st, dirs)(context.Background(), plain.ID, remove); err != nil {
 		t.Fatalf("the plain job's removal was refused: %v", err)
+	}
+	// THE MANAGER'S EDIT IS ON THE RECORD as the job page's is: one timed
+	// "edited steps" event for the edit that landed, none for the refusal.
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := history.Since(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits := map[int]int{}
+	for _, e := range events {
+		if e.Kind == record.StepEdited {
+			edits[e.Job]++
+			if e.At.IsZero() || e.Verb != "edited steps" || e.Detail == "" {
+				t.Fatalf("the manager's edit event is untimed or unnamed: %+v", e)
+			}
+		}
+	}
+	if edits[plain.ID] != 1 || edits[carried.ID] != 0 {
+		t.Fatalf("step-edit events by job = %v, want one for #%d and none for the refused #%d", edits, plain.ID, carried.ID)
 	}
 
 	// A JOB DECIDED ON MAIN'S FILE is bounded by main's file alone, though the

@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,9 +41,10 @@ const Schema = 1
 // it has been written, and the item. The revision lives here rather than on
 // [factory.Item] because it is a fact about the document, not about the work.
 type doc struct {
-	Schema   int          `json:"schema"`
-	Revision int          `json:"revision"`
-	Item     factory.Item `json:"item"`
+	Schema         int          `json:"schema"`
+	Revision       int          `json:"revision"`
+	BudgetRevision int          `json:"budget_revision"`
+	Item           factory.Item `json:"item"`
 }
 
 // ErrNotFound is the answer for an id that is not here.
@@ -54,12 +56,31 @@ var ErrNewer = errors.New("factory store: written by a newer codeaf")
 
 // Store is the factory's items under one root.
 type Store struct {
+	tierMu       sync.Mutex
+	tierResolver TierResolver
+	tierReads    map[int]*tierRead
 	root         string
 	outputPolicy func() (int, int)
 	observer     atomic.Pointer[func(before, after factory.Item)]
+	// shared is the last [Store.ListShared], reused while the floor is unchanged.
+	shared sharedList
 	// clock is the store's now. A test may hold it still; it is nil in every
 	// real build, which reads as time.Now.
 	clock func() time.Time
+	// reads counts the documents this store has read from disk and decoded.
+	// THE IDLE-COST LAW IS WRITTEN AGAINST IT (PERF.md): a watcher that looks
+	// at the floor ten times a second must not decode the floor ten times a
+	// second, and a counter is how a test proves that without a clock.
+	reads atomic.Int64
+}
+
+// Reads is how many item documents this store has read and decoded since it
+// was opened. It exists so a test can hold an idle caller to a bound.
+func (st *Store) Reads() int64 {
+	if st == nil {
+		return 0
+	}
+	return st.reads.Load()
 }
 
 // Open answers the store at root, creating the directory. It holds no handles.
@@ -122,7 +143,7 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 		}
 		it.ID = highest + 1
 		st.retainOutput(&it)
-		data, err := marshalDoc(doc{Revision: 1, Item: it})
+		data, err := marshalDoc(doc{Revision: 1, BudgetRevision: 1, Item: it})
 		if err != nil {
 			return err
 		}
@@ -170,7 +191,7 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 	if it.Origin == "" {
 		it.Origin = factory.OriginChat
 	}
-	if it.Tier == "" {
+	if it.Tier == "" && !it.RefusesWrite() {
 		it.Tier = factory.TierOwner
 	}
 	if it.Kind == "" {
@@ -199,7 +220,13 @@ func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
 
 // Get reads one item. A missing id is [ErrNotFound]; a document a newer build
 // wrote is [ErrNewer].
-func (st *Store) Get(id int) (factory.Item, error) {
+func (st *Store) Get(id int) (factory.Item, error) { return st.get(id, true) }
+
+// GetSaved reads the saved snapshot for lease bookkeeping without author lookup.
+// User reads and write admission use Get instead.
+func (st *Store) GetSaved(id int) (factory.Item, error) { return st.get(id, false) }
+
+func (st *Store) get(id int, hydrate bool) (factory.Item, error) {
 	if err := checkID(id); err != nil {
 		return factory.Item{}, ErrNotFound
 	}
@@ -215,6 +242,9 @@ func (st *Store) Get(id int) (factory.Item, error) {
 	if err != nil {
 		return factory.Item{}, err
 	}
+	if hydrate {
+		return st.readHydrated(d.Item)
+	}
 	st.retainOutput(&d.Item)
 	return d.Item, nil
 }
@@ -222,7 +252,13 @@ func (st *Store) Get(id int) (factory.Item, error) {
 // List reads every item, newest first by Created. An unreadable or
 // newer-schema document is skipped rather than fatal: ONE DOCUMENT FROM THE
 // FUTURE, OR ONE TORN BY A FULL DISK, MUST NOT EMPTY THE WHOLE FLOOR.
-func (st *Store) List() ([]factory.Item, error) {
+func (st *Store) List() ([]factory.Item, error) { return st.list(true) }
+
+// ListSaved reads the saved snapshot for source reconciliation without looking up
+// author access. User reads and admission use List or Get instead.
+func (st *Store) ListSaved() ([]factory.Item, error) { return st.list(false) }
+
+func (st *Store) list(hydrate bool) ([]factory.Item, error) {
 	entries, err := os.ReadDir(st.root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -259,7 +295,15 @@ func (st *Store) List() ([]factory.Item, error) {
 		if err != nil {
 			return nil, err
 		}
-		st.retainOutput(&d.Item)
+		if hydrate {
+			it, err := st.readHydrated(d.Item)
+			if err != nil {
+				return nil, err
+			}
+			d.Item = it
+		} else {
+			st.retainOutput(&d.Item)
+		}
 		items = append(items, d.Item)
 	}
 	sort.SliceStable(items, func(a, b int) bool {
@@ -308,8 +352,11 @@ func (st *Store) Save(it factory.Item) error {
 		default:
 			return err
 		}
+		if isTierProjection(it.Failure) {
+			it.Failure = current.Item.Failure
+		}
 		st.retainOutput(&it)
-		data, err := marshalDoc(doc{Revision: rev, Item: it})
+		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
 			return err
 		}
@@ -343,6 +390,13 @@ func (st *Store) Update(id int, change func(*factory.Item) error) error {
 // called, when the job moved.
 func (st *Store) UpdateExpected(id, revision int, change func(*factory.Item) error) error {
 	return st.update(id, writeWork, &revision, change)
+}
+
+// UpdateBudgetExpected accepts progress since the revision read, but refuses
+// any intervening budget edit. The comparison and change share the item lock.
+// A nil revision preserves the unguarded HTTP door.
+func (st *Store) UpdateBudgetExpected(id int, revision *int, change func(*factory.Item) error) error {
+	return st.update(id, writeBudget, revision, change)
 }
 
 // StaleError is [Store.UpdateExpected]'s refusal: the document is at Revision,
@@ -397,11 +451,13 @@ func (st *Store) UpdatePersonal(id int, change func(*factory.Item) bool) error {
 var errUnchanged = errors.New("factory store: nothing changed")
 
 // writeMode is what a write says about the job besides its change: whether the
-// work moved (Changed stamped) and whether the document is a new revision.
-type writeMode struct{ stamp, bump bool }
+// work moved (Changed stamped), whether the document is a new revision, and
+// whether expect compares budget history instead of the whole document.
+type writeMode struct{ stamp, bump, budget bool }
 
 var (
 	writeWork       = writeMode{stamp: true, bump: true}
+	writeBudget     = writeMode{stamp: true, bump: true, budget: true}
 	writeAnnotation = writeMode{stamp: false, bump: true}
 	writePersonal   = writeMode{stamp: false, bump: false}
 )
@@ -454,11 +510,13 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if err != nil {
 			return err
 		}
-		if expect != nil && current.Revision != *expect {
+		if expect != nil && current.Revision != *expect &&
+			(!mode.budget || *expect < current.BudgetRevision || *expect > current.Revision) {
 			return &StaleError{ID: id, Expected: *expect, Revision: current.Revision}
 		}
 		it := current.Item
 		before := current.Item
+		before.Stages = factory.CopyStages(it.Stages)
 		// In-place PR and failure edits must not rewrite the prior event facts.
 		if before.PullRequest != nil {
 			prior := *before.PullRequest
@@ -478,8 +536,12 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 			copy := *before.PublishStatus
 			before.PublishStatus = &copy
 		}
+		savedFailure := it.Failure
 		if err := change(&it); err != nil {
 			return err
+		}
+		if isTierProjection(it.Failure) {
+			it.Failure = savedFailure
 		}
 		if err := st.normalizeRepository(&it); err != nil {
 			return err
@@ -493,13 +555,17 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		// document before the change with after it, so the triage worker, the
 		// Talk door and the adapt door each get their event (`read`, `talked`,
 		// `stages changed by plan`) without one of them having to remember.
+		if mode == writePersonal {
+			factory.TouchIssue(&it)
+		}
+		factory.RecordIssueTouch(before, &it)
 		factory.NoteChanges(before, &it, now)
 		st.retainOutput(&it)
 		rev := current.Revision
 		if mode.bump {
 			rev++
 		}
-		data, err := marshalDoc(doc{Revision: rev, Item: it})
+		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
 			return err
 		}
@@ -547,8 +613,15 @@ func (st *Store) now() time.Time {
 	return st.clock()
 }
 
-func (st *Store) read(path string) (doc, error) {
+func (st *Store) read(path string) (doc, error) { return cachedRead(path, st.readDocument) }
+
+// readDocument reads and decodes the document at path; [Store.read] answers
+// it from the process's cache while the file is unchanged.
+func (st *Store) readDocument(path string) (doc, error) {
 	data, err := os.ReadFile(path)
+	if err == nil {
+		st.reads.Add(1)
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			return doc{}, ErrNotFound
@@ -559,6 +632,9 @@ func (st *Store) read(path string) (doc, error) {
 	if err := json.Unmarshal(data, &d); err != nil {
 		return doc{}, fmt.Errorf("factory store: cannot read %s: %w", filepath.Base(path), err)
 	}
+	if d.Item.PersonStopped == nil && factory.StoppedByPerson(d.Item) {
+		factory.MarkPersonStopped(&d.Item)
+	}
 	if d.Schema > Schema {
 		return doc{}, fmt.Errorf("%w: %s", ErrNewer, filepath.Base(path))
 	}
@@ -568,7 +644,21 @@ func (st *Store) read(path string) (doc, error) {
 	if n, err := strconv.Atoi(strings.TrimSuffix(filepath.Base(path), ".json")); err == nil {
 		d.Item.ID = n
 	}
+	// Older documents have no budget history. Their observed revision is the
+	// earliest read we can safely accept, and later writes retain it.
+	if d.BudgetRevision == 0 {
+		d.BudgetRevision = d.Revision
+	}
 	return d, nil
+}
+
+// nextDoc retains the last budget edit across all item writers, including Save.
+func nextDoc(before doc, it factory.Item, revision int) doc {
+	budgetRevision := before.BudgetRevision
+	if budgetRevision == 0 || before.Item.Cap != it.Cap {
+		budgetRevision = revision
+	}
+	return doc{Revision: revision, BudgetRevision: budgetRevision, Item: it}
 }
 
 // highestID is the largest id with a document under the root, read off the

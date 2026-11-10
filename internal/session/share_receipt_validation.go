@@ -30,10 +30,11 @@ func validateShareRows(r ShareReceipt) error {
 	paths := make([]string, len(r.Planned))
 	ids := make(map[string]bool, len(r.Planned))
 	for i, row := range r.Planned {
-		if !ValidDeliverableID(row.ID) || ids[row.ID] {
+		_, duplicate := ids[row.ID]
+		if !ValidDeliverableID(row.ID) || duplicate {
 			return ErrShareOpInvalid
 		}
-		ids[row.ID] = true
+		ids[row.ID] = !row.AlreadyRecorded
 		paths[i] = row.Path
 	}
 	normalized, digest, err := NormalizeSharePayload(paths)
@@ -64,7 +65,13 @@ func validateShareProvenance(p ShareProvenance) error {
 }
 
 func validateShareRecorded(r ShareReceipt, ids map[string]bool) error {
-	if len(r.RecordedIDs) > len(r.Planned) {
+	expected := 0
+	for _, record := range ids {
+		if record {
+			expected++
+		}
+	}
+	if len(r.RecordedIDs) > expected {
 		return ErrShareOpInvalid
 	}
 	seen := make(map[string]bool, len(r.RecordedIDs))
@@ -76,7 +83,7 @@ func validateShareRecorded(r ShareReceipt, ids map[string]bool) error {
 	}
 	switch r.Status {
 	case ShareOpAccepted:
-		if len(r.RecordedIDs) != len(r.Planned) {
+		if len(r.RecordedIDs) != expected {
 			return ErrShareOpInvalid
 		}
 	case ShareOpPending, ShareOpPlanned, ShareOpRefused:

@@ -149,6 +149,7 @@ type PipelineEditKind struct {
 // no prompt. Locked steps are refused by the preview. InFile is false for a
 // step whose wording is a shipped default the file does not write.
 type PipelineEditStep struct {
+	Label  string `json:"label,omitempty"`
 	Name   string `json:"name"`
 	Gate   bool   `json:"gate,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
@@ -162,7 +163,11 @@ type PipelineEditStep struct {
 	Fanout string `json:"fanout,omitempty"`
 	// Who is who a person step waits on ("@handle" or operator); absent for
 	// the job's person.
-	Who    string `json:"who,omitempty"`
+	Who string `json:"who,omitempty"`
+	// Pass is who may pass a person step (person, manager, or `manager when
+	// <condition>`); absent when the file does not say, which reads as a
+	// person or the manager.
+	Pass   string `json:"pass,omitempty"`
 	Locked bool   `json:"locked"`
 	InFile bool   `json:"in_file"`
 }
@@ -213,7 +218,7 @@ func (s *PipelineEditSource) SetParsed(src pipeline.Source) {
 		s.Pipelines = append(s.Pipelines, PipelineEditKind{Kind: k.Kind, Steps: append([]string{}, k.Steps...), InFile: k.InFile})
 	}
 	for _, st := range src.Steps {
-		s.Steps = append(s.Steps, PipelineEditStep{Name: st.Name, Gate: st.Gate, Prompt: st.Prompt, Until: st.Until,
-			Max: st.Max, Kind: st.Kind, When: st.When, Effort: st.Effort, Fanout: st.Fanout, Who: st.Who, Locked: st.Locked, InFile: st.InFile})
+		s.Steps = append(s.Steps, PipelineEditStep{Name: st.Name, Label: st.Label, Gate: st.Gate, Prompt: st.Prompt, Until: st.Until,
+			Max: st.Max, Kind: st.Kind, When: st.When, Effort: st.Effort, Fanout: st.Fanout, Who: st.Who, Pass: st.Pass, Locked: st.Locked, InFile: st.InFile})
 	}
 }

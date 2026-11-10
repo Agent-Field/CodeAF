@@ -32,7 +32,7 @@ func PreferenceKey(key string) bool {
 // ReadPreferences reads stored values alone: operator environment pins and
 // project settings never travel to another computer (C30.3).
 func ReadPreferences(dir string) (map[string]string, error) {
-	held, err := readProfileConfig(dir)
+	held, err := readProfileConfigStrict(dir)
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
 // sayWriteUnchanged is why a write round that reported done is not done. It
@@ -151,8 +152,22 @@ func readChange(dir, base string) (*factory.Change, error) {
 		}
 		files[path] = f
 	}
+	// A COPY OF THE REPOSITORY LEFT IN THE CHECKOUT IS NOT THE CHANGE
+	// (scratch.go): its files are not counted, judged or shown.
+	var added []string
+	for path, f := range files {
+		if f.Status == "added" {
+			added = append(added, path)
+		}
+	}
+	copies := repoCopies(added, trackedAt(git, dir, base))
+	for path := range files {
+		if inCopy(path, copies) {
+			delete(files, path)
+		}
+	}
 	change := &factory.Change{Branch: strings.TrimSpace(branch)}
-	if patch, e := git.Run(dir, "diff", "--no-ext-diff", "--no-renames", "--no-color", base, "--"); e == nil {
+	if patch, e := git.Run(dir, append([]string{"diff", "--no-ext-diff", "--no-renames", "--no-color", base, "--"}, excludeCopies(copies)...)...); e == nil {
 		if len(patch) > 512000 {
 			patch = patch[:512000]
 			change.PatchTruncated = true
@@ -249,7 +264,7 @@ func validateChange(change *factory.Change) error {
 type changeGit struct{}
 
 func (changeGit) Run(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.Command("git", gitpolicy.WithoutAutoMaintenance(append([]string{"-C", dir}, args...)...)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	raw, err := cmd.Output()
 	return string(raw), err

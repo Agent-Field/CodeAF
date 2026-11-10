@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -19,6 +20,9 @@ func (d *Doors) StepControl(id int, name string, rerun bool, words string) error
 // followed by a later write must not rewind a step that has already moved on.
 func (d *Doors) StepControlExpected(id int, name string, rerun bool, words string, revision *int) error {
 	return d.rewind(id, revision, rerun, func(it *factory.Item, now time.Time) error {
+		if rerun {
+			factory.ClearPersonStop(it)
+		}
 		return run.StepControl(it, name, rerun, words, now)
 	})
 }
@@ -28,6 +32,7 @@ func (d *Doors) StepControlExpected(id int, name string, rerun bool, words strin
 // another model.
 func (d *Doors) StepRerunExpected(id int, name, words, model string, revision *int) error {
 	return d.rewind(id, revision, true, func(it *factory.Item, now time.Time) error {
+		factory.ClearPersonStop(it)
 		return run.StepRerun(it, name, words, model, now)
 	})
 }
@@ -60,6 +65,12 @@ func (d *Doors) EditSteps(id int, edit factory.RunEdit, recipe factory.Recipe) (
 		if factory.JobState(*it) == "done" || it.Publishing {
 			return false, run.StepControlRefusal("finished or publishing jobs cannot edit steps")
 		}
+		if err := factory.CheckPersonStop(*it); err != nil {
+			return false, err
+		}
+		// A job that never ran is first given the steps its repository runs,
+		// so the edit lands on them ([pipeline.StampRecipe]).
+		pipeline.StampRecipe(it, recipe)
 		var err error
 		lines, err = run.EditStepsItem(it, edit, recipe)
 		if err != nil {
@@ -114,8 +125,16 @@ func sameStages(a, b []factory.Stage) bool {
 
 // withdrawForSteps takes job id from the worker holding it when its steps
 // changed, so the worker pulls the changed steps and no report from its old
-// copy writes them back; a running job is queued again for that pull. It
-// answers whether the desk changed.
+// copy writes them back; a running job is queued again for that pull, at the
+// step it was on. It answers whether the desk changed.
+//
+// THE LEASE IS WITHDRAWN, NEVER MERELY RELEASED. A worker whose lease is simply
+// gone reads that as the factory stopping the job and runs a person's Stop,
+// which ends the run and leaves the job new, in Backlog, to start again from
+// its first step; the live audit's "add a security step" did exactly that to a
+// running Write. A withdrawn lease is a handover: the worker cancels its drive
+// without writing a stop, and the queued job is pulled again with its finished
+// steps kept.
 func withdrawForSteps(doc *document, held *Lease, id int, it *factory.Item, changed bool) bool {
 	if held == nil || !changed {
 		return false
@@ -123,7 +142,7 @@ func withdrawForSteps(doc *document, held *Lease, id int, it *factory.Item, chan
 	if it.State == factory.StateRunning && it.Stream != nil && !it.Stream.Paused {
 		it.State = factory.StateQueued
 	}
-	release(doc, id)
+	withdraw(doc, *held)
 	delete(doc.Signals, id)
 	return true
 }

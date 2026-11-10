@@ -15,6 +15,7 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,15 +53,17 @@ const listPages = 10
 // the issues list that are pull requests, which the source skips there and
 // reads from the pulls list instead.
 type Issue struct {
-	Number  int
-	Title   string
-	Body    string
-	User    string
-	Labels  []string
-	Created time.Time
-	Updated time.Time
-	URL     string
-	Pull    bool
+	ID         int64
+	Redirected bool
+	Number     int
+	Title      string
+	Body       string
+	User       string
+	Labels     []string
+	Created    time.Time
+	Updated    time.Time
+	URL        string
+	Pull       bool
 	// Comments is how many comments the issue has, as the list says it; the
 	// comments themselves are [client.IssueComments]'s.
 	Comments int
@@ -69,8 +72,7 @@ type Issue struct {
 	// non-nil and empty means GitHub said nobody is assigned. The deprecated
 	// singular assignee field is never read: it is only the first of these.
 	Assignees []string
-	// State is GitHub's word, open or closed. Only [client.Issue] fills it:
-	// the lists are of open issues alone, so their rows leave it empty.
+	// State is GitHub's word, open or closed.
 	State string
 }
 
@@ -163,6 +165,7 @@ type labelJSON struct {
 }
 
 type issueJSON struct {
+	ID          int64       `json:"id"`
 	Number      int         `json:"number"`
 	Title       string      `json:"title"`
 	Body        *string     `json:"body"`
@@ -395,7 +398,16 @@ func (c *client) repoURL(owner, repo, rest string) string {
 // says that page has not changed the answer is [ErrNotModified] and nothing
 // else was read. The tag that comes back is for next time.
 func (c *client) ListIssues(ctx context.Context, owner, repo string, since time.Time, etag string) ([]Issue, string, error) {
-	q := url.Values{"state": {"open"}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {"100"}}
+	return c.listIssues(ctx, owner, repo, since, etag, "open")
+}
+
+// ListIssueChanges includes closures without walking history before since.
+func (c *client) ListIssueChanges(ctx context.Context, owner, repo string, since time.Time, etag string) ([]Issue, string, error) {
+	return c.listIssues(ctx, owner, repo, since, etag, "all")
+}
+
+func (c *client) listIssues(ctx context.Context, owner, repo string, since time.Time, etag, state string) ([]Issue, string, error) {
+	q := url.Values{"state": {state}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {"100"}}
 	if !since.IsZero() {
 		q.Set("since", since.UTC().Format(time.RFC3339))
 	}
@@ -423,7 +435,7 @@ func (c *client) ListIssues(ctx context.Context, owner, repo string, since time.
 				Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 				Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
 				URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,
-				Assignees: assigneeLogins(r.Assignees),
+				Assignees: assigneeLogins(r.Assignees), State: r.State,
 			})
 		}
 		if len(rows) < 100 {
@@ -554,10 +566,21 @@ func (c *client) RequiredReviews(ctx context.Context, owner, repo, branch string
 // may not read the list) is "none" and no error, because it is an answer: the
 // factory then trusts the author as a stranger, which is the safe direction.
 func (c *client) Permission(ctx context.Context, owner, repo, user string) (string, error) {
+	p, err := c.PermissionStrict(ctx, owner, repo, user)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden && !readRetryable(err) {
+		return "none", nil
+	}
+	return p, err
+}
+
+// PermissionStrict preserves forbidden responses as lookup failures. A missing
+// collaborator (404) is definitive and resolves to none.
+func (c *client) PermissionStrict(ctx context.Context, owner, repo, user string) (string, error) {
 	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/collaborators/"+url.PathEscape(user)+"/permission"), "")
 	if err != nil {
 		var apiErr *APIError
-		if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || (apiErr.StatusCode == http.StatusForbidden && !readRetryable(err))) {
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return "none", nil
 		}
 		return "", err
@@ -605,9 +628,12 @@ func (c *client) Checks(ctx context.Context, owner, repo, sha string) (CheckStat
 func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 	q := url.Values{"affiliation": {"owner,collaborator,organization_member"}, "per_page": {"100"}, "sort": {"pushed"}}
 	var out []RepoInfo
+	allUnchanged := true
 	for page := 1; page <= listPages; page++ {
 		q.Set("page", strconv.Itoa(page))
-		body, _, err := c.read(ctx, c.baseURL+"/user/repos?"+q.Encode(), "")
+		pageURL := c.baseURL + "/user/repos?" + q.Encode()
+		body, _, changed, err := c.cachedReadChanged(pageURL, 0, func(etag string) ([]byte, string, error) { return c.readTagged(ctx, pageURL, etag) })
+		allUnchanged = allUnchanged && !changed
 		if err != nil {
 			return nil, err
 		}
@@ -634,7 +660,19 @@ func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 		}
 	}
 	sort.SliceStable(out, func(a, b int) bool { return out[a].Pushed.After(out[b].Pushed) })
+	rawPages, _ := json.Marshal(out)
+	revision := fmt.Sprintf("%x", sha256.Sum256(rawPages))
+	countsKey := keyOf(c.token, c.baseURL+"/user/repos#counts")
+	if previous, ok := cache.get(countsKey); ok && allUnchanged && previous.etag == revision {
+		var kept []RepoInfo
+		if json.Unmarshal(previous.body, &kept) == nil {
+			return kept, nil
+		}
+	}
 	c.fillOpenIssues(ctx, out)
+	if raw, err := json.Marshal(out); err == nil && len(raw) <= readCacheBody {
+		cache.put(countsKey, readRow{body: raw, etag: revision})
+	}
 	return out, nil
 }
 

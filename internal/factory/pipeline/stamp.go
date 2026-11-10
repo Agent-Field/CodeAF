@@ -15,16 +15,31 @@ import (
 // ([factory.Item.Adapted]) and one made with steps of its own keep theirs. It
 // reports whether it changed the steps. A run-as-new copy keeps its source's
 // steps even when they happen to match the built-in defaults.
-func StampSteps(it *factory.Item, f File) bool {
+func StampSteps(it *factory.Item, f File) bool { return StampRecipe(it, f.Recipe()) }
+
+// StampRecipe is [StampSteps] from a recipe already read: what a door that
+// holds the job's recipe and not its file stamps with. THE STEP EDIT STAMPS
+// FIRST, so a person who edits a step of a job that never ran edits the
+// repository's steps: an edit to the arrival steps once made them the job's
+// own, and the job then ran the built-in list with the edit, dropping the
+// repository's pipeline it was meant to run.
+func StampRecipe(it *factory.Item, recipe factory.Recipe) bool {
 	if it.FromJob > 0 || it.Stream != nil || len(it.Adapted) > 0 || !sameSteps(it.Stages, factory.DefaultRecipe().For(it.Kind)) {
 		return false
 	}
-	want := f.Recipe().For(it.Kind)
+	want := recipe.For(it.Kind)
 	if len(want) == 0 || sameSteps(it.Stages, want) {
 		return false
 	}
 	it.Stages = factory.CopyStages(want)
 	return true
+}
+
+// StepsWouldChange says f would have replaced the steps of it had it been read
+// when it started, for a read that came after its stream began.
+func StepsWouldChange(it factory.Item, f File) bool {
+	it.Stream = nil
+	return StampSteps(&it, f)
 }
 
 // sameSteps compares two step lists as the store keeps them, where an empty

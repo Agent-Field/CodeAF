@@ -1457,6 +1457,15 @@ type Config struct {
 	// session and never a path. Nil is a session with no cell, whose calls run
 	// on the host; see [Config.seat].
 	Seat procexec.Seat
+	// Fence is the confinement an unattended run's commands get when it has no
+	// cell seat (internal/executor's fence.go): writes only inside the job,
+	// keys and sign-ins unreadable, docker refused, the network open. The
+	// doors that run an agent with nobody at the keyboard set it (a factory
+	// stage, `codeaf chat --once`, a headless engine conversation); an
+	// interactive conversation leaves it nil and runs on the host as before.
+	// The session's own read, write and edit tools are held to it too, because
+	// they run inside codeaf and so outside any jail (fencedFileTool).
+	Fence *procexec.Fence
 	// Interrupted is what the last run of this conversation's cell left
 	// unfinished: the model is told once, on its next turn, that those calls were
 	// cut off (interrupted.go). Nil is nothing to tell.
@@ -1825,6 +1834,8 @@ type Config struct {
 	// holders once for the complete recipient batch before any team Traffic is
 	// written; an unpaired home stays quiet.
 	TeamComputers func(context.Context, []teams.Member) (map[string]string, error)
+	// TeamsPaired checks the live pairing gate without importing relay setup.
+	TeamsPaired func() bool
 
 	// failures is the tally the piece of work this agent belongs to keeps of its
 	// own failures (internal/taxonomy). A worker built for a task node carries
@@ -2188,6 +2199,10 @@ type Config struct {
 	// piece of work, which is every conversation a person opens themselves.
 	Effort effort.Rung
 
+	// DropRefusedEffort opts a Factory manager turn into client-local effort recovery.
+	// Available Factory tools alone do not establish that this is Factory work.
+	DropRefusedEffort bool
+
 	// EffortRole is what this session is FOR, and it is the rung of last resort
 	// before the install's default: an errand asks for nothing at all, and a
 	// task worker on the bash belt starts low. THE ZERO VALUE IS NOT A ROLE and
@@ -2487,6 +2502,18 @@ type Config struct {
 	// item's manager to shape its run.
 	FactoryRun RunDoor
 
+	// StateHome is codeaf's own data folder for this window when it is not
+	// the person's default one (CODEAF_HOME names another), and "" otherwise.
+	// The page states it ([stateHomeFact]) because the manual's pages say
+	// `~/.codeaf` and a model that read them went looking in the person's
+	// default home, the wrong one, while the app ran on another (the
+	// 2026-11-06 audit: the desk's assistant listed the real
+	// `~/.codeaf/graph.db`). It is a fact on the page, not a confinement: the
+	// shell can still reach the person's whole home directory.
+	StateHome string
+	// FactoryWorkRefusal rechecks automatic manager work on a worker mirror.
+	FactoryWorkRefusal func() string
+
 	// JobChat is the door a factory job's own conversation spends from the
 	// job's budget through (factory_contract.go). NIL IS NO DOOR, and every
 	// conversation spends as it always has. It is set where FactoryItem is,
@@ -2510,6 +2537,15 @@ type Config struct {
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
 	Stage StageDoor
+
+	// Asker takes this conversation's clarifying questions when it is not a
+	// stage of this machine's factory but someone elsewhere still answers
+	// them: `codeaf chat --once --events --steer`, a step an AgentField node
+	// runs for a WorkAF factory, hands each one to the factory over its events
+	// and waits for the answer on its steer channel. It is asked only when
+	// Stage takes no questions, and IT PUTS NOTHING ON THE BELT: `ask` is the
+	// same verb, with someone to answer it.
+	Asker StageAsker
 
 	// PlanStage requires the plan file list in the stage_result answer schema.
 	PlanStage bool
@@ -2606,15 +2642,16 @@ type Config struct {
 	// exists.
 	Divide bool
 
-	// usageLedger points this agent's spending records at a file OTHER than the
-	// machine's own (usage_ledger.go's [UsageLedgerPath]). Empty — which is every
-	// door in the product — means the machine's.
+	// usageLedger is this agent's accounting destination. newAgent resolves an
+	// empty value to UsageLedgerPath once, before any accounting producer starts.
+	// Late receipts keep that home even after the chat closes.
 	//
 	// It is private for [Config.fixesDir]'s reason inverted: no surface sets it
 	// and no surface should, because the whole value of the ledger is that there
 	// is exactly one of it. What it is for is a test that wants to read back what
 	// a turn recorded without depending on where this machine keeps its state.
 	usageLedger string
+	receipts    *receiptTracker
 
 	// rootSession is the CONVERSATION every dollar this agent spends belongs to,
 	// and it is empty in a conversation — where the agent's own journal already
@@ -2636,6 +2673,13 @@ type Config struct {
 	// agent that built it ([Agent.newChildAgent]); no surface sets them.
 	agentDID string
 	actorDID string
+
+	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
+	// conversation's DID with the task number its row wears. A run builds its
+	// workers outside the conversation's own tree ([NewBeltWorker]), so the
+	// run states the name rather than the worker inheriting it. Empty leaves a
+	// run worker with no identity, as before.
+	WorkerDID string
 
 	// automationID is the id of the automation whose run this agent IS
 	// (automation_run.go), and empty in every conversation and every ordinary
@@ -2767,9 +2811,11 @@ type Agent struct {
 	// liveOutputWanted counts the windows that joined this conversation asking
 	// for a shell call's output as it arrives ([Agent.WantLiveToolOutput]),
 	// beside the window that opened it with [Config.LiveToolOutput].
-	liveOutputWanted   atomic.Int32
-	chatStarts         map[string]bool
-	knowledgeMu        sync.RWMutex
+	liveOutputWanted atomic.Int32
+	chatStarts       map[string]bool
+	knowledgeMu      sync.RWMutex
+	// Tests shorten the join deadline without changing other agents.
+	knowledgeCloseWait time.Duration
 	knowledgeRetired   []*knowledgeJournal
 	knowledgeVault     *knowledge.Vault
 	knowledgeJournal   *knowledgeJournal
@@ -2788,8 +2834,10 @@ type Agent struct {
 	crewDayHeld *SpendDay
 	// Clarification streams and their deferred history share the agent lock.
 	// questionParent is installed before a child becomes reachable.
-	questionParent     func(Event)
-	approvalParent     *Agent
+	questionParent func(Event)
+	approvalParent *Agent
+	// approvalReadParent shares only failed reads; the child keeps its own rules.
+	approvalReadParent *Agent
 	discussionEvents   []Event
 	discussionEventSeq uint64
 	discussionRecorded map[string]bool
@@ -2809,10 +2857,18 @@ type Agent struct {
 	// of Config.JobChat once ([Agent.jobChatOf]); nil is no job's.
 	jobChatOnce sync.Once
 	jobChat     JobChat
+	// workWake tells the job's budget watch that work may have started, so a
+	// watch resting on its idle cadence moves to the live one at once rather
+	// than at its next idle look ([Agent.watchJobBudget]). It is made by
+	// [New] and nil on an agent built any other way, where a send is dropped.
+	workWake chan struct{}
 	// moveAsked is the person's ask to move the running reply to a task, taken
 	// at the next step boundary ([Agent.MoveTurnToTask]).
 	moveAsked atomic.Bool
-	client    Completer
+	// receipts is shared by the family before a child can make requests.
+	// The pointer is initialized under mu; the tracker owns its own lock.
+	receipts *receiptTracker
+	client   Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.
@@ -3126,6 +3182,10 @@ type Agent struct {
 	// reason: its callers are tool calls running in parallel inside one batch.
 	docs documentRung
 
+	// spendStampMu orders meter capture with its metadata write. The folder
+	// lock alone cannot keep an older captured total from being written last.
+	spendStampMu sync.Mutex
+
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that
 	// holds it while waiting on the network would deadlock Interrupt, which is
@@ -3418,7 +3478,10 @@ type Agent struct {
 	// team this conversation manages, "" for one that manages none. It sits
 	// under mu and rides its own note at the tail, like elsewhereText, so an
 	// unchanged team lands no second note.
-	teamDigestText string
+	teamDigestText       string
+	teamDigestSharing    bool
+	teamDigestKnown      bool
+	teamDigestGeneration uint64
 	// teamRoleText is what this conversation is in its teams (team.go's
 	// [teamRoleBlock]), set at every step boundary before the request and
 	// landed in a note of its own ahead of the others.
@@ -3506,6 +3569,9 @@ type Agent struct {
 	// session that has never opened an episode.
 	writes  *writeMeter
 	running bool
+	// factoryAutomaticTurn distinguishes runtime manager work from person chat.
+	// It is meaningful only while running, under mu.
+	factoryAutomaticTurn bool
 	// mustCall is the one tool the running turn's next answered request must
 	// call, "" for none ([Agent.FollowUpRequiring]): set from the message that
 	// opens the turn and spent by the first request that is answered
@@ -4145,11 +4211,22 @@ type Agent struct {
 // seat is the executor this session's tool calls run on. A session with no
 // cell says so by name: it is on the host seat.
 func (c Config) seat() procexec.Seat {
-	if c.Seat == nil {
-		return procexec.Host
+	seat := c.Seat
+	if seat == nil {
+		seat = procexec.Host
 	}
-	return c.Seat
+	// THE FENCE GOES AROUND WHATEVER SEAT THIS IS: the host's, or the cell's
+	// that records each call. Wrapping is idempotent, so a seat this returned
+	// and a door stored back (WithEnvironment) is not fenced twice.
+	return procexec.WithFence(seat, c.Fence)
 }
+
+// fenced is whether this session's commands run fenced, the prompt's predicate.
+func (c Config) fenced() bool { return c.Fence != nil }
+
+// fence is the fence this session's commands and file tools keep to, nil
+// when none.
+func (c Config) fence() *procexec.Fence { return c.Fence }
 
 // seatFor is the seat a turn's tool calls run on: the session's own, or its
 // setup form when the turn is a setup turn (setup.go).

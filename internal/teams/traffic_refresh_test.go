@@ -27,13 +27,14 @@ func TestTrafficExportKeepsNewestWindowAcrossRotation(t *testing.T) {
 	}
 }
 
+// F1 preserves the existing sharing fixture and history contract.
 func TestMirrorRefreshCannotAdvancePastUnprocessedLocalNews(t *testing.T) {
 	dir := t.TempDir()
 	if err := AppendTraffic(dir, "alpha", Entry{From: FromManager, To: ToRoom, Kind: KindNote}); err != nil {
 		t.Fatal(err)
 	}
 	var w Watch
-	_, cursor, version, _, err := w.History(dir, "alpha", "", "", 200)
+	_, cursor, version, _, err := w.History(dir, "alpha", "", "", 200, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,23 +46,24 @@ func TestMirrorRefreshCannotAdvancePastUnprocessedLocalNews(t *testing.T) {
 	if err := WriteTrafficMirror(dir, "alpha", []Entry{{ID: "elsewhere/1", At: time.Now()}}); err != nil {
 		t.Fatal(err)
 	}
-	_, next, _, _, err := w.History(dir, "alpha", cursor, version, 200)
+	_, next, _, _, err := w.History(dir, "alpha", cursor, version, 200, true)
 	if err != nil || next != cursor {
 		t.Fatalf("mirror acknowledged unread local lines: %q -> %q: %v", cursor, next, err)
 	}
 }
 
+// F1 preserves the existing sharing fixture and history contract.
 func TestEachHistoryConsumerSeesMirrorVersionIndependently(t *testing.T) {
 	dir := t.TempDir()
 	if err := AppendTraffic(dir, "alpha", Entry{From: FromManager, To: ToRoom, Kind: KindNote}); err != nil {
 		t.Fatal(err)
 	}
 	var w Watch
-	_, cursor, v1, _, err := w.History(dir, "alpha", "", "", 200)
+	_, cursor, v1, _, err := w.History(dir, "alpha", "", "", 200, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, v2, _, err := w.History(dir, "alpha", "", "", 200)
+	_, _, v2, _, err := w.History(dir, "alpha", "", "", 200, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +71,7 @@ func TestEachHistoryConsumerSeesMirrorVersionIndependently(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, version := range []string{v1, v2} {
-		lines, next, current, reset, err := w.History(dir, "alpha", cursor, version, 200)
+		lines, next, current, reset, err := w.History(dir, "alpha", cursor, version, 200, true)
 		if err != nil || !reset || next != cursor || current == version || len(lines) != 2 {
 			t.Fatal("consumer missed mirror", lines, next, current, reset, err)
 		}

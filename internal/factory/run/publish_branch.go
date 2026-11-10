@@ -35,7 +35,7 @@ func notePushed(git Git, dir, branch, head string) {
 
 // placeRejected puts head on the first branch name that loses nobody's work and
 // answers the name. The caller's plain push to the job's own name was refused.
-func placeRejected(git Git, pushBranch func(dir, ref string) error, dir string, it factory.Item, branch, head string) (string, error) {
+func placeRejected(git Git, pushBranch func(dir, ref string, before ...func() error) error, dir string, it factory.Item, branch, head string) (string, error) {
 	for n := 1; n <= publishBranchNames; n++ {
 		name := branch
 		if n > 1 {

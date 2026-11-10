@@ -65,10 +65,11 @@ package session
 // ── WHY A NODE NEVER ASKS ──
 //
 // There is nobody to ask. Its approval posture is composed from the same
-// [approval.Policy] the conversation uses — allow everything, with the critical
+// approval machinery the conversation uses — allow everything, with the critical
 // table (rm -rf /, mkfs, a redirect onto a raw disk, shutdown) still a floor
-// under it — and where a conversation would raise a question, the node reads a
-// refusal it can act on. That is exactly consent.go's law for a headless run,
+// under it and any profile read failure carried forward. Where a conversation
+// would raise a question, the node reads a refusal it can act on.
+// That is exactly consent.go's law for a headless run,
 // said in the node's own words.
 
 import (
@@ -94,6 +95,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -5004,12 +5006,15 @@ func (a *Agent) readsTheDecisionLocked(node *TaskNode) bool {
 // A surface reading both sees an in-turn update on both, exactly as a surface
 // holding two Submit channels sees each event on each (see [Agent.Submit]).
 func (a *Agent) emitTaskUpdate(notice TaskNotice) {
-	notice.Retryable = a.tasker().retrySupported(notice.ID)
+	if notice.Run == "" {
+		notice.Retryable = a.tasker().retrySupported(notice.ID)
+	}
 
 	// WHETHER THE PERSON HID IT is the graph's fact, said on the one door every
 	// move goes through, so no road that builds a notice by hand can un-hide a task
 	// by forgetting to say so (task_dismiss.go).
 	notice.Dismissed = notice.State == TaskFailed && !notice.Stopped && notice.Ending != TaskEndingStopped && a.tasker().isDismissed(strconv.FormatUint(notice.ID, 10))
+	notice = a.withWorker(notice)
 	event := Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice}
 	a.mu.Lock()
 	hub := a.hub
@@ -5169,6 +5174,7 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 	defer graph.mu.Unlock()
 	for i, node := range nodes {
 		notice := node.noticeLocked(costs[i])
+		notice = a.withWorker(notice)
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &notice})
 	}
 	// AND THE ADAPTIVE RUNS GO OUT UNDER THE SAME HOLD, for the same reason and
@@ -5206,6 +5212,7 @@ func (a *Agent) replayTaskRoster(stream *eventStream) {
 			stream.send(Event{Kind: EventJobUpdate, Job: &job})
 			continue
 		}
+		row = a.withWorker(row)
 		stream.send(Event{Kind: EventTaskUpdate, Tool: "propose_task", Task: &row})
 	}
 }
@@ -7895,6 +7902,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// turns an allow into a "prompt" for the handful of shapes that destroy
 		// a disk or drop the machine, and a prompt in a node is a refusal it can
 		// read (consent.go, InTask) — never a question and never a hang.
+		// An unreadable profile also requires a person because saved denials are unknown.
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
@@ -8108,7 +8116,7 @@ func (a *Agent) seatTaskModelLocked(node *TaskNode, parent Config, model, on str
 	if !known || supported {
 		return model, nil
 	}
-	fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
+	fallback, resolveErr := readerFor(parent, a.model).Resolve(roles.RoleWorker, a.model)
 	if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
 		return "", fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
 	}
@@ -8671,9 +8679,7 @@ func prepareSingletonTaskTreeOn(ctx context.Context, place Place, workspace, ses
 		return taskTree{}, err
 	}
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
-	if WorkspaceOwnershipEnabled(place) && stand.mode == TaskModeFolder {
-		stand.mode = ownershipPlainMode(ground)
-	}
+	stand.mode = preparedTaskMode(place, ground, stand.mode)
 	if ground == "" {
 		// A PART REACHES THIS ROAD AND ITS FREEZE HAS TO TRAVEL WITH IT. A part
 		// admitted by `divide_work` carries no ground of its own (task_divide.go
@@ -9786,7 +9792,7 @@ func gitContext(ctx context.Context, dir string, environment []string, args ...s
 	if strings.TrimSpace(dir) == "" {
 		return "", errors.New("git: no directory to run in")
 	}
-	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
+	command := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance(append([]string{"--no-optional-locks"}, args...)...)...)
 	command.Dir = dir
 	// A pager or an editor in the middle of a merge would hang a node forever on
 	// a terminal it does not have.

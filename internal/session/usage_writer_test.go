@@ -3,39 +3,46 @@
 package session
 
 import (
-	"bufio"
-	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
-// THE TURN PATH NEVER WAITS ON THE LEDGER'S DISK. `~/.codeaf` on a stalled home
-// mount used to mean a turn could not finish: [RecordUsage] held a process-wide
-// mutex across a mkdir, an open, a write and a close, so one hung disk stopped
-// every conversation in the process. A row is worth less than a turn, and this
-// test is what says so.
-//
-// A FIFO is the honest stand-in for that mount: opening one for writing BLOCKS
-// until somebody opens the other end, which is a stall this test can start and
-// end on purpose.
+// Holding the ledger's file lock models a stalled disk without replacing the
+// seekable ledger with a pipe. Enqueue must finish while the lock is held;
+// releasing it must durably drain every charge, including queue overflow.
 func TestRecordingUsageNeverWaitsOnTheDisk(t *testing.T) {
 	path := filepath.Join(t.TempDir(), UsageLedgerName)
-	if err := syscall.Mkfifo(path, 0o600); err != nil {
-		t.Skipf("this filesystem has no fifos to stall on: %v", err)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if err := filelock.Lock(file, true, false); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	locked := true
+	release := func() {
+		if locked {
+			if err := filelock.Unlock(file); err != nil {
+				t.Error(err)
+			}
+			locked = false
+		}
+	}
+	t.Cleanup(func() { release(); StopUsageWriter(path); file.Close() })
 	at := usageAt(t, "2026-08-25 08:00")
-
+	drops := UsageDrops()
 	returned := make(chan struct{})
 	go func() {
 		defer close(returned)
 		RecordUsage(path, UsageLine{At: at, Model: "opus-4.1", Role: "title", Calls: 2,
 			Input: 900, Output: 120, USD: 0.31, Session: "aaaa1111aaaa1111", Workspace: "/repo"})
-		// A QUEUE THAT FILLS DROPS ROWS, it does not wait: far more rows than
-		// [usageQueueDepth] are pushed at a writer that cannot write one of
-		// them, and every one of these calls still has to come straight back.
 		for i := 0; i < 4*usageQueueDepth; i++ {
 			RecordUsage(path, UsageLine{At: at.Add(time.Duration(i) * time.Second),
 				Model: "opus-4.1", Calls: 1, Input: 10, USD: 0.01})
@@ -46,82 +53,44 @@ func TestRecordingUsageNeverWaitsOnTheDisk(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("RecordUsage was still inside the disk two seconds later: the turn path is waiting on the ledger")
 	}
-
-	// The reading end is opened only NOW, which is what made the wait above a
-	// real one — until this line there was nobody for the writer's own open to
-	// rendezvous with.
-	reader, err := os.OpenFile(path, os.O_RDONLY, 0)
+	info, err := file.Stat()
 	if err != nil {
-		t.Fatalf("open the reading end: %v", err)
+		t.Fatal(err)
 	}
-	defer reader.Close()
-	first := make(chan string, 1)
-	drained := make(chan struct{})
-	go func() {
-		// The pipe is drained to the end so the writer can never be caught
-		// mid-write when this test finishes: a writer parked on its queue is
-		// one a later [FlushUsage] can answer, and a writer blocked inside a
-		// pipe nobody is reading is one that would hang the next test.
-		defer close(drained)
-		buffered := bufio.NewReader(reader)
-		for {
-			line, err := buffered.ReadString('\n')
-			if line != "" {
-				select {
-				case first <- line:
-				default:
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	// STOPPING THE WRITER IS THE JOIN. The flush below waits under a ceiling
-	// and comes back either way, so on a loaded box the test would return with
-	// rows still queued for a path whose directory is about to be removed, and
-	// the writer's next append would rebuild it underneath the cleanup.
-	defer StopUsageWriter(path)
+	if info.Size() != 0 {
+		t.Fatal("the writer bypassed the held ledger lock")
+	}
+	release()
 	if !FlushUsage() {
 		t.Fatal("the flush hit its deadline rather than draining; the rows in front of it are still queued")
 	}
-
-	select {
-	case line := <-first:
-		var row UsageLine
-		if err := json.Unmarshal([]byte(line), &row); err != nil {
-			t.Fatalf("the row the background writer wrote does not parse: %v (%q)", err, line)
-		}
-		// THE SCHEMA IS THE SAME SCHEMA. Moving the write off the turn's
-		// goroutine must not change one byte of what lands in the file.
-		if !row.At.Equal(at) || row.Day != at.Format(usageDayLayout) {
-			t.Fatalf("the row's day is %q at %s", row.Day, row.At)
-		}
-		if row.Model != "opus-4.1" || row.Role != "title" || row.Calls != 2 {
-			t.Fatalf("the row is %+v", row)
-		}
-		if row.Input != 900 || row.Output != 120 || row.USD != 0.31 {
-			t.Fatalf("the figures are %+v", row)
-		}
-		if row.Session != "aaaa1111aaaa1111" || row.Workspace != "/repo" {
-			t.Fatalf("the ids are %+v", row)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("nothing reached the ledger once the disk answered again")
+	rows, err := ReadUsage(path, time.Time{})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// AND IT DOES NOT WAIT FOR AN EOF THAT CANNOT ARRIVE. The drain above was
-	// written to read the pipe "to the end", but this pipe has no end: the
-	// writer holds the fifo's writing side for the life of the process by
-	// design ([usageWriterFor]'s map is never emptied), so the reading side
-	// never sees EOF — and closing the file underneath a blocking read does not
-	// interrupt one already inside the kernel. Waiting on `drained` here hung
-	// this test, and every later [FlushUsage] behind it, for as long as the
-	// binary was allowed to run. What the drain is actually for is keeping the
-	// pipe from filling under the writer, and a goroutine parked on a read does
-	// that for exactly as long as it is needed. The deferred Close above is the
-	// only close this test owes.
-	_ = drained
+	if len(rows) != 1+4*usageQueueDepth || UsageDrops() != drops {
+		t.Fatalf("durable rows=%d want=%d dropped=%d", len(rows), 1+4*usageQueueDepth, UsageDrops()-drops)
+	}
+	row := rows[0]
+	if !row.At.Equal(at) || row.Day != at.Format(usageDayLayout) {
+		t.Fatalf("the row's day is %q at %s", row.Day, row.At)
+	}
+	if row.Model != "opus-4.1" || row.Role != "title" || row.Calls != 2 {
+		t.Fatalf("the row is %+v", row)
+	}
+	if row.Input != 900 || row.Output != 120 || row.USD != 0.31 {
+		t.Fatalf("the figures are %+v", row)
+	}
+	if row.Session != "aaaa1111aaaa1111" || row.Workspace != "/repo" {
+		t.Fatalf("the ids are %+v", row)
+	}
+	var total float64
+	for _, row := range rows {
+		total += row.USD
+	}
+	if math.Abs(total-(.31+4*usageQueueDepth*.01)) > 1e-9 {
+		t.Fatalf("drained spend=$%.6f want=$%.6f", total, .31+4*usageQueueDepth*.01)
+	}
 }
 
 // A FLUSH ANSWERS EVEN WHEN THE DISK NEVER WILL. [FlushUsage] used to send into

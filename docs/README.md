@@ -11,12 +11,6 @@ contributor rules and historical records serve different readers.
 | Find the exact behavior codeaf explains about itself | [Shipped manual map](../internal/manual/README.md) — separate chat and resident corpora |
 | Learn the current chat's features | [Chat manual](../internal/manual/chat/what-i-can-do.md), [getting started](../internal/manual/chat/getting-started.md) |
 | Understand Memory and knowledge from saved chats | [Memory](../internal/manual/chat/what-i-remember.md), [knowledge from saved chats](../internal/manual/chat/places.md#knowledge-from-saved-chats-inside-memory) |
-| **Drive it from a script, CI, or a benchmark** | [HEADLESS.md](HEADLESS.md) — `codeaf do` and `codeaf exec`, exit codes, the `--json` objects, environment, and the rules for measuring it |
-| **Know what it can do, feature by feature** | [FEATURES.md](FEATURES.md) — the master catalog, one entry per capability |
-| **Understand how it is built** | [ARCHITECTURE.md](ARCHITECTURE.md) — current chat and resident implementation owners |
-| **Know what it may spend** | [LIMITS.md](LIMITS.md) — every money rail, its default, what fires when it is reached, and where `0` means no limit |
-| **Profile a slow run (developers)** | [DIAGNOSTIC-PROFILE.md](DIAGNOSTIC-PROFILE.md) — opt-in bounded CPU and heap capture of any command |
-| **Keep it fast** | [../PERF.md](../PERF.md) — the size ratchet, the allocation laws, the launch-path pins, and why none of them is a stopwatch |
 
 The manual is product knowledge compiled into the binary. Repository development
 notes and users' learned chat knowledge are separate; see [documentation ownership](DOCUMENTATION.md).
@@ -34,11 +28,15 @@ explains task folders, cooperating layouts, multi-root transfer, and result appl
 | Spending and reporting | [Limits](LIMITS.md), [model usage accounting](model-usage-accounting.md), [telemetry disclosure](TELEMETRY.md) |
 | Operation and verification | [Run a relay](relay.md), [test moving chats](testing-anywhere.md), [remote session test notes](remote-access-testing.md) — check the historical warning |
 | Design rationale | [Visual design language](DESIGN-LANGUAGE.md), [home layout](HOME-BRIDGE.md), [thread UX](THREAD-UX.md), [background jobs](JOBS.md), [services](SERVICES.md), [multimodal](MULTIMODAL.md), [stored subharness design](SUBHARNESS.md) |
-| Performance | [Performance rules and size budget](../PERF.md) |
+| Feature catalog | [Capabilities](FEATURES.md) |
+| Performance | [Performance rules and size budget](../PERF.md), [diagnostic CPU and heap profiles](DIAGNOSTIC-PROFILE.md) |
 
 A contract describes an interface that other code relies on. Design rationale
 explains a decision and may include proposals or earlier revisions. Check scope
 and implementation before treating design prose as a current feature list.
+
+The [removed-computer quit progress proposal](design/app-v3/removed-computer-quit-progress.md)
+describes a presentation change awaiting implementation and review.
 
 ## Contributing
 

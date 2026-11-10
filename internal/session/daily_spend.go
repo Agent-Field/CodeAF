@@ -74,12 +74,19 @@ func ReadDailySpend(path string, now time.Time) (DailySpendReading, error) {
 // the file read, how many bytes of whole lines, and the last of those bytes,
 // which prove the file still holds what was read.
 // factoryAIRoles are the ledger roles of Factory's own AI: triage, scouts, the
-// page AI and briefs. They aren't chats, so they don't count under "your chats".
+// page AI, the AI filter and briefs. They aren't chats, so they don't count under "your chats".
 // Afi's small errands are her own and stay out.
 var factoryAIRoles = map[string]bool{
-	"factory triage": true, "factory scout": true,
+	"factory triage": true, "factory scout": true, "factory filter": true, "factory search": true,
 	"repo_ask": true, "repo_notes": true, "repo_themes": true, "repo_eval": true,
-	"pipeline_ai": true, "view_topic": true, "factory_brief": true,
+	"pipeline_ai": true, "step_ai": true, "my_pipeline_ai": true,
+	"view_topic": true, "factory_brief": true,
+}
+
+// IsFactoryAIPurpose identifies Factory-owned AI calls for billing and per-call
+// provider recovery. Ordinary errands on the same agent remain ordinary.
+func IsFactoryAIPurpose(purpose string) bool {
+	return factoryAIRoles[purpose]
 }
 
 type spendTally struct {
@@ -121,7 +128,7 @@ func (t *spendTally) read(file *os.File, info os.FileInfo) error {
 			return fmt.Errorf("spending ledger contains an invalid charge")
 		}
 		usd += line.USD
-		if factoryAIRoles[line.Role] && line.FactoryJob == "" {
+		if IsFactoryAIPurpose(line.Role) && line.FactoryJob == "" {
 			factoryAI += line.USD
 		}
 		if math.IsInf(usd, 0) {

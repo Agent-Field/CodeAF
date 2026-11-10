@@ -19,6 +19,9 @@ import (
 func (h *Handler) v2Routes() {
 	h.route("/v1/settings", map[string]http.HandlerFunc{http.MethodGet: h.runnerPolicy, http.MethodPatch: h.runnerPolicy})
 	h.route("/v1/rules", map[string]http.HandlerFunc{http.MethodGet: h.houseRules, http.MethodPut: h.houseRules})
+	h.route("/v1/routes", map[string]http.HandlerFunc{http.MethodGet: h.routes, http.MethodPut: h.routes})
+	h.route("/v1/pipeline-library", map[string]http.HandlerFunc{http.MethodGet: h.pipelineLibrary, http.MethodPut: h.pipelineLibrary})
+	h.route("/v1/routes/test", map[string]http.HandlerFunc{http.MethodPost: h.routesTest})
 	h.route("/v1/spending", map[string]http.HandlerFunc{http.MethodGet: h.spending, http.MethodPatch: h.spending})
 	h.read("/v1/runners", h.runnersDirectory)
 	h.route("/v1/runners/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
@@ -29,6 +32,7 @@ func (h *Handler) v2Routes() {
 	h.route("/v1/runners/leases/{lease}/heartbeat", map[string]http.HandlerFunc{http.MethodPost: h.heartbeatWorker})
 	h.route("/v1/runners/leases/{lease}/report", map[string]http.HandlerFunc{http.MethodPost: h.reportWorker})
 	h.route("/v1/runners/leases/{lease}/done", map[string]http.HandlerFunc{http.MethodPost: h.doneWorker})
+	h.route("/v1/runners/leases/{lease}/handback", map[string]http.HandlerFunc{http.MethodPost: h.handBackWorker})
 	h.route("/v1/runners/recover/{id}", map[string]http.HandlerFunc{http.MethodPost: h.recoverWorkerReport, http.MethodGet: h.workerRecoveryStatus})
 	h.read("/v1/people", h.peopleDirectory)
 	h.route("/v1/people/{handle}/sessions", map[string]http.HandlerFunc{http.MethodDelete: h.operatorRevokePerson})
@@ -275,7 +279,11 @@ func (s *workerService) saveRegistry() error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile))
+	if err = os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile)); err != nil {
+		return err
+	}
+	s.savedAt = s.now()
+	return nil
 }
 
 // readRegistry is the saved registry, empty when none was ever saved.

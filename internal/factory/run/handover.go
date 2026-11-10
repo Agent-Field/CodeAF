@@ -55,15 +55,8 @@ const (
 	// briefPlanWrite is the plan step's own instruction: the plan goes where
 	// the steps after it will read it.
 	briefPlanWrite = "Write the plan in output: what you'll change, in which files, and how you'll know it works."
-	// briefPlanFiles tells the plan to fill its report, rather than leaving a
-	// safety declaration only in prose. The Files: example remains for readers
-	// of plans saved before the structured field existed.
-	briefPlanFiles = "In stage_result, fill files with every repository-relative file you will touch or add, for example files: [\"cmd/app/main.go\", \"docs/usage.md\"]. This structured answer is required for a plan; prose naming files is not a file list the factory can check. Follow the schema limits; files, not folders or globs. If the files are genuinely unknown, do not guess: leave files empty and the factory will pause for a person.\n" +
-		"End the plan with its file list, exactly in this shape, for compatibility with older readers:\n" +
-		"Files:\n" +
-		"- cmd/app/main.go\n" +
-		"- docs/usage.md\n" +
-		"The Files: line alone, then one line per file you will touch or add: a dash, a space, its path from the repository root, nothing else on the line. Files, not folders; no globs; a path with a space goes in backticks. Not inside a code block, and only one such list. If you include this declaration, it must agree with the structured files list. A plan without a valid file list waits for a person whenever a protected path is in force."
+	// briefPlanFiles requests one authoritative list; old plans remain readable.
+	briefPlanFiles = "In stage_result, fill files with every repository-relative file you will touch or add. Prose is not a file list the factory can check. Follow the schema limits; files, not folders or globs. If the list is unknown, leave files empty and the factory pauses for a person."
 	// briefPlanAbove stands for the plan's words on its own line, which the
 	// plan's paragraph already carries whole.
 	briefPlanAbove = "its plan is above"

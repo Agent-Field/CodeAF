@@ -462,6 +462,7 @@ func TestFirstBriefNamesTheCreatedBranch(t *testing.T) {
 	original := wdItem()
 	original.ID = 0
 	original.Assignee = "owner"
+	original.Tier = factory.TierOwner
 	original.Stream = &factory.Stream{}
 	it, err := st.Create(original)
 	if err != nil {

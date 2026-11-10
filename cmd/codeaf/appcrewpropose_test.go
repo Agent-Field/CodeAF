@@ -542,3 +542,62 @@ func TestAppCrewProposalEndsInOneReceipt(t *testing.T) {
 		t.Fatalf("making the crew left %+v", got)
 	}
 }
+
+// appProposalDelivery holds the event writer after the client receives a card.
+type appProposalDelivery struct {
+	next    appwire.Emitter
+	opened  chan appwire.Ask
+	release chan struct{}
+	done    chan struct{}
+}
+
+func (e *appProposalDelivery) Emit(event string, data any) {
+	e.next.Emit(event, data)
+	if opened, ok := data.(appwire.AskOpened); ok && opened.Ask.Subkind == appwire.SubkindCrewProposal {
+		e.opened <- opened.Ask
+		<-e.release
+	}
+	if _, ok := data.(appwire.InboxCounts); ok {
+		select {
+		case e.done <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func TestAppCrewProposalEditKeepsInboxWhileCardDeliveryIsPending(t *testing.T) {
+	conv := &proposingConversation{fakeConversation: &fakeConversation{}, answer: helpersProposal}
+	backend, rec, agent := proposingBackend(t, conv)
+	delivery := &appProposalDelivery{
+		next: rec, opened: make(chan appwire.Ask, 1), release: make(chan struct{}), done: make(chan struct{}, 1),
+	}
+	backend.emit = backend.newAppInbox(delivery)
+	// Let publication finish before the backend and its folders are cleaned up.
+	t.Cleanup(func() {
+		close(delivery.release)
+		select {
+		case <-delivery.done:
+		case <-time.After(5 * time.Second):
+			t.Error("proposal publication did not finish")
+		}
+	})
+	if err := backend.CrewPropose(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	var ask appwire.Ask
+	select {
+	case ask = <-delivery.opened:
+	case <-time.After(5 * time.Second):
+		t.Fatal("proposal card was not delivered")
+	}
+	if err := backend.AnswerAsk(agent.ID, ask.ID, appwire.ProposalEdit, ""); err != nil {
+		t.Fatal(err)
+	}
+	waiting, counts, err := backend.ListInbox(appwire.InboxWaiting, "")
+	if err != nil || len(waiting) != 1 || counts.Waiting != 1 || counts.Later != 0 || counts.DoneToday != 0 {
+		t.Fatalf("Edit changed Waiting while card delivery was pending: %+v %+v %v", waiting, counts, err)
+	}
+	if waiting[0].Ask.ID != ask.ID || waiting[0].Ask.Agent != agent.ID {
+		t.Fatalf("Edit left a different ask waiting: %+v", waiting[0].Ask)
+	}
+}

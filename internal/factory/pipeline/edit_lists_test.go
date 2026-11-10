@@ -192,10 +192,11 @@ func TestInspectDefaultsDescribesTheShippedPipelineAsNotInAnyFile(t *testing.T) 
 	if !reflect.DeepEqual(src.Fixed, d.Fixed) || src.Rules == nil || src.AskFirst == nil || src.Never == nil || len(src.Rules)+len(src.AskFirst)+len(src.Never) != 0 {
 		t.Fatalf("%+v", src)
 	}
-	// It is a description of the defaults, not of the file the defaults encode
-	// to: that file would say everything is in it.
+	// The defaults encode to a file that names its pipelines and steps but no
+	// budget: A KEY NOBODY SAID IS NEVER WRITTEN (Encode), so the file leaves
+	// the budget to the factory's spending exactly as having no file does.
 	enc, _ := Encode(Defaults())
-	if fromFile, _, ok := Inspect(string(enc)); !ok || !fromFile.BudgetInFile {
+	if fromFile, _, ok := Inspect(string(enc)); !ok || fromFile.BudgetInFile {
 		t.Fatalf("%v %+v", ok, fromFile)
 	}
 }

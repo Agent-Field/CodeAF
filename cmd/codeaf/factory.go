@@ -224,6 +224,7 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// `github`, `ghlogin` and `connectgithub` doors exist. The fixture seam
 	// above returns before this line and is never wrapped.
 	profileDir = factoryProfile(profileDir)
+	registerFactoryTierResolver(st, profileDir, "")
 	// AND THE ITEM'S OWN CONVERSATION (`T`, factory_talk.go) is made on this
 	// machine, so its door is hung only here, where the floor is this
 	// machine's: --once and --host never build this seam.
@@ -405,6 +406,10 @@ func factoryGitHub(ctx context.Context, st *store.Store, token func(context.Cont
 // factoryPoll is the one GitHub poll this process runs, started at most once.
 var factoryPoll sync.Once
 
+// factoryPollStop cancels and joins the poll before a test replaces its home.
+// Production keeps the once and its worker for the whole process.
+var factoryPollStop func()
+
 // factoryBusyClear is this process's one clearing of stale in-flight marks.
 var factoryBusyClear sync.Once
 
@@ -468,8 +473,11 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 	factoryBusyClear.Do(func() { _ = st.ClearBusy() })
 	startFactoryTriage(context.Background(), st)
 	factoryPoll.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		factoryPollStop = func() { cancel(); <-done }
 		guard.Go("factory/github-poll", func() {
-			ctx := context.Background()
+			defer close(done)
 			token := func(ctx context.Context) string {
 				t, _ := factorygithub.TokenAt(ctx, profileDir)
 				return t
@@ -481,7 +489,7 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 			// NOTHING IS LOGGED TO THE SCREEN: in the window the surface owns it,
 			// and in the engine stdout is the protocol. A failure is the facts
 			// line's `github · not reachable`, read off the store.
-			factorygithub.Poll(ctx, src, st, factoryPollEvery, nil, factoryIntake(st).Once)
+			factorygithub.Poll(ctx, src, st, factoryPollEvery, factoryPollLog, factoryAfterPoll(factoryIntake(st)))
 		})
 	})
 }

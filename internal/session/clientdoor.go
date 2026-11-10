@@ -3,11 +3,13 @@ package session
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	account "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -742,6 +744,14 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	if err := factoryCallRefusal(ctx); err != nil {
+		return nil, model, err
+	}
+	// Job ownership also covers personal manager turns and reopened stages.
+	// Keep recovery on the call so shared clients retain ordinary refusals.
+	if a.jobBudgetOf() != nil {
+		ctx = provider.WithRefusedEffortRecovery(ctx)
+	}
 	if purpose == purposeTurn {
 		messages = a.jobAutonomyMessages(messages)
 	}
@@ -803,6 +813,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 			ctx = provider.WithReceiptPending(ctx, pending)
 		}
 	}
+	ctx = a.withReceiptTracking(ctx)
 	ctx = provider.WithDiscardedUsage(ctx, func(served string, tag string, response *ai.Response) {
 		// Full billing owners (program model APIs) already bank every transport
 		// attempt. Ordinary session callers bank only the returned answer.
@@ -879,6 +890,9 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 		configured.Model = c.workerWireModel
 	}
 	configured.Timeout = timeout
+	// Factory stages, their children and manager turns keep local effort repair.
+	// Merely offering Factory tools does not opt an ordinary conversation in.
+	configured.DropRefusedEffort = c.DropRefusedEffort || c.Stage != nil || c.JobBudget != nil
 	// The catalog gate on optional knobs, and the two answers about the model's
 	// reasoning profile and list price, are seams the surface resolves. A caller
 	// that hands over none of them keeps today's behaviour exactly — knobs travel
@@ -889,6 +903,15 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 		configured.ModelPrice = c.ModelPrice
 	}
 	configured.RouteGate = c.routeGate(model, configured.Model)
+	if strings.EqualFold(strings.TrimSpace(c.serviceFor(model).Source.ID), claudemodel.ID) {
+		// A TURN ON CLAUDE CODE IS CLAUDE CODE WORKING IN THIS FOLDER, so the
+		// transport is told which one (internal/claudemodel's agent.go).
+		kept := ""
+		if c.SessionFile != "" {
+			kept = filepath.Join(filepath.Dir(c.SessionFile), "claude-code-session.json")
+		}
+		configured.HTTPClient = claudemodel.ClientAt(claudemodel.Seat{Dir: c.Workspace, Kept: kept})
+	}
 	return configured
 }
 
