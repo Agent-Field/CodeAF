@@ -434,6 +434,21 @@ Recent older chats are prepared in the background after pairing. If you explicit
 
 The original older chat is untouched. A turn typed into the original by an older codeaf after the copy was made stays in that original; it is not merged into the copy. This build lists only the copy in place of the original, with its title and ordering retained.
 
+## Turns typed in an older codeaf are not shown here — where are my rollback turns
+
+If you return to an older codeaf after this build made a movable copy, turns you
+type there remain in the original `transcript.jsonl`; they are not merged into the copy.
+Opening the chat here shows a notice such as
+`2 turns typed in an older codeaf are kept in <file> and are not shown here.`
+`<file>` is the original transcript's location on the computer holding it, with
+`~` used for that computer's home. The original is untouched. Open that file to
+read the retained turns; nothing is merged automatically.
+
+The notice appears in the conversation once and appears again only if the original
+grows again with more person turns. The count is the total since the copy was made.
+Copies made before this build may lack a reliable original-history count; those
+show no warning rather than guessing. A headless open does not consume the notice.
+
 ## I quit on my laptop and opened my desktop — do I need alt+c
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).

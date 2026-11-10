@@ -658,3 +658,19 @@ Machine-scoped memories describe one computer and stay there. An unpaired home s
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Memories use the local store on each computer. After pairing, an older conversation gets an independent movable copy with its earlier memory history sealed into `.cell/memories.jsonl`; the original is untouched. Person and project memory also sync independently through the encrypted vault.
+
+## My rules are gone — rules from an earlier version of codeaf
+
+Old chat rules stored in `v3/standing/` were not carried over to memories.
+On the first interactive launch for the home that holds them, Home and the
+conversation show a notice once: `They were not carried over.` It tells you to
+`Recreate schedules in /automations and rules with /remember.`
+
+Your list is in `<codeaf home>/v3/standing-upgrade-report.txt`, normally
+`~/.codeaf/v3/standing-upgrade-report.txt`. It includes the original words,
+instruction, workspace, schedule, status and source file, with paused, retired,
+unreadable and unknown-format items identified. The old folder stays untouched.
+Use `/remember` to recreate the rules you still want at their intended scope;
+use `/automations` for schedules. No rules or schedules are imported automatically.
+A remote home has its own report and acknowledgement; headless work does not
+consume the notice. A home with no old items says nothing.

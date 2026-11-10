@@ -301,7 +301,7 @@ furrow keeps its own ids in. codeaf adds that name to your repository's
 file is local to your checkout — it is not committed, not pushed, and nobody else working
 on the project sees it.
 
-## A task that never started — its brief went stale, its world did not match, stale ground, my task failed before it did anything, expects
+## A task that never started — its brief went stale, its world did not match, stale ground, my task failed before it did anything, my task worked on an old version of the file, expects
 
 A brief can name files and symbols of a world that is not in the folder the task gets: a
 file that moved, a folder somebody renamed, a change that was still uncommitted somewhere

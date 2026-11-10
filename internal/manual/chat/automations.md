@@ -655,10 +655,9 @@ What a standing order did is now one of two things:
   `/automations`, or say it;
 - **a rule** — "always run the tests before you commit" — is a **memory**: `/remember`.
 
-**Standing orders were not carried over.** None of them is listed or changed anywhere in
-codeaf any more: make again, as automations or rules, the ones you still want. Their old
-folder, `~/.codeaf/v3/standing/`, is left on disk. The standing card's
-answers went too: its `3 just once` is `2 Save and run it now`, which saves it as well, its
+**Standing orders were not carried over.** The upgrade report lists the old items;
+recreate the ones you still want. Their old folder, `~/.codeaf/v3/standing/`, is left
+on disk. The standing card's answers went too: its `3 just once` is `2 Save and run it now`, which saves it as well, its
 `2 change when or where` is typing the change under the card, and every no is
 `0 Don't save`.
 
@@ -666,6 +665,24 @@ answers went too: its `3 just once` is `2 Save and run it now`, which saves it a
 timer — `ai.agentfield.codeaf.tick` under launchd, `codeaf-tick.timer` under systemd, and
 the older `ai.agentfield.codeaf.wake` — that ran `codeaf tick` with no window open. This
 version removes them, whoever installed them, on every start.
+
+## Where did my standing orders go — the earlier version's upgrade notice and list
+
+Standing orders and rules from an earlier version of codeaf were not carried over.
+On the first interactive launch for a home containing those items, Home and the
+conversation show a notice once, for example:
+
+`Found 1 standing order and 1 rule from an earlier version of codeaf. They were not carried over. Recreate schedules in /automations and rules with /remember. Your list is in ~/.codeaf/v3/standing-upgrade-report.txt.`
+
+The report lists each item's words, instruction, workspace, schedule, status and
+source file. Paused and retired items are counted separately; unreadable or unknown
+formats are called out without guessing their counts. The old `v3/standing/` folder
+is untouched. `CODEAF_HOME` moves both the old folder and the report. A remote
+home keeps its own report and remembers its own notice. Headless work does not
+consume it; an empty home says nothing.
+
+Recreate schedules in `/automations` and rules with `/remember`, checking the old
+scope and limits before saving. Nothing from the report runs automatically.
 
 ## What automations cannot do
 
