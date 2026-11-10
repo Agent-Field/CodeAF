@@ -3453,10 +3453,14 @@ func (a *app) roomStateWord(node *taskNode) string {
 
 // The state reading stays the same when a separate placement fact is drawn.
 func (a *app) roomLocalStateWord(node *taskNode) string {
-	// A completed worker can still have a refused landing. The room reads the
-	// same pending decision as the card, including one projected from the store.
-	if status := a.taskStatus(node); status.Tier == session.TaskTierYourCall {
-		return status.Word
+	// A COMPLETED WORKER CAN STILL HAVE A REFUSED LANDING, and then the room reads
+	// the same pending decision as the card, including one projected from the
+	// store. A node in a named phase keeps its phase ("awaiting your look" is the
+	// design's own word for waiting on the person), which outranks this below.
+	if taskDoingWords(node) == "" {
+		if status := a.taskStatus(node); status.Tier == session.TaskTierYourCall {
+			return status.Word
+		}
 	}
 	// A QUESTION SOMEBODY ELSE IS ANSWERING IS STILL THAT QUESTION. This line
 	// used to read `awaiting review` for a card the settle policy had handed to
