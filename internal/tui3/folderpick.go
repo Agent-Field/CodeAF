@@ -45,6 +45,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -655,7 +656,7 @@ func (f *folderPick) browseSync(resolve func(string) string) {
 		f.forget()
 	}
 	want := filepath.Clean(resolve(dir))
-	if rel, err := filepath.Rel(want, f.cols.dir); err != nil || rel != "." {
+	if !sameFolderPath(want, f.cols.dir) {
 		f.browseAt(want, "")
 	}
 	// AND THE CURSOR FOLLOWS THE HALF-TYPED NAME. A person typing `~/code/ag`
@@ -679,11 +680,30 @@ func (f *folderPick) browseSync(resolve func(string) string) {
 // after the last separator. A path with no separator at all is all name, under
 // the directory the caller resolves "" to.
 func pathHead(typed string) (string, string) {
+	if runtime.GOOS != "windows" {
+		cut := strings.LastIndex(typed, "/")
+		if cut < 0 {
+			return typed, ""
+		}
+		head := typed[:cut]
+		if head == "" {
+			head = "/"
+		}
+		return head, typed[cut+1:]
+	}
 	dir, leaf := filepath.Split(typed)
 	if dir == "" {
 		return typed, ""
 	}
 	return filepath.Clean(dir), leaf
+}
+
+func sameFolderPath(a, b string) bool {
+	if runtime.GOOS != "windows" {
+		return a == b
+	}
+	rel, err := filepath.Rel(a, b)
+	return err == nil && rel == "."
 }
 
 // A FILE IS NOT SOMEWHERE TO GO. The right arrow navigates directories; a file

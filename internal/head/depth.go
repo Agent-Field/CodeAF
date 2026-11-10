@@ -2,6 +2,7 @@ package head
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -271,7 +272,7 @@ func collectResultFiles(node store.Node, limit int) []string {
 	seen := make(map[string]bool, deepFileCap)
 	add := func(path string) {
 		path = strings.Trim(strings.TrimSpace(path), `"'(),;:.`)
-		if summarypath.Parse(path) == "" && !strings.HasPrefix(path, "~/") &&
+		if !filepath.IsAbs(path) && !strings.HasPrefix(path, "~/") &&
 			!strings.HasPrefix(path, "cas://") {
 			return
 		}
