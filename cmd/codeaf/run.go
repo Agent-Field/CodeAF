@@ -17,7 +17,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
-	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/profile"
 	"github.com/Agent-Field/codeaf/internal/resident"
@@ -249,7 +248,7 @@ func runGraph(name string, args []string) error {
 	// cwd" by putting a directory next to their project would have moved the mess
 	// rather than removed it. One home per workspace name, so a resumed run
 	// appends to the recorders it already wrote.
-	scratchRoot := home.Join("scratch", filepath.Base(space.Root()))
+	scratchRoot := scratchRootFor(space.Root())
 	if err := os.MkdirAll(scratchRoot, 0o700); err != nil {
 		return err
 	}

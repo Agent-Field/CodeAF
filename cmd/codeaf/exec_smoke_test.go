@@ -323,3 +323,134 @@ func TestExecBinaryNamesItsKeptBranchAndVerdict(t *testing.T) {
 		t.Fatalf("kept_branch = %v, want work-branch\n%s", got, fields)
 	}
 }
+
+// A scripted companion to fakeOpenRouter: the first completion asks for one
+// `write` tool call, and every later one finishes with the plain answer. This
+// is the exact tool-call shape the in-process scriptedBrain emits
+// (cmd/codeaf/do_test.go), replayed across the wire so the binary under test
+// reads it from a real HTTP body.
+func fakeWriteThenFinish(t *testing.T, path, text string) *httptest.Server {
+	t.Helper()
+	answer, err := json.Marshal(smokeAnswer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The tool call's `arguments` field is a JSON STRING carrying the call's
+	// arguments, not a nested object: marshalled twice, once to the object and
+	// once to the string the wire frame holds.
+	callArgs, err := json.Marshal(map[string]string{"path": path, "text": text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	callArgs, err = json.Marshal(string(callArgs))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if strings.Contains(request.URL.Path, "/models") {
+			// A catalog that names the model the worker is pinned to, so the
+			// tool-call loop's crew seat is satisfiable. The answer-only smoke
+			// tests use an empty catalog — no seat is ever formed for a single
+			// stop turn — but executing a tool call needs one, and the row must
+			// admit tools and zero-pricing so it counts as allowed and startable.
+			row := map[string]any{
+				"id": "test/model", "canonical_slug": "test/model", "name": "smoke model",
+				"architecture":         map[string]any{"input_modalities": []string{"text"}, "output_modalities": []string{"text"}},
+				"pricing":              map[string]string{"prompt": "0", "completion": "0", "request": "0"},
+				"supported_parameters": []string{"tools", "tool_choice", "max_tokens"},
+				"context_length":       200000,
+			}
+			body, _ := json.Marshal(map[string]any{"data": []any{row}})
+			_, _ = writer.Write(body)
+			return
+		}
+		// Count only completion calls — the catalog fetch and any other
+		// non-completion endpoint must not advance the turn script.
+		if !strings.Contains(request.URL.Path, "completions") {
+			_, _ = writer.Write([]byte(`{"data":[]}`))
+			return
+		}
+		calls++
+		if calls == 1 {
+			body := `{"model":"scripted","choices":[{"index":0,"finish_reason":"tool_calls",` +
+				`"message":{"role":"assistant","content":"","tool_calls":[{"id":"call-1","type":"function",` +
+				`"function":{"name":"write","arguments":` + string(callArgs) + `}}]}}],` +
+				`"usage":{"prompt_tokens":10,"completion_tokens":10,"total_tokens":20}}`
+			_, _ = writer.Write([]byte(body))
+			return
+		}
+		completion := `{"model":"test/model","choices":[{"index":0,"finish_reason":"stop",` +
+			`"message":{"role":"assistant","content":` + string(answer) + `}}],` +
+			`"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}`
+		_, _ = writer.Write([]byte(completion))
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// THE FIX ITSELF, first half of the acceptance: an exec that only answers
+// leaves the person's repository untouched — the recorders and `.obs/` spills
+// go to the state root (or CODEAF_SCRATCH), not into `.codeaf/` beside the
+// work. `git status --porcelain` in a fresh checkout must be empty.
+func TestExecLeavesNoTraceInAPersonRepository(t *testing.T) {
+	if _, err := osexec.LookPath("git"); err != nil {
+		t.Skip("git is not on PATH")
+	}
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	server := fakeOpenRouter(t)
+	env, _ := smokeEnv(t, server.URL)
+	workspace := gitWorkspaceOn(t, "main")
+
+	stdout, stderr, code := runSmoke(t, binary, env, "Reply with ok.\n",
+		"exec", "--json", "-w", workspace, "--turns", "3", "--budget", "20000", "--timeout", "120")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	status, err := gitIn(workspace, "status", "--porcelain")
+	if err != nil {
+		t.Fatalf("git status: %v", err)
+	}
+	if strings.TrimSpace(status) != "" {
+		t.Fatalf("git status --porcelain is not empty after an answer-only exec:\n%s", status)
+	}
+	// The recorders went somewhere, and this stderr line is how a debugger is
+	// told where; it must not name the workspace itself.
+	if !strings.Contains(stderr, "note: recorders in ") {
+		t.Fatalf("stderr does not name the recorder directory:\n%s", stderr)
+	}
+}
+
+// THE FIX ITSELF, second half of the acceptance: an exec that edits one file
+// leaves exactly that one file in git status — the turn-by-turn trace must not
+// appear beside the worker's deliverable.
+func TestExecLeavesOnlyTheEditedFileInStatus(t *testing.T) {
+	if _, err := osexec.LookPath("git"); err != nil {
+		t.Skip("git is not on PATH")
+	}
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	server := fakeWriteThenFinish(t, "one.txt", "hello from the worker\n")
+	env, _ := smokeEnv(t, server.URL)
+	workspace := gitWorkspaceOn(t, "main")
+
+	stdout, stderr, code := runSmoke(t, binary, env, "Reply with ok.\n",
+		"exec", "--json", "-w", workspace, "--turns", "3", "--budget", "20000", "--timeout", "120")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	status, err := gitIn(workspace, "status", "--porcelain")
+	if err != nil {
+		t.Fatalf("git status: %v", err)
+	}
+	if got, want := strings.TrimSpace(status), "?? one.txt"; got != want {
+		t.Fatalf("git status --porcelain = %q, want exactly %q\nstdout:\n%s\nstderr:\n%s", got, want, stdout, stderr)
+	}
+	// The deliverable really landed, so this is a working edit and not a silent
+	// early exit.
+	if _, err := os.Stat(filepath.Join(workspace, "one.txt")); err != nil {
+		t.Fatalf("the worker's file is missing: %v", err)
+	}
+}
