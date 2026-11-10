@@ -1,11 +1,13 @@
 package verification
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -83,7 +85,7 @@ func SnapshotAt(dir string) (Snapshot, error) {
 	cmd := exec.CommandContext(ctx, bash, "-c", worktreeStateFunction+"\n_codeaf_worktree_state")
 	cmd.Dir = dir
 	boundSnapshot(cmd)
-	raw, err := cmd.Output()
+	raw, err := snapshotOutput(cmd)
 	if err != nil {
 		if e, ok := err.(*exec.ExitError); ok && e.ExitCode() == 4 {
 			return Snapshot{}, nil
@@ -118,7 +120,7 @@ func canonicalOwner(dir string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", gitpolicy.WithoutAutoMaintenance("rev-parse", "--show-toplevel")...)
 	cmd.Dir = abs
 	boundSnapshot(cmd)
-	out, err := cmd.Output()
+	out, err := snapshotOutput(cmd)
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", ctx.Err()
@@ -133,3 +135,16 @@ func OwnerAt(dir string) (string, error) { return canonicalOwner(dir) }
 
 // Fresh requires a stable check invocation on the checkout being accepted.
 func (c Check) Fresh(at Snapshot) bool { return at.Head != "" && c.Before == at && c.After == at }
+
+func snapshotOutput(cmd *exec.Cmd) ([]byte, error) {
+	if runtime.GOOS != "windows" {
+		return cmd.Output()
+	}
+	var output, diagnostics bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &diagnostics
+	err := processgroup.Run(cmd)
+	if exit, ok := err.(*exec.ExitError); ok {
+		exit.Stderr = diagnostics.Bytes()
+	}
+	return output.Bytes(), err
+}

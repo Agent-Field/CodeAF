@@ -13,6 +13,11 @@ and tests packed manuals, validates change entries, and runs manual coverage,
 structural laws, carried-program help and belt-page checks. Structural laws are
 selected through `go/ast` or `go/parser` imports by `scripts/laws.sh`.
 
+`windows native tests` runs the named tests in `.github/windows-native-tests.txt`
+on `windows-latest` with Git for Windows, an isolated home and short temp paths.
+Every listed test passed natively when it was added. The job is advisory: it is
+not part of `check` until it has stayed green.
+
 Touched packages use `scripts/touched-packages.sh` to map the committed diff to
 root-module packages. Module changes select the whole tree; changes without Go
 or module edits select no package leg. Tests run fresh with `-count=1` in

@@ -1,4 +1,4 @@
-//go:build unix
+//go:build unix || windows
 
 package main
 
@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"syscall"
 )
 
 // THE CONTAINED OPEN: how checkout.diff reads an untracked file and how
@@ -18,8 +17,10 @@ import (
 // then open leaves a window in which the answer to the first is not the target
 // of the second. Here every parent must be a real directory (a link component is
 // refused, because git never lists a file through a linked folder), the leaf is
-// opened O_NOFOLLOW and O_NONBLOCK, so a pipe swapped in cannot hold the read,
-// and the opened descriptor must be the very file the leaf stat described.
+// opened with appLeafOpenFlags (O_NOFOLLOW and O_NONBLOCK on Unix, so a pipe
+// swapped in cannot hold the read), and the opened file must be the very file
+// the leaf stat described. Windows has no O_NOFOLLOW; the same-file check after
+// the open is what refuses a leaf swapped for a link there.
 
 // appOpenSeam and appReadSeam are tests' hooks: between the leaf's stat and its
 // open, and between the open and the read.
@@ -74,7 +75,7 @@ func appReadContained(top, rel string, limit int64) (data []byte, reason string)
 		return nil, "too_large"
 	}
 	appOpenSeam()
-	file, err := root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	file, err := root.OpenFile(rel, appLeafOpenFlags, 0)
 	if err != nil {
 		return nil, "unreadable"
 	}

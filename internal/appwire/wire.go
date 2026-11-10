@@ -878,11 +878,12 @@ type Connection struct {
 // Setup is how far the person has come through first-run setup, kept by
 // codeaf so quitting halfway resumes at the same step.
 type Setup struct {
-	Step         SetupStep `json:"step"`
-	Provider     string    `json:"provider,omitempty"`
-	DefaultModel string    `json:"default_model,omitempty"`
-	DayCapUSD    *float64  `json:"day_cap_usd,omitempty"`
-	Start        string    `json:"start,omitempty"`
+	ProviderKey  ProviderKeyHealth `json:"provider_key,omitzero"`
+	Step         SetupStep         `json:"step"`
+	Provider     string            `json:"provider,omitempty"`
+	DefaultModel string            `json:"default_model,omitempty"`
+	DayCapUSD    *float64          `json:"day_cap_usd,omitempty"`
+	Start        string            `json:"start,omitempty"`
 }
 
 // SetupStep is a setup step: 1 to [SetupSteps] on the wire as a number, or

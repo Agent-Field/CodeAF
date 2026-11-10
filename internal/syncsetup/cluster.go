@@ -180,7 +180,7 @@ func saveLeadership(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
+	defer fsreplace.Remove(f.Name())
 	if err = f.Chmod(0600); err == nil {
 		_, err = f.Write(b)
 	}
@@ -197,12 +197,7 @@ func saveLeadership(path string, v any) error {
 	if err = fsreplace.Rename(f.Name(), path); err != nil {
 		return err
 	}
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+	return fsreplace.SyncDir(filepath.Dir(path))
 }
 
 // ClusterNames opens device names with this computer's keys. The service's

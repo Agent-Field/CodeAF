@@ -60,6 +60,7 @@ import (
 	"sync"
 
 	codeafexec "github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 // MaxResultLines and MaxResultBytes are the caps a belt that cannot say how
@@ -84,7 +85,9 @@ func TailForResult(text string) string { return TailForResultAt(text, DefaultCap
 // TailForResultAt is [TailForResult] under the belt's own caps, for a caller
 // whose bash was built with them: the answer a promoted call hands back must be
 // cut where the call itself would have been cut, not somewhere else.
-func TailForResultAt(text string, caps Caps) string { return truncateTail(text, caps).content }
+func TailForResultAt(text string, caps Caps) string {
+	return truncateTail(shell.OutputText(text), caps).content
+}
 
 // StreamingShell is the shell one command runs under, wrapped so its output
 // arrives line by line where the machine allows it.

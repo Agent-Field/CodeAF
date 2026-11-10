@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
+	"github.com/Agent-Field/codeaf/internal/textfile"
 )
 
 // Tool is the shape every tool in this package wears, and the shape a
@@ -335,7 +336,10 @@ func readTool(cwd string, caps Caps) Tool {
 			if err != nil {
 				return "Error reading file: " + err.Error(), true, nil
 			}
-			textContent := string(data)
+			textContent, _, err := textfile.Decode(data)
+			if err != nil {
+				return "Error reading file: " + err.Error(), true, nil
+			}
 			allLines := strings.Split(textContent, "\n")
 			totalFileLines := len(allLines)
 
@@ -538,7 +542,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			cmd.Stdout = acc
 			cmd.Stderr = acc
 
-			if err := cmd.Start(); err != nil {
+			if err := processgroup.Start(cmd); err != nil {
 				return startFailedText(runtime.GOOS, err), true, nil
 			}
 
@@ -873,9 +877,13 @@ func newEditTool(cwd string) Tool {
 				}
 
 				// Strip BOM, detect EOL, normalize to LF.
-				bom, content := stripBom(string(rawContent))
-				originalEnding := detectLineEnding(content)
-				normalizedContent := normalizeToLF(content)
+				decoded, encoding, err := textfile.Decode(rawContent)
+				if err != nil {
+					return fmt.Sprintf("Could not process edit: %s. %s", path, err), true, nil
+				}
+				bom, content := stripBom(decoded)
+				originalEnding := textfile.DetectLineEnding(content)
+				normalizedContent := textfile.NormalizeToLF(content)
 
 				result, err := applyEditsToNormalizedContent(normalizedContent, edits, path)
 				if err != nil {
@@ -885,8 +893,8 @@ func newEditTool(cwd string) Tool {
 					return "Operation aborted", true, nil
 				}
 
-				finalContent := bom + restoreLineEndings(result.newContent, originalEnding)
-				written, err := writeFileObserved(absPath, []byte(finalContent))
+				finalContent := bom + textfile.RestoreLineEndings(result.newContent, originalEnding)
+				written, err := writeFileObserved(absPath, encoding.Encode(finalContent))
 				if err != nil {
 					return fmt.Sprintf("Could not process edit: %s. %s", path, err.Error()), true, nil
 				}
@@ -998,7 +1006,15 @@ func newWriteTool(cwd string) Tool {
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
 				}
-				written, err := writeFileObserved(absPath, []byte(*p.Content))
+				original, err := textfile.ReadForWrite(absPath)
+				if err != nil && !os.IsNotExist(err) {
+					return err.Error(), true, nil
+				}
+				content, err := textfile.WriteContent(original, *p.Content)
+				if err != nil {
+					return err.Error(), true, nil
+				}
+				written, err := writeFileObserved(absPath, content)
 				if err != nil {
 					return err.Error(), true, nil
 				}
@@ -1371,7 +1387,7 @@ type accumulatorSnapshot struct {
 }
 
 func (a *outputAccumulator) snapshot() accumulatorSnapshot {
-	snapshotText := a.getSnapshotText()
+	snapshotText := shell.OutputText(a.getSnapshotText())
 	tailTrunc := truncateTail(snapshotText, a.caps)
 
 	truncated := a.totalLines > a.maxLines || a.totalDecoded > a.maxBytes

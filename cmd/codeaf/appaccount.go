@@ -484,16 +484,16 @@ func appServiceHost(source modelsource.Source, row config.PersistedSource) strin
 	return modelsource.AddressHost(firstNonEmptyString(address, source.Address))
 }
 
-// appCheckKey proves OpenRouter accepts the key, then lists the models it
-// reaches. Both model listings answer 200 with the public catalog for any
+// appCheckKeyAuth shares OpenRouter's cheap auth proof with setup, health and doctor.
+// Both model listings answer 200 with the public catalog for any
 // bearer, revoked or made up, so a listing proves nothing about a key. The key
 // endpoint answers only for a bearer OpenRouter resolved to a live key: its 200
 // carries that key's own row (label, limit, usage), and an unknown key is a 401.
 // So the key's row is asked first (and the older /auth/key when /key is not
-// there, as the balance reader does), and the listing only after it answered.
+// there, as the balance reader does).
 // A management key has a row too, but OpenRouter lets it manage keys and never
 // run a model, so its row is a refusal. One deadline covers every request.
-func appCheckKey(ctx context.Context, client *http.Client, address, provider, key string) appwire.KeyCheck {
+func appCheckKeyAuth(ctx context.Context, client *http.Client, address, key string) appwire.KeyCheck {
 	address = strings.TrimRight(address, "/")
 	host := address
 	if parsed, err := url.Parse(address); err == nil && parsed.Host != "" {
@@ -533,7 +533,25 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 		}
 	}
 
-	status, raw, failed = get("/models/user")
+	return appwire.KeyCheck{OK: true}
+}
+
+// appCheckKey adds setup's model list only after the shared auth proof succeeds.
+func appCheckKey(ctx context.Context, client *http.Client, address, provider, key string) appwire.KeyCheck {
+	check := appCheckKeyAuth(ctx, client, address, key)
+	if !check.OK {
+		return check
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	local := *client
+	local.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	host := address
+	if parsed, err := url.Parse(address); err == nil && parsed.Host != "" {
+		host = parsed.Hostname()
+	}
+	status, raw, failed := appKeyGet(ctx, &local, strings.TrimRight(address, "/")+"/models/user", host, key)
 	if failed != nil {
 		return *failed
 	}
@@ -549,7 +567,7 @@ func appCheckKey(ctx context.Context, client *http.Client, address, provider, ke
 	if err := json.Unmarshal(raw, &listing); err != nil || listing.Data == nil {
 		return appwire.KeyCheck{Status: status, Message: "the provider answered, but not with a list of models"}
 	}
-	check := appwire.KeyCheck{OK: true, Models: []appwire.Model{}}
+	check = appwire.KeyCheck{OK: true, Models: []appwire.Model{}}
 	for _, row := range listing.Data {
 		id := strings.TrimSpace(row.ID)
 		if id == "" {
@@ -787,6 +805,9 @@ func (b *appBackend) RemoveKey(provider string) error {
 // ([openAppEngineProcess]) and reads this key then; an open one is updated
 // here, whoever opened it.
 func (b *appBackend) keysMoved(provider string) {
+	if provider == modelsource.DefaultID {
+		b.refreshKeyHealth()
+	}
 	proc := openedEngineProcess()
 	if proc == nil {
 		return
