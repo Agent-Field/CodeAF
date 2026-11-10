@@ -283,6 +283,8 @@ func testNestedGate(t *testing.T) {
 	pressLandingKey(r, "a")
 	r.waitFor(20*time.Second,
 		say(t, "taskDoneGlyph")+" Port the parser"+say(t, "settleAcceptReceipt"))
+	// Accepting hands the report back to the chat, which reads it before settling.
+	r.waitFor(modelPatience, " "+say(t, "idleWord"))
 	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
 	r.keys("C-e")
 	settled := r.waitFor(20*time.Second,
@@ -332,6 +334,8 @@ func testRefusedLanding(t *testing.T) {
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
 		t.Errorf("the refused landing still says failed:\n%s", screen)
 	}
+	// Refusing hands the report back to the chat, which reads it before settling.
+	r.waitFor(modelPatience, " "+say(t, "idleWord"))
 	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
 	r.keys("C-e")
 	row := "Review the pull request diff" + say(t, "taskIncompleteWord") + say(t, "taskOpenResultWord")
