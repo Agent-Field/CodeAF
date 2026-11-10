@@ -269,6 +269,12 @@ A chat has one holder at a time. To take a chat back from the computer that took
 
 The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `held on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
+## Can tools run after taking a chat back and restarting?
+
+After a successful take-back through `continue here`, tools run here again,
+including after a restart. Earlier retained turns remain available as a separate
+branch, and the original chat includes the other computer's saved work.
+
 ## This window only shows the chat — can I still send here
 
 Once this window learns that another computer holds the chat, Enter opens

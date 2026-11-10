@@ -217,6 +217,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if err := c.sync.recordSendLease(opened.ID, sendLease{Cell: id, Fence: lease.Fence}); err != nil {
 			return Continued{}, err
 		}
+		if err := c.restoreTakenIdentity(ctx, opened); err != nil {
+			return Continued{}, err
+		}
 		return Continued{AlreadyHere: true, LocalOnly: !c.sync.StorageAllowed(), Device: c.opt.DeviceName, Taken: handoff.Taken{
 			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames},
 		}}, nil
@@ -329,6 +332,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			return session.SaveMeta(at.Root, meta)
 		}}, taker.After...)
 	}
+	// Restoration has acquired the requested chat and retired its old writer.
+	// Persist its identity before any hook resolves the vault's chat scope.
+	taker.After = append([]func(context.Context, cell.Cell) error{c.restoreTakenIdentity}, taker.After...)
 	taken, err := taker.TakeSeen(ctx, id, seen)
 	if err != nil {
 		return Continued{}, err
@@ -394,6 +400,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
 	return out, nil
+}
+
+func (c *Continuer) restoreTakenIdentity(_ context.Context, at cell.Cell) error {
+	branches, err := cellsync.OpenBranchMap(c.sync.Home)
+	if err != nil {
+		return err
+	}
+	return branches.Remove(at.ID)
 }
 
 // releaseWithin bounds the wait for a session on this machine to let go of the
