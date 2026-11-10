@@ -1,17 +1,10 @@
 ---
 kind: added
-title: ONE LINE, NO FULL STOP, THE WAY YOU WOULD SAY IT OUT LOUD
+title: The factory compares failing Go tests with the base, and a stuck step can be accepted as is
 pr: 2570
-# Optional. Which part of the repository this touches, so a reader can skip it.
-# One or more of: app, build, chat, docs, engine, factory, remote, resident
-surface: []
-# Optional, and the reason this file exists. Every statement that WAS true and is
-# not any more, written whole: what it was, and what it is now. A model reading
-# this has to be able to check its own memory against it, so "branch names" is
-# useless and "the trunk was chat-v3-task and no longer exists; work goes to dev"
-# is the whole point. Leave the list empty if nothing anybody believed changed.
-invalidates: []
+surface: [factory, app]
+invalidates:
+  - "Was true: under the Test rule no new failures, a failing check counted against the job unless the step itself had reproduced it in a clean worktree at the base with go test -json. Is true now: when a Test round ends with failing go test checks, the factory reruns each on the job checkout and on a clean worktree at the base and compares the failing test names; a check whose failures are all on the base no longer blocks. Go only; the rule green stays strict."
+  - "Was true: a step out of attempts took three answers, try once more, send back, or cancel the job. Is true now: a stuck Test, Review or Proof step that reported, before anything is published, also takes accept (factory.job_accept_step). Its failing checks are kept in its notes as 'Accepted by the owner:', later steps are not blocked by the same failure, and the PR lists them."
+  - "Was true: the GitHub issue list read each issue's id but never kept it, so a known job took no later labels, titles or comments, and a start label on a known issue never started it. Is true now: listed issues carry their id."
 ---
-
-Optional. A paragraph on WHY, if the title does not already carry it. Delete this
-line if it does.
