@@ -61,7 +61,12 @@ var usageRebuildMu sync.Mutex
 func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 	usageRebuildMu.Lock()
 	defer usageRebuildMu.Unlock()
-	session.FlushUsage()
+	// Live rows still queued are written before the ledger is read, so the read
+	// sees them (dev). A WRITER THAT CANNOT SETTLE NOW IS NOT WAITED FOR TWICE: its
+	// queue already refuses a second row with a queued row's identity
+	// (usageIdentityCursor), and a take's hooks have one budget for both waits
+	// (app/v3's TestTakeLedgerQueuedOrSettledLiveCall/queued).
+	settled := session.FlushUsage()
 	lines, receipted, err := usageLines(c, d)
 	if err != nil {
 		return err
@@ -86,7 +91,7 @@ func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 	for _, line := range lines {
 		session.RecordImportedUsage(path, line)
 	}
-	if !session.FlushUsage() {
+	if settled && !session.FlushUsage() {
 		return os.ErrDeadlineExceeded
 	}
 	return nil
