@@ -239,8 +239,18 @@ sync or repeat settled preferences.
 While the relay is unreachable, an open chat continues to run and save on this
 computer. Unpublished turns retry automatically with waits capped at 60 seconds, without
 another send, quit or restart. Once an ownership check finds the hold expired,
-the window stops admitting work. Use Continue here to acquire a new hold.
-Reopening a chat also acquires a new ownership fence.
+the window stops admitting work. In an open terminal chat, the next Enter
+conditionally reopens it at a new fence and sends the kept draft without a
+Continue here card. A desktop can use Continue here to acquire a new hold.
+Reopening a chat also acquires a new ownership fence. If this computer's renewal
+or the relay's renewal at restart reaches the unchanged hold before an ownership
+check observes expiry, the open chat keeps its fence and uploads its local turns.
+
+Calls already running when the hold expires still finish into local history.
+Their saved turns can upload at the unchanged expired fence, or be kept as a
+branch after ownership is lost. An upload never overwrites another computer's
+newer hold and does not let the old window admit new work. If the service is
+down, those saved turns remain local and retry when it returns.
 
 If another computer continued the chat meanwhile, this window becomes read-only
 and names that computer. Work saved here during the outage is kept through the

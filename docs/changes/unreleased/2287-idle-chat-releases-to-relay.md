@@ -104,9 +104,19 @@ code and holder-changed detail. A different holder keeps the existing refusal;
 neither refusal takes the chat.
 
 A lapsed or outside-released hold on this computer never resumes in place: its
-fence stops renewing and publishing once the lapse is observed, and the next
+fence stops renewal beats and new work once the lapse is observed, and the next
 Enter makes a conditional take, expecting the holder and fence it observed,
 into a fresh writer that sends the kept words. Unpublished turns carry over or
 branch exactly as an ordinary take does. A window that released its own hold
 still reacquires in place. Another computer's hold, or any newer fence, keeps
 the Continue-here card.
+
+Calls already running when a hold expires still finish into local history and
+upload at the unchanged fence, or go to a kept branch when another computer
+holds the chat; an upload never overwrites a newer holder and never reopens
+new work. After an outage, a renewal that reaches the unchanged hold before an
+ownership check keeps the fence and uploads local turns; a check that sees the
+expiry first keeps pending work on a branch, and the next Enter reopens at a
+new fence. Enter after recovery checks again even when Home still shows the
+outage, or a failed move to another chat left this one marked, and the box
+stays intact until the send succeeds.

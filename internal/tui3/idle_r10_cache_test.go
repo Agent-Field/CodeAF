@@ -35,6 +35,15 @@ func (a *r10CachedWriter) RenewalStatus() (time.Time, time.Duration, bool) {
 }
 
 func TestIdleRelease_R10_ConfirmedRetryWaitsForCachedWriter(t *testing.T) {
+	r10ConfirmedWriter(t, true)
+}
+
+func TestIdleRelease_R10_ConfirmedAdmissionWaitsForCachedWriter(t *testing.T) {
+	r10ConfirmedWriter(t, false)
+}
+
+func r10ConfirmedWriter(t *testing.T, retry bool) {
+	t.Helper()
 	row := chatlist.Row{Cell: heldCell, Status: chatlist.Here, Mine: true, Fence: 3, Head: "saved"}
 	source := &r10RetrySource{continuationListing: &continuationListing{row: row}}
 	agent := &r10CachedWriter{fakeAgent: &fakeAgent{}, source: source, read: make(chan struct{}, 1), changed: make(chan struct{})}
@@ -48,7 +57,7 @@ func TestIdleRelease_R10_ConfirmedRetryWaitsForCachedWriter(t *testing.T) {
 		}
 	}()
 	go func() {
-		done <- resumeIdleSend(t.Context(), agent, source, ownershipReadMsg{retryIdle: true, head: "saved", leaseCell: heldCell, reading: homeMachinesMsg{rows: []chatlist.Row{row}}}, false)
+		done <- resumeIdleSend(t.Context(), agent, source, ownershipReadMsg{retryIdle: retry, notHeld: true, head: "saved", leaseCell: heldCell, reading: homeMachinesMsg{rows: []chatlist.Row{row}}}, false)
 	}()
 	select {
 	case <-agent.read:

@@ -191,9 +191,19 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		if blocked {
 			holding, notHeld = false, true
 		}
+		if holding {
+			if receipts, ok := src.(sendLeaseSource); ok {
+				receiptCell, receiptFence, receiptErr := receipts.SendLease(filepath.Base(session.DirOf(file)))
+				if receiptErr != nil || receiptCell == "" || receiptFence == 0 {
+					// Receipt retirement can precede the engine's writer-status
+					// frame. That cached status cannot suppress a recovery probe.
+					holding, notHeld = false, true
+				}
+			}
+		}
 		// A released or lapsed window needs current ownership to take its chat
 		// back. Home's cached refusal cannot answer the person's next Enter.
-		fresh := notHeld && !blocked && !hold.failed
+		fresh := notHeld
 		sendOffline := offline
 		if fresh && err == nil {
 			sendOffline = false
@@ -360,7 +370,10 @@ func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
 			}
 			return msg.resume()
 		}
-		if row.Mine && (msg.ownFence == 0 || row.Fence == msg.ownFence) && !held.blocked && (msg.reopen || !row.AutoOpen && (row.Status == chatlist.Idle || row.Status == chatlist.Off)) && row.Head != "" {
+		// A failed move to a different chat can block this window too. An
+		// unchanged own fence may recover through the full conditional reopen;
+		// it never authorizes reuse of the writer that the failure stopped.
+		if row.Mine && (msg.ownFence == 0 || row.Fence == msg.ownFence) && (!held.blocked || msg.ownFence != 0) && (msg.reopen || held.blocked || !row.AutoOpen && (row.Status == chatlist.Idle || row.Status == chatlist.Off)) && row.Head != "" {
 			if _, ok := a.taker.(conditionalTaker); ok {
 				draft := a.mainComposer()
 				return a.takeRemoteState(homeTakenMsg{row: row, draft: &draft, send: msg.resume})

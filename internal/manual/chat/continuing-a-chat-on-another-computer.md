@@ -589,6 +589,13 @@ The draft stays in the box; the send records nothing and calls no model. When
 the service returns, press Enter again to send those words after taking a new
 hold. An uncertain take-back write keeps its separate retry sentence below.
 
+Enter checks again even when Home previously read another computer's chats or
+still shows an outage. If this window's hold merely lapsed, Enter reopens the
+chat at a new fence and sends the kept draft without a card. The box stays intact
+until the send succeeds. Another holder still requires your continuation choice.
+A failed move from Home to a different chat also leaves this chat able to check
+again and conditionally reopen its unchanged own fence on the next Enter.
+
 ## Take-back timeout: retry a released chat when the sync service is slow
 
 Taking back your released chat is a bounded ownership write, with up to 15 seconds

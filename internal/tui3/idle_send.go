@@ -85,8 +85,8 @@ func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, ms
 		holding := false
 		if writer, ok := agent.(renewalReader); ok {
 			_, _, holding = writer.RenewalStatus()
-			if msg.retryIdle && err == nil && fence == row.Fence && !holding {
-				// A confirmed retry can answer before its writer-status
+			if err == nil && fence >= row.Fence && !holding {
+				// Confirmed admission can answer before its writer-status
 				// frame. Wait for that cached fact; a different window's receipt
 				// alone must never authorize this one.
 				holding, _ = awaitSendWriter(ctx, writer, nil, true)
