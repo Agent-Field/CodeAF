@@ -419,13 +419,13 @@ type beltRun struct {
 	// take beltMu before copying membership onto live plan rows.
 	machineHeld map[string]bool
 	workers     map[string]chan struct{}
-	// cut ends the context the run's workers and every call they have out run
-	// under, and stopped and stopReason say a PERSON ended it and in what words
-	// (stoprun.go). cut is set once before the run starts; the other two are
-	// written and read under [Agent.beltMu].
+	// cut ends the workers and their calls. Cancellation keeps its reason and
+	// typed ending so a time limit remains distinct from the person's Stop.
+	// cut is set before dispatch; cancellation fields use [Agent.beltMu].
 	cut        context.CancelFunc
 	stopped    bool
 	stopReason string
+	stopEnding TaskEnding
 	// bringingHome linearizes Stop against the existing main-checkout merge.
 	// quiet suppresses model narration after a stop arrives beyond that point.
 	// deliveryMu serializes page Stop with final receipt admission.
@@ -1469,6 +1469,8 @@ func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, k
 func interruptedProgramEnding(store *plandb.Store, root *plandb.Task, record delegate.ProgramRecord) (string, TaskEnding, bool) {
 	report := strings.TrimSpace(root.Error)
 	switch {
+	case report == conversationTimeLimitReason:
+		return report, TaskEndingTimeLimit, false
 	case root.Status == plandb.StatusCancelled:
 		return report, TaskEndingStopped, true
 	case report == runLimitSentence:
@@ -1683,10 +1685,10 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 	a.publishJoinedRunRows(g, run)
 	// Setup admitted before a stop inherits its closed admission gate.
 	a.mu.Lock()
-	stopped, why := a.workStopped, a.workStopReason
+	stopped, why, ending := a.workStopped, a.workStopReason, a.workStopEnding
 	a.mu.Unlock()
 	if stopped {
-		_, _, _ = a.stopBeltRow(run.row, why)
+		_, _, _ = a.stopBeltRowForEnding(run.row, why, ending)
 	}
 }
 

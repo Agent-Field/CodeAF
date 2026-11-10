@@ -3133,6 +3133,7 @@ type Agent struct {
 	workStopping   bool
 	workEpoch      uint64
 	workStopReason string
+	workStopEnding TaskEnding
 	workStopDone   chan struct{}
 	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
 	// a [context.CancelCauseFunc] rather than a plain one because a turn that

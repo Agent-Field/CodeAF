@@ -173,6 +173,11 @@ func (g *TaskGraph) stop(id uint64) (string, error) { return g.stopFor(id, "") }
 // what it said. Every road out of here spells it the same way a person's own
 // accept and refute spell theirs ([stopBecause], task_audit.go's acceptedLine).
 func (g *TaskGraph) stopFor(id uint64, why string) (string, error) {
+	return g.stopForEnding(id, why, TaskEndingStopped)
+}
+
+// stopForEnding preserves the cause before cancellation can publish a landing.
+func (g *TaskGraph) stopForEnding(id uint64, why string, ending TaskEnding) (string, error) {
 	why = strings.TrimSpace(why)
 	g.mu.Lock()
 	node := g.nodes[id]
@@ -194,6 +199,7 @@ func (g *TaskGraph) stopFor(id uint64, why string) (string, error) {
 		return name + " is already stopping", nil
 	case node.state == TaskRunning:
 		node.stopped, node.stopReason = true, why
+		node.ending = ending
 		cut = node.cancel
 		// A RUNNING NODE NOBODY HAS TAKEN UP SETTLES HERE. The frontier marks a
 		// node running and gives it its handle one hold of the lock before its
@@ -252,6 +258,7 @@ func (g *TaskGraph) stopFor(id uint64, why string) (string, error) {
 		}
 	case node.state == TaskQueued:
 		node.stopped, node.stopReason = true, why
+		node.ending = ending
 		node.state, node.report, node.held = TaskFailed, stopBecause(taskStoppedQueuedWord, why), ""
 		dropped = true
 		// Here the reason DOES go last, because "before it started" is part of
@@ -260,6 +267,9 @@ func (g *TaskGraph) stopFor(id uint64, why string) (string, error) {
 	default:
 		g.mu.Unlock()
 		return name + " has already finished; there is nothing to stop", nil
+	}
+	if dropped && ending == TaskEndingTimeLimit {
+		node.report = conversationTimeLimitReason
 	}
 	g.mu.Unlock()
 
