@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -143,6 +145,16 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
+	// The harness's own machinery leaves the workspace here, the same move every
+	// other surface makes: `exec -w` points at a person's directory, and a run
+	// that wrote `.codeaf/` and `.obs/` into it left files `git add -A` would
+	// publish. One home per workspace name, so repeated runs append to the
+	// recorders they already wrote (#1758).
+	scratchRoot := home.Join("scratch", filepath.Base(space.Root()))
+	if err := os.MkdirAll(scratchRoot, 0o700); err != nil {
+		return err
+	}
+	space = space.WithScratch(scratchRoot)
 	web := exec.NewWeb()
 	if web == nil {
 		fmt.Fprintln(os.Stderr, "note: EXA_API_KEY unset — the web tool will be unavailable")

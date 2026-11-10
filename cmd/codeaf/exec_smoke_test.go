@@ -60,6 +60,108 @@ func buildCodeafStamped(t *testing.T, stamp string) string {
 	return binary
 }
 
+// #1758: the harness's own machinery must not become untracked files in the
+// person's repository. `codeaf exec` writes its turn trace, its job logs and
+// its spills through Workspace.ScratchPath, and when the exec door never names
+// a scratch home that path resolves inside the workspace, so a run that only
+// answered a question left `.codeaf/` and `.obs/` behind for `git add -A` to
+// publish. The workspace's own invariant is that machinery lives OUTSIDE the
+// root on every layout; this test pins the one door that still violated it.
+func TestExecLeavesTheGitRepositoryClean(t *testing.T) {
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	server := fakeOpenRouter(t)
+	env, _ := smokeEnv(t, server.URL)
+	workspace := gitWorkspaceOn(t, "work-branch")
+
+	stdout, stderr, code := runSmoke(t, binary, env, "Reply with ok.\n",
+		"exec", "--json", "-w", workspace, "--turns", "3", "--budget", "20000", "--timeout", "120")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if status := gitStatusPorcelain(t, workspace); status != "" {
+		t.Fatalf("exec left untracked files in the person's repository:\n%s", status)
+	}
+}
+
+// The same check on the run that does real work: an exec that edits one file
+// leaves exactly that file in git status, and nothing else.
+func TestExecGitStatusShowsOnlyTheFileItEdited(t *testing.T) {
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	server := fakeOpenRouterWriting(t, "one-file.txt", "edited by the worker\n")
+	env, _ := smokeEnv(t, server.URL)
+	workspace := gitWorkspaceOn(t, "work-branch")
+
+	stdout, stderr, code := runSmoke(t, binary, env, "Edit one-file.txt\n",
+		"exec", "--json", "-w", workspace, "--turns", "3", "--budget", "20000", "--timeout", "120")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if got, want := gitStatusPorcelain(t, workspace), "?? one-file.txt\n"; got != want {
+		t.Fatalf("git status --porcelain = %q, want exactly %q", got, want)
+	}
+}
+
+// gitStatusPorcelain reads the repository the way the report did, untracked
+// files included.
+func gitStatusPorcelain(t *testing.T, dir string) string {
+	t.Helper()
+	status, err := gitIn(dir, "status", "--porcelain")
+	if err != nil {
+		t.Fatalf("git status: %v\n%s", err, status)
+	}
+	return status
+}
+
+// fakeOpenRouterWriting is fakeOpenRouter for a run that actually edits a file:
+// the first completion is a write tool call, and every completion after it is
+// the finished message. Without the tool call the stub worker never touches
+// disk and the test would assert nothing.
+func fakeOpenRouterWriting(t *testing.T, path, content string) *httptest.Server {
+	t.Helper()
+	arguments, err := json.Marshal(map[string]string{"path": path, "text": content})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The SDK's tool-call wire field is a JSON-encoded string: the arguments
+	// arrive quoted, not as a bare object, and the side that made them an object
+	// is the side that made the completion unmarshalable.
+	argumentsWire, err := json.Marshal(string(arguments))
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := json.Marshal(smokeAnswer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit := `{"model":"test/model","choices":[{"index":0,"finish_reason":"tool_calls",` +
+		`"message":{"role":"assistant","content":"","tool_calls":[{"id":"call-1","type":"function",` +
+		`"function":{"name":"write","arguments":` + string(argumentsWire) + `}}]}}],` +
+		`"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}`
+	completion := `{"model":"test/model","choices":[{"index":0,"finish_reason":"stop",` +
+		`"message":{"role":"assistant","content":` + string(answer) + `}}],` +
+		`"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}`
+	first := true
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if strings.Contains(request.URL.Path, "/models") {
+			// An empty catalog is the honest offline answer and is what every
+			// price lookup below then falls back from.
+			_, _ = writer.Write([]byte(`{"data":[]}`))
+			return
+		}
+		if first {
+			// The FIRST chat completion, whatever request order preceded it,
+			// is the leaf's opening turn: it gets the write call.
+			first = false
+			_, _ = writer.Write([]byte(edit))
+			return
+		}
+		_, _ = writer.Write([]byte(completion))
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
 // fakeOpenRouter answers every completion with the same finished message. The
 // number of calls exec makes is not part of the contract under test; that it
 // ends with one envelope on stdout is.

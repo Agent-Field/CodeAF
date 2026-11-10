@@ -428,7 +428,7 @@ harness passes anything with newlines in it.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--dir dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. `-w` is the shorthand and keeps working forever. |
+| `--dir dir` | `.` | The directory the worker works in, created if missing. `-w` is the shorthand and keeps working forever. Its scratch machinery stays outside it, under the state root. |
 | `--system text` | empty | The working method, passed as the task's contract. |
 | `--max-turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
 | `--token-budget N` | `220000` | Token budget for the whole run. Crossing it buys a bounded landing rather than a kill, so the effective ceiling is the budget, plus a fifth of it for the landing, plus the overshoot of the turn crossing the budget and of the final landing turn. Hitting it exits `3`. |
@@ -585,10 +585,10 @@ again.
   to one.
 - **No delivery gate and no replan.** Nothing judges the answer, and nothing
   notices the work was bigger than one worker.
-- **Scratch lands in `--dir`.** `exec` gives the worker no separate scratch
-  directory, so the harness's own machinery — `.codeaf/`, `.obs/` — is written
-  into the workspace beside the work product. Point `--dir` at a directory you
-  are willing to have written into, not at a repository you want left clean.
+- **Scratch lives outside the workspace.** `exec` writes the harness's own
+  machinery — `.codeaf/`, `.obs/` — to a scratch directory under the state
+  root (one per workspace name), never into `--dir`, so a repository you run
+  against stays clean and only the work product appears in `git status`.
 
 `exec` still reads the state root for two things: the model catalog cache and,
 if you have one there, a persisted API key. `CODEAF_HOME` moves both.
