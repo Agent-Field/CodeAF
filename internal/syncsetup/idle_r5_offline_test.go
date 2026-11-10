@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
@@ -48,7 +49,7 @@ func TestIdleRelease_R5_2_HeldTaskStartsDuringRelayOutage(t *testing.T) {
 	raw, err := os.ReadFile(transcriptOf(h.cell))
 	mustNil(t, err)
 	mustNil(t, os.WriteFile(transcriptOf(h.cell), bytes.Replace(raw, []byte(`"version":3`), []byte(`"version":1`), 1), 0600))
-	appendTo(t, transcriptOf(h.cell), "{\"type\":\"message\",\"role\":\"user\",\"content\":\"seed held chat\"}\n")
+	appendTo(t, transcriptOf(h.cell), fmt.Sprintf(`{"type":"message","role":"user","content":"seed held chat","timestamp":%q}`+"\n", h.clock.Now().UTC().Format(time.RFC3339Nano)))
 	engine := &reviewR5Engine{started: make(chan struct{})}
 	session.RegisterRunEngine(engine)
 	t.Cleanup(func() { session.RegisterRunEngine(nil) })

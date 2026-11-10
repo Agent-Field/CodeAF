@@ -44,6 +44,8 @@ func TestIdleOpen_R5_RestartedHomeTakesFreeChatOnFirstOpen(t *testing.T) {
 				lease := directory.Lease{Device: "B", Fence: 3, Expires: expires}
 				if expires == 0 {
 					lease.ReleasedAt = 750
+				} else {
+					lease.Working = true
 				}
 				listing := directory.Listing{
 					Now:     1000,
@@ -71,6 +73,13 @@ func TestIdleOpen_R5_RestartedHomeTakesFreeChatOnFirstOpen(t *testing.T) {
 					if line.kind == homeSession && line.row.Transcript == file {
 						a.home.cursor = i
 						drive(t, a, key("enter"))
+						if expires != 0 {
+							raw, err := os.ReadFile(file)
+							if err != nil || string(raw) != string(original) || taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), continueAsk) {
+								t.Fatalf("lapsed working hold bypassed consent: free=%d takes=%v err=%v", taker.opens, taker.cells, err)
+							}
+							return
+						}
 						if taker.opens != 1 || len(taker.cells) != 0 {
 							t.Fatalf("first Home open used local viewer: automatic opens=%d forced takes=%v", taker.opens, taker.cells)
 						}

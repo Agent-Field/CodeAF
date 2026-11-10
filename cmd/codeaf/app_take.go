@@ -137,7 +137,7 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 		return appwire.Agent{}, err
 	}
 	seen := &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence, Head: p.Seen.Head}
-	if available && view.Cell.Lease.Expires > view.Now {
+	if available && view.Cell.Lease.Expires != 0 {
 		return appwire.Agent{}, appAvailableRefusal(ctx, s, view.Cell.Lease)
 	}
 	if !seen.Matches(view.Cell) {

@@ -64,8 +64,9 @@ type Row struct {
 	// Mine says this device was the chat's last holder, so a lapsed lease is
 	// this device's own to pick up and not another device's work gone quiet.
 	Mine bool
-	// AutoOpen is certified by this listing's active roster and lease expiry.
-	// Advisory offline presence alone cannot authorize automatic acquisition.
+	// AutoOpen requires a paired roster and an explicitly released hold.
+	// Expiry cannot prove the previous holder finished working: older holders
+	// and services do not advertise working state.
 	AutoOpen bool
 	// Released distinguishes a real release from a revoked or offline holder.
 	Released    bool
@@ -156,7 +157,7 @@ func Rows(l directory.Listing, self string, open Opener) []Row {
 	for id, c := range l.Cells {
 		if !c.Archived {
 			r := rowOf(id, c, l, self, open)
-			r.AutoOpen = paired >= 2 && c.Lease.Expires <= l.Now && c.OrphanTurns == 0
+			r.AutoOpen = paired >= 2 && c.Lease.Expires == 0 && c.OrphanTurns == 0
 			rows = append(rows, r)
 		}
 	}

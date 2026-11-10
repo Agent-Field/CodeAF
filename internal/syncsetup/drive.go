@@ -59,6 +59,7 @@ type Drive struct {
 	workMu        sync.Mutex // Admission and voluntary release cannot cross each other.
 	activity      atomic.Uint64
 	released      atomic.Bool
+	retakeOffline atomic.Bool // A released window's latest ownership read could not reach sync.
 	committing    atomic.Bool
 	releaseDone   atomic.Bool
 	idleCheck     func() bool
@@ -753,6 +754,9 @@ func (d *Drive) Gate() error {
 	}
 	if d.released.Load() && d.batcher != nil && d.batcher.AcquireUncertain() {
 		return &executor.WorkRefusal{Line: executor.TakeBackRetryLine, Retryable: true}
+	}
+	if d.released.Load() && d.retakeOffline.Load() && viewer.Line == chatlist.Available {
+		return &executor.WorkRefusal{Line: chatlist.TakeBackUnreachable, Retryable: true}
 	}
 	if viewer.Line != "" {
 		return &executor.WorkRefusal{Line: viewer.Line, HolderID: viewer.ID, HolderName: viewer.Name}

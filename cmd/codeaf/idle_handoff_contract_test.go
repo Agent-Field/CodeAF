@@ -28,10 +28,10 @@ type idleAppContract struct {
 	peerHome string
 }
 
-func newIdleAppContract(t *testing.T) *idleAppContract {
+func newIdleAppContract(t *testing.T, wrappers ...func(http.Handler) http.Handler) *idleAppContract {
 	t.Helper()
 	celltest.RequireEngine(t)
-	relay := e2WireRelay(t)
+	relay := e2WireRelay(t, wrappers...)
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	b, rec, model, workspace := appSyncBackend(t)
 	_, peerHome := outageHomes(t, relay.URL)

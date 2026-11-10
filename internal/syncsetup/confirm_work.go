@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // ConfirmSettingsWork leaves unpaired and unreleased choices local as before.
@@ -107,6 +108,9 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	v, err := d.sync.Dir.Cell(ctx, id)
+	if idleAdmission {
+		d.retakeOffline.Store(syncwords.NetworkFailure(err) || errors.Is(err, context.DeadlineExceeded))
+	}
 	if err != nil {
 		return false, err
 	}

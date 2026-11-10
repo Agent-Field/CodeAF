@@ -14,7 +14,7 @@ func TestIdleOpen_C6_C7_C10_C11_OnlyPairedFreeRowsAutoOpen(t *testing.T) {
 		auto    bool
 	}{
 		{"paired released", 2, 0, true},
-		{"paired lapsed", 2, 9, true},
+		{"paired lapsed", 2, 9, false},
 		{"paired live old build", 2, 11, false},
 		{"single released", 1, 0, false},
 		{"single live", 1, 11, false},

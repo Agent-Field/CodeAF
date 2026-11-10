@@ -250,7 +250,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
 	lease := view.Cell.Lease
-	if c.freeOnly && lease.Expires > view.Now {
+	if c.freeOnly && lease.Expires != 0 {
 		return Continued{}, directory.ErrLeaseHeld
 	}
 	// Kept turns may name this device before their separate copy exists here.
