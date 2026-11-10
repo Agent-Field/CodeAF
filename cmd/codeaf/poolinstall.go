@@ -140,5 +140,9 @@ func (transport poolSendTransport) RoundTrip(request *http.Request) (*http.Respo
 	if !transport.cfg.CanSend() || config.PoolTelemetryRowsOffAt(transport.profileDir) {
 		return nil, errors.New("model pool sending is off")
 	}
+	// Shutdown also closes the retry path when a relay replies after cancellation.
+	if err := request.Context().Err(); err != nil {
+		return nil, err
+	}
 	return http.DefaultTransport.RoundTrip(request)
 }
