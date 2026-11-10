@@ -28,7 +28,7 @@ func (s *r5HomeSource) RowsForSend(ctx context.Context) ([]chatlist.Row, uint64,
 	return rows, 10, err
 }
 
-func TestIdleOpen_R5_FirstOpenAfterRestartTakesFreeChat(t *testing.T) {
+func TestIdleOpen_R5_RestartedHomeTakesFreeChatOnFirstOpen(t *testing.T) {
 	for _, expires := range []int64{0, 500} {
 		for _, cached := range []bool{false, true} {
 			name := map[bool]string{false: "first directory read pending", true: "previous own hold cached"}[cached]
