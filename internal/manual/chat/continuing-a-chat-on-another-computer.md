@@ -1,6 +1,6 @@
 # Continuing a chat that one of your machines holds
 
-To continue on this machine, select the chat on home. In a paired set, a released or lapsed chat opens here automatically. A chat with a live hold still offers `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
+To continue on this machine, select the chat on home. In a paired set, a released or lapsed chat opens here automatically. A chat with a live hold still offers `continue here`. When your paired computer is offline, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. With fresh presence, an online computer's idle chats are not offered. Without presence, a lapsed or released hold stands in for the computer being away. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
 
 ## Continue on another computer — moving chats and pairing availability
 
@@ -129,7 +129,7 @@ Opening a chat with a live hold still asks before moving it, with **Move here** 
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-If you open codeaf and a chat on another device was running or went off in the last 24 hours, and that device is offline now (its lid is closed) or has let go of the chat, home offers it first of all:
+If you open codeaf and a chat on another device was running or went off in the last 24 hours, and that device is offline now (its lid is closed), home offers it first of all. Without fresh presence, a lapsed or released hold stands in for the device being away:
 
 ```
 Continue tower's latest chat here?
@@ -139,7 +139,7 @@ alt+c continue here · alt+x not now
 - `alt+c` continues immediately. The card asks first only when there is a real choice, such as keeping unsaved local edits as a branch.
 - `alt+x` dismisses it for that device until you open codeaf again.
 
-The line follows the devices row: it stands while the device is offline or has let go of the chat, even if that became true after you opened codeaf, and goes away if the device comes back. If the service stops supplying fresh presence while the card stands, a dim service-failure sentence stays in its place. The offer returns when fresh evidence supports it again. A device that is online and still working on the chat is never offered.
+The line follows the devices row: with fresh presence, it stands while the device is offline, even if that became true after you opened codeaf, and goes away if the device comes back. An online computer's chats are never offered, including idle chats with released or lapsed holds. If the service stops supplying fresh presence while the card stands, a dim service-failure sentence stays in its place. The offer returns when fresh evidence supports it again.
 
 Home never offers this computer's own chat as work to continue from another
 computer, even when an older record says this computer went offline.
@@ -236,7 +236,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 while a chat you explicitly chose is moving here, the card says `continuing here…`. another explicit continue during that move says `a chat is already continuing here; wait for it to open` on the card. an automatic startup move instead lets your explicit choice go next; see “my choice while an automatic chat is arriving”.
 
-every failure stays where you are looking: on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window. a fresh reading decides whether a different computer continued first. if the same computer picked the chat up again, the card asks again with `<holder> picked this chat up again; press enter to continue it here`. it does not blame another device.
+every failure stays where you are looking: on Home's card with `1 retry` and `2 leave it there`, or inside the open chat window. a fresh reading decides whether a different computer continued first. if the same computer picked the chat up again, the card asks again with `<holder> picked this chat up again; press enter to continue it here`. The desktop's `agents.take` refusal says `<holder> picked this chat up again`, keeping its `conflict` code and `holder_changed` detail. Nothing is taken by either refusal.
 
 ## why continue here failed — retry or leave it there
 
