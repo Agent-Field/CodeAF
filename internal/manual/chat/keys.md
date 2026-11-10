@@ -1004,8 +1004,9 @@ a browser.
 Your unsent sentence, caret and attachments stay with the conversation. The
 conversation remains in `alt+k` and Home, and reopening restores its tab and draft.
 After a restart, opening from Home or the switcher also restores the saved composer.
-An empty composer cannot replace a saved draft it has not restored; clearing the
-restored words yourself still saves your deliberate clear. A blocked save includes
+An untouched composer cannot passively replace a saved draft it has not restored.
+Editing, sending or deliberately clearing your own words saves that action;
+sent words do not return as a draft. A blocked passive save includes
 `saved draft has not been restored` in its explanation.
 
 Closing the active tab selects the most recently used remaining open tab. With
@@ -1299,7 +1300,8 @@ file you can read sits beside it.
 - **If it cannot be written, you are told**: `this draft could not be saved`, with the
   reason. A record codeaf cannot read — a later build's, or a half-finished write — is
   never overwritten either; it is moved aside as `<name>.json.unreadable-<number>` and
-  the new one written in its place.
+  the new one written in its place. Editing a new composer preserves that unreadable
+  record beside your new words too.
 - **A task page's line follows its conversation, not the window.** Open that
   conversation tomorrow in a different window and its lines come with it; open a
   different conversation and they are neither shown to you nor deleted.

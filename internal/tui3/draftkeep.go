@@ -1032,10 +1032,7 @@ func (a *app) everyComposer() map[recipient]composerState {
 func (a *app) draftSaveOf(text string) draftSave {
 	key := a.draftFile + "\x00" + a.draftKeepOwner()
 	if !a.draftLoaded[key] && !a.hasUnreadDraft() {
-		if a.draftLoaded == nil {
-			a.draftLoaded = map[string]bool{}
-		}
-		a.draftLoaded[key] = true
+		a.claimDraftComposer()
 	}
 	return draftSave{
 		unread:   !a.draftLoaded[key],
@@ -1045,6 +1042,19 @@ func (a *app) draftSaveOf(text string) draftSave {
 		text:     text,
 		rev:      claimDraftRev(draftKeepPath(a.draftFile)),
 	}
+}
+
+// claimDraftComposer records that a restore or the person's own edit or send
+// made this composer authoritative. Only a passive save of an untouched,
+// unrestored composer must leave the saved words alone.
+func (a *app) claimDraftComposer() {
+	if a.draftFile == "" {
+		return
+	}
+	if a.draftLoaded == nil {
+		a.draftLoaded = map[string]bool{}
+	}
+	a.draftLoaded[a.draftFile+"\x00"+a.draftKeepOwner()] = true
 }
 
 // hasUnreadDraft protects a saved composer until this conversation has read it.
@@ -1226,10 +1236,7 @@ func (a *app) layKeptDrafts(allowUnowned bool) {
 		a.keepComposer(who, state)
 	}
 
-	if a.draftLoaded == nil {
-		a.draftLoaded = map[string]bool{}
-	}
-	a.draftLoaded[a.draftFile+"\x00"+a.draftKeepOwner()] = true
+	a.claimDraftComposer()
 	if err := a.draftSaveOf(a.mainDraftText()).commit(); err != nil {
 		// The words are on the screen and this window is holding them; what failed
 		// is the promise that they would outlive it. Nothing is pruned — every line

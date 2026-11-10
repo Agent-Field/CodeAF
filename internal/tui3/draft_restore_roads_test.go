@@ -107,3 +107,48 @@ func TestAnUnreadComposerCannotOverwriteSavedWords(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnComposerActionsReplaceAnUnreadSavedDraft(t *testing.T) {
+	for _, action := range []string{"send", "clear", "edit"} {
+		t.Run(action, func(t *testing.T) {
+			agent := &fakeAgent{model: "m"}
+			a := newTestApp(agent)
+			dir := t.TempDir()
+			a.workspace, a.file = dir, filepath.Join(dir, "transcript.jsonl")
+			a.draftFile = DraftFile(dir, dir)
+			if err := putDraftKeep(draftKeepPath(a.draftFile), a.draftKeepBuild("saved before this window")); err != nil {
+				t.Fatal(err)
+			}
+			if err := writeDraft(a.draftFile, "saved before this window"); err != nil {
+				t.Fatal(err)
+			}
+			// The live composer has not restored the saved record. Sending and
+			// clearing still spend the person's own words, rather than saving passively.
+			a.input.setText("my own words")
+			want := ""
+			switch action {
+			case "send":
+				drive(t, a, key("enter"))
+				if len(agent.sent) != 1 || agent.sent[0] != "my own words" {
+					t.Fatalf("sent=%v", agent.sent)
+				}
+			case "clear":
+				drive(t, a, key("ctrl+u"))
+				drain(t, a, a.saveDraft(a.draftFile))
+			case "edit":
+				typeInto(t, a, " changed")
+				want = "my own words changed"
+				drain(t, a, a.saveDraft(a.draftFile))
+			}
+			if got := readDraft(a.draftFile); got != want {
+				t.Fatalf("%s left plain draft %q, want %q", action, got, want)
+			}
+			next := newTestApp(&fakeAgent{model: "m"})
+			next.workspace, next.file, next.draftFile = a.workspace, a.file, a.draftFile
+			next.restoreDraft()
+			if got := next.input.String(); got != want {
+				t.Fatalf("%s restored %q, want %q", action, got, want)
+			}
+		})
+	}
+}
