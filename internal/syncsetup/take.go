@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatfiles"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -228,9 +229,18 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	localCapture()
 	directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
-	view, err := c.sync.Dir.Cell(ctx, id)
+	readCtx := ctx
+	cancelRead := func() {}
+	if c.freeOnly {
+		readCtx, cancelRead = context.WithTimeout(ctx, chatlist.OpenReadTimeout)
+	}
+	view, err := c.sync.Dir.Cell(readCtx, id)
+	cancelRead()
 	directoryRead()
 	if err != nil {
+		if c.freeOnly && errors.Is(err, context.DeadlineExceeded) {
+			err = fmt.Errorf("%w: %w", directory.ErrUnreachable, err)
+		}
 		return Continued{}, err
 	}
 	if err := c.sync.reconcileSendLease(id, id, view); err != nil {

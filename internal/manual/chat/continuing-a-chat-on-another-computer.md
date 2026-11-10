@@ -478,6 +478,13 @@ A listed free chat still refreshes an older viewer with its latest history.
 A live hold elsewhere keeps the existing **Continue here** choice. Unpaired,
 sync-off and single-device homes keep their local opening behavior.
 
+If the sync service is unreachable, Enter on a chat saved on this computer
+opens its local copy, including a listed free chat last held here. A free
+open's initial ownership read also waits at most two seconds: an unreachable
+service opens the local copy if one exists, or explains that the sync service
+is not answering for a remote-only chat. Successful transfers keep their normal
+move budget. Opening locally keeps the chat's usual offline send restrictions.
+
 ## Why did Enter show Continue here instead of sending my message
 
 Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Open it from Home to bring the saved chat here, then press Enter to send. A released or lapsed paired chat opens directly; a live hold still asks for **continue here**.

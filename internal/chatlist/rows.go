@@ -36,6 +36,10 @@ type BranchCopy struct {
 	Redundant   bool
 }
 
+// OpenReadTimeout bounds the ownership reading before an ordinary chat open.
+// Transferring a reachable chat keeps its separate move budget.
+const OpenReadTimeout = 2 * time.Second
+
 // Row is one chat as the list shows it.
 type Row struct {
 	Cell, Title, Device, DeviceID, Parent string

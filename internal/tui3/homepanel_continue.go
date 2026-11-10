@@ -189,7 +189,10 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 	// THE DIRECTORY IS THE ONLY THING THAT CAN GRANT A LEASE OR ARCHIVE A
 	// BRANCH, so with it out of reach the acting offers are disabled and say why
 	// on the foot, where every other refusal on this screen is said.
-	if a.machineRead.down {
+	if a.machineRead.down || a.machineRead.err != nil {
+		if local, ok := a.homeLineOf(row.Cell); ok && row.AutoOpen {
+			return a.homeOpenLocalLine(local)
+		}
 		a.home.say(a.machineRead.unavailableWord(), "")
 		return nil
 	}
@@ -698,6 +701,16 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	if msg.err != nil {
 		a.finishHomeTake(false)
 	}
+	// A failed availability read has not brought a newer chat here. Keep the
+	// ordinary local door available, with send admission still checking its hold.
+	if !msg.automatic && msg.row.AutoOpen && a.at(pageHome) && !a.machineRead.computerRemoved &&
+		(errors.Is(msg.err, directory.ErrUnreachable) || errors.Is(msg.err, context.DeadlineExceeded)) {
+		if local, ok := a.homeLineOf(msg.row.Cell); ok {
+			a.failedTake(msg)
+			a.restoreTakeDraft(msg)
+			return a.homeOpenLocalLine(local)
+		}
+	}
 	var missing *session.WorkspaceBindingsRequired
 	if errors.As(msg.err, &missing) {
 		if _, ok := a.taker.(workspaceRootTaker); ok && len(missing.Roots) > 0 {
@@ -715,7 +728,7 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 	switch {
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return a.lostRace(msg)
-	case errors.Is(msg.err, directory.ErrUnreachable):
+	case errors.Is(msg.err, directory.ErrUnreachable), msg.row.AutoOpen && errors.Is(msg.err, context.DeadlineExceeded):
 		// Home is where the failed move lands, so it carries the whole sentence:
 		// the reason alone does not say the chat stayed and the words were kept.
 		a.machineRead.down = true

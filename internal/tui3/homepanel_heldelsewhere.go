@@ -446,7 +446,7 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 		// Before unreachable: the stall ends the request it waited on, and
 		// that request's error reads as an unreachable relay.
 		return fmt.Sprintf("stopped: nothing came through for 2 minutes; the chat is still on %s", nonemptyDevice(msg.row.Device))
-	case errors.Is(msg.err, directory.ErrUnreachable):
+	case errors.Is(msg.err, directory.ErrUnreachable), msg.row.AutoOpen && errors.Is(msg.err, context.DeadlineExceeded):
 		return continueUnreachable
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		return directory.ErrConditionalTake.Error()

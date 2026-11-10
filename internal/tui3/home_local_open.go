@@ -2,14 +2,13 @@ package tui3
 
 import (
 	"context"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 )
 
-const homeLocalOpenTimeout = 2 * time.Second
+const homeLocalOpenTimeout = chatlist.OpenReadTimeout
 
 type homeLocalOpenMsg struct {
 	line       homeLine
