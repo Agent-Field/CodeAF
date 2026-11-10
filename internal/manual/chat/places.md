@@ -1009,7 +1009,7 @@ anywhere off the menu, puts it away and leaves everything else as it was.
 bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
 whether or not its word is on the row, and the numbers never move — nor do they follow the
 bar's order: home `alt+1`, AI teams `alt+2`, chats `alt+3`, activity `alt+4`, spend `alt+5`,
-settings `alt+6`, automations `alt+7`, memories `alt+8`.
+settings `alt+6`, automations `alt+7`, Memory `alt+8`.
 
 The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts

@@ -537,7 +537,7 @@ var notices = []notice{
 		id: "remember-one-thing", slot: slotHint,
 		armed: ready,
 		// The other half of the pair above: a fact, and the way back out of it.
-		text:   "/remember carries a fact forward, and the Memories tab forgets it",
+		text:   "/remember carries a fact forward, and the Memory tab forgets it",
 		retire: eventRemembered,
 	},
 	{

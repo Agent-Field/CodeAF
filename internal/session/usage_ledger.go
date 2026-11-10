@@ -112,10 +112,7 @@ const UsageLedgerName = "usage.jsonl"
 // ChargeID names the paid event independently of its ledger row. Remote events
 // retain this identity in old ledgers whose row IDs were unrelated or absent.
 func (line UsageLine) ChargeID() string {
-	if line.RemoteEvent != "" {
-		return "\x00remote:" + line.RemoteEvent
-	}
-	return line.ID
+	return UsageCallID(line)
 }
 
 // usageDayLayout is the LOCAL calendar day a line belongs to, as an ISO date.
@@ -178,6 +175,8 @@ type UsageLine struct {
 	// supplied one. Older, auxiliary, or late receipt rows may have no identity;
 	// absence must never be read as a single aggregate run.
 	Run string `json:"run,omitempty"`
+	// CallID follows a paid call through worker, mirrored and reconstructed rows.
+	CallID string `json:"call_id,omitempty"`
 	// Computer and RemoteEvent identify a mirrored call independently of cursor
 	// checkpoints, so a replay cannot charge the same call twice.
 	Computer    string `json:"computer,omitempty"`
@@ -1080,9 +1079,15 @@ func queueUsage(path string, line UsageLine) {
 	}
 	// Agent accounting shares an identity with its saved call before enqueueing.
 	// Other callers get a fresh row identity here ([UsageLine.ID]).
+	if id := strings.TrimSpace(line.CallID); id != "" && strings.TrimSpace(line.ID) == "" {
+		line.ID = id
+	}
 	if strings.TrimSpace(line.ID) == "" {
 		line.ID = newUsageRowID()
 	} else {
+		line.SharedID = true
+	}
+	if strings.TrimSpace(line.RemoteEvent) != "" {
 		line.SharedID = true
 	}
 	payload, err := json.Marshal(line)
@@ -1353,6 +1358,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	if remote := call.remote; remote != nil {
 		line.SharedID = true
 		line.Task, line.Computer, line.RemoteEvent = remote.Task, remote.Computer, remote.Event
+		line.CallID = remote.CallID
 		line.Seat = remote.Seat
 		return appendRemoteUsage(path, line)
 	}
@@ -1589,8 +1595,9 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 // modelCallOf is the receipt's word for one ledger row: the same call, seen
 // from the seat that seals the turn it was made in.
 func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
+	id := UsageCallID(line)
 	return procexec.ModelCall{
-		ID: line.ID, Model: line.Model, Role: line.Role,
+		ID: id, CallID: id, Model: line.Model, Role: line.Role,
 		TokensIn: line.Input, TokensOut: line.Output, TokensCached: used.CacheRead,
 		CostMicroUSD: int64(math.Round(line.USD * microPerUSD)),
 	}

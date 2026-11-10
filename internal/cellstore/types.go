@@ -91,6 +91,7 @@ type ServiceRec struct {
 type ModelCall struct {
 	// ID is the live usage ledger row identity, absent on older saved calls.
 	ID           string `json:"id,omitempty"`
+	CallID       string `json:"call_id,omitempty"`
 	Model        string `json:"model"`
 	Role         string `json:"role,omitempty"`
 	ParamsHash   string `json:"params_hash"`
@@ -100,6 +101,14 @@ type ModelCall struct {
 	TokensOut    uint32 `json:"tokens_out"`
 	TokensCached uint32 `json:"tokens_cached,omitempty"`
 	CostMicroUSD int64  `json:"cost_micro_usd"`
+}
+
+// ExplicitID returns the caller-assigned model call identity when present.
+func (m ModelCall) ExplicitID() string {
+	if m.CallID != "" {
+		return m.CallID
+	}
+	return m.ID
 }
 
 // Receipt is what a phone needs to render a turn (SCHEMAS.md 5).

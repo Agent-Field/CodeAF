@@ -2,6 +2,8 @@ package session
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,6 +13,54 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
+
+// UsageLedgerLockSuffix keeps remote append and reconstruction on one process-shared lock.
+const UsageLedgerLockSuffix = ".remote-lock"
+
+// UsageExplicitID returns the explicit call identity on line when one is set:
+// CallID, a remote-event key, or ID.
+func UsageExplicitID(line UsageLine) string {
+	if id := strings.TrimSpace(line.CallID); id != "" {
+		return id
+	}
+	if ev := strings.TrimSpace(line.RemoteEvent); ev != "" {
+		return "remote:" + ev
+	}
+	if id := strings.TrimSpace(line.ID); id != "" {
+		return id
+	}
+	return ""
+}
+
+// UsageFingerprint hashes the eight call facts when both At and Session are present.
+func UsageFingerprint(line UsageLine) string {
+	session := strings.TrimSpace(line.Session)
+	if line.At.IsZero() || session == "" {
+		return ""
+	}
+	raw, _ := json.Marshal([]any{
+		line.At.UTC().Format(time.RFC3339Nano),
+		session,
+		line.Model,
+		line.Role,
+		line.Calls,
+		line.Input,
+		line.Output,
+		line.USD,
+	})
+	sum := sha256.Sum256(raw)
+	return "call:" + hex.EncodeToString(sum[:])
+}
+
+// UsageCallID identifies the original worker row independently of the computer,
+// folder or parent that later carries it. Older worker rows need no rewrite:
+// the task transport computes the same identity from their original facts.
+func UsageCallID(line UsageLine) string {
+	if id := UsageExplicitID(line); id != "" {
+		return id
+	}
+	return UsageFingerprint(line)
+}
 
 // usageIdentityCursor remembers only identities already read from this open
 // ledger. Each append validates the generation under the same lock as its write,

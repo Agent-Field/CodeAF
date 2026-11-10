@@ -460,6 +460,8 @@ read the retained turns; nothing is merged automatically.
 
 The notice appears in the conversation once and appears again only if the original
 grows again with more person turns. The count is the total since the copy was made.
+Moving the chat to another computer and taking it back preserves this notice
+and its original count.
 Copies made before this build may lack a reliable original-history count; those
 show no warning rather than guessing. A headless open does not consume the notice.
 

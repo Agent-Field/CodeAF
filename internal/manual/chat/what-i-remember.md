@@ -15,7 +15,8 @@ Lines get kept three ways, and all three tell you:
 - you keep one: `/remember <text>` (or `/always <text>`, the same thing);
 - you ask in words — "remember that I deploy on Fridays" — and the model keeps it;
 - codeaf notices something durable you said and keeps it, saying
-  `noticed and remembered · <line> · <where> · see or forget it on the Memories tab`.
+  `noticed and remembered · <line> · <where>`, followed by a reminder that you
+  can see or forget it on the Memory tab.
 
 The commands:
 
@@ -41,10 +42,10 @@ it. `/remember <text>` answers with exactly what was kept and where it holds:
 Typed on home, it holds for you everywhere instead. The same words twice say
 `already remembered · …` and keep one line. Said in words ("remember that…"),
 the model uses its `remember` tool and you see
-`remembered · <line> · <where> · see or forget it on the Memories tab`. The
-model can also drop a line you ask it to with its `forget` tool, and says
-`forgot · <line> · put it back on the Memories tab`. It does either only on a
-turn **you typed**: a turn opened by a task's report, a team member's message or
+`remembered · <line> · <where>`, with a reminder to see or forget it on the
+Memory tab. The model can also drop a line you ask it to with its `forget` tool,
+and says `forgot · <line>`, with a reminder that the Memory tab can put it back.
+It does either only on a turn **you typed**: a turn opened by a task's report, a team member's message or
 a watch's news keeps and forgets nothing — until you type into it — so words
 someone else wrote cannot plant a line in every future conversation. Answering
 one of its questions after its turn has ended counts the same way, because the
@@ -130,8 +131,7 @@ repository is one project), or by the folder when there is no remote.
 ## How do I see what codeaf remembers about me? The Memory tab — your memories
 
 Open it with `alt+8`, the **Memory** word on the tab bar (the fifth word; its number is 8
-all the same), or `/memory`. Some receipts say `Memories tab`; they mean this same
-**Memory** tab. It is
+all the same), or `/memory`. It is
 drawn like the Activity tab: groups, each a row of its own in the heading ink
 with its fold mark after it, and every line hanging under its group on the
 tree's connectors:
@@ -212,9 +212,9 @@ same words are kept again since, which says `already kept · <line> · nothing w
 changed` and leaves one line.
 
 Or ask in words — "forget that I use npm". The model's `forget` drops the
-**one** line those words name and says `forgot · <line> · put it back on the
-Memories tab`. When the words name more than one line it forgets nothing and
-lists them; when they name none it says `nothing remembered matches "<words>"`.
+**one** line those words name and says `forgot · <line>`, with a reminder that
+the Memory tab can put it back. When the words name more than one line it forgets
+nothing and lists them; when they name none it says `nothing remembered matches "<words>"`.
 
 There is no `/forget` command (there was one until 2026-10-14) and no undo key:
 every change — kept, noticed, replaced, forgotten — is a line on the tab you can
@@ -257,7 +257,9 @@ those. An `ask here` exchange from home is not noticed either.
 
 Every time it keeps a line it says so in the conversation:
 
-`noticed and remembered · wants the change made directly · for you everywhere · see or forget it on the Memories tab`
+`noticed and remembered · wants the change made directly · for you everywhere`
+
+The receipt also points to the Memory tab to see or forget the line.
 
 If you have moved to another conversation or home by then, the line waits and
 is drawn in its own conversation when you come back to it.
@@ -273,13 +275,15 @@ When something you said corrects a line already kept — "we deploy on Tuesdays
 now" against `deploys on Fridays` — noticing replaces the old line with the new
 one and says so:
 
-`noticed and remembered · deploys on Tuesdays · replaces deploys on Fridays · for this project · see or forget it on the Memories tab`
+`noticed and remembered · deploys on Tuesdays · replaces deploys on Fridays · for this project`
+
+The receipt also points to the Memory tab to see or forget the line.
 
 The replaced line waits under `let go` on the Memory tab, marked `replaced`:
 put it back there, and forget the new one, to undo the change. When the
 correction is already kept, the old line is let go and nothing new is written:
-`noticed · deploys on Fridays is let go · already kept: deploys on Tuesdays · see
-or forget it on the Memories tab`.
+`noticed · deploys on Fridays is let go · already kept: deploys on Tuesdays`,
+followed by the reminder to see or forget it on the Memory tab.
 
 Nothing merges or rewrites lines while you are away any more. An earlier build
 ran a background tidy that merged and retired lines and said `memory tidied ·
@@ -352,6 +356,12 @@ not require re-adding it.
 model calls. It is on by default unless you saved off. On learns from chats and
 jobs at extra cost on your key; Spending shows actual recorded costs. Off applies from the next memory
 step without restarting. A call already in flight finishes and is billed.
+
+If memory was off before this build, off used to keep your saved lines out of
+every prompt; now they ride again. The first conversation after the upgrade says
+so once on this machine — `N kept memory lines now ride every conversation they
+hold in — memory off now only stops noticing`, followed by a reminder to see or
+forget them on the Memory tab — and nothing about the lines changes.
 
 Saved knowledge remains readable at no cost. Kept lines still ride in prompts,
 and `/remember` and the Memory tab still work. Forget a line there to remove it.

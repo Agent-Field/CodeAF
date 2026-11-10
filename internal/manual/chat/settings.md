@@ -119,8 +119,10 @@ from an unrelated example.
 
 Off stops automatic memory model calls from the next memory step, with no restart.
 A call already in flight finishes and is billed. Saved knowledge stays readable;
-reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`
-or `/memories` to inspect, fix or forget saved lines.
+reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`,
+`/memories` or the Memory tab (`alt+8`) to inspect, fix, move, forget or put back
+saved lines; the `Open the Memory tab` door goes straight to that tab. Input
+history and unfinished drafts are separate Privacy choices.
 
 Older homes with no saved choice also default on. An explicit saved off choice
 stays off. Invalid saved values read off. Nothing saved is deleted.
