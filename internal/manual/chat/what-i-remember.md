@@ -8,7 +8,7 @@ ride in their scope.** Other lines are selected by activation: past use,
 recency and the current project or topic help decide what rides. A protected
 share of the prompt keeps durable rules from being crowded out by progress
 updates; specific matches to your message get space before generic topics. A line that
-does not ride stays stored and searchable; the Memories tab explains why.
+does not ride stays stored and searchable; the Memory tab explains why.
 
 Lines get kept three ways, and all three tell you:
 
@@ -19,11 +19,11 @@ Lines get kept three ways, and all three tell you:
 
 The commands:
 
-- `/memory` or `/memories` — open the Memories tab (`alt+8`).
+- `/memory` or `/memories` — open the Memory tab (`alt+8`).
 - `/memory <words>` or `/memories <words>` — print the lines those words name.
 - `/remember <text>` — keep one line.
 
-There is no `/forget`: a line is forgotten on the Memories tab, where you can see
+There is no `/forget`: a line is forgotten on the Memory tab, where you can see
 it, or by asking — "forget that I use npm".
 
 The words themselves are not memory: everything said in every conversation on
@@ -55,7 +55,7 @@ project progress directly, rather than infer every kind from wording.
 Capture instructions keep what you stated or explicitly accepted, preserving
 conditions without adding the assistant's suggestions. Wording may be normalized;
 this is model guidance, not a verbatim or lossless-capture guarantee.
-The Memories tab shows the stored kind.
+The Memory tab shows the stored kind.
 
 A line is one sentence, at most 512 characters, and a credential pasted into it
 is redacted before it is kept.
@@ -70,7 +70,7 @@ A rule is a memory. "Always use tabs here", "never touch the public API", "our
 conventions for this repo: tests beside the file" — keep it with `/remember` or
 `/always` (they are the same command), or say it and the model keeps it.
 
-**Lines you keep with `/remember`, `/always`, or the Memories tab are pins:**
+**Lines you keep with `/remember`, `/always`, or the Memory tab are pins:**
 they always ride conversations in their scope, even when the ordinary memory
 budget is full. Other automatically kept lines compete by activation. Bare
 `/always` prints every line kept here (on home, the ones that hold everywhere).
@@ -88,7 +88,7 @@ checklist optional.
 Current user instructions outrank saved lines. Current authoritative evidence,
 such as the manual, can correct stale factual claims. Narrow exceptions coexist
 with broader rules unless revoked. These are prompt instructions, not a
-perfect-recall guarantee; inspect actual admission on the Memories tab.
+perfect-recall guarantee; inspect actual admission on the Memory tab.
 
 ## Is that an instruction or a rule? How it knows you mean always, how to make it permanent, and when it didn't notice a rule and did it once
 
@@ -98,7 +98,7 @@ is an automation.
 
 When it did something once and you meant it to hold — it didn't notice this was
 a rule — make it permanent: say "remember that", or type `/remember <the rule>`.
-When it kept something you only meant for now, forget it on the Memories tab, or
+When it kept something you only meant for now, forget it on the Memory tab, or
 say "forget that". Noticing reads every turn you type, so a rule you state plainly ("always…",
 "never…", "from now on…") is usually kept and says so.
 
@@ -118,7 +118,7 @@ of its own (home, or a folder codeaf could not identify) keeps a project line
 for you everywhere and says so: `… · for you everywhere, since this conversation
 has no project of its own`.
 
-Can I change everywhere to just this project? Yes: on the Memories tab, `→` on the
+Can I change everywhere to just this project? Yes: on the Memory tab, `→` on the
 line offers `hold it everywhere`, `hold it in this project` and `hold it on this
 machine` — whichever it is not. There is no "everywhere except here": move the
 line to the projects it should hold in instead.
@@ -127,10 +127,11 @@ A project is known by its git `origin` (so every clone and worktree of one
 repository is one project), or by the folder when there is no remote.
 
 
-## How do I see what codeaf remembers about me? The Memories tab (it was the Memory tab)
+## How do I see what codeaf remembers about me? The Memory tab — your memories
 
-Open it with `alt+8`, the **Memories** word on the tab bar (the fifth word; its number is 8
-all the same), or `/memory`. It is
+Open it with `alt+8`, the **Memory** word on the tab bar (the fifth word; its number is 8
+all the same), or `/memory`. Some receipts say `Memories tab`; they mean this same
+**Memory** tab. It is
 drawn like the Activity tab: groups, each a row of its own in the heading ink
 with its fold mark after it, and every line hanging under its group on the
 tree's connectors:
@@ -143,7 +144,8 @@ tree's connectors:
 
 Two columns, headed on the filter row: **kept by** (`you`, `the model`,
 `noticed`, or on a let-go line `forgotten` / `replaced`) and **age**. The head
-row counts what is kept, and says `N more in memory` for lines not admitted
+row omits zero counts: with no kept lines and two let-go lines it says `2 let go`.
+It counts what is kept, and says `N more in memory` for lines not admitted
 to this conversation. Each line starts with `riding` or `archived`; open its pane or card for
 the full reason. Admission reflects the conversation's most recent prompt.
 With an older engine that cannot report admission, the heading explicitly
@@ -165,7 +167,7 @@ the cursor: the whole line, where it holds, who kept it, and where it was
 learned.
 
 
-## Open and fold a group on the Memories tab — the arrow keys, enter, and the keys
+## Open and fold a group on the Memory tab — the arrow keys, enter, and the keys
 
 - `→` on a group opens it; `←` folds it back up. `enter` does not open groups.
 - `enter` on a line opens its card; on `+ remember something`, starts a line.
@@ -177,9 +179,9 @@ Every change the tab makes happens beside the screen, so a slow engine never
 freezes the keyboard, and its receipt appears on the line at the foot.
 
 
-## What the Memories tab shows when there is nothing in it
+## What the Memory tab shows when there is nothing in it
 
-On a machine that has kept nothing yet, the Memories tab draws its heading and
+On a machine that has kept nothing yet, the Memory tab draws its heading and
 one line — `the lines codeaf keeps in front of every conversation · /remember
 adds one` — and its foot offers only the way out. There is no `0 kept`: nothing
 kept is drawn as nothing. Once there is a first line, the groups and the
@@ -188,7 +190,7 @@ kept is drawn as nothing. Once there is a first line, the groups and the
 
 ## How do I edit a memory? Fix the wording
 
-On the Memories tab, put the cursor on the line and press `→`, then `e fix the
+On the Memory tab, put the cursor on the line and press `→`, then `e fix the
 wording` — or open its card with `enter` and press `→` then `e`. The line's
 words load into its own row, where you edit them; `enter` saves and `esc`
 cancels. The line keeps where
@@ -203,7 +205,7 @@ holds").
 
 ## How do I make you forget something? Forget a memory, undo forgetting one. Can a forgotten memory come back or be relearned?
 
-On the Memories tab: `→` on the line, then `f forget it` — or `delete`. The
+On the Memory tab: `→` on the line, then `f forget it` — or `delete`. The
 line moves under `let go`, marked `forgotten`; open `let go` with `→`, and
 `→` then `u put it back` on the line restores it, whenever you like — unless the
 same words are kept again since, which says `already kept · <line> · nothing was
@@ -273,7 +275,7 @@ one and says so:
 
 `noticed and remembered · deploys on Tuesdays · replaces deploys on Fridays · for this project · see or forget it on the Memories tab`
 
-The replaced line waits under `let go` on the Memories tab, marked `replaced`:
+The replaced line waits under `let go` on the Memory tab, marked `replaced`:
 put it back there, and forget the new one, to undo the change. When the
 correction is already kept, the old line is let go and nothing new is written:
 `noticed · deploys on Fridays is let go · already kept: deploys on Tuesdays · see
@@ -291,7 +293,7 @@ Memory selection uses activation: applying, confirming or merging a line
 strengthens it; merely showing it or finding it in a search does not. A
 correction contradicting a remembered line counts against it. Unrehearsed
 lines lose activation with age. A low-activation line stays stored;
-`archived` in the Memories tab means it is not riding this conversation, not
+`archived` in the Memory tab means it is not riding this conversation, not
 that it was deleted. Forgotten and replaced lines remain under `let go`.
 
 Near-duplicate writes can merge with an existing line instead of filling the
@@ -315,7 +317,7 @@ is available to relevant facts, project progress and other durable lines.
 Within each group, specific phrases, identifiers and nearby matching
 words take priority over generic topic repetition, with activation breaking
 ties. A line must still meet the activation threshold. The block says `· N more in memory` for stored lines that do
-not ride. Open the Memories tab to see `riding` or `archived` and a reason for
+not ride. Open the Memory tab to see `riding` or `archived` and a reason for
 each line; archive does not mean forgotten. Admitted lines stay with the
 conversation while its context is unchanged, so adjacent turns do not
 randomly swap remembered facts. Short related follow-ups such as “why?” or
@@ -352,7 +354,7 @@ jobs at extra cost on your key; Spending shows actual recorded costs. Off applie
 step without restarting. A call already in flight finishes and is billed.
 
 Saved knowledge remains readable at no cost. Kept lines still ride in prompts,
-and `/remember` and the Memories tab still work. Forget a line there to remove it.
+and `/remember` and the Memory tab still work. Forget a line there to remove it.
 Nothing saved is deleted by the setting. Conversation search and bash fix hints
 are separate and keep working either way.
 
@@ -379,7 +381,7 @@ That sentence came from an older codeaf reading a store a newer one had already
 upgraded, or the reverse: a mismatch between the file and the program, not
 damage to the file. The newer codeaf repairs the file as it opens it, keeping
 every line's words, where it came from and whether it was active. A line an old
-store kept as "project" without naming the project is kept under the Memories
+store kept as "project" without naming the project is kept under the Memory
 tab's `couldn't tell which project` group until you move it.
 
 The window and the background engine can be on different builds. Updating the
@@ -400,7 +402,7 @@ not necessarily a running turn.
 ## Does memory work on the ordinary launch, over --host, and on a smaller model?
 
 Yes. Plain `codeaf` and `--host devbox` both use the connected conversation's
-memory: the commands, the Memories tab and the receipts all reach that machine's
+memory: the commands, the Memory tab and the receipts all reach that machine's
 store. `--no-host` uses this machine's store directly.
 
 On a small model (a context window under about 32,000 tokens, or a model with no
@@ -424,7 +426,7 @@ receipt, and then `/remember` says:
 `saving that has not answered yet · check /memory before trying again`
 
 That is not a failure: the engine may still be saving, and codeaf does not retry
-on its own. Check the Memories tab before sending it again.
+on its own. Check the Memory tab before sending it again.
 
 
 ## Where is everything you remember kept? Where is my memory file on disk? Can I copy my memories to another machine?
@@ -639,14 +641,14 @@ one at the top of codeaf's own folder. Tasks write into the same project file.
 The counts are **halved every week**, so something confirmed once months ago
 drops out and something confirmed this morning rises. A suggestion that fails on
 the same error is counted against itself. There is no command or panel for it,
-it is not on the Memories tab, and the noticing setting does not turn it off: the
+it is not on the Memory tab, and the noticing setting does not turn it off: the
 one line on a failed row is the whole of what it says.
 
 ## Are my memories shared across computers? Does /remember work on my other computer — hand edited memories follow my paired computers, memory missing on the new laptop
 
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
-Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memories place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
+Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memory place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
 
 Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. A solo computer with submitted chats requires confirmed replacement to pair. A startup-only computer can pair directly and merge its memory and preferences. Explicit `--replace` clears shared memory and preferences. Chat-written memory still rides in each chat's own saved ledger as well.
 
@@ -725,3 +727,19 @@ knowledge vault. Unsaved text is not written to disk.
 In the desktop Library, choose Rename beside a guide or collection title. Enter saves; Escape cancels. Titles are one line, up to 200 Unicode characters. Renaming keeps the page id, links, sources and folder membership. A collection rename changes its displayed label, not the scope used for retrieval. Renaming alone does not turn learned text into a manual edit or pause future learning. Earlier titles remain aliases for wiki links. Conflicting title edits stay available for comparison before replacing the current title.
 
 Citation previews render only the quoted source text as Markdown, preserving the original source's line breaks when they can be matched. The surrounding source message is not sent with the preview. Library answers use numbered inline references; claim keys stay out of the reading surface.
+
+## My rules are gone — rules from an earlier version of codeaf
+
+Old chat rules stored in `v3/standing/` were not carried over to memories.
+On the first interactive launch for the home that holds them, Home and the
+conversation show a notice once: `They were not carried over.` It tells you to
+`Recreate schedules in /automations and rules with /remember.`
+
+Your list is in `<codeaf home>/v3/standing-upgrade-report.txt`, normally
+`~/.codeaf/v3/standing-upgrade-report.txt`. It includes the original words,
+instruction, workspace, schedule, status and source file, with paused, retired,
+unreadable and unknown-format items identified. The old folder stays untouched.
+Use `/remember` to recreate the rules you still want at their intended scope;
+use `/automations` for schedules. No rules or schedules are imported automatically.
+A remote home has its own report and acknowledgement; headless work does not
+consume the notice. A home with no old items says nothing.

@@ -202,6 +202,12 @@ A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
 setting. Turn automatic learning on with the shared Memory setting.
+A new profile whose first saved-chat inventory is empty enables capture automatically.
+A profile with existing eligible history waits for **Build knowledge base** in
+Memory before importing it; capture is profile-wide.
+Compilation is paid model work recorded in Spend, including unusable answers.
+It pauses at the daily limit and resumes automatically after you raise the
+limit with `/budget day` or the local day changes.
 
 ## Unreadable profile settings and saved spending limits
 
@@ -224,3 +230,9 @@ the spending authority.
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 A paired account whose service reports storage permission has a **sync storage** row showing **on** or **off**. While **off**, press Enter (`enter request access`) to open a pre-filled GitHub issue. The panel also shows the public request code and link if no browser opens. The code is your identity id (`id_` and 32 hex digits), safe to post and granting nothing by itself. Choosing this row in Settings search clears the search and opens Devices. While **off**, Enter also requests access. While **on**, it opens Devices without offering or making a request. The row is absent with sync off, before pairing, or when the service answers without storage permission. A window already open when you pair checks for the answer within about a minute; an open Settings page then updates its row automatically. The first `/status` after pairing shows the cached dim line `sync storage  off` while storage is off.
+
+## Why Settings says held by an environment variable
+
+A row controlled at launch says `held by <variable> — unset it to change this here`.
+The name is the spelling that supplied the value. Unset that variable and start again
+to change the row in Settings. See Starting codeaf, “The old name”, for older spellings.

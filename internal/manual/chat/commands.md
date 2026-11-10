@@ -294,7 +294,7 @@ command).
 | `/review` | — | `[<pull request>] [what to focus on] \| post <report>` | when this build or far engine carries review, reviews a GitHub pull request (its link, `owner/repo#N` or `#N`), or with nothing after it the current branch's; `post <report>` posts a review it wrote, on your yes. It changes no files |
 | `/sec` | — | `[changes [since <ref>]] [quick \| thorough]` | when this build or far engine carries sec, audits the whole repository for security problems, or with `changes` only the branch's changes; with nothing after it, the whole repository. It changes no files |
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
-| `/memory` | `/memories` | — | opens the Memories tab (`alt+8`) |
+| `/memory` | `/memories` | — | opens the Memory tab (`alt+8`) |
 | `/memory` | `/memories` | `<words>` | prints the remembered lines those words name into the conversation |
 | `/remember` | `/always` | `<text>` | keeps one line in front of every conversation: for this project, or for you everywhere when typed on home or in a conversation with no project; it says `remembered · <text> · <where>` |
 | `/always` | — | — | prints every line kept here — on home, the ones that hold everywhere |
@@ -1081,7 +1081,7 @@ deletes anything; `codeaf cache clean --yes` skips the question for scripts.
 
 **What `/cache clean` will not do:** it does not delete conversations, reset the
 dashboard, or forget memories. To start a fresh conversation the command is `/new`;
-a memory is forgotten on the Memories tab (`→` then `f`, or `delete`), or by asking. There is no
+a memory is forgotten on the Memory tab (`→` then `f`, or `delete`), or by asking. There is no
 `/forget` command any more.
 
 ## /model — pick a model
@@ -1961,7 +1961,7 @@ Settings now groups controls by what you want to change:
 General holds appearance, input and updates. Models holds model selection and
 advanced routing/context controls. Memory holds `learn from chats and jobs` —
 automatic memory learning, on by default unless saved off, with its extra model-call cost — and a link to
-the Memories tab. Tasks controls delegated work; AI teams sets defaults
+the Memory tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
 Devices lists your paired computers, renames this one, removes another, and starts

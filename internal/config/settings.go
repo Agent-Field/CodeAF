@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/money"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -1790,6 +1791,9 @@ func (s Setting) PinnedBy() (string, bool) {
 	if strings.TrimSpace(env.Value(s.Env)) == "" {
 		return "", false
 	}
+	if strings.HasPrefix(s.Env, "CODEAF_") {
+		return env.Spelling(s.Env)
+	}
 	return s.Env, true
 }
 
@@ -2904,7 +2908,7 @@ func SpentFigure(usd float64) string {
 // MoneyFloor is the smallest amount any surface writes as a figure: a hundredth
 // of a cent, four places after the point. It is the number [SubCent] compares
 // against AND the number it prints, so it is spelled once.
-const MoneyFloor = 0.0001
+const MoneyFloor = money.Floor
 
 // SubCent is how a positive amount SMALLER THAN A CENT is written, everywhere.
 //
@@ -2916,10 +2920,7 @@ const MoneyFloor = 0.0001
 // was spent, which is the emptiness law's failure turned inside out. Every
 // sub-cent figure is written here now, and the floor never rounds to a lie.
 func SubCent(usd float64) string {
-	if usd < MoneyFloor/2 {
-		return "<" + fmt.Sprintf("$%.4f", MoneyFloor)
-	}
-	return fmt.Sprintf("$%.4f", usd)
+	return money.SubCent(usd)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam

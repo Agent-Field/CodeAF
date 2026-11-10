@@ -755,6 +755,11 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	if purpose == purposeTurn {
 		messages = a.jobAutonomyMessages(messages)
 	}
+	if purpose != purposeTurn {
+		if err := DailyLimitReached(a.config); err != nil {
+			return nil, model, err
+		}
+	}
 	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
 	// (taskcrew.go's [Agent.healthyModel]).
 	if _, paired := requestConversationModels(ctx); !paired && (!a.foregroundModelCall(purpose) || a.automaticModelsAllowed()) {

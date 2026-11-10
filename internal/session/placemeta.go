@@ -132,6 +132,7 @@ func (a *Agent) SettleWrites() {
 	}
 	a.metaStamp().settle()
 	a.modelStamp().settle()
+	a.spendStamp().settle()
 	a.toldStamp().settle()
 	a.fixShelfFor().settle()
 	a.treesAhead().Settle()
@@ -431,12 +432,30 @@ var (
 	metaStampSettling func()
 )
 
+// spendStamp keeps spend writes ordered without coalescing away a user stamp.
+// Its callback settles the user stamp first, then reads the current books so
+// an older turn snapshot cannot overwrite a bill that arrived after sealing.
+func (a *Agent) spendStamp() *stampWriter {
+	a.spendStampOnce.Do(func() { a.spendStampWriter = &stampWriter{} })
+	return a.spendStampWriter
+}
+
 // stampSpend records the conversation's running total — what the talking has
-// cost so far, and what it weighed — on the session's own meta.json.
+// cost so far, and what it weighed — on the session's own meta.json, which is
+// what Home's search card reads.
 //
-// It rides the end of a turn and a receipt recovered after one ended. Both
-// stamps copy the same cumulative meter: the late receipt entered through
-// [Agent.bank] already, so neither the ledger nor call lines are added here.
+// IT RIDES EVERY BILL, NOT ONLY THE END OF A TURN. It used to be written once,
+// when [Agent.sealTurn] closed a turn, on the reasoning that every turn shape
+// ends there. But an auxiliary call can bill after its turn sealed — a
+// detached title (title.go) is the common one — and then Home's card showed
+// less than `/cost` for the same conversation (the pre-release hand test read
+// $0.0020 against $0.0034). So a turn's seal, a task fold and an auxiliary
+// bill all owe this one deferred write, and the write reads the live books
+// when it runs, so a late bill is never lost to an older turn's snapshot.
+//
+// IT SETTLES THE USER STAMP FIRST, for the ordering #2557 established: a
+// deferred stamp carrying an older snapshot must never land after a newer
+// value, so the opening stamp's write is settled before this one reads.
 //
 // THE FIGURE IS THE SESSION'S OWN AND NEVER ITS TASKS'. [Agent.usage] is this
 // agent's talking: its turns, and the auxiliary calls beside them (the namer,
@@ -452,18 +471,23 @@ var (
 // scans it, and what a run has spent is its own row's answer
 // (internal/automation) and not this one.
 //
-// There is no other end-of-turn write to a session's meta.json to ride:
-// [Agent.stampUserLocked] runs at the start of a turn, before the cost exists.
-// So this is a read and a temp-and-rename of a
-// file of a few hundred bytes, once per turn or recovered receipt, beside a
-// provider call that took seconds. EVERY FAILURE IS SILENCE, for this file's
-// stated reason: the total is a citation and the transcript is the record.
-func (a *Agent) stampSpend() { a.stampTurnEnd(false) }
+// The write is small and coalesced: a read and a temp-and-rename of a file of
+// a few hundred bytes, owed through one stampWriter so a burst of bills becomes
+// one write. A worker with no place owes no file. EVERY FAILURE IS SILENCE,
+// because the total is a citation and the transcript is the record.
+func (a *Agent) stampSpend() {
+	a.mu.Lock()
+	needed := strings.TrimSpace(a.config.Place.Dir) != "" && (a.usage.CostUSD > 0 || a.usage.Input+a.usage.Output > 0)
+	a.mu.Unlock()
+	if !needed {
+		return
+	}
+	a.spendStamp().Owe(func() { a.stampTurnEnd(false) })
+}
 
 // stampSealed is [Agent.stampSpend] at a turn's seal, which also says when the
 // conversation last answered the person ([Meta.LastReplyAt]) if this turn
-// ended on an answer. It is the same one write, so a turn still owes meta.json
-// one write and not two.
+// ended on an answer. The seal saves both fields before publishing its news.
 //
 // AN ANSWER IS THE TURN'S LAST WORD TO THE PERSON: an answer was recorded
 // since the last seal and the journal still ends on it, an assistant message
@@ -478,6 +502,7 @@ func (a *Agent) stampSealed() { a.stampTurnEnd(true) }
 var spendStampCaptured func(*Agent, float64)
 
 func (a *Agent) stampTurnEnd(sealed bool) {
+	a.metaStamp().settle()
 	a.spendStampMu.Lock()
 	defer a.spendStampMu.Unlock()
 	dir, snapshot, spent, tokens, replied := a.captureSpendStamp(sealed)

@@ -928,7 +928,7 @@ message box, **home's box at the foot of the screen**, the errand pane on home,
 the `something else…` box on a question's own answer row, the settings filter and
 its value editor, the task page's filter, the rewind search, and every filterable
 overlay — the model picker, `/resume`, `/files`, the connect key box, the
-connections panel — and the Memories tab's filter and line editor.
+connections panel — and the Memory tab's filter and line editor.
 
 | Chord | Everywhere |
 |---|---|
@@ -2115,7 +2115,7 @@ Only in a conversation, with none of those claiming it and the box empty, is it 
 
 Two claims on `tab` were withdrawn when the places arrived, and both moved to a key that
 points the way they go: **the settings panel** changed its own section with `tab`, and now
-uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and the Memories tab
+uses `←` and `→` alone; **the memory panel** changed shelf with `tab`, and the Memory tab
 that replaced it has no shelf key at all — `→` opens a group and `←` folds it, as on the
 Activity tab.
 
@@ -2442,7 +2442,7 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 inside a conversation, and `/home` opens it too.
 
 **There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the eight words on
-the top line, `home  chats  AI teams  activity  memories  automations  spend  settings`, and
+the top line, `home  chats  AI teams  activity  memory  automations  spend  settings`, and
 `alt+1` opens it. **The other numbers do not follow the bar's order** — they kept the
 destinations they had before the bar was regrouped: `alt+2` AI teams, `alt+3` chats,
 `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations, `alt+8` memories. So

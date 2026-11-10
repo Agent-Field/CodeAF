@@ -87,6 +87,7 @@ func (v *Vault) StartBuild() error {
 	job["request"] = time.Now().UTC().Format(time.RFC3339Nano)
 	job["phase"] = string(BuildRunning)
 	job["error"] = ""
+	job["build_attempts"] = 0
 	if err = saveState(tx, "job", job); err != nil {
 		return err
 	}
@@ -403,15 +404,36 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile'").Scan(&total); err != nil {
 		return err
 	}
-	var latest int64
-	var admitted int
-	var arrived float64
-	if err = db.QueryRow("SELECT coalesce(max(rowid),0),count(*),coalesce(max(arrived),0) FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&latest, &admitted, &arrived); err != nil {
+	// THE TEXT CROSSES INTO GO ONLY FOR A LEGACY SOURCE WITH NO STORED HASH. Every
+	// capture since provenance records its content hash, and this runs on every
+	// pass, so copying each source's text here would churn a large vault's whole
+	// history every few seconds.
+	rows, err := db.Query("SELECT id,coalesce(json_extract(payload,'$.provenance.content_hash'),''),CASE WHEN coalesce(json_extract(payload,'$.provenance.content_hash'),'')='' THEN coalesce(json_extract(payload,'$.text'),'') ELSE '' END FROM events WHERE partition='profile' AND coalesce(json_extract(payload,'$.job'),0)=0 ORDER BY id")
+	if err != nil {
+		return err
+	}
+	var input []any
+	for rows.Next() {
+		var id, contentHash, legacyText string
+		if err = rows.Scan(&id, &contentHash, &legacyText); err != nil {
+			rows.Close()
+			return err
+		}
+		if contentHash == "" {
+			contentHash = identity(legacyText)
+		}
+		input = append(input, []any{id, contentHash})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
 		return err
 	}
 	// An empty vault has no build input or retry budget to persist.
 	if total > 0 {
-		attemptInput := identity([]any{latest, admitted, arrived, job["request"], knowledgeProjectionVersion})
+		// Content and source identities survive handover, independent of arrival
+		// times and batch progress. A person's Build resets the count explicitly.
+		attemptInput := identity([]any{input, knowledgeProjectionVersion})
 		if job["build_input"] != attemptInput {
 			job["build_input"] = attemptInput
 			job["build_attempts"] = 0

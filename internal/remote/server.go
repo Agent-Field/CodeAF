@@ -134,6 +134,8 @@ type WrappedAgent interface {
 // and the locked-file fallback; this package owns nothing about how an agent is
 // made and everything about how one is spoken to.
 type Engine struct {
+	// EntryNotice reads home-owned recovery news when an interactive surface opens.
+	EntryNotice func(string) string
 	// SyncService is the engine's address for chat outage notices.
 	SyncService string
 	// DeltaWindow lets each of this conversation's streams fold streamed text
@@ -1354,6 +1356,14 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 	// this reading in the welcome is what makes an old persistent engine say
 	// it was replaced before somebody has to spend a turn to discover it.
 	note := strings.TrimSpace(sess.engine.Note)
+	if !sess.engine.Headless && sess.engine.EntryNotice != nil {
+		if recovery := sess.engine.EntryNotice(sess.engine.SessionFile); recovery != "" {
+			if note != "" {
+				note += " · "
+			}
+			note += recovery
+		}
+	}
 	if newer := buildinfo.StaleNotice(); newer != "" {
 		if note != "" {
 			note += " · "

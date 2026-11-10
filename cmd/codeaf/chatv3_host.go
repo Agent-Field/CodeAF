@@ -741,6 +741,9 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// machine that actually decides whether a tool runs unattended
 		// (internal/tui3's app.approvalPosture).
 		ApprovalMode: welcome.ApprovalMode,
+		// The engine echoes the launch that supplied the session's OneModel
+		// config, so an attached window reports the model policy it joined.
+		OneModel: welcome.Launch != nil && welcome.Launch.OneModel,
 		// The engine's own foreground-command clock, for the same reason. The
 		// laptop's profile may carry a different value and cannot describe the
 		// timer that is already armed around a far process.

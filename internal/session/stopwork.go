@@ -39,6 +39,11 @@ func (a *Agent) stopWorkLocked(why string, door StopDoor, notice string) error {
 	a.workStopped, a.workStopping = true, true
 	a.workEpoch++
 	a.workStopReason = why
+	a.workStopEnding = TaskEndingStopped
+	if door == StopByTimeLimit {
+		a.workStopEnding = TaskEndingTimeLimit
+	}
+	ending := a.workStopEnding
 	a.workStopDone = make(chan struct{})
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
@@ -91,18 +96,18 @@ func (a *Agent) stopWorkLocked(why string, door StopDoor, notice string) error {
 	}
 	// The UI receives acceptance promptly. Reopening admission waits for the old
 	// producers themselves, so a late tool cannot join a freshly resumed registry.
-	beltDone := a.stopOwnedBeltRun(why)
-	go a.finishWorkStop(done, graph, jobs, beltDone, why, notice)
+	beltDone := a.stopOwnedBeltRun(why, ending)
+	go a.finishWorkStop(done, graph, jobs, beltDone, why, notice, ending)
 	return nil
 }
 
-func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *jobRegistry, beltDone <-chan struct{}, why, notice string) {
+func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *jobRegistry, beltDone <-chan struct{}, why, notice string, ending TaskEnding) {
 	if graph != nil {
 		graph.mu.Lock()
 		ids := append([]uint64(nil), graph.order...)
 		graph.mu.Unlock()
 		for _, id := range ids {
-			_, _ = graph.stopFor(id, why)
+			_, _ = graph.stopForEnding(id, why, ending)
 		}
 	}
 	if jobs != nil {
@@ -127,7 +132,7 @@ func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *job
 		ids := append([]uint64(nil), graph.order...)
 		graph.mu.Unlock()
 		for _, id := range ids {
-			_, _ = graph.stopFor(id, why)
+			_, _ = graph.stopForEnding(id, why, ending)
 		}
 		graph.runners.Wait()
 	}
@@ -138,7 +143,7 @@ func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *job
 	}
 	// A run admitted before Stop may have finished setup after the first cut.
 	a.beltStartMu.Lock()
-	late := a.stopOwnedBeltRun(why)
+	late := a.stopOwnedBeltRun(why, ending)
 	a.beltStartMu.Unlock()
 	if late != nil {
 		<-late
@@ -193,13 +198,13 @@ func (a *Agent) resumeWorkLocked() error {
 
 // stopOwnedBeltRun marks the run terminal before cutting its shared worker
 // context. Close uses a different road so ordinary detach stays resumable.
-func (a *Agent) stopOwnedBeltRun(why string) <-chan struct{} {
+func (a *Agent) stopOwnedBeltRun(why string, ending TaskEnding) <-chan struct{} {
 	a.beltMu.Lock()
 	run := a.beltRun
 	a.beltMu.Unlock()
 	if run == nil {
 		return nil
 	}
-	_, _, _ = a.stopBeltRow(run.row, why)
+	_, _, _ = a.stopBeltRowForEnding(run.row, why, ending)
 	return run.over
 }

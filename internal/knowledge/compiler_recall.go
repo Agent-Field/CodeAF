@@ -61,7 +61,7 @@ func (v *Vault) recallSaved(ctx context.Context, key, question, scope string, ex
 	if err != nil {
 		return answer, err
 	}
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, explicitRead: explicitRead, calls: v.calls}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, explicitRead: explicitRead, calls: v.calls, repeats: v.repeats}
 	result, err := recallCompilation(vault, question, scope, 16, "lexical", model)
 	if err != nil {
 		return answer, err
@@ -383,7 +383,7 @@ func (v *Vault) RunSupportContracts(ctx context.Context, key string) (json.RawMe
 		return nil, err
 	}
 	defer db.Close()
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: v.calls, repeats: v.repeats}
 	result, runErr := runFrozenSuite(model)
 	if result == nil {
 		return nil, runErr

@@ -923,6 +923,11 @@ func (c Config) routeGate(send, wire string) func(context.Context, string, strin
 		if err := factoryCallRefusal(ctx); err != nil {
 			return err
 		}
+		if tag != string(purposeTurn) {
+			if err := DailyLimitReached(c); err != nil {
+				return err
+			}
+		}
 		if c.RouteCrew == nil {
 			return nil
 		}

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
-	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
 	"github.com/Agent-Field/codeaf/internal/raftcore"
 )
@@ -22,8 +21,10 @@ func TestR30ClusterQuestionsReachCompleteAnswers(t *testing.T) {
 		question string
 		facts    []string
 	}{
-		{"can my phone lead", []string{"no codeaf phone app yet", "cannot lead yet", "persistent storage", "codeaf cluster lead"}},
-		{"what is cluster lead", []string{"joint change", "transfers leadership", "receipt", "saved signed request"}},
+		// The design law removes unusable manual leadership for this release, per #2559.
+		{"can my phone lead", []string{"no codeaf phone app yet", "cannot lead yet", "persistent storage", "the coordinating computer cannot be chosen by hand", "`codeaf cluster status` shows which computer coordinates", "Tracked in issue #2559"}},
+		// The design law replaces the transfer promise with the release limit, per #2559.
+		{"what is cluster lead", []string{"the coordinating computer cannot be chosen by hand", "`codeaf cluster status` shows which computer coordinates", "Tracked in issue #2559", "there is no `codeaf cluster lead`."}},
 		{"what happens if my leader goes away", []string{"restore the third anchor", "does not automatically regain leadership", "saved chats", cs.LeadershipUnavailable}},
 		{"what can a worker do", []string{"selected chats", "cannot approve pairing", "read the identity vault", "not available as a terminal command yet"}},
 	} {
@@ -45,16 +46,16 @@ func TestR30ClusterQuestionsReachCompleteAnswers(t *testing.T) {
 
 // R8/R9/R25/R30 bind every quoted coordination refusal to its product definition.
 func TestR30CoordinationQuotesMatchProductStrings(t *testing.T) {
+	// The design law hides manual leadership per #2559, so its dormant client
+	// refusals no longer belong to the shipped command's manual assertions.
 	messages := []string{
 		cs.LeadershipUnavailable,
 		cs.ErrMigration.Error(),
 		cs.EnrollmentMessage(cs.Capacity),
 		cs.EnrollmentMessage(cs.UpdateRequired),
-		(clusterctl.CommittedRefusal{}).Error(),
 		chatlist.LostRace,
 	}
 	for _, source := range []struct{ path, declaration, prefix string }{
-		{"../syncsetup/cluster.go", "LeadCluster", "this computer must join"},
 		{"../syncsetup/member.go", "errMemberWaiting", "this computer is still joining"},
 		{"../syncsetup/worker.go", "ErrWorkerIncomplete", "this work may be incomplete"},
 		{"../directory/export.go", "legacyWriteRefusal", "codeaf: directory upgraded"},

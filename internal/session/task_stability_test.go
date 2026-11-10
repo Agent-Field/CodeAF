@@ -174,7 +174,8 @@ func TestALocalTaskStopRecoveryAndReopenUseTheOriginalRoad(t *testing.T) {
 	}
 	waitRemoteRun(t, second)
 	row, _ := runRowOf(second.graph(), id)
-	if row.State != TaskFailed || !row.Stopped || row.Ending != "" || row.EndedAt.IsZero() || !strings.HasPrefix(row.Report, "stopped") {
+	// R5 records the cancellation cause explicitly, including the person's Stop.
+	if row.State != TaskFailed || !row.Stopped || row.Ending != TaskEndingStopped || row.EndedAt.IsZero() || !strings.HasPrefix(row.Report, "stopped") {
 		t.Fatalf("local stop changed its original ending: %+v", row)
 	}
 	if err := second.Close(); err != nil {

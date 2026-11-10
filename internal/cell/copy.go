@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/upgradenotice"
 )
 
 // copyCheckpoint is a process-death seam; production never pauses construction.
@@ -207,6 +208,12 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 		return Cell{}, err
 	}
 	copyCheckpoint("copied")
+	// The independent journal is the exact history imported, before its header changes.
+	baseline, err := readCopySource(filepath.Join(root, legacyTranscript), -1)
+	if err != nil {
+		return Cell{}, err
+	}
+	baseline.Original = original
 	// Migration operates solely on the independent copy. No source inode is
 	// shared, even for files the migration itself links inside that copy.
 	if err := MigrateLegacy(root); err != nil {
@@ -224,7 +231,11 @@ func CopyLegacy(ctx context.Context, original string, prepare func(context.Conte
 	if err := ctx.Err(); err != nil {
 		return Cell{}, err
 	}
-	if err := StampCopyReady(root); err != nil {
+	ready, err := json.Marshal(baseline)
+	if err != nil {
+		return Cell{}, err
+	}
+	if err := upgradenotice.Write(filepath.Join(root, CopyReadyPath), append(ready, '\n')); err != nil {
 		return Cell{}, err
 	}
 	copyCheckpoint("published")

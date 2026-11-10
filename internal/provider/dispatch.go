@@ -653,6 +653,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			cancelAttempt()
 			return nil, err
 		}
+		// Recheck after every wait, including the limiter, because another call
+		// may have spent the daily allowance while this attempt was queued.
 		if gate := c.config.RouteGate; gate != nil {
 			if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
 				sharedLimiter.release(false, 0)

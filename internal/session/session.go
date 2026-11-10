@@ -3595,6 +3595,7 @@ type Agent struct {
 	workStopping   bool
 	workEpoch      uint64
 	workStopReason string
+	workStopEnding TaskEnding
 	workStopDone   chan struct{}
 	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
 	// a [context.CancelCauseFunc] rather than a plain one because a turn that
@@ -4118,6 +4119,9 @@ type Agent struct {
 	// Model choices have a separate writer so coalescing never drops a user stamp.
 	modelStampOnce   sync.Once
 	modelStampWriter *stampWriter
+	// Spend has its own writer so a late bill cannot replace an owed user stamp.
+	spendStampOnce   sync.Once
+	spendStampWriter *stampWriter
 
 	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
 	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its

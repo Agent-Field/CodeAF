@@ -858,6 +858,9 @@ type runRecord struct {
 	Merge   string     `json:"merge,omitempty"`
 	Result  string     `json:"result,omitempty"`
 	Changed []string   `json:"changed,omitempty"`
+	// The landing question must keep naming the same files after a restart.
+	Conflicts  []string `json:"conflicts,omitempty"`
+	GroundHeld bool     `json:"groundHeld,omitempty"`
 }
 
 // taskDocument is the file: a type tag, a version, the id counter, the nodes in
@@ -1245,6 +1248,8 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Merge:               notice.Merge,
 		Result:              notice.Result,
 		Changed:             append([]string(nil), notice.Changed...),
+		Conflicts:           append([]string(nil), notice.Conflicts...),
+		GroundHeld:          notice.GroundHeld,
 		PlanTask:            notice.PlanTask,
 		RecoveredCompletion: notice.RecoveredCompletion,
 	}
@@ -1297,6 +1302,8 @@ func runRowNotice(record runRecord) TaskNotice {
 		Merge:               record.Merge,
 		Result:              record.Result,
 		Changed:             append([]string(nil), record.Changed...),
+		Conflicts:           append([]string(nil), record.Conflicts...),
+		GroundHeld:          record.GroundHeld,
 		PlanTask:            record.PlanTask,
 		RecoveredCompletion: record.RecoveredCompletion,
 	}

@@ -188,7 +188,7 @@ func (a *Agent) factoryOwnedStop() func() {
 			cancel(stopFor(StopByWorkStopped))
 		}
 		for id, done := range tasks {
-			_, _ = graph.stopAttempt(id, "", done)
+			_, _ = graph.stopAttempt(id, "", done, TaskEndingStopped)
 		}
 		var stopped sync.WaitGroup
 		for _, job := range owned {

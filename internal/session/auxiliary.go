@@ -291,6 +291,9 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 			called = rung.Model
 		}
 		releaseRung()
+		if errors.Is(callErr, ErrSpendRail) {
+			return nil, called, callErr
+		}
 		if callErr == nil && response != nil {
 			// THE ROAD THIS ANSWER CAME DOWN goes with the answer to whichever
 			// caller banks it ([Agent.addUsageAs]); the slot is this attempt's

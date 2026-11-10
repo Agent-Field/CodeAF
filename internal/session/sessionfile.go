@@ -894,6 +894,9 @@ type journalDivision struct {
 // counts every request to the provider, Turns only the ones a turn of the
 // person's made (see [Agent.addAuxiliaryUsage]).
 type journalUsage struct {
+	// Folded keeps a worker's already-billed share in the conversation's books
+	// without reconstructing it as another model call on the machine ledger.
+	Folded bool `json:"folded,omitempty"`
 	// RemoteEvent makes mirrored charges idempotent across cursor replay.
 	RemoteEvent string  `json:"remote_event,omitempty"`
 	Model       string  `json:"model,omitempty"`
@@ -3180,7 +3183,7 @@ func (s *sessionFile) appendNamedTitleWithIntent(title string, literal bool, int
 // The NIL RECEIVER writes nothing, for the reason [sessionFile.isNote] answers
 // false: a memory-only session has no journal, and the caller should not have
 // to test for a file before sealing a turn.
-func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role string) {
+func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role string, folded ...bool) {
 	if s == nil {
 		return
 	}
@@ -3212,6 +3215,7 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 		for i, name := range names {
 			share := (*used.byModel)[name]
 			line := journalUsage{
+				Folded:     len(folded) > 0 && folded[0],
 				Model:      name,
 				Input:      share.Input,
 				Output:     share.Output,
@@ -3233,6 +3237,7 @@ func (s *sessionFile) appendUsage(used Usage, model string, aux bool, role strin
 	s.writeLine(sessionEntry{
 		Type: "usage",
 		Usage: &journalUsage{
+			Folded:     len(folded) > 0 && folded[0],
 			Model:      strings.TrimSpace(model),
 			Input:      used.Input,
 			Output:     used.Output,

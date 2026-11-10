@@ -275,6 +275,12 @@ A chat has one holder at a time. To take a chat back from the computer that took
 
 The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `held on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
+## Can tools run after taking a chat back and restarting?
+
+After a successful take-back through `continue here`, tools run here again,
+including after a restart. Earlier retained turns remain available as a separate
+branch, and the original chat includes the other computer's saved work.
+
 ## This window only shows the chat — can I still send here
 
 Once this window learns that another computer holds the chat, Enter opens
@@ -442,6 +448,21 @@ Recent older chats are prepared in the background after pairing. If you explicit
 
 The original older chat is untouched. A turn typed into the original by an older codeaf after the copy was made stays in that original; it is not merged into the copy. This build lists only the copy in place of the original, with its title and ordering retained.
 
+## Turns typed in an older codeaf are not shown here — where are my rollback turns
+
+If you return to an older codeaf after this build made a movable copy, turns you
+type there remain in the original `transcript.jsonl`; they are not merged into the copy.
+Opening the chat here shows a notice such as
+`2 turns typed in an older codeaf are kept in <file> and are not shown here.`
+`<file>` is the original transcript's location on the computer holding it, with
+`~` used for that computer's home. The original is untouched. Open that file to
+read the retained turns; nothing is merged automatically.
+
+The notice appears in the conversation once and appears again only if the original
+grows again with more person turns. The count is the total since the copy was made.
+Copies made before this build may lack a reliable original-history count; those
+show no warning rather than guessing. A headless open does not consume the notice.
+
 ## I quit on my laptop and opened my desktop — do I need alt+c
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
@@ -480,7 +501,7 @@ chat first; this does not discard the work saved on your computer.
 
 ## Which computer coordinates: cluster status and cluster lead
 
-On the hosted service, or a self-hosted service with persistent storage, an open paired home joins as a learner. Three persistent voters keep coordination available when your laptops sleep. `codeaf cluster status` shows this computer after joining. Continue chats through the ordinary continue door. See the coordination and workers page for command refusals and setup details.
+On the hosted service, or a self-hosted service with persistent storage, an open paired home joins as a learner. Three persistent voters keep coordination available when your laptops sleep. In this release, the coordinating computer cannot be chosen by hand; `codeaf cluster lead` is an unknown command. `codeaf cluster status` shows which computer coordinates and shows this computer after joining. Tracked in issue #2559. Continue chats through the ordinary continue door. See the coordination and workers page for command refusals and setup details.
 
 ## Can a worker access all my chats or approve pairing?
 

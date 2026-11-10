@@ -105,6 +105,7 @@ type Result struct {
 type Vault struct {
 	root, profile string
 	calls         func(context.Context) (context.Context, error)
+	repeats       *compilerRepeats
 	// passSeen is what the last build pass found, written and read only by
 	// the one goroutine running [Vault.Run], which backs off while it is the
 	// same from pass to pass.
@@ -113,7 +114,7 @@ type Vault struct {
 
 func hash(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }
 func Open(profile string) *Vault {
-	return &Vault{root: filepath.Join(profile, "knowledge"), profile: profile}
+	return &Vault{root: filepath.Join(profile, "knowledge"), profile: profile, repeats: &compilerRepeats{failed: make(map[string]compilerRepeat)}}
 }
 func (v *Vault) Directory() string { return v.root }
 func materializePages(vault document) ([]Page, error) {

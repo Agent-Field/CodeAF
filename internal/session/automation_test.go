@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -476,6 +477,8 @@ func TestWorkOutcomesComeFromTheReport(t *testing.T) {
 // — and it comes back as the person's call, naming the limit and the door that
 // changes it.
 func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	store := automationStoreFor(t)
 	item, err := store.Create(automation.Automation{Title: "weekly", Workspace: t.TempDir(), Schedule: automation.Schedule{Every: "1d"}, Action: automation.Action{Do: "draft it"}})
 	if err != nil {
@@ -485,9 +488,7 @@ func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
 	if err := config.WriteDailyBudgetUSD(profile, 1.00); err != nil {
 		t.Fatal(err)
 	}
-	held := automationSpentToday
-	t.Cleanup(func() { automationSpentToday = held })
-	automationSpentToday = func() (float64, error) { return 1.25, nil }
+	recordUsage(t, UsageLedgerPath(), UsageLine{At: time.Now(), USD: 1.25, Calls: 1, Model: "test/earlier"})
 
 	runner := NewAutomationRunner(func(workspace string) (Config, error) {
 		return Config{Workspace: workspace, Model: "test/model", System: "SYSTEM", ProfileDir: profile}, nil
@@ -500,13 +501,15 @@ func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Outcome != automation.OutcomeYourCall || !strings.Contains(report.Line, "today's spending limit is reached") ||
+	if report.Outcome != automation.OutcomeYourCall || !strings.Contains(report.Line, "daily limit reached") ||
 		!strings.Contains(report.Line, "/budget day changes it") {
 		t.Fatalf("a run past the daily limit = %+v", report)
 	}
 
 	// AND UNDER IT, THE RUN GOES AHEAD.
-	automationSpentToday = func() (float64, error) { return 0.25, nil }
+	if err := config.WriteDailyBudgetUSD(profile, 2); err != nil {
+		t.Fatal(err)
+	}
 	opened := false
 	runner.child = func(cfg Config) (*Agent, error) {
 		opened = true
@@ -592,5 +595,28 @@ func TestAWatchesCheckUsesAReplacedKey(t *testing.T) {
 	}
 	if replaced == first {
 		t.Fatal("a replaced key kept the client built with the old one")
+	}
+}
+
+func TestWatchModelCheckObeysDailyLimitAndPreauthorization(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	profile := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
+		t.Fatal(err)
+	}
+	recordUsage(t, UsageLedgerPath(), UsageLine{At: time.Now(), USD: 1, Calls: 1, Model: "test/earlier"})
+	client := &scriptedCompleter{steps: []step{finalText("no condition has not changed")}}
+	cfg := Config{ProfileDir: profile, Model: "test/judge", APIKey: "fixture", BaseURL: "https://router.invalid/api/v1"}
+	r := NewAutomationRunner(func(string) (Config, error) { return cfg, nil }, t.TempDir()).(*automationRunner)
+	settings := cfg.clientConfig(cfg.Model, providerTimeout)
+	r.clients[settings.Model+"\x00"+settings.BaseURL+"\x00"+settings.APIKey] = client
+	_, err := r.Judge(context.Background(), automation.Automation{Look: &automation.Look{Condition: "has changed", Command: "echo unchanged"}}, automation.Sight{Text: "unchanged"})
+	if !errors.Is(err, ErrSpendRail) || client.requests() != 0 {
+		t.Fatalf("blocked watch: err=%v, calls=%d", err, client.requests())
+	}
+	cfg.SpendPreauthorized = true
+	if _, err := r.Judge(context.Background(), automation.Automation{Look: &automation.Look{Condition: "has changed", Command: "echo unchanged"}}, automation.Sight{Text: "unchanged"}); err != nil || client.requests() != 1 {
+		t.Fatalf("authorized watch: err=%v, calls=%d", err, client.requests())
 	}
 }

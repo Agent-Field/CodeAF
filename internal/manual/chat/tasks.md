@@ -4933,6 +4933,27 @@ This road used to read `conflicts with your branch`, which was untrue — there 
 of yours in it — and `[a]` spent a merge round, which merges *branches* and cannot see an
 untracked file at all, so it refused a second time in exactly the same words.
 
+## Resolving a local task's untracked file conflict after restarting
+
+A finished local task whose landing meets your untracked file stays `your call`,
+with its branch kept. Reopening the same conversation after a restart keeps the
+question: `your folder already has files the task wrote: <files>`. It does not
+run the task again or merge anything until you answer.
+
+Choose `a resolve it`, or ask the conversation to accept that task through
+`tasks` with its `id` and `resolve: "accept"`. For example, if both wrote
+`COLLISION.txt`, the task's version lands as `COLLISION.txt` and your exact bytes
+are kept in `COLLISION.txt.yours`. If that name already exists, your copy takes
+the next free name, such as `COLLISION.txt.yours.2`. `n drop it` takes nothing
+and keeps the task's branch.
+
+The task's room and main card both say `your call` until the landing is settled.
+Resolving keeps your bytes even when the workspace and system temporary folder
+live on different filesystems. If a file cannot move, the refusal names the
+filesystem's reason after `could not move your copies:`. If putting a copy back
+fails, `remaining copies are kept in <folder>` names where it is held; keep that
+folder until you have recovered your copy.
+
 ## Tell it something instead of answering — s tell it, and why saying looks good does not accept
 
 `s tell it` is the third chip on **every** `your call` card, and it is not a third answer.
@@ -5888,3 +5909,16 @@ answer, report, crew models, cost and retry actions in one place. Use `o open fu
 or click that action to open the existing task transcript room. Tasks without routed
 crew details keep their ordinary room door. An old record with no crew details does not
 invent them; reopening its owning conversation restores the details its checkpoint kept.
+
+## A conversation time limit ended my task — incomplete versus stopped
+
+A time limit you set ends the conversation's tasks as `incomplete`, with the reason
+`a time limit you set stopped it`. Pressing Stop yourself ends them as `stopped`.
+This applies to tasks and runs already underway when the conversation reaches its limit.
+
+## A saved run asks me to accept it or say it is not right
+
+If a plan finished before a restart but its final checks and landing were not
+recorded, inspect the saved working copy. On the task page, accept it or say it
+is not right, or ask the conversation to do so. The saved result alone does not
+say that the final checks passed.

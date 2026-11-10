@@ -107,6 +107,21 @@ func (m *BranchMap) Set(old, next string) error {
 	return m.save()
 }
 
+// Remove restores the requested chat's identity without discarding its kept
+// branch or any other chat's redirect.
+func (m *BranchMap) Remove(id string) error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.m[id]; !ok {
+		return nil
+	}
+	delete(m.m, id)
+	return m.save()
+}
+
 // Resolve follows old -> new links to the newest branch; an id never branched
 // resolves to itself. The walk is bounded so a damaged file cannot loop it.
 func (m *BranchMap) Resolve(id string) string {

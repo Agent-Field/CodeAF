@@ -58,10 +58,11 @@ import (
 // CODEAF_TASK_BELT names the older belt, so on that road not one byte of any
 // prompt, belt or landing changes — nothing constructs this worker.
 type BashWorker struct {
-	profileDir string
-	store      *plandb.Store
-	workspace  string
-	model      string
+	profileDir   string
+	store        *plandb.Store
+	workspace    string
+	model        string
+	conversation string
 	// always is the memory section over this place — every line kept for the
 	// person, this machine and this project — rendered by the door
 	// ([session.MemoryWorld]) and closed on by the worker's brief. It is the
@@ -102,6 +103,11 @@ type BashWorker struct {
 
 // WorkerOption changes how a worker is built; the zero set is the host worker.
 type WorkerOption func(*BashWorker)
+
+// WithConversation attributes every worker call to the chat that started it.
+func WithConversation(id string) WorkerOption {
+	return func(w *BashWorker) { w.conversation = id }
+}
 
 // WithTaskControls carries an explicitly settled task's controls without
 // changing this computer's saved defaults or spending permission.
@@ -199,7 +205,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		WorkerDID:           workerDID(w.store, task, w.agentDID),
 		AttributionOff:      w.attributionOff,
 		AttributionModelOff: w.attributionModelOff,
-	}, w.completer, &task, w.store.Path(), w.store.RootID())
+	}, w.completer, &task, w.store.Path(), w.store.RootID(), w.conversation)
 	if err != nil {
 		return Report{}, err
 	}

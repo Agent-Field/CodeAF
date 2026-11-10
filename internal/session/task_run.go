@@ -852,10 +852,9 @@ type TaskNode struct {
 	// now, including the ones nobody has picked up. So the fact is written down
 	// on its own rather than inferred from a pointer that no longer means it.
 	claimed bool
-	// stopped marks a node a PERSON ended (cancel.go). It is set BEFORE the
-	// context is cut, so that the landing this stop causes already knows whose
-	// decision it was — a flag written afterwards would be a flag the update
-	// announcing the end raced past.
+	// stopped marks cancellation before the context is cut, so the landing
+	// already knows it must keep partial work. The ending distinguishes a
+	// person's Stop from a time limit they set.
 	stopped bool
 	// handed is the receipt for THIS SESSION'S own hand-over press: the person
 	// asked codeaf to decide this one card, and the note that asks it has been
@@ -2298,6 +2297,9 @@ func (n *TaskNode) wasStopped() bool {
 func (n *TaskNode) stoppedLead() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	if n.ending == TaskEndingTimeLimit {
+		return conversationTimeLimitReason
+	}
 	return stopBecause(taskStoppedWord, n.stopReason)
 }
 
@@ -3932,7 +3934,7 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Mending:     n.mend,
 		Waiting:     waiting,
 		Settling:    n.resolutionInFlightLocked(),
-		Stopped:     n.stopped,
+		Stopped:     n.stopped && n.endingLocked() == TaskEndingStopped,
 		Ending:      n.endingLocked(),
 		// AND WHAT CLASHED, WHICH ROAD PUT IT THERE, AND WHOSE DECISION IT IS. None
 		// of the three is derivable from anything else on this notice: the names
@@ -3977,16 +3979,15 @@ func (n *TaskNode) endingNow() TaskEnding {
 }
 
 // endingLocked is the ending a notice and a record carry, with the graph held.
-// A node a person stopped carries [TaskEndingStopped] whether or not anything
-// wrote it — the flag was the whole of that fact before the ending existed, and
-// it stays the source of it.
+// A cancelled node keeps a typed time-limit ending. Older cancellations with
+// only the stopped flag retain the person's Stop reading.
 func (n *TaskNode) endingLocked() TaskEnding {
 	// A NODE MACHINERY CUT WHERE IT STOOD IS STILL RUNNING AND STILL HAS A REASON.
 	// The paused road leaves the state alone so recovery resumes the node, and it
 	// used to carry no ending at all — so a reader could not tell a node machinery
 	// had cut from one still being worked. The ending is surfaced for a running
 	// node exactly as it is for a failed one; every other state still carries none,
-	// and the flag a person's stop sets outranks the field wherever it is.
+	// and cancellation retains the cause recorded before its context was cut.
 	if n.state == TaskRunning {
 		return n.ending
 	}
@@ -3994,6 +3995,9 @@ func (n *TaskNode) endingLocked() TaskEnding {
 		return ""
 	}
 	if n.stopped {
+		if n.ending == TaskEndingTimeLimit {
+			return n.ending
+		}
 		return TaskEndingStopped
 	}
 	return n.ending

@@ -1258,6 +1258,9 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	proc.warmModels("engine/models", agent, launch.Model)
 
 	return &remote.Engine{
+		EntryNotice: func(file string) string {
+			return v3UpgradeNotice(v3PlaceOf(file, workspace).Dir, true)
+		},
 		TeamsPaired: teamPaired,
 		SyncService: chatSyncService(),
 		ReleaseOnLeave: func(current remote.WrappedAgent) bool {
