@@ -2558,7 +2558,8 @@ once.** The session keeps one set of books: your messages, the answers, the smal
 beside them, and every task and senior-dev run this conversation started, folded in as each
 one finishes. It writes that total to the session folder at the end of every turn, when
 a task or run finishes, and when a small call bills after its turn ended. Once that
-write settles, the card includes that late bill just as `/cost` does, without opening
+write settles, the card includes that late bill just as `/cost` does, including a
+provider receipt recovered after the turn ended or a late task charge, without opening
 the transcript. The project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
 of those two figures, never their sum: the books already hold every finished task and run, so
 adding the index on top would count them twice. While work is still running the index can be
