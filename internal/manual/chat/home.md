@@ -2546,7 +2546,7 @@ and `every chat and task is priced here`. `spend` never grows in a tall window, 
 second panel to give way on a short one. The money is the pulse line's and the spend place's
 to the cent.
 
-## What has this conversation cost — the spend band on the card beside a search
+## What has this home conversation spent — what this chat cost, the spend band on the card beside a search
 
 **A single conversation's bill is on the card beside a search**, on its dim facts line:
 `touched 12 files · spent $1.25 · 34k tokens · last active 12m`. Each clause is independent:
@@ -2556,9 +2556,10 @@ not drawn. The resting panels do not carry it — `spend` is the whole machine's
 **It counts the talking and the work the talking started, in one figure, and each dollar
 once.** The session keeps one set of books: your messages, the answers, the small calls
 beside them, and every task and senior-dev run this conversation started, folded in as each
-one finishes. It writes that total to the session folder at the end of every turn and again
-when a task or run finishes, so home can read it without opening the transcript. The
-project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
+one finishes. It writes that total to the session folder at the end of every turn, when
+a task or run finishes, and when a small call bills after its turn ended. Once that
+write settles, the card includes that late bill just as `/cost` does, without opening
+the transcript. The project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
 of those two figures, never their sum: the books already hold every finished task and run, so
 adding the index on top would count them twice. While work is still running the index can be
 ahead, and then its figure is the one shown.

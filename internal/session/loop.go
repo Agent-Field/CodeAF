@@ -5704,4 +5704,5 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.
 	a.file.appendUsage(aux, model, true, role)
+	a.stampSpend()
 }

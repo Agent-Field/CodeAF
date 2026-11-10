@@ -128,6 +128,7 @@ func (a *Agent) SettleWrites() {
 	}
 	a.metaStamp().settle()
 	a.modelStamp().settle()
+	a.spendStamp().settle()
 	a.toldStamp().settle()
 	a.fixShelfFor().settle()
 	a.treesAhead().Settle()
@@ -410,14 +411,30 @@ var (
 	metaStampSettling func()
 )
 
+// spendStamp keeps spend writes ordered without coalescing away a user stamp.
+// Its callback settles the user stamp first, then reads the current books so
+// an older turn snapshot cannot overwrite a bill that arrived after sealing.
+func (a *Agent) spendStamp() *stampWriter {
+	a.spendStampOnce.Do(func() { a.spendStampWriter = &stampWriter{} })
+	return a.spendStampWriter
+}
+
 // stampSpend records the conversation's running total — what the talking has
-// cost so far, and what it weighed — on the session's own meta.json.
+// cost so far, and what it weighed — on the session's own meta.json, which is
+// what Home's search card reads.
 //
-// IT RIDES THE END OF A TURN AND NOTHING ELSE. [Agent.sealTurn] is the one
-// place a turn's cost reaches the journal, for the reason stated there: every
-// turn shape in the package ends through it. So it is also the one place the
-// total can be written down without a shape of turn silently keeping no record,
-// and stamping anywhere else would be a second answer to "what has this cost".
+// IT RIDES EVERY BILL, NOT ONLY THE END OF A TURN. It used to be written once,
+// when [Agent.sealTurn] closed a turn, on the reasoning that every turn shape
+// ends there. But an auxiliary call can bill after its turn sealed — a
+// detached title (title.go) is the common one — and then Home's card showed
+// less than `/cost` for the same conversation (the pre-release hand test read
+// $0.0020 against $0.0034). So a turn's seal, a task fold and an auxiliary
+// bill all owe this one deferred write, and the write reads the live books
+// when it runs, so a late bill is never lost to an older turn's snapshot.
+//
+// IT SETTLES THE USER STAMP FIRST, for the ordering #2557 established: a
+// deferred stamp carrying an older snapshot must never land after a newer
+// value, so the opening stamp's write is settled before this one reads.
 //
 // THE FIGURE IS THE SESSION'S OWN AND NEVER ITS TASKS'. [Agent.usage] is this
 // agent's talking: its turns, and the auxiliary calls beside them (the namer,
@@ -433,22 +450,27 @@ var (
 // scans it, and what a run has spent is its own row's answer
 // (internal/automation) and not this one.
 //
-// ONE SMALL ATOMIC WRITE PER TURN. There is no other end-of-turn write to a
-// session's meta.json to ride — [Agent.stampUserLocked] runs at the START of a
-// turn, before the cost exists — so this is a read and a temp-and-rename of a
-// file of a few hundred bytes, once per turn of a conversation, beside a
-// provider call that took seconds. EVERY FAILURE IS SILENCE, for this file's
-// stated reason: the total is a citation and the transcript is the record.
+// THE WRITE IS SMALL AND COALESCED: a read and a temp-and-rename of a file of a
+// few hundred bytes, owed through one stampWriter so a burst of bills becomes
+// one write. A worker with no place owes no file. EVERY FAILURE IS SILENCE, for
+// this file's stated reason: the total is a citation and the transcript is the
+// record.
 func (a *Agent) stampSpend() {
 	a.mu.Lock()
-	dir := a.config.Place.Dir
-	snapshot := a.fillMetaLocked(Meta{})
-	spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
+	needed := strings.TrimSpace(a.config.Place.Dir) != "" && (a.usage.CostUSD > 0 || a.usage.Input+a.usage.Output > 0)
 	a.mu.Unlock()
-	if spent <= 0 && tokens <= 0 {
+	if !needed {
 		return
 	}
-	a.writeSpendSnapshot(dir, snapshot, spent, tokens)
+	a.spendStamp().Owe(func() {
+		a.metaStamp().settle()
+		a.mu.Lock()
+		dir := a.config.Place.Dir
+		snapshot := a.fillMetaLocked(Meta{})
+		spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
+		a.mu.Unlock()
+		a.writeSpendSnapshot(dir, snapshot, spent, tokens)
+	})
 }
 
 // stampRestoredSpend fills the total in for a conversation resumed from a
