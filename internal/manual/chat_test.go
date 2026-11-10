@@ -3641,6 +3641,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"route jobs to an AgentField reasoner with no repository", "factory-agentfield"},
 		{"is there an SDK for the factory", "factory-agentfield"},
 		{"send a comment to a job from outside", "factory-agentfield"},
+		{"the engine restarted, did my AgentField execution fail", "factory-agentfield"},
 		{"how does my tool add more details to a factory job it filed", "factory-agentfield"},
 		{"check the status of a factory job from my script", "factory-agentfield"},
 		{"set a webhook for a source", "factory-agentfield"},

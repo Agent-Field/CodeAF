@@ -32,6 +32,13 @@ type fakePlane struct {
 	reports  map[string][]ExecutionUpdate
 	forget   bool // answer the next lease 404, as a control plane that forgot the node
 	triggers []NewTrigger
+	// instance is the instance_id the plane holds for the node, and orphaned
+	// every execution it failed as agent_restart_orphaned: AS THE REAL
+	// CONTROL PLANE DOES (nodes_register.go), a registration under a
+	// different non-empty instance fails every execution still open under
+	// the old one, and a later report on it is refused as terminal.
+	instance string
+	orphaned map[string]bool
 }
 
 func newFakePlane(t *testing.T, key string) *fakePlane {
@@ -41,7 +48,7 @@ func newFakePlane(t *testing.T, key string) *fakePlane {
 // newFakePlaneWith is a fake plane with extra routes, and down saying when
 // every HTTP call fails as a control plane that is not there.
 func newFakePlaneWith(t *testing.T, key string, extra func(*http.ServeMux), down func() bool) *fakePlane {
-	p := &fakePlane{key: key, reports: map[string][]ExecutionUpdate{}}
+	p := &fakePlane{key: key, reports: map[string][]ExecutionUpdate{}, orphaned: map[string]bool{}}
 	mux := http.NewServeMux()
 	if extra != nil {
 		extra(mux)
@@ -54,8 +61,21 @@ func newFakePlaneWith(t *testing.T, key string, extra func(*http.ServeMux), down
 		_ = json.NewDecoder(r.Body).Decode(&reg)
 		p.mu.Lock()
 		p.regs = append(p.regs, reg)
+		if p.instance != "" && reg.InstanceID != "" && reg.InstanceID != p.instance {
+			for id, rs := range p.reports {
+				if len(rs) > 0 && rs[len(rs)-1].Status == ExecRunning {
+					p.orphaned[id] = true
+				}
+			}
+		}
+		p.instance = reg.InstanceID
 		p.mu.Unlock()
 		writeJSON(w, 201, map[string]any{"success": true})
+	})
+	mux.HandleFunc("GET /api/v1/nodes/{id}", func(w http.ResponseWriter, r *http.Request) {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"id": r.PathValue("id"), "instance_id": p.instance})
 	})
 	mux.HandleFunc("PATCH /api/v1/nodes/{id}/status", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
@@ -75,6 +95,11 @@ func newFakePlaneWith(t *testing.T, key string, extra func(*http.ServeMux), down
 		var u ExecutionUpdate
 		_ = json.NewDecoder(r.Body).Decode(&u)
 		p.mu.Lock()
+		if p.orphaned[r.PathValue("id")] {
+			p.mu.Unlock()
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "execution is already in a terminal state"})
+			return
+		}
 		p.reports[r.PathValue("id")] = append(p.reports[r.PathValue("id")], u)
 		p.mu.Unlock()
 		writeJSON(w, 200, map[string]any{"status": u.Status})
@@ -222,13 +247,13 @@ func TestTheRegistrationNamesThreeReasonersAndAPlainBase(t *testing.T) {
 	if strings.Join(names, ",") != "intake=true,message=false,status=false" {
 		t.Fatalf("reasoners %v", names)
 	}
-	// A NEW START IS A NEW INSTANCE.
+	// A NEW START IS THE SAME INSTANCE: the floor's, not the process's.
 	first := reg.InstanceID
 	if err := w.node.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "the second registration", func() bool { return len(w.plane.registrations()) > 1 })
-	if again := w.plane.registrations()[1].InstanceID; again == first || again == "" {
+	if again := w.plane.registrations()[1].InstanceID; again != first {
 		t.Fatalf("a restart registered instance %q, the first was %q", again, first)
 	}
 }
