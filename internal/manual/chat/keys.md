@@ -42,7 +42,7 @@ The path names the transcript on the computer running the chat, including over
 The command exits with a failure status. One sentence stays visible after
 the full-screen chat closes, including when error output goes to a log. On the
 next start, retained turns are published if this computer still holds the chat.
-If another computer has continued it, take the chat back to see its newest history;
+If another computer has continued it, open it from Home once no computer holds it (or choose continue here if that computer still holds it) to see its newest history;
 local accounting alone does not create a separate chat.
 
 A computer removed from your paired devices keeps saving this chat locally.

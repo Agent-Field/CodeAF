@@ -271,7 +271,7 @@ Too many requests from one network are refused too: at most 10 new links in an h
 
 ## I quit on my laptop and opened my desktop after pairing
 
-After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. A sleeping or disconnected laptop still needs `alt+c` on Home. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
+An idle paired chat lets go about 2 seconds after it goes idle once saved to the sync service, and a clean quit lets go after its final durable save; bare `codeaf` on another paired computer within 24 hours opens the released chat automatically, and Enter on Home (or `agents.open` in the app) opens any released or lapsed chat directly. A laptop that went to sleep or disconnected while still holding the chat needs `alt+c` on Home while its hold is live. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
 
 Personal memory and stored model, display, approval and limit defaults follow the paired computers too. Limits are shared as values; spending counted against them stays per computer. Automations and machine-specific paths and settings stay local.
 

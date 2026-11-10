@@ -463,23 +463,19 @@ Turning it off on either computer stops sharing between them: that computer
 stops sending and receiving teams and Traffic. What was already exchanged stays,
 including teams and encrypted copies in the vault. Unpaired computers are unaffected.
 
-Open a member whose chat is on another paired computer to see
-`Continue this chat here?` on Home. Choose **continue here** to move the chat
-and open it. Choose **leave it there** to stay on Home with nothing changed.
-A chat that is not shared names the computer that has it: open it there. Until
-its name is known, it says `the other computer`. Under `--host` or `--at`, a
-member on another computer shows that notice; open it on its computer.
+Opening a remote member from terminal Teams raises `Continue this chat here?`
+on Home (`continue here` moves and opens it; `leave it there` changes nothing).
+Selecting a released or lapsed chat on terminal Home (`enter`), or opening a
+`can_open` row via `agents.open` in the app, opens it directly with no
+Continue-here step; a held chat still asks. Unshared chats, or members under
+`--host` / `--at`, name the other computer (`the other computer` until known):
+open them there. Local members open like Home without an extra ownership lookup.
 
-A local member opens through the same path as its chat on Home, without an added
-ownership lookup or relay refusal. A chat positively known to be elsewhere still
-needs continuation.
-
-A send to one member or manager whose chat is known to be on another computer
-is refused: it would not reach that chat. Continue the chat here first, then
-send again. A room post or send to several members still reaches local members
-and names anyone not reached, such as `Not reached: @web (on desktop).` If every
-recipient is elsewhere, nothing is written. If the relay is unavailable, local messages still work. A local message may
-wait while this computer finishes sending an earlier change to the relay.
+A send to one member or manager known to be on another computer is refused until
+you bring that chat here. A room post or multi-member send reaches local members
+and names anyone skipped (`Not reached: @web (on desktop).`); if all are
+elsewhere, nothing is written. Local messages still work when the sync service
+is down, and may wait briefly while an earlier change finishes uploading.
 
 ## Will deleting a team on my laptop delete it on my desktop?
 
@@ -511,8 +507,9 @@ older lines leave this view. They remain on the computer that wrote them until
 its ordinary log rotation.
 
 A send only to chats known to be elsewhere is refused. A send with local
-recipients is written once and names those not reached. Open a remote chat and
-choose **continue here** on Home before sending to it. Under `--host` or `--at`,
+recipients is written once and names those not reached. Bring a remote chat
+here first (a released or lapsed chat opens directly on Home or through
+`agents.open`; a held chat asks for **continue here**) before sending to it. Under `--host` or `--at`,
 open it on its computer. Decision details, spending records and working copies
 do not travel with Traffic. A decision or escalation whose recipient is
 elsewhere is refused before it changes anything. An unpaired computer or one

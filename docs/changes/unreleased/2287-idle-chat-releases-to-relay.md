@@ -4,8 +4,8 @@ title: Paired idle chats release their hold after upload and available chats ope
 pr: 2287
 surface: [chat, engine, app, remote, docs]
 invalidates:
-  - "An open idle chat previously kept renewing its computer's hold. In a paired set it now releases after all saved state has reached the relay."
-  - "Selecting a released or lapsed remote chat previously required Continue here. Paired terminal opens now acquire it automatically without displacing a live holder."
+  - "An open idle chat previously kept renewing its computer's hold. In a paired set it now releases after all saved state has reached the sync service."
+  - "Selecting a released or lapsed remote chat previously required Continue here. Paired opens now acquire it automatically on terminal Home and through agents.open without displacing a live holder."
 ---
 
 Running turns, queued or steering work, tasks, jobs, deferred writes and unsent
@@ -48,4 +48,12 @@ stays retryable and keeps the draft. A newer own-device fence cannot identify th
 window that acquired it, so an uncertain window does not adopt or renew it and
 never offers itself a Continue-here card. If nobody adopted the hold, retrying
 after its ordinary lease lapses takes a new hold through the existing conditional
-acquire. No directory protocol or replicated lease record changes are included.
+acquire.
+
+Existing ownership expiry and consent rules still hold: an expired hold or one
+released outside its window admits nothing until continued, reopening a chat
+takes a new fence, and takes require the exact observed holder and fence. Only
+a window that released its own hold retakes on new work, by conditionally
+acquiring a new fence with the saved head unchanged; a heartbeat at the
+released fence never revives work permission. No directory protocol or
+replicated lease record changes are included.

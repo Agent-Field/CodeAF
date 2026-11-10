@@ -2,7 +2,7 @@
 
 ## Taking an open chat from another computer waits for a sync service update
 
-An older service cannot promise that taking a chat displaces only the computer you saw holding it, so this build never sends that take to it. The sentence is `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here`. Writing, saving, pairing, listing, viewing and continuing a chat the other computer closed keep working. Close the chat on that computer and continue here; update your own `codeaf relay` to this build.
+An older service cannot promise that taking a chat displaces only the computer you saw holding it, so this build never sends that take to it. The sentence is `taking an open chat from another computer waits for a sync service update; all else works, so close it there and continue here`. Writing, saving, pairing, listing, viewing and opening a chat no computer holds (closed, released after about 2 idle seconds, or lapsed) keep working. Let it go idle on a current build or close the chat on that computer, then open it here; update your own `codeaf relay` to this build.
 
 ## Is there a storage limit on the relay — how much can I sync
 

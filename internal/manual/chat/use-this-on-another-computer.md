@@ -35,7 +35,7 @@ The code is good for 10 minutes. It works once.
 ## Share my conversation with my other computer
 
 Pair the computers with `/pair` or `codeaf pair`. A computer with submitted
-chats requires `--replace`. Continue here moves a conversation to the other computer.
+chats requires `--replace`. An idle chat lets go about 2 seconds after going idle once saved to the sync service, so a chat no computer holds (released or lapsed) opens directly on the other computer (Enter on terminal Home, or `agents.open` on `can_open` rows in the app) with no Continue-here step; **Move here** or **Continue here** moves one another computer still holds.
 
 ## Sync my chats — how to sync between paired computers
 
@@ -46,23 +46,11 @@ Older chats become movable through independent copies after pairing; their origi
 
 ## My idle chat was continued on another computer — sending, queueing, steering and retrying
 
-Before accepting new work, an open synced chat checks who holds it if its last ownership confirmation is older than two seconds. Back-to-back submissions reuse that confirmation. The ownership read waits at most three quarters of a second. Sending cancels idle handoff preparation immediately and uses the same ownership deadline. Slow capture or upload does not extend that wait. A task also confirms ownership again after slow preparation before it starts. If the relay is slow or unreachable, a window that still holds its chat keeps working locally and does not ask again for 30 seconds. A window that released its idle hold must confirm ownership again before accepting work; if that check fails, your work stays unsent.
+Before accepting new work, an open synced chat checks who holds it if its last confirmation is older than 2 seconds (back-to-back sends reuse it). The read waits at most 750 ms; sending cancels idle handoff preparation immediately without extending that deadline, and tasks recheck after slow preparation. If the sync service is unreachable, a window that still holds its chat keeps working locally and waits 30 seconds before asking again; a released window must confirm ownership first or leave your work unsent.
 
-With two or more paired computers, a fully saved idle chat releases its hold
-within a few seconds. Its window stays open as a reader. A running turn, queued
-or steering work, tasks, jobs, unsaved writes or failed uploads keep the hold.
-Selecting a released or lapsed chat on terminal Home brings the latest saved
-copy here automatically; a live hold still offers Continue here. Sending in the
-original window takes the unchanged chat back in place if nobody else has taken it.
-Ordinary messages, shell work, queueing, steering, retries and tasks use the same
-ownership gate. This does not restore files or show a moved/setup card; local
-ignored install folders stay intact. A newer saved head leaves this window a
-reader until you open the latest chat from Home.
-The journal, working files, shared memory and settings must reach the relay
-before release; rebuildable folders remain excluded under the usual rules.
-Sync off, unpaired and single-computer homes keep their existing behavior.
+With two or more paired computers, an idle chat lets go about 2 seconds after going idle once its journal, working files, shared memory and settings are on the sync service (excluding rebuildable folders). Its window stays open as a reader; running turns, queued or steering work, tasks, jobs, unsaved writes and failed uploads keep the hold. A released or lapsed chat opens directly on another paired computer with no Continue-here step (Enter on terminal Home, or `agents.open` on `can_open` rows); a held chat (`held on <device>` / `working on <device>`) asks with **Move here** or **Continue here**. New work in the window that released its own idle hold takes the unchanged chat back in place with no prompt, keeping local install folders without a setup card; a newer saved head or a hold that merely lapsed admits nothing until you open or continue it.
 
-If another computer has continued the chat, this window only shows it. Sending, queueing, steering and retrying are refused before saving your words or calling a model. The moved notice names the other computer. You can still answer an existing question or stop work. Desktop and terminal chats share this check. With sync off, an unpaired home, unavailable sync or no sync drive, there is no added network wait.
+If another computer continued the chat, this window only shows it: sending, queueing, steering and retrying refuse before saving words or calling a model, naming that computer, while existing questions and stop still work. Sync-off, unpaired and single-computer homes are unchanged and add no network wait.
 
 ## What does /laptop do — the laptop command pairs chats with my other computer; /pair, /sync and /link
 
@@ -499,8 +487,8 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 Older chats move through independent copies after pairing. Their original files and layout remain untouched for older builds. Nothing is deleted automatically to save disk.
 
 Native Windows moves chats with the native engine, just like Linux and macOS.
-Continue here installs the saved chat while other chats stay open. You can send
-from the installed copy and continue it back on your other computer.
+Opening a free paired chat directly (or choosing Continue here when another computer still holds it) installs the saved chat while other chats stay open. You can send
+from the installed copy and open or continue it back on your other computer.
 Install Git for Windows to run commands; codeaf uses Git Bash, never the WSL launcher.
 A build with no compatible engine keeps moving chats absent and says
 `moving chats needs a newer furrow engine than this build carries`.
@@ -572,6 +560,6 @@ Once this computer has its own saved pairing keys, a sent turn, tracked work, a 
 
 ## What happens to chats made with chat --once before the first pairing?
 
-If this computer has no saved pairing keys yet — for example it has only ever run `codeaf chat --once` — those chats are kept when it first pairs without `--replace`, and pairing does not discard or hide them. They are not sent at the moment of pairing. The next time codeaf's window opens on this computer, each one is saved for syncing and appears on your other computers' Home, where it can be continued.
+If this computer has no saved pairing keys yet — for example it has only ever run `codeaf chat --once` — those chats are kept when it first pairs without `--replace`, and pairing does not discard or hide them. They are not sent at the moment of pairing. The next time codeaf's window opens on this computer, each one is saved for syncing and appears on your other computers' Home, where it opens directly because no computer holds it.
 
 A computer that already has its own saved pairing keys follows the local-work refusal and explicit `--replace` rules above.

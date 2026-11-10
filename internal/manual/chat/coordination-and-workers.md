@@ -69,7 +69,7 @@ A lost reply or restarted home keeps the original signed leadership request. Ret
 
 ## Clean quit on the leader — quitting the coordinating laptop, do the anchors take over at once
 
-On the hosted relay and a self-hosted relay with storage, a clean terminal quit finishes releasing its idle chats, then hands coordination to an anchor before stopping. Another paired computer can continue those chats immediately, without waiting for an election or a lease to expire. Work that is still running keeps going and releases its chat when it finishes. Returning coordination adds at most 5 seconds to quit; a computer that is not coordinating adds no requests or wait. If the anchors cannot take over within that bound, ordinary fallback applies.
+On the hosted relay and a self-hosted relay with storage, a clean terminal quit finishes releasing its idle chats, then hands coordination to an anchor before stopping. Another paired computer can open those released chats directly, with no Continue-here step and without waiting for an election or a lease to expire. Work that is still running keeps going and releases its chat when it finishes. Returning coordination adds at most 5 seconds to quit; a computer that is not coordinating adds no requests or wait. If the anchors cannot take over within that bound, ordinary fallback applies.
 
 ## What happens if my leader goes away — my leading laptop went to sleep or the leader computer was turned off
 

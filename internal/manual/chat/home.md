@@ -299,14 +299,15 @@ happened. The row says where the chat is only where that tells you something:
 
 | The chat is | The row says |
 | --- | --- |
-| held on another machine | `held on <device>` |
+| running a turn on another machine | `working on <device>` |
+| held open on another machine | `held on <device>` |
 | on a machine that went off or to sleep without letting go | `<device> offline` |
 | a branch left by a takeover | `<K> turns from <device>: discard` (this build has no merge) |
 | held by this machine, or let go by everyone | nothing |
 
 ## Why a chat says held on build-box or build-box offline
 
-For a chat on another paired computer, read the two words apart: `held on build-box` says that computer still holds the chat, for example during work or while an older build is idle, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A live hold on a computer that is `offline` still asks before Continue here; the card says how many turns may still be there. Offline alone does not make the chat free. On paired computers a released or lapsed chat opens here directly with its latest saved copy and no Continue-here card, including when its older viewer tab is already open. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+For a chat on another paired computer, read the words apart: `working on build-box` says a turn is running on that computer right now, `held on build-box` says that computer still holds the chat with nothing running right now (for example before idle release or while an older build is idle), and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A live hold on a computer that says `working on`, `held on` or `offline` still asks before **Move here** / **Continue here**; the card says how many turns may still be there. Offline alone does not make the chat free. On paired computers a released or lapsed chat opens here directly with its latest saved copy and no Continue-here card, including when its older viewer tab is already open. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -340,7 +341,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-On paired computers a released or lapsed chat opens directly with its latest saved copy. If the row still has a live hold, whether it says `<device> offline` or `held on <device>`, press enter and Home asks **Continue this chat here?**
+On paired computers a released or lapsed chat opens directly with its latest saved copy. If the row still has a live hold, whether it says `working on <device>`, `held on <device>` or `<device> offline`, press enter and Home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
 The card says how fresh the copy is: `last saved turn <N> ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
@@ -2725,9 +2726,9 @@ from a previous visit cannot replace the current visit's selection or draft.
 
 ## I quit on my laptop and opened my desktop — straight back into the chat
 
-After a clean quit lets a paired computer's chat go, bare `codeaf` on another paired computer continues that chat automatically within 24 hours. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
+An idle paired chat lets go about 2 seconds after going idle once saved to the sync service, and a clean quit lets go after its final durable save; bare `codeaf` on another paired computer continues that released chat automatically within 24 hours, and Enter on Home opens any released or lapsed chat directly. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
-If the laptop only slept or lost its connection, Home offers its latest chat and `alt+c` continues immediately. When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
+If the laptop went to sleep or lost its connection while still holding the chat, Home offers its latest chat while the hold is live and `alt+c` continues immediately (once the hold lapses, Enter on its Home row opens it directly). When local unsaved edits need to be kept as a branch, the continuation card asks first. Nothing moves automatically while the other computer is running that chat, for a named chat or `--host`/`--at`/`--session`, when another local window holds a chat, or when local unsaved edits need a choice. If the move fails, Home stays open and says why.
 
 ## my chosen chat opens while a startup chat is still arriving
 
