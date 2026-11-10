@@ -696,6 +696,10 @@ type appBackend struct {
 	referenceN   int // in-flight and staged reference snapshots, under mu
 	agents       map[string]*appAgent
 	closing      bool
+	// closeClaimed is true once a Close has taken the teardown; closing alone
+	// is also set by tests that only simulate a quit, and a Close that waited
+	// on it would wait for a teardown nobody started.
+	closeClaimed bool
 	closedDone   chan struct{}
 
 	// lineSays is when each working agent's live line was last said, under mu
@@ -4642,9 +4646,10 @@ func (b *appBackend) Close() error {
 			b.closedDone = make(chan struct{})
 		}
 		waitClosed = b.closedDone
-		if already = b.closing; already {
+		if already = b.closeClaimed; already {
 			return
 		}
+		b.closeClaimed = true
 		b.closing = true
 		for id, attempt := range b.pluginAuth {
 			pluginAttempts = append(pluginAttempts, attempt)
@@ -4737,15 +4742,11 @@ func (b *appBackend) Close() error {
 	if warmed != nil {
 		<-warmed
 	}
-	// THE WARM-UPS THIS BACKEND STARTED END HERE, NOT AFTER IT. The provider
-	// model fetch runs as a pool errand on the engine's profile
-	// ([appBackend.warmProviderModels]), so stopping that profile's errands
-	// cancels it and joins it within the pool's own close budget; the factory's
-	// GitHub readers are detached and closed the same way.
-	stopPoolErrands(b.profileDir)
-	if proc := openedEngineProcess(); proc != nil {
-		stopPoolErrands(proc.ProfileDir)
-	}
+	// THE FACTORY'S GITHUB READERS END WITH THE BACKEND. The engine process's
+	// own errands, the provider-model warm-up among them, are NOT stopped here:
+	// the wire still waits for calls in flight after this Close returns, and
+	// the engine closes after that, where RunApp closes it, so a receipt that
+	// lands after the quit still reaches the ledger.
 	stopFactoryLoaders(b.localProfile())
 	lap("warm-up")
 	if crews != nil {
@@ -4799,12 +4800,6 @@ func (b *appBackend) Close() error {
 	// Kept-running processes stay up through a quit; services.stop_all is
 	// how a quit stops them (appservices.go).
 	b.closeServices()
-	if b.assembled.Load() {
-		if proc := openedEngineProcess(); proc != nil {
-			proc.quitReceiptWait.Store(int64(appQuitReceiptWait))
-		}
-		closeEngineProcess()
-	}
 	lap("services")
 	return nil
 }

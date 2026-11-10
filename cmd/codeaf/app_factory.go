@@ -84,6 +84,10 @@ type appFactoryHost struct {
 	loopsOn, loopsClosed bool
 	loops                sync.WaitGroup
 	closeDone            chan struct{}
+	// closed is set by the first close, for readers that hold mu rather than
+	// loopMu. The context is not that signal: a host built to serve only (no
+	// election, no model work) is given a context already cancelled.
+	closed atomic.Bool
 	// afterRead is the intake pass the running read loops run after each
 	// poll, nil while none run; a person's door that wants a job routed now
 	// ([appFactoryHost.routeNow]) runs the same one.
@@ -176,6 +180,7 @@ func (h *appFactoryHost) claimClose() (done chan struct{}, first bool) {
 	}
 	h.closeDone = make(chan struct{})
 	h.loopsClosed = true
+	h.closed.Store(true)
 	return h.closeDone, true
 }
 
@@ -185,7 +190,7 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	if h.handler != nil {
 		return h.handler, nil
 	}
-	if h.ctx.Err() != nil {
+	if h.closed.Load() {
 		return nil, errors.New("the solo factory is closing")
 	}
 	trace := filepath.Join(h.floor.Root(), "startup.log")
