@@ -383,14 +383,18 @@ func takeRootForAt(dir, id string) string {
 }
 
 // takeCopyBucket files each copy under the folder it came from, apart from
-// conversations that work in this computer's own folder of the same name.
-func takeCopyBucket(origin string) string {
+// conversations that work in this computer's own folder of the same name. A
+// chat's origin grows with every move, so an uncapped bucket name stops working
+// at the filesystem's 255-byte component limit.
+func takeCopyBucket(origin string) string { return takeCopyBucketAt(home.Dir(), origin) }
+
+func takeCopyBucketAt(dir, origin string) string {
 	name := "copy-" + encodeWorkspace(origin)
 	if len(name) > 255 {
 		digest := sha256.Sum256([]byte(filepath.Clean(origin)))
 		name = "copy-" + hex.EncodeToString(digest[:])
 	}
-	return home.Join("v3", "projects", name)
+	return filepath.Join(dir, "v3", "projects", name)
 }
 
 // deviceName is what this machine is called in a sentence about it: the name a
@@ -438,9 +442,7 @@ func chatContinuer(s *syncsetup.Sync, notify func(string), onMove func(syncsetup
 	return s.Continuer(cellstore.EngineFor(""), syncsetup.TakeOptions{
 		DeviceName: devname.Name(s.Home),
 		RootFor:    func(id string) string { return takeRootForAt(s.Home, id) },
-		BucketFor: func(origin string) string {
-			return filepath.Join(s.Home, "v3", "projects", "copy-"+encodeWorkspace(origin))
-		},
+		BucketFor:  func(origin string) string { return takeCopyBucketAt(s.Home, origin) },
 		Notify:     notify,
 		OnMove:     onMove,
 		IdleWithin: syncsetup.MoveIdleWithin,
