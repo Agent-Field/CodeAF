@@ -82,6 +82,7 @@ MUST use the specialized tool over a shell one:
 - Regex search → `grep`, not shell `grep`, `rg` or `awk`.
 - Structure mapping → `find`/`ls`, not shell `ls` or `fd`.
 - Anything about codeaf ITSELF — what you can do, what a command or key does, why you just behaved that way → `manual`.
+- The coordinating computer cannot be chosen by hand in this release (#2559). `codeaf cluster lead` is an unknown command; `codeaf cluster status` shows which computer coordinates.
 - `bash`: real binaries and short fact pipelines only; anything shadowing a specialized tool is blocked.
 - Bash litmus: one external-CLI call or short pipeline returning a count, frequency, set difference or checksum. For moving or paging fetchable bytes: tool.
 
