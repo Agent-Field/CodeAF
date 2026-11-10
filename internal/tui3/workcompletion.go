@@ -301,16 +301,36 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 		g.items = append(g.items, c)
 	}
 	latestTaskKey := map[uint64]string{}
-	for _, e := range d.entries {
+	latestLanding := map[uint64]int{}
+	for i, e := range d.entries {
 		if c := e.completion; c != nil && c.task != 0 {
 			latestTaskKey[c.task] = workCompletionKey(*c)
+		}
+		if e.done != nil {
+			latestLanding[e.done.id] = i
 		}
 	}
 	for i, e := range d.entries {
 		if e.completion != nil {
-			add(*e.completion, i)
+			c := *e.completion
+			if at, ok := latestLanding[c.task]; c.task != 0 && ok {
+				card := d.entries[at].done
+				// The current card speaks for the task until it is hidden or dismissed.
+				if !card.hidden() {
+					continue
+				}
+				c.title, c.state = card.title, card.status.Word
+				// Journal revisions share the current landing and its admission owner.
+				// An owner the session cannot name keeps the one the journal carried,
+				// rather than turning a known request into background work.
+				c.key = latestTaskKey[c.task]
+				if owner, ok := a.workCompletionTurn(c.task); ok {
+					c.owner = owner
+				}
+			}
+			add(c, i)
 		}
-		if e.done == nil || !e.done.quiet {
+		if e.done == nil || latestLanding[e.done.id] != i || !e.done.hidden() {
 			continue
 		}
 		owner, ok := a.workCompletionTurn(e.done.id)

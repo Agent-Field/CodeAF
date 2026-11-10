@@ -1921,6 +1921,10 @@ state, such as `done` or `incomplete`, and `open result` to read its report. A t
 you answered is counted once, with its settled state. A landing that still needs
 your call stays visible, as does a landing whose work remains on a kept branch:
 `branch kept · <branch>` names where to find it.
+Each task has one current state: a visible landing card takes the place of its
+completion row. If you dismiss that card, the row remains in `background work`
+or the request's worked disclosure with the newest state and `open result`.
+The same rule applies after reopening the conversation.
 
 ## What an expanded landing card shows — why is the task answer in asterisks, Markdown, the delivery warning, the facts
 
