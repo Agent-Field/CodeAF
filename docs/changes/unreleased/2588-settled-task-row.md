@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: A settled task keeps one current row in the conversation, a just-settled node opens its report, and the pool's index pull stops at close
+title: Settled tasks keep one current row, new nodes open their report, and index pulls stop at close
 pr: 2588
 surface: [chat, engine, docs]
 invalidates:
