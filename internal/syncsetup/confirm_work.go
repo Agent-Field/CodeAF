@@ -121,7 +121,9 @@ func (d *Drive) ConfirmWork(ctx context.Context) (bool, error) {
 	if currentID, currentFence := d.batcher.Lease(); currentID != id || currentFence != fence {
 		return false, nil
 	}
-	if lease.Expires <= v.Now {
+	// Once this drive entered idle release, a stray heartbeat or lost release
+	// reply at the old fence never revives it: retaking acquires a new fence.
+	if lease.Expires <= v.Now || d.released.Load() && lease.Device == d.sync.Device.ID() && lease.Fence == fence {
 		if !d.released.Load() {
 			d.availableAfter(held, lease)
 			return false, nil

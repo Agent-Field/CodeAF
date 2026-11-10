@@ -36,7 +36,10 @@ func (b *Batcher) Reacquire(ctx context.Context, seen directory.CellView) (bool,
 		defer b.flushMu.Unlock()
 	}
 	d, pending, _ := b.view()
-	if b.isClosing() || pending != 0 || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires > seen.Now {
+	// A completed idle release never revives its old fence even if an outside
+	// heartbeat lifted its expiry; Acquire advances this device to a new fence.
+	sameReleasedFence := idle && seen.Cell.Lease.Fence == d.Fence
+	if b.isClosing() || pending != 0 || d.Head != seen.Cell.Head || seen.Cell.Lease.Expires > seen.Now && !sameReleasedFence {
 		return false, nil
 	}
 	wasUncertain := false
