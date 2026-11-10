@@ -50,9 +50,22 @@ func appendRemoteUsage(path string, line UsageLine) error {
 		return err
 	}
 	defer f.Close()
-	info, err := f.Stat()
+	memo, newline, err := readRemoteUsageTail(path, f)
 	if err != nil {
 		return err
+	}
+	if memo.seen["remote:"+line.RemoteEvent] || (line.CallID != "" && memo.seen[line.CallID]) {
+		return nil
+	}
+	return memo.appendCall(f, line, newline)
+}
+
+// readRemoteUsageTail refreshes the paid-call identities while the caller holds
+// the ledger lock, resetting its cursor if the ledger has shrunk.
+func readRemoteUsageTail(path string, f *os.File) (*remoteLedgerCursor, bool, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return nil, false, err
 	}
 	memo := remoteUsageMemo.ledgers[path]
 	if memo == nil || info.Size() < memo.offset {
@@ -60,12 +73,11 @@ func appendRemoteUsage(path string, line UsageLine) error {
 		remoteUsageMemo.ledgers[path] = memo
 	}
 	newline, err := memo.readTail(f)
-	if err != nil {
-		return err
-	}
-	if memo.seen["remote:"+line.RemoteEvent] || (line.CallID != "" && memo.seen[line.CallID]) {
-		return nil
-	}
+	return memo, newline, err
+}
+
+// appendCall records a new charge durably before remembering it as paid.
+func (memo *remoteLedgerCursor) appendCall(f *os.File, line UsageLine, newline bool) error {
 	raw, err := json.Marshal(line)
 	if err != nil {
 		return err
