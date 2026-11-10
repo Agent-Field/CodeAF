@@ -286,7 +286,8 @@ func testNestedGate(t *testing.T) {
 	// Accepting hands the report back to the chat, which reads it before settling.
 	r.waitFor(modelPatience, " "+say(t, "idleWord"))
 	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
-	r.keys("C-e")
+	// A newer worked chip can take ctrl+e, so open the task history by name.
+	clickLineContaining(t, r, say(t, "backgroundWorkWord"))
 	settled := r.waitFor(20*time.Second,
 		"Rebuild the index"+say(t, "taskDoneWord")+say(t, "taskOpenResultWord"),
 		"Port the parser"+say(t, "taskDoneWord")+say(t, "taskOpenResultWord"))
@@ -334,12 +335,12 @@ func testRefusedLanding(t *testing.T) {
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
 		t.Errorf("the refused landing still says failed:\n%s", screen)
 	}
-	// Refusing hands the report back to the chat, which reads it before settling.
-	r.waitFor(modelPatience, " "+say(t, "idleWord"))
-	r.waitFor(20*time.Second, say(t, "backgroundWorkWord"))
-	r.keys("C-e")
+	// The resumed model may be slow; check the task history as soon as it appears.
+	r.waitFor(runPatience, say(t, "backgroundWorkWord"))
+	// A newer worked chip can take ctrl+e, so open the task history by name.
+	clickLineContaining(t, r, say(t, "backgroundWorkWord"))
 	row := "Review the pull request diff" + say(t, "taskIncompleteWord") + say(t, "taskOpenResultWord")
-	screen = r.waitFor(20*time.Second, row)
+	screen = r.waitFor(runPatience, row)
 	waitForLandingReceipt(t, seedDir, say(t, "settleNotRightLine"))
 	t.Logf("the named refused task row says incomplete:\n%s", screen)
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
