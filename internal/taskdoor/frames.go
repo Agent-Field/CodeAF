@@ -75,6 +75,7 @@ type Step struct {
 // SpendLine carries one charge, so the origin can attribute it once rather
 // than estimating spend again from an attempt's final totals.
 type SpendLine struct {
+	CallID       string  `json:"call_id,omitempty"`
 	Model        string  `json:"model"`
 	Seat         string  `json:"seat"`
 	InputTokens  int     `json:"input_tokens,omitempty"`

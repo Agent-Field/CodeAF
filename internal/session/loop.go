@@ -4300,6 +4300,8 @@ func (a *Agent) bank(call bankedCall) {
 	if call.ledger {
 		a.recordUsageLine(call)
 	}
+	// Every bill changes the figure Home reads, including bills after a turn sealed.
+	a.stampSpend()
 }
 
 // reconciled receives the one late answer for a call whose stream ended before
@@ -5704,5 +5706,4 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.
 	a.file.appendUsage(aux, model, true, role, !ledger)
-	a.stampSpend()
 }

@@ -114,7 +114,7 @@ turn, in every open chat, with no restart.
 There is no switch that turns memory off altogether: what you kept is yours to
 forget, line by line. Use `/memory`, `/memories` or the Memory tab (`alt+8`) to
 see every line, and fix, move, forget or put back any of them there. The row's
-`Open the Memories tab` door goes straight to it. Input history and unfinished
+`Open the Memory tab` door goes straight to that tab. Input history and unfinished
 drafts are separate Privacy choices.
 
 ## Permissions, task timers and automatic work
