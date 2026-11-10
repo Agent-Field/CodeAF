@@ -16,7 +16,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // ── A WINDOW ON A CHAT ANOTHER MACHINE NOW HOLDS ────────────────────────────
@@ -64,6 +66,8 @@ type ownershipReadMsg struct {
 	fence           uint64
 	proof           bool
 	local           bool
+	// fresh records the directory answer even when admission then proves a local hold.
+	fresh bool
 	// notHeld prevents a saved receipt from reviving a displaced writer offline.
 	notHeld       bool
 	writerStopped bool
@@ -124,10 +128,18 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		a.machineRead.sendHolds[filepath.Base(session.DirOf(file))] = hold
 	}
 	host := a.relayHost()
+	takeBack := hold.retryIdle
 	for _, row := range a.machineRead.rows {
+		if row.Cell == filepath.Base(session.DirOf(file)) && row.Mine {
+			takeBack = true
+		}
 		if row.Cell == filepath.Base(session.DirOf(file)) && (hold.retryIdle || row.AutoOpen && row.Mine && row.Released) {
 			waiting := a.machineRead
 			waiting.checking, waiting.host = true, host
+			if !blocked && !hold.failed {
+				// This progress describes the new check, not Home's prior failure.
+				waiting.down = false
+			}
 			if line := waiting.waitWord(); line != "" {
 				a.note(line)
 			}
@@ -176,18 +188,33 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		if blocked {
 			holding, notHeld = false, true
 		}
+		// A released or lapsed window needs current ownership to take its chat
+		// back. Home's cached refusal cannot answer the person's next Enter.
+		fresh := notHeld && !blocked && !hold.failed
+		sendOffline := offline
+		if fresh && err == nil {
+			sendOffline = false
+			cancel()
+			readWithin = idleSendProbeTimeout
+			ctx, cancel = context.WithTimeout(context.Background(), readWithin)
+			defer cancel()
+		}
 		if err != nil {
 			// An expired startup wait keeps the original submission unsent.
 		} else if scoped, ok := src.(interface {
 			RowsForChatSend(context.Context, string, bool, bool) ([]chatlist.Row, uint64, bool, error)
 		}); ok {
-			rows, version, local, err = scoped.RowsForChatSend(ctx, file, offline, holding)
-		} else if offline {
+			rows, version, local, err = scoped.RowsForChatSend(ctx, file, sendOffline, holding)
+		} else if sendOffline {
 			err = directory.ErrUnreachable
 		} else {
 			rows, version, err = chatlist.RowsForSend(ctx, src)
 		}
 		msg := ownershipReadMsg{retryIdle: hold.retryIdle, file: file, draft: draft, chips: chips, resume: resume, first: first, local: local, notHeld: notHeld, reading: homeMachinesMsg{rows: rows, version: version, err: err, readWithin: readWithin}, host: host, pastes: pastes, writerWaitFailed: writerWaitFailed, writerStopped: writerStopped, writerDisplaced: writerDisplaced}
+		msg.fresh = fresh && !local && err == nil
+		if fresh && takeBack && !writerWaitFailed && (syncwords.NetworkFailure(err) || readTimedOut(err)) {
+			msg.admissionErr = &executor.WorkRefusal{Line: chatlist.TakeBackUnreachable, Retryable: true}
+		}
 		id := filepath.Base(session.DirOf(file))
 		if local, ok := src.(sendLeaseSource); ok {
 			msg.proof = true
@@ -242,7 +269,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		next := a.liveComposer()
 		a.putComposer(*msg.first)
 		var reading tea.Cmd
-		if !msg.writerWaitFailed && !msg.writerDisplaced && (!msg.local || msg.reading.err != nil) {
+		if !msg.writerWaitFailed && !msg.writerDisplaced && (!msg.local || msg.fresh || msg.reading.err != nil) {
 			reading = a.recordMachines(msg.reading)
 		}
 		cmd := a.resumeOwnedSend(msg)
@@ -262,7 +289,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		return nil
 	}
 	var reading tea.Cmd
-	if !msg.writerWaitFailed && !msg.writerDisplaced && (!msg.local || msg.reading.err != nil) {
+	if !msg.writerWaitFailed && !msg.writerDisplaced && (!msg.local || msg.fresh || msg.reading.err != nil) {
 		reading = a.recordMachines(msg.reading)
 	}
 	return tea.Batch(reading, a.resumeOwnedSend(msg))

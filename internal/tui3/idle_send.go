@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -75,7 +76,13 @@ func resumeIdleSend(ctx context.Context, agent Agent, source chatlist.Source, ms
 		msg.proof, msg.local, msg.notHeld, msg.writerStopped = true, true, false, false
 		msg.leaseCell, msg.fence = remote, fence
 		msg.reading.holdCell, msg.reading.holdFence = row.Cell, fence
-		msg.reading.rows = []chatlist.Row{{Cell: row.Cell, Status: chatlist.Here, Mine: true, Fence: fence, Head: row.Head}}
+		msg.reading.rows = slices.Clone(msg.reading.rows)
+		for i := range msg.reading.rows {
+			if current := &msg.reading.rows[i]; current.Cell == row.Cell {
+				current.Status, current.Mine, current.Fence = chatlist.Here, true, fence
+				current.Released, current.AutoOpen = false, false
+			}
+		}
 		return msg
 	}
 	return msg
