@@ -6,6 +6,7 @@ surface: [chat, engine, app, remote, docs]
 invalidates:
   - "An open idle chat previously kept renewing its computer's hold. In a paired set it now releases after all saved state has reached the sync service."
   - "Selecting a released or lapsed remote chat previously required Continue here. Paired opens now acquire it automatically on terminal Home and through agents.open without displacing a live holder."
+  - "The first Home open of a local copy after restart could bypass free acquisition while the shared listing caught up. It now resolves current ownership before opening the chat."
   - "A desktop take previously blamed another device for every ownership conflict. A newer hold by the same computer now says that computer picked the chat up again."
 ---
 
@@ -28,6 +29,10 @@ Ordinary messages in the original released window reacquire in place, preserving
 local ignored install folders without a restore or setup card. Opening a free
 chat refreshes an already-open stale viewer too. Repeated moves keep an existing
 local root and use bounded, stable copy-folder names on first arrival.
+Home also resolves a persisted local copy through a fresh ownership read before
+opening it, including the first open after a restart while the display still
+shows this computer's previous hold. Released and lapsed paired chats restore
+the latest head through conditional automatic acquisition at a new fence.
 
 Terminal certification obtains a complete workspace scope while the warm engine
 keeps sealing turns. Saved conversation choices retake the idle hold before

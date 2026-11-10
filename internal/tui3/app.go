@@ -5621,6 +5621,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case homeMachinesSlowMsg:
 		a.machinesStillChecking(msg)
 		return a, nil
+	case homeLocalOpenMsg:
+		return a, a.homeLocalOpenReady(msg)
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).

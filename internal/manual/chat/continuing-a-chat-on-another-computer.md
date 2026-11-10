@@ -463,6 +463,17 @@ Older builds can still list, save, publish and release chats through a compatibl
 Yes. Directory requests from older builds keep the existing 1 MiB request limit, including large encrypted metadata and frame hints. The service receives the complete signed request before making the change visible. A failed or interrupted save never exposes only part of that metadata. Reconnect and check the latest save before retrying. Encrypted names, key wraps and frame hints are preserved. The identity's storage capacity still applies.
 
 
+## Opening a free chat from Home after restarting
+
+On paired computers, selecting a released or lapsed chat on Home reads its
+current hold before opening it. This includes this computer's original local
+copy on the first open after a restart, while Home's listing is still catching
+up. The chat opens directly with the latest saved history and a new ownership
+fence; it does not need **Continue here**. A live hold still asks before moving
+the chat. Unpaired homes keep their local opening behavior.
+If the sync service cannot answer the ownership check, Home stays open with
+its connection explanation. Select the row again once the service answers.
+
 ## Why did Enter show Continue here instead of sending my message
 
 Before sending, codeaf checks that this window still holds the chat. If another computer holds it, its latest saved turn is newer, or this window's earlier move failed, Enter opens **Continue this chat here?** or leaves the window showing the chat only. The words stay in the box. Open it from Home to bring the saved chat here, then press Enter to send. A released or lapsed paired chat opens directly; a live hold still asks for **continue here**.

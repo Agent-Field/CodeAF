@@ -3126,16 +3126,27 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 			return nil
 		}
 	}
-	// A retained local handle can be a stale viewer. Resolve its shared row
-	// before the current-tab and already-open shortcuts can reuse old history.
+	// A local copy can precede the first directory display after a restart.
+	// Resolve ownership before any shortcut can reuse its old history.
 	if !a.homeTakeOpening && a.taker != nil && !a.hosted() && !a.machineRead.computerRemoved {
+		if source, ok := a.machines.(chatlist.SendSource); ok {
+			if _, available := a.taker.(availableTaker); available {
+				return a.homeResolveLocal(line, source)
+			}
+		}
 		id := homeSessionID(line.row)
 		for _, row := range a.machineRead.rows {
-			if row.Cell == id && row.AutoOpen && (!row.Mine || a.machineRead.sendHolds[id].blocked) {
+			if row.Cell == id && row.AutoOpen {
 				return a.homeMachineEnter(homeLine{remote: &row})
 			}
 		}
 	}
+	return a.homeOpenLocalLine(line)
+}
+
+// homeOpenLocalLine opens only after Home has resolved any shared ownership.
+func (a *app) homeOpenLocalLine(line homeLine) tea.Cmd {
+	h := &a.home
 	if line.row.Transcript == a.file {
 		a.rememberOpen(a.frontTabKey())
 		a.closeHome()
