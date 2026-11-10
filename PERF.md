@@ -492,6 +492,20 @@ before, 0 after, while each chat's sync start still captures and pushes once.
 `TestAVaultReadSeesEveryWrite` pins visibility across handles, deletes and
 aborted updates.
 
+That bound still reads and compares the whole file on every read, so the
+vault's size is the cost of every look: one slot holds at most
+`keys.MaxSlotValue` (1 MiB). A larger `Put` is refused (`ErrTooLarge`), a
+withheld file too large for a slot is never read and never travels
+(`internal/vaultsync/files.go`), and a vault opened with an oversized slot,
+from an earlier build or a merge, sheds it and is written back at once. On
+the owner's machine a chat folder that was the codeaf home carried 1.6 GB of
+withheld files into a 3.3 GB vault; one chat flush's capture and two
+fingerprints then cost 22.6 s CPU, about 257 GB allocated and a 34 GB peak.
+After the bound the same vault opens once, shrinks to 8.4 MB, and a flush
+costs about 60 ms. `TestAnOversizedSlotIsShedOnOpenWithoutATombstone`,
+`TestAMergeDoesNotTakeAnOversizedSlot` and
+`TestAWithheldFileTooLargeForTheVaultStaysWhereItIs` pin it.
+
 ## Idle open conversations
 
 An open conversation that is idle — nothing running, nothing asked — costs no

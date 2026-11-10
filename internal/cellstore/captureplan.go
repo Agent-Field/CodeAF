@@ -231,7 +231,7 @@ func (g Guard) screenPlan(c cell.Cell, tree, dir string, plan capturePlan) (Scre
 	if err = next.write(dir); err != nil {
 		return Screened{}, err
 	}
-	g.announce(policy, secrets)
+	g.announce(tree, policy, secrets)
 	g.announceUnreadable(policy, unreadable)
 	g.vault(c, tree, secrets)
 	left.Apart = next.apart()
