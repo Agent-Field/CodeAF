@@ -27,7 +27,7 @@ GitHub token is. In the desktop app they are held in memory only and never
 written to disk: the engine hands them to the app, and the app hands them over
 again each time it starts the engine. A key or token the app hands over after
 the factory has started (its keychain answered late) restarts the node with it
-at once, registering as a new instance; the same one handed over again changes
+at once, under the same instance; the same one handed over again changes
 nothing. Outside the app they are kept in the
 profile, owner-readable only. They never reach a log, Disconnect forgets them,
 and they are never sent back. The desk has no settings screen to connect AgentField yet:
@@ -81,7 +81,9 @@ The node registers three reasoners, each with a JSON Schema:
 - `status`: `{source, id}` or `{job}` answers `{job, state, steps_done, steps_total,
   route?, pr_url?, question?, updated}`.
 
-Every restart of the factory registers again as a new instance.
+Every restart of the factory registers again under the SAME instance: the
+instance belongs to the factory's home (kept in `agentfield-instance.json`
+beside its jobs), not to the engine process. See "the engine restarted" below.
 
 **The link.** The node opens one WebSocket to the control plane
 (`/api/v1/nodes/<id>/link`, the API key as its bearer, never in the URL) and
@@ -210,6 +212,26 @@ person dropped it), is caught up at the next lease or reconnect. Cancelling
 the execution in AgentField stops the job, as a person's Stop does. An event
 that files nothing completes its execution at once with the reason as the
 result.
+
+## the engine restarted, crashed or the app quit — what happens to my AgentField execution
+
+Nothing AgentField can see. The app's engine may stop and start again (a
+crash, the Mac sleeping, the app quit and opened again, a late key restarting
+the node): the job keeps its place on disk, and so does the list of
+AgentField executions waiting on it. The engine registers again under the
+instance it always uses, so AgentField does not take the restart for a new
+process and does not fail the executions with "agent_restart_orphaned". Its
+first lease lists them as still in flight, it reports where each job stands
+now, and each execution later gets its job's real result.
+
+A factory that last ran on a build that registered a new instance per start
+adopts the instance AgentField holds when it first starts with executions
+open, so the upgrade itself loses none.
+
+The limit is AgentField's own stale timeout (30 minutes by default): an
+execution nothing has touched for that long is failed by the control plane,
+and an engine that stays down that long cannot touch it. Once failed, it stays
+failed; the job itself goes on in the factory.
 
 ## why didn't my AgentField trigger make a job
 
