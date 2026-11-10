@@ -209,7 +209,6 @@ func (a *app) confirmTypedAutomation(item automation.Automation, next time.Time,
 	question.Head = head
 	question.Reason = typedReason
 	question.Blocking = session.Blocking{}
-	question.Input = session.InputShape{}
 	question.Asked = now
 	a.raiseQuestion(questionShown{
 		question: question,
