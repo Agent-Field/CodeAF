@@ -15,7 +15,8 @@ seconds after it goes idle, once its saved turns, journal, working files, shared
 memory and settings are on the sync service. The open window stays as a reader.
 A running turn, queued or steering work, a running task or job, unsaved tail
 writes or an upload failure keeps the hold. Rebuildable folders such as
-`node_modules` follow the usual transfer exclusions.
+`node_modules` are left out only when Git ignores them. Outside a Git repository,
+all files are copied, subject to secret screening and explicit exclusions.
 
 On paired computers, a chat no computer holds (released by an idle computer, or
 a lapsed hold) opens directly on another paired computer with no Continue-here
@@ -351,7 +352,7 @@ New chats on this computer share one store of saved file contents. Opening four 
 
 ## Why did dist or node_modules not move — gitignored files, build output, ignored folders
 
-Every chat's capture follows Git's ignore rules. Untracked ignored output stays on the computer that made it: it is neither stored in the local file history nor uploaded. Tracked files travel even if an ignore rule matches their name. A wholly ignored directory is not walked or screened. Lockfile rebuild folders still follow the existing rebuild rules.
+Every chat's capture follows Git's ignore rules. Untracked ignored output stays on the computer that made it: it is neither stored in the local file history nor uploaded. Tracked files travel even if an ignore rule matches their name. A wholly ignored directory is not walked or screened. Rebuildable folders are left out only when Git ignores them; a lockfile alone does not exclude them. Outside a Git repository, all files are copied, including `node_modules`, subject to secret screening and explicit exclusions.
 
 The arrival card names omitted paths from the saved summary, for example `not brought along: dist/ (git ignores them), node_modules/ (git ignores them)`. The summary is bounded and can name only some omitted groups. Ignored secret files in ordinary directories are still screened and travel through the key vault; an ignored `.env` inside a wholly ignored directory stays there with that directory.
 

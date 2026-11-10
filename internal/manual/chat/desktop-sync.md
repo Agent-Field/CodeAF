@@ -200,7 +200,8 @@ seconds after it goes idle once its journal, working files, shared memory and
 settings are on the sync service, including when its tab stays open. The
 conversation remains open as a reader. Running turns, queued or steering work,
 running tasks or jobs, deferred writes and failed uploads retain the hold.
-Rebuildable files keep their existing transfer exclusions.
+Rebuildable files are left out only when Git ignores them. Outside a Git
+repository, all files are copied, subject to secret screening and explicit exclusions.
 
 New work in the window that released its idle hold takes the unchanged chat
 back in place, with no prompt, before recording it or calling a model. If
