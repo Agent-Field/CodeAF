@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -136,6 +137,9 @@ func OwnerAt(dir string) (string, error) { return canonicalOwner(dir) }
 func (c Check) Fresh(at Snapshot) bool { return at.Head != "" && c.Before == at && c.After == at }
 
 func snapshotOutput(cmd *exec.Cmd) ([]byte, error) {
+	if runtime.GOOS != "windows" {
+		return cmd.Output()
+	}
 	var output, diagnostics bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &output, &diagnostics
 	err := processgroup.Run(cmd)
