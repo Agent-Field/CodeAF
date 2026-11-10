@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -24,6 +25,7 @@ import (
 
 func storageOffNoticeConfig(t *testing.T) session.Config {
 	t.Helper()
+	cellstoretest.EngineDir(t)
 	cfg, _ := spokenDoorChat(t)
 	svc := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	t.Cleanup(func() { _ = svc.Close() })
@@ -38,7 +40,6 @@ func storageOffNoticeConfig(t *testing.T) session.Config {
 		t.Fatal(err)
 	}
 	t.Cleanup(syncDrives.closeAll)
-	t.Cleanup(cellstore.StopSpawned)
 	return cfg
 }
 

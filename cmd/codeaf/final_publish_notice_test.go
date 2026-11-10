@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -30,8 +31,8 @@ func TestFinalPublishDisplacementReachesTheRestoredWindowOnce(t *testing.T) {
 		for _, displaced := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/displaced=%t", road, displaced), func(t *testing.T) {
 				t.Setenv("CODEAF_NO_UPDATE_CHECK", "1")
+				cellstoretest.EngineDir(t)
 				cfg, c := spokenDoorChat(t)
-				t.Cleanup(cellstore.StopSpawned)
 				t.Cleanup(stopFinalSaveProgress)
 				id, err := identity.Ensure(home.Dir())
 				if err != nil {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -22,8 +23,8 @@ import (
 func TestSharedLocalToolsShareOneConcurrentDirectoryReading(t *testing.T) {
 	for _, liveUpdates := range []bool{false, true} {
 		t.Run(map[bool]string{false: "without live updates", true: "with live updates"}[liveUpdates], func(t *testing.T) {
+			cellstoretest.EngineDir(t)
 			cfg, c := spokenDoorChat(t)
-			t.Cleanup(cellstore.StopSpawned)
 			id, err := identity.Ensure(home.Dir())
 			if err != nil {
 				t.Fatal(err)
@@ -106,8 +107,8 @@ func TestSharedLocalToolsShareOneConcurrentDirectoryReading(t *testing.T) {
 }
 
 func TestSharedLocalToolsReuseASlowFailedReading(t *testing.T) {
+	cellstoretest.EngineDir(t)
 	cfg, c := spokenDoorChat(t)
-	t.Cleanup(cellstore.StopSpawned)
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		t.Fatal(err)
@@ -161,8 +162,8 @@ func TestSharedLocalToolsReuseASlowFailedReading(t *testing.T) {
 }
 
 func TestSharedLocalToolsExpireOwnershipWhilePongsKeepArriving(t *testing.T) {
+	cellstoretest.EngineDir(t)
 	cfg, c := spokenDoorChat(t)
-	t.Cleanup(cellstore.StopSpawned)
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		t.Fatal(err)

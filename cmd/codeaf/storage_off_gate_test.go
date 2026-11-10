@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -28,8 +29,8 @@ import (
 func TestStorageOffSeatedTurnStopsWhenAnotherComputerContinuesIt(t *testing.T) {
 	for _, mode := range []string{"another computer", "own lapsed hold", "free chat", "never shared", "unreachable"} {
 		t.Run(mode, func(t *testing.T) {
+			cellstoretest.EngineDir(t)
 			cfg, c := spokenDoorChat(t)
-			t.Cleanup(cellstore.StopSpawned)
 			id, err := identity.Ensure(home.Dir())
 			if err != nil {
 				t.Fatal(err)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -25,8 +26,8 @@ import (
 func TestStorageNoticeReachesEngineWindow(t *testing.T) {
 	for _, mode := range []string{"refused start", "revoke", "no-host", "storage on", "self-hosted"} {
 		t.Run(mode, func(t *testing.T) {
+			cellstoretest.EngineDir(t)
 			cfg, c := spokenDoorChat(t)
-			t.Cleanup(cellstore.StopSpawned)
 			oldDesk := surfaceNotices
 			surfaceNotices = tui3.NewNotices()
 			defer func() { surfaceNotices = oldDesk }()

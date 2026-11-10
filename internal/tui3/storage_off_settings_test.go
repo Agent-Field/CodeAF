@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -82,8 +83,7 @@ func TestContinueCardSendsAndSavesWhileStorageOff(t *testing.T) {
 		}
 	}
 	eng := cellstore.EngineFor(work)
-	eng.DataRoot = t.TempDir()
-	t.Cleanup(cellstore.StopSpawned)
+	eng.DataRoot = cellstoretest.EngineDir(t)
 	for _, words := range []string{"preserved one", "preserved two"} {
 		appendFile(words)
 		if _, err := eng.Seal(t.Context(), at, cellstore.TurnInfo{}); err != nil {

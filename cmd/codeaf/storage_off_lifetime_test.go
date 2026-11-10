@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
@@ -168,8 +169,8 @@ func storageOffSavedChat(t *testing.T) (session.Config, cell.Cell) {
 }
 
 func TestStorageOffContinuedChatSendsAfterItsOwnEmptyHeadHoldExpires(t *testing.T) {
+	cellstoretest.EngineDir(t)
 	cfg, c := storageOffSavedChat(t)
-	t.Cleanup(cellstore.StopSpawned)
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		t.Fatal(err)
@@ -340,8 +341,8 @@ func TestStorageOnChatWithDifferentHeadsStillAsksToContinue(t *testing.T) {
 
 func testRecordedHeadReturn(t *testing.T, mode string) {
 	t.Helper()
+	cellstoretest.EngineDir(t)
 	cfg, c := storageOffSavedChat(t)
-	t.Cleanup(cellstore.StopSpawned)
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		t.Fatal(err)
