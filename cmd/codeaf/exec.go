@@ -143,6 +143,16 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
+	// The harness's own files leave the person's working directory: `exec`
+	// answered "outside your cwd" by putting its recorders, `.obs/` spills and
+	// patches next to it, and a `git add -A` in a clean checkout would publish
+	// them. They go to the state root (or CODEAF_SCRATCH, when set) instead.
+	scratchRoot := scratchRootFor(space.Root())
+	if err := os.MkdirAll(scratchRoot, 0o700); err != nil {
+		return err
+	}
+	space = space.WithScratch(scratchRoot)
+	fmt.Fprintln(os.Stderr, "note: recorders in "+scratchRoot)
 	web := exec.NewWeb()
 	if web == nil {
 		fmt.Fprintln(os.Stderr, "note: EXA_API_KEY unset — the web tool will be unavailable")

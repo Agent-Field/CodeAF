@@ -145,6 +145,15 @@ func runSubharnessCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	// The harness's own files leave the person's working directory, the same
+	// way the `exec` door moves them: `run <program>` works in-place on the
+	// directory it was pointed at, and a `git add -A` there would publish the
+	// recorders otherwise.
+	scratchRoot := scratchRootFor(space.Root())
+	if err := os.MkdirAll(scratchRoot, 0o700); err != nil {
+		return err
+	}
+	space = space.WithScratch(scratchRoot)
 	web := exec.NewWeb()
 	// The toolbox is opened HERE, above the registry, rather than beside the env
 	// below: it is what a bundle's tool guard is checked against, and the guards

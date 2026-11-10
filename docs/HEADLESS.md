@@ -428,7 +428,7 @@ harness passes anything with newlines in it.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--dir dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. `-w` is the shorthand and keeps working forever. |
+| `--dir dir` | `.` | The directory the worker works in, created if missing. The harness's own scratch lands outside it — see below. `-w` is the shorthand and keeps working forever. |
 | `--system text` | empty | The working method, passed as the task's contract. |
 | `--max-turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
 | `--token-budget N` | `220000` | Token budget for the whole run. Crossing it buys a bounded landing rather than a kill, so the effective ceiling is the budget, plus a fifth of it for the landing, plus the overshoot of the turn crossing the budget and of the final landing turn. Hitting it exits `3`. |
@@ -585,10 +585,13 @@ again.
   to one.
 - **No delivery gate and no replan.** Nothing judges the answer, and nothing
   notices the work was bigger than one worker.
-- **Scratch lands in `--dir`.** `exec` gives the worker no separate scratch
-  directory, so the harness's own machinery — `.codeaf/`, `.obs/` — is written
-  into the workspace beside the work product. Point `--dir` at a directory you
-  are willing to have written into, not at a repository you want left clean.
+- **Scratch lands outside `--dir`.** `exec` gives the worker its own scratch
+  outside the workspace, so the harness's machinery — `.codeaf/`, `.obs/` — is
+  written to codeaf's state root (one directory per workspace name), never into
+  the workspace beside the work product. After an `exec`, `git status` in a clean
+  checkout of `--dir` shows only what the worker changed. `CODEAF_SCRATCH` names
+  a directory to use instead, verbatim, so CI can point the scratch at its own
+  temp dir rather than the state root.
 
 `exec` still reads the state root for two things: the model catalog cache and,
 if you have one there, a persisted API key. `CODEAF_HOME` moves both.
