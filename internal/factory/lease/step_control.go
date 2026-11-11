@@ -18,6 +18,7 @@ func (d *Doors) StepControl(id int, name string, rerun bool, words string) error
 
 // StepControlExpected compares a human decision inside the item lock; a read
 // followed by a later write must not rewind a step that has already moved on.
+// Brief-writing and Changed-only bookkeeping do not change that decision.
 func (d *Doors) StepControlExpected(id int, name string, rerun bool, words string, revision *int) error {
 	return d.rewind(id, revision, rerun, func(it *factory.Item, now time.Time) error {
 		if rerun {
@@ -40,7 +41,7 @@ func (d *Doors) StepRerunExpected(id int, name, words, model string, revision *i
 // rewind applies one step control under the item lock and revokes the old
 // lease with it.
 func (d *Doors) rewind(id int, revision *int, rerun bool, control func(it *factory.Item, now time.Time) error) error {
-	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	return d.updateAt(id, revision, true, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := control(it, now); err != nil {
 			return false, err
 		}
