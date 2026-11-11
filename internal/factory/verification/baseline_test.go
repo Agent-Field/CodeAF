@@ -62,6 +62,18 @@ func TestBaselineMatchesOnlyTheSameVerifiedFailure(t *testing.T) {
 		want   bool
 	}{
 		{name: "same assertion", want: true},
+		{name: "fenced module cache permissions", want: true, change: func(c, b *Check, _ *[]Check, _ map[string]string) {
+			c.Context[2] = "-modcacherw"
+			b.Context[2] = "-modcacherw"
+		}},
+		{name: "module cache permissions with overlay", change: func(c, b *Check, _ *[]Check, _ map[string]string) {
+			c.Context[2] = "-modcacherw -overlay=other.json"
+			b.Context[2] = c.Context[2]
+		}},
+		{name: "module cache permissions with module override", change: func(c, b *Check, _ *[]Check, _ map[string]string) {
+			c.Context[2] = "-modcacherw -modfile=other.mod"
+			b.Context[2] = c.Context[2]
+		}},
 		{name: "changed assertion", change: func(_, _ *Check, _ *[]Check, o map[string]string) {
 			o["candidate"] = goBaselineOutput("different reason")
 		}},
@@ -126,6 +138,8 @@ func TestBaselineMatchesOnlyTheSameVerifiedFailure(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			candidate, baseCheck := check, old
+			candidate.Context = append([]string(nil), check.Context...)
+			baseCheck.Context = append([]string(nil), old.Context...)
 			output := goBaselineOutput("existing reason")
 			outputs := map[string]string{"candidate": output, "base": output}
 			var extra []Check

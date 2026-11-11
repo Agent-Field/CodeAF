@@ -902,6 +902,8 @@ named failing tests and their diagnostics. It keeps the nonzero check exits
 and records which base commit reproduced the failures. A changed checkout,
 a new or different failure, or a comparison without complete evidence still
 blocks. Review, Proof and publication approval keep their own rules.
+The command fence's module-cache permission setting does not prevent a base
+match. Global flags that select other source code still block the comparison.
 
 ## Recovering old test history and corrected Go checks
 
