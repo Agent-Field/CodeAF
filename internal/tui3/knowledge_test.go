@@ -74,7 +74,11 @@ func (a *knowledgeTestAgent) KnowledgeCaptureError() string { return a.captureEr
 // worker that had read nothing answers with the right count, Memory still off.
 func TestOpeningTheOfferAsksForTheChatCount(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(profile)
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	history := offerHistory{}
 	ctx, cancel := context.WithCancel(context.Background())
