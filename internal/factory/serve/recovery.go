@@ -7,14 +7,23 @@ import (
 
 // Reads and the durable job timer both advance recovery; no open desktop is
 // required. The desk rechecks each candidate under its own item and lease locks.
-func (h *Handler) prepareStepRecoveries(items []factory.Item) ([]factory.Item, error) {
+func (h *Handler) prepareStepRecoveries(items []factory.Item, leases []lease.Lease) ([]factory.Item, error) {
 	if h.workers == nil || h.workers.desk == nil {
 		return items, nil
 	}
-	doors := lease.NewDoors(h.workers.desk)
+	desk := h.workers.desk
+	doors := lease.NewDoors(desk)
+	held := make(map[int]bool, len(leases))
+	for _, row := range leases {
+		held[row.Job] = true
+	}
 	updated := false
 	for i, it := range items {
-		if it.Recovery == nil && !factory.TransientStepFailure(it.Failure) {
+		if factory.RecoveryPaused(it) {
+			continue
+		}
+		mayBeLost := !held[it.ID] && desk.MayHaveLostRunner(it)
+		if it.Recovery == nil && !factory.TransientStepFailure(it.Failure) && !mayBeLost {
 			continue
 		}
 		changed, err := doors.RecoverAutomatic(it.ID)

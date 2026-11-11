@@ -224,11 +224,17 @@ func (h *Handler) revokePerson(r *http.Request, handle string) error {
 // soloJob removes the team assignment field from a solo response.
 func (h *Handler) soloJob(job *api.Job, stored factory.Item, caller string) {
 	it := api.ToItem(*job)
+	decisionPaused := factory.RecoveryPaused(stored)
+	canPauseDecision := h.recoveryPauseAvailable() && !decisionPaused && factory.CanPauseDecision(stored)
+	if canPauseDecision || decisionPaused {
+		it = stored
+	}
 	it.Assignee, it.Taker, it.Starter, it.SourceAssignees = "", "", "", nil
 	job.Can = api.CanFor(it, caller, h.clock())
+	job.Can.Hold = job.Can.Hold || canPauseDecision
 	// Solo has one caller and no assignment field; its signed-in person still
 	// decides every waiting approval. Team approval keeps its owner checks.
-	if a := factory.JobApproval(it); a != nil && a.State == "waiting" {
+	if a := factory.JobApproval(it); !decisionPaused && a != nil && a.State == "waiting" {
 		job.Can.Approve = factory.NormalizeHandle(caller) != ""
 	}
 	job.AssignedTo = ""
@@ -237,9 +243,11 @@ func (h *Handler) soloJob(job *api.Job, stored factory.Item, caller string) {
 	// Solo's one caller answers every plan, so only the run decides. It is read
 	// off the stored item: the wire's steps do not carry the finished result
 	// that the shape older workers stored is recognised by.
-	_, job.Can.RejectPlan = factory.PlanSendsBack(stored)
-	job.Can.RejectPlan = job.Can.RejectPlan || factory.AgentFieldPause(stored)
-	job.Can.SpendAnswer = stored.State == factory.StateNeedsYou && stored.QKind == factory.QKindSpendStopped
+	if !decisionPaused {
+		_, job.Can.RejectPlan = factory.PlanSendsBack(stored)
+		job.Can.RejectPlan = job.Can.RejectPlan || factory.AgentFieldPause(stored)
+		job.Can.SpendAnswer = stored.State == factory.StateNeedsYou && stored.QKind == factory.QKindSpendStopped
+	}
 	if job.Desk != nil {
 		job.Desk.Assignee, job.Desk.Starter, job.Desk.Taker, job.Desk.Assignees = "", "", "", nil
 	}

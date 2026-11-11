@@ -98,6 +98,8 @@ type Job struct {
 	// Progress relays brief human-facing Follow PR updates to the job conversation.
 	// It is nil for other stages and never authorizes an action or accepts proof.
 	Progress func(line string)
+	// SyncPRBase integrates the live PR base in a write-capable Follow PR round.
+	SyncPRBase func(context.Context) (string, error)
 	// Verification publishes engine-owned running check facts, not chat prose.
 	Verification func(*factory.StepVerification)
 	// Spend reports model cost the round incurred, in dollars, as it happens.

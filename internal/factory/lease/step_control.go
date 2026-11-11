@@ -63,6 +63,9 @@ func (d *Doors) EditSteps(id int, edit factory.RunEdit, recipe factory.Recipe) (
 	var out factory.Item
 	var lines []string
 	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if factory.RecoveryPaused(*it) {
+			return false, run.StepControlRefusal(factory.DecisionPauseDetail(*it))
+		}
 		if factory.JobState(*it) == "done" || it.Publishing {
 			return false, run.StepControlRefusal("finished or publishing jobs cannot edit steps")
 		}
@@ -96,6 +99,9 @@ func (d *Doors) EditSteps(id int, edit factory.RunEdit, recipe factory.Recipe) (
 func (d *Doors) ChangeSteps(id int, change func(it *factory.Item) error) (factory.Item, error) {
 	var out factory.Item
 	err := d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if factory.RecoveryPaused(*it) {
+			return false, run.StepControlRefusal(factory.DecisionPauseDetail(*it))
+		}
 		before := factory.CopyStages(it.Stages)
 		if err := change(it); err != nil {
 			return false, err

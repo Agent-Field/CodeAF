@@ -35,6 +35,9 @@ func CheckPersonStop(it Item) error {
 
 // ClearPersonStop belongs only to explicit person controls, before admission.
 func ClearPersonStop(it *Item) {
+	if StoppedByPerson(*it) {
+		it.PausedRecoveryQuestion = ""
+	}
 	stopped := false
 	it.PersonStopped = &stopped
 	it.StopUndo = nil

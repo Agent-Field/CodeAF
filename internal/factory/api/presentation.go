@@ -21,6 +21,10 @@ func PresentJob(j *Job) {
 		p.Kind, p.Title, p.Detail = "done", "Rejected", endSentence(factory.RejectedWords(j.Rejection.Words))+" Reopen or Run as new to try again."
 	case j.DoneHow == "closed_locally":
 		p.Kind, p.Title, p.Detail = "done", "Closed", "Closed locally; work and spending kept. Reopen to continue."
+	case j.State == StateNeedsYou && j.Reason == "paused":
+		p.Kind, p.Title, p.Detail = "paused", "Paused", factory.RecoveryPauseWords
+	case j.State == StateNeedsYou && j.Reason == "decision_paused":
+		p.Kind, p.Title, p.Detail = "paused", "Paused", factory.DecisionPauseWords
 	case j.Recovery != nil && (j.Recovery.State == "waiting" || j.Recovery.State == "queued"):
 		p.Kind, p.Title, p.Detail = "waiting_for_runner", "Waiting to retry", j.Recovery.Reason
 	case j.Failure != nil:

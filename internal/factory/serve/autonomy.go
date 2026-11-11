@@ -221,7 +221,8 @@ func (h *Handler) judgePasses(items []factory.Item) {
 			closed := h.jobsClosed
 			h.jobsMu.Unlock()
 			if !closed {
-				h.settleJobs(true)
+				held, _ := h.leases()
+				h.settleJobs(true, held)
 				h.scheduleJobTimer()
 			}
 		}(it, cond, key)

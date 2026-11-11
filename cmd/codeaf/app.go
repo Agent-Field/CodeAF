@@ -871,7 +871,12 @@ type appAgent struct {
 	// job's effort when a send or Reopen opens it again
 	// ([appBackend.FactoryJobChats]).
 	jobEffort func() string
-	opening   bool
+	// jobModel is the model of the factory job whose manager this is: the
+	// job's own, else its factory's default. A manager that has never been
+	// opened starts on it ([jobManagerOpenModels]); one that has keeps the
+	// pair saved on it.
+	jobModel func() string
+	opening  bool
 	// openDone closes after initialization, including live publication and watchers.
 	// Waiters can abandon an open without leaving a goroutine on the gate.
 	openDone chan struct{}
@@ -1287,7 +1292,13 @@ func (b *appBackend) find(id string) (*appAgent, error) {
 	b.remember(row)
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.agents[id], nil
+	if a := b.agents[id]; a != nil {
+		return a, nil
+	}
+	// The folder answered under another id: an old-style chat with a moved
+	// copy ready is read back under its new id. No conversation has this one,
+	// and a nil agent with no error crashed every caller that used it.
+	return nil, appwire.Errorf(appwire.CodeNotFound, "there is no conversation with id %s", id)
 }
 
 // appRowOnDisk finds one conversation folder by id under the places root
@@ -1853,10 +1864,12 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	var view appwire.Agent
 	var transcript, workspace string
 	var boot *appBoot
+	var jobModel func() string
 	held := false
 	b.locked(func() {
 		view, held = a.view, a.live != nil
 		transcript, workspace = a.transcript, a.view.Workspace
+		jobModel = a.jobModel
 		if !held {
 			boot, a.boot = a.boot, nil
 		}
@@ -1895,6 +1908,9 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		ask.Model, ask.Minted = boot.model, true
 		ask.AutomaticModels = boot.automatic
 		ask.Models = boot.models
+	}
+	if ask.Models == nil && jobModel != nil {
+		ask.Models = jobManagerOpenModels(jobModel(), appDefaultFallback(config.ProfileDir()))
 	}
 	// OPENING IS SAID WHILE IT LASTS, so a caller that only reads or stops
 	// (agents.open, agents.stop, processes.list) does not queue on the gate
@@ -2492,6 +2508,11 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	}
 	if turn, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
 		return turn, err
+	}
+	if shown != nil && shown.creation != nil && shown.creation.Team == "" && !shown.queued && shown.from == "" {
+		if turn, handled, err := b.tryFactoryRecovery(a, text, clientID, shown); handled {
+			return turn, err
+		}
 	}
 	return b.startLocked(a, text, clientID, shown)
 }

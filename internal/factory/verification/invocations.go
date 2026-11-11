@@ -137,11 +137,11 @@ func observerFunctions() string {
 	for _, p := range names {
 		script += fmt.Sprintf("eval '%s() { if _codeaf_is_check %s \"$@\"; then _codeaf_check %s \"$@\"; else command %s \"$@\"; fi; }'\n", p, p, p, p)
 	}
-	return script + "export -f _codeaf_is_check _codeaf_check _codeaf_worktree_state " + strings.Join(names, " ") + "\n"
+	return script + "export -f _codeaf_is_check _codeaf_check _codeaf_worktree_state _codeaf_clean_detached_base " + strings.Join(names, " ") + "\n"
 }
 
 func observerNames() string {
-	names := []string{"_codeaf_is_check", "_codeaf_check", "_codeaf_worktree_state"}
+	names := []string{"_codeaf_is_check", "_codeaf_check", "_codeaf_worktree_state", "_codeaf_clean_detached_base"}
 	seen := map[string]bool{}
 	for _, rule := range checkInvocations {
 		if !seen[rule[0]] {

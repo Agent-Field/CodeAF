@@ -592,8 +592,12 @@ func (h *appFactoryHost) workers() {
 		cancel context.CancelFunc
 		done   chan struct{}
 		token  string
+		// needs is what the runner attached lacking ([appFactoryHost.needs]),
+		// stored by runWorker as it attaches.
+		needs *atomic.Value
 	}
 	active := map[string]running{}
+	generation := config.SettingsGeneration()
 	defer func() {
 		for _, run := range active {
 			run.cancel()
@@ -607,6 +611,17 @@ func (h *appFactoryHost) workers() {
 		for _, target := range h.targets() {
 			wanted[target.url] = target
 		}
+		// A RUNNER READS WHAT IT LACKS ONCE, WHEN IT ATTACHES. The app hands
+		// this engine its provider key a moment after launch, often after the
+		// runner attached, and such a runner refused every job until the
+		// engine restarted. A settings change that supplies what it lacked
+		// attaches it again; nothing is leased to a runner that lacks a
+		// provider, so no work is cut.
+		recheck := false
+		if g := config.SettingsGeneration(); g != generation {
+			generation, recheck = g, true
+		}
+		var needsNow *string
 		for address, run := range active {
 			select {
 			case <-run.done:
@@ -615,7 +630,17 @@ func (h *appFactoryHost) workers() {
 			default:
 			}
 			target, ok := wanted[address]
-			if !ok || target.token != run.token {
+			stale := !ok || target.token != run.token
+			if !stale && recheck {
+				stale = runnerGainedWhatItLacked(run.needs, func() string {
+					if needsNow == nil {
+						n := h.needs()
+						needsNow = &n
+					}
+					return *needsNow
+				})
+			}
+			if stale {
 				run.cancel()
 				<-run.done
 				delete(active, address)
@@ -627,8 +652,9 @@ func (h *appFactoryHost) workers() {
 			}
 			ctx, cancel := context.WithCancel(h.ctx)
 			done := make(chan struct{})
-			active[address] = running{cancel, done, target.token}
-			guard.Go("app/factory slots", func() { defer close(done); h.runWorker(ctx, target) })
+			needs := &atomic.Value{}
+			active[address] = running{cancel, done, target.token, needs}
+			guard.Go("app/factory slots", func() { defer close(done); h.runWorker(ctx, target, needs) })
 		}
 		select {
 		case <-h.ctx.Done():
@@ -637,7 +663,20 @@ func (h *appFactoryHost) workers() {
 		}
 	}
 }
-func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
+
+// runnerGainedWhatItLacked is whether a runner that attached lacking something
+// (attached holds what, once it attached) would now attach lacking nothing.
+func runnerGainedWhatItLacked(attached *atomic.Value, now func() string) bool {
+	if attached == nil {
+		return false
+	}
+	was, _ := attached.Load().(string)
+	return was != "" && now() == ""
+}
+
+// runWorker runs this machine's runner against target and stores in needs
+// what it attached lacking.
+func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget, needs *atomic.Value) {
 	sum := sha256.Sum256([]byte(target.url))
 	mirror, err := store.Open(filepath.Join(h.floor.Root(), "workers", strconv.Itoa(os.Getpid()), hex.EncodeToString(sum[:8])))
 	if err != nil {
@@ -699,7 +738,11 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 			kind = api.RunnerThisMac
 		}
 	}
-	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes, Needs: h.needs()}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), CarryStop: remote.CarryStop, Reply: func(ctx context.Context, it factory.Item, words string) error {
+	lacks := h.needs()
+	if needs != nil {
+		needs.Store(lacks)
+	}
+	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes, Needs: lacks}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), CarryStop: remote.CarryStop, Reply: func(ctx context.Context, it factory.Item, words string) error {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})

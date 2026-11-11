@@ -67,3 +67,24 @@ func TestStageBudgetReadOutageCanRecoverWithoutReplacingMeter(t *testing.T) {
 		t.Fatalf("temporary read error permanently stopped the meter: %s", why)
 	}
 }
+
+// Every live agent of a round asks Refusal ten times a second. An unchanged
+// job document answers as it did, and a change to it is read on the next ask.
+func TestStageBudgetRefusalReadsTheDocumentOnlyWhenItChanged(t *testing.T) {
+	st, _ := chatSpendFloor(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Cap: 5, Labels: []string{"a", "b", "c", "d", "e", "f"}, Stream: &factory.Stream{Spent: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &stageBudget{floor: st, item: it}
+	if b.Refusal() != "" {
+		t.Fatal("an unspent job refused")
+	}
+	if n := testing.AllocsPerRun(20, func() { _ = b.Refusal() }); n > 8 {
+		t.Fatalf("an unchanged document cost %v allocations an ask; it was decoded again", n)
+	}
+	_ = st.Update(it.ID, func(cur *factory.Item) error { cur.Cap = 1; return nil })
+	if b.Refusal() == "" {
+		t.Fatal("a lowered cap was not read on the next ask")
+	}
+}
