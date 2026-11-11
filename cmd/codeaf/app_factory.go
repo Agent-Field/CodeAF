@@ -118,7 +118,12 @@ func newAppFactoryHost(ctx context.Context, root, address, token string, credent
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	workspace, _ := os.Getwd()
+	// THE ENGINE'S WORKING DIRECTORY IS ONLY A FALLBACK, and never when it is
+	// the codeaf home: a desk starts its engine wherever it likes, ~/.codeaf
+	// included, and every chat that fell back to it swept codeaf's own state
+	// (factory_chat_folder.go).
+	cwd, _ := os.Getwd()
+	workspace := factoryHostWorkspace(cwd)
 	h := &appFactoryHost{ctx: ctx, cancel: cancel, done: make(chan struct{}), floor: floor, address: address, token: token, workspace: workspace, profile: config.ProfileDir(), credentials: credentials}
 	floor.SetOutputPolicy(appFactoryOutputPolicy(h.profile))
 	guard.Go("app/factory worker", func() { defer close(h.done); h.workers() })
@@ -692,7 +697,7 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 	}
 	// A JOB FILED WITH run_on IS RUN BY ITS AGENTFIELD REASONER, over this
 	// factory's own connection, and kept here as an ordinary job.
-	remote := &afRemote{items: mirror, floor: h.floor, workspace: h.workspace, conn: h.agentFieldConn, news: afTellNews}
+	remote := &afRemote{items: mirror, floor: h.floor, conn: h.agentFieldConn, news: afTellNews}
 	runner := buildFactoryRunnerWith(mirror, h.floor, h.workspace, h.profile, maker, turns, remote.Run, factoryrun.ExecutorFunc(remote.Step), remote.Answer)
 	dial := h.runnerDial(target)
 	machine, _ := os.Hostname()

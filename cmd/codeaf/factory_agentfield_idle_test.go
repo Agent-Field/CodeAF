@@ -24,7 +24,7 @@ func TestAFollowedRunThatIsNotMovingDoesNotRewriteItsJob(t *testing.T) {
 	var writes atomic.Int64
 	st.ObserveWrites(func(_, _ factory.Item) { writes.Add(1) })
 	cp := &afFakeCP{tree: afNode("exec-root", "build_issue", "running", "2026-11-08T12:00:00Z", "")}
-	r := &afRemote{items: st, floor: st, workspace: t.TempDir(), conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
+	r := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "workaf-node", true }}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {

@@ -107,8 +107,17 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if where == "" {
 		where = strings.TrimSpace(m.workspace)
 	}
+	if where == "" && spec.Item.ID > 0 {
+		// A STAGE WITH NO WORKTREE AND A HOST WITH NO FOLDER works in its
+		// job's own empty folder, never in whatever folder the engine started
+		// in (factory_chat_folder.go).
+		where, _ = factoryJobFolder(m.floor, spec.Item.ID)
+	}
 	if where == "" {
 		return nil, errors.New("codeaf does not know which folder this stage's conversation belongs in")
+	}
+	if err := factoryFolderRefusal(m.floor, where); err != nil {
+		return nil, err
 	}
 	bucket, err := v3ProjectDir(where)
 	if err != nil {

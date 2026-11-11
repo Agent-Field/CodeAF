@@ -27,7 +27,7 @@ GitHub token is. In the desktop app they are held in memory only and never
 written to disk: the engine hands them to the app, and the app hands them over
 again each time it starts the engine. A key or token the app hands over after
 the factory has started (its keychain answered late) restarts the node with it
-at once, registering as a new instance; the same one handed over again changes
+at once, under the same instance; the same one handed over again changes
 nothing. Outside the app they are kept in the
 profile, owner-readable only. They never reach a log, Disconnect forgets them,
 and they are never sent back. The desk has no settings screen to connect AgentField yet:
@@ -81,7 +81,9 @@ The node registers three reasoners, each with a JSON Schema:
 - `status`: `{source, id}` or `{job}` answers `{job, state, steps_done, steps_total,
   route?, pr_url?, question?, updated}`.
 
-Every restart of the factory registers again as a new instance.
+Every restart of the factory registers again under the SAME instance: the
+instance belongs to the factory's home (kept in `agentfield-instance.json`
+beside its jobs), not to the engine process. See "the engine restarted" below.
 
 **The link.** The node opens one WebSocket to the control plane
 (`/api/v1/nodes/<id>/link`, the API key as its bearer, never in the URL) and
@@ -210,6 +212,31 @@ person dropped it), is caught up at the next lease or reconnect. Cancelling
 the execution in AgentField stops the job, as a person's Stop does. An event
 that files nothing completes its execution at once with the reason as the
 result.
+
+## the engine restarted, crashed or the app quit — what happens to my AgentField execution
+
+Nothing AgentField can see. The app's engine may stop and start again (a
+crash, the Mac sleeping, the app quit and opened again, a late key restarting
+the node): the job keeps its place on disk, and so does the list of
+AgentField executions waiting on it. The engine registers again under the
+instance it always uses, so AgentField does not take the restart for a new
+process and does not fail the executions with "agent_restart_orphaned". Its
+first lease lists them as still in flight, it reports where each job stands
+now, and each execution later gets its job's real result.
+
+A factory that last ran on a build that registered a new instance per start
+adopts the instance AgentField holds when it first starts with executions
+open, so the upgrade itself loses none.
+
+An engine down for hours (the Mac asleep overnight) is covered too, by a
+control plane that holds an offline node's executions: the factory registers
+saying its work outlives its engine, so while its lease is expired its
+executions stay running, up to the control plane's offline ceiling (7 days by
+default), and its next lease picks them up again. An older control plane
+ignores that and keeps its stale timeout (30 minutes by default): an
+execution nothing touched for that long is failed, and an engine that is down
+cannot touch it. Once failed, it stays failed; the job itself goes on in the
+factory.
 
 ## why didn't my AgentField trigger make a job
 
@@ -398,6 +425,21 @@ the record then shows it as your steer. Refusals, word for word:
 
 Only codeaf harness steps can be steered. A plain reasoner's step has no chat
 at all, so there is no box to type in.
+
+## which folder an AgentField job's chat works in — not ~/.codeaf, an empty folder of the job's own
+
+A job AgentField runs — a `run_on` job, or a pipeline whose steps all run on
+AgentField — never runs its code on this machine, so its chats need no project.
+Each step's chat, and the job's own conversation, work in the job's own empty
+folder under the factory (`~/.codeaf/v3/factory/chats/<job>`), whatever folder
+the desk or engine was started in and whatever checkout this machine knows.
+
+No factory chat ever works in codeaf's own folder (`~/.codeaf`), a folder above
+it, or a folder inside it that is not one job's own worktree, clone or empty
+folder. A chat that would is refused: "a factory chat cannot work in codeaf's own
+folder", with the folder named. A local job is unchanged: its chats work in its
+checkout or worktree. The foreman, on a factory started with no project folder,
+works in an empty `chats/foreman` folder of its own.
 
 ## run a step on AgentField — an agentfield step in a pipeline, a reasoner that builds an issue, node.reasoner and its input
 

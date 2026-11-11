@@ -1078,3 +1078,18 @@ Closing a chat with `/quit` or its close action can leave your other chats open.
 When local saving succeeds but another upload is still pending, the sentence is `saved here; it reaches your other devices when the sync service at <address> answers`. It names the service used by the chat you closed.
 
 If saving here fails, closing one chat still says `this chat could not be saved; its unsaved turns stay on this computer for the next start`. An unanswered save remains finishing in the background until its result arrives. Storage being off alone does not mean the local save failed.
+
+## A chat opened in codeaf's own folder — ~/.codeaf, its files are not saved
+
+codeaf's own folder (`~/.codeaf`, or wherever `CODEAF_HOME` points) holds codeaf's
+state: its databases, the factory's clones, your saved keys. It is never a project,
+so a chat whose folder is that folder, or a folder above it, saves the conversation
+and its own folder only, exactly as a chat opened in your home folder does. It says
+once:
+
+> this folder holds codeaf's own folder, so its files are not saved with this chat · rewind brings back the conversation only · open codeaf in a project folder to save its files
+
+Tools still run in that folder, and nothing in it is moved or deleted. A folder
+inside it that is one factory job's own checkout is a project like any other and
+is saved as usual. Chats made before this rule that name `~/.codeaf` stop saving
+its files the next time they open; nothing else about them changes.

@@ -115,9 +115,11 @@ func (p afPlace) recorded(it factory.Item) *factory.AgentFieldRun {
 
 // afRemote runs RunOn jobs for one runner.
 type afRemote struct {
-	items     *store.Store // the runner's jobs
-	floor     *store.Store // the factory a step's conversation is owned by
-	workspace string
+	items *store.Store // the runner's jobs
+	// floor is the factory a step's conversation is owned by, and whose
+	// `chats/<job>` folder each step's conversation works in
+	// ([factoryJobFolder]): the step runs on its node, never here.
+	floor *store.Store
 	// conn is the control plane now, and the node id this factory is; false
 	// while the factory is not connected.
 	conn func() (afClient, string, bool)
@@ -1163,7 +1165,7 @@ func (r *afRemote) pull(ctx context.Context, client afClient, it factory.Item, s
 		_ = client.RelayAck(ctx, exec, through)
 		return nil
 	}
-	if err := m.append(lines, r.workspace); err != nil {
+	if err := m.append(lines, r.stepFolder(it)); err != nil {
 		return m // unkept and unacked: the next reading asks from after again
 	}
 	switch last {
@@ -1272,11 +1274,19 @@ func (r *afRemote) mirror(it factory.Item, exec, step string, make bool) *afMirr
 	if !make {
 		return nil
 	}
-	bucket, err := v3ProjectDir(r.workspace)
+	// A STEP'S CONVERSATION WORKS IN THE JOB'S OWN EMPTY FOLDER. Its code ran
+	// on the node, so it has nothing on this machine to work in, and the
+	// engine's working directory — the codeaf home itself, for the desk — is
+	// the one folder it must never have: every save of the chat swept it.
+	where := r.stepFolder(it)
+	if where == "" || factoryFolderRefusal(r.floor, where) != nil {
+		return nil
+	}
+	bucket, err := v3ProjectDir(where)
 	if err != nil {
 		return nil
 	}
-	place, err := v3MintSession(bucket, r.workspace, r.workspace, false)
+	place, err := v3MintSession(bucket, where, where, false)
 	if err != nil {
 		return nil
 	}
@@ -1292,7 +1302,7 @@ func (r *afRemote) mirror(it factory.Item, exec, step string, make bool) *afMirr
 	// the record empty writes a header of its own — so a header left for the
 	// first relayed line to bring would land second, and the record would
 	// open twice. The node's own header is then skipped as a repeat.
-	if os.WriteFile(file, append(afLocalHeader(nil, m.id, afHeaderCwd(file, r.workspace)), '\n'), 0o600) != nil {
+	if os.WriteFile(file, append(afLocalHeader(nil, m.id, afHeaderCwd(file, where)), '\n'), 0o600) != nil {
 		return nil
 	}
 	m.header = true
@@ -1301,6 +1311,16 @@ func (r *afRemote) mirror(it factory.Item, exec, step string, make bool) *afMirr
 	}
 	r.files[exec] = m
 	return m
+}
+
+// stepFolder is the folder every step conversation of it works in: the job's
+// own empty folder under the owning floor, "" when there is none to make.
+func (r *afRemote) stepFolder(it factory.Item) string {
+	dir, err := factoryJobFolder(r.floor, it.ID)
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 func afHasHeader(file string) bool {
