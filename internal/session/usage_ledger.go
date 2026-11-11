@@ -725,9 +725,8 @@ func (w *usageWriter) run(path string) {
 					err = errors.New("open usage ledger")
 				} else {
 					written, err = identities.append(file, rows)
-					if err == nil {
-						err = file.Sync()
-					}
+					// The pending journal owns background durability. Sync the ledger
+					// before compaction, rather than stalling every projection batch.
 					file.Close()
 				}
 			}
@@ -1111,7 +1110,7 @@ func queueUsage(path string, line UsageLine) {
 	if strings.TrimSpace(line.RemoteEvent) != "" {
 		line.SharedID = true
 	}
-prepareUsage(path)
+	prepareUsage(path)
 	payload, err := json.Marshal(line)
 	work := usageWrite{id: line.ChargeID(), row: &line}
 	if err == nil {
