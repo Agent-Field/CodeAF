@@ -915,7 +915,8 @@ func runPlanNew(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
+	defer stopPoolErrands(held)
 	seats := doorSeats(settings, *model, *planModel, goal)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
@@ -1095,7 +1096,8 @@ func runRevise(name string, args []string) error {
 	if err != nil {
 		return err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
+	defer stopPoolErrands(held)
 	seats := doorSeats(settings, *model, *planModel, graph.Goal+"\n\n"+event)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()

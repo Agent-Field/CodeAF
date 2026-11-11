@@ -774,11 +774,17 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget, ne
 			kind = api.RunnerThisMac
 		}
 	}
-	lacks := h.needs()
-	if needs != nil {
-		needs.Store(lacks)
+	// The worker asks before every lease poll (#2596), and each answer is also
+	// left where the lost-runner recovery reads it (#2570), so that reader sees
+	// the word the runner last attached with rather than the one it started with.
+	lacks := func() string {
+		word := h.needs()
+		if needs != nil {
+			needs.Store(word)
+		}
+		return word
 	}
-	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes, Needs: lacks}, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), CarryStop: remote.CarryStop, Reply: func(ctx context.Context, it factory.Item, words string) error {
+	factoryworker.Run(ctx, factoryworker.Options{Dial: dial.dial, Keep: dial.keep, Attach: api.WorkerAttach{Machine: machine, Name: machine, Handle: me.Handle, OS: runtime.GOOS, CodeafVersion: buildinfo.String(), Kind: kind, Slots: factoryBenches(), Checkouts: checkouts, TakesUnassigned: takes}, Needs: lacks, Slots: factoryBenches(), Desired: dial.desiredSlots, Runner: runner, Mirror: mirror, DeliveryRoot: filepath.Join(h.floor.Root(), "worker-reports"), LocalFactory: target.url == h.address || (me.Mode == api.FactorySolo && factoryLoopback(target.url)), LocalLease: factoryLocalLease(mirror), CarryStop: remote.CarryStop, Reply: func(ctx context.Context, it factory.Item, words string) error {
 		_, err := turns.through(ctx, it, words, nil)
 		return err
 	}})

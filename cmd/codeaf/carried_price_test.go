@@ -37,7 +37,7 @@ func pricedProfileRoad(t *testing.T) carriedRoad {
 		t.Fatal(err)
 	}
 	old := sharedCatalog
-	sharedCatalog = func(config.Config) *catalog.Catalog { return catalog.Recall(options) }
+	sharedCatalog = func(config.Config, ...*poolErrands) *catalog.Catalog { return catalog.Recall(options) }
 	t.Cleanup(func() { sharedCatalog = old })
 	road, err := profileRoad()
 	if err != nil {

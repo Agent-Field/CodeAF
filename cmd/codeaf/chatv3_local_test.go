@@ -43,7 +43,6 @@ func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", surfaceProfile)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "not-a-real-key")
-	t.Cleanup(func() { stopPoolErrands(surfaceProfile) })
 	const harbor = "0a0a0a0a0a0a"
 	if err := teamstore.Save(engineProfile, []teamstore.Team{{ID: harbor, Name: "harbor", Manager: "hm",
 		Members: []teamstore.Member{{Key: "hm", Handle: "boss"}}}}); err != nil {
@@ -227,11 +226,6 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 	t.Setenv("CODEAF_PROFILE_DIR", surfaceProfile)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "not-a-real-key")
-	// hostOptions wires the pool's start-up errands on the terminal's profile;
-	// the doors exit the process behind them, this test does not, so it closes
-	// them through the seam the process's own close uses (poolindex.go) before
-	// the profile is removed.
-	t.Cleanup(func() { stopPoolErrands(surfaceProfile) })
 	if err := config.WriteSources(engineProfile, []config.PersistedSource{{
 		ID: "custom", Written: "engine-service", Address: "https://engine.example/v1", Key: "engine-key", Order: 1,
 	}}); err != nil {
@@ -321,7 +315,6 @@ func TestPlainEngineModelDoorsRefreshEveryConnectedProvider(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", profile)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(config.APIKeyEnv, "default-key")
-	t.Cleanup(func() { stopPoolErrands(profile) })
 	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
 	t.Cleanup(defaultServer.Close)
 	t.Setenv("CODEAF_BASE_URL", defaultServer.URL())

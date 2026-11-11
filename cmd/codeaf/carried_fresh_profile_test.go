@@ -95,8 +95,8 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 	previousCatalog := sharedCatalog
 	catalogFor := newSharedCatalog()
 	var ownCatalog *catalog.Catalog
-	sharedCatalog = func(settings config.Config) *catalog.Catalog {
-		ownCatalog = catalogFor(settings)
+	sharedCatalog = func(settings config.Config, owners ...*poolErrands) *catalog.Catalog {
+		ownCatalog = catalogFor(settings, owners...)
 		return ownCatalog
 	}
 	// The lazy catalog can still be replacing a cache in CODEAF_HOME after the

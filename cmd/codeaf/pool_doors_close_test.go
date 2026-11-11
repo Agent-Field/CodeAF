@@ -29,41 +29,8 @@ func TestPoolErrandsStopRequestsAndWritesOnBothDoors(t *testing.T) {
 	} {
 		t.Run(tc.door+"/"+tc.errand+"/"+tc.hold, func(t *testing.T) {
 			poolNetworkFixture(t)
-			// Seat the real door without unrelated startup network work. The
-			// tested errand below uses the very tracker that door owns.
-			t.Setenv("CODEAF_MODEL_POOL", "off")
-			var profile string
-			var closeDoor func()
-			if tc.door == "process" {
-				proc := v3TestProcess(t)
-				profile, closeDoor = proc.ProfileDir, proc.closeAll
-			} else {
-				profile = testHome(t)
-				t.Setenv("CODEAF_HOME", profile)
-				t.Setenv("CODEAF_PROFILE_DIR", profile)
-				fleet := onePipeFleet("", hostedClient(t))
-				closeDoor = fleet.closeAll
-				hostOptions(fleet, remote.Welcome{Version: remote.Version, ProfileDir: profile}, false)
-			}
-			t.Cleanup(closeDoor)
-			held := poolErrandsStart(profile)
-			t.Cleanup(func() { stopPoolErrands(profile) })
-			t.Setenv("CODEAF_MODEL_POOL", "on")
-			t.Setenv("CODEAF_MODEL_POOL_URL", "https://pool.invalid/index.json")
-			cfg := config.ModelPoolAt(profile)
-			pool := config.ProfilePath(profile, "pool")
-			if tc.errand == "push" {
-				box, err := outbox.Open(outboxPath(pool))
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, line := range []string{`{"sample":1}`, `{"sample":2}`} {
-					if err := box.Append([]byte(line)); err != nil {
-						t.Fatal(err)
-					}
-				}
-				box.Close()
-			}
+			// Install the transport before either door starts catalog warming, so
+			// net/http cannot read its global default while the test replaces it.
 			private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
 			public := private.Public().(ed25519.PublicKey)
 			doc := string(signedPoolDoc(9))
@@ -103,8 +70,46 @@ func TestPoolErrandsStopRequestsAndWritesOnBothDoors(t *testing.T) {
 				}
 				return response, nil
 			})
+			t.Cleanup(func() { http.DefaultTransport = previous })
+			// Seat the real door without unrelated startup network work. The
+			// tested errand below uses the very tracker that door owns.
+			t.Setenv("CODEAF_MODEL_POOL", "off")
+			var profile string
+			var closeDoor func()
+			var held *poolErrands
+			if tc.door == "process" {
+				proc := v3TestProcess(t)
+				profile, closeDoor = proc.ProfileDir, proc.closeAll
+				held = proc.poolErrands
+			} else {
+				profile = testHome(t)
+				t.Setenv("CODEAF_HOME", profile)
+				t.Setenv("CODEAF_PROFILE_DIR", profile)
+				fleet := onePipeFleet("", hostedClient(t))
+				closeDoor = fleet.closeAll
+				hostOptions(fleet, remote.Welcome{Version: remote.Version, ProfileDir: profile}, false)
+				held = fleet.poolErrands
+			}
+			t.Cleanup(closeDoor)
+			t.Setenv("CODEAF_MODEL_POOL", "on")
+			t.Setenv("CODEAF_MODEL_POOL_URL", "https://pool.invalid/index.json")
+			cfg := config.ModelPoolAt(profile)
+			pool := config.ProfilePath(profile, "pool")
+			if tc.errand == "push" {
+				box, err := outbox.Open(outboxPath(pool))
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, line := range []string{`{"sample":1}`, `{"sample":2}`} {
+					if err := box.Append([]byte(line)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				box.Close()
+			}
+
 			finished := make(chan struct{})
-			t.Cleanup(func() { free(); <-finished; http.DefaultTransport = previous })
+			t.Cleanup(func() { free(); <-finished })
 			held.goCtx("pool/"+tc.errand, func(ctx context.Context) {
 				defer close(finished)
 				if tc.errand == "index" {
