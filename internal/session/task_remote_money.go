@@ -161,7 +161,7 @@ func (a *Agent) foldRemoteCharge(event string, charge RunCharge) error {
 	}
 	used := Usage{Input: charge.TokensIn, Output: charge.TokensOut, CacheRead: charge.Cached, Calls: 1, CostUSD: charge.USD}
 	if a.file != nil {
-		added, err := a.file.appendRemoteCharge(event, charge.Model, used, charge.CallID)
+		added, err := a.file.appendRemoteCharge(event, UsageLine{CallID: charge.CallID, Model: charge.Model, FactoryJob: a.factoryJobName()}, used)
 		if err != nil {
 			return err
 		}
@@ -172,7 +172,7 @@ func (a *Agent) foldRemoteCharge(event string, charge RunCharge) error {
 	a.bank(bankedCall{used: used, model: charge.Model, late: true})
 	return nil
 }
-func (s *sessionFile) appendRemoteCharge(event, model string, used Usage, identity ...string) (bool, error) {
+func (s *sessionFile) appendRemoteCharge(event string, facts UsageLine, used Usage) (bool, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -185,11 +185,11 @@ func (s *sessionFile) appendRemoteCharge(event, model string, used Usage, identi
 		s.mu.Unlock()
 		return false, nil
 	}
-	callID := ""
-	if len(identity) > 0 {
-		callID = identity[0]
-	}
-	raw, err := json.Marshal(sessionEntry{Type: "usage", Timestamp: stamp(), Usage: &journalUsage{CallID: callID, RemoteEvent: event, Model: model, Input: used.Input, Output: used.Output, CacheRead: used.CacheRead, CostUSD: used.CostUSD, Calls: used.Calls, Aux: true}})
+	raw, err := json.Marshal(sessionEntry{Type: "usage", Timestamp: stamp(), Usage: &journalUsage{
+		CallID: facts.CallID, RemoteEvent: event, Model: facts.Model,
+		Billing: facts.Billing, BillingBasis: facts.BillingBasis, Unbilled: facts.Unbilled, FactoryJob: facts.FactoryJob,
+		Input: used.Input, Output: used.Output, CacheRead: used.CacheRead, CostUSD: used.CostUSD, Calls: used.Calls, Aux: true,
+	}})
 	if err == nil {
 		_, err = s.file.Write(append(trace.ScrubRegistered(raw), '\n'))
 	}

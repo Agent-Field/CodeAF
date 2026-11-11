@@ -1292,6 +1292,11 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		},
 		FinishSaving: func(closed remote.WrappedAgent) error {
 			if built, ok := closed.(*session.Agent); ok {
+				ctx, cancel := context.WithTimeout(context.Background(), v3ReceiptWait)
+				defer cancel()
+				if err := built.WaitReceipts(ctx); err != nil {
+					return session.SavingError(built.SessionPath(), err)
+				}
 				return session.SavingError(built.SessionPath(), syncDrives.closeCell(v3PlaceOf(built.SessionPath(), workspace).ID()))
 			}
 			return nil
