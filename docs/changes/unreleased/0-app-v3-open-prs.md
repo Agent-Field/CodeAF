@@ -19,3 +19,5 @@ unchanged-floor settlement passes remain measurable without decoding jobs.
 Fixture setup previously relied on idle inventory and synchronous receipt
 completion. Fixtures now save their Memory choice explicitly, request the
 discovery passes they exercise, and join existing receipt settlement signals.
+Admission probes arm their ledger changes after construction, at the turn
+boundary they exercise.

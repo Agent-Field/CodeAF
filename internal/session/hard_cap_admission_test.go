@@ -46,13 +46,14 @@ func TestHardCapPreAdmissionWakeDoesNotLatchStop(t *testing.T) {
 			c.OneModel = true
 			c.Routing = provider.RoutingOff
 			c.DailyBudgetResolved, c.DailyBudgetUSD = true, 1
-			c.JobBudget = budget
 			c.PrepareModel = func(string, modelsource.Set) (string, string, error) {
 				close(prepared)
 				<-release
 				return "", "", nil
 			}
 		})
+		// The ledger injection belongs to turn admission, after the startup snapshot.
+		a.config.JobBudget = budget
 		events := mustSubmit(t, a, "work")
 		<-prepared
 		synctest.Wait()
