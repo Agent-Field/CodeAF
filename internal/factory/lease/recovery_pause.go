@@ -14,7 +14,7 @@ import (
 // PauseRecoveryExpected dismisses the decision shown at this document revision.
 // The old lease is fenced before the pause becomes visible to another reader.
 func (d *Doors) PauseRecoveryExpected(id, revision int, person string) error {
-	return d.updateAt(id, &revision, func(doc *document, held *Lease, it *factory.Item, _ time.Time) (bool, error) {
+	return d.updateAt(id, &revision, false, func(doc *document, held *Lease, it *factory.Item, _ time.Time) (bool, error) {
 		if it.Person() != person {
 			return false, run.StepControlRefusal("The job's owner changed. Read the job before trying again.")
 		}
