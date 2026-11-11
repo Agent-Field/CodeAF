@@ -72,7 +72,7 @@ const RejectRefusal = "is not waiting on an approval · Stop or Close end it ins
 // paused for an approval somewhere else. Nothing here reads a pipeline's or a
 // step's name.
 func (d *Doors) Reject(id int, revision *int, who, words string) error {
-	return d.updateAt(id, revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	return d.updateAt(id, revision, false, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if factory.JobState(*it) == "done" {
 			return false, CloseRefusal(fmt.Sprintf("%s is already closed", it.Ref()))
 		}
