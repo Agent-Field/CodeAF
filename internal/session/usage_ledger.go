@@ -693,7 +693,8 @@ func (w *usageWriter) run(path string) {
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
-		for attempt := 0; ; attempt++ {
+		delay := time.Duration(0)
+		for {
 			var err error
 			for i := range rows {
 				row := &rows[i]
@@ -743,7 +744,8 @@ func (w *usageWriter) run(path string) {
 					pendingUsage(path).failed(row.id)
 				}
 			}
-			time.Sleep(usageRetryDelay(attempt))
+			delay = nextUsageRetryDelay(delay)
+			time.Sleep(delay)
 		}
 	}
 	batch := make([]usageWrite, 0, usageWriteBatchSize)
@@ -813,13 +815,17 @@ func announceUsageWritten() {
 }
 
 // openUsageLedger opens the current generation; a failed open leaves rows pending.
-func openUsageLedger(path string) *os.File {
+func openUsageLedger(path string, mode ...int) *os.File {
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			return nil
 		}
 	}
-	file, err := fsreplace.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	flags := os.O_CREATE | os.O_WRONLY | os.O_APPEND
+	if len(mode) != 0 {
+		flags = mode[0] | os.O_APPEND
+	}
+	file, err := fsreplace.OpenFile(path, flags, 0o600)
 	if err != nil {
 		return nil
 	}
