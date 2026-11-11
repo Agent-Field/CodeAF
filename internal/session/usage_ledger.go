@@ -1589,12 +1589,7 @@ func RecordUnbilledCall(path string, line UsageLine) {
 }
 
 // recordUnbilledReceipt uses the same ownership fields as an ordinary usage row.
-func (a *Agent) recordUnbilledReceipt(receipt provider.Reconciled) {
-	a.recordUnbilledReceiptForActivity(receipt, "")
-}
-
-// recordUnbilledReceiptForActivity keeps the recorded Library purpose on a missing receipt.
-func (a *Agent) recordUnbilledReceiptForActivity(receipt provider.Reconciled, activity string) {
+func (a *Agent) recordUnbilledReceipt(receipt provider.Reconciled, activity string) {
 	path := a.config.usageLedger
 	a.mu.Lock()
 	owner := a.sessionID()
@@ -1604,7 +1599,7 @@ func (a *Agent) recordUnbilledReceiptForActivity(receipt provider.Reconciled, ac
 		GenerationID: strings.TrimSpace(receipt.Ref),
 		Session:      owner, Model: receipt.Model, Role: receipt.Tag, Task: usageTaskID(a.config.taskID),
 		Root: a.config.rootSession, Automation: a.config.automationID, Workspace: a.config.Workspace,
-		FactoryJob: a.factoryJobName(),
+		FactoryJob: a.factoryJobName(), LibraryActivity: activity,
 	}
 	line = withUsageBilling(line, receipt.Billing)
 	RecordUnbilledCall(path, line)
