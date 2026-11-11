@@ -57,15 +57,15 @@ func (d *Doors) WithTalk(talk run.Talk) *Doors {
 // update changes job id under the desk's lock: held is its live lease, nil
 // when no worker holds it. change answers whether the desk itself changed.
 func (d *Doors) update(id int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
-	return d.updateAt(id, nil, change)
+	return d.updateAt(id, nil, false, change)
 }
 
-// updateAt is update that writes only on the document revision named, when
-// one is: the store compares it inside the item's flock, which is taken
-// inside the desk's lock. The comparison and item mutation use the same
-// document; a different revision is the store's StaleError and change never
+// updateAt requires the document revision named, allowing only bookkeeping
+// when explicitly requested. The store compares it inside the item's flock,
+// taken inside the desk's lock. The comparison and item mutation use the same
+// document; a stale revision is the store's StaleError and change never
 // runs. The lease file is persisted separately after the item write.
-func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
+func (d *Doors) updateAt(id int, revision *int, bookkeeping bool, change func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error)) error {
 	read, err := d.desk.store.Get(id)
 	if err != nil {
 		return err
@@ -94,7 +94,9 @@ func (d *Doors) updateAt(id int, revision *int, change func(doc *document, held 
 			return err
 		}
 		var err error
-		if revision == nil {
+		if bookkeeping {
+			err = d.desk.store.UpdateActionExpected(id, revision, write)
+		} else if revision == nil {
 			err = d.desk.store.Update(id, write)
 		} else {
 			err = d.desk.store.UpdateExpected(id, *revision, write)
@@ -437,7 +439,7 @@ func answerLocked(doc *document, held *Lease, id int, it *factory.Item, yes bool
 // reach, so the caller's receipt names the question that was answered.
 func (d *Doors) RejectPlan(id, revision int, words string, may func(factory.Item) error) (factory.Item, error) {
 	var before factory.Item
-	err := d.updateAt(id, &revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	err := d.updateAt(id, &revision, false, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := run.PlanRevision(*it); err != nil {
 			return false, err
 		}
@@ -694,7 +696,7 @@ func (d *Doors) AnswerPending(id int, manager, questionID, words string) (factor
 // Refusals leave both the item and its worker signal unchanged.
 func (d *Doors) SpendAnswer(id, revision int, yes bool, may func(factory.Item) error) (factory.Item, error) {
 	var before factory.Item
-	err := d.updateAt(id, &revision, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+	err := d.updateAt(id, &revision, false, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := run.SpendingAnswer(*it); err != nil {
 			return false, err
 		}
