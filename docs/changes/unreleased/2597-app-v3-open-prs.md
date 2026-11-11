@@ -35,3 +35,6 @@ assertions, alongside the separate quiet-profile and custody coverage.
 Automatic admission invalidates a shared negative job lookup immediately when
 the floor changes, so a stopped job handed to a chat is seen on the next ask.
 The cheap idle watcher still reads no unchanged job documents.
+
+The Factory PR-base tool-belt fixture keeps its profile outside its workspace,
+preserving the existing refusal to work in a folder that contains codeaf state.

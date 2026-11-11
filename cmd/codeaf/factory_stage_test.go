@@ -47,7 +47,7 @@ const stageModelReport = `{"done":true,"findings":0,"output":"looked it over"}`
 func TestFactoryStageCallsPRBaseSyncThroughTheRealToolBelt(t *testing.T) {
 	root := resolvedTempDir(t)
 	t.Setenv("HOME", filepath.Join(root, "home"))
-	t.Setenv(home.EnvVar, filepath.Join(root, "state"))
+	t.Setenv(home.EnvVar, t.TempDir())
 	t.Setenv(config.ProfileDirEnv, "")
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Setenv(factoryPostureEnv, "")

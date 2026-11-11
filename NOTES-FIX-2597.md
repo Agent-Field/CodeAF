@@ -116,7 +116,8 @@ manager checks, unrelated floor churn, idle watcher zero-document work, exactly
 one document after one job edit, and allocation growth limits pass together in
 `handover-factory-green.log`. Unmanaged admission now costs 432 B/op and three
 allocations/op (the additional directory stat), still within existing unchanged
-allocation caps. No cap or existing assertion was changed. Fix commit pending.
+allocation caps. No cap or existing assertion was changed. Fix commit:
+`e8fc2e3a0` — invalidate #2358 handover look before stale admission.
 
 ### Factory PR-base belt fixture: #2570
 
