@@ -184,7 +184,7 @@ func (st *Store) migrateRepository(d doc, ids repositoryIDs) (doc, error) {
 		if err != nil {
 			return err
 		}
-		return writeAtomic(st.ItemPath(d.Item.ID), data)
+		return st.writeItem(st.ItemPath(d.Item.ID), data)
 	})
 	return d, err
 }
