@@ -218,7 +218,9 @@ A runner runs only its owner's jobs, with its owner's keys; keys are shown by na
 
 ### a runner's model provider — needs a model provider, provider base URL is required
 
-A joined runner runs every step with the model provider of its own codeaf home: the same service, base URL and key `codeaf chat` on that home would use, from the shell (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `CODEAF_BASE_URL`) or from the home's saved key and connected services. Nothing is entered again at `runner join`; `--model` and `--one-model` only choose the model. A home with no provider configured joins and shows on the factory's runner list as **needs a model provider** (state `needs_provider`), and the factory leases it no step, so queued jobs wait for a runner that can run them instead of failing with "provider base URL is required". Add a key on that home, then stop and run `codeaf runner join` again: the state is read when the runner attaches.
+A joined runner runs every step with the model provider of its own codeaf home: the same service, base URL and key `codeaf chat` on that home would use, from the shell (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `CODEAF_BASE_URL`) or from the home's saved key and connected services. Nothing is entered again at `runner join`; `--model` and `--one-model` only choose the model. A home with no provider configured joins and shows on the factory's runner list as **needs a model provider** (state `needs_provider`), and the factory leases it no step, so queued jobs wait for a runner that can run them instead of failing with "provider base URL is required".
+
+Add or remove a key on that home: the runner rereads its provider before each lease poll and updates this state within one poll, without restarting. The app's `keys.set` and `keys.remove` update its running factory runner the same way. Replacing a usable key keeps queued work available, and changing a key leaves a step already running alone.
 
 ## from chat to the factory — factory_add, factory_recipe, factory_item and the manager's tools
 
