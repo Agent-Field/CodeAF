@@ -59,8 +59,11 @@ func (p *usagePending) failed(id string) {
 	}
 }
 
-func usageRetryDelay(attempt int) time.Duration {
-	return min(10*time.Millisecond<<min(attempt, 7), usageRetryCap)
+func nextUsageRetryDelay(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return 10 * time.Millisecond
+	}
+	return min(2*delay, usageRetryCap)
 }
 
 // RecoverUsage replays exact rows before chat reconciliation reads booked money.
@@ -92,8 +95,10 @@ func recoverUsage(path string, force bool) {
 }
 
 func (p *usagePending) retryRecovery(path string) {
-	for attempt := 0; ; attempt++ {
-		time.Sleep(usageRetryDelay(attempt))
+	delay := time.Duration(0)
+	for {
+		delay = nextUsageRetryDelay(delay)
+		time.Sleep(delay)
 		p.mu.Lock()
 		if !p.retrying || p.ready {
 			p.retrying = false
@@ -127,7 +132,7 @@ func withUsageLedgerLock(path string, exclusive bool, fn func(*os.File) error) e
 		return err
 	}
 	for {
-		f, err := openUsageCreated(path, os.O_APPEND|os.O_RDWR)
+		f, err := openUsageCreated(path, os.O_RDWR)
 		if err != nil {
 			return err
 		}
@@ -204,14 +209,15 @@ func repairUsagePending(path string) ([]byte, error) {
 
 // Creation and rename need directory durability; ordinary appends do not.
 func openUsageCreated(path string, flags int) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|flags, 0600)
-	if errors.Is(err, fs.ErrExist) {
-		return os.OpenFile(path, flags, 0600)
+	f := openUsageLedger(path, os.O_CREATE|os.O_EXCL|flags)
+	if f == nil {
+		f = openUsageLedger(path, flags)
+		if f == nil {
+			return nil, errors.New("open usage accounting file")
+		}
+		return f, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	if err = syncUsageDir(path); err != nil {
+	if err := syncUsageDir(path); err != nil {
 		f.Close()
 		return nil, err
 	}
@@ -225,7 +231,7 @@ func (p *usagePending) append(path string, row usageWrite) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	err := withUsageLedgerLock(path, false, func(_ *os.File) error {
-		f, err := openUsageCreated(path+usagePendingSuffix, os.O_APPEND|os.O_WRONLY)
+		f, err := openUsageCreated(path+usagePendingSuffix, os.O_WRONLY)
 		if err != nil {
 			return err
 		}
@@ -292,8 +298,9 @@ func (p *usagePending) syncBatches(path string, wake <-chan struct{}, done chan<
 	defer close(done)
 	timer := time.NewTimer(usageSyncInterval)
 	defer timer.Stop()
-	for attempt := 0; ; {
-		if attempt > 0 {
+	backoff := time.Duration(0)
+	for {
+		if backoff > 0 {
 			<-timer.C
 		} else {
 			select {
@@ -330,10 +337,10 @@ func (p *usagePending) syncBatches(path string, wake <-chan struct{}, done chan<
 		delay := max(time.Duration(0), time.Until(started.Add(usageSyncInterval)))
 		if err != nil {
 			p.failed("journal-sync")
-			delay = usageRetryDelay(attempt)
-			attempt++
+			backoff = nextUsageRetryDelay(backoff)
+			delay = backoff
 		} else {
-			attempt = 0
+			backoff = 0
 		}
 		if !timer.Stop() {
 			select {

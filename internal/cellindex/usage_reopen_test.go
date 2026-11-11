@@ -23,7 +23,7 @@ func TestUsageReopenRecoversMissingChargeExactlyOnce(t *testing.T) {
 	usageReopen(t, false, false)
 }
 
-func TestUsageReopenAfterCleanFlushBooksNothing(t *testing.T) {
+func TestUsageReopenFollowingCleanFlushBooksNothing(t *testing.T) {
 	usageReopen(t, true, false)
 }
 
