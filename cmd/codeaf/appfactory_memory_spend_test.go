@@ -389,10 +389,16 @@ func TestMemorySpendAndLifecycle(t *testing.T) {
 				history := &memoryObservedHistory{History: session.KnowledgeHistory(workspace, filepath.Join(s.home, "job-profile")), passes: make(chan struct{}, 4)}
 				ctx, cancel := context.WithCancel(context.Background())
 				done := make(chan error, 1)
+				worker := knowledge.Open(filepath.Join(s.home, "job-profile"))
 				go func() {
-					done <- knowledge.Open(filepath.Join(s.home, "job-profile")).Run(ctx, history, func() string { return "fixture" })
+					done <- worker.Run(ctx, history, func() string { return "fixture" })
 				}()
 				for pass := 0; pass < 2; pass++ {
+					// Memory off inventories only when its saved-chat count is requested.
+					if err := worker.AskDiscovery(); err != nil {
+						cancel()
+						t.Fatal(err)
+					}
 					select {
 					case <-history.passes:
 					case <-time.After(5 * time.Second):
