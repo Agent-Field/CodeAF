@@ -852,7 +852,7 @@ func TestPoolPublicKeysCarryTheIndexSignersKey(t *testing.T) {
 	prev := poolRefreshGo
 	poolRefreshGo = func(scope string, fn func()) { started++ }
 	t.Cleanup(func() { poolRefreshGo = prev })
-	startPoolIndexRefresh(context.Background(), t.TempDir(), poolcfg.Resolve("on", "", noEnv), poolPublicKeys)
+	startPoolIndexRefresh(nil, t.TempDir(), poolcfg.Resolve("on", "", noEnv), poolPublicKeys)
 	if started != 1 {
 		t.Fatalf("the build's key started %d refresh(es) under mode on, want 1", started)
 	}
@@ -1180,15 +1180,15 @@ func TestPoolRefreshStartsNoGoroutineWithoutAKey(t *testing.T) {
 	on := poolcfg.Resolve("on", "", noEnv)
 	off := poolcfg.Resolve("off", "", noEnv)
 
-	startPoolIndexRefresh(context.Background(), t.TempDir(), on, nil)
+	startPoolIndexRefresh(nil, t.TempDir(), on, nil)
 	if started != 0 {
 		t.Fatalf("no key, yet %d goroutine(s) started", started)
 	}
-	startPoolIndexRefresh(context.Background(), t.TempDir(), off, key)
+	startPoolIndexRefresh(nil, t.TempDir(), off, key)
 	if started != 0 {
 		t.Fatal("a mode that forbids reading started a goroutine")
 	}
-	startPoolIndexRefresh(context.Background(), t.TempDir(), on, key)
+	startPoolIndexRefresh(nil, t.TempDir(), on, key)
 	if started != 1 {
 		t.Fatalf("with a key, %d goroutine(s) started, want 1", started)
 	}
@@ -1215,7 +1215,8 @@ func TestWirePoolIndexStartsTheRefreshAndThePush(t *testing.T) {
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
 	// This test exercises both errands of an explicitly enabled pool.
 	t.Setenv("CODEAF_MODEL_POOL", "on")
-	wirePoolIndex(t.TempDir())
+	held := wirePoolIndex(t.TempDir())
+	t.Cleanup(func() { stopPoolErrands(held) })
 	if *started != 2 {
 		t.Fatalf("a sending pool started %d errand(s) at start-up, want the refresh and the push", *started)
 	}
@@ -1223,7 +1224,8 @@ func TestWirePoolIndexStartsTheRefreshAndThePush(t *testing.T) {
 	// A mode that does not send starts the refresh alone.
 	*started = 0
 	t.Setenv("CODEAF_MODEL_POOL", "read")
-	wirePoolIndex(t.TempDir())
+	readOnly := wirePoolIndex(t.TempDir())
+	t.Cleanup(func() { stopPoolErrands(readOnly) })
 	if *started != 1 {
 		t.Fatalf("a read-only pool started %d errand(s), want the refresh alone", *started)
 	}

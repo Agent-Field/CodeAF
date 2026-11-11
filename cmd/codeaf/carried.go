@@ -159,7 +159,7 @@ func profileRoad() (carriedRoad, error) {
 	if err != nil {
 		return carriedRoad{}, err
 	}
-	useAutoSeats(settings)
+	held := useAutoSeats(settings)
 	settings.Models = sharedCatalog(settings)
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
@@ -170,7 +170,7 @@ func profileRoad() (carriedRoad, error) {
 			for _, c := range opened.take() {
 				c.Close()
 			}
-			stopPoolErrands(settings.ProfileDir)
+			stopPoolErrands(held)
 		},
 		completerFor:  adapters.forModel,
 		authKeySource: func(model string) string { return config.APIKeySourceForModel(settings.ProfileDir, sources, model) },

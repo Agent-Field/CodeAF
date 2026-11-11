@@ -125,7 +125,7 @@ func TestPoolCloseBoundsAnUncooperativeSweep(t *testing.T) {
 	if err := writePendingLanding(profile, "do", landing); err != nil {
 		t.Fatal(err)
 	}
-	poolErrandsStart(profile)
+	held := poolErrandsStart(profile)
 	started, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	ask := func(string) judge.Ask {
 		return func(context.Context, string, string) (string, error) {
@@ -138,13 +138,13 @@ func TestPoolCloseBoundsAnUncooperativeSweep(t *testing.T) {
 			return `{"score":88,"reason":"completed"}`, nil
 		}
 	}
-	poolErrandGoCtx(profile, "pool/judge-sweep", func(ctx context.Context) {
+	poolErrandGoCtx(held, "pool/judge-sweep", func(ctx context.Context) {
 		defer close(finished)
 		poolJudgeSweepContext(ctx, config.Config{APIKey: "fixture"}, profile, "", poolTestCatalog, ask, time.Now)
 	})
 	<-started
 	closed := make(chan struct{})
-	go func() { stopPoolErrands(profile); close(closed) }()
+	go func() { stopPoolErrands(held); close(closed) }()
 	select {
 	case <-closed:
 	case <-time.After(1500 * time.Millisecond):
