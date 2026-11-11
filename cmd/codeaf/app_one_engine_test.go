@@ -166,7 +166,9 @@ func TestAppOneEngine(t *testing.T) {
 		}
 		t.Cleanup(func() {
 			if raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid)); err == nil && bytes.HasPrefix(raw, []byte("sleep")) {
-				_ = syscall.Kill(pid, syscall.SIGKILL)
+				if stray, err := os.FindProcess(pid); err == nil {
+					_ = stray.Kill()
+				}
 			}
 		})
 		parent.kill(t)
