@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a call stopped before its first streamed word keeps its charge instead of losing it
-pr: 2566
+pr: 2592
 surface: [chat, engine, docs]
 invalidates:
   - >-
