@@ -111,9 +111,10 @@ func directBaselineGoTest(check Check) bool {
 	}
 	for i, name := range checkContextNames {
 		value := check.Context[i]
-		// A global wrapper, external workspace, or overlay can select code
+		// The fence's cache permission flag changes file modes, not selected
+		// code. Other global flags or an external workspace can select code
 		// outside the snapshot even when a check's direct argv looks local.
-		if name == "GOFLAGS" && value != "" || name == "GOWORK" && value != "" && value != "off" {
+		if name == "GOFLAGS" && value != "" && value != "-modcacherw" || name == "GOWORK" && value != "" && value != "off" {
 			return false
 		}
 	}
