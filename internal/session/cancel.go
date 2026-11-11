@@ -415,6 +415,7 @@ func (a *Agent) beginHarnessRun(ctx context.Context) (context.Context, uint64, f
 		cut()
 	}
 	a.mu.Unlock()
+	a.wakeBudgetForWork()
 	return runCtx, id, func() {
 		a.mu.Lock()
 		delete(a.harnessRuns, id)

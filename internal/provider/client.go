@@ -2067,6 +2067,7 @@ func (c *Client) completeWithMessagesStreaming(
 			// word of answer is not an endpoint that took a minute to respond.
 			if firstToken.IsZero() && (choice.Delta.Content != "" || choice.Delta.thinking() || len(choice.Delta.ToolCalls) > 0) {
 				firstToken = c.clock()
+				replyStarted(ctx)
 			}
 			// THE MODEL WRITING IS THE ONLY THING THAT COUNTS AS PROGRESS. A
 			// token of answer, a token of thought, a fragment of a call — the

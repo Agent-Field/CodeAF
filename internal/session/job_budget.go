@@ -2,20 +2,12 @@ package session
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-)
-
-// jobBudgetLiveEvery is how often a manager with work in flight looks at its
-// job's budget and the person's Stop; jobBudgetIdleEvery is how often one with
-// nothing in flight does ([Agent.watchJobBudget]). The idle look keeps the
-// presence file's maintenance beat, since it keeps nothing but the manager's
-// stopped state honest and the beat is the session's own idea of "soon".
-const (
-	jobBudgetLiveEvery = 100 * time.Millisecond
-	jobBudgetIdleEvery = presenceHeartbeat
 )
 
 // JobBudgetUnreadable refuses new paid calls without cancelling existing work.
@@ -32,132 +24,186 @@ func (a *Agent) jobBudgetOf() JobChat {
 
 func (a *Agent) jobBudgetBlock() error {
 	if budget := a.jobBudgetOf(); budget != nil {
-		if why := budget.Refusal(); why != "" {
+		why := budget.Refusal()
+		if why != "" {
 			return spendRailReached{said: why}
 		}
 	}
 	return nil
 }
 
-// Idle managers can still own detached commands or delegated work. Keep watching
-// until the agent closes, not just until its foreground turn ends. No model call
-// is involved. StopWork closes admission before cancelling the complete family.
-//
-// A MANAGER THAT OWNS NOTHING IN FLIGHT LOOKS ONCE A BEAT, NOT TEN TIMES A SECOND.
-// Each look is a stat of the job's document, and a person's-Stop look can read
-// the whole floor; ten a second for every open manager kept the fifth live
-// run's idle engine at 21% of a core with 82 jobs. With no turn, no running
-// command and no unfinished task there is nothing a Stop or a spent budget
-// could cut short, and the next model call is checked at its own boundary
-// ([Agent.admitJobCall]), so the idle look only keeps the manager's stopped
-// state honest. PERF.md's "Idle factory manager checks" states the cost.
-//
-// AND AN IDLE WATCH SLEEPS THE WHOLE BEAT, rather than waking ten times a
-// second to decide not to look. The sixth live run's 24 idle job and step
-// chats each woke their watch every 100 ms and looked once a second, which
-// alone kept the Go scheduler and the kernel's poller busy and cost two stats
-// a second per chat for an engine doing nothing. The watch moves to
-// the live cadence the moment work starts: a turn opening, a command
-// starting and every other change the presence file hears of wake it
-// ([Agent.wakeWorkWatch]), and anything that starts unannounced is seen at the
-// next idle look.
-func (a *Agent) watchJobBudget() {
-	if a.jobBudgetOf() == nil {
-		return
+// budgetWatchActive is whether the watcher must poll: work that can spend is
+// moving and a job or daily cap could stop it. Without a cap it never polls.
+func (a *Agent) budgetWatchActive() bool {
+	if a.toolsInFlight.Load() == 0 && !a.hasBudgetCall() && !a.ownedWorkIsMoving() {
+		return false
 	}
-	go func() {
-		// The first look comes at once, as it always has: a manager opened
-		// onto a job that was stopped or spent while it was closed learns so
-		// before anything else, and the cadence decides only the looks after.
-		timer := time.NewTimer(jobBudgetLiveEvery)
-		defer timer.Stop()
-		var idleLook time.Time
-		for {
-			select {
-			case <-timer.C:
-			case <-a.workWake:
-			}
-			a.mu.Lock()
-			closed, stopped, epoch := a.closed, a.workStopped, a.workEpoch
-			a.mu.Unlock()
-			if closed {
-				return
-			}
-			live := !stopped && a.ownsLiveWork()
-			if !stopped && !live {
-				if now := time.Now(); now.Sub(idleLook) < jobBudgetIdleEvery {
-					stopped = true
-				} else {
-					idleLook = now
-				}
-			}
-			if !stopped {
-				stopOwned := a.factoryOwnedStop()
-				if err := a.jobBudgetBlock(); err != nil && err.Error() != JobBudgetUnreadable {
-					_ = a.stopWorkEpoch(epoch, err.Error())
-				} else if a.watchedFactoryRefusal() == factory.PersonStopReason {
-					stopOwned()
-				}
-			}
-			next := jobBudgetIdleEvery
-			if live {
-				next = jobBudgetLiveEvery
-			}
-			timer.Reset(next)
-		}
-	}()
+	return a.jobBudgetOf() != nil || a.dailyCeilingUSD() > 0
 }
 
-// wakeWorkWatch tells the budget watch that work may have started. It never
-// blocks and takes no lock, because its callers may hold a.mu.
-func (a *Agent) wakeWorkWatch() {
+// wakeBudgetForWork rechecks recorded spending when an owned producer starts.
+func (a *Agent) wakeBudgetForWork() {
 	select {
-	case a.workWake <- struct{}{}:
+	case a.budgetWorkStarted <- struct{}{}:
 	default:
 	}
 }
 
-// ownsLiveWork says whether a has anything in flight that a person's Stop or a
-// spent budget would end: a turn, a running background command, or a task that
-// has not finished.
-func (a *Agent) ownsLiveWork() bool {
+// budgetPollEvery bounds ledger detection while capped work is moving.
+const budgetPollEvery = 100 * time.Millisecond
+
+// Idle managers can still own detached commands or delegated work. Keep watching
+// until the agent closes, not just until its foreground turn ends. No model call
+// is involved. StopWork closes admission before cancelling the complete family.
+func (a *Agent) watchJobBudget() {
+	a.budgetWatchOnce.Do(a.startBudgetWatch)
+	a.wakeBudgetForWork()
+}
+
+func (a *Agent) startBudgetWatch() {
+	// THE LEDGER'S WRITER ONLY BUMPS A COUNTER; THIS GOROUTINE POLLS IT. The
+	// writer is process-wide, so a channel send from it would cross into
+	// whatever scheduler owns this agent (a synctest bubble in tests). The
+	// cost is one poll interval of latency between a write and the stop.
+	var writes atomic.Uint64
+	unwatch := OnUsageWritten(func() { writes.Add(1) })
+	closed := a.ClosedSignal()
+	go func() {
+		defer unwatch()
+		// AN IDLE AGENT HOLDS NO TIMER. The poll runs only while this agent has
+		// paid or owned work moving under a cap that could stop it; every start
+		// of such work wakes it ([Agent.wakeBudgetForWork]).
+		var ticker *time.Ticker
+		defer func() {
+			if ticker != nil {
+				ticker.Stop()
+			}
+		}()
+		seen := writes.Load()
+		dailyCap := a.dailyCeilingUSD()
+		jobChecked := false
+		for {
+			var ticks <-chan time.Time
+			if a.budgetWatchActive() {
+				if ticker == nil {
+					ticker = time.NewTicker(budgetPollEvery)
+				}
+				ticks = ticker.C
+			} else if ticker != nil {
+				ticker.Stop()
+				ticker = nil
+			}
+			ledgerChanged := false
+			select {
+			case <-closed:
+				return
+			case <-a.budgetWorkStarted:
+				ledgerChanged = true
+			case <-ticks:
+			}
+			if !jobChecked && a.jobBudgetOf() != nil {
+				jobChecked = true
+				a.checkInitialJobBudget()
+			}
+			if n := writes.Load(); n != seen {
+				seen, ledgerChanged = n, true
+			}
+			// A profile edit can cross the cap without another usage receipt.
+			if cap := a.dailyCeilingUSD(); cap != dailyCap {
+				dailyCap, ledgerChanged = cap, true
+			}
+			a.mu.Lock()
+			stopped, epoch := a.workStopped, a.workEpoch
+			a.mu.Unlock()
+			if stopped {
+				continue
+			}
+			// A turn marked running may still be waiting for its first admission.
+			// Only producers already in flight belong to this watcher.
+			if a.toolsInFlight.Load() == 0 && !a.hasBudgetCall() && !a.ownedWorkIsMoving() {
+				continue
+			}
+			stopOwned := a.factoryOwnedStop()
+			var why error
+			if ledgerChanged {
+				why = a.dailyBudgetBlock()
+			}
+			if why == nil {
+				why = a.jobBudgetBlock()
+			}
+			if errors.Is(why, ErrSpendRail) && why.Error() != JobBudgetUnreadable {
+				_ = a.stopWorkEpoch(epoch, why)
+			} else if a.watchedFactoryRefusal() == factory.PersonStopReason {
+				stopOwned()
+			}
+		}
+	}()
+}
+
+// checkInitialJobBudget restores a spent job's stopped state once on open,
+// before an idle manager waits for work without a polling timer.
+func (a *Agent) checkInitialJobBudget() {
+	why := a.jobBudgetBlock()
+	if why == nil || why.Error() == JobBudgetUnreadable {
+		return
+	}
 	a.mu.Lock()
-	running, jobs, graph := a.running, a.jobs, a.tasks
+	epoch := a.workEpoch
 	a.mu.Unlock()
-	if running {
-		return true
+	_ = a.stopWorkEpoch(epoch, why)
+}
+
+// Daily checks read settled ledger changes and new-work admission, not interim
+// stream usage. Each agent reads its captured ledger and selected authority.
+func (a *Agent) dailyBudgetBlock() error {
+	if a.config.SpendPreauthorized {
+		return nil
 	}
-	if jobs != nil {
-		for _, j := range jobs.all() {
-			if j.running() {
-				return true
-			}
-		}
+	capUSD, err := a.dailyCeiling()
+	if err != nil {
+		return spendUnverified{said: spendLimitUnread}
 	}
-	if graph != nil {
-		graph.mu.Lock()
-		defer graph.mu.Unlock()
-		for _, id := range graph.order {
-			if node := graph.nodes[id]; node != nil && (node.state == TaskQueued || node.state == TaskRunning) {
-				return true
-			}
-		}
+	if capUSD <= 0 {
+		return nil
 	}
-	return false
+	now := time.Now()
+	spent, err := DailySpendUSD(a.config.usageLedger, now)
+	if err != nil {
+		return spendUnverified{said: spendAccountingUnread}
+	}
+	if spent >= capUSD {
+		return dailyLimitReached(spent, capUSD)
+	}
+	return nil
 }
 
 // Check again at each model boundary, including retries and auxiliary calls.
 func (a *Agent) admitJobCall(ctx context.Context) error {
+	return a.admitModelCall(ctx, "")
+}
+
+func (a *Agent) admitModelCall(ctx context.Context, model string) error {
 	if err := factoryCallRefusal(ctx); err != nil {
 		return err
 	}
-	if a.jobBudgetOf() == nil {
-		return nil
+	// The transport owns context cancellation. Budget admission must preserve
+	// uncapped auxiliary calls' existing cancellation and cleanup path.
+	if a.dailyModelExempt(model) {
+		return a.jobBudgetBlock()
 	}
-	if err := ctx.Err(); err != nil {
+	if err := a.dailyBudgetBlock(); err != nil {
 		return err
 	}
 	return a.jobBudgetBlock()
+}
+
+// Known-free calls keep their daily exemption through admission and draining.
+func (a *Agent) dailyModelExempt(model string) bool {
+	if model == "" || a.config.ModelPrice == nil {
+		return false
+	}
+	input, output, known := a.config.ModelPrice(model)
+	return known && input <= 0 && output <= 0
 }
 
 // A job Stop cancels this manager's owned producers without closing the

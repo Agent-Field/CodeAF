@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"os"
 	"path/filepath"
@@ -139,9 +140,10 @@ type jobChat struct {
 // chatRead is one holder's document as Refusal last read it: the file it
 // was, and whether that document is this chat's job and, if so, its line.
 type chatRead struct {
-	file    os.FileInfo
-	ours    bool
-	refusal string
+	file       os.FileInfo
+	ours       bool
+	refusal    string
+	cap, spent float64
 }
 
 // sameFile is whether info is still the document read was taken from. Every
@@ -183,7 +185,13 @@ func (c *jobChat) Refusal() string {
 	}
 	for _, st := range c.holders() {
 		if r, ok := c.readOf(st); ok && r.ours {
-			return r.refusal
+			if r.refusal != "" {
+				return r.refusal
+			}
+			if r.cap > 0 && r.spent >= r.cap {
+				return fmt.Sprintf(factoryrun.ChatBudgetReached, appUSD(r.spent), appUSD(r.cap))
+			}
+			return ""
 		}
 	}
 	return session.JobBudgetUnreadable
@@ -208,7 +216,7 @@ func (c *jobChat) readOf(st *store.Store) (chatRead, bool) {
 	if err != nil {
 		return chatRead{}, false
 	}
-	r := chatRead{file: info, ours: c.owns(st, it)}
+	r := chatRead{file: info, ours: c.owns(st, it), cap: it.Cap, spent: factory.JobSpent(it)}
 	if r.ours {
 		r.refusal = factoryrun.ChatRefusal(it)
 	}
