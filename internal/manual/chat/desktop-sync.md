@@ -215,6 +215,8 @@ ownership changes or repeat unchanged chat rows.
 A conversation opened only for background work is let go after ten idle minutes;
 the sweep checks every 30 seconds. It stays released until work needs it again.
 Sending, queueing or retrying opens it through the normal ownership check.
+Sending into your own released chat opens it again when its hold is still free;
+its own idle release does not require Continue here.
 Steering still needs a running turn. A task or job can also open it. Running
 turns, unanswered questions, held crew members and kept services retain their
 conversations. If another computer continues a chat, the existing Continue here
