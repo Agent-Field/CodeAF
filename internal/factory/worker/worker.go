@@ -35,6 +35,10 @@ type Options struct {
 	Keep func(slot int, w *client.WorkerClient)
 	// Attach names the machine, its person and its consent to unassigned work.
 	Attach api.WorkerAttach
+	// Needs reads what this machine lacks before each lease poll. A changed
+	// word refreshes the attachment between jobs, leaving a running lease alone.
+	// Nil keeps Attach.Needs for the life of the worker.
+	Needs func() string
 	// Runner runs the jobs over Mirror.
 	Runner *run.Runner
 	Mirror *store.Store
@@ -213,6 +217,7 @@ func Run(ctx context.Context, opts Options) {
 // slot pulls and runs one job at a time. Failures back off and dial again.
 func (o Options) slot(ctx context.Context, slot int) {
 	wait := time.Duration(0)
+	attachedNeeds, needsKnown := o.Attach.Needs, o.Needs == nil
 	for pause(ctx, wait) {
 		if o.cap.retire(slot) {
 			return
@@ -222,12 +227,17 @@ func (o Options) slot(ctx context.Context, slot int) {
 			wait = backoff(wait)
 			continue
 		}
-		if w.Credential() == "" {
-			attached, err := w.Attach(ctx, o.Attach)
+		attach := o.Attach
+		if o.Needs != nil {
+			attach.Needs = o.Needs()
+		}
+		if w.Credential() == "" || !needsKnown || attach.Needs != attachedNeeds {
+			attached, err := w.Attach(ctx, attach)
 			if err != nil {
 				wait = backoff(wait)
 				continue
 			}
+			attachedNeeds, needsKnown = attach.Needs, true
 			// THE OWNER'S SAVED NUMBER WINS over this process's own default
 			// or environment pin, so a restart resumes at what was chosen.
 			// Only an elastic worker listens; an older factory says nothing.
