@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -25,10 +25,14 @@ import (
 // The manual's event-stream section states this duration and changePoll.
 const changeDebounce = 100 * time.Millisecond
 
-// changePoll is the fallback when the filesystem watch is missing. The poll
-// asks the same question the watch does — did the root change — and sends a
-// tick only when the answer is yes.
-const changePoll = 2 * time.Second
+// changePoll is the fallback when the filesystem watch is missing or silent.
+// The poll asks the same question the watch does — did the root change —
+// and sends a tick only when the answer is yes. While the watch is
+// installed, that question is the directory's own mtime: a rename changes
+// it, and a quiet floor is not read file by file. Without a watch, each
+// tick reads the files, so a missed notification still arrives inside one
+// second.
+const changePoll = 500 * time.Millisecond
 
 // changePollWatched is the same look with a live filesystem watch (inotify,
 // kqueue), which hears every write already: it only covers a watch that went
@@ -57,7 +61,12 @@ type rootWatch struct {
 	snap  fileSnap
 	// leases is the lease document's [lease.RenewalShape] as the floor last
 	// heard it, so a rewrite that only renewed a hold wakes no pull.
-	leases floorLeases
+	leases   floorLeases
+	healthy  atomic.Bool
+	full     bool
+	rootMark int64
+	seenRoot bool
+	looks    atomic.Int64
 }
 
 // floorLeases is one reading of the lease document for the floor.
@@ -100,6 +109,8 @@ func watchRoot(root string) *rootWatch {
 			_ = fs.Close()
 		} else {
 			w.fs = fs
+			w.healthy.Store(true)
+			w.healthy.Store(true)
 			go w.readFS()
 		}
 	}
@@ -108,6 +119,7 @@ func watchRoot(root string) *rootWatch {
 			log.Printf("factory: no filesystem watch on %s (%s); open pulls look once a second instead", root, watchCause(err))
 		})
 	}
+	w.noteRoot()
 	go w.loop()
 	return w
 }
@@ -134,21 +146,25 @@ func (w *rootWatch) stop() {
 }
 
 func (w *rootWatch) readFS() {
+	// A failed stream no longer proves that in-place writes are announced.
+	// Keep the pointer for shutdown, but restore stat polling immediately.
+	defer func() { w.healthy.Store(false); w.nudge() }()
 	for {
 		select {
 		case <-w.ctx.Done():
 			return
-		case _, ok := <-w.fs.Events:
+		case ev, ok := <-w.fs.Events:
 			if !ok {
 				return
 			}
-			w.nudge()
-		case _, ok := <-w.fs.Errors:
-			if !ok {
-				return
+			// A heartbeat rewrites runners.json. That is not a job, and
+			// reading the whole floor to confirm it would be the idle cost.
+			if !w.worthEvent(ev.Name) {
+				continue
 			}
-			// A watch that lost events is looked behind now.
 			w.nudge()
+		case <-w.fs.Errors:
+			return
 		}
 	}
 }
@@ -163,7 +179,7 @@ func (w *rootWatch) nudge() {
 // pollEvery is how often the loop looks without being told: rarely behind a
 // live watch, often without one.
 func (w *rootWatch) pollEvery() time.Duration {
-	if w.fs != nil {
+	if w.healthy.Load() {
 		return changePollWatched
 	}
 	return changePoll
@@ -178,6 +194,8 @@ func (w *rootWatch) loop() {
 		case <-w.ctx.Done():
 			return
 		case <-w.kick:
+			tick.Reset(w.pollEvery())
+			w.full = true
 			w.arm()
 		case <-tick.C:
 			w.arm()
@@ -209,7 +227,17 @@ func (w *rootWatch) stopTimer() {
 
 func (w *rootWatch) publish() {
 	w.timer = nil
+	full := w.full
+	w.full = false
+	// The fallback tick, while notifications are working, stats the
+	// directory once. A rename moves that mtime; a quiet floor does not,
+	// so the tick does not read every job file.
+	if !full && w.healthy.Load() && !w.rootMoved() {
+		return
+	}
+	w.looks.Add(1)
 	next := snapshot(w.root)
+	w.noteRoot()
 	if next.sig == w.snap.sig {
 		return
 	}
@@ -318,7 +346,7 @@ func snapshot(root string) fileSnap {
 		if err != nil {
 			continue
 		}
-		files[name] = strconv.FormatInt(info.Size(), 10) + " " + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+		files[name] = store.FileStamp(info).String()
 		if info.IsDir() {
 			dirs[name] = true
 		}
@@ -335,11 +363,39 @@ func snapshot(root string) fileSnap {
 	return fileSnap{sig: b.String(), files: files, dirs: dirs}
 }
 
+func (w *rootWatch) noteRoot() {
+	info, err := os.Stat(w.root)
+	if err != nil {
+		w.seenRoot = false
+		return
+	}
+	w.rootMark = info.ModTime().UnixNano()
+	w.seenRoot = true
+}
+
+func (w *rootWatch) rootMoved() bool {
+	info, err := os.Stat(w.root)
+	if err != nil {
+		return true
+	}
+	mark := info.ModTime().UnixNano()
+	return !w.seenRoot || mark != w.rootMark
+}
+
+func (w *rootWatch) worthEvent(name string) bool {
+	base := filepath.Base(name)
+	if base == filepath.Base(w.root) {
+		return true
+	}
+	return worthWatching(base)
+}
+
 // worthWatching drops the store's own scratch. A document is written as a
 // dotfile and renamed, and a flock sits beside it; neither is a change a
-// client re-reads.
+// client re-reads. runners.json is presence: an idle heartbeat rewrites it,
+// and treating that as a job change wakes every pull.
 func worthWatching(name string) bool {
-	return name != "" && !strings.HasPrefix(name, ".") && !strings.HasSuffix(name, ".lock")
+	return name != "" && name != "runners.json" && !strings.HasPrefix(name, ".") && !strings.HasSuffix(name, ".lock")
 }
 
 // changedData is the tick body: one job id when a single job file is the

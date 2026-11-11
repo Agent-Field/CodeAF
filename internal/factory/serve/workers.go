@@ -35,6 +35,11 @@ const workerPollLimit = 30 * time.Second
 // machine cool; a job queued meanwhile waits at most that long.
 const workerPollEvery = time.Second
 
+// presenceSaveEvery limits heartbeat writes under ordinary settings. A
+// request saves sooner when its persisted beat reaches half the offline
+// timeout, so a restart cannot mistake recently heard runners for silence.
+const presenceSaveEvery = 15 * time.Second
+
 type workerService struct {
 	st          *store.Store
 	desk        *lease.Desk
@@ -50,6 +55,10 @@ type workerService struct {
 	// savedAt is when the registry was last written, and sweptAt when a pull
 	// last looked for a restarted runner's rows ([Handler.sweepQuietRunners]).
 	savedAt, sweptAt time.Time
+
+	// savedFile is when the runner file last took a heartbeat. One stamp
+	// covers every row, so a burst of idle pulls writes the file once.
+	savedFile time.Time
 }
 
 // heardSaveEvery is how stale the saved registry's Last may grow. A WORKER'S
@@ -59,7 +68,7 @@ type workerService struct {
 // moved the floor folder that every open step chat keyed its stop check on.
 // The page reads the rows in memory; the saved Last only has to outlive a
 // restart, well inside [lease.OfflineAfter].
-const heardSaveEvery = lease.OfflineAfter / 4
+const heardSaveEvery = presenceSaveEvery
 
 // registeredWorker retains the machine beside its identity without putting
 // bearer secrets into the floor's public facts. Last is the last request
@@ -86,6 +95,8 @@ type registeredWorker struct {
 	Version string
 	Last    time.Time
 	Worker  lease.Worker
+	// persistedLast is the heartbeat last saved to disk.
+	persistedLast time.Time
 }
 
 type workerKey struct{}
@@ -170,14 +181,31 @@ func (s *workerService) heard(id string, at time.Time) {
 		}
 		row.Last = at
 		s.credentials[key] = row
-		if at.Sub(s.savedAt) < heardSaveEvery && !at.Before(s.savedAt) {
-			return
-		}
-		if err := s.saveRegistry(); err != nil {
-			s.err = err
+		// THE FILE WAKES EVERY WAITER when the watch is paying attention
+		// to it. Last is what this process answers presence from, so it
+		// moves on every request. One write per interval records every
+		// row's heartbeat together.
+		if s.savedFile.IsZero() || !at.Before(s.savedFile.Add(presenceSaveEvery)) || !at.Before(row.persistedLast.Add(s.presenceSaveInterval())) {
+			if err := s.saveRegistry(); err != nil {
+				s.err = err
+			} else {
+				s.savedFile = at
+			}
 		}
 		return
 	}
+}
+
+// Persistence follows the configured silence window as well as the ordinary
+// write throttle, so a different slot's write cannot hide an old saved beat.
+func (s *workerService) presenceSaveInterval() time.Duration {
+	timeout := lease.OfflineAfter
+	if s.st != nil {
+		if settings, err := s.st.RunnerSettings(); err == nil {
+			timeout = time.Duration(settings.RunnerTimeoutSeconds) * time.Second
+		}
+	}
+	return min(presenceSaveEvery, timeout/2)
 }
 
 func requestWorker(r *http.Request) lease.Worker {
@@ -449,8 +477,10 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), h.workers.wait)
-	defer cancel()
+	ctx := r.Context()
+	began := time.Now()
+	wait := time.NewTimer(h.workers.wait)
+	defer wait.Stop()
 	// AN OPEN PULL LOOKS AGAIN ONLY WHEN THE FLOOR CHANGED. Every runner slot
 	// holds one open, and a look reads every job on the floor, so a timed
 	// look made an idle machine read slots x jobs documents ten times a
@@ -466,9 +496,13 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	defer stop()
 	for {
 		if ctx.Err() != nil {
-			if r.Context().Err() == nil {
-				w.WriteHeader(http.StatusNoContent)
-			}
+			return
+		}
+		// The next request renews presence. Re-read a shortened policy on
+		// notification, but never extend the original request's heartbeat.
+		deadline := began.Add(min(h.workers.wait, h.runnerOfflineAfter()/2))
+		if !time.Now().Before(deadline) {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		// THE SAVED TOGGLE WINS. Attach records what this process was willing
@@ -508,11 +542,15 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		look := idleLook{floor: floor, slots: worker.Slots, takes: fmt.Sprint(worker.TakesUnassigned)}
 		if idle && h.workers.lookedIdle(worker.ID, look) {
 			h.workers.mu.RUnlock()
+			wait.Reset(time.Until(deadline))
 			select {
 			case <-ctx.Done():
 				if r.Context().Err() == nil {
 					w.WriteHeader(http.StatusNoContent)
 				}
+				return
+			case <-wait.C:
+				w.WriteHeader(http.StatusNoContent)
 				return
 			case <-changed:
 			case <-blind:
@@ -537,11 +575,12 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			h.workerError(w, err)
 			return
 		}
+		wait.Reset(time.Until(deadline))
 		select {
 		case <-ctx.Done():
-			if r.Context().Err() == nil {
-				w.WriteHeader(http.StatusNoContent)
-			}
+			return
+		case <-wait.C:
+			w.WriteHeader(http.StatusNoContent)
 			return
 		case <-changed:
 		case <-blind:

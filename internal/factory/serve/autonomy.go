@@ -87,7 +87,7 @@ func automaticApprovalAllowed(it factory.Item) bool {
 
 // The service records automatic decisions, exactly as manual decisions; the
 // worker never fabricates its own approval trailer. No visible UI is needed.
-func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item {
+func (h *Handler) prepareAutomaticApprovals(items []factory.Item) ([]factory.Item, error) {
 	h.judgePasses(items)
 	candidate := false
 	for _, it := range items {
@@ -97,11 +97,11 @@ func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item
 		}
 	}
 	if !candidate {
-		return items
+		return items, nil
 	}
 	unlock, err := h.lockConsent()
 	if err != nil {
-		return items
+		return items, err
 	}
 	defer unlock()
 	for i, candidate := range items {
@@ -109,7 +109,10 @@ func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item
 			continue
 		}
 		cur, e := h.config.Store.Get(candidate.ID)
-		if e != nil || !h.automaticApprovalAllowed(cur) {
+		if e != nil {
+			return items, e
+		}
+		if !h.automaticApprovalAllowed(cur) {
 			continue
 		}
 		a := factory.JobApproval(cur)
@@ -132,11 +135,15 @@ func (h *Handler) prepareAutomaticApprovals(items []factory.Item) []factory.Item
 			saved.Approval = a
 			saved.MergePolicy = nil
 			return nil
-		}); e == nil {
-			items[i], _ = h.config.Store.Get(cur.ID)
+		}); e != nil {
+			return items, e
+		}
+		items[i], e = h.config.Store.Get(cur.ID)
+		if e != nil {
+			return items, e
 		}
 	}
-	return items
+	return items, nil
 }
 
 func (h *Handler) automaticApprovalAllowed(it factory.Item) bool {

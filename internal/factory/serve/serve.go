@@ -210,6 +210,12 @@ type Handler struct {
 	// key, so one approval is never judged twice at once.
 	judgingMu sync.Mutex
 	judging   map[int]string
+	// floorList, when set, is how a test counts floor reads. A real handler
+	// leaves it nil and reads the store.
+	floorList func(*store.Store) ([]factory.Item, error)
+	// floorKept is the last look that found nothing due. A later request
+	// skips the decode while those files and the clock still say so.
+	floorKept floorLook
 
 	seam    factory.Seam
 	areas   repoAreas
@@ -612,6 +618,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			q.Since.SpentToday = h.config.SpentToday()
 		}
 	}
+	// One token lookup for the whole list. Presenting each job would otherwise
+	// ask again, and the host's answer can start a process.
+	r = h.rememberHostToken(r)
 	for i := range q.Jobs {
 		h.presentJob(r, &q.Jobs[i])
 	}
