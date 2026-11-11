@@ -77,7 +77,7 @@ func cachedRead(path string, read func(string) (doc, error)) (doc, error) {
 
 // sameFile says two looks saw one unchanged file.
 func sameFile(a, b os.FileInfo) bool {
-	return a != nil && b != nil && os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime()) && a.Mode() == b.Mode()
+	return a != nil && b != nil && os.SameFile(a, b) && FileStamp(a) == FileStamp(b) && a.Mode() == b.Mode()
 }
 
 func cloneDoc(d doc) doc {

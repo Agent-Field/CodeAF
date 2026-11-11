@@ -513,11 +513,9 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
-		// A pull sits open for up to thirty seconds. That wait is the idle
-		// machine's heartbeat: the same sixty-second deadline as a busy runner.
-		h.workers.heard(worker.ID, h.workers.now())
+		// Authorization already recorded this request's heartbeat. The
+		// fixed pull deadline makes the next request renew it before expiry.
 		h.sweepQuietRunners(worker)
-		h.machineEvents()
 		h.workers.mu.RLock()
 		// Authorization captured the worker before this handler (and possibly
 		// before a long-poll wait). A saved lowering governs every new lease,
