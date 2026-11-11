@@ -27,6 +27,8 @@ func TestCancelledSendWithNoTextOrUsageKeepsAnUnknownCharge(t *testing.T) {
 			defer cancel()
 			results := make(chan Reconciled, 2)
 			ctx = WithReconcile(WithStreamObserver(ctx, func(StreamEvent) {}), func(r Reconciled) { results <- r })
+			owed := newOwedCount()
+			ctx = WithReceiptPending(ctx, owed.owe)
 			done := make(chan error, 1)
 			go func() { _, err := client.CompleteWithMessages(ctx, userMessages("hold")); done <- err }()
 			select {
@@ -42,6 +44,11 @@ func TestCancelledSendWithNoTextOrUsageKeepsAnUnknownCharge(t *testing.T) {
 				}
 			case <-time.After(5 * time.Second):
 				t.Fatal("cancelled call did not end")
+			}
+			// A raced cancellation returns before its generation-ID grace ends.
+			// Join the existing pending receipt before inspecting its accounting.
+			if pending, _ := owed.now(); pending > 0 {
+				owed.awaitOwed(t, 0, cancelCallCeiling)
 			}
 			select {
 			case result := <-results:
