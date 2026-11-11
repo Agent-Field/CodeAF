@@ -448,17 +448,12 @@ to leave every waiting frame file untouched on a repeat.
 
 ## Idle factory manager checks
 
-Every open job manager and every open step asks whether its job was stopped or
-its budget reached (`watchJobBudget` in `internal/session/job_budget.go`): ten
-times a second (`jobBudgetLiveEvery`) while it owns work in flight — a turn, a
-running background command, an unfinished task — and once every five seconds
-(`jobBudgetIdleEvery`, the presence beat) while it owns none, since there is
-then nothing a Stop or a spent budget could cut short and the next model call
-is checked at its own boundary. An idle watch sleeps that whole interval on one
-timer rather than waking every 100 ms; a turn opening, a command starting and
-every presence nudge wake it onto the live cadence at once (`wakeWorkWatch`).
-`TestIdleManagerBudgetWatchLooksOnceABeat`: an idle manager looks at most once
-in 950 ms, and at least three times in 500 ms once a command runs.
+Every open job manager checks its saved job budget once when opened. Thereafter
+`watchJobBudget` polls at `budgetPollEvery` (100 ms) only while capped model
+calls, commands or delegated work are moving. An idle manager holds no timer;
+new work wakes the watch and each model boundary checks admission again.
+`TestIdleManagerBudgetWatchLooksOnceABeat` retains the initial-check and active-work
+bounds. Daily cap detection follows settled ledger writes, within one active poll.
 
 Neither check may decode a job document that has not changed since it last
 looked. `seamRunDoor.AutomaticRefusal` (`cmd/codeaf/factory_person_stop.go`)
@@ -528,7 +523,7 @@ system call between its heartbeats (`internal/session/taskpresence.go`):
   shared directory watch reports a write there (`presenceDoorstepEvent`), and
   otherwise once a minute (`presenceQuietPass`); a folder the watch cannot see
   is knocked on every five-second beat as before.
-- Its job's budget watch (above) sleeps five seconds at a time.
+- Its job's budget watch (above) holds no timer while idle.
 
 `TestAnIdleChatWritesNothingBetweenHeartbeats` drives one desk on fake shared
 clocks through a minute of beats and refreshes and fails on any rewrite before
@@ -554,7 +549,7 @@ a second is named on stderr with its two halves:
 `store.Store.read` (every `Get`, `List`, `ListSaved` and update of a job
 document) decodes a document only when its file changed since the process last
 read it (`internal/factory/store/readcache.go`): one stat, compared on
-`os.SameFile`, size, modification time and mode — every store write renames a
+`os.SameFile`, size, modification time, change time, inode and mode — every store write renames a
 fresh file into place — answers an unchanged document from a process-wide
 cache, deep-copied (`deepCopy`) so no caller shares anything with the next. The
 cache is the process's, not a `Store`'s, since many doors open their own store

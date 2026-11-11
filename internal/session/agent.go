@@ -169,7 +169,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		watch.TrackTurn(config.Place.Dir)
 	}
 	agent := &Agent{
-		workWake:           make(chan struct{}, 1),
+		budgetWorkStarted:  make(chan struct{}, 1),
 		taskComputerPrompt: config.mayNameTaskComputer(),
 		config:             config,
 		receipts:           config.receipts,
@@ -267,6 +267,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.workStarted = agent.wakeBudgetForWork
 	agent.jobs.stage = config.mayStage()
 	agent.jobs.notifyQuiet = agent.enqueueJobNoteQuiet
 	agent.jobs.notifyUnowed = agent.enqueueJobNoteUnowed

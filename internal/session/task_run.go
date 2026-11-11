@@ -1581,6 +1581,17 @@ func (g *TaskGraph) children(parent uint64) []*TaskNode {
 	return kids
 }
 
+func (g *TaskGraph) wakeBudgetForWork(starting []*TaskNode) {
+	if len(starting) > 0 && g.home != nil {
+		g.home.wakeBudgetForWork()
+	}
+	for _, node := range starting {
+		if node.owner != nil && node.owner != g.home {
+			node.owner.wakeBudgetForWork()
+		}
+	}
+}
+
 // runFrontier is the scheduler, and it is the whole of it.
 //
 // One pass: fail every queued node whose dependencies cannot be met, start
@@ -1689,6 +1700,7 @@ func (g *TaskGraph) runFrontier() {
 	// quit has started waiting on it.
 	g.runners.Add(len(starting))
 	g.mu.Unlock()
+	g.wakeBudgetForWork(starting)
 
 	// A machine hold is the one hold nothing will come along and lift.
 	if machineHeld {

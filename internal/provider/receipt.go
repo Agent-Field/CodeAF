@@ -236,7 +236,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	if c.config.Direct {
 		if !bankedUsage && response != nil && response.Usage != nil {
 			sink(result)
-		} else if finalReceiptsFrom(ctx) && answerBytes > 0 {
+		} else if !bankedUsage && (ctx.Err() != nil || finalReceiptsFrom(ctx) && answerBytes > 0) {
 			sink(result)
 		}
 		handle.unknown()
@@ -244,9 +244,10 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	}
 	// NO ID MEANS NO REQUEST. Text still proves that the call got somewhere and
 	// may be charged, so its missing price is said; without text there is no
-	// generation and nothing honest to count.
+	// generation and nothing honest to count, unless the caller cancelled an
+	// already sent request whose charge is still unknown.
 	if result.Ref == "" {
-		if answerBytes > 0 || (response != nil && response.Usage != nil) {
+		if ctx.Err() != nil || answerBytes > 0 || (response != nil && response.Usage != nil) {
 			sink(result)
 		}
 		handle.unknown()
