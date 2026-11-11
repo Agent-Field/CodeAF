@@ -412,6 +412,15 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 // so completed losing responses reach the caller's accounting before return.
 const abandonGrace = time.Second
 
+// receiptStreamIDWait is how long a stream that reconciles receipts keeps its
+// socket open after its caller lets go, waiting for the first frame that names
+// the generation (client.go's guard). It is short because a call that is not
+// raced returns only when its stream is cut, so a person's Esc can wait on it;
+// a raced call is answered at once by [hedgeRace.abandon] and only its arms
+// hold. It is not zero because an accepted request is already being billed,
+// and without that id the charge cannot be reconciled at all (#2566).
+const receiptStreamIDWait = 100 * time.Millisecond
+
 // abandon leaves the race because its caller did.
 //
 // ── WHAT THE PERSON IS WAITING FOR WHEN THIS RUNS ──
@@ -448,11 +457,27 @@ const abandonGrace = time.Second
 // this call's own story and belongs in this call's own order.
 func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Response, bool, error) {
 	r.withdraw()
+	// A CANCELLED RACE STILL OWES ITS RECEIPTS. This call returns at once, and
+	// the work that armed [WithReceiptPending] may read its books the moment it
+	// does; the cut arms only register the receipts they owe inside
+	// [Client.settle], on their way out, which can be as late as
+	// [receiptStreamIDWait] after the cut. One pending token, taken here before
+	// returning and given back only once the drain below has heard every arm or
+	// spent [abandonGrace], bridges that seam: a waiter never sees zero owed
+	// while an arm is still between the cut and its receipt, and nobody
+	// interactive waits for it.
+	settled := func() {}
+	if pending := receiptPendingFrom(ctx); pending != nil {
+		settled = pending()
+	}
 	// `seen` is handed over rather than shared. [hedgeRace.run] returns this
 	// call's value directly and never reads the map again, so the goroutine
 	// below is its only reader from here — which is what makes an unsynchronised
 	// map safe across the seam.
-	guard.Go("provider.hedge.abandoned", func() { r.accountForTheAbandoned(seen) })
+	guard.Go("provider.hedge.abandoned", func() {
+		defer settled()
+		r.accountForTheAbandoned(seen)
+	})
 	return nil, false, ctx.Err()
 }
 

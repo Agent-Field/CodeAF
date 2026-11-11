@@ -1831,6 +1831,8 @@ Yes, a provider may still charge for the prompt and the tokens it produced befor
 was cut. The last usage block never arrives in that case, so codeaf does not guess from the
 text it happened to receive. When the stream named the provider's generation id, codeaf asks
 for that generation's own receipt in the background. Your reply does not wait for this.
+A stop before the first word keeps the stream open at most a tenth of a second, until the
+provider names the generation, so its receipt can still be asked for.
 
 When the receipt arrives, its own cost and token counts move the conversation's meter and add
 one late line to the machine's usage ledger. That line is marked `reconciled`, meaning its
