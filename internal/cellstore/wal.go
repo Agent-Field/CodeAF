@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // Intent is a call's promise to run (SCHEMAS.md 6): written before the call,
@@ -65,23 +65,39 @@ type Recovery struct {
 	Incomplete []Intent
 	// Completed calls finished but were never sealed; the next seal takes them.
 	Completed []Executed
+	Models    []ModelCall
 }
 
 // walV is the version of the lines this log writes. Version 2 added the intent's
 // brief and the group record; a version 1 line reads as one with neither.
 const walV = 2
+const modelWALVersion = 3
 
 // record is one WAL line. V is first (L11).
 type record struct {
-	V      uint16    `json:"V"`
-	Op     string    `json:"op"`
-	Intent Intent    `json:"intent"`
-	Done   *Executed `json:"done,omitempty"`
-	Group  *GroupRec `json:"group,omitempty"`
+	V      uint16     `json:"V"`
+	Op     string     `json:"op"`
+	Intent Intent     `json:"intent"`
+	Done   *Executed  `json:"done,omitempty"`
+	Group  *GroupRec  `json:"group,omitempty"`
+	Model  *ModelCall `json:"model,omitempty"`
+}
+
+// MarshalJSON keeps model lines in their V3 shape during compaction too.
+func (r record) MarshalJSON() ([]byte, error) {
+	if r.Model != nil {
+		return json.Marshal(struct {
+			V     uint16     `json:"V"`
+			Op    string     `json:"op"`
+			Model *ModelCall `json:"model"`
+		}{r.V, r.Op, r.Model})
+	}
+	type wire record
+	return json.Marshal(wire(r))
 }
 
 // WAL is the device-local call-intent log: append-only JSON lines, outside the
-// cell, never synced.
+// cell. Model receipts are synced before their handoff returns.
 type WAL struct {
 	mu    sync.Mutex
 	path  string
@@ -121,7 +137,7 @@ func (w *WAL) Resolve(i Intent) error { return w.append(record{V: walV, Op: opRe
 
 // Sealed drops the records of calls whose turn has sealed, keeping every other
 // record: an intent still in flight, a completion the seal did not take.
-func (w *WAL) Sealed(calls []Executed) error {
+func (w *WAL) Sealed(calls []Executed, models ...ModelCall) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	recs, err := w.read()
@@ -132,8 +148,26 @@ func (w *WAL) Sealed(calls []Executed) error {
 	for _, e := range calls {
 		gone[callKey(e.Call.ID, e.Call.ArgsHash, e.Call.Started)] = true
 	}
+	modelGone := map[string]bool{}
+	anonymousGone := map[ModelCall]int{}
+	for _, m := range models {
+		if m.ID != "" {
+			modelGone[m.ID] = true
+		} else {
+			anonymousGone[m]++
+		}
+	}
 	var keep []record
 	for _, r := range recs {
+		if r.Model != nil {
+			if r.Model.ID != "" && modelGone[r.Model.ID] {
+				continue
+			}
+			if r.Model.ID == "" && anonymousGone[*r.Model] > 0 {
+				anonymousGone[*r.Model]--
+				continue
+			}
+		}
 		if !gone[r.Intent.key()] {
 			keep = append(keep, r)
 		}
@@ -146,6 +180,7 @@ const (
 	opDone     = "done"
 	opResolved = "resolved"
 	opGroup    = "group"
+	opModel    = "model"
 )
 
 func (w *WAL) append(r record) error {
@@ -155,6 +190,10 @@ func (w *WAL) append(r record) error {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	return w.appendLocked(r, line)
+}
+
+func (w *WAL) appendLocked(r record, line []byte) error {
 	if err := os.MkdirAll(filepath.Dir(w.path), 0o700); err != nil {
 		return err
 	}
@@ -168,9 +207,106 @@ func (w *WAL) append(r record) error {
 		_ = f.Close()
 		return err
 	}
-	err = f.Close()
+	if r.Model != nil {
+		err = f.Sync()
+		if err == nil {
+			dir, e := os.Open(filepath.Dir(w.path))
+			if e != nil {
+				err = e
+			} else {
+				err = dir.Sync()
+				dir.Close()
+			}
+		}
+	}
+	closeErr := f.Close()
+	if err == nil {
+		err = closeErr
+	}
 	commits.mark(w.owner, w.path, created)
 	return err
+}
+
+// Model logs a receipt before a model-only call can leave recorder memory.
+func (w *WAL) Model(m ModelCall) error {
+	if m.ID == "" {
+		return w.append(record{V: modelWALVersion, Op: opModel, Model: &m})
+	}
+	return w.recordModels([]ModelCall{m})
+}
+
+// Legacy callers have no shared identity. Count equal anonymous occurrences so
+// retrying a pending batch does not merge two calls or give them invented IDs.
+func (w *WAL) recordModels(models []ModelCall) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := repairLogTail(w.path); err != nil {
+		return err
+	}
+	recs, err := w.read()
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	anonymous := map[ModelCall]int{}
+	for _, r := range recs {
+		if r.Model != nil {
+			if r.Model.ID != "" {
+				seen[r.Model.ID] = true
+			} else {
+				anonymous[*r.Model]++
+			}
+		}
+	}
+	wanted := map[ModelCall]int{}
+	for _, m := range models {
+		if m.ID != "" {
+			if seen[m.ID] {
+				continue
+			}
+			seen[m.ID] = true
+		} else {
+			wanted[m]++
+			if wanted[m] <= anonymous[m] {
+				continue
+			}
+		}
+		r := record{V: modelWALVersion, Op: opModel, Model: &m}
+		line, err := json.Marshal(r)
+		if err != nil {
+			return err
+		}
+		if err = w.appendLocked(r, line); err != nil {
+			return err
+		}
+	}
+	// Existing bytes may be from an earlier failed sync, rather than a durable handoff.
+	if len(models) > 0 {
+		return syncModelWAL(w.path)
+	}
+	return nil
+}
+
+// A retry must sync even an existing line because the previous sync may have failed.
+func syncModelWAL(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	closeErr := f.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 // read returns every record. A final line torn by a crash is dropped: it was
@@ -251,7 +387,12 @@ func replay(recs []record) Recovery {
 		opResolved: func(r record) { delete(st.open, r.Intent.key()) },
 		opGroup:    st.group,
 	}
+	models := map[string]bool{}
 	for _, r := range recs {
+		if r.V == modelWALVersion && r.Op == opModel && r.Model != nil && (r.Model.ID == "" || !models[r.Model.ID]) {
+			st.models = append(st.models, *r.Model)
+			models[r.Model.ID] = true
+		}
 		if step, ok := steps[r.Op]; ok && r.V <= walV {
 			step(r)
 		}
@@ -277,13 +418,14 @@ func (s *replayState) finish(r record) {
 }
 
 type replayState struct {
-	open  map[string]Intent
-	order []string
-	done  []Executed
+	open   map[string]Intent
+	order  []string
+	done   []Executed
+	models []ModelCall
 }
 
 func (s *replayState) result() Recovery {
-	rec := Recovery{Completed: s.done}
+	rec := Recovery{Completed: s.done, Models: s.models}
 	seen := map[string]bool{}
 	for _, k := range s.order {
 		if i, ok := s.open[k]; ok && !seen[k] {
