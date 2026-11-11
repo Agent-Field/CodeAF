@@ -424,6 +424,14 @@ The writer batches at most 128 already admitted rows per ledger lock. A quiet
 queue flushes immediately, and flush/close barriers follow completed writes.
 Identity generation checks and duplicate suppression still run under that lock.
 
+The writer owns a separate journal loop that waits for coalesced admission
+wakes while idle. It starts batch synchronizers in the process writer's clock
+scope, independently of a blocked ledger projection, and joins the final sync
+before recovery and shutdown. `TestJournalSyncStaysWithTheProcessWriterAcrossCallerScopes`
+records and joins from a shorter caller scope, then checks the public ledger's
+single unchanged charge. The journal interval and row threshold remain
+`usageSyncInterval` and `usageSyncRows`.
+
 ## Factory signal acknowledgement bounds
 
 Each worker heartbeat sends at most 256 unconfirmed signal delivery IDs. A failed

@@ -227,7 +227,8 @@ func openUsageCreated(path string, flags int) (*os.File, error) {
 const usageSyncInterval = 100 * time.Millisecond
 const usageSyncRows = 64
 
-func (p *usagePending) append(path string, row usageWrite) error {
+// append reports whether the owner needs to start a new sync burst for the row.
+func (p *usagePending) append(path string, row usageWrite) (bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	err := withUsageLedgerLock(path, false, func(_ *os.File) error {
@@ -251,22 +252,33 @@ func (p *usagePending) append(path string, row usageWrite) error {
 		return err
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	p.rows++
-	if !p.syncing {
-		p.syncing = true
-		p.wake = make(chan struct{}, 1)
-		p.synced = make(chan struct{})
-		go p.syncBatches(path, p.wake, p.synced)
-	}
-	if p.rows >= usageSyncRows {
+	if p.syncing && p.rows >= usageSyncRows {
 		select {
 		case p.wake <- struct{}{}:
 		default:
 		}
 	}
-	return nil
+	return !p.syncing, nil
+}
+
+// Only the process-owned writer starts a synchronizer. A caller can record
+// inside a shorter-lived fake-clock bubble without lending it channels to close.
+func (p *usagePending) startSync(path string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.syncing || p.rows == 0 {
+		return
+	}
+	p.syncing = true
+	p.wake = make(chan struct{}, 1)
+	p.synced = make(chan struct{})
+	go p.syncBatches(path, p.wake, p.synced)
+	if p.rows >= usageSyncRows {
+		p.wake <- struct{}{}
+	}
 }
 
 // A clean close joins the final sync before replay can compact the journal.

@@ -584,6 +584,9 @@ type usageWrite struct {
 type usageWriter struct {
 	queue        chan usageWrite
 	stopped      chan struct{}
+	journalWake  chan struct{}
+	journalStop  chan struct{}
+	journalDone  chan struct{}
 	path         string
 	beforeWrite  func()
 	admitted     atomic.Int64 // rows taken in, in writing order
@@ -649,14 +652,42 @@ func usageWriterForLocked(path string) *usageWriter {
 		return writer
 	}
 	writer := &usageWriter{
-		path:     path,
-		queue:    make(chan usageWrite, usageQueueDepth),
-		stopped:  make(chan struct{}),
-		overflow: make(map[chan struct{}]struct{}),
+		path:        path,
+		queue:       make(chan usageWrite, usageQueueDepth),
+		stopped:     make(chan struct{}),
+		journalWake: make(chan struct{}, 1),
+		journalStop: make(chan struct{}),
+		journalDone: make(chan struct{}),
+		overflow:    make(map[chan struct{}]struct{}),
 	}
 	usageWriters[path] = writer
+	go writer.journalLoop(path)
 	go writer.run(path)
 	return writer
+}
+
+// The journal inherits the shared writer's lifetime and clock context, rather
+// than the recording caller's. Its separate loop can sync while projection stalls.
+func (w *usageWriter) journalLoop(path string) {
+	defer close(w.journalDone)
+	pending := pendingUsage(path)
+	for {
+		select {
+		case <-w.journalWake:
+			pending.startSync(path)
+		case <-w.journalStop:
+			pending.startSync(path)
+			pending.finishSync()
+			return
+		}
+	}
+}
+
+func (w *usageWriter) wakeJournal() {
+	select {
+	case w.journalWake <- struct{}{}:
+	default:
+	}
 }
 
 // pendingOverflow captures the writes already admitted without waiting under a
@@ -676,7 +707,8 @@ func (w *usageWriter) pendingOverflow() []chan struct{} {
 func (w *usageWriter) run(path string) {
 	defer close(w.stopped)
 	defer func() {
-		pendingUsage(path).finishSync()
+		close(w.journalStop)
+		<-w.journalDone
 		RecoverUsage(path)
 	}()
 	var identities usageIdentityCursor
@@ -709,9 +741,13 @@ func (w *usageWriter) run(path string) {
 					err = errors.New("usage row exceeds reader limit")
 				}
 				if err == nil && row.line != nil && !row.journaled {
-					err = pendingUsage(path).append(path, *row)
+					var needsSync bool
+					needsSync, err = pendingUsage(path).append(path, *row)
 					if err == nil {
 						row.journaled = true
+						if needsSync {
+							w.wakeJournal()
+						}
 					}
 				}
 				if err != nil {
@@ -1113,10 +1149,11 @@ func queueUsage(path string, line UsageLine) {
 	prepareUsage(path)
 	payload, err := json.Marshal(line)
 	work := usageWrite{id: line.ChargeID(), row: &line}
+	needsSync := false
 	if err == nil {
 		work.line = append(payload, '\n')
 		if len(work.line) <= usageLineBytes {
-			err = pendingUsage(path).append(path, work)
+			needsSync, err = pendingUsage(path).append(path, work)
 		} else {
 			err = errors.New("usage row exceeds reader limit")
 		}
@@ -1130,6 +1167,9 @@ func queueUsage(path string, line UsageLine) {
 	writer := usageWriterForLocked(path)
 
 	writer.admitted.Add(1)
+	if needsSync {
+		writer.wakeJournal()
+	}
 	// While rows are kept, new ones join them: the queue can then only shrink,
 	// so steady traffic can't hold the kept rows back.
 	if !writer.keepingRows() {

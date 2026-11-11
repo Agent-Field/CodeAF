@@ -1,4 +1,4 @@
-FIX-2597: real pending (fixed pending, PR dropped: none); already red pending; flaky pending; packages cmd/codeaf pending session pending; laws pending; hand pending
+FIX-2597: real 16 (fixed 16, PR dropped: none); already red 1; flaky 3; packages cmd/codeaf pending session pending; laws pending; hand pending
 
 Working record for SPEC-FIX-2597.md. Local commits only on
 `land/app-v3-open-prs`; no push, GitHub actions, or Git configuration changes.
@@ -136,7 +136,22 @@ Repair under test: give the profile a separate TempDir. All tool-call, repair
 reason, and error assertions remain byte-for-byte unchanged.
 
 Green proof: the exact real-tool-belt test passes in
-`handover-factory-green.log` (2.00 seconds). Fix commit pending.
+`handover-factory-green.log` (2.00 seconds). Fix commit: `0d20225dd` — keep
+#2570 belt fixture outside its profile ancestor.
+
+The unpinned stop-test bisect is also rejected: changing I/O speed let older
+cuts spend more than the 100 ms cache interval and pass, falsely blaming the
+unrelated pinned-Go verification fix `306a14c84`. Restarted with the same
+carried assertions and a scratch-only overlay that freezes its existing
+`floorNow` seam. This forces the handover to remain inside one shared cache
+interval on every cut. No repository test assertion is altered. The new
+deterministic repository regression uses that same controlled clock.
+
+The controlled `git bisect run` identifies `21ebed37c` (#2358) as the first bad
+cut (`bisect-stop-clock.txt`, `bisect-stop-clock-git.log`). This locates the
+introduced watcher/full-admission interaction, not an unrelated later speed
+change. Pre-introduction cuts have no such test and are explicitly marked as
+absent rather than described as behavioral passes.
 
 Evidence so far (before any edits):
 
@@ -184,3 +199,112 @@ Evidence so far (before any edits):
 Pending fixes: all CI-listed tests individually, each complete cmd/session
 package once (20-minute ceiling), laws, manual gates, build, and the specified
 throwaway-profile live hand checks.
+
+Final validation is running on `0d20225dd`, with the final binary built first
+so binary-driving package tests use the fixed source. Build passes. A private
+driver invokes each listed test separately and then the two complete package
+targets with four shards and `TEST_TIMEOUT=20m`, followed by laws and both manual
+paths. Logs and structured results are `final-*.log`, `final-results.json`, and
+the package report JSON files. No full package has been used as an editing loop.
+
+All 18 final individual CI selections are complete: 17 pass, including all 14
+regressions and all three flaky selections. The sole red is the already-red
+`TestLiveDriveRefusedStartupRetriesAndUploads`: initial notices now pass, but
+`relay_storage_full0` reaches the same later pending-upload failure observed on
+base (calls=9, frames=1). No upload assertion or underlying base-red behavior was
+changed. The complete `cmd/codeaf` run has started under the per-machine lock.
+
+Full-package raw JSON streams are also archived as `full-cmd-shard-*.jsonl`
+(and the corresponding session files) because the standard timing report keeps
+outcomes but not assertion text. A read-only follower copies each existing shard
+stream until its temporary directory is removed; it changes no test command.
+
+The cmd package's four shards reached their 20-minute ceiling (1,210.93 seconds
+including setup). Exactly 3,129/3,507 top-level tests started and reported an
+outcome; 378 never started. The initial package run is red, not a complete green
+result. Session has started once under the same lock and ceiling.
+
+To fulfill whole-package coverage without repeating completed tests, the
+remaining never-started names will run as explicit, disjoint continuation
+selections after the initial package runs finish. They use the same repository
+shard runner, per-machine lock, four shards, 20-minute ceiling, and final source.
+The expected lists, starts, and continuation selections are saved externally;
+already-started tests are excluded. Actual reds still get only the required
+isolated rerun and frozen-base comparison.
+
+### New real family from the full session run: journal bubble ownership
+
+The initial complete session selection aborted two shards in Memory tests with
+`fatal error: send on synctest channel from outside bubble`. Both
+`TestMemoryRecoveryKeepsOriginalExchangeOnce` and
+`TestClosedSessionHasNoMemoryPassStillWritingTheStore` reproduce alone here
+(0.268/0.753 seconds) and pass alone on the frozen base (0.288/0.825 seconds).
+Their original assertions are unchanged. These add two confirmed real cases
+beyond the initial CI list. Raw paired outcomes are already saved in
+`triage-results.json`; they will not be redundantly rerun by later triage.
+
+Cause under investigation: #2387's `usagePending.append` creates its batch
+synchronizer channels in the recording caller. Dev deliberately starts the
+process-wide `usageWriter` outside fake-clock bubbles. The journal's new
+`usageWriter.run` cleanup then sends to a bubble-owned wake channel from that
+outside writer. A fix must keep the journal's independent batching (including
+when projection is blocked), crash recovery, and bounded joined shutdown.
+
+The automatic continuation/triage follower was stopped while waiting, by its
+exact owned PID, so it cannot start tests while this newly confirmed family is
+being repaired. No unrelated process was signalled. The two initial package
+runs and initial laws/manual gates have finished; both gates pass.
+
+`git bisect run` identifies `4fadc9452` (the #2387 projection-durability follow-up)
+as the first bad cut for the existing Memory recovery test. Removing projection
+fsyncs exposed the caller-owned batch synchronizer before its temporary scope
+had drained. Evidence: `bisect-usage-bubble.txt` and its Git log.
+
+Added `TestJournalSyncStaysWithTheProcessWriterAcrossCallerScopes`. It starts
+the process writer outside a caller bubble, records and joins inside that scope,
+and checks one unchanged charge afterward. The exact test passes on the base
+through an external overlay, and fails with the fatal cross-bubble send on the
+original wave production files (`journal-scope-base.log`, `journal-scope-red.log`).
+Existing Memory and journal assertions remain unchanged.
+
+Repair under verification: the shared writer owns a joined, idle journal loop.
+Recording schedules it without blocking; batch synchronizers are created only
+from that owner. The loop remains separate from ledger projection, so a stalled
+projection cannot stop journal syncing. Shutdown joins the journal before replay.
+The 100 ms/64-row batching constants and all existing shutdown ceilings remain.
+
+The first focused journal run passed its assertions, including subprocess
+compaction, but exited red administratively because I added the regression file
+while that command was still active. The checkout-change guard correctly caught
+that. Its result is not claimed as a green command; verification will be repeated
+with the checkout held still. This was an agent workflow mistake, not a test or
+production assertion failure.
+
+The stable repeat passes the journal/Memory assertions and the public 20,000-row
+benchmark (exact $200, no drops). Its cmd process-close assertion catches the
+new helper being counted via its `created by usageWriter.run` stack line.
+Launching both owned loops from `usageWriterForLocked` keeps the process's one
+writer-per-ledger observation intact; the existing assertion is not changed.
+The scoped lifetime and process join checks are being rerun after that fix.
+
+The constructor-launch repeat passes both packages' focused checks, including
+the unchanged process writer-count and close assertions
+(`journal-owner-green-joined.log`). The final coalesced-wake variant also passes
+all journal, Memory, scope, and process-close assertions; one unrelated flush
+fixture exceeded its two-second bound during I/O contention, then passed
+unchanged in isolation in 0.15 seconds (`journal-owner-final.log`,
+`journal-durable-isolated.log`). No deadline or expectation was relaxed.
+
+Fresh-process before/after `BenchmarkLedgerWriter20K` invocations both verify
+20,000 public rows, exact $200 total, and no drops. Allocation measurements per
+20,000-charge iteration: before 91,502,848 bytes / 724,209 allocations; after
+95,270,832 bytes / 733,473 allocations. Elapsed times are diagnostic. The
+additional owned loop is idle without a timer and wakes only when a new sync
+burst is needed; existing batching, reader, and shutdown caps are unchanged.
+Evidence: `journal-perf-before.log`, `journal-perf-after.log`.
+
+The remaining original full-run failure comparisons will use the detached
+scratch tree frozen at the full-run source `0d20225dd`; continuation failures
+will use their newer repaired source. This avoids relabeling an old failure as
+flaky merely because the new journal repair makes it pass. No comparison source
+will be edited, and the two already-completed Memory pairs will not be repeated.

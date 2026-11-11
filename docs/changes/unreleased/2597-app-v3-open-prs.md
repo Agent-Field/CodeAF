@@ -38,3 +38,7 @@ The cheap idle watcher still reads no unchanged job documents.
 
 The Factory PR-base tool-belt fixture keeps its profile outside its workspace,
 preserving the existing refusal to work in a folder that contains codeaf state.
+
+The usage writer owns journal synchronization across caller lifetimes. A
+recording caller no longer lends its clock scope to a process-wide batch, while
+journal batching, crash recovery, and joined shutdown keep their existing bounds.
