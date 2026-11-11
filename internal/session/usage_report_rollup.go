@@ -197,5 +197,5 @@ func (c *usageReportRollup) report(q UsageQuery, budget UsageReportBudget) (Usag
 }
 
 func reportCellWeight(key usageReportKey) int64 {
-	return int64(usageReportCellBytes + len(key.day) + len(key.model) + len(key.kind) + len(key.subject) + len(key.root) + len(key.session) + len(key.agent))
+	return int64(usageReportCellBytes + len(key.day) + len(key.model) + len(key.kind) + len(key.subject) + len(key.root) + len(key.session) + len(key.agent) + len(key.library))
 }
