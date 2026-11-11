@@ -1102,7 +1102,8 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}{h.factory, a, a.UndoUntil})
 }
 
-// settles counts the settles run: each one lists and decodes every job.
+// settles counts settlement passes, including those whose unchanged floor
+// and future deadlines let them finish without listing any jobs.
 var settles atomic.Int64
 
 // listFloor reads every job. A test may count those reads; the handler
@@ -1131,6 +1132,7 @@ func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 	if h.config.Store == nil {
 		return
 	}
+	settles.Add(1)
 	if h.floorUnchanged() {
 		return
 	}
@@ -1142,7 +1144,6 @@ func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 	// while the read is in progress must not be remembered as idle: the
 	// signature would name the new files while the deadlines came from
 	// the old ones.
-	settles.Add(1)
 	h.rememberFloor(nil, "")
 	before := h.floorSignature()
 	pending, err := h.listFloor()
