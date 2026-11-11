@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -84,11 +85,39 @@ func NewRecorder(inner executor.Executor, store Store, c cell.Cell, walPath stri
 	wal.owner = c.Root
 	reapOrphans(rec.Incomplete, reapGrace)
 	r := &Recorder{inner: inner, store: store, cell: c, wal: wal, opts: opts,
-		pending: rec.Completed, incomplete: rec.Incomplete, daemonGeneration: daemonClock.Load()}
-	if opts.Async && len(r.pending) > 0 {
+		pending: rec.Completed, models: rec.Models, incomplete: rec.Incomplete, daemonGeneration: daemonClock.Load()}
+	if models, e := unsealedModels(c, r.models); e == nil {
+		r.models = models
+	}
+	if opts.Async && (len(r.pending) > 0 || len(r.models) > 0) {
 		r.hold()
 	}
 	return r, nil
+}
+
+// Receipt publication can survive a crash before WAL cleanup. Shared identities
+// suppress those receipts; anonymous legacy calls cannot be matched by identity.
+func unsealedModels(c cell.Cell, models []ModelCall) ([]ModelCall, error) {
+	if len(models) == 0 {
+		return models, nil
+	}
+	calls, err := ModelCalls(c)
+	if err != nil {
+		return nil, err
+	}
+	booked := map[string]bool{}
+	for _, m := range calls {
+		if m.ID != "" {
+			booked[m.ID] = true
+		}
+	}
+	var pending []ModelCall
+	for _, m := range models {
+		if m.ID == "" || !booked[m.ID] {
+			pending = append(pending, m)
+		}
+	}
+	return pending, nil
 }
 
 // Wrap leaves the executor unchanged when this build cannot move chats, so
@@ -153,10 +182,45 @@ func exitOfFailure(failed bool) int {
 // in the receipt of the turn it was made in.
 func (r *Recorder) NoteModelCall(m executor.ModelCall) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.models = append(r.models, modelCallOf(m))
+	model := modelCallOf(m)
+	for _, pending := range r.models {
+		if model.ID != "" && pending.ID == model.ID {
+			r.mu.Unlock()
+			return
+		}
+	}
+	r.models = append(r.models, model)
+	err := r.wal.recordModels(r.models)
 	if r.opts.Async {
 		r.hold()
+	}
+	r.mu.Unlock()
+	if err != nil {
+		log.Print("model receipt pending; retaining for retry")
+		r.report(err)
+		go r.retryModel(model)
+	}
+}
+
+func (r *Recorder) retryModel(m ModelCall) {
+	for attempt := 0; ; attempt++ {
+		time.Sleep(min(10*time.Millisecond<<min(attempt, 7), time.Second))
+		r.mu.Lock()
+		pending := false
+		for _, model := range r.models {
+			if model.ID == m.ID {
+				pending = true
+				break
+			}
+		}
+		var err error
+		if pending {
+			err = r.wal.recordModels(r.models)
+		}
+		r.mu.Unlock()
+		if !pending || err == nil {
+			return
+		}
 	}
 }
 
@@ -344,8 +408,9 @@ func (r *Recorder) seal(ctx context.Context) {
 	}
 	// Ordered turn and receipt writes survive process death. Group commit and
 	// explicit boundaries make both stores durable before work leaves this computer (C28/U1).
+	models := r.models
 	r.pending, r.models = nil, nil
-	r.outcome(r.wal.Sealed(batch))
+	r.outcome(r.wal.Sealed(batch, models...))
 	r.releaseHeld()
 }
 

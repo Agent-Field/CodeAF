@@ -427,6 +427,7 @@ func openUsageScan(path string) (*os.File, func(), error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, release, nil
 	}
+	prepareUsage(path)
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, release, nil

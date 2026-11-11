@@ -34,6 +34,11 @@ func (c *usageIdentityCursor) append(file *os.File, rows []usageWrite) (int, err
 		return 0, err
 	}
 	defer unlockUsageIdentityWriter(file)
+	return c.appendLocked(file, rows)
+}
+
+// appendLocked lets journal replay share the ledger generation lock.
+func (c *usageIdentityCursor) appendLocked(file *os.File, rows []usageWrite) (int, error) {
 	reader, err := usageIdentityReader(file)
 	if err != nil {
 		return 0, err

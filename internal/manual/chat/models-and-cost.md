@@ -4612,7 +4612,7 @@ make closing slower.
 
 Closing waits at most two seconds for the spending ledger, so a stalled ledger can
 add up to two seconds to each close. Pending rows can still be written if the process stays open and
-the mount recovers. If the process exits first, those rows can be lost. Reaching
+the mount recovers. Rows already saved to the pending journal recover on the next start. If both journal and ledger writes fail before exit, those rows can be lost. Reaching
 the limit writes one line to the log with the ledger path and the number of rows
 pending, and those rows count as records not written down until they are written.
 No warning appears on screen.
@@ -4643,3 +4643,26 @@ Exceeding the rollup's total storage budget or encountering invalid
 figures also uses the scan, preserving each range's existing limits and refusals.
 The retained rollup is limited to one ledger, 8,192 groups and an estimated
 4 MiB of cells; it grows with distinct daily groups, not call count.
+
+## Usage totals after a crash or forced exit
+
+codeaf saves each complete priced usage row in a pending journal before handing
+it to the background ledger writer. On the next start, missing charges are
+replayed once with their original amount, day and ownership. Already booked
+charges are not added again. A successful journal write survives a process
+crash, including forced termination immediately after recording usage. Journal
+sync runs in background batches every 100 ms or 64 rows, whichever comes first.
+On power loss, up to the last 100 ms batch can be lost, as before. Clean close
+drains and syncs before compacting. These guarantees require successful disk
+operations; they cannot recover facts that an older build never saved.
+
+The sidecar is `usage.jsonl.pending-v1.jsonl`, beside `usage.jsonl` in your
+profile's `v3` directory. Startup and clean close compact booked rows out of it.
+Keep this file with the ledger when recovering a profile. If disk writes fail,
+chat continues with its in-memory counters while accounting retries; an unsaved
+row cannot survive process exit.
+
+Model-only calls also keep a local receipt record until sealing succeeds. An
+older build can lose that receipt detail when it rewrites the call log. The
+pending usage journal remains the source for exact money recovery; downgrading
+can lose model-call receipt detail, never money already saved by this journal.

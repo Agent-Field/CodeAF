@@ -78,7 +78,7 @@ func (e Engine) recoverCompleted(ctx context.Context, c cell.Cell) error {
 	if err != nil {
 		return err
 	}
-	if len(recovery.Completed) == 0 {
+	if len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return nil
 	}
 	_, err = e.SealRecovered(ctx, c)
@@ -93,11 +93,15 @@ func (e Engine) SealRecovered(ctx context.Context, c cell.Cell) (Sealed, error) 
 	if err != nil {
 		return Sealed{}, err
 	}
-	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Changed: changedOf(recovery.Completed)})
-	if err != nil || len(recovery.Completed) == 0 {
+	models, err := unsealedModels(c, recovery.Models)
+	if err != nil {
+		return Sealed{}, err
+	}
+	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Models: models, Changed: changedOf(recovery.Completed)})
+	if err != nil || len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return sealed, err
 	}
-	return sealed, wal.Sealed(recovery.Completed)
+	return sealed, wal.Sealed(recovery.Completed, recovery.Models...)
 }
 
 // StageAdmission reads only the incoming workspace policy and checkpoint into
