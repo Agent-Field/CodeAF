@@ -15,3 +15,7 @@ Overlapping work retains Library billing activity, the shared document and lease
 caches, Windows-safe file replacement, and newer Factory approval and recovery
 rules. Explicit Test completion choices remain in saved pipeline YAML, and
 unchanged-floor settlement passes remain measurable without decoding jobs.
+
+Fixture setup previously relied on idle inventory and synchronous receipt
+completion. Fixtures now save their Memory choice explicitly, request the
+discovery passes they exercise, and join existing receipt settlement signals.
