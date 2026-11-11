@@ -2679,8 +2679,9 @@ type Config struct {
 	// commands act as: the same DID in a conversation, `<did>#w<task id>` in a
 	// task worker (agent_identity.go). A child agent inherits both from the
 	// agent that built it ([Agent.newChildAgent]); no surface sets them.
-	agentDID string
-	actorDID string
+	agentDID      string
+	agentDocument *AgentIdentity
+	actorDID      string
 
 	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
 	// conversation's DID with the task number its row wears. A run builds its
