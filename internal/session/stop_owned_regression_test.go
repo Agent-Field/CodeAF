@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -297,6 +298,10 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
 	entered, finish := make(chan struct{}), make(chan struct{})
 	model := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
 		close(entered)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}, func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		close(entered)
 		select {
 		case <-finish:
 			provider.Emit(ctx, provider.StreamDelta, "resumed")
@@ -306,6 +311,10 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
 		}
 	}}}
 	a, _ := newTestAgent(t, model, func(c *Config) { c.JobBudget = budget })
+	// The watcher never samples an idle agent; start owned work before arming
+	// the delayed read, so admission itself cannot consume the sample.
+	initial := mustSubmit(t, a, "Start the work whose budget will be sampled")
+	<-entered
 	armed.Store(true)
 	select {
 	case <-sampled:
@@ -316,6 +325,8 @@ func TestLateBudgetSampleDoesNotStopResumedManager(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, "person Stop settles", func() bool { a.mu.Lock(); defer a.mu.Unlock(); return !a.workStopping })
+	collect(t, initial)
+	entered = make(chan struct{})
 	events := mustSubmit(t, a, "Start fresh work after raising the budget")
 	<-entered
 	unblock()
@@ -357,5 +368,52 @@ func TestBudgetReadErrorHoldsAdmissionWithoutCancellingWork(t *testing.T) {
 	collect(t, mustSubmit(t, a, "start a paid turn"))
 	if model.requests() != 0 {
 		t.Fatal("unknown budget admitted a paid call")
+	}
+}
+
+// watchedStopDoor answers the watcher's question and the gate's separately.
+type watchedStopDoor struct {
+	RunDoor
+	watched, gate *atomic.Int64
+	stopped       *atomic.Bool
+}
+
+func (d watchedStopDoor) answer() string {
+	if d.stopped.Load() {
+		return factory.PersonStopReason
+	}
+	return ""
+}
+func (d watchedStopDoor) WatchedRefusal(string) string { d.watched.Add(1); return d.answer() }
+func (d watchedStopDoor) AutomaticRefusal(string) string {
+	d.gate.Add(1)
+	return d.answer()
+}
+
+// The watcher takes the cheap answer and still stops owned work within three
+// polls; a turn deciding whether to spend asks the gate, never the cheap answer.
+func TestTheBudgetWatcherStopsOwnedWorkThroughTheWatchedAnswer(t *testing.T) {
+	var watched, gate atomic.Int64
+	var stopped atomic.Bool
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.JobBudget = &liveBudgetStub{cap: 10}
+		c.SessionFile = filepath.Join(t.TempDir(), "transcript.jsonl")
+		c.FactoryRun = watchedStopDoor{watched: &watched, gate: &gate, stopped: &stopped}
+	})
+	id := startJob(t, a, "sleep 30")
+	time.Sleep(250 * time.Millisecond)
+	if watched.Load() == 0 {
+		t.Fatal("the watcher did not ask the watched answer")
+	}
+	if gate.Load() != 0 {
+		t.Fatalf("the watcher asked the gate %d times", gate.Load())
+	}
+	stopped.Store(true)
+	time.Sleep(350 * time.Millisecond)
+	if a.jobs.find(id).running() {
+		t.Fatal("a person's Stop reached the watcher, but owned work still runs")
+	}
+	if a.automaticFactoryRefusal() != factory.PersonStopReason || gate.Load() == 0 {
+		t.Fatal("the turn gate did not ask the full answer")
 	}
 }

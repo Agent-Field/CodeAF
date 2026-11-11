@@ -27,7 +27,7 @@ func TestStorageNoticeReachesEngineWindow(t *testing.T) {
 	for _, mode := range []string{"refused start", "revoke", "no-host", "storage on", "self-hosted"} {
 		t.Run(mode, func(t *testing.T) {
 			cellstoretest.EngineDir(t)
-			cfg, c := spokenDoorChat(t)
+			cfg, c := spokenDoorChatWithPairing(t, true)
 			oldDesk := surfaceNotices
 			surfaceNotices = tui3.NewNotices()
 			defer func() { surfaceNotices = oldDesk }()
@@ -172,7 +172,7 @@ func (a *storageOffNoticeAgent) TakeSealNotice() string { return a.watch.Take() 
 
 // B4 gives each seat sharing a drive one notice over its own real window connection.
 func TestSharedDriveNoticesEachWindow(t *testing.T) {
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	defer service.Close()
 	srv := httptest.NewServer(service.Handler)

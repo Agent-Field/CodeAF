@@ -580,6 +580,10 @@ func (d draft) file(defaults bool) File {
 			if step.wroteUntil {
 				base.Until = step.Until
 				base.wroteUntil = true
+			} else if step.wrotePrompt && base.Until == factory.UntilNoNewFailures {
+				// A repository's own Test prompt keeps the strict rule it inherited
+				// before baseline comparison unless the file opts in explicitly.
+				base.Until = factory.UntilGreen
 			}
 			if step.wroteMax {
 				base.Max = step.Max
@@ -661,6 +665,13 @@ func (f *File) resolve() {
 
 func (f *File) clean(requireStep bool) {
 	for name, step := range f.Steps {
+		if unsupportedBaselinePolicy(name, step.Kind, step.Until) {
+			f.Problems = append(f.Problems, Problem{Where: "steps." + name + ".until", Why: baselinePolicyScope})
+			if step.hold == "" {
+				step.hold = baselinePolicyScope
+			}
+			f.Steps[name] = step
+		}
 		if factory.ApproveWord(name) && step.wrotePrompt && strings.TrimSpace(step.Prompt) != "" {
 			f.Problems = append(f.Problems, Problem{Where: "steps." + name, Why: "approve is a person and has no prompt"})
 			step.Prompt = ""

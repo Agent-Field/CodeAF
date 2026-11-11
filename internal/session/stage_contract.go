@@ -43,8 +43,13 @@ type StageDoor interface {
 	Edit(ctx context.Context, edit factory.PlanEdit) error
 }
 
-// mayStage says whether `stage_result` and `plan_edit` belong on this belt:
-// this conversation is a factory stage. It is the belt's predicate, asked of
-// one field, and A CONVERSATION THAT IS NOT A STAGE NEVER HAS EITHER VERB: a
-// model told it can report a stage would report one to nobody.
+// StagePRBaseSyncer is available only in Follow PR rounds where the runner
+// can incorporate the linked PR's base into that job's checkout.
+type StagePRBaseSyncer interface {
+	SyncPRBase(context.Context) (string, error)
+	CanSyncPRBase() bool
+}
+
+// mayStage says whether this conversation can act as a factory stage.
+// Ordinary chats and read-only tasks cannot report a stage result.
 func (c Config) mayStage() bool { return !c.readingTask() && c.Stage != nil }

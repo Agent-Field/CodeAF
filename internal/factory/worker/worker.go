@@ -260,7 +260,7 @@ func (o Options) slot(ctx context.Context, slot int) {
 		case !ok && time.Since(began) < 200*time.Millisecond:
 			// A pull that came back at once (this worker still holds a job
 			// in another process) must not spin.
-			wait = time.Second
+			wait = quickEmptyPullWait(o.Attach)
 		case !ok:
 			wait = 0
 		default:
@@ -293,6 +293,23 @@ func pause(ctx context.Context, d time.Duration) bool {
 	case <-t.C:
 		return true
 	}
+}
+
+// needsPullEvery is how often a worker that attached needing something (a
+// model provider) asks again. The factory answers it at once with nothing to
+// do for as long as this Run lasts, because the state is read when it
+// attaches, and every pull made the factory settle its whole floor; once a
+// second kept an idle engine busy. Ten seconds keeps the runner's presence well
+// inside the default offline window (lease.OfflineAfter).
+const needsPullEvery = 10 * time.Second
+
+// quickEmptyPullWait is the pause after a pull that came back at once with
+// nothing to do.
+func quickEmptyPullWait(attach api.WorkerAttach) time.Duration {
+	if attach.Needs != "" {
+		return needsPullEvery
+	}
+	return time.Second
 }
 
 func backoff(d time.Duration) time.Duration {

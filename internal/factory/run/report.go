@@ -121,6 +121,12 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		}
 		f := *it.FollowUp
 		f.State, f.Reason, f.BlockedBy = report.FollowUp.State, report.FollowUp.Reason, report.FollowUp.BlockedBy
+		if base := report.FollowUp.BaseSyncSHA; base != "" {
+			if report.FollowUp.Kind != "pr" || !publish.ValidCommit(base) {
+				return fmt.Errorf("invalid PR base update")
+			}
+			f.BaseSyncSHA = base
+		}
 		if f.Kind == "readiness" && report.FollowUp.Kind == "pr" && report.FollowUp.Readiness == nil {
 			f.Kind = "pr"
 			f.Readiness = nil
@@ -224,6 +230,7 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		// arriving in flight remains pending; no worker-supplied map overwrites it.
 		factory.AcknowledgeReview(it)
 		it.FollowUp.Request = ""
+		it.FollowUp.BaseSyncSHA = ""
 		if it.QKind == "results_not_saved" {
 			it.Question, it.QKind = "", ""
 			it.Asking = nil

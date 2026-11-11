@@ -193,6 +193,18 @@ func TestAppFactoryLifetimeBudget(t *testing.T) {
 				}
 				act(method, nil)
 			}
+			if action == "bring back" {
+				// BRING BACK STARTS THE JOB OVER (owner, 2026-11-09): what it spent before
+				// it was dropped is cleared, so it runs under its whole budget again
+				// and its total is this run's alone.
+				fresh := wait("a job brought back runs from $0", func(j api.Job) bool {
+					return j.Cost == 1 && len(j.Steps) == 1 && j.Steps[0].State == "done" && j.State != api.StateRunning
+				})
+				if fresh.SpendingLimit != nil || fresh.LifetimeCost != 1 || calls.Load() != 1 {
+					t.Fatalf("a job brought back still counts what it spent before: %+v, calls %d", fresh, calls.Load())
+				}
+				return
+			}
 			held := wait("job total 6.25 must ask at 6", func(j api.Job) bool { return j.SpendingLimit != nil })
 			if held.LifetimeCost != 6.25 || held.SpendingLimit.Spent != 6.25 {
 				t.Fatalf("budget must read lifetime: %+v", held)

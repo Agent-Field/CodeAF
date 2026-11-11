@@ -66,7 +66,11 @@ func (h *Handler) recoverWorkerReport(w http.ResponseWriter, r *http.Request) {
 	saved, already, err := h.workers.desk.ReconcileReport(id, requestWorker(r), body.OriginalLease, digest, body.AdditionalCost, func(it *factory.Item, receipt *factory.WorkerReportReceipt) error {
 		if receipt != nil {
 			delta := body.AdditionalCost - receipt.AdditionalCost
-			if receipt.Archived {
+			if receipt.Cleared {
+				// The job was brought back fresh since: the money is the
+				// factory's, not the fresh job's.
+				it.SpentCleared += delta
+			} else if receipt.Archived {
 				it.SpentBefore += delta
 			} else {
 				factory.AddChatSpend(it, delta)
@@ -164,7 +168,7 @@ func retainedWorkerReport(body api.WorkerRecovery) (factory.RunReport, string, e
 // Recovery saves completed work, rather than granting an old worker permission
 // to publish, merge, answer a human decision or replace a newer phase attempt.
 func validateRetainedReport(it factory.Item, report factory.RunReport) error {
-	if it.State != factory.StateNeedsYou || it.QKind != "results_not_saved" || it.Manual || it.DoneHow != "" || it.Publishing || it.Stream == nil || it.Stream.Paused || it.Merging != nil || it.Approval != nil && it.Approval.State == "approving" {
+	if it.State != factory.StateNeedsYou || it.QKind != "results_not_saved" || it.Manual || it.DoneHow != "" || it.Publishing || it.Stream == nil || it.Stream.Paused || factory.RecoveryPaused(it) || it.Merging != nil || it.Approval != nil && it.Approval.State == "approving" {
 		return fmt.Errorf("only the current internal result-save block can be reconciled")
 	}
 	if it.Asking != nil && (it.Asking.Stage != "" || it.Asking.Question != it.Question) {

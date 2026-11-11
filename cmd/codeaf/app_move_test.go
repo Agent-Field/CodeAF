@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -169,6 +171,7 @@ func TestAppMoveEndingWords(t *testing.T) {
 		{fmt.Errorf("x: %w", syncsetup.ErrMoveStalled), "stopped", "Stopped: nothing came through for 2 minutes. The chat is still on Studio Mac."},
 		{fmt.Errorf("cellsync: fetch object 12: %w", errBlobNotFound()), "failed", "Couldn't move it: part of this chat's folder is missing from sync. The chat is still on Studio Mac."},
 		{fmt.Errorf("handoff: fetch: %w", errBlobUnreachable()), "failed", "Couldn't move it: sync could not be reached. The chat is still on Studio Mac."},
+		{fmt.Errorf("handoff: fetch: %w", errBlobAnswered()), "failed", "Couldn't move it: sync answered with an error. The chat is still on Studio Mac."},
 		{fmt.Errorf("something odd"), "failed", appTakeFailed},
 	}
 	for _, c := range cases {
@@ -188,6 +191,15 @@ func TestAppMoveEndingWords(t *testing.T) {
 
 func errBlobNotFound() error    { return blobstore.ErrNotFound }
 func errBlobUnreachable() error { return blobstore.ErrUnreachable }
+
+// errBlobAnswered is the error a relay that answered 500 without naming a
+// refusal gives, as the HTTP store builds it.
+func errBlobAnswered() error {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
+	defer srv.Close()
+	_, err := blobstore.NewHTTP(srv.URL, func(*http.Request, []byte) {}, srv.Client()).GetMany(context.Background(), []string{strings.Repeat("a", 64)})
+	return err
+}
 func timeNowForTest() time.Time { return time.Now() }
 
 // A chat whose holder has not finished sharing its newest turns says how far

@@ -23,6 +23,7 @@ Answer ONE JSON object and nothing else:
 {"verdict": string, "verdict_evidence": [evidence], "blocks": [block]}
 Every "evidence" field is a JSON ARRAY of {"step": string, "try": number, "kind": one of %s, "ref": string}. tests, exit, findings, claims and output name a step's latest try; summary names any try; file names a changed file in ref; change is the whole change's stat (files, added, removed); hunk names "file:start" in ref; rule_checks names no step; pr names the published PR and shows its number, with no step.
 The verdict says the outcome, not the activity, in at most %d words ("Fixed. Retries no longer double-send after a worker restart.").
+When a step is blocked and needs_you is true, use the verdict to explain in plain language why work stopped. Cite the latest try of that step using its output, tests, or exit evidence. Distinguish a failing check from a missing current result. Say a failure also happens before the change only if the recorded output shows it. Leave shell commands, filesystem paths, and credentials out of the verdict. Never suggest bypassing a required check.
 Pick 2 to %d blocks. Every block has "kind" and a short "heading". Kinds and their fields:
 - bullets: "bullets": [{"text","evidence"}], at most %d, at most %d words each, a **bold** lead word allowed.
 - flow: "flow": [{"label":"Before"|"After","nodes":[{"text","mark"}]}], at most %d nodes a row, one node may be marked; "evidence".

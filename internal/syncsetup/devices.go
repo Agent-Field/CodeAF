@@ -170,6 +170,7 @@ func (d *deviceDirectory) List(ctx context.Context) (directory.Listing, error) {
 			}
 			s.Devices, s.Version, s.Complete = devices, max(s.Version, l.Version), true
 		})
+		rememberOthers(d.home, d.binding, l.Devices)
 	}
 	return l, err
 }

@@ -920,10 +920,19 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
 	dir := c.ProfileDir
 	return func(ctx context.Context, model, tag string) error {
+		asked := strings.TrimSpace(model)
+		if asked == "" || asked == wire {
+			asked = send
+		}
+		if admit, _ := ctx.Value(budgetAdmissionKey{}).(func(context.Context, string) error); admit != nil {
+			if err := admit(ctx, asked); err != nil {
+				return err
+			}
+		}
 		if err := factoryCallRefusal(ctx); err != nil {
 			return err
 		}
-		if tag != string(purposeTurn) {
+		if tag != string(purposeTurn) && !c.dailyModelExempt(asked) {
 			if err := DailyLimitReached(c); err != nil {
 				return err
 			}
@@ -933,10 +942,6 @@ func (c Config) routeGate(send, wire string) func(context.Context, string, strin
 		}
 		if isCrewSeatCall(ctx) || tag == string(purposeTurn) {
 			return nil
-		}
-		asked := strings.TrimSpace(model)
-		if asked == "" || asked == wire {
-			asked = send
 		}
 		if config.CrewRouteAnswers(dir, asked) {
 			return nil

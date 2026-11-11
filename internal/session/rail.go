@@ -62,8 +62,8 @@ func (a *Agent) spendRailUSD() float64 {
 // zero when there is none.
 //
 // A ROOT reads its profile live, including the ordinary empty default-profile
-// path, so a `/budget day` change takes effect on the next turn. A WORKER carries
-// the value resolved by its parent without gaining the profile's settings door.
+// path, so a `/budget day` change takes effect on the next check. A WORKER reads
+// its parent's authority without gaining the profile's settings door.
 // [Config.DailyBudgetResolved] distinguishes that authority from an unset root
 // field; neither an empty path nor a zero amount can make that distinction.
 func (a *Agent) dailyCeilingUSD() float64 {
@@ -77,11 +77,17 @@ func (a *Agent) dailyCeilingUSD() float64 {
 // dailyCeiling keeps the profile's read error for every paid-call gate, so
 // unreadable spending authority cannot silently become an unlimited allowance.
 func (c Config) dailyCeiling() (float64, error) {
+	if c.dailyBudgetAuthority != nil {
+		return c.dailyBudgetAuthority()
+	}
 	if c.DailyBudgetResolved {
 		return c.DailyBudgetUSD, nil
 	}
 	return config.DailyBudgetUSDAt(c.ProfileDir)
 }
+
+// dailyCeiling follows the owner's live authority for active-work checks.
+func (a *Agent) dailyCeiling() (float64, error) { return a.config.dailyCeiling() }
 
 // DailyLimitReachedAt gives process-owned calls the shared gate without
 // requiring their caller to construct a session configuration.
@@ -181,6 +187,10 @@ func (a *Agent) railBlockLocked() error {
 	return spendRailReached{said: fmt.Sprintf(
 		"conversation limit reached · %s spent of %s · /budget conversation changes it",
 		railMoney(spent), railMoney(rail))}
+}
+
+func dailyLimitReached(spent, capUSD float64) error {
+	return spendRailReached{daily: true, said: fmt.Sprintf("daily limit reached · %s spent of %s · /budget day changes it", railMoney(spent), railMoney(capUSD))}
 }
 
 // spendRailReached is the refused turn's error, and it exists for ONE reason:

@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -126,6 +129,10 @@ func (h *Handler) pickRefused(w http.ResponseWriter, it factory.Item, pick strin
 // startRefused answers every refusal a start makes before it writes, and true
 // when it refused.
 func (h *Handler) startRefused(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if factory.RecoveryPaused(it) {
+		h.refuse(w, http.StatusConflict, factory.DecisionPauseDetail(it), "conflict", "", nil, factory.JobState(it))
+		return true
+	}
 	// A JOB WITH NO REPOSITORY IS REFUSED IN SO MANY WORDS, before anything
 	// reads a checkout for it: a definite conflict, which the app shows as
 	// the factory said it, never a failure that may have half-happened.
@@ -237,6 +244,9 @@ func (h *Handler) launchJob(w http.ResponseWriter, r *http.Request, it factory.I
 		}
 		if factory.StoppedByPerson(cur) || mark || queued || budget > 0 || also != nil || rules != nil || picked != nil || (cur.Starter == "" && who != "") {
 			err := st.Update(it.ID, func(cur *factory.Item) error {
+				if factory.RecoveryPaused(*cur) {
+					return run.StepControlRefusal(factory.DecisionPauseDetail(*cur))
+				}
 				factory.ClearPersonStop(cur)
 				if also != nil {
 					also(cur)
@@ -485,18 +495,27 @@ func (h *Handler) runAgain(w http.ResponseWriter, r *http.Request, it factory.It
 
 // restoreJob is POST /v1/jobs/{id}/restore, Bring back: the one way out of a
 // drop. The job goes back to Backlog AS IF IT HAD NEVER RUN, and nothing
-// starts; starting it is the person's own start. The drop threw its work on
-// this machine away (its local branch and folder, its conversations and its
-// crew), so its next run begins on a fresh branch, from the first step, with
-// its lifetime money kept, and makes an agent and a crew of its own.
+// starts; starting it is the person's own start ([intake.Intake] passes a job
+// that was brought back). The drop threw its work on this machine away (its
+// local branch and folder, its conversations and its crew), so its next run
+// begins on a fresh branch, from the first step, with $0 spent and its whole
+// budget ahead of it, and makes an agent and a crew of its own.
 //
-// FRESH MEANS FRESH (the owner's decision of 2026-10-19): no earlier
-// conversation reaches the job again. Its agent's conversation, what the
-// person said there and what the runner took from it, the person's notes to
-// the steps, and every change made to its steps go, and the steps are the
-// repository's recipe again. What the job is stays: its identity, the issue's
-// own words, who it is assigned to, its priority, budget and model, and its
+// FRESH MEANS FRESH (the owner's decision of 2026-10-19, and of 2026-11-09:
+// drop and bring back is trying the issue again from the very beginning, as if
+// it had just been loaded). No earlier conversation reaches the job again. Its
+// agent's conversation, what the person said there and what the runner took
+// from it, the person's notes to the steps, its briefs, and every change made
+// to its steps go, and the steps are the repository's recipe again. A person's
+// Stop of the old run goes with the run: kept, the job came back in Needs you
+// as stopped and never reached Backlog. Its money starts again from nothing
+// ([factory.ForgetJobSpend]); the factory's own spending totals still count
+// what the old run cost. What the job is stays: its identity, the issue's own
+// words, who it is assigned to, its priority, budget, mode and model, and its
 // activity, the history of what happened to it.
+//
+// AN ISSUE CLOSED SINCE STAYS DROPPED ([Handler.closedSince]): there is
+// nothing left to try again, and the person is told so in one sentence.
 //
 // WHAT IS STILL HERE GOES FIRST, WHILE THE JOB IS STILL DROPPED
 // ([Handler.throwAway]): a folder or branch something re-created after the
@@ -520,6 +539,9 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 
 	if factory.JobDoneHow(it) != "dropped" {
 		h.refuse(w, http.StatusConflict, "only a dropped job can be brought back", "conflict", "", nil, factory.JobState(it))
+		return
+	}
+	if h.closedSince(w, r, it) {
 		return
 	}
 	// The recipe is read before anything changes, so a pipeline file that
@@ -546,22 +568,53 @@ func (h *Handler) restoreJob(w http.ResponseWriter, r *http.Request, it factory.
 	}))
 }
 
+// closedSince answers the refusal and true when a dropped job's issue or pull
+// request was closed or merged on GitHub since: the job stays dropped, and
+// nothing of it is touched. So does one whose number now names a different
+// issue.
+//
+// BRING BACK NEVER DEPENDS ON GITHUB BEING UP. A read that fails, times out or
+// has no token to read with answers nothing, and the job comes back on what
+// the floor already knows; its start reads GitHub again
+// ([Handler.endedOnGitHub]).
+func (h *Handler) closedSince(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if h.config.Recheck == nil || it.Origin != factory.OriginForge || it.Num <= 0 {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), recheckWait)
+	answer, err := h.config.Recheck(ctx, it)
+	cancel()
+	if errors.Is(err, factory.ErrSourceIdentityChanged) || (err == nil && !answer.Matches(it)) {
+		h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d now identifies a different GitHub issue, so it stays dropped.", it.Num), "conflict", "", nil, factory.JobState(it))
+		return true
+	}
+	if err != nil || (answer.How != factorygithub.StandingClosed && answer.How != factorygithub.StandingMerged) {
+		return false
+	}
+	h.refuse(w, http.StatusConflict, fmt.Sprintf("#%d was %s on GitHub, so it stays dropped.", it.Num, answer.How), "conflict", "", nil, factory.JobState(it))
+	return true
+}
+
 // forgetRun takes every trace of a run off the job: its state and ending, its
-// steps, its question, failure, approval and stop, its
-// proof, its change and the commits and machine it was made on, and what it
-// published; and every trace of what was said about it: its conversations
-// ([forgetChats]), the notes for its steps, and the changes made to its
-// steps, which are the recipe's for its kind again, with the pipeline file
-// it was decided on. Everything else on the job is the job's own and stays.
+// steps, its question, failure, recovery, approval and stop (the person's Stop
+// of that run among them), its money, its proof, its change and the commits
+// and machine it was made on, and what it published; and every trace of what
+// was said about it: its conversations ([forgetChats]), its briefs, the notes
+// for its steps, and the changes made to its steps, which are the recipe's for
+// its kind again, with the pipeline file it was decided on. Everything else on
+// the job is the job's own and stays.
 func forgetRun(it *factory.Item, recipe factory.Recipe) {
 	forgetChats(it)
 	it.State = factory.StateNew
 	it.DoneHow, it.DoneAt = "", time.Time{}
-	factory.ClearJobRun(it)
-	it.Failure = nil
-	it.Approval, it.StopUndo = nil, nil
-	it.Question, it.QKind = "", ""
-	it.Asking, it.AnsweredQuestions = nil, nil
+	factory.ForgetJobSpend(it)
+	factory.ClearPersonStop(it)
+	it.Failure, it.Recovery, it.LastRecoveryResume = nil, nil, ""
+	it.Approval, it.StopUndo, it.PublishAnyway = nil, nil, nil
+	it.Question, it.QKind, it.AskedFirstReason = "", "", ""
+	it.Asking, it.AnsweredQuestions, it.ManagerAnswer = nil, nil, nil
+	it.Marked, it.OverLimit = false, false
+	it.Briefs, it.BriefWriting, it.BriefSeen = nil, nil, nil
 	it.Proof, it.Policy = nil, nil
 	it.PlannedFiles = nil
 	it.Change, it.ChangeBase, it.HeadCommit = nil, "", ""
@@ -870,7 +923,7 @@ func (h *Handler) resumeAtCap(r *http.Request, it factory.Item) error {
 // A person's Stop requires their explicit Start even after a raise.
 func capResumes(it factory.Item) bool {
 	asksCap := it.QKind == "cap" && (it.Asking == nil || it.Asking.Question == it.Question)
-	return asksCap && it.Cap > factory.JobLifetimeSpent(it) && !it.Manual && !it.Publishing && !factory.StoppedByPerson(it)
+	return asksCap && it.Cap > factory.JobLifetimeSpent(it) && !it.Manual && !it.Publishing && !factory.StoppedByPerson(it) && !factory.RecoveryPaused(it)
 }
 
 // jobModelMost is the longest model id a job keeps.
@@ -956,7 +1009,9 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 					restored = &stream
 				}
 			}
+			paused := cur.PausedRecoveryQuestion
 			factory.ClearPersonStop(cur)
+			cur.PausedRecoveryQuestion = paused
 			cur.Stream = restored
 			cur.Failure = u.Failure
 			cur.Question = u.Question
@@ -1047,31 +1102,66 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}{h.factory, a, a.UndoUntil})
 }
 
-// settles counts the settles run: each one lists and decodes every job.
+// settles counts settlement passes, including those whose unchanged floor
+// and future deadlines let them finish without listing any jobs.
 var settles atomic.Int64
+
+// listFloor reads every job. A test may count those reads; the handler
+// itself always uses the store.
+func (h *Handler) listFloor() ([]factory.Item, error) {
+	if h.config.Store == nil {
+		return nil, nil
+	}
+	if h.floorList != nil {
+		return h.floorList(h.config.Store)
+	}
+	return h.config.Store.ListShared()
+}
+
+// floorLook is one observation that nothing needed settling. sig names the
+// documents that observation read; next is the earliest deadline that can
+// come due without those documents changing. A zero next means there is none.
+type floorLook struct {
+	sig  string
+	next time.Time
+}
 
 // settleJobs is run at deadlines, before reads and after a restart. Consent is
 // locked across processes so two servers cannot open the same decision twice.
-func (h *Handler) settleJobs(approvalsOnly ...bool) {
+func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 	if h.config.Store == nil {
 		return
 	}
 	settles.Add(1)
+	if h.floorUnchanged() {
+		return
+	}
 	// One listing serves every scan for due work. Each scan only picks
 	// candidates from it and reads every candidate again under its lock
 	// before acting, so sharing it changes nothing but the number of times
-	// every document on the floor is read before each request. IT IS THE
-	// STORE'S SHARED LISTING ([store.Store.ListShared]): a settle of a floor
-	// on which nothing changed reads no job and copies none, and no scan
-	// writes through an item it was handed.
-	pending, err := h.config.Store.ListShared()
+	// every document on the floor is read before each request.
+	// The signature is taken on both sides of the read. A job that changes
+	// while the read is in progress must not be remembered as idle: the
+	// signature would name the new files while the deadlines came from
+	// the old ones.
+	h.rememberFloor(nil, "")
+	before := h.floorSignature()
+	pending, err := h.listFloor()
 	if err != nil {
 		return
 	}
-	pending = h.prepareStepRecoveries(pending)
-	pending = h.prepareAutomaticApprovals(pending)
-	sweep := len(approvalsOnly) == 0 || !approvalsOnly[0]
-	h.settleMerges(sweep, pending)
+	pending, err = h.prepareStepRecoveries(pending, held)
+	if err != nil {
+		return
+	}
+	pending, err = h.prepareAutomaticApprovals(pending)
+	if err != nil {
+		return
+	}
+	sweep := !approvalsOnly
+	if err := h.settleMerges(sweep, pending); err != nil {
+		return
+	}
 	due := false
 	for _, it := range pending {
 		if a := it.Approval; a != nil && a.State == "approving" && !h.clock().Before(a.UndoUntil) {
@@ -1080,6 +1170,12 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 		}
 	}
 	if !due {
+		// Nothing to settle, so the next request can skip the decode until
+		// a document this look depends on changes or a deadline arrives.
+		// A signature that moved during the read is left unremembered.
+		if after := h.floorSignature(); sweep && after != "" && after == before {
+			h.rememberFloor(pending, after)
+		}
 		return
 	}
 	unlock, err := h.lockConsent()
@@ -1087,7 +1183,7 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 		return
 	}
 	defer unlock()
-	items, err := h.config.Store.List()
+	items, err := h.listFloor()
 	if err != nil {
 		return
 	}
@@ -1172,6 +1268,99 @@ func (h *Handler) settleJobs(approvalsOnly ...bool) {
 	}
 }
 
+// floorUnchanged reports that the previous idle look is still true.
+// A runner heartbeat rewrites runners.json and must not count: that file
+// is how presence is saved, and it changes while the jobs do not.
+func (h *Handler) floorUnchanged() bool {
+	h.jobsMu.Lock()
+	kept := h.floorKept
+	h.jobsMu.Unlock()
+	if kept.sig == "" {
+		return false
+	}
+	if !kept.next.IsZero() && !h.clock().Before(kept.next) {
+		return false
+	}
+	return h.floorSignature() == kept.sig
+}
+
+func (h *Handler) rememberFloor(items []factory.Item, sig string) {
+	h.jobsMu.Lock()
+	defer h.jobsMu.Unlock()
+	if sig == "" {
+		h.floorKept = floorLook{}
+		return
+	}
+	// A worker-owned step can become lost solely through the clock. Keep
+	// reading it until recovery records a deadline or its worker returns.
+	for _, it := range items {
+		if it.State == factory.StateRunning && it.WorktreeMachine != "" && !factory.RecoveryPaused(it) {
+			h.floorKept = floorLook{}
+			return
+		}
+	}
+	h.floorKept = floorLook{sig: sig, next: floorNext(items)}
+}
+
+// floorSignature is the identity of every JSON document settle consults.
+// runners.json is omitted on purpose. Presence writes it on each request,
+// and treating that as a job change would decode the floor for every heartbeat.
+func (h *Handler) floorSignature() string {
+	root := h.config.Store.Root()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "runners.json" || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".lock") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	for _, name := range names {
+		info, err := os.Stat(filepath.Join(root, name))
+		if err != nil {
+			return ""
+		}
+		fmt.Fprintf(&b, "%s %s\n", name, store.FileStamp(info))
+	}
+	return b.String()
+}
+
+// floorNext is the earliest moment a saved deadline can come due on this
+// set of jobs. It is zero when only a document change can make work due.
+func floorNext(items []factory.Item) time.Time {
+	var next time.Time
+	consider := func(at time.Time) {
+		if at.IsZero() {
+			return
+		}
+		if next.IsZero() || at.Before(next) {
+			next = at
+		}
+	}
+	for _, it := range items {
+		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
+			at := rec.Deadline
+			if rec.State == "waiting" {
+				at = rec.NextAt
+			}
+			consider(at)
+		}
+		if a := it.Approval; a != nil && a.State == "approving" {
+			consider(a.UndoUntil)
+		}
+		if m := it.Merging; m != nil && m.State == factory.MergeAsked {
+			consider(m.UndoUntil)
+		}
+	}
+	return next
+}
+
 func (h *Handler) scheduleJobTimer() {
 	if h.config.Store == nil {
 		return
@@ -1181,27 +1370,7 @@ func (h *Handler) scheduleJobTimer() {
 	if err != nil {
 		return
 	}
-	var next time.Time
-	for _, it := range items {
-		if rec := it.Recovery; rec != nil && (rec.State == "waiting" || rec.State == "queued") {
-			at := rec.Deadline
-			if rec.State == "waiting" {
-				at = rec.NextAt
-			}
-			if !at.After(h.clock()) {
-				at = h.clock().Add(2 * time.Second)
-			}
-			if next.IsZero() || at.Before(next) {
-				next = at
-			}
-		}
-		if a := it.Approval; a != nil && a.State == "approving" && (next.IsZero() || a.UndoUntil.Before(next)) {
-			next = a.UndoUntil
-		}
-		if m := it.Merging; m != nil && m.State == factory.MergeAsked && (next.IsZero() || m.UndoUntil.Before(next)) {
-			next = m.UndoUntil
-		}
-	}
+	next := jobTimerDue(items, h.clock())
 	h.jobsMu.Lock()
 	defer h.jobsMu.Unlock()
 	if h.jobsClosed {
@@ -1213,6 +1382,41 @@ func (h *Handler) scheduleJobTimer() {
 	if !next.IsZero() {
 		h.jobsTimer = time.AfterFunc(max(next.Sub(h.clock()), time.Millisecond), h.runJobTimer)
 	}
+}
+
+// jobTimerDue is when the job timer should next look: the soonest recovery,
+// approval or merge deadline among items, or zero for none.
+//
+// A deadline already past is looked at again in two seconds, never at once: a
+// settle that could not move the job (a refused merge, an approval still
+// waiting on its door) would otherwise re-arm the timer at a millisecond and
+// settle the whole floor a thousand times a second.
+func jobTimerDue(items []factory.Item, now time.Time) time.Time {
+	var next time.Time
+	soonest := func(at time.Time) {
+		if !at.After(now) {
+			at = now.Add(2 * time.Second)
+		}
+		if next.IsZero() || at.Before(next) {
+			next = at
+		}
+	}
+	for _, it := range items {
+		if rec := it.Recovery; rec != nil && !factory.RecoveryPaused(it) && (rec.State == "waiting" || rec.State == "queued") {
+			at := rec.Deadline
+			if rec.State == "waiting" {
+				at = rec.NextAt
+			}
+			soonest(at)
+		}
+		if a := it.Approval; a != nil && a.State == "approving" {
+			soonest(a.UndoUntil)
+		}
+		if m := it.Merging; m != nil && m.State == factory.MergeAsked {
+			soonest(m.UndoUntil)
+		}
+	}
+	return next
 }
 
 func approvalWords(it factory.Item) string {
@@ -1254,6 +1458,7 @@ func (h *Handler) runJobTimer() {
 	h.jobsBusy.Add(1)
 	h.jobsMu.Unlock()
 	defer h.jobsBusy.Done()
-	h.settleJobs()
+	held, _ := h.leases()
+	h.settleJobs(false, held)
 	h.scheduleJobTimer()
 }

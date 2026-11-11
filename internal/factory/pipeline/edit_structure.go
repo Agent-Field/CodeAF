@@ -152,6 +152,13 @@ func checkAddStep(i int, op EditOp) (EditOp, *EditError) {
 	if op.Prompt == nil && !addsGate(op) {
 		return op, refuseEdit(EditBadValue, i, "add_step needs a prompt")
 	}
+	kind := ""
+	if op.Kind != nil {
+		kind = *op.Kind
+	}
+	if op.Until != nil && unsupportedBaselinePolicy(op.Name, kind, *op.Until) {
+		return op, refuseEdit(EditBadValue, i, "%s", baselinePolicyScope)
+	}
 	if bad := checkCheckWords(i, op); bad != nil {
 		return op, bad
 	}

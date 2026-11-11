@@ -92,7 +92,9 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 	// offered says the first pass for this binding has run; failing that the
 	// last pass left chats to try again; sharingNow that a first pass is
 	// running; stateFailing that the last pass over keys, memory and
-	// preferences failed. Together they decide the sharing line (say).
+	// preferences failed. Together they decide the sharing line (say), which
+	// is said only to a person with another computer paired (syncsetup's
+	// others.go): with none, there is nobody the chats were not shared with.
 	offered, failing, sharingNow, stateFailing := false, false, false, false
 	refresh := false
 	var stateRetry time.Time
@@ -109,6 +111,7 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 	say := func() {
 		line := ""
 		switch {
+		case source == nil || !source.OthersPaired():
 		case stateFailing:
 			line = "Saved keys, memory and preferences could not be shared yet; codeaf will try again."
 		case failing:

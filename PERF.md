@@ -246,6 +246,14 @@ repair, which competes for the same finite capacity; returning to monitoring
 releases it. The capacity, queue projection and monitoring-lease regressions in
 `internal/factory/serve`, `lease` and `worker` defend this separation.
 
+## Unchanged factory listing
+
+`TestListDoesNotDecodeAnUnchangedFloor` permits at most **100 allocations**
+for a cached one-item listing. It allows stat metadata, including inode and
+change time, while rejecting another JSON decode. Chmod changes ctime and
+must invalidate the cache, so changing permissions cannot simulate an
+unchanged document.
+
 ## Tool process identity in history
 
 `DisplayEntry` is bounded at **328 bytes** on a 64-bit machine. The process
@@ -416,6 +424,14 @@ The writer batches at most 128 already admitted rows per ledger lock. A quiet
 queue flushes immediately, and flush/close barriers follow completed writes.
 Identity generation checks and duplicate suppression still run under that lock.
 
+The writer owns a separate journal loop that waits for coalesced admission
+wakes while idle. It starts batch synchronizers in the process writer's clock
+scope, independently of a blocked ledger projection, and joins the final sync
+before recovery and shutdown. `TestJournalSyncStaysWithTheProcessWriterAcrossCallerScopes`
+records and joins from a shorter caller scope, then checks the public ledger's
+single unchanged charge. The journal interval and row threshold remain
+`usageSyncInterval` and `usageSyncRows`.
+
 ## Factory signal acknowledgement bounds
 
 Each worker heartbeat sends at most 256 unconfirmed signal delivery IDs. A failed
@@ -440,17 +456,12 @@ to leave every waiting frame file untouched on a repeat.
 
 ## Idle factory manager checks
 
-Every open job manager and every open step asks whether its job was stopped or
-its budget reached (`watchJobBudget` in `internal/session/job_budget.go`): ten
-times a second (`jobBudgetLiveEvery`) while it owns work in flight — a turn, a
-running background command, an unfinished task — and once every five seconds
-(`jobBudgetIdleEvery`, the presence beat) while it owns none, since there is
-then nothing a Stop or a spent budget could cut short and the next model call
-is checked at its own boundary. An idle watch sleeps that whole interval on one
-timer rather than waking every 100 ms; a turn opening, a command starting and
-every presence nudge wake it onto the live cadence at once (`wakeWorkWatch`).
-`TestIdleManagerBudgetWatchLooksOnceABeat`: an idle manager looks at most once
-in 950 ms, and at least three times in 500 ms once a command runs.
+Every open job manager checks its saved job budget once when opened. Thereafter
+`watchJobBudget` polls at `budgetPollEvery` (100 ms) only while capped model
+calls, commands or delegated work are moving. An idle manager holds no timer;
+new work wakes the watch and each model boundary checks admission again.
+`TestIdleManagerBudgetWatchLooksOnceABeat` retains the initial-check and active-work
+bounds. Daily cap detection follows settled ledger writes, within one active poll.
 
 Neither check may decode a job document that has not changed since it last
 looked. `seamRunDoor.AutomaticRefusal` (`cmd/codeaf/factory_person_stop.go`)
@@ -475,8 +486,12 @@ floor folder: the folder's time moves with every file renamed into it (the
 runner registry, a lease heartbeat, the sources' poll record), which made every
 open step chat list and decode every job every few seconds. It is answered from
 one look at the floor's job files (`floorJobFiles`: one directory read and one
-stat per job, shared by every conversation for `floorLookEvery`, 100 ms) and
-reads only a job document that changed. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
+stat per job, shared by every conversation for `floorLookEvery`, 100 ms while
+the directory is unchanged) and reads only a job document that changed. Each
+admission stats the directory before reusing that look, so an atomic job rename
+invalidates it immediately. `TestAutomaticRefusalSeesHandoverBeforeNextFloorInterval`
+freezes the shared clock and requires a newly assigned stopped job to refuse
+the next admission. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
 fifty checks while the registry is rewritten decode none (`factoryStopCheckDecodes`);
 one changed job costs one decode, and a job that takes the conversation is seen
 on the next look.
@@ -520,7 +535,7 @@ system call between its heartbeats (`internal/session/taskpresence.go`):
   shared directory watch reports a write there (`presenceDoorstepEvent`), and
   otherwise once a minute (`presenceQuietPass`); a folder the watch cannot see
   is knocked on every five-second beat as before.
-- Its job's budget watch (above) sleeps five seconds at a time.
+- Its job's budget watch (above) holds no timer while idle.
 
 `TestAnIdleChatWritesNothingBetweenHeartbeats` drives one desk on fake shared
 clocks through a minute of beats and refreshes and fails on any rewrite before
@@ -546,7 +561,7 @@ a second is named on stderr with its two halves:
 `store.Store.read` (every `Get`, `List`, `ListSaved` and update of a job
 document) decodes a document only when its file changed since the process last
 read it (`internal/factory/store/readcache.go`): one stat, compared on
-`os.SameFile`, size, modification time and mode — every store write renames a
+`os.SameFile`, size, modification time, change time, inode and mode — every store write renames a
 fresh file into place — answers an unchanged document from a process-wide
 cache, deep-copied (`deepCopy`) so no caller shares anything with the next. The
 cache is the process's, not a `Store`'s, since many doors open their own store

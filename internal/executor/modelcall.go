@@ -1,5 +1,8 @@
 package executor
 
+// UnbilledMarkerKind distinguishes missing accounting from a measured model call.
+const UnbilledMarkerKind = "unbilled-marker"
+
 // ModelCall is one model call as a seat is told of it: who answered, for what,
 // and what it cost. The seat that keeps a record puts it in the next receipt.
 type ModelCall struct {
@@ -12,6 +15,11 @@ type ModelCall struct {
 	TokensOut    int
 	TokensCached int
 	CostMicroUSD int64
+	Kind         string
+	Billing      string
+	BillingBasis string
+	Unbilled     bool
+	FactoryJob   string
 }
 
 // ExplicitID returns the caller-assigned model call identity when present.

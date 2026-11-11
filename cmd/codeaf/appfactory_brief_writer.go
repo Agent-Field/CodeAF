@@ -12,8 +12,9 @@ package main
 //
 // TRIGGERS are the runner's progress news for a job on this machine (a step
 // done, failed or stopped is a step result, and a step waiting on its person
-// is an ask), the store's committed lifecycle changes (proof approval and
-// publication or end), and a person's step or model edits through this engine. A GitHub comment read is not a trigger yet: nothing in the engine
+// is an ask), the store's committed lifecycle changes (recovery questions,
+// proof approval, publication or end), and a person's step or model edits.
+// A GitHub comment read is not a trigger yet: nothing in the engine
 // says when the manager has read one. Each job's news is taken as one after factory.BriefDebounce,
 // the strongest trigger of the burst kept, so a burst of results is one
 // version. A person's Retry is factory.job_brief_write.
@@ -396,6 +397,11 @@ func (b *appBackend) briefJobChanged(before, after factory.Item) {
 	}
 	if p := after.PublishStatus; p != nil && !reflect.DeepEqual(p, before.PublishStatus) && (p.State == "opened" || p.State == "failed") {
 		b.briefs.note(after.ID, factory.BriefTriggerEnd)
+		return
+	}
+	if after.State == factory.StateNeedsYou && after.QKind == factory.QKindOutOfAttempts && after.Question != "" &&
+		(before.State != after.State || before.QKind != after.QKind || before.Question != after.Question) {
+		b.briefs.note(after.ID, factory.BriefTriggerAsk)
 		return
 	}
 	if factory.BriefProofApprovalWaiting(after) && !factory.BriefProofApprovalWaiting(before) {

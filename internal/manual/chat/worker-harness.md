@@ -878,7 +878,7 @@ a relative path remains relative to the command's working folder.
   as the conversation may. A run started when that figure is already spent still gets
   one paid call — its first worker's — before the limit ends it.
 - **Reaching the dollar limit ends every worker in flight**, whichever worker's
-  spending crossed it: a live reading and a worker's final receipt end the rest alike.
+  recorded spending crossed it. Usage on an open stream does not trigger the stop.
   The run's own task is ended with `a limit you set stopped it`.
 - **The time limit.** An elapsed-time limit on the session ends a run too: see
   "Does a time limit stop a running task?" on the page about starting codeaf.

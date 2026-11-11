@@ -659,7 +659,7 @@ func (a *Agent) stopPresence() {
 func (a *Agent) nudgePresence() {
 	// Every change a reader of the presence file cares about is also a moment
 	// work may have started, which is what the job's budget watch waits on.
-	a.wakeWorkWatch()
+	a.wakeBudgetForWork()
 	desk := a.presence
 	if desk == nil {
 		return

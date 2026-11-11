@@ -145,7 +145,7 @@ func jobRowState(info jobInfo) (TaskState, bool) {
 func (a *Agent) announceJobRow(info jobInfo) {
 	// A command starting is work in flight; the budget watch must move to its
 	// live cadence now, whether or not this job earns a row.
-	a.wakeWorkWatch()
+	a.wakeBudgetForWork()
 	if a.config.InTask {
 		return
 	}

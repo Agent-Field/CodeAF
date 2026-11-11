@@ -120,6 +120,35 @@ Search does not start a stopped local factory. Factories have a shared
 1.5-second search deadline; a slow or unavailable factory contributes no results
 for that search, while the other results remain available.
 
+## idle runners — waiting for queued work
+
+An idle runner keeps its pull request open for up to 30 seconds, or half the
+saved runner timeout when that is shorter, so it renews presence before being
+counted offline. It wakes when
+the factory's files change, including work queued by another process, and asks
+again after the deadline. The service uses the same filesystem notifications
+as the live factory view; it does not repeatedly decode finished jobs while
+waiting. Filesystem changes are batched for 100 milliseconds. If filesystem
+notifications are unavailable or their stream fails or closes, a fallback checks for changes every 500
+milliseconds and reads each job file. While notifications are working, that
+fallback only checks whether the directory itself changed, so a quiet floor
+is not read file by file. Ownership, consent and capacity are checked again
+before any job is handed out. A runner in the same process as the service
+does not re-read the job list just to find that service. Reading the job
+list asks once whether this machine has a GitHub token, not once per job.
+A request does not decode every job just to see that nothing is due. It
+looks again when a job, a lease, or the repository list changes, or when a
+saved deadline arrives. A runner heartbeat is kept in memory and is not
+rewritten to the runner file on every check, and that write is not
+announced as a job change, so it does not wake the other pulls. The file
+is saved on the next heartbeat request after 15 seconds since the previous
+heartbeat save, or when that runner’s last saved heartbeat is at least half
+the configured offline timeout old, whichever comes first. This is
+request-triggered; it does not run a separate save timer. Slots and sleep
+are read on the next pull.
+A job list that has not
+changed is not decoded again.
+
 ## codeaf factory serve — host a team factory, listen address and HTTPS
 
 `codeaf factory` (the same as `codeaf factory serve`) runs the service and prints the address to give people, plus one operator access link. It listens on `127.0.0.1:7420` unless `--listen host:port` says otherwise, or the `listen` key of `~/.codeaf/factory/config.yaml` does (`--config path` picks another file). It runs no job itself: Run queues a job, and a runner that has joined pulls it. With no runner attached a job stays queued.
@@ -631,6 +660,22 @@ Interrupting the turn takes the card down unanswered, and so does leaving it for
 
 What changed in the terminal chat: it used to draw no `factory_item` card, and the call sat at `running factory_item` until you interrupted. It now draws a plain question block with the same box, keys and receipt as any other card, not a special item card. The card shows only rows that would change, so a fixed or begun step is absent from it; the chat is told afterwards which steps were left as they were. A yes sent from the desktop app with text attached is read as a correction and changes nothing. The `factory_add` and `factory_recipe` cards are not drawn here, so those calls wait until the turn is interrupted or 15 minutes pass.
 
+## update a PR branch — bring it up to date with its base in Follow PR
+
+In the job's manager chat, ask **Update the PR branch** or **Bring the PR up to
+date with its base**. You can also steer Follow PR with that request while it
+runs. Factory reads the live base of the job's existing pull request, merges
+that commit into the job's checkout and resolves any conflicts it can. It runs
+the relevant checks on the updated checkout. If the PR already includes the
+base, no branch update is needed.
+
+Factory pushes the tested commit to the same pull request through the existing
+publication approval. Auto handles routine updates within the budget, and
+Manual asks. GitHub checks the new head again. If the base or head moves during
+verification, Follow PR needs to verify the new candidate before publishing.
+Merging the pull request still follows the job's separate merge setting and
+checks.
+
 ## ready for review — draft PR, final review, automatic recovery, Resume pipeline
 
 When current-head CI passes, Follow PR checks the actual PR diff, description,
@@ -734,13 +779,50 @@ says `paused`, then `resumed`; both actions record who made them. If a heartbeat
 reply is lost, the factory repeats its current hold on later heartbeats. Resume
 supersedes an older hold still waiting to be collected.
 
-Only the job's person may pause or resume it. A job waiting for you, finished
-or publishing cannot be paused. Pause releases its Jobs at once slot after
+Only the job's person may pause or resume it. The running-job Pause control
+applies to active steps. Pause releases its Jobs at once slot after
 the cancelled round's work and spending are saved, so another job can run.
 The app wire keeps the paused job's `state` as `running`, with the Paused
 presentation and Resume available. Resume changes `state` to `queued` until a
 worker takes it. A queued job's **Hold** still keeps it from starting and uses
 no running slot.
+
+## dismiss a Factory decision and resume from the manager chat
+
+In WorkAF, **Pause job and close decision** (×) closes the decision and
+pauses the job. Factory keeps the checkout, step results, pending decision
+and spending across relaunches. Ask the manager for status while paused.
+
+Send **Resume** in the manager chat to lift the pause. If Follow PR was
+running, it continues from the saved work. An approval or merge still needs
+its own consent.
+
+For a stuck step before publication, **Try again** queues a retry of that
+step. Send **Try again: check the focused tests first** to include instructions.
+Factory checks the job's remaining budget before queuing the retry.
+
+**Accept as is** takes a stuck Test, Review or Proof step as it stands, and the
+job carries on. It is offered when the step reported what it found and fell
+short of its rule: a check still failing, a finding still open, a claim not
+shown. Typing `accept` in the manager chat does the same. Only the job's person
+can accept; a manager cannot. Each check that was still failing is kept on the
+step as accepted, a later step is not stopped by that same failure, and the
+pull request lists what was accepted. A new or different failure still stops
+the job. Plan and Write cannot be accepted, nor can a step that never reported.
+
+A Test step that ends with failing Go tests has them compared with the job's
+base commit by the factory itself: it runs each failing `go test` on the
+checkout and on a clean copy of the base. A test that already fails on the base
+does not count against the job, and the step's report says so. A test the
+change broke still does. This applies to Test under `until: no new failures`
+(the default); `until: green` stays strict.
+
+## message a step from the job chat
+
+**Tell it…** focuses the job chat composer. Sending the message closes the
+decision you were looking at. Factory can ask again when it has a new decision.
+To address a step, type **@Test Check the base version** or select a recipient
+from the @ menu. Click the receipt or open the step's chat to read its reply.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
 
@@ -769,6 +851,16 @@ Reject refuses a job that waits on no approval with `is not waiting on an approv
 A job whose run failed or was stopped is never started again by a routing rule's `start: auto`, by a start label, or by the factory starting up. A rule starts only a job that has never run. A failed job waits in Needs you with the failure on it until a person presses **Try again** or **Run again**, or takes it over. This holds for every kind of step and every rule. What the failed step reported before it failed, such as its output, its files or a link it gave, stays on that step beside the failure.
 
 A failure also gets a one-line headline of at most 90 characters, such as `9 of 10 checks passed · failed: no pull request when checked`, above its full text. It is the step's own summary when the step gave one. Otherwise the job's manager writes it from the failure's words in one cheap turn, and what that turn costs is booked on the job like any other manager turn. A job run again in the meantime keeps no stale line. If there is no manager to ask, the headline stays empty and the full text is shown.
+## Waiting job actions and stale versions — job moved on while you looked
+
+Give back, try again, send back, stop job, stop step and control mode changes
+still accept your action if only brief-writing status or an unchanged worker
+report moved the version after you read it. Approval, publication and plan
+revision still require the exact version you read. A change to
+the job's state, assignment, budget, steps, question or result still refuses with
+"job moved on while you looked"; read the job again before deciding. A newly
+kept brief or a late manager reply also requires a fresh read. Older saved jobs keep strict version
+checks until the new engine records bookkeeping after a read.
 
 ## Stop after the job moves on or starts publishing
 
@@ -1015,6 +1107,11 @@ GitHub observations continue while a repair is paused. The job shows pending fee
 
 ## runner recovery window — running time versus waiting for reconnect
 
+If a runner loses its hold on an active step, Factory shows the interruption
+when the job is next read. An old job saved as **Running** without a runner
+is treated the same way. In Auto, Factory can queue another attempt on the
+computer with the job's worktree. In Manual, the job asks you to try again.
+
 Automatic interrupted-step recovery allows three retries, counted in attempts, not minutes: a long step that loses its connection a few times keeps its retries however long it has run. The only clock is for the runner: a queued retry waits up to 15 minutes for its runner to come back, so a laptop closed briefly does not turn into needs you. A computer that went to sleep holds its job for 24 hours at most; after that the job is queued again like any silent hold. Waiting, backoff and attempts survive restarts and never replay uncertain publication. A person's explicit Retry remains available after exhaustion; saved checks and previous work are retained.
 
 ## quit codeaf while a job runs — the job is handed back and picked up at once after a restart
@@ -1102,13 +1199,13 @@ A new request makes an earlier Brief out of date.
 
 The Brief is written for the person who owns the job, in plain words. Its headings and its text never use the factory's internal words for checking and reviewing: the writer is told so, and every word it drafts is put into plain words before the Brief is kept, so a heading about what was checked reads `What the checks found`, checked work reads "checked", and the Brief's headline is the job's outcome. A proof's command, a file path and a step's name are left exactly as written.
 
-## Job Brief after proof, publishing and an out of date line
+## Job Brief after a blocked step, proof, publishing and an out of date line
 
-The job's Brief refreshes when proof waits for your publication approval and
+The job's Brief refreshes when a blocked step needs your decision, when proof waits for your publication approval, and
 after publication opens or updates a pull request or posts a comment. It also
 refreshes when the job ships, its PR merges or closes without merge, or the run
 fails. A publication failure refreshes it too. Updates within 10 seconds
-are taken as one. An approval or end update waits if an earlier Brief is still
+are taken as one. A decision, approval or end update waits if an earlier Brief is still
 being written. Stop settles the Brief without a model call, including for queued
 jobs and jobs stopped at the start gate. Its status stays `failed` for older
 desks, and `failure_kind: "stopped"` identifies a person's Stop separately from a
@@ -1117,7 +1214,7 @@ failed refresh. Only a person's Stop sets this field. The reason is
 The last paid Brief stays visible; no paid refresh runs until a person starts the job. Auto skips the intermediate proof update when approval can
 proceed automatically; an exception that waits on you still gets an update.
 
-These approval and end updates bypass the ordinary brief cost guard, and their
+These decision, approval and end updates bypass the ordinary brief cost guard, and their
 model cost still counts toward the job's spend. A normal manual job gets two
 additional writes: at proof approval and after publication. Ordinary step
 updates remain subject to the $0.03 per-version and 5% spend-share guard.
@@ -1237,6 +1334,20 @@ App job and queue reads show only saved spending. Ledger tags and workspace
 paths can be shared by jobs from different factories, so ledger recovery is
 disabled. Older jobs show what their saved fields know. Earlier money recorded
 only in the ledger cannot be placed safely and is not added to a job.
+
+
+## Factory per-job model spending after taking a chat
+
+Taking a chat to another computer keeps each newly saved call's stated billing,
+billing basis, job, and missing-receipt flag. Factory spending by model and job
+can therefore include those imported calls on the receiving computer. A missing
+receipt with no token figures stays labeled unbilled and adds no measured model
+call or dollars. Call-only CSV exports leave these markers out.
+
+Taking a chat does not charge its calls again or change a job's saved run or
+lifetime spending. Receipts from older builds keep their dollars, but missing
+billing facts and job names stay unknown. Already imported rows are not enriched
+by a later take.
 
 
 ## Opening a job without touching it and sending its first message

@@ -4414,13 +4414,32 @@ list than on the conversation.
 
 ## Does the daily budget apply to chat and team tasks?
 
-The daily budget blocks new chat turns and every new background or helper
-model call when today's recorded spending reaches the limit. This includes
-knowledge compilation, task summaries, names, captions, memory updates and
-automation checks. Task crews also check the next call's estimated cost. Other
-conversations' completed usage receipts are read on each
-check, and completed spending resets at the local date boundary. Calls already
-in flight may finish; this is not an atomic reservation across processes.
+The daily budget blocks a new chat call when today's recorded spending reaches
+the limit. Task crews and their helpers use the same recorded-spend check
+before their next call. Knowledge compilation, task summaries, names, captions,
+memory updates and automation checks use this gate too. Task crews also check
+the next call's estimated cost. Other conversations' completed usage receipts are read on each
+check, and completed spending resets at the local date boundary. When a recorded
+charge reaches the daily limit, new calls are refused. Calls waiting for their
+first reply token are cancelled; calls already replying finish and record their
+full usage. Reasoning and tool-call fragments count as reply tokens. Remaining
+owned work stops after those replies settle. While capped work is moving,
+recorded charges and changes to the saved daily limit are checked at 100 ms
+intervals. Lowering the daily limit below today's recorded spending closes
+admission and applies the same first-token rule within one interval, without
+waiting for another charge. Idle conversations do no
+background budget checking. Starting a model call, tool, background command,
+task, crew or program run checks again, so a charge recorded while idle still
+stops new work without waiting for another charge.
+The chat and work report the limit; raise it with `/budget day 30`, then submit
+again. Only recorded spending closes the cap; usage on an open stream and
+pending receipts do not count until recorded. A stream can continue spending
+past the limit unnoticed while no ledger write crosses it. Spending is assigned
+to the date recorded, including receipts arriving after midnight.
+Detached summaries follow the same first-token rule. Running adaptive workers follow their owner's raised
+daily limit. A sampled job refusal is checked again against the current cap.
+Known-free auxiliary calls can continue despite another conversation's daily spend.
+Partial usage is kept; a cancelled call without usage has unknown cost.
 Use `/budget` to change the limit. Per-conversation and per-task limits still
 apply separately. The default profile and home errands follow the saved
 or environment daily limit too; `/budget day` changes apply on the next check.
@@ -4434,6 +4453,46 @@ summary keeps its last reading. `--yes-spend` (or
 spending permission.
 Task checks use the same selected daily limit and spending permission as the work
 they check.
+
+
+## Why does a crew with no worker show the daily limit?
+
+An adaptive crew checks recorded daily spending when its run finishes. Its chat
+records the daily-limit notice once even if its planner finishes without starting
+a worker. Raise the limit with `/budget day 30`, then send a new message after the
+old work finishes stopping.
+
+## How far can spending exceed the daily cap while replies finish?
+
+At a recorded daily-cap crossing, calls waiting for their first reply token are
+cancelled. Calls already replying finish, including reasoning and tool-call
+fragments, and record their real usage. No further paid call is admitted.
+
+Spending can exceed the cap by the remaining cost of calls already replying
+at the crossing. There is no fixed dollar bound without per-call provider limits;
+cutting a reply cannot undo its bill. The chat keeps completed replies and tool
+results, then shows the daily-limit notice. Raise the cap and send another message
+after the old work finishes stopping.
+This is not an atomic reservation across processes.
+
+
+## Can I resume while a spending receipt is pending?
+
+Yes, if recorded spending is still below the cap. A stopped call whose price is
+available only through a pending receipt has not added that price to `/cost`
+or today's spending. With no earlier charges the live status row keeps `$0.00`.
+The partial answer stays visible; Stop work says
+`everything running here was stopped, the reply with it`. There is no special
+pending-receipt warning or daily-limit notice during that window. A new explicit
+submission can start without raising the cap.
+
+When the receipt is recorded, a crossing cancels waiting calls, lets replies finish,
+and names the limit.
+For $0.25 recorded against $0.24 it says
+`daily limit reached · $0.25 spent of $0.24 · /budget day changes it`.
+Raise the limit, then submit again. Receipt recovery has a 70-second ceiling
+from queueing, including retries and request time. A receipt that cannot be
+recovered leaves an unknown price; this ceiling does not guarantee a known bill.
 
 ## Is the desktop day cap the same limit as /budget?
 
@@ -4451,15 +4510,13 @@ potentially paid admission instead of being read as zero. Legacy malformed rows
 are still skipped and reported as coverage gaps; their dates are not guessed.
 These totals do not prove a complete bill. Repair the named
 record or explicitly set a valid limit, then retry. Per-task and per-role limits
-remain separate. This is not yet a universal per-request cap: the main chat
-turn can finish after crossing it, and native media has no shared dispatch
-reservation. A monthly cap is not available yet. Provider charges already in
+remain separate. Native media has no shared dispatch reservation. A monthly cap is not available yet. Provider charges already in
 flight can exceed a limit. If startup could not establish the limit, repair it
 and reopen the app before standing orders can start.
 
 ## Why is my conversation blocked
 
-A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. A turn already running may finish above its limit.
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. The conversation limit lets a running turn finish; a recorded daily-limit crossing cancels calls waiting for their first token and lets replies finish before stopping owned work. A turn with no call, tool or owned work in flight checks its own limit before work starts. An earlier spending record does not stop that conversation. A refused message shows the daily-limit explanation without starting a provider call.
 
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
@@ -4643,7 +4700,7 @@ make closing slower.
 
 Closing waits at most two seconds for the spending ledger, so a stalled ledger can
 add up to two seconds to each close. Pending rows can still be written if the process stays open and
-the mount recovers. If the process exits first, those rows can be lost. Reaching
+the mount recovers. Rows already saved to the pending journal recover on the next start. If both journal and ledger writes fail before exit, those rows can be lost. Reaching
 the limit writes one line to the log with the ledger path and the number of rows
 pending, and those rows count as records not written down until they are written.
 No warning appears on screen.
@@ -4653,3 +4710,54 @@ No warning appears on screen.
 A known positive crew cost below one cent keeps four decimal places, such as
 `$0.0003`. An amount below the shared display floor reads `<$0.0001`. Unknown
 or zero costs add no figure to the crew line.
+
+## Spending reports, daily rollups and changes to the usage ledger
+
+`spend.report` reports spending by stored local day, model and subject. Both
+range ends are required, covering at most 366 days. Reports refuse more than
+8,192 groups or an estimated 4 MiB of cells rather than dropping groups.
+Unpriced calls and missing receipts remain visible as gaps.
+
+Each cell sums its lines in ledger order. Money totals, including subtotals for
+lines with and without a run, sum cells in report order: day, model, kind,
+subject, root, session, agent and Library activity. The scan and rollup use this same order,
+including for ordinary decimal costs.
+
+A date-only report can reuse daily totals in memory. The first read builds them;
+later reads add complete appended lines, including receipts for earlier days.
+A last line without a newline waits until it is complete. No rollup file is
+written. Restarting codeaf rebuilds the totals on the next report.
+
+Replacing, rotating or shortening the ledger rebuilds the totals. Changes to
+the already-read prefix's first or last 4,096 bytes also trigger a rebuild;
+rewrites confined to the middle of that prefix are not detected.
+
+Reports with additional filters, partial days, a changed time zone, disagreement
+between a stored day and its instant use a full scan.
+Exceeding the rollup's total storage budget or encountering invalid
+figures also uses the scan, preserving each range's existing limits and refusals.
+The retained rollup is limited to one ledger, 8,192 groups and an estimated
+4 MiB of cells; it grows with distinct daily groups, not call count.
+
+## Usage totals after a crash or forced exit
+
+codeaf saves each complete priced usage row in a pending journal before handing
+it to the background ledger writer. On the next start, missing charges are
+replayed once with their original amount, day and ownership. Already booked
+charges are not added again. A successful journal write survives a process
+crash, including forced termination immediately after recording usage. Journal
+sync runs in background batches every 100 ms or 64 rows, whichever comes first.
+On power loss, up to the last 100 ms batch can be lost, as before. Clean close
+drains and syncs before compacting. These guarantees require successful disk
+operations; they cannot recover facts that an older build never saved.
+
+The sidecar is `usage.jsonl.pending-v1.jsonl`, beside `usage.jsonl` in your
+profile's `v3` directory. Startup and clean close compact booked rows out of it.
+Keep this file with the ledger when recovering a profile. If disk writes fail,
+chat continues with its in-memory counters while accounting retries; an unsaved
+row cannot survive process exit.
+
+Model-only calls also keep a local receipt record until sealing succeeds. An
+older build can lose that receipt detail when it rewrites the call log. The
+pending usage journal remains the source for exact money recovery; downgrading
+can lose model-call receipt detail, never money already saved by this journal.

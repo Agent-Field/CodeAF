@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // ── the queue a pull reads is built once per change of the floor ───────────
@@ -143,5 +144,5 @@ func (d *Desk) floorQueue() ([]factory.Item, error) {
 // sameFile says two looks saw one unchanged file: every store write renames a
 // fresh file into place, so a changed document is another file.
 func sameFile(a, b os.FileInfo) bool {
-	return a != nil && b != nil && os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime()) && a.Mode() == b.Mode()
+	return a != nil && b != nil && os.SameFile(a, b) && store.FileStamp(a) == store.FileStamp(b) && a.Mode() == b.Mode()
 }

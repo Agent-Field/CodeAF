@@ -14,6 +14,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,9 +42,11 @@ const Schema = 1
 // it has been written, and the item. The revision lives here rather than on
 // [factory.Item] because it is a fact about the document, not about the work.
 type doc struct {
-	Schema         int          `json:"schema"`
-	Revision       int          `json:"revision"`
-	BudgetRevision int          `json:"budget_revision"`
+	Schema         int `json:"schema"`
+	Revision       int `json:"revision"`
+	BudgetRevision int `json:"budget_revision"`
+	// ActionRevision is the last revision changing more than Changed or BriefWriting.
+	ActionRevision int          `json:"action_revision"`
 	Item           factory.Item `json:"item"`
 }
 
@@ -72,6 +75,8 @@ type Store struct {
 	// at the floor ten times a second must not decode the floor ten times a
 	// second, and a counter is how a test proves that without a clock.
 	reads atomic.Int64
+	// talks retains the last bounded stop lookup.
+	talks talkIndex
 }
 
 // Reads is how many item documents this store has read and decoded since it
@@ -82,6 +87,9 @@ func (st *Store) Reads() int64 {
 	}
 	return st.reads.Load()
 }
+
+// DocumentReads is how many job documents this store has decoded so far.
+func (st *Store) DocumentReads() int64 { return st.reads.Load() }
 
 // Open answers the store at root, creating the directory. It holds no handles.
 func Open(root string) (*Store, error) {
@@ -143,13 +151,13 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 		}
 		it.ID = highest + 1
 		st.retainOutput(&it)
-		data, err := marshalDoc(doc{Revision: 1, BudgetRevision: 1, Item: it})
+		data, err := marshalDoc(doc{Revision: 1, BudgetRevision: 1, ActionRevision: 1, Item: it})
 		if err != nil {
 			return err
 		}
 		return st.underItemLock(it.ID, func() error {
 			return live.Commit(st.root, live.Changes(factory.Item{}, it, st.now()), func() error {
-				return writeAtomic(st.ItemPath(it.ID), data)
+				return st.writeItem(st.ItemPath(it.ID), data)
 			})
 		})
 	})
@@ -361,7 +369,7 @@ func (st *Store) Save(it factory.Item) error {
 			return err
 		}
 		err = live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
-			return writeAtomic(st.ItemPath(it.ID), data)
+			return st.writeItem(st.ItemPath(it.ID), data)
 		})
 		was, wrote = current.Item, err == nil
 		return err
@@ -381,15 +389,18 @@ func (st *Store) Update(id int, change func(*factory.Item) error) error {
 	return st.update(id, writeWork, nil, change)
 }
 
-// UpdateExpected is [Store.Update] that writes only when the document on disk
-// is still the revision the caller read. The comparison is made on the
-// document read INSIDE the item's flock, the same read the change is handed,
-// so no other write can land between the check and the write: a door that
-// must not act on anything but the page a person reviewed hands that page's
-// revision here and gets [*StaleError], with nothing written and change never
-// called, when the job moved.
+// UpdateExpected is [Store.Update] guarded by exact document revision equality.
+// The comparison and callback share the item lock; a stale revision returns
+// [*StaleError] without calling change or writing anything.
 func (st *Store) UpdateExpected(id, revision int, change func(*factory.Item) error) error {
 	return st.update(id, writeWork, &revision, change)
+}
+
+// UpdateActionExpected permits only Changed and BriefWriting bookkeeping since
+// the caller's revision. The comparison and change share the item lock.
+// A nil revision preserves the unguarded door.
+func (st *Store) UpdateActionExpected(id int, revision *int, change func(*factory.Item) error) error {
+	return st.update(id, writeAction, revision, change)
 }
 
 // UpdateBudgetExpected accepts progress since the revision read, but refuses
@@ -452,11 +463,12 @@ var errUnchanged = errors.New("factory store: nothing changed")
 
 // writeMode is what a write says about the job besides its change: whether the
 // work moved (Changed stamped), whether the document is a new revision, and
-// whether expect compares budget history instead of the whole document.
-type writeMode struct{ stamp, bump, budget bool }
+// whether expect compares budget or action history instead of the whole document.
+type writeMode struct{ stamp, bump, budget, action bool }
 
 var (
 	writeWork       = writeMode{stamp: true, bump: true}
+	writeAction     = writeMode{stamp: true, bump: true, action: true}
 	writeBudget     = writeMode{stamp: true, bump: true, budget: true}
 	writeAnnotation = writeMode{stamp: false, bump: true}
 	writePersonal   = writeMode{stamp: false, bump: false}
@@ -490,7 +502,7 @@ func (st *Store) tellWritten(before, after factory.Item) {
 }
 
 // update is every read-modify-write. A nil expect writes whatever revision is
-// on disk; a revision refuses any other one before change runs.
+// on disk; otherwise mode selects the revision history checked before change runs.
 func (st *Store) update(id int, mode writeMode, expect *int, change func(*factory.Item) error) error {
 	if err := checkID(id); err != nil {
 		return ErrNotFound
@@ -510,11 +522,25 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if err != nil {
 			return err
 		}
-		if expect != nil && current.Revision != *expect &&
-			(!mode.budget || *expect < current.BudgetRevision || *expect > current.Revision) {
+		first := current.Revision
+		if mode.action {
+			first = current.ActionRevision
+		}
+		if mode.budget {
+			first = current.BudgetRevision
+		}
+		if expect != nil && !revisionAccepts(first, current.Revision, *expect) {
 			return &StaleError{ID: id, Expected: *expect, Revision: current.Revision}
 		}
-		it := current.Item
+		// Isolate callback edits so nested changes cannot rewrite revision history.
+		raw, err := json.Marshal(current.Item)
+		if err != nil {
+			return err
+		}
+		var it factory.Item
+		if err := json.Unmarshal(raw, &it); err != nil {
+			return err
+		}
 		before := current.Item
 		before.Stages = factory.CopyStages(it.Stages)
 		// In-place PR and failure edits must not rewrite the prior event facts.
@@ -570,7 +596,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 			return err
 		}
 		err = live.Commit(st.root, live.Changes(before, it, now), func() error {
-			return writeAtomic(st.ItemPath(id), data)
+			return st.writeItem(st.ItemPath(id), data)
 		})
 		was, after, wrote = before, it, err == nil
 		return err
@@ -644,21 +670,58 @@ func (st *Store) readDocument(path string) (doc, error) {
 	if n, err := strconv.Atoi(strings.TrimSuffix(filepath.Base(path), ".json")); err == nil {
 		d.Item.ID = n
 	}
-	// Older documents have no budget history. Their observed revision is the
-	// earliest read we can safely accept, and later writes retain it.
-	if d.BudgetRevision == 0 {
-		d.BudgetRevision = d.Revision
-	}
+	// Older documents have no history for a missing field. Their observed
+	// revision is the earliest safe read, and later writes retain it.
+	d.BudgetRevision = revisionSince(d.BudgetRevision, d.Revision, false)
+	d.ActionRevision = revisionSince(d.ActionRevision, d.Revision, false)
 	return d, nil
 }
 
-// nextDoc retains the last budget edit across all item writers, including Save.
-func nextDoc(before doc, it factory.Item, revision int) doc {
-	budgetRevision := before.BudgetRevision
-	if budgetRevision == 0 || before.Item.Cap != it.Cap {
-		budgetRevision = revision
+// revisionSince retains a history floor, falling back to strict equality when absent.
+func revisionSince(previous, revision int, changed bool) int {
+	if previous == 0 || changed {
+		return revision
 	}
-	return doc{Revision: revision, BudgetRevision: budgetRevision, Item: it}
+	return previous
+}
+
+func revisionAccepts(first, current, expected int) bool {
+	return expected == current || (expected >= first && expected <= current)
+}
+
+// CheckActionExpected accepts only bookkeeping since the revision the caller read.
+func (st *Store) CheckActionExpected(id, expected int) error {
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	d, err := st.read(st.ItemPath(id))
+	if err != nil {
+		return err
+	}
+	if !revisionAccepts(d.ActionRevision, d.Revision, expected) {
+		return &StaleError{ID: id, Expected: expected, Revision: d.Revision}
+	}
+	return nil
+}
+
+// nextDoc retains both histories across all item writers, including Save.
+func nextDoc(before doc, it factory.Item, revision int) doc {
+	prior, next := before.Item, it
+	prior.Changed, next.Changed = time.Time{}, time.Time{}
+	prior.BriefWriting, next.BriefWriting = nil, nil
+	return doc{Revision: revision,
+		BudgetRevision: revisionSince(before.BudgetRevision, revision, before.Item.Cap != it.Cap),
+		ActionRevision: revisionSince(before.ActionRevision, revision, !sameAction(prior, next)),
+		Item:           it,
+	}
+}
+
+// sameAction compares saved facts: omitted empty collections equal absent ones.
+// Invalid values count as changed and are refused by marshalDoc before writing.
+func sameAction(before, after factory.Item) bool {
+	prior, priorErr := json.Marshal(before)
+	next, nextErr := json.Marshal(after)
+	return priorErr == nil && nextErr == nil && bytes.Equal(prior, next)
 }
 
 // highestID is the largest id with a document under the root, read off the
@@ -729,6 +792,13 @@ func (st *Store) underLock(path string, write func() error) error {
 	}
 	defer func() { _ = filelock.Unlock(lock) }()
 	return write()
+}
+
+// writeItem is every write of a job's document.
+func (st *Store) writeItem(path string, data []byte) error {
+	err := writeAtomic(path, data)
+	st.talks.stale.Store(true)
+	return err
 }
 
 func writeAtomic(path string, data []byte) error {

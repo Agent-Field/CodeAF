@@ -897,7 +897,11 @@ type journalUsage struct {
 	CallID string `json:"call_id,omitempty"`
 	// Folded keeps a worker's already-billed share in the conversation's books
 	// without reconstructing it as another model call on the machine ledger.
-	Folded bool `json:"folded,omitempty"`
+	Folded       bool   `json:"folded,omitempty"`
+	Billing      string `json:"billing,omitempty"`
+	BillingBasis string `json:"billing_basis,omitempty"`
+	Unbilled     bool   `json:"unbilled,omitempty"`
+	FactoryJob   string `json:"factory_job,omitempty"`
 	// RemoteEvent makes mirrored charges idempotent across cursor replay.
 	RemoteEvent string  `json:"remote_event,omitempty"`
 	Model       string  `json:"model,omitempty"`

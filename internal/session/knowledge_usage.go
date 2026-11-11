@@ -67,9 +67,8 @@ func (a *Agent) knowledgeCallContext(ctx context.Context) (context.Context, erro
 		if r.Found {
 			bill(r.Billed)
 		} else {
-			a.bank(bankedCall{generationID: r.Ref, model: r.Model, role: string(lane.RoleMemory),
-				libraryActivity: knowledge.LibraryActivity(ctx), used: Usage{Calls: 1},
-				ledger: true, late: true, unpriced: true, billing: r.Billing})
+			r.Tag = string(lane.RoleMemory)
+			a.recordUnbilledReceipt(r, knowledge.LibraryActivity(ctx))
 		}
 	})
 	return a.withReceiptTracking(provider.WithUnmeteredReceipts(ctx)), nil

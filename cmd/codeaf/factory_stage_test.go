@@ -44,6 +44,58 @@ type stageCall struct{ name, args string }
 
 const stageModelReport = `{"done":true,"findings":0,"output":"looked it over"}`
 
+func TestFactoryStageCallsPRBaseSyncThroughTheRealToolBelt(t *testing.T) {
+	root := resolvedTempDir(t)
+	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv(home.EnvVar, t.TempDir())
+	t.Setenv(config.ProfileDirEnv, "")
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	t.Setenv(factoryPostureEnv, "")
+	model := newScriptedStageModel(t,
+		stageCall{"factory_sync_pr_base", "{}"},
+		stageCall{"stage_result", `{"done":false,"final":true,"output":"base is ready to test","repair":{"decision":"needs_repair","reason":"checks pending"}}`},
+	)
+	t.Setenv("CODEAF_BASE_URL", model.server.URL)
+	t.Chdir(root)
+	freshEngineProcess(t)
+	proc, err := openEngineProcess()
+	if err != nil {
+		t.Fatal(err)
+	}
+	launch, err := openV3Launch(proc, engineLaunchOptions(remote.Hello{Version: remote.Version, Workspace: root}, root, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	floor, err := store.Open(filepath.Join(root, "factory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stage := factory.Stage{Name: factory.FollowPRStep, Kind: factory.StageChat}
+	id, err := floor.Add(context.Background(), factory.Item{Title: "Update the PR branch", Repo: "work", Tier: factory.TierOwner, Model: "openai/gpt-4.1", Stages: []factory.Stage{stage}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := floor.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maker := factoryStageMaker(floor, root, "", launch.Config)
+	executor := factoryrun.NewChatExecutor(maker)
+	calls := 0
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	res, err := executor.Run(ctx, factoryrun.Job{
+		Item: item, Stage: stage, Dir: root, Round: 1,
+		SyncPRBase: func(context.Context) (string, error) {
+			calls++
+			return "Base merged locally", nil
+		},
+	})
+	if err != nil || calls != 1 || res.Repair == nil || res.Repair.Reason != "checks pending" {
+		t.Fatalf("base sync calls=%d, stage result=%+v, err=%v", calls, res, err)
+	}
+}
+
 func newStageModel(t *testing.T) *stageModel {
 	return newScriptedStageModel(t, stageCall{"stage_result", stageModelReport})
 }

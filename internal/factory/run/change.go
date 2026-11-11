@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/gitpolicy"
 )
 
@@ -76,6 +77,25 @@ func changeBase(dir string, it factory.Item) (string, error) {
 		}
 	}
 	return base, nil
+}
+
+// A PR diff excludes changes that arrived through its base. The original
+// ChangeBase still identifies the checkout for the pipeline's baseline tests.
+func followChangeBase(git Git, dir string, it factory.Item) string {
+	if it.PullRequest == nil || it.FollowUp == nil {
+		return it.ChangeBase
+	}
+	base := it.FollowUp.BaseSyncSHA
+	if base == "" {
+		base = it.PullRequest.BaseSHA
+	}
+	if publish.ValidCommit(base) {
+		common, err := git.Run(dir, "merge-base", "HEAD", base)
+		if common = strings.TrimSpace(common); err == nil && publish.ValidCommit(common) {
+			return common
+		}
+	}
+	return it.ChangeBase
 }
 
 // readChange includes committed, staged, unstaged and untracked work. Git's
@@ -189,8 +209,15 @@ func readChange(dir, base string) (*factory.Change, error) {
 // recordChange runs on the holding machine after every completed round,
 // including a failed check. A failed read retains the last readable snapshot.
 func (lp *floorLoop) recordChange(c *loopCtl, job Job, res factory.StageResult) {
-	head, headErr := (ExecGit{}).Run(job.Dir, "rev-parse", "HEAD")
-	change, err := readChange(job.Dir, job.Item.ChangeBase)
+	git := ExecGit{}
+	base := job.Item.ChangeBase
+	if factory.IsCIRepairStage(job.Stage) {
+		if current, err := lp.r.opts.Store.Get(c.id); err == nil {
+			base = followChangeBase(git, job.Dir, current)
+		}
+	}
+	head, headErr := git.Run(job.Dir, "rev-parse", "HEAD")
+	change, err := readChange(job.Dir, base)
 	if err != nil {
 		change = nil
 	}

@@ -274,3 +274,17 @@ func EmitEvent(ctx context.Context, event StreamEvent) {
 	event.Session = streamSessionFrom(ctx)
 	observer(event)
 }
+
+// WithReplyStarted observes the first reply token, including thought and tool
+// fragments, before display buffering. The callback must not block.
+func WithReplyStarted(ctx context.Context, started func()) context.Context {
+	return context.WithValue(ctx, replyStartedKey{}, started)
+}
+
+type replyStartedKey struct{}
+
+func replyStarted(ctx context.Context) {
+	if started, _ := ctx.Value(replyStartedKey{}).(func()); started != nil {
+		started()
+	}
+}

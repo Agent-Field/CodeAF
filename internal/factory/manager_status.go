@@ -112,8 +112,18 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 		out.Text += "PR is " + it.PullRequest.State + ". No pipeline work is running."
 	case it.Manual:
 		out.Text += "Pipeline is under manual control. Resume pipeline when ready."
+	case PausedDecision(it):
+		out.QuestionID = ""
+		out.Text += "The job is paused. " + DecisionPauseWords
+	case RecoveryPaused(it):
+		out.Text += step + " is paused. Send “Try again” here to retry the step, or “Try again: …” to include instructions."
 	case it.Question != "":
-		out.Text += step + " is waiting: " + it.Question + "\nNo step work is running while this decision waits. Answer here or use the job's decision controls."
+		out.Text += step + " is waiting: " + it.Question + "\nNo step work is running while this decision waits."
+		if it.QKind == QKindOutOfAttempts {
+			out.Text += " Use the job's decision controls."
+		} else {
+			out.Text += " Answer here or use the job's decision controls."
+		}
 	case it.Failure != nil:
 		out.Text += step + " stopped: " + it.Failure.Detail + "\nUse Try again to retry this step within the job budget."
 	case it.FollowUp != nil && (it.FollowUp.State == "healthy" || it.FollowUp.State == "watching" || it.FollowUp.State == "needs_you"):
@@ -152,7 +162,10 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 		out.Text += "\n" + line
 	}
 	if out.QuestionID != "" {
-		out.Text += "\nPending question ID: " + out.QuestionID + ". Use factory_answer with this question_id to save the person's decision, including a delegated choice. Report only the saved outcome the tool confirms. On refusal, explain that the action did not happen. If the outcome is unconfirmed, read status before retrying."
+		out.Text += "\nPending question ID: " + out.QuestionID + "."
+		if it.QKind != QKindOutOfAttempts {
+			out.Text += " Use factory_answer with this question_id to save the person's decision, including a delegated choice. Report only the saved outcome the tool confirms. On refusal, explain that the action did not happen. If the outcome is unconfirmed, read status before retrying."
+		}
 	}
 	if back, ok := PlanSendsBack(it); ok && out.QuestionID != "" {
 		out.Text += " To request changes, call factory_answer with action=reject_plan, this question_id and the person's words in answer. This sends the plan back to " + back + "; that step runs again with the words and approval is requested again afterward. Report only the outcome the tool confirms."

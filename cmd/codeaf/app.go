@@ -876,7 +876,12 @@ type appAgent struct {
 	// job's effort when a send or Reopen opens it again
 	// ([appBackend.FactoryJobChats]).
 	jobEffort func() string
-	opening   bool
+	// jobModel is the model of the factory job whose manager this is: the
+	// job's own, else its factory's default. A manager that has never been
+	// opened starts on it ([jobManagerOpenModels]); one that has keeps the
+	// pair saved on it.
+	jobModel func() string
+	opening  bool
 	// openDone closes after initialization, including live publication and watchers.
 	// Waiters can abandon an open without leaving a goroutine on the gate.
 	openDone chan struct{}
@@ -1293,7 +1298,13 @@ func (b *appBackend) find(id string) (*appAgent, error) {
 	b.remember(row)
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.agents[id], nil
+	if a := b.agents[id]; a != nil {
+		return a, nil
+	}
+	// The folder answered under another id: an old-style chat with a moved
+	// copy ready is read back under its new id. No conversation has this one,
+	// and a nil agent with no error crashed every caller that used it.
+	return nil, appwire.Errorf(appwire.CodeNotFound, "there is no conversation with id %s", id)
 }
 
 // appRowOnDisk finds one conversation folder by id under the places root
@@ -1859,10 +1870,12 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	var view appwire.Agent
 	var transcript, workspace string
 	var boot *appBoot
+	var jobModel func() string
 	held := false
 	b.locked(func() {
 		view, held = a.view, a.live != nil
 		transcript, workspace = a.transcript, a.view.Workspace
+		jobModel = a.jobModel
 		if !held {
 			boot, a.boot = a.boot, nil
 		}
@@ -1901,6 +1914,9 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		ask.Model, ask.Minted = boot.model, true
 		ask.AutomaticModels = boot.automatic
 		ask.Models = boot.models
+	}
+	if ask.Models == nil && jobModel != nil {
+		ask.Models = jobManagerOpenModels(jobModel(), appDefaultFallback(config.ProfileDir()))
 	}
 	// OPENING IS SAID WHILE IT LASTS, so a caller that only reads or stops
 	// (agents.open, agents.stop, processes.list) does not queue on the gate
@@ -2350,8 +2366,8 @@ func (b *appBackend) questionEvent(a *appAgent, id string, live *appLive, event 
 		if scope != "" {
 			receipt.Text = "Always allowed · " + scope + " · you · " + at.Local().Format("15:04")
 			receipt.Link = &appwire.EntryLink{Label: "Settings › Permissions", Target: "settings:permissions"}
-			_ = b.keepAppEntry(a, receipt, q.Subject.CallID)
 		}
+		_ = b.keepAppEntry(a, receipt, q.Subject.CallID)
 		live.box.Event(appwire.EventEntryAdded, appwire.EntryAdded{Entry: receipt})
 		if moved {
 			live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
@@ -2498,6 +2514,11 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 	}
 	if turn, handled, err := b.tryFactoryStatus(a, text, clientID, shown); handled {
 		return turn, err
+	}
+	if shown != nil && shown.creation != nil && shown.creation.Team == "" && !shown.queued && shown.from == "" {
+		if turn, handled, err := b.tryFactoryRecovery(a, text, clientID, shown); handled {
+			return turn, err
+		}
 	}
 	return b.startLocked(a, text, clientID, shown)
 }
@@ -3025,7 +3046,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				break
 			}
 			if words := strings.TrimSpace(event.Text); words != "" {
-				notice := appwire.Entry{ID: appLiveNoticeID(n, notices), Kind: appwire.EntryNotice, Text: redact.Secrets(words), Quiet: true}
+				notice := appwire.Entry{ID: appLiveNoticeID(n, notices), Agent: id, Turn: turn, At: b.now(), Kind: appwire.EntryNotice, Text: redact.Secrets(words), Quiet: true}
 				// ONLY WHAT THE PRODUCER TYPED travels as a fact; a notice
 				// with no kind stays ordinary and its words are never read.
 				switch event.NoticeKind {
@@ -3035,6 +3056,15 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				notice.Skills = append([]string(nil), event.Skills...)
 				notice.Unrecorded = event.Unrecorded
 				entry(notice)
+				// AN UNRECORDED NOTICE IS IN NO RECORD A RETURNING SURFACE
+				// REDRAWS ([session.Event.Unrecorded]): memory's lines and a
+				// factory's progress are said for the moment or held in memory
+				// for the life of the session, never written anywhere a relaunch
+				// reads. The sidecar is that record, so only a recorded notice
+				// is kept; the live emit above still shows it now.
+				if !event.Unrecorded {
+					_ = b.keepAppEntry(a, notice, "")
+				}
 				notices++
 			}
 		case session.EventError:
@@ -3092,13 +3122,18 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		if byPerson {
 			words = "Stopped by you · " + at.Local().Format("15:04")
 		}
-		entry(appFooter(appStopEntryID(n), id, turn, appwire.FooterStoppedByYou, words, at))
+		footer := appFooter(appStopEntryID(n), id, turn, appwire.FooterStoppedByYou, words, at)
+		_ = b.keepAppEntry(a, footer, "")
+		entry(footer)
 	case !ok && kind == appwire.ErrorProvider:
 		footer := appFooter(appErrorEntryID(n), id, turn, appwire.FooterProviderFailed, failure, b.now())
 		footer.ErrorKind, footer.Status = kind, status
+		_ = b.keepAppEntry(a, footer, "")
 		entry(footer)
 	case !ok:
-		entry(appwire.Entry{ID: appErrorEntryID(n), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status})
+		errEntry := appwire.Entry{ID: appErrorEntryID(n), Agent: id, Turn: turn, At: b.now(), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status}
+		_ = b.keepAppEntry(a, errEntry, "")
+		entry(errEntry)
 	}
 	if ok {
 		b.resetCloseAfterReply(id)
@@ -3131,9 +3166,12 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 // person's messages (u0, u1 …), an answer is the m-th assistant message after
 // it that said something (a<n>.<m>), and a tool entry is its call's own id
 // (t<call>). The live pump counts as it streams and the listing counts as it
-// reads, by one rule, so agents.entries names what entry.added named. What
-// only ever exists live — a turn's error, an ask's receipt, the engine's dim
-// notices — has an id of its own kind that the listing never makes.
+// reads, by one rule, so agents.entries names what entry.added named.
+// Entries the record itself never holds — a turn's error, an ask's receipt,
+// the engine's recorded dim notices — take an id of their own kind, kept in
+// the footer sidecar (appfooters.go) and laid back in by the listing. An
+// unrecorded notice ([session.Event.Unrecorded]) keeps no id there either: it
+// is said for the moment and gone on relaunch.
 
 func appUserEntryID(n int) string { return "u" + strconv.Itoa(n) }
 

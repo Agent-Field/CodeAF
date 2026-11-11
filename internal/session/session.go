@@ -2679,8 +2679,9 @@ type Config struct {
 	// commands act as: the same DID in a conversation, `<did>#w<task id>` in a
 	// task worker (agent_identity.go). A child agent inherits both from the
 	// agent that built it ([Agent.newChildAgent]); no surface sets them.
-	agentDID string
-	actorDID string
+	agentDID      string
+	agentDocument *AgentIdentity
+	actorDID      string
 
 	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
 	// conversation's DID with the task number its row wears. A run builds its
@@ -2747,6 +2748,9 @@ type Config struct {
 	// It is read only when DailyBudgetResolved is true; zero then means unlimited.
 	DailyBudgetUSD float64
 
+	// dailyBudgetAuthority keeps descendants on their owner's live day limit.
+	dailyBudgetAuthority func() (float64, error)
+
 	// DailyBudgetResolved says the daily ceiling was deliberately carried into
 	// this agent. Roots leave it false and read their profile and environment live,
 	// including the ordinary default profile whose ProfileDir is empty. A separate
@@ -2809,6 +2813,9 @@ type Agent struct {
 	rewindUndo *rewindUndo
 	debugRun   string
 
+	budgetWatchOnce   sync.Once
+	budgetWorkStarted chan struct{}
+
 	// toolsInFlight and toolsStarted count this agent's tool calls
 	// ([Agent.executeTool]). A shell output is only vouched for as made by its
 	// own command when no other tool call overlapped it (shell_outputs.go).
@@ -2863,11 +2870,6 @@ type Agent struct {
 	// of Config.JobChat once ([Agent.jobChatOf]); nil is no job's.
 	jobChatOnce sync.Once
 	jobChat     JobChat
-	// workWake tells the job's budget watch that work may have started, so a
-	// watch resting on its idle cadence moves to the live one at once rather
-	// than at its next idle look ([Agent.watchJobBudget]). It is made by
-	// [New] and nil on an agent built any other way, where a send is dropped.
-	workWake chan struct{}
 	// moveAsked is the person's ask to move the running reply to a task, taken
 	// at the next step boundary ([Agent.MoveTurnToTask]).
 	moveAsked atomic.Bool
