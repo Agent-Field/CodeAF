@@ -932,7 +932,7 @@ func (c Config) routeGate(send, wire string) func(context.Context, string, strin
 		if err := factoryCallRefusal(ctx); err != nil {
 			return err
 		}
-		if tag != string(purposeTurn) {
+		if tag != string(purposeTurn) && !c.dailyModelExempt(asked) {
 			if err := DailyLimitReached(c); err != nil {
 				return err
 			}

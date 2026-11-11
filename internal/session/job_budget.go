@@ -185,7 +185,7 @@ func (a *Agent) admitModelCall(ctx context.Context, model string) error {
 	}
 	// The transport owns context cancellation. Budget admission must preserve
 	// uncapped auxiliary calls' existing cancellation and cleanup path.
-	if a.dailyModelExempt(model) {
+	if a.config.dailyModelExempt(model) {
 		return a.jobBudgetBlock()
 	}
 	if err := a.dailyBudgetBlock(); err != nil {
@@ -195,11 +195,11 @@ func (a *Agent) admitModelCall(ctx context.Context, model string) error {
 }
 
 // Known-free calls keep their daily exemption through admission and draining.
-func (a *Agent) dailyModelExempt(model string) bool {
-	if model == "" || a.config.ModelPrice == nil {
+func (c Config) dailyModelExempt(model string) bool {
+	if model == "" || c.ModelPrice == nil {
 		return false
 	}
-	input, output, known := a.config.ModelPrice(model)
+	input, output, known := c.ModelPrice(model)
 	return known && input <= 0 && output <= 0
 }
 

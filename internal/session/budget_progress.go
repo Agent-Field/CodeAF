@@ -28,7 +28,7 @@ type budgetAdmissionKey struct{}
 
 func (a *Agent) withBudgetProgress(ctx context.Context, model string) (context.Context, func()) {
 	ctx, cancel := context.WithCancelCause(ctx)
-	call := &budgetCall{owner: a, dailyExempt: a.dailyModelExempt(model), jobBudgeted: a.jobBudgetOf() != nil, cancel: cancel, done: make(chan struct{})}
+	call := &budgetCall{owner: a, dailyExempt: a.config.dailyModelExempt(model), jobBudgeted: a.jobBudgetOf() != nil, cancel: cancel, done: make(chan struct{})}
 	a.mu.Lock()
 	call.epoch = a.workEpoch
 	if a.closed {

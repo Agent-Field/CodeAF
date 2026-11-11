@@ -21,3 +21,7 @@ completion. Fixtures now save their Memory choice explicitly, request the
 discovery passes they exercise, and join existing receipt settlement signals.
 Admission probes arm their ledger changes after construction, at the turn
 boundary they exercise.
+
+Known-free auxiliary calls retain their documented daily-limit exemption through
+model selection and the final transport gate. Paid substitutions still check the
+shared live daily authority before dispatch.
