@@ -478,8 +478,12 @@ floor folder: the folder's time moves with every file renamed into it (the
 runner registry, a lease heartbeat, the sources' poll record), which made every
 open step chat list and decode every job every few seconds. It is answered from
 one look at the floor's job files (`floorJobFiles`: one directory read and one
-stat per job, shared by every conversation for `floorLookEvery`, 100 ms) and
-reads only a job document that changed. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
+stat per job, shared by every conversation for `floorLookEvery`, 100 ms while
+the directory is unchanged) and reads only a job document that changed. Each
+admission stats the directory before reusing that look, so an atomic job rename
+invalidates it immediately. `TestAutomaticRefusalSeesHandoverBeforeNextFloorInterval`
+freezes the shared clock and requires a newly assigned stopped job to refuse
+the next admission. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
 fifty checks while the registry is rewritten decode none (`factoryStopCheckDecodes`);
 one changed job costs one decode, and a job that takes the conversation is seen
 on the next look.

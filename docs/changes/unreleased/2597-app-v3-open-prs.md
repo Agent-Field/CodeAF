@@ -31,3 +31,7 @@ turn. Encrypted agent custody can create a solo profile during that save;
 creating an identity afterward deliberately preserves its existing sync posture.
 The fixtures retain the notices, displacement, ownership, and once-only read
 assertions, alongside the separate quiet-profile and custody coverage.
+
+Automatic admission invalidates a shared negative job lookup immediately when
+the floor changes, so a stopped job handed to a chat is seen on the next ask.
+The cheap idle watcher still reads no unchanged job documents.

@@ -81,11 +81,61 @@ Repair: use the existing `spokenDoorChatWithPairing(t, true)` in fixtures whose
 premise is an already-paired profile, before their first metadata save. Preserve
 the two deliberate solo fixtures, every existing assertion, and production
 `EnsureSolo`/custody behavior. No refusal expectation or ownership check changes.
-Fix commit: pending focused verification and local commit.
+Fix commit: `09dbdb2fb` — pair shared fixtures before #2090 custody saves a
+solo identity.
 
 Focused green: shared slow-failure reuse, both pairing/solo transition tests,
 custody restart/move, existing-profile sync posture (paired and solo), and
 fresh-profile quiet behavior all pass in `shared-custody-green.log`.
+
+### Stop-watch/full-admission handover: #2358
+
+The carried `TestTheNextLookSeesEveryChange` fails twice on the unchanged wave
+(`early-stop-branch.log` and its initial individual run), at the handover's full
+read. `cmd/codeaf/factory_person_stop.go`, `floorJobFiles`, reuses a negative
+memo for 100 ms even after an atomic job rename changes the folder. The new
+`WatchedRefusal` from #2358 uses the current `TalkStop` index, so it sees the
+handover while the admission path can still allow it. The old suite advances
+`floorNow` between edits; the carried test does not.
+
+Added `TestAutomaticRefusalSeesHandoverBeforeNextFloorInterval`, which fixes the
+clock through a real store handover and asserts both watcher and admission
+answers. It fails before the repair in 0.28 seconds (`handover-red.log`). This
+removes machine-speed dependence from reproduction without changing an existing
+assertion. Bisect of the carried test and repair validation are in progress.
+
+Repair under test: retain the floor folder's identity with a shared look and
+check it before reusing that look within 100 ms. An atomic rename invalidates
+the negative memo immediately; unchanged job documents still are not decoded.
+The pre-fix unmanaged-admission benchmark (100 iterations) is 144 B/op and one
+allocation/op; elapsed timings are diagnostic, not acceptance gates. Benchmark
+source and overlay are external scratch artifacts, not repository tests.
+
+Green proof: the deterministic handover, both existing next-look cases, unchanged
+manager checks, unrelated floor churn, idle watcher zero-document work, exactly
+one document after one job edit, and allocation growth limits pass together in
+`handover-factory-green.log`. Unmanaged admission now costs 432 B/op and three
+allocations/op (the additional directory stat), still within existing unchanged
+allocation caps. No cap or existing assertion was changed. Fix commit pending.
+
+### Factory PR-base belt fixture: #2570
+
+`git bisect run` narrows the new test failure to `97bdc7207` (#2570) or its
+integration build repair `dc6bbde8d`. The former does not compile until the
+latter supplies the retained `updateAt` argument, so Git reports that exact
+two-commit ambiguity. The test and its nested profile are introduced by
+`97bdc7207`; the second commit changes only the lease recovery call signature.
+This is attribution to #2570, not to the unrelated guard it trips.
+
+Cause: `cmd/codeaf/factory_stage_test.go`,
+`TestFactoryStageCallsPRBaseSyncThroughTheRealToolBelt`, makes its state home
+`root/state` while requesting `root` as a Factory workspace. Existing
+`factoryFolderRefusal` correctly refuses an ancestor of the profile.
+Repair under test: give the profile a separate TempDir. All tool-call, repair
+reason, and error assertions remain byte-for-byte unchanged.
+
+Green proof: the exact real-tool-belt test passes in
+`handover-factory-green.log` (2.00 seconds). Fix commit pending.
 
 Evidence so far (before any edits):
 

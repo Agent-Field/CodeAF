@@ -98,6 +98,7 @@ var floorNow = time.Now
 
 type floorLook struct {
 	at   time.Time
+	dir  os.FileInfo
 	jobs map[int]os.FileInfo
 }
 
@@ -113,7 +114,13 @@ func floorJobFiles(root string) (map[int]os.FileInfo, error) {
 	floorLooks.mu.Lock()
 	defer floorLooks.mu.Unlock()
 	now := floorNow()
-	if l, ok := floorLooks.by[root]; ok && now.Sub(l.at) < floorLookEvery {
+	dir, err := os.Stat(root)
+	if err != nil {
+		return nil, err
+	}
+	// A job can gain this chat during the shared interval. Its atomic rename
+	// invalidates the look immediately, before a negative memo can admit work.
+	if l, ok := floorLooks.by[root]; ok && now.Sub(l.at) < floorLookEvery && sameFileInfo(l.dir, dir) {
 		return l.jobs, nil
 	}
 	entries, err := os.ReadDir(root)
@@ -136,7 +143,7 @@ func floorJobFiles(root string) (map[int]os.FileInfo, error) {
 		}
 		jobs[id] = info
 	}
-	floorLooks.by[root] = floorLook{at: now, jobs: jobs}
+	floorLooks.by[root] = floorLook{at: now, dir: dir, jobs: jobs}
 	return jobs, nil
 }
 
