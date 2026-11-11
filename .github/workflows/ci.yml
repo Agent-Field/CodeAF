@@ -106,7 +106,7 @@ jobs:
         run: go build ./...
 
       - name: Vet
-        run: go vet ./...
+        run: make vet
 
       # A file gofmt would rewrite is a file the next editor's save rewrites,
       # and that diff lands in somebody else's pull request. Two files had

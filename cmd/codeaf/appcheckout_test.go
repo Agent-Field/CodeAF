@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"testing"
 	"time"
 
@@ -492,7 +491,7 @@ func TestCheckoutStatusLinesUntrackedAreNeverOpened(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(repo, "link.txt")); err != nil {
 		t.Skip("no symlinks")
 	}
-	if err := syscall.Mkfifo(filepath.Join(repo, "pipe"), 0o644); err != nil {
+	if err := mkfifo(filepath.Join(repo, "pipe"), 0o644); err != nil {
 		t.Skip("no fifos")
 	}
 	done := make(chan appwire.CheckoutStatus, 1)
