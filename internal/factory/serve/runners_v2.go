@@ -282,6 +282,10 @@ func (s *workerService) saveRegistry() error {
 	if err = os.Rename(f.Name(), filepath.Join(s.st.Root(), registryFile)); err != nil {
 		return err
 	}
+	for key, row := range s.credentials {
+		row.persistedLast = row.Last
+		s.credentials[key] = row
+	}
 	s.savedAt = s.now()
 	return nil
 }
@@ -323,6 +327,7 @@ func (s *workerService) loadRegistry() error {
 		// them against the cap, so nothing running is cancelled.
 		row.Slots = grantedRunnerSlots(row.Slots)
 		row.Worker.Slots = row.Slots
+		row.persistedLast = row.Last
 		s.credentials[hash] = row
 	}
 	return nil

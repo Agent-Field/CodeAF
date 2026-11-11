@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -61,5 +63,28 @@ func TestRecoveryDurableTimerAdvancesWithoutUI(t *testing.T) {
 			t.Fatal("saved timer did not recover without a UI read")
 		case <-time.After(10 * time.Millisecond):
 		}
+	}
+}
+
+func TestRecoveryRetriesAfterTemporaryItemLockFailure(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{Autonomy: factory.AutonomyAuto, State: factory.StateNeedsYou, Assignee: "sam", Cap: 10, Failure: &factory.Failure{Step: "write", Code: factory.CodeTransportError, Next: factory.FailureStopped, At: time.Unix(0, f.clock.Load())}, Stages: []factory.Stage{{Name: "write", On: true}}, Stream: &factory.Stream{Spent: 1, Phases: []factory.Phase{{Name: "write", State: factory.PhaseFailed}}}})
+	lock := filepath.Join(f.st.Root(), fmt.Sprintf("%d.lock", it.ID))
+	if err := os.Remove(lock); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(lock, 0700); err != nil {
+		t.Fatal(err)
+	}
+	j := f.read(t, it)
+	if j.Recovery != nil {
+		t.Fatal("fixture did not block recovery")
+	}
+	if err := os.Remove(lock); err != nil {
+		t.Fatal(err)
+	}
+	j = f.read(t, it)
+	if j.Recovery == nil || j.Recovery.State != "waiting" {
+		t.Fatalf("temporary lock failure froze recovery: %+v", j.Recovery)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -239,6 +240,7 @@ type factoryService struct {
 	public    string
 	notes     []string
 	server    *http.Server
+	running   atomic.Bool
 	door      *http.Server
 	handler   *serve.Handler
 	done      chan error
@@ -337,7 +339,12 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 			"; access tokens and sign-in sessions cross the network unencrypted. Serve HTTPS with tls: auto and a domain, "+
 			"or put a reverse proxy that serves HTTPS in front and list it in trusted_proxies (the manual: hosting a team factory over HTTPS)")
 	}
-	guard.Go("factory HTTP service", func() { s.done <- server.Serve(served) })
+	s.running.Store(true)
+	guard.Go("factory HTTP service", func() {
+		err := server.Serve(served)
+		s.running.Store(false)
+		s.done <- err
+	})
 	body, err := json.Marshal(factoryDiscovery{URL: s.url, PID: os.Getpid(), Token: token})
 	if err == nil {
 		err = writeFactoryPrivate(s.discovery, append(body, '\n'))
@@ -393,6 +400,7 @@ func (s *factoryService) serveTLS(ctx context.Context, secure factoryTLS, listen
 // close stops serving and takes the receipt down, so nobody discovers a
 // service that is gone.
 func (s *factoryService) close() {
+	s.running.Store(false)
 	_ = os.Remove(s.discovery)
 	_ = s.server.Close()
 	if s.door != nil {
