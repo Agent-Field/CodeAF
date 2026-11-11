@@ -26,6 +26,10 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Completed WAL calls remain local work even when their capture fails.
+	if err := Captured(ctx, c); err != nil && len(recovery.Completed) == 0 {
+		return false, err
+	}
 	if len(recovery.Completed) > 0 {
 		log.Printf("continuation needs a choice: %d completed calls have not been saved", len(recovery.Completed))
 		return true, nil
@@ -55,7 +59,7 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	}
 	// The shared snapshot belongs to this chat. A workspace's latest head can
 	// belong to another chat that opened in the same working folder.
-	out, err := (Spawn{Binary: e.Binary}).Do(ctx, e.target(c), planOp{Snapshot: base})
+	out, err := e.plan(ctx, c, base)
 	if err != nil {
 		return false, err
 	}

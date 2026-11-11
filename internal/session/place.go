@@ -44,7 +44,9 @@ const (
 	// peek.go admits only transcript-shaped .jsonl files, and sweep.go descends
 	// only into directories, so neither conversation scan can mistake it for a
 	// conversation or a thing to reap.
-	placeMetaLock     = "meta.lock"
+	placeMetaLock = "meta.lock"
+	// MetaLockName is the empty lock file kept beside conversation metadata.
+	MetaLockName      = placeMetaLock
 	placeNodeJournals = "tasks"
 	placeLogs         = "logs"
 	placeTrees        = cell.TreesDir
@@ -230,16 +232,25 @@ func TitleOf(workspace string) string {
 // wrote the citation. A session whose meta.json is missing or corrupt is a
 // session with a blank row, never a session that will not open.
 type Meta struct {
+	AutomaticModels *bool          `json:"automaticModels,omitempty"`
+	ModelIdentity   *ModelIdentity `json:"modelIdentity,omitempty"`
 	// ID is the session's id — the same 16-hex id the transcript header
 	// carries, and the folder's name.
 	ID string `json:"id"`
 	// ChatURI is stable conversation identity carried in the sealed truth.
-	ChatURI         string           `json:"chat_uri,omitempty"`
+	ChatURI string `json:"chat_uri,omitempty"`
+	// AgentIdentity is the agent's DID (agent_identity.go): written with the
+	// conversation's first identity write after it opens, and never replaced.
+	// It is bound to ID, so a copy or branch that takes a new id mints its own.
+	AgentIdentity   *AgentIdentity   `json:"agent_identity,omitempty"`
 	WorkspacePolicy *WorkspacePolicy `json:"workspace_policy,omitempty"`
 	// Title is what a picker row says. Empty until something names the
 	// session; an empty title marks a session the launch groom may reuse.
-	Title      string `json:"title,omitempty"`
-	ShortTitle string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
+	Title string `json:"title,omitempty"`
+	// LiteralName distinguishes a rule's or a person's exact name from a
+	// generated label, which is healed on read and this is not.
+	LiteralName bool   `json:"literalName,omitempty"`
+	ShortTitle  string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 	// Workspace is the REAL workspace path — the resolved git root for a
 	// borrowed session, the work/ directory for an owned one. The encoded
 	// bucket directory above the session folder is derived from it and is
@@ -262,6 +273,9 @@ type Meta struct {
 	Owned bool `json:"owned,omitempty"`
 	// Model is the conversation's model at last save, for the picker row.
 	Model string `json:"model,omitempty"`
+	// ModelProvider identifies the selected model's service even before its
+	// first call, when execution history cannot identify a custom alias.
+	ModelProvider string `json:"modelProvider,omitempty"`
 	// Build names the codeaf that most recently wrote this identity.
 	Build string `json:"build,omitempty"`
 	// Effort is the rung on the effort ladder this conversation was set to —
@@ -289,6 +303,14 @@ type Meta struct {
 	// file is not a person returning to a conversation
 	// (internal/store/session_rooms.go holds the original of this law).
 	LastUserAt time.Time `json:"lastUserAt,omitempty"`
+	// LastReplyAt is when the conversation last FINISHED SPEAKING TO THE
+	// PERSON: a turn that sealed on an answer, a harness run's report among
+	// them. A turn that ended on tool steps or thinking alone does not move it.
+	// It is stamped beside the spend at the seal (placemeta.go's
+	// [Agent.stampSealed]) so a surface can say "something new here" without
+	// opening the journal. Zero is a conversation that has not answered since
+	// the field arrived.
+	LastReplyAt time.Time `json:"lastReplyAt,omitempty"`
 	// SpentUSD and Tokens are WHAT THE TALKING HAS COST — this conversation's
 	// own running total, every turn and every auxiliary call beside it, as
 	// [Usage] holds it while the session is open.
@@ -299,7 +321,8 @@ type Meta struct {
 	// asking about every conversation on the machine (world.go) reads a folder,
 	// a meta.json and a presence file per session and must not grow a transcript
 	// scan per row — so the running total is stamped here at the end of every
-	// turn (placemeta.go's [Agent.stampSpend]) and read from here.
+	// turn and after a late receipt (placemeta.go's [Agent.stampSpend]) and read
+	// from here.
 	//
 	// Zero is "nobody has said", exactly as an absent Title is, and every
 	// surface draws nothing for it rather than $0.00 (the emptiness law).
@@ -397,10 +420,13 @@ func readMeta(dir string) (Meta, error) {
 	// before the name arrived. Only a folder that actually holds one of these
 	// pays for that read ([openingPlaceholder]), and the next thing said in the
 	// session stamps the words back onto the file ([Agent.stampUserLocked]).
-	if strings.TrimSpace(meta.Title) != "" && healedTitle(meta.Title) == "" {
-		meta.Title = openingPlaceholder(dir)
+	if !meta.LiteralName {
+		title := healedTitle(meta.Title)
+		if strings.TrimSpace(meta.Title) != "" && title == "" {
+			title = healedTitle(openingPlaceholder(dir))
+		}
+		meta.Title = title
 	}
-	meta.Title = healedTitle(meta.Title)
 	meta.ShortTitle = "" // Old tab labels no longer participate in naming.
 	return meta, nil
 }
@@ -487,6 +513,7 @@ func saveMetaLocked(dir string, meta Meta) error {
 		}
 		meta.ChatURI = current.ChatURI
 	}
+	meta.AgentIdentity = keptAgentIdentity(current, meta)
 	// K3: schema paths use slashes even when their source machine is Windows.
 	for _, field := range []*string{&meta.Workspace, &meta.Origin, &meta.FromWorkspace} {
 		if windowsSource(*field) {

@@ -483,6 +483,10 @@ type Options struct {
 	// (homeband_addmachine.go). Nil is a connection that cannot count, and the
 	// card is then absent.
 	Fleet Fleet
+	// NotShared reads how many of this computer's chats the other computers
+	// cannot list yet (notshared.go), and false while it is not known. Nil
+	// draws no sentence.
+	NotShared func() (NotShared, bool)
 	// Branches is what a branch row can do. A nil verb is absent from the row.
 	Branches BranchActions
 	// Notices is the desk a goroutine outside the surface puts a sentence on

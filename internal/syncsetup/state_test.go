@@ -21,12 +21,12 @@ func TestC30PreferencesMergePerSetting(t *testing.T) {
 	a.Carry = []vaultsync.Carrier{preferences(a.profile, filepath.Dir(config.BudgetConfigPath(a.profile)))}
 	b.Carry = []vaultsync.Carrier{preferences(b.profile, filepath.Dir(config.BudgetConfigPath(b.profile)))}
 	at := time.Unix(1700000000, 0)
-	a.saveConfig(t, map[string]any{config.ModelSettingKey("talk"): "stub/one", config.KeyIcons: "plain", "machine.path": "/a"}, at)
-	b.saveConfig(t, map[string]any{"machine.path": "/b"}, at)
+	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne, config.ModelSettingKey("talk"): "stub/one", config.KeyIcons: "plain", "machine.path": "/a"}, at)
+	b.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne, "machine.path": "/b"}, at)
 	a.push(t)
 	b.pull(t)
-	a.saveConfig(t, map[string]any{config.ModelSettingKey("talk"): "stub/older", config.KeyIcons: "plain", config.KeyDailyBudget: 7.0, "machine.path": "/a"}, at.Add(time.Second))
-	b.saveConfig(t, map[string]any{config.ModelSettingKey("talk"): "stub/later", config.KeyIcons: "ascii", "machine.path": "/b"}, at.Add(2*time.Second))
+	a.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne, config.ModelSettingKey("talk"): "stub/older", config.KeyIcons: "plain", config.KeyDailyBudget: 7.0, "machine.path": "/a"}, at.Add(time.Second))
+	b.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne, config.ModelSettingKey("talk"): "stub/later", config.KeyIcons: "ascii", "machine.path": "/b"}, at.Add(2*time.Second))
 	b.push(t)
 	a.push(t)
 	b.pull(t)

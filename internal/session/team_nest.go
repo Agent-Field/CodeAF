@@ -146,11 +146,11 @@ func (e errNest) Error() string { return string(e) }
 // teamStartSubTeam makes the child team under team, moves in the members
 // named, and writes the start that opens its manager. It answers what to hand
 // the model and whether that is a refusal.
-func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, name string, moving []string, model string) (string, bool) {
+func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role teamRole, handle, brief, name string, moving []string, model string, prov teams.Provenance) (string, bool) {
 	profile := a.config.teamProfile()
 	name = strings.Join(strings.Fields(name), " ")
 	if name == "" {
-		return invalidArgumentsPrefix + "a team needs its name", true
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"a team needs its name"), true
 	}
 	if reason := a.teamCapHold(profile, []teamRole{role}); reason != "" {
 		return "No sub-team starts: " + reason + ".", true
@@ -206,7 +206,7 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 			}
 			members = append(members, m)
 		}
-		child := teams.Team{ID: teams.NewID(), Name: name, Parent: parent.ID, Made: time.Now()}
+		child := teams.Team{ID: teams.NewID(), Name: name, Parent: parent.ID, Made: time.Now(), CreatedBy: teams.ConversationName(role.key)}
 		f.Teams = append(f.Teams, child)
 		if share := f.SubTeamCap(parent.ID, d); share > 0 {
 			if err := f.SetSettings(child.ID, func(s *teams.Settings) { s.CapUSDDay = &share }); err != nil {
@@ -218,7 +218,7 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 		}
 		for _, m := range members {
 			reporting := m.Home
-			m.Home, m.Started, m.StartID = false, false, ""
+			m.Home, m.Started, m.StartEntry, m.StartID = false, false, "", ""
 			if err := f.AddMember(child.ID, m); err != nil {
 				return err
 			}
@@ -248,7 +248,7 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 	// here, where the membership was written. A refusal returned above and
 	// wrote nothing.
 	_ = teams.WriteMoveNotices(profile, movedIn)
-	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Model: model}
+	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ResolvedApprovalPosture(), Provenance: prov, Model: model}
 	startID, err := teams.AppendTrafficID(profile, team.ID, start)
 	if err != nil {
 		return "The team " + strconv.Quote(name) + " was made, but its manager's start could not be written to the traffic: " + err.Error(), true
@@ -257,7 +257,7 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 	if len(moved) > 0 {
 		made += ". Moved in from " + strconv.Quote(team.Name) + ": " + strings.Join(moved, ", ")
 	}
-	a.teamSay(profile, childID, teams.Entry{Kind: teams.KindNote, From: teams.FromSystem, To: teams.ToRoom, Text: made})
+	a.teamSay(profile, childID, teams.Entry{Kind: teams.KindNote, From: teams.FromSystem, To: teams.ToRoom, Text: made, Provenance: prov})
 	money := "It has no cap of its own and none above it."
 	switch {
 	case capUSD > 0:
@@ -302,7 +302,7 @@ func subTeamBriefLine(file *teams.File, entry teams.Entry, brief string) string 
 func (a *Agent) claimSubTeams(profile string, claims []subTeamClaim) {
 	for _, claim := range claims {
 		var why string
-		err := teams.Update(profile, func(f *teams.File) error {
+		err := teams.UpdateOpen(profile, func(f *teams.File) error {
 			child, ok := f.Team(claim.team)
 			if !ok || child.Closed() {
 				why = "the team is gone or closed"
@@ -317,7 +317,7 @@ func (a *Agent) claimSubTeams(profile string, claims []subTeamClaim) {
 			if !ok {
 				m = teams.Member{Key: claim.key}
 			}
-			m.Home, m.Started, m.StartID = false, false, ""
+			m.Home, m.Started, m.StartEntry, m.StartID = false, false, "", ""
 			if err := f.AddMember(child.ID, m); err != nil {
 				return err
 			}
@@ -470,23 +470,23 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 		Team      string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	question := strings.TrimSpace(parsed.Question)
 	if question == "" {
-		return invalidArgumentsPrefix + "question is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"question is empty"), true, nil
 	}
 	if len(parsed.Parties) == 0 {
-		return invalidArgumentsPrefix + "name the other party or parties", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"name the other party or parties"), true, nil
 	}
 	if len(parsed.Options) < 2 {
-		return invalidArgumentsPrefix + "a conflict needs at least two options, each with what happens", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"a conflict needs at least two options, each with what happens"), true, nil
 	}
 	var options []teams.Option
 	for i, o := range parsed.Options {
 		label, consequence := strings.TrimSpace(o.Label), strings.TrimSpace(o.Consequence)
 		if label == "" || consequence == "" {
-			return invalidArgumentsPrefix + "every option needs a label and what happens if it is chosen", true, nil
+			return rejectToolArguments(ctx, invalidArgumentsPrefix+"every option needs a label and what happens if it is chosen"), true, nil
 		}
 		options = append(options, teams.Option{ID: strconv.Itoa(i + 1), Label: label, Consequence: consequence})
 	}
@@ -502,7 +502,7 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 			}
 		}
 		if recommendation == nil {
-			return invalidArgumentsPrefix + "recommend names none of the options", true, nil
+			return rejectToolArguments(ctx, invalidArgumentsPrefix+"recommend names none of the options"), true, nil
 		}
 	}
 	profile := a.config.teamProfile()
@@ -543,6 +543,12 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 	}
 	if role.handle == "" {
 		return "You have no handle in " + strconv.Quote(role.name) + " yet, so the decider could not tell who raised it. It is given once this conversation has a title.", true, nil
+	}
+	// A party may be anywhere in the open tree (a sibling team, another top
+	// team), which this conversation's own view does not hold: the open teams
+	// are read for the parties and the manager common to them.
+	if open, err := teams.LoadOpen(profile); err == nil {
+		file = open
 	}
 	parties := []teams.Party{{Key: role.key, Handle: role.handle, Team: role.id, Context: strings.TrimSpace(parsed.Context)}}
 	partyKeys := []string{role.key}
@@ -595,16 +601,17 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 			return refusal, true, nil
 		}
 	}
-	raised, err := teams.Raise(profile, teams.Packet{
+	prov := turnOriginFrom(ctx).provenance(role.key)
+	raised, err := teams.RaiseFrom(profile, teams.Packet{
 		Team: decider, Origin: origin, Kind: teams.PacketConflict, RaisedBy: role.handle,
 		Parties: parties, Question: question, Options: options, Recommendation: recommendation,
-	})
+	}, prov)
 	if err != nil {
 		return "The conflict could not be raised: " + teamErrorWords(err), true, nil
 	}
 	if lca.ID != "" {
 		if m, ok := lca.Member(lca.Manager); ok {
-			a.teamRouse(profile, lca, file.Effective(lca.ID, d).Wake, []teams.Member{m}, "")
+			a.teamRouse(profile, lca, file.Effective(lca.ID, d).Wake, []teams.Member{m}, "", prov)
 		}
 	}
 	var others []string
@@ -663,7 +670,7 @@ func partyTold(role teamRole, entry teams.Entry, p teams.Packet) string {
 // (team/@handle, or a handle only one conversation under team has), for a
 // read. false is nobody there.
 func readableBelow(profile string, team teams.Team, words string) (teams.Member, bool) {
-	file, err := teams.Load(profile)
+	file, err := teams.LoadSubtree(profile, team.ID)
 	if err != nil {
 		return teams.Member{}, false
 	}
@@ -709,16 +716,19 @@ func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (s
 	}
 	entry.Member = role.key
 	entry.Text = fmt.Sprintf("(from %q, a team under yours with no manager of its own) %s", team.Name, entry.Text)
-	if err := teams.AppendTraffic(profile, role.boss, entry); err != nil {
+	// THE LINE'S OWN NUMBER AND ITS TEAM'S ID ARE IN THE ANSWER, as for a post
+	// in the member's own team: the one record that can take somebody to it.
+	own, err := teams.AppendTrafficID(profile, role.boss, entry)
+	if err != nil {
 		return "The post could not be written to the traffic of " + strconv.Quote(role.bossName) + ": " + err.Error(), true, nil
 	}
 	file, _, _, _ := a.teamSnapshot(profile)
 	if file != nil {
 		if boss, ok := file.Team(role.boss); ok {
 			if manager, ok := boss.Member(boss.Manager); ok {
-				a.teamRouse(profile, boss, file.Effective(boss.ID, a.teamDefaults(profile)).Wake, []teams.Member{manager}, "")
+				a.teamRouse(profile, boss, file.Effective(boss.ID, a.teamDefaults(profile)).Wake, []teams.Member{manager}, "", entry.Provenance)
 			}
 		}
 	}
-	return fmt.Sprintf("Posted to the manager of %q, which %q answers to while it has no manager of its own. It arrives at the start of its next step.", role.bossName, team.Name), false, nil
+	return teamPostUpSaid(role.bossName, role.boss, own, entry.Answers, team.Name), false, nil
 }

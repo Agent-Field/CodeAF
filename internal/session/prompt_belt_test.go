@@ -77,6 +77,9 @@ func buildShippedConversation(t *testing.T, config *Config) {
 	}
 	config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) { return "", nil }
 	config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
+	// The chat door always has an artifacts index (chatv3.go), and bash's
+	// `outputs` argument rides only where one exists.
+	config.ArtifactsIndex = filepath.Join(t.TempDir(), "artifacts.jsonl")
 	// AND THE TWO SEAMS THAT ARE THE REST OF THE UNIVERSE. The big machines
 	// and `automation` are conditional on somebody being there to answer a
 	// card and on there being a store to arm one in (tools.go), and a universe
@@ -162,6 +165,15 @@ var beltShapes = []beltShape{{
 		// conversation anybody has.
 		buildShippedConversation(t, config)
 		config.ContextWindow = leanWindow
+	},
+}, {
+	// A FACTORY STAGE (stage_contract.go): a conversation with the runner's
+	// door, unattended, whose belt carries `propose_task` and no `quick_task`,
+	// so its hand-off paragraph is its own (beltfacts.go's [beltFact.stage]).
+	name: "a factory stage",
+	build: func(t *testing.T, config *Config) {
+		config.Stage = &fakeStageDoor{}
+		config.Unattended = true
 	},
 }, {
 	// An automation's run (automation_run.go): the person's own assembly with

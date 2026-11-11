@@ -413,8 +413,7 @@ func waitForGone(workspace string, within time.Duration) error {
 		conn, err := Dial(workspace)
 		if err == nil {
 			_ = conn.Close()
-		} else if held, err := takeLock(filepath.Join(dir, lockName)); err == nil {
-			_ = releaseLock(held)
+		} else if !hostLockHeld(workspace) {
 			waitForSaves(dir, savesWait)
 			return nil
 		}
@@ -569,4 +568,13 @@ func Splice(in io.Reader, out io.Writer, conn net.Conn) error {
 		return nil
 	}
 	return err
+}
+
+// Sockets is the socket of every host on this machine that has ever listened,
+// running or not; a caller dials each and takes what answers. It is how a
+// window finds the host holding a conversation started in another workspace's
+// host — a crew member a manager started, which lives beside its manager.
+func Sockets() []string {
+	matches, _ := filepath.Glob(home.Join("v3", "hosts", "*", socketName))
+	return matches
 }

@@ -82,6 +82,9 @@ var capabilityGroups = []capabilityGroup{{
 	name:    questionsGroup,
 	members: []string{"ask"},
 }, {
+	name:    secretsGroup,
+	members: []string{RequestSecretToolName},
+}, {
 	name:    "media",
 	members: []string{"generate_image", "speak", "generate_music", "generate_video", "edit_video"},
 	// THE PROMPT IS THE QUALITY, and this is where that law now lives. It was
@@ -279,7 +282,7 @@ func (a *Agent) loadCapabilityTool(shelf map[string][]bare.Tool, order []string)
 				Group string `json:"group"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			text, failed := a.loadCapability(parsed.Group)
 			return text, failed, nil

@@ -120,6 +120,14 @@ var fanoutPrompt string
 //go:embed prompts/quick.md
 var quickPrompt string
 
+// readingPrompt is the role of a chat-owned reading. Its tools come from the
+// same set that arms the hand-off, so the page cannot promise another hand.
+//
+//go:embed prompts/reading.md
+var readingPrompt string
+
+const readingToolsToken = "READING_TOOLS"
+
 // landingAnswerPrompt is the short role page for the one answer an owed root landing opens.
 //
 //go:embed prompts/landing-answer.md
@@ -277,7 +285,9 @@ func (c Config) isWorker() bool { return c.InTask && c.taskID != 0 }
 // there is an agent: a worker handed no graph — an orchestrate run's node — has
 // no assignment road to move, and the page that teaches the verb must come off
 // with it.
-func (c Config) mayRevise() bool { return c.InTask && c.tasker != nil && c.taskID != 0 }
+func (c Config) mayRevise() bool {
+	return !c.readingTask() && c.InTask && c.tasker != nil && c.taskID != 0
+}
 
 // renderSystem builds the final system prompt as of right now.
 func renderSystem(config Config) string { return renderSystemAt(config, time.Now()) }
@@ -348,11 +358,10 @@ func renderSystemAt(config Config, now time.Time) string {
 	}
 	out.WriteString(page)
 
-	// EVERY WORKER IS TOLD WHAT IT IS, floor of the tree included. The role page
-	// names no conditional verb, so the one predicate under it is whether this
-	// agent is a task node at all ([Config.isWorker]) — a hand is not one, and
-	// opens on a page of its own.
-	if config.isWorker() {
+	// Every ordinary worker is told what it is, floor of the tree included. A
+	// reading already has its own role page without the file-changing guidance;
+	// the other task nodes ([Config.isWorker]) read the ordinary worker's page.
+	if config.isWorker() && !config.readingTask() {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(workerPrompt, "\n"))
 	}
@@ -460,6 +469,7 @@ func workerFooter(config Config, now time.Time) string {
 		out.WriteString("- There is no project here: this is the conversation's own space, and it holds only what this conversation has put there.\n")
 	}
 	out.WriteString(shell.PromptFact())
+	out.WriteString(stateHomeFact(config))
 	out.WriteString(nowLine(now))
 
 	// THE PROJECT'S OWN RULES, UNDER THIS PROFILE'S BOUND. Both numbers here are
@@ -727,4 +737,14 @@ func fenceFor(content string) string {
 		longest = 2
 	}
 	return strings.Repeat("`", longest+1)
+}
+
+// stateHomeFact is the footer's line naming codeaf's own data folder when it
+// is not the default ([Config.StateHome]), and "" when it is.
+func stateHomeFact(config Config) string {
+	where := strings.TrimSpace(config.StateHome)
+	if where == "" {
+		return ""
+	}
+	return "- codeaf's own data folder in this window is " + where + ". Where the manual says ~/.codeaf, it means this folder here; never read or change ~/.codeaf, which belongs to another codeaf home.\n"
 }

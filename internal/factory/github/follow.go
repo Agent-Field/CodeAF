@@ -1,0 +1,501 @@
+package github
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"reflect"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/inbox"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
+)
+
+// followExtra is the read a client has beyond the open-list API: reviews and
+// how many the base branch requires. A client without it still reports state
+// and checks.
+type followExtra interface {
+	Reviews(ctx context.Context, owner, repo string, number int) ([]forge.Review, error)
+	RequiredReviews(ctx context.Context, owner, repo, branch string) (int, error)
+}
+
+// workflowFiles is the read a client has of the head's workflow folder.
+type workflowFiles interface {
+	WorkflowFiles(ctx context.Context, owner, repo, ref string) (int, error)
+}
+
+// noWorkflows is the no-checks fact as one read finds it: nothing reported on
+// the head and no workflow file in it. A client that cannot read the folder,
+// or a read that fails, finds nothing, so the job waits as it always has.
+func (s *Source) noWorkflows(ctx context.Context, owner, repo, head string, state forge.CheckState, runs []forge.CheckRun) bool {
+	files, ok := s.api.(workflowFiles)
+	if !ok || state != forge.ChecksNone || len(runs) > 0 {
+		return false
+	}
+	n, err := files.WorkflowFiles(ctx, owner, repo, head)
+	return err == nil && n == 0
+}
+
+// FollowPR reads one pull request the factory opened, including after GitHub
+// has merged or closed it. The open list never carries those.
+func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (factory.PullRequest, error) {
+	return s.followPR(ctx, owner, repo, number, nil)
+}
+
+// followPR is [Source.FollowPR] knowing what the job last stored for this
+// pull request, prev (nil when nothing), so a head whose file list is already
+// on the job costs no read.
+func (s *Source) followPR(ctx context.Context, owner, repo string, number int, prev *factory.PullRequest) (factory.PullRequest, error) {
+	p, err := s.api.Pull(ctx, owner, repo, number)
+	if err != nil {
+		return factory.PullRequest{}, err
+	}
+	out := factory.PullRequest{
+		Number: p.Number, URL: p.URL, Draft: p.Draft,
+		Conflict: p.Mergeable != nil && !*p.Mergeable,
+		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
+		BaseSHA: p.BaseSHA, HeadSHA: p.HeadSHA, HeadBranch: p.Head, Mergeable: mergeableWord(p.Mergeable),
+	}
+	// Terminal metadata is authoritative even when optional APIs are unavailable.
+	// A merged or closed pull request costs no file read, but keeps the list
+	// the job already holds for that same head: what the merge put on the
+	// base branch stays said.
+	if out.State != factory.PROpen {
+		keepPRFiles(prev, &out)
+		return out, nil
+	}
+	s.readPRFiles(ctx, owner, repo, p, prev, &out)
+	if p.HeadSHA != "" {
+		state, runs, e := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
+		if e != nil {
+			out.Problems = append(out.Problems, readProblem("checks", e))
+		} else {
+			out.CI, out.Checks, out.CheckRuns, out.ChecksRead = ChecksWords(state), summarizeChecks(runs), checkRuns(runs), true
+			out.NoWorkflows = s.noWorkflows(ctx, owner, repo, p.HeadSHA, state, runs)
+		}
+	}
+	if extra, ok := s.api.(followExtra); ok {
+		reviews, e := extra.Reviews(ctx, owner, repo, number)
+		if e != nil {
+			out.Problems = append(out.Problems, readProblem("reviews", e))
+		} else {
+			out.Reviews = factoryReviews(reviews)
+			out.Required, e = extra.RequiredReviews(ctx, owner, repo, p.Base)
+			out.ReviewDecision = reviewDecision(out.Reviews, out.Required)
+			if e != nil {
+				out.Problems = append(out.Problems, readProblem("review policy", e))
+			} else {
+				out.ReviewsRead = true
+			}
+		}
+	}
+	if feedback, ok := s.api.(interface {
+		PullFeedbackState(context.Context, string, string, int) (forge.ReviewFeedback, error)
+	}); ok {
+		state, e := feedback.PullFeedbackState(ctx, owner, repo, number)
+		out.Feedback = state.Text
+		if e != nil {
+			out.ReviewsRead = false
+			out.Problems = append(out.Problems, readProblem("feedback", e))
+		} else {
+			out.FeedbackTracked = true
+			for _, item := range state.Items {
+				out.FeedbackItems = append(out.FeedbackItems, factory.PRFeedback{ID: item.ID, Revision: item.Revision, Resolved: item.Resolved, External: item.External})
+			}
+		}
+	} else if feedback, ok := s.api.(interface {
+		PullFeedback(context.Context, string, string, int) (string, error)
+	}); ok {
+		out.Feedback, err = feedback.PullFeedback(ctx, owner, repo, number)
+		if err != nil {
+			out.ReviewsRead = false
+			out.Problems = append(out.Problems, readProblem("feedback", err))
+		}
+	}
+	if out.ChecksRead && len(out.CheckRuns) > 0 {
+		allExternal := true
+		for _, c := range out.CheckRuns {
+			allExternal = allExternal && factory.ExternalPRCheck(c)
+		}
+		if allExternal {
+			out.CI = factory.PRWaitingWords(&out)
+		}
+	}
+	if len(out.Problems) == 0 {
+		if err = s.readinessMaterial(ctx, owner, repo, p, &out); err != nil {
+			out.Problems = append(out.Problems, readProblem("readiness", err))
+		}
+	}
+
+	return out, nil
+}
+
+// storedText is an error's words as the store will keep them: valid UTF-8 (JSON
+// replaces invalid bytes) clipped on a character boundary. Comparing a fresh
+// poll's text with the stored one is then equal when nothing changed, instead
+// of rewriting the job on every poll.
+func storedText(s string, n int) string {
+	return clip(strings.ToValidUTF8(s, "\uFFFD"), n)
+}
+
+func readProblem(area string, err error) factory.PRReadProblem {
+	p := factory.PRReadProblem{Area: area, Code: "incomplete", Summary: "PR " + area + " could not be verified.", Detail: storedText(err.Error(), 2000)}
+	var ae *forge.APIError
+	var ne net.Error
+	switch {
+	case errors.As(err, &ae):
+		switch {
+		case ae.StatusCode == 401:
+			p.Code, p.Summary = "authentication", "GitHub authentication must be restored to read PR "+area+"."
+		case ae.StatusCode == 429 || ae.StatusCode >= 500 || (ae.StatusCode == 403 && (ae.RetryAfter > 0 || strings.Contains(strings.ToLower(ae.Body), "rate limit"))):
+			p.Code, p.Retryable, p.Summary = "transient", true, "GitHub temporarily could not provide PR "+area+"; monitoring will retry."
+		case ae.StatusCode == 403:
+			p.Code, p.Summary = "access_denied", "GitHub denied access to PR "+area+"; check repository permissions."
+		case ae.StatusCode == 404:
+			p.Code, p.Summary = "unavailable", "GitHub did not expose PR "+area+"; access or capability needs checking."
+		}
+	case errors.As(err, &ne), errors.Is(err, context.DeadlineExceeded):
+		p.Code, p.Retryable, p.Summary = "transient", true, "Network interrupted the PR "+area+" read; monitoring will retry."
+	}
+	return p
+}
+
+// mergeableWord is GitHub's three-valued mergeable as the merge gate reads
+// it: nil is "not worked out yet", which the gate refuses on.
+func mergeableWord(m *bool) string {
+	switch {
+	case m == nil:
+		return ""
+	case *m:
+		return factory.MergeableYes
+	default:
+		return factory.MergeableNo
+	}
+}
+
+func pullFollowState(p forge.Pull) string {
+	if p.Merged || !p.MergedAt.IsZero() {
+		return factory.PRMerged
+	}
+	switch strings.ToLower(strings.TrimSpace(p.State)) {
+	case factory.PRClosed:
+		return factory.PRClosed
+	case factory.PRMerged:
+		return factory.PRMerged
+	default:
+		return factory.PROpen
+	}
+}
+
+func summarizeChecks(runs []forge.CheckRun) factory.PRChecks {
+	var c factory.PRChecks
+	for _, r := range runs {
+		if r.Status != "completed" {
+			c.Pending++
+			continue
+		}
+		switch r.Conclusion {
+		case "success":
+			c.Passed++
+		case "failure", "timed_out", "cancelled", "action_required", "startup_failure":
+			c.Failed++
+		}
+	}
+	return c
+}
+
+func factoryReviews(in []forge.Review) []factory.PRReview {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]factory.PRReview, 0, len(in))
+	for _, r := range in {
+		out = append(out, factory.PRReview{By: r.User, State: strings.ToLower(r.State), At: r.At, Body: r.Body, URL: r.URL})
+	}
+	return out
+}
+
+// reviewDecision is the latest review from each person. A request for
+// changes wins. Enough approvals, or one when the branch requires none, is
+// approved. A branch that still wants more is review_required.
+func reviewDecision(reviews []factory.PRReview, required int) string {
+	latest := map[string]factory.PRReview{}
+	for _, r := range reviews {
+		by := strings.ToLower(strings.TrimSpace(r.By))
+		if by == "" || (strings.EqualFold(r.State, "commented") || strings.EqualFold(r.State, "pending")) {
+			continue
+		}
+		prev, ok := latest[by]
+		if !ok || !r.At.Before(prev.At) {
+			latest[by] = r
+		}
+	}
+	approvals, changes := 0, false
+	for _, r := range latest {
+		switch strings.ToLower(r.State) {
+		case "approved":
+			approvals++
+		case "changes_requested":
+			changes = true
+		}
+	}
+	if changes {
+		return "changes_requested"
+	}
+	need := required
+	if need <= 0 {
+		need = 1
+	}
+	if approvals >= need {
+		return "approved"
+	}
+	if required > 0 {
+		return "review_required"
+	}
+	return ""
+}
+
+// followOpened re-reads every pull request the factory opened and records
+// pr_merged or pr_closed the first time that state is seen. THE JOB STAYS
+// done. pr.state carries open, merged and closed.
+func followOpened(ctx context.Context, src factory.Source, st *store.Store) error {
+	f, ok := src.(*Source)
+	if !ok || st == nil {
+		return nil
+	}
+	items, err := st.ListSaved()
+	if err != nil || len(items) == 0 {
+		return err
+	}
+	// A REPOSITORY THAT IS OFF HAS ITS PULL REQUESTS LEFT ALONE
+	// ([factory.RepoSwitch]): nothing reads them or writes their state onto
+	// the job, and turning it back on follows them from where they stand.
+	sw, err := st.RepoSwitch()
+	if err != nil {
+		return err
+	}
+	held := map[int]bool{}
+	if desk, e := lease.Open(st, lease.Options{}); e == nil {
+		if live, e := desk.Live(); e == nil {
+			for _, l := range live {
+				held[l.Job] = true
+			}
+		}
+	}
+	var rec *record.Record
+	if opened, err := record.Open(st, record.Options{}); err == nil {
+		rec = opened
+	}
+	for _, it := range items {
+		if it.DoneHow == "closed_locally" || !factory.IsIssueJob(it) || it.PullRequest == nil || it.PullRequest.Number <= 0 || sw.OffJob(it) {
+			continue
+		}
+		owner, name, ok := pullRepo(it)
+		if !ok {
+			continue
+		}
+		fresh, err := f.followPR(ctx, owner, name, it.PullRequest.Number, it.PullRequest)
+		if err != nil {
+			// A failed feedback read must not leave an old all-clear on screen.
+			// Do not replace an active repair or facts for a newer head.
+			reason := storedText("Could not refresh PR checks/review feedback: "+err.Error()+". Will retry on the next poll.", 700)
+			if it.FollowUp != nil && (it.FollowUp.Monitoring != reason || it.PullRequest.ChecksRead) {
+				_ = st.Update(it.ID, func(cur *factory.Item) error {
+					if cur.PullRequest == nil || cur.PullRequest.HeadSHA != it.PullRequest.HeadSHA || cur.FollowUp == nil {
+						return nil
+					}
+					pr := *cur.PullRequest
+					pr.ChecksRead, pr.ReviewsRead, pr.CI = false, false, ""
+					follow := *cur.FollowUp
+					if follow.State == "healthy" || follow.State == "watching" {
+						follow.State, follow.Reason = "watching", reason
+					}
+					follow.Monitoring = reason
+					cur.PullRequest, cur.FollowUp = &pr, &follow
+					return nil
+				})
+			}
+			continue
+		}
+		if fresh.Number <= 0 {
+			fresh.Number = it.PullRequest.Number
+		}
+		if fresh.URL == "" {
+			fresh.URL = it.PullRequest.URL
+		}
+		// AN EMPTY PULL REQUEST THE FACTORY OPENED IS CLOSED, with a word on
+		// it and a plain note on the job (live e2e round 9, #315: a run whose
+		// work was already on the base branch opened one with 0 files, and
+		// the job read shipped with Merge offered). Nothing went out, so
+		// nothing stays open to merge. A pull request someone else opened is
+		// never closed from here; its job only reads as nothing to change.
+		closedEmpty := false
+		// Only a job that reads shipped closes its pull request: a job a
+		// person stopped writes nothing to GitHub, and a draft is still being
+		// worked on.
+		if fresh.State == factory.PROpen && !fresh.Draft && factory.PRChangesNothing(&fresh) && it.Publish == "pr" && it.Kind != factory.KindPR && it.State == factory.StateShipped && !factory.StoppedByPerson(it) {
+			_, _ = f.api.Comment(ctx, owner, name, fresh.Number, factory.EmptyPRComment)
+			if _, err := f.api.Close(ctx, owner, name, fresh.Number); err == nil {
+				fresh.State, closedEmpty = factory.PRClosed, true
+			}
+		}
+		factory.SettleNoChecks(it.PullRequest, &fresh, f.now())
+		checkpointRecovered := false
+		if !held[it.ID] && f.verificationRecovered != nil && len(fresh.Problems) == 0 && it.PullRequest.HeadSHA == fresh.HeadSHA {
+			checkpointRecovered = f.verificationRecovered(it)
+		}
+		probe := it
+		if it.FollowUp != nil {
+			cp := *it.FollowUp
+			probe.FollowUp = &cp
+		}
+		if checkpointRecovered {
+			factory.ReleaseVerificationPause(&probe, f.now())
+		}
+		probe.PullRequest = &fresh
+		// A pull request a run on another machine delivered is followed for
+		// its state and checks, never repaired from here: there is no
+		// checkout on this factory to carry a CI follow-up out in.
+		initialWatch := probe.FollowUp == nil && probe.State == factory.StateShipped && probe.Publish == "pr" && probe.HeadCommit != "" && !factory.RunDeliveredPR(probe)
+		// pin records, once, the head a run delivered as the job's approved
+		// commit ([factory.PinDeliveredHead]); it is a change worth writing
+		// even when the pull request itself read exactly as before.
+		pin := factory.PinDeliveredHead(&probe, fresh.HeadSHA)
+		if initialWatch {
+			factory.WatchPublishedPR(&probe)
+		}
+		followChanged := false
+		if !held[it.ID] || fresh.State == factory.PRMerged || fresh.State == factory.PRClosed {
+			followChanged = factory.QueueCIFollowUp(&probe, f.now())
+		}
+		followChanged = followChanged || initialWatch || checkpointRecovered || pin || closedEmpty
+		if reflect.DeepEqual(*it.PullRequest, fresh) && !followChanged {
+			continue
+		}
+		details := ""
+		if followChanged && probe.FollowUp != nil && probe.FollowUp.State == "queued" {
+			details = f.ciFailureDetails(ctx, it, fresh, owner, name)
+		}
+		prev := it.PullRequest.State
+		next := fresh
+		applied := false
+		write := st.Annotate
+		if followChanged {
+			write = st.Update
+		}
+		if err := write(it.ID, func(item *factory.Item) error {
+			if item.PullRequest == nil {
+				return nil
+			}
+			// Publication or an observed ready transition may finish while
+			// this network read is in flight. Never restore the old head's
+			// green checks or draft status over that newer local receipt.
+			if item.PullRequest.HeadSHA != it.PullRequest.HeadSHA || item.PullRequest.Draft != it.PullRequest.Draft || item.PullRequest.State != it.PullRequest.State {
+				return nil
+			}
+			cp := next
+			if cp.ChecksRead && item.Stream != nil && (item.PullRequest.Checks != cp.Checks || !item.PullRequest.ChecksRead) {
+				words := []string{}
+				for _, check := range cp.CheckRuns {
+					words = append(words, check.Name+": "+check.State)
+				}
+				item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: time.Now().UTC(), Tone: "said", Text: "GitHub checks · " + strings.Join(words, " · ")})
+			}
+			if item.PullRequest.Draft && !cp.Draft && cp.State == factory.PROpen && item.Stream != nil {
+				if !item.Publishing {
+					item.Note(f.now(), fmt.Sprintf("PR #%d observed ready for review on GitHub · head %s", cp.Number, cp.HeadSHA))
+				}
+				item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: f.now(), Tone: "ok", Text: fmt.Sprintf("PR #%d observed ready for review on GitHub · head %s", cp.Number, cp.HeadSHA)})
+			}
+			if checkpointRecovered && f.verificationRecovered(*item) {
+				factory.ReleaseVerificationPause(item, f.now())
+			}
+			item.PullRequest = &cp
+			if closedEmpty {
+				words := factory.EmptyPRClosedWords(cp.Number)
+				item.Note(f.now(), words)
+				if item.Stream != nil {
+					item.Stream.Log = append(item.Stream.Log, factory.LogLine{At: f.now(), Tone: "said", Text: words})
+				}
+			}
+			factory.PinDeliveredHead(item, cp.HeadSHA)
+			if initialWatch && item.FollowUp == nil {
+				factory.WatchPublishedPR(item)
+			}
+			if (!held[it.ID] || cp.State == factory.PRMerged || cp.State == factory.PRClosed) && factory.QueueCIFollowUp(item, f.now()) && item.FollowUp != nil && item.FollowUp.State == "queued" {
+				if item.FollowUp.Kind != "readiness" {
+					item.FollowUp.Details = details
+				}
+			}
+			item.DismissedBy = nil
+			if (cp.State == factory.PRMerged || cp.State == factory.PRClosed) && item.DoneAt.IsZero() {
+				item.DoneAt = time.Now().UTC()
+			}
+			applied = true
+			return nil
+		}); err != nil || !applied {
+			continue
+		}
+		kind := ""
+		switch next.State {
+		case factory.PRMerged:
+			if prev != factory.PRMerged {
+				kind = record.PRMerged
+			}
+		case factory.PRClosed:
+			if prev != factory.PRClosed {
+				kind = record.PRClosed
+			}
+		}
+		if kind == "" {
+			continue
+		}
+		handle := ""
+		if kind == record.PRMerged {
+			handle = next.MergedBy
+			// A MERGE A PERSON MADE ON GITHUB is seen here and nowhere else;
+			// one the factory made arrives in the worker's report and is told
+			// there ([inbox.Mark.Moments]), so this job was not yet merged.
+			if it.SourceRef != "" {
+				inbox.Notify(ctx, st, it.ID, inbox.Merged(next.URL))
+			}
+		}
+		if rec != nil {
+			_, _ = rec.Append(ctx, record.Event{Kind: kind, Job: it.ID, Handle: handle, Detail: "pr · " + next.URL})
+		}
+	}
+	return nil
+}
+
+// pullRepo is the owner and name of a job that carries a published pull
+// request. GitHub items keep them apart. A repo stored as owner/name is
+// split. The pull request's own page is the last place that names them.
+func pullRepo(it factory.Item) (owner, name string, ok bool) {
+	repo := strings.TrimSpace(it.Repo)
+	product := strings.TrimSpace(it.Product)
+	if product != "" && repo != "" && !strings.Contains(repo, "/") {
+		return product, repo, true
+	}
+	if o, n, cut := strings.Cut(repo, "/"); cut && o != "" && n != "" && !strings.Contains(n, "/") {
+		return o, n, true
+	}
+	const mark = "github.com/"
+	page := it.URL
+	if it.PullRequest != nil && it.PullRequest.URL != "" {
+		page = it.PullRequest.URL
+	}
+	if i := strings.Index(strings.ToLower(page), mark); i >= 0 {
+		rest := page[i+len(mark):]
+		parts := strings.Split(rest, "/")
+		if len(parts) >= 2 && parts[0] != "" && parts[1] != "" {
+			return parts[0], parts[1], true
+		}
+	}
+	return "", "", false
+}

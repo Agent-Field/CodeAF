@@ -144,9 +144,16 @@ func (h *standInHost) answer(conn net.Conn) {
 		h.retired = true
 		h.mu.Unlock()
 	}
+	// A vanish fixture has already left before its answer reaches the caller.
+	// The accepted connection survives closing the listener, so its final reply
+	// still arrives; a follow-up stand-down cannot race ahead of the disappearance.
+	vanished := h.opts.vanishAfter > 0 && count >= h.opts.vanishAfter
+	if vanished {
+		h.close()
+	}
 	answer, _ := json.Marshal(remote.Frame{Kind: "whoami", Payload: mustStandInJSON(self)})
 	_, _ = conn.Write(append(answer, '\n'))
-	if self.Retiring || (h.opts.vanishAfter > 0 && count >= h.opts.vanishAfter) {
+	if self.Retiring && !vanished {
 		h.close()
 	}
 }
@@ -203,7 +210,7 @@ func mustStandInJSON(value any) json.RawMessage {
 
 func shortEngineHome(t *testing.T) {
 	t.Helper()
-	root, err := os.MkdirTemp("", "eh")
+	root, err := os.MkdirTemp(shortSocketParent(t), "eh")
 	if err != nil {
 		t.Fatalf("make a state root: %v", err)
 	}
@@ -337,7 +344,7 @@ func TestAnOlderEngineThatRefusedTheStandDownKeepsItsWork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a host that kept its work was refused rather than joined: %v", err)
 	}
-	if !strings.Contains(note, "older codeaf") || !strings.Contains(note, "Attached windows count as in use") {
+	if !strings.Contains(note, "older "+programName()) || !strings.Contains(note, "Attached windows count as in use") {
 		t.Fatalf("the busy line %q does not say what happened", note)
 	}
 	if !hostAnswers(workspace) {
@@ -369,7 +376,7 @@ func TestAnOldHostThatIgnoresTheNoteIsNotPromisedAQuietMoment(t *testing.T) {
 	if strings.Contains(note, "once it goes quiet") {
 		t.Fatalf("the line promises a quiet-moment handover this host was never told about: %q", note)
 	}
-	for _, want := range []string{"older codeaf", "close every window", "restarting one window does not update it"} {
+	for _, want := range []string{"older " + programName(), "close every window", "restarting one window does not update it"} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("the line %q does not say %q", note, want)
 		}
@@ -428,7 +435,7 @@ func TestAnOlderBuildWithNoStampHoldingWorkIsJoined(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a stampless older build holding work was refused: %v", err)
 	}
-	if !strings.Contains(note, "older codeaf") {
+	if !strings.Contains(note, "older "+programName()) {
 		t.Fatalf("the notice did not say which engine this is: %q", note)
 	}
 	if !strings.Contains(note, "After work finishes, close every window") || strings.Contains(note, "--stop") {
@@ -455,7 +462,7 @@ func TestTwoWindowsMeetingAnOlderEngineHoldingWorkBothJoinIt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("window %d was refused: %v", opened, err)
 		}
-		if !strings.Contains(note, "older codeaf") {
+		if !strings.Contains(note, "older "+programName()) {
 			t.Fatalf("window %d was not told which engine it is on: %q", opened, note)
 		}
 	}

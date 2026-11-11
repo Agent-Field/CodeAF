@@ -199,6 +199,12 @@ func TestSpendRailRefusesTurnWhenDailyBudgetExceeded(t *testing.T) {
 // held to the day's allowance exactly as a chat turn is: a conversation past the
 // ceiling starts no new turn, however the work was asked for.
 func TestTheDailyCeilingBindsTaskAndErrandTurnsToo(t *testing.T) {
+	// The checked ledger stays authoritative; unrelated tests' spend is not this day's fixture.
+	t.Setenv("HOME", t.TempDir())
+	RecordUsage(UsageLedgerPath(), UsageLine{At: time.Now(), USD: 0.50})
+	if !StopUsageWriter(UsageLedgerPath()) {
+		t.Fatal("daily spend fixture did not finish writing")
+	}
 	for _, posture := range []struct {
 		what   string
 		config func(*Config)
@@ -245,6 +251,21 @@ func TestTheDailyCeilingBindsTaskAndErrandTurnsToo(t *testing.T) {
 				t.Fatalf("%s ignored the ledger's daily spend: %v", posture.what, err)
 			}
 		})
+	}
+
+	// And under the ceiling, the ledger and held meter describe the same spend,
+	// so they must not be added.
+	profileDir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
+		t.Fatalf("write daily budget: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ProfileDir = profileDir
+		cfg.InTask = true
+	})
+	agent.crewDayHeld = NewSpendDay(0.50)
+	if err := agent.railBlockLocked(); err != nil {
+		t.Fatalf("a task turn under the daily ceiling was refused: %v", err)
 	}
 }
 

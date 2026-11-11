@@ -10,9 +10,9 @@ engine reports it. Check the running work before starting the same brief again.
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works in a copy of its own — a working copy of your repository, or
-a copy of the folder when the work is about a folder — and reports back when it lands. It
-never inherits the conversation: what it reads is one written brief — your own message, word
+conversation carries on. It works in a folder of its own and reports back when it lands.
+Projects may be copied; a task that would copy your home folder reads it in place and
+starts with an empty folder. It never inherits the conversation: what it reads is one written brief — your own message, word
 for word, then the work, what to produce and what done means, and a pointer at the
 journal path and line of your original turn so it can read those words in full when the
 restatement was cut. How that is assembled is on the *how tasks run* page, under *What the
@@ -76,7 +76,7 @@ A task can also break its own brief into smaller tasks when it finds independent
 it, and those are rows of their own on the column, each under what it is doing (see *When a
 task splits its own work*).
 
-**And a copy of its own is the ordinary task, not every task.** The other kind is the
+**And a folder of its own is the ordinary task, not every task.** The other kind is the
 **quick task**: no copy of the folder, no branch, no check and no merge — it works in the
 folder you are already in, and its last message is its answer. It is the next several
 sections, starting with *What a quick task is*. Everything below about briefs, cards,
@@ -126,7 +126,8 @@ it must wait for, and a model to run on. What it gets back is one line, at once:
 quick task 7 started: compare the four configs · 4 items
 ```
 
-That is the whole of the ceremony. If you want the other road instead, say so — *"do that
+That starts the quick work. A shell call or a 31st file asks for promotion before it runs.
+If you want the other road instead, say so — *"do that
 as a proper task"* — and the model proposes an ordinary task, card, branch, check and all.
 *"Just do it quickly"* goes the other way.
 
@@ -164,6 +165,15 @@ and next item move as it does.
 ticks a box. The items belong to the worker; the words belong to you.
 
 ## Why it said waits for task 5 — two quick tasks that would write the same file
+
+File claims accept workspace-relative files, directories and segment globs
+(`*`, `?`, `[...]`), for example `crew-0-*.md`. Wildcards never cross `/` and never match a leading `.` (`*` skips `.git` and
+`.env`; `.env*` names them); a matched
+directory covers its subtree. `**`, `..` segments, absolute glob patterns and
+malformed patterns return a tool refusal so the model can correct the claim.
+Exact absolute paths inside the workspace still normalize to relative paths.
+Symlinks cannot extend a claim outside the workspace. Potentially overlapping
+glob claims wait for each other, even without a concrete matching file name.
 
 A quick task may name the files it intends to write. When it does, and another quick task
 that is running or queued in the same folder has already claimed one of those paths, the
@@ -274,7 +284,7 @@ task; a quick task is now allowed the blank it is supposed to have.
 
 The rule is written once, in the words the model itself reads:
 
-> A task gets its own copy of the folder, is checked, and lands. A quick task works where
+> A task gets a folder of its own, is checked, and lands. A quick task works where
 > you are and its last message is its answer. If you will read the result and carry on,
 > it is quick. If it must be checked and merged on its own, or survive the window
 > closing, it is a task. One edit, one read, one command is a step: do it yourself.
@@ -292,7 +302,7 @@ inside once it has opened the material, and a wide **read** never comes down tha
 
 **And the model is told what each one costs**, rather than given a list of which kinds of
 work go where. Its own instructions describe a quick task as a copy of its abilities
-working where it stands and a task as a worker in a copy of the folder that is checked and
+working where it stands and a task as a worker in a folder of its own that is checked and
 merged, and then the arithmetic: pieces it keeps cost their sum, independent pieces handed
 out in one breath cost the longest of them. Everything on this page follows from that, and
 so does anything this page did not think to list.
@@ -871,7 +881,7 @@ when the row goes `done`. It is on the rail like any other task, so it can be op
 and stopped from there.
 
 **If the reply had written anything at all, none of this applies.** One edit is enough: the
-answer takes the ordinary road above — a task in its own copy of the folder, briefed, checked
+answer takes the ordinary road above — a task in a folder of its own, briefed, checked
 and landed — and its result stays in Tasks.
 
 ## Can it keep what it read — does the moved work start over, why did it stop reading and start a task, inherit
@@ -2413,7 +2423,7 @@ record for you with its `tasks` tool; just ask.
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
-## The column comes back after a restart — tasks reappear on resume or a switch back
+## The column comes back after a restart — all my tasks disappeared after a restart, tasks reappear on resume or a switch back
 
 **Reopening a conversation re-draws its own tasks, and the jobs it ran.** `/resume`,
 `codeaf resume`, and switching back behind home all rebuild the column from the record:
@@ -3853,7 +3863,7 @@ That is why coordination over pieces YOU handed out is not moved into a task (*W
 pieces you handed out does not move your answer*).
 
 Nothing asks you about those. **A sub-task starts without a card:** the countdown card is
-how a person redirects work, and there is nobody inside a task's own copy to show one to, so a
+how a person redirects work, and there is nobody inside a task's own folder to show one to, so a
 task's own proposals begin the moment they are made. What you see instead is the tree.
 
 Where they show up:
@@ -4841,6 +4851,13 @@ holds the same door through its `tasks` tool, and whichever of the two is used f
 The other finds the question already gone and says `already answered` rather than raising
 an error.
 
+## Saving task progress and desktop settings on Windows
+
+Task checkpoints and session, project and desktop records wait up to 630 ms when
+a Windows reader briefly has the old file open. A lasting failure keeps the old
+file and the writer's usual error handling. A task checkpoint failure is still
+logged as `session: could not write the task checkpoint` with its path and cause.
+
 ## The task has a conflict — conflicts with your branch, resolve it or drop it
 
 When the same file changed on both sides, nothing is forced onto your branch: the merge is
@@ -5766,6 +5783,118 @@ asking again. Its cost is never guessed or reset to make it resume, it is never
 counted as completed, and its folder is never guessed. Programs that had already started keep their existing
 interrupted-program behavior; this restart rule concerns ordinary planned tasks.
 
+## App task proposals, Hold, typing, and irreversible tasks
+
+The app's Tasks panel reads the engine's own task tree, progress, spending and
+steps, and a conversation the app is not holding still lists every task its
+folder's `tasks.json` holds, finished ones included; one the conversation left
+running when it closed is listed as failed with the result `Interrupted`. A
+proposed task in the app starts after 12 seconds by default; the app's own
+*proposed task clock* setting changes that, and the terminal's
+`task.autoapprove_seconds` is not read by the app. **Hold** and typing in one proposal remove only that task's
+clock. Other proposals keep their own deadlines. Leaving the tab does not hold
+anything. Start it answers immediately; No leaves a "Declined by you" receipt.
+A proposal marked `irreversible:true` never gets a clock. Without a watching
+session, it refuses with "this task needs your answer in a watching session".
+
+The app's task ids include their agent (`<agent>:1`), so task 1 in two agents
+is two separate objects. A stale expected state or version refuses with
+"stale: that task changed; open it again". Refresh that task before answering again.
+
+## App task notes, Change the brief, Pause, and your call
+
+A note reaches a running task through its existing steering lane. Its
+`read_at_step` stays absent until a model request carries those words. Each
+note says who left it — you or the task — from the engine's own record, and a
+note from a record that never said stays unlabelled rather than being given to
+you. An opened task shows the result, changed file paths, work log, notes and
+brief. Change the brief sends new instructions to the same task; the original
+task contract remains on its record. Plan tasks use their existing note and
+brief writers; they omit a step receipt when the engine has no such fact.
+
+## What a task's work log knows about each step
+
+The work log is one row per step, carrying that call's own facts: the tool, the
+command, when it started, how long it took, its exit code and the tail of its
+output. They are read back from whichever record the task has — the live ring
+while it runs, its journal after a restart, a handed-over run's trajectory —
+and a fact appears only where it was recorded. A step still running has no
+duration and no outcome; a step a killed session left unsettled has neither
+either; a step whose record kept no exit code is not reported as having passed.
+
+A step from an older record that kept a command and nothing else about it stays
+one plain line with its own words. It is not given a tool name, because nothing
+on that record says which tool ran.
+
+A task says how many steps it took when some record counted them, and says
+nothing at all when none did. "Took no steps" and "nobody counted" are
+different facts and are kept apart; a surface showing the second as `0 steps`
+would be claiming a count that was never made.
+
+Pause lets the current request or action finish and holds the next request or
+action. Resume releases it. Stop keeps the work already written. The per-task
+cap is the saved one, $5 when nothing was saved, and the engine stops further
+worker calls at that cap.
+
+A task at **your call** has no clock. Accept takes the work as done. Not right
+and Tell it… reopen the same task, with your words. Recheck asks its checker
+again. Let it decide hands this decision to codeaf through the existing task
+decision door. These five actions do not answer an unstarted proposal.
+
+## Undo a quick task, file hashes, and promotion before tests or file 31
+
+A quick task keeps each regular file's bytes before its first write and its
+latest after bytes in its private engine checkpoint. Repeated writes keep the
+same original. The app shows its paths and SHA-256 hashes, never the saved
+bytes. An absent file has an empty hash; an empty file has a real hash.
+
+Undo is available for an ended quick task, including one you stopped. It checks **every** after hash
+first. If any file changed, it restores nothing and lists `changed_since`,
+with "Can't undo cleanly: 2 files changed since" for two paths. Otherwise it
+restores every original file, including its permissions, and removes files
+that the quick task created. The bytes and hashes survive an engine restart.
+
+Before writing the 31st distinct file, the worker asks to become a full task.
+It also asks before **any shell call that could change something**, including
+tests hidden in scripts or aliases, before workspace restores or merges, and
+before media creation. Shell effects cannot be counted safely, so only a
+command that cannot change anything — a search, a listing, `git status`, never
+a compound line — runs inside a quick task; that is how a rename finds every use
+without becoming a full task. In the desktop app quick tasks are always
+offered, even where full tasks are runs.
+There is no clock on this promotion. Promote starts an ordinary task after
+the quick worker leaves, continuing in the same folder with its existing
+edits and the blocked action in its brief. Cancel stops the quick worker and
+keeps its edits. Promote is also available before the limit is reached.
+
+## Why did the chat hand off a reading — can that reading ask to become a task?
+
+When the chat hands a set of file reads to a quick task on its own, that worker
+can only look with `read`, `ls`, `grep` and `find`. It cannot write or edit files,
+run shell commands, create media, restore or merge a workspace, or ask you a
+question. A refused call tells it which reading tools it can use and that
+nothing ran. Ordinary quick work you or the model starts still asks before
+becoming a full task.
+
+The reading's distilled answer comes back as the first read's result. If the
+reading fails, says nothing or waits too long, the chat reads inline; moving
+the reply to a task lets its reading go. Neither a finished reading nor one
+the chat abandoned sends a separate landing message.
+
+Quick work has its own app surface, separate from the task list and task search.
+A quick task that ended without finishing says `stopped`, keeps the files it
+changed and can still be undone. It says `done` when it finished or became a
+full task. These endings survive restarting the engine; a settled quick task
+never offers a promotion it is no longer waiting for.
+
+## A reply running long in the app, and moving it to a task
+
+In the desktop app a running reply is never moved to a task on its own: the
+checkpoints that move a long or wide reply in the terminal stand down. After
+three minutes the app is told the reply is running long, with how many steps
+it has taken, and offers to move it. Moving it waits for the reply's next step,
+writes a brief from what it has done, and continues the work as a task; a reply
+that finishes first simply finishes.
 ## Crew details and run again with a stronger crew on the task result
 
 Open a finished task result in Tasks to read its crew, model seats, provider, estimate,

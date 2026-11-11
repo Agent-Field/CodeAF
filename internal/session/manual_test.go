@@ -23,6 +23,9 @@ func TestTheManualMentionsEveryToolOnTheBelt(t *testing.T) {
 	// that built the belt without one would let a conditional tool ship with no
 	// page — green, and wrong in exactly the way this test exists to catch.
 	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
+	// AND AN INDEX, so share_deliverable — present only where a shared row has
+	// somewhere to land (share_tool.go) — is on the belt this gate walks.
+	agent.config.ArtifactsIndex = filepath.Join(t.TempDir(), ArtifactsIndexName)
 	// AND THE SHELF IS REACHED THROUGH A STORE. `use_skill` is gated on a non-nil
 	// Memory (tools_skill.go) — without one the verb never lands on the belt and
 	// the gate would let it ship without a page. So a store is opened so the belt

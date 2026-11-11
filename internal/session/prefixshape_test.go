@@ -36,9 +36,9 @@ type prefixShape struct {
 	build func(t *testing.T, config *Config)
 }
 
-// prefixShapes are the four the cost question is actually asked about: the
-// conversation somebody types into, the same conversation with approvals off,
-// and a task room at both of the depths a room can stand at.
+// prefixShapes measure the conversation somebody types into, that conversation
+// with approvals off, the manager with durable factory status, and a task room
+// at both depths a room can stand at.
 var prefixShapes = []prefixShape{{
 	name: "chat",
 	build: func(t *testing.T, config *Config) {
@@ -53,6 +53,12 @@ var prefixShapes = []prefixShape{{
 	build: func(t *testing.T, config *Config) {
 		conversationDoor(t, config)
 		config.AskConsent = false
+	},
+}, {
+	name: "factory manager",
+	build: func(t *testing.T, config *Config) {
+		conversationDoor(t, config)
+		config.FactoryRun = &savedManagerDoor{}
 	},
 }, {
 	// A room that may still hand parts of its own work out (task_run.go).

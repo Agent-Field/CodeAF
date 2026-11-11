@@ -42,6 +42,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
@@ -167,6 +168,12 @@ func (a *Agent) deliverConsent(id uint64, answer consentAnswer) {
 // it is answered before this, in [Agent.approve], because a capability that is
 // off must not produce a question about a call that is never going to run.
 func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
+	// THE CREDENTIAL FLOOR HOLDS WITH NO POLICY AT ALL, and it is asked here so the
+	// early start of a read (loop.go) refuses it too. It runs with the workspace,
+	// which the policy does not have, so a relative path and a link are placed.
+	if read, hit := a.credentialRead(call); hit {
+		return read.Decision(), true
+	}
 	policy := a.approvalGate()
 	if policy == nil {
 		return approval.Decision{}, false
@@ -194,7 +201,7 @@ func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision appro
 	}
 	switch a.connect.CapabilityState(service, capability) {
 	case connect.StateYes:
-		if decision.Action == approval.ActionPrompt {
+		if decision.Action == approval.ActionPrompt && decision.ProfileReadError == "" {
 			return approval.Decision{
 				Action: approval.ActionAllow,
 				Rule:   "you said yes to " + strconv.Quote(phrase),
@@ -214,6 +221,13 @@ func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision appro
 // approve is the gate. It returns the refusal to hand the model and false when
 // the call must not run.
 func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (toolResult, bool) {
+	// AN AGENT DOES NOT READ THE PERSON'S CREDENTIALS, and nothing below can say
+	// otherwise: no mode, rule, memo, guardian or setup grant is asked about it
+	// (internal/approval's credentials.go). It reads as the refusal itself, with
+	// no rule's name in front of it, because the wording is what ends the attempt.
+	if read, hit := a.credentialRead(call); hit {
+		return refusal(read.Message()), false
+	}
 	// WHAT THE PERSON HAS TURNED OFF NEVER RUNS, and it is answered here rather
 	// than by the policy: it is not a judgement about this call, it is a hand
 	// this build does not have. It comes FIRST, ahead of the policy, the memo
@@ -227,7 +241,10 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	if governed {
 		decision = a.setupFloor(ctx, decision)
 	}
-	if !governed || decision.Action == approval.ActionAllow || setupGranted(ctx, call, decision) {
+	if governed && decision.Action == approval.ActionAllow && decision.Scope != "" && hub != nil {
+		hub.send(Event{Kind: EventConsentAllowed, Tool: call.Function.Name, Args: argsText(call), CallID: call.ID, Hint: a.gloss(call), Rule: decision.Scope})
+	}
+	if !governed || decision.Action == approval.ActionAllow || (decision.ProfileReadError == "" && setupGranted(ctx, call, decision)) {
 		return toolResult{}, true
 	}
 	if decision.Action == approval.ActionDeny {
@@ -247,7 +264,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	//     ran silently for the rest of the session. The memo is somebody saying
 	//     they are done being asked about ordinary work. It is not somebody
 	//     saying they have read a message that has not been written yet.
-	if !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+	if decision.ProfileReadError == "" && !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
 		if remembered, known := a.rememberedConsent(call.Function.Name); known {
 			if remembered {
 				return toolResult{}, true
@@ -266,7 +283,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// refusal, which is the whole point of having said so in advance; with it off
 	// — the default — this line does nothing and a headless run refuses exactly as
 	// it always did.
-	if a.guardianAllows(ctx, hub, call, decision) {
+	if decision.ProfileReadError == "" && a.guardianAllows(ctx, hub, call, decision) {
 		return toolResult{}, true
 	}
 
@@ -277,14 +294,14 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// worker with no colleague in the room is that this one needed a person and
 	// there is not one.
 	if a.config.InTask {
-		return refusal("refused in a task: " + decision.Rule + " — nobody to ask"), false
+		return approvalRefusal("refused in a task: "+decision.Rule+" — nobody to ask", decision), false
 	}
 
 	// Nobody is watching. Denying is the only honest answer: blocking would
 	// hang a headless run forever on a question with no reader, and allowing
 	// would make "prompt" mean "allow" wherever the surface is not a terminal.
 	if !a.config.AskConsent || hub == nil {
-		return refusal("needs approval but no resolver is attached: " + decision.Rule), false
+		return approvalRefusal("needs approval but no resolver is attached: "+decision.Rule, decision), false
 	}
 
 	allowed, err := a.ask(ctx, hub, call, decision)
@@ -299,6 +316,12 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal("denied by the person: " + decision.Rule), false
 	}
 	return toolResult{}, true
+}
+
+// credentialRead asks the floor about one call, standing in this agent's folder.
+func (a *Agent) credentialRead(call ai.ToolCall) (approval.CredentialRead, bool) {
+	scope := approval.DefaultCredentialScope(a.config.Workspace)
+	return scope.Read(call.Function.Name, json.RawMessage(call.Function.Arguments))
 }
 
 // notApprovedWording is what the model is told when the wait ended without
@@ -390,7 +413,7 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 	// three away the moment the event went out — so home, a second window and
 	// the phone had the sentence and nothing under it. The short form goes up
 	// beside it unchanged, for the builds that only ever read that.
-	defer a.presenceAskingWhole(a.consentAsk(id, call, decision), announce)()
+	defer a.presenceAskingWhole(ctx, a.consentAsk(id, call, decision), announce)()
 
 	select {
 	case answer := <-answers:
@@ -534,6 +557,14 @@ func (a *Agent) PendingConsent() []uint64 {
 	return ids
 }
 
+func approvalRefusal(reason string, decision approval.Decision) toolResult {
+	result := refusal(reason)
+	if decision.ProfileReadError != "" {
+		result.err = &approval.ProfileReadFailure{Reason: reason}
+	}
+	return result
+}
+
 // refusal is one refused call as the model sees it: an error result, with the
 // reason in the words the person would read.
 func refusal(reason string) toolResult {
@@ -573,6 +604,11 @@ func withoutWidening(options []AnswerOption) []AnswerOption {
 // repository's generic-and-meta law: internal/approval says which shapes are
 // grave, and this lane carries the grade.
 func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decision) Question {
+	scopes, alwaysAsk := config.ApprovalScopes(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	outside := ""
+	if policy := a.approvalGate(); policy != nil {
+		outside = policy.OutsideRule(call.Function.Name, []byte(call.Function.Arguments))
+	}
 	irreversible := approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments))
 	stakes := StakesCostly
 	options := AnswerOptions(QuestionConsent)
@@ -589,14 +625,17 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		scope = []AnswerScope{ScopeOnce}
 	}
 	return Question{
-		ID:      id,
-		Kind:    QuestionConsent,
-		Ask:     AskPermission,
-		Form:    FormLine,
-		Asker:   Asker{Kind: AskerEngine},
-		Head:    ConsentHead(call.Function.Name, call.Function.Arguments),
-		Reason:  consentReason(call, decision),
-		Subject: SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
+		ID:            id,
+		Outside:       outside,
+		ConsentScopes: scopes,
+		AlwaysAsk:     alwaysAsk,
+		Kind:          QuestionConsent,
+		Ask:           AskPermission,
+		Form:          FormLine,
+		Asker:         Asker{Kind: AskerEngine},
+		Head:          ConsentHead(call.Function.Name, call.Function.Arguments),
+		Reason:        consentReason(call, decision),
+		Subject:       SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
 		// AND WHICH STEP ASKED, so that three approvals raised by one tool batch
 		// are drawn and answered as the one thing they are (question.go's
 		// [Question.Batch]).

@@ -574,7 +574,8 @@ func TestTheAwaitedCommandsEndingWakesTheConversation(t *testing.T) {
 				arguments, _ := json.Marshal(struct {
 					Command    string `json:"command"`
 					Background bool   `json:"background"`
-				}{Command: command, Background: true})
+					Notify     bool   `json:"notify"`
+				}{Command: command, Background: true, Notify: true})
 				return toolResponseWithText("start-build", "bash", string(arguments),
 					"Starting the build in the background."), nil
 			}

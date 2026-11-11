@@ -176,6 +176,9 @@ func (e nobodyToRead) Unwrap() error { return ErrNobodyToRead }
 // (assignment.go, task_ledger.go). [SteerReceipt.Held] is how a surface tells
 // that apart from delivery, in the engine's own words.
 func (a *Agent) SteerTask(id uint64, text string) (SteerReceipt, error) {
+	if err := a.CheckWork(); err != nil {
+		return SteerReceipt{}, err
+	}
 	return a.sayToTask(id, text, fromPerson, spokenSource{})
 }
 
@@ -281,6 +284,9 @@ func (s SteerSource) spoken() spokenSource {
 // made worse off — it simply cannot ask again safely, and the surface that
 // cannot is the one that must keep the words and ask the person.
 func (a *Agent) SteerTaskFrom(id uint64, text string, from SteerSource) (SteerReceipt, error) {
+	if err := a.CheckWork(); err != nil {
+		return SteerReceipt{}, err
+	}
 	// THE CONVERSATION IS CHECKED FIRST, because the id below is only meaningful
 	// inside the one the caller meant ([SteerSource.Conversation]).
 	if err := a.thisConversation(from.Conversation); err != nil {
@@ -364,9 +370,10 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 	if node == nil {
 		// A RUN'S ROWS WEAR TASK NUMBERS AND ARE NOT NODES, so the run is asked
 		// before the answer that there is no such task (stoprun.go's
-		// [Agent.sayToRunRow]). A row the rail draws running must never be
-		// answered as though it did not exist.
-		if receipt, owned, err := a.sayToRunRow(id, text, origin); owned {
+		// [Agent.sayToRunRowFrom]). A row the rail draws running must never be
+		// answered as though it did not exist. The source rides along, so a
+		// person's key is committed in the note's own store transaction.
+		if receipt, owned, err := a.sayToRunRowFrom(id, text, origin, source); owned {
 			return receipt, err
 		}
 		return SteerReceipt{}, fmt.Errorf("no task %d in this session", id)
@@ -399,7 +406,7 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 	// disk. It is the node's own and is never held while the graph's is
 	// ([TaskNode.admit] states the ordering); an unnamed send takes it not at all
 	// and behaves exactly as it always did.
-	if source.id.live() {
+	if source.written() {
 		node.admit.Lock()
 		defer node.admit.Unlock()
 	}
@@ -580,6 +587,10 @@ func heldForTask(node *TaskNode, text string, origin messageOrigin, source spoke
 // recognised on a second ask, so there is nothing a durable write would protect
 // and it takes the road it always took.
 //
+// AN AUTHORED NOTE'S KEY TAKES THE SAME ROAD ([spokenSource.written]). It is not
+// an identity and is never recognised again, but a surface reads it back off the
+// page, so a note a worker has read must be on the disk with its key.
+//
 // A WRITE THAT FAILED ADMITTED NOTHING. The direction comes back off the record
 // inside the same hold, so no reader and no later checkpoint ever sees it, and
 // the person is told plainly that nothing was sent.
@@ -589,7 +600,7 @@ func admitDirection(node *TaskNode, text string, from directionFrom, source spok
 	if node == nil {
 		return directionHeard{}, nil
 	}
-	if !source.id.live() || node.graph == nil {
+	if !source.written() || node.graph == nil {
 		return node.heardDirection(text, from, source), nil
 	}
 	// The two closures run with the graph's lock held, which is what makes the
@@ -611,7 +622,7 @@ func dropDirection(node *TaskNode, heard directionHeard, source spokenSource) er
 	if node == nil {
 		return nil
 	}
-	if !source.id.live() || !heard.fresh() || node.graph == nil {
+	if !source.written() || !heard.fresh() || node.graph == nil {
 		node.forgetDirection(heard.id)
 		return nil
 	}

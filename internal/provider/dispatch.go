@@ -262,6 +262,19 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
 	tellTakeover(ctx)
+	// OBSERVED SENDS ARE COUNTED PER Do, SO THE DOOR MUST BE ONE THIS FOUNDATION
+	// CAN COUNT (attemptobserver.go). Unobserved, this is one context lookup.
+	observer := actualObserverFrom(ctx)
+	if observer != nil {
+		if err := c.RequireActualAttemptCoverage(); err != nil {
+			return nil, err
+		}
+		// The attempt's identity is the trace's per-send ID; a send without a
+		// trace (the document parser) has none to name.
+		if knobs.trace == nil {
+			return nil, &UnsupportedAttemptSurfaceError{SurfaceDocument, "this send carries no attempt identity"}
+		}
+	}
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
 	// plus the thinking pass's room — and not for the caller's figure alone.
@@ -270,6 +283,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// came back as a timeout.
 	ceiling, _ := c.ceilingFor(request, knobs)
 	httpClient := c.clientFor(c.modelFor(request), stream, ceiling)
+	if observer != nil {
+		// A followed redirect is a second paid send that no single Do can see, so
+		// an observed send hands the 3xx back instead (it is then an ordinary error).
+		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	// The address is part of the bound billing door. It changes only for the
 	// one separately authorised plan overflow below; every ordinary retry and
 	// endpoint move stays on the address the service was connected to.
@@ -466,6 +484,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// this loop with a new body and the same trace.
 		if knobs.trace != nil {
 			knobs.trace.attemptBase = currentBase
+			knobs.trace.attemptBilling = c.attemptBilling(usingOverflow)
+			knobs.trace.attemptBilled = true
 		}
 		knobs.trace.begin()
 		if attempt > 0 && switchedDoor {
@@ -639,6 +659,18 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
 				sharedLimiter.release(false, 0)
 				cancelAttempt()
+				return nil, &AttemptDeniedError{Cause: err}
+			}
+		}
+		// THE ONE PLACE A SEND IS ADMITTED: after the request is built and the
+		// limiter has let it through, and before anything is written to the log
+		// or the watchdog, so a refusal leaves no trace of a send that never was.
+		var handle *attemptHandle
+		if observer != nil {
+			var err error
+			if handle, err = c.admitAttempt(ctx, observer, request, knobs, usingOverflow); err != nil {
+				sharedLimiter.release(false, 0)
+				cancelAttempt()
 				return nil, err
 			}
 		}
@@ -659,6 +691,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			attempt: attempts, began: attemptBegan, phase: calllog.PhaseStart,
 		})
 		response, err := providerhttp.Do(&httpClient, httpRequest)
+		if handle != nil {
+			handle.afterDo(ctx, err, response != nil && err == nil)
+		}
 		if err == nil && response != nil && response.StatusCode == http.StatusPaymentRequired {
 			// Every call shape passes this transport door, including reflexes,
 			// titles, tasks, and the affordable retry itself.
@@ -749,6 +784,18 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			continue
 		}
 		connectionPasses = 0
+		if observer != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
+			// A refused redirect must never reach the content-type learner: an
+			// HTML redirect is not evidence that this client cannot stream.
+			err := &UnsupportedAttemptSurfaceError{SurfaceCompletion, "an observed completion cannot follow an HTTP redirect"}
+			_ = response.Body.Close()
+			sharedLimiter.release(false, 0)
+			cancelAttempt()
+			handle.unknown()
+			c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+				attempt: attempts, began: attemptBegan, status: response.StatusCode, err: err})
+			return nil, err
+		}
 		potentialRateLimit := response.StatusCode == http.StatusTooManyRequests
 		// Error bodies can stall too. They are read below before a retry, so
 		// they need the same idle bound as successful streaming bodies.
@@ -803,14 +850,18 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		}
 		// A context refusal needs a smaller request, even when the router names
 		// the machine that refused it. Return it to the conversation before an
-		// endpoint walk can resend the same oversized bytes.
-		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow {
+		// endpoint walk can resend the same oversized bytes. A model capability
+		// refusal also belongs to its one repair rather than an endpoint walk.
+		if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && (failure.Overflow || failure.ReasoningUnsupported) {
 			response.Body = rewound(peek, response.Body)
 			sharedLimiter.release(false, 0)
 			return response, nil
 		}
 		response.Body.Close()
 		cancelAttempt()
+		// A refusal that is walked past carries no usage block, and "refused" is
+		// not "free": the send's price is unknown, never zero.
+		handle.unknown()
 		lastErr = apiError(response.StatusCode, peek)
 		// AND THE COMEBACK IS READ OUT OF THE BODY WHEN NO HEADER CARRIED IT. The
 		// census found `retry_after` recorded on not one row in ten days, while
@@ -920,6 +971,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// never reaches the endpoint walk or model chain: it either takes the one
 		// configured metered door, once, or returns its typed pause immediately.
 		if refusal.Kind == refusalPlanPaused {
+			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
+			now := c.clock()
+			postPhase(PhaseNews{Phase: PhasePlanPaused, Detail: detail, Since: now, At: now,
+				Model: c.modelFor(request), SourceID: c.config.SourceID, PlanReset: refusal.Reset,
+				Role: RoleFrom(ctx), Session: SessionFrom(ctx), Subject: NodeFrom(ctx)})
 			useOverflow := c.config.OverflowOnPlanPause &&
 				strings.TrimSpace(c.config.PlanOverflow) != "" && !usingOverflow &&
 				claimPlanOverflow(ctx)
@@ -934,9 +990,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				pacedSince = time.Time{}
 				continue
 			}
-			detail := planPauseDetail(refusal.Reset, c.config.PlanOverflowDoor)
-			now := c.clock()
-			notePhase(ctx, c.modelFor(request), PhasePlanPaused, detail, now, now, "")
+
 			return nil, &PlanPauseError{
 				Reset: refusal.Reset, OverflowDoor: c.config.PlanOverflowDoor, Cause: lastErr,
 			}

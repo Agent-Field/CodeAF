@@ -14,7 +14,7 @@ import { RaftEffectsFacade } from './effects.js';
 import { Wire, empty, json, unwrap } from '../wire.js';
 import { prefixOf, signedUri } from '../base.js';
 import { fromBase64Url } from '../codec.js';
-import { presenceOf, parseBeat } from '../presence.js';
+import { parseBeat } from '../presence.js';
 import { parseHolds } from '../vouch.js';
 import { rotationView } from '../rotation.js';
 import { checkTime } from '../verify.js';

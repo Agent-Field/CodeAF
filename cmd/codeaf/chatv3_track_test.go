@@ -115,12 +115,14 @@ func TestTheEngineDoorTracksEveryConversationItBuildsAndForgetsIt(t *testing.T) 
 	}
 	var boot *ast.FuncDecl
 	for _, decl := range file.Decls {
-		if function, ok := decl.(*ast.FuncDecl); ok && function.Name.Name == "bootEngine" {
+		// The assembly half of the door: bootEngine moves into the workspace
+		// and hands over to it, and `codeaf app` calls it directly.
+		if function, ok := decl.(*ast.FuncDecl); ok && function.Name.Name == "assembleEngine" {
 			boot = function
 		}
 	}
 	if boot == nil {
-		t.Fatal("bootEngine is gone from engine.go — this law names the door that opens an engine conversation")
+		t.Fatal("assembleEngine is gone from engine.go — this law names the door that opens an engine conversation")
 	}
 
 	built, tracked, closed := 0, 0, false
@@ -149,10 +151,10 @@ func TestTheEngineDoorTracksEveryConversationItBuildsAndForgetsIt(t *testing.T) 
 	})
 
 	if built == 0 {
-		t.Fatal("bootEngine builds no conversation — this law can no longer read the door it was written for")
+		t.Fatal("assembleEngine builds no conversation — this law can no longer read the door it was written for")
 	}
 	if tracked != built {
-		t.Fatalf("bootEngine builds %d conversations and tracks %d: a conversation this process does not hold is one no broadcast reaches, so a service connected while it is open never arrives", built, tracked)
+		t.Fatalf("assembleEngine builds %d conversations and tracks %d: a conversation this process does not hold is one no broadcast reaches, so a service connected while it is open never arrives", built, tracked)
 	}
 	if !closed {
 		t.Fatal("the engine hands the wire no Closed door: tracking without it grows the held list for the life of a daemon that outlives every conversation in it")

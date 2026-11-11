@@ -34,11 +34,18 @@ import (
 const ActionsFile = "delegate-actions.jsonl"
 
 // The kinds of line the log holds: a stage record, a step record, and the
-// terminal record's status and message.
+// terminal record's status, message and allow-listed facts — and the start of
+// a launch, which is codeaf's and not the program's.
 const (
 	ActionStage = "stage"
 	ActionStep  = "step"
 	ActionEnd   = "end"
+	// ActionStart is the line codeaf writes BEFORE it starts a program's
+	// process, carrying the launch's identity ([NewLaunch]) and nothing else.
+	// No program's vocabulary reads it, so no page shows it; it is where a
+	// reader looking back from the end of the log knows it has reached the
+	// launch's first line.
+	ActionStart = "start"
 )
 
 // Action is one line of the log.
@@ -46,7 +53,18 @@ type Action struct {
 	// At is when codeaf received the record.
 	At   time.Time `json:"at"`
 	Kind string    `json:"kind"`
-	// Stage, Status and Data are a stage's; Status is the ending's too.
+	// Launch is the launch of the program's process the line was received
+	// from ([NewLaunch]), stamped by codeaf as it writes the line, and absent
+	// on a line written before launches were.
+	//
+	// IT IS WHAT TIES A LINE TO A PROCESS. The log outlives the process, a
+	// task's program can be launched again, and At is a wall clock that steps
+	// back and repeats; a reader asking which lines are the current process's
+	// compares this with the program record's own launch, and never a time.
+	Launch string `json:"launch,omitempty"`
+	// Stage, Status and Data are a stage's; Status is the ending's too, and so is
+	// Data, as the allow-listed facts of the terminal's ([EndFacts]) — never the
+	// terminal's data whole.
 	Stage  string          `json:"stage,omitempty"`
 	Status string          `json:"status,omitempty"`
 	Data   json.RawMessage `json:"data,omitempty"`
@@ -78,10 +96,17 @@ func StepAction(at time.Time, record StepRecord) Action {
 	}
 }
 
+// StartAction is the line that opens one launch's lines in the log, written
+// at at, before the launch's process is started.
+func StartAction(at time.Time, launch string) Action {
+	return Action{At: at, Kind: ActionStart, Launch: launch}
+}
+
 // EndAction is the terminal record as the log's last line: its status and its
-// sentence. The rest of the record is the result's, which the run keeps whole.
+// sentence, and the allow-listed facts of its data ([EndFacts]). The rest of the
+// record is the result's, which the run keeps whole.
 func EndAction(at time.Time, t Terminal) Action {
-	return Action{At: at, Kind: ActionEnd, Status: t.Status, Message: t.Message}
+	return Action{At: at, Kind: ActionEnd, Status: t.Status, Message: t.Message, Data: endDataOf(endFactsOf(t.Data))}
 }
 
 // capped is the line as it is written: every text held to the reader's own
@@ -93,7 +118,16 @@ func (a Action) capped() Action {
 	a.Message = cut(a.Message, turnTextCap)
 	a.Tool, a.Step = label(a.Tool), label(a.Step)
 	a.Stage, a.Status = label(a.Stage), label(a.Status)
-	a.Data = stageData(a.Data)
+	if !ValidLaunch(a.Launch) {
+		a.Launch = ""
+	}
+	if a.Kind == ActionEnd {
+		// THE ENDING'S DATA IS RE-PROJECTED THROUGH THE ALLOW-LIST HERE TOO, so a
+		// line built by hand reaches the file as the same bounded facts.
+		a.Data = endDataOf(endFactsOfRaw(a.Data))
+	} else {
+		a.Data = stageData(a.Data)
+	}
 	return a
 }
 
@@ -191,6 +225,12 @@ type Shown struct {
 	Memory bool   `json:"memory,omitempty"`
 	Model  string `json:"model,omitempty"`
 	Reason string `json:"reason,omitempty"`
+	// Ending is the typed facts of an ending line ([EndFacts]): what the program
+	// claimed beside what it observed, its report files and its counts. Nil for
+	// every other line and for an ending that kept none. It is set by
+	// [Delegate.Reader] from the log, never by a program's vocabulary, and it
+	// changes none of the words above.
+	Ending *EndFacts `json:"ending,omitempty"`
 }
 
 // ActionReader reads a program's action log for its page: each line, in the
@@ -219,6 +259,7 @@ func (d Delegate) Reader() ActionReader {
 			return Shown{}, false
 		}
 		shown.At = action.At
+		shown.Ending = action.Ending()
 		return shown, true
 	}
 }

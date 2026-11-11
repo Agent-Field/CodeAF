@@ -162,9 +162,13 @@ func (a *Agent) belt() []bare.Tool {
 	for index, tool := range tools {
 		switch tool.Name {
 		case "bash":
-			tools[index] = a.backgroundBash(tool)
+			tools[index] = a.backgroundBash(a.publishingBash(tool))
 		case "read":
 			tools[index] = a.pdfRead(tool)
+		case "edit":
+			if !a.config.InTask {
+				tools[index] = a.deliverableWrite(tool)
+			}
 		case "write":
 			// write is WRAPPED so a file can be continued rather than only
 			// replaced (tools_write.go): append:true is the one argument the
@@ -172,8 +176,20 @@ func (a *Agent) belt() []bare.Tool {
 			// for, and a belt that cannot append is a belt whose only answer
 			// to "the output limit cut your file in half" is to pay for the
 			// whole file again.
-			tools[index] = a.appendableWrite(tool)
+			tools[index] = a.deliverableWrite(a.appendableWrite(tool))
 		}
+	}
+	// A chat-owned reading carries only the readers that armed its hand-off.
+	// Filter this belt after its ordinary wrappers, so there is still one road
+	// that builds a read and no shelf that can put a writing hand back on it.
+	if a.config.readingTask() {
+		readers := tools[:0]
+		for _, tool := range tools {
+			if earlyTools[tool.Name] {
+				readers = append(readers, tool)
+			}
+		}
+		return readers
 	}
 	// AND THE THREE HANDS THAT CAN BE AIMED AT A FOLDER THIS CONVERSATION ONLY
 	// REFERS TO are wrapped once more, OUTERMOST (standingbelt.go): where you
@@ -196,6 +212,12 @@ func (a *Agent) belt() []bare.Tool {
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
 	tools = append(tools, a.askTool())
+	// request_secret, only where a person can answer: headless, a credential
+	// question has nobody to type into it, and a verb that can only ever come
+	// back "nobody to ask" is a verb this belt does not carry.
+	if a.config.mayRequestSecret() {
+		tools = append(tools, a.requestSecretTool())
+	}
 	// watch, on the predicate the prompt's own `watch` sentence is composed
 	// from (beltfacts.go): a node has no conversation for a delta to arrive in.
 	if a.config.mayWatch() {
@@ -248,6 +270,15 @@ func (a *Agent) belt() []bare.Tool {
 	// automation_report is the run's own door, on its belt alone.
 	tools = append(tools, a.automationTools()...)
 	tools = append(tools, a.automationReportTools()...)
+	// factory_add (tools_factory.go) is the chat's door onto the factory floor,
+	// and it is absent on the law that governs every conditional verb: no door
+	// behind it, no verb. It only ever raises a card, and nothing starts from it.
+	tools = append(tools, a.factoryTools()...)
+	// A factory stage's two verbs (tools_stage.go), absent unless this conversation is one.
+	tools = append(tools, a.stageTools()...)
+	// factory_floor (tools_floor.go) is the foreman's read of the whole floor
+	// and its marks, absent on the same law: no floor behind it, no verb.
+	tools = append(tools, a.floorTools()...)
 	tools = append(tools, a.harnessTools()...)
 	// The saved PROGRAMS, and the list that says which ones there are
 	// (tools_subharness.go). They are conditional on the same terms the three
@@ -255,6 +286,10 @@ func (a *Agent) belt() []bare.Tool {
 	// watching who can answer the card — because a model told it can run a saved
 	// program plans around that ability for the rest of the conversation.
 	tools = append(tools, a.subharnessTools()...)
+	// share_deliverable hands the person a file as a result (share_tool.go). It
+	// rides wherever a shared row has somewhere real to land — a conversation's
+	// index, or the sink a worker was built with — and is absent elsewhere.
+	tools = append(tools, a.shareTools()...)
 	tools = append(tools, a.memoryTools()...)
 	tools = append(tools, a.knowledgeTools()...)
 	// An owned conversation has no project until the person names one. The

@@ -19,8 +19,15 @@ type remoteUsage struct {
 	Seat                  Seat
 }
 type remoteLedgerCursor struct {
+	info   os.FileInfo
 	offset int64
 	seen   map[string]bool
+}
+
+// unchanged accepts cached membership only for the generation it describes.
+func (memo *remoteLedgerCursor) unchanged(info os.FileInfo) bool {
+	return memo != nil && memo.info != nil && os.SameFile(info, memo.info) &&
+		info.Size() == memo.info.Size() && info.ModTime().Equal(memo.info.ModTime())
 }
 
 var remoteUsageMemo = struct {
@@ -28,8 +35,9 @@ var remoteUsageMemo = struct {
 	ledgers map[string]*remoteLedgerCursor
 }{ledgers: map[string]*remoteLedgerCursor{}}
 
-// Mirrored calls are paid elsewhere. Refreshing the appended tail under a
-// process-shared lock prevents a second chat owner from repeating a paid call.
+// Mirrored calls are paid elsewhere. Membership belongs to one ledger
+// generation; a restore or another writer invalidates both present and absent
+// events before the process-shared lock permits another charge.
 func appendRemoteUsage(path string, line UsageLine) error {
 	remoteUsageMemo.Lock()
 	defer remoteUsageMemo.Unlock()
@@ -50,6 +58,12 @@ func appendRemoteUsage(path string, line UsageLine) error {
 		return err
 	}
 	defer f.Close()
+	// Ordinary ledger writers use the same file lock while checking identity
+	// and appending. Remote event deduplication keeps its own cursor and lock.
+	if err := filelock.Lock(f, true, false); err != nil {
+		return err
+	}
+	defer filelock.Unlock(f)
 	memo, newline, err := readRemoteUsageTail(path, f)
 	if err != nil {
 		return err
@@ -68,7 +82,7 @@ func readRemoteUsageTail(path string, f *os.File) (*remoteLedgerCursor, bool, er
 		return nil, false, err
 	}
 	memo := remoteUsageMemo.ledgers[path]
-	if memo == nil || info.Size() < memo.offset {
+	if !memo.unchanged(info) {
 		memo = &remoteLedgerCursor{seen: map[string]bool{}}
 		remoteUsageMemo.ledgers[path] = memo
 	}
@@ -96,8 +110,9 @@ func (memo *remoteLedgerCursor) appendCall(f *os.File, line UsageLine, newline b
 		memo.seen[line.CallID] = true
 	}
 	// Leave offset at the last read boundary: another process or the ordinary
-	// asynchronous ledger writer may have appended while this call was written.
-	return nil
+	// asynchronous ledger writer may append before the next call.
+	memo.info, err = f.Stat()
+	return err
 }
 
 // readTail recognizes complete EOF objects without turning a replay into another charge.
@@ -120,6 +135,9 @@ func (memo *remoteLedgerCursor) readTail(f *os.File) (bool, error) {
 		if readable {
 			if id := UsageCallID(old); id != "" {
 				memo.seen[id] = true
+			}
+			if fp := UsageFingerprint(old); fp != "" {
+				memo.seen[fp] = true
 			}
 			if old.RemoteEvent != "" {
 				memo.seen["remote:"+old.RemoteEvent] = true

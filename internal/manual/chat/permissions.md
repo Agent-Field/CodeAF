@@ -584,12 +584,47 @@ says, under the list:
 saved · from the next session
 ```
 
-and this conversation keeps the gate it has, badge included: the badge follows
-the gate in force, never the file. That is the answer on a plain launch, where
-this machine's engine holds the conversation and there is no take-back door to
-its gate — the same answer `/permissions` gives when it drops a rule.
-`--no-host` lands the change at once; over `--host` the gate is the far
-machine's.
+This receipt reports that the panel could not push a gate immediately. An
+engine reading the same settings still picks up the saved rules before its
+next tool decision. Over `--host`, the gate follows the engine machine's rows.
+
+## Changing Permissions in a running session — the next tool call follows current settings
+
+Changing `tools.approvalMode` from `allow` to `prompt` starts asking; changing
+it from `prompt` to `allow` stops asking. This includes commands later in a turn
+that is already running and Settings changes made in the desktop app or another
+window. No relaunch is needed. The next tool decision reads current settings,
+including tool exceptions and shell command rules.
+Concurrent refreshes wait their turn; each decision uses the policy built from
+the settings it read. A stalled settings read does not block interrupting or
+stopping work, answering an existing consent question, or closing the session.
+
+A question already waiting for your answer keeps waiting. Project rules,
+conversation postures, `--yolo` and dangerous-command floors keep their
+precedence when the profile can be read. Over `--host`, change the engine
+machine's settings; a local profile cannot replace a remote machine's rules.
+
+## Unreadable profile config.json — why every call asks for approval
+
+If the profile's `config.json` cannot be read, the conversation still opens, but every call asks you, including reads,
+whatever posture or `--yolo` you selected. The prompt names the file and explains
+that saved approval rules could not be read. Remembered approvals and the guardian
+cannot answer these questions for you. A headless call with nobody to ask returns
+an error naming the file. Once the file is readable, its rules apply again.
+Malformed JSON still fails ordinary policy construction; the readable default-stage
+bypass below also applies to malformed JSON.
+
+Factory stages and work started by tasks get the same protection: every call
+needs a person, and with nobody to ask it is refused. Workers, repair rounds and
+checkers see a parent's current read failure even after they start. Standalone
+run workers check the profile before each call. A refused Factory job keeps the
+failed-read reason and config filename in its result, without report retries.
+This includes a daily-limit check that refuses the first turn because the
+profile cannot be read; no model request is made.
+
+**Readable default-stage bypass:** with a readable file, a default Factory stage
+runs on its own allow posture and does not apply your saved rules. This named
+limit also covers readable malformed JSON.
 
 ## Default YOLO in interactive conversations and headless runs
 
@@ -626,7 +661,8 @@ at a time.
 
 Editing the row in the panel takes the same road as the mode above it: the rules
 are rebuilt for the conversation you are in on the keystroke, or the panel says
-`saved · from the next session` and this session keeps the gate it has.
+`saved · from the next session`. A running engine reading these settings still
+picks up the saved rules before its next tool decision.
 
 A rule about a tool beats the default for that tool.
 
@@ -664,6 +700,10 @@ and no permission card asks you to approve an absent command. A corrected call
 goes through the ordinary shell-command rules, including prompts and denials.
 
 ## `--yolo` — how do I let it run things without asking
+
+If the profile's `config.json` cannot be read, `--yolo` still asks for every call
+because saved denials cannot be known. Prompts explain the failed read and name
+the file; headless calls refuse with an error naming it.
 
 `codeaf chat --yolo` and `codeaf resume --yolo` stop the asking about ordinary
 work. The flag's own help reads: "run every tool without asking: the approval
@@ -1108,6 +1148,51 @@ is never worded as a person's no. A timed-out question refuses with
 `not approved: the question timed out`. A turn (or the agent) that ends first
 refuses with `not approved: ended before an answer`.
 
+## Agents cannot read your credentials — gh auth token, keychain, ~/.ssh keys, config.json, Blocked: this call reaches for a credential
+
+An agent cannot read your credentials, in any approval mode. This holds under allow,
+`--yolo`, a rule you wrote, a remembered answer and the guardian. It is a refusal and not a
+question, because a crew running on its own has nobody to ask. The agent reads back
+`Blocked: this call reaches for a credential (a login, key or token): <what>.`, is told not to try another
+route, and is told what to do instead.
+
+**Commands that are refused:** the read commands of `security`, `secret-tool`, `pass`,
+`keyctl`, `cmdkey` and `vaultcmd`; `gh auth token`; `gh auth status --show-token`;
+`git credential fill` and the credential helpers; `gcloud auth print-access-token`,
+`aws configure export-credentials`, `az account get-access-token` and
+`kubectl config view --raw`; and printing a secret from the environment, such as
+`echo $GH_TOKEN`. Putting one inside `sh -c`, `python -c`, `eval`, a pipe into a shell or
+base64 is read the same way.
+
+**Files that are refused, by every tool:** private keys in `~/.ssh`; `~/.aws/credentials`;
+`~/.config/gh/hosts.yml`; `.netrc`; your home `~/.npmrc` and `~/.pypirc`; Docker, kube, gcloud
+and Azure logins; browser password stores; `/proc/<pid>/environ`; and codeaf's own
+`config.json`, `credentials.json`, `identity.json`, `device.json` and vault files in your
+profile, with their backups. A search of a folder that holds them leaves those files out and
+says so; `grep -r`, `tar` and `cp -r` on such a folder are refused.
+
+**What still works.** `git push` and `git fetch`, over HTTPS or SSH. `gh pr list` and every other
+ordinary `gh` command, which sign themselves in. `ssh -i ~/.ssh/key`, because ssh uses a key
+without showing it. `~/.ssh/config`, `known_hosts` and `*.pub`. Listing a folder. A project's
+own `.codeaf/config.json`, `.npmrc` and `.env`. codeaf's own GitHub calls, pushes and publishing.
+
+**Your own `!` commands are not refused.** `! gh auth token` is you, not the agent, and it is
+the way to use one credential on purpose. Tokens it prints are still masked before the model
+reads the result.
+
+**Agent shells do not inherit credentials.** Anything named like one, such as `GH_TOKEN`,
+`AWS_SECRET_ACCESS_KEY` or `NPM_TOKEN`, is removed from the environment of the commands an agent
+runs, along with provider keys. A key in your vault for this project is still given to them. If
+`GH_TOKEN` is your only GitHub login, `gh` and HTTPS `git` in an agent's shell, and in your own
+`!` commands, say you are not signed in: run `gh auth login`, or set
+`CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL=1` for that launch. A key from your vault is visible to a
+plain `env`, which is not refused.
+
+**This is not a sandbox.** It reads a command before the shell runs it. A compiled program, a
+script reached through a Makefile, or a path built at run time can still reach what your user
+account can reach. Treat it as stopping an agent from taking the obvious routes, and do not
+run an agent you do not trust on a machine holding credentials you care about.
+
 ## What a refused call looks like to the model
 
 Every refusal is an ordinary error result the model can act on. It is never a
@@ -1176,10 +1261,11 @@ re-read and the cursor holds its place, not its row.
 
 The receipt in the transcript is `dropped · <name>`.
 
-Under `--no-host`, a drop is live on the very next call. On a plain launch
-through this machine's engine there is no take-back door to the running gate,
-so the receipt is `dropped · <name> · from the next session`. The panel never
-claims an effect it did not deliver.
+Under `--no-host`, a drop is live on the very next call. A plain launch through
+this machine's engine also reads the changed rules before its next tool
+decision. Its receipt can still be `dropped · <name> · from the next session`
+when the panel could not push the gate immediately. Project and conversation
+overrides retain their precedence.
 
 `/new` and `/resume` open on the rules as they stand right now, not the ones the
 session launched with.
@@ -1213,3 +1299,44 @@ repository's file; both write to your profile only.
 
 Session memos — "stop asking me about this tool for now" — are held in memory
 and written nowhere at all.
+
+## Desktop Always allow scopes and automatic permission receipts
+
+In the desktop permission dock, Always offers the shell command's shapes in the
+same order as the terminal: for `git status --short`, `git status*`, `git *`,
+then `git status --short`. Other tools offer their tool name. There is no Always
+for a compound shell command, a critical command, or a call that acts as you.
+
+Choosing a scope saves exactly that rule in your profile settings, shared by
+agents on this machine. The receipt says `Always allowed · <scope> · you · <HH:MM>`
+and links to Settings › Permissions. A later matching call leaves
+`Allowed automatically · <call> · you always allow <scope>`; its explanation is
+`Matches your rule <scope> in Settings › Permissions`.
+Both receipts stay in the conversation after reopening, with the same placement,
+settings link and explanation. Choosing Always for one item in a batch saves
+that item's scope and releases only that call. Inbox Always answers use the same
+offered scopes and saving path after the undo hold. A missing or unoffered scope
+returns `bad_scope` before the hold starts, leaving the item waiting.
+Saving `git status*` allows `git status --porcelain` automatically; `git push`
+still asks, with the closest saved rule it falls outside (the longest rule for
+the same program). Non-shell calls and commands with no same-program rule have
+no outside-rule explanation. If saving fails, the question stays open and the desktop gets an
+error. Nothing is silently widened to all bash commands.
+
+## Desktop Inbox — invalid answers and the five-second Undo hold
+
+An Inbox answer is checked before its five-second Undo hold starts. If the
+question has closed, the chosen option is not offered, or its conversation
+cannot be reached, the request returns the error immediately. Permission scopes,
+required options and budget payloads are checked before the hold too: raising an
+agent budget needs a positive amount, and Tell needs words and an idle agent.
+Service health answers must choose Restart or Stop, and standing order runs need
+one of the offered choices. A crew decision needs an option or answer text. A
+landed task needs one of its offered choices, and Tell needs words. Fuel top-ups need a positive dollar
+amount; finishing or stopping needs no amount. Text-only model answers and task
+redirects remain supported. A valid answer waits five seconds; Undo during that
+hold leaves the question waiting and sends nothing.
+
+A question can close or its conversation can fail during those five seconds.
+The eventual send still checks it again; the app protocol does not publish a
+separate deferred-send failure event.

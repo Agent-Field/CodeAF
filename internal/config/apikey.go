@@ -100,6 +100,9 @@ func defaultKeyEndpoint(base string) bool {
 // different rung than the client actually used. On OpenRouter a connected key
 // outranks the compatibility variable; custom endpoints retain their old order.
 func apiKeyResolution(values map[string]json.RawMessage) (string, string) {
+	if key, ok := appKey(modelsource.DefaultID); ok {
+		return key, "the app's key"
+	}
 	base := env.Get("CODEAF_BASE_URL")
 	profile, fallback := persistedAPIKeyFrom(values), usableOpenAIKey(base)
 	candidates := []struct{ value, source string }{
@@ -152,7 +155,9 @@ func APIKeySourceForModel(profileDir string, sources modelsource.Set, model stri
 // writer every other setting uses. Each write replaces the file with an
 // owner-readable-only file, including when the profile predates any secret.
 func WriteAPIKey(profileDir, key string) error {
-	return writeProfileValue(profileDir, KeyAPIKey, strings.TrimSpace(key))
+	return crewCredentialWrite(profileDir, func() error {
+		return writeProfileValue(profileDir, KeyAPIKey, strings.TrimSpace(key))
+	})
 }
 
 // LooksLikeAPIKey is the shape check the first-run setup applies to a pasted
@@ -175,6 +180,9 @@ func LooksLikeAPIKey(key string) bool {
 // the path that holds it.
 func EnsurePersistedAPIKey(profileDir string) (bool, string, error) {
 	path := BudgetConfigPath(profileDir)
+	if AppMode() {
+		return false, path, ErrAppKeys
+	}
 	if PersistedAPIKey(profileDir) != "" {
 		return false, path, nil
 	}

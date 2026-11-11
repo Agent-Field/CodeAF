@@ -1,0 +1,25 @@
+{
+  "factory": {
+    "name": "factory",
+    "address": "https://factory.test",
+    "version": "test"
+  },
+  "events": [
+    {
+      "actor": {
+        "kind": "person",
+        "name": "@owner",
+        "operator": true
+      },
+      "verb": "created access link",
+      "object": "link:tok_fixture",
+      "id": "evt_fixture",
+      "at": "2026-10-11T12:00:00Z",
+      "kind": "link_created",
+      "job": 0,
+      "handle": "owner",
+      "cost": 0,
+      "detail": "Sign in with GitHub through an access link as operator"
+    }
+  ]
+}

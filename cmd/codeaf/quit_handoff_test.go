@@ -15,6 +15,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -57,7 +58,7 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
+	service := relayserve.New(relayserve.Config{Store: cellstoretest.EngineDir(t)})
 	defer service.Close()
 	var releases atomic.Int32
 	var down atomic.Bool
@@ -87,7 +88,6 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 	}
 	engine := cellstore.EngineFor(cfg.Place.Workspace)
 	engine.DataRoot = t.TempDir()
-	t.Cleanup(cellstore.StopSpawned)
 	if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Workspace: cfg.Place.Workspace, Title: "quit handoff"}); err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 	engineB := cellstore.EngineFor("")
 	engineB.DataRoot = t.TempDir()
 	copies := t.TempDir()
-	taker := takeover{b.Continuer(engineB, syncsetup.TakeOptions{DeviceName: "receiver", RootFor: func(id string) string { return filepath.Join(copies, id) }})}
+	taker := takeover{c: b.Continuer(engineB, syncsetup.TakeOptions{DeviceName: "receiver", RootFor: func(id string) string { return filepath.Join(copies, id) }})}
 	landInput, landTyped := io.Pipe()
 	defer landInput.Close()
 	defer landTyped.Close()

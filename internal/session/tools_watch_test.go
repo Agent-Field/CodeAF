@@ -308,6 +308,38 @@ func TestWatchAlwaysReportsEveryTickIncludingTheFirst(t *testing.T) {
 	}
 }
 
+// A tick judges a pipe the way the bash tool does: a stage that fails fails
+// the tick even when a later reader succeeds, while a reader that stops early
+// (head) does not fail it, and a command without a pipe is unchanged.
+func TestWatchTickFailsOnAFailingPipeStage(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		command string
+		fails   bool
+	}{
+		{"false | cat", true},
+		{"yes x | head -1", false},
+		{"false", true},
+		{"echo ok", false},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			t.Parallel()
+			agent, _ := jobsAgent(t)
+			text, isError := startWatchTool(t, agent, map[string]any{
+				"command": tc.command, "every_seconds": watchMinEvery, "on": "always", "name": "pipe",
+			})
+			if isError {
+				t.Fatalf("watch failed to start: %s", text)
+			}
+			waitFor(t, "the first tick's note", func() bool { return len(sessionNotes(agent)) > 0 })
+			note := sessionNotes(agent)[0]
+			if strings.Contains(note, "the command failed") != tc.fails {
+				t.Fatalf("first tick of %q: note = %q, want failed=%v", tc.command, note, tc.fails)
+			}
+		})
+	}
+}
+
 // ── until ───────────────────────────────────────────────────────────────────
 
 // `until` ends the watch: one final note carrying the line that matched, the

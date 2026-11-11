@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -847,40 +846,77 @@ func TestDelegateOwnNotesDoNotConsumeTheMessageBatch(t *testing.T) {
 	}
 }
 
-// Damaged or future records can exceed the writer's message limit. One such
-// note must stay unread without holding every later valid message behind it.
-func TestDelegateInvalidMessageDoesNotBlockLaterNotes(t *testing.T) {
+// A NOTE TOO LARGE TO READ IS NEVER SKIPPED, so it holds the notes after it
+// rather than letting them flow past it: the forwarder publishes nothing past
+// it and the unread report says the rest could not be checked. Both are
+// asserted at the decision itself (note_inbox_internal_test.go), because a
+// child reading this test's FIFO would wait forever for a line that is,
+// correctly, never written.
+
+// THE TWO-HUNDRED-FIRST NOTE REACHES A LISTENING PROGRAM. The first two hundred
+// are on the task's record as already had, which once filled the forwarder's
+// whole two-hundred-note window and left the next note behind it forever.
+func TestDelegateForwarderReachesNote201(t *testing.T) {
 	store := runOpenStore(t)
-	bad, err := store.AddPersonNote(store.RootID(), "damaged note")
+	ids := repeatedPersonNotes(t, store, 200, "old direction")
+	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())
+	if err := os.MkdirAll(taskDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	mark, err := json.Marshal(run.Step{Kind: "notes", Notes: ids})
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("sqlite", store.Path())
-	if err != nil {
+	if err := os.WriteFile(filepath.Join(taskDir, "trajectory.jsonl"), append(mark, '\n'), 0600); err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	if _, err := db.Exec("UPDATE notes SET body = ? WHERE id = ?", strings.Repeat("x", 2<<20), bad.ID); err != nil {
-		t.Fatal(err)
-	}
-	good, err := store.AddPersonNote(store.RootID(), "later direction")
+	n, err := store.AddPersonNote(store.RootID(), "the two-hundred-first direction")
 	if err != nil {
 		t.Fatal(err)
 	}
 	seen := filepath.Join(t.TempDir(), "seen")
 	runInboxDelegate(t, store, "cat \"$CODEAF_INBOX\" > "+strconv.Quote(seen))
 	raw, err := os.ReadFile(seen)
-	if err != nil || !bytes.Contains(raw, []byte(good.ID)) || bytes.Contains(raw, []byte(bad.ID)) {
-		t.Fatalf("invalid message blocked or entered the inbox: %d bytes, %v", len(raw), err)
+	if err != nil || !bytes.Contains(raw, []byte(n.ID)) || bytes.Contains(raw, []byte("old direction")) {
+		t.Fatalf("note 201 never reached the child, or a had note did: %q, %v", raw, err)
 	}
-	found := false
-	for _, n := range store.Notes(store.RootID(), 200) {
-		if n.Agent == "fake" && strings.Contains(n.Body, "xxx") {
-			found = true
-		}
+}
+
+// THE TWO-HUNDRED-FIRST NOTE REACHES A WORKING BASH WORKER, and a worker of the
+// same task started again is not handed it a second time. The first two
+// hundred are on the record as had; the note is a person's, through the
+// store's own writer; the model is a scripted seat, no key and no money.
+func TestABashWorkerIsHandedNote201AndNotAgainAfterRestart(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
+	store := runOpenStore(t)
+	ids := repeatedPersonNotes(t, store, 200, "old direction")
+	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())
+	if err := os.MkdirAll(taskDir, 0700); err != nil {
+		t.Fatal(err)
 	}
-	if !found {
-		t.Fatal("rejected message was not named by the unread report")
+	mark, err := json.Marshal(run.Step{Kind: "notes", Notes: ids})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(taskDir, "trajectory.jsonl"), append(mark, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	const said = "the two-hundred-first direction: ship it behind the flag"
+	if _, err := store.AddPersonNote(store.RootID(), said); err != nil {
+		t.Fatal(err)
+	}
+	first := &seat{ever: echoesUntilTheCap()}
+	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", first)
+	_, _ = worker.Run(run.WithStepsPerTask(runContext(t), 3), *store.Task(store.RootID()))
+	if !seatSaw(first, said) || seatSaw(first, "old direction") {
+		t.Fatalf("the worker was not handed note 201, or was handed a had note:\n%s", seatTranscript(first))
+	}
+	again := &seat{ever: echoesUntilTheCap()}
+	woken := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", again)
+	_, _ = woken.Run(run.WithStepsPerTask(runContext(t), 3), *store.Task(store.RootID()))
+	if seatSaw(again, said) {
+		t.Fatalf("a worker started again was handed note 201 a second time:\n%s", seatTranscript(again))
 	}
 }
 

@@ -67,3 +67,17 @@ and "N skills" when more than one is, and it stays there for as long as the
 attachment is on — including across the messages you send while it is on.
 Clicking the chip takes every attached skill off in one gesture, which is the
 one way off that does not involve opening the list.
+
+## How the desktop reads and changes attached skills
+
+The desktop can read this conversation's shelf with `skills.list` and turn a
+skill on or off with `skills.set`. These use the same shelf ordering and
+attachment doors as `/skill`: attached names stay first, project skills precede
+user skills even when already in the shelf, and turning one on
+again preserves its position. On a session host, folder discovery runs on that
+host too, so the shelf includes its installed skills beyond the active catalog
+window. Older hosts without folder discovery supply their active shelf alone.
+If a host supports discovery but the read fails, the desktop gets an error
+instead of a list that silently leaves folder-only skills out.
+A change applies to the open conversation and
+its later messages. It does not create a saved global preference.

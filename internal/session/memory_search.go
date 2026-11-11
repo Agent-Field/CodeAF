@@ -16,15 +16,15 @@ func (a *Agent) memorySearchTool() bare.Tool {
 		Name:        "search_memories",
 		Description: "Search other saved memory by topic.",
 		Schema:      json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"],"additionalProperties":false}`),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Query string `json:"query"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 			}
 			if strings.TrimSpace(parsed.Query) == "" {
-				return "Name the topic to find in memory.", true, nil
+				return rejectToolArguments(ctx, "Name the topic to find in memory."), true, nil
 			}
 			found, err := a.memory.store.SearchMemoriesFor(a.memoryOwners(), parsed.Query, 20)
 			if err != nil {

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec"
@@ -59,12 +60,14 @@ const (
 // prompt is built before the agent exists (agent.go's newAgent). The belt
 // functions read these SAME predicates, which is what makes it impossible for
 // the two to disagree about a tool.
+// A chat-owned reading carries only earlyTools, so predicates for every other
+// capability answer false even when the config still holds its ordinary doors.
 
 // maySeeSettings says whether the settings pair belongs on this belt
 // (tools_settings.go). It comes off inside a task for the sharpest reason on
 // the belt: a node runs in a worktree with nobody watching, so a permanent
 // change to the person's machine made there is one they never saw made.
-func (c Config) maySeeSettings() bool { return !c.InTask }
+func (c Config) maySeeSettings() bool { return !c.readingTask() && !c.InTask }
 
 // shelvesCapabilities says whether this shape holds its rarely-reached tools
 // back on a named shelf, one `load_capability` call away, rather than carrying
@@ -73,14 +76,14 @@ func (c Config) maySeeSettings() bool { return !c.InTask }
 // telling the model to load cannot be rendered for a shape whose belt carries
 // the tools directly — which a worker or a task node does, because the saving
 // is only worth having on a prefix re-sent every turn.
-func (c Config) shelvesCapabilities() bool { return !c.InTask }
+func (c Config) shelvesCapabilities() bool { return !c.readingTask() && !c.InTask }
 
 // mayWatch says whether `watch` belongs on this belt (tools.go). It comes off
 // inside a task because its whole delivery mechanism is a note arriving in a
 // conversation, and a node has none.
 func (c Config) mayWatch() bool {
 	_, err := shell.Bash()
-	return !c.InTask && err == nil
+	return !c.readingTask() && !c.InTask && err == nil
 }
 
 // mayAsk says whether `ask` belongs on this belt. It is unconditional on the
@@ -89,14 +92,21 @@ func (c Config) mayWatch() bool {
 // the person through the plan CLI and never through a consent gate (bashbelt.go
 // builds that belt; this is the same fact asked of a config before there is an
 // agent, so the belt and the page cannot disagree about the verb).
-func (c Config) mayAsk() bool { return !c.mayBashBelt() }
+func (c Config) mayAsk() bool { return !c.readingTask() && !c.mayBashBelt() }
+
+// mayRequestSecret says whether `request_secret` belongs on this belt: where
+// `ask` does, and only when somebody is there to type into its box
+// (secret_request.go).
+func (c Config) mayRequestSecret() bool { return c.mayAsk() && c.Interactive }
 
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,
 // and in a node only when it was handed the conversation's graph and is not
 // standing on the floor of the tree ([Agent.mayProposeTask] is this asked of a
 // live agent, and task.go states the fan-out law it comes from).
-func (c Config) mayProposeTask() bool { return !c.InTask || (c.mayFanOut() && !c.bashBelt) }
+func (c Config) mayProposeTask() bool {
+	return !c.readingTask() && (!c.InTask || (c.mayFanOut() && !c.bashBelt))
+}
 
 // mayQuickTask says whether `quick_task` belongs on this belt, and it is
 // [Config.mayProposeTask] and not a second reading of it (task_quick.go).
@@ -107,7 +117,20 @@ func (c Config) mayProposeTask() bool { return !c.InTask || (c.mayFanOut() && !c
 // written as its own predicate rather than as the other one spelled twice
 // because the page's bullet is about THIS verb, and a fact naming the wrong
 // predicate is a sentence nobody can check.
-func (c Config) mayQuickTask() bool { return c.mayProposeTask() && !c.oneTaskRoad() }
+//
+// THE DESKTOP APP KEEPS IT ([Config.QuickTasks]) where the terminal's one task
+// road takes it off: small work done in place, read and carried on from, is a
+// thing the app offers whatever road the full tasks take.
+//
+// AND A FACTORY STAGE NEVER HAS IT ([Config.mayStage]). A quick task's answer
+// comes back as a note to read and carry on from, which is a chat's habit: on
+// codeaf#1765 a plan stage handed part of its reading to one, said it was
+// finished, and ended without the report its runner was waiting for. A stage's
+// work is its own, as its reads are ([Config.maySweepReads]); what it may still
+// hand out is a full task, checked and merged into its checkout.
+func (c Config) mayQuickTask() bool {
+	return c.mayProposeTask() && !c.mayStage() && (!c.oneTaskRoad() || c.QuickTasks && !c.InTask)
+}
 
 // oneTaskRoad says whether this agent is a conversation whose hand-offs are
 // runs in the plan store: the bash belt is asked for and a run engine is wired.
@@ -124,19 +147,18 @@ func (c Config) oneTaskRoad() bool {
 	return !c.InTask && bashBeltAsked() && chatRunEngine != nil
 }
 
-// mayTickItems says whether `items` belongs on this belt (task_quick.go), and
-// it is the presence of the node's own list door and nothing else: a quick
-// task's worker has one, and every other agent this package builds has none.
-func (c Config) mayTickItems() bool { return c.quickItems != nil }
+// mayTickItems says whether `items` belongs on this belt (task_quick.go): an
+// ordinary quick worker has its own list door, while a reading only looks.
+func (c Config) mayTickItems() bool { return !c.readingTask() && c.quickItems != nil }
 
 // hasConnect says whether the accounts pair belongs on this belt
-// (tools_connect.go). It is written as the hub CONSTRUCTOR'S OWN ANSWER rather
-// than as a second reading of the two fields, so that a door that starts
+// (tools_connect.go). Outside a reading it is the hub CONSTRUCTOR'S OWN ANSWER
+// rather than a second reading of the two fields, so that a door that starts
 // handing over a hub some other way cannot make the prompt and the belt
 // disagree: [newConnectHub] is what agent.go calls at construction, and
 // a.connect is never reassigned afterwards, so this is settled for the life of
 // the agent at the moment the prompt is rendered.
-func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
+func (c Config) hasConnect() bool { return !c.readingTask() && newConnectHub(c) != nil }
 
 // mayAutomate says whether `automation` belongs on this belt, and it is the ONE
 // reading of that availability, which [Agent.automationTools] builds the tool
@@ -149,12 +171,13 @@ func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 // behind will plan a whole reply around one — and it is the predicate the page's
 // automation paragraph is composed from.
 func (c Config) mayAutomate() bool {
-	return c.automationStore() != nil && c.AutomationRun == nil && !c.InTask
+	return !c.readingTask() && c.automationStore() != nil && c.AutomationRun == nil && !c.InTask
 }
 
-// signsGitWork says whether the attribution law belongs on this belt: true
-// unless the person turned attribution off ([Config.AttributionOff]).
-func (c Config) signsGitWork() bool { return !c.AttributionOff }
+// signsGitWork says whether the attribution law belongs on this belt: a reading
+// cannot make a commit, and every other shape signs unless the person turned
+// attribution off ([Config.AttributionOff]).
+func (c Config) signsGitWork() bool { return !c.readingTask() && !c.AttributionOff }
 
 // assistedByModel is the model this belt's `Assisted-by` line names: the model
 // the page is rendered for, or nothing when the person turned the model's name
@@ -266,7 +289,7 @@ func (a *Agent) signsGitWork() gitSignature {
 // written, and somebody watching who can answer the card. A design nobody can
 // approve is two model calls spent on a page that will be dropped.
 func (c Config) mayDesignHarness() bool {
-	return c.HarnessStore != nil && c.RunHarness != nil && c.AskConsent
+	return !c.readingTask() && c.HarnessStore != nil && c.RunHarness != nil && c.AskConsent
 }
 
 // mayProposeSubharness says whether the saved-programs pair belongs on this
@@ -280,7 +303,7 @@ func (c Config) mayDesignHarness() bool {
 // verb and no sentence: a model handed a propose verb over an empty list would
 // offer programs it invented.
 func (c Config) mayProposeSubharness() bool {
-	return c.AskConsent && c.HarnessCards && len(c.subharnessRows()) > 0
+	return !c.readingTask() && c.AskConsent && c.HarnessCards && len(c.subharnessRows()) > 0
 }
 
 // mayBashBelt says whether this agent's belt is the experiment's bash belt
@@ -290,7 +313,7 @@ func (c Config) mayProposeSubharness() bool {
 // flag is asked ONLY here — the one-reading law every belt verb follows —
 // so the prompt and the belt cannot disagree about which belt a worker is
 // on.
-func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt }
+func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt && !c.readingTask() }
 
 // ── the facts ───────────────────────────────────────────────────────────────
 
@@ -327,10 +350,38 @@ type beltFact struct {
 	// because that is the only verb such a belt carries. Empty falls back to
 	// [beltFact.present].
 	oneRoad string
+	// stage is the present wording for a factory stage ([Config.mayStage]),
+	// whose belt carries `propose_task` and never `quick_task`
+	// ([Config.mayQuickTask]). Empty falls back to [beltFact.present]; a stage
+	// on the one task road reads [beltFact.oneRoad], which names no quick task
+	// either.
+	stage string
 	// fill, when set, is applied to the chosen text before it is placed: it is
 	// how a fact writes a fact of THIS launch into itself — the delegates this
 	// machine has (delegate_door.go) — where every other fact is a constant.
 	fill func(Config, string) string
+}
+
+// quickBesideRuns is the one-road wording with quick tasks kept beside it
+// ([Config.QuickTasks]): the run road stays the road for work that must be
+// checked and landed, and `quick_task` is named for the small work done where
+// the model stands. Every other wording is left as it is.
+func quickBesideRuns(c Config, text string) string {
+	if !c.oneTaskRoad() || !c.mayQuickTask() {
+		return text
+	}
+	const one = "You are one mind with a clock, and ONE way to put more minds on the work:\n`propose_task`."
+	if !strings.HasPrefix(text, one) {
+		return text
+	}
+	return "You are one mind with a clock, and two ways to put more minds on the work.\n" +
+		"A `quick_task` is a copy of your abilities working where you stand: it starts\n" +
+		"the instant you ask, reads and writes in this same folder, and its last message\n" +
+		"comes back to you as a note. It is for small work you will read and carry on\n" +
+		"with — a rename across files, a handful of edits — and it becomes a full task\n" +
+		"only when it must run a command that can change things or touches more than " +
+		strconv.Itoa(QuickTaskFileLimit) + " files.\n" +
+		"The other is `propose_task`." + strings.TrimPrefix(text, one)
 }
 
 // beltFacts is the whole of it, in the order the section reads.
@@ -338,6 +389,15 @@ var beltFacts = []beltFact{{
 	tools:   []string{"ask", loadCapabilityToolName},
 	holds:   Config.mayAsk,
 	shelved: "- `ask` waits in the `questions` group; `load_capability` fetches it.",
+}, {
+	// THE FENCE IS SAID BEFORE IT IS MET (internal/executor's fence.go). A
+	// fenced run that is not told reaches for `brew install` or `docker pull`,
+	// is refused, and spends turns finding out; an unfenced one is told
+	// nothing, because nothing is different for it.
+	holds: Config.fenced,
+	// It is one short line because every byte of it is in the widest prefix
+	// (prefixbudget_test.go); the refusal sentence itself says the rest.
+	present: "- No brew/docker here.",
 }, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
@@ -356,7 +416,7 @@ var beltFacts = []beltFact{{
 }, {
 	tools: []string{"propose_task", "tasks"},
 	holds: Config.mayProposeTask,
-	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
+	present: "- ON `propose_task` NEVER NAME THE METHOD: a task gets a folder of its own, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
 		// AND THE TWO TRIGGERS THAT LOST THEIR HOME when the tool descriptions
 		// gave up their routing prose.
@@ -469,9 +529,13 @@ var beltFacts = []beltFact{{
 	// a landing writes is not the model's and carries the same two lines without
 	// being told (task_run.go's [commitTaskWorkAs]).
 	//
-	// When the person turns attribution off, the absent case carries
-	// [exec.AttributionOffLaw] so a model that has seen AI trailers in training
-	// is explicitly told not to invent any of its own.
+	// A reading uses [readingPrompt] rather than this belt, and cannot commit.
+	// The law's commit sentence spells both trailer lines in their order, with
+	// the `Assisted-by` one left as a slot the render fills from the model this
+	// page is for ([Config.assistedByModel]). When the person turns attribution
+	// off, the absent case carries [exec.AttributionOffLaw] so a model that has
+	// seen AI trailers in training is explicitly told not to invent any of its
+	// own.
 	tools:   []string{"bash"},
 	holds:   Config.signsGitWork,
 	present: "- " + exec.AttributionLaw,
@@ -527,8 +591,8 @@ var handoffFacts = []beltFact{{
 	present: "You are one mind with a clock, and two ways to put more minds on the work run\n" +
 		"beside you. A `quick_task` is a copy of your abilities working where you stand:\n" +
 		"it starts the instant you ask, reads and writes in this same folder, and its\n" +
-		"last message comes back to you as a note. A `propose_task` is a worker in a copy\n" +
-		"of the folder, checked and merged when it finishes, that outlives this window.\n" +
+		"last message comes back to you as a note. A `propose_task` is a worker in a folder\n" +
+		"of its own, checked and merged when it finishes, that outlives this window.\n" +
 		"Both are yours to steer and to stop, and both wake you when they land.\n" +
 		"\n" +
 		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
@@ -554,7 +618,7 @@ var handoffFacts = []beltFact{{
 		"so fold them as they arrive. When nothing independent of what you handed out\n" +
 		"remains, end your turn. That is how you wait.",
 	oneRoad: "You are one mind with a clock, and ONE way to put more minds on the work:\n" +
-		"`propose_task`. Each is a worker in a copy of the folder, checked when it\n" +
+		"`propose_task`. Each is a worker in a folder of its own, checked when it\n" +
 		"finishes, that outlives this window. The first opens a run; every one after it\n" +
 		"while that run lives joins the same run as another task of it, and so does a\n" +
 		"`/task` the person types. SEVERAL PROPOSALS IN ONE MESSAGE ARE HOW YOU WORK IN\n" +
@@ -586,6 +650,22 @@ var handoffFacts = []beltFact{{
 		"answer them: `tasks` with `stop` ends work that should not go on, and `tasks`\n" +
 		"with `note` tells a worker a fact it is missing. You are the only one holding\n" +
 		"the conversation, so you are the only one who can know. Leave the rest alone.",
+	// A STAGE IS TOLD THE ONE ROAD IT HAS, in the goal paragraph's own words, and
+	// no picture of a quick task it does not carry.
+	stage: "You are one mind with a clock, and one way to put more minds on the work beside\n" +
+		"you: `propose_task`, a worker in a folder of its own, checked and merged when it\n" +
+		"finishes. It is yours to steer and to stop, and it wakes you when it lands. This\n" +
+		"conversation is one step of a factory job, so it has no quick tasks: what you\n" +
+		"would read and carry on with, you read yourself.\n" +
+		"\n" +
+		"THE GOAL IS THE SHORTEST WALL TIME FOR THE WHOLE JOB: parts of the step that do\n" +
+		"not need each other may go out together and cost the longest of them alone. One\n" +
+		"read, one edit, one command is never worth a hand-off: do it here.\n" +
+		"\n" +
+		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept. Each landing comes\n" +
+		"to you as a note, and starts a turn if yours has ended, so fold them as they\n" +
+		"arrive. When nothing independent of what you handed out remains, end your turn.\n" +
+		"That is how you wait.",
 	bashAbsent: "Work goes out through the plan when it has parts that do not need each other:\n" +
 		"`plandb add` and `plandb split` in bash are how, and every ready task they make\n" +
 		"is given a worker of its own. What is yours alone you carry here, in the order\n" +
@@ -594,6 +674,7 @@ var handoffFacts = []beltFact{{
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
 		"finishes it.",
+	fill: quickBesideRuns,
 }, delegateFact, {
 	tools:   []string{"build_harness", loadCapabilityToolName},
 	holds:   Config.mayDesignHarness,
@@ -606,7 +687,36 @@ var handoffFacts = []beltFact{{
 	present: "AND A SHAPE OF WORK A SAVED PROGRAM ALREADY DOES: `propose_subharness`.",
 	shelved: "AND A SHAPE OF WORK A SAVED PROGRAM ALREADY DOES: `propose_subharness`, in the `harnesses` group.",
 	absent:  "",
+}, {
+	// THE FACTORY FLOOR, on the door's own predicate (tools_factory.go). One
+	// short sentence, because the mechanics ride with the verb's description
+	// and every byte here is paid on every request (prefixbudget_test.go); and
+	// nothing at all where there is no door, because a sentence denying a floor
+	// nobody mentioned is a sentence about machinery the model never needed.
+	//
+	// `factory_recipe` IS FOLDED INTO THE SAME SENTENCE rather than given one of
+	// its own, because the page had one byte of headroom when it arrived. The
+	// sentence is spelled with both verbs, which is the widest page and the one
+	// the budget weighs, and the fill takes the second verb out on a belt whose
+	// recipe door is nil, so the page never names a verb the belt lacks.
+	tools:   []string{"factory_add", "factory_recipe"},
+	holds:   Config.mayFactory,
+	present: factoryFact,
+	absent:  "",
+	fill: func(c Config, text string) string {
+		if c.mayFactory() && !c.mayRecipe() {
+			return strings.Replace(text, factoryFactRecipe, "", 1)
+		}
+		return text
+	},
 }}
+
+// factoryFact is the factory row's sentence with both verbs in it, and
+// factoryFactRecipe the clause a belt without the recipe door drops.
+const (
+	factoryFactRecipe = ", `factory_recipe`"
+	factoryFact       = "AND THE FACTORY: `factory_add`" + factoryFactRecipe + "; a card asks."
+)
 
 // programFacts is the ROUTING LINE for saved recipes and saved programs: which
 // verb exists here, and — where they are shelved — the group to load it from.
@@ -740,6 +850,8 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 			text = fact.present
 			if fact.oneRoad != "" && config.oneTaskRoad() {
 				text = fact.oneRoad
+			} else if fact.stage != "" && config.mayStage() {
+				text = fact.stage
 			}
 			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES
 			// THESE TOOLS. A worker or a task node carries them directly, so
@@ -773,6 +885,12 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 // whole of the fixed prefix that depends on the shape, which is why
 // prefixbudget_test.go weighs this and not [systemPrompt].
 func promptWithBeltFacts(config Config) string {
+	// A reading has a page about looking and returning its answer. The ordinary
+	// page teaches file changes and questions even without its conditional facts.
+	if config.readingTask() {
+		return strings.ReplaceAll(strings.TrimRight(readingPrompt, "\n"), readingToolsToken,
+			"`"+strings.Join(readingToolNames(), "`, `")+"`")
+	}
 	page := systemPrompt
 	for _, section := range promptSections {
 		page = strings.Replace(page, section.token, renderBeltFacts(config, section.facts, section.join), 1)

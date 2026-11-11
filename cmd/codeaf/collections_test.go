@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -325,5 +327,95 @@ func TestCollectionsOnlyLetGoOfStandingItems(t *testing.T) {
 	holding = nil
 	if err := json.Unmarshal([]byte(collectionCommand(t, db, "find", "standing", "item-6am")), &holding); err != nil || len(holding) != 0 {
 		t.Fatalf("the older row could not be taken out: %v %v", holding, err)
+	}
+}
+
+// DUPLICATE COPIES A COLLECTION'S REFERENCES AND DELETE TAKES ONLY THE
+// COLLECTION: the membership naming it elsewhere goes with it, and the
+// readable answer says the records are unchanged.
+func TestCollectionsDuplicateAndDelete(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "collections.db")
+	outer, inner := collectionCreate(t, db, "Outer"), collectionCreate(t, db, "Inner")
+	collectionCommand(t, db, "add", outer.ID, "collection", inner.ID)
+	collectionCommand(t, db, "add", inner.ID, "process", "chat:p1", "--session", "chat")
+	var copy workspace.Collection
+	if err := json.Unmarshal([]byte(collectionCommand(t, db, "duplicate", inner.ID, "Copy")), &copy); err != nil || copy.Name != "Copy" {
+		t.Fatalf("duplicate %+v, %v", copy, err)
+	}
+	if got := collectionPlain(t, db, "show", copy.ID); got != "process  chat:p1  conversation chat\n" {
+		t.Fatalf("copy holds %q", got)
+	}
+	if got := collectionPlain(t, db, "delete", inner.ID); got != "Collection deleted; the records it referenced are unchanged.\n" {
+		t.Fatalf("delete said %q", got)
+	}
+	if got := collectionCommand(t, db, "show", outer.ID); got != "[]\n" {
+		t.Fatalf("the membership naming a deleted collection stayed: %s", got)
+	}
+	err := runCollectionsTo([]string{"duplicate", copy.ID, "outer", "--db", db}, &bytes.Buffer{})
+	if !errors.Is(err, workspace.ErrNameTaken) {
+		t.Fatalf("a taken name in another case: %v", err)
+	}
+}
+
+// LIST AND SHOW PRINT EVERYTHING, past the app's page sizes: more than a
+// thousand collections and more than five hundred references each print a
+// line, in the words they always had.
+func TestCollectionsListAndShowPrintPastEveryPageSize(t *testing.T) {
+	ctx := context.Background()
+	db := filepath.Join(t.TempDir(), "collections.db")
+	store, err := workspace.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	big, err := store.Create(ctx, "Big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := make([]workspace.Addition, 0, workspace.LevelMax+7)
+	for i := 0; i < workspace.LevelMax+7; i++ {
+		refs = append(refs, workspace.Addition{Ref: workspace.Ref{Kind: workspace.ConversationKind, ID: fmt.Sprintf("chat-%d", i)}})
+	}
+	if _, _, err := store.AddRefs(ctx, big.ID, refs); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// A thousand creates through the door prove nothing more than one, and
+	// cost a thousand fsyncs; the rows go in as one transaction instead.
+	raw, err := sql.Open("sqlite", db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := raw.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < workspace.ListMax+3; i++ {
+		if _, err := tx.Exec("INSERT INTO collections(id,name,created_at) VALUES (?,?,1)", fmt.Sprintf("bulk-%05d", i), fmt.Sprintf("Bulk %d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runCollectionsTo([]string{"list", "--db", db}, &out); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != workspace.ListMax+4 || lines[0] != big.ID+"  Big" || lines[len(lines)-1] != fmt.Sprintf("bulk-%05d  Bulk %d", workspace.ListMax+2, workspace.ListMax+2) {
+		t.Fatalf("list printed %d lines, first %q, last %q", len(lines), lines[0], lines[len(lines)-1])
+	}
+	out.Reset()
+	if err := runCollectionsTo([]string{"show", big.ID, "--db", db}, &out); err != nil {
+		t.Fatal(err)
+	}
+	lines = strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != workspace.LevelMax+7 || lines[0] != "conversation  chat-0" {
+		t.Fatalf("show printed %d lines, first %q", len(lines), lines[0])
 	}
 }

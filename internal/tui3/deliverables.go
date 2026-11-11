@@ -70,7 +70,7 @@ import (
 // carries an id.
 const filesRows = 10
 
-// filesKept is how many rows of the index this list reads back. The file holds
+// filesKept is how many distinct file paths this list keeps. The file holds
 // everything ever made and is capped in the thousands (internal/session's
 // artifactRows); two hundred is far past what a person scrolls or filters down
 // and is the bound on the stats — one per row, on the keystroke that opens the
@@ -435,11 +435,8 @@ func (a *app) openFiles() {
 // keeps about its own repeats.
 func readDeliverables(index string) []deliverable {
 	rows := session.ReadArtifacts(index)
-	if len(rows) > filesKept {
-		rows = rows[:filesKept]
-	}
 	seen := make(map[string]bool, len(rows))
-	list := make([]deliverable, 0, len(rows))
+	list := make([]deliverable, 0, min(len(rows), filesKept))
 	for _, row := range rows {
 		path := strings.TrimSpace(row.Path)
 		if seen[path] {
@@ -456,6 +453,9 @@ func readDeliverables(index string) []deliverable {
 			at:    row.Created,
 			gone:  err != nil || info.IsDir(),
 		})
+		if len(list) == filesKept {
+			break
+		}
 	}
 	return list
 }

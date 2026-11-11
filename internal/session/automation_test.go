@@ -319,6 +319,31 @@ func TestACommandLookKeepsTheExitAndHidesTheKeys(t *testing.T) {
 	}
 }
 
+// A command look judges a pipe the way the bash tool does: a stage that fails
+// fails the look even when a later reader succeeds, while a reader that stops
+// early (head) does not fail it, and a command without a pipe is unchanged.
+func TestACommandLookFailsOnAFailingPipeStage(t *testing.T) {
+	for _, tc := range []struct {
+		command, exit string
+	}{
+		{"false | cat", "(exit status 1)"},
+		{"yes x | head -1", ""},
+		{"false", "(exit status 1)"},
+		{"echo ok", ""},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			sight, err := automationLookCommand(context.Background(), t.TempDir(), tc.command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Contains(sight.Text, "(exit status")
+			if got != (tc.exit != "") || !strings.Contains(sight.Text, tc.exit) {
+				t.Fatalf("sight = %q, want exit %q", sight.Text, tc.exit)
+			}
+		})
+	}
+}
+
 func TestAFilesLookSaysWhatChangedSinceTheLastLook(t *testing.T) {
 	root := t.TempDir()
 	must := func(err error) {
@@ -454,6 +479,8 @@ func TestWorkOutcomesComeFromTheReport(t *testing.T) {
 func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	ledger := UsageLedgerPath()
+	t.Cleanup(func() { StopUsageWriter(ledger) })
 	store := automationStoreFor(t)
 	item, err := store.Create(automation.Automation{Title: "weekly", Workspace: t.TempDir(), Schedule: automation.Schedule{Every: "1d"}, Action: automation.Action{Do: "draft it"}})
 	if err != nil {
@@ -576,6 +603,8 @@ func TestAWatchesCheckUsesAReplacedKey(t *testing.T) {
 func TestWatchModelCheckObeysDailyLimitAndPreauthorization(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	ledger := UsageLedgerPath()
+	t.Cleanup(func() { StopUsageWriter(ledger) })
 	profile := t.TempDir()
 	if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
 		t.Fatal(err)

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/provider"
+
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -309,15 +311,15 @@ func TestATurnThatHoppedModelsSealsOneUsageLinePerModel(t *testing.T) {
 	var turn Usage
 	before := pricedResponse("a step", 0.25)
 	before.Model = "z-ai/glm-5.3"
-	agent.addUsage(&turn, before, "z-ai/glm-5.3", "", laneFacts{})
+	agent.addUsage(&turn, before, "z-ai/glm-5.3", "", laneFacts{}, provider.BillingFact{})
 	before2 := pricedResponse("another step", 0.5)
 	before2.Model = "z-ai/glm-5.3"
 	before2.Usage.PromptTokens = 20
-	agent.addUsage(&turn, before2, "z-ai/glm-5.3", "", laneFacts{})
+	agent.addUsage(&turn, before2, "z-ai/glm-5.3", "", laneFacts{}, provider.BillingFact{})
 	after := pricedResponse("the hop's step", 0.75)
 	after.Model = "deepseek/deepseek-v4.1-flash"
 	after.Usage.PromptTokens = 30
-	agent.addUsage(&turn, after, "deepseek/deepseek-v4.1-flash", "", laneFacts{})
+	agent.addUsage(&turn, after, "deepseek/deepseek-v4.1-flash", "", laneFacts{}, provider.BillingFact{})
 
 	started := time.Now().Add(-time.Minute)
 	agent.sealTurn(turn, started, "deepseek/deepseek-v4.1-flash")

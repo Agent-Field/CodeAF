@@ -233,7 +233,7 @@ func (a *app) finishHomeTake(restoreDraft bool) {
 	if restoreDraft && a.homeTakeDraft != nil {
 		a.restoreTakeDraft(*a.homeTakeDraft)
 	}
-	a.homeTaking, a.homeTakeDraft, a.homeTakenSaid = "", nil, nil
+	a.homeTaking, a.homeTakeDraft, a.homeTakenSaid, a.homeMoveSaid = "", nil, nil, ""
 	a.homeTakeAutomatic, a.homeTakeOriginAutomatic, a.homeTakeAbandoned = false, false, false
 	a.homeTakeResult = nil
 }
@@ -264,8 +264,9 @@ func (a *app) cancelHomeTake() bool {
 		return true
 	}
 	a.homeTakeSeq++
+	line := a.homeMoveLine()
 	a.finishHomeTake(true)
-	if a.at(pageHome) && a.home.msg == continuing {
+	if a.at(pageHome) && a.home.msg == line {
 		a.home.say("", "")
 	}
 	a.touch()
@@ -339,7 +340,7 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			Form:    session.FormCard,
 			Asker:   session.Asker{Kind: session.AskerSurface},
 			Head:    continueAsk,
-			Reason:  chatlist.TakeoverLine(row),
+			Reason:  continueReason(row),
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: []session.AnswerOption{
 				{Key: "1", Label: chatlist.OfferContinue},
@@ -364,6 +365,15 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			return a.takeRemote(row)
 		},
 	}
+}
+
+// continueReason is the takeover sentence, and before a big folder the
+// warning that moving it copies the folder too.
+func continueReason(row chatlist.Row) string {
+	if big := chatlist.BigMoveLine(row); big != "" {
+		return chatlist.TakeoverLine(row) + "; " + big
+	}
+	return chatlist.TakeoverLine(row)
 }
 
 // continueBusyShown tells the person on the card itself that another take is
@@ -552,7 +562,7 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 			msg.draft = &composer
 		}
 	}
-	return func() tea.Msg {
+	take := func() tea.Msg {
 		seen := &directory.LeaseExpectation{Device: msg.row.DeviceID, Fence: msg.row.Fence}
 		if mapped, ok := taker.(workspaceRootTaker); ok && len(msg.roots) > 0 {
 			msg.taken, msg.err = mapped.TakeSeenWithWorkspaceRoots(ctx, msg.row.Cell, seen, msg.roots)
@@ -563,6 +573,10 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 		}
 		return msg
 	}
+	if _, ok := taker.(moveReporter); ok {
+		return tea.Batch(take, moveTick(msg.seq))
+	}
+	return take
 }
 
 // abandonAutomaticTake withdraws navigation without interrupting a mutation that

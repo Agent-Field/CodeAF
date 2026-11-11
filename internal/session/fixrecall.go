@@ -174,6 +174,10 @@ func (ep *episode) noteToolOutcome(call ai.ToolCall, result toolResult) toolResu
 	if ep == nil || ep.agent == nil || ep.fixes == nil {
 		return result
 	}
+	// Rejected arguments ran no command, so they can neither teach nor recall a fix.
+	if result.rejected {
+		return result
+	}
 	tool := call.Function.Name
 	if !fixLaneTools[tool] {
 		return result

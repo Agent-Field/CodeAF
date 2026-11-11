@@ -13,15 +13,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/shell"
+	"github.com/Agent-Field/codeaf/internal/textfile"
 )
 
 // Tool is the shape every tool in this package wears, and the shape a
@@ -326,14 +329,17 @@ func readTool(cwd string, caps Caps) Tool {
 				Limit  *int   `json:"limit"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			absPath := resolveToCwd(p.Path, cwd)
 			data, err := os.ReadFile(absPath)
 			if err != nil {
 				return "Error reading file: " + err.Error(), true, nil
 			}
-			textContent := string(data)
+			textContent, _, err := textfile.Decode(data)
+			if err != nil {
+				return "Error reading file: " + err.Error(), true, nil
+			}
 			allLines := strings.Split(textContent, "\n")
 			totalFileLines := len(allLines)
 
@@ -400,14 +406,36 @@ const maxTimeoutMs = 2147483647
 
 type bashOutputKey struct{}
 
+type bashExitKey struct{}
+
+// WithBashExit returns a context whose bash call reports the exit status of the
+// process it ran, once, and only when the process ended on the ordinary path
+// with a status somebody saw. It is the structured answer to "did the command
+// actually run to its end in this call": it is NEVER called for rejected
+// arguments, a failed start, a timeout, a cancellation, a call handed to the
+// job registry, or a wait that produced no status, so a caller never has to
+// read the result text to learn any of those.
+func WithBashExit(ctx context.Context, observe func(code int)) context.Context {
+	if observe == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, bashExitKey{}, observe)
+}
+
+// WithBashOutput is a context whose shell calls mirror their raw output to
+// output as it arrives, the way [RunBash] does for a command the person typed.
+func WithBashOutput(ctx context.Context, output io.Writer) context.Context {
+	if output == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, bashOutputKey{}, output)
+}
+
 // RunBash runs the ordinary non-interactive shell and mirrors its raw output to
 // a caller-owned writer as it arrives. The runner retains its normal bounds,
 // cancellation, process isolation and spill handling.
 func RunBash(ctx context.Context, cwd string, args json.RawMessage, caps Caps, output io.Writer) (string, bool, error) {
-	if output != nil {
-		ctx = context.WithValue(ctx, bashOutputKey{}, output)
-	}
-	return newBashTool(cwd, caps).Execute(ctx, args)
+	return newBashTool(cwd, caps).Execute(WithBashOutput(ctx, output), args)
 }
 
 func newBashTool(cwd string, caps Caps) Tool {
@@ -427,7 +455,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 				Timeout *float64 `json:"timeout"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			// Validate timeout.
@@ -437,11 +465,11 @@ func newBashTool(cwd string, caps Caps) Tool {
 				timeoutSet = true
 				tv := *p.Timeout
 				if !isFinite(tv) || tv <= 0 {
-					return "Invalid timeout: must be a finite number of seconds", true, nil
+					return RejectArguments(ctx, "Invalid timeout: must be a finite number of seconds"), true, nil
 				}
 				ms := int(tv * 1000)
 				if ms > maxTimeoutMs {
-					return fmt.Sprintf("Invalid timeout: maximum is %s seconds", trimFloat(float64(maxTimeoutMs)/1000)), true, nil
+					return RejectArguments(ctx, fmt.Sprintf("Invalid timeout: maximum is %s seconds", trimFloat(float64(maxTimeoutMs)/1000))), true, nil
 				}
 				timeoutMs = ms
 			}
@@ -514,8 +542,8 @@ func newBashTool(cwd string, caps Caps) Tool {
 			cmd.Stdout = acc
 			cmd.Stderr = acc
 
-			if err := cmd.Start(); err != nil {
-				return "Failed to start command: " + err.Error(), true, nil
+			if err := processgroup.Start(cmd); err != nil {
+				return startFailedText(runtime.GOOS, err), true, nil
 			}
 
 			// THE SEAT IS TOLD WHICH GROUP THIS IS, so a record of the call can end
@@ -655,6 +683,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 			}
 
 			if call.wasTimedOut() {
+				reportBashInterruption(ctx, "timed out")
 				// The bound that was APPLIED, which is the model's own figure
 				// or the ceiling it was given in place of one.
 				timeoutSecs := timeoutMs / 1000
@@ -680,20 +709,44 @@ func newBashTool(cwd string, caps Caps) Tool {
 			// promotion rule and its record reader (why.go) both hold to, so
 			// an interrupted command is never carried on as a background job.
 			if errors.Is(ctx.Err(), context.Canceled) {
+				reportBashInterruption(ctx, "cancelled")
 				return appendStatus(text, "Command aborted"), true, nil
 			}
 			if ctx.Err() != nil {
+				reportBashInterruption(ctx, "timed out")
 				return commandCutWords(began, text), true, nil
 			}
 
+			// AN UNKNOWN ENDING IS NOT A CLEAN ONE. A shell that answered with no
+			// exit status at all — the wait itself failed — used to fall through
+			// to success here, and a check whose process nobody saw end was then
+			// read as a check that passed.
 			exitCode := exitCodeFromWait(waitErr)
-			if exitCode != 0 && exitCode != -1 {
+			if exitCode == exitUnknown {
+				return appendStatus(text, "Command ended without an exit status"), true, nil
+			}
+			if observe, _ := ctx.Value(bashExitKey{}).(func(int)); observe != nil {
+				observe(exitCode)
+			}
+			if exitCode != 0 {
 				return appendStatus(text, fmt.Sprintf("Command exited with code %d", exitCode)), true, nil
 			}
 
 			return text, false, nil
 		},
 	}
+}
+
+// startFailedText is the bash tool's result when the shell never started. A
+// refusal the platform can explain puts that reason on the first line, which is
+// the line a failed step's summary shows, with the advice and the platform's own
+// words below it; every other failure keeps the plain one-line form.
+func startFailedText(goos string, err error) string {
+	reason, advice := shell.StartFailure(goos, err)
+	if reason == "" {
+		return "Failed to start command: " + err.Error()
+	}
+	return "Failed to start command: " + reason + "\n" + advice + "\nWindows said: " + err.Error()
 }
 
 // appendStatus mirrors pi's bash.js:appendStatus: join text and status with
@@ -705,23 +758,53 @@ func appendStatus(text, status string) string {
 	return text + "\n\n" + status
 }
 
-// exitCodeFromWait extracts the exit code from a cmd.Wait() error. Returns
-// -1 if the process was killed or the code is unavailable.
+// exitUnknown is the code for a wait that produced no exit status at all.
+const exitUnknown = -1
+
+// exitCodeFromWait is the exit status a cmd.Wait() error carries, in the
+// shell's own convention, and never a zero it did not see.
+//
+//   - A PROCESS A SIGNAL KILLED is 128 plus the signal, as a shell reports it
+//     (137 for SIGKILL). os.ProcessState.ExitCode answers -1 for one, and that
+//     -1 used to be read as a success by every caller of this tool.
+//   - exec.ErrWaitDelay is a process that EXITED ZERO whose output pipes a
+//     grandchild held open past WaitDelay (Go returns an ExitError instead when
+//     the exit was non-zero), so it is a zero.
+//   - Anything else is [exitUnknown]: nobody saw the process end.
 func exitCodeFromWait(err error) int {
 	if err == nil {
 		return 0
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return exitErr.ExitCode()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return 0
 	}
-	return -1
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return exitUnknown
+	}
+	if status, ok := exitErr.Sys().(interface {
+		Signaled() bool
+		Signal() syscall.Signal
+	}); ok && status.Signaled() {
+		return 128 + int(status.Signal())
+	}
+	if code := exitErr.ExitCode(); code >= 0 {
+		return code
+	}
+	return exitUnknown
 }
 
 // getShellConfig mirrors pi's shell.js:getShellConfig on Unix: /bin/bash if
 // it exists, then bash on PATH, then fallback to sh. Windows instead uses the
 // engine's native bash, and refuses before a command can reach a WSL launcher.
-func getShellConfig() (string, []string, error) {
-	return shell.Preferred()
+// Its arguments end with command, run under [shell.PipefailArgs] like every
+// other bash door.
+func getShellConfig(command string) (string, []string, error) {
+	program, flags, err := shell.Preferred()
+	if err != nil {
+		return "", nil, err
+	}
+	return program, shell.PipefailArgs(program, flags, command), nil
 }
 
 // killProcessGroup sends SIGKILL to the process group, mirroring pi's
@@ -753,10 +836,11 @@ func newEditTool(cwd string) Tool {
 			// edits arrays and legacy oldText/newText.
 			edits, path, err := prepareEditArguments(args)
 			if err != nil {
+				MarkArgumentRejection(ctx)
 				return err.Error(), true, nil
 			}
 			if len(edits) == 0 {
-				return "Edit tool input is invalid. edits must contain at least one replacement.", true, nil
+				return RejectArguments(ctx, "Edit tool input is invalid. edits must contain at least one replacement."), true, nil
 			}
 
 			absPath := resolveToCwd(path, cwd)
@@ -793,9 +877,13 @@ func newEditTool(cwd string) Tool {
 				}
 
 				// Strip BOM, detect EOL, normalize to LF.
-				bom, content := stripBom(string(rawContent))
-				originalEnding := detectLineEnding(content)
-				normalizedContent := normalizeToLF(content)
+				decoded, encoding, err := textfile.Decode(rawContent)
+				if err != nil {
+					return fmt.Sprintf("Could not process edit: %s. %s", path, err), true, nil
+				}
+				bom, content := stripBom(decoded)
+				originalEnding := textfile.DetectLineEnding(content)
+				normalizedContent := textfile.NormalizeToLF(content)
 
 				result, err := applyEditsToNormalizedContent(normalizedContent, edits, path)
 				if err != nil {
@@ -805,9 +893,13 @@ func newEditTool(cwd string) Tool {
 					return "Operation aborted", true, nil
 				}
 
-				finalContent := bom + restoreLineEndings(result.newContent, originalEnding)
-				if err := os.WriteFile(absPath, []byte(finalContent), 0644); err != nil {
+				finalContent := bom + textfile.RestoreLineEndings(result.newContent, originalEnding)
+				written, err := writeFileObserved(absPath, encoding.Encode(finalContent))
+				if err != nil {
 					return fmt.Sprintf("Could not process edit: %s. %s", path, err.Error()), true, nil
+				}
+				if observe := writeObserverFrom(ctx); observe != nil {
+					observe(written)
 				}
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
@@ -894,7 +986,7 @@ func newWriteTool(cwd string) Tool {
 				Content *string `json:"content"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return RejectArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 
 			if p.Content == nil {
@@ -914,8 +1006,23 @@ func newWriteTool(cwd string) Tool {
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
 				}
-				if err := os.WriteFile(absPath, []byte(*p.Content), 0644); err != nil {
+				original, err := textfile.ReadForWrite(absPath)
+				if err != nil && !os.IsNotExist(err) {
 					return err.Error(), true, nil
+				}
+				content, err := textfile.WriteContent(original, *p.Content)
+				if err != nil {
+					return err.Error(), true, nil
+				}
+				written, err := writeFileObserved(absPath, content)
+				if err != nil {
+					return err.Error(), true, nil
+				}
+				// The observer runs INSIDE the mutation queue, right after the
+				// bytes landed and before any later abort is noticed: what it is
+				// told is a fact of this write and nothing else.
+				if observe := writeObserverFrom(ctx); observe != nil {
+					observe(written)
 				}
 				if ctx.Err() != nil {
 					return "Operation aborted", true, nil
@@ -926,6 +1033,71 @@ func newWriteTool(cwd string) Tool {
 			})
 		},
 	}
+}
+
+// WriteEvent is what one successful write or edit tool call did to the disk, observed
+// inside the file's mutation queue by the writer itself.
+//
+// Created is true ONLY when this call made the file: the path was absent when
+// the queue was entered and the write created it exclusively, so no other
+// writer through this queue and no earlier creation can be mistaken for it. An
+// existing file (an overwrite) is Created false. Content is the exact bytes
+// written and must not be retained or changed; Info is the written file as its
+// own descriptor reported it, so it describes the inode that holds Content.
+type WriteEvent struct {
+	Path    string
+	Created bool
+	Content []byte
+	Info    os.FileInfo
+}
+
+type writeObserverKey struct{}
+
+// WithWriteObserver returns a context whose write and edit tool calls report each
+// successful write to observe, inside the file mutation queue. It is generic:
+// the tool neither knows nor cares what the observer is for.
+func WithWriteObserver(ctx context.Context, observe func(WriteEvent)) context.Context {
+	return context.WithValue(ctx, writeObserverKey{}, observe)
+}
+
+func writeObserverFrom(ctx context.Context) func(WriteEvent) {
+	observe, _ := ctx.Value(writeObserverKey{}).(func(WriteEvent))
+	return observe
+}
+
+// writeFileObserved writes content to path as os.WriteFile does (mode 0644,
+// truncating an existing file), except that an absent path is created with
+// O_EXCL so the answer to "did this call create it" is the filesystem's, not a
+// look taken beforehand. It must be called inside the file's mutation queue.
+func writeFileObserved(path string, content []byte) (WriteEvent, error) {
+	created := false
+	var file *os.File
+	var err error
+	if _, statErr := os.Lstat(path); os.IsNotExist(statErr) {
+		file, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		created = err == nil
+		if err != nil && !os.IsExist(err) {
+			return WriteEvent{}, err
+		}
+	}
+	if file == nil {
+		file, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return WriteEvent{}, err
+		}
+	}
+	if _, err = file.Write(content); err != nil {
+		_ = file.Close()
+		return WriteEvent{}, err
+	}
+	info, statErr := file.Stat()
+	if err = file.Close(); err != nil {
+		return WriteEvent{}, err
+	}
+	if statErr != nil {
+		info = nil
+	}
+	return WriteEvent{Path: path, Created: created, Content: content, Info: info}, nil
 }
 
 // utf16Length returns the number of UTF-16 code units in a string, matching
@@ -994,9 +1166,8 @@ func releaseMutationQueue(key string, ch chan struct{}) {
 	}
 }
 
-// mutationQueueKey mirrors pi's getMutationQueueKey: resolve the path, then
-// realpath it; if the file does not exist yet, fall back to the resolved
-// path.
+// mutationQueueKey resolves aliases before mutation, including dangling leaf
+// symlinks and absent files whose parent directory is reached through a symlink.
 func mutationQueueKey(filePath string) string {
 	resolved := filepath.Clean(filePath)
 	abs, err := filepath.Abs(resolved)
@@ -1006,7 +1177,48 @@ func mutationQueueKey(filePath string) string {
 	if real, err := filepath.EvalSymlinks(abs); err == nil {
 		return real
 	}
-	return abs
+	return mutationDanglingKey(abs)
+}
+
+// mutationDanglingKey walks components even past an absent target. A symlink's
+// parent is resolved before its relative target, and target components stay
+// uncleaned so dir/.. follows dir's real parent rather than its lexical parent.
+func mutationDanglingKey(abs string) string {
+	const maxSymlinkHops = 40
+	volume := filepath.VolumeName(abs)
+	resolved := volume + string(filepath.Separator)
+	pending := strings.Split(filepath.ToSlash(strings.TrimPrefix(abs, volume)), "/")
+	hops := 0
+	for len(pending) > 0 {
+		part := pending[0]
+		pending = pending[1:]
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			resolved = filepath.Dir(resolved)
+			continue
+		}
+		next := filepath.Join(resolved, part)
+		target, err := os.Readlink(next)
+		if err != nil {
+			resolved = next
+			continue
+		}
+		// The file operation will refuse loops and excessive chains. Bound
+		// queue-key traversal too, so those paths cannot strand the caller.
+		if hops == maxSymlinkHops {
+			return abs
+		}
+		hops++
+		if filepath.IsAbs(target) {
+			volume = filepath.VolumeName(target)
+			resolved = volume + string(filepath.Separator)
+			target = strings.TrimPrefix(target, volume)
+		}
+		pending = append(strings.Split(filepath.ToSlash(target), "/"), pending...)
+	}
+	return resolved
 }
 
 // ── bash output accumulator ────────────────────────────────────────────────
@@ -1175,7 +1387,7 @@ type accumulatorSnapshot struct {
 }
 
 func (a *outputAccumulator) snapshot() accumulatorSnapshot {
-	snapshotText := a.getSnapshotText()
+	snapshotText := shell.OutputText(a.getSnapshotText())
 	tailTrunc := truncateTail(snapshotText, a.caps)
 
 	truncated := a.totalLines > a.maxLines || a.totalDecoded > a.maxBytes

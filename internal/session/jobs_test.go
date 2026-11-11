@@ -232,7 +232,7 @@ func TestBackgroundBashSchemaExtendsBare(t *testing.T) {
 	if err := json.Unmarshal(tool.Schema, &schema); err != nil {
 		t.Fatalf("bash schema does not parse: %v", err)
 	}
-	for _, property := range []string{"command", "timeout", "background"} {
+	for _, property := range []string{"command", "timeout", "background", "notify"} {
 		if _, present := schema.Properties[property]; !present {
 			t.Fatalf("bash schema lost %q: %s", property, tool.Schema)
 		}
@@ -453,12 +453,12 @@ func TestExitingJobLandsSteeringNote(t *testing.T) {
 	}
 }
 
-// An ordinary background job's ending reaches both the steering lane and the
+// An ordinary successful job's ending reaches both the ambient lane and the
 // model's boundary batch whole: headline, output tail and path to the full log.
 func TestAnOrdinaryJobsEndingArrivesWhole(t *testing.T) {
 	agent, _ := jobsAgent(t)
 	// Hold the session before its public opening so the test can inspect the
-	// steering lane before taking the same boundary the model reads.
+	// ambient lane before taking the same boundary the model reads.
 	agent.mu.Lock()
 	agent.opened = false
 	agent.mu.Unlock()
@@ -468,7 +468,7 @@ func TestAnOrdinaryJobsEndingArrivesWhole(t *testing.T) {
 		return notesContain(agent, fmt.Sprintf("job %d exited 0", id))
 	})
 
-	queued := steeringQueue(agent)
+	queued := ambientQueue(agent)
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one queued note, got %v", queued)
 	}
@@ -499,6 +499,62 @@ func TestAnOrdinaryJobsEndingArrivesWhole(t *testing.T) {
 	}
 }
 
+// An adopted command still owes its ending even when it exits successfully.
+// Publishing the ending and releasing the parked worker remain one operation.
+func TestCleanOwedExitKeepsItsWakingEnding(t *testing.T) {
+	agent, _ := jobsAgent(t)
+	agent.mu.Lock()
+	agent.opened = false
+	agent.mu.Unlock()
+	one := settlementJob(t, agent.jobs)
+	one.owed = true
+	park := agent.taskNewsWait()
+	agent.jobs.settleExit(one, 0)
+	if one.stillOwed() {
+		t.Fatal("clean exit left the command owed")
+	}
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	if len(agent.ambient) != 0 || len(agent.steering) != 1 {
+		t.Fatalf("owed ending used the wrong lane: steering=%d ambient=%d", len(agent.steering), len(agent.ambient))
+	}
+	note := agent.steering[0]
+	if !note.wake || !note.ending || !strings.Contains(note.text(), jobExitNewsRule) {
+		t.Fatalf("owed ending lost its waking contract: %+v", note)
+	}
+	select {
+	case <-park:
+	default:
+		t.Fatal("owed ending did not release its parked worker")
+	}
+}
+
+// Goroutine jobs carry task or render results, so their successful endings
+// still wake through finish rather than taking the plain-process quiet lane.
+func TestSuccessfulGoroutineJobsKeepTheirWakingEnding(t *testing.T) {
+	for _, kind := range []jobKind{jobKindTask, jobKindRender} {
+		t.Run(fmt.Sprint(kind), func(t *testing.T) {
+			agent, _ := jobsAgent(t)
+			agent.mu.Lock()
+			agent.opened = false
+			agent.mu.Unlock()
+			one, err := agent.jobs.newJob("fixture", kind)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := agent.jobs.add(one); err != nil {
+				t.Fatal(err)
+			}
+			agent.jobs.finish(one, 0, "the result is ready")
+			agent.mu.Lock()
+			defer agent.mu.Unlock()
+			if len(agent.ambient) != 0 || len(agent.steering) != 1 || !agent.steering[0].wake {
+				t.Fatalf("goroutine ending lost its wake: steering=%v ambient=%v", agent.steering, agent.ambient)
+			}
+		})
+	}
+}
+
 // A silent job still reports: the exit code alone is the news.
 func TestSilentExitingJobReportsCodeOnly(t *testing.T) {
 	agent, _ := jobsAgent(t)
@@ -523,7 +579,7 @@ func TestJobNoteCoalescesWithAmbientNewsAtItsStepBoundary(t *testing.T) {
 	agent.mu.Unlock()
 
 	agent.enqueueWatchNote("lint", "watch lint · 1 line new\nalso check the linter", false)
-	id := startJob(t, agent, "echo done")
+	id := startJob(t, agent, "echo done; exit 3")
 	waitFor(t, "the completion note", func() bool {
 		return len(steeringQueue(agent)) == 1
 	})
@@ -532,7 +588,7 @@ func TestJobNoteCoalescesWithAmbientNewsAtItsStepBoundary(t *testing.T) {
 		t.Fatalf("the ambient note is not held at the boundary: %v", queued)
 	}
 	if queued := steeringQueue(agent); len(queued) != 1 ||
-		!strings.HasPrefix(queued[0], fmt.Sprintf("job %d exited 0", id)) {
+		!strings.HasPrefix(queued[0], fmt.Sprintf("job %d exited 3", id)) {
 		t.Fatalf("the owed job note is not on the step lane: %v", queued)
 	}
 
@@ -547,7 +603,7 @@ func TestJobNoteCoalescesWithAmbientNewsAtItsStepBoundary(t *testing.T) {
 	if len(users) != 1 || !strings.Contains(users[0], "while you worked:") ||
 		!strings.Contains(users[0], "also check the linter") ||
 		!strings.Contains(users[0], "lint watch: 1 update") ||
-		!strings.Contains(users[0], fmt.Sprintf("job %d exited 0", id)) {
+		!strings.Contains(users[0], fmt.Sprintf("job %d exited 3", id)) {
 		t.Fatalf("the pair did not reach the transcript as one batch: %v", users)
 	}
 }

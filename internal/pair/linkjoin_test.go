@@ -207,8 +207,8 @@ func TestJoinByLinkExpires(t *testing.T) {
 	}
 }
 
-// A device that already has an identity is not overwritten without --replace,
-// and nothing is asked of the relay before that is said.
+// M7b: after seeing the grant a used computer in another set refuses it,
+// retaining every local byte. Approval cannot grant permission to discard chats.
 func TestJoinByLinkKeepsOwnChats(t *testing.T) {
 	r := newLinkRig(t)
 	if _, err := identity.Ensure(r.new); err != nil {
@@ -217,10 +217,12 @@ func TestJoinByLinkKeepsOwnChats(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(r.new, "vault.enc"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	before := filesIn(t, r.new)
 	_, err := JoinByLink(context.Background(), goneRequests{}, r.joining(false), &invites{got: make(chan Invite, 1)})
 	if !errors.Is(err, ErrDifferentChats) {
 		t.Fatalf("joining over own chats ended with %v", err)
 	}
+	same(t, before, filesIn(t, r.new))
 }
 
 // A request whose check number does not fit its key is refused by the approver.
@@ -300,7 +302,7 @@ func TestJoinByLinkAdoptsAnUnusedIdentity(t *testing.T) {
 }
 
 // Anything a person made here (a vault, a chat store) makes the computer used,
-// so it keeps its identity and nothing is asked of the relay.
+// so it keeps its set when an unrelated grant arrives.
 func TestJoinByLinkKeepsAUsedIdentity(t *testing.T) {
 	for _, name := range []string{"vault.enc", "graph.db", "v3", "something-new"} {
 		r := newLinkRig(t)

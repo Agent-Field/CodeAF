@@ -14,6 +14,20 @@ func (a *Agent) StopWork() error { return a.stopWorkFor("", StopByWorkStopped) }
 
 func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 	a.mu.Lock()
+	return a.stopWorkLocked(why, door, "")
+}
+
+func (a *Agent) stopWorkEpoch(epoch uint64, notice string) error {
+	a.mu.Lock()
+	if a.workEpoch != epoch {
+		a.mu.Unlock()
+		return nil
+	}
+	return a.stopWorkLocked("", StopByWorkStopped, notice)
+}
+
+// stopWorkLocked consumes the agent lock, including on refusal.
+func (a *Agent) stopWorkLocked(why string, door StopDoor, notice string) error {
 	if a.closed {
 		a.mu.Unlock()
 		return errAgentClosed
@@ -34,6 +48,8 @@ func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
 	cancel, done := a.cancel, a.done
+	// A pass a surface asked for outside any turn is work too.
+	defer a.cutManualPassLocked()()
 	memoryStop, titleStop := a.memoryStop, a.titleStop
 	// Keep completed runs inspectable, and mark cancellation as the person's
 	// decision before cutting their contexts. Close deliberately discards this
@@ -60,6 +76,7 @@ func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 		graph.mu.Unlock()
 	}
 	a.mu.Unlock()
+	a.cancelJobKnowledge()
 	if memoryStop != nil {
 		memoryStop()
 	}
@@ -80,11 +97,11 @@ func (a *Agent) stopWorkFor(why string, door StopDoor) error {
 	// The UI receives acceptance promptly. Reopening admission waits for the old
 	// producers themselves, so a late tool cannot join a freshly resumed registry.
 	beltDone := a.stopOwnedBeltRun(why, ending)
-	go a.finishWorkStop(done, graph, jobs, beltDone, why, ending)
+	go a.finishWorkStop(done, graph, jobs, beltDone, why, notice, ending)
 	return nil
 }
 
-func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *jobRegistry, beltDone <-chan struct{}, why string, ending TaskEnding) {
+func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *jobRegistry, beltDone <-chan struct{}, why, notice string, ending TaskEnding) {
 	if graph != nil {
 		graph.mu.Lock()
 		ids := append([]uint64(nil), graph.order...)
@@ -132,6 +149,14 @@ func (a *Agent) finishWorkStop(done <-chan struct{}, graph *TaskGraph, jobs *job
 		<-late
 	}
 	a.mu.Lock()
+	// The stop owns the budget notice even when no foreground turn was running.
+	// Record it after producers settle and before a new submission can reopen work.
+	if notice != "" {
+		a.recordLocked(textMessage("assistant", notice))
+		for _, watcher := range a.taskWatchers {
+			watcher.send(Event{Kind: EventNotice, Text: notice})
+		}
+	}
 	a.workStopping = false
 	close(a.workStopDone)
 	a.mu.Unlock()

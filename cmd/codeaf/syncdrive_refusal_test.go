@@ -102,6 +102,15 @@ func TestLiveDriveRefusedStartupRetriesAndUploads(t *testing.T) {
 			if len(said) != 1 || said[0] != tc.line {
 				t.Fatalf("startup said %q, want %q once", said, tc.line)
 			}
+			// One startup attempt costs what writing this device's own record
+			// costs: a read of the directory, so waiting messages and an
+			// unchanged record survive (PutOwnDevice), and the refused write.
+			// THE LAW IS NO RELAY CALL BEYOND ONE ATTEMPT PER WAIT, so measure
+			// one attempt here rather than spell its request count.
+			perStartup := calls.Load()
+			if perStartup < 1 || perStartup > 2 {
+				t.Fatalf("one refused startup made %d relay calls, want the device read and write at most", perStartup)
+			}
 			var sealed cellstore.Sealed
 			for attempt := int32(1); attempt <= 2; attempt++ {
 				clock.Advance(tc.wait - time.Nanosecond)
@@ -116,8 +125,8 @@ func TestLiveDriveRefusedStartupRetriesAndUploads(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if got := calls.Load(); got != attempt {
-					t.Fatalf("relay calls before wait = %d, want %d", got, attempt)
+				if got := calls.Load(); got != attempt*perStartup {
+					t.Fatalf("relay calls before wait = %d, want %d (%d per startup attempt)", got, attempt*perStartup, perStartup)
 				}
 				clock.Advance(time.Nanosecond)
 				startupFinished(l)

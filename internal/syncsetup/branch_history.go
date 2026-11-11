@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
@@ -92,5 +93,5 @@ func moveForkHistory(source, destination string) error {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return os.Rename(source, destination)
+	return fsreplace.Rename(source, destination)
 }

@@ -167,6 +167,24 @@ func TestTaskWorkspaceEarlierCallerDeadlineStopsResidentOperation(t *testing.T) 
 	}
 }
 
+// A resident reply can beat the caller's cancellation notification. Keep the
+// caller live so this test always exercises the error received over the wire.
+func TestTaskWorkspaceResidentContextErrorsPreserveSentinels(t *testing.T) {
+	for _, cause := range []error{context.DeadlineExceeded, context.Canceled} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			far := &workspaceFar{fakeAgent: &fakeAgent{}, refuse: cause}
+			loop := workspaceLoop(t, far, false)
+			agent := loop.Client.Agent()
+			if _, err := agent.ApplyTaskWorkspaceRoot(context.Background(), 7, "work"); !errors.Is(err, cause) {
+				t.Fatalf("resident apply lost %v: %v", cause, err)
+			}
+			if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), 7, "work"); !errors.Is(err, cause) {
+				t.Fatalf("resident review lost %v: %v", cause, err)
+			}
+		})
+	}
+}
+
 // The engine's answer to a call whose caller's deadline has passed is that
 // caller's context error, whichever end reported it first. An unrelated
 // refusal, or the same words while the caller still has time, is left alone.

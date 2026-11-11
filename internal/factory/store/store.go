@@ -1,0 +1,771 @@
+// Package store keeps the factory's items on disk: one JSON document per
+// item, under a root the caller names, and nothing else. It is the local
+// engine's memory: what a person put on the floor from the terminal, and what
+// a chat put there after a yes.
+//
+// IT MIRRORS internal/standing/store.go IN ITS DISCIPLINE, on purpose, so a
+// reader who knows one knows the other: a document is written TEMP + RENAME
+// UNDER A PER-ITEM FLOCK, a document from a newer build is refused rather than
+// misread, and a read-modify-write is one critical section so two windows
+// changing one item cannot undo each other.
+//
+// THE ROOT IS GIVEN, NEVER COMPUTED HERE. The caller passes <codeaf home>/...
+// in, so a test's store is a temp directory and nothing else.
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/live"
+	"github.com/Agent-Field/codeaf/internal/filelock"
+)
+
+// Schema is the newest document version this build reads and the one it
+// writes. Bump it when a field changes meaning; a build that meets a document
+// above it refuses that document rather than guessing.
+const Schema = 1
+
+// doc is the envelope on disk: the version it was written at, how many times
+// it has been written, and the item. The revision lives here rather than on
+// [factory.Item] because it is a fact about the document, not about the work.
+type doc struct {
+	Schema         int          `json:"schema"`
+	Revision       int          `json:"revision"`
+	BudgetRevision int          `json:"budget_revision"`
+	Item           factory.Item `json:"item"`
+}
+
+// ErrNotFound is the answer for an id that is not here.
+var ErrNotFound = errors.New("factory store: no such item")
+
+// ErrNewer is the answer for a document a newer codeaf wrote. The document is
+// left on disk untouched, so the build that understands it still can.
+var ErrNewer = errors.New("factory store: written by a newer codeaf")
+
+// Store is the factory's items under one root.
+type Store struct {
+	tierMu       sync.Mutex
+	tierResolver TierResolver
+	tierReads    map[int]*tierRead
+	root         string
+	outputPolicy func() (int, int)
+	observer     atomic.Pointer[func(before, after factory.Item)]
+	// shared is the last [Store.ListShared], reused while the floor is unchanged.
+	shared sharedList
+	// clock is the store's now. A test may hold it still; it is nil in every
+	// real build, which reads as time.Now.
+	clock func() time.Time
+	// reads counts the documents this store has read from disk and decoded.
+	// THE IDLE-COST LAW IS WRITTEN AGAINST IT (PERF.md): a watcher that looks
+	// at the floor ten times a second must not decode the floor ten times a
+	// second, and a counter is how a test proves that without a clock.
+	reads atomic.Int64
+}
+
+// Reads is how many item documents this store has read and decoded since it
+// was opened. It exists so a test can hold an idle caller to a bound.
+func (st *Store) Reads() int64 {
+	if st == nil {
+		return 0
+	}
+	return st.reads.Load()
+}
+
+// Open answers the store at root, creating the directory. It holds no handles.
+func Open(root string) (*Store, error) {
+	if strings.TrimSpace(root) == "" {
+		return nil, errors.New("factory store: an empty root")
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, err
+	}
+	return &Store{root: root}, nil
+}
+
+// Root is the directory the store was opened on. A nil store answers "", which
+// is how a seam built over no store knows to draw nothing.
+func (st *Store) Root() string {
+	if st == nil {
+		return ""
+	}
+	return st.root
+}
+
+// ItemPath is <root>/<id>.json.
+func (st *Store) ItemPath(id int) string {
+	return filepath.Join(st.root, strconv.Itoa(id)+".json")
+}
+
+// Create mints the next id, stamps Created and Changed when they are zero, and
+// writes the item as the document's first revision. It answers the item as
+// written. IT IS ONLY CALLED AFTER A YES: a person typed the words on the
+// floor, or answered a chat's card. Nothing writes an item on a guess.
+//
+// An item that already carries an id is refused: an id is the store's to mint,
+// and a caller that brings one is either replaying a document or about to
+// overwrite somebody else's.
+func (st *Store) Create(it factory.Item) (factory.Item, error) {
+	if it.ID != 0 {
+		return factory.Item{}, fmt.Errorf("factory store: a new item already has id %d", it.ID)
+	}
+	if err := st.normalizeRepository(&it); err != nil {
+		return factory.Item{}, err
+	}
+	if err := os.MkdirAll(st.root, 0o700); err != nil {
+		return factory.Item{}, err
+	}
+	now := st.now()
+	if it.Created.IsZero() {
+		it.Created = now
+	}
+	if it.Changed.IsZero() {
+		it.Changed = it.Created
+	}
+	// THE MINT AND THE FIRST WRITE ARE ONE CRITICAL SECTION. Reading the highest
+	// id and writing the next one under separate locks would let two creators
+	// read the same highest id and both write the next, one over the other.
+	err := st.underLock(st.mintLockPath(), func() error {
+		highest, err := st.highestID()
+		if err != nil {
+			return err
+		}
+		it.ID = highest + 1
+		st.retainOutput(&it)
+		data, err := marshalDoc(doc{Revision: 1, BudgetRevision: 1, Item: it})
+		if err != nil {
+			return err
+		}
+		return st.underItemLock(it.ID, func() error {
+			return live.Commit(st.root, live.Changes(factory.Item{}, it, st.now()), func() error {
+				return writeAtomic(st.ItemPath(it.ID), data)
+			})
+		})
+	})
+	if err != nil {
+		return factory.Item{}, err
+	}
+	return it, nil
+}
+
+// Add is the one door the chat's tool calls after a yes: it fills what a
+// conversation does not say and creates the item. The origin is the chat
+// unless the caller says otherwise; the item arrives new; the author is
+// trusted as the owner unless a tier is given; and its stages are the default
+// recipe for its kind when it brings none. The id comes back so the chat can
+// name the row it made.
+//
+// THE SIGNATURE IS A CONTRACT. The tool lane holds an interface of exactly
+// `Add(context.Context, factory.Item) (int, error)` against it.
+func (st *Store) Add(ctx context.Context, it factory.Item) (int, error) {
+	if st == nil {
+		return 0, errors.New("factory store: no store")
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(it.Title) == "" {
+		return 0, errors.New("factory store: an item needs a title")
+	}
+	// A JOB IS NEVER MADE ON A REPOSITORY THAT IS OFF ([factory.RepoSwitch]),
+	// as the factory's own new-job door refuses it: it would leave the queue
+	// the moment it was made.
+	sw, err := st.RepoSwitch()
+	if err != nil {
+		return 0, err
+	}
+	if repo := factory.RepoOf(it); sw.Off(repo) {
+		return 0, errors.New(factory.RepoOffWords(repo))
+	}
+	if it.Origin == "" {
+		it.Origin = factory.OriginChat
+	}
+	if it.Tier == "" && !it.RefusesWrite() {
+		it.Tier = factory.TierOwner
+	}
+	if it.Kind == "" {
+		it.Kind = factory.KindIssue
+	}
+	if err := factory.RequireIssueJob(it); err != nil {
+		return 0, err
+	}
+	if len(it.Stages) == 0 {
+		it.Stages = factory.CopyStages(factory.DefaultRecipe().For(it.Kind))
+	}
+	if it.Repo != "" && len(it.Places) == 0 {
+		it.Places = []string{it.Repo}
+	}
+	if it.Autonomy == "" {
+		it.Autonomy = factory.AutonomyAuto
+	}
+	it.State = factory.StateNew
+	it.ID = 0
+	made, err := st.Create(it)
+	if err != nil {
+		return 0, err
+	}
+	return made.ID, nil
+}
+
+// Get reads one item. A missing id is [ErrNotFound]; a document a newer build
+// wrote is [ErrNewer].
+func (st *Store) Get(id int) (factory.Item, error) { return st.get(id, true) }
+
+// GetSaved reads the saved snapshot for lease bookkeeping without author lookup.
+// User reads and write admission use Get instead.
+func (st *Store) GetSaved(id int) (factory.Item, error) { return st.get(id, false) }
+
+func (st *Store) get(id int, hydrate bool) (factory.Item, error) {
+	if err := checkID(id); err != nil {
+		return factory.Item{}, ErrNotFound
+	}
+	d, err := st.read(st.ItemPath(id))
+	if err != nil {
+		return factory.Item{}, err
+	}
+	ids, err := st.itemIdentities(d.Item)
+	if err != nil {
+		return factory.Item{}, err
+	}
+	d, err = st.migrateRepository(d, ids)
+	if err != nil {
+		return factory.Item{}, err
+	}
+	if hydrate {
+		return st.readHydrated(d.Item)
+	}
+	st.retainOutput(&d.Item)
+	return d.Item, nil
+}
+
+// List reads every item, newest first by Created. An unreadable or
+// newer-schema document is skipped rather than fatal: ONE DOCUMENT FROM THE
+// FUTURE, OR ONE TORN BY A FULL DISK, MUST NOT EMPTY THE WHOLE FLOOR.
+func (st *Store) List() ([]factory.Item, error) { return st.list(true) }
+
+// ListSaved reads the saved snapshot for source reconciliation without looking up
+// author access. User reads and admission use List or Get instead.
+func (st *Store) ListSaved() ([]factory.Item, error) { return st.list(false) }
+
+func (st *Store) list(hydrate bool) ([]factory.Item, error) {
+	entries, err := os.ReadDir(st.root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	items := make([]factory.Item, 0, len(entries))
+	var ids repositoryIDs
+	loadedIDs := false
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		// ONLY A NUMBER NAMES AN ITEM. The folder also keeps the watched repos,
+		// the sources' poll record and the unassigned-work toggle (repos.go,
+		// meta.go, takes.go), and those documents must never be read back as
+		// a blank row on the floor.
+		if _, err := strconv.Atoi(strings.TrimSuffix(entry.Name(), ".json")); err != nil {
+			continue
+		}
+		d, err := st.read(filepath.Join(st.root, entry.Name()))
+		if err != nil {
+			continue
+		}
+		if !loadedIDs && needsRepositoryLookup(d.Item) {
+			ids, err = st.repositoryIdentities()
+			if err != nil {
+				return nil, err
+			}
+			loadedIDs = true
+		}
+		d, err = st.migrateRepository(d, ids)
+		if err != nil {
+			return nil, err
+		}
+		if hydrate {
+			it, err := st.readHydrated(d.Item)
+			if err != nil {
+				return nil, err
+			}
+			d.Item = it
+		} else {
+			st.retainOutput(&d.Item)
+		}
+		items = append(items, d.Item)
+	}
+	sort.SliceStable(items, func(a, b int) bool {
+		if items[a].Created.Equal(items[b].Created) {
+			return items[a].ID > items[b].ID
+		}
+		return items[a].Created.After(items[b].Created)
+	})
+	return items, nil
+}
+
+// Save rewrites one item's whole document, temp+rename under its flock. The
+// revision is bumped FROM THE DOCUMENT ON DISK, read inside the same lock as
+// the write, so two saves in a row are two revisions whoever held which copy.
+// It does not stamp Changed: the caller says when the work changed, and a
+// save that only re-files a document is not a change a person made.
+//
+// A document that is not on disk is written as revision one, which is the
+// creation shape; production creates through [Store.Create], and this branch
+// only keeps a whole-document write of a missing document from minting a
+// wrong revision.
+func (st *Store) Save(it factory.Item) error {
+	if err := checkID(it.ID); err != nil {
+		return err
+	}
+	if err := st.normalizeRepository(&it); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(st.root, 0o700); err != nil {
+		return err
+	}
+	var was factory.Item
+	wrote := false
+	defer func() {
+		if wrote {
+			st.tellWritten(was, it)
+		}
+	}()
+	return st.underItemLock(it.ID, func() error {
+		rev := 1
+		current, err := st.read(st.ItemPath(it.ID))
+		switch {
+		case err == nil:
+			rev = current.Revision + 1
+		case errors.Is(err, ErrNotFound):
+		default:
+			return err
+		}
+		if isTierProjection(it.Failure) {
+			it.Failure = current.Item.Failure
+		}
+		st.retainOutput(&it)
+		data, err := marshalDoc(nextDoc(current, it, rev))
+		if err != nil {
+			return err
+		}
+		err = live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
+			return writeAtomic(st.ItemPath(it.ID), data)
+		})
+		was, wrote = current.Item, err == nil
+		return err
+	})
+}
+
+// Update is a read-modify-write of one item under its own flock: change reads
+// the document on disk and changes it in place, and the result is written as
+// the next revision with Changed stamped now. A change that answers an error
+// writes nothing.
+//
+// THE READ AND THE WRITE ARE ONE CRITICAL SECTION. A surface that read an item
+// a minute ago and handed back the whole of it would undo whatever another
+// window did since; a door that moves one field moves it on the document on
+// disk instead.
+func (st *Store) Update(id int, change func(*factory.Item) error) error {
+	return st.update(id, writeWork, nil, change)
+}
+
+// UpdateExpected is [Store.Update] that writes only when the document on disk
+// is still the revision the caller read. The comparison is made on the
+// document read INSIDE the item's flock, the same read the change is handed,
+// so no other write can land between the check and the write: a door that
+// must not act on anything but the page a person reviewed hands that page's
+// revision here and gets [*StaleError], with nothing written and change never
+// called, when the job moved.
+func (st *Store) UpdateExpected(id, revision int, change func(*factory.Item) error) error {
+	return st.update(id, writeWork, &revision, change)
+}
+
+// UpdateBudgetExpected accepts progress since the revision read, but refuses
+// any intervening budget edit. The comparison and change share the item lock.
+// A nil revision preserves the unguarded HTTP door.
+func (st *Store) UpdateBudgetExpected(id int, revision *int, change func(*factory.Item) error) error {
+	return st.update(id, writeBudget, revision, change)
+}
+
+// StaleError is [Store.UpdateExpected]'s refusal: the document is at Revision,
+// not the Expected one the caller read. Nothing was written.
+type StaleError struct {
+	ID       int
+	Expected int
+	Revision int
+}
+
+func (e *StaleError) Error() string {
+	return fmt.Sprintf("factory store: item %d is at revision %d, not the %d that was read", e.ID, e.Revision, e.Expected)
+}
+
+// Annotate is [Store.Update] for a write that is not a change to the work: the
+// same read-modify-write under the item's flock, the same next revision, and
+// Changed LEFT AS IT WAS. The cheap read made on arrival (internal/factory/
+// triage) writes through it, because a row's age counts from Changed, and a
+// read the factory made by itself is not the item moving: every row on a
+// freshly connected floor would otherwise say `now` the minute it was read.
+func (st *Store) Annotate(id int, change func(*factory.Item) error) error {
+	return st.update(id, writeAnnotation, nil, change)
+}
+
+// UpdatePersonal is [Store.Update] for one person's own fact about a job (the
+// brief revision they last saw, whether they follow it): the same
+// read-modify-write under the item's flock, with the revision AND Changed left
+// as they were. The revision is what every open page's `expect.version`
+// carries, and nothing any other reader sees has moved, so another person's
+// page must not go stale over it. A later revision-checked write is still safe:
+// it runs its change on the document on disk, which holds this write.
+//
+// change answers whether it changed anything. When it did not (the same
+// revision seen again, a follow that was already on), nothing is written, so a
+// page that reports the same fact on every read does not rewrite the job's
+// document and wake every watcher of the factory's folder each time.
+func (st *Store) UpdatePersonal(id int, change func(*factory.Item) bool) error {
+	err := st.update(id, writePersonal, nil, func(it *factory.Item) error {
+		if !change(it) {
+			return errUnchanged
+		}
+		return nil
+	})
+	if errors.Is(err, errUnchanged) {
+		return nil
+	}
+	return err
+}
+
+// errUnchanged ends a personal write whose change changed nothing, before
+// anything is written.
+var errUnchanged = errors.New("factory store: nothing changed")
+
+// writeMode is what a write says about the job besides its change: whether the
+// work moved (Changed stamped), whether the document is a new revision, and
+// whether expect compares budget history instead of the whole document.
+type writeMode struct{ stamp, bump, budget bool }
+
+var (
+	writeWork       = writeMode{stamp: true, bump: true}
+	writeBudget     = writeMode{stamp: true, bump: true, budget: true}
+	writeAnnotation = writeMode{stamp: false, bump: true}
+	writePersonal   = writeMode{stamp: false, bump: false}
+)
+
+// written is told of every item write; see [WhenWritten].
+var written atomic.Pointer[func(st *Store, before, after factory.Item)]
+
+// WhenWritten has fn told of every item a write lands, as it was before the
+// write and as it is after, with the store written. It is told after the
+// item's lock is let go, so fn may write elsewhere (the crews store, where a
+// job's room follows the job), and two writes of one item may be told in
+// either order: fn that acts on the item reads it again from st. A later fn
+// replaces an earlier one.
+func WhenWritten(fn func(st *Store, before, after factory.Item)) { written.Store(&fn) }
+
+// ObserveWrites installs this store's reader of committed updates. Like
+// WhenWritten, it runs after the item lock is released; it must not block.
+// It is separate from the process-wide reader so one host owns its listener.
+func (st *Store) ObserveWrites(fn func(before, after factory.Item)) {
+	st.observer.Store(&fn)
+}
+
+func (st *Store) tellWritten(before, after factory.Item) {
+	if fn := st.observer.Load(); fn != nil && *fn != nil {
+		(*fn)(before, after)
+	}
+	if fn := written.Load(); fn != nil {
+		(*fn)(st, before, after)
+	}
+}
+
+// update is every read-modify-write. A nil expect writes whatever revision is
+// on disk; a revision refuses any other one before change runs.
+func (st *Store) update(id int, mode writeMode, expect *int, change func(*factory.Item) error) error {
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	if err := os.MkdirAll(st.root, 0o700); err != nil {
+		return err
+	}
+	var was, after factory.Item
+	wrote := false
+	defer func() {
+		if wrote {
+			st.tellWritten(was, after)
+		}
+	}()
+	return st.underItemLock(id, func() error {
+		current, err := st.read(st.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		if expect != nil && current.Revision != *expect &&
+			(!mode.budget || *expect < current.BudgetRevision || *expect > current.Revision) {
+			return &StaleError{ID: id, Expected: *expect, Revision: current.Revision}
+		}
+		it := current.Item
+		before := current.Item
+		before.Stages = factory.CopyStages(it.Stages)
+		// In-place PR and failure edits must not rewrite the prior event facts.
+		if before.PullRequest != nil {
+			prior := *before.PullRequest
+			before.PullRequest = &prior
+		}
+		if before.Failure != nil {
+			prior := *before.Failure
+			before.Failure = &prior
+		}
+		// The callback can edit an ask in place; retain its old notification facts.
+		if before.Asking != nil {
+			copy := *before.Asking
+			copy.Options = append([]string(nil), copy.Options...)
+			before.Asking = &copy
+		}
+		if before.PublishStatus != nil {
+			copy := *before.PublishStatus
+			before.PublishStatus = &copy
+		}
+		savedFailure := it.Failure
+		if err := change(&it); err != nil {
+			return err
+		}
+		if isTierProjection(it.Failure) {
+			it.Failure = savedFailure
+		}
+		if err := st.normalizeRepository(&it); err != nil {
+			return err
+		}
+		it.ID = id
+		now := st.now()
+		if mode.stamp {
+			it.Changed = now
+		}
+		// THE ACTIVITY IS WRITTEN HERE, ON EVERY WRITE, by comparing the
+		// document before the change with after it, so the triage worker, the
+		// Talk door and the adapt door each get their event (`read`, `talked`,
+		// `stages changed by plan`) without one of them having to remember.
+		if mode == writePersonal {
+			factory.TouchIssue(&it)
+		}
+		factory.RecordIssueTouch(before, &it)
+		factory.NoteChanges(before, &it, now)
+		st.retainOutput(&it)
+		rev := current.Revision
+		if mode.bump {
+			rev++
+		}
+		data, err := marshalDoc(nextDoc(current, it, rev))
+		if err != nil {
+			return err
+		}
+		err = live.Commit(st.root, live.Changes(before, it, now), func() error {
+			return writeAtomic(st.ItemPath(id), data)
+		})
+		was, after, wrote = before, it, err == nil
+		return err
+	})
+}
+
+// Revision is how many times one item's document has been written. It is a
+// fact about the document, so it is read off the envelope and never off the
+// item: the item is not decoded at all, which matters because a queue read
+// asks this once for every job it lists.
+func (st *Store) Revision(id int) (int, error) {
+	if err := checkID(id); err != nil {
+		return 0, ErrNotFound
+	}
+	data, err := os.ReadFile(st.ItemPath(id))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	var envelope struct {
+		Schema   int `json:"schema"`
+		Revision int `json:"revision"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return 0, fmt.Errorf("factory store: cannot read %d.json: %w", id, err)
+	}
+	if envelope.Schema > Schema {
+		return 0, fmt.Errorf("%w: %d.json", ErrNewer, id)
+	}
+	return envelope.Revision, nil
+}
+
+// now is the store's clock.
+func (st *Store) now() time.Time {
+	if st == nil || st.clock == nil {
+		return time.Now()
+	}
+	return st.clock()
+}
+
+func (st *Store) read(path string) (doc, error) { return cachedRead(path, st.readDocument) }
+
+// readDocument reads and decodes the document at path; [Store.read] answers
+// it from the process's cache while the file is unchanged.
+func (st *Store) readDocument(path string) (doc, error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		st.reads.Add(1)
+	}
+	if err != nil {
+		if os.IsNotExist(err) {
+			return doc{}, ErrNotFound
+		}
+		return doc{}, err
+	}
+	var d doc
+	if err := json.Unmarshal(data, &d); err != nil {
+		return doc{}, fmt.Errorf("factory store: cannot read %s: %w", filepath.Base(path), err)
+	}
+	if d.Item.PersonStopped == nil && factory.StoppedByPerson(d.Item) {
+		factory.MarkPersonStopped(&d.Item)
+	}
+	if d.Schema > Schema {
+		return doc{}, fmt.Errorf("%w: %s", ErrNewer, filepath.Base(path))
+	}
+	// THE FILE NAME IS THE ID. A document whose body lost its id, or never had
+	// one, is still the item its name says, so a read cannot answer an item
+	// that a later write would file under a different name.
+	if n, err := strconv.Atoi(strings.TrimSuffix(filepath.Base(path), ".json")); err == nil {
+		d.Item.ID = n
+	}
+	// Older documents have no budget history. Their observed revision is the
+	// earliest read we can safely accept, and later writes retain it.
+	if d.BudgetRevision == 0 {
+		d.BudgetRevision = d.Revision
+	}
+	return d, nil
+}
+
+// nextDoc retains the last budget edit across all item writers, including Save.
+func nextDoc(before doc, it factory.Item, revision int) doc {
+	budgetRevision := before.BudgetRevision
+	if budgetRevision == 0 || before.Item.Cap != it.Cap {
+		budgetRevision = revision
+	}
+	return doc{Revision: revision, BudgetRevision: budgetRevision, Item: it}
+}
+
+// highestID is the largest id with a document under the root, read off the
+// file names alone, so a document this build cannot read still holds its id
+// and is never written over by a fresh one.
+func (st *Store) highestID() (int, error) {
+	entries, err := os.ReadDir(st.root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	highest := 0
+	if data, e := os.ReadFile(filepath.Join(st.root, "mint-high-water")); e == nil {
+		n, e := strconv.Atoi(strings.TrimSpace(string(data)))
+		if e != nil || n < 0 {
+			return 0, errors.New("factory store: invalid mint high-water mark")
+		}
+		highest = n
+	} else if !os.IsNotExist(e) {
+		return 0, e
+	}
+	for _, entry := range entries {
+		name, ok := strings.CutSuffix(entry.Name(), ".json")
+		if !ok || entry.IsDir() {
+			continue
+		}
+		if n, err := strconv.Atoi(name); err == nil && n > highest {
+			highest = n
+		}
+	}
+	return highest, nil
+}
+
+// marshalDoc is the one place a document becomes bytes on disk, and the one
+// place its version is chosen.
+func marshalDoc(d doc) ([]byte, error) {
+	d.Schema = Schema
+	data, err := json.MarshalIndent(d, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+// underItemLock holds the item's own flock for the length of one write. It
+// BLOCKS rather than refusing: the contention is between two windows that are
+// both about to finish in microseconds, and a refusal would lose an edit for no
+// reason a person could understand.
+func (st *Store) underItemLock(id int, write func() error) error {
+	return st.underLock(filepath.Join(st.root, strconv.Itoa(id)+".lock"), write)
+}
+
+// mintLockPath is the lock every Create holds while it reads the highest id
+// and writes the next. Like an item's lock it deliberately does NOT end in
+// .json, so List never meets it.
+func (st *Store) mintLockPath() string { return filepath.Join(st.root, "mint.lock") }
+
+func (st *Store) underLock(path string, write func() error) error {
+	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, false); err != nil {
+		return err
+	}
+	defer func() { _ = filelock.Unlock(lock) }()
+	return write()
+}
+
+func writeAtomic(path string, data []byte) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	name := temporary.Name()
+	defer os.Remove(name)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return err
+	}
+	// THE RENAME MUST NOT PUBLISH BYTES STILL IN THE PAGE CACHE: a crash after
+	// the rename but before the write reaches disk would leave a torn document
+	// behind the name. Sync before Close, and report a Sync failure.
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
+}
+
+// checkID refuses an id the store could not have minted. Ids are positive
+// integers, so one can never name a file outside the root, but they arrive
+// back through callers and a zero or a negative is a caller's mistake that
+// must not become a file called 0.json.
+func checkID(id int) error {
+	if id <= 0 {
+		return fmt.Errorf("factory store: %d is not an item id", id)
+	}
+	return nil
+}

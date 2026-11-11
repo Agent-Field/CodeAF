@@ -133,6 +133,12 @@ func (a *Agent) cancelTask(id uint64, why string) (string, error) {
 	// A RUN'S ROWS WEAR TASK NUMBERS AND ARE NOT IN THE GRAPH, so the run is
 	// asked first (stoprun.go). A number that is not a run's goes on to the
 	// graph exactly as it always did.
+	// A TASK WAITING ON A MODEL HAS NOTHING RUNNING TO CUT: the stop ends it as
+	// not started, the way the app's Stop on the same row does (taskrouting.go).
+	// It is asked first because its queued row is a run's row in shape only.
+	if a.DropParkedTask(id) {
+		return fmt.Sprintf("task %d stopped · it had not started", id), nil
+	}
 	if line, owned, err := a.stopBeltRow(id, why); owned {
 		return line, err
 	}
@@ -178,12 +184,21 @@ func (g *TaskGraph) stopFor(id uint64, why string) (string, error) {
 
 // stopForEnding preserves the cause before cancellation can publish a landing.
 func (g *TaskGraph) stopForEnding(id uint64, why string, ending TaskEnding) (string, error) {
+	return g.stopAttempt(id, why, nil, ending)
+}
+
+// A sampled Stop belongs to the captured attempt, even if its ID is retried.
+func (g *TaskGraph) stopAttempt(id uint64, why string, done <-chan struct{}, ending TaskEnding) (string, error) {
 	why = strings.TrimSpace(why)
 	g.mu.Lock()
 	node := g.nodes[id]
 	if node == nil {
 		g.mu.Unlock()
 		return "", fmt.Errorf("there is no task %d in this session", id)
+	}
+	if done != nil && node.done != done {
+		g.mu.Unlock()
+		return "", nil
 	}
 	name := taskStopName(id, node.spec.title)
 	var (

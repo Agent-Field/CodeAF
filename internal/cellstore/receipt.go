@@ -62,7 +62,8 @@ func serviceRec(pid int, argv []string, ports []int) ServiceRec {
 
 // modelCallOf is a model call as the receipt holds it.
 func modelCallOf(m executor.ModelCall) ModelCall {
-	return ModelCall{CallID: m.CallID, Model: m.Model, Role: m.Role, TokensIn: uint32(m.TokensIn), TokensOut: uint32(m.TokensOut),
+	id := m.ExplicitID()
+	return ModelCall{ID: id, CallID: id, Model: m.Model, Role: m.Role, TokensIn: uint32(m.TokensIn), TokensOut: uint32(m.TokensOut),
 		TokensCached: uint32(m.TokensCached), CostMicroUSD: m.CostMicroUSD}
 }
 

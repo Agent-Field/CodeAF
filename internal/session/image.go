@@ -2,9 +2,6 @@ package session
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -100,6 +97,9 @@ var imageMediaTypes = map[string]string{
 // No images is exactly Submit, so a surface with an empty attachment tray can
 // call one method for both.
 func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<-chan Event, error) {
+	if err := a.CheckWork(); err != nil {
+		return nil, err
+	}
 	text = strings.TrimSpace(text)
 	if len(images) == 0 {
 		return a.Submit(ctx, text)
@@ -129,11 +129,22 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 	if digest := a.planDigest(); digest != "" {
 		user = planDigestedParts(digest, user)
 	}
+	events, _, err := a.admitImageMessage(ctx, user)
+	return events, err
+}
 
+// admitImageMessage is the closed check, the steering splice, the spend rail
+// and the turn for an assembled picture message — the half of [Agent.SubmitImage]
+// that is a law about a turn starting, shared with [Agent.SubmitComposed] so the
+// two cannot drift. queued says the message joined a running turn.
+func (a *Agent) admitImageMessage(ctx context.Context, user userMessage) (events <-chan Event, queued bool, err error) {
+	if err := a.CheckWork(); err != nil {
+		return nil, false, err
+	}
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
-		return nil, errors.New("session: agent is closed")
+		return nil, false, errors.New("session: agent is closed")
 	}
 	if a.running {
 		// Steering, by the same law text steering follows (agent.go): the queue
@@ -141,18 +152,19 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 		// the loop lands it at the next step boundary, where a user message is a
 		// legal shape. The references travel with it because the journal write
 		// happens then, not now.
+		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
 		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
-		return events, nil
+		return events, true, nil
 	}
 	if err := a.railBlockLocked(); err != nil {
 		a.mu.Unlock()
-		return refusedStream(err), nil
+		return refusedStream(err), false, nil
 	}
-	events := a.startTurnLocked(ctx, user, nil)
+	started := a.startTurnLocked(ctx, user, nil)
 	a.mu.Unlock()
-	return events, nil
+	return started, false, nil
 }
 
 // imageUserMessage assembles the message and the journal references for it in
@@ -187,16 +199,12 @@ func imageUserMessage(text string, images []Image) (userMessage, error) {
 		if total > maxMessageImageBytes {
 			return userMessage{}, fmt.Errorf("session: these images total more than the %s a single message may carry — send them across a few messages", byteLimit(maxMessageImageBytes))
 		}
-		sum := sha256.Sum256(data)
-		parts = append(parts, ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
-			URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
-		}})
-		refs = append(refs, journalPart{
-			Type:   journalPartImage,
-			Path:   path,
-			SHA256: hex.EncodeToString(sum[:]),
-			MIME:   mediaType,
-		})
+		// The picture enters the transcript as a REFERENCE (imageref.go): its
+		// bytes are read again, verified against this digest, at the request that
+		// carries it, and never held here.
+		ref, journaled := imageRefFromFile(path, mediaType, data)
+		parts = append(parts, ref.part())
+		refs = append(refs, journaled)
 	}
 	return userMessage{message: ai.Message{Role: "user", Content: parts}, refs: refs}, nil
 }
@@ -314,7 +322,7 @@ func (a *Agent) visionSeer() string {
 	if resolve := a.config.MediaModel; resolve != nil {
 		return strings.TrimSpace(resolve("vision"))
 	}
-	seer, err := roles.Resolve(roles.Source(a.config.RolesSource), roles.RoleVision, "")
+	seer, err := readerFor(a.config, a.model).Resolve(roles.RoleVision, "")
 	if err != nil {
 		return ""
 	}
@@ -325,23 +333,29 @@ func (a *Agent) visionSeer() string {
 // cannot see. It returns SubmitImage's refusal, unchanged, when nothing else can
 // see either.
 func (a *Agent) visionTurn(ctx context.Context, text string, images []Image, model string) (<-chan Event, error) {
-	// A seer that names the blind model is refused rather than called: a slot or
-	// a tier set to the model we just established cannot see is a configuration,
-	// not a capability, and sending the picture to it is the 400 this whole path
-	// exists to avoid.
 	seer := a.visionSeer()
 	if seer == "" || strings.EqualFold(seer, model) {
 		return nil, blindRefusal(model)
 	}
-
-	// Assembled first because the images have to be read and bounded before
-	// anything is recorded — the same order the sighted path uses, and the same
-	// errors.
 	live, err := imageUserMessage(text, images)
 	if err != nil {
 		return nil, err
 	}
+	return a.startVision(ctx, visionUserMessage(text, live.refs), live.message, model, seer)
+}
 
+// visionTurnMarked is [Agent.visionTurn] for an already assembled composed
+// message: the person's mark rides the words the transcript keeps, and the seer
+// is the one the caller resolved and recorded as having looked.
+func (a *Agent) visionTurnMarked(ctx context.Context, text, said string, live userMessage, model, seer string, mark *messagePresentation) (<-chan Event, error) {
+	kept := visionUserMessage(said, live.refs)
+	kept.person = mark
+	return a.startVision(ctx, kept, live.message, model, seer)
+}
+
+// startVision is what both fallbacks share once the seer is known and the
+// message is assembled.
+func (a *Agent) startVision(ctx context.Context, kept userMessage, live ai.Message, model, seer string) (<-chan Event, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -360,7 +374,7 @@ func (a *Agent) visionTurn(ctx context.Context, text string, images []Image, mod
 		a.mu.Unlock()
 		return refusedStream(err), nil
 	}
-	events := a.startVisionTurnLocked(ctx, visionUserMessage(text, live.refs), live.message, seer)
+	events := a.startVisionTurnLocked(ctx, kept, live, seer)
 	a.mu.Unlock()
 	return events, nil
 }
@@ -409,6 +423,9 @@ func visionUserMessage(text string, refs []journalPart) userMessage {
 // not the same function today. If a third kind of turn ever appears, the shared
 // half is this function and it should move to agent.go beside the original.
 func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, live ai.Message, seer string) <-chan Event {
+	if err := a.CheckWork(); err != nil {
+		return refusedStream(err)
+	}
 	a.running = true
 	hub := a.newReplayHubLocked()
 	a.hub = hub
@@ -433,7 +450,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			// "this turn shape cannot be steered" is a fact the person is owed on
 			// their own stream, not a reason to swallow their words.
 			a.liftSteersLocked(hub)
-			a.drainSteeringLocked(hub)
+			drained := a.drainQueueLocked(hub, true)
 			a.running = false
 			a.cancel = nil
 			a.hub = nil
@@ -443,6 +460,10 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 				// An ordinary turn, on the chat model: the follow-up is words,
 				// and words are what that model can read.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
+			} else if completed && drained.owed {
+				// Vision reads only the image message. News recorded at its end
+				// still needs an ordinary turn, even if its wake clock fired.
+				a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer)
 			}
 			a.mu.Unlock()
 		}()

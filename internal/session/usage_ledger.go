@@ -44,16 +44,10 @@ package session
 //     (orchestrate.go's [orchestrateExec.spend]) journals its own calls here and
 //     folds home silently. It folded through the auxiliary door until issue
 //     #168, and the day this file's rail reads was double on every one of them.
-//   - IT NEVER BLOCKS A TURN, AND THE TURN'S OWN GOROUTINE NEVER TOUCHES THE
-//     DISK. [RecordUsage] serializes the row and hands it to a bounded queue
-//     that one background writer per ledger drains ([usageWriter]); a full
-//     queue drops the row rather than waiting on it, and so does a write that
-//     fails. A home directory on a stalled mount therefore costs a spending
-//     record and never a person's turn — which the older shape, an
-//     open-write-close under a process-wide mutex, could not promise. AND THE
-//     DROP IS COUNTED WHERE IT HAPPENS ([UsageDrops]), because a gap nobody can
-//     see is a bill that reads as smaller than it was: the spend surfaces say
-//     how many records went missing rather than quietly under-reporting.
+//   - A FULL QUEUE DOES NOT DISCARD A CHARGE. The turn's goroutine never
+//     touches disk and never waits. Overflow is kept for the ledger's one
+//     writer. Flush and shutdown include those writes under their existing
+//     ceiling. Filesystem failures remain counted by [UsageDrops].
 //   - A LINE THAT SPENT NOTHING IS NOT WRITTEN. The emptiness law applied to a
 //     file: a call whose usage block or later receipt carries no cost and no
 //     tokens leaves no priced row — an explicit unbilled marker records a
@@ -91,6 +85,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -102,6 +97,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	procexec "github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -113,6 +109,18 @@ import (
 // of one path are two ledgers with half a person's spending in each.
 const UsageLedgerName = "usage.jsonl"
 
+// ChargeID names the paid event independently of its ledger row. Remote events
+// retain this identity in old ledgers whose row IDs were unrelated or absent.
+//
+// It IS [UsageCallID], written out here so the explicit-id path reads the three
+// fields in place and copies the row only when it must fingerprint it.
+func (line UsageLine) ChargeID() string {
+	if id := usageExplicitID(line.CallID, line.RemoteEvent, line.ID); id != "" {
+		return id
+	}
+	return UsageFingerprint(line)
+}
+
 // usageDayLayout is the LOCAL calendar day a line belongs to, as an ISO date.
 // A day is the unit a person asks about — "what did Tuesday cost" — and it is
 // local because their Tuesday is, so a line carries the day it was made in
@@ -120,10 +128,17 @@ const UsageLedgerName = "usage.jsonl"
 // from a timestamp in some other zone.
 const usageDayLayout = "2006-01-02"
 
-// UsageLedgerPath is this machine's ledger, resolved through internal/home so
-// CODEAF_HOME moves it with everything else (Decision 26 — one home, one seam).
-// It is the fallback the engine writes to; a caller with a path of its own —
-// a test, a second brain on one laptop — hands one to [RecordUsage] instead.
+// bindUsageLedger fixes an accounting owner's destination before it can spend.
+// Tool-only and naming owners bypass newAgent but owe the same lifetime rule.
+func (c *Config) bindUsageLedger() {
+	c.usageLedger = strings.TrimSpace(c.usageLedger)
+	if c.usageLedger == "" {
+		c.usageLedger = UsageLedgerPath()
+	}
+}
+
+// UsageLedgerPath resolves the current home's ledger. Accounting owners capture
+// it at creation and pass that path to RecordUsage, including after quit.
 func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 
 // UsageLine is one model call as the ledger remembers it.
@@ -133,6 +148,39 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // how many tokens, how much money, and the three ids that say what the money was
 // spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
+	// GenerationID links this call to its provider receipt.
+	GenerationID string `json:"generation_id,omitempty"`
+	// ID names this one row, once, so two readers that meet the same row — a
+	// process's own notice of what it just banked and the same row read back
+	// off the disk — can count it once. Agent accounting names the row before
+	// sharing it with the saved call; RecordUsage names other rows. It is never
+	// rewritten: a row already carrying one keeps it. Rows written before this field existed have none, and
+	// every reader counts them by position, exactly as it always did.
+	ID string `json:"id,omitempty"`
+	// SharedID marks modern call identities and bookkeeping rows that cannot
+	// cover older saved calls during a take. Absence preserves coverage by
+	// historical independent ledger IDs and imported legacy calls.
+	SharedID bool `json:"shared_id,omitempty"`
+	// Billing is what kind of money this call was — "metered", "included" in a
+	// plan — and is written ONLY where the road that answered stated it
+	// (internal/provider's billingfact.go): a bound billing door, or the plan
+	// overflow a person opted into. Absent means nobody said, which a cap
+	// reads as money it may have to stop and a page reads as unknown. It is
+	// never inferred from a zero price, a direct key, a label or a sign-in.
+	Billing string `json:"billing,omitempty"`
+	// BillingBasis is the statement Billing came from — `door:<source>/<door>`
+	// or `overflow:<door>` — and is present exactly when Billing is.
+	BillingBasis string `json:"billing_basis,omitempty"`
+	// Price is where USD came from: "provider" for the charge the provider's
+	// own usage block carried, "receipt" for its later receipt, "list" for
+	// counted tokens times the model's published price. Absent is nobody said,
+	// which is every row before this field and every row whose writer did not
+	// state it; USD itself keeps its old meaning either way.
+	Price string `json:"price,omitempty"`
+	// Run is the immutable execution that made this call, when its caller
+	// supplied one. Older, auxiliary, or late receipt rows may have no identity;
+	// absence must never be read as a single aggregate run.
+	Run string `json:"run,omitempty"`
 	// CallID follows a paid call through worker, mirrored and reconstructed rows.
 	CallID string `json:"call_id,omitempty"`
 	// Computer and RemoteEvent identify a mirrored call independently of cursor
@@ -158,6 +206,9 @@ type UsageLine struct {
 	// in the program records which slot a call ran under, and a page that
 	// labelled this column with those words would be inventing the join.
 	Role string `json:"role,omitempty"`
+	// LibraryActivity distinguishes recorded learning from explicit answers.
+	// Absence on older memory rows preserves that the activity was not recorded.
+	LibraryActivity string `json:"library_activity,omitempty"`
 	// Seat is WHICH TIER'S MODEL ANSWERED, one word of the closed vocabulary
 	// [Seat] spells — reflex, low, worker, high, mastermind, judge, talk — derived at
 	// the bank door ([TagUsage], [SeatOfRole], [SeatOfAgent]) and never typed
@@ -243,6 +294,12 @@ type UsageLine struct {
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
 	Workspace string `json:"workspace,omitempty"`
+	// FactoryJob is the factory job this call was spent for, as
+	// `owner/name#number` ([JobLedgerName]), on every row of a job's family:
+	// its steps, its own chat and their children. It is what lets the factory
+	// say which models its jobs used without opening a transcript, and it is
+	// empty on every other row and on every row written before it existed.
+	FactoryJob string `json:"factory_job,omitempty"`
 
 	// ── what the lane that served it did (docs/ARCHITECTURE.md, Decision 10)
 	//
@@ -492,21 +549,18 @@ func (w *laneWitness) answered(seen hedgeSeen, output int) laneFacts {
 // queue. It is internal/history's shape and it is here for internal/history's
 // reason — "capture must never block the input path" — with one difference that
 // matters: history batches on a ticker because a person can type faster than a
-// disk, and a ledger row is written at most once per model call, so this writer
-// wakes on the row itself and there is nothing to batch.
+// disk. This writer wakes on the row itself, batches only rows already queued,
+// and flushes immediately when the queue is quiet.
 
-// usageQueueDepth is how many serialized rows one ledger's queue holds before a
-// row is DROPPED rather than waited on. Two hundred and fifty-six is far more
-// than the handful of calls that can be in flight at once in this process, so
-// the queue only fills when the disk behind it has stopped answering — which is
-// exactly the case the drop exists for.
+// usageQueueDepth bounds the ordinary background queue. Overflow writes through
+// independently rather than dropping a charge.
 const usageQueueDepth = 256
 
 // usageFlushLimit is the longest [FlushUsage] may wait for the rows in front of
-// it, across every ledger it is flushing. Two seconds is far longer than a disk
-// that is answering needs — a flush costs microseconds on a working mount — and
-// far shorter than a person will wait for a terminal to come back from a mount
-// that is not. It is a var only so a test can shrink it: a test that wants the
+// it, across every ledger it is flushing. The first write scans the ledger's
+// identities, so even a working mount can need time for a large ledger. The
+// two-second ceiling keeps a stalled mount from holding the terminal open.
+// It is a var only so a test can shrink it: a test that wants the
 // deadline to fire should say so in one line rather than put load on the box to
 // provoke it.
 var usageFlushLimit = 2 * time.Second
@@ -516,31 +570,29 @@ var usageFlushLimit = 2 * time.Second
 // The flush travels through the SAME queue as the rows, which is what makes it
 // an answer about them rather than a race with them.
 type usageWrite struct {
+	id   string
 	line []byte
 	done chan struct{}
 }
 
 // usageWriter is one ledger file's background writer.
 type usageWriter struct {
-	queue       chan usageWrite
-	stopped     chan struct{}
-	beforeWrite func()
+	queue        chan usageWrite
+	stopped      chan struct{}
+	path         string
+	beforeWrite  func()
+	admitted     atomic.Int64 // rows taken in, in writing order
+	handled      atomic.Int64 // rows written or dropped
+	overflowMu   sync.Mutex
+	overflow     map[chan struct{}]struct{}
+	overflowRows []usageWrite
+	missed       int64 // pending rows already in usageDropped, under overflowMu
 }
 
-// usageDropped is how many rows this process could not get onto a ledger — a
-// queue full because the disk stopped answering, a directory that would not be
-// made, a write that failed. It is process-wide rather than per-path because
-// every reader of it asks one question — "is what I am looking at short, and by
-// how much" — and a person reading a spending page does not hold a mental map
-// of which ledger a row was bound for.
-//
-// IT EXISTS BECAUSE THE DROP ITSELF IS RIGHT AND THE SILENCE WAS NOT. The
-// bargain above stands: a spending record is worth less than the turn that
-// earned it, so the row gives way. But a ledger that quietly loses rows reads
-// as a machine that spent less, which is the flattering direction and the one
-// direction a bill must never be wrong in. So the drop is counted and the spend
-// surfaces say so ([UsageDrops]). [UnbilledCalls] makes the same sentence about
-// calls whose provider receipt could not be had.
+// usageDropped counts serialization and filesystem failures across all ledgers,
+// and rows still pending when a wait reached [usageFlushLimit]; a pending row
+// that is written later takes its count back ([usageWriter.noteMiss]).
+// A full queue no longer contributes: overflow writes through instead.
 var usageDropped atomic.Int64
 
 // unbilledCalls is process-wide for the same reason [usageDropped] is: every
@@ -595,53 +647,151 @@ func usageWriterForLocked(path string) *usageWriter {
 		return writer
 	}
 	writer := &usageWriter{
-		queue:   make(chan usageWrite, usageQueueDepth),
-		stopped: make(chan struct{}),
+		path:     path,
+		queue:    make(chan usageWrite, usageQueueDepth),
+		stopped:  make(chan struct{}),
+		overflow: make(map[chan struct{}]struct{}),
 	}
 	usageWriters[path] = writer
 	go writer.run(path)
 	return writer
 }
 
+// pendingOverflow captures the writes already admitted without waiting under a
+// lock. Later writes belong to a later flush; shutdown admits no later writes.
+func (w *usageWriter) pendingOverflow() []chan struct{} {
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	pending := make([]chan struct{}, 0, len(w.overflow))
+	for done := range w.overflow {
+		pending = append(pending, done)
+	}
+	return pending
+}
+
 // run drains the queue forever, holding ONE descriptor open across rows.
 //
 // The descriptor is opened lazily and dropped on the first write that fails, so
-// the next row opens a fresh one: a ledger that was rotated or a mount that came
-// back is picked up by the row after the failure rather than by a restart. The
-// failing row itself is lost, which is this file's stated bargain — a spending
-// record is worth less than the turn that earned it.
+// a replaced or removed pathname reopens and retries the same row once. Other
+// filesystem failures drop the descriptor and count that row in UsageDrops;
+// the next row tries a fresh descriptor without blocking the turn.
 func (w *usageWriter) run(path string) {
 	var file *os.File
+	var identities usageIdentityCursor
 	defer close(w.stopped)
 	defer func() {
 		if file != nil {
 			_ = file.Close()
 		}
 	}()
-	for work := range w.queue {
-		if work.done != nil {
-			close(work.done)
-			continue
+	write := func(rows []usageWrite) {
+		charges := 0
+		for _, row := range rows {
+			if row.line != nil {
+				charges++
+			}
 		}
+		if charges == 0 {
+			return
+		}
+		defer w.rowsHandled(int64(charges))
 		if w.beforeWrite != nil {
 			w.beforeWrite()
 		}
 		if file == nil {
 			file = openUsageLedger(path)
 			if file == nil {
-				dropUsageRow()
-				continue
+				usageDropped.Add(int64(charges))
+				return
 			}
 		}
-		// ONE write per complete line, so O_APPEND's atomic offset covers the
-		// whole row — which is also what lets [UsageCache] trust that the bytes
-		// before the last newline are whole lines, and what keeps two processes
-		// appending to one ledger from interleaving halves of two rows.
-		if _, err := file.Write(work.line); err != nil {
-			dropUsageRow()
+		// One append holds complete rows under the same ledger lock. Batching
+		// amortizes generation validation without delaying a quiet writer.
+		written, err := identities.append(file, rows)
+		if errors.Is(err, errUsageLedgerReplaced) || errors.Is(err, fs.ErrNotExist) {
+			_ = file.Close()
+			file = openUsageLedger(path)
+			identities = usageIdentityCursor{}
+			if file == nil {
+				usageDropped.Add(int64(charges))
+				return
+			}
+			written, err = identities.append(file, rows)
+		}
+		if err != nil {
+			usageDropped.Add(int64(charges))
 			_ = file.Close()
 			file = nil
+			identities = usageIdentityCursor{}
+			return
 		}
+		for range written {
+			announceUsageWritten()
+		}
+	}
+	batch := make([]usageWrite, 0, usageWriteBatchSize)
+	flush := func() {
+		write(batch)
+		clear(batch)
+		batch = batch[:0]
+	}
+	for work := range w.queue {
+		if work.done != nil {
+			if len(batch) > 0 {
+				flush()
+			}
+			w.writeOverflow(write)
+			close(work.done)
+			continue
+		}
+		if work.line != nil {
+			batch = append(batch, work)
+			if len(batch) == usageWriteBatchSize || len(w.queue) == 0 {
+				flush()
+			}
+		}
+		if len(w.queue) == 0 {
+			w.writeOverflow(write)
+		}
+	}
+	if len(batch) > 0 {
+		flush()
+	}
+	w.writeOverflow(write)
+}
+
+// usageWatchers are told after a row reaches the file. Spending happens outside
+// chat turns (Factory triage, scouts, page AI), so a reader of today's figure
+// can't wait for a turn's ending to know the ledger moved.
+var usageWatchers struct {
+	sync.Mutex
+	next int
+	of   map[int]func()
+}
+
+// OnUsageWritten calls watch after each row reaches the ledger, on the writer's
+// goroutine, so watch must not block. The answer stops the watching.
+func OnUsageWritten(watch func()) (stop func()) {
+	usageWatchers.Lock()
+	defer usageWatchers.Unlock()
+	if usageWatchers.of == nil {
+		usageWatchers.of = map[int]func(){}
+	}
+	id := usageWatchers.next
+	usageWatchers.next++
+	usageWatchers.of[id] = watch
+	return func() {
+		usageWatchers.Lock()
+		defer usageWatchers.Unlock()
+		delete(usageWatchers.of, id)
+	}
+}
+
+func announceUsageWritten() {
+	usageWatchers.Lock()
+	defer usageWatchers.Unlock()
+	for _, watch := range usageWatchers.of {
+		watch()
 	}
 }
 
@@ -654,7 +804,7 @@ func openUsageLedger(path string) *os.File {
 			return nil
 		}
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	file, err := fsreplace.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil
 	}
@@ -668,7 +818,7 @@ func openUsageLedger(path string) *os.File {
 // a test uses instead of sleeping — internal/history's Close is the same door
 // for the same reason.
 //
-// IT IS THE ONE PLACE IN THIS FILE THAT WAITS, deliberately: a caller asking for
+// IT WAITS FOR THE WRITES, deliberately: a caller asking for
 // a flush is asking to be told when the writing is done, and a flush that gave
 // up early would be an answer about nothing. Nothing on a turn path may call it.
 //
@@ -681,7 +831,13 @@ func openUsageLedger(path string) *os.File {
 // exactly that: the writer's next append rebuilds the directory underneath the
 // cleanup. A caller that wants a join wants [StopUsageWriter] or [CloseUsage].
 func FlushUsage() bool {
-	dones := enqueueUsageFlush()
+	return flushUsage("")
+}
+
+// flushUsage drains one path without stopping its shared writer. An empty path
+// selects every writer for [FlushUsage]. Rows admitted later may keep writing.
+func flushUsage(path string) bool {
+	dones := enqueueUsageFlush(path)
 	// IT WAITS UNDER A CEILING, because the one thing it waits on is the thing
 	// this whole file exists to survive. A writer parked inside [openUsageLedger]
 	// on a stalled mount never drains its queue again, so an unbounded flush
@@ -697,10 +853,83 @@ func FlushUsage() bool {
 		select {
 		case <-done:
 		case <-deadline.C:
+			for _, writer := range usageWritersAt(path) {
+				writer.noteMiss()
+			}
 			return false
 		}
 	}
 	return true
+}
+
+// usageDrainPoll is how often [drainUsage] looks at its writer's count.
+const usageDrainPoll = time.Millisecond
+
+// drainUsage waits, under [usageFlushLimit], for the rows path's writer has taken
+// in so far. It leaves the writer running, so other conversations keep recording.
+//
+// IT READS A COUNT AND HANDS THE WRITER NOTHING. A flush marker carries a channel
+// the writer closes, and the writer outlives whoever asks: a channel made inside
+// a test's synctest bubble and closed from outside it kills the test process.
+// Rows are handled in the order taken in, so the count covers these rows exactly,
+// and later traffic can't hold the wait open.
+func drainUsage(path string) bool {
+	writers := usageWritersAt(path)
+	if len(writers) == 0 {
+		return true
+	}
+	writer := writers[0]
+	target := writer.admitted.Load()
+	deadline := time.Now().Add(usageFlushLimit)
+	for writer.handled.Load() < target {
+		if time.Now().After(deadline) {
+			writer.noteMiss()
+			return false
+		}
+		time.Sleep(usageDrainPoll)
+	}
+	return true
+}
+
+// usageWritersAt answers the writer at path, or every writer for an empty path.
+func usageWritersAt(path string) []*usageWriter {
+	usageWritersMu.Lock()
+	defer usageWritersMu.Unlock()
+	writers := make([]*usageWriter, 0, len(usageWriters))
+	for ledger, writer := range usageWriters {
+		if path == "" || ledger == path {
+			writers = append(writers, writer)
+		}
+	}
+	return writers
+}
+
+// noteMiss leaves a trace of a wait that reached its ceiling with rows still
+// pending. Those rows are written if the process lives and lost if it exits, so
+// they count as short until written, once however many waits reach the ceiling.
+func (w *usageWriter) noteMiss() {
+	pending := w.admitted.Load() - w.handled.Load()
+	if pending <= 0 {
+		return
+	}
+	w.overflowMu.Lock()
+	if extra := pending - w.missed; extra > 0 {
+		w.missed += extra
+		usageDropped.Add(extra)
+	}
+	w.overflowMu.Unlock()
+	log.Printf("usage: %d rows pending for %s after %s", pending, w.path, usageFlushLimit)
+}
+
+// rowsHandled ends n rows' wait, written or dropped, and takes back the count
+// of any that [usageWriter.noteMiss] had called short.
+func (w *usageWriter) rowsHandled(n int64) {
+	w.handled.Add(n)
+	w.overflowMu.Lock()
+	back := min(w.missed, n)
+	w.missed -= back
+	w.overflowMu.Unlock()
+	usageDropped.Add(-back)
 }
 
 // StopUsageWriter ends ONE path's writer and waits for it, the same detach and
@@ -744,24 +973,36 @@ func detachUsageWriter(path string) *usageWriter {
 	return writer
 }
 
-// enqueueUsageFlush hands a flush marker to every live writer UNDER the writers
+// enqueueUsageFlush hands a flush marker to the selected writers UNDER the writers
 // lock, the same door [RecordUsage] enqueues through, so a marker is never sent
 // on a queue [CloseUsage] closed under that lock (a send on a closed channel
 // would panic the process). The send is non-blocking for [RecordUsage]'s
 // reason: a full queue is a writer stalled on a disk that is not answering, and
 // a flush will not wait on a marker that cannot land, no more than on a row that
-// cannot. Only the markers that were accepted are waited on.
-func enqueueUsageFlush() []chan struct{} {
+// cannot. An unaccepted marker makes the bounded flush report false.
+func enqueueUsageFlush(path string) []chan struct{} {
 	usageWritersMu.Lock()
 	defer usageWritersMu.Unlock()
 	dones := make([]chan struct{}, 0, len(usageWriters))
-	for _, writer := range usageWriters {
+	for ledger, writer := range usageWriters {
+		if path != "" && ledger != path {
+			continue
+		}
+		dones = append(dones, writer.pendingOverflow()...)
 		done := make(chan struct{})
+		if writer.keepingRows() {
+			writer.addBarrier(done)
+			dones = append(dones, done)
+			continue
+		}
 		select {
 		case writer.queue <- usageWrite{done: done}:
-			dones = append(dones, done)
 		default:
+			// The queue is full, so its writer will reach the kept rows, and
+			// it takes them only once everything queued has been written.
+			writer.addBarrier(done)
 		}
+		dones = append(dones, done)
 	}
 	return dones
 }
@@ -783,6 +1024,9 @@ func CloseUsage() {
 		select {
 		case <-writer.stopped:
 		case <-deadline.C:
+			for _, left := range writers {
+				left.noteMiss()
+			}
 			return
 		}
 	}
@@ -814,6 +1058,19 @@ func detachUsageWriters() []*usageWriter {
 // more than one door over its life, and a zero row in a spending ledger is worse
 // than no row — it is a day that looks measured and was not.
 func RecordUsage(path string, line UsageLine) {
+	// Every live producer is modern, even when it has no saved-call identity.
+	// Only imported historical calls may cover the old ordered prefix.
+	line.SharedID = true
+	queueUsage(path, line)
+}
+
+// RecordImportedUsage restores a saved call, preserving the ordered-prefix
+// coverage of historical calls that have no shared identity.
+func RecordImportedUsage(path string, line UsageLine) {
+	queueUsage(path, line)
+}
+
+func queueUsage(path string, line UsageLine) {
 	if strings.TrimSpace(path) == "" {
 		return
 	}
@@ -826,22 +1083,118 @@ func RecordUsage(path string, line UsageLine) {
 	if strings.TrimSpace(line.Day) == "" {
 		line.Day = line.At.Local().Format(usageDayLayout)
 	}
+	// Agent accounting shares an identity with its saved call before enqueueing.
+	// Other callers get a fresh row identity here ([UsageLine.ID]).
+	if id := strings.TrimSpace(line.CallID); id != "" && strings.TrimSpace(line.ID) == "" {
+		line.ID = id
+	}
+	if strings.TrimSpace(line.ID) == "" {
+		line.ID = newUsageRowID()
+	} else {
+		line.SharedID = true
+	}
+	if strings.TrimSpace(line.RemoteEvent) != "" {
+		line.SharedID = true
+	}
 	payload, err := json.Marshal(line)
 	if err != nil {
 		dropUsageRow()
 		return
 	}
-	// THE ENQUEUE IS NON-BLOCKING AND THE ROW IS THE THING THAT GIVES WAY. A
-	// full queue means the writer is stuck on a disk that is not answering, and
-	// a turn made to wait behind it would be this file's fourth rule broken to
-	// save a record of what the turn cost.
+	// Overflow is kept for the writer, so a saturated queue never discards a
+	// charge and the caller still never waits on the disk.
 	usageWritersMu.Lock()
-	defer usageWritersMu.Unlock()
 	writer := usageWriterForLocked(path)
+	work := usageWrite{id: line.ChargeID(), line: append(payload, '\n')}
+	writer.admitted.Add(1)
+	// While rows are kept, new ones join them: the queue can then only shrink,
+	// so steady traffic can't hold the kept rows back.
+	if !writer.keepingRows() {
+		select {
+		case writer.queue <- work:
+			usageWritersMu.Unlock()
+			return
+		default:
+		}
+	}
+	writer.addOverflow(work)
+	usageWritersMu.Unlock()
+}
+
+// keepingRows says the writer still holds kept rows. Callers hold usageWritersMu.
+func (w *usageWriter) keepingRows() bool {
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	return len(w.overflowRows) > 0
+}
+
+// addOverflow keeps a row the full queue couldn't take. The queue's own writer
+// takes it once the queue is empty, so rows stay in order and a stalled mount
+// holds one thread. A full queue means that writer has work, so it will reach
+// this row.
+func (w *usageWriter) addOverflow(work usageWrite) {
+	done := make(chan struct{})
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	w.overflow[done] = struct{}{}
+	work.done = done
+	w.overflowRows = append(w.overflowRows, work)
+	w.wakeForOverflow()
+}
+
+// wakeForOverflow covers a writer that emptied the queue between the caller
+// seeing it full and keeping the row: an empty item sends it back to the kept
+// rows. If the queue holds anything, the writer has work and will reach them,
+// and another empty item would only keep the queue from reading empty.
+func (w *usageWriter) wakeForOverflow() {
+	if len(w.queue) != 0 {
+		return
+	}
 	select {
-	case writer.queue <- usageWrite{line: append(payload, '\n')}:
+	case w.queue <- usageWrite{}:
 	default:
-		dropUsageRow()
+	}
+}
+
+// addBarrier closes done once the rows kept before it have been written.
+func (w *usageWriter) addBarrier(done chan struct{}) {
+	w.overflowMu.Lock()
+	defer w.overflowMu.Unlock()
+	w.overflowRows = append(w.overflowRows, usageWrite{done: done})
+	w.wakeForOverflow()
+}
+
+// usageWriteBatchSize bounds lock ownership and temporary row storage. Only
+// already admitted rows are batched; a single call never waits for more work.
+const usageWriteBatchSize = 128
+
+// writeOverflow writes the rows kept so far.
+func (w *usageWriter) writeOverflow(write func([]usageWrite)) {
+	// An older queue marker must not complete a newer overflow barrier ahead
+	// of the queued rows it covers. Snapshot only an empty queue, under the
+	// admission lock, so no row can enter between the check and the snapshot.
+	usageWritersMu.Lock()
+	if len(w.queue) != 0 {
+		usageWritersMu.Unlock()
+		return
+	}
+	w.overflowMu.Lock()
+	rows := w.overflowRows
+	w.overflowRows = nil
+	w.overflowMu.Unlock()
+	usageWritersMu.Unlock()
+	for len(rows) > 0 {
+		n := min(len(rows), usageWriteBatchSize)
+		batch := rows[:n]
+		write(batch)
+		w.overflowMu.Lock()
+		for _, row := range batch {
+			delete(w.overflow, row.done)
+			close(row.done)
+		}
+		w.overflowMu.Unlock()
+		clear(batch)
+		rows = rows[n:]
 	}
 }
 
@@ -950,29 +1303,32 @@ func scanUsage(reader io.Reader, since time.Time) ([]UsageLine, int64, error) {
 // the ledger at all.
 func (a *Agent) recordUsageLine(call bankedCall) error {
 	used := call.used
-	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
+	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 && !call.unpriced {
 		return nil
 	}
-	path := strings.TrimSpace(a.config.usageLedger)
-	if path == "" {
-		path = UsageLedgerPath()
-	}
+	path := a.config.usageLedger
 	a.mu.Lock()
 	session := a.sessionID()
 	a.mu.Unlock()
 	now := time.Now()
 	line := UsageLine{
-		At:         now,
-		Day:        now.Local().Format(usageDayLayout),
-		Model:      strings.TrimSpace(call.model),
-		Calls:      used.Calls,
-		Input:      used.Input,
-		Output:     used.Output,
-		USD:        used.CostUSD,
-		Empty:      used.EmptyReflex > 0,
-		Reconciled: call.reconciled,
+		ID:              newUsageRowID(),
+		GenerationID:    strings.TrimSpace(call.generationID),
+		Unbilled:        call.unpriced,
+		At:              now,
+		Day:             now.Local().Format(usageDayLayout),
+		Model:           strings.TrimSpace(call.model),
+		Calls:           used.Calls,
+		Input:           used.Input,
+		Output:          used.Output,
+		USD:             used.CostUSD,
+		Empty:           used.EmptyReflex > 0,
+		Reconciled:      call.reconciled,
+		Price:           usagePrice(used.CostUSD, call.price),
+		LibraryActivity: call.libraryActivity,
 
 		Session: session,
+		Run:     call.run,
 		// The node this row belongs to: the node this agent IS, or — for a
 		// checker, which is not the node — the node it CHECKS
 		// ([Config.checksNode]). The two are never both set, and the figure is
@@ -984,6 +1340,7 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 		Root:       strings.TrimSpace(a.config.rootSession),
 		Automation: strings.TrimSpace(a.config.automationID),
 		Workspace:  strings.TrimSpace(a.config.Workspace),
+		FactoryJob: a.factoryJobName(),
 	}
 
 	// THE ROW'S TWO NAMES GO ON THROUGH ONE DOOR ([TagUsage]), and the seat
@@ -999,8 +1356,13 @@ func (a *Agent) recordUsageLine(call bankedCall) error {
 	if call.turn {
 		seat, _ = SeatOfAgent(a.agentKind())
 	}
+	if call.unpriced {
+		countUnbilledCall()
+	}
 	line = TagUsage(line, roles.Role(call.role), seat)
+	line = withUsageBilling(line, call.billing)
 	if remote := call.remote; remote != nil {
+		line.SharedID = true
 		line.Task, line.Computer, line.RemoteEvent = remote.Task, remote.Computer, remote.Event
 		line.CallID = remote.CallID
 		line.Seat = remote.Seat
@@ -1219,31 +1581,29 @@ func (c *UsageCache) since(floor time.Time) []UsageLine {
 func RecordUnbilledCall(path string, line UsageLine) {
 	countUnbilledCall()
 	line.Unbilled = true
+	line.SharedID = true
 	RecordUsage(path, line)
 }
 
 // recordUnbilledReceipt uses the same ownership fields as an ordinary usage row.
 func (a *Agent) recordUnbilledReceipt(model string) {
-	path := strings.TrimSpace(a.config.usageLedger)
-	if path == "" {
-		path = UsageLedgerPath()
-	}
+	path := a.config.usageLedger
 	a.mu.Lock()
 	owner := a.sessionID()
 	a.mu.Unlock()
 	RecordUnbilledCall(path, UsageLine{
 		Session: owner, Model: model, Task: usageTaskID(a.config.taskID),
 		Root: a.config.rootSession, Automation: a.config.automationID, Workspace: a.config.Workspace,
+		FactoryJob: a.factoryJobName(),
 	})
 }
 
 // modelCallOf is the receipt's word for one ledger row: the same call, seen
 // from the seat that seals the turn it was made in.
 func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
+	id := UsageCallID(line)
 	return procexec.ModelCall{
-		// Local ledger rows keep their original schema; their recorded facts
-		// yield the same portable identity the worker transport derives.
-		CallID: UsageCallID(line), Model: line.Model, Role: line.Role,
+		ID: id, CallID: id, Model: line.Model, Role: line.Role,
 		TokensIn: line.Input, TokensOut: line.Output, TokensCached: used.CacheRead,
 		CostMicroUSD: int64(math.Round(line.USD * microPerUSD)),
 	}

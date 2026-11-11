@@ -93,6 +93,55 @@ adds the content to the end of the file instead of replacing it and reports
 `Appended N lines to <path>; the file now has M lines.` — appending to a file
 that does not exist yet simply creates it.
 
+## UTF-16 files, PowerShell text, BOM and CRLF line endings
+
+`read` decodes UTF-16 little-endian and big-endian files that start with a byte
+order mark (BOM), including files written by Windows PowerShell 5.1. `edit` and
+`write`, including `append:true`, keep that encoding and BOM. Files without a
+UTF-16 BOM retain their existing interpretation; UTF-8 needs no conversion.
+Keeping an existing encoding requires a readable file. Linux and macOS still
+allow a write-only file to be replaced with the exact supplied bytes.
+Reads, edits and appends refuse malformed UTF-16 with an incomplete code unit or
+an unpaired surrogate. Windows also refuses rewriting malformed UTF-16; Linux
+and macOS allow a full rewrite to replace its old bytes.
+
+UTF-16 edits, rewrites and appends keep the file's line-ending style on every OS.
+For other files, chat edits preserve the existing style. Windows rewrites, appends
+and headless edits also preserve that style. On Linux and macOS, `write` keeps
+the supplied bytes exactly, and headless `codeaf do`, `exec` and `run` edits
+continue to match and replace literal text, including CRLF.
+
+## Why is a written or edited file missing from Files — deliverables in a plain folder
+
+Successful `write` and `edit` calls record files inside the conversation's
+workspace, its own `work/`, or its `artifacts/` folder. This includes overwriting
+an existing file and appending to it. A rewrite updates the same deliverable ID
+with the new content hash; it does not add another card. Files of other types,
+such as text, source code and PDFs, are recorded as files too.
+
+If the same path has both an authored card and an independently shared card,
+rewrites update the authored card. If it has only a shared card, a write or edit
+creates a separate authored card; the shared identity and version stay unchanged
+so an interrupted share can still be retried. Legacy cards with unknown authorship
+also stay unchanged. Keeping a copy while the source is rewritten
+retains the copy's recorded bytes and the source's latest hash and preview.
+This also holds when the desktop keeps locally while another process hosts
+the conversation and records its writes.
+
+A desktop conversation has a deliverables index and a journal even when its
+folder is a home directory or another folder outside Git. These rules cover the
+conversation's own tools. Writing outside these roots does not claim a deliverable.
+Task workers retain creation-only recording for supported file kinds; media
+created in a task worktree is not automatically recorded.
+
+Chat `/files` counts up to 200 distinct paths from recent index rows. Repeated
+edits to one file do not consume that 200-path limit. Generic files use a bounded
+header sniff for MIME, retaining a known MIME when the new sniff is generic.
+
+Shell commands have a narrower signal: pictures declared in `bash`'s `outputs`
+are already inspected and recorded. Other shell-made files are not discovered
+automatically; there is no filesystem scan. `share_deliverable` can explicitly
+hand over an existing file.
 ## Why did a compact worker reject a write with “write needs text”?
 
 Chat writes require a string `content` field, including with `append:true`. A
@@ -200,7 +249,8 @@ Yes. The `bash` tool runs tests, builds and development servers through `/bin/ba
 in your workspace. A server meant to stay up can start in the background immediately.
 It streams stdout and stderr together, keeps unexpectedly long commands running as
 background jobs instead of killing them, and reports a non-zero exit as
-`Command exited with code N`.
+`Command exited with code N`. In the desktop app it can also ask to keep a server up after
+the turn, once you allow it (see "Keep a dev server up after the turn").
 
 ## Run a command or build the project — background after and timeout
 
@@ -344,8 +394,19 @@ BUILD OK
 [job 3 · last 50 lines · full log: <path>]
 ```
 
-If codeaf is mid-turn the note lands at the next step; if the turn had already
-ended, the note starts a new one, exactly as a finished task does. Several
+A plain background process that exits 0 waits silently for the next turn; it
+never starts a reply. Set `notify: true` beside `background: true` in `bash` when
+the person asked to be told when it ends. Failures, explicitly requested
+notifications, and commands whose call or task worker is still waiting keep the
+waking path: their note lands at the next step while a turn is running. When
+idle, failures and requested notifications whose call or task worker is not
+waiting gather for two seconds from the first ending, then start one turn with
+all their notes. An image answered by the vision fallback does not read that
+news; after it finishes, an ordinary turn answers the pending notes. Closing
+saves pending endings even if their wake was blocked by stopping work.
+A command whose call or worker is still waiting releases it
+immediately; that turn also reads any notes already gathering. Task and video
+or music render endings still wake as before. Several
 session notes waiting at that boundary are one `while you worked:` message, not
 several synthetic user messages between tool calls.
 
@@ -355,10 +416,13 @@ note names its path, so a recent older line is one `jobs output` call away and
 the ending itself never is. When output has been discarded, the note says so
 instead of calling what remains full.
 
-So you should never see codeaf running `sleep 30 && tail …` to wait for
+## Why is it running sleep and tail over and over?
+
+You should never see codeaf running `sleep 30 && tail …` to wait for
 something. That loop was real — it cost one benchmark worker two thirds of its
 wall clock, waiting on a log that was empty because of buffering — and the two
-mechanisms above are what replaced it. `jobs output` is still there for an
+mechanisms that replaced it are automatic job-status lines and ending notes.
+`jobs output` is still there for an
 intermediate look at a job you asked about; it is not how waiting is done.
 
 ## Can I send a running command to the background myself?
@@ -472,6 +536,25 @@ outcome belongs here, and gathering, deciding, writing or checking something —
 parts it has, and however long it takes — belongs to a task instead, which gives you a room
 to watch and a report you can read. If a multi-part piece of work was started as a
 background command, say so: it can be handed to a task instead.
+
+## Why was my background job ended — the CPU and process bound on a job
+
+The bound applies to `bash` jobs: both background commands and foreground
+commands kept as jobs. It measures the job's whole process tree, including its
+children, rather than just the shell that started it.
+
+A job's tree may not hold more than **128 processes**. When no CPU quota or
+affinity mask holds codeaf below the machine's logical core count, the tree
+also may not sustain more than **three fifths of those logical cores**. Under
+a binding quota or affinity mask, only the process-count bound applies.
+
+Either limit exceeded for **15 consecutive readings, 2 seconds apart**
+(**thirty seconds**) ends the job. A brief spike does not end it. The run is
+told **"the job subtree was not settled within its bound"**, with the job's
+process count and CPU usage, so the ending is explained.
+
+The tree is read on **Linux and macOS**. Where the tree cannot be read,
+including **Windows**, this bound never cuts a job.
 
 ## How much disk space do finished job logs keep?
 
@@ -609,8 +692,10 @@ Nothing further ever comes from that watch: it is over, which is exactly why its
 last note is the one worth waking for. `jobs list` no longer shows it running,
 and its whole tick history stays at `jobs output <id>`.
 
-A background command exiting and a video or music render landing wake a reply the
-same way. The tasks page has the rest of it under
+A background command failing, one started with `notify: true`, or a command
+whose call or worker is waiting wakes a reply, as does a video or music render
+landing. A plain background process exiting 0 waits silently for the next turn.
+The tasks page has the rest of it under
 *Waiting on something, and the limit on carrying on*.
 
 ## Can you tell me when something has finished — how do I know it went quiet or stopped changing?
@@ -679,8 +764,9 @@ It tries rungs in order and names the one that answered, e.g.
 `<path> is over the 25MB document limit`. A path it cannot open answers
 `could not read <path>`. With no API key on the session:
 `the document rungs are out of reach: this session has no API key — read_document rides this session's own API key and base URL`.
-When every rung fails, each is named, e.g.
-`could not read <path> — native: 402 insufficient credits; cloudflare-ai: no readable text`.
+When every rung fails, each is named and the error points to `read` for local
+text extraction, e.g.
+`could not read <path> — all document parsers failed; native: 402 insufficient credits; cloudflare-ai: no readable text; try read for local text extraction`.
 
 Extraction is remembered for the conversation, so paging through a long document
 costs nothing extra.
@@ -690,6 +776,13 @@ rung only, which is a model's own eyes. When the model you are talking to cannot
 see, that rung is sent to the **looking model** instead of to your blind one, so
 `read_document` reads a photograph on any model. Everything else (PDFs, docx,
 xlsx, pptx) goes to your own model and the parsers, as before.
+
+## Can read_document read a short or one-line office document?
+
+`read_document` accepts complete office text, even a single line. Length alone
+does not trigger another parser. Invalid UTF-8 or binary control characters are
+rejected, so unreadable output still tries the next rung. If every parser fails,
+the error names them and suggests `read` for local text extraction.
 
 ## Can you look at an image, listen to audio or watch a video I have on disk?
 
@@ -1158,6 +1251,11 @@ reaches, even when the question was looked up in different words.
 When the manual has nothing on a topic, the answer is:
 `The manual has nothing on that, which usually means codeaf does not do it.`
 
+**In the desktop app, the app's own pages are in it too.** The app registers its
+pages when it starts, and `manual` searches them beside codeaf's own. Their names
+start with `workaf/`, such as `workaf/inbox`, so an answer always says whether it
+came from the app's pages or from codeaf's. They last until the app quits.
+
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
 
@@ -1237,7 +1335,7 @@ commit trailer, and every credential row. The permissions page lists them exactl
 model that could widen its own restraints would not have any.
 
 Both tools are absent inside a running task, along with `watch`. A task node
-works in a copy of its own with nobody watching it, and a permanent change to your
+works in a folder of its own with nobody watching it, and a permanent change to your
 machine that no transcript ever showed you is the one thing this pair must not be
 able to make. `propose_task` and `tasks` are NOT absent there: a task may hand
 pieces of its own work out, tasks nesting 3 deep at most, and `tasks` shows it those
@@ -1280,6 +1378,35 @@ to you.
 cannot be unloaded, and loading it again changes nothing. Reopening restores groups
 from the `load_capability` calls in the saved transcript. If those calls have been
 compacted away, codeaf loads the group again when needed.
+
+## Can you hand me a file as a result — share a deliverable, send me the chart, report or PDF you made
+
+**Yes, with `share_deliverable`.** When a file is something you should get back — a
+chart a script rendered, a report, a PDF, a recording, a spreadsheet, an archive — the
+agent shares it, and it joins this conversation's deliverables marked **shared by** the
+agent. Files recorded by `write` or a generator need no share. Sharing an unchanged
+authored file reports that it is already among this conversation's deliverables,
+adds no record, emits no update and costs nothing. Other files in the same call
+are still shared. If a script or shell changed the bytes since the authored record,
+sharing records the new version; content hashes decide, not timestamps.
+
+- **Up to 8 files and 64 MiB in all per call**, any regular file kind. A picture, a sound
+  or a video is also a media source you can preview; every other file keeps the type its
+  first bytes say (`application/pdf`, a plain file) and is not a preview.
+- **The file must be inside this conversation's folders** — the project, or the
+  conversation's own work and artifacts folders. A file outside them, a folder, or a file
+  reached through a link is refused and nothing is recorded.
+- **A task's file is copied** into the conversation's own artifacts folder when it lives
+  only in the task's tree, so it can still be opened after that tree is gone. The original
+  is never changed or moved, and the record names it as the original.
+- **It is recorded as it was at that moment**: its size and content hash are read once,
+  within ten seconds. A file that changes while it is being read is refused.
+- **Sharing is not making.** A shared file is never called made, created, a draft or kept
+  by the share, and nothing is charged for it.
+- **A retry never records twice.** Each share carries an `operation_id`; the same id
+  answers the same receipt again — `accepted`, `refused`, or `unknown`/`pending`/`busy`
+  when it should be retried with that same id. At most four shares run at once; a fifth
+  is told `busy` rather than queued.
 
 ## What codeaf cannot do
 

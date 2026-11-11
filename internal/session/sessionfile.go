@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -105,6 +103,7 @@ type sessionHeader struct {
 }
 
 type sessionEntry struct {
+	ModelSwitch *ModelSwitch `json:"modelSwitch,omitempty"`
 	// KnowledgeProject scopes subsequent original messages after a workspace anchor.
 	KnowledgeProject         string `json:"knowledgeProject,omitempty"`
 	KnowledgePreviousProject string `json:"knowledgePreviousProject,omitempty"`
@@ -236,6 +235,27 @@ type sessionEntry struct {
 	// Summarized is how many messages a summary note replaced
 	// (compact_summary.go). The note itself is in the window like any line.
 	Summarized int `json:"summarized,omitempty"`
+	// The rest of the pass as facts (compaction_facts.go): what the
+	// conversation weighed after it, the summary it spliced (Kept, its body
+	// without the note's framing) and the model that wrote it, how many of the
+	// person's messages that summary stands for and when they were written,
+	// and why a summary it asked for did not land. On a `compaction_failed`
+	// line only TokensBefore, TokensAfter, Failed and Full are set. All are
+	// absent from a marker written before they existed, which a reader takes
+	// as unknown.
+	TokensAfter int    `json:"tokensAfter,omitempty"`
+	Kept        string `json:"kept,omitempty"`
+	KeptModel   string `json:"keptModel,omitempty"`
+	KeptTurns   int    `json:"keptTurns,omitempty"`
+	KeptFrom    string `json:"keptFrom,omitempty"`
+	KeptUntil   string `json:"keptUntil,omitempty"`
+	SummaryFail string `json:"summaryFailed,omitempty"`
+	// StartedAt is when the pass began and Arrived how many message lines
+	// written before this one joined the conversation after it began (while
+	// its summary was being written); the pass is placed before them.
+	StartedAt   string `json:"startedAt,omitempty"`
+	Arrived     int    `json:"arrived,omitempty"`
+	ContextFull bool   `json:"contextFull,omitempty"`
 
 	// Window is HOW MANY MESSAGE LINES THE PASS RE-JOURNALED BEHIND THIS MARKER
 	// — the length of the rebuilt window [sessionFile.appendCompaction] writes
@@ -270,8 +290,12 @@ type sessionEntry struct {
 	// created, and the name is not known until the first turn has been
 	// answered. A line is also how a name can be rewritten later without any
 	// reader having to rewrite the file: the replay takes the LAST title line.
-	Title      string `json:"title,omitempty"`
-	ShortTitle string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
+	Title string `json:"title,omitempty"`
+	// LiteralName says the title is a rule's or a person's exact words rather
+	// than a generated label, so the replay keeps it verbatim (appnames.go).
+	LiteralName bool             `json:"literalName,omitempty"`
+	IntentName  *intentNameState `json:"intentName,omitempty"`
+	ShortTitle  string           `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 
 	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
 	// and it is on its own line rather than on the assistant message that ended
@@ -1047,6 +1071,10 @@ type journalPart struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
 	MIME   string `json:"mime,omitempty"`
+	// Bytes is the picture's size when it was accepted, absent on a line written
+	// before it was recorded. It lets a request know what a picture costs
+	// without opening the file.
+	Bytes int64 `json:"bytes,omitempty"`
 }
 
 // contentPart turns one reference back into content for the live transcript.
@@ -1058,31 +1086,20 @@ type journalPart struct {
 // the same bytes on the wire. Anything else — moved, deleted, edited, unreadable,
 // grown past the limit — is a text part that says which picture is missing.
 func (p journalPart) contentPart() ai.ContentPart {
-	if p.Type != journalPartImage {
-		return p.placeholder()
-	}
-	info, err := os.Stat(p.Path)
-	if err != nil || info.IsDir() || info.Size() > maxImageBytes {
-		return p.placeholder()
-	}
-	data, err := os.ReadFile(p.Path)
-	if err != nil || len(data) > maxImageBytes {
-		return p.placeholder()
-	}
-	sum := sha256.Sum256(data)
-	if hex.EncodeToString(sum[:]) != p.SHA256 {
+	if p.Type != journalPartImage || len(p.SHA256) != 64 {
 		return p.placeholder()
 	}
 	mediaType := strings.TrimSpace(p.MIME)
 	if mediaType == "" {
 		mediaType = imageMediaTypes[strings.ToLower(filepath.Ext(p.Path))]
 	}
-	if mediaType == "" {
+	if mediaType == "" || strings.TrimSpace(p.Path) == "" {
 		return p.placeholder()
 	}
-	return ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
-		URL: "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data),
-	}}
+	// NO FILE IS OPENED HERE. A replay of two hundred pictures is two hundred
+	// references; the bytes are read, and checked against this digest, by the
+	// request that carries them (imageref.go).
+	return imageRef{Path: p.Path, MIME: mediaType, Bytes: p.Bytes, SHA256: p.SHA256}.part()
 }
 
 // reference is one journaled part as a REFERENCE AND NOTHING MORE: where the
@@ -1217,6 +1234,9 @@ type sessionFile struct {
 	// no duration, which is the lie a room opened after landing used to tell.
 	tooks map[string]journalTook
 
+	// stamps is when each message's line was written (entrytime.go).
+	stamps *stampIndex
+
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
 	// It is the file's answer to "what did this cost before today", and the agent
@@ -1340,7 +1360,7 @@ func (s *sessionFile) isNote(message ai.Message) bool {
 	if s == nil {
 		return false
 	}
-	if mark := s.presentation.of(message); mark != nil && message.Role == "user" && mark.Audience == "human" {
+	if mark := s.presentation.of(message); mark != nil && message.Role == "user" && (mark.Audience == "human" || mark.Audience == audiencePerson) {
 		// A person's quotation cannot inherit a runtime receipt's text hash
 		// when compaction writes the two occurrences back to the journal.
 		return false
@@ -1730,8 +1750,15 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.steers = replayed.steers
 	journal.captions = replayed.captions
 	journal.tooks = replayed.tooks
+	journal.stamps = replayed.stamps
+	if journal.stamps == nil {
+		journal.stamps = &stampIndex{}
+	}
 	journal.restored = replayed.usage
 	journal.remoteSeen = replayed.remoteSeen
+	if info, err := file.Stat(); err == nil {
+		replayed.readBytes = info.Size()
+	}
 
 	if !replayed.existed {
 		// The header names the session once. A resumed file keeps its
@@ -1870,18 +1897,24 @@ func replaySessionFile(path string) (replayedSession, error) {
 // both reading doors, because it is the same fact about the same file.
 func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, error) {
 	var (
-		messages   []ai.Message
-		reasoning  []provider.MessageReasoning
-		earlier    []ai.Message
-		overlap    int
-		title      string
-		shortTitle string
-		id         string
-		lines      int
-		scanned    int
-		spent      Usage
-		created    []fileChange
-		requests   RequestBooks
+		modelSwitches []ModelSwitch
+		messages      []ai.Message
+		reasoning     []provider.MessageReasoning
+		earlier       []ai.Message
+		overlap       int
+		passes        []CompactionFact
+		// earlierRows is countEntries(earlier), kept as the region grows so
+		// placing a pass never re-counts the conversation above it.
+		earlierRows int
+		title       string
+		shortTitle  string
+		intentName  *intentNameState
+		id          string
+		lines       int
+		scanned     int
+		spent       Usage
+		created     []fileChange
+		requests    RequestBooks
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -1894,6 +1927,11 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// mark is on the LINE, and once the line has been rebuilt into a message
 	// there is nothing left to read it off (see [sessionFile.notes]).
 	presentation := &presentationIndex{}
+	// And when each message was written, off the same line (entrytime.go).
+	stamps := &stampIndex{}
+	// Physical origins belong only to display records. A resumed agent must not
+	// retain graph navigation metadata in its per-turn working set.
+	var userLines map[any]int
 	notes := make(map[string]bool)
 	// And the caption index, for the notes' reason exactly: a `caption` line is
 	// news about a batch that is not carried by any message, so this pass is the
@@ -1963,6 +2001,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if id == "" {
 				id = strings.TrimSpace(header.ID)
 			}
+		case "model_switch":
+			if entry.ModelSwitch != nil {
+				modelSwitches = append(modelSwitches, *entry.ModelSwitch)
+			}
 		case "message":
 			if entry.Role == "" {
 				continue
@@ -1982,6 +2024,15 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				mark = legacyPresentation(entry)
 			}
 			presentation.remember(message, mark)
+			stamps.remember(message, lineInstant(entry.Timestamp))
+			if !rebuild && entry.Role == "user" && !entry.Note {
+				if key := stampKey(message); key != nil {
+					if userLines == nil {
+						userLines = make(map[any]int)
+					}
+					userLines[key] = scanned
+				}
+			}
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
 				rememberNote(notes, message)
@@ -2020,11 +2071,31 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// re-read of the lines above the marker (which would resurrect turns
 			// a rewind took back).
 			//
-			// The LAST marker wins because each one overwrites the snapshot the
-			// one before it took. See [replayedSession.earlier] for why the
-			// nested regions are not stacked.
+			// A RESUME KEEPS ONE HOP AND A READING KEEPS THE WHOLE. A conversation
+			// being resumed needs only the region the latest marker replaced —
+			// the snapshot each marker overwrites — because that is all a live
+			// agent holds for scrollback, and holding more would undo the
+			// memory compaction exists to save. A READING for display (rebuild
+			// false: [ReadTranscript], the record cache behind a page) is
+			// transient and wants the conversation told once and whole, so its
+			// region is STACKED: the region the older markers left followed by
+			// what the transcript held beyond their floor. One hop stopped being
+			// whole once a pass could summarize the person's own words — after
+			// a second summary it opened on the first summary's note.
 			asked, stopped = false, ""
-			earlier = append(earlier[:0], messages...)
+			// THE PASS STANDS WHERE IT BEGAN: the messages that arrived while
+			// its summary was written are journaled above its marker, and are
+			// placed after it.
+			start := earlierRows
+			if rebuild {
+				earlier = append(earlier[:0], messages...)
+			} else {
+				beyond := messages[min(overlap, len(messages)):]
+				before := max(0, len(beyond)-max(entry.Arrived, 0))
+				start += countEntries(beyond[:before])
+				earlier = append(earlier, beyond...)
+				earlierRows += countEntries(beyond)
+			}
 			// Everything before this marker is what the pass replaces. The
 			// name is not a message and survives the cut: a compacted session
 			// is the same session, still called what it was called.
@@ -2035,8 +2106,18 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// conversation — a reader that could not say where the copy ends has
 			// nothing it can honestly draw, and drops the region rather than
 			// showing the session to itself twice.
+			placed := true
 			if overlap = compactionOverlap(entry); overlap < 0 {
-				earlier, overlap = earlier[:0], 0
+				earlier, overlap, earlierRows, placed = earlier[:0], 0, 0, false
+			}
+			passes = appendPass(passes, entry, start, rebuild)
+			// A REGION THAT CANNOT BE PLACED TAKES ITS PASSES' PLACES WITH IT:
+			// the conversation they stood in is no longer told, so they are
+			// kept as facts (their sequence still counts) placed nowhere.
+			if !placed {
+				for index := range passes {
+					passes[index].Entry = -1
+				}
 			}
 			messages = append(messages[:0], rebuilt...)
 			reasoning = append(reasoning[:0], make([]provider.MessageReasoning, len(rebuilt))...)
@@ -2046,6 +2127,16 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if len(entry.Parts) > 0 && len(rebuilt) > 0 {
 				rememberParts(images, rebuilt[0], entry.Parts)
 			}
+		case "compaction_failed":
+			// A summary that did not land in a pass that changed nothing. The
+			// transcript did not move, so the fact is placed at the end of the
+			// conversation as it stood then, and nothing is rebuilt.
+			place := 0
+			if !rebuild {
+				tail := messages[min(overlap, len(messages)):]
+				place = earlierRows + countEntries(tail[:max(0, len(tail)-max(entry.Arrived, 0))])
+			}
+			passes = appendPass(passes, entry, place, rebuild)
 		case "caption":
 			// ONE BATCH'S NARRATION. It rebuilds no message — nothing was ever
 			// said to the model here — so it only indexes, and the LAST line for
@@ -2218,13 +2309,16 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// transcript — the brief the turn carried on with, the line the
 			// person read — and replaying it would put machinery into somebody's
 			// conversation.
+		case "intent_name":
+			intentName = entry.IntentName
 		case "title":
+			intentName = entry.IntentName
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in. A name that
 			// is the namer's own instruction is read as NO name ([healedTitle],
 			// title.go), which is what heals the sessions that were already
 			// written down under one.
-			if named := healedTitle(entry.Title); named != "" {
+			if named := entry.savedTitle(); named != "" {
 				title = named
 				shortTitle = ""
 			}
@@ -2257,12 +2351,17 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		reasoning:      reasoning,
 		earlier:        earlier,
 		overlap:        overlap,
+		passes:         passes,
 		title:          title,
+		intentName:     intentName,
+		modelSwitches:  modelSwitches,
 		shortTitle:     shortTitle,
 		id:             id,
 		images:         images,
 		notes:          notes,
 		presentation:   presentation,
+		stamps:         stamps,
+		userLines:      userLines,
 		replyTags:      replyTags,
 		delivered:      delivered,
 		noteDeliveries: noteDeliveries,
@@ -2408,6 +2507,12 @@ func legacyCompactionNote(summary string) string {
 // the name arrived here after the other two — and a reader of a call site
 // should not have to count positions to know which bool is which.
 type replayedSession struct {
+	// readBytes lets the resume caller release a large replay's working memory
+	// after shaping, without looking up the journal's path a second time.
+	readBytes     int64
+	modelSwitches []ModelSwitch
+	// userLines is read-only physical provenance for display reads, nil on resume.
+	userLines  map[any]int
 	remoteSeen map[string]bool
 	messages   []ai.Message
 	// requests is what the file's request lines said, read beside the rebuild
@@ -2421,8 +2526,10 @@ type replayedSession struct {
 	// still holds in full and the model no longer carries. Nil for a journal
 	// that was never compacted, which is nearly all of them.
 	//
-	// THE REGION IS ONE HOP AND IS NOT STACKED, and that is a deliberate reading
-	// of a file that could be read the other way. A modern pass RE-JOURNALS THE
+	// ON A RESUME THE REGION IS ONE HOP; a reading for display stacks it
+	// (readJournal's `compaction` case says why each), applying every older
+	// marker's floor so nothing is told twice. What follows is why the one-hop
+	// reading is safe for a live agent to hold. A modern pass RE-JOURNALS THE
 	// WHOLE REBUILT WINDOW behind its marker ([sessionFile.appendCompaction]), so
 	// the lines after an older marker already contain everything before it, edited
 	// — a walk that ignored the older markers to "reach the raw beginning" would
@@ -2439,8 +2546,13 @@ type replayedSession struct {
 	//
 	// Zero whenever earlier is empty, and never anything else: a region that
 	// cannot be placed is not kept.
-	overlap    int
+	overlap int
+	// passes is every compaction marker and failed summary the file records,
+	// in order. A reading for display places each in the conversation told
+	// once and keeps its summary; a resume keeps neither.
+	passes     []CompactionFact
 	title      string
+	intentName *intentNameState
 	shortTitle string
 	// id is the header's session id, empty for a file that has no header yet.
 	id string
@@ -2467,6 +2579,8 @@ type replayedSession struct {
 	// tooks is how long each call ran, keyed by the call's own id — the index
 	// [sessionFile.tooks] is opened holding.
 	tooks map[string]journalTook
+	// stamps is when each message's line was written (entrytime.go).
+	stamps *stampIndex
 	// unread is the 1-based line of the file this reading could not get past, and
 	// zero for a file read to its end. Everything above it is in `messages`; the
 	// number is what lets a caller say WHICH line rather than "something went
@@ -2726,11 +2840,14 @@ func (s *sessionFile) appendSteer(message ai.Message, mark SteerMark) bool {
 	rememberSteer(s.steers, message, mark)
 	s.mu.Unlock()
 	return s.writeLine(sessionEntry{
-		Type:      "message",
-		Role:      message.Role,
-		Content:   messageContentText(message),
-		Steer:     &journalSteer{At: steerStamp(mark.At), Consumed: mark.Consumed, Landing: mark.Landing},
-		Timestamp: stamp(),
+		// A correction the person sent with attachments keeps them on its own
+		// line, as every other message of theirs does ([Agent.SubmitMessage]).
+		Presentation: s.presentation.of(message).person(),
+		Type:         "message",
+		Role:         message.Role,
+		Content:      messageContentText(message),
+		Steer:        &journalSteer{At: steerStamp(mark.At), Consumed: mark.Consumed, Landing: mark.Landing},
+		Timestamp:    stamp(),
 	})
 }
 
@@ -2817,6 +2934,7 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 	if presentation == nil && message.Role == "assistant" {
 		presentation = &messagePresentation{Audience: "human"}
 	}
+	written := stamp()
 	wrote := s.writeLine(sessionEntry{
 		Presentation:     presentation,
 		Type:             "message",
@@ -2832,8 +2950,19 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		Note:             note,
 		ReplyTags:        tags,
 		Deliveries:       deliveries,
-		Timestamp:        stamp(),
+		Timestamp:        written,
 	})
+	if wrote {
+		s.mu.Lock()
+		if s.stamps == nil {
+			s.stamps = &stampIndex{}
+		}
+		stamps := s.stamps
+		s.mu.Unlock()
+		// The instant the line carries, read back the way a resume reads it,
+		// so the live reading and a reopened one are the same reading.
+		stamps.remember(message, lineInstant(written))
+	}
 	// The ids are indexed only once the line is really on disk: this index is
 	// what a resume trusts to say a landing has already been told.
 	if wrote && len(deliveries) > 0 {
@@ -2870,6 +2999,66 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 //
 // The counts ride the marker so a surface reading the file back can say what the
 // pass did without re-deriving it. Nothing rebuilds from them.
+// appendCompactionFailed records a summary that did not land in a pass that
+// changed nothing. It is not a marker — the transcript did not move — so a
+// reader keeps it as a fact and rebuilds nothing from it.
+func (s *sessionFile) appendCompactionFailed(fact CompactionFact) {
+	if s == nil {
+		return
+	}
+	s.writeLine(sessionEntry{
+		Type:         "compaction_failed",
+		TokensBefore: fact.TokensBefore,
+		TokensAfter:  fact.TokensAfter,
+		SummaryFail:  fact.Failed,
+		ContextFull:  fact.Full,
+		StartedAt:    journalInstant(fact.StartedAt),
+		Arrived:      fact.Arrived,
+		Timestamp:    journalInstant(fact.At),
+	})
+}
+
+// passStamp is a pass's own instant as its marker's timestamp, or now.
+func passStamp(at time.Time) string {
+	if at.IsZero() {
+		return stamp()
+	}
+	return journalInstant(at)
+}
+
+// appendPass numbers one journaled pass and keeps it. A resume keeps no
+// summary bodies ([Agent.restorePasses] takes the count and the newest
+// provenance), so a long conversation's notes are not held to be dropped.
+func appendPass(passes []CompactionFact, entry sessionEntry, place int, rebuild bool) []CompactionFact {
+	fact := compactionFactOf(entry, place)
+	fact.Seq = len(passes) + 1
+	if rebuild {
+		fact.Summary = ""
+	}
+	return append(passes, fact)
+}
+
+// journalInstant is a time as the journal spells one, and "" for none.
+func journalInstant(at time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	return at.UTC().Format(time.RFC3339Nano)
+}
+
+// compactionFactOf is a journaled marker or failure line as the fact it
+// records, placed at entry.
+func compactionFactOf(entry sessionEntry, place int) CompactionFact {
+	return CompactionFact{
+		At: lineInstant(entry.Timestamp), StartedAt: lineInstant(entry.StartedAt), Arrived: entry.Arrived, Entry: place,
+		TokensBefore: entry.TokensBefore, TokensAfter: entry.TokensAfter,
+		Stubbed: entry.Stubbed, Folded: entry.Folded, Summarized: entry.Summarized,
+		Summary: entry.Kept, Model: entry.KeptModel, Turns: entry.KeptTurns,
+		CoversFrom: lineInstant(entry.KeptFrom), CoversUntil: lineInstant(entry.KeptUntil),
+		Failed: entry.SummaryFail, Full: entry.ContextFull,
+	}
+}
+
 func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, window []ai.Message, sidecars ...[]provider.MessageReasoning) {
 	s.writeLine(sessionEntry{
 		Type:         "compaction",
@@ -2877,13 +3066,28 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		Stubbed:      pass.stubbed,
 		Folded:       pass.folded,
 		Summarized:   pass.summarized,
+		TokensAfter:  pass.tokensAfter,
+		Kept:         pass.summary,
+		KeptModel:    pass.summaryModel,
+		KeptTurns:    pass.turns,
+		KeptFrom:     journalInstant(pass.coversFrom),
+		KeptUntil:    journalInstant(pass.coversUntil),
+		SummaryFail:  pass.failed,
+		ContextFull:  pass.full,
+		StartedAt:    journalInstant(pass.startedAt),
+		Arrived:      pass.arrived,
 		// The length is written BEFORE the window it describes, which is the only
 		// order that survives a crash halfway through: a reader that finds fewer
 		// lines than the number promised has a truncated file and can say so,
 		// where a count written afterwards would simply never arrive.
 		Window:    len(window),
-		Timestamp: stamp(),
+		Timestamp: passStamp(pass.at),
 	})
+	s.appendWindow(window, sidecars...)
+}
+
+// appendWindow re-journals original messages with their provenance after a shape edit.
+func (s *sessionFile) appendWindow(window []ai.Message, sidecars ...[]provider.MessageReasoning) {
 	for index, message := range window {
 		// Marks belong to the original message, before projecting a fresh
 		// journal copy. The live window still carries the model's context.
@@ -2903,6 +3107,14 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		}
 		if message.Role == "user" && presentation != nil && presentation.SkillsBlock != "" {
 			message = textMessage("user", s.presentation.personWords(message))
+			// The copy without the block is a new message, and what the person
+			// said about it goes with it, or the next resume reads their line
+			// back without its attachments.
+			if kept := presentation.person(); kept != nil {
+				s.presentation.remember(message, kept)
+				// That copy is read by the write below and by nothing after it.
+				defer s.presentation.forget(message)
+			}
 		}
 		// AND SO IS A SPLICED ONE, for the same reason: a steer re-written without
 		// its mark would come back from the next resume as a question of its own,
@@ -2936,6 +3148,16 @@ func (s *sessionFile) appendRewind(dropped int) {
 // other: a later name simply lands after this one, and the replay takes the
 // last. Nothing rewrites the file.
 func (s *sessionFile) appendTitle(title, _ string) {
+	s.appendNamedTitle(title, false)
+}
+
+// appendNamedTitle is [sessionFile.appendTitle] with the literal mark: a name
+// the replay must keep exactly as written rather than heal like a label.
+func (s *sessionFile) appendNamedTitle(title string, literal bool) {
+	s.appendNamedTitleWithIntent(title, literal, nil)
+}
+
+func (s *sessionFile) appendNamedTitleWithIntent(title string, literal bool, intent *intentNameState) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
@@ -2943,7 +3165,7 @@ func (s *sessionFile) appendTitle(title, _ string) {
 	s.mu.Lock()
 	s.title, s.shortTitle = title, ""
 	s.mu.Unlock()
-	s.writeLine(sessionEntry{Type: "title", Title: title, Timestamp: stamp()})
+	s.writeLine(sessionEntry{Type: "title", Title: title, LiteralName: literal, IntentName: intent, Timestamp: stamp()})
 }
 
 // appendUsage journals what one seal cost: the turn's own figures, or one
@@ -3226,7 +3448,8 @@ func (s *sessionFile) writeLine(entry any) bool {
 	// the model exactly as they wrote it. The broader shape scrub belongs to the
 	// records people share — the call log and the debug record — not here.
 	payload = trace.ScrubRegistered(payload)
-	if !s.appendLine(payload) {
+	entryLine, _ := entry.(sessionEntry)
+	if !s.appendLine(payload, entryLine.Type == "usage") {
 		return false
 	}
 	if s.onWrite != nil {
@@ -3235,11 +3458,22 @@ func (s *sessionFile) writeLine(entry any) bool {
 	return true
 }
 
-func (s *sessionFile) appendLine(payload []byte) bool {
+func (s *sessionFile) appendLine(payload []byte, usage bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return false
+		if !usage {
+			return false
+		}
+		// Paid work can outlive its stage. Keep its usage in the same journal
+		// under this file's mutex so reopening restores the full paid total.
+		file, err := os.OpenFile(s.file.Name(), os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return false
+		}
+		defer file.Close()
+		_, err = file.Write(append(payload, '\n'))
+		return err == nil
 	}
 	_, err := s.file.Write(append(payload, '\n'))
 	return err == nil
@@ -3253,7 +3487,7 @@ func (s *sessionFile) appendLine(payload []byte) bool {
 // flock on its own — but it states the release at the place a reader looks for
 // it, and it puts the release before the close rather than as a side effect of
 // it. Nothing can slip into the gap: closed is already set, so no write reaches
-// the file after this point.
+// the file after this point, except paid usage appended by path.
 func (s *sessionFile) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

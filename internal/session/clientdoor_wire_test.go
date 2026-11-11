@@ -824,3 +824,27 @@ func TestAServiceConnectedMidConversationServesTheNextTurn(t *testing.T) {
 		t.Fatalf("the default service received %d calls, want only the turn sent before connecting: %+v", len(got), got)
 	}
 }
+
+func TestModelIdentityFixedSelectionRefusesAccountSeatSubstitution(t *testing.T) {
+	defaultServer := newForbiddenClientDoorServer(t)
+	directServer := newClientDoorServer(t, "done")
+	fixed := false
+	a, err := New(Config{Workspace: t.TempDir(), Model: "direct/stub/seat", AutomaticModels: &fixed, Sources: modelsource.NewSet(
+		modelsource.Connected{Source: modelsource.DefaultSource(defaultServer.URL), Address: defaultServer.URL},
+		modelsource.Connected{Source: modelsource.Source{ID: "direct", Written: "direct", Address: directServer.URL}, Key: "test", Address: directServer.URL},
+	)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	_, _, err = a.completeWithNamedModel(t.Context(), purposeTurn, []ai.Message{textMessage("user", "hello")}, "missing/model")
+	if err == nil {
+		t.Fatal("fixed selection silently substituted the seated account's model")
+	}
+	if len(directServer.allCalls()) != 0 || defaultServer.calls.Load() != 0 {
+		t.Fatal("refused substitution still made a paid request")
+	}
+	if got := a.ModelIdentity(); got.Active != "" || got.Last != "" {
+		t.Fatalf("refusal invented execution: %+v", got)
+	}
+}

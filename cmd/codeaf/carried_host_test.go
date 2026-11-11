@@ -160,15 +160,26 @@ func TestAShellRunHostsTheModelAPIForARealChildAndPrintsItsWork(t *testing.T) {
 	if err != nil || len(turns) != 2 || turns[1].Reply != "answered question 2: fix the flaky test" || turns[1].CostUSD != 0.004 {
 		t.Fatalf("the kept conversation = %+v (%v)", turns, err)
 	}
-	// AND THE ACTIONS ARE KEPT BESIDE IT, the log a chat's run keeps: every
-	// stage, step and ending as it arrived.
+	// AND THE ACTIONS ARE KEPT BESIDE IT, the log a chat's run keeps: the
+	// launch's start line, then every stage, step and ending as it arrived —
+	// each stamped with the launch the record, the turns and the process's
+	// descendants carry.
 	actions, err := delegate.ReadActions(record, 0)
 	var kinds []string
 	for _, action := range actions {
 		kinds = append(kinds, action.Kind)
 	}
-	if err != nil || strings.Join(kinds, ",") != "stage,step,step,stage,end" || actions[4].Message != "submitted and verified" {
+	if err != nil || strings.Join(kinds, ",") != "start,stage,step,step,stage,end" || actions[5].Message != "submitted and verified" {
 		t.Fatalf("the kept actions = %v %+v (%v)", kinds, actions, err)
+	}
+	program, ok := delegate.ReadProgram(record)
+	if !ok || !delegate.ValidLaunch(program.Launch) || turns[0].Launch != program.Launch {
+		t.Fatalf("record %+v, turn launch %q", program, turns[0].Launch)
+	}
+	for _, action := range actions {
+		if action.Launch != program.Launch {
+			t.Fatalf("a kept line carries launch %q, the record %q", action.Launch, program.Launch)
+		}
 	}
 }
 

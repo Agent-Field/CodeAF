@@ -1,0 +1,161 @@
+package appwire
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+// orders.made_in is the standing orders MADE IN one crew: the automations whose
+// recorded creation team (internal/automation's Origin.Team) is exactly that
+// crew's id. It is not orders.list, and not the crew an order belongs to
+// ([Order.Crew]): it does not read who is in the crew, who manages it now, or
+// which workspace it works in. A crew changing hands never moves a row.
+//
+// IT IS ADDITIVE. orders.list keeps its shape and its filter; an engine without
+// FeatureOrdersMadeIn answers orders.made_in as unknown_method.
+
+// FeatureOrdersMadeIn is the hello feature for orders.made_in.
+const FeatureOrdersMadeIn = "orders.made_in"
+
+// The bounds an orders.made_in ask is checked against before anything is read.
+const (
+	OrdersMadeLimitDefault = 50
+	OrdersMadeLimitMax     = 100
+	OrdersMadeCursorMax    = 128
+	// OrdersMadeBytesMax is the most bytes one page's orders encode to, each
+	// measured as this wire encodes it (HTML escaping on). A page ends before
+	// the order that would pass it; an order that cannot fit alone is
+	// too_large, and no document larger than this is read out of the store.
+	OrdersMadeBytesMax    = 256 << 10
+	OrdersMadeReadTimeout = 2 * time.Second
+	// OrdersMadeReadsInFlight is how many of these reads run at once.
+	OrdersMadeReadsInFlight = 4
+)
+
+// OrdersMadeAsk is one page of a crew's orders. Cursor is the previous page's
+// Next, verbatim.
+type OrdersMadeAsk struct {
+	Crew   string `json:"crew"`
+	Limit  int    `json:"limit,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
+}
+
+// OrdersMadeResult is one page. Orders are in id order and carry no last_run
+// and no asking: those are orders.list's. A page reads at most a fixed window
+// of the store (500 rows, 2 MiB of stored bytes sized before any is read) and
+// answers at most [OrdersMadeBytesMax] of encoded orders, so it may hold fewer
+// orders than its limit — even none — and still have a Next. Next is absent
+// ONLY when the store's end was reached with every row covered.
+//
+// NEXT IS AN OPAQUE CURSOR BOUND TO THE STORE'S WALK REVISION, which moves
+// when an order is created or deleted, or its id or recorded creation team
+// changes — by this build or an older one sharing the file — and at no other
+// write (a run, a status, a wake time, an edit that keeps the team). A cursor
+// from another revision is refused as [CodeStaleCursor]: the surface starts
+// again from the first page, so a walk can never end complete while missing an
+// order created behind it or counting one deleted. A cursor is ONE CREW'S
+// walk: another crew's is bad_params, never read as this one's. A row too
+// large to carry is [CodeTooLarge] and the cursor never moves past it — an id
+// too long to read (named by where it is, never echoed), a match whose view
+// is past the page's budget, or a stored document of ANY crew past the 2 MiB
+// scan, which stops every crew's walk at it until it shrinks: the honest cost
+// of a bounded read. A store that cannot be read honestly (a missing walk
+// revision, a match whose status or wake time is damaged) is engine.
+//
+// UNKNOWN IS HOW MANY ORDERS IN THE STRETCH OF THE STORE THIS PAGE COVERED
+// CANNOT BE PLACED IN ANY CREW OR IN NONE: saved before creation teams were
+// recorded, made in a turn whose door stated nothing (an older app, the
+// terminal, words the app wrote itself), or unreadable. It comes from the same
+// read as the orders. Pages cover disjoint stretches, so a surface sums it over
+// the walk; the sum is the store's only once Next is absent, and holds for the
+// one revision the whole walk was read at. It is a real zero
+// when zero, and a surface must show it beside the rows and never read "none
+// made here" from a page or a partial walk while any of it is above zero.
+type OrdersMadeResult struct {
+	Orders  []Order `json:"orders"`
+	Next    string  `json:"next,omitempty"`
+	Unknown int     `json:"unknown"`
+}
+
+// OrdersMadePager is the optional engine half. It honours ctx.
+type OrdersMadePager interface {
+	PageOrdersMadeIn(ctx context.Context, ask OrdersMadeAsk) (*OrdersMadeResult, error)
+}
+
+// CheckOrdersMadeAsk is the effective limit, or bad_params.
+func CheckOrdersMadeAsk(p OrdersMadeAsk) (int, error) {
+	if !validTeamID(p.Crew) {
+		return 0, Errorf(CodeBadParams, "orders.made_in needs the crew's id")
+	}
+	if len(p.Cursor) > OrdersMadeCursorMax || (p.Cursor != "" && !plainText(p.Cursor, OrdersMadeCursorMax)) {
+		return 0, Errorf(CodeBadParams, "orders.made_in cursor is not one this method gave")
+	}
+	switch {
+	case p.Limit == 0:
+		return OrdersMadeLimitDefault, nil
+	case p.Limit < 0 || p.Limit > OrdersMadeLimitMax:
+		return 0, Errorf(CodeBadParams, "orders.made_in limit is 1 to %d", OrdersMadeLimitMax)
+	}
+	return p.Limit, nil
+}
+
+// validTeamID is the teams directory-name law: letters, digits, _ and -, at
+// most 64 bytes.
+func validTeamID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+var ordersMadeReads = make(chan struct{}, OrdersMadeReadsInFlight)
+
+func withOrdersMadeFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(OrdersMadePager); ok {
+		return withFeature(hello, FeatureOrdersMadeIn)
+	}
+	return hello
+}
+
+func init() {
+	methods["orders.made_in"] = typed(func(e Engine, p OrdersMadeAsk) (*OrdersMadeResult, error) {
+		pager, ok := e.(OrdersMadePager)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve orders.made_in")
+		}
+		if _, err := CheckOrdersMadeAsk(p); err != nil {
+			return nil, err
+		}
+		// THE SLOT IS HELD UNTIL THE READ SETTLES, not until a timer gives up on
+		// it: the read honours its context, so the deadline ends the work itself.
+		select {
+		case ordersMadeReads <- struct{}{}:
+		default:
+			return nil, Errorf(CodeBusy, "too many orders reads at once; try again")
+		}
+		defer func() { <-ordersMadeReads }()
+		ctx, cancel := context.WithTimeout(context.Background(), OrdersMadeReadTimeout)
+		defer cancel()
+		res, err := pager.PageOrdersMadeIn(ctx, p)
+		if err != nil {
+			var wire *Error
+			switch {
+			case errors.As(err, &wire):
+				return nil, err
+			case errors.Is(err, context.DeadlineExceeded):
+				return nil, Errorf(CodeEngine, "orders.made_in took longer than %s", OrdersMadeReadTimeout)
+			case errors.Is(err, context.Canceled):
+				return nil, Errorf(CodeEngine, "orders.made_in was cancelled")
+			}
+			return nil, Errorf(CodeEngine, "the crew's orders could not be read")
+		}
+		res.Orders = nonNil(res.Orders)
+		return res, nil
+	})
+}

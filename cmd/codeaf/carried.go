@@ -163,8 +163,15 @@ func profileRoad() (carriedRoad, error) {
 	settings.Models = sharedCatalog(settings)
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
+	opened := &roadCatalogs{}
 	return carriedRoad{
-		close:         func() { stopPoolErrands(settings.ProfileDir) },
+		close: func() {
+			settings.Models.Close()
+			for _, c := range opened.take() {
+				c.Close()
+			}
+			stopPoolErrands(settings.ProfileDir)
+		},
 		completerFor:  adapters.forModel,
 		authKeySource: func(model string) string { return config.APIKeySourceForModel(settings.ProfileDir, sources, model) },
 		serves:        func(model string) bool { return session.ServesModel(sources, model) },
@@ -204,9 +211,7 @@ func profileRoad() (carriedRoad, error) {
 				}
 				options := config.CatalogOptionsFor(service, settings.ProfileDir)
 				key := catalog.CacheKey(options.Source, options.BaseURL)
-				if catalogs[key] == nil {
-					catalogs[key] = catalog.LoadLazy(ctx, options)
-				}
+				catalogs[key] = opened.forKey(key, options)
 			}
 			ready := true
 			for _, models := range catalogs {
@@ -215,6 +220,44 @@ func profileRoad() (carriedRoad, error) {
 			return ready
 		},
 	}, nil
+}
+
+// roadCatalogs holds the per-service catalogs a profile road opened. THEY
+// LIVE AS LONG AS THE ROAD, NOT AS LONG AS ONE READINESS WAIT: a stale cache's
+// background refresh keeps running after the wait answers, and the road's close
+// is what cancels and joins it. A second wait reuses the catalog already open
+// for a cache key rather than opening another.
+type roadCatalogs struct {
+	mu   sync.Mutex
+	open map[string]*catalog.Catalog
+}
+
+// forKey answers the catalog open for key, opening it on first use.
+func (r *roadCatalogs) forKey(key string, options catalog.Options) *catalog.Catalog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c := r.open[key]; c != nil {
+		return c
+	}
+	if r.open == nil {
+		r.open = map[string]*catalog.Catalog{}
+	}
+	c := catalog.LoadLazy(context.Background(), options)
+	r.open[key] = c
+	return c
+}
+
+// take hands over every catalog the road opened and forgets them, so the
+// caller closes each exactly once.
+func (r *roadCatalogs) take() []*catalog.Catalog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*catalog.Catalog, 0, len(r.open))
+	for _, c := range r.open {
+		out = append(out, c)
+	}
+	r.open = nil
+	return out
 }
 
 // carriedModelPrice prices the same service and bare id the adapter calls.
@@ -432,6 +475,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	subject := filepath.Base(record)
 	api, err := modelapi.Open(modelapi.Config{
 		TaskDir:       record,
+		Launch:        view.launch,
 		CompleterFor:  road.completerFor,
 		AuthKeySource: road.authKeySource,
 		Serves:        road.serves,
@@ -503,6 +547,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		StderrPath: filepath.Join(record, carriedStderrName),
 		Grace:      grace,
 		Hold:       folder.Hold(),
+		Marker:     view.launch,
 	}, view)
 	// THE INSTANT THE PROCESS WAS GONE, not the instant its stdout drained, for
 	// both the last line and the record's end: a helper the program left holding
@@ -806,6 +851,10 @@ type carriedView struct {
 	// the record folder each time it learns something: its start, its hello,
 	// its end.
 	program delegate.ProgramRecord
+	// launch is this run's launch identity (delegate.NewLaunch), drawn with
+	// the view and never changed: the record, every kept line, every turn and
+	// the process's descendants carry it.
+	launch string
 	// folder is the folder the run was readied in, and leftFolder is how the
 	// run left it (internal/session's ProgramFolderEnd.Sentence); nil and
 	// empty for a program that edits no files.
@@ -814,7 +863,7 @@ type carriedView struct {
 }
 
 func newCarriedView(out io.Writer, inv *delegate.Invocation, record string) *carriedView {
-	view := &carriedView{out: out, inv: inv, record: record}
+	view := &carriedView{out: out, inv: inv, record: record, launch: delegate.NewLaunch()}
 	if inv.JSON {
 		view.records = delegate.NewEmitter(out)
 	}
@@ -931,7 +980,13 @@ func (v *carriedView) Hello(h delegate.Hello) {
 func (v *carriedView) opened(at time.Time) {
 	v.remember(func(record *delegate.ProgramRecord) {
 		record.Name, record.CeilingUSD, record.StartedAt = v.inv.Program.Name, v.inv.Ceilings.CostUSD, at
+		record.Launch = v.launch
 	})
+	// THE LAUNCH'S FIRST LINE, before its process is started
+	// (delegate.ActionStart).
+	if v.launch != "" {
+		v.kept(delegate.StartAction(at, v.launch))
+	}
 }
 
 // heard writes the models the program says it runs on onto its record, when a
@@ -975,6 +1030,7 @@ func (v *carriedView) kept(action delegate.Action) {
 	if strings.TrimSpace(v.record) == "" {
 		return
 	}
+	action.Launch = v.launch
 	_ = delegate.AppendAction(v.record, action)
 }
 

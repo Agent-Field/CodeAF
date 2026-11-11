@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -49,6 +51,7 @@ type hostedMoveRig struct {
 	mu         sync.Mutex
 	requests   []string
 	acquires   []time.Time
+	resumes    []time.Time
 	changes    chan struct{}
 }
 
@@ -65,7 +68,14 @@ func (m moveRenewals) RenewalChanges() <-chan struct{} { return m.changes }
 func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *hostedMoveRig {
 	t.Helper()
 	cfg, c := doorChat(t)
-	short, err := os.MkdirTemp("", "cf-move-")
+	// The workspace host's socket lives under this home. macOS's temporary
+	// folder leaves it only a few bytes under the socket limit, and none once
+	// that folder is spelled through /private, so Unix homes start at /tmp.
+	base := ""
+	if runtime.GOOS != "windows" {
+		base = "/tmp"
+	}
+	short, err := os.MkdirTemp(base, "cf-move-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +86,7 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &hostedMoveRig{t: t, c: c, work: cfg.Place.Workspace, bRoots: t.TempDir(), changes: make(chan struct{}, 1)}
+	h := &hostedMoveRig{t: t, c: c, work: cfg.Place.Workspace, bRoots: cellstoretest.EngineDir(t), changes: make(chan struct{}, 1)}
 	service := relayserveForMove(t)
 	for _, decorate := range wrap {
 		service = decorate(service)
@@ -86,6 +96,9 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 		h.requests = append(h.requests, r.Method+" "+r.URL.Path)
 		if strings.HasSuffix(r.URL.Path, "/acquire") {
 			h.acquires = append(h.acquires, time.Now())
+		}
+		if strings.HasSuffix(r.URL.Path, "/heartbeat") {
+			h.resumes = append(h.resumes, time.Now())
 		}
 		h.mu.Unlock()
 		service.ServeHTTP(w, r)
@@ -107,7 +120,6 @@ func newHostedMoveRig(t *testing.T, wrap ...func(http.Handler) http.Handler) *ho
 	}
 	h.ea, h.eb = cellstore.EngineFor(h.work), cellstore.EngineFor("")
 	h.ea.DataRoot, h.eb.DataRoot = t.TempDir(), t.TempDir()
-	t.Cleanup(cellstore.StopSpawned)
 	if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Workspace: h.work, Title: "take-back chat"}); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +177,7 @@ func (h *hostedMoveRig) publish(s *syncsetup.Sync, e cellstore.Engine, c cell.Ce
 }
 
 func (h *hostedMoveRig) taker(s *syncsetup.Sync, e cellstore.Engine, root func(string) string, phases func(handoff.Phase)) takeover {
-	return takeover{s.Continuer(e, syncsetup.TakeOptions{DeviceName: "receiver", RootFor: root, OnPhase: phases})}
+	return takeover{c: s.Continuer(e, syncsetup.TakeOptions{DeviceName: "receiver", RootFor: root, OnPhase: phases})}
 }
 
 func (h *hostedMoveRig) host(d *syncsetup.Drive, c cell.Cell, work string, e cellstore.Engine) *remote.Client {
@@ -321,7 +333,7 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.wait("take-back card", func() bool { return strings.Contains(screen.String(), "Continue this chat here?") })
 	h.mu.Lock()
 	h.requests = nil
-	h.acquires = nil
+	h.acquires, h.resumes = nil, nil
 	h.mu.Unlock()
 	started = time.Now()
 	if _, err := io.WriteString(typed, "1\r"); err != nil {
@@ -331,7 +343,7 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if len(h.acquires) < 2 {
-		t.Fatalf("take and reopened hosted writer made %d acquires; want both", len(h.acquires))
+		t.Fatalf("take and reopened writer made %d acquires; want both", len(h.acquires))
 	}
 	t.Logf("relay first acquire after key: %s", h.acquires[0].Sub(started))
 	if elapsed := h.acquires[0].Sub(started); elapsed > time.Second {

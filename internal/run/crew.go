@@ -153,6 +153,7 @@ func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	attributionModelOff := !config.AttributionModelAt(profileDir)
 	workerFor := func(model string, completer session.Completer) *BashWorker {
 		worker := NewBashWorker(store, workspace, model, completer, workerOpts...)
+		worker.profileDir = profileDir
 		worker.dailyBudgetUSD = dailyBudgetUSD
 		worker.spendPreauthorized = preauthorized
 		worker.attributionOff = attributionOff

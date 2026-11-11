@@ -8,6 +8,12 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. The original files stay untouched and remain usable in older codeaf builds.
 
+A computer with submitted chats and its own pairing keys refuses ordinary
+pairing without changing its chats. Use `--replace` to join the other set after
+confirming: existing chats stay here but stop syncing, shared memories and
+settings clear, and local provider keys stay here. A startup-only computer can
+pair directly.
+
 Your chats and your work can follow you to a second device. You add it in two steps. There is no account to make and no form to fill.
 
 While you have only one device, home shows a card at the foot:
@@ -43,7 +49,7 @@ The card goes away once you have two devices. After that, `/pair` or Settings �
 
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
-Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
+Older chats move through an independent copy. Once paired, the terminal chat prepares chats active in the last 30 days in the background while it is open, one at a time; the desktop app does not. Opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 ## Pairing a server with no browser — the link, token and check number
 
@@ -85,7 +91,7 @@ usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf
 ```
 
 - `codeaf pair` with nothing after it is for the NEW device. It asks to join and shows a link.
-- `codeaf pair approve <link-or-code>` is for a device that is already in. It shows who is asking and asks `a / d`. Only `a` approves; `d`, Esc, Enter and anything else decline. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
+- `codeaf pair approve <link-or-code>` is for a device that is already in. It shows who is asking and the check number, then asks on its own line: `a approve · d decline:`. Only `a` approves; `d`, Esc, Enter and anything else decline. Pasting the link into the chat, or typing `/pair <link>`, does the same thing on a screen.
 - `--name <name>` is what your devices call this computer. See the page *Naming a device*.
 - `--via <address>` names the address of the sync service to go through when it is not the one this device already uses. Pass it to both `codeaf pair` and `codeaf pair approve`. The new device prints the full approve line with `--via` in it when one is needed.
 
@@ -105,7 +111,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 The new device shows a check number of four digits. The device that approves shows the same four digits. Look at both screens. Approve only when they match. If they do not match, decline: somebody else may have used the link.
 
-On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question reads the same: `a / d`. Only `a` approves; `d`, Esc, Enter and anything else decline. Code pairing keeps its `y / n` question.
+On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question reads the same, with the keys on the line below: `a approve · d decline:`. Only `a` approves; `d`, Esc, Enter and anything else decline. Code pairing keeps its `y / n` question.
 
 ## Approve a new device — the approve screen, a and d, and decline
 
@@ -127,7 +133,7 @@ a approve · d decline · esc later
 
 The line under the name says what system the new device runs (Mac, Linux, Windows, iPhone or iPad, Android, or unknown system), when it asked, and how many minutes are left. A request that ran out says `run out`, and the screen says `that request has run out — ask the new device for a new link`.
 
-While your answer is on its way the screen says `approving…` or `declining…` and offers no keys but `esc close`. If your other devices do not answer in time it says `no answer from your devices — try again`, and `a` and `d` work again. When the request has run out, `a` and `d` are not offered at all.
+While your answer is on its way the screen says `approving…` or `declining…` and offers no keys but `esc close`. If sync does not answer in time, codeaf looks the request up again. When your approval did arrive, the screen closes as approved. When it did not, it says `sync did not answer in time — try again`, and `a` and `d` work again. When codeaf cannot tell whether an approval arrived, it says `sync did not answer in time — your answer may still have arrived; check /devices before answering again`. A decline that times out says `sync did not answer in time — try again`, because a declined device never appears in `/devices`. Opening a link whose device you already let in says `that device is already paired — there is nothing left to approve`. If looking up the request times out it says `sync did not answer in time — try again`. When the request has run out, `a` and `d` are not offered at all.
 
 When you approve, your screen says:
 
@@ -191,6 +197,23 @@ desk was removed — it can no longer reach your chats.
 
 The list is in a fixed order: this device first, then devices that are online, then the rest, each by name. Two devices with the same name show a short tail, such as `tower #a1b2`, so you can tell them apart. Your own computer has no `r`: it cannot remove itself, and if you press `r` there the list says `this device cannot remove itself — choose another row.` A computer that is already removed does nothing when you press `r`. A removed computer can only come back as a new request that you approve. If you remove a computer from another of your devices while this list is open, its row changes to `removed` here too, without closing the list. Removing a computer does not undo what it already holds: for a lost computer read the page *Locking out a lost computer for good*.
 
+## Devices in the desktop — removal warnings, refresh and re-pairing
+
+With an engine that supports device management, the desktop can list this
+computer first and the other computers paired to the same identity. The engine
+supplies its removal explanation for each active computer that this one may
+remove, so it can be shown before confirmation. This computer and already removed
+computers have no removal action. The result keeps the command line's full
+explanation, including the warning about chats and keys already held there.
+
+After a removal succeeds, an older pending roster response cannot restore the
+computer's active state. If a refresh fails, the completed removal is kept; only
+a roster at a newer directory version can change that state.
+
+After pairing again from a terminal, refresh Devices. The running app engine
+reads the new identity and device files and drops the previous pairing's list,
+presence and removal refusal. Restarting the engine is not required. Switching
+the sync address also drops facts learned from the previous service.
 ## Devices in /settings — where your computers are on the settings page, add another device, rename this one, or remove (revoke) one from settings
 
 Open `/settings` (or `ctrl+,`) and walk with `←` and `→` to `Devices`, between `Connections` and `Privacy` — or type `devices`, `remove`, `revoke`, `pair` or `add device` in settings search.
@@ -227,7 +250,11 @@ this device was removed by another of your devices, so this chat stays here only
 
 Pairing again restores device access; sending new chats, keys or shared state through the hosted sync service needs sync storage approval (Settings → Devices → sync storage).
 
-`/devices` on a removed computer says the same line in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If this computer has chats with submitted turns, run `codeaf pair --replace` instead. Its existing chats stay on this computer but no longer sync; shared memories and settings are cleared. Approve the new link from a computer still in your devices. A computer that has only opened codeaf, even with a provider connected, and whose chats contain only startup headers needs no `--replace`; saved knowledge, automations, tracked work and unknown local files still require the explicit replacement road. An active, already-paired computer is refused with the names of its other devices; `codeaf devices` lists them.
+`/devices` on a removed computer says the removal notice in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair --replace to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. Removal appears immediately in an open window and on Home, and after restarting, once only. Your local chats stay usable while this computer is removed, and no longer follow your other devices.
+
+In the desktop app, choose Pair a computer and enter a current device's code or ask to join by link. After approval from a device still in your devices, this computer keeps the same identity, its local chats, shared memories and settings, and receives a fresh device key. Its chats can sync again. No replacement confirmation is needed. A computer that was never removed reports that nothing changed.
+
+The terminal command still requires `codeaf pair --replace` on a removed computer. This is explicit replacement, even with the same identity: existing chats are moved aside and stop syncing, shared memories and settings are cleared, and locally saved provider keys remain. Approve the link from a device still in your devices. An active, already-paired computer is refused with the names of its other devices; `codeaf devices` lists them.
 
 ## Pair again in the chat — replace confirmation keeps local chats
 

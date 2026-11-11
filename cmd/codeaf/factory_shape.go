@@ -1,0 +1,565 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"unicode/utf8"
+)
+
+// ── THE MANAGER'S TURNS ────────────────────────────────────────────────────
+//
+// The manager is the author of the run (the owner's decision of 2026-10-08),
+// on the person's word, and this file holds the two doors that make it so:
+//
+//   - `factory_run` on the manager's own belt ([runDoor]): what the manager
+//     sets while the person talks to it is made at once through the floor's
+//     edit door ([factory.Seam.Edit]), before a run or on the stages a run has
+//     not started;
+//   - the turn a worker gives the manager on a step's question
+//     ([shapeTurns.through], the inbox in factory_inbox.go): through the
+//     window's conversation when this process holds it, else opened for the
+//     one turn, at the cheap thinking unless the item reads as large.
+//
+// A LAUNCH GIVES THE MANAGER NO TURN, and nothing else asks it to reshape the
+// steps: ▶ run runs the item's stages as they stand (a turn before the first
+// stage held the plan behind a conversation nobody had asked anything of, the
+// owner's run of 2026-10-19), and the person who wants other steps says so in
+// the manager's chat or edits them on the job's page.
+
+// managerTurn is what one manager turn needs of an open conversation; the
+// session's *Agent answers it, and a test hands in a fake.
+type managerTurn interface {
+	SubmitRunnerNote(ctx context.Context, text string) (<-chan session.Event, error)
+	Interrupt()
+	Close() error
+}
+
+// idleWaiter is a managerTurn that can be waited on until its conversation is
+// between turns: the live road's, where the person's own turn may be running.
+type idleWaiter interface {
+	WaitIdle(ctx context.Context) error
+}
+
+// shapeTurns gives an item's manager one turn of its conversation.
+type shapeTurns struct {
+	dirs      func(repo string) string
+	checkWork func(int) error
+	// live answers the item's manager conversation when a window of THIS
+	// process holds it ([session.LiveAgentFor]), as a turn through it with
+	// door lent to that turn alone.
+	live func(transcript string, door session.RunDoor) (managerTurn, bool)
+	// open opens the item's manager conversation for one turn, with door as
+	// its `factory_run`, at the cheap thinking when cheap.
+	open func(ctx context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error)
+	// refusal is why the parent the next manager opens from was refused by the
+	// saved Task models policy, nil when it was not or when no policy is kept.
+	refusal func() error
+	// liveOK says whether the window's conversation, on model, may carry a
+	// manager turn. Nil allows every live conversation (Auto's road).
+	liveOK func(model string) bool
+}
+
+// factoryShapeTurnsFrom reads the launch when a manager opens, because the
+// worker survives the window whose launch first built its turns.
+func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, current func() session.Config) *shapeTurns {
+	turns := &shapeTurns{dirs: factoryRepoDirs(st, workspace), checkWork: func(id int) error {
+		it, err := st.Get(id)
+		if err != nil {
+			return err
+		}
+		return factory.CheckPersonStop(it)
+	}}
+	// UNDER A SAVED ONE MODEL THE WINDOW'S CONVERSATION IS NOT THE FACTORY'S: it
+	// runs on whatever model the person is talking to, so liveOK refuses it and
+	// the turn opens a governed factory session instead.
+	turns.live = func(transcript string, door session.RunDoor) (managerTurn, bool) {
+		agent, ok := session.LiveAgentFor(transcript)
+		if !ok || (turns.liveOK != nil && !turns.liveOK(agent.Model())) {
+			return nil, false
+		}
+		return liveManagerTurn{agent: agent, door: door}, true
+	}
+	turns.open = func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
+		parent := current()
+		parent.FactoryWorkRefusal = func() string {
+			if err := turns.checkWork(it.ID); err != nil {
+				return err.Error()
+			}
+			return ""
+		}
+		if err := refusalOf(parent, turns.refusal); err != nil {
+			return nil, err
+		}
+		return openManagerTurn(parent, workspace, profileDir, it, door, cheap)
+	}
+	return turns
+}
+
+// factoryLiveOK is the window-conversation gate for a worker whose launch is
+// raw. Auto keeps the live road. Under a saved one model it is closed, because
+// the window is on its own model; under an explicit --one-model launch it is
+// open only for a conversation proven to be on that very pin.
+func factoryLiveOK(raw func() session.Config, profileDir string) func(model string) bool {
+	return func(model string) bool {
+		launch := raw()
+		if launch.OneModel {
+			return strings.TrimSpace(model) == strings.TrimSpace(launch.Model)
+		}
+		return config.TaskModelsModeAt(profileDir) != crewroute.ModeOne
+	}
+}
+
+// ── THE LIVE ROAD: THE WINDOW HOLDS THE MANAGER ─────────────────────────────
+//
+// The person often has the item's manager open in a window when a turn of the
+// runner's comes for it (a step's question for the inbox).
+// The window's conversation holds the journal's lock, so a second open is
+// refused. The turn then runs AS A TURN OF THAT CONVERSATION: the
+// window shows the manager think, and the turn's own door is lent to that one
+// turn ([session.Agent.SubmitRunnerNoteThrough]), as on the road that opens.
+// The thinking is the person's setting there: this road does not make it
+// cheap.
+// Closing the turn closes nothing; the window keeps its conversation.
+
+// liveManagerTurn is one manager turn through a conversation open here.
+type liveManagerTurn struct {
+	agent *session.Agent
+	door  session.RunDoor
+}
+
+func (l liveManagerTurn) SubmitRunnerNote(ctx context.Context, text string) (<-chan session.Event, error) {
+	return l.agent.SubmitRunnerNoteThrough(ctx, text, l.door)
+}
+func (l liveManagerTurn) Interrupt()                         { l.agent.Interrupt() }
+func (l liveManagerTurn) WaitIdle(ctx context.Context) error { return l.agent.WaitIdle(ctx) }
+
+// Close lets the turn go and leaves the window's conversation open.
+func (l liveManagerTurn) Close() error { return nil }
+
+// liveManagerTurnFor is the live road when the transcript is open here.
+func liveManagerTurnFor(transcript string, door session.RunDoor) (managerTurn, bool) {
+	agent, ok := session.LiveAgentFor(transcript)
+	if !ok {
+		return nil, false
+	}
+	return liveManagerTurn{agent: agent, door: door}, true
+}
+
+// shapeCheap says whether a manager turn thinks cheap: always, unless the
+// item's shown size (a label, a measured diff or a completed read) is large.
+func shapeCheap(it factory.Item) bool {
+	shown, _ := factory.ShownSize(it)
+	return shown != "L"
+}
+
+// through is one manager turn on ask with door as its `factory_run` (and, on
+// an inbox turn, its `factory_answer`): through the window's conversation
+// when this process holds it, else opened for the turn. It answers what the
+// manager said.
+func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, door session.RunDoor) (string, error) {
+	return s.turn(ctx, it, ask, door, shapeCheap(it))
+}
+
+// turn is through at the thinking cheap names when the conversation must be
+// opened for it.
+func (s *shapeTurns) turn(ctx context.Context, it factory.Item, ask string, door session.RunDoor, cheap bool) (string, error) {
+	if s == nil || s.open == nil {
+		return "", errors.New("no manager to ask")
+	}
+	if err := factoryrun.CheckWriteAccess(it, "chat"); err != nil {
+		return "", err
+	}
+	if door != nil && s.checkWork != nil {
+		if err := s.checkWork(it.ID); err != nil {
+			return "", err
+		}
+	}
+	var turn managerTurn
+	if s.live != nil {
+		turn, _ = s.live(it.Talk, door)
+	}
+	if turn == nil {
+		opened, err := s.open(ctx, it, door, cheap)
+		if errors.Is(err, session.ErrSessionLocked) {
+			// ANOTHER PROCESS HOLDS IT (a window on the engine host): this
+			// runner cannot give it a turn, and says so by name. No retry.
+			return "", fmt.Errorf("%w: %v", factoryrun.ErrManagerAway, err)
+		}
+		if err != nil {
+			return "", err
+		}
+		turn = opened
+	}
+	defer turn.Close()
+	events, err := s.submit(ctx, turn, ask)
+	if err != nil {
+		return "", err
+	}
+	var reply strings.Builder
+	var failure error
+	for {
+		select {
+		case ev, open := <-events:
+			if !open {
+				if failure != nil {
+					return "", failure
+				}
+				return strings.TrimSpace(reply.String()), nil
+			}
+			switch ev.Kind {
+			case session.EventTextDelta:
+				reply.WriteString(ev.Text)
+			case session.EventError:
+				failure = ev.Err
+				if failure == nil {
+					failure = errors.New("the turn failed without a reason")
+				}
+			}
+		case <-ctx.Done():
+			turn.Interrupt()
+			return "", ctx.Err()
+		}
+	}
+}
+
+// submit puts the ask in. A conversation the window holds that is in the
+// middle of a turn of its own is waited on, for at most half of what is left
+// of the turn's wait so the retry has the other half to answer, and asked
+// ONCE more; busy again is [factoryrun.ErrManagerBusy].
+func (s *shapeTurns) submit(ctx context.Context, turn managerTurn, ask string) (<-chan session.Event, error) {
+	events, err := turn.SubmitRunnerNote(context.WithoutCancel(ctx), ask)
+	if !errors.Is(err, session.ErrConversationBusy) {
+		return events, err
+	}
+	waiter, ok := turn.(idleWaiter)
+	if !ok {
+		return nil, fmt.Errorf("%w: %v", factoryrun.ErrManagerBusy, err)
+	}
+	wait := ctx
+	if deadline, has := ctx.Deadline(); has {
+		var cancel context.CancelFunc
+		wait, cancel = context.WithTimeout(ctx, time.Until(deadline)/2)
+		defer cancel()
+	}
+	if werr := waiter.WaitIdle(wait); werr != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	events, err = turn.SubmitRunnerNote(context.WithoutCancel(ctx), ask)
+	if errors.Is(err, session.ErrConversationBusy) {
+		return nil, fmt.Errorf("%w: %v", factoryrun.ErrManagerBusy, err)
+	}
+	return events, err
+}
+
+// openManagerTurn opens the item's manager conversation for one turn. It is a
+// conversation nobody is at the keyboard of for this turn: no card door is on
+// its belt (a card nobody answers holds the turn until the wait ends), the
+// approvals are the person's own rows, headless, and `factory_run` is door.
+// A conversation a window of THIS process holds never reaches here (the live
+// road above); one another process holds is refused by its lock, and the run
+// goes on with the recipe, saying so by name.
+func openManagerTurn(parent session.Config, workspace, profileDir string, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
+	transcript := strings.TrimSpace(it.Talk)
+	if transcript == "" {
+		return nil, errors.New("the item has no manager conversation")
+	}
+	if factoryPolicyRefused(parent) {
+		return nil, errFactoryPolicyRefused
+	}
+	cfg, err := v3Reopen(parent, transcript, workspace)
+	if err != nil {
+		return nil, err
+	}
+	where := strings.TrimSpace(cfg.Workspace)
+	if where == "" {
+		where = workspace
+	}
+	fallback := appDefaultFallback(profileDir)
+	if cfg.OneModel || fallback == cfg.Model {
+		fallback = ""
+	}
+	cfg.ConversationModels = &session.ConversationModels{Main: cfg.Model, Fallback: fallback}
+	cfg.Interactive = false
+	cfg.AskConsent = false
+	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor, cfg.Stage = nil, nil, nil, nil, nil
+	cfg.FactoryRun = door
+	cfg.DropRefusedEffort = true
+	if cheap {
+		cfg.Effort = effort.Low
+	}
+	gate := &v3ApprovalGate{workspace: where, profileDir: profileDir, headless: true}
+	cfg.ApprovalGate = gate
+	cfg.ApprovalPosture = session.PostureAsk
+	if cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(session.PostureAsk); err != nil {
+		return nil, err
+	}
+	cfg, open := v3Shape(cfg, v3Lanes{})
+	agent, _, _, err := openV3Agent(cfg, where, open)
+	if err != nil {
+		return nil, err
+	}
+	return agent, nil
+}
+
+// runDoor is `factory_run`'s door for a conversation the person talks to: the
+// floor's edit door over st, for the one item whose manager the asking
+// conversation is. A NIL STORE IS A NIL DOOR, for [factoryDoor]'s reason.
+func runDoor(st *store.Store, workspace, profileDir string) session.RunDoor {
+	if st == nil {
+		return nil
+	}
+	dirs := factoryRepoDirs(st, workspace)
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(st), factory.WithRepoDirs(dirs))
+	if seam.Edit == nil {
+		return nil
+	}
+	return seamRunDoor{st: st, workspace: workspace, profileDir: profileDir, edit: managerEdit(st, dirs)}
+}
+
+// managerEdit is the manager's edit through the door a person's edit takes
+// ([lease.Doors.EditSteps]): A WORKER RUNNING THE JOB FROM ITS OWN COPY IS
+// WITHDRAWN in the same change, so it pulls the edited steps, and no report
+// from the old copy can write its steps back. The bounds are the pipeline the
+// job runs (the file it was decided on, [factoryJobRead]) with the
+// factory's rules, as the person's edit is bounded.
+func managerEdit(st *store.Store, dirs func(string) string) func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
+	return func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error) {
+		it, err := st.Get(id)
+		if err != nil {
+			return factory.Item{}, nil, err
+		}
+		repo := factory.RepoOf(it)
+		f, err := factoryJobRead(ctx, st, it, dirs(repo))
+		if errors.Is(err, pipeline.ErrHouseRulesUnread) {
+			return factory.Item{}, nil, err
+		}
+		desk, err := lease.Open(st, lease.Options{})
+		if err != nil {
+			return factory.Item{}, nil, err
+		}
+		updated, lines, err := lease.NewDoors(desk).EditSteps(id, e, f.Recipe())
+		if err != nil {
+			return updated, lines, err
+		}
+		// THE MANAGER'S EDIT IS ON THE FACTORY'S RECORD as the person's is: the
+		// job page's step-edit door writes a timed "edited steps" event after
+		// its edit lands, and the job's activity and its consent trail read
+		// that record, so an edit made in conversation must not be missing
+		// from them.
+		if err := recordManagerEdit(ctx, st, updated, e); err != nil {
+			return updated, lines, fmt.Errorf("the steps changed, but the factory's record did not take the edit: %w", err)
+		}
+		return updated, lines, nil
+	}
+}
+
+// recordManagerEdit writes the step-edit event for one landed manager edit,
+// with the reason the manager gave, or the job's manager named when it gave
+// none.
+func recordManagerEdit(ctx context.Context, st *store.Store, it factory.Item, e factory.RunEdit) error {
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		return err
+	}
+	detail := strings.TrimSpace(e.Why)
+	if detail == "" {
+		detail = "edited by the job's manager"
+	}
+	cost := 0.0
+	if it.Stream != nil {
+		cost = it.Stream.Spent
+	}
+	_, err = history.Append(ctx, record.Event{Kind: record.StepEdited, Job: it.ID, Cost: cost, Detail: detail})
+	return err
+}
+
+// seamRunDoor finds the item a conversation manages and edits it through the
+// seam.
+type seamRunDoor struct {
+	st        *store.Store
+	workspace string
+	// profileDir is the profile whose GitHub token a start's checkout door
+	// reads, the one this machine's runner clones with.
+	profileDir string
+	edit       func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error)
+}
+
+// errNotAManager is `factory_run` asked by a conversation that manages no item.
+var errNotAManager = factory.ErrNotManager
+
+// EditRun edits the item whose conversation is the asking one.
+func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory.RunEdit) (factory.Item, []string, error) {
+	it, err := d.managed(conversation)
+	if err != nil {
+		return factory.Item{}, nil, err
+	}
+	if err := factory.CheckPersonStop(it); err != nil {
+		return factory.Item{}, nil, err
+	}
+	return d.edit(ctx, it.ID, e)
+}
+
+// managedFrom is [seamRunDoor.managed] that reads the job hint first, by id,
+// and lists the floor only when hint is not (or no longer) that job: a
+// conversation's job almost never changes, and one document is cheaper to
+// read than every document on the floor.
+func (d seamRunDoor) managedFrom(conversation string, hint int) (factory.Item, error) {
+	want := sameFileKey(conversation)
+	if hint != 0 && want != "" && d.st != nil {
+		it, err := d.st.Get(hint)
+		factoryStopCheckDecodes.Add(1)
+		if err == nil && strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
+			return it, nil
+		}
+	}
+	return d.managed(conversation)
+}
+
+// managed is the item whose conversation is the asking one.
+func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
+	want := sameFileKey(conversation)
+	if want == "" || d.st == nil {
+		return factory.Item{}, errNotAManager
+	}
+	items, err := d.st.List()
+	if err != nil {
+		return factory.Item{}, err
+	}
+	factoryStopCheckDecodes.Add(int64(len(items)))
+	for _, it := range items {
+		if strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
+			return it, nil
+		}
+	}
+	return factory.Item{}, errNotAManager
+}
+
+// sameFileKey is a path as one spelling, links resolved.
+func sameFileKey(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
+	return filepath.Clean(path)
+}
+
+// ManagerStatus reads the durable job and lease without opening another agent
+// or making a provider request. The saved transcript is not execution state.
+func (d seamRunDoor) ManagerStatus(ctx context.Context, conversation string) (factory.ManagerStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	it, err := d.managed(conversation)
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	held, threadOnly, err := desk.LiveHold(it.ID)
+	if err != nil {
+		return factory.ManagerStatus{}, err
+	}
+	now := time.Now()
+	return factory.StatusForManagerWaiting(it, held, threadOnly, serve.QueuedWait(d.st, it, now), now), nil
+}
+
+func (d seamRunDoor) AnswerPending(ctx context.Context, conversation, questionID, answer string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	it, err := d.managed(conversation)
+	if err != nil {
+		return "", err
+	}
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return "", err
+	}
+	receipt, err := lease.NewDoors(desk).AnswerPending(it.ID, it.Talk, questionID, answer)
+	return managerAnswerResult(receipt, err)
+}
+
+// RejectPendingPlan uses the same typed send-back door as the job's controls.
+// The manager binding and exact decision are checked again on the locked item.
+func (d seamRunDoor) RejectPendingPlan(ctx context.Context, conversation, questionID, words string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	words = strings.TrimSpace(words)
+	if words == "" || utf8.RuneCountInString(words) > api.MaxRejectPlanWords {
+		return "", fmt.Errorf("Nothing changed: requested changes must contain 1 to %d characters", api.MaxRejectPlanWords)
+	}
+	it, err := d.managed(conversation)
+	if err != nil {
+		return "", err
+	}
+	revision, err := d.st.Revision(it.ID)
+	if err != nil {
+		return "", err
+	}
+	desk, err := lease.Open(d.st, lease.Options{})
+	if err != nil {
+		return "", err
+	}
+	_, err = lease.NewDoors(desk).RejectPlan(it.ID, revision, words, func(cur factory.Item) error {
+		if cur.Talk != it.Talk || questionID == "" || factory.PendingQuestionID(cur) != questionID {
+			return errors.New("Nothing changed: the pending decision changed; read factory_status before trying again")
+		}
+		return nil
+	})
+	if err != nil {
+		var refused factoryrun.PlanRevisionRefusal
+		var stale *store.StaleError
+		if errors.As(err, &refused) || errors.As(err, &stale) {
+			return "", fmt.Errorf("Nothing changed: %w", err)
+		}
+		return "", err
+	}
+	return "Plan sent back with the requested changes. The previous step will run again with those words and approval will be requested again afterward. This confirms the send-back, not that a worker has started; read factory_status for current progress.", nil
+}
+
+func managerAnswerResult(receipt factory.ManagerAnswer, err error) (string, error) {
+	if receipt.QuestionID == "" {
+		return "", err
+	}
+	line := "Decision saved for " + receipt.Stage + ": " + receipt.Words + "."
+	if err != nil {
+		return line + " Worker notification could not be persisted: " + err.Error() + ". Retry factory_answer with the same question_id and answer to redeliver; the decision is already saved.", nil
+	}
+	return line + " The saved decision is confirmed. A newer pending question, if any, is unchanged.", nil
+}
+
+// FailureSummary is the runner's Options.FailureSummary: one cheap turn of the
+// job's manager writing a failed step's headline from its failure, with no
+// door, so it can only answer in words. The turn is the job's own
+// conversation, so what it costs is booked on the job like every other turn
+// there. The runner cuts the line to its headline length.
+func (s *shapeTurns) FailureSummary(ctx context.Context, it factory.Item, f factory.Failure) (string, error) {
+	detail := strings.Join(strings.Fields(f.Detail), " ")
+	if detail == "" {
+		detail = f.Code
+	}
+	return s.turn(ctx, it, fmt.Sprintf(factory.FailureSummaryAsk, f.Step, detail), nil, true)
+}

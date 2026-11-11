@@ -156,18 +156,18 @@ func (a *Agent) designThreadTools() []bare.Tool {
 		Name:        "revise_design",
 		Description: reviseDesignDescription,
 		Schema:      json.RawMessage(reviseDesignSchemaJSON),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Change string `json:"change"`
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			change := strings.TrimSpace(parsed.Change)
 			if change == "" {
-				return "Invalid arguments: revise_design needs the change — what the harness must do differently, stated completely, because the designer rewrites the whole page from it.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: revise_design needs the change — what the harness must do differently, stated completely, because the designer rewrites the whole page from it."), true, nil
 			}
 			if err := revise(change); err != nil {
 				// The door's own sentence, kept. "This design is not waiting on an
@@ -199,18 +199,18 @@ func (a *Agent) buildHarnessTool() bare.Tool {
 		Name:        "build_harness",
 		Description: buildHarnessDescription,
 		Schema:      json.RawMessage(buildHarnessSchemaJSON),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Goal string `json:"goal"`
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
-					return "Invalid arguments: " + err.Error(), true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
 			}
 			goal := strings.TrimSpace(parsed.Goal)
 			if goal == "" {
-				return "Invalid arguments: build_harness needs a goal — what the harness must do, written for a designer that cannot see this conversation.", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: build_harness needs a goal — what the harness must do, written for a designer that cannot see this conversation."), true, nil
 			}
 			call := a.designerCall("")
 			model := call.model

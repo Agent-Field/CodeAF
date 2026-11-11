@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/rotate"
@@ -77,7 +77,7 @@ func (s *Sync) Rotation(eng cellstore.Engine, held func(id string) (cell.Cell, b
 }
 
 // Tidy removes what a rotation left to be cleaned: the scratch folders.
-func (s *Sync) Tidy() error { return os.RemoveAll(scratchDir(s.Home)) }
+func (s *Sync) Tidy() error { return fsreplace.RemoveAll(scratchDir(s.Home)) }
 
 // relayOf binds this machine's relay to a signer: the clients of a device of
 // whichever identity it belongs to.

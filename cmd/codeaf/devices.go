@@ -433,7 +433,7 @@ type chatsRow struct {
 
 // listRequestWithin bounds one request to the relay so a silent one cannot hang
 // the command.
-const listRequestWithin = 20 * time.Second
+const listRequestWithin = syncsetup.DeviceRequestWithin
 
 func (c chatsKind) rows() ([]chatsRow, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), listRequestWithin)
@@ -552,7 +552,7 @@ func (c chatsKind) stop(name string) (string, error) {
 
 func (c chatsKind) revoke(row chatsRow) (string, error) {
 	if row.This {
-		return "", errors.New("that is this device — remove it from another of your devices instead")
+		return "", errors.New(chatlist.RemoveSelf)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), listRequestWithin)
 	defer cancel()
@@ -572,7 +572,7 @@ func (c chatsKind) explain(err error) error {
 	case errors.Is(err, directory.ErrUnreachable):
 		return explainSyncUnreachable(err, c.relay)
 	case errors.Is(err, directory.ErrNotFound):
-		return errors.New("that device is not in your list any more — `codeaf devices` shows the ones there are")
+		return errors.New(chatlist.DeviceMissing)
 	}
 	return explainSyncUnreachable(err, c.relay)
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -175,4 +177,34 @@ func serveSkills(agent any, call Frame) (json.RawMessage, error) {
 		}
 		return json.Marshal(shelf)
 	}
+}
+
+// SkillFoldersSupported distinguishes an older host from a failed discovery read.
+func (a *Agent) SkillFoldersSupported() bool { return a.c.Welcome().SkillFolders }
+
+// SkillFolders reads discovery where the conversation runs. A client must not
+// add its own home folders to a shelf on another machine.
+func (a *Agent) SkillFolders() ([]skills.Skill, error) {
+	if !a.c.Welcome().SkillFolders {
+		return nil, errNoFarSkills
+	}
+	payload, err := a.c.call(nil, MethodSkillFolders, nil)
+	if err != nil {
+		return nil, err
+	}
+	var found []skills.Skill
+	if err := json.Unmarshal(payload, &found); err != nil {
+		return nil, err
+	}
+	return found, nil
+}
+
+// serveSkillFolders omits folder weights because neither picker draws them.
+func serveSkillFolders(workspace string) (json.RawMessage, error) {
+	homeDir, _ := home.Login()
+	found, err := skills.Discover(skills.Options{ProjectDir: workspace, HomeDir: homeDir, OmitSize: true})
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(found)
 }

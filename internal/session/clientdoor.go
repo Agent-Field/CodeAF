@@ -2,11 +2,14 @@ package session
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	account "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -119,23 +122,47 @@ func (p *modelClientPool) setSeat(model string) {
 // connection, so holding the lock prevents two simultaneous children from
 // minting two adapters and, more importantly, two competing lane-prober seams.
 func (p *modelClientPool) clientFor(model string) (Completer, string, string, modelAccount, error) {
+	client, wire, called, want, _, err := p.clientWithService(model)
+	return client, wire, called, want, err
+}
+
+// clientWithService is [modelClientPool.clientFor] with the connection the
+// account was read from. The account names the key the adapter was chosen
+// for, but a key handed to the live adapter afterwards
+// ([modelClientPool.setDefaultKey]) is the one its next header carries, so it
+// says which provider a request is on and never which credential it carried
+// ([observeSentCredential]).
+func (p *modelClientPool) clientWithService(model string) (Completer, string, string, modelAccount, modelsource.Connected, error) {
 	if p == nil {
-		return nil, "", "", modelAccount{}, errNoCompleter
+		return nil, "", "", modelAccount{}, modelsource.Connected{}, errNoCompleter
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	model = p.seatedModel(model)
 	configured := p.config.clientConfig(model, providerTimeout)
-	want := accountFor(p.config, model)
+	service := p.config.serviceFor(model)
+	want := accountForService(service)
 	if client := p.clients[want]; client != nil {
-		return client, configured.Model, model, want, nil
+		return client, configured.Model, model, want, service, nil
 	}
 	client, err := newProviderClient(p.config, model)
 	if err != nil {
-		return nil, "", model, modelAccount{}, err
+		return nil, "", model, modelAccount{}, modelsource.Connected{}, err
 	}
 	p.clients[want] = client
-	return client, configured.Model, model, want, nil
+	return client, configured.Model, model, want, service, nil
+}
+
+// serviceNext is the connection the pool's next call on model would be made
+// through, read from the same snapshot and seat [modelClientPool.clientFor]
+// reads, and constructing nothing.
+func (p *modelClientPool) serviceNext(model string) modelsource.Connected {
+	if p == nil {
+		return modelsource.Connected{}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.config.serviceFor(p.seatedModel(model))
 }
 
 // setSources moves the pool to a freshly resolved profile and forgets every
@@ -459,30 +486,152 @@ func (a *Agent) rebindClientLocked(model string) {
 // override changes only the slug in the request; choosing the client here first
 // is what changes the address and bearer with it.
 func (a *Agent) completerFor(model string) (Completer, string, string, error) {
+	client, wire, called, _, err := a.completerWithService(model)
+	return client, wire, called, err
+}
+
+// completerWithService is [Agent.completerFor] with the connection the chosen
+// adapter's account was resolved from, in the same locked step that chose it.
+// An unmanaged session (the scripted-completer seam) has no account, and
+// answers the zero connection: nothing is known about its credential.
+func (a *Agent) completerWithService(model string) (Completer, string, string, modelsource.Connected, error) {
 	if a == nil {
-		return nil, "", "", errNoCompleter
+		return nil, "", "", modelsource.Connected{}, errNoCompleter
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.client == nil {
-		return nil, "", "", errNoCompleter
+		return nil, "", "", modelsource.Connected{}, errNoCompleter
 	}
 	if !a.managedClient {
 		configured := a.config.clientConfig(model, providerTimeout)
-		return a.client, configured.Model, model, nil
+		return a.client, configured.Model, model, modelsource.Connected{}, nil
 	}
-	inner, wire, called, want, err := a.clientPool.clientFor(model)
+	inner, wire, called, want, service, err := a.clientPool.clientWithService(model)
 	if err != nil {
-		return nil, "", called, err
+		return nil, "", called, modelsource.Connected{}, err
 	}
 	if want == a.clientAccount {
-		return a.client, wire, called, nil
+		return a.client, wire, called, service, nil
 	}
 	if wrapper, ok := a.client.(sessionCompleter); ok {
 		wrapper.inner = inner
-		return wrapper, wire, called, nil
+		return wrapper, wire, called, service, nil
 	}
-	return inner, wire, called, nil
+	return inner, wire, called, service, nil
+}
+
+// ── THE CREDENTIAL A REQUEST WAS SENT WITH ──────────────────────────────────
+//
+// A refusal of a key belongs to the key that was refused, and the only value
+// that says which key a request carried is the bearer its adapter wrote into
+// the request's header. The pool's account names the key the adapter was
+// chosen for, but a key handed to that live adapter afterwards
+// ([modelClientPool.setDefaultKey]) travels in the header instead; reading the
+// settings names whatever was connected while the request was in flight. Both
+// blamed a new key for an old key's 401 and held the new key back for the rest
+// of the task. So the stamp is taken by the adapter, from the bearer it
+// snapshotted for each attempt's header ([provider.Client.ObserveRequestCredential]),
+// and this door only tells the adapter which domain to print it in and hands
+// the print on (config.CrewDispatch says the rest).
+
+// sentConnection is one request's dispatch fact: the provider its account is
+// on and the one-way print of the credential it carried. An empty print is
+// UNPRINTED — nothing can say which credential travelled — and a caller treats
+// it as naming none, never as naming "no key".
+type sentConnection struct {
+	provider string
+	sent     account.CrewDispatch
+}
+
+// observeSentCredential is ctx with observe told the dispatch fact of every
+// request client writes for this call, each attempt's own and in order, so
+// the last one told is the last one sent. Only an adapter that can report
+// its own header is asked; any other leaves the call unprinted.
+//
+// A SIGN-IN IS NEVER PRINTED. Codex's transport replaces the header with
+// tokens it loads and refreshes per request ([codexauth.Client]), so neither
+// the bearer this adapter wrote nor the tokens on disk are provably the ones
+// that travelled; the refusal stays unprinted, and only a recorded sign-in
+// after it can lift it. A request that names a bearer of its own
+// ([ai.Request.APIKeyOverride]) did not carry the account's credential, and
+// is unprinted too rather than named against the account.
+//
+// AND A CALL NESTED INSIDE THIS ONE IS NOT THIS CALL. The observer is taken
+// off the context handed on, and the adapter reports only its own requests.
+func observeSentCredential(ctx context.Context, client Completer, service modelsource.Connected, observe func(sentConnection)) context.Context {
+	ctx = context.WithValue(ctx, dispatchObserverKey{}, (func(sentConnection))(nil))
+	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+	adapter, ok := unwrapCompleter(client).(interface {
+		ObserveRequestCredential(context.Context, string, func(provider.RequestCredential)) context.Context
+	})
+	if id == "" || !ok {
+		return ctx
+	}
+	domain := account.CrewCredentialDomain(id)
+	if id == "codex" {
+		domain = ""
+	}
+	return adapter.ObserveRequestCredential(ctx, domain, func(seen provider.RequestCredential) {
+		fact := sentConnection{provider: id}
+		if !seen.Override {
+			fact.sent = account.CrewDispatch{Cred: seen.Digest}
+		}
+		observe(fact)
+	})
+}
+
+// sentConnectionOf is the dispatch fact a request through service WOULD carry:
+// the print of the account's own key, in the domain the adapter prints its
+// header in. It predicts the next call; it never stamps a sent one. A sign-in
+// is unprinted here for the same reason it is at the header.
+func sentConnectionOf(profileDir string, service modelsource.Connected) sentConnection {
+	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+	if id == "" {
+		return sentConnection{}
+	}
+	out := sentConnection{provider: id}
+	if id != "codex" {
+		out.sent = account.CrewDispatchOf(profileDir, service)
+	}
+	return out
+}
+
+// nextSentConnection is the dispatch fact the next request on model would be
+// made with: the pool's own account for it, which is the adapter the next call
+// would be handed — not the profile's settings, which can have moved ahead of
+// a pool that was never told. An unmanaged session knows nothing.
+func (a *Agent) nextSentConnection(model string) sentConnection {
+	if a == nil {
+		return sentConnection{}
+	}
+	a.mu.Lock()
+	managed, pool, profileDir := a.managedClient, a.clientPool, a.config.ProfileDir
+	a.mu.Unlock()
+	if !managed || pool == nil {
+		return sentConnection{}
+	}
+	return sentConnectionOf(profileDir, pool.serviceNext(model))
+}
+
+// dispatchObserverKey carries the one callback a crew seat's call is told its
+// dispatch fact through ([withDispatchObserver]).
+type dispatchObserverKey struct{}
+
+// withDispatchObserver asks the door to tell observe the dispatch fact of each
+// request the adapter it chooses writes for the call made under ctx, from the
+// header itself ([observeSentCredential]). It is a seat's own narrow seam:
+// nothing but the fact crosses it, never the adapter or its key.
+func withDispatchObserver(ctx context.Context, observe func(sentConnection)) context.Context {
+	if observe == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, dispatchObserverKey{}, observe)
+}
+
+func dispatchObserverOf(ctx context.Context) func(sentConnection) {
+	observe, _ := ctx.Value(dispatchObserverKey{}).(func(sentConnection))
+	return observe
 }
 
 // ── EVERY REQUEST SAYS WHAT IT IS FOR ───────────────────────────────────────
@@ -595,15 +744,27 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	if err := factoryCallRefusal(ctx); err != nil {
+		return nil, model, err
+	}
+	// Job ownership also covers personal manager turns and reopened stages.
+	// Keep recovery on the call so shared clients retain ordinary refusals.
+	if a.jobBudgetOf() != nil {
+		ctx = provider.WithRefusedEffortRecovery(ctx)
+	}
+	if purpose == purposeTurn {
+		messages = a.jobAutonomyMessages(messages)
+	}
 	if purpose != purposeTurn {
 		if err := DailyLimitReached(a.config); err != nil {
 			return nil, model, err
 		}
 	}
-
 	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
 	// (taskcrew.go's [Agent.healthyModel]).
-	model = a.healthyModel(ctx, purpose, model)
+	if _, paired := requestConversationModels(ctx); !paired && (!a.foregroundModelCall(purpose) || a.automaticModelsAllowed()) {
+		model = a.healthyModel(ctx, purpose, model)
+	}
 	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap —
 	// and, made for a task, that task's limit — before it is made, and on the
 	// day after. A crew seat's own call is its
@@ -632,15 +793,32 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 			ctx = provider.WithoutPatientRateLimits(ctx)
 		}
 	}
-	client, wire, called, err := a.completerFor(model)
+	client, wire, called, service, err := a.completerWithService(model)
 	if err != nil {
 		return nil, called, err
+	}
+	if _, paired := requestConversationModels(ctx); a.foregroundModelCall(purpose) && (paired || !a.automaticModelsAllowed()) && called != model {
+		return nil, called, fmt.Errorf("fixed model %s is unavailable; refusing automatic substitution with %s", model, called)
+	}
+	// THE DISPATCH FACT IS TAKEN FROM THE HEADER THIS ADAPTER WRITES, never
+	// from the account that chose it, the settings, or the answer.
+	if observe := dispatchObserverOf(ctx); observe != nil {
+		ctx = observeSentCredential(ctx, client, service, observe)
 	}
 	// THE PURPOSE BECOMES THE TAG, on the one line every request in this package
 	// passes over — through [withPurpose], which is the only function in
 	// internal/session that spells it, here and for the three roads that carry a
 	// client of their own.
 	ctx = withPurpose(ctx, purpose)
+	// Factory calls bank returned answers at their callers. Failed attempts and
+	// unmetered answers need the final receipt instead, including after Stop.
+	if a.factoryJobName() != "" && provider.BillingSinkFrom(ctx) == nil {
+		ctx = provider.WithFinalReceipts(provider.WithReconcile(ctx, a.reconciled))
+		if pending := a.config.JobPendingSpend; pending != nil {
+			ctx = provider.WithReceiptPending(ctx, pending)
+		}
+	}
+	ctx = a.withReceiptTracking(ctx)
 	ctx = provider.WithDiscardedUsage(ctx, func(served string, tag string, response *ai.Response) {
 		// Full billing owners (program model APIs) already bank every transport
 		// attempt. Ordinary session callers bank only the returned answer.
@@ -659,7 +837,20 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	})
 	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
 	// is this package's to change (callwindow.go says why it cannot be earlier).
-	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
+	// THE ONE PLACE A PICTURE BECOMES BYTES: references in the transcript are read
+	// back, verified and encoded for this request alone, under its budget
+	// (imageref.go). A copy is made only when a reference is present.
+	actual := called
+	if a.foregroundModelCall(purpose) {
+		pair, _ := requestConversationModels(ctx)
+		a.startConversationModelRequest(called, service.Source.ID, pair)
+		ctx = provider.WithServedModel(ctx, a.servedModel)
+		defer func() { a.endModelRequest(actual) }()
+	}
+	response, err := client.CompleteWithMessages(toldItsWindow(ctx), materializeImageRefs(messages), append(options, ai.WithModel(wire))...)
+	if response != nil && response.Model != "" {
+		actual = response.Model
+	}
 	if helper != nil {
 		helper.after(ctx, model, response, held)
 		crewTaskOf(ctx).addHelperSpend(response)
@@ -704,6 +895,9 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 		configured.Model = c.workerWireModel
 	}
 	configured.Timeout = timeout
+	// Factory stages, their children and manager turns keep local effort repair.
+	// Merely offering Factory tools does not opt an ordinary conversation in.
+	configured.DropRefusedEffort = c.DropRefusedEffort || c.Stage != nil || c.JobBudget != nil
 	// The catalog gate on optional knobs, and the two answers about the model's
 	// reasoning profile and list price, are seams the surface resolves. A caller
 	// that hands over none of them keeps today's behaviour exactly — knobs travel
@@ -714,6 +908,15 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 		configured.ModelPrice = c.ModelPrice
 	}
 	configured.RouteGate = c.routeGate(model, configured.Model)
+	if strings.EqualFold(strings.TrimSpace(c.serviceFor(model).Source.ID), claudemodel.ID) {
+		// A TURN ON CLAUDE CODE IS CLAUDE CODE WORKING IN THIS FOLDER, so the
+		// transport is told which one (internal/claudemodel's agent.go).
+		kept := ""
+		if c.SessionFile != "" {
+			kept = filepath.Join(filepath.Dir(c.SessionFile), "claude-code-session.json")
+		}
+		configured.HTTPClient = claudemodel.ClientAt(claudemodel.Seat{Dir: c.Workspace, Kept: kept})
+	}
 	return configured
 }
 

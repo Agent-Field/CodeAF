@@ -318,6 +318,8 @@ func TestRetentionStillBoundsTheFolderAfterAJobEnds(t *testing.T) {
 func TestAFailedLogFolderSweepIsNamedOnTheJob(t *testing.T) {
 	notes := make(chan string, 1)
 	registry := newJobRegistry(t.TempDir(), Place{}, func(note string) { notes <- note })
+	// A clean exit rides the quiet lane; the sweep rule is the same on both.
+	registry.notifyQuiet = func(note string) { notes <- note }
 	one := settlementJob(t, registry)
 	if err := os.WriteFile(filepath.Join(filepath.Dir(one.logPath), jobRetentionCounterName), []byte("garbage\n"), 0o600); err != nil {
 		t.Fatal(err)

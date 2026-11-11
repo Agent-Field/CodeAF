@@ -73,8 +73,14 @@ func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Even
 		owner.ResolveSubharness(q.ID, false, nil)
 	case QuestionConnect:
 		owner.ResolveConnect(q.Ref, false)
+	case QuestionFactory:
+		owner.ResolveFactory(q.Ref, FactoryAnswer{})
+	case QuestionRecipe:
+		owner.ResolveRecipe(q.Ref, RecipeAnswer{})
+	case QuestionItem:
+		owner.ResolveItem(q.Ref, ItemAnswer{})
 	}
-	return a.Submit(ctx, words)
+	return a.submitTextAnswer(ctx, words, nil, true)
 }
 
 // clarifyQuestion starts an independent conversation with a snapshot
@@ -141,7 +147,7 @@ func (a *Agent) clarifyQuestion(answer Answer) error {
 	a.discussions[id] = d
 	a.mu.Unlock()
 	a.HoldQuestion(q.Kind, q.Token())
-	events, err := child.Submit(discussionCtx, prompt)
+	events, err := child.submitTextAnswer(discussionCtx, prompt, nil, true)
 	if err != nil {
 		child.Close()
 		close(d.done)

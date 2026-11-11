@@ -146,28 +146,31 @@ const lateCallTail = " did not answer in time"
 
 func classify(method string) callClass {
 	switch method {
-	case MethodPing,
-		MethodModel, MethodTitle, MethodUsage, MethodContextTokens,
+	case methodFactoryStatus, MethodAppTasks, MethodAppTask, MethodAppProgramActions, MethodAppTaskRouting, MethodAppTaskRoutingOptions, MethodAppQuickTasks, MethodPing, MethodCheckWork,
+		MethodModel, MethodTitle, MethodUsage, MethodContextTokens, MethodSpendRail,
 		MethodTranscript, MethodEarlier, MethodRewindPoints, MethodPlanSpend,
 		MethodPlanTasks, MethodPlanTaskPage, MethodPlanTaskWork, MethodPlanRunSummary, MethodRefreshRunSummary,
 		MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,
-		MethodAttachedSkills, MethodSkillShelf, MethodSetupPlan,
+		MethodAttachedSkills, MethodSkillShelf, MethodSkillFolders, MethodSetupPlan,
 		MethodSessionsRecent, MethodHeldQuestions,
 		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,
-		MethodMemorySelection, MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryProvenance, MethodMemoryProject,
+		MethodMemorySelection, MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryProvenance, MethodMemoryProject, MethodMemoryApplies,
 		MethodTaskRoom, MethodTaskPending, MethodTaskEffort,
 		MethodListDir, MethodStatPaths, MethodFetchFile,
 		// The wall's two model asks are reads of the naming role, asked off the
 		// update loop and bounded by the wall; queued behind a turn they would
 		// wait out the wall's patience and answer nobody.
 		MethodTeamsName, MethodTeamsPropose,
+		// The desktop app's task and process readings are drawn while a reply
+		// streams, so they are never queued behind it.
+		MethodProcessList, MethodProcessPage, MethodProcessRecord, MethodProcessActions, MethodRenderList, MethodRenderGet,
 		// The automations readings are the watcher's beat (wire_automations.go):
 		// a store read every two seconds that a turn in flight must never hold
 		// up, or a run's line would arrive when the reply did.
 		MethodAutomationsList, MethodAutomationsRuns, MethodAutomationsChanges,
 		MethodAutomationsCursor, MethodAutomationsActive, MethodAutomationsWindows:
 		return classGetter
-	case MethodTaskWorkspaceCancel, MethodClaimChatStart, MethodQuestionResolve, MethodQuestionHold,
+	case MethodTaskWorkspaceCancel, MethodClaimChatStart, MethodAppTaskRoutingAct, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodQuestionResolve, MethodQuestionHold, MethodQuestionClock,
 		MethodConsent, MethodConsentRemember,
 		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
@@ -185,7 +188,16 @@ func classify(method string) callClass {
 		MethodAutomationsDelete, MethodAutomationsRunNow, MethodAutomationsStopRun,
 		MethodAutomationsClaim:
 		return classAct
-	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodCompact, MethodOpenPlanTaskWork, MethodTaskRunHere:
+	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodOpenPlanTaskWork, MethodCompact, MethodTaskRunHere,
+		// A side ask is a model call of up to two minutes that writes nothing
+		// into the conversation, so it owes a turn no order and a turn owes it
+		// none (sideask.go).
+		MethodSideAsk, MethodSideAskStream,
+		// Reply suggestions are also independent model work. A draft writes
+		// no turn, so a person's send must not queue behind its response.
+		methodReplySuggestion,
+		// An errand is the same: detached model work that writes no turn.
+		methodErrand:
 		return classWork
 	default:
 		return classOrdered

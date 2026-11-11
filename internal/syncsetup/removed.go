@@ -37,6 +37,13 @@ func (s *Sync) Removed() bool {
 	return err != nil || current.isRemoved()
 }
 
+// ConfirmedRemoved reads the current pairing's removal state for presentation.
+// An unreadable pairing is not confirmation that this computer was removed.
+func ConfirmedRemoved(home string) bool {
+	s, ok, err := Open(home)
+	return err == nil && ok && s.isRemoved()
+}
+
 // rememberRemoved stops this handle immediately and shares that knowledge
 // with other windows and later launches. Failure to save the marker cannot
 // make a live handle resume sending requests.

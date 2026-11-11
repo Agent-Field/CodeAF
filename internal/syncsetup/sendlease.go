@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -19,15 +20,22 @@ type sendLease struct {
 	Fence uint64 `json:"fence"`
 }
 
-func (s *Sync) sendLeasePath(id string) string {
+func (s *Sync) sendLeasePath(id string) (string, error) {
+	if strings.TrimSpace(s.Home) == "" {
+		return "", errors.New("sync: a home directory is required for chat holds")
+	}
 	key := sha256.Sum256([]byte(s.Ledger + "/" + s.Device.ID() + "/" + id))
-	return filepath.Join(s.Home, "v3", "sync", "holds", hex.EncodeToString(key[:]))
+	return filepath.Join(s.Home, "v3", "sync", "holds", hex.EncodeToString(key[:])), nil
 }
 
 // SendLease names the hold the local session actually publishes under. It
 // stays outside the saved chat so restoring another computer's copy cannot
 // grant this window permission to send.
 func (s *Sync) SendLease(id string) (string, uint64, error) {
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return "", 0, err
+	}
 	current, err := s.currentDisplaySync()
 	if err != nil {
 		return "", 0, err
@@ -35,7 +43,7 @@ func (s *Sync) SendLease(id string) (string, uint64, error) {
 	if current != s {
 		return current.SendLease(id)
 	}
-	raw, err := os.ReadFile(s.sendLeasePath(id))
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return "", 0, err
 	}
@@ -48,7 +56,7 @@ func (d *Drive) recordSendLease() error {
 	fence := d.batcher.Fence()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.lost || d.line != "" || fence == 0 || fence == d.recordedFence {
+	if d.lost || d.viewer.Line != "" || fence == 0 || fence == d.recordedFence {
 		return nil
 	}
 	if err := d.sync.recordSendLease(d.cell.ID, sendLease{Cell: d.directoryID, Fence: fence}); err != nil {
@@ -76,7 +84,7 @@ func (s *Sync) reconcileSendLease(id, remoteID string, view directory.CellView) 
 }
 
 func (s *Sync) recordSendLease(id string, held sendLease) error {
-	lock, err := s.lockSendLease(id)
+	lock, err := s.lockChat(id, "")
 	if err != nil {
 		return err
 	}
@@ -85,7 +93,10 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 	if err != nil {
 		return err
 	}
-	path := s.sendLeasePath(id)
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return err
+	}
 	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
 		return err
 	}
@@ -93,7 +104,7 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer fsreplace.Remove(tmp.Name())
 	_, writeErr := tmp.Write(raw)
 	closeErr := tmp.Close()
 	if writeErr != nil {
@@ -110,12 +121,15 @@ func (s *Sync) recordSendLease(id string, held sendLease) error {
 
 // forgetSendLease retires only this writer's fence, preserving a newer local owner.
 func (s *Sync) forgetSendLease(id string, expected sendLease) error {
-	lock, err := s.lockSendLease(id)
+	lock, err := s.lockChat(id, "")
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	path := s.sendLeasePath(id)
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return err
+	}
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -130,19 +144,22 @@ func (s *Sync) forgetSendLease(id string, expected sendLease) error {
 	if held != expected {
 		return nil
 	}
-	err = os.Remove(path)
+	err = fsreplace.Remove(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	return err
 }
 
-func (s *Sync) lockSendLease(id string) (*os.File, error) {
-	path := s.sendLeasePath(id)
+func (s *Sync) lockChat(id, suffix string) (*os.File, error) {
+	path, err := s.sendLeasePath(id)
+	if err != nil {
+		return nil, err
+	}
 	if err := home.MkdirAllUnder(s.Home, filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	lock, err := os.OpenFile(path+suffix+".lock", os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}

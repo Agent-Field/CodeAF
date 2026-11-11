@@ -246,7 +246,8 @@ earlier build may not know its conversation, and then the card simply says less.
 
 ## How does something get remembered without me asking? Noticing
 
-After each turn **you typed**, one small call reads what you said and the answer
+With **learn from chats and jobs** on (the default unless saved off), after each turn
+**you typed**, one small call reads what you said and the answer
 and may keep **one** line: a preference, a standing rule, a correction, a
 decision, or a lasting fact. It is shown what is already kept, so it does not
 keep the same thing twice. It never keeps something only the assistant said, the
@@ -264,7 +265,7 @@ If you have moved to another conversation or home by then, the line waits and
 is drawn in its own conversation when you come back to it.
 
 The tab marks it `noticed`, and `→` then `f` (or `delete`) there forgets it. Most
-turns keep nothing. Turn noticing off with the `notice things to remember` row
+turns keep nothing. Turn noticing off with the `learn from chats and jobs` row
 (see "How do I turn memory off").
 
 
@@ -349,25 +350,23 @@ itself runs locally without a model or embedding call; searching a memory does
 not require re-adding it.
 
 
-## How do I turn memory off? The notice things to remember setting
+## How do I turn memory off? Stop learning from chats and jobs
 
-`/settings` → Memory → **notice things to remember** governs one thing: whether
-codeaf keeps lines on its own after your turns. Off, nothing is noticed. It
-applies from the next turn, with no restart.
-
-It does not stop memory selection or explicit pins from riding, and it does
-not stop `/remember` or the Memory tab. To stop a line, forget it there.
+`/settings` → Memory → **learn from chats and jobs** controls automatic memory
+model calls. It is on by default unless you saved off. On learns from chats and
+jobs at extra cost on your key; Spending shows actual recorded costs. Off applies from the next memory
+step without restarting. A call already in flight finishes and is billed.
 
 If memory was off before this build, off used to keep your saved lines out of
 every prompt; now they ride again. The first conversation after the upgrade says
 so once on this machine — `N kept memory lines now ride every conversation they
 hold in — memory off now only stops noticing`, followed by a reminder to see or
 forget them on the Memory tab — and nothing about the lines changes.
-Saved lines are never deleted by the setting.
 
-Conversation search and the bash fix hints are separate and keep working either
-way (see their sections below).
-
+Saved knowledge remains readable at no cost. Kept lines still ride in prompts,
+and `/remember` and the Memory tab still work. Forget a line there to remove it.
+Nothing saved is deleted by the setting. Conversation search and bash fix hints
+are separate and keep working either way.
 
 ## It said memory is off, or memory is unavailable in this conversation
 
@@ -615,6 +614,10 @@ denied, a tool a task does not have), `Unknown tool: …`, and a program that is
 not on this machine (`git: command not found`). A refused call is also never
 answered with a suggestion.
 
+Invalid tool arguments are not command failures either. A call rejected before
+its command runs neither records a fix nor receives a suggestion, even if an
+older build saved advice for that same argument error.
+
 
 ## Remembering a failed method or tool — will codeaf avoid trying that tool again, and what if the inputs change?
 
@@ -657,13 +660,83 @@ Hosted sync storage is off by default while its privacy terms are being finished
 
 Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memory place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
 
-Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. Pairing a computer that has its own memory merges those lines and preferences; explicit `--replace` replaces them. Chat-written memory still rides in each chat's own saved ledger as well.
+Machine-scoped memories describe one computer and stay there. An unpaired home sends nothing. A solo computer with submitted chats requires confirmed replacement to pair. A startup-only computer can pair directly and merge its memory and preferences. Explicit `--replace` clears shared memory and preferences. Chat-written memory still rides in each chat's own saved ledger as well.
 
 ## Memory in older local conversations and new moving chats
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Memories use the local store on each computer. After pairing, an older conversation gets an independent movable copy with its earlier memory history sealed into `.cell/memories.jsonl`; the original is untouched. Person and project memory also sync independently through the encrypted vault.
+
+## Library in the desktop app and Knowledge in the terminal
+
+The desktop's Library reads the same opt-in, profile-wide knowledge vault as
+Memory → Knowledge in the terminal. Saved memory remains separate. Starting a
+Library build enables knowledge capture. The default knowledge model is
+DeepSeek v4.1 Flash (`deepseek/deepseek-v4.1-flash`); a model chosen in
+Settings is kept across builds and is shared with the terminal. Library does not
+change the model of an ordinary chat.
+
+Search reads the full-text index without a model call. Ask the Library uses the
+knowledge model and returns source citations, or says that the answer is not in
+your Library. With learning paused, saved guides stay readable and explicit Library questions
+can still use them. Asking does not capture chats or resume learning. Opening a citation takes you to the cited guide. Open in chat uses
+the saved source's own conversation and message, never its title or folder.
+
+Edits made through either surface are visible in both. A stale save or delete
+is refused. Your words remain human edits; the earlier source quotes do not
+become evidence for something you added. Keeping an account in a disagreement
+retains the chosen claim and the replaced words in the guide’s Changes view.
+Other disagreements stay available until you choose an account for each.
+Recall follows your choice across older notes that shared the claim. Changes
+keeps the replaced account’s source chat reachable.
+Deleting a guide suppresses it in later builds and does not delete its chats.
+
+Keep in Library admits a selected passage from a saved agent reply immediately;
+it still needs existing knowledge consent. Use in chat opens a draft with a
+bounded excerpt and its Library address. The chat can also use
+`search_knowledge` and `read_knowledge` to consult the current guide.
+
+## Library disagreements in Inbox and Later
+
+The desktop sidebar separates Home from To review. Collections start
+collapsed; opening a guide reveals its collection and topic. To review opens
+the review list without putting that queue above the collection tree.
+
+A guide with two conflicting accounts also appears as a question in Inbox.
+Open it to compare the source chats and keep an account. Later keeps the question
+across app restarts; Back returns it to Waiting. Learning can be paused without
+losing these questions. A deferred guide still shows its disagreement and says
+“In Later”; deferring does not choose an account. Resolving the disagreement in
+either Library or the terminal removes its Inbox question.
+
+## Home, Library questions, cross-links and numbered sources
+
+Home starts with “Ask anything about your Library…”: an explicit question uses
+the saved guides and your Library model, even while learning is paused. Answers
+include sources; Continue with an agent opens a draft with the question, answer
+and cited pages. An answer without enough saved evidence offers the agent handoff.
+
+Collections remain available for browsing. A collection groups guides by topic and lets you find
+a guide by its title or summary without a model call. The collection's saved
+introduction appears when one is available.
+
+Ordinary guide and cross-link clicks follow pages inside the current Library
+tab. Back and Forward return through that window's places. Open in New Tab
+creates an independent tab; Command-click or Control-click opens a background
+tab. A copied cross-link keeps its section heading.
+
+Numbered references such as [1] show the source quote and date on hover or
+keyboard focus. Open in chat goes to the saved source message. Paragraphs have
+no source gutter or clickable hover background. Unfinished guide edits stay
+available while navigating in this window; Save writes them to the shared
+knowledge vault. Unsaved text is not written to disk.
+
+## Rename a Library guide or collection
+
+In the desktop Library, choose Rename beside a guide or collection title. Enter saves; Escape cancels. Titles are one line, up to 200 Unicode characters. Renaming keeps the page id, links, sources and folder membership. A collection rename changes its displayed label, not the scope used for retrieval. Renaming alone does not turn learned text into a manual edit or pause future learning. Earlier titles remain aliases for wiki links. Conflicting title edits stay available for comparison before replacing the current title.
+
+Citation previews render only the quoted source text as Markdown, preserving the original source's line breaks when they can be matched. The surrounding source message is not sent with the preview. Library answers use numbered inline references; claim keys stay out of the reading surface.
 
 ## My rules are gone — rules from an earlier version of codeaf
 

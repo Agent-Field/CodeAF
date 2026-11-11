@@ -1384,7 +1384,7 @@ func TestThePromptProfileRowRoundTripsAndItsPinWinsForOneLaunch(t *testing.T) {
 // three words poolcfg.Resolve accepts from the environment, so a row and a
 // shell spell one thing — and the resolver in this package is the one place
 // the process environment is read for the pool.
-func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.T) {
+func TestTheModelPoolRowDefaultsToOffAndFollowsItsStoredWordAndItsPin(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CODEAF_MODEL_POOL", "")
 	t.Setenv("CI", "")
@@ -1401,10 +1401,10 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	if row.Category != CategoryModels || row.Kind != SettingChoice || row.Label != "model pool" {
 		t.Fatalf("model pool row = %+v", row)
 	}
-	if row.Value() != "on" {
-		t.Fatalf("the pool does not default to on: %q", row.Value())
+	if row.Value() != "off" {
+		t.Fatalf("the pool does not default to off: %q", row.Value())
 	}
-	if got := ModelPoolAt(dir); got.Mode != poolcfg.On || got.Source.Mode != "default" {
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.Off || got.Source.Mode != "default" {
 		t.Fatalf("an untouched profile resolved %+v", got)
 	}
 
@@ -1446,8 +1446,8 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	if err := writeProfileValue(dir, KeyModelPool, "maybe"); err != nil {
 		t.Fatal(err)
 	}
-	if got := ModelPoolAt(dir); got.Mode != poolcfg.On {
-		t.Fatalf("a stale word did not fall back to on: %+v", got)
+	if got := ModelPoolAt(dir); got.Mode != poolcfg.Off {
+		t.Fatalf("a stale word did not fall back to off: %+v", got)
 	}
 }
 

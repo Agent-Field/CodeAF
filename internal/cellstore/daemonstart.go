@@ -19,15 +19,14 @@ import (
 // after it exits starts it again, so the value costs latency, never correctness.
 const idleMinutes = "10"
 
-// testIdleMinutes is how long a daemon started by a test binary outlives its
-// last client. A test that crashes before its teardown runs leaves the daemon
-// behind, and a short idle exit is what lets that leak heal itself.
-const testIdleMinutes = "1"
+// appIdleMinutes lets desktop helpers and abandoned test helpers expire soon
+// after their engine ends. The app touches its own helpers while it is alive.
+const appIdleMinutes = "1"
 
 // idleFlag is the --idle-minutes value the daemon is started with.
 func idleFlag() string {
-	if testing.Testing() {
-		return testIdleMinutes
+	if appDaemonLifetime.Load() || testing.Testing() {
+		return appIdleMinutes
 	}
 	return idleMinutes
 }
@@ -73,6 +72,9 @@ func startAndDial(ctx context.Context, d Daemon) (net.Conn, error) {
 		}
 		return nil, errors.New("saving is waiting for the storage process to start; try again shortly")
 	}
+	if err := validateSocket(d.Socket); err != nil {
+		return nil, err
+	}
 	if conn, err := dial(ctx, d.Socket); err == nil {
 		return conn, nil
 	}
@@ -105,6 +107,7 @@ func startAndDial(ctx context.Context, d Daemon) (net.Conn, error) {
 		}
 	}
 
+	pruneStaleSockets(ctx, filepath.Dir(d.Socket))
 	conn, err := launchAndDial(ctx, d)
 	if err != nil {
 		startMu.Lock()
@@ -138,7 +141,7 @@ func launch(d Daemon) (<-chan struct{}, error) {
 		return nil, fmt.Errorf("start engine daemon: %w", err)
 	}
 	exited := make(chan struct{})
-	remember(cmd.Process, exited)
+	remember(cmd.Process, exited, d.Socket)
 	daemonExits.Store(d.Socket, (<-chan struct{})(exited))
 	owner := &spawnedDaemon{process: cmd.Process, exited: exited}
 	daemonOwners.Store(d.Socket, owner)

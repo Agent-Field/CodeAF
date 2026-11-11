@@ -18,7 +18,7 @@ package session
 //	                  doing and when it last said so.
 //	takeover.json     the request, `{"at": <RFC 3339 time>}`, written by the
 //	                  window that wants the conversation (takeover.go). Every
-//	                  holder since 2026-08-31 looks for it four times a second,
+//	                  holder watches for it (older builds poll four times a second),
 //	                  lets go — stopping a turn where it is and keeping its
 //	                  partial reply — and says so in its own window.
 //
@@ -103,6 +103,13 @@ func readPresenceAnyAge(dir string) (SessionPresence, bool) {
 	}
 	presence.Dir = dir
 	return presence, true
+}
+
+// ReadSessionPresenceAnyAge reads the last claim even after its writer stopped
+// refreshing it. Callers must establish staleness before acting on the claim;
+// ordinary live listings must keep using ReadSessionPresence.
+func ReadSessionPresenceAnyAge(dir string) (SessionPresence, bool) {
+	return readPresenceAnyAge(dir)
 }
 
 // Words is the holder named the way a person reads it: `pid 58673 · ttys004 ·

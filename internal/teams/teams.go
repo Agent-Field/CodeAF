@@ -18,6 +18,8 @@ const Version = 2
 // Member is one conversation a team holds, with enough to reopen it when no
 // window has it open.
 type Member struct {
+	// ReportsTo records the proposed reporting handle while the crew stays flat.
+	ReportsTo string `json:"reports_to,omitempty"`
 	// SyncID preserves a portable identity when this computer has its own path.
 	SyncID string `json:"sync_id,omitempty"`
 	Key    string `json:"key"`
@@ -48,12 +50,31 @@ type Member struct {
 	// (a [KindStart] the interface carried out), which is the second rule a
 	// home is picked by.
 	Started bool `json:"started,omitempty"`
+	// StartEntry is the id of the [KindStart] line, in this team's log, that
+	// the interface carried out to make this membership: the member's brief
+	// by identity rather than by the handle, which a person can change and a
+	// later member can take. Empty on a membership nobody started and on every
+	// one made before it was kept ([StartFor] answers those only when the log
+	// proves which line is theirs). The recipient is this record's Key.
+	StartEntry string `json:"start_entry,omitempty"`
 	// HandleBy is who chose Handle: [HandleByWords] for the word list's
 	// instant guess, [HandleByModel] for the title model's word, and
 	// [HandleByTyped] for a handle a person or the manager gave. "" is a
 	// handle written before this was kept, and is read as the word list's
 	// ([Member.HandleDerived]).
 	HandleBy string `json:"handle_by,omitempty"`
+	// Briefs are the changes made to this member's brief after it started,
+	// oldest first, the newest [BriefRevisionsKept] (brief.go). Empty on a
+	// membership whose brief never changed and on every one written before
+	// they were kept: nobody's edit is ever inferred.
+	Briefs []BriefRevision `json:"briefs,omitempty"`
+	// FactoryStage says this membership is a factory stage's conversation
+	// (stamped when the stage joins its item's team), and FactoryBrief is the
+	// opening brief the factory ACTUALLY gave it ([ConversationSpec.Brief]).
+	// Both are job-owned: a person's or manager's brief edits never reach them.
+	// Empty on every membership written before they were kept.
+	FactoryStage bool   `json:"factory_stage,omitempty"`
+	FactoryBrief string `json:"factory_brief,omitempty"`
 	// Unknown membership fields survive whole-file updates from this build.
 	extra map[string]json.RawMessage
 }
@@ -73,6 +94,13 @@ type Team struct {
 	// Manager is the conversation key of the member that manages the team, ""
 	// for none. It is always one of Members.
 	Manager string
+	// Founder is the conversation key of the manager the team was made under,
+	// "" when it was made with none or before this was written. It is a fact
+	// of the team's making and never moves with the manager seat.
+	Founder string
+	// CreatedBy is who made the team: "person", or the conversation id of the
+	// agent that made it. "" for a team made before this was written.
+	CreatedBy string
 	// Hue and Tier are the team's colour (hue.go).
 	Hue  float64
 	Tier int
@@ -86,6 +114,11 @@ type Team struct {
 	ClosedAt   time.Time
 	ClosedWith string
 	Report     string
+	// ArchivedAt is when a closed team was put away ([File.Archive]); zero for
+	// a team that is not archived. Archiving is a mark on a closed team: its
+	// roster, Traffic and packets stay exactly as they were, and [File.Reopen]
+	// clears it.
+	ArchivedAt time.Time
 	// Root marks the one team that holds every other (root.go): the `All
 	// teams` row, made when the person gives it a manager.
 	Root bool
@@ -98,11 +131,28 @@ type Team struct {
 	// it was given. Nil is none, which is also what a file from before the
 	// field was kept reads as.
 	Wrap *Wrap
+	// Starts are the manager's start lines a window has claimed ([File.ClaimStart]),
+	// newest last, so two windows holding one manager start one member.
+	Starts []string
+	// FactoryManaged says the factory's own code made or used this team: the
+	// one `factory` team or an item's team under it. It is stamped ONLY by
+	// those doors and NEVER inferred from the name, so an ordinary crew a
+	// person called `factory` stays unmarked. False is also what a file from
+	// before the field was kept reads as.
+	FactoryManaged bool
+	// JobEnded says the team was closed because the factory job it is the room
+	// of ended ([File.CloseForJob]), and by nothing else: only such a team is
+	// opened again when the job comes back ([File.ReopenForJob]). Any other
+	// close, and any reopen, clears it.
+	JobEnded bool
 
 	// hued says the team has a colour: the file gave it one or [Team.SetHue]
 	// did. A hue of 0 is a real hue, so absence is kept apart from the value.
 	// extra is every field a later build wrote that this one does not know.
-	hued  bool
+	hued bool
+	// noHue says the colour was cleared on purpose, so [File.Colour] leaves the
+	// team uncoloured instead of handing it a fresh one on the next load.
+	noHue bool
 	extra map[string]json.RawMessage
 }
 
@@ -118,10 +168,11 @@ type File struct {
 // knownFields is every key [Team] reads itself.
 var knownFields = map[string]bool{
 	"id": true, "name": true, "parent": true, "members": true, "manager": true,
-	"hue": true, "tier": true, "made": true,
-	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
+	"hue": true, "tier": true, "hue_cleared": true, "made": true,
+	"state": true, "closed_at": true, "closed_with": true, "archived_at": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
-	"wrap": true, "former_members": true, "former_manager": true,
+	"wrap": true, "former_members": true, "former_manager": true, "starts": true, "founder": true,
+	"created_by": true, "factory_managed": true, "job_ended": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -134,19 +185,29 @@ type wireTeam struct {
 	Members       []Member  `json:"members"`
 	FormerMembers []Member  `json:"former_members,omitempty"`
 	FormerManager string    `json:"former_manager,omitempty"`
+	Founder       string    `json:"founder,omitempty"`
+	CreatedBy     string    `json:"created_by,omitempty"`
 	Manager       string    `json:"manager"`
 	Hue           *float64  `json:"hue,omitempty"`
+	HueCleared    bool      `json:"hue_cleared,omitempty"`
 	Tier          *int      `json:"tier,omitempty"`
 	Made          time.Time `json:"made"`
 	// The lifecycle, written only for a closed team.
 	State      string     `json:"state,omitempty"`
 	ClosedAt   *time.Time `json:"closed_at,omitempty"`
 	ClosedWith string     `json:"closed_with,omitempty"`
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
 	Report     string     `json:"report,omitempty"`
 	Root       bool       `json:"root,omitempty"`
 	// Wrap is written only while a wrap-up is in progress, so a team with
 	// none is written exactly as before.
 	Wrap *Wrap `json:"wrap,omitempty"`
+	// Starts is written only once a start line was claimed.
+	Starts []string `json:"starts,omitempty"`
+	// FactoryManaged is written only for a team the factory stamped.
+	FactoryManaged bool `json:"factory_managed,omitempty"`
+	// JobEnded is written only for a room its job's end closed.
+	JobEnded bool `json:"job_ended,omitempty"`
 	// The overrides are written flat beside the fields above, each only when
 	// set, so a team with none is written exactly as before.
 	Settings
@@ -162,10 +223,13 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 	if err := json.Unmarshal(raw, &all); err != nil {
 		return err
 	}
-	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Manager: w.Manager, Made: w.Made,
-		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap}
+	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Founder: w.Founder, CreatedBy: w.CreatedBy, Manager: w.Manager, Made: w.Made,
+		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap, Starts: w.Starts, FactoryManaged: w.FactoryManaged, JobEnded: w.JobEnded}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
+	}
+	if w.ArchivedAt != nil {
+		t.ArchivedAt = *w.ArchivedAt
 	}
 	if w.Hue != nil {
 		t.Hue, t.hued = *w.Hue, true
@@ -173,6 +237,9 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 	if w.Tier != nil {
 		t.Tier = *w.Tier
 	}
+	// A colour wins over the marker: a build that predates the marker may have
+	// coloured the team again, and that colour is the later word.
+	t.noHue = w.HueCleared && w.Hue == nil
 	for k, v := range all {
 		if knownFields[k] {
 			continue
@@ -188,8 +255,8 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // MarshalJSON writes the known fields in their order, then any field a later
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
-	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Manager: t.Manager, Made: t.Made,
-		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap}
+	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Founder: t.Founder, CreatedBy: t.CreatedBy, Manager: t.Manager, Made: t.Made,
+		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap, Starts: t.Starts, FactoryManaged: t.FactoryManaged, JobEnded: t.JobEnded}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.
 	if t.State != "" && t.State != TeamOpen {
@@ -199,10 +266,15 @@ func (t Team) MarshalJSON() ([]byte, error) {
 		at := t.ClosedAt
 		w.ClosedAt = &at
 	}
+	if !t.ArchivedAt.IsZero() {
+		at := t.ArchivedAt
+		w.ArchivedAt = &at
+	}
 	if t.Hued() {
 		hue, tier := t.Hue, t.Tier
 		w.Hue, w.Tier = &hue, &tier
 	}
+	w.HueCleared = t.noHue && !t.Hued()
 	raw, err := json.Marshal(w)
 	if err != nil || len(t.extra) == 0 {
 		return raw, err
@@ -238,7 +310,14 @@ func (t Team) Hued() bool { return t.hued || t.Hue != 0 || t.Tier != 0 }
 func (t Team) HueSpec() HueSpec { return HueSpec{Hue: t.Hue, Tier: t.Tier} }
 
 // SetHue gives the team a colour.
-func (t *Team) SetHue(h HueSpec) { t.Hue, t.Tier, t.hued = h.Hue, h.Tier, true }
+func (t *Team) SetHue(h HueSpec) { t.Hue, t.Tier, t.hued, t.noHue = h.Hue, h.Tier, true, false }
+
+// ClearHue takes the team's colour away and remembers that it was meant, so
+// [File.Colour] does not give it another. [Team.SetHue] colours it again.
+func (t *Team) ClearHue() { t.Hue, t.Tier, t.hued, t.noHue = 0, 0, false, true }
+
+// HueCleared reports whether the team's colour was cleared on purpose.
+func (t Team) HueCleared() bool { return t.noHue && !t.Hued() }
 
 // Holds reports whether key is one of the team's members.
 func (t Team) Holds(key string) bool { return t.member(key) >= 0 }
@@ -277,6 +356,12 @@ func (t Team) member(key string) int {
 func (t Team) Clone() Team {
 	t.Members = append([]Member(nil), t.Members...)
 	t.FormerMembers = append([]Member(nil), t.FormerMembers...)
+	for i := range t.Members {
+		t.Members[i].Briefs = append([]BriefRevision(nil), t.Members[i].Briefs...)
+	}
+	for i := range t.FormerMembers {
+		t.FormerMembers[i].Briefs = append([]BriefRevision(nil), t.FormerMembers[i].Briefs...)
+	}
 	t.Settings = t.Settings.clone()
 	if t.Wrap != nil {
 		w := *t.Wrap
@@ -550,7 +635,12 @@ func (f *File) SetHandle(id, key, h string) error {
 // and no valid unique handle, a manager that is a member, overrides inside
 // their bands, and one home for every conversation that has a manager to
 // report to (home.go). Colour is not its business ([File.Colour] is).
-func tidy(teams []Team) bool {
+func tidy(teams []Team) bool { return tidyWithin(teams, nil) }
+
+// tidyWithin is [tidy] of a list that is part of the store: a parent in
+// elsewhere is a team the list leaves out ([UpdateOpen]'s closed teams), not a
+// missing one, and is kept.
+func tidyWithin(teams []Team, elsewhere map[string]bool) bool {
 	changed := false
 	seen := map[string]bool{}
 	for i := range teams {
@@ -561,7 +651,7 @@ func tidy(teams []Team) bool {
 		seen[teams[i].ID] = true
 	}
 	for i := range teams {
-		if p := teams[i].Parent; p != "" && (!seen[p] || p == teams[i].ID) {
+		if p := teams[i].Parent; p != "" && ((!seen[p] && !elsewhere[p]) || p == teams[i].ID) {
 			teams[i].Parent = ""
 			changed = true
 		}
@@ -609,7 +699,7 @@ func (f *File) Colour(reserved []float64) bool {
 	}
 	changed := false
 	for i := range f.Teams {
-		if f.Teams[i].Hued() {
+		if f.Teams[i].Hued() || f.Teams[i].HueCleared() {
 			continue
 		}
 		next := NextHue(used, reserved)

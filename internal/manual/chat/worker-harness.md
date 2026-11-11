@@ -282,7 +282,9 @@ plan could not be opened or its copy could not be cut, the answer is
 started in its place.` A typed `/task` answers the same sentence; the model, reading
 it at the proposal door, is told besides to propose it again or tell you what stopped
 it — words for the model, never shown to you. It reads as a failure, never as `task N started`,
-and the task is not quietly put on the older engine's tree. Only a build with no run
+and the task is not quietly put on the older engine's tree. The approved task's own
+row settles `failed` with that sentence as its reason — it is never left waiting to
+begin — and it is still listed failed after the conversation is reopened. Only a build with no run
 engine at all, or a conversation with nowhere to keep a plan, uses the older engine,
 because there the run road was never there to take.
 
@@ -1015,7 +1017,7 @@ Each declaration is **one rerunnable command the read-only check can run**.
 `plandb add` and `plandb task set-checks` refuse joins, pipes, redirections,
 variable expansions, command substitutions and commands the check is not allowed to run before anything is
 added or changed. Repeat `--check` for separate commands. Checks run from the
-root of the task's own copy: omit `cd` and name files relative to that root.
+root of the task's own folder: omit `cd` and name files relative to that root.
 The command is not split or rewritten for you; repair the declaration and try
 the add or set-checks again. Quoted shell characters that are only text remain
 allowed, such as `grep 'alpha && beta' README.md`.

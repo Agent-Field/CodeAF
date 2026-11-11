@@ -121,6 +121,10 @@ func (c *Client) ParseDocument(ctx context.Context, request DocumentRequest) (*D
 	if c == nil {
 		return nil, fmt.Errorf("document client is nil")
 	}
+	// Not an observed door (attemptobserver.go): refused before any network use.
+	if err := refuseObserved(ctx, SurfaceDocument); err != nil {
+		return nil, err
+	}
 	model := strings.TrimSpace(request.Model)
 	if model == "" {
 		model = c.config.Model

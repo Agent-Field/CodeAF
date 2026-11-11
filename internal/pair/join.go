@@ -4,8 +4,7 @@ package pair
 // words with its screen, and this computer has the same chats.
 //
 // NOTHING IS WRITTEN UNTIL THE OTHER DEVICE HAS SAID YES. The grant arrives in
-// memory, is checked whole, and only then does anything touch the disk; a
-// computer that already has chats of its own refuses before it writes a byte.
+// memory, is checked whole, and only then does anything touch the disk.
 
 import (
 	"context"
@@ -32,10 +31,13 @@ type Joining struct {
 	Home string
 	// Label is what this device calls itself on the other device's screen.
 	Label string
+	// Platform disambiguates computers with the same name during approval.
+	Platform string
 	// Replace lets a computer that already has different chats give them up.
 	Replace bool
-	// MergeState keeps memory and preferences when a startup-only home joins.
-	MergeState bool
+	// Revoked says this computer's own device was removed. Rejoining the same
+	// identity then mints a new device key without replacing local state.
+	Revoked bool
 	// ProfileDir names the preferences being joined, when outside Home.
 	ProfileDir string
 	// TeamsPaired supplies the live quiet gate after adopting the new identity.
@@ -43,6 +45,9 @@ type Joining struct {
 	// SaveSyncURL is told the relay the other device syncs through, when it is
 	// not the default. Nil ignores it.
 	SaveSyncURL func(url string) error
+	// After runs after each durable local merge step. An error interrupts the
+	// merge; startup or retry completes its recorded switch.
+	After func(step string) error
 }
 
 // Joined is how a pairing ended on the joining device.
@@ -96,7 +101,7 @@ func joinRun(ctx context.Context, route Mailbox, j Joining, code JoinCode, ui Jo
 	link := &boxLink{ctx: ctx, box: route.Box, plate: code.Plate, mine: pairbox.SideB, theirs: pairbox.SideA, key: key,
 		gone:     map[stage]error{awaitAnswer: ErrStopped, awaitVerdict: ErrCodeDidNotWork},
 		sendGone: NothingWaitingUnder(code.Plate)}
-	offer, err := joinOffer(j.Label)
+	offer, err := joinOffer(j.Label, j.Platform)
 	if err != nil {
 		return Grant{}, err
 	}
@@ -124,65 +129,103 @@ func phraseJoin(err error, route Mailbox) error {
 
 // joinOffer is what this device sends in message 3: its name, then random bytes
 // that make the message differ from any other session's.
-func joinOffer(label string) ([]byte, error) {
+func joinOffer(label string, platform ...string) ([]byte, error) {
 	nonce := make([]byte, nonceSize)
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	return append([]byte(readableLabel(label)), nonce...), nil
+	name := readableLabel(label)
+	if len(platform) != 0 && platform[0] != "" {
+		name = ComputerLabel(name, platform[0])
+	}
+	return append([]byte(name), nonce...), nil
 }
 
-// adopt takes the grant into this home, or says why not. A computer that
-// already holds these chats changes nothing, and one with chats of its own keeps
-// them unless it was told to replace them.
+// adopt takes the grant into this home. Submitted chats require explicit
+// replacement; a startup-only home retains its state through the durable switch.
 func adopt(j Joining, grant Grant) (Joined, error) {
+	return adoptWithDevice(j, grant, nil)
+}
+
+func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
+	recovered, err := j.resumeApproved()
+	if err != nil {
+		if recovered != nil {
+			return *recovered, err
+		}
+		return Joined{}, err
+	}
+	if recovered != nil {
+		held, err := identity.Load(j.Home)
+		if err != nil {
+			return *recovered, err
+		}
+		if held.ID() == grant.Identity.ID() {
+			return *recovered, nil
+		}
+	}
+	// No-op and refusal paths must not even create a lock file. Recheck the
+	// destination under the lock below before making any actual switch.
 	held, err := identity.Load(j.Home)
+	if err != nil && !errors.Is(err, identity.ErrNone) {
+		return Joined{}, err
+	}
+	if err == nil && !j.Replace && !j.Revoked && held.ID() == grant.Identity.ID() {
+		return Joined{Already: true}, nil
+	}
+	if err == nil && !j.Replace && held.ID() != grant.Identity.ID() && !slices.Contains(grant.Replaces, held.ID()) {
+		if ok, err := identity.Joinable(j.Home); err != nil || !ok {
+			return Joined{}, differentChats(j.Home)
+		}
+	}
+	unlock, err := keys.LockHome(j.Home)
+	if err != nil {
+		return Joined{}, err
+	}
+	defer unlock()
+	if _, err := j.resume(); err != nil {
+		return Joined{}, err
+	}
+	held, err = identity.Load(j.Home)
 	switch {
 	case err == nil && held.ID() == grant.Identity.ID():
 		if !j.Replace {
+			// A removed device needs a fresh key, while its identity and local
+			// state stay in place. Only explicit replacement runs cleanup.
+			if j.Revoked {
+				return j.merge(grant, dev, held.CellKey())
+			}
 			return Joined{Already: true}, nil
 		}
-		// Explicit replacement after approval must renew this computer's key,
-		// even when the shared account is unchanged: its old key may be revoked.
-		dev, err := identity.NewDevice(grant.Identity)
-		if err != nil {
-			return Joined{}, err
-		}
-		if err := identity.Install(j.Home, grant.Identity, dev); err != nil {
-			return Joined{}, err
-		}
-		// The common adoption tail applies replacement cleanup and service persistence.
+		// Explicit replacement after approval renews this computer's key even
+		// when the shared account is unchanged, because its old key may be
+		// revoked: the replacing merge below mints a new device.
 	case err == nil && slices.Contains(grant.Replaces, held.ID()):
 		return Joined{Successor: true}, follow(j, held, grant)
 	}
-	merge := j.MergeState
-	if err == nil && held.ID() != grant.Identity.ID() && !j.Replace && identity.Solo(j.Home) {
-		can, checkErr := identity.Joinable(j.Home)
-		if checkErr != nil {
-			return Joined{}, checkErr
-		}
-		merge = can
-	}
-	if merge && err == nil {
-		if _, err := keys.StageReseal(j.Home, held.CellKey(), grant.Identity.CellKey()); err != nil {
-			return Joined{}, err
-		}
-	}
-	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace || merge); err != nil {
-		return Joined{}, adoptionFailure(j.Home, err)
-	}
-	if merge {
-		if err := keys.CommitReseal(j.Home); err != nil {
-			return Joined{}, err
-		}
+	if err != nil && !errors.Is(err, identity.ErrNone) {
+		return Joined{}, err
 	}
 	joined := Joined{}
 	if j.Replace {
-		path, err := replaceState(j.Home, j.ProfileDir, j.TeamsPaired)
-		joined.TeamsAside = path
-		if err != nil {
-			return joined, err
+		return j.merge(grant, dev, nil)
+	}
+	merge := false
+	if err == nil {
+		var checkErr error
+		merge, checkErr = identity.Joinable(j.Home)
+		if checkErr != nil || !merge {
+			return Joined{}, differentChats(j.Home)
 		}
+	}
+	if merge && err == nil {
+		return j.merge(grant, dev, held.CellKey())
+	}
+	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace || merge); err != nil {
+		return Joined{}, adoptFailure(err)
+	}
+	if err := markSharing(j.Home, grant.Identity.ID()); err != nil {
+		return Joined{}, err
 	}
 	if grant.SyncURL != "" && j.SaveSyncURL != nil {
 		return joined, j.SaveSyncURL(grant.SyncURL)
@@ -213,14 +256,6 @@ func follow(j Joining, held identity.Identity, grant Grant) error {
 func adoptFailure(err error) error {
 	if errors.Is(err, identity.ErrDifferent) {
 		return ErrDifferentChats
-	}
-	return err
-}
-
-// adoptionFailure counts the chats that replacement would leave on this computer.
-func adoptionFailure(home string, err error) error {
-	if errors.Is(err, identity.ErrDifferent) {
-		return differentChats(home)
 	}
 	return err
 }

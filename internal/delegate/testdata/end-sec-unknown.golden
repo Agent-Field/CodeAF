@@ -1,0 +1,2 @@
+{"at":"2026-10-16T09:30:00Z","kind":"end","status":"pass","data":{"status":"pass","reports":["/records/sec-report.md","/records/sec-report.json"],"confirmed":0,"likely":0,"inconclusive":1,"ruled_out":3,"hunt_coverage":{"unknown":true}},"message":"nothing it could show exploitable"}
+{"at":"2026-10-16T09:30:00Z","text":"nothing it could show exploitable","ending":{"status":"pass","reports":["/records/sec-report.md","/records/sec-report.json"],"confirmed":0,"likely":0,"inconclusive":1,"ruled_out":3,"hunt_coverage":{"unknown":true}}}

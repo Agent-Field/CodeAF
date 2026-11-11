@@ -42,6 +42,7 @@ const (
 	learnedCacheControlRefused     = "cache_control_refused"
 	learnedReasoningBudgetRefused  = "reasoning_budget_refused"
 	learnedReasoningReplayRefused  = "reasoning_replay_refused"
+	learnedReasoningUnsupported    = "reasoning_unsupported"
 )
 
 type callTagKey struct{}
@@ -129,6 +130,17 @@ type callTrace struct {
 	// attemptBase is the address this attempt actually used, including an
 	// explicitly authorized plan overflow. It never leaves the process.
 	attemptBase string
+	// attemptBilling is the billing fact this attempt went out under — the
+	// client's own road, or metered once the plan overflow was taken — set in
+	// the same breath as attemptBase so the answer is billed as the road that
+	// served it (billingfact.go). attemptBilled says it was set at all.
+	attemptBilling BillingFact
+	attemptBilled  bool
+	// attempt is the observer's handle on the send this trace is currently on
+	// (attemptobserver.go), replaced per send and nil when nobody observes. It is
+	// what lets a bill or a queued receipt report to the exact send that was
+	// answered, never to whatever send is current when the money arrives.
+	attempt *attemptHandle
 	// open is the attempt that has a start row on the wire and nothing under it
 	// yet, and nil whenever the log is square.
 	//
@@ -455,6 +467,7 @@ func (c *Client) record(facts recordFacts) {
 	// process could USE the answer is a different question from what it cost,
 	// and only one of the two is a fact about the money.
 	if facts.response != nil {
+		record.GenerationID = canonicalGenerationID(facts.response.ID)
 		record.Finish = FinishReason(facts.response)
 		if usage := facts.response.Usage; usage != nil {
 			record.PromptTokens = usage.PromptTokens

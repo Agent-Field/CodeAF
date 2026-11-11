@@ -88,6 +88,32 @@ Over `--host`, the picker and its prices are this laptop's catalog, while the co
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
 
+## Desktop chat model picker: main and fallback models
+
+Each desktop conversation has its own Main and Fallback model. Both use the
+searchable model list in the same dropdown; Fallback can be None. The default
+pair comes from Settings → Models. Factory managers and steps start with the
+same defaults, then keep their own choices: changing one chat does not change
+the job, another chat or a later step. A saved pair survives reopening.
+
+Every new request starts with Main. If it fails through the existing bounded
+recovery path, the engine can try only the selected Fallback. Successful or
+failed fallback use does not replace Main: the next request starts there again.
+Same-model retries and budget guards still apply. A one-model launch cannot use
+a fallback, and the picker explains that restriction.
+
+The dropdown button names this chat's active model, including provider-confirmed
+concrete names. Between requests it shows Main. It never borrows a step's identity
+for its manager or prints a list of previous and future models. Missing catalogue
+rows keep known ids; an unknown identity is reported as unavailable.
+
+Changing either slot never interrupts a request, including one waiting for its
+first token. The new pair applies to subsequent requests. Main/Fallback edits,
+using Fallback, and returning to Main produce chronological, dismissible info
+notices in that conversation. Notices are durable journal facts outside the
+provider transcript. Background titles and memory do not replace chat identity.
+Factory Auto/Manual approval automation is separate from model selection.
+
 ## Which model is the default — Ollama only, a removed model, or no available models
 
 On a local launch, the opening model comes from the same available chat list as
@@ -746,10 +772,16 @@ open model but DeepSeek's, and `≤1/5 +moonshotai/kimi-k3` is the price rule wi
 exception let in. `/crew models +kimi-k3` or `/crew models -deepseek` changes the rule in
 force by one word. A `-x` naming a **provider** — `-openrouter` — takes that provider's
 routes away rather than any model; to switch a provider off for the crew, use the panel's
-**providers** row, which keeps the choice when the rule changes.
+**providers** row, which keeps the choice when the rule changes. A word with `@provider` —
+`-glm-5.3-flash@openrouter` — speaks about **one model on one provider**: GLM 5.3 Flash stays
+allowed through every other provider that serves it. That is how a tick in the app's
+per-provider list of allowed models is kept, so `/crew` reads exactly what the app wrote.
 
-A rule that would leave a pinned seat outside it is refused until you unpin the seat, and
-a rule that does not parse is refused with the reason — a typo that silently allowed
+A rule that leaves a pinned seat outside it is **written, and the pin is kept**: until you
+allow the model again or unpin the seat, tasks pick that seat as if it were not pinned, and
+the panel's `gap` line says `checker pinned to kimi-k3, which the models you allow leave out
+· routed until you allow it or unpin it`. Pinning a seat to a model outside the rule is still
+refused. A rule that does not parse is refused with the reason — a typo that silently allowed
 everything would be a setting somebody thinks is protecting them. When the allowed models
 leave a kind of work without a strong enough checker, the panel says so on a `gap` line.
 
@@ -886,8 +918,9 @@ crew.
 **A seat whose model cannot start moves, inside the task.** When a seat's first call is
 refused, the seat goes down its ladder: the same model on its next route, then the next
 model for the seat at a similar cost, then the model the last good crew here used, then the
-model you are talking to — never a rung on an account that has just said it is out of
-credit or refused its key. The line says so first — `running on fallback crew · worker
+model you are talking to — each of those last two only when your allowed models admit it on
+that route, and never a rung on an account that has just said it is out of credit or refused
+its key. The line says so first — `running on fallback crew · worker
 glm-5.3-flash → deepseek-v4-flash (credit unavailable on openrouter)` — and with nothing left
 the task stops on the one thing to do, which leads its line in place of `/redo stronger`
 (a stronger crew would meet the same wall): `failed — add credit on openrouter to
@@ -914,6 +947,27 @@ dearer one. A task that ran on an account out of credit and failed ends on the c
 not on `/redo stronger`. A free pool can be pinned by name —
 `/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's
 list pins that pool, not the paid route beside it.
+
+### When no allowed model can take a seat, or a pinned seat cannot be reached
+
+**The task does not start, and nothing is swapped in.** When no model you allow can do a
+seat — every one is left out, unpriced, on a provider that is off, signed out or out of
+credit, or resting — the task is refused naming the seat and the one fix, such as `no allowed
+model can do the checker role · widen /crew models or pin one with /crew`. It is never started
+on the model you are talking to, nor on a model you did not allow. The same is true of a seat
+**pinned** to a model you allow whose provider is not connected, is turned off, refused its
+key or is out of credit: the task asks you to reconnect, add credit or unpin the seat, and
+never moves the seat to another model or provider. (A pin you no longer allow is the one
+exception: that seat is picked as if unpinned, and says so.) Closing the conversation
+does not start the task and does not drop it. Opened again, it is still waiting on
+that same role, with the same reasons and the same pin, and it starts only when you
+retry it; stop ends it as not started. Nothing is sent to a model while it waits, and
+a pin whose provider is still out of reach stays that pin.
+
+**A direct provider's route is weighed at that provider's own price.** A model a direct
+connection serves is a route the crew may pick only when that provider's own model list
+published a price for it; a price OpenRouter publishes says nothing about another provider's
+bill. Without one the route is not picked by the crew — a pin still runs it.
 
 ### Route health
 
@@ -990,6 +1044,14 @@ role**, grouped under the row answering it, saying which model comes out:
 | `guardian` | small work | is this one tool call plainly safe |
 | `router` | small work | whether a turn should have been work |
 | `taskname` | small work | the two or three words a task is called |
+| `insight` | small work | the model every page AI writes with (the desktop app's repository notes, answers and themes) |
+| `insight_notes` | small work | a repository's notes since you last looked; unpinned, it follows `insight` |
+| `insight_ask` | small work | an answer to a question about a repository; unpinned, it follows `insight` |
+| `insight_themes` | small work | the themes in a repository's backlog; unpinned, it follows `insight` |
+| `insight_pipeline` | small work | a pipeline's steps written with AI; unpinned, it follows `insight` |
+| `insight_views` | small work | a factory's topic views; unpinned, it follows `insight` |
+| `insight_factory_read` | small work | the read of what arrived in a factory; unpinned, it follows `insight` |
+| `insight_factory_scout` | small work | a closer look at what arrived in a factory; unpinned, it follows `insight` |
 | `checker` | checker | whether finished-looking work is actually finished (older pins may keep their former spelling) |
 | `vision` | checker | reads images for a model that cannot see them |
 | `shaper` | checker | the brief a task you started yourself is given |
@@ -1281,6 +1343,14 @@ because those are bindings the running session holds rather than values in your 
 So the ladder for any role, most specific first: **its pin**, then **its row's model**,
 then **the model you are talking to**.
 
+The page AI's roles add two rungs after their own pin. Every `insight_` override
+(`insight_notes`, `insight_ask`, `insight_themes`, `insight_pipeline`, `insight_views`,
+`insight_factory_read`, `insight_factory_scout`) reads **the `insight` pin** next, so one pin on `insight` moves every page.
+Then comes **codeaf's default for `insight`**: `deepseek/deepseek-v4.1-flash` on
+OpenRouter, while OpenRouter is connected and your allowed models admit it. That default is
+never written into `models.roles`; it stops applying the moment either condition does, and
+any pin you write outranks it. Without it the page AI follows the small work row.
+
 Two things worth knowing:
 
 - **A change is live.** The next call codeaf makes on its own uses it — whether you changed
@@ -1349,6 +1419,34 @@ answer get **20s** and **30s**. What this replaced was the ordinary
 five-to-fifteen-minute bound a completion carries, which is right for your own turn and
 absurd for eight words of title.
 
+## I reconnected or added credit and my pinned model still will not start — when a refused key or an empty account is tried again
+
+A pinned role, or the one model for every task, is never sent to a provider whose key was
+refused or whose account ran out of credit: the task is refused at the start with the one
+fix — `reconnect openrouter with /connect, or unpin the worker from glm-5.3-flash`, or
+`add credit on openrouter, or …`. What lifts that refusal is a fact, never a timer:
+
+- **A different key or sign-in.** A refusal is remembered against a short one-way print of
+  the key the refused call was sent with — never the key itself. Connecting a new key with
+  `/connect`, a new key from the desktop app, or signing in again, is a different key, and
+  the next task is admitted on it. Pasting the **same** key again changes nothing: it is
+  the key that was refused, and the refusal stands.
+- **A key changed while the call was in flight** is not blamed: the refusal belongs to the
+  key the call carried when it was sent.
+- **Credit read after the refusal.** For a payment refusal, a balance read that finds
+  credit, begun after the refusal, lifts it. A read begun before it does not, even if it
+  answered after, and a fresh reading of none keeps it.
+- **A task already running, or carried on,** recovers the same way: its next call on the
+  pinned model is sent on the new key or the topped-up account, on the same model. Nothing
+  is sent just because the key changed, and other failures on the task still stand.
+
+A refusal written by an older build named no key. It is lifted when the key is seen to
+change after it. The first key this build sees is where it starts counting, so a key you
+changed **before** updating is not known to be new and the refusal still holds it: unpin
+the role, or switch Task models back to Auto, and the next call that answers on it clears
+it. Every refusal also leaves the record after fourteen days. Closing and reopening codeaf
+keeps all of this.
+
 ## Use one model for everything for one run — `--one-model`, and why a run spent money on a model I did not pick
 
 `codeaf chat --one-model` and `codeaf resume --one-model` run **every text call on the model
@@ -1369,7 +1467,7 @@ down too. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
 another. That includes the catalog's own guess: with no `fallback models` row written, an
-ordinary run falls back to the nearest same-class model, and this flag withholds that too.
+ordinary run defaults to DeepSeek V4.1 Flash, and this flag withholds that too.
 
 **The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
 decides whether a long answer is moved to a task, and the writer of the brief that task opens
@@ -1448,6 +1546,14 @@ conversation's own rung, a task's rung and the **thinking** default — see *Mak
 think harder, deeper, or less*. This is the same walk the task control and the settings row
 use, and all five rungs are reachable here.
 
+## Desktop effort rungs and clearing the conversation choice
+
+The desktop's `agents.set_effort` uses the same conversation dial as `/effort`. Engines advertising
+`agents.set_effort.rungs` accept `auto`, `low`, `medium`, `high`, `xhigh` and `max`;
+`auto` clears the saved conversation choice. Older engines accept only low, medium
+and high. The reported `effort` is omitted when the conversation choice is unset;
+another scope can still supply the effort actually used.
+
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
@@ -1487,7 +1593,7 @@ you hand this chat, this piece of work, or this model back to whatever stands ab
 and wrapped from `max` to `low`.) `/effort auto` and the top row of `/effort` still clear
 this conversation in one move from any rung. An automation has no rung for it to move.
 The **thinking** row in `/settings` stays what it is: the answer for every conversation
-that has not been dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *alt+e — how hard the
+that has not been dialled by hand. The keys page has the whole of it — see *What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder* and *alt+e — how hard the
 thing you are looking at thinks*.
 
 **Three doors, one rung.** `alt+e`, a press on the rung itself, and `/effort`:
@@ -1584,12 +1690,16 @@ provider translates whichever one it was given for a model that reads the other.
 endpoint that cannot be given a number at all falls back to `high`, which is the honest
 answer: it cannot think harder than its own ceiling.
 
-**None of this can fail a turn.**
+**Budget repairs are automatic; unsupported thinking can still fail an ordinary turn.**
 
 - A model whose endpoint refuses the thinking budget has the budget dropped and the refusal
   remembered, so it costs one rejected request for that model and never a failed reply.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
+- If an unlisted endpoint says its model does not support thinking or reasoning,
+  only opted-in task clients retry once without the knob and remember the refusal
+  in that client. Ordinary clients return the refusal and keep the requested
+  effort; they do not inherit a task client's memo.
 - On a small context window the budget shrinks to the room the conversation leaves beside
   an answer. When less than 1,024 tokens of thinking would fit, the budget is dropped and
   the rung travels as `high`, so `xhigh` on a 32,000-token window is never refused for the
@@ -1645,8 +1755,7 @@ the model · asking again · 2 of 3`, or `the model went quiet mid-reply · aski
 2 of 3`.
 
 **If all three attempts come back with nothing, codeaf finishes the reply on another
-model** — the next one in your `fallback models` row, or the nearest same-class model in
-the catalog when you have written no row. It is said out loud before it happens, naming
+model** — the next one in your `fallback models` row, or DeepSeek V4.1 Flash by default when you have written no row. It is said out loud before it happens, naming
 where the rest of the answer is coming from:
 
 ```
@@ -1712,6 +1821,10 @@ machine at most **four** times, with the same waits between them, and then moves
 fallback or ends. So does a watched conversation that still has a fallback model to go to. A router's pool is **never** treated as one machine, whatever your `routing` row
 says: it keeps the short allowance above, because the next ask can land on another machine.
 
+## Pending receipts at exit
+
+Shutdown waits for admitted receipts across chats together, including closed chats, retired children and successful Factory answers. This wait lasts at most 70 seconds, followed by the bounded ledger drain. On timeout, quit proceeds with `codeaf: receipt settlement timed out; spending may be incomplete`. Unavailable provider or disk responses can leave spending incomplete.
+
 ## Was I charged for a reply that got cut off — money on a stream that was cut, stopped, or lost the race
 
 Yes, a provider may still charge for the prompt and the tokens it produced before a stream
@@ -1738,6 +1851,17 @@ conversation and its tasks; `/spend` counts the markers in its selected time win
 say, for example, `2 calls the provider charged for and could not be priced`. At zero they
 say nothing. Settings→Spending also shows missing receipts learned during this process.
 Receipt workers exit when their queue is empty and start again when another receipt arrives.
+
+Factory jobs and their page helpers also request receipts for successful answers
+without usage. After a failed stream, the final receipt replaces interim usage
+for billing: a $0.10 interim figure followed by a $0.12 receipt charges $0.12 once.
+A receipt without a price keeps measured interim spend; an explicitly priced zero
+replaces it. Each call is booked once.
+Missing receipts keep their job attribution. Job usage and Spending expose the
+missing price as unbilled, never as a measured $0. A saturated ledger queue writes
+through instead of discarding charges; a caller never waits on the disk.
+Filesystem write failures still appear as missing records.
+
 
 ## A reply that never finished — the turn ran for half an hour, codeaf looked frozen, nothing happened for ages, the model kept writing and never stopped
 
@@ -1892,7 +2016,7 @@ while it is replying* above, and *I changed the model but my task is still on th
 
 Yes. **A model that will not take your request at all is given up on the same way a model
 that goes quiet is: codeaf finishes the reply on the next model in your `fallback models`
-row**, or on the nearest same-class model in the catalog when you have written no row.
+row**, or on DeepSeek V4.1 Flash when you have written no row.
 
 This is what happens. A request that fails outright — a refusal from the machine serving
 your model, a `502`, a torn connection, a deadline — is asked again, with a dim line each
@@ -2363,6 +2487,24 @@ includes its tasks, but restoring that total is not another model call. This als
 holds when a task finished before a restart left its saved run marked running,
 and when the conversation already had paid turns of its own.
 
+## Desktop saved agent spend after stopping a reply
+
+An agent's saved spend is the conversation's cumulative total in `meta.json`.
+The desktop engine's `agents.list` reads saved `spent_usd` from its disk row.
+`agents.open` reads the saved figure from disk, including for a conversation
+the engine already holds or is opening. Every `agent.changed` reads it when
+the event is sent, and `agents.take` carries it because it answers through
+`agents.open`. Other method answers omit `spent_usd`, so the desktop keeps
+its last figure. A zero figure is omitted.
+
+The total is saved when a turn ends. If a cancelled call's receipt is recovered
+later, the engine saves the updated total and sends one `agent.changed` if the
+figure differs from the one last said, without waiting for another message.
+Duplicate or delayed save news sends nothing if that figure has already been
+said. The charge is counted once.
+`agents.budget.get` reads the live meter in `engine.spent_usd`, which may include
+calls not yet saved to metadata.
+
 ## Why do the tokens on the status line jump instead of counting up
 
 They count up. While a turn is running, the money and the token figures on the status
@@ -2543,6 +2685,27 @@ Five things are worth knowing about it:
 The status line shows **this conversation and its task family**, combining the current
 ledger reading with the conversation meter. `/cost` prints that same scope with its
 breakdown; `/spend` opens the ledger for the whole machine.
+
+## Does the usage file say whether a call was paid for or included in my plan
+
+Only where the road that answered said so. Each line in `~/.codeaf/v3/usage.jsonl` written by
+this build also carries:
+
+- `id` — the line's own name, given once when the line is written and never changed, so the
+  same call read twice is still one call. Older lines have none.
+- `billing` — `metered` or `included`, written **only** when the billing door you connected
+  through states it: a provider's plan door says `included`, its pay-as-you-go door says
+  `metered`, and a paused plan that you allowed to overflow onto pay-as-you-go writes
+  `metered` for the calls that went that way. `billing_basis` names the door it came from.
+  A service with one road, the default router, a custom endpoint and a ChatGPT sign-in state
+  nothing, so their lines carry no `billing` at all. A zero cost, a direct key or a `:free`
+  model name is never read as included.
+- `price` — where the cost came from: `provider` for the charge on the answer itself,
+  `receipt` for a cut stream's later receipt, `list` for counted tokens times the model's
+  published price. A line with no cost has no `price`.
+
+A late receipt keeps the billing of the request it belongs to, even if the connection was
+changed before the receipt arrived. Nothing here stops or limits a call; it is a record.
 
 ## The spend place — what days and models cost, and what the money was for
 
@@ -4272,6 +4435,32 @@ spending permission.
 Task checks use the same selected daily limit and spending permission as the work
 they check.
 
+## Is the desktop day cap the same limit as /budget?
+
+Yes. Settings → Spending, Welcome, `/budget day` and task helpers share the
+profile's saved daily limit. An older desktop cap is adopted once, retaining
+the tighter positive saved limit. After that, an old desktop value cannot undo
+an explicit change. A temporary raise changes the effective limit until the
+next local midnight; Settings keeps showing the base limit. A configured
+`CODEAF_DAILY_BUDGET` override still wins and the desktop refuses an ineffective
+write rather than claiming it changed the limit.
+
+A changed daily limit reaches the next guarded task or helper call, including
+restored task crews. A limit or spending ledger that cannot be opened or read stops
+potentially paid admission instead of being read as zero. Legacy malformed rows
+are still skipped and reported as coverage gaps; their dates are not guessed.
+These totals do not prove a complete bill. Repair the named
+record or explicitly set a valid limit, then retry. Per-task and per-role limits
+remain separate. This is not yet a universal per-request cap: the main chat
+turn can finish after crossing it, and native media has no shared dispatch
+reservation. A monthly cap is not available yet. Provider charges already in
+flight can exceed a limit. If startup could not establish the limit, repair it
+and reopen the app before standing orders can start.
+
+## Why is my conversation blocked
+
+A conversation cannot start another turn after it reaches its conversation budget or this computer's daily spending limit. Both limits apply. Raise the limit named in the refusal with `/budget day 30` or `/budget conversation 30`, then send your message again. Changing one does not reset recorded spending or lift the other. A turn already running may finish above its limit.
+
 ## Which budget takes precedence — daily or per conversation, and why my budget command doesn't work while the conversation is still blocked
 
 **Both limits apply; neither overrides the other.** New chat turns stop when
@@ -4339,6 +4528,51 @@ model can discuss that result, but it cannot make a new tool call itself.
 Switching back to a tool-capable model restores the original tool-call history
 on its request.
 
+## Task models in the app — Auto or one model for every task, pinned roles, allowed models by provider
+
+The app's **Settings → Models → Task models** page is the same crew `/crew` shows, in other
+words: the **worker**, **planner** and **checker** are the three seats, a role set to a model
+is a pin, and the allowed models are the same rule.
+
+- **Auto** (the default) picks each role per task from the models you allow, inside the
+  per-task and daily caps. A pinned role always runs its pin.
+- **One model for every task** runs the worker, planner and checker all on the one model
+  you choose, on the provider you choose, and picks nothing. Your pins and allowed models
+  are kept, unchanged, for when you switch back. A one model that cannot be reached when a
+  task starts stops the task with the fix; it is never replaced by another model. This is a
+  saved setting read when each task starts — not the `--one-model` launch flag, which makes
+  every call ride the model you are talking to for that one session.
+- **Changes reach tasks that start afterwards.** A running task keeps the models it started
+  with.
+- **Allowed models are listed by provider**, each with that provider's own price per million
+  tokens in and out, or no price when it published none — such a model can still be ticked
+  and pinned, and Auto does not pick it. A provider without a key is listed with no models;
+  one whose key was refused or whose credit ran out keeps its models and their ticks.
+- **The caps** on that page are the same per-task and per-day caps as Settings → Spending.
+- Unticking a pinned model keeps the pin; the role says it is pinned to a model that is not
+  allowed, and is picked by Auto until you allow it again or unpin it.
+
+
+## One conversation's budget
+
+An individual conversation limit measures its lifetime spend, including earlier turns restored
+from its journal; it is separate from the daily budget and a task's cap. In the desktop app,
+Agent → Set Budget changes that agent's limit, or explicitly sets no limit. The saved choice
+survives closing and reopening the agent. Work already running is not cut short; the next turn
+checks the updated limit. A raise for today lasts until the next local midnight.
+
+The Agent panel shows a recorded or observed individual cap, never the current global default
+as a guess. If an older conversation has no saved individual limit and is not open, its cap
+can remain unknown until its engine answers. Changing the default is a separate Settings action.
+
+## Desktop engine methods for crew model rules and the crew daily cap
+
+Crew pins and unpins use `settings.models.set`; task caps use `settings.set`.
+`settings.crew.get/set` reads or changes the persistent allowed-model rule and
+crew daily cap, including open models, price rules and incremental +model/-model
+forms. The crew daily cap is separate from the machine spending limit and member
+conversation budgets. Crew settings are machine-local; a client using `--host`
+must change those on that machine.
 ## Where are the logs
 
 The model-call log is `~/.codeaf/logs/calls.jsonl`, under `CODEAF_PROFILE_DIR` if
@@ -4347,6 +4581,20 @@ to follow them, or `codeaf logs --path` to print the exact path. Each call recor
 its model, timing, token use and cost. Background process output is separate: open
 `/processes` in the conversation and choose a process to read its log.
 
+
+## Automatic model selection is unavailable under one-model — explicit choice versus launch policy
+
+A conversation launched with `--one-model`, including a factory worker using that
+launch constraint, always uses Fixed policy. Its model menu disables Automatic
+model selection and explains the lock. A request to enable Automatic during a
+factory stage records a notice and leaves the stage running; it does not turn a
+settings refusal into a failed step. Selecting another permitted model still works.
+
+The execution snapshot reports effective `mode` separately from the explicit
+`chosen` preference and `locked_reason`. An inherited choice has no `chosen` value.
+The temporary launch constraint is not saved as a new personal Fixed preference.
+An explicit Fixed preference remains saved; an explicit Automatic preference can
+apply again when the conversation is reopened without the launch constraint.
 ## A provider redirects a request to another address
 
 codeaf follows a provider redirect only within the original scheme, hostname and
@@ -4376,6 +4624,29 @@ Choose those separately there. A seat model pin still needs an available provide
 and its credentials on the receiving computer; pairing does not install a provider.
 The **share teams** switch does not change which crew choices follow preferences.
 Desktop app crews are separate.
+
+## Windows spending history updates while the file is open
+
+On Windows 10 version 1709 or newer with NTFS, saved spending history can be
+replaced while a reader or the spending writer holds it open. Readers finish
+with their earlier view; later charges go to the current history without losing
+earlier charges. Older Windows versions and filesystems that do not support
+this keep Windows' native replacement limits. A persistent file error is still
+reported.
+
+## Are queued spending records saved when I close a conversation?
+
+Closing a conversation waits for spending records already queued to its ledger,
+including the last call. Other conversations can keep writing to that ledger.
+The first write may need to scan older records, so a large spending history can
+make closing slower.
+
+Closing waits at most two seconds for the spending ledger, so a stalled ledger can
+add up to two seconds to each close. Pending rows can still be written if the process stays open and
+the mount recovers. If the process exits first, those rows can be lost. Reaching
+the limit writes one line to the log with the ledger path and the number of rows
+pending, and those rows count as records not written down until they are written.
+No warning appears on screen.
 
 ## Why a tiny crew cost has four decimal places
 

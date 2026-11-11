@@ -6,7 +6,7 @@ On the hosted sync service this needs sync storage approval (Settings → Device
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time. Older chats appear on the other computer once opened here: opening one prepares and shares its copy, regardless of its age. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
 There is no account and no password to log in with. You pair: a code on one screen, typed on the other.
 
@@ -34,18 +34,29 @@ Dashes and spaces in the code do not matter. `42-715-302`, `42 715 302` and `427
 
 The code is good for 10 minutes. It works once.
 
-## Sync my chats — get my chats on my other computer, chat syncing between paired computers
+## Share my conversation with my other computer
+
+Pair the computers with `/pair` or `codeaf pair`. A computer with submitted
+chats requires `--replace`. On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage). Continue here moves a conversation to the other computer.
+
+## Sync my chats — get my chats on my other computer, how to sync between paired computers
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
-Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync through the saved or hosted relay when storage is on. `CODEAF_SYNC_URL=off` stops relay traffic.
+Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired computers through the saved or hosted relay when storage is on. `CODEAF_SYNC_URL=off` stops relay traffic. A never-paired home sends no relay requests.
 
 ## Do older chats sync after pairing — independent copies and untouched originals
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
-Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Recent chats are prepared in the background, and opening any other older chat prepares its copy. A never-paired home sends no relay requests.
+Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Chats active in the last 30 days are prepared in the background, and opening any other older chat here prepares its copy so it appears on the other computer regardless of its age. A never-paired home sends no relay requests.
+
+## My idle chat was continued on another computer — sending, queueing, steering and retrying
+
+Before accepting new work, an open synced chat checks who holds it if its last ownership confirmation is older than two seconds. Back-to-back submissions reuse that confirmation. The check waits at most three quarters of a second. If the relay is slow or unreachable, it is logged, you keep working locally, and the chat does not ask again for 30 seconds.
+
+If another computer has continued the chat, this window only shows it. Sending, queueing, steering and retrying are refused before saving your words or calling a model. The moved notice names the other computer. You can still answer an existing question or stop work. Desktop and terminal chats share this check. With sync off, an unpaired home, unavailable sync or no sync drive, there is no added network wait.
 
 ## What does /laptop do — the laptop command pairs chats with my other computer; /pair, /sync and /link
 
@@ -106,6 +117,9 @@ and the other computer says:
 ```
 Paired with laptop-a. Run codeaf to open your chats.
 ```
+
+When the other computer's name cannot be read yet, it says
+`Paired with your other device. Run codeaf to open your chats.`
 
 The code is now dead. It cannot pair a third computer.
 
@@ -197,21 +211,87 @@ It is not a view of your chats. It is a copy of you. Pair only a computer you ow
 
 Pairing shares your chats. It does not share remote access. A paired computer is not a key to the tools on this machine. That is a different code, from `codeaf serve`. Read *Reaching a machine with a pairing code* for that door. The two doors are compared in a table on that page.
 
+## Pairing a computer that already has chats — refusal and replacement
+
 A computer whose conversations have no submitted turns can pair directly. If it already has its own saved pairing keys and chats with submitted turns, the refusal counts them and explains `--replace`. Chats made with `codeaf chat --once` before any pairing keys exist are kept on first pairing, and reach the newly joined computers the next time codeaf's window opens here. For three chats on a computer with its own keys:
 
 ```
 this computer already has 3 chats of its own, so nothing was changed. To pair it anyway, run this again with --replace: those 3 chats stay on this computer but no longer sync; shared memories and settings are cleared
 ```
 
+After approval, codeaf saves the pairing and keeps the saved keys readable before
+it says Paired. Existing chats are shared in the background. The chat list updates
+as each arrives. Pairing also checks for chats saved since codeaf started, without
+opening them. A failed upload says
+`This chat could not be shared yet. It is still saved here; codeaf will try again.`
+Keep codeaf open to retry. Failed chats
+retry with pauses growing from five seconds to one minute; completed chats are left alone. In the app, sharing
+saved keys, memory and preferences after pairing stops after its first successful
+pass. A home with no unfinished pairing makes no periodic requests for that pass.
+Terminal pairing says `Paired with <name>. Run codeaf to open your chats.`
+If pairing or sharing is interrupted, reopen codeaf: it finishes the saved pairing and
+retries sharing the same chats without making duplicates. Older chats still use
+the independent-copy policy described above.
+
+A computer with local work refuses without changing it. When there are
+submitted chats, the refusal counts them and explains `--replace`.
+
+Only an explicit `codeaf pair <code> --replace` or `/pair <code> --replace` asks
+to give up this computer's shared state for the other computer's. The existing
+confirmation remains; a no or Esc leaves everything as it was. This clean-slate
+option is required for a solo computer with submitted chats. Old chat
+folders are set aside outside the chat list and are not shared into the new set.
+
+## Interrupted explicit replacement — clean slate and saved keys
+
+Reopening codeaf finishes an interrupted explicit `--replace` pairing. Recovery
+clears the old shared state again only if the new pairing has not taken effect
+yet. Keys or preferences saved in that gap are discarded as part of the confirmed
+clean slate. Anything saved after the new pairing takes effect is kept. Saved
+keys remain readable after recovery.
+
+## Pairing progress could not finish — saved chats and retry messages
+
+A chat with nothing saved yet waits for its first save, without a failure notice
+or retry pause. It is shared once that save is ready. If pairing changes which
+computers share your chats during an upload, codeaf stops that pass and retries
+with the new set.
+
+If sharing stops before the chats can be checked, the app says:
+
+`Sharing could not finish yet. Your chats are still saved here; codeaf will try again.`
+
+If some uploads fail, it says:
+
+`Some chats could not be shared yet. They are still saved here; codeaf will try again.`
+
+If sharing saved keys, memory or preferences fails, it says:
+
+`Saved keys, memory and preferences could not be shared yet; codeaf will try again.`
+
+Keep codeaf open for sharing retries, or reopen it to resume. If the saved pairing
+progress cannot be read, it says:
+
+`Pairing could not finish reading its saved progress; your chats are still on this computer.`
+
 ## Pairing with --replace: existing chats, teams and recovery
 
 Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first: `Pair with your other devices? This computer's existing chats stay here but stop syncing; shared memories and settings are cleared; with share teams on, teams are set aside while the other devices supply theirs. Provider keys saved on this computer stay here.` The chat and an interactive terminal ask, including when this computer has teams but no chats. Without a terminal, `--replace` proceeds without this question. With share teams on, replacement sets the team file aside and clears its sharing ledgers; the receipt names the preserved file: `This computer's teams were set aside to <path>.` Local Traffic stays here. With share teams off, its team file and sharing ledgers are preserved. At a terminal, `y` or `yes` proceeds. In the chat, choose yes. A no, or closing the panel with esc, leaves everything as it was.
+
+## Already paired — pairing the same computers again
 
 If the other computer already has the same chats, it says:
 
 ```
 already paired; nothing changed
 ```
+
+To pair a removed computer again, run `codeaf pair --replace` there and approve
+its link from a computer still in the set. It keeps the shared set and installs
+a new device; the removed device stays listed as removed. Replacement still sets
+aside this computer's old chats and clears shared preferences when the account
+is unchanged. If replacement is interrupted, reopening finishes it and preserves
+writes made after the replacement was installed.
 
 ## I got a new laptop — move my chats to a new machine
 
@@ -427,6 +507,8 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 Older chats move through independent copies after pairing. Their original files and layout remain untouched for older builds. Nothing is deleted automatically to save disk.
 
 Native Windows moves chats with the native engine, just like Linux and macOS.
+Continue here installs the saved chat while other chats stay open. You can send
+from the installed copy and continue it back on your other computer.
 Install Git for Windows to run commands; codeaf uses Git Bash, never the WSL launcher.
 A build with no compatible engine keeps moving chats absent and says
 `moving chats needs a newer furrow engine than this build carries`.
@@ -438,6 +520,10 @@ or mixed line endings even when the receiving Git uses another checkout setting.
 links; links that cannot be created are reported on the same line. Hard-linked names
 currently arrive on Windows as separate files with identical bytes. The chat works
 in its folder on this computer, with old absolute workspace paths remapped there.
+An empty workspace is created here too. Continuing a chat follows its installed
+folder even when the copy's full path exceeds Windows' process-directory limit.
+Taking a project chat back also restores its saved turn receipts when their
+paths exceed Windows' usual file-path limit.
 
 The encrypted vault and withheld secrets live under your codeaf home in your user profile. Windows protects that profile with its account permissions; Unix file
 mode bits are recorded for later moves, but do not provide Windows access control.
@@ -490,7 +576,7 @@ field. Use `codeaf pair approve <link>` there instead.
 
 ## I opened codeaf once without sending a turn — can this computer pair?
 
-Yes. A computer that has only opened codeaf and quit without sending a turn can pair without `--replace`, including when a provider such as Ollama is connected. Its fetched model lists do not count as local work. Startup logs, locks, the empty chat header, and empty knowledge and automation stores do not count as your work. The name you enter for pairing is kept.
+Yes. A computer that has only opened codeaf and quit without sending a turn can pair without `--replace`, including when a provider such as Ollama is connected. Its fetched model lists do not count as local work. Startup logs, locks, the empty chat header, and empty knowledge and automation stores do not count as your work. Turning memory on also leaves a home joinable while it has no sources to compile. Saved knowledge sources count as local work. The name you enter for pairing is kept.
 
 Once this computer has its own saved pairing keys, a sent turn, tracked work, a chat memory, an automation, a saved knowledge page or a stored conversation makes the computer used. Unknown files or database tables also keep the conservative local-work refusal. Existing personal memories in the graph keep their normal merge behavior. A computer with an unrelated shared account is never silently merged; use the explicit replacement road when appropriate.
 

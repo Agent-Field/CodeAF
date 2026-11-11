@@ -18,6 +18,18 @@ const (
 	legacyPrefix = "AFORGE_" // legacy-name
 )
 
+// ConsumeExact reads and removes a canonical owned arrangement marker. It never
+// accepts the legacy spelling: launch provenance must be explicitly supplied by
+// the current launcher. Both spellings are removed so tools cannot inherit it.
+// Unlike configuration reads, a missing or empty canonical marker stays empty.
+func ConsumeExact(name string) string {
+	requireOwned(name)
+	value := os.Getenv(name)
+	_ = os.Unsetenv(name)
+	_ = os.Unsetenv(Legacy(name))
+	return value
+}
+
 // Get reads a statically known codeaf variable with its legacy fallback.
 func Get(name string) string {
 	value, _ := Lookup(name)

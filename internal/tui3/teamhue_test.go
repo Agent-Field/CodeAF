@@ -3,10 +3,9 @@ package tui3
 import (
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -150,14 +149,12 @@ func fmtHues(hs []float64) string {
 	return s
 }
 
-// A FILE FROM BEFORE COLOURS IS COLOURED ON LOAD, THE SAME WAY EVERY TIME, and
-// around the teams that already have theirs.
-func TestTeamHueLegacyLoadIsStable(t *testing.T) {
+// A STORE WITH UNCOLOURED TEAMS IS COLOURED ON LOAD, THE SAME WAY EVERY TIME,
+// and around the teams that already have theirs.
+func TestTeamHueUncolouredLoadIsStable(t *testing.T) {
 	dir := t.TempDir()
-	legacy := `{"spaces":[{"name":"a","members":[{"key":"k1"}]},{"name":"b","members":[],"hue":200,"tier":0},{"name":"c","members":[]}]}`
-	if err := os.WriteFile(filepath.Join(dir, teamsLegacyFile), []byte(legacy), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	teamstest.Write(t, dir, []byte(`{"version":2,"teams":[{"id":"aaaaaaaaaaaa","name":"a","members":[{"key":"k1"}]},`+
+		`{"id":"bbbbbbbbbbbb","name":"b","members":[],"hue":200,"tier":0},{"id":"cccccccccccc","name":"c","members":[]}]}`))
 	load := func() []team {
 		a := newTestAppWithProfile(dir, nil)
 		a.teamsEnsure()

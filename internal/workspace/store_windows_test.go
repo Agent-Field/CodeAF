@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// N2 opens the collections store through its real door, keeping the native
+// R2 opens the collections store through its real door, keeping the native
 // filename's space, Unicode, fragment and percent characters after reopening.
 func TestWindowsWorkspaceStoreNativePath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "dir with space é", "collections #%25.db")

@@ -480,9 +480,16 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 	// and declaring its ends whole would refuse "0 to 1, default 0.3" outright.
 	//
 	// AND AN AUTOMATION'S `usd` IS MONEY, where fifty cents a run is an ordinary
-	// limit to set.
+	// limit to set. `factory_item`'s `cap`
+	// is the item's budget in dollars, a float64 too, where two dollars fifty
+	// is an ordinary ceiling (tools_factory_item.go).
 	fractional := map[string]bool{"usd": true, "level": true, "fade": true,
 		"min": true, "max": true, "default": true}
+	// IT IS EXCUSED IN ITS OWN FILE ONLY, so a future `cap` declared
+	// whole-number-shaped anywhere else is still caught.
+	fractionalIn := map[string]map[string]bool{
+		"tools_factory_item.go": {"cap": true},
+	}
 	for _, path := range toolArgumentSources(t) {
 		body, err := os.ReadFile(path)
 		if err != nil {
@@ -499,7 +506,7 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 			start := strings.LastIndexByte(text[:at], '"')
 			name := text[start+1 : at]
 			index = at + 1
-			if fractional[name] {
+			if fractional[name] || fractionalIn[filepath.Base(path)][name] {
 				continue
 			}
 			t.Fatalf(`%s declares %q as "type":"number". An argument decoded into a whole `+

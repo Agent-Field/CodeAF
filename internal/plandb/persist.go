@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"modernc.org/sqlite"
 )
 
@@ -181,7 +180,8 @@ var schemaStatements = []string{
 		at      TEXT NOT NULL,
 		project TEXT NOT NULL DEFAULT '',
 		chat    TEXT NOT NULL DEFAULT '',
-		"from"  TEXT NOT NULL DEFAULT 'worker'
+		"from"  TEXT NOT NULL DEFAULT 'worker',
+		client_id TEXT NOT NULL DEFAULT ''
 	)`,
 	`CREATE TABLE IF NOT EXISTS contexts (
 		seq        INTEGER PRIMARY KEY,
@@ -228,12 +228,7 @@ func openDatabase(path string) (*sql.DB, error) {
 			return nil, fmt.Errorf("create plan store directory: %w", err)
 		}
 	}
-	uri, err := sqliteuri.FromPath(path)
-	if err != nil {
-		return nil, err
-	}
-	uri.RawQuery = "_txlock=immediate&_pragma=busy_timeout(5000)"
-	dsn := uri.String()
+	dsn := StoreURI(path, "_txlock=immediate&_pragma=busy_timeout(5000)")
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
@@ -267,12 +262,7 @@ func openDatabase(path string) (*sql.DB, error) {
 // for it. The write handle is always opened first, so the schema this one
 // reads already exists.
 func openReadDatabase(path string) (*sql.DB, error) {
-	uri, err := sqliteuri.FromPath(path)
-	if err != nil {
-		return nil, err
-	}
-	uri.RawQuery = "mode=ro&_pragma=busy_timeout(5000)"
-	db, err := sql.Open("sqlite", uri.String())
+	db, err := sql.Open("sqlite", StoreURI(path, "mode=ro&_pragma=busy_timeout(5000)"))
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +399,45 @@ func migrateColumns(tx *sql.Tx) error {
 			return err
 		}
 	}
-	return ensureColumn(tx, "notes", "from", "TEXT", "'worker'")
+	// A SPEND ROW SAYS WHETHER ITS MODEL ANSWERED. Rows written before the
+	// column, and every row [Store.AddSpend] writes, name the model a seat was
+	// built on and carry 0; only [Store.AddAnsweredSpend] writes 1, for money
+	// the response itself said its model answered.
+	if err := ensureColumn(tx, "spend", "answered", "INTEGER", "0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(tx, "notes", "from", "TEXT", "'worker'"); err != nil {
+		return err
+	}
+	// A NOTE'S CLIENT ID arrived with the app's note correlation: a file written
+	// before it still opens, its old notes reading back with no key, which is
+	// UNKNOWN and never a guess.
+	return ensureColumn(tx, "notes", "client_id", "TEXT", "''")
+}
+
+// hasColumn says whether a table already carries a column. It is a read of the
+// table's own description, so it works on a read-only connection that must not
+// migrate.
+func hasColumn(tx *sql.Tx, table, column string) (bool, error) {
+	rows, err := tx.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid, notNull, primary int
+			name, ctype           string
+			fallback              sql.NullString
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &fallback, &primary); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // ensureColumn adds one column when its table predates it and does nothing
@@ -745,7 +773,17 @@ func loadDeps(tx *sql.Tx, tasks map[string]*Task) error {
 }
 
 func loadNotes(tx *sql.Tx) ([]Note, error) {
-	rows, err := tx.Query(`SELECT id, task_id, agent, body, at, project, chat, "from" FROM notes ORDER BY seq`)
+	// A READ-ONLY READER NEVER MIGRATES, so a store written before client_id is
+	// read with the key selected as the empty string: unknown, not an error.
+	keyed, err := hasColumn(tx, "notes", "client_id")
+	if err != nil {
+		return nil, err
+	}
+	clientColumn := `''`
+	if keyed {
+		clientColumn = "client_id"
+	}
+	rows, err := tx.Query(`SELECT id, task_id, agent, body, at, project, chat, "from", ` + clientColumn + ` FROM notes ORDER BY seq`)
 	if err != nil {
 		return nil, err
 	}
@@ -754,7 +792,7 @@ func loadNotes(tx *sql.Tx) ([]Note, error) {
 	for rows.Next() {
 		var note Note
 		var at, from string
-		if err := rows.Scan(&note.ID, &note.TaskID, &note.Agent, &note.Body, &at, &note.Project, &note.Chat, &from); err != nil {
+		if err := rows.Scan(&note.ID, &note.TaskID, &note.Agent, &note.Body, &at, &note.Project, &note.Chat, &from, &note.ClientID); err != nil {
 			return nil, err
 		}
 		if note.At, err = parseTime(at); err != nil {
@@ -904,7 +942,7 @@ func saveDeps(tx *sql.Tx, value state) error {
 }
 
 func saveNotes(tx *sql.Tx, notes []Note) error {
-	statement, err := tx.Prepare(`INSERT INTO notes (seq, id, task_id, agent, body, at, project, chat, "from") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	statement, err := tx.Prepare(`INSERT INTO notes (seq, id, task_id, agent, body, at, project, chat, "from", client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -914,7 +952,7 @@ func saveNotes(tx *sql.Tx, notes []Note) error {
 		if from == "" {
 			from = NoteFromWorker
 		}
-		if _, err := statement.Exec(seq, note.ID, note.TaskID, note.Agent, note.Body, formatTime(note.At), note.Project, note.Chat, from); err != nil {
+		if _, err := statement.Exec(seq, note.ID, note.TaskID, note.Agent, note.Body, formatTime(note.At), note.Project, note.Chat, from, note.ClientID); err != nil {
 			return err
 		}
 	}

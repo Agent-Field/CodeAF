@@ -594,3 +594,50 @@ func forkNames(t *testing.T, ground string) []string {
 	}
 	return names
 }
+
+func TestForkGroundFailureRemovesOnlyItsStaging(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := dirtyRepo(t)
+	installFakeFurrow(t)
+	binary := os.Getenv(furrow.BinaryEnvVar)
+	script := readFile(t, binary)
+	script = strings.Replace(script, `  mkdir -p "$destination"`, `  mkdir -p "$(dirname "$destination")/.$(basename "$destination").furrow-fork-123-0"
+  kill -9 $$`, 1)
+	writeFile(t, binary, script)
+	if err := os.Chmod(binary, 0755); err != nil {
+		t.Fatal(err)
+	}
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	trees := place.Trees()
+	kept := []string{".10.furrow-fork-123-0", ".1.furrow-fork-x-0", ".1.furrow-fork-123-0-extra"}
+	for _, name := range kept {
+		writeFile(t, filepath.Join(trees, name, "data"), "keep")
+	}
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "data"), "keep")
+	link := filepath.Join(trees, ".1.furrow-fork-123-1")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := prepareTaskTreeOn(context.Background(), place, repo, "aaaa9999aaaa9999", 1, "read the ground", taskStand{dir: repo, mode: TaskModeWorktree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tree.rung != GroundRungSnapshot || tree.mode != TaskModeWorktree {
+		t.Fatalf("killed fork fell back to rung %q, mode %q; want a snapshot worktree", tree.rung, tree.mode)
+	}
+	if _, err := os.Lstat(filepath.Join(trees, ".1.furrow-fork-123-0")); !os.IsNotExist(err) {
+		t.Fatalf("killed fork staging survived: %v", err)
+	}
+	for _, name := range kept {
+		if _, err := os.Stat(filepath.Join(trees, name, "data")); err != nil {
+			t.Fatalf("other staging %s removed: %v", name, err)
+		}
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "data")); err != nil {
+		t.Fatal(err)
+	}
+}

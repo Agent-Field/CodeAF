@@ -81,6 +81,25 @@ func TestFirstMessageHasItsOwnScreenBeforeTheConversationOpens(t *testing.T) {
 	}
 }
 
+func TestTypingWhileChatOpensKeepsTheFirstMessageAndTheNextDraft(t *testing.T) {
+	a := openingLab(t)
+	release := make(chan struct{})
+	next := &fakeAgent{model: "m"}
+	a.start = func(string) (Conversation, error) {
+		<-release
+		return Conversation{Agent: next, SessionFile: "/next/transcript.jsonl"}, nil
+	}
+	typeHome(a, "first message")
+	cmd := a.homeEnter()
+	a.Update(key("x"))
+	pending := a.conversationOpening
+	close(release)
+	spend(t, a, cmd)
+	if !pending || len(next.sent) != 1 || next.sent[0] != "first message" || a.input.String() != "x" {
+		t.Fatalf("typing cancelled the send or lost the next draft: pending=%v sent=%v draft=%q", pending, next.sent, a.input.String())
+	}
+}
+
 func TestHomeReadsInTheBackgroundAndDropsAnEarlierVisitsAnswer(t *testing.T) {
 	a := openingLab(t)
 	a.closeHome()

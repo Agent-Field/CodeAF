@@ -292,7 +292,7 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 	return "stopped " + stopBecause(taskStopName(id, notice.Title), why) + " — nothing was driving it any more", true, nil
 }
 
-// sayToRunRow is a message to a row a run owns, and it reports whether the
+// sayToRunRowFrom is a message to a row a run owns, and it reports whether the
 // number is a run's at all: false sends the caller on to the answer that there
 // is no such task.
 //
@@ -302,7 +302,13 @@ func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, er
 // words as a note on their task's page, which is where a run's worker reads
 // what it is told between its steps (the page's own box writes the same note,
 // [Agent.PlanNote]). A row nothing drives says so, and says it can be stopped.
-func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (SteerReceipt, bool, error) {
+//
+// Only the source's opaque client id is used here: it is committed with the note
+// in the store's one transaction ([plandb.Store.AddPersonNoteKeyed]), so the
+// note's key and the note exist together or not at all. The conversation's own
+// notes carry no key, and a key the app could not keep ([AppNoteClientID]) is
+// dropped rather than stored half-trusted.
+func (a *Agent) sayToRunRowFrom(id uint64, text string, origin messageOrigin, source spokenSource) (SteerReceipt, bool, error) {
 	a.beltMu.Lock()
 	run := a.beltRun
 	owned := run != nil && (run.row == id || slices.Contains(run.joined, id))
@@ -321,12 +327,12 @@ func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (Steer
 		}
 		var err error
 		if origin == fromPerson {
-			_, err = run.store.AddPersonNote(key, text)
+			_, err = run.store.AddPersonNoteKeyed(key, text, AppNoteClientID(source.clientID))
 		} else {
 			_, err = run.store.AddNote(key, plandb.NoteAgentChat, text)
 		}
 		if err != nil {
-			return SteerReceipt{}, true, err
+			return SteerReceipt{}, true, commitUncertainAsUnanswered(err)
 		}
 		return SteerReceipt{Landing: RunNotePickupWord}, true, nil
 	}

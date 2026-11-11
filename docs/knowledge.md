@@ -38,6 +38,83 @@ updates affected guides or creates distinct concepts. Source eligibility and
 concept organization are separate responsibilities. Saved task reports can supply
 evidence; internal control traffic and deleted history remain excluded.
 
+## Memory spending and job lifetime
+
+The compiler uses the provider funnel with `lane.RoleMemory`. Session startup
+connects `knowledge.SetUsageRecorder` to the shared usage ledger. The compiler
+arms this sink before sending a request, so paid malformed answers and discarded
+attempts are charged independently of validated compiler-cache receipts.
+An owned handle binds admission and billing through `Vault.WithCalls`; its sink
+banks each provider receipt through the agent's existing ledger and job meter.
+The standalone application worker uses the same ledger with no invented job.
+
+Job journals carry a durable `.knowledge-job` marker. Pre-upgrade
+`factory-owner.json` markers also retain ownership without a roster entry. History inventory marks
+those journals as owned, and source admission retains a scheduling-only `job` flag. The
+process compiler excludes owned sources. Persisted factory team memberships
+also identify older job journals, including closed teams, so existing pending
+sources are reclassified without model calls. Delegated `task:<owner>:...`
+reports keep their source identities and compile with the owner’s finished turn,
+charged to that job. Each finished owned turn can start one compilation. `jobKnowledgeWait` caps its
+stage-end wait at two seconds; unfinished compilation continues under the job's
+lifetime across stage conversation closes. Only one compiler per job runs at a
+time, and later finished turns do not queue compilers. History groups sibling
+stage journals by their durable job owner. The next admitted pass captures those
+journals and selects their original session IDs through `WithOwnerSessions`, so
+a skipped stage remains eligible without changing its citations. The runner cancels that
+lifetime on termination. Owner admission is checked before requests and retries;
+Pause and Stop cancel the active call, and no new call starts for a paused or
+ended job. Quit drops compilation, retaining source journals and checkpoints for
+the next finished owned turn. The process worker never takes over owned sources.
+A standalone owned conversation cancels and joins its compilation on Close.
+After a job is cancelled, closing its stage conversation joins that compiler too.
+Closing an active job's stage does not join or cancel the job-owned compiler.
+Session close cancels current and retired journal scanners and standalone or
+cancelled job compilers before joining them. `knowledgeCloseWait` sets one shared
+10-second deadline for all those writers, including the final local copy. A miss
+logs the writer kind, hashed journal/profile path identities, and elapsed wait,
+then close returns. Compiler lookup uses an atomic pointer so a scanner holding
+its cursor mutex during SQLite I/O cannot block cancellation or the deadline.
+A database operation already in progress may finish after close; capture and
+publication writes remain atomic SQLite transactions. The cap does not bound
+other close phases or an unavailable logging sink.
+
+One compilation can need several dependent requests: extraction and discovery
+already require two for a small new concept; guide writing and evidence review
+add their existing bounded stages. Their output and the 8,000-token response
+ceiling are preserved. The process worker does not launch another refinement
+pass merely because the previous pass left editorial work pending. New source
+input or an explicit build can advance that work. The projection records the
+Build request it consumed, so a forced flush alone cannot buy another refinement
+pass on unchanged sources. Ordinary failed input permits three compilation
+attempts in total, including the first. The worker persists each attempt before
+compilation, so restarts retain the limit. Its input identity includes the latest
+ordinary source rowid, source count, latest arrival, Build request and projection
+version. Changed input or an explicit Build starts a new count; a successful
+compilation clears it. Each attempt can make several paid requests. Owned job
+compilation retains its separate retry and accounting rules. Historical
+unrecorded costs are not backfilled.
+
+A successful stage result is retained even when deferred memory spending reaches
+its cap. The runner records the finished phase before checking admission for the
+next unfinished step. Existing admission checks measured spend, not a prediction
+of the next call's price, so an admitted call can cross the remaining budget.
+
+After job work finishes, the existing worker report path stays open while memory
+receipts settle, up to the provider recovery ceiling plus one second. This keeps
+late prices in the job header without extending a step's two-second memory wait.
+Ordinary worker report acknowledgments retain their existing recovery digest.
+After Stop revokes a lease, that digest admits only outstanding accounting through
+the existing recovery route; stopped work is not resumed or replaced. Ordinary
+reported deltas advance the same receipt atomically, so a lost report response
+cannot cause recovery to charge its cost twice.
+
+Receipt recovery has the ordinary turn's existing quit limit: generation IDs and
+pending recovery live in the provider client's in-memory queue. Neither ordinary
+turns nor memory persist that queue or join it during application shutdown. A
+receipt arriving while the process remains alive is charged to its owner; quitting
+before recovery finishes can leave that paid call unpriced in the ledger.
+
 ## Storage authority
 
 | Stored data | Authority |

@@ -1025,6 +1025,10 @@ type ServedEndpoint struct {
 	// hops counts how many times the answering endpoint CHANGED under this slot.
 	// It starts at zero for the first answer, which is an arrival and not a move.
 	hops int
+	// billing is what the answers banked through this slot were billed as
+	// (billingfact.go). It has its own lock because it is folded, not
+	// overwritten, and taken by the bank rather than read.
+	billing billingSeen
 }
 
 // Name is the endpoint that answered most recently, empty when nothing has

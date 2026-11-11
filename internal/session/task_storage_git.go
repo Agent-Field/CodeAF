@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/taskstorage"
 )
 
@@ -65,15 +66,10 @@ func writeTaskGitPin(manager taskstorage.Manager, path string, pin taskGitPin) e
 	if e != nil {
 		return e
 	}
-	if e = os.Rename(f.Name(), name); e != nil {
+	if e = fsreplace.Rename(f.Name(), name); e != nil {
 		return e
 	}
-	dir, e := os.Open(filepath.Dir(name))
-	if e != nil {
-		return e
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return fsreplace.SyncDir(filepath.Dir(name))
 }
 func taskIndexDigest(admin string) (string, error) {
 	body, e := os.ReadFile(filepath.Join(admin, "index"))

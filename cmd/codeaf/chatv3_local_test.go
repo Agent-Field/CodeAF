@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -86,6 +87,11 @@ func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
 // consentSource is an OpenAI-shaped fake whose turn always asks for the same
 // harmless bash command and then finishes after the tool result comes back.
 func consentSource(t *testing.T, command string) *httptest.Server {
+	return consentSequenceSource(t, []string{command})
+}
+
+// consentSequenceSource gives successive turns distinct calls without a live model.
+func consentSequenceSource(t *testing.T, commands []string) *httptest.Server {
 	t.Helper()
 	var call int
 	return httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -105,6 +111,7 @@ func consentSource(t *testing.T, command string) *httptest.Server {
 		finish := "stop"
 		if toolTurn {
 			call++
+			command := commands[min(call-1, len(commands)-1)]
 			arguments, _ := json.Marshal(map[string]string{"command": command})
 			content = `"tool_calls":[{"index":0,"id":"call-` + strconv.Itoa(call) + `","type":"function","function":{"name":"bash","arguments":` + strconv.Quote(string(arguments)) + `}}]`
 			finish = "tool_calls"
@@ -149,13 +156,30 @@ func drainConsentRoad(t *testing.T, events <-chan session.Event, answer func(ses
 // rule.
 func shortStateRoot(t *testing.T) string {
 	t.Helper()
-	root, err := os.MkdirTemp("", "afl")
+	root, err := os.MkdirTemp(shortSocketParent(t), "afl")
 	if err != nil {
 		t.Fatalf("make a state root: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	t.Setenv("CODEAF_HOME", root)
 	return root
+}
+
+// shortSocketParent is where a short state root is made. On macOS it is /tmp,
+// spelled physically (/private/tmp) like every other fixture root here:
+// TestMain gives this package the physical /private/var/folders spelling of the
+// temporary folder, and a workspace host's socket under that spelling is a few
+// bytes past the socket limit. Other systems keep the temporary folder.
+func shortSocketParent(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS != "darwin" {
+		return ""
+	}
+	parent, err := filepath.EvalSymlinks("/tmp")
+	if err != nil {
+		t.Fatalf("resolve /tmp: %v", err)
+	}
+	return parent
 }
 
 // answeringHost is a socket where this workspace's host would be, and nothing
@@ -222,7 +246,9 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 
 	client := hostedClient(t)
 	welcome := remote.Welcome{Version: remote.Version, Workspace: "/srv/app", ProfileDir: engineProfile}
-	local, settings := hostOptions(onePipeFleet("", client), welcome, false)
+	localFleet := onePipeFleet("", client)
+	t.Cleanup(localFleet.closeAll)
+	local, settings := hostOptions(localFleet, welcome, false)
 	localDoors(&local, welcome, settings)
 
 	if local.Connections == nil || local.Harnesses == nil || local.SaveApproval == nil ||
@@ -277,7 +303,9 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 		}
 	}
 
-	hosted, _ := hostOptions(onePipeFleet("devbox", client), welcome, false)
+	hostedFleet := onePipeFleet("devbox", client)
+	t.Cleanup(hostedFleet.closeAll)
+	hosted, _ := hostOptions(hostedFleet, welcome, false)
 	if hosted.Connections != nil || hosted.Harnesses != nil || hosted.SaveApproval != nil ||
 		hosted.SaveBashApproval != nil || hosted.SaveModel != nil || !hosted.Sources.Empty() ||
 		hosted.ApplyModelSources != nil || hosted.ConnectCodex != nil || hosted.ReadCredits != nil || hosted.ImplicitTalk {
@@ -295,14 +323,14 @@ func TestPlainEngineModelDoorsRefreshEveryConnectedProvider(t *testing.T) {
 	t.Setenv(config.APIKeyEnv, "default-key")
 	t.Cleanup(func() { stopPoolErrands(profile) })
 	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
-	defer defaultServer.Close()
+	t.Cleanup(defaultServer.Close)
 	t.Setenv("CODEAF_BASE_URL", defaultServer.URL())
 	var listed atomic.Int32
 	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		listed.Add(1)
 		_, _ = w.Write([]byte(`{"data":[{"id":"direct-chat"}]}`))
 	}))
-	defer direct.Close()
+	t.Cleanup(direct.Close)
 	if err := config.WriteSources(profile, []config.PersistedSource{{
 		ID: "custom", Written: "direct", Address: direct.URL, Key: "direct-key", Order: 1,
 	}}); err != nil {
@@ -310,7 +338,9 @@ func TestPlainEngineModelDoorsRefreshEveryConnectedProvider(t *testing.T) {
 	}
 	client := hostedClient(t)
 	welcome := remote.Welcome{Version: remote.Version, ProfileDir: profile, Workspace: t.TempDir()}
-	options, settings := hostOptions(onePipeFleet("", client), welcome, false)
+	fleet := onePipeFleet("", client)
+	t.Cleanup(fleet.closeAll)
+	options, settings := hostOptions(fleet, welcome, false)
 	localDoors(&options, welcome, settings)
 	if options.ModelsForService == nil || options.RefreshModelsForService == nil ||
 		options.RefreshAllModels == nil || options.WarmEmptyProviders == nil || options.SubscribeServiceModels == nil {

@@ -113,7 +113,7 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	if err != nil {
 		return Taken{}, fmt.Errorf("handoff: read chat %s: %w", id, err)
 	}
-	if seen != nil && (view.Cell.Lease.Device != seen.Device || view.Cell.Lease.Fence != seen.Fence) {
+	if seen != nil && !seen.Matches(view.Cell) {
 		return Taken{}, directory.ErrLeaseHeld
 	}
 	c := cell.Cell{ID: id, Root: t.RootFor(id)}
@@ -121,7 +121,11 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	if err != nil {
 		return Taken{}, err
 	}
-	head, fence, plan, err := t.claim(ctx, c, view.Cell.Head, displacing(view))
+	how := displacing(view)
+	if seen != nil && seen.Head != "" {
+		how.Expect.Head = seen.Head
+	}
+	head, fence, acquired, err := t.claim(ctx, c, view.Cell.Head, how)
 	if err != nil {
 		return Taken{}, err
 	}
@@ -132,7 +136,7 @@ func (t Taker) TakeSeen(ctx context.Context, id string, seen *directory.LeaseExp
 	// The plan is the acquired record's: the record read before the claim can
 	// trail a publish that landed during the fetch, and the next publish
 	// replaces the plan wholesale (contract §22.2).
-	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head, Frames: plan}, Kept: kept}, nil
+	return Taken{Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: fence, Head: head, Frames: acquired.Frames, Size: acquired.Size}, Kept: kept}, nil
 }
 
 // displacing is the acquire the person's choice covers: they saw the chat's
@@ -191,10 +195,10 @@ func (t Taker) keepLocal(ctx context.Context, c cell.Cell, parentHead string, pl
 // if the head moved while the fetch ran, and only then puts the staging folder
 // in place of c's root. It answers the head that is on disk and the fence. The
 // staging folder never outlives a failed claim.
-func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
+func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how directory.AcquireOpts) (string, uint64, directory.Cell, error) {
 	stage := cell.Cell{ID: c.ID, Root: stagingOf(c.Root)}
 	t.stagedHead = new(string)
-	head, fence, plan, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
+	head, fence, acquired, err := t.fetchAndAcquire(ctx, stage, c.Root, head, how)
 	if err == nil {
 		if err = t.install(ctx, stage, c, head); err != nil {
 			err = t.giveBack(ctx, c.ID, fence, fmt.Errorf("handoff: put %s in place: %w", c.ID, err))
@@ -207,9 +211,9 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 		if (t.Preflight != nil && t.Prepare == nil || t.stagedHead != nil && *t.stagedHead != "") && exists(c.Root) && exists(stage.Root) {
 			err = errors.Join(err, t.Local.Follow(ctx, stage, c))
 		}
-		return "", 0, nil, errors.Join(err, os.RemoveAll(stage.Root))
+		return "", 0, directory.Cell{}, errors.Join(err, os.RemoveAll(stage.Root))
 	}
-	return head, fence, plan, nil
+	return head, fence, acquired, nil
 }
 
 // fetchAndAcquire is the part of a claim that touches only the store, the
@@ -225,7 +229,7 @@ func (t Taker) claim(ctx context.Context, c cell.Cell, head string, how director
 // acquired: another device may have published while the fetch ran, and the
 // next publish replaces the record's plan wholesale, so seeding from the
 // record read before the claim would carry the stale one (contract §22.2).
-func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, []string, error) {
+func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head string, how directory.AcquireOpts) (string, uint64, directory.Cell, error) {
 	if t.stagedHead == nil {
 		t.stagedHead = new(string)
 	}
@@ -261,7 +265,7 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 		return nil
 	}
 	if err := prepare(head); err != nil {
-		return "", 0, nil, err
+		return "", 0, directory.Cell{}, err
 	}
 	staged()
 	staged = nil
@@ -269,18 +273,25 @@ func (t Taker) fetchAndAcquire(ctx context.Context, stage cell.Cell, from, head 
 		t.OnPhase(Phase{Name: "first acquire", Started: time.Now()})
 	}
 	acquiring := Trace(t.OnPhase, "acquire")
-	got, err := t.Dir.Acquire(ctx, stage.ID, how)
+	// The acquire is not cut short: a request the relay commits after the
+	// take was cancelled would leave a lease nobody here knows about. It runs
+	// to its answer (the directory client bounds it), and a lease it won for
+	// a take that has ended is handed back.
+	got, err := t.Dir.Acquire(context.WithoutCancel(ctx), stage.ID, how)
 	acquiring()
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
+		return "", 0, directory.Cell{}, fmt.Errorf("handoff: take %s: %w", stage.ID, err)
+	}
+	if ctx.Err() != nil {
+		return "", 0, directory.Cell{}, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, fmt.Errorf("handoff: take %s: %w", stage.ID, context.Cause(ctx)))
 	}
 	if got.Cell.Head != head {
 		head = got.Cell.Head
 		if err := prepare(head); err != nil {
-			return "", 0, nil, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
+			return "", 0, directory.Cell{}, t.giveBack(ctx, stage.ID, got.Cell.Lease.Fence, err)
 		}
 	}
-	return head, got.Cell.Lease.Fence, got.Cell.Frames, nil
+	return head, got.Cell.Lease.Fence, got.Cell, nil
 }
 
 // bring puts head where the claim restores it from: in the store alone for a
@@ -421,7 +432,20 @@ func (t Taker) open(ctx context.Context, c cell.Cell, fence uint64) (cell.Cell, 
 // giveBack releases the lease and answers cause, joined with a release failure
 // if there was one (the lease then lapses by itself).
 func (t Taker) giveBack(ctx context.Context, id string, fence uint64, cause error) error {
+	ctx, cancel := ReleaseContext(ctx)
+	defer cancel()
 	return errors.Join(cause, t.Dir.Release(ctx, id, fence))
+}
+
+// GiveBackWithin bounds handing a lease back after a take failed.
+var GiveBackWithin = 20 * time.Second
+
+// ReleaseContext is ctx for handing back a lease a failed take acquired. The
+// take's own context may be what ended it (the person cancelled the move, it
+// stalled, the app left), and the release must still reach the relay, or the
+// chat stays fenced to this computer until its lease lapses.
+func ReleaseContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), GiveBackWithin)
 }
 
 func exists(path string) bool {

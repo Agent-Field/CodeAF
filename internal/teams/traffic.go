@@ -42,6 +42,9 @@ const (
 	KindPacket   = "packet"   // a decision packet was raised, decided or escalated
 	KindClose    = "close"    // the team was closed
 	KindReopen   = "reopen"   // the team was reopened
+	// KindBrief replaces a member's brief in place (brief.go): the member
+	// reads it at its next step; it wakes nobody and restarts nothing.
+	KindBrief = "brief"
 )
 
 // Addresses that are not a member's handle.
@@ -62,6 +65,7 @@ const (
 var kinds = map[string]bool{
 	KindEvent: true, KindNote: true, KindDirective: true, KindStop: true, KindStart: true, KindYou: true,
 	KindQuestion: true, KindAnswer: true, KindPacket: true, KindClose: true, KindReopen: true,
+	KindBrief: true,
 }
 
 // Entry is one line of the Traffic log. This shape is the contract between
@@ -118,9 +122,62 @@ type Entry struct {
 	// Approval is, on a [KindStart], the approval posture the started
 	// conversation inherits from the manager unless overridden.
 	Approval string `json:"approval,omitempty"`
+	// Provenance says which turn caused the entry (see [Provenance]). It is
+	// embedded so the three fields sit flat on the line, and every one is
+	// omitted when empty, so an entry nobody stamped serialises byte for byte
+	// as it did before they existed.
+	Provenance
 	// Model is the resolved model requested for this new conversation.
 	Model string `json:"model,omitempty"`
 }
+
+// Provenance says which turn of which conversation caused an entry. EACH FIELD
+// IS RECORDED AT THE MOMENT OF THE CALL THAT PRODUCED THE ENTRY AND NEVER
+// INFERRED AFTERWARDS: a reader that matches on time, adjacency, words or "the
+// latest turn" will group two turns that said the same thing in the same
+// second, and these fields exist so that no reader has to.
+//
+// THEY ARE THREE FACTS AND NONE OF THEM STANDS IN FOR ANOTHER. Turn is a
+// person's message id; Run is an execution's id; they are never equal, never
+// derived from one another, and never from a door's client id.
+type Provenance struct {
+	// Turn is the durable id of the person's own message that OPENED the
+	// producing turn (the engine's ComposedMark.MessageID, the same string the
+	// journal keeps on that message's line). It is the opener and nothing later:
+	// a message the person steered in mid-turn does not replace it. Empty means
+	// no person message is known to have opened the turn: a turn a member's
+	// report or a wake opened, a turn that opened on a message written before
+	// message ids existed, a turn that drained several person messages at once,
+	// or a line written by no turn at all. Empty is unknown, never "none".
+	Turn string `json:"turn,omitempty"`
+	// Run is the producing turn's run identity, the id the conversation's own
+	// journal records as that turn's `usage_run`. Empty on a line no model turn
+	// wrote, and on every line written before this field existed.
+	Run string `json:"run,omitempty"`
+	// RunBy is the conversation key (the same spelling as [Entry.Member]) of the
+	// conversation that ran Run. It is set exactly when Run is.
+	RunBy string `json:"run_by,omitempty"`
+}
+
+// normalized is p as a line may carry it: the conversation that ran a run is
+// named only beside the run, and a person's message id is kept without a run
+// only on the person's own line ([KindYou]), which no model turn wrote. Anything
+// else with a message id and no run is a writer that guessed, and it is kept
+// out of the log rather than believed.
+func (p Provenance) normalized(kind string) Provenance {
+	if p.Run == "" {
+		p.RunBy = ""
+		if kind != KindYou {
+			p.Turn = ""
+		}
+	}
+	return p
+}
+
+// Known reports whether the line says which run wrote it. A line that does not
+// is legacy or was written outside a turn; it stays in the log and in every
+// listing, ungrouped.
+func (p Provenance) Known() bool { return p.Run != "" }
 
 // trafficRotateBytes is the size past which the log starts a new file.
 var trafficRotateBytes int64 = 4 << 20
@@ -166,9 +223,9 @@ func appendTrafficIDLocked(profileDir, teamID string, e Entry) (string, error) {
 // Only closing-report acceptance may append its final event after disbanding.
 func appendTrafficLifecycleLocked(profileDir, teamID string, e Entry, closing bool) (string, error) {
 	e.Origin = ""
-	if f, _, _, err := read(profileDir); err != nil {
+	if f, exists, err := lookTeams(profileDir, "", teamID); err != nil {
 		return "", err
-	} else if f != nil {
+	} else if exists {
 		t, ok := f.Team(teamID)
 		if !ok || t.Closed() && !(closing && e.Kind == KindClose && e.Packet != "" && e.Packet == t.Report) {
 			return "", ErrClosed
@@ -202,6 +259,7 @@ func appendTrafficLifecycleLocked(profileDir, teamID string, e Entry, closing bo
 	if e.At.IsZero() {
 		e.At = time.Now()
 	}
+	e.Provenance = e.Provenance.normalized(e.Kind)
 	path := TrafficPath(profileDir, teamID)
 	err := lockedAt(strings.TrimSuffix(path, ".jsonl")+".lock", lockWait, func() error {
 		last, err := lastTrafficID(path)
@@ -316,7 +374,7 @@ var trafficWindow int64 = 64 << 10
 func tailTraffic(files []string, limit int) ([]Entry, error) {
 	var out []Entry
 	for index := len(files) - 1; index >= 0 && len(out) < limit; index-- {
-		got, err := tailTrafficFile(files[index], limit-len(out))
+		got, err := trafficCache.read(trafficQuery{path: files[index], limit: limit - len(out)})
 		if err != nil {
 			return nil, err
 		}
@@ -381,7 +439,7 @@ func forwardTraffic(files []string, after string, limit int) ([]Entry, error) {
 		if len(out) >= limit {
 			break
 		}
-		got, err := forwardTrafficFile(path, after, limit-len(out))
+		got, err := trafficCache.read(trafficQuery{path: path, after: after, limit: limit - len(out)})
 		if err != nil {
 			return nil, err
 		}
@@ -533,30 +591,7 @@ func parseTrafficLine(line []byte) (Entry, bool) {
 // readTrafficFile is every entry in one file that parses; a missing file is
 // none.
 func readTrafficFile(path string) ([]Entry, error) {
-	file, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	var out []Entry
-	r := bufio.NewReader(file)
-	for {
-		line, err := r.ReadBytes('\n')
-		if len(line) > 0 && line[len(line)-1] == '\n' {
-			if e, ok := parseTrafficLine(line); ok {
-				out = append(out, e)
-			}
-		}
-		if err == io.EOF {
-			return out, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
+	return trafficCache.read(trafficQuery{path: path})
 }
 
 // lastTrafficID is the highest id in the log, 0 for an empty one. It reads the

@@ -180,7 +180,7 @@ func TestRemoteTeamSendsStartsPostsAndRousesRefuseBeforeTraffic(t *testing.T) {
 	}
 	file, _ := teams.Snapshot(f.profile)
 	m, _ := file.Teams[0].ByHandle("web")
-	if said := a.teamRouse(f.profile, file.Teams[0], true, []teams.Member{m}, ""); !strings.Contains(said, "desktop") {
+	if said := a.teamRouse(f.profile, file.Teams[0], true, []teams.Member{m}, "", teams.Provenance{}); !strings.Contains(said, "desktop") {
 		t.Fatal(said)
 	}
 	member := teamAgent(t, f, f.web, nil, manualRelayTeamClock)

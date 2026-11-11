@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 )
 
@@ -70,7 +71,10 @@ func (a *Agent) stampUserLocked(text string) {
 			userStampHeld()
 		}
 		a.updateMeta(dir, snapshot, func(meta *Meta) {
+			meta.AutomaticModels = snapshot.AutomaticModels
+			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.ModelProvider = snapshot.ModelProvider
 			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 			meta.LastUserAt = at
 			if strings.TrimSpace(meta.Title) == "" {
@@ -263,12 +267,13 @@ func (a *Agent) metaSnapshotAt() (string, Meta) {
 // across every Agent and process that writes this conversation folder.
 // Each patch owns its fields; a spend snapshot made before naming cannot write
 // an old title back afterward. Snapshot collection must never run inside patch.
-func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
+// The answer says whether the patched metadata reached disk.
+func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) bool {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
-		return
+		return false
 	}
-	_ = withMetaLock(dir, func() error {
+	return withMetaLock(dir, func() error {
 		meta, err := LoadMeta(dir)
 		if err != nil {
 			return err
@@ -281,6 +286,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		if meta.ChatURI == "" {
 			meta.ChatURI = snapshot.ChatURI
 		}
+		if meta.AgentIdentity == nil {
+			meta.AgentIdentity = snapshot.AgentIdentity
+		}
 		if meta.Workspace == "" {
 			meta.Workspace = snapshot.Workspace
 		}
@@ -288,7 +296,10 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.Created = snapshot.Created
 		}
 		if meta.Model == "" {
+			meta.AutomaticModels = snapshot.AutomaticModels
+			meta.ModelIdentity = snapshot.ModelIdentity
 			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.ModelProvider = snapshot.ModelProvider
 		}
 		if meta.Places == nil {
 			meta.Places = snapshot.Places
@@ -298,7 +309,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 		}
 		patch(&meta)
 		return saveMetaLocked(dir, meta)
-	})
+	}) == nil
 }
 
 // fillMetaLocked fills in everything about a session that does not change while
@@ -308,6 +319,9 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	if !a.config.InTask && a.config.WorkspaceURI != "" {
 		meta.ChatURI = a.config.WorkspaceURI
+	}
+	if identity := a.config.agentIdentity(); identity != nil {
+		meta.AgentIdentity = identity
 	}
 	if strings.TrimSpace(meta.ID) == "" {
 		meta.ID = a.config.Place.ID()
@@ -319,12 +333,16 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 		}
 		meta.Workspace = workspace
 	}
+	meta.AutomaticModels = a.automaticModelsChosen()
+	identity := a.modelIdentityLocked()
+	meta.ModelIdentity = &identity
 	meta.Owned = a.config.Place.Owned
 	if meta.Created.IsZero() {
 		meta.Created = time.Now()
 	}
 	if model := strings.TrimSpace(a.model); model != "" {
 		meta.Model = model
+		meta.ModelProvider = a.config.serviceFor(model).Source.ID
 	}
 	// The rung is written whatever it is, absence included, because absence is
 	// a value a person can choose their way back to: a session dialled to max
@@ -398,7 +416,10 @@ func (a *Agent) stampMeta() {
 	a.metaStamp().settle()
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
+		meta.AutomaticModels = snapshot.AutomaticModels
+		meta.ModelIdentity = snapshot.ModelIdentity
 		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+		meta.ModelProvider = snapshot.ModelProvider
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 	})
 }
@@ -450,11 +471,10 @@ func (a *Agent) spendStamp() *stampWriter {
 // scans it, and what a run has spent is its own row's answer
 // (internal/automation) and not this one.
 //
-// THE WRITE IS SMALL AND COALESCED: a read and a temp-and-rename of a file of a
-// few hundred bytes, owed through one stampWriter so a burst of bills becomes
-// one write. A worker with no place owes no file. EVERY FAILURE IS SILENCE, for
-// this file's stated reason: the total is a citation and the transcript is the
-// record.
+// The write is small and coalesced: a read and a temp-and-rename of a file of
+// a few hundred bytes, owed through one stampWriter so a burst of bills becomes
+// one write. A worker with no place owes no file. EVERY FAILURE IS SILENCE,
+// because the total is a citation and the transcript is the record.
 func (a *Agent) stampSpend() {
 	a.mu.Lock()
 	needed := strings.TrimSpace(a.config.Place.Dir) != "" && (a.usage.CostUSD > 0 || a.usage.Input+a.usage.Output > 0)
@@ -462,15 +482,82 @@ func (a *Agent) stampSpend() {
 	if !needed {
 		return
 	}
-	a.spendStamp().Owe(func() {
-		a.metaStamp().settle()
-		a.mu.Lock()
-		dir := a.config.Place.Dir
-		snapshot := a.fillMetaLocked(Meta{})
-		spent, tokens := a.usage.CostUSD, a.usage.Input+a.usage.Output
-		a.mu.Unlock()
+	a.spendStamp().Owe(func() { a.stampTurnEnd(false) })
+}
+
+// stampSealed is [Agent.stampSpend] at a turn's seal, which also says when the
+// conversation last answered the person ([Meta.LastReplyAt]) if this turn
+// ended on an answer. The seal saves both fields before publishing its news.
+//
+// AN ANSWER IS THE TURN'S LAST WORD TO THE PERSON: an answer was recorded
+// since the last seal and the journal still ends on it, an assistant message
+// with words and no tool call. A turn that stopped on a tool step, on
+// thinking, or before saying anything leaves the stamp where it was, and so
+// does one that ends on a partial reply a stop cut short or on a line the
+// harness wrote in the model's place ([Agent.answeredLocked]).
+func (a *Agent) stampSealed() { a.stampTurnEnd(true) }
+
+// spendStampCaptured lets a test hold a stamp between capture and write.
+// It is nil in production and runs outside a.mu, under spendStampMu.
+var spendStampCaptured func(*Agent, float64)
+
+func (a *Agent) stampTurnEnd(sealed bool) {
+	a.metaStamp().settle()
+	a.spendStampMu.Lock()
+	defer a.spendStampMu.Unlock()
+	dir, snapshot, spent, tokens, replied := a.captureSpendStamp(sealed)
+	if !replied {
+		if spent <= 0 && tokens <= 0 {
+			return
+		}
 		a.writeSpendSnapshot(dir, snapshot, spent, tokens)
-	})
+		return
+	}
+	at := time.Now()
+	if a.updateMeta(dir, snapshot, func(meta *Meta) {
+		if spent > 0 || tokens > 0 {
+			meta.SpentUSD, meta.Tokens = spent, tokens
+		}
+		meta.LastReplyAt = at
+	}) && (spent > 0 || tokens > 0) {
+		announceSpendSaved(SpendSaved{Dir: dir, SpentUSD: spent})
+	}
+}
+
+// captureSpendStamp keeps the capture and its test seam together, so moving
+// capture outside spendStampMu is observable before any metadata is written.
+func (a *Agent) captureSpendStamp(sealed bool) (dir string, snapshot Meta, spent float64, tokens int, replied bool) {
+	a.mu.Lock()
+	dir = a.config.Place.Dir
+	snapshot = a.fillMetaLocked(Meta{})
+	spent, tokens = a.usage.CostUSD, a.usage.Input+a.usage.Output
+	if sealed {
+		replied = a.answeredSinceSeal && len(a.messages) > 0 && a.answeredLocked(a.messages[len(a.messages)-1])
+		a.answeredSinceSeal = false
+	}
+	a.mu.Unlock()
+	if spendStampCaptured != nil {
+		spendStampCaptured(a, spent)
+	}
+	return
+}
+
+// answeredLocked says a recorded message answered the person: [isAnswer], and
+// not marked as a reply cut short (a stop, a steer) or as an operational line
+// (a checkpoint's hand-over note), which the model did not finish saying to
+// them. Callers hold a.mu.
+func (a *Agent) answeredLocked(message ai.Message) bool {
+	if !isAnswer(message) {
+		return false
+	}
+	mark := a.presentation.of(message)
+	return mark == nil || (!mark.Interrupted && mark.Audience != "operational")
+}
+
+// isAnswer says a message is an answer: the assistant's words, with no tool
+// call waiting on them.
+func isAnswer(message ai.Message) bool {
+	return message.Role == "assistant" && len(message.ToolCalls) == 0 && strings.TrimSpace(messageContentText(message)) != ""
 }
 
 // stampRestoredSpend fills the total in for a conversation resumed from a
@@ -484,6 +571,8 @@ func (a *Agent) stampSpend() {
 // keeps it true from here on, and a rewrite per open would be a file touched by
 // every window that merely looked.
 func (a *Agent) stampRestoredSpend(restored Usage) {
+	a.spendStampMu.Lock()
+	defer a.spendStampMu.Unlock()
 	dir, _ := a.metaSnapshotAt()
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -511,7 +600,9 @@ func (a *Agent) writeSpend(dir string, spent float64, tokens int) {
 
 // The snapshot can predate a title commit; only the spend belongs to this patch.
 func (a *Agent) writeSpendSnapshot(dir string, snapshot Meta, spent float64, tokens int) {
-	a.updateMeta(dir, snapshot, func(meta *Meta) {
+	if a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.SpentUSD, meta.Tokens = spent, tokens
-	})
+	}) {
+		announceSpendSaved(SpendSaved{Dir: dir, SpentUSD: spent})
+	}
 }

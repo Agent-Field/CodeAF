@@ -1,0 +1,109 @@
+package record
+
+import (
+	"fmt"
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"strings"
+)
+
+// enrich derives S2 fields for older receipts without rewriting append-only history.
+func enrich(e *Event) {
+	if e.Actor.Kind == "" {
+		e.Actor = Actor{Kind: "factory"}
+		if handle := factory.NormalizeHandle(e.Handle); handle != "" {
+			e.Actor = Actor{Kind: "person", Name: "@" + handle}
+		}
+	}
+	if e.Object == "" && e.Job > 0 {
+		e.Object = fmt.Sprintf("job:%d", e.Job)
+	}
+	if e.Verb == "" {
+		switch e.Kind {
+		case StepEdited:
+			e.Verb = "edited steps"
+		case StepStopped:
+			e.Verb = "stopped"
+		case StepRerun:
+			e.Verb = "reran step"
+		case HandOffNotNow:
+			e.Verb = "put away hand-off"
+		case RunAsNew:
+			e.Verb = "ran as new"
+		case AutoStarted, Started:
+			e.Verb = "started"
+		case Held:
+			e.Verb = "held"
+		case Resumed:
+			e.Verb = "resumed"
+		case AskedFirst:
+			e.Verb = "asked"
+		case Routed:
+			e.Verb = "routed"
+		case RepoSet:
+			e.Verb = "set repository"
+		case Posted:
+			e.Verb = "published"
+		case RequestChanges:
+			e.Verb = "requested changes"
+		case PRReady:
+			e.Verb = "marked ready for review"
+		case PRMerged:
+			e.Verb = "merged"
+		case PRClosed, SourceClosed:
+			e.Verb = "closed"
+		case ClosedLocally:
+			e.Verb = "closed locally"
+		case Restored:
+			e.Verb = "brought back"
+		case MergeAsked:
+			e.Verb = "pressed merge"
+		case MergeQueued:
+			e.Verb = "sent merge"
+		case MergeRefused:
+			e.Verb = "refused merge"
+		case StepFailed:
+			e.Verb = "failed"
+		case "priority_changed":
+			e.Verb = "changed priority"
+		case StopAfterStepChanged:
+			e.Verb = "changed spending stop"
+		case BudgetChanged:
+			e.Verb = "changed budget"
+		case "budget_raised":
+			e.Verb = "raised budget"
+		case "branch_deleted":
+			// Older receipts only: the seven-day deletion of a dropped job's
+			// branch that wrote them is gone, and a drop now deletes the job's
+			// local work at once, inside the drop's own receipt.
+			e.Verb = "deleted branch"
+		case Took:
+			e.Verb = "assigned"
+		case Released:
+			e.Verb = "unassigned"
+		case RunnerAdded:
+			e.Verb = "added runner"
+		case RunnerChanged:
+			e.Verb = "changed runner"
+		case ReposChanged:
+			e.Verb = "connected repo"
+			if strings.HasPrefix(e.Detail, "turned off ") {
+				e.Verb = "disconnected repo"
+			}
+		case LinkCreated:
+			e.Verb = "created access link"
+		case LinkRevoked:
+			e.Verb = "revoked access link"
+		case OperatorClaimed:
+			e.Verb = "claimed factory"
+		case GitHubGranted:
+			e.Verb = "granted GitHub read access"
+		case SessionsRevoked:
+			e.Verb = "revoked sessions"
+		default:
+			e.Verb = e.Kind
+		}
+	}
+	if e.Actor.Operator && e.Detail == "" {
+		e.Detail = "as operator"
+	}
+}

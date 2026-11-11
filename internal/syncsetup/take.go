@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"log"
 	"os"
@@ -53,6 +54,12 @@ type TakeOptions struct {
 	BucketFor func(origin string) string
 	// Notify hears the one sentence the vault hook says about what it left alone.
 	Notify func(string)
+	// OnMove hears how far a move has got, a few times a second while it
+	// changes. It is never called after the take returns.
+	OnMove func(MoveProgress)
+	// IdleWithin stops a move that waited this long on the relay with nothing
+	// coming through, with ErrMoveStalled; 0 waits as long as the caller does.
+	IdleWithin time.Duration
 }
 
 // Continued is a takeover that worked, with what the surface says about it.
@@ -124,6 +131,13 @@ func (c *Continuer) taker(ctx context.Context, sc *Scope) handoff.Taker {
 	}
 }
 
+// holds says this machine already holds most of chat id's history, so a copy
+// fetches only what changed and the record's size says nothing about it.
+func (c *Continuer) holds(id, root string) bool {
+	s := c.sync
+	return c.eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger).Holds(cell.Cell{ID: id, Root: root})
+}
+
 // Take continues chat id here. Everything the surface says about it comes back
 // with it.
 func (c *Continuer) Take(ctx context.Context, id string) (Continued, error) {
@@ -161,12 +175,21 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	// continue, and diagnostics must survive both early refusal and late failure.
 	started := time.Now()
 	phases := map[string]time.Duration{}
+	parent := ctx
+	ctx, watch, stopWatch := watchMove(ctx, c.opt.OnMove, c.opt.IdleWithin)
+	defer stopWatch()
+	defer func() {
+		if err != nil && context.Cause(ctx) == ErrMoveStalled && parent.Err() == nil {
+			err = fmt.Errorf("%w: %w", ErrMoveStalled, err)
+		}
+	}()
 	observed := *c
 	report := c.opt.OnPhase
 	observed.opt.OnPhase = func(p handoff.Phase) {
 		if !p.Ended.IsZero() {
 			phases[p.Name] += p.Ended.Sub(p.Started)
 		}
+		watch.phase(p)
 		if report != nil {
 			report(p)
 		}
@@ -175,7 +198,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	defer func() {
 		outcome := "done"
 		if err != nil {
-			outcome = "failed"
+			outcome = fmt.Sprintf("failed reason=%q", err.Error())
 		}
 		log.Printf("continue %s phases capture=%s directory=%s retirement=%s fetch=%s acquire=%s restore=%s hooks=%s filing=%s unpublished=%s dirty=%s kept_upload=%s admission=%s total=%s outcome=%s", id,
 			phases["local capture"], phases["directory"], phases["retirement"], phases["fetch"], phases["acquire"], phases["restore"], phases["hooks"], phases["filing"], phases["unpublished check"], phases["dirty check"], phases["kept-branch upload"], phases["staging/preflight"], time.Since(started), outcome)
@@ -221,14 +244,17 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			return Continued{}, err
 		}
 		return Continued{AlreadyHere: true, LocalOnly: !c.sync.StorageAllowed(), Device: c.opt.DeviceName, Taken: handoff.Taken{
-			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames},
+			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames, Size: view.Cell.Size},
 		}}, nil
 	}
-	if seen != nil && (lease.Device != seen.Device || lease.Fence != seen.Fence) {
+	if seen != nil && !seen.Matches(view.Cell) {
 		return Continued{}, directory.ErrLeaseHeld
 	}
 	if seen == nil {
 		seen = &directory.LeaseExpectation{Device: lease.Device, Fence: lease.Fence}
+	}
+	if watch != nil && view.Cell.Size > 0 && !c.holds(id, root) {
+		watch.expect(int64(view.Cell.Size))
 	}
 	directoryRead = handoff.Trace(c.opt.OnPhase, "directory")
 	from := c.sync.deviceName(lease.Device)
@@ -343,7 +369,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	place := session.Place{Dir: taken.Cell.Root, Workspace: intendedPrimary}
 	workspacePlan, err := session.TaskWorkspaceTransferPlan(place)
 	if err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if workspacePlan != nil {
 		if !session.WorkspaceOwnershipEnabled(place) {
@@ -355,13 +381,13 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		err = session.ValidateTaskRestoreRoots(place, intendedPrimary)
 	}
 	if err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if err := cellstore.AdoptedFrom(taken.Cell, from); err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if err := cellstore.NotePublished(taken.Cell, taken.Driving.Head); err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	var filed func()
 	defer func() {
@@ -370,23 +396,23 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		}
 	}()
 	if taken.Cell, filed, err = c.fileCopy(ctx, taken.Cell); err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	taken.Driving.Cell = taken.Cell
 	var taskCopies []string
 	if workspacePlan != nil {
 		taskCopies, err = session.RestoreTaskWorkspaceSets(ctx, session.Place{Dir: taken.Cell.Root, Workspace: workspaceOf(taken.Cell.Root)}, c.opt.WorkspaceRoots)
 		if err != nil {
-			return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 		}
 	} else {
 		if err := session.AdoptChatWorkspaceIdentity(session.Place{Dir: taken.Cell.Root}); err != nil {
-			return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+			return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 		}
 		taskCopies = c.restoreCopies(taken.Cell)
 	}
 	if err := c.sync.recordSendLease(taken.Cell.ID, sendLease{Cell: id, Fence: taken.Driving.Fence}); err != nil {
-		return Continued{}, errors.Join(err, c.sync.Dir.Release(ctx, id, taken.Driving.Fence))
+		return Continued{}, errors.Join(err, c.giveBack(ctx, id, taken.Driving.Fence))
 	}
 	if c.sync.teamsSharing() {
 		if err := (teamKeys{c.sync.profile(), c.sync.Home, c.sync.Device.ID(), nil}).rebindChat(id, taken.Cell); err != nil {
@@ -400,6 +426,14 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		out.KeptTurns = c.orphanTurns(ctx, taken.Kept)
 	}
 	return out, nil
+}
+
+// giveBack hands back the lease a take acquired before it failed, even when
+// the take's context is what ended it (handoff.ReleaseContext).
+func (c *Continuer) giveBack(ctx context.Context, id string, fence uint64) error {
+	ctx, cancel := handoff.ReleaseContext(ctx)
+	defer cancel()
+	return c.sync.Dir.Release(ctx, id, fence)
 }
 
 func (c *Continuer) restoreTakenIdentity(_ context.Context, at cell.Cell) error {
@@ -868,7 +902,20 @@ func (s *Sync) publishInfo(c cell.Cell, title string) cellsync.PublishInfo {
 	if title != "" {
 		in.Title, _ = directory.SealTitle(directory.MetadataKey(s.Identity.CellKey()), title)
 	}
+	if folder := chatFolder(c.Root); folder != "" {
+		in.Folder, _ = directory.SealTitle(directory.MetadataKey(s.Identity.CellKey()), folder)
+	}
 	return in
+}
+
+// chatFolder is the name of the project folder a chat works in, which a move
+// copies with it; "" for a chat in its own private folder or with no meta.
+func chatFolder(root string) string {
+	meta, err := session.LoadMeta(root)
+	if err != nil || meta.Owned || meta.Workspace == "" {
+		return ""
+	}
+	return filepath.Base(filepath.Clean(meta.Workspace))
 }
 
 // Driving is how this device drives c now: the directory id it drives (the

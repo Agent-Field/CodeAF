@@ -85,11 +85,11 @@ func (a *Agent) webSearchTool(provider search.Provider) bare.Tool {
 				Count *int   `json:"count"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			query := strings.TrimSpace(parsed.Query)
 			if query == "" {
-				return "Invalid arguments: query is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: query is required"), true, nil
 			}
 			text, failed := WebSearch(ctx, provider, query, searchCount(parsed.Count))
 			return text, failed, nil
@@ -107,11 +107,11 @@ func (a *Agent) webFetchTool(fetcher search.Fetcher) bare.Tool {
 				URL string `json:"url"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			url := strings.TrimSpace(parsed.URL)
 			if url == "" {
-				return "Invalid arguments: url is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: url is required"), true, nil
 			}
 			text, failed := WebFetch(ctx, fetcher, url)
 			return text, failed, nil

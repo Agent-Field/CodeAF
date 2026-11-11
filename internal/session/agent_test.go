@@ -272,6 +272,9 @@ func newTestAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Age
 	if err != nil {
 		t.Fatalf("newAgent: %v", err)
 	}
+	// A private render gate, so a test that leaves a provider call blocked
+	// cannot starve the next test of the process-wide places.
+	agent.jobs.gate = newRenderGate(jobRenderCap)
 	// A SESSION'S DEFERRED WRITES ARE SETTLED BEFORE ITS DIRECTORIES GO AWAY, the
 	// same call an exit door owes ([Agent.SettleWrites], placemeta.go). Cleanups
 	// run last-registered-first, so this lands before the tempdirs above it.

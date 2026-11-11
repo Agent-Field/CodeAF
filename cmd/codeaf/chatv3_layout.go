@@ -531,6 +531,12 @@ func v3NewFolder(bucket string, class cell.Class) (id, dir string, err error) {
 // and it falls back to the workspace's own bucket for a launch that has no
 // folder at all (an explicit flat --session).
 func v3NextSession(current session.Place, workspace string) (session.Place, error) {
+	return v3NextSessionFrom(current, workspace, v3LaunchDir())
+}
+
+// v3NextSessionFrom is [v3NextSession] with the launch directory named by the
+// door rather than read off the process.
+func v3NextSessionFrom(current session.Place, workspace, launchDir string) (session.Place, error) {
 	if dir := strings.TrimSpace(current.Dir); dir != "" {
 		root := strings.TrimSpace(current.Workspace)
 		if current.Owned {
@@ -539,14 +545,14 @@ func v3NextSession(current session.Place, workspace string) (session.Place, erro
 			root = workspace
 		}
 		return v3MintSession(session.BucketOf(current.Transcript()), root,
-			v3StampLaunchDir(v3LaunchDir(), root), current.Owned)
+			v3StampLaunchDir(launchDir, root), current.Owned)
 	}
 	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
 		return session.Place{}, err
 	}
 	return v3MintSession(bucket, workspace,
-		v3StampLaunchDir(v3LaunchDir(), workspace), false)
+		v3StampLaunchDir(launchDir, workspace), false)
 }
 
 // v3LaunchDir is where the person is standing, and "" when even that cannot be
@@ -657,7 +663,6 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 	if len(sessionDirs) == 0 {
 		return nil, nil
 	}
-	protected, known := v3TeamConversations()
 	for _, dir := range sessionDirs {
 		place := session.Place{Dir: dir}
 		if _, err := os.Stat(place.Transcript()); err != nil {
@@ -672,7 +677,9 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 			}
 		}
 		if v3EmptyUnassignedSession(dir) {
-			if known && !protected[teams.ConversationIdentity(place.Transcript())] {
+			// A team or collection reference keeps a blank out of both piles.
+			// So does a store that cannot say whether it is referenced.
+			if referenced, err := teams.ConversationReferenced(config.ProfileDir(), place.Transcript()); err == nil && !referenced && !collectionKeepsConversation(dir) {
 				empty = append(empty, folder)
 			}
 			continue
@@ -701,23 +708,20 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 // [session.Peek]: Peek folds "read it all, nobody spoke" and "could not read
 // it" into one false, which is right for a picker row and fatal for a delete.
 // Only the first of the two is emptiness.
-// A team reference makes an empty conversation intentional, not reusable litter.
-func v3TeamConversations() (map[string]bool, bool) {
-	f, err := teams.Snapshot(config.ProfileDir())
-	if err != nil {
-		return nil, false
-	}
-	return f.ReferencedConversations(), true
-}
-
+// A team reference makes an empty conversation intentional, not reusable
+// litter. Only the teams that name this conversation are read (the store's
+// index), and a store that cannot say keeps the folder.
+// A collection reference keeps it too, including when its store cannot be read.
 func v3EmptySession(dir string) bool {
-	protected, known := v3TeamConversations()
-	if !known || protected[teams.ConversationIdentity(session.Place{Dir: dir}.Transcript())] {
+	referenced, err := teams.ConversationReferenced(config.ProfileDir(), session.Place{Dir: dir}.Transcript())
+	if err != nil || referenced {
 		return false
 	}
-	return v3EmptyUnassignedSession(dir)
+	return v3EmptyUnassignedSession(dir) && !collectionKeepsConversation(dir)
 }
 
+// v3EmptyUnassignedSession reads only content. References decide whether a blank
+// is kept, never whether it is a conversation somebody has spoken in.
 func v3EmptyUnassignedSession(dir string) bool {
 	place := session.Place{Dir: dir, Owned: true}
 	spoken, sure := session.SpokeIn(place.Transcript())
@@ -745,17 +749,18 @@ func v3EmptyUnassignedSession(dir string) bool {
 func v3ReapEmpty(empty []v3Folder, keep string) {
 	// Recheck the record and emptiness under the team writer's lock. Unknown
 	// membership is a reason to keep a folder, never a reason to remove it.
-	_ = teams.Inspect(config.ProfileDir(), func(f *teams.File) error {
-		protected := f.ReferencedConversations()
-		for _, folder := range empty {
-			transcript := session.Place{Dir: folder.dir}.Transcript()
-			if folder.dir == keep || protected[teams.ConversationIdentity(transcript)] || session.InUse(transcript) || !v3EmptyUnassignedSession(folder.dir) {
-				continue
-			}
-			_ = os.RemoveAll(folder.dir)
+	for _, folder := range empty {
+		if folder.dir == keep {
+			continue
 		}
-		return nil
-	})
+		transcript := session.Place{Dir: folder.dir}.Transcript()
+		_ = teams.InspectConversation(config.ProfileDir(), transcript, func(referenced bool) error {
+			if !referenced && !session.InUse(transcript) && v3EmptyUnassignedSession(folder.dir) && !collectionKeepsConversation(folder.dir) {
+				_ = os.RemoveAll(folder.dir)
+			}
+			return nil
+		})
+	}
 }
 
 // v3Migrated readies an existing cell without changing a legacy chat's layout.
@@ -777,16 +782,23 @@ func v3Migrated(cfg session.Config) session.Config {
 	return cfg
 }
 
-// v3Seated gives the session the executor it owns, built once here from the
-// class the cell declared and the workspace its tools run in.
+// v3Seated is for a caller that already holds the journal. It gives the session
+// the executor it owns, built from the cell class and its tools' workspace.
 //
 // A folder that is not a readable cell gets no seat and its calls run on the
 // host as they always did, and so does every folder without a compatible engine. The
 // seat is set on every call, so a config reused for the next conversation never
 // carries the last one's executor.
 func v3Seated(cfg session.Config) session.Config {
+	cfg, claim := v3SeatedPending(cfg)
+	claim(true)
+	return cfg
+}
+
+// v3SeatedPending builds the seat before committing its drive to journal ownership.
+func v3SeatedPending(cfg session.Config) (session.Config, func(bool)) {
 	cfg.Seat, cfg.Machine, cfg.Seals, cfg.Interrupted = nil, nil, nil, nil
-	seat, machine, seals := v3SeatWith(cfg.Place, nil, syncDrives)
+	seat, machine, seals, claim := v3SeatPending(cfg.Place, nil, syncDrives)
 	cfg.Seat, cfg.Interrupted = seat, executor.InterruptedOn(seat)
 	cfg.Renewals = syncDrives.renewalsOf(cfg.Place.ID())
 	cfg.FinishSaving, cfg.SavingNotices = nil, nil
@@ -801,7 +813,7 @@ func v3Seated(cfg session.Config) session.Config {
 	if seals != nil {
 		cfg.Seals = seals
 	}
-	return cfg
+	return cfg, claim
 }
 
 // v3SeatOf is the seat of the cell a place names, the machine view it was
@@ -818,12 +830,19 @@ func v3SeatOf(place session.Place, say func(string)) (executor.Seat, *preflight.
 // the chat its tool calls are refused. A nil book, or sync off, is the seat
 // exactly as it was.
 func v3SeatWith(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch) {
+	seat, machine, watch, claim := v3SeatPending(place, say, drives)
+	claim(true)
+	return seat, machine, watch
+}
+
+func v3SeatPending(place session.Place, say func(string), drives *driveBook) (executor.Seat, *preflight.Machine, *cellstore.SealWatch, func(bool)) {
+	noop := func(bool) {}
 	if !cell.Available() || place.Dir == "" || place.Workspace == "" {
-		return nil, nil, nil
+		return nil, nil, nil, noop
 	}
 	c, err := cell.OpenAt(place.Dir, filepath.Base(place.Dir))
 	if err != nil {
-		return nil, nil, nil
+		return nil, nil, nil, noop
 	}
 	class, ok := executor.ParseClass(string(c.Meta().Class))
 	if !ok {
@@ -832,9 +851,11 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	machine, err := preflight.OpenMachine(c.Root, place.Workspace)
 	watch := &cellstore.SealWatch{Say: say, SyncAddress: chatSyncService()}
 	failed(watch, err)
-	drive := drives.driveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport, watch)
+	drive, claim := drives.pendingDriveOf(c, cellstore.EngineFor(place.Workspace), watch.SyncReport, watch)
 	if drive != nil {
-		watch.OnTurnEnd = drive.Idle // the agent waits for the person: upload what is sealed now
+		// The turn can finish locally while its final capture is still running.
+		watch.OnTurnEnd = func() { drive.TurnEnded(c, watch.Report) }
+		watch.OnTurnStart = func() { drive.Working(true) }
 	}
 	seat, err := cellstore.SeatOver(class, c, place.Workspace, observerOf(machine), watch.Report, driveStore(drive), cellstore.WithNotices(watch.Note), cellstore.WithPipeline(), cellstore.WithWarmCapture())
 	failed(watch, err)
@@ -846,7 +867,7 @@ func v3SeatWith(place session.Place, say func(string), drives *driveBook) (execu
 	// the first input; their journal writes need a tail seal even before chat.
 	// Window attachment reuses the engine's seat rather than constructing one.
 	watch.Waiting()
-	return executor.Gated(seat, driveGate(drive)), machine, watch
+	return executor.Gated(seat, driveGate(drive), driveWorkGate(drive)), machine, watch, claim
 }
 
 // sealTail seals what the chat wrote after the turn-end seal (titles, summaries,
@@ -917,6 +938,13 @@ func v3Interrupted(cfg session.Config, notice string) string {
 	if cfg.Interrupted == nil {
 		return notice
 	}
-	lines := append([]string{notice}, cfg.Interrupted.Lines()...)
+	lines := append([]string{notice}, v3InterruptedLines(cfg)...)
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func v3InterruptedLines(cfg session.Config) []string {
+	if cfg.Interrupted == nil {
+		return nil
+	}
+	return cfg.Interrupted.Lines()
 }

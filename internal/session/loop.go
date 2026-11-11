@@ -77,10 +77,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/agentdid"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
@@ -257,6 +260,13 @@ const argsLimit = 32768
 // or two of a file or a build log, which is what an expanded row is for.
 const outputLimit = 4000
 
+// liveToolOutputBytes and liveToolOutputLines bound what one call sends as it
+// runs ([Config.LiveToolOutput]); its result is bounded by the runner as ever.
+const (
+	liveToolOutputBytes = 8 << 20
+	liveToolOutputLines = 200000
+)
+
 // ── the turn ────────────────────────────────────────────────────────────────
 
 // settleBoundTripped reports whether the settle turn has spent its bound, and
@@ -328,7 +338,38 @@ func (a *Agent) turnCue(user userMessage) string {
 // call, and nobody interrupted and nothing failed. Only that outcome may drain
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
-func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (finished bool) {
+	if user.factoryWork || user.wake && !user.answersPerson && !user.answer {
+		ctx = context.WithValue(ctx, factoryAutomaticTurnKey{}, a.automaticFactoryRefusal)
+	} else if why := a.automaticFactoryRefusal(); why != "" {
+		// The current execution refusal is a receipt, independent of the
+		// model's explanation. A person's conversation still gets its answer.
+		a.record(ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: why}}})
+		hub.send(Event{Kind: EventTextDelta, Text: why + "\n\n"})
+	}
+	defer func() {
+		if finished {
+			a.finishJobKnowledge(ctx)
+		}
+	}()
+	if user.bash == "" {
+		resolved, ready := a.prepareModel(hub)
+		if !ready {
+			return false
+		}
+		if resolved && !user.empty() && !user.resumed {
+			a.mu.Lock()
+			a.startTitleLocked()
+			a.startIntentNameLocked(user)
+			a.mu.Unlock()
+		}
+	}
+	// A newly admitted stage turn may do more work after an earlier report.
+	// Withdraw that candidate before this turn can submit a newer one; runTurn
+	// is serialized, so a later valid final report cannot be invalidated here.
+	if a.config.mayStage() {
+		a.rejectStageReport()
+	}
 	// WHAT THE LAST TURN'S MEMORY PASS HAD NOWHERE TO SAY is said first: it ran
 	// after that turn's stream had closed, so this stream is the first it gets
 	// (memory.go's [Agent.sayMemory]).
@@ -680,6 +721,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				reached.drew()
 				hub.send(formed)
 			}
+		case provider.StreamStepsRan:
+			// STEPS THE MODEL'S OWN PROGRAM ALREADY RAN (its own shell and
+			// edits) are written down as calls and results, in order with the
+			// words around them, and drawn as rows. They are on the page, so
+			// they count as read exactly as a word of the answer does.
+			reached.drew()
+			a.recordStepsRan(ctx, hub, event.Delta)
 		case provider.StreamToolCallReady:
 			// ANNOUNCE FIRST, then decide whether it may start. The order is the
 			// meaning: the person sees every call the moment the model finishes
@@ -689,6 +737,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		}
 	}
 	ctx = provider.WithStreamObserver(ctx, turnObserver)
+	// A MODEL WHOSE OWN PROGRAM RUNS COMMANDS (internal/claudemodel) is handed the
+	// conversation's identity for them, as the commands codeaf runs are.
+	if a.config.actorDID != "" {
+		ctx = claudemodel.WithEnv(ctx, []string{agentdid.AgentDIDEnv + "=" + a.config.actorDID})
+	}
 	// ONE MECHANISM ANSWERS ONE SILENCE, AND IT IS NOT THIS ONE. This loop used
 	// to keep a hedge of its own here: an eight-second timer that, on a request
 	// which had said nothing, sent the whole prompt a second time. The transport
@@ -938,6 +991,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	frozenToolHistory := len(a.snapshot())
 
 	for {
+		if why := a.factoryTurnRefusal(user); why != "" {
+			a.finishFactoryStop(hub, why, turn, started, model)
+			return true
+		}
 		// The cancel check comes BEFORE the drain: steering typed in the
 		// instant before an interrupt must not be spliced into a transcript
 		// this turn is abandoning unanswered. Nothing is lost — the turn's end
@@ -1018,7 +1075,8 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// the person's wait to be sent anywhere ends and where a tool-result gap
 		// closes.
 		pace.sending(sentAt)
-		response, answered, err := a.completeWithRetryReasoning(ctx, hub, model, rung, partial, reached, reasoning, warm, forming, frozenToolHistory)
+		inputCapture := &mediaInputCapture{}
+		response, answered, err := a.completeWithRetryReasoning(withMediaInputCapture(ctx, inputCapture), hub, model, rung, partial, reached, reasoning, warm, forming, frozenToolHistory)
 		a.config.beat.ended()
 		// THE MODEL THIS TURN IS ON CAN CHANGE UNDER IT. A step whose budget of
 		// cut streams ran out moves to the next model in the chain and says so,
@@ -1030,6 +1088,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			rung = a.effortFor(model)
 		}
 		if err != nil {
+			if why := a.factoryTurnRefusal(user); why != "" {
+				a.finishFactoryStop(hub, why, turn, started, model)
+				return true
+			}
 			// A STEER CUTS THIS GENERATION AND OPENS THE NEXT BOUNDARY. It is not
 			// an interrupt: the turn context is alive, the partial assistant text
 			// stays immediately before the person's words, and the loop continues
@@ -1045,7 +1107,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				// THE LANE IS READ BEFORE THE MONEY IS BANKED, because the row the
 				// money writes is this call's and the witness is what measured it.
 				facts := a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
-				a.addUsage(&turn, response, model, served.Name(), facts)
+				a.addUsage(&turn, response, model, served.Name(), facts, served.TakeBilling(), runIdentity(ctx))
 				a.tellLaneNews(model, facts, hedge)
 				droppedCall := forming.any() || warm.anyAnnounced()
 				a.keepSteeredPartial(partial, reasoning, droppedCall, hub, cutDroppedCallNote(err))
@@ -1101,7 +1163,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// ledger line carries ([Agent.addUsage]) rather than something held back
 		// for the turn's seal to collect.
 		facts := a.turnLane.answered(readHedge(hedge, served.Name()), responseOutput(response))
-		a.addUsage(&turn, response, model, served.Name(), facts)
+		a.addUsage(&turn, response, model, served.Name(), facts, served.TakeBilling(), runIdentity(ctx))
 		// AND THE SURFACE IS TOLD WHO ANSWERED, on the same line and at the same
 		// grain (lanenews.go). It is the push half of a seam whose pull half
 		// cannot exist: a status line cannot see a stream, and the arrow between
@@ -1113,6 +1175,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// Stop condition: the loop ends when the assistant response has NO tool
 		// call.
 		if len(calls) == 0 {
+			if why := a.factoryTurnRefusal(user); why != "" {
+				a.finishFactoryStop(hub, why, turn, started, model)
+				return true
+			}
 			// A CALL THAT ANSWERED NOTHING IS A FAILED CALL, AND IT IS WRITTEN
 			// DOWN AS ONE. No words, no tool call, nothing the provider counted:
 			// that is not a short answer, it is an endpoint that did not answer,
@@ -1177,7 +1243,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 					}
 				}
 			} else {
-				a.recordAssistant(ai.Message{Role: "assistant", Content: assistantContent(response)}, reasoning.snapshot())
+				a.recordAssistant(ai.Message{Role: "assistant", Content: assistantContent(response)}, reasoning.snapshot(), runIdentity(ctx))
 				assistantDone = true
 			}
 			// The step's text is in the transcript now. Resetting here rather
@@ -1323,7 +1389,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		severed := a.considerSeverance(calls, store.ClassifyEnd(provider.FinishReason(response), true), &salvages)
 
 		assistant := ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls}
-		a.recordAssistant(assistant, reasoning.snapshot())
+		a.recordAssistant(assistant, reasoning.snapshot(), runIdentity(ctx))
+		if why := a.factoryTurnRefusal(user); why != "" {
+			warm.reset()
+			a.refuseFactoryTools(hub, calls, why)
+			a.finishFactoryStop(hub, why, turn, started, model)
+			return true
+		}
 		visibleText := strings.TrimSpace(messageContentText(assistant)) != ""
 		partial.reset()
 		usedTools = true
@@ -1366,6 +1438,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// belt carries none of them), so nothing can have reached the world before
 		// this check, and a rejected batch is answered with nothing run at all.
 		// See bashbelt_envelope.go for the envelope and its reject roads.
+		if fault := a.stageReportBatchFault(calls); fault != "" {
+			a.rejectStageReport()
+			a.rejectBashEnvelope(hub, calls, fault)
+			warm.reset()
+			continue
+		}
+
 		if skip, ended := a.enforceBashEnvelope(ctx, hub, calls, &turn, started, model); ended {
 			return true
 		} else if skip {
@@ -1381,17 +1460,20 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// A SWEEP THE MODEL WILL NOT HAND OFF IS HANDED OFF HERE (readhandoff.go).
 		// The prompt taught the judgement and the models recited it without acting,
 		// so the loop — the one place the reading's cost is a fact rather than an
-		// instruction — spends the hand-off itself. Conversations only: a task
-		// worker's own reads are its work, not a sweep.
+		// instruction — spends the hand-off itself, where [Config.maySweepReads]
+		// says the reading is not the agent's own work.
+		// Post-response tools receive the successful request snapshot. Early warm
+		// reads already started on their own context and deliberately stay unknown.
+		batchCtx := withMediaInputs(toolCtx, inputCapture.messages)
 		var results []toolResult
-		if !a.config.InTask && chatRunEngine != nil && sweep.due(calls) {
-			if handed := a.handoffReadSweep(toolCtx, episode, hub, user, calls, sweep, warm); handed != nil {
+		if a.config.maySweepReads() && chatRunEngine != nil && sweep.due(calls) {
+			if handed := a.handoffReadSweep(batchCtx, episode, hub, user, calls, sweep, warm); handed != nil {
 				results = handed
 			} else {
-				results = a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+				results = a.runToolsWarm(batchCtx, episode, calls, hub, warm)
 			}
 		} else {
-			results = a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+			results = a.runToolsWarm(batchCtx, episode, calls, hub, warm)
 			sweep.count(calls)
 		}
 		// THE GAP THE LAW IS ABOUT STARTS HERE. Everything between this line and
@@ -1423,19 +1505,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// order they finished: the pairing with tool_call_id is by id, but the
 		// transcript a later step reads is a narrative.
 		for index, call := range calls {
-			a.record(ai.Message{
+			a.recordToolResult(ai.Message{
 				Role:       "tool",
 				ToolCallID: call.ID,
 				Content:    []ai.ContentPart{{Type: "text", Text: results[index].text}},
-			})
+			}, results[index])
 		}
-		// THE SEAL OF THE BATCH IS TAKEN HERE, AFTER THE RESULT LINES AND EACH
-		// CALL'S `took` LINE ARE WRITTEN, so a machine that picks the chat up from
-		// this seal finds every finished call's result beside its work and does
-		// not run the call again. The calls only recorded themselves (the WAL
-		// holds each), so a death before this line loses nothing the next start
-		// does not carry.
-		procexec.Settle(ctx, procexec.For(ctx))
+
+		if a.stageBatchFinal(calls, results) {
+			return true
+		}
+		// The batch can settle after its result lines and each call's `took`
+		// line are written, so a capture carries the results beside the work.
+		// A pipeline seat may keep a young batch in the WAL until a later step
+		// or the forced turn-end settle; a death still leaves its calls there
+		// for the next start to carry without running them again.
+		procexec.SettleStep(ctx, procexec.For(ctx))
 
 		// `post-feedback` (hooks.go): the step boundary, where the turn's ledger
 		// reads what the batch changed and the detector says whether the turn is
@@ -1650,7 +1735,7 @@ func (a *Agent) keepPartial(partial *partialBuffer, hub *eventHub) {
 	if a.stoppedSoup(text, hub) {
 		return
 	}
-	a.recordPresentedAssistant(textMessage("assistant", text), provider.MessageReasoning{}, interruptedPresentation(text))
+	a.recordPresentedAssistant(textMessage("assistant", text), provider.MessageReasoning{}, interruptedPresentation(text), hubRunID(hub))
 }
 
 // stoppedSoup is the keep path's one question, and its one word to the person
@@ -1738,7 +1823,7 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 		return
 	}
 	mark := interruptedPresentation(visible)
-	a.recordPresentedAssistant(textMessage("assistant", text), reasoning.snapshot(), mark)
+	a.recordPresentedAssistant(textMessage("assistant", text), reasoning.snapshot(), mark, hubRunID(hub))
 }
 
 // sealTurn stamps the turn's wall duration, folds it into the session total,
@@ -1774,8 +1859,9 @@ func (a *Agent) sealTurn(turn Usage, started time.Time, model string) Usage {
 	// function is the one place the journal is written: what a conversation has
 	// cost is a fact every reader of the machine wants and only the transcript
 	// holds, and a surface listing every session on disk cannot open every
-	// transcript to find it (placemeta.go's [Agent.stampSpend]).
-	a.stampSpend()
+	// transcript to find it (placemeta.go's [Agent.stampSpend]). A turn that
+	// ended on an answer says so in the same write ([Agent.stampSealed]).
+	a.stampSealed()
 	a.noticeNewerBuild()
 	// THE TURN'S LAST LINES ARE SEALED BEFORE THE SYNC SIDE IS TOLD: the closing
 	// answer and the usage line were written above, and an upload asked for
@@ -1842,6 +1928,27 @@ func (a *Agent) completeWithRetry(ctx context.Context, hub *eventHub, model stri
 }
 
 func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, model string, rung effort.Rung, partial *partialBuffer, reached *reachedThePerson, reasoning *reasoningBuffer, warm *warmBatch, forming *formingBatch, frozenToolHistory int) (*ai.Response, string, error) {
+	// The current provider call is never cancelled by a selection. Every later
+	// outbound attempt observes the newly acknowledged pair.
+	if pair, ok := a.ConversationModelPair(); ok {
+		a.mu.Lock()
+		a.fallbackNoticeOwed = true
+		a.mu.Unlock()
+		model = pair.Main
+		rung = a.effortFor(model)
+		ctx = context.WithValue(ctx, conversationModelsKey{}, pair)
+	}
+	if err := a.admitJobCall(ctx); err != nil {
+		return nil, model, err
+	}
+	if node := a.config.taskControl; node != nil {
+		if err := node.appBoundary(ctx); err != nil {
+			return nil, model, err
+		}
+		if a.config.taskCapUSD > 0 && node.spend() >= a.config.taskCapUSD {
+			return nil, model, ErrSpendStopped{Action: config.CrewTaskCapAction(a.config.taskCapUSD)}
+		}
+	}
 	// THIS CALL'S WORDS ARE A REPLY SOMEBODY READS, and it is the one place in
 	// this package that can say so: every request that goes out through here is
 	// the turn's own, and every gate, judge, title and memo is made from some
@@ -1959,6 +2066,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	}
 	attempt := 0
 	for ; ; attempt++ {
+		if err := a.admitJobCall(ctx); err != nil {
+			return nil, model, err
+		}
 		// AND IT IS ASKED AT THE TOP, because it is the only thing that ends this
 		// ladder. A failure below has its own reading — the boundary is told the
 		// deadline is gone and answers hop-or-end through the one classifier —
@@ -1978,6 +2088,18 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if next, said := a.takeModelWord(); said && next != model {
 			takeTheModel(next, true)
 			attempt = 0
+		}
+		// A saved pair can change during a call or backoff. Read it only at
+		// a request boundary: no cancellation and no stale retry chain.
+		{
+			before, paired := requestConversationModels(ctx)
+			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
+				if latest.Main != before.Main || model == before.Fallback {
+					takeTheModel(latest.Main, true)
+					attempt = 0
+				}
+			}
 		}
 		// Each attempt streams the reply from the beginning, so the buffer
 		// starts empty: an attempt that dies half-way through its text and an
@@ -2073,8 +2195,11 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// session was built without waiting for it (tools_workspace.go).
 		a.settleFurrow()
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
-		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
-			ai.WithTools(a.beltDefinitions()))
+		inputMessages := a.preparedMediaInputs(messages)
+		// THE BELT, AND THE ONE TOOL THIS ANSWER MUST CALL WHEN THE TURN OWES ONE
+		// (tools_stage.go): it is spent by an answer, never by an attempt.
+		belt, must := a.turnBelt()
+		response, err := a.completeWithModel(attemptCtx, purpose, messages, model, belt...)
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
 			return response, model, errSteerCut
@@ -2086,6 +2211,8 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// it is deliberate: a person typing into a turn has said they want the
 		// boundary whatever else happened.
 		if err == nil {
+			a.spendMustCall(must)
+			publishMediaInputs(ctx, inputMessages)
 			return response, model, nil
 		}
 		// AND THE MARK'S READING TRAVELS OUT, because what it wants is the
@@ -2204,6 +2331,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// invisible from the other. One 502 and three 429s inside seventy-five
 		// seconds ended a turn on 2026-09-10 with two other models sitting
 		// unasked in the same session, and that is the road this is.
+		{
+			before, paired := requestConversationModels(ctx)
+			if latest, ok := a.ConversationModelPair(); ok && (!paired || latest != before) {
+				ctx = context.WithValue(ctx, conversationModelsKey{}, latest)
+				if latest.Main != before.Main {
+					takeTheModel(latest.Main, true)
+					attempt = -1
+					continue
+				}
+			}
+		}
 		next, haveFallback := a.nextFallback(ctx, origin, hopped)
 		// AND A PERSON WHO HAS NAMED A MODEL IS SOMEWHERE LEFT TO GO. This reading
 		// is what the boundary is told about whether the step can move at all, and
@@ -2437,7 +2575,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			if verdict.Unbounded && cuts > 0 {
 				detail = waitingOnOneMachine(cuts, turnNow().Sub(waitingSince))
 			}
-			a.tellPhase(provider.PhaseRetrying, detail, time.Now())
+			// AND IT SAYS WHEN, so a surface can count down to the moment the
+			// step is asked again rather than draw a wait with no end.
+			began := time.Now()
+			a.tellPhaseUntil(provider.PhaseRetrying, detail, "", began, began.Add(wait))
 			waitBegan := turnNow()
 			waitErr := turnBackoff(ctx, wait)
 			if took := turnNow().Sub(waitBegan); took < wait {
@@ -2694,6 +2835,13 @@ func retryNews(model string, spent int, verdict taxonomy.Verdict, cut *provider.
 // A context with no record answers nothing, and the fold is what makes that
 // safe: `hopped` alone still bounds the walk exactly as it always did.
 func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string) (string, bool) {
+	if pair, ok := requestConversationModels(ctx); ok {
+		fallback := strings.TrimSpace(pair.Fallback)
+		if a.config.OneModel || fallback == "" || fallback == origin || len(hopped) > 0 {
+			return "", false
+		}
+		return fallback, true
+	}
 	// AND `--one-model` IS A PERSON SAYING NO TO THIS, in the one file that has
 	// to honour it rather than only in the door that empties the chain. The flag
 	// already leaves the adapter with no fallbacks to offer, so this is belt and
@@ -2703,7 +2851,7 @@ func (a *Agent) nextFallback(ctx context.Context, origin string, hopped []string
 	// law is stated in this file's own comment above [cutBudget]'s old home while
 	// being enforced nowhere in it. It is the same guard the checker's failover
 	// keeps for the same reason (taxonomy_boundary.go's failoverCheckerModel).
-	if a.config.OneModel {
+	if !a.automaticModelsAllowed() {
 		return "", false
 	}
 	options, ok := a.modelFallbackChain(origin)
@@ -3097,8 +3245,10 @@ func backoffWait(ctx context.Context, delay time.Duration) error {
 // ── tools ───────────────────────────────────────────────────────────────────
 
 type toolResult struct {
-	text    string
-	isError bool
+	err          error
+	text         string
+	isError      bool
+	interruption string
 	// harness says the HARNESS wrote this failure, rather than the world the
 	// model reached for: a withdrawn hand (withdrawn.go), or a door that refused
 	// the call before it ran (the pre-action chain). It rides out to the runner
@@ -3111,6 +3261,21 @@ type toolResult struct {
 	// failure sends somebody debugging the tool instead of the gate
 	// (internal/trace's ToolEvent).
 	refusedBy string
+	// rejected says the tool refused this call's ARGUMENTS before it did any of
+	// its work, by the typed marker a handler's known validation return sets
+	// (toolrejection.go) or by dispatch's own bash precheck. It is never read
+	// back from text, so an executed command or request whose output says
+	// "Invalid arguments" is not one. It rides out on [Event.RejectedBeforeRun]
+	// and into the call's journal record.
+	rejected bool
+	invoked  bool
+	// attempt says THIS call made a render record (media_attempt.go): set by
+	// the handler only after the record exists, never read from text or from
+	// the tool's name. It rides out on [Event.MediaAttempt].
+	attempt bool
+	// process is the registry's identity for the command this call became.
+	// It is absent on failures and interruptions, whatever their output says.
+	process *ToolProcess
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -3414,14 +3579,27 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// pairs a finished row with the row it has been drawing — so one rendering is
 	// not an optimization of three, it is the honest spelling of them.
 	rendered := make([]string, len(calls))
+	// Calls started together carry one name for their batch: the first call's
+	// id, and nothing on a call that runs alone.
+	batch := ""
+	if len(calls) > 1 {
+		batch = calls[0].ID
+	}
 	for index, call := range calls {
 		rendered[index] = argsText(call)
+		service, serviceName := a.serviceOf(call.Function.Name), ""
+		if service != "" {
+			serviceName = a.serviceName(service)
+		}
 		hub.send(Event{
-			Kind:   EventToolBegin,
-			Tool:   call.Function.Name,
-			Hint:   a.gloss(call),
-			Args:   rendered[index],
-			CallID: call.ID,
+			Kind:        EventToolBegin,
+			Tool:        call.Function.Name,
+			Hint:        a.gloss(call),
+			Args:        rendered[index],
+			CallID:      call.ID,
+			Batch:       batch,
+			Service:     service,
+			ServiceName: serviceName,
 		})
 	}
 
@@ -3532,11 +3710,13 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		if results[index].isError {
 			a.sendBeltStep(ctx, hub, Event{
 				Kind:   EventToolFailed,
+				Err:    results[index].err,
 				Tool:   call.Function.Name,
 				Hint:   clip(firstLine(results[index].text), hintLimit),
 				Args:   rendered[index],
 				Output: capOutput(results[index].text),
 				CallID: call.ID,
+				Exit:   resultExit(results[index].text),
 				// WHOSE FAILURE THIS WAS travels with it. Everything counting
 				// steps out of band — the runner's no-progress ledger above all —
 				// reads events and not results, so a fact kept only on the result
@@ -3546,6 +3726,11 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				// answer with a veto's author on it ([episode.preAction]); a
 				// correction about the reply's form has none.
 				Refused: results[index].harness && results[index].refusedBy != "",
+				// AND WHETHER THE TOOL TURNED THE ARGUMENTS AWAY BEFORE IT RAN, as a
+				// typed fact from the handler's own validation return.
+				RejectedBeforeRun: results[index].rejected,
+				ToolInvoked:       results[index].invoked,
+				MediaAttempt:      results[index].attempt,
 			})
 			continue
 		}
@@ -3553,14 +3738,36 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		// and the person already read what the call was going to do. Output is
 		// there for a person who asks to see it anyway.
 		a.sendBeltStep(ctx, hub, Event{
-			Kind:   EventToolEnd,
-			Tool:   call.Function.Name,
-			Args:   rendered[index],
-			Output: capOutput(results[index].text),
-			CallID: call.ID,
+			Kind:         EventToolEnd,
+			ToolInvoked:  results[index].invoked,
+			MediaAttempt: results[index].attempt,
+			ToolProcess:  results[index].process,
+			Tool:         call.Function.Name,
+			Args:         rendered[index],
+			Output:       capOutput(results[index].text),
+			CallID:       call.ID,
+			Exit:         resultExit(results[index].text),
 		})
 	}
 	return results
+}
+
+// resultExitRe is the status line a shell call's result ends with when its
+// command exited with a code other than zero.
+var resultExitRe = regexp.MustCompile(`Command exited with code (-?\d+)`)
+
+// resultExit is the exit code a call's result reports, or nil for a result
+// that reports none: a command that exited zero says nothing about it.
+func resultExit(text string) *int {
+	all := resultExitRe.FindAllStringSubmatch(text, -1)
+	if len(all) == 0 {
+		return nil
+	}
+	code, err := strconv.Atoi(all[len(all)-1][1])
+	if err != nil {
+		return nil
+	}
+	return &code
 }
 
 // executeTool dispatches one call to the matching belt tool.
@@ -3598,6 +3805,9 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	started := time.Now()
+	a.toolsStarted.Add(1)
+	a.toolsInFlight.Add(1)
+	defer a.toolsInFlight.Add(-1)
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on
@@ -3629,10 +3839,20 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 	if mapErr != nil {
 		return "", true, mapErr
 	}
+	// A FENCED RUN'S OWN FILE TOOLS KEEP TO THE FENCE its commands are held
+	// to: they run inside codeaf, where no jail reaches (fencedFileTool).
+	if refusal := fencedFileTool(a.config.fence(), a.config.Workspace, tool.Name, args); refusal != "" {
+		return refusal, true, nil
+	}
 	ctx, spawns := procexec.WithSpawns(ctx)
 	call := procexec.Call{Tool: tool.Name, Args: args, Changed: a.changedBy(tool.Name, args), Spawns: spawns, Deferred: procexec.Deferred(ctx)}
 	logErr := procexec.For(ctx).Around(ctx, call, func() ([]byte, bool) {
 		text, isError, err = tool.Execute(ctx, args)
+		// A COMMAND THE FENCE STOPPED SAYS SO, in the one sentence the model and
+		// the person both read, under the command's own error.
+		if isError && err == nil && a.config.fence() != nil {
+			text = procexec.WithFenceLine(text)
+		}
 		return []byte(text), isError || err != nil
 	})
 	if logErr != nil {
@@ -3646,12 +3866,20 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 
 // dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
 func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	if err := a.jobBudgetBlock(); err != nil {
+		return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, harness: true})
+	}
+	// A reading cannot ask, including through consent or an off-belt call.
+	// Refuse before pre-action can open a question or capture a file.
+	if refusal := a.readingToolRefusal(call.Function.Name); refusal != "" {
+		return a.finishToolResult(ep, call, toolResult{text: refusal, isError: true, harness: true})
+	}
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
 		}
 		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
-			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true})
+			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true, rejected: true})
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {
@@ -3680,7 +3908,30 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// somehow, and the id on the row is the only handle it has (promote.go).
 		// It is set at this chokepoint rather than per tool, so the early warm
 		// start carries it exactly as the batch does.
-		text, isError, err := a.executeRecorded(withCallID(ctx, call.ID), tool, args)
+		callCtx := withCallID(ctx, call.ID)
+		if hub != nil && (a.config.LiveToolOutput || a.liveOutputWanted.Load() > 0) {
+			callCtx = bare.WithBashOutput(callCtx, &shellOutput{hub: hub, id: call.ID, tool: call.Function.Name, bytes: liveToolOutputBytes, lines: liveToolOutputLines})
+		}
+		// THE CALL-LOCAL MARK a handler's argument refusal sets (toolrejection.go):
+		// planted here so it lives and dies with this one call.
+		callCtx, rejection := withToolRejection(callCtx)
+		callCtx, attempt := withMediaAttempt(callCtx)
+		// Only bash can become a registry command or kept service, so other
+		// tools pay no allocation for a fact they cannot produce.
+		var process *atomic.Pointer[ToolProcess]
+		var interruption string
+		if call.Function.Name == "bash" {
+			callCtx, process = withToolProcess(callCtx)
+			callCtx = bare.WithBashInterruption(callCtx, func(outcome string) { interruption = outcome })
+		}
+		observedTool, invocation := observeToolInvocation(tool)
+		// The session's seat records the call and seals the workspace around the
+		// task-aware execution (executeRecorded).
+		recorded := observedTool
+		recorded.Execute = func(runCtx context.Context, runArgs json.RawMessage) (string, bool, error) {
+			return a.executeTaskTool(runCtx, observedTool, running, runArgs)
+		}
+		text, isError, err := a.executeRecorded(callCtx, recorded, args)
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
 		// yet — it goes out with the batch, in call order, because that is the
 		// order the transcript is written in — but the fact that this call is
@@ -3706,7 +3957,7 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
 			// result, the same shape a thrown error takes on the wire.
-			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true})
+			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, invoked: invocation.Load(), attempt: attempt.Load()})
 		}
 		// AND THE LAST THING THAT HAPPENS TO A RESULT IS THE ERROR→FIX SIDECAR
 		// (fixrecall.go). A failure this machine has seen before leaves with one
@@ -3720,7 +3971,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// observer of results would otherwise belong: runTurn writes each result
 		// into the transcript BEFORE that seam runs, so a line added there would
 		// be a line no model was ever sent.
-		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError})
+		var became *ToolProcess
+		if process != nil && !isError && ctx.Err() == nil {
+			became = process.Load()
+		}
+		result := a.finishToolResult(ep, call, toolResult{text: text, isError: isError, invoked: invocation.Load(), rejected: isError && rejection.RejectedBeforeRun(), attempt: attempt.Load(), process: became, interruption: interruption})
 		// The held-range ledger records on the FINISHED text — exactly the bytes
 		// the transcript will carry — and only on a result that ran (heldreads.go).
 		a.heldNote(call.Function.Name, args, result.text, isError)
@@ -3785,8 +4040,11 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 func (a *Agent) finishToolResult(ep *episode, call ai.ToolCall, result toolResult) toolResult {
 	result.text = redact.Secrets(result.text)
 	body := result.text
+	rejected, invoked, attempt := result.rejected, result.invoked, result.attempt
 	result = a.withJobState(ep, ep.noteToolOutcome(call, result))
 	result.text = footersInsideTheCap(body, result.text)
+	result.rejected, result.invoked, result.attempt = rejected, invoked, attempt
+
 	return result
 }
 
@@ -4224,6 +4482,11 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // is not a call), whether this was a step of the conversation, and whether its
 // money arrived too late to belong to the turn now running.
 type bankedCall struct {
+	libraryActivity string
+	generationID    string
+	unpriced        bool
+	// run is captured from the call's immutable execution context, never the current turn.
+	run    string
 	remote *remoteUsage
 	used   Usage
 	model  string
@@ -4244,6 +4507,13 @@ type bankedCall struct {
 	// honest number the compaction threshold prefers over an estimate — and
 	// zero where nobody said.
 	context int
+	// billing is the road the answered attempt went out under, captured by the
+	// transport at that attempt and handed here with the answer — never read
+	// back from the client or the turn at bank time (usage_billing.go).
+	billing provider.BillingFact
+	// price is where the money figure came from, when the caller knows it
+	// ([UsageLine.Price]); empty is nobody said.
+	price string
 }
 
 // bank is THE ONE DOOR MONEY GOES THROUGH, and it is the fix for issue #269.
@@ -4276,6 +4546,10 @@ func (a *Agent) bank(call bankedCall) {
 	a.usage.CostUSD += call.used.CostUSD
 	a.usage.Calls += call.used.Calls
 	a.usage.EmptyReflex += call.used.EmptyReflex
+	// AND UNDER THE MODEL THAT ANSWERED, which is the name this call carries
+	// rather than the one the seat was built on: a fallback mid-run is a
+	// different model doing the work (competence.go).
+	a.answered.add(call.model, call.used)
 	// AND THE RUNNING TURN'S OWN SHARE MOVES ON THE SAME CALL, for this door's
 	// own reason: an abandoned turn never writes the seal that would carry its
 	// cost, so the only honest figure to journal it with is the one accumulated
@@ -4300,8 +4574,34 @@ func (a *Agent) bank(call bankedCall) {
 	if call.ledger {
 		a.recordUsageLine(call)
 	}
-	// Every bill changes the figure Home reads, including bills after a turn sealed.
-	a.stampSpend()
+	// AND THE FACTORY JOB'S SPEND, when this conversation is a job's own chat:
+	// each direct call charges the shared family meter immediately. Children
+	// charge at their own call boundary; their later folded totals do not.
+	if call.used.CostUSD > 0 {
+		if budget := a.jobBudgetOf(); budget != nil && call.ledger {
+			calls := max(call.used.Calls, 1)
+			model := strings.TrimSpace(call.model)
+			memory, isMemory := budget.(JobMemorySpend)
+			split, hasSplit := budget.(JobModelSpend)
+			switch {
+			case isMemory && call.role == string(lanes.RoleMemory):
+				memory.SpendMemoryModel(call.used.CostUSD, call.model, calls, call.used.Input, call.used.Output)
+			case hasSplit && model != "":
+				split.SpendModel(call.used.CostUSD, call.model, calls, call.used.Input, call.used.Output)
+			default:
+				budget.Spend(call.used.CostUSD)
+			}
+		}
+	}
+	// EVERY BILL OUTSIDE A LIVE TURN STAMPS THE FIGURE HOME READS, HERE AND
+	// NOWHERE ELSE. A late receipt, an errand's call, memory work or a remote
+	// task's money can arrive after the turn sealed, and Home must not read less
+	// than /cost (dev #2577). A step of the conversation is stamped once, when
+	// its turn seals, so a turn saves its spend once however many calls it made
+	// (app/v3's TestLateRecoveredCancellationSavesCumulativeSpendOnce).
+	if !call.turn {
+		a.stampSpend()
+	}
 }
 
 // reconciled receives the one late answer for a call whose stream ended before
@@ -4314,10 +4614,11 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		return
 	}
 	used := Usage{
-		Input:   receipt.PromptTokens,
-		Output:  receipt.CompletionTokens,
-		CostUSD: receipt.Cost,
-		Calls:   1,
+		Input:     receipt.PromptTokens,
+		CacheRead: receipt.CachedTokens,
+		Output:    receipt.CompletionTokens,
+		CostUSD:   receipt.Cost,
+		Calls:     1,
 	}
 	lane := laneFacts{Hedged: receipt.Hedged}
 	if receipt.Hedged {
@@ -4327,9 +4628,17 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 		// that loses has none and reconciles as an ordinary cut.
 		lane.Waste = receipt.Cost
 	}
+	price := usagePriceReceipt
+	if receipt.Interim {
+		price = usagePriceProvider
+	}
+	if receipt.PriceMissing {
+		price = ""
+	}
 	a.bank(bankedCall{
 		used: used, model: receipt.Model, lane: lane, ledger: true,
-		late: true, reconciled: true,
+		late: true, unpriced: receipt.PriceMissing, reconciled: !receipt.Interim, role: receipt.Tag, generationID: receipt.Ref,
+		billing: receipt.Billing, price: price,
 	})
 	// AND THE REQUEST LEAVES ITS OWN LINE, for [journalCall]'s law said another
 	// way: EVERY request this session makes writes one, and a request whose
@@ -4338,6 +4647,8 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 	// half was missing. The row is evidence and never spend; the money moved
 	// through the door above and nowhere else.
 	a.file.appendCall(armCall(receipt))
+	// A cancelled turn has already sealed, so its late charge is saved by
+	// [Agent.bank]'s stamp above rather than waiting for another turn.
 }
 
 // addUsage folds one response's accounting into the turn and the session, and
@@ -4362,12 +4673,15 @@ func (a *Agent) reconciled(receipt provider.Reconciled) {
 // standing (runTurn re-latches on an answer from further down the chain), and
 // `served` is the endpoint the router says answered, "" when nothing said.
 // `lane` is what the witness measured about THIS request and nothing else.
-func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts) {
+func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served string, lane laneFacts, billing provider.BillingFact, runIDs ...string) {
 	// The row's endpoint is the answer's own naming or, for a service that
 	// declared the one machine it is, that declared name ([Agent.attributedEndpoint]).
 	// `lane` was read from the answer alone, so what the lane layer learns and
 	// draws is untouched by the declaration.
 	served = a.attributedEndpoint(model, served)
+	// THE ANSWER IS A FACT BEFORE IT IS A BILL: a response that carried no usage
+	// still came from a model (competence.go).
+	a.noteAnswer(response, model, 1)
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -4417,7 +4731,11 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response, model, served strin
 	// It is the same fact the model-call log's tag carries (loop.go), read from
 	// the one config row that states it; an ordinary conversation or worker
 	// leaves it empty and the row names no role, which is what it always did.
-	a.bank(bankedCall{used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole)})
+	run := ""
+	if len(runIDs) > 0 {
+		run = runIDs[0]
+	}
+	a.bank(bankedCall{generationID: response.ID, used: call, model: answered, lane: lane, ledger: true, turn: true, context: context, role: string(a.config.crewRole), run: run, billing: billing, price: usagePriceProvider})
 
 	// AND THE TURN KEEPS THE SAME SHARE PER ANSWERING MODEL, under the very
 	// name the row above banks, so a turn that hopped seals one usage line per
@@ -4966,6 +5284,21 @@ type compactionPass struct {
 	// summarySkipped explains an attempted summary that did not land after
 	// the free rungs changed the conversation.
 	summarySkipped string
+	// The pass as facts, journaled on its marker (compaction_facts.go):
+	// what the conversation weighed after it, the summary it spliced and who
+	// wrote it, what that summary stands for, and why a summary it asked for
+	// did not land.
+	at           time.Time
+	startedAt    time.Time
+	arrived      int
+	tokensAfter  int
+	summary      string
+	summaryModel string
+	turns        int
+	coversFrom   time.Time
+	coversUntil  time.Time
+	failed       string
+	full         bool
 	// stored says the full record went somewhere a later session can still read
 	// it — the store's thread (chatlog.go). It is what makes the difference
 	// between the two announce lines honest.
@@ -5029,6 +5362,9 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	// waiting on a lock the pass is holding while the pass waits on the surface
 	// (phasenews.go). Nothing is being claimed here, so an in-flight pass that
 	// is refused below still ends this clock on the way out.
+	// The instant the pass began: where it stands in the conversation is
+	// before anything that arrives while it runs ([CompactionFact.StartedAt]).
+	startedAt := passInstant()
 	a.tellPhase(provider.PhaseTidying, "the conversation", time.Now())
 	defer a.endPhase()
 	// The definitions are outside the transcript and take the belt's own lock.
@@ -5063,7 +5399,7 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	// The system message needs no removing — shapeEntries drops it.
 	earlier := shapeEntries(a.messages, a.file, a.presentation)
 
-	pass := compactionPass{stored: a.chatlog != nil}
+	pass := compactionPass{stored: a.chatlog != nil, startedAt: startedAt}
 	if !policy.active {
 		pass.stubbed = a.stubOldOutputsLocked()
 	}
@@ -5086,21 +5422,38 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	why := ""
 	appendedDuringSummary := 0
 	attempted := false
+	seq := a.passSeq + 1
 	if summaryWanted(policy, pass, a.transcriptTokensLocked()) {
 		plan, short, ok := a.planSummaryLocked(policy)
 		why = short
 		if ok {
 			attempted = true
 			lengthBeforeSummary := len(a.messages)
+			turns, from, until := a.summaryProvenanceLocked(plan)
+			a.summarizing = true
 			a.mu.Unlock()
+			// THE ONE PROOF A SUMMARY IS BEING WRITTEN, sent with the lock
+			// released and before the request: a surface shows the wait for
+			// as long as it lasts and no longer.
+			hub.send(Event{Kind: EventSummaryStarted, Compaction: &CompactionFact{Seq: seq, At: startedAt, StartedAt: startedAt, TokensBefore: tokensBefore}})
 			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
-			summary, err := a.writeSummary(ctx, plan)
+			summary, answeredBy, err := a.writeSummaryAs(ctx, plan)
 			a.mu.Lock()
+			a.summarizing = false
 			appendedDuringSummary = max(0, len(a.messages)-lengthBeforeSummary)
+			pass.arrived = appendedDuringSummary
 			if err == nil {
 				pass.summarized, why = a.spliceSummaryLocked(plan, summary)
 			} else {
 				why = summaryFailedWhy(ctx, err)
+			}
+			if pass.summarized > 0 {
+				// The model that ANSWERED, which a reroute can make different
+				// from the one the plan asked for.
+				pass.summary, pass.summaryModel = summary, answeredBy
+				pass.turns, pass.coversFrom, pass.coversUntil = turns, from, until
+			} else {
+				pass.failed = summaryFailedWord(ctx, err, why)
 			}
 		}
 	}
@@ -5118,7 +5471,27 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	if pass.empty() {
 		// No eligible material was reduced. A manual pass and a routine pass
 		// protect different tails, so this is not a claim about total size.
+		//
+		// A SUMMARY THAT WAS ASKED FOR AND DID NOT LAND IS STILL A FACT. The
+		// surface that showed it being written has to be told it ended, and
+		// a resumed conversation has to say the same thing, so the failure is
+		// numbered, kept and journaled like a pass — with no marker, because
+		// the transcript did not move.
+		var failure *CompactionFact
+		if attempted {
+			tokens := a.meterTokensLocked()
+			fact := a.recordPassLocked(CompactionFact{
+				StartedAt: startedAt, Arrived: pass.arrived,
+				TokensBefore: tokensBefore, TokensAfter: tokens, Failed: pass.failed,
+				Full: a.contextFullLocked(tokens),
+			})
+			a.file.appendCompactionFailed(fact)
+			failure = &fact
+		}
 		a.mu.Unlock()
+		if failure != nil {
+			hub.send(Event{Kind: EventSummaryFailed, Compaction: failure})
+		}
 		return false, "", &NothingToCompact{Why: why}
 	}
 
@@ -5154,6 +5527,8 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 	a.contextTokens = 0
 	a.contextBeltTokens = belt
 	tokensAfter := a.meterTokensLocked()
+	pass.at, pass.tokensAfter, pass.full = passInstant(), tokensAfter, a.contextFullLocked(tokensAfter)
+	fact := a.recordPassLocked(passFact(pass, tokensBefore))
 	// The whole rebuilt window is re-journaled behind the marker, not just the
 	// tail: a stub and a fold are edits to messages the file already holds ABOVE
 	// the marker, and replay discards everything above it. Writing the window is
@@ -5165,10 +5540,13 @@ func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, poli
 		windowReasoning := append([]provider.MessageReasoning(nil), a.messageReasoning[1:]...)
 		a.file.appendCompaction(pass, tokensBefore, window, windowReasoning)
 	}
+	// AND WHAT THE PASS LET GO OF IS LET GO OF: the marks of messages it folded
+	// away are the last thing holding their words ([presentationIndex.retain]).
+	a.retainPresentationLocked()
 	a.mu.Unlock()
 
 	if hub != nil {
-		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter), Summarized: pass.summarized})
+		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter), Summarized: pass.summarized, Compaction: &fact})
 	}
 	return true, pass.summarySkipped, nil
 }
@@ -5681,6 +6059,7 @@ func (a *Agent) addDetachedUsageAs(response *ai.Response, model string, calls in
 // see [Agent.addDetachedUsageAs]. It is variadic so that the thirty callers that
 // are on a turn's clock say nothing and mean it.
 func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool, detached ...bool) {
+	a.noteAnswer(response, model, calls)
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -5701,7 +6080,15 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
 	// watches the turn's own stream — and the turn's figures on this row would be
 	// a measurement of one request filed against another.
-	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0]})
+	// AN ERRAND'S ROAD WAS NOTED BY ITS OWN LADDER beside the answer it
+	// returned ([noteAnswerBilling]); an answer nobody noted is banked with no
+	// billing and no price word, which is "nobody said".
+	billing, noted := takeAnswerBilling(response)
+	price := ""
+	if noted {
+		price = usagePriceProvider
+	}
+	a.bank(bankedCall{generationID: response.ID, used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0], billing: billing, price: price})
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.

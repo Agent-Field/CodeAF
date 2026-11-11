@@ -50,12 +50,18 @@ type Config struct {
 	// explicitly accepts an empty key. The ordinary keyless client remains the
 	// first-run state and refuses before the wire.
 	KeyOptional bool
-	// DropRefusedEffort lets a task child repair an explicit thinking refusal
+	// DropRefusedEffort lets a task or Factory client repair an explicit thinking refusal
 	// without teaching other clients or processes on this home.
 	DropRefusedEffort bool
 	// BillingDoor is the person-facing name of a bound road. Empty is a service
 	// with one road and preserves every older status line.
 	BillingDoor string
+	// Billing is what the bound road states about money: metered, included in
+	// a plan, or nobody said ([BillingFact]). It is set ONLY by the config
+	// door from the connected service's billing door, and every attempt that
+	// goes out on this client's own road carries it (billingfact.go). The zero
+	// value is unknown and is never read as included.
+	Billing BillingFact
 	// PlanOverflow is the separately billed road a paused subscription may use.
 	// It is inert unless OverflowOnPlanPause is true, which is never the default.
 	PlanOverflow        string
@@ -127,6 +133,12 @@ type Config struct {
 	// HTTPClient is optional. Connected services may use it to adapt their wire
 	// protocol, and tests use the same seam to keep requests deterministic.
 	HTTPClient *http.Client
+	// SingleSendTransport is the caller's declaration that HTTPClient's
+	// transport sends exactly once per Do — no internal retry, replay or
+	// redirect following of its own. Without it a custom HTTPClient is refused
+	// when an actual-attempt observer is installed (attemptobserver.go), because
+	// one counted Do could then be several paid sends.
+	SingleSendTransport bool
 }
 
 // Client is codeaf's model adapter. It satisfies the harness's LoopClient and
@@ -313,6 +325,13 @@ func (c *Client) ExecuteToolCallLoop(
 	call ai.CallFunc,
 	options ...ai.Option,
 ) (*ai.Response, *ai.ToolCallTrace, error) {
+	// Plain compatible endpoints retain their observer coverage boundary even
+	// though their loops now use this adapter's guarded transport.
+	if !c.shippedRouterHint() && !c.config.Direct && !c.config.KeyOptional {
+		if err := refuseObserved(ctx, SurfaceToolLoop); err != nil {
+			return nil, nil, err
+		}
+	}
 	// The SDK has no HTTP-client injection seam. Every loop must use this
 	// adapter's guarded transport, including custom OpenAI-compatible services.
 	return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
@@ -620,6 +639,12 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	}
 	model := c.modelFor(request)
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+	// The reasoning repair has already had its one attempt. A persistent
+	// capability refusal cannot be cured by widening endpoint preferences.
+	if readErr == nil && response.StatusCode == http.StatusBadRequest && refusesReasoning(peek) {
+		response.Body = rewound(peek, response.Body)
+		return response, nil
+	}
 	// WHETHER THE BASE UNDERSTANDS THE `provider` FIELD AT ALL IS ASKED BEFORE
 	// ANYTHING ELSE (#433), because until it is answered nothing below this line
 	// is reading the right refusal. It is a QUESTION here and an answer only
@@ -798,7 +823,7 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 		// The compatible usage option earns only its own repair. Peeking at an
 		// unrelated refusal must not admit it to the older learning road.
 		repairable := response.StatusCode == http.StatusBadRequest && c.repairable(model, knobs)
-		dropEffort := c.config.DropRefusedEffort && c.refusedEffortRepairable(model, knobs, response.StatusCode)
+		dropEffort := (c.config.DropRefusedEffort || knobs.effort.dropRefused) && c.refusedEffortRepairable(model, knobs, response.StatusCode)
 		if !foreign && !repairable && !dropEffort && !(streamUsage && usageRefusalStatus) {
 			return response, nil
 		}
@@ -1667,7 +1692,10 @@ func (c *Client) completeWithMessagesStreaming(
 	// with nothing under it, because an exit nobody had thought of returned past
 	// all of them. The law is kept here instead of by every path remembering it
 	// (calllog.go's [callTrace.open]). It does nothing on an ordinary call.
-	defer func() { c.closeOpenAttempt(ctx, knobs.trace, endedBy(ctx)) }()
+	defer func() {
+		c.closeOpenAttempt(ctx, knobs.trace, endedBy(ctx))
+		knobs.trace.finishAttempt()
+	}()
 	// The lane watch this stream reports to, nil on every call that is not an
 	// arm of a race (hedge.go). Every use of it below is a nil-safe method
 	// call, so an unwatched stream pays one nil check per delta.
@@ -1956,6 +1984,9 @@ func (c *Client) completeWithMessagesStreaming(
 			}
 		}
 		if chunk.Model != "" {
+			if response.Model != chunk.Model {
+				reportServedModel(ctx, chunk.Model)
+			}
 			response.Model = chunk.Model
 		}
 		if chunk.Provider != "" {
@@ -2185,6 +2216,11 @@ func (c *Client) completeWithMessagesStreaming(
 					thoughtRecord.WriteString(workingText)
 				}
 				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})
+			}
+			// STEPS ANOTHER PROGRAM ALREADY RAN are handed up as they finish,
+			// in order with the words around them ([StreamStepsRan]).
+			if len(choice.Delta.Steps) > 0 {
+				observer(StreamEvent{Kind: StreamStepsRan, Delta: string(choice.Delta.Steps), Session: session})
 			}
 			for _, fragment := range choice.Delta.ToolCalls {
 				// A response that asked for a call is a response that behaved,
@@ -2476,7 +2512,10 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 		// reason: this path returns on four errors and writes no row on any of
 		// them (calllog.go's [callTrace.open]).
 		rawKnobs := knobsFrom(ctx)
-		defer func() { c.closeOpenAttempt(ctx, rawKnobs.trace, endedBy(ctx)) }()
+		defer func() {
+			c.closeOpenAttempt(ctx, rawKnobs.trace, endedBy(ctx))
+			rawKnobs.trace.finishAttempt()
+		}()
 		httpResponse, err := c.sendShaped(ctx, request, rawKnobs, true)
 		if err != nil {
 			errs <- err
@@ -2501,7 +2540,7 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 			}
 			c.record(recordFacts{ctx: ctx, request: request, knobs: rawKnobs, stream: true,
 				began: began, status: httpResponse.StatusCode, response: response, err: terminalErr})
-			if finished {
+			if finished && terminalErr == nil && !failedFinish {
 				c.billAnswered(ctx, c.modelFor(request), response, rawKnobs.trace.usageObservation.outputBytes, rawKnobs.trace)
 			} else {
 				c.settle(ctx, c.modelFor(request), response, receiptTornReason, rawKnobs.trace.usageObservation.outputBytes, rawKnobs.trace)
@@ -2562,7 +2601,8 @@ func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	apiKey, err := c.apiKeyNow()
-	if override := strings.TrimSpace(request.APIKeyOverride); override != "" {
+	override := strings.TrimSpace(request.APIKeyOverride)
+	if override != "" {
 		apiKey, err = override, nil
 	}
 	if err != nil {
@@ -2573,6 +2613,7 @@ func (c *Client) newHTTPRequestAt(ctx context.Context, request *ai.Request, body
 	if apiKey != "" {
 		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
 	}
+	c.noteRequestCredential(ctx, apiKey, override != "")
 	if stream {
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}
@@ -2679,6 +2720,8 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 // somebody and the refusal are both in the JSON it sent: `error.metadata`
 // carries `provider_name` and `raw`, and this client threw them away.
 type APIError struct {
+	// ReasoningUnsupported is a permanent model capability refusal.
+	ReasoningUnsupported bool
 	// Status is the refusal's HTTP status, or the normalized gateway failure
 	// for an in-band error that supplied no status of its own.
 	Status int
@@ -2817,6 +2860,9 @@ func (e *APIError) UpstreamFault() bool {
 func (e *APIError) OurRequest() bool {
 	if e == nil {
 		return false
+	}
+	if e.ReasoningUnsupported {
+		return true
 	}
 	// AN EMPTY ACCOUNT IS OURS TO STOP WHOEVER WAS ASKED, so this is read
 	// before the two "nobody was asked" answers below. A payment refusal is a
@@ -2982,6 +3028,9 @@ func apiError(status int, payload []byte) error {
 	// built and is therefore true of every APIError this build makes, including
 	// the ones a stream raises in-band.
 	failure.Overflow = overflowRefusal(status, failure.Code, failure.Message, failure.Raw)
+	if status == http.StatusBadRequest && refusesReasoning(payload) {
+		failure.ReasoningUnsupported = true
+	}
 	readContextLimit(failure)
 	return failure
 }

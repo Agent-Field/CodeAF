@@ -2,6 +2,12 @@
 
 To continue on this machine, select the chat on home and choose `continue here`. When your paired computer is offline or has let go of its latest chat, home can ask `Continue tower's latest chat here?`: `alt+c` continues immediately when there is no local choice to make, and `alt+x` dismisses the offer. Moving chats is available by default on Linux, macOS and native Windows with a compatible engine. Older chats become movable through independent copies after pairing.
 
+## Continue on another computer — moving chats and pairing availability
+
+Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
+
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
+
 ## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, my message did not send and home opened with a question
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
@@ -95,13 +101,13 @@ The card still says `this chat was last held here; last saved turn 2h ago` when 
 
 If unpublished work needs to be kept separately, the number of kept turns counts conversation turns. Intermediate saves and tool records within one question and answer do not become extra turns.
 
-## What does held on tower mean — a row on home and the verb it offers
+## What does held on tower or working on tower mean — a row on home and the verb it offers
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Home lists chats from your other devices. A chat another device still holds says `held on <device>`. The hold alone does not establish that work is running there. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
+Home lists chats from your other devices. A chat another device still holds says `held on <device>`: it is open there, and nothing is running in it right now. While that device is in the middle of a turn the row says `working on <device>` instead; it changes back as soon as the turn ends. A sync service too old to carry that word never shows it, so its rows say `held on <device>` either way. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
 
 Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
 
@@ -318,6 +324,12 @@ Press enter on the kept turns' row. The card offers `1 open separately`, `2 disc
 
 Turns already shared do not become kept edits. Usage, reconciled task cost, naming failures and memory bookkeeping alone create no extra branch, kept-turns row or “kept as” notice. Their recorded usage stays in this computer's usage ledger. Opening an unchanged chat adds no empty turn, including when another computer holds it.
 
+## Spending after a move
+
+Saved calls missing from this computer’s ledger are added once. Shared call identities distinguish separate calls with identical prices and tokens. Remote charges keep their event identities alongside ordinary saved calls. Late receipts stay in the home where the chat opened.
+
+Old unidentified calls use settled ledger rows as an ordered prefix. New live rows and remote events cannot cover that prefix. Unrelated unmarked rows, queued receipts and out-of-order old calls cannot be matched exactly. Old files load without migration.
+
 ## The chat is arriving on this computer — why it waits to open
 
 On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
@@ -356,7 +368,15 @@ The current working files are checked separately. A `.env` or source file that t
 
 ## How are secret files screened before saving or moving a chat — .env, ignored folders and changing files
 
-Before each seal, codeaf asks which files will be captured and screens those candidates, including a full candidate list for a first reply or a capture that needs a full scan. If a file changes between screening and capture, saving plans and screens again. If repeated edits prevent a stable capture, it says `files kept changing while saving this chat; try again` and keeps the calls for a later save. A wholly git-ignored directory is neither entered nor screened unless it holds tracked files. An ignored file in an ordinary directory is still screened: root `.env`, `config/.env.local` and a private key in a `*.pem` file travel through the encrypted vault to paired computers. A withheld file stays out of local saved packs and the uploaded workspace capture. Tools still see a `.env` file's variables through the vault. An unreadable folder stays out until its permissions recover; its newly eligible files are then screened with a fresh capture plan. Restores and arrivals also screen before an automatic safety capture.
+Before each seal, codeaf asks which files will be captured and screens those candidates, including a full candidate list for a first reply or a capture that needs a full scan. If a file changes between screening and capture, saving plans and screens again. If repeated edits prevent a stable capture, it says `files kept changing while saving this chat; try again` and keeps the calls for a later save. A wholly git-ignored directory is neither entered nor screened unless it holds tracked files. An ignored file in an ordinary directory is still screened: root `.env`, `config/.env.local` and a private key in a `*.pem` file travel through the encrypted vault to paired computers. A withheld file stays out of local saved packs and the uploaded workspace capture. The chat does not mention a file withheld for a secret: the engine's log names it with its rule, and the cell's `.furrowpolicy` lists every withheld path. Tools still see a `.env` file's variables through the vault. An unreadable folder stays out until its permissions recover; its newly eligible files are then screened with a fresh capture plan. Restores and arrivals also screen before an automatic safety capture.
+
+## A large file that looks like a secret did not arrive — the key vault's size limit
+
+The encrypted key vault carries secrets, not files of any size. A withheld file — one the guard kept out of the chat's saved files because it looks like it holds a key or a token — travels to your paired computers only when it is at most about 768 KiB, which encodes to the vault's limit of 1 MiB per entry. A `.env`, a credentials file or a private key is far below that.
+
+A larger withheld file, such as a database, a git pack or a built binary that happens to contain a key-shaped string, is still kept out of every save. It stays on the computer that has it and does not travel. The engine's log says `it is too large for the key vault, so it stays on this computer` when it is first withheld. A copy of the same path from another computer never writes over it, and a removal on another computer never deletes it.
+
+A vault that already held such a file from an earlier build drops that entry the next time it is opened and shrinks. The file itself is left where it is on every computer.
 
 ## Why does home appear while my chats are still syncing
 
@@ -387,6 +407,8 @@ If Git cannot read the project's ignore rules, saving stops with `cannot read wh
 A command's result returns after its call log is written, while its file capture finishes in the background. The next tool call waits until the previous capture has finished reading files. Continuing the chat on this computer, uploading it, closing it, quitting codeaf and `codeaf cell gc` also wait for both the call log and the saved files to reach durable storage. A storage failure is reported and stops that boundary. Opening a chat screens its folder in the background without sealing an empty turn. A command submitted before that screen finishes waits for it. A window that only views a chat held elsewhere does not seal turns. A failed capture keeps the finished call in its local log for the next save; codeaf never runs that command again to recover it.
 
 ## Quitting while saving — local confirmation and a slow upload
+
+Quitting another chat does not invalidate a chat's earlier confirmed local save.
 
 A save wait lasts at most 30 seconds. After the screen closes, a pending sync save says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 
@@ -528,7 +550,7 @@ raises that question without running a turn or making a branch. A saved hold
 from an earlier process cannot bypass the question. A window whose writer
 still holds the chat sends with one Enter without asking the service first.
 
-A new chat can send its first message normally. A sleeping computer can also resume sending when nobody else has taken the chat and its local saved turn is still current. While storage is off, a free chat last held here also resumes quietly if its local history contains every shared turn, even with newer turns saved only here. These returns keep the conversation open without another question. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
+A new chat can send its first message normally. A sleeping computer whose ownership check finds an expired hold must use Continue here before sending again. Reopening the chat acquires a new ownership fence. While storage is off, a free chat last held here resumes quietly without reopening if its local history contains every shared turn, even with newer turns saved only here. If the ownership check cannot reach your other computers, a chat this window already holds keeps working and its turns wait to be shared; any other message stays unsent.
 
 ## A move that failed partway — are my typed words safe, can the old copy still send
 

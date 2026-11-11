@@ -1,6 +1,7 @@
 package run
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -33,10 +34,11 @@ func TestANoteTheSpliceRefusedIsStillUnread(t *testing.T) {
 		t.Fatalf("leave the note: %v", err)
 	}
 	read := map[string]bool{}
+	notes := newBashNotes(store, store.RootID(), read)
 
 	// THE SPLICE REFUSES. This is a turn that has already ended.
 	refused := 0
-	deliverNotes(store, store.RootID(), read, func(string) error {
+	notes.boundary(context.Background(), "echo working", true, func(string) error {
 		refused++
 		return errors.New("session: nothing to steer")
 	})
@@ -50,7 +52,7 @@ func TestANoteTheSpliceRefusedIsStillUnread(t *testing.T) {
 	// SO THE NEXT BOUNDARY OFFERS IT AGAIN, which is the whole point of not
 	// marking it: an unread note is a note nobody has been told.
 	var landed string
-	deliverNotes(store, store.RootID(), read, func(words string) error {
+	notes.boundary(context.Background(), "echo working", true, func(words string) error {
 		landed = words
 		return nil
 	})
@@ -63,7 +65,7 @@ func TestANoteTheSpliceRefusedIsStillUnread(t *testing.T) {
 
 	// AND NOW IT IS NOT OFFERED A THIRD TIME.
 	again := false
-	deliverNotes(store, store.RootID(), read, func(string) error {
+	notes.boundary(context.Background(), "echo working", true, func(string) error {
 		again = true
 		return nil
 	})

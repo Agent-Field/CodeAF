@@ -44,6 +44,13 @@ func (a *Agent) SetSpendRail(usd float64) error {
 	return nil
 }
 
+// SpendRail is the conversation limit this session checks its next turn
+// against, and zero for none: the figure a surface last bound, or the one the
+// session was built with. It is the engine's own fact, so a surface that keeps
+// a record of its own can say what is actually in force rather than what it
+// meant to bind.
+func (a *Agent) SpendRail() float64 { return a.spendRailUSD() }
+
 func (a *Agent) spendRailUSD() float64 {
 	if a.liveSpendRailSet.Load() {
 		return math.Float64frombits(a.liveSpendRail.Load())
@@ -60,17 +67,20 @@ func (a *Agent) spendRailUSD() float64 {
 // [Config.DailyBudgetResolved] distinguishes that authority from an unset root
 // field; neither an empty path nor a zero amount can make that distinction.
 func (a *Agent) dailyCeilingUSD() float64 {
-	return a.config.dailyCeilingUSD()
+	daily, err := a.config.dailyCeiling()
+	if err != nil {
+		return 0
+	}
+	return daily
 }
 
-func (c Config) dailyCeilingUSD() float64 {
+// dailyCeiling keeps the profile's read error for every paid-call gate, so
+// unreadable spending authority cannot silently become an unlimited allowance.
+func (c Config) dailyCeiling() (float64, error) {
 	if c.DailyBudgetResolved {
-		return c.DailyBudgetUSD
+		return c.DailyBudgetUSD, nil
 	}
-	if daily, err := config.DailyBudgetUSDAt(c.ProfileDir); err == nil {
-		return daily
-	}
-	return 0
+	return config.DailyBudgetUSDAt(c.ProfileDir)
 }
 
 // DailyLimitReachedAt gives process-owned calls the shared gate without
@@ -86,18 +96,24 @@ func DailyLimitReached(c Config, held ...float64) error {
 	if c.SpendPreauthorized {
 		return nil
 	}
-	daily := c.dailyCeilingUSD()
+	daily, err := c.dailyCeiling()
+	if err != nil {
+		return spendUnverified{said: fmt.Sprintf("daily limit could not be read: %v · /budget day sets it", err)}
+	}
 	if daily <= 0 {
 		return nil
 	}
-	spent := spentTodayOnLedger()
+	spent, err := spentTodayOnLedgerChecked()
+	if err != nil {
+		return spendUnverified{said: spendAccountingUnread}
+	}
 	for _, amount := range held {
 		spent = max(spent, amount)
 	}
 	if spent < daily {
 		return nil
 	}
-	return spendRailReached{said: fmt.Sprintf(
+	return spendRailReached{daily: true, said: fmt.Sprintf(
 		"daily limit reached · %s spent of %s · /budget day changes it",
 		railMoney(spent), railMoney(daily))}
 }
@@ -136,6 +152,14 @@ func (a *Agent) railBlockLocked() error {
 	if err := DailyLimitReached(a.config, held); err != nil {
 		return err
 	}
+	// A FACTORY JOB'S OWN CONVERSATION STOPS AT THE JOB'S BUDGET, the way a
+	// step does: the job's figure is everything done for it, this chat's
+	// turns included, and its line names the door that raises it.
+	if chat := a.jobBudgetOf(); chat != nil {
+		if said := chat.Refusal(); said != "" {
+			return spendRailReached{said: said}
+		}
+	}
 	rail := a.spendRailUSD()
 	if rail <= 0 {
 		return nil
@@ -169,10 +193,27 @@ func (a *Agent) railBlockLocked() error {
 // matched with [errors.Is] and never read, so it says nothing here: this type
 // carries the sentence, unwraps to the sentinel, and every existing
 // `errors.Is(err, ErrSpendRail)` is unchanged.
-type spendRailReached struct{ said string }
+//
+// daily marks the refusal of today's limit over every conversation on the
+// machine, which is the one a factory step names as its own stop
+// ([IsDailyLimit]).
+type spendRailReached struct {
+	said  string
+	daily bool
+}
 
 func (e spendRailReached) Error() string { return e.said }
 func (e spendRailReached) Unwrap() error { return ErrSpendRail }
+
+// IsDailyLimit says whether err is a turn refused by today's spending limit,
+// as against this conversation's own. A factory step stopped by it says
+// `today's spend limit stopped this step` rather than that it never reported
+// (internal/factory/run's chatstage.go), so the two must be told apart by
+// what refused the turn and never by its words.
+func IsDailyLimit(err error) bool {
+	var reached spendRailReached
+	return errors.As(err, &reached) && reached.daily
+}
 
 // railMoney writes a figure the way money is written on this line: whole dollars
 // when the figure is whole, cents when it is not, and four decimals under a cent
@@ -213,3 +254,11 @@ func (a *Agent) railCap(asked float64) float64 {
 	}
 	return asked
 }
+
+// ErrSpendUnverified names unavailable accounting, distinct from a reached cap.
+var ErrSpendUnverified = errors.New("spending could not be verified")
+
+type spendUnverified struct{ said string }
+
+func (e spendUnverified) Error() string { return e.said }
+func (e spendUnverified) Unwrap() error { return ErrSpendUnverified }

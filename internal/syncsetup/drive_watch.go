@@ -12,6 +12,9 @@ func (d *Drive) followOwnership(ctx context.Context) {
 	defer feed.Close()
 	var version uint64
 	for {
+		if d.displaced() {
+			return
+		}
 		state := feed.State()
 		if state.Version > version && d.batcher.Fence() != 0 {
 			version = state.Version

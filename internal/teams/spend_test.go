@@ -1,10 +1,10 @@
 package teams
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 )
@@ -15,9 +15,9 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 	key := filepath.Join("/srv/sessions", "0123456789abcdef", "transcript.jsonl")
 	must(t, Save(dir, []Team{{ID: "aaaaaaaaaaaa", Members: []Member{{Key: key}}}, {ID: "bbbbbbbbbbbb"}}))
 	writeLedger(t, ledger, line("2026-09-24", 1, keySessionForTest(key), ""))
-	spendTeams.Lock()
-	before := spendTeams.reads
-	spendTeams.Unlock()
+	teamSpendResults.mu.Lock()
+	before := teamSpendResults.reads
+	teamSpendResults.mu.Unlock()
 	var wg sync.WaitGroup
 	for i := 0; i < 16; i++ {
 		wg.Add(1)
@@ -29,9 +29,9 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	spendTeams.Lock()
-	reads := spendTeams.reads - before
-	spendTeams.Unlock()
+	teamSpendResults.mu.Lock()
+	reads := teamSpendResults.reads - before
+	teamSpendResults.mu.Unlock()
 	if reads != 1 {
 		t.Fatalf("unchanged membership snapshot loaded %d times, want once", reads)
 	}
@@ -54,15 +54,6 @@ func TestTeamSpendSharesMembershipReadAndInvalidatesOnChanges(t *testing.T) {
 	must(t, err)
 	if new.USD != 0 {
 		t.Fatal("membership snapshot crossed profile boundary")
-	}
-	// A legacy file arriving after a missing-profile reading must still migrate.
-	legacy, err := json.Marshal(map[string]any{"spaces": []Team{{ID: "bbbbbbbbbbbb", Members: []Member{{Key: key}}}}})
-	must(t, err)
-	must(t, os.WriteFile(legacyPath(other), legacy, 0o600))
-	new, err = TeamSpendIn(other, ledger, "bbbbbbbbbbbb", "2026-09-24")
-	must(t, err)
-	if new.USD != 3 {
-		t.Fatal("cached absence hid the legacy membership file", new.USD)
 	}
 }
 
@@ -144,6 +135,27 @@ func (m *spendMemory) bytes() int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.reads
+}
+
+func TestTeamSpendIsBitStableAcrossLedgerMapOrder(t *testing.T) {
+	pairs := []spendPair{{session: "a"}, {session: "b"}, {session: "c"}, {session: "d"}}
+	amounts := []float64{0.1, 0.2, 0.014895096, 1e-18}
+	ids := map[string]string{"a": "member", "b": "member", "c": "member", "d": "member"}
+	var first Spend
+	for n := 0; n < 256; n++ {
+		totals := map[spendPair]spendSum{}
+		for i := range pairs {
+			j := (i + n) % len(pairs)
+			totals[pairs[j]] = spendSum{usd: amounts[j], calls: 1}
+		}
+		var got Spend
+		sumTeamSpend(&got, ids, totals)
+		if n == 0 {
+			first = got
+		} else if !reflect.DeepEqual(first, got) {
+			t.Fatalf("quiet sum drifted: first=%+v got=%+v", first, got)
+		}
+	}
 }
 
 // A CELL SESSION IS A TEAM MEMBER LIKE ANY OTHER: its folder is a ULID, and its

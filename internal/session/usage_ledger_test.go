@@ -37,13 +37,14 @@ func billedCall(model string, in, out int, usd float64) *ai.Response {
 // place a ledger row for a turn's own call comes from, so a test that wants a
 // row makes a call rather than sealing a turn.
 func bankCall(agent *Agent, turn *Usage, model string, in, out int, usd float64, lane laneFacts) {
-	agent.addUsage(turn, billedCall(model, in, out, usd), model, "", lane)
+	agent.addUsage(turn, billedCall(model, in, out, usd), model, "", lane, provider.BillingFact{})
 }
 
 // ledgerAgent is an agent writing to a ledger of its own, which is what every
 // test in this file needs and nothing else.
 func ledgerAgent(t *testing.T, ledger string, more ...func(*Config)) (*Agent, string) {
 	t.Helper()
+	t.Cleanup(func() { StopUsageWriter(ledger) })
 	return newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.usageLedger = ledger
 		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")

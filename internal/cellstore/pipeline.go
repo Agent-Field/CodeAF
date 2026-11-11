@@ -2,6 +2,7 @@ package cellstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -17,15 +18,23 @@ const SealWithin = executor.DrainWithin
 type captureState struct {
 	done chan struct{}
 	err  error
+	// gone says the chat's folder is no longer on this computer, read when
+	// the failure is asked for rather than when the capture ended: a factory
+	// job closed locally removes its checkout while the chat's capture may be
+	// reading it, so the capture fails part-way through the removal and the
+	// folder is only gone a moment later ([ErrWorkspaceGone]).
+	gone func() bool
 }
 
 var captures = struct {
 	sync.Mutex
 	cells map[string]*captureState
-}{cells: map[string]*captureState{}}
+	held  map[string]*Recorder
+}{cells: map[string]*captureState{}, held: map[string]*Recorder{}}
 
-// Await waits for this process's pending capture before a move, upload or
-// displacement can read its head. It does not start work or contact a relay.
+// Await captures finished steps before a move, upload or displacement reads
+// their head, then makes it durable. An open step keeps its calls in the WAL
+// until the caller has written their result lines and settled it.
 func Await(ctx context.Context, c cell.Cell) error {
 	if err := Captured(ctx, c); err != nil {
 		return err
@@ -33,10 +42,48 @@ func Await(ctx context.Context, c cell.Cell) error {
 	return durable(ctx, c.Root)
 }
 
-// Captured waits for the prior file capture without forcing a group commit.
-// The next command's ownership check needs this screen boundary, while only
-// movement, upload, displacement and exit need disk durability (C28/E1).
+// Captured forces held calls into a capture only between steps, without forcing
+// a group commit. An open step may still owe its result lines, so boundaries
+// wait only for an existing capture and never for a running tool.
 func Captured(ctx context.Context, c cell.Cell) error {
+	captures.Lock()
+	r := captures.held[c.Root]
+	captures.Unlock()
+	if r != nil {
+		r.scheduleAtPause(ctx)
+	}
+	return WaitCapture(ctx, c)
+}
+
+// Unsaved counts pending calls in the recorder held for this literal cell root.
+// A closing recorder detaches; its unsaved calls remain in the WAL for recovery.
+func Unsaved(c cell.Cell) int {
+	captures.Lock()
+	r := captures.held[c.Root]
+	captures.Unlock()
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.pending)
+}
+
+// scheduleAtPause checks the step and queues its capture under one lock, so a
+// new tool cannot enter between the decision and the capture barrier.
+func (r *Recorder) scheduleAtPause(ctx context.Context) bool {
+	r.asyncMu.Lock()
+	defer r.asyncMu.Unlock()
+	if r.stepOpen {
+		return false
+	}
+	r.scheduleLocked(ctx)
+	return true
+}
+
+// WaitCapture joins only an existing capture. An ordinary command's ownership
+// check reads no head and must not turn held calls into a full save (C28/E1).
+func WaitCapture(ctx context.Context, c cell.Cell) error {
 	captures.Lock()
 	state := captures.cells[c.Root]
 	captures.Unlock()
@@ -49,7 +96,32 @@ func Captured(ctx context.Context, c cell.Cell) error {
 	captures.Lock()
 	err := state.err
 	captures.Unlock()
+	// A FAILED CAPTURE OF A FOLDER THAT IS GONE IS NOT A CHAT THAT COULD NOT BE
+	// SAVED: there is nothing on disk left to keep, the transcript is the
+	// session file's, and the calls stay pending in the WAL. Reporting it made
+	// the ninth live WorkAF round's idle quit exit 1 with "codeaf could not
+	// save this chat" for a job chat whose checkout the job had taken away.
+	if err != nil && state.gone != nil && state.gone() {
+		return nil
+	}
 	return err
+}
+
+// hold makes open steps and unscheduled completions visible to boundaries that
+// know the cell rather than its seat. Open steps stay in the WAL until Settle
+// closes them, even when no capture has started yet.
+func (r *Recorder) hold() {
+	captures.Lock()
+	defer captures.Unlock()
+	captures.held[r.cell.Root] = r
+}
+
+func (r *Recorder) releaseHeld() {
+	captures.Lock()
+	defer captures.Unlock()
+	if captures.held[r.cell.Root] == r {
+		delete(captures.held, r.cell.Root)
+	}
 }
 
 func awaitCapture(ctx context.Context, done <-chan struct{}) error {
@@ -73,6 +145,28 @@ func (r *Recorder) wait(ctx context.Context) error {
 	return awaitCapture(ctx, done)
 }
 
+// enter keeps capture admission and the step flag under the same lock. Once a
+// tool enters, a boundary leaves its batch in the WAL until Settle says that
+// the result lines are written; an already queued capture still comes first.
+func (r *Recorder) enter(ctx context.Context) error {
+	if !r.opts.Async {
+		return r.wait(ctx)
+	}
+	for {
+		if err := r.wait(ctx); err != nil {
+			return err
+		}
+		r.asyncMu.Lock()
+		if r.running == nil {
+			r.stepOpen = true
+			r.hold()
+			r.asyncMu.Unlock()
+			return nil
+		}
+		r.asyncMu.Unlock()
+	}
+}
+
 // Warm prepares the store before tools run without sealing an empty turn.
 // A tool arriving before the screen finishes waits, so it cannot change files
 // during that screen. Close and movement wait on the same worker.
@@ -89,14 +183,31 @@ func (r *Recorder) Warm(ctx context.Context) {
 func (r *Recorder) schedule(ctx context.Context) {
 	r.asyncMu.Lock()
 	defer r.asyncMu.Unlock()
+	r.scheduleLocked(ctx)
+}
+
+// scheduleLocked installs the capture barrier before releasing admission.
+// Callers hold asyncMu, including boundaries that checked the step flag.
+func (r *Recorder) scheduleLocked(ctx context.Context) {
 	r.requested = true
 	if r.running != nil {
 		return
 	}
-	state := &captureState{done: make(chan struct{})}
+	state := &captureState{done: make(chan struct{}), gone: r.folderGone}
 	r.running = state.done
 	registerCapture(r.cell.Root, state)
 	guard.Go("save chat", func() { r.runQueued(ctx, state) })
+}
+
+// folderGone reports whether this recorder's chat folder is no longer there:
+// [Options.FolderGone] when the seat said, else a store that knows its folder
+// ([Engine]); any other store says no.
+func (r *Recorder) folderGone() bool {
+	if r.opts.FolderGone != nil {
+		return r.opts.FolderGone()
+	}
+	f, ok := r.store.(interface{ workspaceThere(cell.Cell) error })
+	return ok && errors.Is(f.workspaceThere(r.cell), ErrWorkspaceGone)
 }
 
 func registerCapture(root string, state *captureState) {
@@ -128,6 +239,7 @@ func (r *Recorder) takeRequest() {
 }
 
 func (r *Recorder) capture(ctx context.Context) {
+	ctx = context.WithValue(ctx, daemonOwnerKey{}, r.daemonGeneration)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.asyncMu.Lock()
@@ -145,11 +257,13 @@ func (r *Recorder) capture(ctx context.Context) {
 			return
 		}
 		if len(r.pending) == 0 && len(r.models) == 0 {
+			r.releaseHeld()
 			return
 		}
 		warm = false
 	}
 	if !warm && len(r.pending) == 0 && len(r.models) == 0 && !r.transcriptGrew() {
+		r.releaseHeld()
 		return
 	}
 	run, cancel := context.WithTimeout(context.WithoutCancel(ctx), SealWithin)
@@ -181,8 +295,10 @@ func completeCapture(root string, state *captureState) {
 }
 
 // Drain is the final, bounded boundary: it includes a transcript tail and
-// propagates a saving error to the caller that is closing the chat.
+// propagates a saving error to the caller that is closing the chat. The WAL
+// keeps unsaved calls after the closing recorder leaves the held registry.
 func (r *Recorder) Drain(ctx context.Context) error {
+	defer r.releaseHeld()
 	r.Settle(ctx)
 	if err := r.wait(ctx); err != nil {
 		r.report(err)

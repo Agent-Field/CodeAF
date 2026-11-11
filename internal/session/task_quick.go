@@ -32,11 +32,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 )
 
 // quickWord is the word a quick node's row leads with, and it is the same word
@@ -64,6 +66,17 @@ const (
 // ([TaskNode.quickItemChange]) — so every reader of either takes
 // `graph.mu` first, exactly as the row's own fields are read.
 type quickTaskSpec struct {
+	// reading is a chat-owned hand-off: its answer returns as a read result,
+	// so it may only look and never asks the person to promote it.
+	reading bool
+	// Captures keep the original bytes through repeated writes and engine restarts.
+	captures  []QuickFileCapture
+	promotion uint64
+	// grew is why the quick work asked to become a full task: a test run, a
+	// shell call, or one file past [QuickTaskFileLimit].
+	grew     string
+	promoted bool
+	undone   bool
 	// line is what to do, in one sentence. It is also the node's title when the
 	// caller named none.
 	line string
@@ -326,11 +339,10 @@ func quickReportOnClose(record taskRecord) string {
 // ([Config.mayQuickTask] puts both verbs on a belt or neither). What is left
 // here is what only this string says: the two roads' shape in one sentence, the
 // step that is not a hand-off at all, and the grain.
-var quickTaskDescription = "A task gets its own copy of the folder, is checked, and lands. A quick task works " +
-	"where you are and its last message is its answer. One edit, one " +
-	"read, one command is a step: do it yourself. Related steps that share what they learn are one quick " +
-	"task's items, not several quick tasks. KEEP ONE SMALL, a few files and a few minutes: reading is not " +
-	"progress, so " + strconv.Itoa(taskNoProgress) + " steps that only read end it."
+var quickTaskDescription = "Quick work runs here; its last message is the answer. One step: do it yourself. " +
+	"Related steps sharing context: one quick task's items. " + strconv.Itoa(taskNoProgress) +
+	" calls that only read stop it. Shell, media, workspace restore/merge or file " +
+	strconv.Itoa(QuickTaskFileLimit+1) + " ask to promote it to a full task."
 
 // quickTaskSchemaJSON is the wire schema. Every field but `line` is optional,
 // which is the whole shape of the verb: there is no contract to groom, no
@@ -346,7 +358,7 @@ var quickTaskDescription = "A task gets its own copy of the folder, is checked, 
 const quickTaskSchemaJSON = `{"type":"object","properties":{` +
 	`"line":{"type":"string","description":"What to do, one sentence"},` +
 	`"items":{"type":"array","items":{"type":"string"},"description":"Ordered steps to complete and tick"},` +
-	`"files":{"type":"array","items":{"type":"string"},"description":"Paths it will write. Two claiming one path run one after the other; named none, it writes anywhere"},` +
+	`"files":{"type":"array","items":{"type":"string"},"description":"Root-relative paths/dirs; segment * ? [...]; no ** or ..; overlaps wait; empty: unscoped"},` +
 	`"inherit":{"type":"boolean","description":"Opens on this conversation"},` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids whose result it needs"},` +
 	`"title":{"type":"string","description":"Row title; defaults to line"},` +
@@ -383,6 +395,8 @@ type quickAsk struct {
 	dependsOn []uint64
 	title     string
 	model     string
+	// reading is set only by the chat's read hand-off, never by a tool call.
+	reading bool
 	// inherit asks for a PROMOTION rather than a cold worker: the node opens on
 	// the caller's own transcript instead of on a sentence about it (inherit.go).
 	// It is a property of the ask rather than a second door, so both roads that
@@ -435,14 +449,14 @@ func (a *Agent) quickTools() []bare.Tool {
 // error, the way every other door on this belt answers: a line the model forgot
 // to write is a call it can make again, and an error would end the turn over a
 // missing field.
-func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) startQuickTask(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed quickArguments
 	// THROUGH THE ONE DECODER, like every other tool on this belt (toolargs.go):
 	// a model that sent a string where a list belongs gets a sentence naming the
 	// field and the repair rather than encoding/json's own words, and a law test
 	// holds every door to it.
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	id, spec, refusal := a.admitQuick(parsed.askOf())
 	if refusal.said != "" {
@@ -560,6 +574,22 @@ func quickStartedWord(id uint64, spec taskSpec) string {
 // so two quick nodes that claim one path run one after the other with no retry
 // and nothing new in the frontier. The look and the admission are one move
 // under [TaskGraph.quickGate], which [Agent.admitQuick] holds.
+// refuseUnsafeScopes checks each declared write scope before cleaning can hide
+// a traversal segment, and returns the refusal for the first unsafe one.
+// Exact absolute paths keep their existing normalization.
+func refuseUnsafeScopes(files []string) string {
+	for _, raw := range files {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || filepath.IsAbs(raw) && !strings.ContainsAny(raw, "*?[\\") {
+			continue
+		}
+		if err := orchestrate.ValidateScope(raw); err != nil {
+			return fmt.Sprintf("Write scope %q: %s. Redraw the scope and call again.", raw, err)
+		}
+	}
+	return ""
+}
+
 func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	line := strings.TrimSpace(ask.line)
 	if line == "" {
@@ -570,6 +600,9 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 		if item = strings.TrimSpace(item); item != "" {
 			kept = append(kept, item)
 		}
+	}
+	if refusal := refuseUnsafeScopes(ask.files); refusal != "" {
+		return taskSpec{}, refusal
 	}
 	scope, refusal := normalizeWriteScope(a.config.Workspace, ask.files)
 	if refusal != "" {
@@ -640,6 +673,7 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	} else {
 		quick = newQuickTaskSpec(line, kept, scope)
 	}
+	quick.reading = ask.reading
 	quick.waits = a.graph().quickClaimsOn(a.config.Workspace, scope)
 	for _, claim := range quick.waits {
 		dependsOn = append(dependsOn, claim.id)
@@ -770,7 +804,7 @@ func (a *Agent) itemsTool() bare.Tool {
 // tickQuickItems is the `items` call: it does nothing itself and hands the
 // change to the node's own door, which is the only thing that may touch a list
 // under the graph's lock.
-func (a *Agent) tickQuickItems(_ context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) tickQuickItems(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	door := a.config.quickItems
 	if door == nil {
 		// Unreachable through the belt — the tool is absent without a door — and
@@ -780,7 +814,7 @@ func (a *Agent) tickQuickItems(_ context.Context, args json.RawMessage) (string,
 	}
 	var parsed quickItemsArguments
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return "Invalid arguments: " + err.Error(), true, nil
+		return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 	}
 	return door(parsed.Done, parsed.Add), false, nil
 }
@@ -970,11 +1004,11 @@ const (
 // it does: everything that can go wrong here is something the person who asked
 // for the work has to be told in words.
 //
-// THERE IS NO GATE UNDER THIS AND THERE IS NOT MEANT TO BE. No worktree, so
-// nothing to merge; no auditor, so nothing to verify; no settle policy, so a
-// quick node is never [TaskUnverified] and never asks anybody anything. Its last
-// message is its result, and the road from here — complete, announce, the
-// landing note — is the road every task already takes.
+// QUICK WORK HAS NO LANDING GATE. Its last message is its result, and it never
+// becomes [TaskUnverified]. The execution boundary may ask to promote work
+// before an unbounded action or file 31; that admits a separate ordinary node
+// after this worker leaves, so its contract and check belong to that node.
+// Completion, announcement and the landing note still use the ordinary road.
 func (a *Agent) runQuickNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	quick := node.spec.quick
 	log := taskLog(listed)
@@ -1041,6 +1075,13 @@ func (a *Agent) runQuickNode(ctx context.Context, node *TaskNode, listed *job) T
 	said := lastSaid(child)
 	node.keepWorkerConclusion(said, log)
 	report := composeTaskReport(said)
+
+	node.graph.mu.Lock()
+	promoted := quick.promoted
+	node.graph.mu.Unlock()
+	if promoted {
+		return a.landQuickNode(node, "Promoted to a task", wrote, TaskDone)
+	}
 
 	// A PERSON'S ✕ IS NOT A FAILURE OF THE WORK, and it is asked first because
 	// [TaskGraph.stop] sets `stopped` before it cuts the context: everything below

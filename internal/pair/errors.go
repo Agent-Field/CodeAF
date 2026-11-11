@@ -151,7 +151,7 @@ var (
 	// ErrDifferentChats is a computer that already has chats of its own.
 	ErrDifferentChats = errors.New("this computer has local work, so nothing was changed. To pair it anyway, run this again with --replace: local chats stay on this computer but no longer sync; shared memories and settings are cleared")
 	// ErrAlreadyPaired is a computer that already holds the chats being offered.
-	ErrAlreadyPaired = errors.New("already paired; nothing changed")
+	ErrAlreadyPaired = errors.New(AlreadyPairedLine)
 	// ErrCannotReach is a relay that does not answer, with its host after it.
 	ErrCannotReach = errors.New("cannot reach")
 	// ErrTooManyPairings is a network that asked for too many codes in an hour.

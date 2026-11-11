@@ -358,7 +358,7 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			p.open = false
 		}
 	case "enter":
-		if !p.reading.Enabled {
+		if !p.reading.Enabled && len(p.reading.Pages) == 0 {
 			return a.knowledgeRead(true), true
 		}
 		if p.links {
@@ -513,7 +513,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	var rows []placeRow
 	add := func(s string) { rows = append(rows, placeRow{text: " " + fit(s, max(1, width-2)), hit: -1}) }
 	add(a.pal.bold(a.pal.muted("Knowledge")))
-	if p.reading.Enabled {
+	if p.reading.Enabled || len(p.reading.Pages) > 0 {
 		stats := a.pal.data(fmt.Sprint(len(p.reading.Pages))) + a.pal.dim(" pages")
 		if p.reading.Pending > 0 {
 			stats += a.pal.dim(" · ") + a.pal.data(fmt.Sprint(p.reading.Pending)) + a.pal.dim(" queued")
@@ -539,7 +539,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	if p.loading {
 		add(a.pal.dim("Reading knowledge…"))
 	}
-	if !p.reading.Enabled {
+	if !p.reading.Enabled && len(p.reading.Pages) == 0 {
 		if p.reading.Build.Error != "" {
 			add(a.pal.bad(p.reading.Build.Error))
 		}
@@ -848,7 +848,7 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if hit, ok := hits[y].(knowledgeHit); ok {
-		if hit.create && !p.reading.Enabled && x >= 1 && x < 1+ansi.StringWidth(knowledgeBuildLabel) {
+		if hit.create && !p.reading.Enabled && len(p.reading.Pages) == 0 && x >= 1 && x < 1+ansi.StringWidth(knowledgeBuildLabel) {
 			return a.knowledgeRead(true), true
 		}
 		for _, link := range hit.links {

@@ -1,4 +1,5 @@
 {
+  "alwaysAsk": "critical",
   "id": 9,
   "kind": "consent",
   "ask": "permission",

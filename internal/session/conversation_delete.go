@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,7 +10,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -26,6 +29,18 @@ func (a *Agent) CloseForDeletion() error {
 }
 
 func (a *Agent) closeForDeletion(grace time.Duration) error {
+	// A KEPT SERVICE OUTLIVES AN ORDINARY CLOSE. Permanent deletion fences
+	// new starts until the owner has stopped and its journal lock is released.
+	if sup := a.config.Services; sup != nil {
+		owner := a.keepOwner()
+		defer sup.Fence(owner)()
+		ctx, cancel := context.WithTimeout(context.Background(), service.StopGrace+5*time.Second)
+		defer cancel()
+		if _, err := sup.StopOwnerWait(ctx, owner, "agent closed"); err != nil {
+			return err
+		}
+	}
+
 	a.InterruptFor(StopByPerson)
 	a.mu.Lock()
 	a.deleting = true
@@ -174,9 +189,9 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 			}
 		}
 		path := resolved + ".delete-pending"
-		journal, err := os.OpenFile(path, os.O_RDWR, 0)
+		journal, err := fsreplace.OpenFile(path, os.O_RDWR, 0)
 		if os.IsNotExist(err) {
-			journal, err = os.OpenFile(resolved, os.O_RDWR, 0)
+			journal, err = fsreplace.OpenFile(resolved, os.O_RDWR, 0)
 		}
 		if err != nil && !os.IsNotExist(err) {
 			return err
@@ -211,7 +226,7 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 			return err
 		}
 	}
-	journal, err := os.OpenFile(resolved, os.O_RDWR, 0)
+	journal, err := fsreplace.OpenFile(resolved, os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
@@ -239,18 +254,18 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 		return err
 	}
 	pending := resolved + ".delete-pending"
-	if err = os.Rename(resolved, pending); err != nil {
-		_ = os.Remove(marker)
+	if err = fsreplace.Rename(resolved, pending); err != nil {
+		_ = fsreplace.Remove(marker)
 		return err
 	}
 	if err = teams.Update(profile, func(f *teams.File) error {
 		canonicalizeDeletedMember(f, resolved, aliases)
 		return f.RemoveConversation(resolved, choices, time.Now(), affected...)
 	}); err != nil {
-		if restoreErr := os.Rename(pending, resolved); restoreErr != nil {
+		if restoreErr := fsreplace.Rename(pending, resolved); restoreErr != nil {
 			return fmt.Errorf("deletion failed: %v; transcript retained at %s: %w", err, pending, restoreErr)
 		}
-		_ = os.Remove(marker)
+		_ = fsreplace.Remove(marker)
 		return err
 	}
 	return finishConversationTaskCleanup(profile, resolved, meta.ID, choices, affected...)
@@ -288,10 +303,10 @@ func claimDeletionJournal(journal *os.File, dir string) error {
 		return err
 	}
 	request := filepath.Join(dir, conversationDeleteRequest)
-	if err := os.WriteFile(request, []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o600); err != nil {
+	if err := writePresenceRequest(request, []byte(time.Now().UTC().Format(time.RFC3339Nano))); err != nil {
 		return err
 	}
-	defer os.Remove(request)
+	defer fsreplace.Remove(request)
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	deadline := time.NewTimer(conversationDeletionGrace)
@@ -313,20 +328,21 @@ func claimDeletionJournal(journal *os.File, dir string) error {
 // The presence beat hands closing to a separate goroutine because Close waits
 // for that beat to leave. A stale request cannot stop work after its asker left.
 func (a *Agent) drainConversationDeletion() {
-	if a.config.InTask || a.config.Place.Dir == "" {
+	dir := a.requestDir()
+	if dir == "" {
 		return
 	}
-	path := filepath.Join(a.config.Place.Dir, conversationDeleteRequest)
+	path := filepath.Join(dir, conversationDeleteRequest)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
 	at, err := time.Parse(time.RFC3339Nano, string(raw))
 	if err != nil || time.Since(at) > time.Minute {
-		_ = os.Remove(path)
+		_ = fsreplace.Remove(path)
 		return
 	}
-	if os.Remove(path) != nil {
+	if fsreplace.Remove(path) != nil {
 		return
 	}
 	guard.Go("stopping a permanently deleted conversation", func() { _ = a.CloseForDeletion() })

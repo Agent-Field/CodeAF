@@ -66,8 +66,14 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 			return nil, http.ErrServerClosed
 		})},
 	})
-	if got := resolved.ResolveImageModel(models); got != preferredImageModel {
-		t.Fatalf("resolved image = %q", got)
+	// The offline rows name these models but publish no price for them, and
+	// a default is only ever a priced one: drawing and filming have NO default
+	// on a machine that has read nothing, and say the list is unconfirmed.
+	if got := resolved.ResolveImageModel(models); got != "" {
+		t.Fatalf("resolved image = %q, want no unpriced default", got)
+	}
+	if reason := resolved.ResolveImageRoute(models).Reason; reason != RouteUnconfirmed {
+		t.Fatalf("offline image route reason = %q", reason)
 	}
 	if got := resolved.ResolveSpeechModel(models); got != preferredSpeechModel {
 		t.Fatalf("resolved speech = %q", got)
@@ -75,8 +81,8 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 	if got := resolved.ResolveMusicModel(models); got != preferredMusicModel {
 		t.Fatalf("resolved music = %q", got)
 	}
-	if got := resolved.ResolveVideoModel(models); got != preferredVideoModel {
-		t.Fatalf("resolved video = %q", got)
+	if got := resolved.ResolveVideoModel(models); got != "" {
+		t.Fatalf("resolved video = %q, want no unpriced default", got)
 	}
 }
 
@@ -120,6 +126,32 @@ func TestVisionModelResolutionOrder(t *testing.T) {
 	}
 }
 
+// An image editor takes pictures in and gives a picture back. Merging the
+// dedicated image listing put dozens of them in the catalog with exactly the
+// input a vision proxy looks for, and one of them was first.
+func TestVisionModelResolutionNeverPicksAPainterAsEyes(t *testing.T) {
+	t.Setenv("CODEAF_VISION_MODEL", "")
+	configured := settings(t)
+	models := runtimeCatalog(t, `
+		{"id":"paint/edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}},
+		{"id":"paint/captioning-edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image","text"]}},
+		{"id":"eyes/real","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}}`)
+	// A painter chosen as the live talk or work model is passed over too.
+	if got := configured.ResolveVisionModel(models, "paint/edit", "paint/captioning-edit"); got != "eyes/real" {
+		t.Fatalf("vision = %q, want the first model that answers in text only", got)
+	}
+	onlyPainters := runtimeCatalog(t, `
+		{"id":"paint/edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}}`)
+	if got := configured.ResolveVisionModel(onlyPainters, "paint/edit", ""); got != "" {
+		t.Fatalf("vision = %q, want no proxy rather than an image generator", got)
+	}
+	// The person's own slot is never second-guessed.
+	t.Setenv("CODEAF_VISION_MODEL", "paint/edit")
+	if got := settings(t).ResolveVisionModel(models, "eyes/real", ""); got != "paint/edit" {
+		t.Fatalf("explicit vision = %q, want the operator's choice untouched", got)
+	}
+}
+
 type configRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn configRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -140,8 +172,8 @@ func runtimeCatalog(t *testing.T, rows string) *catalog.Catalog {
 func TestImageAndSpeechPreferenceOrders(t *testing.T) {
 	models := runtimeCatalog(t, `
 		{"id":"first/image","architecture":{"output_modalities":["image"]}},
-		{"id":"bytedance-seed/seedream-5-0-pro","architecture":{"output_modalities":["image"]}},
-		{"id":"krea/krea-2-medium-turbo","architecture":{"output_modalities":["image"]}},
+		{"id":"bytedance-seed/seedream-5-0-pro","architecture":{"output_modalities":["image"]},"pricing":{"request":"0.04"}},
+		{"id":"krea/krea-2-medium-turbo","architecture":{"output_modalities":["image"]},"pricing":{"request":"0.02"}},
 		{"id":"first/speech","architecture":{"output_modalities":["speech"]}},
 		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["audio"]}},
 		{"id":"hexgrad/kokoro-82m","architecture":{"output_modalities":["speech"]}},
@@ -160,8 +192,13 @@ func TestImageAndSpeechPreferenceOrders(t *testing.T) {
 		{"id":"first/speech","architecture":{"output_modalities":["speech"]}},
 		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["audio"]}},
 		{"id":"hexgrad/kokoro-82m","architecture":{"output_modalities":["speech"]}}`)
-	if got := configured.ResolveImageModel(withoutPrimary); got != "first/image" {
-		t.Fatalf("image catalog fallback = %q", got)
+	// No remembered image model is advertised: the catalog's first row is NOT
+	// taken in its place. The refusal names what is available.
+	if got := configured.ResolveImageModel(withoutPrimary); got != "" {
+		t.Fatalf("image catalog fallback = %q, want a model-required refusal", got)
+	}
+	if route := configured.ResolveImageRoute(withoutPrimary); route.Reason != RouteModelRequired || len(route.Options) != 1 || route.Options[0] != "first/image" {
+		t.Fatalf("image route = %+v", route)
 	}
 	if got := configured.ResolveSpeechModel(withoutPrimary); got != kokoroSpeechModel {
 		t.Fatalf("speech secondary preference = %q", got)
@@ -195,8 +232,11 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	if got := configured.ResolveMusicModel(models); got != preferredMusicModel {
 		t.Fatalf("music preference = %q", got)
 	}
-	if got := configured.ResolveVideoModel(models); got != preferredVideoModel {
-		t.Fatalf("video preference = %q", got)
+	// A general listing cannot price a film (its per-token zero proves nothing),
+	// so even the remembered Seedance row is not a default here: see
+	// mediaroute_test.go for the priced path through the dedicated listing.
+	if got := configured.ResolveVideoModel(models); got != "" {
+		t.Fatalf("video default = %q, want none without a published price", got)
 	}
 
 	// The older pair is still reached for when the preferred row is missing,
@@ -209,8 +249,8 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	if got := configured.ResolveMusicModel(olderPair); got != fallbackMusicModel {
 		t.Fatalf("music secondary preference = %q", got)
 	}
-	if got := configured.ResolveVideoModel(olderPair); got != fallbackVideoModel {
-		t.Fatalf("video secondary preference = %q", got)
+	if got := configured.ResolveVideoModel(olderPair); got != "" {
+		t.Fatalf("video secondary default = %q, want none without a published price", got)
 	}
 
 	withoutPreferred := runtimeCatalog(t, `
@@ -220,8 +260,8 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	if got := configured.ResolveMusicModel(withoutPreferred); got != "first/music" {
 		t.Fatalf("music catalog fallback = %q", got)
 	}
-	if got := configured.ResolveVideoModel(withoutPreferred); got != "first/video" {
-		t.Fatalf("video catalog fallback = %q", got)
+	if got := configured.ResolveVideoModel(withoutPreferred); got != "" {
+		t.Fatalf("video catalog fallback = %q, want a model-required refusal", got)
 	}
 	if got := configured.ResolveMusicModel(runtimeCatalog(t, ``)); got != "" {
 		t.Fatalf("empty music catalog resolved %q", got)

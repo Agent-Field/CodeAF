@@ -19,6 +19,11 @@ with the folder you are standing in browsable in columns. It also answers to `/p
 /attach            the same sheet; over --host it browses the machine you are sitting at
 ```
 
+On native Windows, typing a drive path such as `C:\work\project` or
+`C:/work/project`, or a UNC path such as `\\server\share\project`, browses
+that path. Both native separators work, and changing a drive letter's case
+keeps the same folder. A bare name still searches the known folders.
+
 **Locally, both commands open the same sheet, in the same place, already browsing.** Where
 it opens is the first of these that exists: a folder this conversation has already been
 given, the folder this window is working in, your home directory. codeaf's own state folder
@@ -491,6 +496,14 @@ rows.
 reach that folder — which is the whole point of choosing it. What it does **not** do is
 move this conversation: the directory it is anchored to, the `AGENTS.md` it reads, and its
 own status line stay exactly as they were.
+
+## A task on your home folder — it reads there and works in a folder of its own
+
+A task that would have copied your home folder, or a folder that holds it, now reads your files
+where they are and keeps what it makes in an empty folder of its own. Its report says where, and
+it asks you nothing. A folder inside home is copied as usual. Some tasks work differently: a home
+folder that is a git repository gets a worktree of what it tracks; a task in a chat opened at your
+home folder that names no other folder, or a place you saved as in place, runs there directly.
 
 ## Where edits go — the folder you are standing in, and the ones you chose
 

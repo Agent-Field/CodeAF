@@ -157,8 +157,12 @@ func localTeams(dir string, watch *teamstore.Watch, paired func() bool) TeamsSea
 				// empty is the only way the person can go on making teams, but
 				// the next write would then replace a file that may hold every
 				// team they made; renamed to teams.json.unreadable-<nanos> it
-				// survives for a person to recover.
-				_, _ = teamstore.SetAside(dir)
+				// survives for a person to recover. A store it refuses to move
+				// (a newer build's) is not held as known and empty: it is read
+				// off the loop, whose refusal the window says.
+				if _, aside := teamstore.SetAside(dir); aside != nil {
+					return nil, "", false
+				}
 				return nil, teamstore.Stamp(dir), true
 			}
 			return f.Teams, stamp, true
@@ -470,12 +474,13 @@ func (a *app) teamsTake(w teamsWrote) {
 		a.touch()
 	}
 	if w.err != nil {
-		if !w.read {
-			if managerRefused {
-				a.note("Could not assign manager: " + w.err.Error())
-			} else {
-				a.note("the teams are kept for this window, but " + w.err.Error())
-			}
+		switch {
+		case w.read:
+			a.note("the teams could not be read: " + w.err.Error())
+		case managerRefused:
+			a.note("Could not assign manager: " + w.err.Error())
+		default:
+			a.note("the teams are kept for this window, but " + w.err.Error())
 		}
 		return
 	}

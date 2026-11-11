@@ -82,6 +82,17 @@ func Loopback(hello Hello, opts Options) (*Loop, error) {
 	})
 }
 
+// LoopbackAttach is [Loopback] over [ServeAttach]: a real client dialled against
+// a conversation this process already holds, handed out by opts.Open the way a
+// session host hands one out. It exists for the one caller whose conversation
+// was opened by another owner in the same process and so cannot be booted again
+// (cmd/codeaf's app_lend.go); the plain [Serve] refuses a join by design.
+func LoopbackAttach(hello Hello, opts AttachOptions) (*Loop, error) {
+	return loopOver(hello, func(engine io.ReadWriteCloser) error {
+		return ServeAttach(engine, engine, opts)
+	})
+}
+
 // loopOver is the one place a [Loop] is made: it runs serve on the engine's
 // half of a fresh pipe, on its own goroutine, and dials the surface's half.
 //

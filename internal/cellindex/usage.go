@@ -3,11 +3,13 @@ package cellindex
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +20,8 @@ import (
 )
 
 // usageIndex is this session's share of the machine-wide usage ledger: one row
-// per model call the receipt chain sealed, so a rewind never drops spend. A cell
+// per ordinary sealed call and mirrored remote event. A rewind never drops
+// sealed ordinary spend. A cell
 // sealed before receipts carried model calls falls back to the usage lines the
 // transcript journaled.
 //
@@ -32,17 +35,21 @@ func (usageIndex) Name() string { return "usage.jsonl" }
 
 // Present reports whether the ledger already names the session in any row.
 func (usageIndex) Present(c cell.Cell) bool {
-	return ledgerRows(session.UsageLedgerPath(), c.ID) > 0
+	path := session.UsageLedgerPath()
+	if ledgerRows(path, c.ID) > 0 {
+		return true
+	}
+	return ledgerRows(path, usageJournalID(c)) > 0
 }
 
 // Behind reports whether the chat spent on calls the ledger has no row for: the
 // copy this machine held was older than the one a take just brought.
 func (usageIndex) Behind(c cell.Cell, d session.Digest) bool {
-	lines, err := usageLines(c, d)
+	lines, receipted, err := usageLines(c, d)
 	if err != nil {
 		return false
 	}
-	missing, err := missingUsage(session.UsageLedgerPath(), lines)
+	missing, err := missingUsageForCell(session.UsageLedgerPath(), lines, receipted, c.ID, d.ID)
 	return err == nil && len(missing) > 0
 }
 
@@ -50,13 +57,17 @@ func (usageIndex) Behind(c cell.Cell, d session.Digest) bool {
 // A parent's row count cannot say whether its workers already paid for a call.
 var usageRebuildMu sync.Mutex
 
+// Build appends saved calls whose live ledger identity is absent.
 func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 	usageRebuildMu.Lock()
 	defer usageRebuildMu.Unlock()
-	if !session.FlushUsage() {
-		return os.ErrDeadlineExceeded
-	}
-	lines, err := usageLines(c, d)
+	// Live rows still queued are written before the ledger is read, so the read
+	// sees them (dev). A WRITER THAT CANNOT SETTLE NOW IS NOT WAITED FOR TWICE: its
+	// queue already refuses a second row with a queued row's identity
+	// (usageIdentityCursor), and a take's hooks have one budget for both waits
+	// (app/v3's TestTakeLedgerQueuedOrSettledLiveCall/queued).
+	settled := session.FlushUsage()
+	lines, receipted, err := usageLines(c, d)
 	if err != nil {
 		return err
 	}
@@ -73,14 +84,14 @@ func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 		return err
 	}
 	defer filelock.Unlock(lock)
-	lines, err = missingUsage(path, lines)
+	lines, err = missingUsageForCell(path, lines, receipted, c.ID, d.ID)
 	if err != nil {
 		return err
 	}
 	for _, line := range lines {
-		session.RecordUsage(path, line)
+		session.RecordImportedUsage(path, line)
 	}
-	if !session.FlushUsage() {
+	if settled && !session.FlushUsage() {
 		return os.ErrDeadlineExceeded
 	}
 	return nil
@@ -89,46 +100,85 @@ func (usageIndex) Build(c cell.Cell, d session.Digest) error {
 // missingUsage applies one rule to every actual call: keep it only if the
 // ledger lacks its identity. Fold summaries never enter the call stream.
 // Older receipts lacking identity retain their session-prefix compatibility.
-func missingUsage(path string, lines []session.UsageLine) ([]session.UsageLine, error) {
+func missingUsage(path string, lines []session.UsageLine, owners ...string) ([]session.UsageLine, error) {
+	return missingUsageForCell(path, lines, true, owners...)
+}
+
+func missingUsageForCell(path string, lines []session.UsageLine, receipted bool, owners ...string) ([]session.UsageLine, error) {
 	restoreRemoteUsageIDs(path, lines)
 	paid, err := session.ReadUsage(path, time.Time{})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
-	seen := map[string]bool{}
-	legacy := map[string]int{}
-	identified := map[string]bool{}
-	for _, line := range lines {
-		if line.CallID != "" {
-			identified[line.CallID] = true
+	savedExplicit := usageExplicitIDs(lines)
+	explicitSeen := make(map[string]bool, len(paid)*2)
+	fingerprintCount := make(map[string]int, len(paid))
+	legacyFingerprintCount := make(map[string]int, len(paid))
+	for _, row := range paid {
+		if id := session.UsageExplicitID(row); id != "" {
+			explicitSeen[id] = true
+		}
+		if row.CallID != "" {
+			explicitSeen[row.CallID] = true
+		}
+		if row.ID != "" {
+			explicitSeen[row.ID] = true
+		}
+		if row.RemoteEvent != "" {
+			explicitSeen["remote:"+row.RemoteEvent] = true
+		}
+		fp := session.UsageFingerprint(row)
+		if fp != "" {
+			explicitSeen[fp] = true
+		}
+		if !matchedExplicit(row, fp, savedExplicit) && fp != "" {
+			fingerprintCount[fp]++
+			if countsAsLegacyPrefix(row, receipted) {
+				legacyFingerprintCount[fp]++
+			}
 		}
 	}
-	for _, line := range paid {
-		if id := session.UsageCallID(line); id != "" {
-			seen[id] = true
-		}
-		if line.RemoteEvent != "" {
-			seen["remote:"+line.RemoteEvent] = true
-		} else if !identified[session.UsageCallID(line)] {
-			legacy[line.Session]++
+	skip := 0
+	for _, owner := range owners {
+		skip = max(skip, legacyUsageRows(paid, savedExplicit, owner, receipted))
+	}
+	if len(owners) == 0 {
+		for _, line := range lines {
+			skip = max(skip, legacyUsageRows(paid, savedExplicit, line.Session, receipted))
 		}
 	}
 	var missing []session.UsageLine
 	for _, line := range lines {
-		id := line.CallID
-		if id == "" && line.RemoteEvent != "" {
-			id = "remote:" + line.RemoteEvent
-		}
-		if id != "" {
-			if seen[id] || (line.RemoteEvent != "" && seen["remote:"+line.RemoteEvent]) {
+		if id := session.UsageExplicitID(line); id != "" {
+			if explicitSeen[id] || (line.RemoteEvent != "" && explicitSeen["remote:"+line.RemoteEvent]) {
 				continue
 			}
-			seen[id] = true
+			explicitSeen[id] = true
 			if line.RemoteEvent != "" {
-				seen["remote:"+line.RemoteEvent] = true
+				explicitSeen["remote:"+line.RemoteEvent] = true
 			}
-		} else if legacy[line.Session] > 0 {
-			legacy[line.Session]--
+			missing = append(missing, line)
+			continue
+		}
+		// A LINE WITH NO IDENTITY IS STILL COUNTED, NEVER BOOKED BLINDLY. A
+		// transcript line whose timestamp did not parse has no fingerprint, and
+		// both rules this one unified cover such a line by the session's uncovered
+		// rows rather than booking it again on every reopen. "No identity, no
+		// dedupe" is about rows: a row without one is never another call's
+		// duplicate by identity, which the count below does not claim.
+		fp := session.UsageFingerprint(line)
+		if fp != "" && fingerprintCount[fp] > 0 {
+			fingerprintCount[fp]--
+			if legacyFingerprintCount[fp] > 0 {
+				legacyFingerprintCount[fp]--
+				if skip > 0 {
+					skip--
+				}
+			}
+			continue
+		}
+		if skip > 0 {
+			skip--
 			continue
 		}
 		missing = append(missing, line)
@@ -136,13 +186,68 @@ func missingUsage(path string, lines []session.UsageLine) ([]session.UsageLine, 
 	return missing, nil
 }
 
-// usageLines is what the session spent: the receipt chain's model calls, which
-// no rewind removes; and, for a cell sealed before receipts carried them, the
-// transcript's usage lines.
-func usageLines(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
+func usageExplicitIDs(lines []session.UsageLine) map[string]bool {
+	ids := make(map[string]bool)
+	for _, line := range lines {
+		if id := session.UsageExplicitID(line); id != "" {
+			ids[id] = true
+		}
+		if line.RemoteEvent != "" {
+			ids["remote:"+line.RemoteEvent] = true
+		}
+	}
+	return ids
+}
+
+func matchedExplicit(row session.UsageLine, fp string, saved map[string]bool) bool {
+	if id := session.UsageExplicitID(row); id != "" && saved[id] {
+		return true
+	}
+	if row.CallID != "" && saved[row.CallID] {
+		return true
+	}
+	if row.ID != "" && saved[row.ID] {
+		return true
+	}
+	if row.RemoteEvent != "" && saved["remote:"+row.RemoteEvent] {
+		return true
+	}
+	return fp != "" && saved[fp]
+}
+
+// A receipted cell shares modern ledger row IDs with its sealed receipts, so a
+// SharedID row absent from the receipt chain is an unsealed call. A receiptless
+// cell falls back to transcript usage lines, which never carry row IDs.
+func countsAsLegacyPrefix(row session.UsageLine, receipted bool) bool {
+	if row.RemoteEvent != "" || row.Unbilled {
+		return false
+	}
+	if receipted {
+		return !row.SharedID
+	}
+	return true
+}
+
+func legacyUsageRows(rows []session.UsageLine, saved map[string]bool, owner string, receipted bool) int {
+	if owner == "" {
+		return 0
+	}
+	n := 0
+	for _, row := range rows {
+		fp := session.UsageFingerprint(row)
+		if row.Session == owner && countsAsLegacyPrefix(row, receipted) && !matchedExplicit(row, fp, saved) {
+			n++
+		}
+	}
+	return n
+}
+
+// usageLines combines ordinary sealed calls with transcript remote events.
+// With no ordinary receipts, the transcript supplies the ordinary fallback too.
+func usageLines(c cell.Cell, d session.Digest) ([]session.UsageLine, bool, error) {
 	sealed, err := cellstore.ModelCalls(c)
 	if err != nil || len(sealed) == 0 {
-		return d.Usage, err
+		return d.Usage, false, err
 	}
 	lines := make([]session.UsageLine, len(sealed))
 	for i, s := range sealed {
@@ -155,20 +260,22 @@ func usageLines(c cell.Cell, d session.Digest) ([]session.UsageLine, error) {
 			lines = append(lines, line)
 		}
 	}
-	return lines, nil
+	return lines, true, nil
 }
 
 func usageOfCall(c cell.Cell, d session.Digest, s cellstore.SealedCall) session.UsageLine {
+	id := s.ExplicitID()
 	return session.UsageLine{
-		CallID: s.CallID, At: time.UnixMilli(s.SealedAtMs), Model: s.Model, Role: s.Role, Calls: 1,
+		ID: id, SharedID: id != "", CallID: id,
+		At: time.UnixMilli(s.SealedAtMs), Model: s.Model, Role: s.Role, Calls: 1,
 		Input: int(s.TokensIn), Output: int(s.TokensOut), USD: float64(s.CostMicroUSD) / 1e6,
-		Session: c.ID, Workspace: d.Workspace,
+		Session: usageOwner(c, d), Workspace: d.Workspace,
 	}
 }
 
 // ledgerRows counts the ledger rows that name the session, without parsing any
 // row. An unreadable ledger answers as if it were full: it is not ours to append to.
-func ledgerRows(path, session string) int {
+func ledgerRows(path string, sessions ...string) int {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0
@@ -177,16 +284,49 @@ func ledgerRows(path, session string) int {
 		return math.MaxInt
 	}
 	defer f.Close()
-	marker := []byte(`"session":"` + session + `"`)
+	markers := make([][]byte, 0, len(sessions))
+	for _, id := range sessions {
+		if id != "" {
+			markers = append(markers, []byte(`"session":"`+id+`"`))
+		}
+	}
 	n := 0
 	r := bufio.NewReaderSize(f, 1<<20)
 	for {
 		line, err := r.ReadBytes('\n')
-		if bytes.Contains(line, marker) {
-			n++
+		for _, marker := range markers {
+			if bytes.Contains(line, marker) {
+				n++
+				break
+			}
 		}
 		if err != nil {
 			return n
 		}
 	}
+}
+
+// Seeded cells from older builds can have a journal identity different from
+// their folder. Live calls use the journal identity; recognize both names so
+// reopening never books the receipt again under its folder's name.
+func usageJournalID(c cell.Cell) string {
+	f, err := os.Open((session.Place{Dir: c.Root}).Transcript())
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var header struct {
+		ID string `json:"id"`
+	}
+	if json.NewDecoder(f).Decode(&header) != nil {
+		return ""
+	}
+	return strings.TrimSpace(header.ID)
+}
+
+func usageOwner(c cell.Cell, d session.Digest) string {
+	if d.ID != "" {
+		return d.ID
+	}
+	return c.ID
 }

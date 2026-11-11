@@ -104,3 +104,14 @@ func TestChatStartClaimHasOneWinner(t *testing.T) {
 		t.Fatal("unknown request claimed")
 	}
 }
+
+func TestStartChatIsUnavailableToAppOnlySessions(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Interactive = true
+		c.HandOverOnAsk = true
+		c.Place = Place{Dir: t.TempDir()}
+	})
+	if answer, failed := agent.loadCapability("chats"); !failed {
+		t.Fatalf("app-only session offered terminal chat launches: %s", answer)
+	}
+}

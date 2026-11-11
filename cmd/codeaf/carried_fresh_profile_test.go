@@ -247,10 +247,14 @@ func TestSeniorDevShellDefaultNamesCrewDoorWhenNoModelCanStart(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"data":[]}`)
 	}))
-	defer server.Close()
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Cleanup(server.Close)
+	home := testHome(t)
+	t.Setenv("CODEAF_HOME", home)
 	t.Setenv("OPENROUTER_API_KEY", "sk-or-v1-fixture")
 	t.Setenv("CODEAF_BASE_URL", server.URL+"/api/v1")
+	previousCatalog := sharedCatalog
+	sharedCatalog = newSharedCatalog()
+	t.Cleanup(func() { sharedCatalog = previousCatalog })
 	settings, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -261,6 +265,9 @@ func TestSeniorDevShellDefaultNamesCrewDoorWhenNoModelCanStart(t *testing.T) {
 	road, err := profileRoad()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if road.close != nil {
+		t.Cleanup(road.close)
 	}
 	_, err = road.defaultSeat()
 	if err == nil || !strings.Contains(err.Error(), "/crew") {

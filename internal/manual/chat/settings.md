@@ -30,7 +30,7 @@ not undo the write already in progress.
 ## Change settings by asking in chat
 
 You can ask codeaf to change supported preferences: “hide hints,” “expand completed
-tool details,” “turn timestamps off,” or “stop noticing things to remember.” It reads the
+tool details,” “turn timestamps off,” or “turn memory on.” It reads the
 `settings` tool first, then uses `change_setting` to save the requested value
 through the same registry as the panel. If these tools are not loaded, codeaf
 loads the `settings` capability group. It does not need to edit config files.
@@ -102,20 +102,30 @@ An individual team's own Settings controls its supported overrides. Global
 defaults do not erase explicit team overrides. New-subteam budget share applies
 when a subteam is created; it does not redistribute existing budgets.
 
-## Memory settings — notice things to remember, inspect and forget
+## Memory settings — turn memory on, why isn't it learning, what does memory cost
 
-**Memory → notice things to remember** decides one thing: whether, after a turn
-you typed, codeaf may keep a line you said that should hold in every conversation
-— and tell you in the conversation. Off stops only that noticing. Lines kept
-with `/remember`, by asking, or on the Memory tab still
-ride every conversation, and nothing saved is deleted. It applies from the next
-turn, in every open chat, with no restart.
+Memory is **on by default** when no choice has been saved. In Settings → Memory,
+**learn from chats and jobs** controls `memory.enabled`. An explicit saved off
+choice stays off. In the desktop app you can also do
+it from a Factory job's spend area, under Spent: "Memory is off · Turn on…". This
+one switch per home covers noticing useful lines, learning from saved chats, and
+job memory, whose calls count in the job's cost. A saved on or off choice is kept.
+Terminal **Build knowledge base** also saves on and imports saved chats.
 
-There is no switch that turns memory off altogether: what you kept is yours to
-forget, line by line. Use `/memory`, `/memories` or the Memory tab (`alt+8`) to
-see every line, and fix, move, forget or put back any of them there. The row's
-`Open the Memory tab` door goes straight to that tab. Input history and unfinished
-drafts are separate Privacy choices.
+When on, memory learns from your chats and jobs so later work can use it, and
+makes extra model calls on your key. Costs vary with your chats and jobs;
+Spending shows actual recorded costs rather than a forecast or a percentage
+from an unrelated example.
+
+Off stops automatic memory model calls from the next memory step, with no restart.
+A call already in flight finishes and is billed. Saved knowledge stays readable;
+reading it costs nothing. Kept lines and `/remember` still work. Use `/memory`,
+`/memories` or the Memory tab (`alt+8`) to inspect, fix, move, forget or put back
+saved lines; the `Open the Memory tab` door goes straight to that tab. Input
+history and unfinished drafts are separate Privacy choices.
+
+Older homes with no saved choice also default on. An explicit saved off choice
+stays off. Invalid saved values read off. Nothing saved is deleted.
 
 ## Permissions, task timers and automatic work
 
@@ -164,7 +174,11 @@ renames this device with `n`, removes another with `r`, and starts `/pair` from
 
 **Privacy** separates input history, unfinished drafts, anonymous usage reporting
 and **shared model recommendations** (formerly Model Pool). Recommendations can
-**use and contribute**, **use only**, or remain **off**. Disabling one privacy
+**use and contribute**, **use only**, or remain **off** (the default).
+With no saved choice, the pool makes no judge calls and writes no pool records;
+each role still follows your task-model and tier settings, and in Auto the
+router picks from your allowed models. A saved **use and contribute** choice
+stays enabled. Disabling one privacy
 control is not a promise that all the others are disabled. Search accepts old
 labels as well as the new organization.
 
@@ -189,12 +203,29 @@ A saved change applies to the next compilation without restarting your chats.
 A compilation already running finishes with its original model. The compiler
 verifies the model reported by the provider and rejects substitutions; it never
 falls back to a different model. Existing notes stay intact when you change this
-setting. A new profile whose first saved-chat inventory is empty enables
-capture automatically. A profile with existing eligible history waits for
-**Build knowledge base** in Memory before importing it; capture is profile-wide.
+setting. Turn automatic learning on with the shared Memory setting.
+A new profile whose first saved-chat inventory is empty enables capture automatically.
+A profile with existing eligible history waits for **Build knowledge base** in
+Memory before importing it; capture is profile-wide.
 Compilation is paid model work recorded in Spend, including unusable answers.
 It pauses at the daily limit and resumes automatically after you raise the
 limit with `/budget day` or the local day changes.
+
+## Unreadable profile settings and saved spending limits
+
+If an existing `config.json` cannot be read, changing a setting refuses with
+`write config: preserve existing file:` followed by the read error. The file is
+left unchanged. Daily spending-limit reads return the read error instead of
+substituting the default limit. Restore read access to resume these operations.
+A missing file still uses new-profile defaults.
+
+Preference and saved-provider-key sharing also refuses unreadable profile data.
+An unreadable profile does not by itself block interactive startup: tool approvals
+fall back to prompting, with saved profile exceptions withheld. Headless approval
+resolution also falls back to prompting. A missing profile keeps its usual defaults;
+malformed JSON still reports an error. Spending-limit reads and settings writes
+continue to refuse unreadable files unless an explicit daily-limit override supplies
+the spending authority.
 
 ## Devices — sync storage, off or on, and request access
 

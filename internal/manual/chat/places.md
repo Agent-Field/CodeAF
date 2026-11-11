@@ -604,6 +604,7 @@ The confirmation defaults to `cancel`; `delete` permanently deletes the selected
 A conversation deletes its transcript and every task underneath it. A task deletes only
 its own records and descendants. Deleting a leaf subtask deletes only that subtask.
 Surviving siblings and their conversations remain. Deleted records cannot be recovered by search or reopened.
+Permanent deletion is available on Windows, macOS and Linux.
 
 `n new in project`, `o open folder`, and `p copy project` use the selected task's owner project.
 Folder actions are local. Permanent deletion is also available over a connection when
@@ -648,12 +649,25 @@ These view switches underline while hovered. Build and Search controls highlight
 under the pointer; the surrounding description stays passive.
 
 If saved chats already exist, click **Build knowledge base** or press Enter.
-The first build uses saved chats across all projects, including archived chats
+Build turns automatic memory on and saves that choice. The first build uses saved chats across all projects, including archived chats
 and saved task reports.
 **Building knowledge base… You can keep chatting.** shows that work continues
 in the background. You can leave Memory, change chats, and return later; pages
 appear after the initial history has been processed and organized. New chats
-can continue arriving while that initial collection is built.
+can continue arriving while that initial collection is built. While nothing
+new arrives the background build looks for new chats less and less often, at
+most every 30 seconds; pressing **Build knowledge base** looks at once.
+
+## Closing a chat waits for knowledge capture
+
+Closing a chat cancels its knowledge scanners and learning from stopped jobs
+before waiting up to 10 seconds total for them to finish. If a writer misses
+that deadline, close logs its kind (scanner or compiler), journal and profile
+identities, and elapsed wait, then returns. The identities are hashes of paths.
+A database write already in progress can finish later as a whole transaction.
+Saved journals remain available for later recovery. Learning owned by an active
+job keeps running across stage chat closes under that job's existing budget
+and cancellation rules.
 
 ## Knowledge build progress and concurrency
 
@@ -672,8 +686,8 @@ and completed publications are saved together. Opening another window does not
 start a duplicate compiler for the same profile.
 
 If there is no chat history, the reader says **Knowledge will populate as you
-chat.** Future saved chats populate it automatically, without a separate build
-step. A profile has one knowledge base; changing project does not change vaults.
+chat.** Automatic learning is on by default unless you saved off. Use
+**Build knowledge base** to populate it from saved chats; this also saves on. A profile has one knowledge base; changing project does not change vaults.
 
 ## Reading knowledge pages, links and sources
 
@@ -722,9 +736,26 @@ updates the same page, while a distinct concept can receive a new page. Issue
 and work-session details remain linked evidence. Organization follows the actual
 subjects in your chats, without fixed project categories.
 
-The application process owns the background worker. Closing Memory or changing
-chats does not stop it. When codeaf stops, captured sources and checkpoints stay
+## Memory spending and factory job pauses
+
+Memory model requests appear in Spending under the `memory` role. Requests
+owned by a factory job also count toward that job's spending and budget.
+
+A memory charge cannot undo a successful step. Completed work stays done;
+the next unfinished step checks the job's full spending before it starts.
+Delegated task reports feed their owning job's memory pass and keep their citations.
+Older job ownership markers still exclude paused and ended jobs from idle learning.
+
+If a call is interrupted before its price arrives, codeaf asks for the provider's
+receipt in the background. Quitting before that recovery finishes can leave the
+charge missing from Spending. This limit also applies to ordinary chat calls;
+pending receipt recovery does not survive application quit.
+
+The application process owns the background worker for ordinary saved chats.
+Closing Memory or changing chats does not stop it. When codeaf stops, captured sources and checkpoints stay
 in the database; the next running codeaf process resumes unfinished work.
+
+## Memory background compiler batching and retries
 
 The initial build processes a fixed collection of admitted history before
 organizing it. Independent page drafts and refreshes can run two at a time;
@@ -736,17 +767,56 @@ its own step and source-reading budget, so total work grows with the evidence.
 A final pass keeps the core overview concise by selecting reviewed paragraphs;
 the complete source detail stays in linked evidence rather than expanding the
 overview after every update.
-Later updates combine saved turns into
+## Factory job memory waits, pauses and skipped steps
+
+Factory jobs wait at most two seconds for memory after a finished turn. An
+unfinished pass continues with that job while the next step works. A job has at
+most one pass running; later turns do not queue more. Pause, Stop and the job's
+end cancel it, including a request in flight. Paid receipts still charge the job.
+While a job stays paused, no new paid memory request is admitted. This also
+applies to memory from the job's own conversation outside a stage. Resume does
+not start a memory burst: pending sources wait for the next finished job turn,
+using the same one-pass rule.
+The worker can remain occupied briefly after work finishes to report those prices.
+Paid memory that finishes after its stage closes stays in that stage’s saved
+spending total. Reopening after that memory finishes restores the full paid total.
+Quit cancels the pass. The worker allows up to five additional seconds to settle
+paid calls through its existing accounting receipt before deleting its local job
+copy. Receipts arriving after shutdown are not guaranteed to reach the job; pending
+receipt recovery does not survive quit. Saved sources stay pending for its next finished turn, and
+idle learning never takes over a job's sources. The next admitted pass also
+includes earlier steps skipped while another pass was running. Unchanged source input
+reuses completed receipts. Extraction, page organization and evidence review can
+require separate model requests in that compilation. Sources and completed
+progress survive cancellation for a later active turn.
+
+Ordinary memory with no owning job belongs to the application process. Closing
+one chat does not stop its background build; quitting the application cancels
+that build. Its saved sources remain available for recovery on a later launch.
+
+## Ordinary saved chat memory batching
+
+Later updates to ordinary saved chats combine turns into
 normal model requests, without OpenRouter's Batch API. A batch becomes eligible
 after 30 seconds without new sources, when its oldest source reaches 120 seconds,
 or when its context limit is reached. These thresholds do not include provider
 time or retries. Each extraction uses at most 64 source spans and 24,000 source
 characters.
 
-Search runs against the database index. Failed requests retain pending work and
-retry with backoff up to 120 seconds. Unreadable chats do not prevent other chats
-from being processed; their incomplete status remains visible. The Knowledge
-view over `--host` is not supported.
+Search runs against the database index. Idle background checks do not launch
+refinement without pending sources. Failed ordinary-chat requests retain pending
+work and completed progress. For unchanged input, the background build allows
+three compilation attempts in total, including the first attempt. The count
+survives quitting and restarting. While attempts remain, the failure says
+`Completed progress is retained; retrying automatically.` After three failed
+attempts, automatic retries stop; use **Build** or add new sources to start a new
+count. A successful compilation clears the count. One compilation attempt can
+make several model requests, so this is an attempt limit rather than a
+three-request spending cap. Jobs keep their own retry and accounting rules.
+
+Unreadable chats do not prevent other chats from being processed; their
+incomplete status remains visible. The Knowledge view over `--host` is not
+supported.
 
 Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
 model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
@@ -757,10 +827,19 @@ of $1 · /budget day changes it` with your actual figures, followed by the
 retained-progress and automatic-retry message. No new compiler call starts
 until the limit is raised or the local day changes; retries back off.
 
-Failures retain pending work and retry automatically, with backoff up to 120
-seconds. Stable source IDs prevent duplicate records during retry or journal
-recovery. A failed or interrupted provider request can still incur charges;
+Stable source IDs prevent duplicate records during retries and journal recovery. A failed or interrupted provider request can still incur charges;
 retry safety does not mean every network request is billed only once.
+
+## Repeated paid knowledge failures and retry pauses
+
+After an unusable paid knowledge answer, repeating the identical request within
+two seconds says `knowledge retry paused:` followed by the failure reason. This
+short pause lasts while that vault is open, including its job-owned work.
+Reopening still respects the saved three-attempt limit for ordinary builds.
+
+Ordinary builds wait five seconds after the first failure, doubling the delay
+up to 120 seconds. **Build** or new sources resets the attempt count. A job's
+failed compilation is retried only by its owner, with its own receipts.
 
 ## Updating existing knowledge pages and sections
 
@@ -820,6 +899,9 @@ one`, and the foot is `tab next place · esc`.
 What this machine has cost, by the day, by the model, and by what it was for. `alt+5` opens
 it. It reads one machine-wide ledger — a line per model call — so the figures are the bill
 and not an estimate.
+
+Windows records the same per-call history and enforces the same daily spending limit
+as macOS and Linux. Opening Spend does not pause recording new calls.
 
 **It is the whole machine and not this session**, which is why a figure here can be larger
 than anything this conversation did: every window, every task and every automation run on
@@ -1130,3 +1212,13 @@ the model list, and Enter applies the selected model.
 ## Where the Settings search cursor appears
 
 Settings draws its search field above the rows. The cursor follows your query there; model pickers use their own visible filter, and a connection key entry keeps its cursor inside the key field. The bottom row remains the navigation hints.
+
+## Cancelled model calls, missing charges and provider receipts
+
+Stopping a model call does not undo work the provider has already charged for.
+codeaf asks for a final receipt when the provider supplies a generation ID and
+supports receipt lookup. If lookup fails, measured usage received before the stop
+is retained. A receipt and that fallback cannot charge the same attempt twice.
+Helper calls retain their generation IDs too. Without measured usage or a
+retrievable receipt, the charge stays unknown. Text token estimates are approximate
+telemetry; they are not booked as money.

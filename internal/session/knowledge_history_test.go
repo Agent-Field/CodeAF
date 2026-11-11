@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
@@ -46,7 +47,7 @@ func knowledgeProviderFixture(t *testing.T, started chan<- struct{}, release <-c
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			return nil, err
 		}
-		if body.Model != "deepseek/deepseek-v4.1-flash" {
+		if body.Model != config.DefaultKnowledgeModel {
 			t.Errorf("unexpected model %q", body.Model)
 		}
 		var payload struct{ Messages []knowledge.Source }
@@ -270,6 +271,9 @@ func runKnowledgeWorker(t *testing.T, v *knowledge.Vault, root string) (context.
 func TestKnowledgeInitialBuildImportsAllProjectsAndAutopopulates(t *testing.T) {
 	root := t.TempDir()
 	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
 	v := knowledge.Open(profile)
 	writeKnowledgeChat(t, root, "project-a", "chat-a", knowledgeMessage("Cedar queues jobs."), map[string]any{"type": "message", "role": "user", "content": "Harness-only note", "note": true, "timestamp": "2026-10-25T12:00:00Z"}, map[string]any{"type": "compaction", "window": 2}, knowledgeMessage("Synthetic summary"), knowledgeMessage("Synthetic replay"))
 	path := writeKnowledgeChat(t, root, "project-b", "chat-b", knowledgeMessage("Cedar retries failed work."))
@@ -330,6 +334,9 @@ func TestKnowledgeInitialBuildImportsAllProjectsAndAutopopulates(t *testing.T) {
 func TestKnowledgeWithoutHistoryWaitsAndLearnsFromFirstSavedChat(t *testing.T) {
 	root := t.TempDir()
 	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
 	calls := knowledgeProviderFixture(t, nil, nil)
 	runKnowledgeWorker(t, v, root)
 	state := waitKnowledgeState(t, v, func(s knowledge.Snapshot) bool { return s.Build.Phase == knowledge.BuildWaiting })

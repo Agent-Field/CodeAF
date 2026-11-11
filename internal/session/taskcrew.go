@@ -52,13 +52,21 @@ type crewWish struct {
 	// worker is a model the hand-off named for this task, which seats the
 	// worker as a one-task pin ([Agent.routeTaskCrew]).
 	worker string
+	// sends are one-task pins a person chose per role for this task — a rerun
+	// from Pick models — laid over the worker named above (taskrouting.go).
+	sends map[crewroute.Seat]string
+	// taskCap is a task cap a person explicitly raised for this one task.
+	taskCap float64
+	// autoSeats are roles a person asked Auto for, this task only, over a
+	// saved pin or one-model mode (Best, a stronger worker).
+	autoSeats map[crewroute.Seat]bool
 }
 
 type crewWishKey struct{}
 
 // withCrewWish hands a start door the crew wish; an empty wish is no value.
 func withCrewWish(ctx context.Context, wish crewWish) context.Context {
-	if wish.effort == "" && wish.stronger == nil && wish.again == nil && wish.worker == "" {
+	if wish.effort == "" && wish.stronger == nil && wish.again == nil && wish.worker == "" && len(wish.sends) == 0 && wish.taskCap == 0 && len(wish.autoSeats) == 0 {
 		return ctx
 	}
 	return context.WithValue(ctx, crewWishKey{}, wish)
@@ -121,6 +129,28 @@ type taskCrew struct {
 	// this task's line through the day's own figure.
 	day        *SpendDay
 	dayAtStart float64
+
+	// changes are this task's model changes, oldest first and bounded
+	// ([taskCrewChangesKept]); changeCount counts every one ever written.
+	changes     []TaskCrewChange
+	changeCount int
+	// taskPins are the roles a person pinned for this task alone; pending
+	// are roles whose person-made change has not answered a call yet.
+	taskPins map[crewroute.Seat]bool
+	pending  map[crewroute.Seat]bool
+	// restored is every time this crew came back from its checkpoint.
+	restored     []time.Time
+	restoreCount int
+	// seatStarted are the roles that have had a call answered on this task,
+	// marked by the role that made it. roleFacts is a crew whose per-role
+	// facts (these, and the role tallies) were kept from its admission; a crew
+	// restored from an older checkpoint has none, and its role use is unknown.
+	seatStarted map[crewroute.Seat]bool
+	roleFacts   bool
+	// seatSends are roles a person moved on this task, by role rather than by
+	// the send id the engine asks for, so two roles that share a model can
+	// part ([Agent.TaskRoutingAct]).
+	seatSends map[crewroute.Seat]string
 }
 
 // current is the crew as it stands, fallbacks taken.
@@ -185,7 +215,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	repo := canonicalPath(a.config.Workspace)
 	ask := config.CrewAsk{
 		Task:   crewroute.Task{Text: strings.TrimSpace(title + "\n\n" + brief)},
-		Effort: wish.effort, Stronger: wish.stronger, Again: wish.again, Repo: repo,
+		Effort: wish.effort, Stronger: wish.stronger, Again: wish.again, Repo: repo, AutoSeats: wish.autoSeats,
 		ChatModel: a.Model(),
 	}
 	// A MODEL NAMED FOR THE TASK SEATS ITS WORKER, as a one-task pin: the one
@@ -195,6 +225,14 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	// to stop at the card while the router seated whatever it picked.
 	if worker := a.namedTaskWorker(wish.worker); worker != "" {
 		ask.Sends = map[crewroute.Seat]string{crewroute.Worker: worker}
+	}
+	for seat, send := range wish.sends {
+		if send = strings.TrimSpace(send); send != "" {
+			if ask.Sends == nil {
+				ask.Sends = map[crewroute.Seat]string{}
+			}
+			ask.Sends[seat] = send
+		}
 	}
 	decision, err := route(ask)
 	if errors.Is(err, config.ErrCrewAtCap) {
@@ -206,7 +244,8 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 		return nil, err
 	}
 	crew := &taskCrew{
-		call: router.CrewCallID(a.journalID() + ":" + strconv.FormatUint(row, 10)), decision: decision,
+		roleFacts: true,
+		call:      router.CrewCallID(a.journalID() + ":" + strconv.FormatUint(row, 10)), decision: decision,
 		title: title, brief: brief, repo: repo,
 		original: map[crewroute.Seat]string{}, ladders: decision.Ladder,
 	}
@@ -214,10 +253,23 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 		crew.original[pick.Seat] = pick.Send
 	}
 	crew.rescue = map[crewroute.Seat][]crewroute.Pick{}
-	for _, seat := range crewroute.Seats {
-		crew.rescue[seat] = config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
+	// ONE MODEL FOR EVERY ROLE IS THE PERSON'S CHOICE, and no role moves off
+	// it on its own: no rescue rung is kept for a decision admitted in it.
+	if decision.Mode != crewroute.ModeOne {
+		for _, seat := range crewroute.Seats {
+			crew.rescue[seat] = config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
+		}
+	}
+	for seat := range wish.sends {
+		if crew.taskPins == nil {
+			crew.taskPins = map[crewroute.Seat]bool{}
+		}
+		crew.taskPins[seat] = true
 	}
 	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true)
+	if wish.taskCap > crew.guard.TaskCap && crew.guard.TaskCap > 0 {
+		crew.guard.TaskCap = wish.taskCap
+	}
 	crew.guard.Day = a.crewDay()
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
@@ -277,6 +329,9 @@ var ErrNoCrewToRedo = errors.New("no task here to redo · /redo stronger follows
 // the panel's, untouched. A crew already at the top answers
 // [crewroute.ErrStrongest] in words, and nothing starts.
 func (a *Agent) RedoStronger(ctx context.Context, row uint64) (uint64, string, error) {
+	if err := a.CheckWork(); err != nil {
+		return 0, "", err
+	}
 	var crew *taskCrew
 	if row == 0 {
 		row, crew = a.crews.latest()
@@ -303,6 +358,7 @@ func (a *Agent) RedoStronger(ctx context.Context, row uint64) (uint64, string, e
 	if !crew.anyStarted() {
 		wish = crewWish{again: &prior}
 	}
+	ctx = withTaskSource(ctx, a.graph().sourceOfID(row))
 	id, title, _, err := a.startTaskRun(withCrewWish(ctx, wish), crew.brief, true, "")
 	if err != nil {
 		if strings.Contains(err.Error(), crewroute.ErrStrongest.Error()) {
@@ -394,8 +450,13 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, messages []ai.Message, options []ai.Option) (*ai.Response, error) {
 	crew := c.run.crew
 	retried := false
+	seat := crewSeatOf(ctx)
 	for {
-		current := crew.sendFor(key)
+		current := crew.sendForSeat(seat, key)
+		// A REFUSAL ITS CREDENTIAL HAS SINCE ANSWERED is let go here, at the
+		// call that would ask it again, and nowhere else: this is the explicit
+		// ask, and nothing is sent because a refusal was lifted.
+		c.agent.liftAnsweredRefusals(c.run, current)
 		if c.freeRouteBlocked(ctx, current) {
 			return nil, crewSeatEnd(freeRoutesOffAction, nil)
 		}
@@ -415,15 +476,24 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			// says which line it met — never "/redo stronger".
 			return nil, c.agent.stopCrew(c.run, err)
 		}
+		// THE ROLE HAS STARTED the moment its call is admitted and about to
+		// leave — not when the provider answers — and only that role.
+		crew.seatStarting(seat)
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
 		callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
 			crew.guard.after(ctx, current, response, 0)
 		})
+		// THIS CALL'S OWN DISPATCH FACT, told from the header each attempt was
+		// written with ([withDispatchObserver]): the LAST told is the attempt
+		// that failed, whichever key an earlier attempt carried.
+		sent := new(lastSent)
+		callCtx = withDispatchObserver(callCtx, sent.tell)
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
+		failedAt := time.Now()
 		crew.guard.after(ctx, current, response, held)
 		if err == nil {
-			c.agent.crewAnswered(c.run, current)
+			c.agent.crewAnswered(c.run, current, seat)
 			return response, nil
 		}
 		if ctx.Err() != nil || crew.hasStarted(current) {
@@ -438,7 +508,7 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			continue
 		}
 		retried = false
-		crew.noteFailed(current, crewFailure{kind: kind, until: until, err: err})
+		crew.noteFailed(current, crew.failureSent(current, crewFailure{kind: kind, until: until, err: err, at: failedAt}, sent.read()))
 		if action, moved := c.agent.moveCrewSeat(c.run, key, current, kind, until); !moved {
 			if action == "" {
 				return response, err
@@ -446,6 +516,26 @@ func (c crewSeatCompleter) completeSeat(ctx context.Context, key string, message
 			return response, crewStopped{action: action, cause: err}
 		}
 	}
+}
+
+// lastSent is the dispatch fact of the newest request one seat call wrote. A
+// streamed request is written on the stream's own goroutine, so it is read
+// under its own lock.
+type lastSent struct {
+	mu   sync.Mutex
+	fact sentConnection
+}
+
+func (l *lastSent) tell(fact sentConnection) {
+	l.mu.Lock()
+	l.fact = fact
+	l.mu.Unlock()
+}
+
+func (l *lastSent) read() sentConnection {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.fact
 }
 
 // seatKey is the send id a seat call names — the seat as routed — or the
@@ -468,6 +558,283 @@ type crewFailure struct {
 	kind  provider.RouteFailure
 	until time.Time
 	err   error
+	// at is when the failure came back, and provider the provider the send
+	// was routed to. sent is the print of the credential the failed call was
+	// SENT with, as the adapter printed it from the header of the last attempt
+	// it wrote ([withDispatchObserver]); empty when nothing could say. A failure
+	// restored from an older checkpoint has none of the three, and an auth or
+	// payment refusal without them is never lifted by this task.
+	at       time.Time
+	provider string
+	sent     config.CrewDispatch
+}
+
+// failureSent is failure with what is known about the call that failed: the
+// provider send is routed to and, when the door's fact is about that same
+// provider, the credential print it was sent with. A fact about another
+// provider's account — a seat the pool moved onto another service — names
+// nothing about this provider's credential, and is left unprinted.
+func (c *taskCrew) failureSent(send string, failure crewFailure, fact sentConnection) crewFailure {
+	c.mu.Lock()
+	failure.provider = c.providerOfLocked(send)
+	c.mu.Unlock()
+	if failure.provider == "" {
+		failure.provider = fact.provider
+	}
+	if fact.provider != "" && fact.provider == failure.provider {
+		failure.sent = fact.sent
+	}
+	return failure
+}
+
+// providerOfLocked is the provider send is routed to on this crew: a seat's
+// pick, a rung of its ladder or rescue, or the provider a change recorded it
+// moving from. Lowercased, as the router names providers; "" when this crew
+// never named one for it. The caller holds c.mu.
+func (c *taskCrew) providerOfLocked(send string) string {
+	named := func(pick crewroute.Pick) bool { return pick.Send == send && pick.Provider != "" }
+	for _, pick := range c.decision.Crew {
+		if named(pick) {
+			return strings.ToLower(pick.Provider)
+		}
+	}
+	for _, rungs := range []map[crewroute.Seat][]crewroute.Pick{c.ladders, c.rescue} {
+		for _, seat := range crewroute.Seats {
+			for _, rung := range rungs[seat] {
+				if named(rung) {
+					return strings.ToLower(rung.Provider)
+				}
+			}
+		}
+	}
+	for i := len(c.changes) - 1; i >= 0; i-- {
+		switch change := c.changes[i]; {
+		case change.FromSend == send && change.FromProvider != "":
+			return strings.ToLower(change.FromProvider)
+		case change.ToSend == send && change.ToProvider != "":
+			return strings.ToLower(change.ToProvider)
+		}
+	}
+	return ""
+}
+
+// crewCredentialRefusal is a failure that belongs to the credential it was
+// made with: a refused key, or an account out of credit.
+func crewCredentialRefusal(kind provider.RouteFailure) bool {
+	return kind == provider.RouteAuth || kind == provider.RoutePayment
+}
+
+// ── A REFUSAL ITS CREDENTIAL HAS ANSWERED ──────────────────────────────────
+//
+// A send refused for its key or its credit was held for the rest of the task:
+// failed, bad, and its provider gone or broke — and a pinned role, or the one
+// model, never moves, so reconnecting or adding credit could not reach a task
+// already running or carried on. Route health had learned to lift such a
+// refusal on a fact (internal/config's crewcred.go); this task's own record of
+// it did not, and held the pin regardless.
+//
+// NOW THE SAME FACTS LIFT IT HERE, judged at the call that would ask the send
+// again and never on a timer or in the background:
+//
+//   - route health no longer holds the refusal against the profile
+//     ([config.CrewRefusalApplies] — a different known credential than the
+//     one it was sent with, a credential change after an unprinted one, or
+//     credit read after a payment refusal), AND
+//   - the very connection the next call would be handed — the pool's own,
+//     which can lag the profile ([Agent.nextSentConnection]) — carries the
+//     credential in force, with a credential that is there; and for a
+//     refused key, it is not the key that was refused.
+//
+// ONLY THE REFUSALS THOSE FACTS ANSWER ARE LET GO: a rate limit, a route gone,
+// a cap, another provider's refusal, and a refusal on the same provider the
+// facts do not answer (an older checkpoint's, with no time and no print) all
+// stand, and while one stands its provider stays gone or broke. The pick is
+// not changed, nothing is moved onto Auto or a rescue, the history, the call
+// counts and the spend are kept exactly as they were, and no success is
+// written: the next call either answers on the repaired credential, or fails
+// and is held again on its own fact.
+
+// liftAnsweredRefusals lets go of the auth and payment refusals on send's
+// provider that its credential has since answered, when send's own is one of
+// them. The facts are read with crew.mu released — they are files — and the
+// failures are let go only if they are still the ones read.
+func (a *Agent) liftAnsweredRefusals(run *beltRun, send string) {
+	crew := run.crew
+	on, asked := crew.credentialRefusalsOn(send)
+	if len(asked) == 0 {
+		return
+	}
+	answered, why := a.answeredRefusals(on, send, asked)
+	if why == "" {
+		return
+	}
+	crew.mu.Lock()
+	before := crew.decision.Stopped
+	crew.liftLocked(on, answered)
+	decision := crew.decision
+	crew.mu.Unlock()
+	if decision.Stopped != before {
+		a.republishCrew(run, decision, send+" may be asked again · "+why)
+	}
+}
+
+// credentialRefusalsOn is, when send's own failure is an auth or payment
+// refusal on a provider it names, that provider and every such refusal on it
+// this task holds — send's included — copied out from under c.mu. A refusal
+// that names no provider, an older checkpoint's, is answered by nothing here.
+func (c *taskCrew) credentialRefusalsOn(send string) (string, map[string]crewFailure) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	failure, ok := c.failed[send]
+	if !ok || c.started[send] || !crewCredentialRefusal(failure.kind) || failure.provider == "" {
+		return "", nil
+	}
+	asked := map[string]crewFailure{}
+	for other, f := range c.failed {
+		if f.provider == failure.provider && !c.started[other] && crewCredentialRefusal(f.kind) {
+			asked[other] = f
+		}
+	}
+	return failure.provider, asked
+}
+
+// answeredRefusals judges each refusal in asked on its own facts, and answers
+// the ones that no longer hold with the fact that answered send's — "" when
+// send's own still holds.
+func (a *Agent) answeredRefusals(on, send string, asked map[string]crewFailure) (map[string]crewFailure, string) {
+	var inForce config.CrewDispatch
+	if on != "codex" {
+		inForce = config.CrewDispatchFor(a.config.ProfileDir, on)
+	}
+	answered := map[string]crewFailure{}
+	why := ""
+	for other, f := range asked {
+		because := a.refusalAnswered(other, on, f, inForce)
+		if because == "" {
+			continue
+		}
+		answered[other] = f
+		if other == send {
+			why = because
+		}
+	}
+	return answered, why
+}
+
+// refusalAnswered is the fact that answers one auth or payment refusal of send
+// on provider on, for the call that would be made next — "" while it holds.
+func (a *Agent) refusalAnswered(send, on string, failure crewFailure, inForce config.CrewDispatch) string {
+	if config.CrewRefusalApplies(a.config.ProfileDir, router.CrewRouteOutcome{
+		At: failure.at, Send: send, Provider: on, Kind: string(failure.kind), Cred: failure.sent.Cred,
+	}) {
+		return ""
+	}
+	next := a.nextSentConnection(send)
+	if next.provider != on {
+		return ""
+	}
+	if next.sent.Cred == "" {
+		// AN UNPRINTED NEXT CONNECTION is a sign-in whose transport carries
+		// the tokens of the moment ([sentConnectionOf]), which the profile's
+		// own facts describe; on any other provider it is a connection with
+		// no credential at all, and a disconnected key repairs nothing.
+		if on != "codex" {
+			return ""
+		}
+		return on + " was signed in again after it refused"
+	}
+	if next.sent != inForce {
+		// The pool would send a credential the profile no longer holds: the
+		// facts that lifted the refusal are about another credential.
+		return ""
+	}
+	switch {
+	case failure.sent.Cred == "":
+		return "the credential on " + on + " changed after it refused"
+	case next.sent != failure.sent:
+		return "a different credential is connected on " + on
+	case failure.kind == provider.RoutePayment:
+		return "credit on " + on + " was read after it refused"
+	}
+	return ""
+}
+
+// liftLocked lets go of the answered refusals that are still as they were
+// read, and keeps on gone or broke while any other refusal of that kind on it
+// stands. A stop the refused credential set is said again from what is left,
+// and dropped when nothing is; any other stop — a spend line met — is
+// untouched. The caller holds c.mu.
+func (c *taskCrew) liftLocked(on string, answered map[string]crewFailure) {
+	credentialStop := c.stoppedOnCredentialLocked()
+	if !c.dropAnsweredLocked(answered) {
+		return
+	}
+	gone, broke := c.stillRefusedLocked(on)
+	if !gone {
+		forgetProvider(c.gone, on)
+	}
+	if !broke {
+		forgetProvider(c.broke, on)
+	}
+	if credentialStop {
+		c.decision.Stopped = ""
+		if len(c.broke) > 0 || len(c.gone) > 0 {
+			c.decision.Stopped = c.actionLocked("", "", time.Time{})
+		}
+	}
+}
+
+// stoppedOnCredentialLocked is whether the crew's stop is the one its refused
+// keys and empty accounts say ([taskCrew.actionLocked]). The caller holds c.mu.
+func (c *taskCrew) stoppedOnCredentialLocked() bool {
+	if c.decision.Stopped == "" || (len(c.broke) == 0 && len(c.gone) == 0) {
+		return false
+	}
+	return c.decision.Stopped == c.actionLocked("", "", time.Time{})
+}
+
+// dropAnsweredLocked forgets each answered refusal that is still the failure
+// that was judged — a newer failure of the send is its own fact — and answers
+// whether any went. The caller holds c.mu.
+func (c *taskCrew) dropAnsweredLocked(answered map[string]crewFailure) bool {
+	dropped := false
+	for send, was := range answered {
+		now, ok := c.failed[send]
+		if !ok || now.kind != was.kind || !now.at.Equal(was.at) || now.sent != was.sent || now.provider != was.provider {
+			continue
+		}
+		delete(c.failed, send)
+		delete(c.bad, send)
+		dropped = true
+	}
+	return dropped
+}
+
+// stillRefusedLocked is whether a key refusal, and an out-of-credit refusal,
+// still stand on provider on — counting a refusal whose provider this crew
+// cannot name, which may be on. The caller holds c.mu.
+func (c *taskCrew) stillRefusedLocked(on string) (gone, broke bool) {
+	for send, f := range c.failed {
+		p := f.provider
+		if p == "" {
+			p = c.providerOfLocked(send)
+		}
+		if p != "" && p != on {
+			continue
+		}
+		gone = gone || f.kind == provider.RouteAuth
+		broke = broke || f.kind == provider.RoutePayment
+	}
+	return gone, broke
+}
+
+// forgetProvider drops on from a set of providers, as they were written.
+func forgetProvider(set map[string]bool, on string) {
+	for provided := range set {
+		if strings.EqualFold(provided, on) {
+			delete(set, provided)
+		}
+	}
 }
 
 // noteFailed remembers how send failed on this task.
@@ -553,6 +920,9 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
 	dir := c.ProfileDir
 	return func(ctx context.Context, model, tag string) error {
+		if err := factoryCallRefusal(ctx); err != nil {
+			return err
+		}
 		if tag != string(purposeTurn) {
 			if err := DailyLimitReached(c); err != nil {
 				return err
@@ -587,15 +957,21 @@ func (e errRouteResting) Error() string {
 // the per-task limit — which withDaily does not touch — and the checker's
 // ceiling.
 func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
-	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
+	capUSD, action := config.CrewSpendCap(profileDir, false)
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	guard := &SpendGuard{
 		Price: config.CrewCallPriceAt(profileDir), Cap: capUSD, CapAction: action,
 		SeatCeilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
-	if capUSD > 0 {
-		guard.Day = newLedgerSpendDay(spentTodayOnLedger, time.Now)
+	// THE DAILY LIMIT IS READ AT EVERY CALL, not frozen here: a limit raised,
+	// lowered or switched on after this crew was admitted is the one that
+	// holds, so the day exists whether or not a limit does today.
+	if withDaily {
+		guard.DayLimit = config.CrewDailyLimit(profileDir)
+	}
+	if capUSD > 0 || withDaily {
+		guard.Day = newCheckedLedgerSpendDay(spentTodayOnLedgerChecked, time.Now)
 	}
 	return guard
 }
@@ -605,7 +981,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 // call after — seats and helpers alike — so a helper's call counts against
 // the cap a seat's next call is priced under, and the other way round.
 func (a *Agent) crewDay() *SpendDay {
-	a.crewDayOnce.Do(func() { a.crewDayHeld = newLedgerSpendDay(spentTodayOnLedger, time.Now) })
+	a.crewDayOnce.Do(func() { a.crewDayHeld = newCheckedLedgerSpendDay(spentTodayOnLedgerChecked, time.Now) })
 	return a.crewDayHeld
 }
 
@@ -619,12 +995,13 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 		return nil
 	}
 	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
-	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, true); capUSD > 0 {
+	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
+	guard.DayLimit = config.CrewDailyLimit(a.config.ProfileDir)
 	if crew != nil && crew.guard != nil {
 		guard.TaskCap, guard.TaskAction, guard.Task = crew.guard.TaskCap, crew.guard.TaskAction, crew.guard.tally()
-		guard.Cap, guard.CapAction = crew.guard.Cap, crew.guard.CapAction
+		guard.Cap, guard.CapAction, guard.DayLimit = crew.guard.Cap, crew.guard.CapAction, crew.guard.DayLimit
 	}
 	return guard
 }
@@ -715,17 +1092,6 @@ func TaskSpendGuard(profileDir string) *SpendGuard {
 	return &SpendGuard{Price: config.CrewCallPriceAt(profileDir), TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
 }
 
-// spentTodayOnLedger is today's spend as the usage ledger has it; nothing
-// when the ledger cannot be read.
-func spentTodayOnLedger() float64 {
-	now := time.Now()
-	lines, err := ReadUsage(UsageLedgerPath(), now.Add(-48*time.Hour))
-	if err != nil {
-		return 0
-	}
-	return SpendToday(lines, now)
-}
-
 // stopCrew records a guard's stop on the crew — the line leads with it — and
 // answers the error the seat call ends on.
 func (a *Agent) stopCrew(run *beltRun, err error) error {
@@ -765,14 +1131,102 @@ func (c *taskCrew) seats(key string) bool {
 }
 
 // sendFor is the send id a request for key goes to now: key, or where the
-// seat has moved.
+// seat has moved. A call that names no role keeps this meaning.
 func (c *taskCrew) sendFor(key string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.sendForLocked(key)
+}
+
+// sendForLocked is [taskCrew.sendFor] for a caller that already holds c.mu.
+func (c *taskCrew) sendForLocked(key string) string {
 	if to := c.swaps[key]; to != "" {
 		return to
 	}
 	return key
+}
+
+// sendForSeat is where one role's call for key goes now.
+//
+// A SAVED PIN, A PIN FOR THIS TASK, AND ONE MODEL FOR EVERY ROLE hold the
+// exact send the decision records for that role. An unpinned role that shares
+// the original key and falls back writes one global swap, and that swap
+// remembers only the first role's destination. It must not drag a role that
+// is held, and it must not drag a role whose own recorded move is a different
+// model. An unpinned role with no move of its own still follows the shared
+// swap. A person who named a send for the role keeps that send.
+//
+// A call with no seat is [taskCrew.sendFor]. Every map this reads is read
+// under c.mu. The walk is this one role — three seats at most — and nothing
+// here reads the profile.
+func (c *taskCrew) sendForSeat(seat crewroute.Seat, key string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if seat == "" {
+		return c.sendForLocked(key)
+	}
+	return c.dispatchSeatLocked(seat, key)
+}
+
+// dispatchSeatLocked resolves one role's send. The caller holds c.mu.
+func (c *taskCrew) dispatchSeatLocked(seat crewroute.Seat, key string) string {
+	if to, ok := c.explicitSeatSendLocked(seat, key); ok {
+		return to
+	}
+	if c.original[seat] == key && c.seatHoldsExactLocked(seat) {
+		return c.recordedSendLocked(seat, key)
+	}
+	if moved := c.ownFallbackLocked(seat, key); moved != "" {
+		return moved
+	}
+	return c.sendForLocked(key)
+}
+
+// explicitSeatSendLocked is the send a person named for this role, when this
+// call is for the role's original key. The caller holds c.mu.
+func (c *taskCrew) explicitSeatSendLocked(seat crewroute.Seat, key string) (string, bool) {
+	to := c.seatSends[seat]
+	if to == "" || c.original[seat] != key {
+		return "", false
+	}
+	return to, true
+}
+
+// seatHoldsExactLocked is whether this role stays on the send the decision
+// records: a saved pin, a pin for this task, or one model for every role.
+// The caller holds c.mu.
+func (c *taskCrew) seatHoldsExactLocked(seat crewroute.Seat) bool {
+	if c.decision.Mode == crewroute.ModeOne {
+		return true
+	}
+	if c.taskPins[seat] {
+		return true
+	}
+	return c.decision.Seat(seat).Pinned
+}
+
+// recordedSendLocked is the send the decision records for seat, or key when
+// the decision has none. The caller holds c.mu.
+func (c *taskCrew) recordedSendLocked(seat crewroute.Seat, key string) string {
+	if pick := c.decision.Seat(seat).Send; pick != "" {
+		return pick
+	}
+	return key
+}
+
+// ownFallbackLocked is this unpinned role's own recorded move off key: the
+// rung [Agent.moveCrewSeat] wrote onto the decision. Empty when the role is
+// still on key, so the shared swap — another role's destination — is not
+// what a role with its own move calls. The caller holds c.mu.
+func (c *taskCrew) ownFallbackLocked(seat crewroute.Seat, key string) string {
+	if c.original[seat] != key {
+		return ""
+	}
+	pick := c.decision.Seat(seat).Send
+	if pick == "" || pick == key {
+		return ""
+	}
+	return pick
 }
 
 // hasStarted is whether a send id has answered a call on this task.
@@ -789,21 +1243,47 @@ func (c *taskCrew) anyStarted() bool {
 	return len(c.started) > 0
 }
 
-// crewAnswered notes that a send id answered its first call on this task, and
-// writes the route's success to the router's log once.
-func (a *Agent) crewAnswered(run *beltRun, send string) {
-	crew := run.crew
-	crew.mu.Lock()
-	if crew.started[send] {
-		crew.mu.Unlock()
+// seatStarting marks a role started at its admitted call and clears its
+// pending change. An unmarked call (no seat) marks nothing.
+func (c *taskCrew) seatStarting(seat crewroute.Seat) {
+	if seat == "" {
 		return
 	}
-	if crew.started == nil {
-		crew.started = map[string]bool{}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.seatStarted == nil {
+		c.seatStarted = map[crewroute.Seat]bool{}
 	}
-	crew.started[send] = true
+	c.seatStarted[seat] = true
+	delete(c.pending, seat)
+}
+
+// crewAnswered notes that a role's call answered on send: the role has run —
+// that role only, never every role on the same model — and the first answer
+// on send writes the route's success to the router's log once. An empty seat
+// is a call no role was marked for, which marks no role.
+func (a *Agent) crewAnswered(run *beltRun, send string, seat crewroute.Seat) {
+	crew := run.crew
+	crew.mu.Lock()
+	if seat != "" {
+		if crew.seatStarted == nil {
+			crew.seatStarted = map[crewroute.Seat]bool{}
+		}
+		crew.seatStarted[seat] = true
+		delete(crew.pending, seat)
+	}
+	first := !crew.started[send]
+	if first {
+		if crew.started == nil {
+			crew.started = map[string]bool{}
+		}
+		crew.started[send] = true
+	}
 	decision := crew.decision
 	crew.mu.Unlock()
+	if !first {
+		return
+	}
 	for _, seat := range crewroute.Seats {
 		if pick := decision.Seat(seat); pick.Send == send {
 			config.LogCrewRoute(a.config.ProfileDir, crew.call, decision, crew.repo, crew.title, seat, pick, "", time.Time{})
@@ -819,35 +1299,27 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 	crew.mu.Lock()
 	provided := a.crewFailedLocked(crew, current, kind, until)
 	decision, next := crew.decision, crewroute.Pick{}
+	shared := false
 	for _, seat := range crewroute.Seats {
 		pick := decision.Seat(seat)
-		if pick.Send != current || pick.Pinned || crew.original[seat] != key {
+		if pick.Send != current || crew.original[seat] != key {
 			continue
 		}
-		rescue := config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
-		if run.recoveredCrew != nil {
-			rescue = crew.rescue[seat]
+		// A PINNED ROLE — a saved pin, a pin for this task, one model for
+		// every role — HOLDS ITS EXACT MODEL when its route fails. Only a
+		// person moves it; the history says it failed, when and why.
+		if seatHoldsItsModel(pick, decision.Mode) {
+			noteHeldFailureLocked(crew, seat, pick, kind)
+			continue
 		}
-		rungs := append(append([]crewroute.Pick(nil), crew.ladders[seat]...), rescue...)
-		rung, ok := crew.takeRungLocked(seat, config.AutomaticCrewRungs(a.config.ProfileDir, rungs))
+		rung, ok := crew.takeRungLocked(seat, config.AutomaticCrewRungs(a.config.ProfileDir, rescueLadderLocked(a, run, crew, decision, seat)))
 		if !ok {
 			continue
 		}
-		decision = withFreeNotice(decision.WithRung(seat, rung, crewWhy(kind, provided)), rung)
-		if next.Send == "" {
-			next = rung
-		}
+		decision, next, shared = fallBackSeatLocked(crew, decision, seat, pick, rung, kind, provided, next, shared)
 	}
 	if next.Send == "" {
-		action := crew.actionLocked(kind, provided, until)
-		stopped := crewStopsOn(kind) || len(crew.broke) > 0 || len(crew.gone) > 0
-		if stopped {
-			// THE CAUSE IS KNOWN, SO THE LINE SAYS THE ONE THING TO DO — and
-			// not "/redo stronger", which no stronger crew on the same
-			// account could make work.
-			decision.Stopped = action
-			crew.decision = decision
-		}
+		action, stopped, decision := nowhereLeftLocked(crew, decision, kind, provided, until)
 		crew.mu.Unlock()
 		if stopped {
 			a.republishCrew(run, decision, current+" could not start · "+action)
@@ -857,10 +1329,73 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 	if crew.swaps == nil {
 		crew.swaps = map[string]string{}
 	}
-	crew.swaps[key], crew.decision = next.Send, decision
+	if shared {
+		crew.swaps[key] = next.Send
+	}
+	crew.decision = decision
 	crew.mu.Unlock()
 	a.republishCrew(run, decision, fmt.Sprintf("%s could not start (%s) · moved to %s", current, crewWhy(kind, provided), next.Send))
 	return "", true
+}
+
+// seatHoldsItsModel is a role a failure must not move: a pin, or one model
+// for every role. Only a person changes it.
+func seatHoldsItsModel(pick crewroute.Pick, mode crewroute.Mode) bool {
+	return pick.Pinned || mode == crewroute.ModeOne
+}
+
+// noteHeldFailureLocked records that a held role's route failed, once per
+// send and reason. The caller holds crew.mu.
+func noteHeldFailureLocked(crew *taskCrew, seat crewroute.Seat, pick crewroute.Pick, kind provider.RouteFailure) {
+	if crew.heldLocked(seat, pick.Send, string(kind)) {
+		return
+	}
+	crew.noteChangeLocked(TaskCrewChange{At: time.Now(), Seat: seat, From: pick.Model, FromProvider: pick.Provider, FromSend: pick.Send,
+		By: TaskCrewByEngine, Kind: TaskCrewChangeHeld, Why: string(kind)})
+}
+
+// rescueLadderLocked is the rungs a seat may fall to: its own ladder, then
+// the rescue list. A crew restored from a checkpoint uses the rescue it kept,
+// not today's settings. The caller holds crew.mu.
+func rescueLadderLocked(a *Agent, run *beltRun, crew *taskCrew, decision crewroute.Decision, seat crewroute.Seat) []crewroute.Pick {
+	rescue := config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())
+	if run.recoveredCrew != nil {
+		rescue = crew.rescue[seat]
+	}
+	return append(append([]crewroute.Pick(nil), crew.ladders[seat]...), rescue...)
+}
+
+// fallBackSeatLocked moves one seat onto rung and remembers the first such
+// rung as where the shared send goes. A seat that had its own send keeps
+// that send pointed at the rung; a shared send is swapped once, outside.
+// The caller holds crew.mu.
+func fallBackSeatLocked(crew *taskCrew, decision crewroute.Decision, seat crewroute.Seat, pick, rung crewroute.Pick, kind provider.RouteFailure, provided string, next crewroute.Pick, shared bool) (crewroute.Decision, crewroute.Pick, bool) {
+	decision = withFreeNotice(decision.WithRung(seat, rung, crewWhy(kind, provided)), rung)
+	crew.noteChangeLocked(TaskCrewChange{Seat: seat, From: pick.Model, FromProvider: pick.Provider, FromSend: pick.Send, To: rung.Model, ToProvider: rung.Provider, ToSend: rung.Send,
+		By: TaskCrewByEngine, Kind: TaskCrewChangeFallback, Why: string(kind)})
+	if crew.seatSends[seat] != "" {
+		crew.seatSends[seat] = rung.Send
+	} else {
+		shared = true
+	}
+	if next.Send == "" {
+		next = rung
+	}
+	return decision, next, shared
+}
+
+// nowhereLeftLocked is the one action when no seat could move. A cause a
+// person can fix — credit, a key, a limit — stops the task on that action,
+// rather than offering a stronger crew on the same account. The caller holds
+// crew.mu and unlocks after.
+func nowhereLeftLocked(crew *taskCrew, decision crewroute.Decision, kind provider.RouteFailure, provided string, until time.Time) (string, bool, crewroute.Decision) {
+	action := crew.actionLocked(kind, provided, until)
+	stopped := crewStopsOn(kind) || len(crew.broke) > 0 || len(crew.gone) > 0
+	if stopped {
+		decision.Stopped = action
+		crew.decision = decision
+	}
+	return action, stopped, decision
 }
 
 // crewFailedLocked writes a failed first call to the router's log for every
@@ -877,7 +1412,11 @@ func (a *Agent) crewFailedLocked(crew *taskCrew, current string, kind provider.R
 			if again {
 				continue
 			}
-			config.LogCrewRoute(a.config.ProfileDir, crew.call, crew.decision, crew.repo, crew.title, seat, pick, string(kind), until)
+			// THE REFUSAL IS WRITTEN AGAINST THE CREDENTIAL THE CALL WAS SENT
+			// WITH ([crewFailure.sent], noted before this), never the one in
+			// force now — a key connected while the call was in flight is
+			// not blamed for it.
+			config.LogCrewRouteSent(a.config.ProfileDir, crew.call, crew.decision, crew.repo, crew.title, seat, pick, string(kind), until, crew.failed[current].sent)
 		}
 	}
 	if crew.bad == nil {

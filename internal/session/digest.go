@@ -117,7 +117,8 @@ func foldUsage(d *Digest, _ []byte, e sessionEntry) {
 		return
 	}
 	d.Usage = append(d.Usage, UsageLine{
-		CallID: u.CallID, RemoteEvent: u.RemoteEvent, At: parseStamp(e.Timestamp), Model: u.Model, Role: u.Role, Calls: u.Calls,
+		CallID: u.CallID, RemoteEvent: u.RemoteEvent, SharedID: u.CallID != "" || u.RemoteEvent != "",
+		At: parseStamp(e.Timestamp), Model: u.Model, Role: u.Role, Calls: u.Calls,
 		Input: u.Input, Output: u.Output, USD: u.CostUSD, Empty: u.Empty,
 		Session: d.ID, Workspace: d.Workspace,
 	})
@@ -153,7 +154,12 @@ func (d Digest) Spend() (usd float64, tokens int) {
 // transcript cannot know (effort, approval, referred places, working copies,
 // archive marks) are m's and pass through untouched.
 func (d Digest) Derive(m Meta) Meta {
-	m.ID, m.Model = d.ID, d.Model
+	m.ID = d.ID
+	// The journal header names the original model, not later conversation
+	// choices. A sealed identity carries the current main/fallback rules.
+	if m.ModelIdentity == nil {
+		m.Model = d.Model
+	}
 	if d.Workspace != "" { // a sealed journal names none: the summary already knows where it is here
 		m.Workspace = d.Workspace
 	}

@@ -24,7 +24,7 @@ the last row of the frame is the keys that work right now, and nothing else.
 **The tray row** carries what the next message takes with it besides its words —
 a picked sub-harness, an attached picture, an attached file. The **thinking rung** is not
 on it: it moved onto the rule above the box, beside the model, on 2026-09-09 (see *The
-line above the message box* below, and *The thinking chip above the message box* on the
+line above the message box* below, and *What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder* on the
 keys page). The tray is drawn only when it has something on it: with nothing attached, the
 row is not there and the box sits straight under the gap.
 
@@ -228,6 +228,39 @@ change what Enter opens. Without color both markers remain visible; ASCII mode u
 straight corners and a plain dot. Short windows give up inner vertical space before
 the selected row.
 
+## Desktop conversation names, short tab names, vague first messages and personal renames
+
+The desktop asks the configured `title` model for a name in 2–4 words and at most
+24 characters. It asks for sentence case with proper nouns kept, as in
+"Release review" and "Why is CI slow?". It puts the distinguishing word first,
+using your own words and names, and reads up to 20 other currently open conversation
+names at each naming call to avoid repeats. Renamed, closed and archived tabs
+are reflected in the next call.
+Your first message, or attached file names when you type nothing, supplies the
+placeholder while naming runs. The placeholder can use up to 40 characters.
+
+If your first message has fewer than four words, or the model gives a generic
+name, the engine looks for a concrete topic in the first three finished
+exchanges. Each check uses your opening message, that exchange's message and
+the opening 400 characters of its reply. A vague exchange keeps the current
+name. Echoing a vague opening, such as "Look at this", keeps the original
+placeholder exactly as written. A greeting or empty request needs a topic or
+file from you before the model can replace that placeholder. The first concrete
+topic earns one final model
+name. If all three stay vague, the opening name stays and later messages do not
+restart naming.
+
+Only a handled naming answer advances the check cursor. Each check reads the
+first unchecked finished exchange from the conversation history, among the
+first three. Cancelling leaves that exchange eligible after reopening, so you
+can say "continue" without repeating its topic. The remaining cursor and final
+naming decision survive reopening the conversation. A name you choose yourself stops this process, even while a
+model answer is on its way.
+
+A model name longer than 24 characters ends at the last whole word that fits,
+without an ellipsis. If no word fits, the model gets one request to answer
+shorter. An unusable shorter answer leaves the current name in place.
+
 ## What is my chat called before it has a name — unnamed tab, when does a chat get its name, how do I rename this conversation, why it no longer says Untitled
 
 **Naming starts when your first message is accepted.** The small model on the `title`
@@ -310,6 +343,9 @@ Closing a tab never quits codeaf. An automation running is no reason to ask: clo
 pauses it, and a run it cut off runs again when a window is next open (*Automations*).
 The session cancels its routing-cache refresh and waits for that refresh's remaining
 local writes before shutdown completes.
+The process also waits up to about 50 milliseconds for its lane-note writer
+and final flush. If that deadline passes, it prints
+`codeaf: lane saving timed out; quitting without waiting further` and exits.
 
 On the switcher card, `ctrl+w` closes a selected background tab while keeping
 its work running, and that row drops behind the fold. For the current conversation it uses the same close card when
@@ -770,7 +806,7 @@ auto → low → medium → high → xhigh → max, and back to auto — which i
 back to `auto` again; `/effort auto` gets there in one move. Each brightens
 under the pointer over exactly its own cells, so you can see which of the two you are
 about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `alt+e`
-do all three jobs. See "The thinking chip above the message box" on the keys page.
+do all three jobs. See "What is the chip above the message box — the thinking chip, `alt+e`, `/effort`, and how to make this one chat think harder" on the keys page.
 
 Until 2026-09-09 the rung was spelled onto the model id with a colon
 (`glm-5.3-flash:high`) and there was a second chip for it at the right end of the tray
@@ -2089,8 +2125,8 @@ below is drawn as plain text on purpose:
   they arrived. Sweeping them for pathish words would underline half a test log. What
   **is** linked on a tool card is the part codeaf wrote itself: the call's own target.
 - **Everything on a task's page and inside a task's room** — that is the `/history`
-  page and a room both. A task works in its own copy of your folder, so `internal/tui3/app.go`
-  on one of those rows means THAT tree's copy and not this one's, and a link built
+  page and a room both. A task works in a folder of its own, so `internal/tui3/app.go`
+  on one of those rows means a file in THAT folder and not this one's, and a link built
   against the wrong tree opens a file with the right name and the wrong contents. The
   `/history` page names no file paths of its own anyway: a row says what a task did and
   which branch it left behind, never where its journal is.

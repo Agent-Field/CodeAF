@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
@@ -73,6 +74,15 @@ func poolJudgeHookContext(ctx context.Context, settings config.Config, profileDi
 		defer guard.Recover("pool/judge")
 		poolJudgeLandingContext(ctx, settings, profileDir, models, ask, now, door, landing)
 	}
+}
+
+// poolJudgeStandsDown says whether the profile's task models are in one-model
+// mode, read at the moment each landing would be judged, by the live hook and
+// by the sweep alike. The judge exists to ask a model outside the crew, and
+// one-model mode allows no other model, so it stands down exactly as it does
+// under `--one-model`: nothing is asked and no judged marker is written.
+func poolJudgeStandsDown(profileDir string) bool {
+	return config.TaskModelsModeAt(profileDir) == crewroute.ModeOne
 }
 
 // judgeLast is the small record the hook leaves after every landing it
@@ -141,7 +151,7 @@ func poolJudgeLanding(settings config.Config, profileDir string, models func() [
 }
 
 func poolJudgeLandingContext(ctx context.Context, settings config.Config, profileDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, door string, landing session.TaskLanding) {
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || poolJudgeStandsDown(profileDir) {
 		return
 	}
 	pool := config.ModelPoolAt(profileDir)
@@ -402,10 +412,17 @@ func recordPoolUsage(settings config.Config, model string, used *ai.Usage) {
 	}
 	if used != nil {
 		line.Input, line.Output = used.PromptTokens, used.CompletionTokens
+		// AND THE ROW SAYS WHICH OF THE TWO IT IS, so a provider's charge and a
+		// figure multiplied here are never read as the same kind of fact.
 		if used.Cost != nil {
 			line.USD = *used.Cost
+			line.Price = session.UsagePriceProvider
 		} else if prompt, completion, known := settings.ClientConfig(model).ModelPrice(model); known {
 			line.USD = float64(used.PromptTokens)*prompt + float64(used.CompletionTokens)*completion
+			line.Price = session.UsagePriceList
+		}
+		if line.USD <= 0 {
+			line.Price = ""
 		}
 	}
 	session.RecordUsage(session.UsageLedgerPath(), line)
@@ -549,7 +566,7 @@ var poolJudgeSweepRun = poolJudgeSweepContext
 
 func poolJudgeSweepContext(ctx context.Context, settings config.Config, profileDir, tasksPath string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time) {
 	defer guard.Recover("pool/judge-sweep")
-	if ctx.Err() != nil || !config.ModelPoolAt(profileDir).CanRead() {
+	if ctx.Err() != nil || !config.ModelPoolAt(profileDir).CanRead() || poolJudgeStandsDown(profileDir) {
 		return
 	}
 	if strings.TrimSpace(settings.APIKey) == "" {

@@ -27,7 +27,7 @@ const (
 // The author is the bot account — the same identity the Co-Authored-By trailer
 // names — and the two older local addresses are recognised as legacy.
 func codeafGitIdentity() []string {
-	return []string{"-c", "user.name=" + codeafGitName, "-c", "user.email=" + codeafGitEmail}
+	return gitidentity.ConfigArgs()
 }
 
 // privateGit belongs to copies whose owner must be able to walk or remove them

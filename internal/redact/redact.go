@@ -37,8 +37,44 @@ package redact
 
 import (
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 )
+
+var registered struct {
+	sync.RWMutex
+	values []string
+}
+
+// Register covers a secret whose shape cannot identify it, such as a key the
+// desktop app handed over. A key removed later stays covered, because a line
+// written while it was in use can still be read after.
+func Register(value string) {
+	if value == "" {
+		return
+	}
+	registered.Lock()
+	defer registered.Unlock()
+	for _, known := range registered.values {
+		if known == value {
+			return
+		}
+	}
+	registered.values = append(registered.values, value)
+	sort.SliceStable(registered.values, func(i, j int) bool { return len(registered.values[i]) > len(registered.values[j]) })
+}
+
+// registeredOut takes every registered value out of text, longest first, so a
+// key that contains a shorter one is never left half covered.
+func registeredOut(text string) string {
+	registered.RLock()
+	defer registered.RUnlock()
+	for _, secret := range registered.values {
+		text = strings.ReplaceAll(text, secret, "[redacted]")
+	}
+	return text
+}
 
 // shape is one recognisable form of a secret.
 type shape struct {
@@ -172,6 +208,7 @@ func Secrets(text string) string {
 	if text == "" {
 		return text
 	}
+	text = registeredOut(text)
 	for _, s := range shapes {
 		text = s.apply(text)
 	}

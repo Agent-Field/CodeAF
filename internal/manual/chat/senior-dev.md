@@ -257,6 +257,29 @@ this before it stopped reading (…)` with the words. In the first moments of a 
 has begun, the refusal is `senior-dev has not started reading messages yet`; say it again
 shortly.
 
+## A message senior-dev did not read — too large to read, or the check could not finish
+
+When a run ends, its page names every message senior-dev was sent and never said it read:
+`senior-dev did not read this before it stopped reading (…)`, with the words.
+
+**A message too large to read is never skipped or passed over.** The messages before it are
+delivered as usual. The ones after it wait behind it, and the page says `… the rest of the
+task's notes could not be checked (a message there is too large to read: …)`. **codeaf has no
+way to edit or delete a single note**, so nothing in it clears the hold: it lasts until the
+task is removed or the store is changed by hand. codeaf refuses a single note whose author
+or client key is over 4096 bytes or whose body is over 32768 (the app caps a client key at
+256). **A long plan name does not hold anything**: a very long first task title makes a plan
+name over 4096 bytes, and the workers' note reading does not look at a note's plan name or
+conversation, so the notes on that plan are delivered like any other.
+
+**The step-by-step workers hold the same way, and say nothing.** A worker that is not a
+listening program is handed a task's new notes between its steps; behind a note too large to
+read it receives none, and no page or message says that it stopped.
+
+**When the check itself cannot finish**, because the plan was busy or it ran out of time, the
+page says `senior-dev may not have read every message before it stopped reading (…): its
+notes could not all be checked (…)`, quoting what it found and counting the rest as `at least`.
+
 ## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
 
 **It cannot ask you anything.** Nobody is at its keyboard, so the `question` tool is
