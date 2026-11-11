@@ -44,7 +44,7 @@ func TestLiveDriveRefusedStartupRetriesAndUploads(t *testing.T) {
 		{"too_many_identities", 429, 10800, cellsync.MaxHalt, chatlist.TooManyNewIn(3 * time.Hour)},
 	} {
 		t.Run(tc.code+strconv.Itoa(tc.after), func(t *testing.T) {
-			_, c := spokenDoorChat(t)
+			_, c := spokenDoorChatWithPairing(t, true)
 			if _, err := identity.Ensure(home.Dir()); err != nil {
 				t.Fatal(err)
 			}

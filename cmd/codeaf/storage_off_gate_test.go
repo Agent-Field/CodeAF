@@ -30,7 +30,7 @@ func TestStorageOffSeatedTurnStopsWhenAnotherComputerContinuesIt(t *testing.T) {
 	for _, mode := range []string{"another computer", "own lapsed hold", "free chat", "never shared", "unreachable"} {
 		t.Run(mode, func(t *testing.T) {
 			cellstoretest.EngineDir(t)
-			cfg, c := spokenDoorChat(t)
+			cfg, c := spokenDoorChatWithPairing(t, true)
 			id, err := identity.Ensure(home.Dir())
 			if err != nil {
 				t.Fatal(err)

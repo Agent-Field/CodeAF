@@ -149,7 +149,7 @@ func waitStorageOffBoundary(t *testing.T, what string, ready func() bool) {
 
 func storageOffSavedChat(t *testing.T) (session.Config, cell.Cell) {
 	t.Helper()
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	// A real saved-chat location lets the ordinary Home reader find the reopened workspace.
 	root := filepath.Join(session.PlacesRoot(), "project", c.ID)
 	if err := os.MkdirAll(filepath.Dir(root), 0700); err != nil {

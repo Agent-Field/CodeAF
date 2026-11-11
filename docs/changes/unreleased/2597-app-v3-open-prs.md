@@ -25,3 +25,9 @@ boundary they exercise.
 Known-free auxiliary calls retain their documented daily-limit exemption through
 model selection and the final transport gate. Paid substitutions still check the
 shared live daily authority before dispatch.
+
+Sharing fixtures establish their paired profile before recording their first
+turn. Encrypted agent custody can create a solo profile during that save;
+creating an identity afterward deliberately preserves its existing sync posture.
+The fixtures retain the notices, displacement, ownership, and once-only read
+assertions, alongside the separate quiet-profile and custody coverage.

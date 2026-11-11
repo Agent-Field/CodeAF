@@ -65,7 +65,7 @@ func TestFinalPublishDisplacementReachesTheRestoredWindowOnce(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/displaced=%t", road, displaced), func(t *testing.T) {
 				t.Setenv("CODEAF_NO_UPDATE_CHECK", "1")
 				cellstoretest.EngineDir(t)
-				cfg, c := spokenDoorChat(t)
+				cfg, c := spokenDoorChatWithPairing(t, true)
 				t.Cleanup(stopFinalSaveProgress)
 				id, err := identity.Ensure(home.Dir())
 				if err != nil {

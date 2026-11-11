@@ -26,7 +26,7 @@ import (
 func storageOffNoticeConfig(t *testing.T) session.Config {
 	t.Helper()
 	cellstoretest.EngineDir(t)
-	cfg, _ := spokenDoorChat(t)
+	cfg, _ := spokenDoorChatWithPairing(t, true)
 	svc := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	t.Cleanup(func() { _ = svc.Close() })
 	srv := httptest.NewServer(svc.Handler)

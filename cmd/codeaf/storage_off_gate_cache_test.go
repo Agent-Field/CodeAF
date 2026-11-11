@@ -24,7 +24,7 @@ func TestSharedLocalToolsShareOneConcurrentDirectoryReading(t *testing.T) {
 	for _, liveUpdates := range []bool{false, true} {
 		t.Run(map[bool]string{false: "without live updates", true: "with live updates"}[liveUpdates], func(t *testing.T) {
 			cellstoretest.EngineDir(t)
-			cfg, c := spokenDoorChat(t)
+			cfg, c := spokenDoorChatWithPairing(t, true)
 			id, err := identity.Ensure(home.Dir())
 			if err != nil {
 				t.Fatal(err)
@@ -108,7 +108,7 @@ func TestSharedLocalToolsShareOneConcurrentDirectoryReading(t *testing.T) {
 
 func TestSharedLocalToolsReuseASlowFailedReading(t *testing.T) {
 	cellstoretest.EngineDir(t)
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestSharedLocalToolsReuseASlowFailedReading(t *testing.T) {
 
 func TestSharedLocalToolsExpireOwnershipWhilePongsKeepArriving(t *testing.T) {
 	cellstoretest.EngineDir(t)
-	cfg, c := spokenDoorChat(t)
+	cfg, c := spokenDoorChatWithPairing(t, true)
 	id, err := identity.Ensure(home.Dir())
 	if err != nil {
 		t.Fatal(err)
