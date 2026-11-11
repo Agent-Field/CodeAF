@@ -253,7 +253,11 @@ func (lp *floorLoop) hear(c *loopCtl) {
 		// step's next round (inbox.go).
 		kept := !pending && cur.Asking != nil && cur.Asking.With == factory.AskedYou
 		if (pending || kept) && (cur.Asking == nil || !h.At.Before(cur.Asking.At)) {
-			if yes, words, ok := typedAnswer(h.Words, cur.QKind); ok {
+			yes, words, ok := typedAnswer(h.Words, cur.QKind)
+			if typedAccept(h.Words) && factory.OffersAccept(cur) {
+				yes, words, ok = true, factory.ChoiceAccept, true
+			}
+			if ok {
 				if lp.r.Answer(c.id, yes, words) != nil {
 					return
 				}
@@ -384,6 +388,17 @@ func typedAnswer(words, qkind string) (yes bool, said string, ok bool) {
 		return false, "", true
 	}
 	return false, "", false
+}
+
+// typedAccept reads the one word a person types to take a stuck step as it
+// stands: `accept`, or `accept it`. It is an answer only where the job offers
+// accept; the caller checks that.
+func typedAccept(words string) bool {
+	switch strings.Trim(strings.Join(strings.Fields(strings.ToLower(words)), " "), ".,!?:;- ") {
+	case "accept", "accept it", "accept and continue":
+		return true
+	}
+	return false
 }
 
 // answeredWord is how an answer is said back: yes, no, or the words.

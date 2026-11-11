@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -991,6 +992,64 @@ func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
 	return true
 }
 
+// accept finishes phase i as it stands, on the person's word: what fell
+// short is kept on the step's result as accepted ([factory.AcceptStep]), where
+// later steps' guards, their briefs and the pull request read it.
+func (lp *floorLoop) accept(c *loopCtl, i int, name, why string) bool {
+	now := lp.r.now()
+	line := ""
+	var kept *factory.StageResult
+	err := lp.move(c, name, EventDone, "", func(it *factory.Item) error {
+		if it.Stream == nil || i >= len(it.Stream.Phases) {
+			return errors.New("the accepted step is gone")
+		}
+		line = acceptStored(it, i, why, now)
+		if r := it.Stream.Phases[i].Result; r != nil {
+			copied := *r
+			copied.Notes = append([]string(nil), r.Notes...)
+			kept = &copied
+		}
+		return nil
+	})
+	if err != nil {
+		return false
+	}
+	lp.mu.Lock()
+	if kept != nil {
+		// The steps after this one read the accepted notes, not the unresolved ones.
+		if lp.results[c.id] != nil {
+			res := lp.results[c.id][i]
+			res.Notes = kept.Notes
+			lp.results[c.id][i] = res
+		}
+		accepted := map[string]bool{}
+		for _, n := range kept.Notes {
+			if rest, ok := strings.CutPrefix(n, factory.AcceptedPrefix); ok {
+				accepted[strings.TrimSpace(rest)] = true
+			}
+		}
+		var notes []string
+		for _, n := range lp.notes[c.id] {
+			if rest, ok := strings.CutPrefix(n, verification.FailurePrefix); ok {
+				rest = strings.TrimSpace(rest)
+				if !accepted[rest] {
+					// An earlier round's failure this step has since cleared.
+					continue
+				}
+				n = factory.AcceptedPrefix + " " + rest
+				if slices.Contains(notes, n) {
+					continue
+				}
+			}
+			notes = append(notes, n)
+		}
+		lp.notes[c.id] = notes
+	}
+	lp.mu.Unlock()
+	lp.tellStep(c.id, line, &factory.StepProgress{Step: name, Round: 0, Event: factory.ProgressDone})
+	return true
+}
+
 // skip leaves phase i failed and goes on, as the person said.
 func (lp *floorLoop) skip(c *loopCtl, i int, name string) bool {
 	now := lp.r.now()
@@ -1210,7 +1269,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if factory.IsCIRepairStage(st) && !readiness {
 			res = lp.completedPublishedRepair(job.Item, res)
 		}
-		if !readiness && factory.IsCIRepairStage(st) && job.Item.PullRequest != nil && job.Item.PullRequest.FeedbackTracked && res.Done && res.Repair != nil && res.Repair.Decision == "no_change" {
+		if !readiness && factory.IsCIRepairStage(st) && res.Done && res.Repair != nil && res.Repair.Decision == "no_change" && lp.requiresExactFollowReview(job.Item) {
 			candidate := res
 			repair := *res.Repair
 			repair.Decision = "fixed"
@@ -1336,6 +1395,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 					it.Question, it.QKind = "", ""
 					it.Asking = nil
 					it.FollowUp.State, it.FollowUp.Reason, it.FollowUp.Request = "watching", "No additional code changes needed. "+res.Repair.Reason+" Watching CI, review feedback and conflicts; merge remains yours.", ""
+					it.FollowUp.BaseSyncSHA = ""
 					it.Stream.Phases[i].State = factory.PhaseWaiting
 					it.Stream.Phases[i].Note = it.FollowUp.Reason
 					it.Stream.Ended = lp.r.now()
@@ -1354,9 +1414,12 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if factory.Met(st, res) {
 			return lp.finish(c, i, name, "")
 		}
+		sameFailedChecks := !factory.IsCIRepairStage(st) && res.VerificationFailureKey != "" && before.Result != nil && res.VerificationFailureKey == before.Result.VerificationFailureKey
 		if reason := verificationReason(res); reason != "" {
 			retry := fmt.Sprintf("Verification blocked: %s. Retrying round %d of %d.", reason, round+1, limit)
-			if round >= limit {
+			if sameFailedChecks {
+				retry = "The same checks failed on the unchanged checkout. Waiting for your decision."
+			} else if round >= limit {
 				retry = "Verification blocked: " + reason + ". Automatic rounds exhausted; waiting for your decision."
 			}
 			_ = lp.write(c, func(it *factory.Item) error {
@@ -1379,28 +1442,47 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			c.carry = res.Chat
 			lp.mu.Unlock()
 		}
-		if round >= limit {
+		if round >= limit || sameFailedChecks {
 			back := false
 			if cur, getErr := lp.r.opts.Store.Get(c.id); getErr == nil && cur.Stream != nil {
 				back = factory.PreviousWork(cur.Stream.Phases, i) >= 0
 			}
 			note, why := stepShort(name, st, round, res)
+			if sameFailedChecks {
+				note, why = name+" is waiting because the same checks failed on the unchanged checkout", "see the step results for the failed checks"
+			}
 			q := note
 			if why != "" {
 				q += ": " + why
 			}
-			q += " · " + stepShortChoices(back)
+			// ACCEPT IS HEARD ONLY WHERE IT IS OFFERED ([factory.AcceptableStep]):
+			// anywhere else the question is asked again, never read as a stop.
+			acceptable := false
+			if cur, getErr := lp.r.opts.Store.Get(c.id); getErr == nil {
+				acceptable = factory.AcceptableStep(cur, i)
+			}
+			q += " · " + stepChoices(back, acceptable)
 			if st.Kind == factory.StagePost {
 				if reason := skippedPolicyQuestion(job.Item, res); reason != "" {
 					q = reason
 				}
 			}
 			// OUT OF ATTEMPTS IS A QUESTION, not a failed step. The phase waits.
-			a, ok := lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
-			if !ok {
-				return false
+			var a loopAnswer
+			for {
+				var ok bool
+				a, ok = lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
+				if !ok {
+					return false
+				}
+				if acceptable || factory.OutOfAttemptsChoice(a.yes, a.words) != factory.ChoiceAccept {
+					break
+				}
+				lp.tell(c.id, sayNotAcceptable)
 			}
 			switch factory.OutOfAttemptsChoice(a.yes, a.words) {
+			case factory.ChoiceAccept:
+				return lp.accept(c, i, name, factory.StuckReason(q))
 			case factory.ChoiceSendBack:
 				cur, getErr := lp.r.opts.Store.Get(c.id)
 				if getErr != nil || cur.Stream == nil {
@@ -1421,7 +1503,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			}
 			lp.addNote(c.id, words)
 			round++
-			limit = round
+			limit = max(limit, round)
 			_ = lp.write(c, func(it *factory.Item) error { it.Stream.Phases[i].RoundLimit = limit; return nil })
 			continue
 		}
@@ -1514,6 +1596,13 @@ func stepShort(name string, st factory.Stage, round int, res factory.StageResult
 	if until == "" {
 		until = factory.UntilDone
 	}
+	if until == factory.UntilNoNewFailures {
+		note := name + " verification is incomplete"
+		if st.Max > 1 {
+			note += " after " + roundsWord(round)
+		}
+		return note, shortfall(res)
+	}
 	if st.Max > 1 {
 		return fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round)), personShortfall(res)
 	}
@@ -1548,11 +1637,19 @@ func personShortfall(res factory.StageResult) string {
 // send it back only when there is a finished step before this one to send the
 // work back to. The answers are the same tokens either way
 // ([factory.OutOfAttemptOptions]); stopping is the job's own Stop.
-func stepShortChoices(back bool) string {
+func stepShortChoices(back bool) string { return stepChoices(back, false) }
+
+// stepChoices is [stepShortChoices] with accept, where the step may be taken
+// as it stands ([factory.AcceptableStep]).
+func stepChoices(back, accept bool) string {
+	words := []string{"try again"}
 	if back {
-		return "try again, send it back, or stop the job?"
+		words = append(words, "send it back")
 	}
-	return "try again, or stop the job?"
+	if accept {
+		words = append(words, "accept it as it stands")
+	}
+	return strings.Join(words, ", ") + ", or stop the job?"
 }
 
 // roundsWord is a count of rounds as a person says it, `1 round` and `2
@@ -1831,6 +1928,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 			lp.say(c, tone, line)
 		},
 		Progress:     lp.followProgress(c, st, i, round),
+		SyncPRBase:   lp.baseSyncAction(c, it, st, dir),
 		Verification: lp.verificationProgress(c, i, round),
 		Spend:        lp.spender(c, st.Name, round),
 		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
@@ -2238,7 +2336,7 @@ func (lp *floorLoop) land(c *loopCtl) {
 				if head, err := git.Run(dir, "rev-parse", "HEAD"); err == nil {
 					_ = lp.write(c, func(saved *factory.Item) error {
 						saved.HeadCommit = strings.TrimSpace(head)
-						if change, e := readChange(dir, saved.ChangeBase); e == nil {
+						if change, e := readChange(dir, followChangeBase(git, dir, *saved)); e == nil {
 							saved.Change = change
 						}
 						return nil

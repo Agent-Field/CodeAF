@@ -30,6 +30,12 @@ func Changes(before, after factory.Item, now time.Time) []Event {
 		}
 	}
 	kind, prev := factory.NeedsKind(after), factory.NeedsKind(before)
+	if factory.RecoveryPaused(after) {
+		kind = ""
+	}
+	if factory.RecoveryPaused(before) {
+		prev = ""
+	}
 	if kind != prev || (kind != "" && (after.Question != before.Question || after.QKind != before.QKind || after.PublishError != before.PublishError || !reflect.DeepEqual(after.Asking, before.Asking))) {
 		since := factory.NeedsSince(after)
 		if since.IsZero() {

@@ -486,6 +486,10 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (out Item, outLines 
 			refuse("%s", bad.Error())
 			continue
 		}
+		if st.Until == UntilNoNewFailures && (who != ByYou || !AllowsBaselineFailures(st, it)) {
+			refuse("only the person may add an issue Test conversation that stops on %s", UntilNoNewFailures)
+			continue
+		}
 		// A MODEL NAMES THE STEP IT ADDS. A sentence with no `name:` is named
 		// by its first meaningful word ([StageSentence]), which is a fair
 		// guess under a person's own typing and a junk step under a model's:

@@ -28,6 +28,9 @@ func StepControl(it *factory.Item, name string, rerun bool, words string, now ti
 // for the one it had. The log line names a new model, and a step moving to one
 // never resumes a conversation the old model held.
 func stepControl(it *factory.Item, name string, rerun bool, words, model string, now time.Time) error {
+	if rerun && factory.RecoveryPaused(*it) {
+		return StepControlRefusal(factory.DecisionPauseDetail(*it))
+	}
 	if err := factory.CheckPersonStop(*it); err != nil && (rerun || it.State != factory.StateRunning) {
 		return err
 	}

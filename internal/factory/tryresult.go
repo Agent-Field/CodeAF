@@ -12,7 +12,7 @@ const TryBlocked = "blocked"
 
 // TryResult is how one finished try of a step ended, as a person reads it on
 // the job page: a word and a short reason. THE WORD IS THE STEP'S OWN RULE
-// ([Stage.Until]: done, clean, green or proven), met or "not" met, as [Met]
+// ([Stage.Until]), met or unmet, as [Met]
 // judges it; the reason is counted from the report's structured fields
 // (findings, exit, tests, claims) and never read from the step's prose, so a
 // step that writes "all good" with two open findings still reads "not clean ·
@@ -31,10 +31,14 @@ func TryResult(s Stage, r StageResult) (word, reason string) {
 	if Met(s, r) {
 		return until, metReason(until, r)
 	}
-	if r.Tests != nil && r.Tests.Failed > 0 {
-		return "not " + until, strconv.Itoa(r.Tests.Failed) + " failed"
+	word = "not " + until
+	if until == UntilNoNewFailures {
+		word = "verification incomplete"
 	}
-	return "not " + until, Shortfall(r)
+	if r.Tests != nil && r.Tests.Failed > 0 {
+		return word, strconv.Itoa(r.Tests.Failed) + " failed"
+	}
+	return word, Shortfall(r)
 }
 
 // metReason is the count that shows a met rule, "" when the rule has none.
@@ -42,7 +46,7 @@ func metReason(until string, r StageResult) string {
 	switch until {
 	case UntilClean:
 		return "no findings"
-	case UntilGreen:
+	case UntilGreen, UntilNoNewFailures:
 		if r.Tests != nil && r.Tests.Passed > 0 {
 			return strconv.Itoa(r.Tests.Passed) + " passed"
 		}

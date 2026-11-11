@@ -217,10 +217,13 @@ func IsContinue(yes bool, words string) bool {
 
 // OutOfAttemptsChoice reads a person's answer to a step that used its rounds.
 // yes, or the word try_once_more, runs one more round. send_back returns to
-// the previous step. Anything else cancels the job.
+// the previous step. accept takes the step as it stands, where the job
+// offers it ([OffersAccept]). Anything else cancels the job.
 func OutOfAttemptsChoice(yes bool, words string) string {
 	w := strings.ToLower(strings.TrimSpace(words))
 	switch {
+	case w == ChoiceAccept:
+		return ChoiceAccept
 	case w == ChoiceTryOnceMore || w == "yes" || (yes && (w == "" || w == "yes")):
 		return ChoiceTryOnceMore
 	case w == ChoiceSendBack || strings.HasPrefix(w, ChoiceSendBack+":"):
@@ -332,7 +335,7 @@ func QuestionForm(it Item) (kind string, options []string, who string) {
 	case NeedsRunnerOffline:
 		return AskOptions, []string{ChoiceTryOnceMore, ChoiceCancel}, WhoJobPerson
 	case NeedsOutOfAttempts:
-		return AskOptions, append([]string(nil), OutOfAttemptOptions...), WhoJobPerson
+		return AskOptions, OutOfAttemptChoices(it), WhoJobPerson
 	case NeedsQuestion:
 		who = WhoAnyoneWithRepo
 		var opts []string

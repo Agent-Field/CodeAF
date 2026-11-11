@@ -31,6 +31,10 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		h.setAutonomy(w, r, it, body.Mode)
 		return
 	}
+	if factory.RecoveryPaused(it) {
+		h.finish(w, run.StepControlRefusal(factory.DecisionPauseDetail(it)))
+		return
+	}
 	if factory.JobState(it) == api.StateDone || it.Publishing {
 		h.fail(w, 409, "Finished or publishing jobs cannot change control.")
 		return
@@ -73,6 +77,9 @@ func (h *Handler) controlJob(w http.ResponseWriter, r *http.Request, it factory.
 		return
 	}
 	err := h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		if factory.RecoveryPaused(*cur) {
+			return run.StepControlRefusal(factory.DecisionPauseDetail(*cur))
+		}
 		wasManual := cur.Manual
 		if body.Mode == "resume_pipeline" {
 			factory.ClearPersonStop(cur)

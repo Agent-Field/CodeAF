@@ -139,6 +139,9 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 		// nothing on the base branch and call the job shipped.
 		return refuseMerge("the pull request changes no files")
 	}
+	if PausedDecision(it) {
+		return refuseMerge(DecisionPauseWords)
+	}
 	if m := it.Merging; m != nil && (m.State == MergeQueued || m.State == MergeMerging) {
 		return refuseMerge("a merge is already on its way")
 	}

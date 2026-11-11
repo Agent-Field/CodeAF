@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,24 +21,52 @@ import (
 // ExecutionNotes carries exact command context and observed outcomes to later stages.
 // Journal messages are complete; display events are capped and cannot prove results.
 func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
-	if c.verification != nil && c.verification.requireFresh {
-		return c.executionNotesMode(true, c.verification.requireAnyCheck)
+	notes, tests, _ := c.VerificationEvidence()
+	return notes, tests
+}
+
+// VerificationEvidence also identifies the current measured failures. The
+// runner uses the identity to stop repeating work, never to accept a report.
+func (c *stageConversation) VerificationEvidence() ([]string, *factory.TestCounts, string) {
+	if c.verification == nil || !c.verification.requireFresh {
+		return c.collectExecutionEvidence(false, false, "")
 	}
-	return c.executionNotes(false)
+	return c.collectExecutionEvidence(true, c.verification.requireAnyCheck, c.verification.baselineCommit)
+}
+
+// MeasureBase has the factory compare this step's failing Go tests with the
+// job's base itself (verification.MeasureBase), and answers how many failing
+// checks that cleared. The runner calls it as a round ends with red checks.
+func (c *stageConversation) MeasureBase(ctx context.Context, base string) (int, error) {
+	if base == "" {
+		return 0, nil
+	}
+	checks, err := verification.ReadIn(c.file, c.dir)
+	if err != nil {
+		return 0, err
+	}
+	state, err := verification.SnapshotAt(c.dir)
+	if err != nil || state.Head == "" {
+		return 0, err
+	}
+	latest, _ := verification.RequiredChecks(checks, state, true)
+	return verification.MeasureBase(ctx, c.file, c.dir, latest, state, base, nil)
 }
 
 // A completed repair needs measured exits for its current checkout. Generic
 // historical notes remain readable; their prose is not upgraded to fresh proof.
 func (c *stageConversation) RepairExecutionNotes() ([]string, *factory.TestCounts) {
-	return c.executionNotes(true)
-}
-func (c *stageConversation) executionNotes(fresh bool) ([]string, *factory.TestCounts) {
-	return c.executionNotesMode(fresh, fresh)
+	return c.executionNotesMode(true, true)
 }
 func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]string, *factory.TestCounts) {
+	notes, tests, _ := c.collectExecutionEvidence(fresh, requireAnyCheck, "")
+	return notes, tests
+}
+
+func (c *stageConversation) collectExecutionEvidence(fresh, requireAnyCheck bool, base string) ([]string, *factory.TestCounts, string) {
 	f, err := os.Open(c.file)
 	if err != nil {
-		return []string{verification.FailurePrefix + " command journal could not be read: " + err.Error()}, nil
+		return []string{verification.FailurePrefix + " command journal could not be read: " + err.Error()}, nil, ""
 	}
 	defer f.Close()
 	dec := json.NewDecoder(f)
@@ -86,10 +115,20 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			}
 		}
 	}
+	// What the owner accepted on an earlier step is not held against this one:
+	// the same check failing in the same words. A new or different failure is.
+	accepted := map[string]bool{}
+	if c.verification != nil {
+		for _, a := range c.verification.accepted {
+			accepted[a] = true
+		}
+	}
 	observed := map[string]bool{}
 	observedCall := map[string]bool{}
 	callExit := map[string]*int{}
 	callCommand := map[string]string{}
+	checksPerCall := map[string]int{}
+	baseOutputs := map[string]string{}
 	unmeasuredCall := map[string]bool{}
 	diagnosticOnly := map[string]bool{}
 	ownedCommand := map[string]bool{}
@@ -98,6 +137,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	for _, check := range checks {
 		observed[check.Command] = true
 		callCommand[check.CallID] = check.Command
+		if base != "" && check.CallID != "" {
+			checksPerCall[check.CallID]++
+		}
 		if check.CallID != "" && check.Exit == nil {
 			unmeasuredCall[check.CallID] = true
 		}
@@ -216,6 +258,12 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 			measuredExit = nil
 		}
 		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started, measuredExit)
+		if base != "" && outcome == "failed" && invoked && !started && !refused &&
+			checksPerCall[row.ToolCallID] == 1 && measuredExit != nil && *measuredExit == 1 {
+			if output, ok := strings.CutSuffix(strings.TrimSpace(row.Content), "\nCommand exited with code 1"); ok {
+				baseOutputs[row.ToolCallID] = output
+			}
+		}
 		if outcome == "passed" && (unmeasuredCall[row.ToolCallID] || shellCanHideFailure(cmd)) {
 			outcome = "completed"
 		}
@@ -276,6 +324,42 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	if journalErr != nil {
 		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
 	}
+	var baseMatches map[string]verification.Check
+	matchedShell := map[string]bool{}
+	if base != "" && checkErr == nil && journalErr == nil {
+		baseMatches = verification.BaselineMatches(checks, latest, state, base, baseOutputs)
+		for key := range baseMatches {
+			check := latest[key]
+			// Only the observed invocation can cover a shell failure. A later
+			// interruption or another command using that argv still blocks.
+			if journalOrder[check.Command] == callOrder[check.CallID] {
+				matchedShell[check.Command] = true
+			}
+		}
+	}
+	// THE FACTORY'S OWN COMPARISON counts beside the step's: a failing Go test
+	// it ran itself on this checkout and on the base, and found already failing
+	// there, or found passing on this checkout (MeasureBase).
+	measuredPass := map[string]bool{}
+	if base != "" && checkErr == nil {
+		for key, m := range verification.ReadMeasured(c.file) {
+			check, ok := latest[key]
+			if !ok || !m.Clears(state, base) || check.Problem != "" || check.Exit == nil || *check.Exit == 0 {
+				continue
+			}
+			if m.Outcome == verification.MeasuredPassed {
+				measuredPass[key] = true
+			} else if _, already := baseMatches[key]; !already {
+				if baseMatches == nil {
+					baseMatches = map[string]verification.Check{}
+				}
+				baseMatches[key] = verification.Check{ID: m.ID}
+			}
+			if journalErr == nil && journalOrder[check.Command] == callOrder[check.CallID] {
+				matchedShell[check.Command] = true
+			}
+		}
+	}
 	for command, outcome := range lastOutcome {
 		if diagnosticOnly[command] && !ownedCommand[command] {
 			continue
@@ -298,7 +382,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 				pending = append(pending, verification.OwedCommand(command)+" · "+outcome+"; no later measured covering pass")
 			}
 		}
-		if outcome == "failed" && !(verification.PresentationOnly(command) && (corrected[verificationCommand(command)] || superseded[command])) {
+		if outcome == "failed" && !matchedShell[command] && !(verification.PresentationOnly(command) && (corrected[verificationCommand(command)] || superseded[command])) {
 			pending = append(pending, verification.OwedCommand(command))
 		}
 	}
@@ -307,6 +391,7 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	var failed []string
 	for _, key := range keys {
 		check := latest[key]
 		outcome := "unknown"
@@ -319,15 +404,36 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 				outcome = "failed"
 			}
 		}
-		raw, _ := json.Marshal(map[string]any{"command": check.Command, "check": check.Args, "cwd": check.Cwd, "exit": check.Exit, "outcome": outcome, "before": check.Before, "after": check.After})
+		receipt := map[string]any{"command": check.Command, "check": check.Args, "cwd": check.Cwd, "exit": check.Exit, "outcome": outcome, "before": check.Before, "after": check.After}
+		matched, reproduced := baseMatches[key]
+		if reproduced {
+			receipt["base_commit"] = base
+			receipt["base_receipt_id"] = matched.ID
+		}
+		if outcome != "passed" && accepted[check.Label()+" · "+outcome] {
+			receipt["accepted"] = true
+		}
+		if measuredPass[key] {
+			// The red receipt was of another tree; the factory ran the check on
+			// this one and it passes.
+			receipt["rechecked"] = "passed"
+			receipt["base_receipt_id"] = "factory-recheck"
+			receipt["base_commit"] = base
+		}
+		raw, _ := json.Marshal(receipt)
 		notes = append(notes, "Check receipt: "+string(raw))
 		if check.Problem != "" {
 			pending = append(pending, check.Label()+" · "+check.Problem)
+		} else if reproduced || measuredPass[key] {
+			continue
 		} else if outcome != "passed" {
 			if why := check.InvocationProblem(); why != "" {
 				pending = append(pending, check.Label()+" · invalid test command: "+why)
 			} else {
 				pending = append(pending, check.Label()+" · "+outcome)
+				if outcome == "failed" && check.Fresh(state) && !accepted[check.Label()+" · "+outcome] {
+					failed = append(failed, fmt.Sprintf("%s:%d", key, *check.Exit))
+				}
 			}
 		} else if fresh && !check.Fresh(state) {
 			pending = append(pending, check.Label()+" · verification is stale or unbound to this checkout; rerun after the last change")
@@ -335,6 +441,9 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	}
 	if len(notes) > 12 {
 		notes = notes[len(notes)-12:]
+	}
+	if len(baseMatches) != 0 {
+		notes = append(notes, verification.BaselineNotePrefix+base+".")
 	}
 	if requireAnyCheck && len(latest) == 0 {
 		pending = append(pending, "no measured checks verify the current repair checkout")
@@ -344,12 +453,17 @@ func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]s
 	}
 	sort.Strings(pending)
 	for i, command := range pending {
-		if i > 0 && command == pending[i-1] {
+		if (i > 0 && command == pending[i-1]) || accepted[command] {
 			continue
 		}
 		notes = append(notes, verification.FailurePrefix+" "+command)
 	}
-	return notes, tests
+	var failureKey string
+	if len(failed) != 0 && checkErr == nil && journalErr == nil {
+		raw, _ := json.Marshal([]any{state, failed})
+		failureKey = fmt.Sprintf("%x", sha256.Sum256(raw))
+	}
+	return notes, tests, failureKey
 }
 
 // commandReceiptOutcome reads measured exits first. Producer facts and legacy
@@ -494,7 +608,23 @@ type receiptStageDoor struct {
 	workRunning     func() bool
 	requireFresh    bool
 	requireAnyCheck bool
-	recoveryFinal   bool
+	baselineCommit  string
+	// accepted are the shortfalls the owner accepted on earlier steps, in the
+	// guard's own words ([factory.AcceptedFailures]).
+	accepted      []string
+	syncPRBase    func(context.Context) (string, error)
+	recoveryFinal bool
+}
+
+func (d *receiptStageDoor) CanSyncPRBase() bool {
+	return d.syncPRBase != nil && !d.halted()
+}
+
+func (d *receiptStageDoor) SyncPRBase(ctx context.Context) (string, error) {
+	if !d.CanSyncPRBase() {
+		return "", errors.New("this round cannot update the PR branch")
+	}
+	return d.syncPRBase(ctx)
 }
 
 // halted reports whether verification recovery has stopped or the stage closed.
@@ -536,7 +666,7 @@ func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) er
 	// repairs. Accepting done first would close the conversation and consume
 	// another round before the runner could explain its failing evidence.
 	if d.requireFresh && r.Done && (r.Repair == nil || r.Repair.Decision != "fixed") {
-		notes, _ := (&stageConversation{file: d.file, dir: d.dir}).executionNotesMode(true, d.requireAnyCheck)
+		notes, _, _ := (&stageConversation{file: d.file, dir: d.dir, verification: d}).VerificationEvidence()
 		for _, note := range notes {
 			if strings.HasPrefix(note, verification.FailurePrefix) {
 				return d.rejectVerification(notes, strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))

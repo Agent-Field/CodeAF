@@ -338,7 +338,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean after 2 rounds: 2 findings · try again, or stop the job?"
+	q := "review is not clean after 2 rounds: 2 findings · try again, accept it as it stands, or stop the job?"
 	it := g.asked(id, q)
 	if calls.Load() != 2 || it.QKind != factory.QKindOutOfAttempts {
 		t.Fatalf("calls %d, kind %q", calls.Load(), it.QKind)
@@ -349,7 +349,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, "review is not clean after 3 rounds: 2 findings · try again, or stop the job?")
+	g.asked(id, "review is not clean after 3 rounds: 2 findings · try again, accept it as it stands, or stop the job?")
 	if calls.Load() != 3 {
 		t.Fatalf("one more round ran %d calls", calls.Load())
 	}
@@ -397,6 +397,9 @@ func TestAStepThatStoppedSaysWhatHappenedInPlainWords(t *testing.T) {
 			}
 		})
 	}
+	if stepChoices(false, true) != "try again, accept it as it stands, or stop the job?" || stepChoices(true, true) != "try again, send it back, accept it as it stands, or stop the job?" {
+		t.Fatal("accept is not named among the choices")
+	}
 	if stepShortChoices(false) != "try again, or stop the job?" || stepShortChoices(true) != "try again, send it back, or stop the job?" {
 		t.Fatal("the choices offered a step to go back to that is not there")
 	}
@@ -417,7 +420,7 @@ func TestOutOfAttemptsSendBackRunsThePreviousStep(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean: 1 finding · try again, send it back, or stop the job?"
+	q := "review is not clean: 1 finding · try again, send it back, accept it as it stands, or stop the job?"
 	g.asked(id, q)
 	if err := g.r.Answer(id, false, "send_back: use the other file"); err != nil {
 		t.Fatal(err)

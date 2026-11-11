@@ -474,6 +474,12 @@ func pipelineLists(ed pipeline.Edited) *[]appwire.FactoryPipelineListChange {
 // PipelineLabelEdits attests that this preview applies label edits.
 func (*appBackend) PipelineLabelEdits() {}
 
+func (*appBackend) PipelineTestBaseline() {}
+
+func pipelineStepValues(v pipeline.StepView) appwire.FactoryPipelineStepValues {
+	return appwire.FactoryPipelineStepValues{Label: v.Label, Prompt: v.Prompt, Until: v.Until, Max: v.Max, When: v.When, Effort: v.Effort, Fanout: v.Fanout}
+}
+
 // firstRuntimeEdit is the position of the first edit that names when, effort or
 // fanout, adds a step of a kind other than chat (it writes `kind`), or sets
 // adapt for one pipeline (it writes `adapt:` as a map), or -1. An explicit empty value counts: clearing a word is a runtime
