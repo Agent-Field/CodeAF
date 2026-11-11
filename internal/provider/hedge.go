@@ -470,12 +470,22 @@ func (r *hedgeRace) abandon(ctx context.Context, seen map[int]armResult) (*ai.Re
 	if pending := receiptPendingFrom(ctx); pending != nil {
 		settled = pending()
 	}
+	// The settlement waiter ([WithReceiptSettlement]) counts receipts that
+	// still owe accounting, including unmetered answers the pending token above
+	// lets the job step past, so the factory's books wait on it at close. It
+	// has the same seam and gets the same bridge: one token, held until the
+	// drain below has heard every arm or spent [abandonGrace].
+	settledReceipt := func() {}
+	if pending, _ := ctx.Value(receiptSettlementContextKey{}).(ReceiptPending); pending != nil {
+		settledReceipt = pending()
+	}
 	// `seen` is handed over rather than shared. [hedgeRace.run] returns this
 	// call's value directly and never reads the map again, so the goroutine
 	// below is its only reader from here — which is what makes an unsynchronised
 	// map safe across the seam.
 	guard.Go("provider.hedge.abandoned", func() {
 		defer settled()
+		defer settledReceipt()
 		r.accountForTheAbandoned(seen)
 	})
 	return nil, false, ctx.Err()
