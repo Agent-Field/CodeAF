@@ -40,7 +40,7 @@ func Encode(f File) ([]byte, error) {
 		// A SHIPPED STEP THE FILE LEAVES AS SHIPPED IS NOT WRITTEN: a reader
 		// fills it back in, and writing all of them buried the few steps a
 		// person wrote under every one they did not.
-		if b, ok := builtin[name]; ok && sameStep(s, b) {
+		if b, ok := builtin[name]; ok && sameStep(s, b) && !s.wrotePrompt && !s.wroteUntil && !s.wroteMax {
 			continue
 		}
 		// An approval carries its label and who it waits on, but no prompt.

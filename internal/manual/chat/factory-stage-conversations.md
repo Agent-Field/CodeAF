@@ -891,7 +891,8 @@ blocks completion.
 
 The built-in Test stage uses `until: no new failures`. To require green checks
 in a repository pipeline, set `until: green` for Test. A saved pipeline keeps
-its recorded rule until you change it.
+its recorded rule until you change it. Explicitly choosing `no new failures`
+also saves that rule, even though it is the built-in default.
 
 To establish a base match, run the same foreground `go test -json -count=1`
 command in the job checkout and in a clean linked worktree at the original
