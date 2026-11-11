@@ -106,6 +106,9 @@ func testPoolPushCloseStopsRequestsAndKeepsUnsentRows(t *testing.T) {
 			free := func() { release.Do(func() { close(body.release) }) }
 			var calls atomic.Int32
 			var firstBatch, nextBatch string
+			// Join the unrelated catalog warm before replacing net/http's global
+			// transport; pool cancellation and writes remain the work under test.
+			proc.Models.Close()
 			previous := http.DefaultTransport
 			http.DefaultTransport = moneyTransport(func(request *http.Request) (*http.Response, error) {
 				batch, err := io.ReadAll(request.Body)
@@ -121,7 +124,7 @@ func testPoolPushCloseStopsRequestsAndKeepsUnsentRows(t *testing.T) {
 			})
 			finished := make(chan struct{})
 			t.Cleanup(func() { free(); <-finished; http.DefaultTransport = previous })
-			held := poolErrandsStart(proc.ProfileDir)
+			held := proc.poolErrands
 			cfg := config.ModelPoolAt(proc.ProfileDir)
 			held.goCtx("pool/push", func(ctx context.Context) {
 				defer close(finished)
@@ -173,7 +176,7 @@ func TestPoolSendTransportRejectsCancelledRequest(t *testing.T) {
 	poolNetworkFixture(t)
 	proc := v3TestProcess(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
-	held := poolErrandsStart(proc.ProfileDir)
+	held := proc.poolErrands
 	proc.closeAll()
 	previous := http.DefaultTransport
 	defer func() { http.DefaultTransport = previous }()
@@ -236,7 +239,7 @@ func testPoolCloseStopsSweepAndLandingRequests(t *testing.T) {
 			}
 			finished := make(chan struct{})
 			t.Cleanup(func() { free(); <-finished })
-			held := poolErrandsStart(proc.ProfileDir)
+			held := proc.poolErrands
 			work := func(ctx context.Context) {
 				if sweep {
 					poolJudgeSweepContext(ctx, proc.Settings, proc.ProfileDir, "", poolTestCatalog, ask, time.Now)

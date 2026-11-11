@@ -949,7 +949,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// ([poolJudgeStandsDown]).
 	if !opts.OneModel {
 		if config.ModelPoolAt(settings.ProfileDir).CanRead() {
-			held := poolErrandsStart(settings.ProfileDir)
+			held := proc.poolErrands
 			hook := poolJudgeHookContext(held.ctx, settings, settings.ProfileDir,
 				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
 			taskLanded = func(landing session.TaskLanding) {
@@ -962,7 +962,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// pending file's rows, each exactly once, bounded so it never holds the prompt. The
 		// process tracker cancels and joins it at close.
 		poolProfile := config.ProfilePath(settings.ProfileDir, "")
-		poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
+		poolErrandGoCtx(proc.poolErrands, "pool/judge-sweep", func(ctx context.Context) {
 			poolJudgeSweepRun(ctx, settings, poolProfile, found.Place.Tasks(),
 				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
 		})
@@ -2915,7 +2915,7 @@ func warmV3Models(ctx context.Context, models *catalog.Catalog, agent *session.A
 	}
 	// THE CLOSE REACHES THE WAIT, and that is the point of the context here: the
 	// catalog's own resolution is a network round-trip on a cold cache, and this
-	// errand rides the profile's start-up tracker ([v3Process.warmModels]), whose
+	// errand rides the process's start-up tracker ([v3Process.warmModels]), whose
 	// context [stopPoolErrands] cancels. A process that closes ends the wait HERE
 	// rather than leaving the write below to land in whatever state root happens
 	// to be current when the rows finally arrive.

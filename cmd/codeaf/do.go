@@ -593,8 +593,8 @@ func doErrand(request doRequest) error {
 		settings, err = config.LoadKeyless()
 	}
 	if err == nil {
-		defer stopPoolErrands(settings.ProfileDir)
-		useAutoSeats(settings)
+		held := useAutoSeats(settings)
+		defer stopPoolErrands(held)
 	}
 	profileDir := config.ProfileDir()
 	// A PROFILE WRITTEN BEFORE CREWS WERE ROUTED IS MIGRATED ONCE, and the one

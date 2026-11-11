@@ -41,7 +41,6 @@ func TestShellResolvesAuxiliaryModelsBeforeARealChildCallsTheProvider(t *testing
 			// on loopback and must finish before this fixture gives up its profile.
 			t.Setenv("CODEAF_MODEL_POOL_URL", "http://127.0.0.1:1/index.json")
 			t.Setenv("CODEAF_MODEL_POOL_MIRROR_URL", "http://127.0.0.1:1/index.json")
-			t.Cleanup(func() { stopPoolErrands(home) })
 			var mu sync.Mutex
 			var sent []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
