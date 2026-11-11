@@ -251,7 +251,7 @@ func prepareCopy(ctx context.Context, d CopyDeps, in Head, dest, fingerprint str
 	}
 	start := time.Now()
 	syncer := d.sync()
-	fetcher := cellsync.Fetcher{Engine: syncer, Store: d.Store, Inbox: syncer.Inbox}
+	fetcher := cellsync.Fetcher{Engine: syncer, Store: d.Store, Inbox: syncer.Inbox, ManyMax: cellsync.ManyMaxFor(d.Service)}
 	if err := fetcher.Complete(ctx, c, in.Head); err != nil {
 		return nil, err
 	}
