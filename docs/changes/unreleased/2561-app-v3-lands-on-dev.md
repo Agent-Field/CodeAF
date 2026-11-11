@@ -12,3 +12,5 @@ invalidates:
 ---
 
 Two lines that had diverged for weeks are one again, so a fix lands once and reaches every release. The merge keeps every behaviour from both sides. Where they disagreed, the pull request says which rule won and why.
+
+It lands on `dev` as one squash commit, because `dev` accepts only squash merges. The 905 commits that were reviewed on `app/v3` and on the landing branch stay reachable, and bisectable, at the tag `app-v3-final`.
