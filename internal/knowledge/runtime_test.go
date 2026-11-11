@@ -393,8 +393,9 @@ func TestKnowledgeMemoryOffDoesNotBuild(t *testing.T) {
 			if err := v.Flush(context.Background(), "fixture", true); !errors.Is(err, knowledge.ErrDisabled) {
 				t.Fatalf("explicit compilation while off: %v", err)
 			}
+			// No phase at all: with Memory off and nothing asked for, no pass looked.
 			state, err := v.Snapshot()
-			if err != nil || state.Enabled || state.Pending != 0 || len(state.Pages) != 0 || state.Build.Phase != knowledge.BuildUnbuilt || calls.Load() != 0 {
+			if err != nil || state.Enabled || state.Pending != 0 || len(state.Pages) != 0 || state.Build.Phase != "" || calls.Load() != 0 {
 				t.Fatalf("memory off built or opted in: state=%+v calls=%d err=%v", state, calls.Load(), err)
 			}
 		})

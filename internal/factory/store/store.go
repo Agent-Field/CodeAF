@@ -75,6 +75,8 @@ type Store struct {
 	// at the floor ten times a second must not decode the floor ten times a
 	// second, and a counter is how a test proves that without a clock.
 	reads atomic.Int64
+	// talks retains the last bounded stop lookup.
+	talks talkIndex
 }
 
 // Reads is how many item documents this store has read and decoded since it
@@ -85,6 +87,9 @@ func (st *Store) Reads() int64 {
 	}
 	return st.reads.Load()
 }
+
+// DocumentReads is how many job documents this store has decoded so far.
+func (st *Store) DocumentReads() int64 { return st.reads.Load() }
 
 // Open answers the store at root, creating the directory. It holds no handles.
 func Open(root string) (*Store, error) {
@@ -152,7 +157,7 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 		}
 		return st.underItemLock(it.ID, func() error {
 			return live.Commit(st.root, live.Changes(factory.Item{}, it, st.now()), func() error {
-				return writeAtomic(st.ItemPath(it.ID), data)
+				return st.writeItem(st.ItemPath(it.ID), data)
 			})
 		})
 	})
@@ -364,7 +369,7 @@ func (st *Store) Save(it factory.Item) error {
 			return err
 		}
 		err = live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
-			return writeAtomic(st.ItemPath(it.ID), data)
+			return st.writeItem(st.ItemPath(it.ID), data)
 		})
 		was, wrote = current.Item, err == nil
 		return err
@@ -591,7 +596,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 			return err
 		}
 		err = live.Commit(st.root, live.Changes(before, it, now), func() error {
-			return writeAtomic(st.ItemPath(id), data)
+			return st.writeItem(st.ItemPath(id), data)
 		})
 		was, after, wrote = before, it, err == nil
 		return err
@@ -787,6 +792,13 @@ func (st *Store) underLock(path string, write func() error) error {
 	}
 	defer func() { _ = filelock.Unlock(lock) }()
 	return write()
+}
+
+// writeItem is every write of a job's document.
+func (st *Store) writeItem(path string, data []byte) error {
+	err := writeAtomic(path, data)
+	st.talks.stale.Store(true)
+	return err
 }
 
 func writeAtomic(path string, data []byte) error {

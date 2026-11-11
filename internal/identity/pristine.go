@@ -41,6 +41,7 @@ var startupRules = rules{
 	"model-catalog-*.json": catalogCache, // Provider catalog caches are fetched again on demand.
 	"knowledge": within(rules{
 		".worker.lock":         never,
+		".discovery-asked":     never, // the Memory page asking the worker for a count
 		"knowledge.sqlite":     knowledgeStartup,
 		"knowledge.sqlite-wal": never, "knowledge.sqlite-shm": never,
 	}),
