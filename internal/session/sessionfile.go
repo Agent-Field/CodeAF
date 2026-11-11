@@ -894,6 +894,10 @@ type journalDivision struct {
 // counts every request to the provider, Turns only the ones a turn of the
 // person's made (see [Agent.addAuxiliaryUsage]).
 type journalUsage struct {
+	Billing      string `json:"billing,omitempty"`
+	BillingBasis string `json:"billing_basis,omitempty"`
+	Unbilled     bool   `json:"unbilled,omitempty"`
+	FactoryJob   string `json:"factory_job,omitempty"`
 	// RemoteEvent makes mirrored charges idempotent across cursor replay.
 	RemoteEvent string  `json:"remote_event,omitempty"`
 	Model       string  `json:"model,omitempty"`

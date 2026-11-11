@@ -367,11 +367,10 @@ def read_codeaf_home(home, stdout_path):
     line: they are what an open-model law has to be enforced against."""
     got = blank()
     usage_path = os.path.join(home, "v3", "usage.jsonl")
-    rows = list(jsonl(usage_path))
+    rows = [row for row in jsonl(usage_path) if row.get("kind") != "unbilled-marker"]
     if not rows:
-        # A session that never reached the wire leaves no usage file at all.
-        # That is an absence of measurement, not a free run.
-        got["notes"].append("no v3/usage.jsonl under the cell home")
+        # Missing receipts establish no usage measurement or zero price.
+        got["notes"].append("no measured calls in v3/usage.jsonl under the cell home")
     cost = 0.0
     tokens_in = tokens_out = 0
     models, aux_models = [], []

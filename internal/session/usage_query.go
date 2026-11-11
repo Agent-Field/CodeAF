@@ -483,7 +483,7 @@ func (e *UsageEntry) add(line UsageLine) {
 		e.bytes += int64(len(model)) + usageModelBytes
 	}
 	e.Records++
-	e.Calls += max(line.Calls, 1)
+	e.Calls += line.modelCalls()
 	e.Input += int64(line.Input)
 	e.Output += int64(line.Output)
 	if line.USD > 0 {
@@ -514,7 +514,7 @@ func (e *UsageEntry) hasModel(model string) bool {
 // is non-negative once this has passed and a row is a part of the totals: a
 // sum the totals could hold, every row's share of it can too.
 func (t *UsageLedgerTotals) count(line UsageLine) error {
-	calls := max(line.Calls, 1)
+	calls := line.modelCalls()
 	if line.Input < 0 || line.Output < 0 || line.USD < 0 || line.Calls < 0 || math.IsNaN(line.USD) || math.IsInf(line.USD, 0) ||
 		t.Records == math.MaxInt || t.Calls > math.MaxInt-calls ||
 		t.Input > math.MaxInt64-int64(line.Input) || t.Output > math.MaxInt64-int64(line.Output) {
