@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // countingHistory is saved chats that count how often they were looked at.
@@ -47,9 +49,14 @@ func waitChats(t *testing.T, v *Vault, want int) {
 // With Memory off nothing reads saved chats in the background. The count is
 // taken when the Memory page asks, once, and it stays for the next visit.
 func TestMemoryOffReadsNoChatsUntilThePageAsks(t *testing.T) {
-	v := Open(t.TempDir())
+	profile := t.TempDir()
+	// Unset profiles enable Memory; this fixture exercises an explicit off choice.
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := Open(profile)
 	if v.Enabled() {
-		t.Fatal("a new profile should start with Memory off")
+		t.Fatal("this profile should start with Memory off")
 	}
 	history := &countingHistory{}
 	history.chats.Store(2)
