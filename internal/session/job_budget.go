@@ -56,6 +56,7 @@ const budgetPollEvery = 100 * time.Millisecond
 // until the agent closes, not just until its foreground turn ends. No model call
 // is involved. StopWork closes admission before cancelling the complete family.
 func (a *Agent) watchJobBudget() {
+	a.checkInitialJobBudget()
 	a.budgetWatchOnce.Do(a.startBudgetWatch)
 	a.wakeBudgetForWork()
 }
@@ -81,7 +82,6 @@ func (a *Agent) startBudgetWatch() {
 		}()
 		seen := writes.Load()
 		dailyCap := a.dailyCeilingUSD()
-		jobChecked := false
 		for {
 			var ticks <-chan time.Time
 			if a.budgetWatchActive() {
@@ -100,10 +100,6 @@ func (a *Agent) startBudgetWatch() {
 			case <-a.budgetWorkStarted:
 				ledgerChanged = true
 			case <-ticks:
-			}
-			if !jobChecked && a.jobBudgetOf() != nil {
-				jobChecked = true
-				a.checkInitialJobBudget()
 			}
 			if n := writes.Load(); n != seen {
 				seen, ledgerChanged = n, true
@@ -140,11 +136,12 @@ func (a *Agent) startBudgetWatch() {
 	}()
 }
 
-// checkInitialJobBudget restores a spent job's stopped state once on open,
-// before an idle manager waits for work without a polling timer.
+// checkInitialJobBudget warms the job snapshot before the watcher starts. An
+// idle conversation reports a refusal through its turn gate; stopping it here
+// would race the first submission and turn that refusal into a lifecycle error.
 func (a *Agent) checkInitialJobBudget() {
 	why := a.jobBudgetBlock()
-	if why == nil || why.Error() == JobBudgetUnreadable {
+	if why == nil || why.Error() == JobBudgetUnreadable || !a.budgetWatchActive() {
 		return
 	}
 	a.mu.Lock()
