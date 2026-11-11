@@ -1,4 +1,4 @@
-FIX-2597: real 16 (fixed 16, PR dropped: none); already red 1; flaky 3; packages cmd/codeaf pending session pending; laws pending; hand pending
+FIX-2597: real 18 (fixed 18, PR dropped: none); already red 14; flaky 20; packages cmd/codeaf pending session pending; laws pending; hand pending
 
 Working record for SPEC-FIX-2597.md. Local commits only on
 `land/app-v3-open-prs`; no push, GitHub actions, or Git configuration changes.
@@ -308,3 +308,82 @@ scratch tree frozen at the full-run source `0d20225dd`; continuation failures
 will use their newer repaired source. This avoids relabeling an old failure as
 flaky merely because the new journal repair makes it pass. No comparison source
 will be edited, and the two already-completed Memory pairs will not be repeated.
+
+Workflow correction: the follow-up driver had already launched its child
+continuation runner when its parent was stopped. That child completed all
+continuation batches while the journal fix was being edited. Cmd's 378-case
+continuation and session batches 1/5 passed; session batch 2 reproduced the
+old journal fatal; batches 3/4 reported checkout-change guard failures as well
+as ordinary test failures. Those are discovery evidence only, not clean
+final-source validation. No assertions were removed. The source will be held
+still for replacement validation after triage and any further fixes.
+
+The private frozen snapshot was moved to
+`/home/abir/af-fix-2597-snapshot`, still at `0d20225dd`. Go's VCS probe under
+the scratch tree reached an existing invalid `/tmp/.git` directory and exited
+128; the snapshot now builds normally outside that parent. No Git configuration
+or unrelated directory was changed. Source and default caches remain intact.
+
+Post-journal build and both manual paths pass. The post-journal laws command
+hit a behavioral neighbor's retained-row retry deadline; that exact unchanged
+test passes in isolation (`laws-ledger-isolated.log`). Structural laws have not
+been weakened. A final quiet-source laws run is still required.
+
+Further full-run triage uses unchanged-source pairs and leaf failures, so a
+parent failing on both trees cannot hide a branch-only subcase. The malformed
+repository-file app subcase failed on snapshot 0d twice, but passes unchanged
+on repaired e62 (`bad-file-current.log`). Its intermediate bisect is diagnostic
+until repeatability is established; different slow points have been observed.
+The bisect harness initially inherited `GIT_DIR` from `git bisect run`, causing
+its Git fixture to reinitialize the private bisect worktree and reject a duplicate
+origin. Those runs are skipped, not behavioral failures. Later test environments
+strip inherited `GIT_*` variables. No Git configuration command was run.
+The bad-file timing bisect was rejected: its alleged first bad cut #2269
+passes unchanged on confirmation (`bad-file-bisect-confirm.log`), and the exact
+original 0d snapshot app subcase also passes unchanged in 9.66 seconds
+(`bad-file-snapshot-confirm.log`). It is flaky, not an additional real family;
+no production code, deadline, or existing assertion was changed for it.
+The review-mint test likewise passes unchanged on the original snapshot after
+one branch-fail/base-pass pair (`review-mint-snapshot-confirm.log`); its 300 ms
+assertion alternates under load. It remains unchanged and is classified flaky.
+
+### Full-run triage complete; two more proven cases
+
+All 48 discovery selections now have branch/base comparisons. The standalone
+old-source agent-close test also fatals in journal `finishSync`
+(`journal-closing-old.log`); repaired head and base both pass the unchanged
+assertion. It is a third existing case fixed by `e62b4ef67`, rather than a flaky
+result. The pause-tail leaf that differed inside a base-red Memory parent
+passes unchanged alone on both trees (`memory-pause-tail-pair.json`).
+
+One new deterministic real case is
+`TestNoToolDecodesItsOwnArgumentsWithEncodingJSON`. #2570 introduces
+`tools_stage_pr_base.go::stagePRBaseSyncTool` using direct JSON decoding.
+The unchanged structural assertion fails on the branch and passes on dev;
+`bisect-tool-grammar.txt` identifies `97bdc7207` exactly. The fix routes that
+same map through `decodeToolArguments`, retaining all empty-object checks,
+refusal text, and the bound-checkout authority checks. No assertion changed.
+
+Before the fix, a standalone overlay benchmark of the actual tool Execute door
+verifies 10,000 successful calls at 208 bytes / 4 allocations per call
+(`tool-grammar-perf-before.log`). Focused decoder and carried tool assertions,
+and the same benchmark, will verify the one-line repair before committing.
+
+The unchanged decoder law and both existing PR-base tool tests pass after the
+repair (`tool-grammar-green.log`). Before/after actual Execute benchmarks both
+verify 10,000 calls at exactly 208 bytes / 4 allocations per call. The final
+bisect names `97bdc7207` as first bad; no intermediate test assertion changed.
+
+Discovery totals are now 18 confirmed existing/wave-added test regressions,
+all repaired; 14 already-red parent tests; 20 flaky parent tests; and 14 tests
+interrupted by a fatal sibling that pass when selected alone. Counts combine
+the initial 18 CI names with the 48 full-run selections, with no duplicate
+names or newly added regression tests. The three journal cases include the
+separately frozen old-source agent-close proof. No carried PR was dropped.
+
+The initial full runs found the journal and decoder causes after the first
+three repairs. A new frozen final-source validation is therefore required:
+each CI name alone, both complete packages using the repository's usual eight
+shards with the contract's 20-minute ceiling, then laws and both manual paths.
+Its driver archives streams in-process and refuses any source change. There
+will be no edits or commits while it is running.

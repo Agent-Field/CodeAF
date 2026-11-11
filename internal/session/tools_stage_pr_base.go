@@ -20,7 +20,7 @@ func stagePRBaseSyncTool(door StagePRBaseSyncer) bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			if len(args) > 0 {
 				var fields map[string]json.RawMessage
-				if err := json.Unmarshal(args, &fields); err != nil || fields == nil || len(fields) != 0 {
+				if err := decodeToolArguments(args, &fields); err != nil || fields == nil || len(fields) != 0 {
 					return "Send an empty object. Factory already knows the linked pull request and its base.", true, nil
 				}
 			}
