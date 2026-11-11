@@ -42,6 +42,8 @@ preserving the existing refusal to work in a folder that contains codeaf state.
 The usage writer owns journal synchronization across caller lifetimes. A
 recording caller no longer lends its clock scope to a process-wide batch, while
 journal batching, crash recovery, and joined shutdown keep their existing bounds.
+Stalled-writer fixtures use that same owner initialization while retaining their
+close and flush ceilings.
 
 The PR-base sync tool validates its empty-object arguments through the shared
 tool decoder, retaining its bound checkout and existing refusal text.

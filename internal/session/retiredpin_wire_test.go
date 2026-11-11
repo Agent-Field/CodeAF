@@ -40,16 +40,15 @@ func TestAPinTheWireRefusesTellsTheConversationSo(t *testing.T) {
 	var releaseOnce sync.Once
 	release := func() { releaseOnce.Do(func() { close(releaseWriter) }) }
 	var enteredOnce sync.Once
-	writer := &usageWriter{queue: make(chan usageWrite, usageQueueDepth), stopped: make(chan struct{}), beforeWrite: func() {
+	usageWritersMu.Lock()
+	writer := usageWriterForLocked(ledger)
+	writer.beforeWrite = func() {
 		// beforeWrite runs on EVERY write, so the entered signal is closed once;
 		// a second row through this writer must not close a closed channel.
 		enteredOnce.Do(func() { close(writerEntered) })
 		<-releaseWriter
-	}}
-	usageWritersMu.Lock()
-	usageWriters[ledger] = writer
+	}
 	usageWritersMu.Unlock()
-	go writer.run(ledger)
 	t.Cleanup(func() {
 		release()
 		FlushUsage()

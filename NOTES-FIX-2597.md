@@ -1,4 +1,4 @@
-FIX-2597: real 18 (fixed 18, PR dropped: none); already red 14; flaky 20; packages cmd/codeaf pending session pending; laws pending; hand pending
+FIX-2597: real 21 (fixed 21, PR dropped: none); already red 14; flaky 20; packages cmd/codeaf red: see final validation session pending; laws pending; hand ok
 
 Working record for SPEC-FIX-2597.md. Local commits only on
 `land/app-v3-open-prs`; no push, GitHub actions, or Git configuration changes.
@@ -387,3 +387,61 @@ each CI name alone, both complete packages using the repository's usual eight
 shards with the contract's 20-minute ceiling, then laws and both manual paths.
 Its driver archives streams in-process and refuses any source change. There
 will be no edits or commits while it is running.
+
+Further full-run triage uses unchanged-source pairs and leaf failures, so a
+parent failing on both trees cannot hide a branch-only subcase. The malformed
+repository-file app subcase failed on snapshot 0d twice, but passes unchanged
+on repaired e62 (`bad-file-current.log`). Its intermediate bisect is diagnostic
+until repeatability is established; different slow points have been observed.
+The bisect harness initially inherited `GIT_DIR` from `git bisect run`, causing
+its Git fixture to reinitialize the private bisect worktree and reject a duplicate
+origin. Those runs are skipped, not behavioral failures. Later test environments
+strip inherited `GIT_*` variables. No Git configuration command was run.
+The bad-file timing bisect was rejected: its alleged first bad cut #2269
+passes unchanged on confirmation (`bad-file-bisect-confirm.log`), and the exact
+original 0d snapshot app subcase also passes unchanged in 9.66 seconds
+(`bad-file-snapshot-confirm.log`). It is flaky, not an additional real family;
+no production code, deadline, or existing assertion was changed for it.
+The review-mint test likewise passes unchanged on the original snapshot after
+one branch-fail/base-pass pair (`review-mint-snapshot-confirm.log`); its 300 ms
+assertion alternates under load. It remains unchanged and is classified flaky.
+
+Frozen-head build c3637de9c passes. Hand check is complete on that binary:
+one real chat turn returned FIX_2597_CHAT_OK, quit exit0, reopen displayed
+$0.0013 and retained exact ledger $0.0013311 (four rows, identical digest),
+quit exit0 in .111s, exec returned FIX_2597_EXEC_OK and exit0 in 1.487s.
+Only the dedicated fix2597 tmux server was used; its two owned panes are closed.
+The key was sourced only into child environments, never printed. Setup corrections:
+the first draft was held while model discovery warmed, with no provider call;
+a fresh profile then selected Nano explicitly. The script initially expected
+/cost's old “conversation” label instead of “spend”; it resumed the saved turn
+for reopen/exec after correcting that parser, without another chat prompt.
+
+The c3637de9c session validation exposed a fixture initialization mistake in my
+journal repair: retiredpin_wire_test.go and usage_close_ceiling_test.go create
+three raw usageWriter instances and invoke run directly. The new owner's defer
+closes journalStop, which those raw instances never initialize. All three
+existing tests fail alone on c363 and pass alone on the frozen base; bisect
+identifies my e62b4ef67, not an additional carried PR. This adds three confirmed
+repair-introduced cases. The fix will use usageWriterForLocked/usageWriterFor in
+those fixtures, retaining every assertion, deadline, blocker, and all 200×4 race
+iterations. No production code or behavior needs to change. Cmd's complete
+c363 run and hand binary therefore remain applicable. After the fixture repair,
+repeat the complete session package and final laws/manual gates with source
+held still. The c363 session run is discovery only, not final complete coverage.
+
+Fixture correction applied after the c363 primary validation ended. The two
+stalled writers are obtained through usageWriterForLocked while holding the
+registry lock, then receive their existing beforeWrite hook before publication.
+The four-writer race loop uses usageWriterFor. No production Go file, assertion,
+deadline, or loop bound changes. Focused verification is next, followed by a
+complete session run on the corrected fixtures. The c363 laws run hit two
+other cases (tool-rejection turn deadline and the frame harness work deadline);
+these need isolated/base comparison if they remain red. Manual paths pass.
+
+The corrected fixtures pass all eight focused checks in
+`writer-fixtures-green.log`: the three previously panicking tests, normal joined
+close, all three original journal scope failures, and the new cross-scope
+regression. The four-writer race still runs all 200 iterations. Every assertion
+and time ceiling is unchanged. There is no production-source change, and the
+hand-tested c363 binary is unchanged. All 21 confirmed cases are repaired.
