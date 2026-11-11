@@ -60,12 +60,16 @@ type Drive struct {
 	directoryID   string
 	recordedFence uint64
 
-	cancel          context.CancelFunc
-	done            chan struct{}
-	once            sync.Once
-	closeErr        error
-	publicationDone func()
-	ownership       chan struct{}
+	cancel               context.CancelFunc
+	done                 chan struct{}
+	once                 sync.Once
+	closeErr             error
+	publicationDone      func()
+	watcherCancel        context.CancelFunc
+	watcherDone          chan struct{}
+	ownership            chan struct{}
+	beforeOwnershipCheck func(context.Context) func()
+	afterReleaseInTests  func()
 
 	sent string // fingerprint of the vault as last sent; touched by the flush loop and Close only
 
@@ -133,10 +137,17 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	}
 	run, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d.cancel = cancel
+	watch, cancelWatch := context.WithCancel(run)
+	d.watcherCancel = cancelWatch
+	d.watcherDone = make(chan struct{})
 	go func() {
 		defer close(d.done)
 		var work sync.WaitGroup
-		work.Go(func() { d.followOwnership(run) })
+		work.Go(func() {
+			defer close(d.watcherDone)
+			defer cancelWatch()
+			d.followOwnership(watch)
+		})
 		stopStorage := OnStorageOpened(s.Home, d.StorageOpened)
 		defer stopStorage()
 		_ = d.batcher.Run(run)
@@ -801,12 +812,21 @@ func (d *Drive) Close(ctx context.Context) error {
 			return
 		}
 		stop := context.AfterFunc(ctx, d.cancel)
+		// Stop ownership readings before our own release can look like displacement.
+		// The batcher keeps its run context until the final publish has joined.
+		if d.watcherCancel != nil {
+			d.watcherCancel()
+			<-d.watcherDone
+		}
 		if pending == nil && !d.sync.isRemoved() {
 			// Join the publish before stopping its request. Canceling a committed
 			// request can lose its reply and leave the next publish using an old head.
 			d.closeErr = d.batcher.Close(ctx)
 		} else {
 			d.closeErr = pending
+		}
+		if d.afterReleaseInTests != nil {
+			d.afterReleaseInTests()
 		}
 		d.cancel()
 		<-d.done
