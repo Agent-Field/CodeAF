@@ -43,9 +43,12 @@ func (b *appBackend) tryFactoryRecovery(a *appAgent, text, clientID string, show
 	if (marked && owner.Step != "") || (!marked && !factoryOwned) {
 		return 0, false, nil
 	}
-	b.local.mu.Lock()
-	host := b.local.host
-	b.local.mu.Unlock()
+	var host *appFactoryHost
+	func() {
+		b.local.mu.Lock()
+		defer b.local.mu.Unlock()
+		host = b.local.host
+	}()
 	if host == nil {
 		return 0, false, nil
 	}
