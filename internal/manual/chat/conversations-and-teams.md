@@ -436,8 +436,9 @@ Use the Memory tab to forget a saved memory separately. Deleting a team also pre
 
 Ask “start another chat on kimi-k3 to read the README.” Load the `chats` capability group if needed. The `start_chat` tool takes
 `brief`, the complete first message, and `model`, a catalog ID or unique model name.
-Omitting `model` uses the requesting chat's current model. An unknown or ambiguous
-name is refused before any chat opens. The new chat opens behind the current one,
+Omitting `model` saves the requesting chat's configured model in the new chat.
+The new chat applies its own temporary availability replacement before sending.
+An unknown or ambiguous name is refused before any chat opens. The new chat opens behind the current one,
 with its model and approval posture set before its first message. Your focus stays
 in the original chat. Its receipt confirms the request; the terminal reports whether
 it actually opened. This needs an attached interactive terminal that can open chats; app-only sessions do not offer this tool.

@@ -190,6 +190,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	if config.Place.Dir != "" {
 		if meta, err := LoadMeta(config.Place.Dir); err == nil {
+			if meta.Model == config.Model {
+				agent.modelForNowProvider = meta.ModelProvider
+			}
 			if meta.ModelIdentity != nil {
 				agent.modelIdentity = *meta.ModelIdentity
 				agent.modelIdentity.Active, agent.modelIdentity.Pending = "", false
@@ -800,6 +803,9 @@ func (a *Agent) SetModel(model string) { a.setModel(model) }
 func (a *Agent) setModel(model string) ModelLanding {
 	if pair, ok := a.ConversationModelPair(); ok {
 		pair.Main = model
+		if pair.Main == pair.Fallback {
+			pair.Fallback = ""
+		}
 		_, _ = a.SetConversationModels(pair)
 		return ModelLandsNextRequest
 	}
@@ -824,6 +830,11 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// that said `switching now` and a step that changed nothing (steer.go's
 	// [Agent.ridingNowLocked]).
 	changed := a.ridingNowLocked() != model
+	// An explicit confirmation also withdraws a queued temporary choice.
+	// This only changes the next request; the current call keeps answering.
+	a.spokenModel = ""
+	a.modelForNowConfigured = ""
+	a.modelForNowProvider = ""
 	a.model = model
 	if a.clientPool != nil {
 		a.clientPool.setSeat(model)
@@ -868,6 +879,10 @@ func (a *Agent) SetSources(sources modelsource.Set) {
 		return
 	}
 	a.mu.Lock()
+	// A disconnected source must not erase the saved model's provider identity.
+	if a.modelForNowProvider == "" {
+		a.modelForNowProvider = a.config.serviceFor(a.configuredModelLocked()).Source.ID
+	}
 	a.config.Sources = sources
 	a.clientPool.setSources(sources)
 	if !a.running {

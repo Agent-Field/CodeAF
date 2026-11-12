@@ -1999,6 +1999,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	if door, ok := conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
 		state := door.ModelIdentity()
 		modelIdentity = &state
+		if state.Selected != "" {
+			model = state.Selected
+		}
 	}
 	effort := conn.Conv.ReasoningFor(model)
 	if dial, ok := conn.Conv.(interface{ ConversationEffort() string }); ok {

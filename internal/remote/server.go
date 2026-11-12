@@ -3642,6 +3642,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// bargain: a surface that meets it says the sentence its place has always
 	// said rather than waiting on a call nobody is going to answer
 	// (wire_places.go states the law).
+	if payload, handled, err := s.modelForNowCall(agent, call); handled {
+		return payload, err
+	}
 	if payload, handled, err := s.placesCall(call); handled {
 		return payload, err
 	}

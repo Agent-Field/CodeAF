@@ -452,15 +452,19 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	}
 	if options.Agent != nil {
 		// THE ENGINE RESOLVES THE PROFILE. A connected service is already on
-		// disk when this callback runs; setting the current model through the
-		// existing wire door makes the engine re-read that disk without sending
-		// a key or address through a second protocol.
+		// disk when this callback runs. Reapplying the run-only model makes the
+		// engine re-read that disk without saving an automatic replacement or
+		// sending a key or address through the wire.
 		stock := options.ApplyModelSources
 		options.ApplyModelSources = func(sources modelsource.Set) {
 			if stock != nil {
 				stock(sources)
 			}
-			options.Agent.SetModel(options.Agent.Model())
+			if door, ok := options.Agent.(interface{ UseModelForNow(string) error }); ok {
+				_ = door.UseModelForNow(options.Agent.Model())
+			} else {
+				options.Agent.SetModel(options.Agent.Model())
+			}
 		}
 	}
 }
