@@ -770,3 +770,20 @@ does every question of a job in Manual.
   own checkout and their own temp and cache folders. They cannot read keys and
   sign-ins or use docker unless `"jail.allow"` says so ("What an unattended run
   may touch").
+
+## factory runner control socket directory — isolated launches and long TMPDIR
+
+The local factory shares its runner's in-memory sessions through a private
+control socket. Set `CODEAF_FACTORY_RUNTIME_DIR` to an absolute runtime base
+to isolate it, for example to the same value as your launch's `TMPDIR`.
+Every process sharing that factory profile must use the same override.
+The socket lives in an owner-only `codeaf-runners-<user id>` directory with
+mode 0700; the socket itself is 0600. Its name is a hash of the state root,
+so different profiles have different sockets.
+
+With no override, the stable base remains `/tmp`, including on macOS and
+when `TMPDIR` changes, so a new process can still share an already running
+older runner. An override that makes the socket path 100 bytes or longer
+falls back to that base and says that the Unix socket path limit was exceeded.
+Choose a shorter override to keep the socket inside your isolated directory.
+A symlink in place of the private user directory is refused.
