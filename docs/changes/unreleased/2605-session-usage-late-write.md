@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: session test fixtures join late receipt accounting before removing their home
-pr: 0
+pr: 2605
 surface: [build]
 invalidates:
   - "Was true: the shared session test fixture stopped the current home's usage writer without joining pending receipts, so a cancelled call could restart accounting after cleanup. Is true now: fixture cleanup closes the agent, waits for its admitted receipts, settles deferred writes and stops its captured ledger's writer before temporary directories are removed."
