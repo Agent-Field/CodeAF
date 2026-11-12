@@ -49,7 +49,10 @@ type planState struct {
 	// own plan ([NewBeltWorker]) from the run's open handle. It is what the
 	// worker's `plandb` checks the store at path against ([plandb.RunEnv]), so
 	// a later store at the same path cannot take the worker's writes.
-	root    string
+	root string
+	// task binds creation to the run worker's own store task, independently of
+	// PLANDB_AGENT, which remains the identity used for claims and completion.
+	task    string
 	shimmed bool
 	// archives holds read handles for ended stores. Ended stores are immutable,
 	// so each is opened at most once for the life of this conversation.
@@ -811,6 +814,9 @@ func (g *TaskGraph) planBashPrefix() string {
 	// whose root is another's ([plandb.RunEnv]).
 	if plan.root != "" {
 		prefix += " " + plandb.RunEnv + "=" + quoteShWord(plan.root)
+		if plan.task != "" {
+			prefix += " " + plandb.TaskEnv + "=" + quoteShWord(plan.task)
+		}
 	}
 	return prefix + "; "
 }

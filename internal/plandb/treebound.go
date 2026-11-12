@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"strings"
 	"unicode"
 )
@@ -13,6 +14,8 @@ import (
 const (
 	TreeDepthLimit = 2
 	TreeTaskLimit  = 20
+	// TreeWorkerLimit restores the original per-node runaway bound for run workers.
+	TreeWorkerLimit = 5
 )
 
 func normalizedTitle(title string) string {
@@ -110,13 +113,24 @@ func growthRefusal(plan state, parentID string, titles []string) string {
 // AddManyBounded applies GrowthRefusal inside the same write transaction as
 // AddMany. Separate workers cannot race a read of the last available slot.
 func (s *Store) AddManyBounded(specs []TaskSpec) ([]*Task, error) {
-	return s.addMany(specs, true)
+	return s.addMany(specs, true, "", false)
 }
 
-func boundedGrowthRefusal(plan state, q rowQuerier, specs []TaskSpec) error {
+// AddManyForWorker enforces ownership and the worker's allowance in the same
+// transaction as the tree bounds and the new rows, including their author.
+func (s *Store) AddManyForWorker(workerTask string, specs []TaskSpec) ([]*Task, error) {
+	return s.addMany(specs, true, workerTask, false)
+}
+
+func boundedGrowthRefusal(plan state, q rowQuerier, specs []TaskSpec, workerTask string) error {
 	plan, err := growthPlan(plan, q)
 	if err != nil {
 		return err
+	}
+	if workerTask != "" {
+		if err := workerGrowthRefusal(plan, specs, workerTask); err != nil {
+			return err
+		}
 	}
 	titles := make([]string, len(specs))
 	for i, spec := range specs {
@@ -134,7 +148,46 @@ func boundedGrowthRefusal(plan state, q rowQuerier, specs []TaskSpec) error {
 
 func cliAddMany(st *Store, specs []TaskSpec) ([]*Task, error) {
 	if cliRunBound() {
+		if own := cliWorkerTask(); own != "" {
+			return st.AddManyForWorker(own, specs)
+		}
 		return st.AddManyBounded(specs)
 	}
 	return st.AddMany(specs)
+}
+
+func cliWorkerTask() string {
+	if !cliRunBound() {
+		return ""
+	}
+	return strings.TrimPrefix(os.Getenv(TaskEnv), "t-")
+}
+
+func workerParentRefusal(own string) error {
+	return fmt.Errorf("no: a worker adds tasks only under its own task (%s), so nothing was added. Add it with --parent %s, or do it in your own hands.", cliID(own), cliID(own))
+}
+
+func cliWorkerParent(parent string) error {
+	if own := cliWorkerTask(); own != "" && own != parent {
+		return workerParentRefusal(own)
+	}
+	return nil
+}
+
+func workerGrowthRefusal(plan state, specs []TaskSpec, own string) error {
+	for _, spec := range specs {
+		if spec.ParentID != own {
+			return workerParentRefusal(own)
+		}
+	}
+	count := 0
+	for _, task := range plan.Tasks {
+		if task.AddedByTask == own && task.Status != StatusCancelled {
+			count++
+		}
+	}
+	if count+len(specs) > TreeWorkerLimit {
+		return fmt.Errorf("no: this task has already added %d tasks and this would exceed %d tasks, which is as many as one task may hand out, so nothing was added. Do the rest in your own hands, or finish and report what is left undone.", count, TreeWorkerLimit)
+	}
+	return nil
 }

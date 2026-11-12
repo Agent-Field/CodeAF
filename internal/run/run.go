@@ -619,6 +619,11 @@ func (s *Supervisor) drain() {
 		ret := <-s.finished
 		s.inFlight--
 		s.returned()
+		// Work kept for a later run has no worker now. Release only this
+		// supervisor's remaining claim so it reads queued, not running.
+		if task := s.store.Task(ret.task.ID); task != nil && task.ClaimedBy == ret.task.ID && task.Owner == s.Owner {
+			_, _ = s.store.Release(task.ID, ret.task.ID)
+		}
 		// THE ENDING IS DROPPED, BUT THE FACT OF WHO IT CUT IS NOT: a worker
 		// that came home with the run's own ending as its error was taken down
 		// by that ending, and the run records it where it knows ([Summary.Cut]).
@@ -1764,16 +1769,27 @@ func (s *Supervisor) cutIDs() []string {
 
 // wakeClause is the resume clause a woken parent's worker opens with: what every
 // child it dispatched reported, verbatim, and the instruction to integrate and
-// verify the combined result. It is the same sentence for the root and for every
-// other parent — the law does not turn on who owns the run.
+// verify the combined result. Engine-added work is reported separately so the
+// worker never treats another assignment as one of its own dispatches.
 func wakeClause(tasks []*plandb.Task, task plandb.Task) string {
 	var b strings.Builder
 	b.WriteString("every child you dispatched has landed. Integrate their results, verify the combined result in the workspace, add more children if something is missing, and report.")
 	for _, child := range tasks {
-		if child.ParentID != task.ID {
+		if child.ParentID != task.ID || child.AddedByTask != task.ID {
 			continue
 		}
 		fmt.Fprintf(&b, "\n- child %s %q is %s: %s", child.ID, child.Title, child.Status, resultOrNoResult(child.Result))
+	}
+	other := false
+	for _, child := range tasks {
+		if child.ParentID != task.ID || child.AddedByTask == task.ID {
+			continue
+		}
+		if !other {
+			b.WriteString("\nOther work you did not dispatch; do not redo it:")
+			other = true
+		}
+		fmt.Fprintf(&b, "\n- task %s %q is %s: %s", child.ID, child.Title, child.Status, resultOrNoResult(child.Result))
 	}
 	return b.String()
 }

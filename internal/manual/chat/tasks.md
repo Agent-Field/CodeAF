@@ -4707,6 +4707,18 @@ and what the task made is committed onto that branch before it lands — so the 
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
 never done for you, because only work that was checked reaches your branch.
 
+## Stop a running task and its open run children
+
+Use `x` on the task's row or in its room over an empty box, then choose `stop it`.
+Stopping a run ends every still-open task in its store, including workers mid-step and
+open children whose root already finished. Earlier completed results keep their endings.
+Task lists reflect the store's stop while the last workers return, so those parts no
+longer read as running.
+
+Starting a new run also ends open children retained below an earlier completed root,
+preserving that root's result. A later stop can clear lingering children in an older
+retained store without changing the newer run.
+
 ## Continue task N — keep going on a failed or finished task, No task 1 in this project
 
 When you say `continue task 7` or `keep going on task 7`, the model calls `tasks` with that

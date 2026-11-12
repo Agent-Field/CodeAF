@@ -61,11 +61,7 @@ const (
 	// briefPiece: this node was handed out by another task, through
 	// `propose_task` or `divide_work`.
 	briefPiece
-	// briefProposed: the conversation already handed out this assignment.
-	briefProposed
 )
-
-const briefProposedRule = "This is the message the conversation was answering when it proposed this task. It was addressed to the conversation: anything it asks about proposing, starting or handing out tasks is the conversation's and already done, not yours to do again. This task is the work above. The person's words still govern THIS task: where the work above reads differently from them about this task, theirs win. Say any conflict in your report rather than widening the work."
 
 // briefPieceRule is [briefAskRule] for a node that owns ONE PIECE of the
 // message above it.
@@ -94,9 +90,6 @@ const briefPieceRule = "This is the message the whole job came out of, and this 
 
 // askRule is the rule that opens the document, chosen by the role.
 func (role briefRole) askRule() string {
-	if role == briefProposed {
-		return briefProposedRule
-	}
 	if role == briefPiece {
 		return briefPieceRule
 	}
@@ -212,11 +205,7 @@ func composeBrief(role briefRole, request, work, deliverable, acceptance, expect
 // that wins.
 func composeBriefScoped(scope briefScope, role briefRole, request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy) string {
 	request = briefAskText(request)
-	if role == briefProposed {
-		work = strings.TrimSpace(work)
-	} else {
-		work = briefWorkText(request, work)
-	}
+	work = briefWorkText(request, work)
 	// THE COPY IS STATED ONLY WHERE THE GROUND WAS NAMED, and it is decided
 	// here, BEFORE the binding below erases the evidence. A brief that never
 	// spelled the folder out has nothing to disambiguate and gets the document
@@ -307,13 +296,12 @@ func composeBriefScoped(scope briefScope, role briefRole, request, work, deliver
 	// reads the assignment under them. A plan-born worker reads the assignment
 	// first and the person's words after it, relabelled: what it owes was fixed
 	// from the plan, and the run's objective is context rather than a second
-	// assignment. Conversation proposals also put the assignment first: their
-	// request was addressed to the conversation that already handed it out.
+	// assignment.
 	order := append([]briefPart{ask}, assignment...)
 	if scope.planBorn() {
 		ask.rule = briefBackgroundRule
 	}
-	if scope.planBorn() || role == briefProposed {
+	if scope.planBorn() {
 		order = append(append([]briefPart{}, assignment...), ask)
 	}
 	order = append(order, record...)

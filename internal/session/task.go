@@ -974,15 +974,26 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
 }
 
-// proposalBrief is what a proposal committed to a run hands its work: the
-// composed brief every task gets, or, for a program that reads its brief as
-// words, the words alone, the way a typed `/<name>` hands them
-// ([delegate.Delegate.Words]).
+// proposalBrief hands a proposed run only its assignment. The proposing
+// conversation must put all needed context into the work order itself.
 func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
 	if via != nil && via.Words {
 		return programWords(spec.brief, *via)
 	}
-	return composeBrief(briefProposed, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	var parts []string
+	if strings.TrimSpace(spec.title) != "" {
+		parts = append(parts, spec.title)
+	}
+	if strings.TrimSpace(spec.brief) != "" {
+		parts = append(parts, briefWorkHeading+"\n\n"+strings.TrimSpace(spec.brief))
+	}
+	if strings.TrimSpace(spec.deliverable) != "" {
+		parts = append(parts, briefMakeHeading+"\n\n"+spec.deliverable)
+	}
+	if strings.TrimSpace(spec.acceptance) != "" {
+		parts = append(parts, briefDoneHeading+"\n\n"+spec.acceptance)
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // commitProposalToRun is the run road of an approved proposal: an approved
