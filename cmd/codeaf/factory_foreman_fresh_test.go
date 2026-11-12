@@ -192,11 +192,49 @@ func TestForemanFreshStartsTheManagerOver(t *testing.T) {
 	}
 }
 
+// A MAKING CUT SHORT LEAVES NO CONVERSATION HIDDEN FOR GOOD. Between the
+// store naming the new foreman and the old one being retired there is a
+// moment a crash can fall into: the old one then still carries the mark, so
+// every reading calls it the factory's, no list shows it and no door opens
+// it. The sweep finds it where a replaced foreman is always left and retires
+// it, and never touches the one the store names.
+func TestAForemanLeftMarkedByAMakingCutShortIsRetired(t *testing.T) {
+	st, web, profile := talkLab(t)
+	first, err := foremanMaker(st, web, profile, nil)(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := foremanFresh(st, web, profile, nil)(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := foremanSweep(st, profile); len(got) != 0 {
+		t.Fatalf("a finished making left %v for the sweep", got)
+	}
+	// As the crash leaves it: the old one's retiring never ran.
+	if err := markFactoryForeman(st, first); err != nil {
+		t.Fatal(err)
+	}
+	if !factoryOwnedConversation(first) {
+		t.Fatal("the old foreman is not marked; the premise is gone")
+	}
+	got := foremanSweep(st, profile)
+	if len(got) != 1 || !sameSessionFile(got[0], first) {
+		t.Fatalf("the sweep retired %v; want the old foreman alone", got)
+	}
+	if factoryOwnedConversation(first) || !factoryOwnedConversation(fresh) {
+		t.Fatalf("after the sweep: old marked %v, current marked %v", factoryOwnedConversation(first), factoryOwnedConversation(fresh))
+	}
+	if again := foremanSweep(st, profile); len(again) != 0 {
+		t.Fatalf("a second sweep retired %v", again)
+	}
+}
+
 // THE BRIEF NO LONGER FENCES THE MANAGER INTO ONE TOOL. It was told to answer
 // "only from" factory_floor, so it could not use what the app tells it with
 // each message, nor answer anything a plain assistant can.
 func TestTheForemansBriefLetsItAnswerBeyondTheFloor(t *testing.T) {
-	for _, want := range []string{"factory_floor", "tagged afi-now", "is the person, never you", "your other tools", "only when the person asks", "Never stop, ship, merge or post"} {
+	for _, want := range []string{"factory_floor", "tagged afi-now", "tagged app-places", "is the person, never you", "your other tools", "only when the person asks", "Never stop, ship, merge or post"} {
 		if !strings.Contains(foremanOpening, want) {
 			t.Errorf("the brief lacks %q: %s", want, foremanOpening)
 		}
@@ -251,6 +289,12 @@ func TestTheFactoryManagersDoorReopensItAndFreshPutsTheOldOneAway(t *testing.T) 
 	foremanEventually(t, "the replaced manager being stopped and archived", func() bool {
 		return s.backend.tidied(first.Agent) && !s.backend.isHeld(first.Agent) && convs.stops(first.Agent) > 0
 	})
+	// ITS NEW NAME WENT THROUGH THE CONVERSATION, where an open reads a title
+	// from: left in the folder's row alone it read "Factory manager" again the
+	// first time the conversation was opened.
+	if got := convs.renamedTo(first.Agent); got != foremanEarlierTitle {
+		t.Errorf("the replaced manager's conversation was renamed %q; want %q", got, foremanEarlierTitle)
+	}
 	var after appwire.FactoryForeman
 	s.must(appwire.FeatureFactoryForemanOpen, ref, &after)
 	if after.Agent != fresh.Agent {
@@ -280,6 +324,20 @@ func TestTheFactoryManagersDoorReopensItAndFreshPutsTheOldOneAway(t *testing.T) 
 type foremanConvs struct {
 	mu sync.Mutex
 	by map[string]*fakeConversation
+}
+
+// renamedTo is the name the rig's conversation for agent was last given by
+// the person's rename door, "" for none.
+func (c *foremanConvs) renamedTo(agent string) string {
+	c.mu.Lock()
+	conv := c.by[agent]
+	c.mu.Unlock()
+	if conv == nil {
+		return ""
+	}
+	conv.mu.Lock()
+	defer conv.mu.Unlock()
+	return renamed[conv]
 }
 
 func (c *foremanConvs) stops(agent string) int {
@@ -348,7 +406,7 @@ func TestManyOpensAtOnceMakeOneFactoryManager(t *testing.T) {
 // was written to there again without factory.foreman_open ever being called.
 func TestAFactoryStartingMovesItsManagerOutOfTheCodeafHome(t *testing.T) {
 	s := newLocalSetup(t)
-	foremanFakeOpens(s)
+	convs := foremanFakeOpens(s)
 	floor, err := store.Open(v3FactoryRoot())
 	if err != nil {
 		t.Fatal(err)
@@ -371,6 +429,18 @@ func TestAFactoryStartingMovesItsManagerOutOfTheCodeafHome(t *testing.T) {
 	}
 	if !factoryOwnedConversation(named) || factoryOwnedConversation(old) {
 		t.Fatalf("the mark did not follow the manager: new %v, old %v", factoryOwnedConversation(named), factoryOwnedConversation(old))
+	}
+	// THE OLD ONE NO LONGER READS AS THE MANAGER, in the engine's word and in
+	// its own journal's: the tab the app brings back may still hold it.
+	foremanEventually(t, "the replaced manager being renamed", func() bool { return convs.renamedTo(oldID) == foremanEarlierTitle })
+	was, err := s.backend.find(oldID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned, title := true, ""
+	s.backend.locked(func() { owned, title = was.view.FactoryOwned, was.view.Title })
+	if owned || title != foremanEarlierTitle {
+		t.Fatalf("the replaced manager reads %q, the factory's %v; want %q and the person's own", title, owned, foremanEarlierTitle)
 	}
 	// AND ITS BUTTON OPENS THE NEW ONE, with nothing more made.
 	var opened appwire.FactoryForeman

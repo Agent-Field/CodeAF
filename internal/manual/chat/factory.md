@@ -294,7 +294,7 @@ Every `factory_floor` answer but `item` and `repos` says the whole factory's cou
 - `repos`: every repository with its jobs counted by state, the one with work in hand first: `acme/api · 6 open: 1 running, 1 waiting on the person, 4 new · 3 done`. The first line says how many repositories have jobs, how many have open jobs, and how many have a job running, queued, waiting or following a pull request.
 - `shipped` with `days`: jobs shipped over that many days, today included (1 is today and the default, at most 90), newest first, each with the day it shipped. The first line counts the pull requests merged among them.
 
-The Factory manager is not limited to `factory_floor`. The desktop app starts each message to it with an `<afi-now>` block of the app's present state (the time, the factory's counts, what waits on you, what is running, what was made today and what was noticed lately), the block Afi is sent. It answers from that for what the block says and reads the factory for the rest, and it answers anything else as any conversation does, with its other tools.
+The Factory manager is not limited to `factory_floor`. The desktop app starts each message to it with an `<afi-now>` block of the app's present state (the time, the factory's counts, what waits on you, what is running, what was made today and what was noticed lately), the block Afi is sent, and its first message with an `<app-places>` block saying where things are in the app. It answers from that for what the block says and reads the factory for the rest, and it answers anything else as any conversation does, with its other tools.
 
 ## the Factory manager did not answer, takes forever, stop does nothing, clear the Factory manager's conversation, archived Factory manager
 

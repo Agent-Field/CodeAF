@@ -118,32 +118,54 @@ func foremanLoad(host *appFactoryHost) func() (factory.Snapshot, error) {
 //     stopped and archived, so the tab that comes back holds an archived chat
 //     and the manager's button opens the new one;
 //   - any other foreman takes the mark, and the app is told it is the
-//     factory's if it had already read it as an ordinary chat.
+//     factory's if it had already read it as an ordinary chat;
+//   - a conversation still marked the foreman's that the store no longer
+//     names (a making cut short) is retired and put away.
 //
 // A store that names no foreman is left alone: one is never made by default.
+//
+// IT WRITES THE FLOOR ONLY UNDER THE HOST. The naming is a chore of the host
+// ([appFactoryHost.chore]), so it never starts once a close has begun and a
+// close waits for it; putting the replaced conversations away is not, since a
+// conversation that will not let go would hold the close for its graces, and
+// what it writes is the person's chats, never the floor.
 func (b *appBackend) settleForeman(host *appFactoryHost) {
+	host.chore("app/factory foreman settle", func() {
+		away := b.settleForemanNow(host)
+		if len(away) > 0 {
+			guard.Go("app/factory foreman put away", func() {
+				for _, old := range away {
+					b.putAwayForeman(old)
+				}
+			})
+		}
+	})
+}
+
+// settleForemanNow is the naming half of [appBackend.settleForeman], under the
+// foreman's gate: it answers the conversations that were retired and are the
+// caller's to put away.
+func (b *appBackend) settleForemanNow(host *appFactoryHost) (away []string) {
 	gate := &b.local.foreman
 	gate.Lock()
+	defer gate.Unlock()
+	away = foremanSweep(host.floor, host.profile)
 	chat, err := host.floor.Foreman()
 	if err != nil || chat == "" {
-		gate.Unlock()
-		return
+		return away
 	}
 	if _, err := os.Stat(chat); err != nil {
-		gate.Unlock()
-		return
+		return away
 	}
 	if foremanFolderRefusal(host.floor, chat) == nil {
 		_ = markFactoryForeman(host.floor, chat)
-		gate.Unlock()
 		b.ownForeman(chat)
-		return
+		return away
 	}
-	_, err = foremanMint(host.floor, host.workspace, host.profile, foremanLoad(host))
-	gate.Unlock()
-	if err == nil {
-		b.putAwayForeman(chat)
+	if _, err := foremanMint(host.floor, host.workspace, host.profile, foremanLoad(host)); err == nil {
+		away = append(away, chat)
 	}
+	return away
 }
 
 // ownForeman tells the app a conversation it already knows is the factory's,
@@ -167,9 +189,16 @@ func (b *appBackend) ownForeman(transcript string) {
 // putAwayForeman stops a replaced foreman's turn and archives its
 // conversation. It is no longer the factory's: its mark is gone and the app is
 // told, so it reads as one of the person's own chats, in Archived with its
-// history. It is best effort. The new foreman is already the factory's, and a
-// conversation that is gone or will not close is no reason to refuse that one;
-// what could not be archived is left open and is the person's to close.
+// history, under the name [foremanEarlierTitle] when it still carried the
+// manager's. It is best effort. The new foreman is already the factory's, and
+// a conversation that is gone or will not close is no reason to refuse that
+// one; what could not be archived is left open and is the person's to close.
+//
+// THE NAME IS WRITTEN THROUGH THE CONVERSATION. A title lives in the journal,
+// and an open reads it from there: the name [foremanRetire] leaves in the
+// folder's row alone was lost the first time the conversation was opened
+// again, which is exactly when it matters, since a tab the app brought back
+// may still hold this conversation and a person may write to it there.
 func (b *appBackend) putAwayForeman(transcript string) {
 	if _, err := os.Stat(transcript); err != nil {
 		return
@@ -179,14 +208,18 @@ func (b *appBackend) putAwayForeman(transcript string) {
 	if err != nil {
 		return
 	}
+	rename := false
 	b.locked(func() {
 		a.view.FactoryOwned = false
-		// The title its retiring gave it on disk ([foremanRetire]), for an
-		// agent this engine had already read under the manager's name.
-		if a.view.Title == foremanTitle || a.view.Title == foremanOldTitle {
-			a.view.Title = foremanEarlierTitle
-		}
+		rename = a.view.Title == foremanTitle || a.view.Title == foremanOldTitle || a.view.Title == foremanEarlierTitle
 	})
+	if rename {
+		if _, err := b.Rename(id, foremanEarlierTitle); err != nil {
+			// It could not be opened to be renamed (no provider, another
+			// window holds it): this engine still says the earlier name.
+			b.locked(func() { a.view.Title = foremanEarlierTitle })
+		}
+	}
 	_ = b.Stop(id)
 	if err := b.Archive([]string{id}); err != nil {
 		// Archive says the agent when it succeeds; a refusal still has to
