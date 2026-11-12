@@ -372,7 +372,9 @@ node, so the cap is only what the job page shows beside it.
   step, never the factory's pipeline (`plan`) or a wait for a runner.
 - **Running**, its step is the run's own current step.
 - **Ended**, `done_at` is when the run ended on AgentField (else when this
-  factory saw it end), so it sorts and reads like any finished job.
+  factory saw it end), so it sorts and reads like any finished job. This also
+  applies to pipelines of AgentField steps and person gates, including a
+  successful answer with no pull request. The finish time stays after restart.
 
 A job a trigger files is announced on the app's wire as
 `factory.jobs_changed {factory, job}`, once when it is filed and once after
