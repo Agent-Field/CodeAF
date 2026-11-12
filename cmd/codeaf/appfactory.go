@@ -842,10 +842,10 @@ func (b *appBackend) PipelineAdaptKindEdits() {}
 
 func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabilities, error) {
 	return appwire.FactoryCapabilities{
-		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true,
+		Contract: api.Contract, Remote: true, Registry: true, AccessLinks: true, SignIn: true, JobEvents: true,
 		Local: true, Runner: true, Writes: false, Admin: true,
 		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, SpendByModel: true, PipelineEdit: true, PipelineEditRuntime: true,
-		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, GroupPolicy: true, WaitsOn: true, JobEvents: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, GroupPolicy: true, WaitsOn: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
 	}, nil
 }
 
