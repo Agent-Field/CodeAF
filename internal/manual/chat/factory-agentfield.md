@@ -379,7 +379,10 @@ node, so the cap is only what the job page shows beside it.
 A job a trigger files is announced on the app's wire as
 `factory.jobs_changed {factory, job}`, once when it is filed and once after
 the intake pass, so a Backlog on screen can read it again at once instead of
-on its next refresh.
+on its next refresh. Later committed state, question and completion changes
+also announce the job. A background person gate therefore appears in Needs you
+without waiting for the periodic refresh; unchanged progress sends no extra
+queue notification.
 
 ## where did this job come from, and where does it run — the AgentField node, its machine, reasoner, trigger and labels
 
