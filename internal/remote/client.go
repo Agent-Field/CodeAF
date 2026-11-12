@@ -2137,6 +2137,13 @@ func (a *Agent) InterruptFor(door session.StopDoor) {
 	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(door)})
 }
 
+// InterruptWithin is a person's stop with its bound on it: the engine abandons
+// a turn that has not let go by then ([InterruptArgs]). Like every stop it
+// does not wait and reports nothing.
+func (a *Agent) InterruptWithin(grace time.Duration) {
+	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(session.StopByPerson), Within: grace.Milliseconds()})
+}
+
 // AnswerLaneOffer answers the question a stalled PINNED lane raises: the
 // machine this person named has gone quiet, there is somewhere else to go, and
 // a pin is asked rather than overridden. The `y` they pressed takes this road

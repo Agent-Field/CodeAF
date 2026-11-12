@@ -80,6 +80,15 @@ decides which combinations are accepted.
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
 
+`agents.stop` is a bounded stop. It interrupts the running turn and answers at
+once; a turn that has still not let go ten seconds later (one parked on a wait
+that never reads its cancelled context) is abandoned by the engine: its stream
+closes, the turn ends `turn.done` with `error_kind: stopped` and the "Stopped by
+you" footer as any stopped turn does, and the next `agents.send` opens an
+ordinary turn. The conversation's journal records the turn as let go of, with
+what it had spent. A running factory stage lent to the app is interrupted but
+never abandoned from here; the job's own Stop ends a stage.
+
 ## asks methods
 
 | method | params | result |
@@ -257,6 +266,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.agentfield_run` | `in.FactoryAgentFieldRunParams` | `FactoryAgentFieldRun` |
 | `factory.agentfield_reasoners` | `in.FactoryAgentFieldReasonersParams` | `FactoryAgentFieldReasoners` |
 | `factory.foreman_open` | `in.FactoryRef` | `FactoryForeman` |
+| `factory.foreman_fresh` | `in.FactoryRef` | `FactoryForeman` |
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -2255,7 +2265,30 @@ oldest), `waiting`, `shipped` (shipped today, with pull requests and changes),
 `risky`, `cheapest`, `oldest`, `all` or `item`. When the person asks, `start`
 starts one job and `priority` (`p0`–`p3`, with `item`) sets one job's priority,
 each through the same factory verb the job page's own Start and priority send,
-as the person. It never stops, ships, merges or posts.
+as the person. It never stops, ships, merges or posts. `repos` lists every
+repository with its jobs counted by state, `shipped` takes `days` (1 is today
+and the default, at most 90) and counts the pull requests merged, and every
+table opens with the whole factory's counts by state. One read or act waits a
+bounded time on the factory (20 s to read, 60 s to act) and then answers that
+the factory did not, so a floor that never answers cannot hold the turn open.
+
+The open is the person's own: a Factory manager they closed or archived is
+taken out of Closed and answered open. A manager whose conversation works in
+the codeaf home (one made by a build that gave it the engine's own folder) is
+made again in `<floor>/chats/foreman` on its next open, and the conversation it
+replaces is stopped and archived.
+
+### Starting the Factory manager over (`factory.foreman_fresh`)
+
+The hello feature `factory.foreman_fresh` announces the app's Clear for the
+Factory manager. `factory.foreman_fresh {factory}` answers `{factory, agent}`
+as the open does, but `agent` is a NEW conversation with only the manager's
+brief in it; it takes the manager's place (every later `factory.foreman_open`
+answers it) and its `@foreman` handle. The conversation it replaces is stopped
+and archived: its history stays on disk and nothing of it runs on. A manager
+has this where another conversation has Archive, because it is the factory's
+one conversation with one door: archived, that door opened a chat nobody could
+write to. Only the factory this engine serves is accepted.
 ### factory.job_publish_anyway
 
 Hello feature `factory.publish_anyway` advertises this person action. Params:

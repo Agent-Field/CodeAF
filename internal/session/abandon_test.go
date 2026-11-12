@@ -141,6 +141,99 @@ func TestAnUncancellableWaitDoesNotKeepATurnFromBeingAbandoned(t *testing.T) {
 	waitUntilClosed(t, "the abandoned turn's stream closing", closed, 10*time.Second)
 }
 
+// A BOUNDED STOP LETS GO BY ITSELF.
+//
+// A surface across a wire has no second door to press: the desktop app's Stop
+// was the first stage alone, so a turn parked like this one stayed "working"
+// until the app was quit. [Agent.InterruptWithin] arms the second stage behind
+// the stop, and the proof is the same one as above with nobody calling Abandon:
+// the stream closes, and the journal says the turn was let go of, once.
+func TestABoundedStopAbandonsATurnThatWouldNotLetGo(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "wedge", `{}`), nil
+		},
+	}}
+	agent, entered, journal := wedged(t, completer)
+
+	events, err := agent.Submit(context.Background(), "park on something that cannot be cancelled")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	waitUntilClosed(t, "the turn parking on the wedge", entered, 10*time.Second)
+
+	agent.InterruptWithin(50 * time.Millisecond)
+
+	closed := make(chan struct{})
+	go func() {
+		for range events {
+		}
+		close(closed)
+	}()
+	waitUntilClosed(t, "the bounded stop letting go of the turn", closed, 10*time.Second)
+	if lines := abandonedLines(t, journal); len(lines) != 1 || lines[0].Reason != string(AbandonStopTimeout) {
+		t.Fatalf("want one abandoned line saying %q, got %+v", AbandonStopTimeout, lines)
+	}
+	if _, again := agent.Abandon(AbandonStopTimeout); again {
+		t.Fatal("the bounded stop left a turn for a second Abandon to let go of")
+	}
+}
+
+// AND ITS CLOCK IS FOR THE TURN THAT WAS STOPPED, NEVER THE ONE AFTER IT.
+//
+// The first turn here ends on the interrupt alone, well inside its bound, and
+// the person sends again before that bound runs out. The second turn parks on
+// the wedge: when the first stop's clock fires it finds a turn running, and a
+// clock that only asked "is anything running" would let go of work nobody
+// stopped.
+func TestABoundedStopLeavesTheTurnAfterItAlone(t *testing.T) {
+	reached := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(reached)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "wedge", `{}`), nil
+		},
+	}}
+	agent, entered, journal := wedged(t, completer)
+
+	first, err := agent.Submit(context.Background(), "ask something that never answers")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	waitUntilClosed(t, "the request going out", reached, 10*time.Second)
+	const grace = 400 * time.Millisecond
+	agent.InterruptWithin(grace)
+	for range first {
+	}
+
+	second, err := agent.Submit(context.Background(), "and now park")
+	if err != nil {
+		t.Fatalf("the session refused the prompt after a stopped turn: %v", err)
+	}
+	waitUntilClosed(t, "the second turn parking on the wedge", entered, 10*time.Second)
+
+	ended := make(chan struct{})
+	go func() {
+		for range second {
+		}
+		close(ended)
+	}()
+	select {
+	case <-ended:
+		t.Fatal("the first turn's stop let go of the turn after it")
+	case <-time.After(3 * grace):
+	}
+	if lines := abandonedLines(t, journal); len(lines) != 0 {
+		t.Fatalf("a turn was journaled as abandoned though none was: %+v", lines)
+	}
+	agent.Abandon(AbandonStopTimeout)
+	waitUntilClosed(t, "the parked turn being let go of at the test's end", ended, 10*time.Second)
+}
+
 // AND THE NEXT THING THE PERSON TYPES OPENS AN ORDINARY TURN.
 //
 // A stop that freed the screen and left the session claiming to be busy would be
