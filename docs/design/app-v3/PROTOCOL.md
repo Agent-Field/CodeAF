@@ -75,10 +75,34 @@ decides which combinations are accepted.
 | `agents.set_effort` | `{effort, id}` | `agentResult` |
 | `agents.set_model` | `{automatic, id, model}` | `agentResult` |
 | `agents.set_models` | `{fallback, id, main}` | `agentResult` |
+| `agents.set_scope` | `{id, scope}` | `AgentScope` |
 | `agents.since` | `{after, id}` | `Since` |
 | `agents.steer` | `in.sayTo` | `Empty` |
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
+
+## Conversation work scope
+
+`agents.set_scope {id, scope}` answers `{id, scope}` with the stored word.
+`project` is the default: the conversation is told about other conversations'
+landed and running work in its folder, as today. `conversation` means it is told
+only about its own work: its turns receive no other-conversation `<elsewhere>`
+block, and its `tasks` tool lists and addresses only its own tasks. Neither the
+other-window running section nor the wider `scope: "everywhere"` section is
+added. Task nodes keep their existing scope.
+
+The choice is stored with the conversation and survives restarts. It takes
+effect from the conversation's next turn; a live tasks call also reads the
+stored choice. Setting it never opens, warms or interrupts the conversation,
+never moves its folder, and never changes its transcript, title, model or tasks.
+The write-safety checks still warn before its own work writes over files other
+conversations are writing. The person's task list is unchanged.
+
+Engines that serve this method announce `agents.scope` in `hello.features`.
+A missing id or a scope other than `project` or `conversation` is `bad_params`;
+an engine without the door answers `unknown_method`. An unknown conversation is
+`not_found`; a lent conversation or one without a local folder is `conflict`.
+No `agent.changed` event is emitted, because the Agent view carries no scope.
 
 ## Client tools
 
