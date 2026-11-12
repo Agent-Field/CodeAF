@@ -587,8 +587,15 @@ never from a pipeline's or a step's name:
   failed: <reason>" or "<step> was cancelled: <reason>".
 
 The run's whole report, command output included, is kept as the step's
-output: open the step to read it in full. A step that finished reads
-"<step> · done · finished", or "finished and opened <pull request link>".
+output: open the step to read it in full.
+
+## a finished AgentField step — which step opened the pull request
+
+A step that finished reads
+"<step> · done · finished". When that step supplied the job's first pull
+request, it reads "finished and opened <pull request link>". A later step,
+including review using `{pr_url}`, reads "finished" even if its result repeats
+the link; the first pull request stays on the job.
 
 ## a failed, rejected or stopped job on disk — its file says so; a step reads as its label
 

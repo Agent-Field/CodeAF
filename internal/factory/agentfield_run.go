@@ -42,6 +42,9 @@ type AgentFieldRun struct {
 	// starting a second run. False on a record written before it was kept,
 	// which is judged by its times as before ([AgentFieldRunOwed]).
 	EndOwed bool `json:"end_owed,omitempty"`
+	// PullRequestBefore records that this run began after the job had a pull
+	// request, so a result echoing that link cannot claim it opened one.
+	PullRequestBefore bool `json:"pull_request_before,omitempty"`
 	// A harness step's conversation keeps its own relay record beside its
 	// transcript (agentfield.json): which execution it is, how much of it is
 	// kept, whether it is steerable now. It lives with the conversation,

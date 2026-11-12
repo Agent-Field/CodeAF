@@ -9,6 +9,7 @@ invalidates:
   - "Was true: watched chat JSON omitted tokens and spending. Is true now: chat --once --json shares exec accounting fields and reports this invocation after usage settles, including spending before a failure."
   - "Was true: the factory control socket had no isolated runtime-directory override. Is true now: CODEAF_FACTORY_RUNTIME_DIR selects its private runtime base, with an explained fallback for paths too long for portable Unix sockets; the unset default remains stable."
   - "Was true: a build-and-review pipeline rejected {pr_url} and required a separate job with a literal link. Is true now: downstream AgentField steps can explicitly bind the opened PR, with validation before dispatch when earlier work or its PR is missing."
+  - "Was true: a later AgentField step that returned a pull request link said it opened that pull request, even when an earlier step supplied it. Is true now: that later step says finished, including after restart, and only the opening step says finished and opened."
 ---
 
 AgentField pipelines that return an answer remain visible in completed job lists.
@@ -18,4 +19,6 @@ answer or stop fields. Resumed calls exclude the conversation's earlier usage.
 
 The factory library supports a build followed by review with `{pr_url}`.
 The existing first-opened-PR rule remains; default inputs do not gain fields.
+A later review step says `finished`; the opening step keeps
+`finished and opened <pull request link>`.
 Set `CODEAF_FACTORY_RUNTIME_DIR` for an isolated private control socket.

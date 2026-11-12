@@ -17,6 +17,7 @@ import (
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 func TestFactoryAgentFieldPipelineHandsPullRequestToReview(t *testing.T) {
@@ -92,6 +93,149 @@ func TestFactoryAgentFieldPipelineHandsPullRequestToReview(t *testing.T) {
 				if ph.State != factory.PhaseDone {
 					t.Errorf("%s state=%s", ph.Name, ph.State)
 				}
+			}
+			t.Run("completion wording", func(t *testing.T) {
+				for i, want := range []string{"finished and opened " + link, "finished"} {
+					ph := got.Stream.Phases[i]
+					if ph.Result == nil || ph.Result.Output != want {
+						t.Errorf("%s result=%+v, want %q", ph.Name, ph.Result, want)
+					}
+					wantLog := ph.Name + ": " + want
+					found := false
+					for _, line := range got.Stream.Log {
+						if strings.HasPrefix(line.Text, ph.Name+": finished") {
+							found = true
+							if line.Text != wantLog {
+								t.Errorf("run log=%q, want %q", line.Text, wantLog)
+							}
+						}
+					}
+					if !found {
+						t.Errorf("run log is missing %q", wantLog)
+					}
+				}
+			})
+		})
+	}
+}
+
+func TestFactoryAgentFieldResumedStepKeepsPullRequestAttribution(t *testing.T) {
+	const link = "https://github.com/acme/api/pull/42"
+	for _, tc := range []struct {
+		name, result, want string
+		existing           bool
+		wantPullRequest    bool
+	}{
+		{"opening step", `{"success":true,"pr_url":"` + link + `"}`, "finished and opened " + link, false, true},
+		{"no pull request", `{"success":true}`, "finished", false, false},
+		{"review echoes pull request", `{"success":true,"pr_url":"` + link + `"}`, "finished", true, true},
+		{"review names another pull request", `{"success":true,"pr_url":"https://github.com/acme/api/pull/43"}`, "finished", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st, it, stage := afStepJob(t)
+			if tc.existing {
+				stage = factory.Stage{Name: "review", Kind: factory.StageAgentField, Target: "pr-af.review", On: true, Input: map[string]string{"pr_url": "{pr_url}"}}
+				if err := st.Update(it.ID, func(it *factory.Item) error {
+					it.Stages = append(it.Stages, stage)
+					it.Stream = &factory.Stream{Phases: []factory.Phase{{Name: "build", State: factory.PhaseDone}, {Name: "review", State: factory.PhaseRunning}}}
+					it.PullRequest = &factory.PullRequest{URL: link, Number: 42, State: factory.PROpen}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cp := &afFakeCP{tree: afNode("exec-root", "work", "running", "2026-11-07T12:00:00Z", "",
+				afNode("exec-child", "work", "succeeded", "2026-11-07T12:00:00Z", "2026-11-07T12:00:01Z")), result: json.RawMessage(tc.result)}
+			remote := &afRemote{items: st, floor: st, conn: func() (afClient, string, bool) { return cp, "fixture-node", true }}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			done := make(chan error, 1)
+			guard.Go("test interrupted AgentField step", func() {
+				_, err := remote.Step(ctx, factoryrun.Job{Item: it, Stage: stage})
+				done <- err
+			})
+			afUntil(t, st, it.ID, "run recorded before restart", func(it factory.Item) bool {
+				return it.AgentFieldSteps[stage.Name] != nil && (!tc.wantPullRequest || it.PullRequest != nil)
+			})
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("interrupted step did not return")
+			}
+			cp.set(func() {
+				ended := "2026-11-07T12:00:02Z"
+				cp.tree.Status, cp.tree.CompletedAt = "succeeded", &ended
+			})
+			reopened, err := store.Open(st.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			it, _ = reopened.Get(it.ID)
+			remote = &afRemote{items: reopened, floor: reopened, conn: func() (afClient, string, bool) { return cp, "fixture-node", true }}
+			ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			res, err := remote.Step(ctx, factoryrun.Job{Item: it, Stage: stage, Continuing: true})
+			if err != nil || !res.Done || res.Output != tc.want {
+				t.Errorf("resumed step result=%+v error=%v, want %q", res, err, tc.want)
+			}
+			end, _ := reopened.Get(it.ID)
+			if tc.wantPullRequest {
+				if end.PullRequest == nil || end.PullRequest.URL != link {
+					t.Errorf("first pull request changed: %+v", end.PullRequest)
+				}
+			} else if end.PullRequest != nil {
+				t.Errorf("invented a pull request: %+v", end.PullRequest)
+			}
+			if len(cp.dispatched) != 1 {
+				t.Errorf("restart dispatched another run: %+v", cp.dispatched)
+			}
+		})
+	}
+}
+
+func TestFactoryAgentFieldLegacyStepKeepsPullRequestAttribution(t *testing.T) {
+	const link = "https://github.com/acme/api/pull/42"
+	for _, tc := range []struct {
+		name, step string
+		receipt    bool
+	}{{"opening build", "build", false}, {"review with receipt", "review", true}, {"review without receipt", "review", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			st, it, build := afStepJob(t)
+			review := factory.Stage{Name: "review", Kind: factory.StageAgentField, Target: "pr-af.review", On: true, Input: map[string]string{"pr_url": "{pr_url}"}}
+			if tc.receipt {
+				review.Input = nil
+			}
+			stage, want := build, "finished and opened "+link
+			phases := []factory.Phase{{Name: "build", State: factory.PhaseRunning}, {Name: "review", State: factory.PhasePending}}
+			if tc.step == "review" {
+				stage, want = review, "finished"
+				phases[0].State = factory.PhaseDone
+				if tc.receipt {
+					phases[0].Result = &factory.StageResult{Done: true, Output: "finished and opened " + link}
+				}
+				phases[1].State = factory.PhaseRunning
+			}
+			if err := st.Update(it.ID, func(it *factory.Item) error {
+				it.Stages, it.Stream = []factory.Stage{build, review}, &factory.Stream{Phases: phases}
+				it.PullRequest = &factory.PullRequest{URL: link, Number: 42, State: factory.PROpen}
+				it.AgentFieldSteps = map[string]*factory.AgentFieldRun{tc.step: {ExecutionID: "exec-root", RunID: "run-1", EndOwed: true}}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			reopened, err := store.Open(st.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			it, _ = reopened.Get(it.ID)
+			cp := &afFakeCP{tree: afNode("exec-root", "work", "succeeded", "2026-11-07T12:00:00Z", "2026-11-07T12:00:02Z"), result: json.RawMessage(`{"success":true,"pr_url":"` + link + `"}`)}
+			remote := &afRemote{items: reopened, floor: reopened, conn: func() (afClient, string, bool) { return cp, "fixture-node", true }}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			res, err := remote.Step(ctx, factoryrun.Job{Item: it, Stage: stage, Continuing: true})
+			if err != nil || !res.Done || res.Output != want || len(cp.dispatched) != 0 {
+				t.Errorf("legacy %s result=%+v error=%v dispatches=%d, want %q", tc.step, res, err, len(cp.dispatched), want)
 			}
 		})
 	}
