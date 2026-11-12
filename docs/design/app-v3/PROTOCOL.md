@@ -338,6 +338,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.read_on_arrival` | `in.FactoryReadOnArrivalParams` | `FactoryReadOnArrival` |
 | `factory.rename` | `in.FactoryRenameParams` | `Empty` |
 | `factory.repo_facts` | `in.FactoryRepoFactsParams` | `FactoryRepoFacts` |
+| `factory.repo_issues` | `in.FactoryRepoIssuesParams` | `FactoryRepoIssues` |
 | `factory.repo_read` | `in.FactoryRepoReadParams` | `FactoryRepoRead` |
 | `factory.repo_set` | `in.FactoryRepoSetParams` | `FactoryRepoSetDone` |
 | `factory.repos` | `in.FactoryRef` | `FactoryRepos` |
@@ -896,6 +897,36 @@ last `months` calendar months (1 to 12, default 3) by the rule of
 `factory.job_area`, and jobs stuck on one step for a day or more. At most 20
 areas and 20 stuck steps are answered, busiest first (at most 97 facts);
 `truncated` counts the rest. A repository the caller cannot read is not found.
+
+An engine whose hello carries `factory.repo_issues` and whose capabilities
+answer `repo_issues: true` serves `factory.repo_issues {factory, repo, since?,
+page?}`. `repo` is `owner/name`, `since` is RFC 3339 (absent means no lower
+bound), and `page` is 1–10, default 1. It reads only `GET
+/v1/repos/{owner}/{repo}/issues?since=&page=` through the caller's Factory
+connection. The route accepts only those two query keys, once each, and uses
+the caller's GitHub sign-in, or a solo Factory's own profile.
+
+The result is `{factory, repo, issues, rows, newest?}`. `issues` contains at
+most 50 entries, oldest update first, in every state: `{id, number, title,
+body, url, state, created_at, updated_at, body_cut?}`. `id` is GitHub's int64
+issue identity, `url` is its HTML URL, and `state` is `open` or `closed`.
+`body` is cut at 8,192 bytes on a rune boundary; `body_cut: true` marks a
+cut. Pull requests are excluded from `issues`, but `rows` counts all rows
+GitHub returned (0–50) and `newest` is their latest `updated_at`, including
+pull requests. An empty result has `issues: []`, `rows: 0` and no `newest`.
+
+Invalid params are `bad_params` before any request. A repository the caller
+cannot see, or GitHub's repository 404, is `not_found`. A spent GitHub rate
+limit on the issues request is `busy` with `detail.retry_at` in RFC 3339,
+using GitHub's reset time when supplied, otherwise its `retry-after` hint.
+A visibility check refused by GitHub's rate limit currently reads as
+"repository not found" (`not_found`), as on every repository route.
+Sign-in failures retain `signed_out` or `github_expired`. A Factory missing
+the route is `conflict` with `detail.reason: "factory_too_old"`; its own
+"repository not found" remains `not_found`. An engine without the reader
+answers `unknown_method`.
+The route itself stores nothing and appends no activity; the Factory's
+ordinary per-request housekeeping runs as it does for every authenticated request.
 
 An engine whose hello carries the feature `factory.pipeline_pr_update` (and
 capabilities `pipeline_pr_update: true`) lets `factory.pipeline_pr` take `pr`,

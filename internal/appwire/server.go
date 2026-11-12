@@ -297,6 +297,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryPipelineEditFeature(hello, engine)
 	hello = withFactoryPipelineSourceRefFeature(hello, engine)
 	hello = withFactoryPipelineCopyFeature(hello, engine)
+	hello = withFactoryRepoIssuesFeature(hello, engine)
 	hello = withFactorySpendByRepoFeature(hello, engine)
 	hello = withFactorySpendByModelFeature(hello, engine)
 	hello = withFactoryRepoFactsFeature(hello, engine)

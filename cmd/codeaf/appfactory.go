@@ -844,6 +844,7 @@ func (b *appBackend) FactoryCapabilities(context.Context) (appwire.FactoryCapabi
 		Local: true, Runner: true, Writes: false, Admin: true,
 		Links: true, CopyLink: b.copier().Available(), ReposManage: true, RunnerManage: true, Rules: true, PipelinePR: true, PipelinePRs: true, PipelinePRUpdate: true, PipelineSourceRef: true, SpendByRepo: true, SpendByModel: true, PipelineEdit: true, PipelineEditRuntime: true,
 		PipelineEditStructure: true, PipelineEditRules: true, RepoRead: true, RepoFacts: true, GroupPolicy: true, WaitsOn: true, MaxConnections: appwire.MaxFactoryConnections, MaxFlows: appwire.MaxFactoryFlows,
+		RepoIssues: true,
 	}, nil
 }
 
