@@ -295,6 +295,13 @@ func (b *appBackend) rowLocked(agent string, c *appCall) appwire.TurnTool {
 	return row
 }
 
+// sayTool reads the live meter only after the caller has released its locks,
+// because a local conversation's Usage takes the session agent's lock.
+func (live *appLive) sayTool(row appwire.TurnTool) {
+	row.SpentUSD = appFigure(live.conn.Conv.Usage().CostUSD)
+	live.box.Event(appwire.EventTurnTool, row)
+}
+
 // factsLocked is a call's facts with its tail as it stands: three lines while
 // it runs, twelve once it has ended.
 func (c *appCall) factsLocked() appwire.ToolFacts {
@@ -468,7 +475,7 @@ func (b *appBackend) callAsked(a *appAgent, agent string, live *appLive, call, a
 		row = b.rowLocked(agent, c)
 	})
 	if known {
-		live.box.Event(appwire.EventTurnTool, row)
+		live.sayTool(row)
 	}
 }
 
@@ -517,7 +524,7 @@ func (b *appBackend) tickTools(a *appAgent, agent string, live *appLive) func() 
 				}
 			})
 			for _, row := range rows {
-				live.box.Event(appwire.EventTurnTool, row)
+				live.sayTool(row)
 			}
 		}
 	})
