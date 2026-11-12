@@ -134,6 +134,116 @@ func TestOutcomeCreateIsSilentAndSaveSurvivesReopen(t *testing.T) {
 	}
 }
 
+// runningPlan is a job whose plan step runs, with the default pipeline's
+// approve gate after it: the shape a run has just before it waits on a person.
+func runningPlan(at time.Time) factory.Item {
+	return factory.Item{
+		State: factory.StateRunning, Title: "A waiting job",
+		Stream: &factory.Stream{Cur: 0, Phases: []factory.Phase{
+			{Name: "plan", Kind: factory.StageChat, State: factory.PhaseRunning, Round: 1, At: at.Add(-time.Minute)},
+			{Name: "approve", Kind: factory.StageGate, State: factory.PhasePending},
+			{Name: "write", Kind: factory.StageChat, State: factory.PhasePending},
+			{Name: "proof", Kind: factory.StageChat, State: factory.PhasePending},
+		}},
+	}
+}
+
+// E1: one wait on a person is one needs-you outcome, however many writes the
+// job takes while it waits: its runner's reports, its priority, its budget, a
+// rename. A wait at the plan gate recorded another on every write (hand test,
+// 2026-11-12: six identical approve_plan outcomes for one approval).
+func TestStoredNeedsYouOncePerWait(t *testing.T) {
+	at := time.Date(2026, 11, 12, 17, 29, 26, 345727000, time.FixedZone("offset", -5*3600))
+	ask := func(it *factory.Item, stage, question string, options ...string) {
+		it.State, it.Question = factory.StateNeedsYou, question
+		it.Asking = &factory.Asked{Stage: stage, Question: question, Options: options, At: at, With: factory.AskedYou}
+	}
+	planDone := func(it *factory.Item) {
+		it.Stream.Phases[0].State = factory.PhaseDone
+	}
+	tests := []struct {
+		name         string
+		wait         func(*factory.Item)
+		need, reason string
+	}{
+		{"plan gate", func(it *factory.Item) {
+			planDone(it)
+			it.Stream.Cur, it.Stream.Phases[1].State = 1, factory.PhaseWaiting
+			ask(it, "approve", "plan is ready · continue, or send it back?")
+			it.QKind = factory.QKindApprove
+		}, factory.NeedsApprovePlan, "approval_plan"},
+		{"hold before a step", func(it *factory.Item) {
+			planDone(it)
+			it.Stream.Phases[1].State = factory.PhaseDone
+			it.Stream.Cur, it.Stream.Phases[2].State = 2, factory.PhaseWaiting
+			ask(it, "write", "write is next · carry on?")
+			it.QKind = factory.QKindApprove
+		}, factory.NeedsApproveStep, "approval_step"},
+		{"proof", func(it *factory.Item) {
+			for i := range it.Stream.Phases {
+				it.Stream.Phases[i].State = factory.PhaseDone
+			}
+			it.State, it.Stream.Cur, it.Stream.Ended = factory.StateLanded, 3, at
+		}, factory.NeedsApproveProof, "approval_proof"},
+		{"question", func(it *factory.Item) {
+			ask(it, "plan", "Which file?", "a.go", "b.go")
+			it.QKind = factory.QKindStep
+		}, factory.NeedsQuestion, "question"},
+		{"paused decision", func(it *factory.Item) {
+			ask(it, "plan", "Which file?", "a.go", "b.go")
+			it.QKind = factory.QKindStep
+			it.PausedRecoveryQuestion = "decision:7"
+		}, factory.NeedsQuestion, "decision_paused"},
+	}
+	writes := []struct {
+		name   string
+		change func(*factory.Item)
+	}{
+		{"priority", func(it *factory.Item) { it.Priority = &factory.JobPriority{Value: "high", SetBy: "sam"} }},
+		{"budget", func(it *factory.Item) { it.Cap = 10 }},
+		{"rename", func(it *factory.Item) { it.Title = "Renamed while waiting" }},
+		{"runner report", func(it *factory.Item) { it.Stream.Phases[0].Note = "Plan clarified" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			it, err := st.Create(runningPlan(at))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.Update(it.ID, func(cur *factory.Item) error { tt.wait(cur); return nil }); err != nil {
+				t.Fatal(err)
+			}
+			check := func(after string) {
+				t.Helper()
+				stored, err := st.Get(it.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				zero := int64(0)
+				got, err := live.ReadOutcomes(st.Root(), &zero, 100)
+				if err != nil || got.Reset || len(got.Events) != 1 {
+					t.Fatalf("after %s: %d outcomes, want 1: %+v %v", after, len(got.Events), got.Events, err)
+				}
+				e := got.Events[0]
+				if e.Kind != "needs_you" || e.Need != tt.need || e.Reason != tt.reason || !e.At.Equal(at) || !e.At.Equal(factory.NeedsSince(stored)) || factory.NeedsKind(stored) != tt.need {
+					t.Fatalf("after %s: outcome %+v, want %s/%s at %s", after, e, tt.need, tt.reason, at)
+				}
+			}
+			check("the wait began")
+			for _, w := range writes {
+				if err := st.Update(it.ID, func(cur *factory.Item) error { w.change(cur); return nil }); err != nil {
+					t.Fatal(err)
+				}
+				check(w.name)
+			}
+		})
+	}
+}
+
 // E1: in-place nested edits retain the prior need, reason and wait timestamp.
 func TestStoredOutcomesFromInPlaceNestedUpdates(t *testing.T) {
 	at := time.Date(2026, 11, 1, 12, 3, 4, 567, time.FixedZone("offset", 3600))

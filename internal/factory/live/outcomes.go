@@ -38,60 +38,10 @@ type Outcome struct {
 	PRURL    string    `json:"pr_url,omitempty"`
 }
 
-// OutcomeBasis retains the facts read by Outcomes in independent mutable storage.
-// Unread payloads are omitted so large job details need no copy on every update.
-func OutcomeBasis(it factory.Item) factory.Item {
-	before := factory.Item{
-		ID: it.ID, Title: it.Title, State: it.State,
-		DoneHow: it.DoneHow, DoneAt: it.DoneAt, Publishing: it.Publishing, PublishError: it.PublishError,
-		QKind: it.QKind, Question: it.Question, Created: it.Created, Changed: it.Changed,
-		Failure: outcomeCopy(it.Failure), Asking: outcomeCopy(it.Asking),
-		PersonStopped: outcomeCopy(it.PersonStopped), Merging: outcomeCopy(it.Merging),
-	}
-	if pr := it.PullRequest; pr != nil {
-		before.PullRequest = &factory.PullRequest{
-			State: pr.State, MergedAt: pr.MergedAt, Number: pr.Number, URL: pr.URL,
-			Conflict: pr.Conflict, ReviewDecision: pr.ReviewDecision,
-		}
-	}
-	if before.Asking != nil {
-		before.Asking.Options = append([]string(nil), before.Asking.Options...)
-	}
-	if it.FollowUp != nil {
-		before.FollowUp = &factory.PRFollowUp{State: it.FollowUp.State}
-	}
-	if it.PublishStatus != nil {
-		before.PublishStatus = &factory.Publishing{State: it.PublishStatus.State}
-	}
-	if it.StopUndo != nil {
-		// StoppedByPerson reads only whether the undo record exists.
-		before.StopUndo = &factory.StopUndo{}
-	}
-	before.Stream = outcomeStream(it.Stream)
-	return before
-}
-
-func outcomeCopy[T any](in *T) *T {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	return &out
-}
-
-func outcomeStream(in *factory.Stream) *factory.Stream {
-	if in == nil {
-		return nil
-	}
-	out := &factory.Stream{Cur: in.Cur, Ended: in.Ended, Phases: make([]factory.Phase, len(in.Phases))}
-	for i, ph := range in.Phases {
-		// The phase clock supplies NeedsSince; its failure can preserve a stop.
-		out.Phases[i] = factory.Phase{At: ph.At, State: ph.State, Failure: outcomeCopy(ph.Failure)}
-	}
-	return out
-}
-
 // Outcomes compares the durable job facts at an update, before its snapshot is visible.
+// before must be the whole prior job: the facts read here (the state, the need,
+// its reason and clock) read the job's steps, questions and pauses, and a copy
+// of only some of its fields reads a different need than the job answers.
 func Outcomes(before, after factory.Item, now time.Time) []Event {
 	var out []Event
 	merged := after.PullRequest != nil && after.PullRequest.State == factory.PRMerged && (before.PullRequest == nil || before.PullRequest.State != factory.PRMerged)

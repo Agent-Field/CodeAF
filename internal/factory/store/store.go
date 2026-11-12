@@ -541,8 +541,10 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if err := json.Unmarshal(raw, &it); err != nil {
 			return err
 		}
+		// The callback edits its own decoded copy, so before is the whole prior
+		// job, and outcomes compare it as it was: a partial copy read a waiting
+		// gate as a step's hold and recorded the wait again on every write.
 		before := current.Item
-		outcomeBefore := live.OutcomeBasis(current.Item)
 		before.Stages = factory.CopyStages(it.Stages)
 		// In-place PR and failure edits must not rewrite the prior event facts.
 		if before.PullRequest != nil {
@@ -596,7 +598,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		if err != nil {
 			return err
 		}
-		err = live.Commit(st.root, append(live.Changes(before, it, now), live.Outcomes(outcomeBefore, it, now)...), func() error {
+		err = live.Commit(st.root, append(live.Changes(before, it, now), live.Outcomes(before, it, now)...), func() error {
 			return st.writeItem(st.ItemPath(id), data)
 		})
 		was, after, wrote = before, it, err == nil
