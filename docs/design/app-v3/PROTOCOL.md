@@ -82,8 +82,10 @@ decides which combinations are accepted.
 
 ## Client tools
 
-The optional feature `agents.client_tools` appears in `hello.features` exactly
-when the engine implements the client-tools interface. Sets belong to this
+The optional features `agents.client_tools` and `agents.client_tools.source`
+appear together in `hello.features` exactly when the engine implements the
+client-tools interface. The latter guarantees message identity on calls whenever
+the running turn answers a message. Sets belong to this
 stdio connection and one conversation. They are memory-only: register again
 after reconnecting. Attachment does not open the conversation or start a turn.
 Children, workers and clarification conversations inherit neither tools nor
@@ -122,10 +124,21 @@ the tail after all built-ins.
 
 | event | data |
 |---|---|
-| `agents.tool_call` | `{agent, turn, call, turn_call, set, name, args: <JSON object>, deadline_ms}` |
+| `agents.tool_call` | `{agent, turn, call, turn_call, source_message_id?, set, name, args: <JSON object>, deadline_ms}` |
+
+`source_message_id` names the message the running turn answers: the same string
+as `Entry.message_id` on that message's chat entry in `agents.read` (and in
+`entry.added` when present). It is captured when the turn starts, never changed
+by a mid-turn steer or note, and survives journal restarts and call replays.
+It is absent when no message can be named exactly. A stopped answer reuses its
+recorded message id. Turns the engine starts itself, including ordinary session
+wakes, mixed batches and a carry-on after a quit or close, carry none.
+With `agents.client_tools.source` advertised,
+an absent field means no such message, rather than an older engine.
 
 One model call emits exactly one `agents.tool_call`. `turn` is the engine's
-current conversation turn; `turn_call` matches `turn.tool.call`. `call` is unique
+process-local conversation counter, which resets after restart;
+`turn_call` matches `turn.tool.call`. `call` is unique
 among pending calls and deterministic for the agent + provider call id. Without
 a provider id the engine mints a fresh id. A concurrent redispatch joins the
 pending wait and emits no second event. A settled redispatch returns the saved

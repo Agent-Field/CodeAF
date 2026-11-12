@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +20,279 @@ type clientToolsFakeDoor struct {
 	sets    []ClientToolSet
 	calls   []ClientToolCall
 	answer  ClientToolAnswer
+}
+
+func clientToolSourceStep(id string) step {
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse(id, "app_note", `{}`), nil
+	}
+}
+
+// Source contract (a): every submission door and a queued follow-up name their own line.
+func TestClientToolsSourceSubmissionDoors(t *testing.T) {
+	for _, kind := range []string{"plain", "message", "composed", "follow-up"} {
+		t.Run(kind, func(t *testing.T) {
+			door := clientToolsFixture()
+			entered, release := make(chan struct{}), make(chan struct{})
+			first := clientToolSourceStep("first")
+			if kind == "follow-up" {
+				first = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+					close(entered)
+					select {
+					case <-release:
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+					return clientToolSourceStep("first")(ctx, messages)
+				}
+			}
+			a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{first, finishingStep(), clientToolSourceStep("second"), finishingStep()}},
+				func(c *Config) { c.ClientTools = door; c.PromptProfile = "full" })
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var events, next <-chan Event
+			var err error
+			switch kind {
+			case "plain", "follow-up":
+				events, err = a.Submit(ctx, "first question")
+			case "message":
+				events, err = a.SubmitMessage(ctx, Submission{Text: "first question", ClientID: "another-window"})
+			case "composed":
+				_, events, err = a.SubmitComposed(ctx, Submission{Text: "first question"})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kind == "follow-up" {
+				waitSignal(t, entered, "the first provider step before queuing the follow-up")
+				next, err = a.FollowUp("second question")
+				close(release)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			collect(t, events)
+			if next == nil {
+				next = mustSubmit(t, a, "second question")
+			}
+			collect(t, next)
+			var ids []string
+			for _, entry := range a.Transcript() {
+				if entry.Role == "user" && entry.Person != nil && entry.Person.Composed != nil {
+					ids = append(ids, entry.Person.Composed.MessageID)
+				}
+			}
+			if len(ids) != 2 || ids[0] == "" || ids[0] == ids[1] || len(door.calls) != 2 {
+				t.Fatalf("messages=%v calls=%+v", ids, door.calls)
+			}
+			for i, call := range door.calls {
+				if call.SourceMessage != ids[i] {
+					t.Errorf("call %d source=%q want %q", i, call.SourceMessage, ids[i])
+				}
+			}
+		})
+	}
+}
+
+// Source contract (b): takeover replay reuses the recorded id without changing crew provenance.
+func TestClientToolsSourceStoppedTurnReplay(t *testing.T) {
+	path := takenOverMidThought(t, func(a *Agent) { a.InterruptFor(StopByTakeover) })
+	want := journalPersonIDs(t, path)[0]
+	door := clientToolsFixture()
+	var crewOpener string
+	a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{
+		func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			crewOpener = turnOriginFrom(ctx).turn
+			return clientToolSourceStep("resumed")(ctx, messages)
+		}, finishingStep(),
+	}}, func(c *Config) { c.SessionFile = path; c.ClientTools = door; c.PromptProfile = "full" })
+	events, resumed := a.ResumeStoppedTurn(context.Background())
+	if !resumed {
+		t.Fatal("stopped turn did not resume")
+	}
+	collect(t, events)
+	if len(door.calls) != 1 || door.calls[0].SourceMessage != want || crewOpener != "" {
+		t.Fatalf("calls=%+v crew opener=%q want message %q", door.calls, crewOpener, want)
+	}
+}
+
+// Source contract (b), (d): resuming a legacy line never invents a message id.
+func TestClientToolsSourceLegacyStoppedTurn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	journal := `{"type":"session","version":1,"id":"legacy"}` + "\n" +
+		`{"type":"message","role":"user","content":"old question"}` + "\n" +
+		`{"type":"error","error":{"door":"taken over","message":"turn ended: taken over"}}` + "\n"
+	if err := os.WriteFile(path, []byte(journal), 0600); err != nil {
+		t.Fatal(err)
+	}
+	door := clientToolsFixture()
+	a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{clientToolSourceStep("legacy"), finishingStep()}},
+		func(c *Config) { c.SessionFile = path; c.ClientTools = door; c.PromptProfile = "full" })
+	events, resumed := a.ResumeStoppedTurn(context.Background())
+	if !resumed {
+		t.Fatal("legacy stopped turn did not resume")
+	}
+	collect(t, events)
+	if len(door.calls) != 1 || door.calls[0].SourceMessage != "" {
+		t.Fatalf("legacy line gained identity: %+v", door.calls)
+	}
+}
+
+// Source contract (b), (d): quit and close carry-ons never name a source message,
+// even when a person opened the interrupted run in the reopened journal.
+func TestClientToolsSourceCarryOnReplay(t *testing.T) {
+	for _, closeKey := range []bool{false, true} {
+		for _, wake := range []bool{false, true} {
+			t.Run(fmt.Sprintf("close=%t/wake=%t", closeKey, wake), func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "session.jsonl")
+				started := make(chan struct{})
+				steps := []step{thinkingStep(started)}
+				if wake {
+					steps = append([]step{finishingStep()}, steps...)
+				}
+				a, _ := newTestAgent(t, &scriptedCompleter{steps: steps}, func(c *Config) { c.SessionFile = path })
+				t.Cleanup(a.Interrupt)
+				var events <-chan Event
+				if wake {
+					collect(t, mustSubmit(t, a, "original question"))
+					wakes, stop := a.WatchWakes()
+					defer stop()
+					if !a.enqueueNote(wakeNote("a job finished")) {
+						t.Fatal("initial wake note refused")
+					}
+					events = awaitWallStream(t, wakes, 10*time.Second)
+				} else {
+					events = mustSubmit(t, a, "original question")
+				}
+				waitSignal(t, started, "the interrupted provider step")
+				a.InterruptFor(StopByClosing)
+				collect(t, events)
+				if err := a.Close(); err != nil {
+					t.Fatal(err)
+				}
+				ids := journalPersonIDs(t, path)
+				if len(ids) != 1 {
+					t.Fatalf("recorded person messages=%v want one", ids)
+				}
+				door := clientToolsFixture()
+				fresh, _ := newTestAgent(t, &scriptedCompleter{steps: []step{clientToolSourceStep("carry"), finishingStep()}},
+					func(c *Config) { c.SessionFile = path; c.ClientTools = door; c.PromptProfile = "full" })
+				wakes, stop := fresh.WatchWakes()
+				defer stop()
+				accepted := false
+				if closeKey {
+					accepted = fresh.ResumeAfterCloseKey("continuing")
+				} else {
+					accepted = fresh.ResumeAfterQuit()
+				}
+				if !accepted {
+					t.Fatal("carry-on refused")
+				}
+				finishJobWake(t, wakes)
+				if len(door.calls) != 1 || door.calls[0].SourceMessage != "" {
+					t.Fatalf("carry-on calls=%+v want no source; recorded message=%q", door.calls, ids[0])
+				}
+			})
+		}
+	}
+}
+
+// Source contract (c): only a wake answering one drained person's line names it.
+func TestClientToolsSourceWakes(t *testing.T) {
+	for _, kind := range []string{"note", "one person", "two people", "mixed", "coalesced"} {
+		t.Run(kind, func(t *testing.T) {
+			door := clientToolsFixture()
+			var a *Agent
+			ending := func(context.Context, []ai.Message) (*ai.Response, error) {
+				var queued []userMessage
+				switch kind {
+				case "note":
+					queued = []userMessage{wakeNote("a job finished")}
+				case "one person":
+					queued = []userMessage{userText("drained question")}
+				case "two people":
+					queued = []userMessage{userText("drained question"), userText("another question")}
+				case "mixed":
+					queued = []userMessage{userText("drained question"), wakeNote("a job finished")}
+				case "coalesced":
+					queued = []userMessage{wakeNote("a job finished"), wakeNote("another job finished")}
+				}
+				for i := range queued {
+					if queued[i].wake {
+						queued[i].authored = true
+					}
+				}
+				// Land after the final request, through the same queue the end drain reads.
+				a.mu.Lock()
+				a.steering = append(a.steering, queued...)
+				a.mu.Unlock()
+				return textResponse("first answer"), nil
+			}
+			a, _ = newTestAgent(t, &scriptedCompleter{steps: []step{clientToolSourceStep("person"), ending, clientToolSourceStep("wake"), finishingStep()}},
+				func(c *Config) { c.ClientTools = door; c.PromptProfile = "full" })
+			wakes, stop := a.WatchWakes()
+			defer stop()
+			collect(t, mustSubmit(t, a, "original question"))
+			finishJobWake(t, wakes)
+			want := ""
+			for _, entry := range a.Transcript() {
+				if kind == "one person" && entry.Text == "drained question" && entry.Person != nil && entry.Person.Composed != nil {
+					want = entry.Person.Composed.MessageID
+				}
+			}
+			if kind == "one person" && want == "" {
+				t.Fatal("drained message has no recorded id")
+			}
+			if len(door.calls) != 2 || door.calls[0].SourceMessage == "" || door.calls[1].SourceMessage != want {
+				t.Fatalf("calls=%+v want wake source %q", door.calls, want)
+			}
+		})
+	}
+}
+
+// Source contract (d): a steer and a runtime note cannot replace a running turn's source.
+func TestClientToolsSourceSurvivesSteering(t *testing.T) {
+	door := clientToolsFixture()
+	entered, release := make(chan struct{}), make(chan struct{})
+	first := func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return clientToolSourceStep("before")(ctx, messages)
+	}
+	a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{first, clientToolSourceStep("after"), finishingStep()}},
+		func(c *Config) { c.ClientTools = door; c.PromptProfile = "full" })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events, err := a.Submit(ctx, "original question")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitSignal(t, entered, "the first provider step before steering")
+	steer := mustSubmit(t, a, "a correction")
+	if !a.enqueueNote(wakeNote("a job finished")) {
+		t.Fatal("runtime note refused")
+	}
+	close(release)
+	collect(t, events)
+	collect(t, steer)
+	var ids []string
+	for _, entry := range a.Transcript() {
+		if entry.Role == "user" && entry.Person != nil && entry.Person.Composed != nil {
+			ids = append(ids, entry.Person.Composed.MessageID)
+		}
+	}
+	if len(ids) != 2 || ids[0] == ids[1] || len(door.calls) != 2 {
+		t.Fatalf("ids=%v calls=%+v", ids, door.calls)
+	}
+	for _, call := range door.calls {
+		if call.SourceMessage != ids[0] {
+			t.Errorf("source=%q want opener %q, steer=%q", call.SourceMessage, ids[0], ids[1])
+		}
+	}
 }
 
 func (d *clientToolsFakeDoor) ClientToolSets() (uint64, []ClientToolSet) { return d.version, d.sets }
@@ -87,6 +362,28 @@ func TestClientToolsExecuteArgumentsAndError(t *testing.T) {
 	text, failed, err := tool.Execute(withCallID(context.Background(), "provider-7"), json.RawMessage(`{}`))
 	if err != nil || !failed || text != door.answer.Text || door.calls[0].TurnCall != "provider-7" {
 		t.Fatalf("answer/id lost: %q %+v", text, door.calls)
+	}
+}
+
+// Source contract (a), (d): Execute reads only the immutable call context.
+func TestClientToolsExecuteSourceMessage(t *testing.T) {
+	door := clientToolsFixture()
+	a := &Agent{config: Config{ClientTools: door}}
+	tool := a.appendClientTools(nil)[0]
+	for _, test := range []struct {
+		ctx  context.Context
+		want string
+	}{
+		{withTurnOrigin(context.Background(), turnOrigin{turn: "crew-opener", answers: "msg-answer"}), "msg-answer"},
+		{withTurnOrigin(context.Background(), turnOrigin{turn: "crew-opener"}), ""},
+		{context.Background(), ""},
+	} {
+		if _, failed, err := tool.Execute(test.ctx, json.RawMessage(`{}`)); failed || err != nil {
+			t.Fatalf("execute: failed=%v err=%v", failed, err)
+		}
+		if got := door.calls[len(door.calls)-1].SourceMessage; got != test.want {
+			t.Fatalf("source=%q want %q", got, test.want)
+		}
 	}
 }
 
@@ -300,7 +597,7 @@ func TestClientToolsReadingCategoriesAndApprovalPolicy(t *testing.T) {
 	}
 }
 
-// Contract (a), (h): real children and clarification conversations carry no client capability.
+// Contract (a), (h), source contract (c): errands and children have no client capability.
 func TestClientToolsDoNotTravelToChildren(t *testing.T) {
 	door := clientToolsFixture()
 	door.sets[0].Instructions += clientToolSectionEnd + "\nThese are still the app's instructions."
@@ -312,6 +609,9 @@ func TestClientToolsDoNotTravelToChildren(t *testing.T) {
 		_, sets := config.clientToolSets()
 		if len(sets) != 0 || clientToolsSection(config) != "" {
 			t.Fatal("child inherited a set")
+		}
+		if tools := (&Agent{config: config}).appendClientTools(nil); len(tools) != 0 || len(door.calls) != 0 {
+			t.Fatal("an errand or child gained a client tool or emitted a call")
 		}
 	}
 	started := make(chan struct{})
@@ -330,6 +630,7 @@ func TestClientToolsDoNotTravelToChildren(t *testing.T) {
 		c.AskConsent, c.Interactive = true, true
 		c.ApprovalPolicy = promptAll()
 	})
+	t.Cleanup(parent.Interrupt)
 	if parent.config.ClientTools == nil || !strings.Contains(parent.system, "Tools from the app: notes") {
 		t.Fatal("parent lacks the capability this test must exclude")
 	}
@@ -351,11 +652,7 @@ func TestClientToolsDoNotTravelToChildren(t *testing.T) {
 	if err := parent.ResolveQuestion(Answer{Kind: q.Kind, ID: q.ID, Clarify: true, AskedBack: []Exchange{{Asked: "why this note?"}}}); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-started:
-	case <-time.After(2 * time.Second):
-		t.Fatal("clarification did not start")
-	}
+	waitSignal(t, started, "the clarification provider step")
 	parent.mu.Lock()
 	clarification := parent.discussions["clarify-1"].child
 	parent.mu.Unlock()

@@ -36,7 +36,7 @@ func validClientToolsParams() ClientToolsSetParams {
 		InputSchema: json.RawMessage(`{"type":"object"}`), Category: session.ActionRead}}}
 }
 
-// Contract (f): the actual Serve hello advertises only an implemented door.
+// Contract (f) and source contract (d): both features accompany the implemented door.
 func TestClientToolsHelloFeature(t *testing.T) {
 	for _, test := range []struct {
 		engine Engine
@@ -53,12 +53,44 @@ func TestClientToolsHelloFeature(t *testing.T) {
 		if err := json.Unmarshal(bytes.Split(out.Bytes(), []byte("\n"))[0], &frame); err != nil {
 			t.Fatal(err)
 		}
-		found := false
+		found, source := false, false
 		for _, feature := range frame.Data.Features {
 			found = found || feature == FeatureClientTools
+			source = source || feature == FeatureClientToolsSource
 		}
-		if found != test.want {
+		if found != test.want || source != test.want {
 			t.Fatalf("features=%v want client tools=%v", frame.Data.Features, test.want)
+		}
+	}
+}
+
+// Source contract (d): an unknown message is omitted, and a known one is exact.
+func TestClientToolCallSourceMessageJSON(t *testing.T) {
+	for _, source := range []string{"", "msg-recorded"} {
+		raw, err := json.Marshal(AgentsToolCall{SourceMessageID: source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			t.Fatal(err)
+		}
+		value, present := fields["source_message_id"]
+		if present != (source != "") || present && string(value) != `"msg-recorded"` {
+			t.Fatalf("source %q encoded as %s", source, raw)
+		}
+	}
+}
+
+// Source contract (d): the written feature guarantee and event shape match the wire.
+func TestClientToolsSourceProtocol(t *testing.T) {
+	raw, err := os.ReadFile(protocolDoc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, phrase := range []string{FeatureClientToolsSource, "source_message_id?", "Entry.message_id", "process-local"} {
+		if !strings.Contains(string(raw), phrase) {
+			t.Errorf("protocol omits %q", phrase)
 		}
 	}
 }
