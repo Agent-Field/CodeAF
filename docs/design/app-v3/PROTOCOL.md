@@ -917,10 +917,14 @@ pull requests. An empty result has `issues: []`, `rows: 0` and no `newest`.
 
 Invalid params are `bad_params` before any request. A repository the caller
 cannot see, or GitHub's repository 404, is `not_found`. A spent GitHub rate
-limit on the issues request is `busy` with `detail.retry_at` in RFC 3339,
-using GitHub's reset time when supplied, otherwise its `retry-after` hint.
-A visibility check refused by GitHub's rate limit currently reads as
-"repository not found" (`not_found`), as on every repository route.
+limit on the visibility check or issues request is `busy` with
+`detail.retry_at` in RFC 3339, using GitHub's reset time when supplied,
+otherwise its `retry-after` hint.
+Every GitHub HTTP 429 is a rate limit, even without headers; a 403 is a
+rate limit only with `X-RateLimit-Remaining: 0` or `Retry-After`.
+A rate-limited visibility check is not cached as a repository denial;
+the next read checks GitHub again. Without a usable reset or retry hint,
+`detail.retry_at` is one minute after the Factory's clock.
 Sign-in failures retain `signed_out` or `github_expired`. A Factory missing
 the route is `conflict` with `detail.reason: "factory_too_old"`; its own
 "repository not found" remains `not_found`. An engine without the reader

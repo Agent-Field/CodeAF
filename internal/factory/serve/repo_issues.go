@@ -127,8 +127,7 @@ func (h *Handler) repoIssuesStatus(w http.ResponseWriter, r *http.Request, respo
 	switch {
 	case status == http.StatusOK:
 		return true
-	case (status == http.StatusForbidden || status == http.StatusTooManyRequests) &&
-		(header.Get("X-RateLimit-Remaining") == "0" || header.Get("Retry-After") != ""):
+	case githubLimitSpent(status, header):
 		h.write(w, http.StatusTooManyRequests, struct {
 			Factory api.Factory `json:"factory"`
 			Error   string      `json:"error"`

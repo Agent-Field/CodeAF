@@ -207,21 +207,27 @@ func (h *Handler) repoAllowed(r *http.Request, token, key string) bool {
 	return allow
 }
 
-// askRepo is GitHub's own answer for this token. A 5xx or a transport failure
-// is not cached: the next read tries again. 200 is readable; anything else
-// definitive is not.
+// askRepo is GitHub's own answer for this token. A spent limit, 5xx or
+// transport failure is not cached: the next read tries again. 200 is
+// readable; anything else definitive is not.
 func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool) {
 	owner, name, ok := strings.Cut(key, "/")
 	if !ok || owner == "" || name == "" {
 		return false, true
 	}
 	endpoint := "https://api.github.com/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name)
-	status, err := h.githubStatus(r, http.MethodGet, endpoint, token)
+	status, header, err := h.githubVisibilityStatus(r, endpoint, token)
 	if status == http.StatusUnauthorized {
 		h.endGitHub(r, token)
 		return false, false
 	}
 	if err != nil || status >= 500 {
+		return false, false
+	}
+	if githubLimitSpent(status, header) {
+		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok {
+			state.githubRetryAt = h.repoIssuesRetryAt(header)
+		}
 		return false, false
 	}
 	return status == http.StatusOK, true
