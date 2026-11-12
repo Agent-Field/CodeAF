@@ -30,6 +30,9 @@ type document struct {
 	// Withdrawn keeps the last replaced lease for each worker until its next
 	// pull. Losing execution authority is different from a person's Stop.
 	Withdrawn map[string]string `json:"withdrawn,omitempty"`
+	// Stopped keeps the last lease revoked by a person's Stop for each worker
+	// until its next pull, so an expired or lost hold is never mistaken for Stop.
+	Stopped map[string]string `json:"stopped,omitempty"`
 }
 
 // File is the shared document's name beside the factory's numbered job files.

@@ -32,6 +32,10 @@ const StepChatsHeader = "X-Codeaf-Step-Chats"
 // control, so its worker cancels execution without reporting a person's Stop.
 const LeaseWithdrawnHeader = "X-Codeaf-Lease-Withdrawn"
 
+// LeaseStoppedHeader marks a rejected lease as ended by a person's Stop,
+// distinct from an expired or handed-back hold.
+const LeaseStoppedHeader = "X-Codeaf-Lease-Stopped"
+
 // SignalAcksHeader opts into retained delivery. Its JSON IDs acknowledge handled
 // signals; an older factory ignores the header and still receives an empty body.
 const SignalAcksHeader = "X-Codeaf-Signal-Acks"
