@@ -7,6 +7,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -143,7 +144,7 @@ func TestFactoryFloorEachAskShapesItsTable(t *testing.T) {
 		{"risky", []string{"#1 ledger counts twice", "#7 new auth flow", "risk: touches money"}, []string{"#4 ", "#3 "}, []string{"#1 ", "#7 "}},
 		{"cheapest", []string{"least complex first"}, []string{"#3 ", "#9 "}, []string{"#4 ", "#1 ", "#6 ", "#7 "}},
 		{"oldest", []string{"oldest first", "9d old"}, []string{"#2 "}, []string{"#1 ", "#6 ", "#4 ", "#7 ", "#3 ", "#9 "}},
-		{"all", []string{"every open item", "6 items", "4 new in the factory", "1 waiting on the person", "#9 cache warmup", "40m old"}, []string{"hidden thing", "$0.00", "est $0.0000"}, nil},
+		{"all", []string{"every open item", "6 items", "in the factory: 1 running, 1 waiting on the person, 4 new", "#9 cache warmup", "40m old"}, []string{"hidden thing", "$0.00", "est $0.0000"}, nil},
 	} {
 		text, isErr := floorCall(t, floorLab(), `{"ask":"`+c.ask+`"}`)
 		if isErr {
@@ -363,5 +364,182 @@ func TestFloorRowSaysAFollowingJobIsOnFollowPR(t *testing.T) {
 	it.Stream.Cur = 0
 	if row := FloorRow(it, now); strings.Contains(row, "following") || !strings.Contains(row, "running") || !strings.Contains(row, ", on write") {
 		t.Errorf("a running job reads %q", row)
+	}
+}
+
+// EVERY TABLE OPENS WITH THE WHOLE FACTORY'S COUNTS, whichever rows it lists.
+// The owner's manager was asked how many jobs were running and had only a
+// table cut at fifty rows to count, so a how-many question is answered by the
+// head of any read, and the head counts the floor, never the rows.
+func TestFactoryFloorHeadCountsTheWholeFactoryWhateverWasAsked(t *testing.T) {
+	const counts = "in the factory: 1 running, 1 waiting on the person, 4 new"
+	for _, ask := range []string{"running", "queue", "waiting", "risky", "oldest", "all"} {
+		text, isErr := floorCall(t, floorLab(), `{"ask":"`+ask+`"}`)
+		if head, _, _ := strings.Cut(text, "\n"); isErr || !strings.Contains(head, counts) {
+			t.Errorf("%s: the head does not count the factory: %q", ask, head)
+		}
+	}
+}
+
+// `repos` IS WHERE THE WORK IS: every repository with its jobs counted by
+// state, the one with work in hand first. "How many repos are active in our
+// factory" was the question the manager could not answer from a table of jobs.
+func TestFactoryFloorReposCountsJobsByRepository(t *testing.T) {
+	door := floorLab()
+	now := door.snap.Now
+	door.snap.Items = append(door.snap.Items,
+		factory.Item{ID: 20, Num: 1, Repo: "acme/web", Kind: factory.KindIssue, Title: "dark mode", State: factory.StateNew, Created: now},
+		factory.Item{ID: 21, Num: 2, Repo: "acme/web", Kind: factory.KindIssue, Title: "old banner", State: factory.StateShipped, DoneAt: now.Add(-72 * time.Hour), DoneHow: "merged"},
+		factory.Item{ID: 22, Num: 1, Repo: "acme/docs", Kind: factory.KindIssue, Title: "typo", State: factory.StateShipped, DoneAt: now.Add(-72 * time.Hour), DoneHow: "merged"},
+		factory.Item{ID: 23, Num: 5, Repo: "acme/gone", Kind: factory.KindIssue, Title: "dropped", State: factory.StateDismissed})
+	text, isErr := floorCall(t, door, `{"ask":"repos"}`)
+	if isErr {
+		t.Fatalf("refused: %s", text)
+	}
+	lines := strings.Split(text, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("want a head and three repositories, got:\n%s", text)
+	}
+	if want := "repositories · 3 with jobs · 2 with open jobs · 1 with a job running, queued, waiting or following a pull request"; lines[0] != want {
+		t.Errorf("head = %q, want %q", lines[0], want)
+	}
+	for i, want := range []string{
+		"acme/api · 6 open: 1 running, 1 waiting on the person, 4 new",
+		"acme/web · 1 open: 1 new · 1 done",
+		"acme/docs · 1 done",
+	} {
+		if lines[i+1] != want {
+			t.Errorf("line %d = %q, want %q", i+1, lines[i+1], want)
+		}
+	}
+	if strings.Contains(text, "acme/gone") {
+		t.Errorf("a repository with only a dismissed job is listed:\n%s", text)
+	}
+}
+
+// `shipped` READS BACK AS FAR AS IT IS ASKED TO, and counts the pull requests
+// merged. Today alone could not answer "how many did we merge lately".
+func TestFactoryFloorShippedReadsBackByDaysAndCountsMergedPullRequests(t *testing.T) {
+	door := floorLab()
+	now := door.snap.Now
+	merged := func(id, num, pr int, ago time.Duration) factory.Item {
+		return factory.Item{ID: id, Num: num, Repo: "acme/api", Kind: factory.KindIssue, Title: "shipped " + strconv.Itoa(num), State: factory.StateShipped, DoneAt: now.Add(-ago), DoneHow: "merged",
+			PullRequest: &factory.PullRequest{Number: pr, URL: "https://github.com/acme/api/pull/" + strconv.Itoa(pr), State: factory.PRMerged}}
+	}
+	door.snap.Items = append(door.snap.Items,
+		merged(30, 31, 301, time.Hour),
+		merged(31, 32, 302, 50*time.Hour),
+		merged(32, 33, 303, 20*24*time.Hour),
+		factory.Item{ID: 33, Num: 34, Repo: "acme/api", Kind: factory.KindIssue, Title: "shipped by hand", State: factory.StateShipped, DoneAt: now.Add(-26 * time.Hour), DoneHow: "done by hand"})
+
+	text, _ := floorCall(t, door, `{"ask":"shipped"}`)
+	if head, _, _ := strings.Cut(text, "\n"); head != "shipped today · 1 job · 1 pull request merged" {
+		t.Errorf("today's head = %q", head)
+	}
+	text, _ = floorCall(t, door, `{"ask":"shipped","days":7}`)
+	lines := strings.Split(text, "\n")
+	if lines[0] != "shipped in the last 7 days · 3 jobs · 2 pull requests merged" {
+		t.Errorf("the week's head = %q", lines[0])
+	}
+	// Newest first, each with the day it shipped, and nothing older than asked.
+	if len(lines) != 4 || !strings.HasPrefix(lines[1], "#31 ") || !strings.HasPrefix(lines[2], "#34 ") || !strings.HasPrefix(lines[3], "#32 ") {
+		t.Errorf("the week's rows are not the three shipped, newest first:\n%s", text)
+	}
+	if !strings.Contains(lines[3], "shipped 2026-10-06") || !strings.Contains(lines[3], "pull/302") || strings.Contains(text, "#33 ") {
+		t.Errorf("the week's rows:\n%s", text)
+	}
+	if text, _ := floorCall(t, door, `{"ask":"shipped","days":30}`); !strings.Contains(text, "#33 ") {
+		t.Errorf("thirty days does not reach a job shipped twenty days ago:\n%s", text)
+	}
+	for _, bad := range []string{`{"ask":"shipped","days":91}`, `{"ask":"shipped","days":-1}`, `{"ask":"running","days":7}`} {
+		if text, isErr := floorCall(t, door, bad); !isErr || !strings.Contains(text, "days goes with ask shipped") {
+			t.Errorf("%s was not refused: %q", bad, text)
+		}
+	}
+}
+
+// stuckFloorDoor is a floor whose read never comes back and never looks at
+// its context: the wait the manager's turn was found parked on.
+type stuckFloorDoor struct {
+	fakeFloorDoor
+	entered chan struct{}
+	forever chan struct{}
+}
+
+func (d *stuckFloorDoor) Snapshot(context.Context) (factory.Snapshot, error) {
+	select {
+	case d.entered <- struct{}{}:
+	default:
+	}
+	<-d.forever
+	return factory.Snapshot{}, nil
+}
+
+// A FLOOR THAT NEVER ANSWERS DOES NOT HOLD THE TURN.
+//
+// The Factory manager's every question ended in a factory_floor call that did
+// not return, for sixteen minutes on the measured run, and the person's stop
+// changed nothing because the door never read its context. The call is waited
+// for on the turn's context now: a stop returns it at once.
+func TestFactoryFloorLetsGoOfAReadThatNeverComesBackWhenTheTurnIsStopped(t *testing.T) {
+	door := &stuckFloorDoor{entered: make(chan struct{}, 1), forever: make(chan struct{})}
+	t.Cleanup(func() { close(door.forever) })
+	agent := &Agent{config: Config{Workspace: t.TempDir(), Floor: door}}
+	ctx, stop := context.WithCancel(context.Background())
+	type result struct {
+		text  string
+		isErr bool
+	}
+	done := make(chan result, 1)
+	go func() {
+		text, isErr, _ := agent.factoryFloorTool().Execute(ctx, json.RawMessage(`{"ask":"all"}`))
+		done <- result{text, isErr}
+	}()
+	select {
+	case <-door.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the read never began")
+	}
+	stop()
+	select {
+	case got := <-done:
+		if !got.isErr || !strings.Contains(got.text, "the factory could not be read") {
+			t.Fatalf("a stopped read answered %q (error %v)", got.text, got.isErr)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the tool went on waiting for a floor that never answers after the turn was stopped")
+	}
+}
+
+// AND WITH NOBODY STOPPING IT, THE WAIT ENDS BY ITSELF, in words the model can
+// pass on instead of a turn that says nothing.
+func TestFloorWithinAnswersLateWhenTheDoorOutlivesItsWait(t *testing.T) {
+	forever := make(chan struct{})
+	t.Cleanup(func() { close(forever) })
+	_, err := floorWithin(context.Background(), 30*time.Millisecond, func(context.Context) (int, error) {
+		<-forever
+		return 0, nil
+	})
+	if !errors.Is(err, errFloorLate) {
+		t.Fatalf("a door that outlived its wait answered %v", err)
+	}
+	if got, err := floorWithin(context.Background(), time.Minute, func(context.Context) (int, error) { return 7, nil }); got != 7 || err != nil {
+		t.Fatalf("a door that answered in time gave %d, %v", got, err)
+	}
+	if !strings.Contains(floorLateWords(floorReadWait), "within 20 seconds") {
+		t.Fatalf("the late sentence is %q", floorLateWords(floorReadWait))
+	}
+}
+
+// AN ACT THAT GOT NO ANSWER IS NOT SAID TO HAVE CHANGED NOTHING. The write was
+// asked for; a "nothing selected" over a selection that then landed would have
+// the manager select it twice or tell the person it had not.
+func TestFloorMarkRefusedSaysALateSelectionIsNotKnown(t *testing.T) {
+	late := floorMarkRefused("selected", errFloorLate)
+	if strings.Contains(late, "nothing selected") || !strings.Contains(late, "is not known") || !strings.Contains(late, "within 60 seconds") {
+		t.Errorf("a late selection reads %q", late)
+	}
+	if got := floorMarkRefused("unselected", errors.New("the store is read-only")); got != "nothing unselected: the store is read-only" {
+		t.Errorf("a refused selection reads %q", got)
 	}
 }

@@ -287,6 +287,25 @@ Each factory has one manager of its own beside the jobs' managers, titled "Facto
 
 When you ask ("start the oldest p1", "make #12 urgent"), it starts that one job or sets its priority (p0 to p3) through the job page's own Start and priority, as you. It never stops, ships, merges or posts, and it can select jobs as a proposal you take or leave.
 
+## the Factory manager counts — how many jobs are running, how many repos are active, how many pull requests merged this week
+
+Every `factory_floor` table opens with the whole factory's counts by state, such as `in the factory: 2 running, 1 waiting on the person, 40 new`, so a how-many question is answered by one read, whichever table was asked for. The counts are of the factory and never of the rows listed, which stop at 50.
+
+- `repos`: every repository with its jobs counted by state, the one with work in hand first: `acme/api · 6 open: 1 running, 1 waiting on the person, 4 new · 3 done`. The first line says how many repositories have jobs, how many have open jobs, and how many have a job running, queued, waiting or following a pull request.
+- `shipped` with `days`: jobs shipped over that many days, today included (1 is today and the default, at most 90), newest first, each with the day it shipped. The first line counts the pull requests merged among them.
+
+The Factory manager is not limited to `factory_floor`. When a message arrives with a block of the app's present state, it answers from that for what the block says and reads the factory for the rest, and it answers anything else as any conversation does, with its other tools.
+
+## the Factory manager did not answer, takes forever, stop does nothing, clear the Factory manager's conversation, archived Factory manager
+
+One `factory_floor` read waits at most 20 seconds on the factory, and a start or a priority 60 seconds; after that the tool answers "the factory did not answer within 20 seconds" and the turn goes on, and a stop returns it at once. A start or priority that got no answer in time says it may still take effect, so the job is read again before it is asked for twice.
+
+The app's Stop is bounded. It interrupts the turn, and a turn that has still not let go ten seconds later is let go of by the engine: it ends "Stopped by you" and the next message opens an ordinary turn.
+
+A Factory manager whose conversation works in the codeaf home is made again in a folder of its own (`chats/foreman` under the factory) the next time it is opened, and the conversation it replaces is stopped and archived. One made by an older build worked in the home itself, where every save swept the whole home and its tool calls never finished.
+
+The Factory manager is cleared, not archived. `factory.foreman_fresh` starts it over: a new conversation with only its brief takes its place and its `@foreman` address, and the old one is stopped and archived with its history kept. Opening the Factory manager is your own open, so one you closed or archived comes back open.
+
 ## the default steps — what a job runs with no factory.yaml, how many rounds, security pass
 
 A repository without `.codeaf/factory.yaml` runs the shipped steps, and so does every job on it, whether a person started it or a start rule did: the same steps, asks and rounds. `codeaf factory steps` prints each one with its prompt, its until and its rounds.
