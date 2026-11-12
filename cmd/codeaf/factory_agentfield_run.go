@@ -127,9 +127,10 @@ type afRemote struct {
 	news func(file string)
 	now  func() time.Time
 
-	mu    sync.Mutex
-	files map[string]*afMirror // by execution id
-	drain map[string]bool      // executions with nothing more to read
+	mu        sync.Mutex
+	files     map[string]*afMirror // by execution id
+	drain     map[string]bool      // executions with nothing more to read
+	cancelled map[string]bool      // run ids already cancelled on the control plane
 	// asked is when each waiting execution's approval was last read, so a
 	// pause is read once and then again only every afApprovalEvery.
 	asked map[string]time.Time
@@ -320,6 +321,14 @@ func (r *afRemote) Step(ctx context.Context, job factoryrun.Job) (factory.StageR
 				}
 				return nil
 			})
+			if r.floor != nil && r.floor != r.items {
+				_ = r.floor.Update(it.ID, func(it *factory.Item) error {
+					if run := place.recorded(*it); run != nil {
+						run.EndOwed = false
+					}
+					return nil
+				})
+			}
 		}
 	}()
 	if err := r.follow(ctx, client, it.ID, run.RunID, place); err != nil {
@@ -453,6 +462,36 @@ func afRoundsRun(job factoryrun.Job, run factory.AgentFieldRun) bool {
 // onto the factory's own job, exactly as [afRemote.follow] does for a Stop
 // that reached a runner following the run. A control plane it cannot reach is
 // an error, and the job is offered again once this hold runs out.
+func (r *afRemote) claimCancelTree(runID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cancelled[runID] {
+		return false
+	}
+	if r.cancelled == nil {
+		r.cancelled = map[string]bool{}
+	}
+	r.cancelled[runID] = true
+	return true
+}
+
+func (r *afRemote) releaseCancelTree(runID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.cancelled, runID)
+}
+
+func (r *afRemote) cancelTreeOnce(ctx context.Context, client afClient, runID string) error {
+	if !r.claimCancelTree(runID) {
+		return nil
+	}
+	if err := client.CancelTree(ctx, runID); err != nil {
+		r.releaseCancelTree(runID)
+		return err
+	}
+	return nil
+}
+
 func (r *afRemote) CarryStop(ctx context.Context, it factory.Item) error {
 	client, _, ok := r.conn()
 	if !ok {
@@ -461,6 +500,9 @@ func (r *afRemote) CarryStop(ctx context.Context, it factory.Item) error {
 	jobs := r.items
 	if r.floor != nil {
 		jobs = r.floor
+		if fresh, err := r.floor.Get(it.ID); err == nil {
+			it = fresh
+		}
 	}
 	type live struct {
 		run   string
@@ -482,7 +524,7 @@ func (r *afRemote) CarryStop(ctx context.Context, it factory.Item) error {
 	}
 	for _, l := range runs {
 		cancelCtx, cancel := context.WithTimeout(ctx, afStopDrain)
-		err := client.CancelTree(cancelCtx, l.run)
+		err := r.cancelTreeOnce(cancelCtx, client, l.run)
 		if err == nil {
 			r.readToEnd(cancelCtx, client, l.run, it.ID, jobs, l.place)
 		}
@@ -616,7 +658,7 @@ func (r *afRemote) follow(ctx context.Context, client afClient, job int, runID s
 			}
 			// THE PERSON'S STOP STOPS THE WHOLE RUN, not only this reading.
 			cancelCtx, cancel := context.WithTimeout(context.Background(), afStopDrain)
-			_ = client.CancelTree(cancelCtx, runID)
+			_ = r.cancelTreeOnce(cancelCtx, client, runID)
 			// AND THE RUN IS STILL READ TO ITS END. A step's last lines reach
 			// the control plane after the stop, and the control plane holds
 			// them until this factory acks them: a reader that went home at
