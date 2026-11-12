@@ -1,7 +1,7 @@
 ---
 kind: fixed
-title: a fallback model is used for that run only and never becomes the conversation's saved model
-pr: 2465
+title: A fallback model is used for that run only and never becomes the conversation's saved model
+pr: 2614
 surface: [chat, engine, remote, app, docs]
 invalidates:
   - "Was true: when a local launch replaced an unlisted configured model with the first listed model, the replacement became the conversation's saved model and the agent reopened on it. Is true now: the replacement serves requests only, the saved model stays the configured one, and the conversation returns to it as soon as it is listed."
