@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Knowledge consent refreshes leave current answers available to other chats
-pr: 0
+pr: 2606
 surface: [chat, engine, build, docs]
 invalidates:
   - "Was true: a consent refresh held the shared view mutex across SQLite waits, delaying even current cached answers and hanging concurrent hard-cap tests under a fake clock. Is true now: refreshes run outside the view mutex, current answers remain available, and pending readers share a completion channel."
