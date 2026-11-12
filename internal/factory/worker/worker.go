@@ -91,11 +91,12 @@ const CapacityEveryDefault = 5 * time.Second
 // slot loops. Lowering never touches a running job: a slot above the limit
 // retires only between jobs, after its last pull returns.
 type capacity struct {
-	mu      sync.Mutex
-	limit   int
-	running map[int]bool
-	wake    chan struct{}
-	jobs    map[int]chan struct{}
+	mu       sync.Mutex
+	limit    int
+	running  map[int]bool
+	wake     chan struct{}
+	jobs     map[int]chan struct{}
+	handBack map[string]bool
 }
 
 // takeJob keeps successive leases from sharing a mirror and runner control.
@@ -249,6 +250,7 @@ func (o Options) slot(ctx context.Context, slot int) {
 			}
 		}
 		o.recoverRetained(ctx, w)
+		o.releaseHandBacks(ctx, w)
 		began := time.Now()
 		pulled, ok, err := w.Pull(ctx)
 		switch {
@@ -336,6 +338,9 @@ type job struct {
 	pending       *pendingDelivery
 	blocked       string
 	withdrawn     bool
+	stopped       bool
+	expiresAt     time.Time
+	missedBeats   int
 	control       *client.PreparedWorkerReport
 	controlTries  int
 	controlSent   bool
@@ -357,7 +362,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	defer o.cap.releaseJob(it.ID)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	j := &job{admits: pulled.Job.ReportAdmits(), o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
+	j := &job{admits: pulled.Job.ReportAdmits(), o: o, w: w, lease: pulled.Lease.ID, id: it.ID, expiresAt: pulled.Lease.ExpiresAt, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
 	defer j.clearMirror()
 	defer j.keepLocal(api.WorkerLease{Job: it.ID})
 	pulledTalk, pulledNotes := it.Talk, it.Notes
@@ -619,6 +624,13 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		case <-beat.C:
 			if !j.beat(ctx) {
 				j.drop()
+				if !j.wasStopped() {
+					cancel()
+					<-reporterDone
+					if !j.handBack() {
+						o.keepHandBack(j.lease)
+					}
+				}
 				return
 			}
 		}
@@ -793,27 +805,39 @@ func (j *job) beat(ctx context.Context) bool {
 	if j.lostLease(err) {
 		return false
 	}
-	if err == nil {
-		// A returned ID can still be redelivered; keep it deduplicated until
-		// the factory confirms its removal by omitting it from a successful beat.
-		redelivered := make(map[string]bool, len(hb.Signals))
-		for _, signal := range hb.Signals {
-			redelivered[signal.Delivery] = true
+	if err != nil {
+		j.missedBeats++
+		if (!j.expiresAt.IsZero() && !j.now().Before(j.expiresAt)) || j.missedBeats >= lease.OfflineMisses {
+			j.mu.Lock()
+			j.withdrawn = true
+			j.mu.Unlock()
+			return false
 		}
-		j.mu.Lock()
-		for id := range j.signalPending {
-			if !redelivered[id] {
-				delete(j.signalPending, id)
-			}
-		}
-		for _, id := range acknowledged {
-			if !redelivered[id] {
-				delete(j.signalIDs, id)
-			}
-		}
-		j.mu.Unlock()
-		j.keepLocal(hb.Lease)
+		return true
 	}
+	j.missedBeats = 0
+	if !hb.Lease.ExpiresAt.IsZero() {
+		j.expiresAt = hb.Lease.ExpiresAt
+	}
+	// A returned ID can still be redelivered; keep it deduplicated until
+	// the factory confirms its removal by omitting it from a successful beat.
+	redelivered := make(map[string]bool, len(hb.Signals))
+	for _, signal := range hb.Signals {
+		redelivered[signal.Delivery] = true
+	}
+	j.mu.Lock()
+	for id := range j.signalPending {
+		if !redelivered[id] {
+			delete(j.signalPending, id)
+		}
+	}
+	for _, id := range acknowledged {
+		if !redelivered[id] {
+			delete(j.signalIDs, id)
+		}
+	}
+	j.mu.Unlock()
+	j.keepLocal(hb.Lease)
 	return j.signals(ctx, hb.Signals)
 }
 
@@ -908,6 +932,9 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			effectErr = j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Autonomy = s.Words; return nil })
 		case lease.SignalStop:
 			// Drop asked this machine to stop. Stop keeps the branch.
+			j.mu.Lock()
+			j.stopped = true
+			j.mu.Unlock()
 			if err := r.Stop(j.id); err != nil && !j.signalMoot(s) {
 				return true
 			}
@@ -1060,16 +1087,57 @@ func (j *job) letGo() {
 // this process is ending ([job.letGo]).
 func (j *job) drop() {
 	j.keepLocal(api.WorkerLease{Job: j.id})
-	j.mu.Lock()
-	withdrawn := j.withdrawn
-	j.mu.Unlock()
-	if withdrawn {
-		j.o.Runner.Withdraw(j.id)
-	} else {
+	if j.wasStopped() {
 		_ = j.o.Runner.Stop(j.id)
+	} else {
+		j.o.Runner.Withdraw(j.id)
 	}
 	for deadline := time.Now().Add(StopWait); j.o.Runner.Running(j.id) && time.Now().Before(deadline); {
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func (j *job) wasStopped() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.stopped
+}
+
+func (o Options) keepHandBack(leaseID string) {
+	if o.cap == nil || leaseID == "" {
+		return
+	}
+	o.cap.mu.Lock()
+	if o.cap.handBack == nil {
+		o.cap.handBack = map[string]bool{}
+	}
+	o.cap.handBack[leaseID] = true
+	o.cap.mu.Unlock()
+}
+
+func (o Options) releaseHandBacks(ctx context.Context, w *client.WorkerClient) {
+	if o.cap == nil || w == nil {
+		return
+	}
+	o.cap.mu.Lock()
+	leases := make([]string, 0, len(o.cap.handBack))
+	for id := range o.cap.handBack {
+		leases = append(leases, id)
+	}
+	o.cap.mu.Unlock()
+	for _, id := range leases {
+		wait := handBackWait
+		if o.BeatEvery > 0 && o.BeatEvery < lease.HeartbeatEvery {
+			wait = min(wait, max(100*time.Millisecond, o.BeatEvery*4))
+		}
+		hbCtx, cancel := context.WithTimeout(ctx, wait)
+		err := w.HandBack(hbCtx, id)
+		cancel()
+		if err == nil || gone(err) {
+			o.cap.mu.Lock()
+			delete(o.cap.handBack, id)
+			o.cap.mu.Unlock()
+		}
 	}
 }
 
@@ -1160,7 +1228,11 @@ func (j *job) settleAccounting(ctx context.Context) {
 }
 
 func (j *job) lostLease(err error) bool {
-	if errors.Is(err, client.ErrLeaseWithdrawn) {
+	if errors.Is(err, client.ErrLeaseStopped) {
+		j.mu.Lock()
+		j.stopped = true
+		j.mu.Unlock()
+	} else if gone(err) {
 		j.mu.Lock()
 		j.withdrawn = true
 		j.mu.Unlock()
