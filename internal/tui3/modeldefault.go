@@ -56,6 +56,15 @@ func runOnlyModel(configured, running string, rows []Model) (Model, bool) {
 	return availableConversationModel("", rows)
 }
 
+// runningModel is the model an agent's next request uses, counting a selection
+// still on its way to the engine.
+func runningModel(agent Agent) string {
+	if pending := pendingModelSelection(agent); pending != nil {
+		return pending.model
+	}
+	return agent.Model()
+}
+
 // ensureAvailableModel reconciles a local conversation with its picker catalog.
 // A launch preference is not evidence of availability. An automatic choice uses
 // the off-loop run-only door without saving a preference the person did not

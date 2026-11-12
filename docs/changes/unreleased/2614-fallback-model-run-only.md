@@ -14,3 +14,6 @@ conversation. An untouched chat
 still saves the build's default when it follows a credit reading. Choosing a model yourself, including the replacement that is already
 running, and connecting a service still save the choice. The desktop app reports the
 configured model. A chat continued from another computer keeps its existing replacement rule.
+A chat opened with `start_chat` and no model saves the requesting chat's configured model;
+while that model is unlisted it runs on the requesting chat's replacement, and the
+`started chat · <model>` receipt names the model it runs on.

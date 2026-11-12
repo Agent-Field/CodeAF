@@ -28,10 +28,18 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 	start := a.start
 	listed := a.requireListedModel
 	var models []Model
+	var parentRunning string
 	if listed {
 		models = a.modelList()
+		if owner != nil {
+			parentRunning = runningModel(owner)
+		}
 	}
-	return a.offLoop(func() func(bool) tea.Cmd {
+	// Opening a chat the model asked for is not a person's gesture, like a team
+	// start: its dial and first message must not stand in front of an answer or
+	// a model pick a person presses meanwhile. Nothing here needs the parent's
+	// order, and the child has no selection on the line to wait for.
+	return a.besideLine(func() func(bool) tea.Cmd {
 		claimer, ok := owner.(interface{ ClaimChatStart(string) (bool, error) })
 		if !ok {
 			return func(bool) tea.Cmd { a.note("could not start chat · launch ownership unavailable"); return nil }
@@ -44,6 +52,7 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 			return func(bool) tea.Cmd { return nil }
 		}
 		conv, err := start(request.Workspace)
+		seated := request.Model
 		var events <-chan session.Event
 		if err == nil && conv.Agent == nil {
 			err = fmt.Errorf("the new conversation has no agent")
@@ -62,7 +71,9 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 			}
 		}
 		if err == nil && listed {
-			model, available := availableConversationModel(request.Model, models)
+			// An unlisted request runs for now on the replacement the parent is
+			// already running, as the parent's own reconcile would keep it.
+			model, available := runOnlyModel(request.Model, parentRunning, models)
 			if !available {
 				err = fmt.Errorf("%s", noAvailableModelWord)
 			} else if model.ID != request.Model {
@@ -74,6 +85,9 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 			}
 			if err == nil && model.ContextLength > 0 {
 				conv.Agent.SetContextWindow(model.ContextLength)
+			}
+			if err == nil {
+				seated = model.ID
 			}
 		}
 		if err == nil {
@@ -97,7 +111,8 @@ func (a *app) startRequestedChat(request *session.ChatStart, owner Agent) tea.Cm
 			}
 			a.trafficBehindTop(key)
 			a.chatTabBar = tabBar{}
-			a.note("started chat · " + request.Model)
+			// The receipt names the model the new chat runs on.
+			a.note("started chat · " + seated)
 			return cmd
 		}
 	})

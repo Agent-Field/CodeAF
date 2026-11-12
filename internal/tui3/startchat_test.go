@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -102,6 +103,90 @@ func TestRequestedChatSavesConfiguredModelBeforeItsOwnAvailabilityReconcile(t *t
 				t.Fatal("child reopen or parent choice inherited the temporary model")
 			}
 		})
+	}
+}
+
+// An inherited chat saves its parent's configured model. While that model is
+// unlisted, the child runs for now on the replacement its parent is already
+// running rather than on whichever row the catalog lists first, and the
+// terminal's receipt names the model the child actually runs on.
+func TestRequestedChatRunsOnAndNamesItsParentsReplacement(t *testing.T) {
+	server := sourcestub.New("catalog-first", "replacement")
+	defer server.Close()
+	sources := modelsource.NewSet(testDefaultService(""), testDirectService(server.URL()))
+	a, _, _ := tabApp(t)
+	parent := &modelForNowAgent{fakeAgent: &fakeAgent{model: "deepseek-direct/configured"}, configured: "deepseek-direct/configured"}
+	if err := parent.UseModelForNow("deepseek-direct/replacement"); err != nil {
+		t.Fatal(err)
+	}
+	a.agent = parent
+	owner := &claimingChatAgent{Agent: parent, claimed: &sync.Map{}}
+	a.sources, a.requireListedModel = sources, true
+	a.modelsForService = func(modelsource.Connected) []Model { return []Model{{ID: "catalog-first"}, {ID: "replacement"}} }
+	child := &modelForNowAgent{fakeAgent: &fakeAgent{model: "deepseek/opening"}, configured: "deepseek/opening"}
+	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
+	a.start = func(where string) (Conversation, error) {
+		return Conversation{Agent: child, SessionFile: transcript, Workspace: where}, nil
+	}
+	request := &session.ChatStart{ID: "inherited", Workspace: a.workspace, Model: parent.ConfiguredModel(), Brief: "answer briefly"}
+	spend(t, a, a.startRequestedChat(request, owner))
+	if child.ConfiguredModel() != "deepseek-direct/configured" || len(child.submitted) != 1 || child.submitted[0] != "deepseek-direct/replacement" {
+		t.Errorf("child configured=%q submitted=%v temporary=%v, want it saved on the parent's choice and sent on the parent's replacement",
+			child.ConfiguredModel(), child.submitted, child.temporary)
+	}
+	if got := noteSaying(t, a, "started chat"); got != "started chat · deepseek-direct/replacement" {
+		t.Errorf("receipt = %q, want the model the child runs on", got)
+	}
+}
+
+// Opening a requested chat is not a person's gesture, like a team start. Its
+// dial, model seating and first message must not stand in front of a door a
+// person presses after it: an answer, a model pick or a chat switch's replay
+// is asked through the same ordered line (offloop.go).
+func TestRequestedChatDoesNotHoldTheOrderedDoorLine(t *testing.T) {
+	a, _, _ := tabApp(t)
+	owner := &claimingChatAgent{Agent: a.agent, claimed: &sync.Map{}}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releasing sync.Once
+	unblock := func() { releasing.Do(func() { close(release) }) }
+	defer unblock()
+	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
+	a.start = func(where string) (Conversation, error) {
+		close(entered)
+		<-release
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: transcript, Workspace: where}, nil
+	}
+	request := &session.ChatStart{ID: "slow-open", Workspace: a.workspace, Model: "m", Brief: "Report ready"}
+	opening := a.startRequestedChat(request, owner)
+	opened := make(chan tea.Msg, 1)
+	go func() { opened <- opening() }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the requested chat never began opening")
+	}
+	answered := make(chan struct{})
+	pressed := a.offLoop(func() func(bool) tea.Cmd {
+		close(answered)
+		return func(bool) tea.Cmd { return nil }
+	})
+	go pressed()
+	select {
+	case <-answered:
+	case <-time.After(2 * time.Second):
+		unblock()
+		<-opened
+		t.Fatal("a door pressed after start_chat waited for the new conversation to open")
+	}
+	unblock()
+	select {
+	case msg := <-opened:
+		drive(t, a, msg)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the requested chat did not finish opening")
+	}
+	if got := noteSaying(t, a, "started chat"); got != "started chat · m" {
+		t.Fatalf("receipt = %q", got)
 	}
 }
 
