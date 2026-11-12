@@ -376,11 +376,23 @@ func yesNoOptions(options []string) bool {
 	return (a == "yes" && b == "no") || (a == "no" && b == "yes")
 }
 
-// NeedsSince is when this wait started: the landed stream's end, the ask's
-// clock, the current step's clock, then the job's own stamps.
+// NeedsSince is when this wait started: the failure's clock, a failed
+// publish's, the landed stream's end, the ask's clock, the current step's
+// clock, then the job's own stamps.
+//
+// A FAILED PUBLISH WAITS FROM THE MOMENT IT FAILED, whatever state the job's
+// copy is in. On a Factory service the runner's report of the failure arrives
+// while the copy still runs the publish, and the runner's done lands the job
+// after it: read by the state, one refusal waited first from the current
+// step's clock and then from the landed run's end, two waits recorded for one
+// refusal, and a publish retried and refused again waited from the run's end
+// as the first refusal had.
 func NeedsSince(it Item) time.Time {
 	if it.Failure != nil && !it.Failure.At.IsZero() {
 		return it.Failure.At
+	}
+	if p := it.PublishStatus; p != nil && p.State == "failed" && !p.At.IsZero() {
+		return p.At
 	}
 	if it.State == StateLanded && it.Stream != nil && !it.Stream.Ended.IsZero() {
 		return it.Stream.Ended

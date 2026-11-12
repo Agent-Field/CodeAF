@@ -325,6 +325,67 @@ func TestStoredPersonStopIsNoOutcome(t *testing.T) {
 	}
 }
 
+// E1: one failed publish is one needs-you outcome. On a Factory service the
+// runner reports the failure while the service's copy still runs the publish,
+// and its done then lands the job; the wait read the step's clock at the
+// report and the landed run's at the done, and recorded publish_failed twice
+// (hand test, 2026-11-12: 17:38:54.849 and 17:38:55.360 for one refusal).
+func TestStoredPublishFailureOnce(t *testing.T) {
+	landed := time.Date(2026, 11, 12, 17, 38, 55, 360679000, time.FixedZone("offset", -5*3600))
+	checked, approved, refused := landed.Add(-511*time.Millisecond), landed.Add(100*time.Millisecond), landed.Add(258*time.Millisecond)
+	head := "246897c8a6328a3a78276e32287415f58278612e"
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it, err := st.Create(factory.Item{
+		State: factory.StateLanded, Title: "Check the readme exists", HeadCommit: head,
+		Proof:  []factory.Claim{{Text: "README.md exists", OK: true, Evidence: "test -f README.md", Medium: "test"}},
+		Stream: &factory.Stream{Cur: 0, Ended: landed, Phases: []factory.Phase{{Name: "verify", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1, At: checked}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writes := []struct {
+		name   string
+		change func(*factory.Item) error
+	}{
+		// The approval queues the publish, and a runner takes it.
+		{"approve", func(cur *factory.Item) error { return run.PublishItem(cur, false, approved) }},
+		{"pull", func(cur *factory.Item) error { cur.State, cur.Publishing = factory.StateRunning, true; return nil }},
+		// The runner's report, applied as the service applies every report.
+		{"report", func(cur *factory.Item) error {
+			return run.ApplyReport(cur, factory.RunReport{Publishing: &factory.Publishing{State: "failed", Code: "no_push_permission", Detail: "publishing permission requires the assignee's GitHub connection on this runner", Attempt: 1, At: refused}}, refused)
+		}},
+		// Its done: the service lands a job whose publish failed, and the
+		// completed lease ends its publishing.
+		{"done", func(cur *factory.Item) error { cur.State, cur.Publishing = factory.StateLanded, false; return nil }},
+		{"priority", func(cur *factory.Item) error { cur.Priority = &factory.JobPriority{Value: "low"}; return nil }},
+	}
+	for _, w := range writes {
+		if err := st.Update(it.ID, w.change); err != nil {
+			t.Fatalf("%s: %v", w.name, err)
+		}
+	}
+	stored, err := st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := api.FromItem(stored)
+	if j.State != "needs_you" || j.NeedsYou == nil || j.NeedsYou.Kind != factory.NeedsPublishFailed {
+		t.Fatalf("the refused publish: %+v", j.NeedsYou)
+	}
+	zero := int64(0)
+	got, err := live.ReadOutcomes(st.Root(), &zero, 100)
+	if err != nil || got.Reset || len(got.Events) != 1 {
+		t.Fatalf("one refused publish recorded %d outcomes: %+v %v", len(got.Events), got.Events, err)
+	}
+	e := got.Events[0]
+	if e.Kind != "needs_you" || e.Need != factory.NeedsPublishFailed || e.Reason != "publish_failed" || !e.At.Equal(j.NeedsYou.Since) {
+		t.Fatalf("outcome %+v, job waits since %s", e, j.NeedsYou.Since)
+	}
+}
+
 // E1: in-place nested edits retain the prior need, reason and wait timestamp.
 func TestStoredOutcomesFromInPlaceNestedUpdates(t *testing.T) {
 	at := time.Date(2026, 11, 1, 12, 3, 4, 567, time.FixedZone("offset", 3600))
