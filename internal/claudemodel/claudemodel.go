@@ -49,17 +49,55 @@ const Sentinel = "claude-code"
 // window is the context Claude Code's models take.
 const window = 200_000
 
+// families are the models Claude Code answers to. A family's word (`haiku`)
+// runs whichever version the installed Claude Code maps it to, so it follows
+// that program's updates and, on an older install, is an older model. Its
+// versions are the two newest, listed so a person can hold a seat to one of
+// them whatever the word means on this computer.
+var families = []struct {
+	word, name string
+	versions   []string
+}{
+	{"opus", "Claude Opus", []string{"5.5", "5"}},
+	{"sonnet", "Claude Sonnet", []string{"5.5", "5"}},
+	{"haiku", "Claude Haiku", []string{"5.5", "4.5"}},
+}
+
 // Models is the service's catalog: the three words Claude Code answers to,
-// each with no tools among its parameters.
+// then each family's versions under Claude Code's own name for them
+// (`claude-haiku-5-5`), every row with tools among its parameters.
 func Models() []catalog.Model {
-	rows := make([]catalog.Model, 0, 3)
-	for _, row := range []struct{ id, name string }{{"opus", "Claude Opus"}, {"sonnet", "Claude Sonnet"}, {"haiku", "Claude Haiku"}} {
-		rows = append(rows, catalog.Model{
-			ID: row.id, Name: row.name, ContextLength: window, PriceUnknown: true,
+	row := func(id, name string) catalog.Model {
+		return catalog.Model{
+			ID: id, Name: name, ContextLength: window, PriceUnknown: true,
 			Parameters: []string{"max_tokens", "temperature", "stop", "tools", "tool_choice"},
-		})
+		}
+	}
+	rows := make([]catalog.Model, 0, 3*len(families))
+	for _, family := range families {
+		rows = append(rows, row(family.word, family.name))
+	}
+	for _, family := range families {
+		for _, version := range family.versions {
+			rows = append(rows, row("claude-"+family.word+"-"+strings.ReplaceAll(version, ".", "-"), family.name+" "+version))
+		}
 	}
 	return rows
+}
+
+// Version answers the Claude Code model name a seat's id spells in full
+// (`claude-code/claude-haiku-4-5`, or the name alone), and "" for a family
+// word or another service's spelling of a Claude model.
+//
+// A NAME IN CLAUDE CODE'S OWN SPELLING IS SENT WHOLE. Reading it down to its
+// family word would run whichever version the installed Claude Code maps the
+// word to, which is not the version the person picked.
+func Version(id string) string {
+	name := strings.TrimPrefix(strings.TrimSpace(id), ID+"/")
+	if !strings.HasPrefix(name, "claude-") || strings.ContainsAny(name, "/. ") {
+		return ""
+	}
+	return name
 }
 
 // Client is the http.Client the provider is handed for the Claude Code service
@@ -222,11 +260,16 @@ func Compose(chat chatRequest) claudeagent.Ask {
 	return claudeagent.Ask{Model: model(chat.Model), System: strings.Join(system, "\n\n"), Prompt: prompt}
 }
 
-// model is the Claude Code model word for a seat's id: a service prefix is
-// dropped (`claude-code/sonnet`), and a catalog spelling of a Claude model
-// (`anthropic/claude-opus-4.6`) is read as its family.
+// model is what Claude Code is asked to run for a seat's id: a service prefix
+// is dropped (`claude-code/sonnet`), a version in Claude Code's own spelling
+// (`claude-code/claude-haiku-4-5`) is kept whole, and another catalog's
+// spelling of a Claude model (`anthropic/claude-opus-4.6`) is read as its
+// family.
 func model(id string) string {
 	id = strings.TrimSpace(id)
+	if version := Version(id); version != "" {
+		return version
+	}
 	if family := claudeagent.Family(id); family != "" {
 		return family
 	}
@@ -256,8 +299,9 @@ func contentText(raw json.RawMessage) string {
 }
 
 func modelList() map[string]any {
-	data := make([]any, 0, 3)
-	for _, m := range Models() {
+	models := Models()
+	data := make([]any, 0, len(models))
+	for _, m := range models {
 		data = append(data, map[string]any{"id": m.ID, "name": m.Name, "context_length": m.ContextLength, "supported_parameters": m.Parameters})
 	}
 	return map[string]any{"object": "list", "data": data}

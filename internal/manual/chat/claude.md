@@ -13,7 +13,7 @@ codeaf holds no Claude credential: Claude Code runs on whatever account you sign
 codeaf claude add a --json flag to the status command
 ```
 
-Asking in words works too: "have Claude Code do this" makes the chat propose the task with `via: "claude"`. When your crew's working seat is a Claude model, Claude Code runs that family (`opus`, `sonnet` or `haiku`); any other model leaves Claude Code on its own default.
+Asking in words works too: "have Claude Code do this" makes the chat propose the task with `via: "claude"`. When your crew's working seat is a Claude model, Claude Code runs that family (`opus`, `sonnet` or `haiku`), or the exact version when the seat is a Claude Code version row such as `claude-code/claude-haiku-5-5`; any other model leaves Claude Code on its own default.
 
 With Claude Code connected as a provider, pinning the Worker role to a Claude Code model in Task models sends every task to `claude` without naming it: the task is handed to Claude Code, not run by codeaf's own loop.
 

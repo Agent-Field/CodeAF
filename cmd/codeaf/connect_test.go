@@ -288,8 +288,9 @@ func TestFirstRunStillBuildsItsOpenRouterBrowserRoad(t *testing.T) {
 }
 
 // `codeaf connect claude-code` asks for no key: it finds the signed-in Claude
-// Code, keeps the row and seeds its three models with Claude's window, so a
-// conversation on one is not measured against a stranger's default.
+// Code, keeps the row and seeds its models with Claude's window, so a
+// conversation on one is not measured against a stranger's default. The line
+// names the three family words and counts the versions listed beside them.
 func TestConnectClaudeCodeAsksForNoKeyAndSeedsItsModels(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.ProfileDirEnv, dir)
@@ -304,7 +305,7 @@ func TestConnectClaudeCodeAsksForNoKeyAndSeedsItsModels(t *testing.T) {
 	if err := runConnect([]string{"claude-code"}); err != nil {
 		t.Fatalf("connect: %v (%q)", err, output.String())
 	}
-	if !strings.Contains(output.String(), "claude-code is connected · Claude Code 2.1.9 · Claude Max plan") {
+	if !strings.Contains(output.String(), "claude-code is connected · Claude Code 2.1.9 · Claude Max plan · models: claude-code/opus, claude-code/sonnet, claude-code/haiku and 6 versions\n") {
 		t.Fatalf("connect said %q", output.String())
 	}
 	output.Reset()
