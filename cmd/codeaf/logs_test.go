@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/testutil"
 )
 
@@ -36,15 +38,30 @@ import (
 // they stopped at a live provider instead (testenv_test.go carries the whole
 // case).
 func TestMain(m *testing.M) {
+	// A short base keeps Unix sockets usable even with macOS's long TMPDIR.
+	base := os.TempDir()
+	if runtime.GOOS != "windows" {
+		base = "/tmp"
+	}
+	runnerRuntime, err := os.MkdirTemp(base, "rt")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	factoryRunnerRuntimeDefault = runnerRuntime
+	// Inherited overrides must not send a test or its child to a live runner.
+	env.ConsumeExact(factoryRunnerRuntimeEnv)
 	// A SHELL RUN'S CHILD COMES IN HERE: carried_test.go starts this very test
 	// binary as the program's process, marked in its environment, and the
 	// binary then runs the dispatch the way `codeaf <name>` would. Its
 	// environment is the parent's, already isolated below.
 	if code, child := runAsCarriedChild(); child {
+		_ = os.RemoveAll(runnerRuntime)
 		os.Exit(code)
 	}
 	if err := testutil.CanonicalizeTempRoots(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		_ = os.RemoveAll(runnerRuntime)
 		os.Exit(1)
 	}
 	// C27.7 keeps unrelated CLI fixtures on host execution. Cell wiring tests
@@ -100,6 +117,7 @@ func TestMain(m *testing.M) {
 	cellstore.StopSpawned() // no engine daemon outlives the run
 	restoreCells()
 	restore()
+	_ = os.RemoveAll(runnerRuntime)
 	os.Exit(code)
 }
 

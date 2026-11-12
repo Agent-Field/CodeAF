@@ -103,6 +103,9 @@ func (h *appFactoryHost) electWorker(ticks <-chan time.Time) (func(), bool) {
 // TMPDIRs so an upgraded process can still share an older runner.
 const factoryRunnerRuntimeEnv = "CODEAF_FACTORY_RUNTIME_DIR"
 
+// Tests replace the default base so even fallback sockets stay off live runners.
+var factoryRunnerRuntimeDefault = "/tmp"
+
 // The portable limit leaves room for the terminator on macOS and Linux.
 const factoryRunnerSocketBytes = 100
 
@@ -112,7 +115,7 @@ var factoryRunnerRuntimeFallbacks sync.Map
 func factoryRunnerSocket(root string) (string, error) {
 	base := strings.TrimSpace(env.Get(factoryRunnerRuntimeEnv))
 	if base == "" {
-		base = "/tmp"
+		base = factoryRunnerRuntimeDefault
 	} else if !filepath.IsAbs(base) {
 		return "", fmt.Errorf("%s must be an absolute directory", factoryRunnerRuntimeEnv)
 	}
@@ -124,7 +127,7 @@ func factoryRunnerSocket(root string) (string, error) {
 		if _, said := factoryRunnerRuntimeFallbacks.LoadOrStore(base, struct{}{}); !said {
 			fmt.Fprintf(os.Stderr, "factory runner: %s exceeds the %d-byte Unix socket path limit; using the default runtime directory\n", factoryRunnerRuntimeEnv, factoryRunnerSocketBytes-1)
 		}
-		runtimeDir = filepath.Join("/tmp", userDir)
+		runtimeDir = filepath.Join(factoryRunnerRuntimeDefault, userDir)
 	}
 	if err := os.MkdirAll(runtimeDir, 0700); err != nil {
 		return "", err

@@ -15,7 +15,8 @@ import (
 )
 
 func TestFactoryRunnerRuntimeOverrideSharesPrivateSocket(t *testing.T) {
-	base, err := os.MkdirTemp(os.TempDir(), "rt-")
+	// The socket must fit macOS's path limit regardless of the inherited TMPDIR.
+	base, err := os.MkdirTemp("/tmp", "rt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +69,9 @@ func TestFactoryRunnerRuntimeLongPathFallsBackWithReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !strings.HasPrefix(legacy, factoryRunnerRuntimeDefault+string(filepath.Separator)) {
+		t.Fatalf("default socket %q escaped injected runtime base %q", legacy, factoryRunnerRuntimeDefault)
+	}
 	long := filepath.Join(t.TempDir(), strings.Repeat("long", 30))
 	t.Setenv("TMPDIR", long)
 	same, err := factoryRunnerSocket(root)
@@ -95,7 +99,8 @@ func TestFactoryRunnerRuntimeLongPathFallsBackWithReason(t *testing.T) {
 }
 
 func TestFactoryRunnerRuntimeRejectsPrivateDirectorySymlink(t *testing.T) {
-	base, err := os.MkdirTemp(os.TempDir(), "rt-")
+	// A long base would select fallback before exercising the symlink refusal.
+	base, err := os.MkdirTemp("/tmp", "rt")
 	if err != nil {
 		t.Fatal(err)
 	}

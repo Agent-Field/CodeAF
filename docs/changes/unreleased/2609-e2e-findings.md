@@ -22,3 +22,7 @@ The existing first-opened-PR rule remains; default inputs do not gain fields.
 A later review step says `finished`; the opening step keeps
 `finished and opened <pull request link>`.
 Set `CODEAF_FACTORY_RUNTIME_DIR` for an isolated private control socket.
+
+Runner socket tests use short, temporary runtime bases on Unix, including for
+the default and long-path fallback, so macOS's long `TMPDIR` cannot redirect
+tests into a live runner directory. Production socket paths are unchanged.
