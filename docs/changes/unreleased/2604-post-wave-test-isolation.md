@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Join cancelled headless accounting before returning and isolate shared team fixtures
-pr: 0
+pr: 2604
 surface: [chat, engine, build, docs]
 invalidates:
   - "A local headless task could return before cancelled-call accounting created its usage writer; it now joins that producer before closing usage."
