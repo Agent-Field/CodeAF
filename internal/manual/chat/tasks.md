@@ -2330,25 +2330,32 @@ you set it — and under the day's limit above it. An adaptive run they start op
 $100.00 default.
 
 **An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
-Spending tab's `per task` row and set with `/crew cap task <$>`. On both task roads this is
-one ceiling for the whole tree, including planning and checks. The smaller of that limit
-and the conversation's remaining allowance wins, even when no crew was routed.
-Continuing interrupted work keeps what the same tree already spent: only the unspent
-part of its per-task limit remains available.
-A routed crew refuses a call that would cross its per-task limit. Reaching the run's
-ceiling ends workers in flight and starts no more.
-On the node belt, the saved ceiling survives restarts; reaching it refuses each worker's next request, queued workers spend nothing, and in-flight calls finish without cancellation.
-When the per-task limit binds, the
-report says `this task reached its $5 limit · raise it in /crew` (with your configured
-amount). Raise it with `/crew cap task <$>`, then rerun the remaining work with `/task`.
-When the conversation's smaller limit binds, the report names that amount and `/settings`.
-Continuing a run is for interrupted work; a settled dollar-limit ending needs a rerun.
+Spending tab's `per task` row and set with `/crew cap task <$>`. It is one ceiling for the
+task's whole tree; *The per-task limit covers the whole task tree* below says what it
+counts and what happens when it is reached.
 **senior-dev, sec and review have their own dollar and time ceilings for each run**,
 separate from that `per task` row; see each program's page for its defaults and how to
 change them.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.
+
+## The per-task limit covers the whole task tree — what happens when a task reaches its $5 limit, raising it with /crew cap task
+
+An ordinary `/task`, or any task codeaf's own worker does, has a money limit of its own:
+$5 unless you set another with `/crew cap task <$>`. On both task roads this is
+one ceiling for the whole tree, including planning and checks. The smaller of that limit
+and the conversation's remaining allowance wins, even when no crew was routed.
+Continuing interrupted work keeps what the same tree already spent: only the unspent
+part of its per-task limit remains available.
+A routed crew refuses a call that would cross its per-task limit. Reaching the run's
+ceiling ends workers in flight and starts no more.
+On the node belt, the saved ceiling survives restarts; reaching it refuses each worker's
+next request, queued workers spend nothing, and in-flight calls finish without
+cancellation. When the per-task limit binds, the report says `this task reached its $5 limit · raise it in /crew` (with your configured
+amount). Raise it with `/crew cap task <$>`, then rerun the remaining work with `/task`.
+When the conversation's smaller limit binds, the report names that amount and `/settings`.
+Continuing a run is for interrupted work; a settled dollar-limit ending needs a rerun.
 
 ## The + /task row at the foot of the column — starting a task from the side
 
@@ -4314,7 +4321,7 @@ exempt.
 The refusal says `no: this run already has a task named "Read: the LAW!" (7), so nothing
 was added.` It tells the worker to do that work in its own hands, or name different
 work for what is different. The shared tree money limit is described above under
-*A task started from the composer carries a cap*.
+*The per-task limit covers the whole task tree*.
 
 ## How the bash belt run splits work instead of nesting node tasks
 
