@@ -692,13 +692,18 @@ keeps the newest 2,000 independently of its live notifications.
 `reset: true` means read the Factory's current state once, then continue from
 the returned cursor. A reset has no events. It occurs on an initial read,
 an expired or replaced cursor, or a gap caused by an older writer. Cursor
-zero on an empty record is caught up and does not reset repeatedly.
+zero on an empty record is caught up and does not reset repeatedly. A gap
+resets once: the Factory read that finds it closes it, and the returned
+cursor is past it.
 
 `follow: true` starts one follower per attached Factory. A later outcome is
 pushed as `factory.event` with the same `FactoryEvent` shape and sequence.
 The push is a prompt copy: the app can always read again from its own cursor.
 Repeated follow calls raise the follower's cursor without duplicating it.
 A follower takes reset cursors silently; the app's own read observes resets.
+After a reset that leaves its cursor where it was (a Factory without the gap
+repair resets every read during a gap), the follower waits 2 seconds,
+doubling to a minute while that repeats, before it reads again.
 Closing the engine or detaching the Factory ends following. The Factory HTTP
 read takes `after`, `limit` and optional `wait` seconds (0–15, default 0),
 returning on an outcome or reset when a watch is available.

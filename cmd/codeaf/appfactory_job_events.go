@@ -159,6 +159,18 @@ func (s *appFactoryJobEvents) run(b *appBackend, h *appFactoryHub, id string, f 
 			continue
 		}
 		s.deliver(b, f, cursor, out)
+		// A RESET THAT LEFT THE CURSOR WHERE IT WAS IS ANSWERED AGAIN AT ONCE,
+		// wait or no wait: a Factory whose live record has a gap an older
+		// writer left resets every read to the cursor it was asked. Read again
+		// at once, the follower sent requests back to back, each one settling
+		// every job on the Factory, until something closed the gap.
+		if out.Reset && s.cursor(f) == cursor {
+			if !s.retry(delay) {
+				return
+			}
+			delay = min(2*delay, time.Minute)
+			continue
+		}
 		delay = 2 * time.Second
 	}
 }

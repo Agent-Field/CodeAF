@@ -84,7 +84,17 @@ func (h *Handler) jobEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) visibleJobEvents(r *http.Request, after *int64, limit int) (api.JobEvents, error) {
-	got, err := live.ReadOutcomes(h.eventRoot(), after, limit)
+	root := h.eventRoot()
+	got, err := live.ReadOutcomes(root, after, limit)
+	// A RESET FROM A GAP IS GIVEN ONCE. Left open, the gap an older writer
+	// leaves reset every read until this Factory's own next write.
+	if err == nil && got.Reset {
+		if healed, healErr := live.HealOutcomes(root); healErr != nil {
+			return api.JobEvents{}, healErr
+		} else if healed {
+			got, err = live.ReadOutcomes(root, after, limit)
+		}
+	}
 	out := api.JobEvents{Events: []api.JobEvent{}, Cursor: got.Cursor, Reset: got.Reset, More: got.More}
 	for _, e := range got.Events {
 		if h.jobEventVisible(r, e.Job) {

@@ -313,3 +313,42 @@ func TestOutcomeFallbacksAndTransitionOrder(t *testing.T) {
 		t.Fatalf("ordered transitions: %v", kinds)
 	}
 }
+
+// HealOutcomes closes only a real gap, the way the next commit would: a
+// reader of the record resets once to a cursor past the gap and reads on from
+// there; a record with no gap, or no record at all, is left as it is.
+func TestHealOutcomesClosesOnlyAGap(t *testing.T) {
+	empty := t.TempDir()
+	if healed, err := live.HealOutcomes(empty); err != nil || healed {
+		t.Fatalf("an empty Factory healed: %v %v", healed, err)
+	}
+	if _, err := os.Stat(filepath.Join(empty, live.OutcomeFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("healing an empty Factory wrote an outcome record: %v", err)
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, live.File), []byte(`{"next":3,"events":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := readOutcomes(t, root, 0, 100); !got.Reset || got.Cursor != 0 {
+		t.Fatalf("the gap: %+v", got)
+	}
+	if healed, err := live.HealOutcomes(root); err != nil || !healed {
+		t.Fatalf("the gap was not healed: %v %v", healed, err)
+	}
+	if healed, err := live.HealOutcomes(root); err != nil || healed {
+		t.Fatalf("a healed record healed again: %v %v", healed, err)
+	}
+	once := readOutcomes(t, root, 0, 100)
+	if !once.Reset || once.Cursor != 1 {
+		t.Fatalf("a reader before the gap: %+v", once)
+	}
+	if got := readOutcomes(t, root, once.Cursor, 100); got.Reset || len(got.Events) != 0 {
+		t.Fatalf("a reader past the gap: %+v", got)
+	}
+	if err := live.Append(root, outcomeEvent(4)); err != nil {
+		t.Fatal(err)
+	}
+	if got := readOutcomes(t, root, once.Cursor, 100); got.Reset || len(got.Events) != 1 || got.Events[0].Seq != 2 || got.Events[0].Job != 4 {
+		t.Fatalf("an outcome after the gap: %+v", got)
+	}
+}

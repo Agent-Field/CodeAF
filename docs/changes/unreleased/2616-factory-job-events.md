@@ -21,6 +21,9 @@ see. The live record and `/v1/events` are unchanged.
 `{factory, supported, events, cursor, reset, more}`. `reset` means the cursor
 was absent, older than what is kept, or crossed a gap written by an older
 binary: read the Factory's current state once, then continue from `cursor`.
+A gap resets once, because the read that finds it closes it, and a follower
+that is reset to the cursor it asked waits before it reads again, 2 seconds
+doubling to a minute, so a Factory in that state is not read back to back.
 With `follow`, the engine pushes each later outcome as `factory.event`. A
 Factory older than the route answers `supported: false`. A job created already
 finished or waiting records nothing, and one wait on a person is one

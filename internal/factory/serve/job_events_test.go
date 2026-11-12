@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -196,5 +199,44 @@ func TestJobEventsLongPollImmediateAndTimeout(t *testing.T) {
 	withoutWatch.jobEvents(w, httptest.NewRequest(http.MethodGet, "/v1/job-events?after=1&wait=15", nil))
 	if got := decodeJobEvents(t, w); time.Since(start) > time.Second || got.Cursor != 1 {
 		t.Fatalf("no watch: %+v", got)
+	}
+}
+
+// A GAP AN OLDER WRITER LEFT RESETS A READER ONCE. An older codeaf writes the
+// live record without outcomes_through, so the record says outcomes may be
+// missing from where it stopped. The Factory used to answer every read with
+// reset at once, long poll or not, until its own next write closed the gap;
+// on an idle Factory with no runners that never came, and an engine that
+// followed it read back to back. The first read that finds the gap now closes
+// it, so the reader resets once and then waits for outcomes as usual.
+func TestJobEventsGapResetsOnce(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, live.File), []byte(`{"next":3,"events":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h := jobEventsHandler(t, root)
+	resets := 0
+	cursor := int64(0)
+	for i := range 3 {
+		start := time.Now()
+		got := decodeJobEvents(t, jobEventsRequest(h, "?after="+strconv.FormatInt(cursor, 10)+"&wait=1"))
+		took := time.Since(start)
+		if got.Reset {
+			resets++
+		} else if took < 900*time.Millisecond {
+			t.Fatalf("read %d answered at once without an outcome: %+v", i+1, got)
+		}
+		cursor = got.Cursor
+	}
+	if resets != 1 {
+		t.Fatalf("a gap reset the reader %d times in 3 reads, want 1", resets)
+	}
+	// The gap is closed in the record itself: a later outcome is read in turn.
+	if err := live.Append(root, live.New(live.OutcomeKind, 1, live.Outcome{Job: 1, Kind: "finished"})); err != nil {
+		t.Fatal(err)
+	}
+	got := decodeJobEvents(t, jobEventsRequest(h, "?after="+strconv.FormatInt(cursor, 10)))
+	if got.Reset || len(got.Events) != 1 || got.Events[0].Seq != cursor+1 {
+		t.Fatalf("after the gap: %+v", got)
 	}
 }

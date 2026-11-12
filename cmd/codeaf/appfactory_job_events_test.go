@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -291,6 +292,63 @@ func TestAppFactoryJobEventsRetryAndReset(t *testing.T) {
 	if jobFollowerCount(s) != 0 {
 		t.Fatal("retry follower remained after cancellation")
 	}
+}
+
+// A RESET THAT DOES NOT MOVE THE CURSOR WAITS BEFORE THE NEXT READ. A Factory
+// whose live record has a gap an older writer left answers every read with
+// reset at once, wait or no wait, and the cursor it answers is the one the
+// follower asked; read again at once, the follower sent back-to-back requests
+// (each settles every job on the Factory) until something closed the gap.
+func TestAppFactoryJobEventsGapResetWaits(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		after := r.URL.Query().Get("after")
+		cursor, _ := strconv.ParseInt(after, 10, 64)
+		_ = json.NewEncoder(w).Encode(api.JobEvents{Events: []api.JobEvent{}, Cursor: cursor, Reset: true})
+	}))
+	t.Cleanup(server.Close)
+	h := testFactoryHub(t)
+	h.loaded = true
+	h.rows = []appFactoryRow{{ID: "f", URL: server.URL, Mode: api.FactoryTeam}}
+	h.sessions["f"] = appFactorySession{token: "outcome-test-token", expires: time.Now().Add(time.Hour)}
+	b := newFakeBackend(newAppRecorder(), nil)
+	b.factoryOnce.Do(func() { b.factories = h })
+	t.Cleanup(func() { _ = b.Close() })
+	s := h.jobEventsState()
+	delays := make(chan time.Duration, 16)
+	tick := make(chan time.Time)
+	s.after = func(delay time.Duration) <-chan time.Time {
+		delays <- delay
+		return tick
+	}
+	s.follow(b, h, "f", 3)
+	// Over a window with no clock moving, the follower reads once and waits.
+	time.Sleep(300 * time.Millisecond)
+	if n := requests.Load(); n != 1 {
+		t.Fatalf("the follower read %d times in 300ms while every read reset to its own cursor, want 1", n)
+	}
+	// Each wait that passes allows exactly one more read, and the waits back off.
+	for i, want := range []time.Duration{2, 4, 8} {
+		select {
+		case got := <-delays:
+			if got != want*time.Second {
+				t.Fatalf("wait %d is %v, want %v seconds", i+1, got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("the follower did not wait after reset %d", i+1)
+		}
+		tick <- time.Now()
+		deadline := time.Now().Add(2 * time.Second)
+		for requests.Load() < int64(i+2) && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		time.Sleep(50 * time.Millisecond)
+		if n := requests.Load(); n != int64(i+2) {
+			t.Fatalf("after %d waits the follower read %d times, want %d", i+1, n, i+2)
+		}
+	}
+	h.stopJobEvents()
 }
 
 // E8: a cancelled backend context and a detached connection stop, other errors retry.

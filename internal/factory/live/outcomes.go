@@ -150,6 +150,37 @@ func ReadOutcomes(root string, after *int64, limit int) (OutcomePage, error) {
 	return out, err
 }
 
+// HealOutcomes closes a gap an older writer left in the live record, as the
+// next commit by this binary would: the outcome record moves past it, so a
+// reader resets once, and later reads follow again. It reports whether there
+// was a gap. A gap answered every read with a reset until that commit came,
+// which on an idle Factory could be never.
+func HealOutcomes(root string) (bool, error) {
+	if root == "" {
+		return false, nil
+	}
+	healed := false
+	err := locked(root, true, func(d *document) error {
+		if d.OutcomesThrough == d.Next {
+			return nil
+		}
+		outcomes, _, err := prepareOutcomes(root, d, nil)
+		if err != nil {
+			return err
+		}
+		d.OutcomesThrough = d.Next
+		if err := outcomes.save(root); err != nil {
+			return err
+		}
+		if err := save(root, d); err != nil {
+			return errors.Join(err, outcomes.restore(root))
+		}
+		healed = true
+		return nil
+	})
+	return healed, err
+}
+
 func (d *outcomeDocument) read(after int64, limit int) OutcomePage {
 	out := OutcomePage{Events: []Outcome{}, Cursor: d.Next}
 	if limit < 1 {
