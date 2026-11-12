@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // FactoryForemanOpen is factory.foreman_open: the foreman conversation of the
@@ -90,9 +91,17 @@ func (b *appBackend) foremanOpened(ctx context.Context, p appwire.FactoryRef, do
 		b.sayAgent(a)
 	}
 	if before != "" && !sameSessionFile(before, transcript) {
+		b.sayForemanChanged(p.Factory, id, before)
 		guard.Go("app/factory foreman put away", func() { b.putAwayForeman(before) })
 	}
 	return appwire.FactoryForeman{Factory: p.Factory, Agent: id}, nil
+}
+
+// sayForemanChanged tells every window the factory's manager was replaced:
+// which conversation is the manager now, and which one no longer is, so a
+// window still showing the old one swaps it ([appwire.EventFactoryForemanChanged]).
+func (b *appBackend) sayForemanChanged(factory, agent, replaced string) {
+	b.emit.Emit(appwire.EventFactoryForemanChanged, appwire.FactoryForemanChanged{Factory: factory, Agent: agent, Replaced: appAgentID(replaced)})
 }
 
 // foremanLoad is the floor's read a foreman's making asks for its brief's
@@ -162,8 +171,9 @@ func (b *appBackend) settleForemanNow(host *appFactoryHost) (away []string) {
 		b.ownForeman(chat)
 		return away
 	}
-	if _, err := foremanMint(host.floor, host.workspace, host.profile, foremanLoad(host)); err == nil {
+	if made, err := foremanMint(host.floor, host.workspace, host.profile, foremanLoad(host)); err == nil {
 		away = append(away, chat)
+		b.sayForemanChanged(appLocalID, appAgentID(made), chat)
 	}
 	return away
 }
@@ -214,11 +224,21 @@ func (b *appBackend) putAwayForeman(transcript string) {
 		rename = a.view.Title == foremanTitle || a.view.Title == foremanOldTitle || a.view.Title == foremanEarlierTitle
 	})
 	if rename {
-		if _, err := b.Rename(id, foremanEarlierTitle); err != nil {
-			// It could not be opened to be renamed (no provider, another
-			// window holds it): this engine still says the earlier name.
-			b.locked(func() { a.view.Title = foremanEarlierTitle })
+		// A CONVERSATION THAT IS NOT OPEN IS NOT OPENED TO BE RENAMED. Its
+		// folder is the one it was moved out of, and assembling it there
+		// again to write one line is the thing this whole door exists to
+		// stop: its journal takes the line directly. One that is open (a tab
+		// holds it, or a turn is running) is renamed through its own door.
+		var err error
+		if b.isHeld(id) {
+			_, err = b.Rename(id, foremanEarlierTitle)
+		} else {
+			err = session.RetitleConversation(transcript, foremanEarlierTitle)
 		}
+		// Whether or not the journal took it, this engine says the earlier
+		// name from here on.
+		_ = err
+		b.locked(func() { a.view.Title = foremanEarlierTitle })
 	}
 	_ = b.Stop(id)
 	if err := b.Archive([]string{id}); err != nil {
