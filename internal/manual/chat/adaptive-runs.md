@@ -985,12 +985,13 @@ nothing for another attempt to carry on from`.
 
 ## What do and exec wait for at shutdown — usage writes after a timeout
 
-`codeaf do` joins its cancelled workers' admitted receipt accounting before closing
-the process's usage writers, including when the run times out. Receipt settlement
-shares the existing five-second background stop wait. Usage shutdown has a separate
-two-second bound. With a responsive provider and disk, the command returns after
-those accounting writes finish. A stalled provider or disk can exhaust a bound;
-complete rows already in the pending usage journal remain recoverable on restart.
+`codeaf do` closes the process's usage writers after its workers stop, including
+when the run times out. With `CODEAF_TASK_BELT=node`, cancelled workers' admitted
+receipt accounting joins inside the existing five-second background stop wait.
+Usage shutdown has a separate two-second bound. With a responsive provider and
+disk, the command returns after those accounting writes finish. A stalled
+provider or disk can exhaust a bound; complete rows already in the pending usage
+journal remain recoverable on restart.
 
 `codeaf exec` also closes its usage writer before returning, under the same
 two-second usage shutdown bound.

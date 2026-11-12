@@ -7,9 +7,10 @@ invalidates:
   - "A local headless task could return before cancelled-call accounting created its usage writer; it now joins that producer before closing usage."
 ---
 
-Headless tasks join admitted leaf receipt settlement within the existing background
-stop wait, then close the process usage writers under their existing bound. A
-leaf's late accounting retains the ledger chosen when the leaf was constructed.
+The node engine joins admitted leaf receipt settlement within its existing
+background stop wait. Every `codeaf do` invocation closes the process usage writers
+after its workers stop, under the existing usage close bound. Each leaf's late
+accounting retains the ledger chosen when the leaf was constructed.
 Cancelled requests still keep their unbilled markers, and journal sync and retry
 retain their existing durability and shutdown limits.
 
