@@ -337,6 +337,11 @@ page and step rail, Start and Stop.
 
 The node's developer writes nothing for any of this: a reasoner that calls
 `a.Harness(...)` on the codeaf provider is watched and steerable by itself.
+The watched `chat --once --json` result includes `tokens.in`, `tokens.out` and
+`spend_usd`, with the same names and types as `exec --json`. They total the
+invocation after closing settles usage, including work before a failure; a
+resumed conversation excludes earlier invocations. A remote accounting client
+can read these totals from stdout without adding up live usage events.
 
 ## the names of an AgentField run's steps — why parallel steps read the same, a call's subject, a label tag
 
